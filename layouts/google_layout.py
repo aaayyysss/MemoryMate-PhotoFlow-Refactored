@@ -4937,6 +4937,11 @@ class GooglePhotosLayout(BaseLayout):
         # Timeline tree (Years > Months)
         self.timeline_tree = QTreeWidget()
         self.timeline_tree.setHeaderHidden(True)
+
+        # CRITICAL FIX: Disable horizontal scrollbar
+        self.timeline_tree.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.timeline_tree.setTextElideMode(Qt.ElideRight)
+
         self.timeline_tree.setStyleSheet("""
             QTreeWidget {
                 border: none;
@@ -4983,6 +4988,11 @@ class GooglePhotosLayout(BaseLayout):
         # Folders tree
         self.folders_tree = QTreeWidget()
         self.folders_tree.setHeaderHidden(True)
+
+        # CRITICAL FIX: Disable horizontal scrollbar (use tooltips for full paths)
+        self.folders_tree.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.folders_tree.setTextElideMode(Qt.ElideMiddle)  # Elide middle for paths
+
         self.folders_tree.setStyleSheet("""
             QTreeWidget {
                 border: none;
@@ -5033,6 +5043,14 @@ class GooglePhotosLayout(BaseLayout):
         # ENHANCEMENT: Larger icon size for better face visibility (64x64)
         # Was not set explicitly, defaulted to ~16px - now 64px for clear face identification
         self.people_tree.setIconSize(QSize(64, 64))
+
+        # CRITICAL FIX: Disable horizontal scrollbar (text elision instead)
+        self.people_tree.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.people_tree.setTextElideMode(Qt.ElideRight)  # Elide text instead of scrolling
+
+        # ENHANCEMENT: Enable context menu for face management (rename/merge/delete)
+        self.people_tree.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.people_tree.customContextMenuRequested.connect(self._show_people_context_menu)
 
         self.people_tree.setStyleSheet("""
             QTreeWidget {
@@ -5717,6 +5735,253 @@ class GooglePhotosLayout(BaseLayout):
                 filter_folder=None,
                 filter_person=branch_key
             )
+
+    def _show_people_context_menu(self, pos):
+        """
+        Show context menu for people tree items (rename/merge/delete).
+
+        Inspired by Google Photos / iPhone Photos face management.
+        """
+        from PySide6.QtGui import QAction
+
+        item = self.people_tree.itemAt(pos)
+        if not item:
+            return
+
+        data = item.data(0, Qt.UserRole)
+        if not data or data.get("type") != "person":
+            return
+
+        branch_key = data.get("branch_key")
+        current_label = data.get("label")
+        current_name = current_label if current_label else "Unnamed Person"
+
+        menu = QMenu(self.people_tree)
+
+        # Rename action
+        rename_action = QAction("✏️ Rename Person...", self)
+        rename_action.triggered.connect(lambda: self._rename_person(item, branch_key, current_name))
+        menu.addAction(rename_action)
+
+        # Merge action
+        merge_action = QAction("🔗 Merge with Another Person...", self)
+        merge_action.triggered.connect(lambda: self._merge_person(branch_key, current_name))
+        menu.addAction(merge_action)
+
+        menu.addSeparator()
+
+        # View all photos (already doing this on click)
+        view_action = QAction("📸 View All Photos", self)
+        view_action.triggered.connect(lambda: self._on_people_item_clicked(item, 0))
+        menu.addAction(view_action)
+
+        menu.addSeparator()
+
+        # Delete action
+        delete_action = QAction("🗑️ Delete This Person", self)
+        delete_action.triggered.connect(lambda: self._delete_person(branch_key, current_name))
+        menu.addAction(delete_action)
+
+        menu.exec(self.people_tree.viewport().mapToGlobal(pos))
+
+    def _rename_person(self, item: QTreeWidgetItem, branch_key: str, current_name: str):
+        """Rename a person/face cluster."""
+        from PySide6.QtWidgets import QInputDialog, QMessageBox
+
+        new_name, ok = QInputDialog.getText(
+            self,
+            "Rename Person",
+            f"Rename '{current_name}' to:",
+            text=current_name if not current_name.startswith("Unnamed") else ""
+        )
+
+        if not ok or not new_name.strip():
+            return
+
+        new_name = new_name.strip()
+
+        if new_name == current_name:
+            return
+
+        try:
+            from reference_db import ReferenceDB
+            db = ReferenceDB()
+
+            # Update database
+            with db._connect() as conn:
+                conn.execute("""
+                    UPDATE branches
+                    SET display_name = ?
+                    WHERE project_id = ? AND branch_key = ?
+                """, (new_name, self.project_id, branch_key))
+
+                conn.execute("""
+                    UPDATE face_branch_reps
+                    SET label = ?
+                    WHERE project_id = ? AND branch_key = ?
+                """, (new_name, self.project_id, branch_key))
+
+                conn.commit()
+
+            # Update UI - preserve count
+            old_text = item.text(0)
+            count_part = old_text.split('(')[-1] if '(' in old_text else "0)"
+            item.setText(0, f"{new_name} ({count_part}")
+
+            # Update data
+            data = item.data(0, Qt.UserRole)
+            if data:
+                data["label"] = new_name
+                item.setData(0, Qt.UserRole, data)
+
+            print(f"[GooglePhotosLayout] Person renamed: {current_name} → {new_name}")
+            QMessageBox.information(self, "Renamed", f"Person renamed to '{new_name}'")
+
+        except Exception as e:
+            print(f"[GooglePhotosLayout] Rename failed: {e}")
+            QMessageBox.critical(self, "Rename Failed", f"Error: {e}")
+
+    def _merge_person(self, source_branch_key: str, source_name: str):
+        """Merge this person with another person."""
+        from PySide6.QtWidgets import QDialog, QListWidget, QDialogButtonBox, QVBoxLayout, QLabel, QMessageBox
+
+        # Get all other persons
+        from reference_db import ReferenceDB
+        db = ReferenceDB()
+
+        with db._connect() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT branch_key, label, count
+                FROM face_branch_reps
+                WHERE project_id = ? AND branch_key != ?
+                ORDER BY count DESC
+            """, (self.project_id, source_branch_key))
+
+            other_persons = cur.fetchall()
+
+        if not other_persons:
+            QMessageBox.information(self, "No Persons", "No other persons to merge with")
+            return
+
+        # Show selection dialog
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"Merge '{source_name}'")
+        dialog.resize(450, 550)
+
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(QLabel(f"Select person to merge '{source_name}' into:"))
+
+        list_widget = QListWidget()
+        for branch_key, label, count in other_persons:
+            display = f"{label or 'Unnamed Person'} ({count} photos)"
+            item_widget = QListWidgetItem(display)
+            item_widget.setData(Qt.UserRole, branch_key)
+            list_widget.addItem(item_widget)
+
+        layout.addWidget(list_widget)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+
+        if dialog.exec() == QDialog.Accepted:
+            selected_item = list_widget.currentItem()
+            if selected_item:
+                target_branch_key = selected_item.data(Qt.UserRole)
+                self._perform_merge(source_branch_key, target_branch_key, source_name)
+
+    def _perform_merge(self, source_key: str, target_key: str, source_name: str):
+        """Perform the actual merge operation."""
+        from PySide6.QtWidgets import QMessageBox
+
+        try:
+            from reference_db import ReferenceDB
+            db = ReferenceDB()
+
+            with db._connect() as conn:
+                # Move all faces from source to target
+                conn.execute("""
+                    UPDATE face_crops
+                    SET branch_key = ?
+                    WHERE project_id = ? AND branch_key = ?
+                """, (target_key, self.project_id, source_key))
+
+                # Delete source branch
+                conn.execute("""
+                    DELETE FROM face_branch_reps
+                    WHERE project_id = ? AND branch_key = ?
+                """, (self.project_id, source_key))
+
+                conn.execute("""
+                    DELETE FROM branches
+                    WHERE project_id = ? AND branch_key = ?
+                """, (self.project_id, source_key))
+
+                conn.commit()
+
+            # Rebuild people tree
+            self._build_people_tree()
+
+            print(f"[GooglePhotosLayout] Merge successful: {source_name} merged")
+            QMessageBox.information(self, "Merged", f"'{source_name}' merged successfully")
+
+        except Exception as e:
+            print(f"[GooglePhotosLayout] Merge failed: {e}")
+            QMessageBox.critical(self, "Merge Failed", f"Error: {e}")
+
+    def _delete_person(self, branch_key: str, person_name: str):
+        """Delete a person/face cluster."""
+        from PySide6.QtWidgets import QMessageBox
+
+        reply = QMessageBox.question(
+            self,
+            "Delete Person",
+            f"Are you sure you want to delete '{person_name}'?\n\n"
+            f"This will remove all face data for this person.\n"
+            f"Original photos will NOT be deleted.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+
+        if reply != QMessageBox.Yes:
+            return
+
+        try:
+            from reference_db import ReferenceDB
+            db = ReferenceDB()
+
+            with db._connect() as conn:
+                # Delete face crops
+                conn.execute("""
+                    DELETE FROM face_crops
+                    WHERE project_id = ? AND branch_key = ?
+                """, (self.project_id, branch_key))
+
+                # Delete branch representative
+                conn.execute("""
+                    DELETE FROM face_branch_reps
+                    WHERE project_id = ? AND branch_key = ?
+                """, (self.project_id, branch_key))
+
+                # Delete branch
+                conn.execute("""
+                    DELETE FROM branches
+                    WHERE project_id = ? AND branch_key = ?
+                """, (self.project_id, branch_key))
+
+                conn.commit()
+
+            # Rebuild people tree
+            self._build_people_tree()
+
+            print(f"[GooglePhotosLayout] Person deleted: {person_name}")
+            QMessageBox.information(self, "Deleted", f"'{person_name}' deleted successfully")
+
+        except Exception as e:
+            print(f"[GooglePhotosLayout] Delete failed: {e}")
+            QMessageBox.critical(self, "Delete Failed", f"Error: {e}")
 
     def _on_section_header_clicked(self):
         """
