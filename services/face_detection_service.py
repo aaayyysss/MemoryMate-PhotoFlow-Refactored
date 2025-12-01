@@ -37,6 +37,7 @@ except Exception as e:
 # Lazy import InsightFace (only load when needed)
 _insightface_app = None
 _providers_used = None
+_buffalo_dir_path = None  # CRITICAL FIX: Store buffalo_dir for fallback app initialization
 _insightface_lock = threading.Lock()  # Thread-safe initialization lock (P0 Fix #4)
 
 
@@ -171,8 +172,10 @@ def _get_insightface_app():
 
     P0 Fix #4: Uses double-checked locking to prevent race condition
     where multiple threads could initialize models simultaneously.
+
+    CRITICAL FIX: Also stores buffalo_dir_path globally for fallback app
     """
-    global _insightface_app, _providers_used
+    global _insightface_app, _providers_used, _buffalo_dir_path
 
     # First check without lock (fast path for already initialized)
     if _insightface_app is None:
@@ -196,6 +199,11 @@ def _get_insightface_app():
                             "Please configure the model path in Preferences → Face Detection\n"
                             "or download models using: python download_face_models.py"
                         )
+
+                    # CRITICAL FIX: Store buffalo_dir globally for fallback app initialization
+                    # This prevents fallback app from downloading models to wrong location
+                    _buffalo_dir_path = buffalo_dir
+                    logger.debug(f"[INIT] Stored buffalo_dir for fallback use: {buffalo_dir}")
 
                     # P1-8 FIX: Validate ONNX model files exist and have reasonable size
                     import os
@@ -459,6 +467,44 @@ class FaceDetectionService:
             return self.app is not None
         except Exception:
             return False
+
+    def cleanup(self):
+        """
+        Clean up InsightFace resources to prevent memory leaks.
+
+        CRITICAL: This method releases both main and fallback InsightFace instances.
+        Call this when:
+        - Face detection job completes
+        - User cancels detection
+        - App shuts down
+
+        Note: The global _insightface_app is NOT cleared (singleton pattern).
+        Only this instance's fallback_app is released.
+        """
+        logger.info("[FaceDetection] Cleaning up resources...")
+
+        # Release fallback app (instance-specific)
+        if self.fallback_app is not None:
+            try:
+                del self.fallback_app
+                self.fallback_app = None
+                logger.debug("[FaceDetection] ✓ Released fallback app")
+            except Exception as e:
+                logger.warning(f"Error releasing fallback app: {e}")
+
+        logger.info("[FaceDetection] ✓ Cleanup complete")
+
+    def __del__(self):
+        """
+        Destructor to ensure cleanup on deletion.
+
+        Note: Python's garbage collector may not call this immediately,
+        so explicit cleanup() calls are preferred.
+        """
+        try:
+            self.cleanup()
+        except Exception:
+            pass  # Ignore errors during destruction
 
     @staticmethod
     def calculate_face_quality(face_dict: dict, img: np.ndarray) -> float:
@@ -734,12 +780,27 @@ class FaceDetectionService:
                         if self.fallback_app is None:
                             logger.warning(f"[INSIGHTFACE] Initializing fallback app (detection+recognition, no landmarks) - will be cached")
                             from insightface.app import FaceAnalysis
-                            self.fallback_app = FaceAnalysis(name=self.model, allowed_modules=['detection', 'recognition'])
+
+                            # CRITICAL FIX: Use the same buffalo_dir as main app
+                            # This prevents downloading models to ~/.insightface/ (wrong location)
+                            # and ensures recognition module is loaded correctly
+                            global _buffalo_dir_path
+                            if _buffalo_dir_path is None:
+                                logger.error("[INSIGHTFACE] ❌ Buffalo dir path not available for fallback app!")
+                                raise RuntimeError("Buffalo directory not initialized - cannot create fallback app")
+
+                            logger.info(f"[INSIGHTFACE] 📁 Using bundled models for fallback: {_buffalo_dir_path}")
+
+                            self.fallback_app = FaceAnalysis(
+                                name=self.model,
+                                root=_buffalo_dir_path,  # ✅ CRITICAL: Use bundled models, not download!
+                                allowed_modules=['detection', 'recognition']  # ✅ WITH recognition for embeddings
+                            )
                             self.fallback_app.prepare(ctx_id=-1, det_size=(640, 640))
-                            logger.info(f"[INSIGHTFACE] ✅ Fallback app cached for future use")
+                            logger.info(f"[INSIGHTFACE] ✅ Fallback app cached with embeddings support")
                         else:
                             logger.debug(f"[INSIGHTFACE] Using cached fallback app (no reinitialization)")
-                        
+
                         detected_faces = self.fallback_app.get(img)
                         logger.info(f"[INSIGHTFACE] ✅ Fallback app returned {len(detected_faces) if detected_faces else 0} faces with embeddings")
                         

@@ -344,6 +344,19 @@ class FaceDetectionWorker(QRunnable):
             face_crops_dir: Directory to save face crops
         """
         try:
+            # CRITICAL FIX: Validate embedding exists before saving
+            # In detection-only mode (PyInstaller fallback), embeddings may be None
+            # This prevents crash: 'NoneType' object has no attribute 'astype'
+            if face.get('embedding') is None:
+                logger.warning(
+                    f"⚠️  Skipping face save for {os.path.basename(image_path)} face#{face_idx}: "
+                    f"No embedding available (detection-only mode). "
+                    f"Face was detected but cannot be saved for clustering."
+                )
+                # Cannot save to database without embedding
+                # Face clustering requires embeddings for grouping
+                return
+
             # Generate crop filename
             image_basename = os.path.splitext(os.path.basename(image_path))[0]
             crop_filename = f"{image_basename}_face{face_idx}.jpg"
@@ -359,6 +372,7 @@ class FaceDetectionWorker(QRunnable):
                 os.makedirs(os.path.dirname(crop_path), exist_ok=True)
 
             # Convert embedding to bytes for storage
+            # At this point, we've validated that embedding is not None
             embedding_bytes = face['embedding'].astype(np.float32).tobytes()
 
             # Insert into database
