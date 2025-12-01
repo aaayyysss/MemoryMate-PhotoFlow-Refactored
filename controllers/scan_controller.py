@@ -15,7 +15,7 @@ Version: 09.20.00.00
 """
 
 import logging
-from PySide6.QtCore import QThread, Qt, QTimer
+from PySide6.QtCore import QThread, Qt, QTimer, QThreadPool
 from PySide6.QtWidgets import (
     QProgressDialog, QMessageBox, QDialog, QVBoxLayout,
     QLabel, QProgressBar, QApplication
@@ -420,39 +420,52 @@ class ScanController:
                             detail_label.setText("This may take a few seconds on first run...")
                             QApplication.processEvents()
 
-                            # Run with progress reporting
-                            stats = face_worker.run()
+                            # CRITICAL FIX: Run face detection asynchronously using QThreadPool
+                            # DO NOT call face_worker.run() directly - it blocks the main thread!
 
-                            self.logger.info(f"Face detection completed: {stats['total_faces']} faces detected in {stats['images_with_faces']} images")
+                            def on_face_detection_finished(success_count, failed_count, total_faces):
+                                """Handle face detection completion"""
+                                try:
+                                    self.logger.info(f"Face detection completed: {total_faces} faces detected in {success_count} images")
 
-                            # Update for clustering phase
-                            if face_config.get("clustering_enabled", True) and stats['total_faces'] > 0:
-                                progress_bar.setValue(85)
-                                status_label.setText("Grouping similar faces...")
-                                detail_label.setText(f"Clustering {stats['total_faces']} detected faces into person groups...")
-                                QApplication.processEvents()
+                                    # Update for clustering phase
+                                    if face_config.get("clustering_enabled", True) and total_faces > 0:
+                                        progress_bar.setValue(85)
+                                        status_label.setText("Grouping similar faces...")
+                                        detail_label.setText(f"Clustering {total_faces} detected faces into person groups...")
+                                        QApplication.processEvents()
 
-                                self.logger.info("Starting face clustering...")
+                                        self.logger.info("Starting face clustering...")
 
-                                from workers.face_cluster_worker import cluster_faces
-                                cluster_params = face_config.get_clustering_params()
+                                        from workers.face_cluster_worker import cluster_faces
+                                        cluster_params = face_config.get_clustering_params()
 
-                                cluster_faces(
-                                    current_project_id,
-                                    eps=cluster_params["eps"],
-                                    min_samples=cluster_params["min_samples"]
-                                )
+                                        cluster_faces(
+                                            current_project_id,
+                                            eps=cluster_params["eps"],
+                                            min_samples=cluster_params["min_samples"]
+                                        )
 
-                                self.logger.info("Face clustering completed")
+                                        self.logger.info("Face clustering completed")
 
-                            # Final update
-                            progress_bar.setValue(100)
-                            status_label.setText("Complete!")
-                            detail_label.setText(f"Found {stats['total_faces']} faces in {stats['images_with_faces']} photos")
-                            QApplication.processEvents()
+                                    # Final update
+                                    progress_bar.setValue(100)
+                                    status_label.setText("Complete!")
+                                    detail_label.setText(f"Found {total_faces} faces in {success_count} photos")
+                                    QApplication.processEvents()
 
-                            # Close dialog after short delay
-                            QTimer.singleShot(1500, progress_dialog.accept)
+                                    # Close dialog after short delay
+                                    QTimer.singleShot(1500, progress_dialog.accept)
+
+                                except Exception as e:
+                                    self.logger.error(f"Error in face detection completion handler: {e}", exc_info=True)
+                                    progress_dialog.accept()
+
+                            # Connect finished signal
+                            face_worker.signals.finished.connect(on_face_detection_finished)
+
+                            # Run asynchronously in background thread (NON-BLOCKING!)
+                            QThreadPool.globalInstance().start(face_worker)
                     else:
                         self.logger.warning(f"Face detection backend '{backend}' is not available")
                         self.logger.warning(f"Available backends: {[k for k, v in availability.items() if v]}")
