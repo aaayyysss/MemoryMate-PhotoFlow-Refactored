@@ -5029,6 +5029,11 @@ class GooglePhotosLayout(BaseLayout):
         # People tree
         self.people_tree = QTreeWidget()
         self.people_tree.setHeaderHidden(True)
+
+        # ENHANCEMENT: Larger icon size for better face visibility (64x64)
+        # Was not set explicitly, defaulted to ~16px - now 64px for clear face identification
+        self.people_tree.setIconSize(QSize(64, 64))
+
         self.people_tree.setStyleSheet("""
             QTreeWidget {
                 border: none;
@@ -5036,14 +5041,17 @@ class GooglePhotosLayout(BaseLayout):
                 font-size: 10pt;
             }
             QTreeWidget::item {
-                padding: 4px;
+                padding: 6px;
+                min-height: 70px;
             }
             QTreeWidget::item:hover {
                 background: #f1f3f4;
+                border-radius: 4px;
             }
             QTreeWidget::item:selected {
                 background: #e8f0fe;
                 color: #1a73e8;
+                border-radius: 4px;
             }
         """)
         # Connect click signal to filter handler
@@ -5593,20 +5601,60 @@ class GooglePhotosLayout(BaseLayout):
             import traceback
             traceback.print_exc()
 
+    def _make_circular_face_icon(self, pixmap: QPixmap, size: int = 64) -> QIcon:
+        """
+        Create circular face icon (Google Photos / iPhone Photos style).
+
+        Args:
+            pixmap: Source pixmap
+            size: Diameter of circular icon
+
+        Returns:
+            QIcon with circular face thumbnail
+        """
+        from PySide6.QtGui import QPainter, QPainterPath
+
+        # Scale to target size
+        scaled = pixmap.scaled(size, size, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+
+        # Create circular mask
+        circular = QPixmap(size, size)
+        circular.fill(Qt.transparent)
+
+        painter = QPainter(circular)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.SmoothPixmapTransform)
+
+        # Create circular clip path
+        path = QPainterPath()
+        path.addEllipse(0, 0, size, size)
+        painter.setClipPath(path)
+
+        # Draw the image within the circle (centered)
+        x_offset = (scaled.width() - size) // 2
+        y_offset = (scaled.height() - size) // 2
+        painter.drawPixmap(-x_offset, -y_offset, scaled)
+
+        painter.end()
+
+        return QIcon(circular)
+
     def _load_face_thumbnail(self, rep_path: str, rep_thumb_png: bytes) -> QIcon:
         """
-        Load face thumbnail from rep_path or rep_thumb_png BLOB.
+        Load face thumbnail from rep_path or rep_thumb_png BLOB with circular masking.
 
         Args:
             rep_path: Path to representative face crop image
             rep_thumb_png: PNG thumbnail as BLOB data
 
         Returns:
-            QIcon with face thumbnail, or None if unavailable
+            QIcon with circular face thumbnail, or None if unavailable
         """
         try:
             from PIL import Image
             import io
+
+            FACE_ICON_SIZE = 64  # Increased from 32px for better visibility
 
             # Try loading from BLOB first (faster, already in DB)
             if rep_thumb_png:
@@ -5620,9 +5668,8 @@ class GooglePhotosLayout(BaseLayout):
                         qimg = QImage(data, img.width, img.height, QImage.Format_RGB888)
                         pixmap = QPixmap.fromImage(qimg)
 
-                        # Scale to tree item size (32x32 for better visibility)
-                        scaled = pixmap.scaled(32, 32, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-                        return QIcon(scaled)
+                        # ENHANCEMENT: Create circular icon (Google Photos / iPhone style)
+                        return self._make_circular_face_icon(pixmap, FACE_ICON_SIZE)
                 except Exception as blob_error:
                     print(f"[GooglePhotosLayout] Failed to load thumbnail from BLOB: {blob_error}")
 
@@ -5636,9 +5683,8 @@ class GooglePhotosLayout(BaseLayout):
                         qimg = QImage(data, img.width, img.height, QImage.Format_RGB888)
                         pixmap = QPixmap.fromImage(qimg)
 
-                        # Scale to tree item size
-                        scaled = pixmap.scaled(32, 32, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-                        return QIcon(scaled)
+                        # ENHANCEMENT: Create circular icon (Google Photos / iPhone style)
+                        return self._make_circular_face_icon(pixmap, FACE_ICON_SIZE)
                 except Exception as file_error:
                     print(f"[GooglePhotosLayout] Failed to load thumbnail from {rep_path}: {file_error}")
 
