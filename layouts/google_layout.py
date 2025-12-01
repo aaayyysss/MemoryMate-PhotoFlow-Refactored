@@ -5760,26 +5760,26 @@ class GooglePhotosLayout(BaseLayout):
         menu = QMenu(self.people_tree)
 
         # Rename action
-        rename_action = QAction("✏️ Rename Person...", self)
+        rename_action = QAction("✏️ Rename Person...", parent=self)
         rename_action.triggered.connect(lambda: self._rename_person(item, branch_key, current_name))
         menu.addAction(rename_action)
 
         # Merge action
-        merge_action = QAction("🔗 Merge with Another Person...", self)
+        merge_action = QAction("🔗 Merge with Another Person...", parent=self)
         merge_action.triggered.connect(lambda: self._merge_person(branch_key, current_name))
         menu.addAction(merge_action)
 
         menu.addSeparator()
 
         # View all photos (already doing this on click)
-        view_action = QAction("📸 View All Photos", self)
+        view_action = QAction("📸 View All Photos", parent=self)
         view_action.triggered.connect(lambda: self._on_people_item_clicked(item, 0))
         menu.addAction(view_action)
 
         menu.addSeparator()
 
         # Delete action
-        delete_action = QAction("🗑️ Delete This Person", self)
+        delete_action = QAction("🗑️ Delete This Person", parent=self)
         delete_action.triggered.connect(lambda: self._delete_person(branch_key, current_name))
         menu.addAction(delete_action)
 
@@ -7727,7 +7727,7 @@ class GooglePhotosLayout(BaseLayout):
         """)
 
         # Open action
-        open_action = QAction("📂 Open", menu)
+        open_action = QAction("📂 Open", parent=menu)
         open_action.triggered.connect(lambda: self._on_photo_clicked(path))
         menu.addAction(open_action)
 
@@ -7736,36 +7736,36 @@ class GooglePhotosLayout(BaseLayout):
         # Select/Deselect toggle
         is_selected = path in self.selected_photos
         if is_selected:
-            select_action = QAction("✓ Deselect", menu)
+            select_action = QAction("✓ Deselect", parent=menu)
             select_action.triggered.connect(lambda: self._toggle_photo_selection(path))
         else:
-            select_action = QAction("☐ Select", menu)
+            select_action = QAction("☐ Select", parent=menu)
             select_action.triggered.connect(lambda: self._toggle_photo_selection(path))
         menu.addAction(select_action)
 
         menu.addSeparator()
 
         # Delete action
-        delete_action = QAction("🗑️ Delete", menu)
+        delete_action = QAction("🗑️ Delete", parent=menu)
         delete_action.triggered.connect(lambda: self._delete_single_photo(path))
         menu.addAction(delete_action)
 
         menu.addSeparator()
 
         # Show in Explorer action
-        explorer_action = QAction("📁 Show in Explorer", menu)
+        explorer_action = QAction("📁 Show in Explorer", parent=menu)
         explorer_action.triggered.connect(lambda: self._show_in_explorer(path))
         menu.addAction(explorer_action)
 
         # Copy path action
-        copy_action = QAction("📋 Copy Path", menu)
+        copy_action = QAction("📋 Copy Path", parent=menu)
         copy_action.triggered.connect(lambda: self._copy_path_to_clipboard(path))
         menu.addAction(copy_action)
 
         menu.addSeparator()
 
         # Properties action
-        properties_action = QAction("ℹ️ Properties", menu)
+        properties_action = QAction("ℹ️ Properties", parent=menu)
         properties_action.triggered.connect(lambda: self._show_photo_properties(path))
         menu.addAction(properties_action)
 
