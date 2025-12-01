@@ -1,0 +1,684 @@
+
+[2025-11-23 01:26:48.591652] Normal exit with code 0
+
+================================================================================
+CRASH at 2025-11-23 01:27:18.913624
+================================================================================
+Traceback (most recent call last):
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_32.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-02\preview_panel_qt.py", line 2083, in _toggle_metadata_panel
+    panel = self._build_metadata_panel(meta_dict)
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_32.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-02\preview_panel_qt.py", line 1997, in _build_metadata_panel
+    desc_field.setPlaceholderText(tr('search.placeholder_description'))
+TypeError: 'PySide6.QtWidgets.QHBoxLayout' object is not callable
+================================================================================
+
+
+================================================================================
+CRASH at 2025-11-23 01:27:43.991184
+================================================================================
+Traceback (most recent call last):
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_32.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-02\preview_panel_qt.py", line 2083, in _toggle_metadata_panel
+    panel = self._build_metadata_panel(meta_dict)
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_32.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-02\preview_panel_qt.py", line 1997, in _build_metadata_panel
+    desc_field.setPlaceholderText(tr('search.placeholder_description'))
+TypeError: 'PySide6.QtWidgets.QHBoxLayout' object is not callable
+================================================================================
+
+
+[2025-11-23 01:28:26.882221] Normal exit with code 0
+
+[2025-11-23 01:28:31.121613] Normal exit with code 0
+
+[2025-11-23 01:31:08.707296] Normal exit with code 0
+
+================================================================================
+CRASH at 2025-11-23 01:36:16.040984
+================================================================================
+Traceback (most recent call last):
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_32.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-02\main_window_qt.py", line 3407, in <lambda>
+    self.grid.openRequested.connect(lambda p: self._open_lightbox(p))
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_32.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-02\main_window_qt.py", line 4805, in _open_lightbox
+    dlg = LightboxDialog(path, self)
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_32.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-02\preview_panel_qt.py", line 1128, in __init__
+    self.editor_page = self._build_edit_page()
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_32.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-02\preview_panel_qt.py", line 1526, in _build_edit_page
+    self.btn_undo = make_btn("↺", "Undo (Ctrl+Z)", "reset")
+UnboundLocalError: local variable 'make_btn' referenced before assignment
+================================================================================
+
+
+================================================================================
+CRASH at 2025-11-23 01:36:17.929387
+================================================================================
+Traceback (most recent call last):
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_32.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-02\main_window_qt.py", line 3407, in <lambda>
+    self.grid.openRequested.connect(lambda p: self._open_lightbox(p))
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_32.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-02\main_window_qt.py", line 4805, in _open_lightbox
+    dlg = LightboxDialog(path, self)
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_32.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-02\preview_panel_qt.py", line 1128, in __init__
+    self.editor_page = self._build_edit_page()
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_32.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-02\preview_panel_qt.py", line 1526, in _build_edit_page
+    self.btn_undo = make_btn("↺", "Undo (Ctrl+Z)", "reset")
+UnboundLocalError: local variable 'make_btn' referenced before assignment
+================================================================================
+
+
+[2025-11-23 01:36:21.788453] Normal exit with code 0
+
+[2025-11-23 01:40:26.343826] Normal exit with code 0
+
+[2025-11-23 01:50:46.462617] Normal exit with code 0
+
+[2025-11-23 01:52:39.784847] Normal exit with code 0
+
+[2025-11-23 02:02:46.546867] Normal exit with code 0
+
+[2025-11-23 02:11:10.209709] Normal exit with code 0
+
+[2025-11-23 02:17:45.643283] Normal exit with code 0
+
+[2025-11-23 02:18:38.336340] Normal exit with code 0
+
+[2025-11-23 02:24:00.634906] Normal exit with code 0
+
+[2025-11-23 02:26:42.908737] Normal exit with code 0
+
+[2025-11-23 02:38:42.240905] Normal exit with code 0
+
+[2025-11-23 02:40:21.625650] Normal exit with code 0
+
+[2025-11-23 02:43:26.016738] Normal exit with code 0
+
+[2025-11-23 02:47:36.422540] Normal exit with code 0
+
+[2025-11-23 02:55:51.065277] Normal exit with code 0
+
+[2025-11-23 02:56:35.227504] Normal exit with code 0
+
+[2025-11-23 03:01:49.391122] Normal exit with code 0
+
+[2025-11-23 03:08:35.422522] Normal exit with code 0
+
+[2025-11-23 03:08:52.748250] Normal exit with code 0
+
+[2025-11-23 03:21:31.470995] Normal exit with code 0
+
+[2025-11-23 15:27:59.260181] Normal exit with code 0
+
+[2025-11-23 23:02:41.548576] Normal exit with code 0
+
+[2025-11-23 23:13:24.588242] Normal exit with code 0
+
+[2025-11-23 23:14:37.426269] Normal exit with code 0
+
+[2025-11-24 01:05:16.020870] Normal exit with code 0
+
+[2025-11-24 01:13:55.293046] Normal exit with code 0
+
+[2025-11-24 01:14:47.648091] Normal exit with code 0
+
+[2025-11-24 01:55:05.626546] Normal exit with code 0
+
+[2025-11-24 14:13:34.272052] Normal exit with code 0
+
+[2025-11-24 14:16:03.187791] Normal exit with code 0
+
+[2025-11-29 20:00:13.558957] Normal exit with code 0
+
+[2025-11-29 20:14:04.808780] Normal exit with code 0
+
+================================================================================
+CRASH at 2025-11-29 20:18:46.178159
+================================================================================
+Traceback (most recent call last):
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1667, in _position_nav_buttons
+    print(f"[MediaLightbox] ✓ Nav buttons positioned: left={left_x}, right={right_x}, y={y}")
+NameError: name 'y' is not defined
+================================================================================
+
+
+================================================================================
+CRASH at 2025-11-29 20:19:04.441108
+================================================================================
+Traceback (most recent call last):
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1847, in event
+    return super().event(event)
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1698, in resizeEvent
+    self._position_nav_buttons()
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1667, in _position_nav_buttons
+    print(f"[MediaLightbox] ✓ Nav buttons positioned: left={left_x}, right={right_x}, y={y}")
+NameError: Error calling Python override of QDialog::resizeEvent(): name 'y' is not defined
+================================================================================
+
+
+================================================================================
+CRASH at 2025-11-29 20:19:04.483907
+================================================================================
+Traceback (most recent call last):
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1847, in event
+    return super().event(event)
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1698, in resizeEvent
+    self._position_nav_buttons()
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1667, in _position_nav_buttons
+    print(f"[MediaLightbox] ✓ Nav buttons positioned: left={left_x}, right={right_x}, y={y}")
+NameError: Error calling Python override of QDialog::resizeEvent(): name 'y' is not defined
+================================================================================
+
+
+================================================================================
+CRASH at 2025-11-29 20:19:04.547688
+================================================================================
+Traceback (most recent call last):
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1847, in event
+    return super().event(event)
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1698, in resizeEvent
+    self._position_nav_buttons()
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1667, in _position_nav_buttons
+    print(f"[MediaLightbox] ✓ Nav buttons positioned: left={left_x}, right={right_x}, y={y}")
+NameError: Error calling Python override of QDialog::resizeEvent(): name 'y' is not defined
+================================================================================
+
+
+================================================================================
+CRASH at 2025-11-29 20:19:04.598417
+================================================================================
+Traceback (most recent call last):
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1847, in event
+    return super().event(event)
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1698, in resizeEvent
+    self._position_nav_buttons()
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1667, in _position_nav_buttons
+    print(f"[MediaLightbox] ✓ Nav buttons positioned: left={left_x}, right={right_x}, y={y}")
+NameError: Error calling Python override of QDialog::resizeEvent(): name 'y' is not defined
+================================================================================
+
+
+================================================================================
+CRASH at 2025-11-29 20:19:04.631086
+================================================================================
+Traceback (most recent call last):
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1847, in event
+    return super().event(event)
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1698, in resizeEvent
+    self._position_nav_buttons()
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1667, in _position_nav_buttons
+    print(f"[MediaLightbox] ✓ Nav buttons positioned: left={left_x}, right={right_x}, y={y}")
+NameError: Error calling Python override of QDialog::resizeEvent(): name 'y' is not defined
+================================================================================
+
+
+================================================================================
+CRASH at 2025-11-29 20:19:04.665294
+================================================================================
+Traceback (most recent call last):
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1847, in event
+    return super().event(event)
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1698, in resizeEvent
+    self._position_nav_buttons()
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1667, in _position_nav_buttons
+    print(f"[MediaLightbox] ✓ Nav buttons positioned: left={left_x}, right={right_x}, y={y}")
+NameError: Error calling Python override of QDialog::resizeEvent(): name 'y' is not defined
+================================================================================
+
+
+================================================================================
+CRASH at 2025-11-29 20:19:04.696213
+================================================================================
+Traceback (most recent call last):
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1847, in event
+    return super().event(event)
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1698, in resizeEvent
+    self._position_nav_buttons()
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1667, in _position_nav_buttons
+    print(f"[MediaLightbox] ✓ Nav buttons positioned: left={left_x}, right={right_x}, y={y}")
+NameError: Error calling Python override of QDialog::resizeEvent(): name 'y' is not defined
+================================================================================
+
+
+================================================================================
+CRASH at 2025-11-29 20:19:04.730402
+================================================================================
+Traceback (most recent call last):
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1847, in event
+    return super().event(event)
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1698, in resizeEvent
+    self._position_nav_buttons()
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1667, in _position_nav_buttons
+    print(f"[MediaLightbox] ✓ Nav buttons positioned: left={left_x}, right={right_x}, y={y}")
+NameError: Error calling Python override of QDialog::resizeEvent(): name 'y' is not defined
+================================================================================
+
+
+================================================================================
+CRASH at 2025-11-29 20:19:04.767664
+================================================================================
+Traceback (most recent call last):
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1847, in event
+    return super().event(event)
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1698, in resizeEvent
+    self._position_nav_buttons()
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1667, in _position_nav_buttons
+    print(f"[MediaLightbox] ✓ Nav buttons positioned: left={left_x}, right={right_x}, y={y}")
+NameError: Error calling Python override of QDialog::resizeEvent(): name 'y' is not defined
+================================================================================
+
+
+================================================================================
+CRASH at 2025-11-29 20:19:04.799601
+================================================================================
+Traceback (most recent call last):
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1847, in event
+    return super().event(event)
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1698, in resizeEvent
+    self._position_nav_buttons()
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1667, in _position_nav_buttons
+    print(f"[MediaLightbox] ✓ Nav buttons positioned: left={left_x}, right={right_x}, y={y}")
+NameError: Error calling Python override of QDialog::resizeEvent(): name 'y' is not defined
+================================================================================
+
+
+================================================================================
+CRASH at 2025-11-29 20:19:04.826513
+================================================================================
+Traceback (most recent call last):
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1847, in event
+    return super().event(event)
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1698, in resizeEvent
+    self._position_nav_buttons()
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1667, in _position_nav_buttons
+    print(f"[MediaLightbox] ✓ Nav buttons positioned: left={left_x}, right={right_x}, y={y}")
+NameError: Error calling Python override of QDialog::resizeEvent(): name 'y' is not defined
+================================================================================
+
+
+================================================================================
+CRASH at 2025-11-29 20:19:04.858536
+================================================================================
+Traceback (most recent call last):
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1847, in event
+    return super().event(event)
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1698, in resizeEvent
+    self._position_nav_buttons()
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1667, in _position_nav_buttons
+    print(f"[MediaLightbox] ✓ Nav buttons positioned: left={left_x}, right={right_x}, y={y}")
+NameError: Error calling Python override of QDialog::resizeEvent(): name 'y' is not defined
+================================================================================
+
+
+================================================================================
+CRASH at 2025-11-29 20:19:04.889378
+================================================================================
+Traceback (most recent call last):
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1847, in event
+    return super().event(event)
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1698, in resizeEvent
+    self._position_nav_buttons()
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1667, in _position_nav_buttons
+    print(f"[MediaLightbox] ✓ Nav buttons positioned: left={left_x}, right={right_x}, y={y}")
+NameError: Error calling Python override of QDialog::resizeEvent(): name 'y' is not defined
+================================================================================
+
+
+================================================================================
+CRASH at 2025-11-29 20:19:04.911375
+================================================================================
+Traceback (most recent call last):
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1847, in event
+    return super().event(event)
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1698, in resizeEvent
+    self._position_nav_buttons()
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1667, in _position_nav_buttons
+    print(f"[MediaLightbox] ✓ Nav buttons positioned: left={left_x}, right={right_x}, y={y}")
+NameError: Error calling Python override of QDialog::resizeEvent(): name 'y' is not defined
+================================================================================
+
+
+================================================================================
+CRASH at 2025-11-29 20:19:05.128263
+================================================================================
+Traceback (most recent call last):
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1847, in event
+    return super().event(event)
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1698, in resizeEvent
+    self._position_nav_buttons()
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1667, in _position_nav_buttons
+    print(f"[MediaLightbox] ✓ Nav buttons positioned: left={left_x}, right={right_x}, y={y}")
+NameError: Error calling Python override of QDialog::resizeEvent(): name 'y' is not defined
+================================================================================
+
+
+================================================================================
+CRASH at 2025-11-29 20:19:05.151154
+================================================================================
+Traceback (most recent call last):
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1847, in event
+    return super().event(event)
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1698, in resizeEvent
+    self._position_nav_buttons()
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1667, in _position_nav_buttons
+    print(f"[MediaLightbox] ✓ Nav buttons positioned: left={left_x}, right={right_x}, y={y}")
+NameError: Error calling Python override of QDialog::resizeEvent(): name 'y' is not defined
+================================================================================
+
+
+================================================================================
+CRASH at 2025-11-29 20:19:05.184023
+================================================================================
+Traceback (most recent call last):
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1847, in event
+    return super().event(event)
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1698, in resizeEvent
+    self._position_nav_buttons()
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1667, in _position_nav_buttons
+    print(f"[MediaLightbox] ✓ Nav buttons positioned: left={left_x}, right={right_x}, y={y}")
+NameError: Error calling Python override of QDialog::resizeEvent(): name 'y' is not defined
+================================================================================
+
+
+================================================================================
+CRASH at 2025-11-29 20:19:05.211076
+================================================================================
+Traceback (most recent call last):
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1847, in event
+    return super().event(event)
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1698, in resizeEvent
+    self._position_nav_buttons()
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1667, in _position_nav_buttons
+    print(f"[MediaLightbox] ✓ Nav buttons positioned: left={left_x}, right={right_x}, y={y}")
+NameError: Error calling Python override of QDialog::resizeEvent(): name 'y' is not defined
+================================================================================
+
+
+================================================================================
+CRASH at 2025-11-29 20:19:05.234408
+================================================================================
+Traceback (most recent call last):
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1847, in event
+    return super().event(event)
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1698, in resizeEvent
+    self._position_nav_buttons()
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1667, in _position_nav_buttons
+    print(f"[MediaLightbox] ✓ Nav buttons positioned: left={left_x}, right={right_x}, y={y}")
+NameError: Error calling Python override of QDialog::resizeEvent(): name 'y' is not defined
+================================================================================
+
+
+================================================================================
+CRASH at 2025-11-29 20:19:05.263217
+================================================================================
+Traceback (most recent call last):
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1847, in event
+    return super().event(event)
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1698, in resizeEvent
+    self._position_nav_buttons()
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1667, in _position_nav_buttons
+    print(f"[MediaLightbox] ✓ Nav buttons positioned: left={left_x}, right={right_x}, y={y}")
+NameError: Error calling Python override of QDialog::resizeEvent(): name 'y' is not defined
+================================================================================
+
+
+================================================================================
+CRASH at 2025-11-29 20:19:05.297272
+================================================================================
+Traceback (most recent call last):
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1847, in event
+    return super().event(event)
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1698, in resizeEvent
+    self._position_nav_buttons()
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1667, in _position_nav_buttons
+    print(f"[MediaLightbox] ✓ Nav buttons positioned: left={left_x}, right={right_x}, y={y}")
+NameError: Error calling Python override of QDialog::resizeEvent(): name 'y' is not defined
+================================================================================
+
+
+================================================================================
+CRASH at 2025-11-29 20:19:05.327893
+================================================================================
+Traceback (most recent call last):
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1847, in event
+    return super().event(event)
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1698, in resizeEvent
+    self._position_nav_buttons()
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1667, in _position_nav_buttons
+    print(f"[MediaLightbox] ✓ Nav buttons positioned: left={left_x}, right={right_x}, y={y}")
+NameError: Error calling Python override of QDialog::resizeEvent(): name 'y' is not defined
+================================================================================
+
+
+================================================================================
+CRASH at 2025-11-29 20:19:05.448245
+================================================================================
+Traceback (most recent call last):
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1847, in event
+    return super().event(event)
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1698, in resizeEvent
+    self._position_nav_buttons()
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1667, in _position_nav_buttons
+    print(f"[MediaLightbox] ✓ Nav buttons positioned: left={left_x}, right={right_x}, y={y}")
+NameError: Error calling Python override of QDialog::resizeEvent(): name 'y' is not defined
+================================================================================
+
+
+================================================================================
+CRASH at 2025-11-29 20:19:05.479564
+================================================================================
+Traceback (most recent call last):
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1847, in event
+    return super().event(event)
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1698, in resizeEvent
+    self._position_nav_buttons()
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1667, in _position_nav_buttons
+    print(f"[MediaLightbox] ✓ Nav buttons positioned: left={left_x}, right={right_x}, y={y}")
+NameError: Error calling Python override of QDialog::resizeEvent(): name 'y' is not defined
+================================================================================
+
+
+================================================================================
+CRASH at 2025-11-29 20:19:05.505238
+================================================================================
+Traceback (most recent call last):
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1847, in event
+    return super().event(event)
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1698, in resizeEvent
+    self._position_nav_buttons()
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1667, in _position_nav_buttons
+    print(f"[MediaLightbox] ✓ Nav buttons positioned: left={left_x}, right={right_x}, y={y}")
+NameError: Error calling Python override of QDialog::resizeEvent(): name 'y' is not defined
+================================================================================
+
+
+================================================================================
+CRASH at 2025-11-29 20:19:05.528944
+================================================================================
+Traceback (most recent call last):
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1847, in event
+    return super().event(event)
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1698, in resizeEvent
+    self._position_nav_buttons()
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1667, in _position_nav_buttons
+    print(f"[MediaLightbox] ✓ Nav buttons positioned: left={left_x}, right={right_x}, y={y}")
+NameError: Error calling Python override of QDialog::resizeEvent(): name 'y' is not defined
+================================================================================
+
+
+================================================================================
+CRASH at 2025-11-29 20:19:05.551209
+================================================================================
+Traceback (most recent call last):
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1847, in event
+    return super().event(event)
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1698, in resizeEvent
+    self._position_nav_buttons()
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1667, in _position_nav_buttons
+    print(f"[MediaLightbox] ✓ Nav buttons positioned: left={left_x}, right={right_x}, y={y}")
+NameError: Error calling Python override of QDialog::resizeEvent(): name 'y' is not defined
+================================================================================
+
+
+================================================================================
+CRASH at 2025-11-29 20:19:05.578342
+================================================================================
+Traceback (most recent call last):
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1847, in event
+    return super().event(event)
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1698, in resizeEvent
+    self._position_nav_buttons()
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1667, in _position_nav_buttons
+    print(f"[MediaLightbox] ✓ Nav buttons positioned: left={left_x}, right={right_x}, y={y}")
+NameError: Error calling Python override of QDialog::resizeEvent(): name 'y' is not defined
+================================================================================
+
+
+================================================================================
+CRASH at 2025-11-29 20:19:05.776408
+================================================================================
+Traceback (most recent call last):
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1847, in event
+    return super().event(event)
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1698, in resizeEvent
+    self._position_nav_buttons()
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1667, in _position_nav_buttons
+    print(f"[MediaLightbox] ✓ Nav buttons positioned: left={left_x}, right={right_x}, y={y}")
+NameError: Error calling Python override of QDialog::resizeEvent(): name 'y' is not defined
+================================================================================
+
+
+[2025-11-29 20:19:19.261925] Normal exit with code 0
+
+================================================================================
+CRASH at 2025-11-29 20:20:29.045273
+================================================================================
+Traceback (most recent call last):
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1667, in _position_nav_buttons
+    print(f"[MediaLightbox] ✓ Nav buttons positioned: left={left_x}, right={right_x}, y={y}")
+NameError: name 'y' is not defined
+================================================================================
+
+
+[2025-11-29 20:20:43.922101] Normal exit with code 0
+
+================================================================================
+CRASH at 2025-11-29 20:25:31.988442
+================================================================================
+Traceback (most recent call last):
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1667, in _position_nav_buttons
+    print(f"[MediaLightbox] ✓ Nav buttons positioned: left={left_x}, right={right_x}, y={y}")
+NameError: name 'y' is not defined
+================================================================================
+
+
+================================================================================
+CRASH at 2025-11-29 20:25:44.755376
+================================================================================
+Traceback (most recent call last):
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 1667, in _position_nav_buttons
+    print(f"[MediaLightbox] ✓ Nav buttons positioned: left={left_x}, right={right_x}, y={y}")
+NameError: name 'y' is not defined
+================================================================================
+
+
+[2025-11-29 20:34:23.983731] Normal exit with code 0
+
+[2025-11-29 20:36:02.114782] Normal exit with code 0
+
+[2025-11-29 20:44:56.611976] Normal exit with code 0
+
+[2025-11-29 20:46:24.642661] Normal exit with code 0
+
+[2025-11-29 20:47:49.453581] Normal exit with code 0
+
+================================================================================
+CRASH at 2025-11-29 21:03:32.378724
+================================================================================
+Traceback (most recent call last):
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 218, in eventFilter
+    if hasattr(self.layout, 'timeline_scroll') and obj == self.layout.timeline_scroll.viewport():
+RuntimeError: Internal C++ object (PySide6.QtWidgets.QScrollArea) already deleted.
+================================================================================
+
+
+[2025-11-29 21:53:00.123959] Normal exit with code 0
+
+[2025-11-29 22:03:12.931684] Normal exit with code 0
+
+[2025-11-29 22:45:07.916766] Normal exit with code 0
+
+[2025-11-29 23:03:57.760326] Normal exit with code 0
+
+[2025-11-29 23:04:56.431992] Normal exit with code 0
+
+[2025-11-29 23:09:48.953323] Normal exit with code 0
+
+[2025-11-29 23:18:19.268114] Normal exit with code 0
+
+[2025-11-29 23:21:09.133191] Normal exit with code 0
+
+[2025-11-29 23:36:02.357593] Normal exit with code 0
+
+[2025-11-29 23:38:53.451613] Normal exit with code 0
+
+[2025-11-29 23:40:52.333801] Normal exit with code 0
+
+[2025-11-29 23:41:35.420029] Normal exit with code 0
+
+[2025-11-29 23:52:39.386635] Normal exit with code 0
+
+================================================================================
+CRASH at 2025-11-29 23:53:41.039485
+================================================================================
+Traceback (most recent call last):
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 2821, in _delete_current_media
+    f"Are you sure you want to delete this file?\n\n{os.path.basename(self.media_path)}",
+UnboundLocalError: local variable 'os' referenced before assignment
+================================================================================
+
+
+================================================================================
+CRASH at 2025-11-29 23:53:45.974925
+================================================================================
+Traceback (most recent call last):
+  File "C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_37.01.01-Photo-App\MemoryMate-PhotoFlow-Enhanced-main-34\layouts\google_layout.py", line 2821, in _delete_current_media
+    f"Are you sure you want to delete this file?\n\n{os.path.basename(self.media_path)}",
+UnboundLocalError: local variable 'os' referenced before assignment
+================================================================================
+
+
+[2025-11-29 23:53:50.073596] Normal exit with code 0
+
+[2025-11-29 23:58:06.792363] Normal exit with code 0
+
+[2025-11-30 00:07:33.314075] Normal exit with code 0
+
+[2025-11-30 00:14:52.728496] Normal exit with code 0
+
+[2025-11-30 00:17:06.905050] Normal exit with code 0
+
+[2025-11-30 00:35:43.073370] Normal exit with code 0
+
+[2025-11-30 00:36:22.620020] Normal exit with code 0
+
+[2025-11-30 00:52:29.923133] Normal exit with code 0
+
+[2025-11-30 01:07:50.849647] Normal exit with code 0
+
+[2025-11-30 01:18:12.244731] Normal exit with code 0
+
+[2025-11-30 01:24:28.880004] Normal exit with code 0
+
+[2025-11-30 01:26:31.473376] Normal exit with code 0
+
+[2025-11-30 04:56:18.007201] Normal exit with code 0
+
+[2025-11-30 04:57:10.631897] Normal exit with code 0
+
+[2025-11-30 04:57:40.756985] Normal exit with code 0
+
+[2025-11-30 21:39:40.888195] Normal exit with code 0
+
+[2025-11-30 21:44:50.029347] Normal exit with code 0
+
+[2025-12-01 02:07:44.999068] Normal exit with code 0
+
+[2025-12-01 13:36:19.860935] Normal exit with code 0
+
+[2025-12-01 13:37:40.361460] Normal exit with code 0

@@ -1,0 +1,217 @@
+═══════════════════════════════════════════════════════════
+  MemoryMate-PhotoFlow v3.0.1 - QUICK START GUIDE
+═══════════════════════════════════════════════════════════
+
+📦 STEP 1: BUILD & SPLIT (On development PC)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Run in PowerShell:
+  .\build_and_split.ps1
+
+This will:
+  ✓ Build the app with PyInstaller
+  ✓ Split into 5 parts (~180 MB each)
+  ✓ Create merge scripts
+  ✓ Generate README
+
+Output: dist\MemoryMate-Parts\
+
+═══════════════════════════════════════════════════════════
+
+📤 STEP 2: TRANSFER (Copy to target PC)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Transfer options:
+  • USB drive (fastest)
+  • Email (5 separate emails if size-limited)
+  • Cloud storage (Google Drive, OneDrive, Dropbox)
+  • FTP/Network share
+  • Split across multiple services
+
+Files to transfer (all from dist\MemoryMate-Parts\):
+  ✓ MemoryMate-PhotoFlow-v3.0.1.exe.part1
+  ✓ MemoryMate-PhotoFlow-v3.0.1.exe.part2
+  ✓ MemoryMate-PhotoFlow-v3.0.1.exe.part3
+  ✓ MemoryMate-PhotoFlow-v3.0.1.exe.part4
+  ✓ MemoryMate-PhotoFlow-v3.0.1.exe.part5
+  ✓ merge.bat
+  ✓ merge.ps1 (optional)
+  ✓ README.txt (optional)
+
+═══════════════════════════════════════════════════════════
+
+🔧 STEP 3: MERGE (On target PC - NO Python needed!)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+EASIEST METHOD (Works everywhere):
+  1. Put all files in same folder
+  2. Double-click: merge.bat
+  3. Wait ~30 seconds
+  4. Done! ✓
+
+Alternative (PowerShell):
+  1. Right-click merge.ps1
+  2. Select "Run with PowerShell"
+  3. Wait ~30 seconds
+  4. Done! ✓
+
+═══════════════════════════════════════════════════════════
+
+🚀 STEP 4: RUN (On target PC)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+After merge completes:
+  1. Double-click: MemoryMate-PhotoFlow-v3.0.1.exe
+  2. First launch extracts to temp (~10-15 seconds)
+  3. Application opens!
+
+OPTIONAL:
+  • Delete .part1-.part5 files (save ~900 MB)
+  • Keep only MemoryMate-PhotoFlow-v3.0.1.exe
+  • Create desktop shortcut
+
+═══════════════════════════════════════════════════════════
+
+📊 FILE SIZE REFERENCE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Total size: ~900 MB (compressed to single .exe)
+Split parts: ~180 MB each (5 parts)
+
+What's inside:
+  • Python runtime + dependencies (~200 MB)
+  • PySide6 Qt framework (~200 MB)
+  • InsightFace AI models (~400 MB)
+  • OpenCV, NumPy, scikit-learn (~100 MB)
+  • Application code (encrypted)
+
+At runtime:
+  • Extracts to: C:\Users\<YOU>\AppData\Local\Temp\_MEI*
+  • Uses ~2 GB disk space temporarily
+  • Cleaned up on exit
+
+═══════════════════════════════════════════════════════════
+
+❓ TROUBLESHOOTING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+BUILD FAILED (Step 1):
+  ✓ Check Python 3.10 installed
+  ✓ Run: pip install -r requirements.txt
+  ✓ Verify FFmpeg on PATH: ffmpeg -version
+  ✓ Check InsightFace models downloaded
+
+MERGE FAILED (Step 3):
+  ✓ Verify all 5 .part files present
+  ✓ Check files not corrupted (compare sizes)
+  ✓ Try merge.bat instead of merge.ps1
+  ✓ Run CMD as administrator
+
+APP WON'T RUN (Step 4):
+  ✓ Check Windows 10/11 64-bit
+  ✓ Antivirus may block - add exception
+  ✓ Need ~2 GB free disk space
+  ✓ Check app_log.txt for errors
+
+FACE DETECTION ERRORS:
+  ✓ HEIC photos now supported (fixed!)
+  ✓ If still failing, check file format
+  ✓ Supported: JPG, PNG, HEIC, RAW, MP4, MOV
+
+═══════════════════════════════════════════════════════════
+
+🎯 TRANSFER SIZE COMPARISON
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Without splitting:
+  ⚠ Single 900 MB file
+  ⚠ Difficult to email
+  ⚠ May timeout on slow connections
+  ⚠ Can't resume if interrupted
+
+With splitting (NEW):
+  ✓ Five 180 MB parts
+  ✓ Email-friendly sizes
+  ✓ Can transfer separately
+  ✓ Resume individual parts
+  ✓ Distribute across services
+
+═══════════════════════════════════════════════════════════
+
+📧 EMAIL TRANSFER TIPS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Gmail/Outlook (25 MB limit):
+  ⚠ Parts too large - use Google Drive link instead
+
+ProtonMail (50 MB limit):
+  ⚠ Parts too large - compress or use cloud
+
+Corporate email (varies):
+  • Some allow 150-200 MB - send parts separately
+  • Or upload to company SharePoint/OneDrive
+
+BEST METHOD:
+  1. Upload all parts to Google Drive
+  2. Share folder link
+  3. Download on target PC
+  4. Merge
+
+═══════════════════════════════════════════════════════════
+
+✅ CHECKLIST
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Development PC:
+  [ ] Python 3.10 installed
+  [ ] pip install -r requirements.txt
+  [ ] pip install rawpy
+  [ ] FFmpeg on PATH
+  [ ] InsightFace models downloaded
+  [ ] Run: .\build_and_split.ps1
+  [ ] Verify dist\MemoryMate-Parts\ created
+  [ ] Verify 5 .part files + merge scripts
+
+Transfer:
+  [ ] All 7 files copied to target PC
+  [ ] Files in same folder
+  [ ] No corruption (check file sizes)
+
+Target PC:
+  [ ] Windows 10/11 64-bit
+  [ ] ~2 GB free disk space
+  [ ] Antivirus exceptions added (optional)
+  [ ] Run merge.bat
+  [ ] Verify .exe created (~900 MB)
+  [ ] Run MemoryMate-PhotoFlow-v3.0.1.exe
+  [ ] App launches successfully
+
+═══════════════════════════════════════════════════════════
+
+🔒 SECURITY NOTES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Code protection:
+  ✓ AES-256 encrypted bytecode
+  ✓ One-file executable
+  ✓ UPX compression/obfuscation
+  ✓ No .py source files included
+
+Antivirus:
+  • May flag as suspicious (compressed .exe)
+  • Add exception if blocked
+  • Or sign exe with code certificate
+
+Privacy:
+  • No telemetry or tracking
+  • All data stored locally
+  • Face detection runs offline
+
+═══════════════════════════════════════════════════════════
+
+Built: 2025-11-30
+Version: v3.0.1
+Python: 3.10
+License: See application
+
+═══════════════════════════════════════════════════════════
