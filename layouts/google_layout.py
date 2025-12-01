@@ -5743,8 +5743,6 @@ class GooglePhotosLayout(BaseLayout):
 
         Inspired by Google Photos / iPhone Photos face management.
         """
-        from PySide6.QtGui import QAction
-
         item = self.people_tree.itemAt(pos)
         if not item:
             return
@@ -5760,26 +5758,26 @@ class GooglePhotosLayout(BaseLayout):
         menu = QMenu(self.people_tree)
 
         # Rename action
-        rename_action = QAction("✏️ Rename Person...", parent=self)
+        rename_action = QAction("✏️ Rename Person...", menu)
         rename_action.triggered.connect(lambda: self._rename_person(item, branch_key, current_name))
         menu.addAction(rename_action)
 
         # Merge action
-        merge_action = QAction("🔗 Merge with Another Person...", parent=self)
+        merge_action = QAction("🔗 Merge with Another Person...", menu)
         merge_action.triggered.connect(lambda: self._merge_person(branch_key, current_name))
         menu.addAction(merge_action)
 
         menu.addSeparator()
 
         # View all photos (already doing this on click)
-        view_action = QAction("📸 View All Photos", parent=self)
+        view_action = QAction("📸 View All Photos", menu)
         view_action.triggered.connect(lambda: self._on_people_item_clicked(item, 0))
         menu.addAction(view_action)
 
         menu.addSeparator()
 
         # Delete action
-        delete_action = QAction("🗑️ Delete This Person", parent=self)
+        delete_action = QAction("🗑️ Delete This Person", menu)
         delete_action.triggered.connect(lambda: self._delete_person(branch_key, current_name))
         menu.addAction(delete_action)
 
@@ -5790,7 +5788,7 @@ class GooglePhotosLayout(BaseLayout):
         from PySide6.QtWidgets import QInputDialog, QMessageBox
 
         new_name, ok = QInputDialog.getText(
-            self,
+            self.main_window,
             "Rename Person",
             f"Rename '{current_name}' to:",
             text=current_name if not current_name.startswith("Unnamed") else ""
@@ -5836,11 +5834,11 @@ class GooglePhotosLayout(BaseLayout):
                 item.setData(0, Qt.UserRole, data)
 
             print(f"[GooglePhotosLayout] Person renamed: {current_name} → {new_name}")
-            QMessageBox.information(self, "Renamed", f"Person renamed to '{new_name}'")
+            QMessageBox.information(self.main_window, "Renamed", f"Person renamed to '{new_name}'")
 
         except Exception as e:
             print(f"[GooglePhotosLayout] Rename failed: {e}")
-            QMessageBox.critical(self, "Rename Failed", f"Error: {e}")
+            QMessageBox.critical(self.main_window, "Rename Failed", f"Error: {e}")
 
     def _merge_person(self, source_branch_key: str, source_name: str):
         """Merge this person with another person."""
@@ -5862,11 +5860,11 @@ class GooglePhotosLayout(BaseLayout):
             other_persons = cur.fetchall()
 
         if not other_persons:
-            QMessageBox.information(self, "No Persons", "No other persons to merge with")
+            QMessageBox.information(self.main_window, "No Persons", "No other persons to merge with")
             return
 
         # Show selection dialog
-        dialog = QDialog(self)
+        dialog = QDialog(self.main_window)
         dialog.setWindowTitle(f"Merge '{source_name}'")
         dialog.resize(450, 550)
 
@@ -5926,18 +5924,18 @@ class GooglePhotosLayout(BaseLayout):
             self._build_people_tree()
 
             print(f"[GooglePhotosLayout] Merge successful: {source_name} merged")
-            QMessageBox.information(self, "Merged", f"'{source_name}' merged successfully")
+            QMessageBox.information(self.main_window, "Merged", f"'{source_name}' merged successfully")
 
         except Exception as e:
             print(f"[GooglePhotosLayout] Merge failed: {e}")
-            QMessageBox.critical(self, "Merge Failed", f"Error: {e}")
+            QMessageBox.critical(self.main_window, "Merge Failed", f"Error: {e}")
 
     def _delete_person(self, branch_key: str, person_name: str):
         """Delete a person/face cluster."""
         from PySide6.QtWidgets import QMessageBox
 
         reply = QMessageBox.question(
-            self,
+            self.main_window,
             "Delete Person",
             f"Are you sure you want to delete '{person_name}'?\n\n"
             f"This will remove all face data for this person.\n"
@@ -5978,11 +5976,11 @@ class GooglePhotosLayout(BaseLayout):
             self._build_people_tree()
 
             print(f"[GooglePhotosLayout] Person deleted: {person_name}")
-            QMessageBox.information(self, "Deleted", f"'{person_name}' deleted successfully")
+            QMessageBox.information(self.main_window, "Deleted", f"'{person_name}' deleted successfully")
 
         except Exception as e:
             print(f"[GooglePhotosLayout] Delete failed: {e}")
-            QMessageBox.critical(self, "Delete Failed", f"Error: {e}")
+            QMessageBox.critical(self.main_window, "Delete Failed", f"Error: {e}")
 
     def _on_section_header_clicked(self):
         """
