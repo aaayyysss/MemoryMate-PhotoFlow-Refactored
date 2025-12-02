@@ -4,13 +4,16 @@
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QScrollArea, QSplitter, QToolBar, QLineEdit, QTreeWidget,
-    QTreeWidgetItem, QFrame, QGridLayout, QSizePolicy, QDialog,
+    QTreeWidgetItem, QFrame, QGridLayout, QStackedWidget, QSizePolicy, QDialog,
     QGraphicsOpacityEffect, QMenu, QListWidget, QDialogButtonBox,
-    QInputDialog, QMessageBox
+    QInputDialog, QMessageBox, QSlider, QSpinBox, QComboBox
 )
-from PySide6.QtCore import Qt, Signal, QSize, QEvent, QRunnable, QThreadPool, QObject, QTimer
+from PySide6.QtCore import Qt, Signal, QSize, QEvent, QRunnable, QThreadPool, QObject, QTimer, QUrl
 from PySide6.QtGui import QPixmap, QIcon, QKeyEvent, QImage, QColor, QAction
+from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
+from PySide6.QtMultimediaWidgets import QVideoWidget
 from .base_layout import BaseLayout
+from .video_editor_mixin import VideoEditorMixin
 from typing import Dict, List, Tuple
 from collections import defaultdict
 from datetime import datetime
@@ -286,7 +289,7 @@ class GooglePhotosEventFilter(QObject):
         return False
 
 
-class MediaLightbox(QDialog):
+class MediaLightbox(QDialog, VideoEditorMixin):
     """
     Full-screen media lightbox/preview dialog supporting photos AND videos.
 
@@ -300,6 +303,7 @@ class MediaLightbox(QDialog):
     - Metadata panel (EXIF, date, dimensions, video info)
     - Fullscreen toggle (F11)
     - Close button and ESC key
+    - VIDEO EDITING: Trim, rotate, speed, adjustments, export
     """
 
     def __init__(self, media_path: str, all_media: List[str], parent=None):
@@ -412,9 +416,64 @@ class MediaLightbox(QDialog):
         self.current_preset = None  # 'dynamic' | 'warm' | 'cool' | None
         self.preset_cache = {}  # (path, preset) -> QPixmap
 
-        # Auto-Enhance toggle
-        self.auto_enhance_on = False
-        self.enhanced_cache = {}  # path -> QPixmap (enhanced)
+        # Filter strength control
+        self.filter_intensity = 100  # Default 100% (full strength)
+        self.current_preset_adjustments = {}  # Store current preset for intensity changes
+        
+        # Edit state persistence
+        self.edit_states_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '.edit_states')
+        os.makedirs(self.edit_states_dir, exist_ok=True)
+        
+        # Copy/Paste adjustments clipboard
+        self.copied_adjustments = None  # Stores copied adjustment state
+        self.copied_filter_intensity = None
+        self.copied_preset = None
+
+        # Editor undo/redo stack
+        self.edit_history = []  # List of (pixmap, adjustments_dict) tuples
+        self.edit_history_index = -1  # Current position in history
+        self.max_history = 20  # Max undo steps
+
+        # Editor adjustments state
+        self.adjustments = {
+            'brightness': 0,
+            'exposure': 0,
+            'contrast': 0,
+            'highlights': 0,
+            'shadows': 0,
+            'vignette': 0,
+            'sharpen': 0,  # New: Sharpen/Clarity adjustment
+            'saturation': 0,
+            'warmth': 0,
+            # RAW-specific adjustments
+            'white_balance_temp': 0,  # White balance temperature (-100 to +100)
+            'white_balance_tint': 0,  # White balance tint (green/magenta, -100 to +100)
+            'exposure_recovery': 0,   # Highlight recovery (0 to 100)
+            'lens_correction': 0,     # Lens distortion correction (0 to 100)
+            'chromatic_aberration': 0  # Chromatic aberration removal (0 to 100)
+        }
+        self.is_raw_file = False  # Track if current file is RAW
+        self.raw_image = None  # Store rawpy image object
+        self.edit_zoom_level = 1.0  # Zoom level in editor mode
+        self.before_after_active = False  # Before/After comparison toggle
+        self._original_pixmap = None  # Original pixmap for editing
+        self._edit_pixmap = None  # Current edited pixmap
+        self._crop_rect_norm = None  # Normalized crop rectangle (0-1 coords)
+
+        # VIDEO EDITING STATE (Phase 1)
+        self.is_video_file = False  # Track if current file is video
+        self.video_player = None  # QMediaPlayer instance
+        self.video_widget = None  # QVideoWidget for display
+        self.audio_output = None  # QAudioOutput for audio
+        self.video_duration = 0  # Video duration in milliseconds
+        self.video_position = 0  # Current playback position
+        self.video_trim_start = 0  # Trim start point (ms)
+        self.video_trim_end = 0  # Trim end point (ms)
+        self.video_is_playing = False  # Playback state
+        self.video_is_muted = False  # Mute state
+        self.video_playback_speed = 1.0  # Speed multiplier (0.5x, 1x, 2x)
+        self.video_rotation_angle = 0  # Video rotation (0, 90, 180, 270)
+        self._video_original_path = None  # Original video path for export
 
 
         # PHASE C #4: Compare Mode
@@ -597,7 +656,275 @@ class MediaLightbox(QDialog):
         # Add middle section to main layout
         middle_widget = QWidget()
         middle_widget.setLayout(middle_layout)
-        main_layout.addWidget(middle_widget, 1)
+        # Viewer/Editor stacked container (non-destructive editor stub)
+        self.mode_stack = QStackedWidget()
+        # Page 0: Viewer (existing middle_widget)
+        self.mode_stack.addWidget(middle_widget)
+        # Page 1: Editor (stub page - preserves viewer behavior)
+        self.editor_page = QWidget()
+        editor_vlayout = QVBoxLayout(self.editor_page)
+        # Top row: Save/Cancel (PROMINENT STYLING)
+        editor_topbar = QWidget()
+        editor_topbar.setStyleSheet("background: rgba(0,0,0,0.5);")
+        editor_topbar_layout = QHBoxLayout(editor_topbar)
+        editor_topbar_layout.setContentsMargins(12, 8, 12, 8)
+        save_btn = QPushButton("✔ Save")
+        save_btn.setToolTip("Apply edits and return to viewer")
+        save_btn.setStyleSheet("""
+            QPushButton {
+                background: rgba(34, 139, 34, 0.9);
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 10px 24px;
+                font-size: 12pt;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background: rgba(34, 139, 34, 1.0);
+            }
+        """)
+        save_btn.clicked.connect(self._save_edits)
+        cancel_btn = QPushButton("✖ Cancel")
+        cancel_btn.setToolTip("Discard edits and return to viewer")
+        cancel_btn.setStyleSheet("""
+            QPushButton {
+                background: rgba(220, 53, 69, 0.9);
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 10px 24px;
+                font-size: 12pt;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background: rgba(220, 53, 69, 1.0);
+            }
+        """)
+        cancel_btn.clicked.connect(self._cancel_edits)
+        editor_topbar_layout.addWidget(save_btn)
+        editor_topbar_layout.addWidget(cancel_btn)
+        editor_topbar_layout.addSpacing(20)
+        # Editor zoom controls
+        self.edit_zoom_level = 1.0
+        zoom_out_btn_edit = QPushButton("−")
+        zoom_out_btn_edit.setToolTip("Zoom Out")
+        zoom_out_btn_edit.clicked.connect(self._editor_zoom_out)
+        zoom_in_btn_edit = QPushButton("+")
+        zoom_in_btn_edit.setToolTip("Zoom In")
+        zoom_in_btn_edit.clicked.connect(self._editor_zoom_in)
+        zoom_reset_btn_edit = QPushButton("100%")
+        zoom_reset_btn_edit.setToolTip("Reset Zoom")
+        zoom_reset_btn_edit.clicked.connect(self._editor_zoom_reset)
+        editor_topbar_layout.addSpacing(12)
+        editor_topbar_layout.addWidget(zoom_out_btn_edit)
+        editor_topbar_layout.addWidget(zoom_in_btn_edit)
+        editor_topbar_layout.addWidget(zoom_reset_btn_edit)
+        # Crop toggle (STYLED)
+        self.crop_btn = QPushButton("✂ Crop")
+        self.crop_btn.setCheckable(True)
+        self.crop_btn.setToolTip("Enter crop mode")
+        self.crop_btn.setStyleSheet("""
+            QPushButton {
+                background: rgba(255, 255, 255, 0.15);
+                color: white;
+                border: 1px solid rgba(255, 255, 255, 0.3);
+                border-radius: 6px;
+                padding: 8px 16px;
+                font-size: 10pt;
+            }
+            QPushButton:hover {
+                background: rgba(255, 255, 255, 0.25);
+            }
+            QPushButton:checked {
+                background: rgba(66, 133, 244, 0.8);
+                border: 1px solid rgba(66, 133, 244, 1.0);
+            }
+        """)
+        self.crop_btn.clicked.connect(self._toggle_crop_mode)
+        editor_topbar_layout.addWidget(self.crop_btn)
+        # Filters toggle (STYLED)
+        self.filters_btn = QPushButton("🎨 Filters")
+        self.filters_btn.setCheckable(True)
+        self.filters_btn.setToolTip("Show presets panel")
+        self.filters_btn.setStyleSheet("""
+            QPushButton {
+                background: rgba(255, 255, 255, 0.15);
+                color: white;
+                border: 1px solid rgba(255, 255, 255, 0.3);
+                border-radius: 6px;
+                padding: 8px 16px;
+                font-size: 10pt;
+            }
+            QPushButton:hover {
+                background: rgba(255, 255, 255, 0.25);
+            }
+            QPushButton:checked {
+                background: rgba(66, 133, 244, 0.8);
+                border: 1px solid rgba(66, 133, 244, 1.0);
+            }
+        """)
+        self.filters_btn.clicked.connect(self._toggle_filters_panel)
+        editor_topbar_layout.addWidget(self.filters_btn)
+        # Before/After toggle (STYLED)
+        self.before_after_btn = QPushButton("🔄 Before/After")
+        self.before_after_btn.setCheckable(True)
+        self.before_after_btn.setToolTip("Toggle comparison view")
+        self.before_after_btn.setStyleSheet("""
+            QPushButton {
+                background: rgba(255, 255, 255, 0.15);
+                color: white;
+                border: 1px solid rgba(255, 255, 255, 0.3);
+                border-radius: 6px;
+                padding: 8px 16px;
+                font-size: 10pt;
+            }
+            QPushButton:hover {
+                background: rgba(255, 255, 255, 0.25);
+            }
+            QPushButton:checked {
+                background: rgba(66, 133, 244, 0.8);
+                border: 1px solid rgba(66, 133, 244, 1.0);
+            }
+        """)
+        self.before_after_btn.clicked.connect(self._toggle_before_after)
+        editor_topbar_layout.addWidget(self.before_after_btn)
+        editor_topbar_layout.addStretch()  # Push buttons to left, Undo/Redo/Export to right
+        # Undo/Redo buttons (MORE PROMINENT)
+        self.undo_btn = QPushButton("↶ Undo")
+        self.undo_btn.setToolTip("Undo last edit (Ctrl+Z)")
+        self.undo_btn.setEnabled(False)
+        self.undo_btn.setStyleSheet("""
+            QPushButton {
+                background: rgba(66, 133, 244, 0.8);
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 8px 16px;
+                font-size: 11pt;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background: rgba(66, 133, 244, 1.0);
+            }
+            QPushButton:disabled {
+                background: rgba(128, 128, 128, 0.3);
+                color: rgba(255, 255, 255, 0.4);
+            }
+        """)
+        self.undo_btn.clicked.connect(self._editor_undo)
+        editor_topbar_layout.addWidget(self.undo_btn)
+        self.redo_btn = QPushButton("↷ Redo")
+        self.redo_btn.setToolTip("Redo (Ctrl+Y)")
+        self.redo_btn.setEnabled(False)
+        self.redo_btn.setStyleSheet("""
+            QPushButton {
+                background: rgba(66, 133, 244, 0.8);
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 8px 16px;
+                font-size: 11pt;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background: rgba(66, 133, 244, 1.0);
+            }
+            QPushButton:disabled {
+                background: rgba(128, 128, 128, 0.3);
+                color: rgba(255, 255, 255, 0.4);
+            }
+        """)
+        self.redo_btn.clicked.connect(self._editor_redo)
+        editor_topbar_layout.addWidget(self.redo_btn)
+        editor_topbar_layout.addSpacing(16)  # Visual separator
+        
+        # Copy/Paste buttons (BATCH EDITING)
+        self.copy_adj_btn = QPushButton("📋 Copy")
+        self.copy_adj_btn.setToolTip("Copy current adjustments (Ctrl+Shift+C)")
+        self.copy_adj_btn.setStyleSheet("""
+            QPushButton {
+                background: rgba(255, 193, 7, 0.8);
+                color: black;
+                border: none;
+                border-radius: 6px;
+                padding: 8px 16px;
+                font-size: 10pt;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background: rgba(255, 193, 7, 1.0);
+            }
+        """)
+        self.copy_adj_btn.clicked.connect(self._copy_adjustments)
+        editor_topbar_layout.addWidget(self.copy_adj_btn)
+        
+        self.paste_adj_btn = QPushButton("📌 Paste")
+        self.paste_adj_btn.setToolTip("Paste copied adjustments (Ctrl+Shift+V)")
+        self.paste_adj_btn.setEnabled(False)  # Disabled until something is copied
+        self.paste_adj_btn.setStyleSheet("""
+            QPushButton {
+                background: rgba(156, 39, 176, 0.8);
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 8px 16px;
+                font-size: 10pt;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background: rgba(156, 39, 176, 1.0);
+            }
+            QPushButton:disabled {
+                background: rgba(128, 128, 128, 0.3);
+                color: rgba(255, 255, 255, 0.4);
+            }
+        """)
+        self.paste_adj_btn.clicked.connect(self._paste_adjustments)
+        editor_topbar_layout.addWidget(self.paste_adj_btn)
+        editor_topbar_layout.addSpacing(16)  # Visual separator
+        
+        # Export button (MORE PROMINENT) - Handles both photos and videos
+        self.export_btn = QPushButton("💾 Export")
+        self.export_btn.setToolTip("Export edited image or video")
+        self.export_btn.setStyleSheet("""
+            QPushButton {
+                background: rgba(34, 139, 34, 0.9);
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 8px 20px;
+                font-size: 11pt;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background: rgba(34, 139, 34, 1.0);
+            }
+        """)
+        self.export_btn.clicked.connect(self._export_current_media)
+        editor_topbar_layout.addWidget(self.export_btn)
+        editor_vlayout.addWidget(editor_topbar)
+        # Crop toolbar (hidden by default)
+        self.crop_toolbar = self._build_crop_toolbar()
+        self.crop_toolbar.hide()
+        editor_vlayout.addWidget(self.crop_toolbar)
+        # Content row: canvas + right panel
+        editor_row = QWidget()
+        editor_row_layout = QHBoxLayout(editor_row)
+        self.editor_canvas = self._create_edit_canvas()
+        self.editor_right_panel = QWidget()
+        self.editor_right_panel.setFixedWidth(400)
+        self.editor_right_panel.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
+        editor_row_layout.addWidget(self.editor_canvas, 1)
+        editor_row_layout.addWidget(self.editor_right_panel)
+        editor_vlayout.addWidget(editor_row, 1)
+        # Build adjustments panel in right placeholder
+        self._init_adjustments_panel()
+        # Add editor page to stack
+        self.mode_stack.addWidget(self.editor_page)
+        # Add stacked to main layout
+        main_layout.addWidget(self.mode_stack, 1)
+        self.mode_stack.setCurrentIndex(0)
 
         # === BOTTOM TOOLBAR (Overlay with gradient) ===
         self.bottom_toolbar = self._create_bottom_toolbar()
@@ -841,8 +1168,8 @@ class MediaLightbox(QDialog):
         self.edit_btn.setFocusPolicy(Qt.NoFocus)
         self.edit_btn.setFixedSize(56, 56)
         self.edit_btn.setStyleSheet(btn_style)
-        self.edit_btn.setToolTip("Enhance Panel")
-        self.edit_btn.clicked.connect(self._toggle_enhance_panel)
+        self.edit_btn.setToolTip("Edit Mode - Adjustments, Crop, Filters (E)")
+        self.edit_btn.clicked.connect(self._enter_edit_mode)
         layout.addWidget(self.edit_btn)
         self.photo_only_buttons.append(self.edit_btn)
 
@@ -1022,6 +1349,2501 @@ class MediaLightbox(QDialog):
 
     # === END AUTO-HIDE SYSTEM ===
 
+    def eventFilter(self, obj, event):
+        try:
+            from PySide6.QtCore import QEvent, Qt
+            # Handle wheel zoom in editor canvas
+            if hasattr(self, 'editor_canvas') and obj == self.editor_canvas:
+                if event.type() == QEvent.Wheel:
+                    # Check if in editor mode
+                    if hasattr(self, 'mode_stack') and self.mode_stack.currentIndex() == 1:
+                        # Ctrl+Wheel = zoom, plain wheel = scroll
+                        from PySide6.QtCore import Qt as QtCore
+                        try:
+                            # Try both modifiers() and the event itself
+                            modifiers = event.modifiers()
+                            ctrl_pressed = bool(modifiers & Qt.ControlModifier)
+                        except:
+                            ctrl_pressed = False
+                        
+                        if ctrl_pressed:
+                            delta = event.angleDelta().y()
+                            print(f"[Zoom] Ctrl+Wheel detected: delta={delta}")
+                            if delta > 0:
+                                self._editor_zoom_in()
+                                print(f"[Zoom] Zoomed IN to {self.edit_zoom_level:.2f}x")
+                            else:
+                                self._editor_zoom_out()
+                                print(f"[Zoom] Zoomed OUT to {self.edit_zoom_level:.2f}x")
+                            return True  # Consume event
+                        else:
+                            print("[Zoom] Wheel event without Ctrl - not zooming")
+            return super().eventFilter(obj, event)
+        except Exception as e:
+            import traceback
+            print(f"[EventFilter] Error: {e}")
+            traceback.print_exc()
+            return False
+
+    def _editor_zoom_in(self):
+        self.edit_zoom_level = min(8.0, self.edit_zoom_level * 1.15)
+        self._apply_editor_zoom()
+
+    def _editor_zoom_out(self):
+        self.edit_zoom_level = max(0.1, self.edit_zoom_level / 1.15)
+        self._apply_editor_zoom()
+
+    def _editor_zoom_reset(self):
+        self.edit_zoom_level = 1.0
+        self._apply_editor_zoom()
+
+    def _apply_editor_zoom(self):
+        try:
+            if getattr(self, 'editor_canvas', None):
+                self.editor_canvas.update()
+        except Exception as e:
+            print(f"[EditZoom] Error applying editor zoom: {e}")
+
+    def _toggle_info_panel(self):
+        try:
+            if not hasattr(self, 'info_panel_visible'):
+                self.info_panel_visible = False
+            self.info_panel_visible = not self.info_panel_visible
+            if hasattr(self, 'info_panel') and self.info_panel:
+                self.info_panel.setVisible(self.info_panel_visible)
+        except Exception as e:
+            print(f"[InfoPanel] Toggle error: {e}")
+
+    def _toggle_raw_group(self):
+        try:
+            visible = self.raw_toggle.isChecked()
+            self.raw_group_container.setVisible(visible)
+            self.raw_toggle.setText("RAW Development ▾" if visible else "RAW Development ▸")
+        except Exception:
+            pass
+    
+    def _toggle_light_group(self):
+        try:
+            visible = self.light_toggle.isChecked()
+            self.light_group_container.setVisible(visible)
+            self.light_toggle.setText("Light ▾" if visible else "Light ▸")
+        except Exception:
+            pass
+
+    def _toggle_color_group(self):
+        try:
+            visible = self.color_toggle.isChecked()
+            self.color_group_container.setVisible(visible)
+            self.color_toggle.setText("Color ▾" if visible else "Color ▸")
+        except Exception:
+            pass
+
+    def _init_adjustments_panel(self):
+        """Initialize adjustments panel in the editor right placeholder."""
+        from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QSlider, QPushButton, QSpinBox, QHBoxLayout
+        # Create container layout on right panel if missing
+        if not hasattr(self, 'adjustments_layout') or self.adjustments_layout is None:
+            self.adjustments_layout = QVBoxLayout(self.editor_right_panel)
+            self.adjustments_layout.setContentsMargins(12, 12, 12, 12)
+            self.adjustments_layout.setSpacing(8)
+        # Debounce timer for smooth slider drags
+        if not hasattr(self, '_adjust_debounce_timer') or self._adjust_debounce_timer is None:
+            self._adjust_debounce_timer = QTimer(self)
+            self._adjust_debounce_timer.setSingleShot(True)
+            self._adjust_debounce_timer.setInterval(75)
+            self._adjust_debounce_timer.timeout.connect(self._apply_adjustments)
+        # Initialize adjustments dict
+        self.adjustments = {
+            'brightness': 0,
+            'exposure': 0,
+            'contrast': 0,
+            'highlights': 0,
+            'shadows': 0,
+            'vignette': 0,
+            'saturation': 0,
+            'warmth': 0,
+        }
+        # Header
+        header = QLabel("Adjustments")
+        header.setStyleSheet("color: white; font-size: 11pt;")
+        self.adjustments_layout.addWidget(header)
+        # Histogram at top
+        self.histogram_label = QLabel()
+        self.histogram_label.setFixedHeight(120)
+        self.histogram_label.setMinimumWidth(360)
+        self.adjustments_layout.addWidget(self.histogram_label)
+        # Light group
+        self.light_toggle = QPushButton("Light ▾")
+        self.light_toggle.setCheckable(True)
+        self.light_toggle.setChecked(True)
+        self.light_toggle.setStyleSheet("color: rgba(255,255,255,0.9); font-size: 10pt; background: transparent; border: none; text-align: left;")
+        self.light_toggle.clicked.connect(self._toggle_light_group)
+        self.adjustments_layout.addWidget(self.light_toggle)
+        self.light_group_container = QWidget()
+        self.light_group_layout = QVBoxLayout(self.light_group_container)
+        self.light_group_layout.setContentsMargins(0, 0, 0, 0)
+        self.light_group_layout.setSpacing(6)
+        self.adjustments_layout.addWidget(self.light_group_container)
+        
+        # Helper to create slider row with spin box
+        def add_slider_row(name, label_text):
+            # Label row: name + value spinbox
+            label_row = QHBoxLayout()
+            label = QLabel(label_text)
+            label.setStyleSheet("color: rgba(255,255,255,0.85);")
+            label_row.addWidget(label)
+            label_row.addStretch()
+            spinbox = QSpinBox()
+            spinbox.setRange(-100, 100)
+            spinbox.setValue(0)
+            spinbox.setFixedWidth(60)
+            spinbox.setStyleSheet("""
+                QSpinBox {
+                    background: rgba(255,255,255,0.1);
+                    color: white;
+                    border: 1px solid rgba(255,255,255,0.2);
+                    border-radius: 4px;
+                    padding: 2px 4px;
+                }
+                QSpinBox::up-button, QSpinBox::down-button {
+                    background: transparent;
+                    width: 12px;
+                }
+            """)
+            spinbox.valueChanged.connect(lambda v: self._on_spinbox_change(name, v))
+            setattr(self, f"spinbox_{name}", spinbox)
+            label_row.addWidget(spinbox)
+            # Slider
+            slider = QSlider(Qt.Horizontal)
+            slider.setRange(-100, 100)
+            slider.setValue(0)
+            slider.valueChanged.connect(lambda v: self._on_slider_change(name, v))
+            setattr(self, f"slider_{name}", slider)
+            return label_row, slider
+        
+        # Light adjustments with spin boxes
+        bright_label_row, self.slider_brightness = add_slider_row('brightness', 'Brightness')
+        self.light_group_layout.addLayout(bright_label_row)
+        self.light_group_layout.addWidget(self.slider_brightness)
+        
+        exp_label_row, self.slider_exposure = add_slider_row('exposure', 'Exposure')
+        self.light_group_layout.addLayout(exp_label_row)
+        self.light_group_layout.addWidget(self.slider_exposure)
+        
+        cont_label_row, self.slider_contrast = add_slider_row('contrast', 'Contrast')
+        self.light_group_layout.addLayout(cont_label_row)
+        self.light_group_layout.addWidget(self.slider_contrast)
+        
+        high_label_row, self.slider_highlights = add_slider_row('highlights', 'Highlights')
+        self.light_group_layout.addLayout(high_label_row)
+        self.light_group_layout.addWidget(self.slider_highlights)
+        
+        shad_label_row, self.slider_shadows = add_slider_row('shadows', 'Shadows')
+        self.light_group_layout.addLayout(shad_label_row)
+        self.light_group_layout.addWidget(self.slider_shadows)
+        
+        vig_label_row, self.slider_vignette = add_slider_row('vignette', 'Vignette')
+        self.light_group_layout.addLayout(vig_label_row)
+        self.light_group_layout.addWidget(self.slider_vignette)
+        
+        sharp_label_row, self.slider_sharpen = add_slider_row('sharpen', 'Sharpen')
+        self.light_group_layout.addLayout(sharp_label_row)
+        self.light_group_layout.addWidget(self.slider_sharpen)
+        
+        # Color group
+        self.color_toggle = QPushButton("Color ▾")
+        self.color_toggle.setCheckable(True)
+        self.color_toggle.setChecked(True)
+        self.color_toggle.setStyleSheet("color: rgba(255,255,255,0.9); font-size: 10pt; background: transparent; border: none; text-align: left;")
+        self.color_toggle.clicked.connect(self._toggle_color_group)
+        self.adjustments_layout.addWidget(self.color_toggle)
+        self.color_group_container = QWidget()
+        self.color_group_layout = QVBoxLayout(self.color_group_container)
+        self.color_group_layout.setContentsMargins(0, 0, 0, 0)
+        self.color_group_layout.setSpacing(6)
+        self.adjustments_layout.addWidget(self.color_group_container)
+        
+        sat_label_row, self.slider_saturation = add_slider_row('saturation', 'Saturation')
+        self.color_group_layout.addLayout(sat_label_row)
+        self.color_group_layout.addWidget(self.slider_saturation)
+        
+        warm_label_row, self.slider_warmth = add_slider_row('warmth', 'Warmth')
+        self.color_group_layout.addLayout(warm_label_row)
+        self.color_group_layout.addWidget(self.slider_warmth)
+        
+        # RAW Development group (only shown for RAW files)
+        self.raw_toggle = QPushButton("RAW Development ▸")
+        self.raw_toggle.setCheckable(True)
+        self.raw_toggle.setChecked(False)
+        self.raw_toggle.clicked.connect(self._toggle_raw_group)
+        self.raw_toggle.setVisible(False)  # Hidden by default, shown for RAW files
+        self.adjustments_layout.addWidget(self.raw_toggle)
+        
+        self.raw_group_container = QWidget()
+        self.raw_group_layout = QVBoxLayout(self.raw_group_container)
+        self.raw_group_layout.setContentsMargins(0, 0, 0, 0)
+        self.raw_group_layout.setSpacing(6)
+        self.raw_group_container.setVisible(False)
+        self.adjustments_layout.addWidget(self.raw_group_container)
+        
+        # RAW adjustments with spin boxes
+        wb_temp_label_row, self.slider_white_balance_temp = add_slider_row('white_balance_temp', 'WB Temperature')
+        self.raw_group_layout.addLayout(wb_temp_label_row)
+        self.raw_group_layout.addWidget(self.slider_white_balance_temp)
+        
+        wb_tint_label_row, self.slider_white_balance_tint = add_slider_row('white_balance_tint', 'WB Tint (G/M)')
+        self.raw_group_layout.addLayout(wb_tint_label_row)
+        self.raw_group_layout.addWidget(self.slider_white_balance_tint)
+        
+        # Note: Exposure recovery, lens correction, chromatic aberration use 0-100 range
+        def add_slider_row_0_100(name, label_text):
+            label_row = QHBoxLayout()
+            label = QLabel(label_text)
+            label.setStyleSheet("color: rgba(255,255,255,0.85);")
+            label_row.addWidget(label)
+            label_row.addStretch()
+            spinbox = QSpinBox()
+            spinbox.setRange(0, 100)
+            spinbox.setValue(0)
+            spinbox.setFixedWidth(60)
+            spinbox.setStyleSheet("""
+                QSpinBox {
+                    background: rgba(255,255,255,0.1);
+                    color: white;
+                    border: 1px solid rgba(255,255,255,0.2);
+                    border-radius: 4px;
+                    padding: 2px 4px;
+                }
+                QSpinBox::up-button, QSpinBox::down-button {
+                    background: transparent;
+                    width: 12px;
+                }
+            """)
+            spinbox.valueChanged.connect(lambda v: self._on_spinbox_change(name, v))
+            setattr(self, f"spinbox_{name}", spinbox)
+            label_row.addWidget(spinbox)
+            slider = QSlider(Qt.Horizontal)
+            slider.setRange(0, 100)
+            slider.setValue(0)
+            slider.valueChanged.connect(lambda v: self._on_slider_change(name, v))
+            setattr(self, f"slider_{name}", slider)
+            return label_row, slider
+        
+        exp_rec_label_row, self.slider_exposure_recovery = add_slider_row_0_100('exposure_recovery', 'Highlight Recovery')
+        self.raw_group_layout.addLayout(exp_rec_label_row)
+        self.raw_group_layout.addWidget(self.slider_exposure_recovery)
+        
+        lens_corr_label_row, self.slider_lens_correction = add_slider_row_0_100('lens_correction', 'Lens Correction')
+        self.raw_group_layout.addLayout(lens_corr_label_row)
+        self.raw_group_layout.addWidget(self.slider_lens_correction)
+        
+        ca_label_row, self.slider_chromatic_aberration = add_slider_row_0_100('chromatic_aberration', 'CA Removal')
+        self.raw_group_layout.addLayout(ca_label_row)
+        self.raw_group_layout.addWidget(self.slider_chromatic_aberration)
+        
+        # Reset button
+        reset_btn = QPushButton("Reset All")
+        reset_btn.clicked.connect(self._reset_adjustments)
+        self.adjustments_layout.addWidget(reset_btn)
+        # Build filters panel and add to right panel (hidden by default)
+        self.filters_container = self._build_filters_panel()
+        self.filters_container.hide()
+        self.adjustments_layout.addWidget(self.filters_container)
+
+    def _save_edit_state(self):
+        """Save current edit state to JSON file for persistence."""
+        try:
+            if not hasattr(self, 'media_path') or not self.media_path:
+                return
+            
+            import json
+            import hashlib
+            
+            # Create unique filename based on image path hash
+            path_hash = hashlib.md5(self.media_path.encode()).hexdigest()
+            state_file = os.path.join(self.edit_states_dir, f"{path_hash}.json")
+            
+            # Collect edit state
+            edit_state = {
+                'media_path': self.media_path,
+                'adjustments': self.adjustments.copy(),
+                'filter_intensity': getattr(self, 'filter_intensity', 100),
+                'current_preset': getattr(self, 'current_preset_adjustments', {}),
+                'timestamp': str(datetime.now())
+            }
+            
+            # Save to file
+            with open(state_file, 'w') as f:
+                json.dump(edit_state, f, indent=2)
+            
+            print(f"[EditState] Saved edit state for {os.path.basename(self.media_path)}")
+            return True
+        except Exception as e:
+            import traceback
+            print(f"[EditState] Error saving edit state: {e}")
+            traceback.print_exc()
+            return False
+    
+    def _load_edit_state(self):
+        """Load saved edit state from JSON file if exists."""
+        try:
+            if not hasattr(self, 'media_path') or not self.media_path:
+                return False
+            
+            import json
+            import hashlib
+            
+            # Find state file
+            path_hash = hashlib.md5(self.media_path.encode()).hexdigest()
+            state_file = os.path.join(self.edit_states_dir, f"{path_hash}.json")
+            
+            if not os.path.exists(state_file):
+                return False
+            
+            # Load state
+            with open(state_file, 'r') as f:
+                edit_state = json.load(f)
+            
+            # Verify it's for the correct image
+            if edit_state.get('media_path') != self.media_path:
+                return False
+            
+            # Restore adjustments
+            adjustments = edit_state.get('adjustments', {})
+            for key, val in adjustments.items():
+                if key in self.adjustments:
+                    self.adjustments[key] = val
+                    # Update sliders and spinboxes
+                    slider = getattr(self, f"slider_{key}", None)
+                    spinbox = getattr(self, f"spinbox_{key}", None)
+                    if slider:
+                        slider.blockSignals(True)
+                        slider.setValue(val)
+                        slider.blockSignals(False)
+                    if spinbox:
+                        spinbox.blockSignals(True)
+                        spinbox.setValue(val)
+                        spinbox.blockSignals(False)
+            
+            # Restore filter intensity
+            filter_intensity = edit_state.get('filter_intensity', 100)
+            self.filter_intensity = filter_intensity
+            if hasattr(self, 'filter_intensity_slider'):
+                self.filter_intensity_slider.blockSignals(True)
+                self.filter_intensity_slider.setValue(filter_intensity)
+                self.filter_intensity_slider.blockSignals(False)
+            if hasattr(self, 'intensity_value_label'):
+                self.intensity_value_label.setText(f"{filter_intensity}%")
+            
+            # Restore current preset
+            self.current_preset_adjustments = edit_state.get('current_preset', {})
+            
+            # Apply the loaded adjustments
+            self._apply_adjustments()
+            
+            print(f"[EditState] Restored edit state for {os.path.basename(self.media_path)}")
+            return True
+        except Exception as e:
+            import traceback
+            print(f"[EditState] Error loading edit state: {e}")
+            traceback.print_exc()
+            return False
+    
+    def _show_raw_notification(self, message: str, is_warning: bool = False):
+        """Show temporary notification for RAW file status."""
+        try:
+            from PySide6.QtWidgets import QLabel
+            from PySide6.QtCore import QTimer
+            
+            # Create notification label
+            if not hasattr(self, '_raw_notification_label'):
+                self._raw_notification_label = QLabel(self)
+                self._raw_notification_label.setAlignment(Qt.AlignCenter)
+                self._raw_notification_label.setStyleSheet("""
+                    QLabel {
+                        background: rgba(33, 150, 243, 0.9);
+                        color: white;
+                        padding: 12px 24px;
+                        border-radius: 8px;
+                        font-size: 11pt;
+                        font-weight: bold;
+                    }
+                """)
+                self._raw_notification_label.setVisible(False)
+            
+            # Update style if warning
+            if is_warning:
+                self._raw_notification_label.setStyleSheet("""
+                    QLabel {
+                        background: rgba(255, 152, 0, 0.9);
+                        color: white;
+                        padding: 12px 24px;
+                        border-radius: 8px;
+                        font-size: 11pt;
+                        font-weight: bold;
+                    }
+                """)
+            
+            # Set message and show
+            self._raw_notification_label.setText(message)
+            self._raw_notification_label.adjustSize()
+            
+            # Position at top center
+            parent_width = self.width()
+            label_width = self._raw_notification_label.width()
+            self._raw_notification_label.move((parent_width - label_width) // 2, 80)
+            self._raw_notification_label.raise_()
+            self._raw_notification_label.setVisible(True)
+            
+            # Auto-hide after 5 seconds
+            QTimer.singleShot(5000, lambda: self._raw_notification_label.setVisible(False) if hasattr(self, '_raw_notification_label') else None)
+            
+        except Exception as e:
+            print(f"[RAW] Error showing notification: {e}")
+    
+    def _is_raw_file(self, file_path: str) -> bool:
+        """Check if file is a RAW image format."""
+        if not file_path:
+            return False
+        raw_extensions = [
+            '.cr2', '.cr3',  # Canon
+            '.nef', '.nrw',  # Nikon
+            '.arw', '.srf', '.sr2',  # Sony
+            '.orf',  # Olympus
+            '.rw2',  # Panasonic
+            '.pef', '.ptx',  # Pentax
+            '.raf',  # Fujifilm
+            '.dng',  # Adobe Digital Negative
+            '.x3f',  # Sigma
+            '.3fr',  # Hasselblad
+            '.fff',  # Imacon
+            '.dcr', '.kdc',  # Kodak
+            '.mrw',  # Minolta
+            '.raw', '.rwl',  # Leica
+            '.iiq',  # Phase One
+        ]
+        ext = os.path.splitext(file_path)[1].lower()
+        return ext in raw_extensions
+    
+    def _is_video_file(self, file_path: str) -> bool:
+        """Check if file is a video format."""
+        if not file_path:
+            return False
+        video_extensions = [
+            '.mp4', '.mov', '.avi', '.mkv', '.webm',
+            '.m4v', '.3gp', '.flv', '.wmv', '.mpg', '.mpeg'
+        ]
+        ext = os.path.splitext(file_path)[1].lower()
+        return ext in video_extensions
+    
+    def _check_rawpy_available(self) -> bool:
+        """Check if rawpy library is available."""
+        try:
+            import rawpy
+            return True
+        except ImportError:
+            return False
+    
+    def _load_raw_image(self, file_path: str):
+        """Load RAW image using rawpy."""
+        try:
+            if not self._check_rawpy_available():
+                print("[RAW] rawpy library not available - install with: pip install rawpy")
+                return None
+            
+            import rawpy
+            raw = rawpy.imread(file_path)
+            print(f"[RAW] Loaded RAW file: {os.path.basename(file_path)}")
+            print(f"[RAW] Camera: {getattr(raw.color_desc, 'decode', lambda: 'Unknown')()}")
+            print(f"[RAW] Size: {raw.sizes.raw_width}x{raw.sizes.raw_height}")
+            return raw
+        except Exception as e:
+            import traceback
+            print(f"[RAW] Error loading RAW file: {e}")
+            traceback.print_exc()
+            return None
+    
+    def _process_raw_to_pixmap(self, raw_image, adjustments: dict = None):
+        """Process RAW image with adjustments and convert to QPixmap."""
+        try:
+            if not raw_image:
+                return None
+            
+            import rawpy
+            from PIL import Image
+            import numpy as np
+            
+            # Get adjustments or use defaults
+            adj = adjustments or self.adjustments
+            
+            # Prepare rawpy processing parameters
+            params = rawpy.Params(
+                use_camera_wb=True,  # Use camera white balance as starting point
+                use_auto_wb=False,
+                output_color=rawpy.ColorSpace.sRGB,
+                output_bps=8,  # 8-bit output
+                no_auto_bright=True,  # Disable auto brightness (we'll handle it)
+                exp_shift=1.0,  # Exposure adjustment
+                bright=1.0,  # Brightness multiplier
+                user_wb=None,  # Custom white balance
+                demosaic_algorithm=rawpy.DemosaicAlgorithm.AHD,  # High quality
+                median_filter_passes=0
+            )
+            
+            # Apply RAW-specific adjustments
+            # White balance temperature
+            temp = adj.get('white_balance_temp', 0)
+            tint = adj.get('white_balance_tint', 0)
+            if temp != 0 or tint != 0:
+                # Adjust white balance multipliers
+                # This is a simplified approach - real WB is more complex
+                wb_mult = list(raw_image.camera_whitebalance)
+                # Temperature: affects red/blue balance
+                if temp > 0:  # Warmer (more red)
+                    wb_mult[0] *= (1.0 + temp / 200.0)  # Increase red
+                    wb_mult[2] *= (1.0 - temp / 200.0)  # Decrease blue
+                else:  # Cooler (more blue)
+                    wb_mult[0] *= (1.0 + temp / 200.0)  # Decrease red
+                    wb_mult[2] *= (1.0 - temp / 200.0)  # Increase blue
+                # Tint: affects green/magenta balance
+                if tint != 0:
+                    wb_mult[1] *= (1.0 + tint / 200.0)  # Adjust green
+                params.user_wb = wb_mult
+            
+            # Exposure recovery (preserve highlights)
+            exp_recovery = adj.get('exposure_recovery', 0)
+            if exp_recovery > 0:
+                # Reduce exp_shift to preserve highlights
+                params.exp_shift = 1.0 - (exp_recovery / 200.0)  # 0 to 100 -> 1.0 to 0.5
+            
+            # Process RAW to RGB array
+            rgb = raw_image.postprocess(params)
+            
+            # Convert to PIL Image
+            pil_img = Image.fromarray(rgb)
+            
+            # Apply lens correction (simple barrel/pincushion distortion)
+            lens_corr = adj.get('lens_correction', 0)
+            if lens_corr > 0:
+                # This is a placeholder - real lens correction requires specific lens profiles
+                print(f"[RAW] Lens correction: {lens_corr}% (simplified implementation)")
+            
+            # Apply chromatic aberration removal
+            ca_removal = adj.get('chromatic_aberration', 0)
+            if ca_removal > 0:
+                # Simplified CA removal - real implementation would shift color channels
+                print(f"[RAW] Chromatic aberration removal: {ca_removal}% (simplified)")
+            
+            # Convert PIL to QPixmap
+            pixmap = self._pil_to_qpixmap(pil_img)
+            
+            print(f"[RAW] Processed RAW image with adjustments")
+            return pixmap
+            
+        except Exception as e:
+            import traceback
+            print(f"[RAW] Error processing RAW image: {e}")
+            traceback.print_exc()
+            return None
+    
+    def _copy_adjustments(self):
+        """Copy current adjustments to clipboard for batch editing."""
+        try:
+            # Copy all adjustment values
+            self.copied_adjustments = self.adjustments.copy()
+            self.copied_filter_intensity = getattr(self, 'filter_intensity', 100)
+            self.copied_preset = getattr(self, 'current_preset_adjustments', {}).copy()
+            
+            # Enable paste button
+            if hasattr(self, 'paste_adj_btn'):
+                self.paste_adj_btn.setEnabled(True)
+            
+            # Visual feedback
+            from PySide6.QtWidgets import QMessageBox
+            msg = f"Copied adjustments:\n"
+            non_zero = {k: v for k, v in self.copied_adjustments.items() if v != 0}
+            if non_zero:
+                for key, val in non_zero.items():
+                    msg += f"  {key.capitalize()}: {val:+d}\n"
+            else:
+                msg += "  (No adjustments set)\n"
+            msg += f"\nFilter Intensity: {self.copied_filter_intensity}%"
+            
+            # Create temporary label to show feedback
+            if hasattr(self, 'copy_adj_btn'):
+                original_text = self.copy_adj_btn.text()
+                self.copy_adj_btn.setText("✓ Copied!")
+                from PySide6.QtCore import QTimer
+                QTimer.singleShot(1500, lambda: self.copy_adj_btn.setText(original_text) if hasattr(self, 'copy_adj_btn') else None)
+            
+            print(f"[Copy/Paste] ✓ Copied adjustments")
+            print(msg)
+            return True
+        except Exception as e:
+            import traceback
+            print(f"[Copy/Paste] Error copying adjustments: {e}")
+            traceback.print_exc()
+            return False
+    
+    def _paste_adjustments(self):
+        """Paste copied adjustments to current photo."""
+        try:
+            if not self.copied_adjustments:
+                print("[Copy/Paste] Nothing to paste")
+                return False
+            
+            # Apply copied adjustments
+            for key, val in self.copied_adjustments.items():
+                if key in self.adjustments:
+                    self.adjustments[key] = val
+                    # Update sliders and spinboxes
+                    slider = getattr(self, f"slider_{key}", None)
+                    spinbox = getattr(self, f"spinbox_{key}", None)
+                    if slider:
+                        slider.blockSignals(True)
+                        slider.setValue(val)
+                        slider.blockSignals(False)
+                    if spinbox:
+                        spinbox.blockSignals(True)
+                        spinbox.setValue(val)
+                        spinbox.blockSignals(False)
+            
+            # Apply copied filter intensity
+            if self.copied_filter_intensity is not None:
+                self.filter_intensity = self.copied_filter_intensity
+                if hasattr(self, 'filter_intensity_slider'):
+                    self.filter_intensity_slider.blockSignals(True)
+                    self.filter_intensity_slider.setValue(self.copied_filter_intensity)
+                    self.filter_intensity_slider.blockSignals(False)
+                if hasattr(self, 'intensity_value_label'):
+                    self.intensity_value_label.setText(f"{self.copied_filter_intensity}%")
+            
+            # Apply copied preset
+            if self.copied_preset:
+                self.current_preset_adjustments = self.copied_preset.copy()
+            
+            # Re-render with pasted adjustments
+            self._apply_adjustments()
+            
+            # Visual feedback
+            if hasattr(self, 'paste_adj_btn'):
+                original_text = self.paste_adj_btn.text()
+                self.paste_adj_btn.setText("✓ Pasted!")
+                from PySide6.QtCore import QTimer
+                QTimer.singleShot(1500, lambda: self.paste_adj_btn.setText(original_text) if hasattr(self, 'paste_adj_btn') else None)
+            
+            print(f"[Copy/Paste] ✓ Pasted adjustments to current photo")
+            return True
+        except Exception as e:
+            import traceback
+            print(f"[Copy/Paste] Error pasting adjustments: {e}")
+            traceback.print_exc()
+            return False
+    
+    def _clear_edit_state(self):
+        """Clear saved edit state for current image."""
+        try:
+            if not hasattr(self, 'media_path') or not self.media_path:
+                return
+            
+            import hashlib
+            path_hash = hashlib.md5(self.media_path.encode()).hexdigest()
+            state_file = os.path.join(self.edit_states_dir, f"{path_hash}.json")
+            
+            if os.path.exists(state_file):
+                os.remove(state_file)
+                print(f"[EditState] Cleared edit state for {os.path.basename(self.media_path)}")
+        except Exception as e:
+            print(f"[EditState] Error clearing edit state: {e}")
+    
+    def _enter_edit_mode(self):
+        """Switch to editor page and prepare non-destructive edit state."""
+        try:
+            # Check if current file is VIDEO
+            if hasattr(self, 'media_path') and self.media_path:
+                self.is_video_file = self._is_video_file(self.media_path)
+                
+                if self.is_video_file:
+                    print(f"[Editor] VIDEO file detected: {os.path.basename(self.media_path)}")
+                    
+                    # Initialize trim points from existing player
+                    self.video_trim_start = 0
+                    duration = getattr(self, '_video_duration', 0)
+                    self.video_trim_end = duration
+                    self.video_rotation_angle = 0
+                    
+                    # Show trim/rotate controls (create if not exists)
+                    if not hasattr(self, 'video_trim_controls'):
+                        self.video_trim_controls = self._create_video_trim_controls()
+                        self.video_trim_controls.setParent(self.crop_toolbar)
+                        # Insert after crop toolbar buttons
+                        self.crop_toolbar.layout().insertWidget(0, self.video_trim_controls)
+                    
+                    if not hasattr(self, 'video_rotate_controls'):
+                        self.video_rotate_controls = self._create_video_rotate_controls()
+                        self.video_rotate_controls.setParent(self.crop_toolbar)
+                        self.crop_toolbar.layout().addWidget(self.video_rotate_controls)
+                    
+                    # Show video controls, hide photo controls
+                    self.video_trim_controls.show()
+                    self.video_rotate_controls.show()
+                    self.crop_btn.hide()  # Hide crop for videos
+                    
+                    # Update trim labels with current duration
+                    if hasattr(self, 'trim_end_label'):
+                        self.trim_end_label.setText(self._format_time(duration))
+                    
+                    print("[Editor] Video trim/rotate controls shown")
+                    
+                    # Skip photo editing setup for videos
+                    # Show editor page
+                    if hasattr(self, 'mode_stack'):
+                        self.mode_stack.setCurrentIndex(1)
+                    if hasattr(self, 'prev_btn'):
+                        self.prev_btn.hide()
+                    if hasattr(self, 'next_btn'):
+                        self.next_btn.hide()
+                    return  # Skip photo editing setup
+                
+                else:
+                    # Hide video controls for non-video files
+                    if hasattr(self, 'video_trim_controls'):
+                        self.video_trim_controls.hide()
+                    if hasattr(self, 'video_rotate_controls'):
+                        self.video_rotate_controls.hide()
+                    self.crop_btn.show()  # Show crop for photos
+            
+            # Check if current file is RAW (photos only)
+            if hasattr(self, 'media_path') and self.media_path:
+                self.is_raw_file = self._is_raw_file(self.media_path)
+                if self.is_raw_file:
+                    print(f"[Editor] RAW file detected: {os.path.basename(self.media_path)}")
+                    # Show RAW controls
+                    if hasattr(self, 'raw_toggle'):
+                        self.raw_toggle.setVisible(True)
+                    # Try to load RAW image
+                    if self._check_rawpy_available():
+                        self.raw_image = self._load_raw_image(self.media_path)
+                        if self.raw_image:
+                            # Process RAW to initial pixmap
+                            raw_pixmap = self._process_raw_to_pixmap(self.raw_image, self.adjustments)
+                            if raw_pixmap:
+                                self.original_pixmap = raw_pixmap
+                                print("[Editor] RAW image processed successfully")
+                                # Show notification
+                                self._show_raw_notification("RAW file loaded - use RAW Development controls")
+                    else:
+                        print("[Editor] rawpy not available - install with: pip install rawpy")
+                        print("[Editor] Falling back to embedded JPEG preview")
+                        self._show_raw_notification("RAW preview only - Install rawpy for full RAW editing", is_warning=True)
+                else:
+                    # Hide RAW controls for non-RAW files
+                    if hasattr(self, 'raw_toggle'):
+                        self.raw_toggle.setVisible(False)
+                        self.raw_toggle.setChecked(False)
+                        self.raw_group_container.setVisible(False)
+            
+            # Copy current original pixmap for editing if available
+            if getattr(self, 'original_pixmap', None) and not self.original_pixmap.isNull():
+                self._original_pixmap = self.original_pixmap
+                self._edit_pixmap = self.original_pixmap.copy()
+                # Initialize edit history
+                self.edit_history = [(self._edit_pixmap.copy(), self.adjustments.copy())]
+                self.edit_history_index = 0
+                self._update_undo_redo_buttons()
+                # IMPORTANT: Reset editor zoom to match viewer zoom
+                self.edit_zoom_level = self.zoom_level  # Inherit current zoom from viewer
+                
+                # AUTO-RESTORE: Load saved edit state if exists
+                restored = self._load_edit_state()
+                if restored:
+                    print("[Editor] ✓ Restored previous edit state")
+                else:
+                    print("[Editor] Starting fresh (no saved state)")
+                
+                self._update_editor_canvas_pixmap()
+                self._apply_editor_zoom()
+            else:
+                # Clear canvas if no image loaded yet
+                self._original_pixmap = None
+                self._edit_pixmap = None
+                if hasattr(self, 'editor_canvas'):
+                    self.editor_canvas.update()
+            # Show editor page
+            if hasattr(self, 'mode_stack'):
+                self.mode_stack.setCurrentIndex(1)
+            # Optionally hide overlay navigation in editor mode
+            if hasattr(self, 'prev_btn'):
+                self.prev_btn.hide()
+            if hasattr(self, 'next_btn'):
+                self.next_btn.hide()
+            # Install event filter for editor zoom (CRITICAL)
+            if hasattr(self, 'editor_canvas'):
+                self.editor_canvas.installEventFilter(self)
+                # Enable mouse tracking for wheel events
+                self.editor_canvas.setMouseTracking(True)
+                # CRITICAL: Set focus to canvas to receive wheel events
+                self.editor_canvas.setFocus()
+                print("[EDITOR] ========================================")
+                print("[EDITOR] Event filter installed on editor canvas")
+                print("[EDITOR] Canvas has focus for wheel events")
+                print("[EDITOR] ")
+                print("[EDITOR] KEYBOARD SHORTCUTS:")
+                print("[EDITOR]   E - Enter/Exit Editor Mode")
+                print("[EDITOR]   C - Toggle Crop Mode (in editor)")
+                print("[EDITOR]   Ctrl + Z - Undo")
+                print("[EDITOR]   Ctrl + Y - Redo")
+                print("[EDITOR]   Ctrl + Mouse Wheel - Zoom In/Out")
+                print("[EDITOR] ")
+                print("[EDITOR] MOUSE CONTROLS:")
+                print("[EDITOR]   - Hold Ctrl + Mouse Wheel to zoom in/out")
+                print("[EDITOR]   - Drag crop handles (corners/edges) to resize")
+                print("[EDITOR] ")
+                print("[EDITOR] BUTTONS:")
+                print("[EDITOR]   - Click '✂ Crop' button to toggle crop mode")
+                print("[EDITOR]   - Adjust sliders on right panel")
+                print("[EDITOR]   - Click '✔ Save' to apply, '✖ Cancel' to discard")
+                print("[EDITOR] ========================================")
+        except Exception as e:
+            print(f"[EditMode] Error entering editor mode: {e}")
+
+    def _save_edits(self):
+        try:
+            if getattr(self, '_edit_pixmap', None) and not self._edit_pixmap.isNull():
+                # AUTO-SAVE: Save current edit state before applying
+                self._save_edit_state()
+                
+                self.original_pixmap = self._edit_pixmap
+                if hasattr(self, 'image_label'):
+                    self.image_label.setPixmap(self.original_pixmap)
+            if hasattr(self, 'mode_stack'):
+                self.mode_stack.setCurrentIndex(0)
+            # Restore overlay navigation in viewer mode
+            if hasattr(self, 'prev_btn'):
+                self.prev_btn.show()
+            if hasattr(self, 'next_btn'):
+                self.next_btn.show()
+            if hasattr(self, '_position_nav_buttons'):
+                self._position_nav_buttons()
+            
+            print("[Editor] ✓ Edits saved and edit state persisted")
+        except Exception as e:
+            print(f"[EditMode] Error saving edits: {e}")
+
+    def _cancel_edits(self):
+        try:
+            if hasattr(self, 'mode_stack'):
+                self.mode_stack.setCurrentIndex(0)
+            # Restore overlay navigation in viewer mode
+            if hasattr(self, 'prev_btn'):
+                self.prev_btn.show()
+            if hasattr(self, 'next_btn'):
+                self.next_btn.show()
+            if hasattr(self, '_position_nav_buttons'):
+                self._position_nav_buttons()
+        except Exception as e:
+            print(f"[EditMode] Error cancelling edits: {e}")
+
+    def _on_adjustment_change(self, key: str, value: int):
+        """DEPRECATED - use _on_slider_change instead."""
+        self._on_slider_change(key, value)
+
+    def _on_slider_change(self, key: str, value: int):
+        """Handle slider value change, update spinbox."""
+        self.adjustments[key] = int(value)
+        # Update corresponding spinbox
+        spinbox = getattr(self, f"spinbox_{key}", None)
+        if spinbox:
+            spinbox.blockSignals(True)
+            spinbox.setValue(value)
+            spinbox.blockSignals(False)
+        # Trigger debounced render
+        if hasattr(self, '_adjust_debounce_timer') and self._adjust_debounce_timer:
+            self._adjust_debounce_timer.stop()
+            self._adjust_debounce_timer.start()
+        else:
+            self._apply_adjustments()
+        
+        # AUTO-SAVE: Debounced save of edit state (every 3 seconds after changes)
+        if not hasattr(self, '_autosave_timer'):
+            from PySide6.QtCore import QTimer
+            self._autosave_timer = QTimer(self)
+            self._autosave_timer.setSingleShot(True)
+            self._autosave_timer.timeout.connect(self._save_edit_state)
+        self._autosave_timer.stop()
+        self._autosave_timer.start(3000)  # 3 second debounce
+
+    def _on_spinbox_change(self, key: str, value: int):
+        """Handle spinbox value change, update slider."""
+        self.adjustments[key] = int(value)
+        # Update corresponding slider
+        slider = getattr(self, f"slider_{key}", None)
+        if slider:
+            slider.blockSignals(True)
+            slider.setValue(value)
+            slider.blockSignals(False)
+        # Trigger debounced render
+        if hasattr(self, '_adjust_debounce_timer') and self._adjust_debounce_timer:
+            self._adjust_debounce_timer.stop()
+            self._adjust_debounce_timer.start()
+        else:
+            self._apply_adjustments()
+
+    def _reset_adjustments(self):
+        """Reset all adjustments to 0."""
+        for k in self.adjustments:
+            self.adjustments[k] = 0
+        # Reset sliders and spinboxes
+        for key in ['brightness', 'exposure', 'contrast', 'highlights', 'shadows', 'vignette', 'sharpen', 'saturation', 'warmth',
+                    'white_balance_temp', 'white_balance_tint', 'exposure_recovery', 'lens_correction', 'chromatic_aberration']:
+            slider = getattr(self, f"slider_{key}", None)
+            spinbox = getattr(self, f"spinbox_{key}", None)
+            if slider:
+                slider.blockSignals(True)
+                slider.setValue(0)
+                slider.blockSignals(False)
+            if spinbox:
+                spinbox.blockSignals(True)
+                spinbox.setValue(0)
+                spinbox.blockSignals(False)
+        self._apply_adjustments()
+
+    def _apply_adjustments(self):
+        """Apply adjustments to edit pixmap (brightness, exposure, contrast, highlights, shadows, saturation, warmth, vignette)."""
+        try:
+            # RAW FILE HANDLING: If RAW adjustments changed, reprocess from RAW
+            if getattr(self, 'is_raw_file', False) and getattr(self, 'raw_image', None):
+                raw_adj_keys = ['white_balance_temp', 'white_balance_tint', 'exposure_recovery']
+                raw_adj_changed = any(self.adjustments.get(k, 0) != 0 for k in raw_adj_keys)
+                
+                if raw_adj_changed:
+                    print("[RAW] Reprocessing RAW image with adjustments...")
+                    # Reprocess RAW with current adjustments
+                    raw_pixmap = self._process_raw_to_pixmap(self.raw_image, self.adjustments)
+                    if raw_pixmap:
+                        self._original_pixmap = raw_pixmap
+                        print("[RAW] RAW reprocessed successfully")
+            
+            if not getattr(self, '_original_pixmap', None) or self._original_pixmap.isNull():
+                return
+            # Convert QPixmap -> PIL
+            pil_img = self._qpixmap_to_pil(self._original_pixmap)
+            from PIL import ImageEnhance, Image, ImageDraw
+            # Brightness (mid-tone)
+            b = self.adjustments.get('brightness', 0)
+            if b != 0:
+                pil_img = ImageEnhance.Brightness(pil_img).enhance(1.0 + (b / 100.0))
+            # Exposure (stops)
+            e = self.adjustments.get('exposure', 0)
+            if e != 0:
+                expo_factor = pow(2.0, e / 100.0)
+                pil_img = ImageEnhance.Brightness(pil_img).enhance(expo_factor)
+            # Contrast
+            c = self.adjustments.get('contrast', 0)
+            if c != 0:
+                pil_img = ImageEnhance.Contrast(pil_img).enhance(1.0 + (c / 100.0))
+            # Highlights (compress bright tones)
+            h = self.adjustments.get('highlights', 0)
+            if h != 0:
+                factor = (h / 100.0) * 0.6
+                lut = []
+                for x in range(256):
+                    if x > 128:
+                        if factor >= 0:
+                            nx = 255 - int((255 - x) * (1.0 - factor))
+                        else:
+                            nx = 255 - int((255 - x) * (1.0 + abs(factor)))
+                    else:
+                        nx = x
+                    lut.append(max(0, min(255, nx)))
+                pil_img = pil_img.point(lut * len(pil_img.getbands()))
+            # Shadows (lift/darken dark tones)
+            s = self.adjustments.get('shadows', 0)
+            if s != 0:
+                factor = (s / 100.0) * 0.6
+                lut = []
+                for x in range(256):
+                    if x < 128:
+                        if factor >= 0:
+                            nx = int(x + (128 - x) * factor)
+                        else:
+                            nx = int(x - x * abs(factor))
+                    else:
+                        nx = x
+                    lut.append(max(0, min(255, nx)))
+                pil_img = pil_img.point(lut * len(pil_img.getbands()))
+            # Saturation
+            sat = self.adjustments.get('saturation', 0)
+            if sat != 0:
+                sat_factor = max(0.0, 1.0 + (sat / 100.0))
+                pil_img = ImageEnhance.Color(pil_img).enhance(sat_factor)
+            # Warmth (temperature)
+            w = self.adjustments.get('warmth', 0)
+            if w != 0:
+                w_factor = w / 200.0
+                r, g, bch = pil_img.split()
+                from PIL import ImageEnhance as IE
+                r = IE.Brightness(r).enhance(1.0 + w_factor)
+                bch = IE.Brightness(bch).enhance(1.0 - w_factor)
+                pil_img = Image.merge('RGB', (r, g, bch))
+                # slight saturation coupling with warmth
+                sat_couple = 1.0 + (abs(w) / 100.0) * 0.1
+                pil_img = ImageEnhance.Color(pil_img).enhance(sat_couple)
+            # Vignette (darken/lighten edges)
+            v = self.adjustments.get('vignette', 0)
+            if v != 0:
+                width, height = pil_img.size
+                margin = int(min(width, height) * 0.1)
+                mask = Image.new('L', (width, height), 0)
+                draw = ImageDraw.Draw(mask)
+                draw.ellipse((margin, margin, width - margin, height - margin), fill=255)
+                # invert mask to target outside area
+                mask = Image.eval(mask, lambda px: 255 - px)
+                try:
+                    from PIL import ImageFilter
+                    mask = mask.filter(ImageFilter.GaussianBlur(radius=max(1, min(width, height) // 50)))
+                except Exception:
+                    pass
+                alpha = int(min(255, max(0, abs(v) * 2.0)))
+                mask = mask.point(lambda x: int(x * (alpha / 255.0)))
+                if v > 0:
+                    dark = Image.new('RGB', (width, height), (0, 0, 0))
+                    pil_img = Image.composite(dark, pil_img, mask)
+                else:
+                    light = Image.new('RGB', (width, height), (255, 255, 255))
+                    pil_img = Image.composite(light, pil_img, mask)
+            
+            # Sharpen/Clarity (enhance edge details)
+            shp = self.adjustments.get('sharpen', 0)
+            if shp != 0:
+                from PIL import ImageFilter
+                # Positive values = sharpen, Negative values = blur (smooth)
+                if shp > 0:
+                    # Sharpen: Use UnsharpMask for professional results
+                    # Map 0-100 to radius 0.5-3.0, percent 50-200, threshold 0-3
+                    intensity = shp / 100.0
+                    radius = 0.5 + (intensity * 2.5)  # 0.5 to 3.0
+                    percent = 50 + (intensity * 150)  # 50 to 200
+                    threshold = int(intensity * 3)     # 0 to 3
+                    pil_img = pil_img.filter(ImageFilter.UnsharpMask(
+                        radius=radius,
+                        percent=int(percent),
+                        threshold=threshold
+                    ))
+                else:
+                    # Negative sharpen = Blur/Smooth
+                    # Map -100 to -1 -> blur radius 5.0 to 0.5
+                    intensity = abs(shp) / 100.0
+                    blur_radius = 0.5 + (intensity * 4.5)  # 0.5 to 5.0
+                    pil_img = pil_img.filter(ImageFilter.GaussianBlur(radius=blur_radius))
+            
+            # Convert back to QPixmap
+            self._edit_pixmap = self._pil_to_qpixmap(pil_img)
+            self._update_editor_canvas_pixmap()
+            self._apply_editor_zoom()
+            # Push to history after applying adjustments
+            self._push_edit_history()
+            # Update histogram image at top of panel
+            if hasattr(self, 'histogram_label'):
+                hist_img = self._render_histogram_image(pil_img, width=360, height=120)
+                self.histogram_label.setPixmap(self._pil_to_qpixmap(hist_img))
+        except Exception as e:
+            print(f"[Adjustments] Error applying adjustments: {e}")
+
+    def _qpixmap_to_pil(self, pixmap: QPixmap):
+        """Robust conversion QPixmap -> PIL.Image using PNG buffer."""
+        from PySide6.QtCore import QBuffer, QIODevice
+        import io
+        from PIL import Image
+        buffer = QBuffer()
+        buffer.open(QIODevice.ReadWrite)
+        pixmap.save(buffer, 'PNG')
+        data = bytes(buffer.data())
+        buffer.close()
+        return Image.open(io.BytesIO(data)).convert('RGB')
+
+    def _pil_to_qpixmap(self, img):
+        """Convert PIL.Image -> QPixmap using bytes buffer."""
+        import io
+        from PySide6.QtGui import QPixmap
+        buffer = io.BytesIO()
+        img.save(buffer, format='PNG')
+        buffer.seek(0)
+        qpix = QPixmap()
+        qpix.loadFromData(buffer.read())
+        return qpix
+
+    def _render_histogram_image(self, img, width=360, height=120):
+        """Render an RGB histogram image using Pillow and return PIL.Image (smoothed, with clipping markers)."""
+        from PIL import Image, ImageDraw
+        if img.mode != 'RGB':
+            img = img.convert('RGB')
+        hist = img.histogram()
+        r = hist[0:256]
+        g = hist[256:512]
+        b = hist[512:768]
+        # Smoothing (moving average window=4)
+        def smooth(arr, w=4):
+            out = []
+            for i in range(256):
+                s = 0
+                c = 0
+                for k in range(-w, w+1):
+                    j = min(255, max(0, i+k))
+                    s += arr[j]
+                    c += 1
+                out.append(s / c)
+            return out
+        r_s = smooth(r)
+        g_s = smooth(g)
+        b_s = smooth(b)
+        max_val = max(max(r_s), max(g_s), max(b_s)) or 1
+        canvas = Image.new('RGB', (width, height), (40, 40, 40))
+        draw = ImageDraw.Draw(canvas)
+        def draw_channel(vals, color):
+            scaled = [v / max_val for v in vals]
+            for i in range(255):
+                x1 = int(i * (width / 256.0))
+                x2 = int((i + 1) * (width / 256.0))
+                y1 = height - int(scaled[i] * height)
+                y2 = height - int(scaled[i+1] * height)
+                draw.line([(x1, y1), (x2, y2)], fill=color, width=1)
+        draw_channel(r_s, (255, 0, 0))
+        draw_channel(g_s, (0, 255, 0))
+        draw_channel(b_s, (0, 0, 255))
+        # Clipping markers
+        clip_thresh = max_val * 0.05
+        if r[0] > clip_thresh or g[0] > clip_thresh or b[0] > clip_thresh:
+            draw.rectangle([(0, 0), (4, height)], fill=(255, 0, 0))
+        if r[255] > clip_thresh or g[255] > clip_thresh or b[255] > clip_thresh:
+            draw.rectangle([(width-4, 0), (width, height)], fill=(255, 0, 0))
+        return canvas
+
+    # === Editor crop, filters, and comparison helpers ===
+
+    def _create_edit_canvas(self):
+        from PySide6.QtWidgets import QWidget
+        from PySide6.QtCore import Qt, QPoint
+        class _EditCanvas(QWidget):
+            def __init__(self, parent):
+                super().__init__(parent)
+                self.parent = parent
+                self.setStyleSheet("background: #000;")
+                self.setMinimumSize(200, 200)
+                self.setMouseTracking(True)
+                # CRITICAL: Enable focus to receive wheel events
+                self.setFocusPolicy(Qt.WheelFocus)
+                self.setFocus()
+                # Crop drag state
+                self._crop_dragging = False
+                self._crop_handle = None  # 'TL','TR','BL','BR','L','R','T','B','move'
+                self._drag_start_pos = None
+                self._crop_start_rect = None
+
+            def wheelEvent(self, event):
+                """Handle wheel events for zoom - DIRECT implementation."""
+                try:
+                    from PySide6.QtCore import Qt
+                    # Check if Ctrl is pressed
+                    if event.modifiers() & Qt.ControlModifier:
+                        delta = event.angleDelta().y()
+                        print(f"[EditCanvas] Ctrl+Wheel detected: delta={delta}")
+                        if delta > 0:
+                            self.parent._editor_zoom_in()
+                            print(f"[EditCanvas] Zoomed IN to {self.parent.edit_zoom_level:.2f}x")
+                        else:
+                            self.parent._editor_zoom_out()
+                            print(f"[EditCanvas] Zoomed OUT to {self.parent.edit_zoom_level:.2f}x")
+                        event.accept()  # Consume the event
+                    else:
+                        print("[EditCanvas] Wheel without Ctrl - passing to parent")
+                        event.ignore()  # Let parent handle scrolling
+                except Exception as e:
+                    import traceback
+                    print(f"[EditCanvas] wheelEvent error: {e}")
+                    traceback.print_exc()
+                    event.ignore()
+
+            def paintEvent(self, ev):
+                from PySide6.QtGui import QPainter, QPen, QColor, QBrush, QTransform
+                from PySide6.QtCore import QRect, QRectF
+                p = QPainter(self)
+                p.setRenderHint(QPainter.Antialiasing)
+                # Choose pixmap (before/after)
+                pix_to_draw = None
+                if getattr(self.parent, 'before_after_active', False) and getattr(self.parent, '_original_pixmap', None):
+                    pix_to_draw = self.parent._original_pixmap
+                elif getattr(self.parent, '_edit_pixmap', None):
+                    pix_to_draw = self.parent._edit_pixmap
+                
+                # FAST ROTATION: Use Qt QTransform instead of PIL (GPU accelerated!)
+                if getattr(self.parent, 'crop_mode_active', False) and hasattr(self.parent, 'rotation_angle') and self.parent.rotation_angle != 0 and pix_to_draw:
+                    # Create rotation transform
+                    transform = QTransform()
+                    transform.rotate(-self.parent.rotation_angle)  # Negative for counterclockwise
+                    # Apply transform with smooth rendering
+                    pix_to_draw = pix_to_draw.transformed(transform, Qt.SmoothTransformation)
+                
+                # Draw centered scaled pixmap
+                if pix_to_draw and not pix_to_draw.isNull():
+                    w = max(1, int(pix_to_draw.width() * self.parent.edit_zoom_level))
+                    h = max(1, int(pix_to_draw.height() * self.parent.edit_zoom_level))
+                    scaled = pix_to_draw.scaled(w, h, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                    x = (self.width() - scaled.width()) // 2
+                    y = (self.height() - scaled.height()) // 2
+                    p.drawPixmap(x, y, scaled)
+                    # Crop overlay
+                    if getattr(self.parent, 'crop_mode_active', False) and getattr(self.parent, '_crop_rect_norm', None):
+                        nx, ny, nw, nh = self.parent._crop_rect_norm
+                        rx = x + int(nx * scaled.width())
+                        ry = y + int(ny * scaled.height())
+                        rw = int(nw * scaled.width())
+                        rh = int(nh * scaled.height())
+                        rect = QRect(rx, ry, rw, rh)
+                        
+                        # GOOGLE PHOTOS STYLE: Darken outside with stronger overlay
+                        from PySide6.QtGui import QPainterPath
+                        full = QPainterPath()
+                        full.addRect(self.rect())
+                        crop = QPainterPath()
+                        crop.addRect(rect)
+                        outside = full.subtracted(crop)
+                        p.fillPath(outside, QColor(0, 0, 0, 180))  # Darker overlay
+                        
+                        # GOOGLE PHOTOS STYLE: White border with shadow
+                        p.setPen(QPen(QColor(255, 255, 255, 255), 3))  # Thicker white border
+                        p.drawRect(rect)
+                        
+                        # GOOGLE PHOTOS STYLE: Rule of thirds grid (thinner, semi-transparent)
+                        p.setPen(QPen(QColor(255, 255, 255, 100), 1, Qt.SolidLine))  # Subtle solid lines
+                        x1 = rect.left() + rect.width() // 3
+                        x2 = rect.left() + 2 * rect.width() // 3
+                        y1 = rect.top() + rect.height() // 3
+                        y2 = rect.top() + 2 * rect.height() // 3
+                        p.drawLine(x1, rect.top(), x1, rect.bottom())
+                        p.drawLine(x2, rect.top(), x2, rect.bottom())
+                        p.drawLine(rect.left(), y1, rect.right(), y1)
+                        p.drawLine(rect.left(), y2, rect.right(), y2)
+                        
+                        # GOOGLE PHOTOS STYLE: Corner handles (larger, with border)
+                        p.setBrush(QBrush(QColor(255, 255, 255, 255)))
+                        p.setPen(QPen(QColor(66, 133, 244), 2))  # Blue border
+                        handle_size = 10
+                        corner_length = 20  # L-shaped corner handles
+                        
+                        # Draw L-shaped corners (Google Photos style)
+                        p.setPen(QPen(QColor(255, 255, 255, 255), 3))
+                        # Top-left corner
+                        p.drawLine(rect.left(), rect.top(), rect.left() + corner_length, rect.top())
+                        p.drawLine(rect.left(), rect.top(), rect.left(), rect.top() + corner_length)
+                        # Top-right corner
+                        p.drawLine(rect.right(), rect.top(), rect.right() - corner_length, rect.top())
+                        p.drawLine(rect.right(), rect.top(), rect.right(), rect.top() + corner_length)
+                        # Bottom-left corner
+                        p.drawLine(rect.left(), rect.bottom(), rect.left() + corner_length, rect.bottom())
+                        p.drawLine(rect.left(), rect.bottom(), rect.left(), rect.bottom() - corner_length)
+                        # Bottom-right corner
+                        p.drawLine(rect.right(), rect.bottom(), rect.right() - corner_length, rect.bottom())
+                        p.drawLine(rect.right(), rect.bottom(), rect.right(), rect.bottom() - corner_length)
+                        
+                        # Edge handles (small circles)
+                        p.setBrush(QBrush(QColor(255, 255, 255, 255)))
+                        p.setPen(QPen(QColor(66, 133, 244), 2))
+                        handle_r = 5
+                        for hx, hy in [(rect.center().x(), rect.top()), (rect.center().x(), rect.bottom()),
+                                       (rect.left(), rect.center().y()), (rect.right(), rect.center().y())]:
+                            p.drawEllipse(QPoint(hx, hy), handle_r, handle_r)
+                p.end()
+
+            def mousePressEvent(self, ev):
+                from PySide6.QtCore import Qt, QRect
+                if not getattr(self.parent, 'crop_mode_active', False):
+                    return
+                if ev.button() != Qt.LeftButton:
+                    return
+                # CRITICAL: Check if _crop_rect_norm exists before accessing
+                if not hasattr(self.parent, '_crop_rect_norm') or self.parent._crop_rect_norm is None:
+                    return
+                # Find handle or move
+                pix = getattr(self.parent, '_edit_pixmap', None) or getattr(self.parent, '_original_pixmap', None)
+                if not pix or pix.isNull():
+                    return
+                w = max(1, int(pix.width() * self.parent.edit_zoom_level))
+                h = max(1, int(pix.height() * self.parent.edit_zoom_level))
+                x_off = (self.width() - w) // 2
+                y_off = (self.height() - h) // 2
+                nx, ny, nw, nh = self.parent._crop_rect_norm
+                rx = x_off + int(nx * w)
+                ry = y_off + int(ny * h)
+                rw = int(nw * w)
+                rh = int(nh * h)
+                rect = QRect(rx, ry, rw, rh)
+                mx = ev.pos().x()
+                my = ev.pos().y()
+                handle_r = 15  # Increased handle size for easier grabbing
+                # Check corners/edges
+                if abs(mx - rect.left()) < handle_r and abs(my - rect.top()) < handle_r:
+                    self._crop_handle = 'TL'
+                elif abs(mx - rect.right()) < handle_r and abs(my - rect.top()) < handle_r:
+                    self._crop_handle = 'TR'
+                elif abs(mx - rect.left()) < handle_r and abs(my - rect.bottom()) < handle_r:
+                    self._crop_handle = 'BL'
+                elif abs(mx - rect.right()) < handle_r and abs(my - rect.bottom()) < handle_r:
+                    self._crop_handle = 'BR'
+                elif abs(my - rect.top()) < handle_r and rect.left() < mx < rect.right():
+                    self._crop_handle = 'T'
+                elif abs(my - rect.bottom()) < handle_r and rect.left() < mx < rect.right():
+                    self._crop_handle = 'B'
+                elif abs(mx - rect.left()) < handle_r and rect.top() < my < rect.bottom():
+                    self._crop_handle = 'L'
+                elif abs(mx - rect.right()) < handle_r and rect.top() < my < rect.bottom():
+                    self._crop_handle = 'R'
+                elif rect.contains(ev.pos()):
+                    self._crop_handle = 'move'
+                else:
+                    self._crop_handle = None
+                if self._crop_handle:
+                    self._crop_dragging = True
+                    self._drag_start_pos = ev.pos()
+                    self._crop_start_rect = (nx, ny, nw, nh)
+
+            def mouseMoveEvent(self, ev):
+                from PySide6.QtCore import Qt, QRect
+                if not self._crop_dragging or not self._drag_start_pos:
+                    # Cursor feedback
+                    if getattr(self.parent, 'crop_mode_active', False):
+                        # CRITICAL: Check if _crop_rect_norm exists before accessing
+                        if not hasattr(self.parent, '_crop_rect_norm') or self.parent._crop_rect_norm is None:
+                            self.setCursor(Qt.ArrowCursor)
+                            return
+                        pix = getattr(self.parent, '_edit_pixmap', None) or getattr(self.parent, '_original_pixmap', None)
+                        if pix and not pix.isNull():
+                            w = max(1, int(pix.width() * self.parent.edit_zoom_level))
+                            h = max(1, int(pix.height() * self.parent.edit_zoom_level))
+                            x_off = (self.width() - w) // 2
+                            y_off = (self.height() - h) // 2
+                            nx, ny, nw, nh = self.parent._crop_rect_norm
+                            rx = x_off + int(nx * w)
+                            ry = y_off + int(ny * h)
+                            rw = int(nw * w)
+                            rh = int(nh * h)
+                            rect = QRect(rx, ry, rw, rh)
+                            mx = ev.pos().x()
+                            my = ev.pos().y()
+                            hr = 15  # Increased handle size for easier grabbing
+                            # Corner handles - highest priority
+                            if (abs(mx-rect.left())<hr and abs(my-rect.top())<hr):
+                                self.setCursor(Qt.SizeFDiagCursor)
+                            elif (abs(mx-rect.right())<hr and abs(my-rect.top())<hr):
+                                self.setCursor(Qt.SizeBDiagCursor)
+                            elif (abs(mx-rect.left())<hr and abs(my-rect.bottom())<hr):
+                                self.setCursor(Qt.SizeBDiagCursor)
+                            elif (abs(mx-rect.right())<hr and abs(my-rect.bottom())<hr):
+                                self.setCursor(Qt.SizeFDiagCursor)
+                            # Edge handles
+                            elif abs(my-rect.top())<hr:
+                                self.setCursor(Qt.SizeVerCursor)
+                            elif abs(my-rect.bottom())<hr:
+                                self.setCursor(Qt.SizeVerCursor)
+                            elif abs(mx-rect.left())<hr:
+                                self.setCursor(Qt.SizeHorCursor)
+                            elif abs(mx-rect.right())<hr:
+                                self.setCursor(Qt.SizeHorCursor)
+                            # Move handle (inside rect)
+                            elif rect.contains(ev.pos()):
+                                self.setCursor(Qt.SizeAllCursor)
+                            else:
+                                self.setCursor(Qt.ArrowCursor)
+                    return
+                
+                # Compute delta in normalized coords
+                pix = getattr(self.parent, '_edit_pixmap', None) or getattr(self.parent, '_original_pixmap', None)
+                if not pix or pix.isNull():
+                    return
+                w = max(1, int(pix.width() * self.parent.edit_zoom_level))
+                h = max(1, int(pix.height() * self.parent.edit_zoom_level))
+                dx_pix = ev.pos().x() - self._drag_start_pos.x()
+                dy_pix = ev.pos().y() - self._drag_start_pos.y()
+                dx_norm = dx_pix / w
+                dy_norm = dy_pix / h
+                nx, ny, nw, nh = self._crop_start_rect
+                
+                # Get current aspect ratio constraint
+                aspect_locked = self.parent._get_active_aspect_ratio()
+                
+                # Apply delta based on handle
+                if self._crop_handle == 'move':
+                    nx += dx_norm
+                    ny += dy_norm
+                    nx = max(0, min(1.0 - nw, nx))
+                    ny = max(0, min(1.0 - nh, ny))
+                elif self._crop_handle in ['TL', 'TR', 'BL', 'BR', 'T', 'B', 'L', 'R']:
+                    # Resize handles
+                    if self._crop_handle == 'TL':
+                        nx += dx_norm; ny += dy_norm; nw -= dx_norm; nh -= dy_norm
+                    elif self._crop_handle == 'TR':
+                        ny += dy_norm; nw += dx_norm; nh -= dy_norm
+                    elif self._crop_handle == 'BL':
+                        nx += dx_norm; nw -= dx_norm; nh += dy_norm
+                    elif self._crop_handle == 'BR':
+                        nw += dx_norm; nh += dy_norm
+                    elif self._crop_handle == 'T':
+                        ny += dy_norm; nh -= dy_norm
+                    elif self._crop_handle == 'B':
+                        nh += dy_norm
+                    elif self._crop_handle == 'L':
+                        nx += dx_norm; nw -= dx_norm
+                    elif self._crop_handle == 'R':
+                        nw += dx_norm
+                    
+                    # Apply aspect ratio constraint if locked
+                    if aspect_locked:
+                        target_ratio = aspect_locked
+                        current_ratio = nw / max(1e-6, nh)
+                        if abs(current_ratio - target_ratio) > 0.01:  # Need adjustment
+                            # Adjust based on which dimension changed more
+                            if self._crop_handle in ['TL', 'TR', 'BL', 'BR']:
+                                # Corner - adjust height to match width
+                                nh = nw / target_ratio
+                            elif self._crop_handle in ['L', 'R']:
+                                # Width changed - adjust height
+                                nh = nw / target_ratio
+                            elif self._crop_handle in ['T', 'B']:
+                                # Height changed - adjust width
+                                nw = nh * target_ratio
+                
+                # Clamp to valid range
+                nw = max(0.05, min(1.0, nw))
+                nh = max(0.05, min(1.0, nh))
+                nx = max(0.0, min(1.0 - nw, nx))
+                ny = max(0.0, min(1.0 - nh, ny))
+                
+                self.parent._crop_rect_norm = (nx, ny, nw, nh)
+                self.update()
+
+            def mouseReleaseEvent(self, ev):
+                if ev.button() == Qt.LeftButton:
+                    self._crop_dragging = False
+                    self._crop_handle = None
+                    self._drag_start_pos = None
+                    self.setCursor(Qt.ArrowCursor)
+        return _EditCanvas(self)
+
+    def _build_crop_toolbar(self):
+        from PySide6.QtWidgets import QWidget, QHBoxLayout, QPushButton, QLabel
+        bar = QWidget()
+        bar.setStyleSheet("""
+            QWidget {
+                background: rgba(30, 30, 30, 0.95);
+                border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            }
+        """)
+        lay = QHBoxLayout(bar)
+        lay.setContentsMargins(16, 12, 16, 12)
+        lay.setSpacing(12)
+        
+        # Straighten slider (LEFT SIDE - primary control)
+        straighten_container = QWidget()
+        straighten_layout = QHBoxLayout(straighten_container)
+        straighten_layout.setContentsMargins(0, 0, 0, 0)
+        straighten_layout.setSpacing(8)
+        
+        straighten_icon = QLabel("↻")
+        straighten_icon.setStyleSheet("color: white; font-size: 16pt; font-weight: bold;")
+        straighten_layout.addWidget(straighten_icon)
+        
+        straighten_lbl = QLabel("Straighten:")
+        straighten_lbl.setStyleSheet("color: rgba(255,255,255,0.9); font-size: 10pt;")
+        straighten_layout.addWidget(straighten_lbl)
+        
+        self.straighten_slider = QSlider(Qt.Horizontal)
+        self.straighten_slider.setRange(-1800, 1800)  # -180° to +180° with 0.1° precision
+        self.straighten_slider.setValue(0)
+        self.straighten_slider.setFixedWidth(200)
+        self.straighten_slider.setStyleSheet("""
+            QSlider::groove:horizontal {
+                background: rgba(255, 255, 255, 0.2);
+                height: 4px;
+                border-radius: 2px;
+            }
+            QSlider::handle:horizontal {
+                background: rgba(66, 133, 244, 1.0);
+                border: 2px solid white;
+                width: 16px;
+                height: 16px;
+                margin: -6px 0;
+                border-radius: 8px;
+            }
+            QSlider::handle:horizontal:hover {
+                background: rgba(66, 133, 244, 1.0);
+                width: 18px;
+                height: 18px;
+                margin: -7px 0;
+                border-radius: 9px;
+            }
+        """)
+        # Use timer for smooth rotation (debounced)
+        self.straighten_slider.valueChanged.connect(self._on_straighten_slider_change)
+        straighten_layout.addWidget(self.straighten_slider)
+        
+        self.straighten_label = QLabel("0.0°")
+        self.straighten_label.setStyleSheet("""
+            color: white;
+            font-size: 10pt;
+            font-weight: bold;
+            min-width: 50px;
+            padding: 4px 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+        """)
+        self.straighten_label.setAlignment(Qt.AlignCenter)
+        straighten_layout.addWidget(self.straighten_label)
+        
+        lay.addWidget(straighten_container)
+        lay.addSpacing(20)
+        
+        # 90° Rotation buttons (LEFT-MIDDLE)
+        rotate_label = QLabel("Rotate:")
+        rotate_label.setStyleSheet("color: rgba(255,255,255,0.7); font-size: 9pt;")
+        lay.addWidget(rotate_label)
+        
+        rotate_left_btn = QPushButton("↶ 90°")
+        rotate_left_btn.setToolTip("Rotate 90° counter-clockwise")
+        rotate_left_btn.setStyleSheet("""
+            QPushButton {
+                background: rgba(255, 255, 255, 0.1);
+                color: rgba(255, 255, 255, 0.9);
+                border: 1px solid rgba(255, 255, 255, 0.2);
+                border-radius: 4px;
+                padding: 6px 12px;
+                font-size: 10pt;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background: rgba(255, 255, 255, 0.2);
+                color: white;
+                border: 1px solid rgba(255, 255, 255, 0.4);
+            }
+            QPushButton:pressed {
+                background: rgba(66, 133, 244, 0.6);
+            }
+        """)
+        rotate_left_btn.clicked.connect(self._rotate_90_left)
+        lay.addWidget(rotate_left_btn)
+        
+        rotate_right_btn = QPushButton("↷ 90°")
+        rotate_right_btn.setToolTip("Rotate 90° clockwise")
+        rotate_right_btn.setStyleSheet("""
+            QPushButton {
+                background: rgba(255, 255, 255, 0.1);
+                color: rgba(255, 255, 255, 0.9);
+                border: 1px solid rgba(255, 255, 255, 0.2);
+                border-radius: 4px;
+                padding: 6px 12px;
+                font-size: 10pt;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background: rgba(255, 255, 255, 0.2);
+                color: white;
+                border: 1px solid rgba(255, 255, 255, 0.4);
+            }
+            QPushButton:pressed {
+                background: rgba(66, 133, 244, 0.6);
+            }
+        """)
+        rotate_right_btn.clicked.connect(self._rotate_90_right)
+        lay.addWidget(rotate_right_btn)
+        
+        lay.addSpacing(20)
+        
+        # Flip buttons (MIDDLE)
+        flip_label = QLabel("Flip:")
+        flip_label.setStyleSheet("color: rgba(255,255,255,0.7); font-size: 9pt;")
+        lay.addWidget(flip_label)
+        
+        flip_h_btn = QPushButton("↔ Horizontal")
+        flip_h_btn.setToolTip("Flip horizontally (mirror)")
+        flip_h_btn.setStyleSheet("""
+            QPushButton {
+                background: rgba(255, 255, 255, 0.1);
+                color: rgba(255, 255, 255, 0.9);
+                border: 1px solid rgba(255, 255, 255, 0.2);
+                border-radius: 4px;
+                padding: 6px 12px;
+                font-size: 9pt;
+            }
+            QPushButton:hover {
+                background: rgba(255, 255, 255, 0.2);
+                color: white;
+                border: 1px solid rgba(255, 255, 255, 0.4);
+            }
+            QPushButton:pressed {
+                background: rgba(66, 133, 244, 0.6);
+            }
+        """)
+        flip_h_btn.clicked.connect(self._flip_horizontal)
+        lay.addWidget(flip_h_btn)
+        
+        flip_v_btn = QPushButton("↕ Vertical")
+        flip_v_btn.setToolTip("Flip vertically")
+        flip_v_btn.setStyleSheet("""
+            QPushButton {
+                background: rgba(255, 255, 255, 0.1);
+                color: rgba(255, 255, 255, 0.9);
+                border: 1px solid rgba(255, 255, 255, 0.2);
+                border-radius: 4px;
+                padding: 6px 12px;
+                font-size: 9pt;
+            }
+            QPushButton:hover {
+                background: rgba(255, 255, 255, 0.2);
+                color: white;
+                border: 1px solid rgba(255, 255, 255, 0.4);
+            }
+            QPushButton:pressed {
+                background: rgba(66, 133, 244, 0.6);
+            }
+        """)
+        flip_v_btn.clicked.connect(self._flip_vertical)
+        lay.addWidget(flip_v_btn)
+        
+        lay.addSpacing(20)
+        
+        # Aspect ratio presets (MIDDLE)
+        aspect_label = QLabel("Aspect:")
+        aspect_label.setStyleSheet("color: rgba(255,255,255,0.7); font-size: 9pt;")
+        lay.addWidget(aspect_label)
+        
+        # Create button group for exclusive selection
+        self.aspect_button_group = []
+        
+        for label, ratio in [("Free", "free"), ("1:1", (1,1)), ("4:3", (4,3)), ("16:9", (16,9)), ("Original", None)]:
+            btn = QPushButton(label)
+            btn.setCheckable(True)
+            btn.setStyleSheet("""
+                QPushButton {
+                    background: rgba(255, 255, 255, 0.1);
+                    color: rgba(255, 255, 255, 0.8);
+                    border: 1px solid rgba(255, 255, 255, 0.2);
+                    border-radius: 4px;
+                    padding: 6px 12px;
+                    font-size: 9pt;
+                }
+                QPushButton:hover {
+                    background: rgba(255, 255, 255, 0.15);
+                    color: white;
+                }
+                QPushButton:checked {
+                    background: rgba(66, 133, 244, 0.8);
+                    color: white;
+                    border: 1px solid rgba(66, 133, 244, 1.0);
+                    font-weight: bold;
+                }
+            """)
+            # Connect with lambda that unchecks other buttons
+            btn.clicked.connect(lambda checked, r=ratio, b=btn: self._on_aspect_preset_clicked(r, b))
+            lay.addWidget(btn)
+            self.aspect_button_group.append(btn)
+            
+            # Check 'Free' by default
+            if label == "Free":
+                btn.setChecked(True)
+        
+        lay.addStretch()
+        
+        # Apply/Cancel buttons (RIGHT SIDE)
+        apply_btn = QPushButton("✓ Apply Crop")
+        apply_btn.setStyleSheet("""
+            QPushButton {
+                background: rgba(34, 139, 34, 0.9);
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 8px 20px;
+                font-size: 10pt;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background: rgba(34, 139, 34, 1.0);
+            }
+        """)
+        apply_btn.clicked.connect(self._apply_crop)
+        lay.addWidget(apply_btn)
+        
+        cancel_btn = QPushButton("✕ Cancel")
+        cancel_btn.setStyleSheet("""
+            QPushButton {
+                background: rgba(255, 255, 255, 0.1);
+                color: white;
+                border: 1px solid rgba(255, 255, 255, 0.3);
+                border-radius: 6px;
+                padding: 8px 20px;
+                font-size: 10pt;
+            }
+            QPushButton:hover {
+                background: rgba(255, 255, 255, 0.15);
+            }
+        """)
+        cancel_btn.clicked.connect(self._cancel_crop)
+        lay.addWidget(cancel_btn)
+        
+        return bar
+
+    def _rotate_90_left(self):
+        """Rotate image 90° counter-clockwise (left)."""
+        try:
+            if not getattr(self, '_edit_pixmap', None) or self._edit_pixmap.isNull():
+                return
+            
+            from PySide6.QtGui import QTransform
+            
+            # Create 90° counter-clockwise rotation transform
+            transform = QTransform()
+            transform.rotate(-90)  # Negative = counter-clockwise
+            
+            # Apply to edit pixmap
+            self._edit_pixmap = self._edit_pixmap.transformed(transform, Qt.SmoothTransformation)
+            
+            # Also apply to original if in crop mode
+            if hasattr(self, '_original_pixmap') and self._original_pixmap:
+                self._original_pixmap = self._original_pixmap.transformed(transform, Qt.SmoothTransformation)
+            
+            # Update display
+            self._update_editor_canvas_pixmap()
+            self._apply_editor_zoom()
+            self._push_edit_history()
+            
+            print("[Editor] Rotated 90° counter-clockwise")
+        except Exception as e:
+            import traceback
+            print(f"[Editor] Error rotating left: {e}")
+            traceback.print_exc()
+    
+    def _rotate_90_right(self):
+        """Rotate image 90° clockwise (right)."""
+        try:
+            if not getattr(self, '_edit_pixmap', None) or self._edit_pixmap.isNull():
+                return
+            
+            from PySide6.QtGui import QTransform
+            
+            # Create 90° clockwise rotation transform
+            transform = QTransform()
+            transform.rotate(90)  # Positive = clockwise
+            
+            # Apply to edit pixmap
+            self._edit_pixmap = self._edit_pixmap.transformed(transform, Qt.SmoothTransformation)
+            
+            # Also apply to original if in crop mode
+            if hasattr(self, '_original_pixmap') and self._original_pixmap:
+                self._original_pixmap = self._original_pixmap.transformed(transform, Qt.SmoothTransformation)
+            
+            # Update display
+            self._update_editor_canvas_pixmap()
+            self._apply_editor_zoom()
+            self._push_edit_history()
+            
+            print("[Editor] Rotated 90° clockwise")
+        except Exception as e:
+            import traceback
+            print(f"[Editor] Error rotating right: {e}")
+            traceback.print_exc()
+    
+    def _flip_horizontal(self):
+        """Flip image horizontally (mirror)."""
+        try:
+            if not getattr(self, '_edit_pixmap', None) or self._edit_pixmap.isNull():
+                return
+            
+            from PySide6.QtGui import QTransform
+            
+            # Create horizontal flip transform
+            transform = QTransform()
+            transform.scale(-1, 1)  # Mirror on X axis
+            
+            # Apply to edit pixmap
+            self._edit_pixmap = self._edit_pixmap.transformed(transform, Qt.SmoothTransformation)
+            
+            # Also apply to original if in crop mode
+            if hasattr(self, '_original_pixmap') and self._original_pixmap:
+                self._original_pixmap = self._original_pixmap.transformed(transform, Qt.SmoothTransformation)
+            
+            # Update display
+            self._update_editor_canvas_pixmap()
+            self._apply_editor_zoom()
+            self._push_edit_history()
+            
+            print("[Editor] Flipped horizontally")
+        except Exception as e:
+            import traceback
+            print(f"[Editor] Error flipping horizontal: {e}")
+            traceback.print_exc()
+    
+    def _flip_vertical(self):
+        """Flip image vertically."""
+        try:
+            if not getattr(self, '_edit_pixmap', None) or self._edit_pixmap.isNull():
+                return
+            
+            from PySide6.QtGui import QTransform
+            
+            # Create vertical flip transform
+            transform = QTransform()
+            transform.scale(1, -1)  # Mirror on Y axis
+            
+            # Apply to edit pixmap
+            self._edit_pixmap = self._edit_pixmap.transformed(transform, Qt.SmoothTransformation)
+            
+            # Also apply to original if in crop mode
+            if hasattr(self, '_original_pixmap') and self._original_pixmap:
+                self._original_pixmap = self._original_pixmap.transformed(transform, Qt.SmoothTransformation)
+            
+            # Update display
+            self._update_editor_canvas_pixmap()
+            self._apply_editor_zoom()
+            self._push_edit_history()
+            
+            print("[Editor] Flipped vertically")
+        except Exception as e:
+            import traceback
+            print(f"[Editor] Error flipping vertical: {e}")
+            traceback.print_exc()
+    
+    def _get_active_aspect_ratio(self):
+        """Get the currently active aspect ratio (or None if freeform)."""
+        if not hasattr(self, 'aspect_button_group'):
+            return None
+        
+        # Find which button is checked
+        aspect_map = {
+            "Free": None,
+            "1:1": 1.0,
+            "4:3": 4.0/3.0,
+            "16:9": 16.0/9.0,
+            "Original": None  # Will be calculated from image
+        }
+        
+        for btn in self.aspect_button_group:
+            if btn.isChecked():
+                label = btn.text()
+                if label == "Original":
+                    # Calculate from current image
+                    pix = getattr(self, '_edit_pixmap', None) or getattr(self, 'original_pixmap', None)
+                    if pix and not pix.isNull():
+                        return pix.width() / max(1, pix.height())
+                return aspect_map.get(label)
+        
+        return None  # Freeform by default
+    
+    def _on_aspect_preset_clicked(self, ratio, clicked_btn):
+        """Handle aspect ratio preset button click - ensure only one is checked."""
+        # Uncheck all other buttons
+        if hasattr(self, 'aspect_button_group'):
+            for btn in self.aspect_button_group:
+                if btn != clicked_btn:
+                    btn.setChecked(False)
+        
+        # Apply the selected aspect ratio
+        self._set_crop_aspect(ratio)
+    
+    def _on_straighten_slider_change(self, value):
+        """Handle straighten slider - instant update with Qt QTransform (no lag!)."""
+        # Convert to degrees with 0.1 precision
+        degrees = value / 10.0
+        self.straighten_label.setText(f"{degrees:.1f}°")
+        self.rotation_angle = degrees
+        
+        # INSTANT UPDATE: Qt QTransform is so fast we don't need debouncing!
+        if hasattr(self, 'editor_canvas'):
+            self.editor_canvas.update()
+    
+    def _apply_rotation_preview(self):
+        """Apply rotation preview (called after debounce)."""
+        if hasattr(self, 'editor_canvas'):
+            self.editor_canvas.update()
+
+    def _on_straighten_changed(self, value):
+        """DEPRECATED - use _on_straighten_slider_change instead."""
+        self._on_straighten_slider_change(value)
+
+    def _toggle_crop_mode(self):
+        """Toggle crop mode in EDITOR (not viewer)."""
+        self.crop_mode_active = not getattr(self, 'crop_mode_active', False)
+        print(f"[EDITOR] Crop mode toggled: {'ON' if self.crop_mode_active else 'OFF'}")
+        if self.crop_mode_active:
+            # Init normalized crop rect centered (80% of image)
+            self._crop_rect_norm = (0.1, 0.1, 0.8, 0.8)
+            if hasattr(self, 'crop_toolbar'):
+                self.crop_toolbar.show()  # SHOW crop toolbar
+                print("[EDITOR] ✓ Crop toolbar SHOWN")
+            else:
+                print("[EDITOR] ✗ crop_toolbar not found!")
+        else:
+            if hasattr(self, 'crop_toolbar'):
+                self.crop_toolbar.hide()
+                print("[EDITOR] ✓ Crop toolbar HIDDEN")
+            self._crop_rect_norm = None
+        # Refresh canvas
+        if hasattr(self, 'editor_canvas'):
+            self.editor_canvas.update()
+            print("[EDITOR] Canvas updated")
+        # Update toggle state
+        if hasattr(self, 'crop_btn'):
+            self.crop_btn.setChecked(self.crop_mode_active)
+            print(f"[EDITOR] Crop button checked: {self.crop_mode_active}")
+
+    def _editor_undo(self):
+        try:
+            if self.edit_history_index > 0:
+                self.edit_history_index -= 1
+                pixmap, adj_dict = self.edit_history[self.edit_history_index]
+                self._edit_pixmap = pixmap.copy()
+                self.adjustments = adj_dict.copy()
+                # Update sliders
+                for key, val in adj_dict.items():
+                    slider = getattr(self, f"slider_{key}", None)
+                    label = getattr(self, f"{key}_label", None)
+                    if slider:
+                        slider.setValue(val)
+                    if label:
+                        label.setText(f"{key.capitalize()}: {val}")
+                self._update_editor_canvas_pixmap()
+                self._apply_editor_zoom()
+                self._update_undo_redo_buttons()
+        except Exception as e:
+            print(f"[Undo] Error: {e}")
+
+    def _editor_redo(self):
+        try:
+            if self.edit_history_index < len(self.edit_history) - 1:
+                self.edit_history_index += 1
+                pixmap, adj_dict = self.edit_history[self.edit_history_index]
+                self._edit_pixmap = pixmap.copy()
+                self.adjustments = adj_dict.copy()
+                # Update sliders
+                for key, val in adj_dict.items():
+                    slider = getattr(self, f"slider_{key}", None)
+                    label = getattr(self, f"{key}_label", None)
+                    if slider:
+                        slider.setValue(val)
+                    if label:
+                        label.setText(f"{key.capitalize()}: {val}")
+                self._update_editor_canvas_pixmap()
+                self._apply_editor_zoom()
+                self._update_undo_redo_buttons()
+        except Exception as e:
+            print(f"[Redo] Error: {e}")
+
+    def _push_edit_history(self):
+        try:
+            if not getattr(self, '_edit_pixmap', None):
+                return
+            # Truncate forward history if we're in the middle
+            if self.edit_history_index < len(self.edit_history) - 1:
+                self.edit_history = self.edit_history[:self.edit_history_index + 1]
+            # Add current state
+            self.edit_history.append((self._edit_pixmap.copy(), self.adjustments.copy()))
+            # Limit history size
+            if len(self.edit_history) > self.max_history:
+                self.edit_history.pop(0)
+            else:
+                self.edit_history_index += 1
+            self._update_undo_redo_buttons()
+        except Exception as e:
+            print(f"[History] Push error: {e}")
+
+    def _update_undo_redo_buttons(self):
+        try:
+            if hasattr(self, 'undo_btn'):
+                self.undo_btn.setEnabled(self.edit_history_index > 0)
+            if hasattr(self, 'redo_btn'):
+                self.redo_btn.setEnabled(self.edit_history_index < len(self.edit_history) - 1)
+        except Exception:
+            pass
+
+    def _export_current_media(self):
+        """Export current media (photo or video) based on file type."""
+        try:
+            # Check if current file is video
+            if getattr(self, 'is_video_file', False):
+                # Export video with trim/rotate
+                self._export_edited_video()
+            else:
+                # Export photo with adjustments
+                self._export_edited_image()
+        except Exception as e:
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.critical(self, "Export Error", f"Error exporting media:\n{e}")
+    
+    def _export_edited_image(self):
+        try:
+            if not getattr(self, '_edit_pixmap', None) or self._edit_pixmap.isNull():
+                from PySide6.QtWidgets import QMessageBox
+                QMessageBox.warning(self, "Export Error", "No edited image to export.")
+                return
+            from PySide6.QtWidgets import QFileDialog, QMessageBox
+            import os
+            # Suggest filename
+            original_path = getattr(self, 'media_path', '')
+            if original_path:
+                base, ext = os.path.splitext(os.path.basename(original_path))
+                suggested = f"{base}_edited{ext}"
+            else:
+                suggested = "edited_image.jpg"
+            file_path, _ = QFileDialog.getSaveFileName(
+                self,
+                "Export Edited Image",
+                suggested,
+                "Images (*.jpg *.jpeg *.png *.tiff *.bmp);;All Files (*.*)"
+            )
+            if file_path:
+                success = self._edit_pixmap.save(file_path, quality=95)
+                if success:
+                    QMessageBox.information(self, "Export Success", f"Image exported to:\n{file_path}")
+                else:
+                    QMessageBox.warning(self, "Export Error", "Failed to save image.")
+        except Exception as e:
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.critical(self, "Export Error", f"Error exporting image:\n{e}")
+
+    def keyPressEvent(self, event):
+        try:
+            from PySide6.QtCore import Qt
+            # Undo/Redo shortcuts
+            if event.modifiers() & Qt.ControlModifier:
+                if event.key() == Qt.Key_Z:
+                    self._editor_undo()
+                    return
+                elif event.key() == Qt.Key_Y:
+                    self._editor_redo()
+                    return
+            # Pass to parent
+            super().keyPressEvent(event)
+        except Exception:
+            super().keyPressEvent(event)
+
+    def _set_crop_aspect(self, ratio):
+        """Adjust normalized crop rect to selected aspect ratio, maintaining zoom."""
+        if not getattr(self, '_crop_rect_norm', None):
+            return
+        
+        nx, ny, nw, nh = self._crop_rect_norm
+        
+        if ratio == "free":
+            # Free form - no constraint
+            print("[Crop] Aspect: Freeform (no constraint)")
+            return
+        
+        try:
+            # Get current displayed image size (after rotation and zoom)
+            pix = getattr(self, '_edit_pixmap', None) or getattr(self, 'original_pixmap', None)
+            if not pix or pix.isNull():
+                return
+            
+            # If rotated, account for rotation
+            if hasattr(self, 'rotation_angle') and self.rotation_angle != 0:
+                from PySide6.QtGui import QTransform
+                transform = QTransform()
+                transform.rotate(-self.rotation_angle)
+                pix = pix.transformed(transform, Qt.SmoothTransformation)
+            
+            img_w = pix.width()
+            img_h = pix.height()
+            
+            # Calculate target aspect ratio
+            if ratio is None:
+                # Original aspect ratio of the image
+                target_ratio = img_w / max(1, img_h)
+                print(f"[Crop] Aspect: Original ({img_w}x{img_h} = {target_ratio:.2f})")
+            else:
+                # Specified aspect ratio (e.g., 16:9, 4:3, 1:1)
+                target_ratio = ratio[0] / ratio[1]
+                print(f"[Crop] Aspect: {ratio[0]}:{ratio[1]} = {target_ratio:.2f}")
+            
+            # Get current crop rectangle dimensions
+            current_ratio = nw / max(1e-6, nh)
+            
+            # Adjust crop to match target ratio while keeping it centered
+            if current_ratio > target_ratio:
+                # Current crop is too wide - reduce width
+                new_w = nh * target_ratio
+                new_h = nh
+            else:
+                # Current crop is too tall - reduce height
+                new_w = nw
+                new_h = nw / target_ratio
+            
+            # Ensure new dimensions don't exceed image bounds
+            new_w = min(new_w, 1.0)
+            new_h = min(new_h, 1.0)
+            
+            # Center the new crop rectangle
+            cx = nx + nw / 2  # Current center X
+            cy = ny + nh / 2  # Current center Y
+            
+            new_nx = cx - new_w / 2
+            new_ny = cy - new_h / 2
+            
+            # Clamp to image bounds
+            new_nx = max(0.0, min(1.0 - new_w, new_nx))
+            new_ny = max(0.0, min(1.0 - new_h, new_ny))
+            
+            self._crop_rect_norm = (new_nx, new_ny, new_w, new_h)
+            
+            if hasattr(self, 'editor_canvas'):
+                self.editor_canvas.update()
+            
+            print(f"[Crop] Adjusted crop: ({new_nx:.2f}, {new_ny:.2f}, {new_w:.2f}, {new_h:.2f})")
+            
+        except Exception as e:
+            import traceback
+            print(f"[Crop] Error setting aspect: {e}")
+            traceback.print_exc()
+
+    def _apply_crop(self):
+        try:
+            if not getattr(self, '_crop_rect_norm', None) or not getattr(self, '_original_pixmap', None):
+                return
+            
+            # Start with the base pixmap
+            base_pixmap = self._original_pixmap
+            
+            # FAST ROTATION: Apply straighten rotation using Qt QTransform (GPU accelerated)
+            if hasattr(self, 'rotation_angle') and self.rotation_angle != 0:
+                from PySide6.QtGui import QTransform
+                transform = QTransform()
+                transform.rotate(-self.rotation_angle)
+                base_pixmap = base_pixmap.transformed(transform, Qt.SmoothTransformation)
+                print(f"[Crop] Applied {self.rotation_angle}° rotation using QTransform")
+            
+            # Convert to PIL for cropping
+            from PIL import Image
+            pil_img = self._qpixmap_to_pil(base_pixmap)
+            w, h = pil_img.size
+            
+            # Calculate crop rectangle
+            nx, ny, nw, nh = self._crop_rect_norm
+            x = int(nx * w); y = int(ny * h); cw = int(nw * w); ch = int(nh * h)
+            
+            # Apply crop
+            cropped = pil_img.crop((x, y, x+cw, y+ch))
+            
+            # Convert back to QPixmap
+            self._edit_pixmap = self._pil_to_qpixmap(cropped)
+            
+            # Reset crop state
+            self._crop_rect_norm = None
+            self.crop_mode_active = False
+            self.rotation_angle = 0
+            if hasattr(self, 'crop_toolbar'):
+                self.crop_toolbar.hide()
+            if hasattr(self, 'straighten_slider'):
+                self.straighten_slider.setValue(0)
+            
+            # Update display
+            self._update_editor_canvas_pixmap()
+            self._apply_editor_zoom()
+            self._push_edit_history()
+            
+            print(f"[Crop] Successfully cropped to {cw}x{ch}")
+        except Exception as e:
+            import traceback
+            print(f"[Crop] Error applying crop: {e}")
+            traceback.print_exc()
+
+    def _cancel_crop(self):
+        self.crop_mode_active = False
+        self._crop_rect_norm = None
+        if hasattr(self, 'crop_toolbar'):
+            self.crop_toolbar.hide()
+        if hasattr(self, 'editor_canvas'):
+            self.editor_canvas.update()
+        if hasattr(self, 'crop_btn'):
+            self.crop_btn.setChecked(False)
+
+    def _build_filters_panel(self):
+        from PySide6.QtWidgets import QScrollArea, QWidget, QVBoxLayout, QPushButton, QGridLayout, QLabel, QSlider, QHBoxLayout
+        from PySide6.QtGui import QPixmap, QPainter
+        from PySide6.QtCore import Qt
+        scroll = QScrollArea()
+        container = QWidget()
+        layout = QVBoxLayout(container)
+        
+        # Filter Intensity Control (at top)
+        intensity_container = QWidget()
+        intensity_container.setStyleSheet("""
+            QWidget {
+                background: rgba(40, 40, 40, 0.8);
+                border-radius: 6px;
+                padding: 8px;
+            }
+        """)
+        intensity_layout = QVBoxLayout(intensity_container)
+        intensity_layout.setContentsMargins(12, 8, 12, 8)
+        intensity_layout.setSpacing(6)
+        
+        # Header row: label + value
+        intensity_header = QHBoxLayout()
+        intensity_label = QLabel("Filter Intensity")
+        intensity_label.setStyleSheet("color: rgba(255,255,255,0.9); font-size: 10pt; font-weight: bold;")
+        intensity_header.addWidget(intensity_label)
+        intensity_header.addStretch()
+        
+        self.intensity_value_label = QLabel("100%")
+        self.intensity_value_label.setStyleSheet("""
+            color: white;
+            font-size: 10pt;
+            font-weight: bold;
+            background: rgba(66, 133, 244, 0.3);
+            border-radius: 4px;
+            padding: 4px 8px;
+        """)
+        intensity_header.addWidget(self.intensity_value_label)
+        intensity_layout.addLayout(intensity_header)
+        
+        # Intensity slider (0-100%)
+        self.filter_intensity_slider = QSlider(Qt.Horizontal)
+        self.filter_intensity_slider.setRange(0, 100)
+        self.filter_intensity_slider.setValue(100)
+        self.filter_intensity_slider.setStyleSheet("""
+            QSlider::groove:horizontal {
+                background: rgba(255, 255, 255, 0.2);
+                height: 6px;
+                border-radius: 3px;
+            }
+            QSlider::handle:horizontal {
+                background: rgba(66, 133, 244, 1.0);
+                border: 2px solid white;
+                width: 18px;
+                height: 18px;
+                margin: -6px 0;
+                border-radius: 9px;
+            }
+            QSlider::handle:horizontal:hover {
+                background: rgba(66, 133, 244, 1.0);
+                width: 20px;
+                height: 20px;
+                margin: -7px 0;
+                border-radius: 10px;
+            }
+        """)
+        self.filter_intensity_slider.valueChanged.connect(self._on_filter_intensity_change)
+        intensity_layout.addWidget(self.filter_intensity_slider)
+        
+        # Helper text
+        help_text = QLabel("Adjust the strength of the applied filter")
+        help_text.setStyleSheet("color: rgba(255,255,255,0.6); font-size: 8pt; font-style: italic;")
+        help_text.setAlignment(Qt.AlignCenter)
+        intensity_layout.addWidget(help_text)
+        
+        layout.addWidget(intensity_container)
+        layout.addSpacing(12)
+        
+        # Filter presets grid
+        presets = [
+            ("Original", {}),
+            ("Punch", {"contrast": 25, "saturation": 20}),
+            ("Golden", {"warmth": 30, "saturation": 10}),
+            ("Radiate", {"highlights": 20, "contrast": 15}),
+            ("Warm Contrast", {"warmth": 20, "contrast": 15}),
+            ("Calm", {"saturation": -10, "contrast": -5}),
+            ("Cool Light", {"warmth": -15}),
+            ("Vivid Cool", {"saturation": 30, "contrast": 20, "warmth": -10}),
+            ("Dramatic Cool", {"contrast": 35, "saturation": 10, "warmth": -20}),
+            ("B&W", {"saturation": -100}),
+            ("B&W Cool", {"saturation": -100, "contrast": 20}),
+            ("Film", {"contrast": 10, "saturation": -5, "vignette": 10}),
+        ]
+        grid = QGridLayout()
+        for i, (name, adj) in enumerate(presets):
+            # Container for thumbnail + label
+            preset_widget = QWidget()
+            preset_layout = QVBoxLayout(preset_widget)
+            preset_layout.setContentsMargins(4, 4, 4, 4)
+            preset_layout.setSpacing(4)
+            # Thumbnail preview button
+            btn = QPushButton()
+            btn.setFixedSize(120, 90)
+            btn.setStyleSheet("QPushButton { border: 2px solid rgba(255,255,255,0.3); border-radius: 4px; } QPushButton:hover { border: 2px solid rgba(66,133,244,0.8); }")
+            btn.clicked.connect(lambda _, a=adj: self._apply_preset_adjustments(a))
+            # Generate thumbnail preview (simple placeholder for now)
+            thumb_pixmap = self._generate_preset_thumbnail(adj)
+            btn.setIcon(QIcon(thumb_pixmap))
+            btn.setIconSize(btn.size())
+            preset_layout.addWidget(btn)
+            # Label
+            lbl = QLabel(name)
+            lbl.setAlignment(Qt.AlignCenter)
+            lbl.setStyleSheet("color: white; font-size: 9pt;")
+            preset_layout.addWidget(lbl)
+            grid.addWidget(preset_widget, i // 2, i % 2)
+        layout.addLayout(grid)
+        scroll.setWidget(container)
+        return scroll
+
+    def _generate_preset_thumbnail(self, adj: dict):
+        from PySide6.QtGui import QPixmap, QPainter, QLinearGradient, QColor
+        from PySide6.QtCore import QRect, Qt
+        # Try to generate real-time thumbnail from current image
+        if getattr(self, '_original_pixmap', None) and not self._original_pixmap.isNull():
+            try:
+                # Use PIL to apply preset adjustments to a small thumbnail
+                from PIL import Image, ImageEnhance as IE
+                pil_img = self._qpixmap_to_pil(self._original_pixmap)
+                # Resize to thumbnail size for performance
+                pil_img.thumbnail((120, 90), Image.Resampling.LANCZOS)
+                
+                # Apply preset adjustments (simplified version)
+                # Brightness
+                b = adj.get('brightness', 0)
+                if b != 0:
+                    pil_img = IE.Brightness(pil_img).enhance(1.0 + b / 100.0)
+                # Exposure
+                e = adj.get('exposure', 0)
+                if e != 0:
+                    expo_factor = pow(2.0, e / 100.0)
+                    pil_img = IE.Brightness(pil_img).enhance(expo_factor)
+                # Contrast
+                c = adj.get('contrast', 0)
+                if c != 0:
+                    pil_img = IE.Contrast(pil_img).enhance(1.0 + c / 100.0)
+                # Saturation
+                s = adj.get('saturation', 0)
+                if s != 0:
+                    pil_img = IE.Color(pil_img).enhance(1.0 + s / 100.0)
+                # Warmth (simplified)
+                w = adj.get('warmth', 0)
+                if w != 0:
+                    w_factor = w / 200.0
+                    r, g, bch = pil_img.split()
+                    r = IE.Brightness(r).enhance(1.0 + w_factor)
+                    bch = IE.Brightness(bch).enhance(1.0 - w_factor)
+                    pil_img = Image.merge('RGB', (r, g, bch))
+                
+                # Convert back to QPixmap
+                thumb_pixmap = self._pil_to_qpixmap(pil_img)
+                # Center crop to 120x90
+                final_pix = QPixmap(120, 90)
+                final_pix.fill(QColor(0, 0, 0))
+                p = QPainter(final_pix)
+                x_off = (120 - thumb_pixmap.width()) // 2
+                y_off = (90 - thumb_pixmap.height()) // 2
+                p.drawPixmap(x_off, y_off, thumb_pixmap)
+                p.end()
+                return final_pix
+            except Exception as e:
+                print(f"[PresetThumb] Error generating real-time thumbnail: {e}")
+                # Fall back to gradient placeholder
+        
+        # Fallback: Generate a simple gradient thumbnail representing the preset
+        pix = QPixmap(120, 90)
+        pix.fill(QColor(60, 60, 60))
+        p = QPainter(pix)
+        # Base gradient
+        grad = QLinearGradient(0, 0, 120, 90)
+        # Color based on warmth
+        warmth = adj.get('warmth', 0)
+        sat = adj.get('saturation', 0)
+        contrast = adj.get('contrast', 0)
+        if warmth > 0:
+            grad.setColorAt(0, QColor(255, 200, 150))
+            grad.setColorAt(1, QColor(200, 150, 100))
+        elif warmth < 0:
+            grad.setColorAt(0, QColor(150, 200, 255))
+            grad.setColorAt(1, QColor(100, 150, 200))
+        elif sat == -100:
+            grad.setColorAt(0, QColor(200, 200, 200))
+            grad.setColorAt(1, QColor(80, 80, 80))
+        else:
+            grad.setColorAt(0, QColor(180, 180, 200))
+            grad.setColorAt(1, QColor(100, 100, 120))
+        p.fillRect(pix.rect(), grad)
+        # Text overlay
+        p.setPen(QColor(255, 255, 255, 180))
+        p.drawText(pix.rect(), Qt.AlignCenter, "Preview")
+        p.end()
+        return pix
+
+    def _on_filter_intensity_change(self, value):
+        """Handle filter intensity slider change."""
+        self.filter_intensity = value
+        if hasattr(self, 'intensity_value_label'):
+            self.intensity_value_label.setText(f"{value}%")
+        
+        # Reapply current preset with new intensity
+        if hasattr(self, 'current_preset_adjustments') and self.current_preset_adjustments:
+            self._apply_preset_with_intensity(self.current_preset_adjustments, value)
+    
+    def _apply_preset_with_intensity(self, preset_adj: dict, intensity: int):
+        """Apply preset adjustments scaled by intensity (0-100%)."""
+        # Reset all first
+        for key in self.adjustments:
+            self.adjustments[key] = 0
+        
+        # Apply preset values scaled by intensity
+        intensity_factor = intensity / 100.0
+        for key, val in preset_adj.items():
+            scaled_val = int(val * intensity_factor)
+            self.adjustments[key] = scaled_val
+            slider = getattr(self, f"slider_{key}", None)
+            spinbox = getattr(self, f"spinbox_{key}", None)
+            if slider:
+                slider.blockSignals(True)
+                slider.setValue(scaled_val)
+                slider.blockSignals(False)
+            if spinbox:
+                spinbox.blockSignals(True)
+                spinbox.setValue(scaled_val)
+                spinbox.blockSignals(False)
+        
+        # Re-render
+        self._apply_adjustments()
+        print(f"[Filter] Applied preset with {intensity}% intensity")
+    
+    def _apply_preset_adjustments(self, preset_adj: dict):
+        """Apply filter preset with current intensity."""
+        # Store preset for intensity adjustments
+        self.current_preset_adjustments = preset_adj.copy()
+        
+        # Apply with current intensity
+        intensity = getattr(self, 'filter_intensity', 100)
+        self._apply_preset_with_intensity(preset_adj, intensity)
+
+    def _toggle_filters_panel(self):
+        try:
+            show = self.filters_btn.isChecked()
+            if hasattr(self, 'filters_container'):
+                self.filters_container.setVisible(show)
+            # Hide groups when showing filters (UX parity)
+            if hasattr(self, 'light_group_container'):
+                self.light_group_container.setVisible(not show)
+            if hasattr(self, 'color_group_container'):
+                self.color_group_container.setVisible(not show)
+        except Exception:
+            pass
+
+    def _toggle_before_after(self):
+        self.before_after_active = getattr(self, 'before_after_active', False) ^ True
+        self._update_editor_canvas_pixmap()
+        self._apply_editor_zoom()
+        if hasattr(self, 'before_after_btn'):
+            self.before_after_btn.setChecked(self.before_after_active)
+
+    def _update_editor_canvas_pixmap(self):
+        try:
+            pix = None
+            if getattr(self, 'before_after_active', False) and getattr(self, '_original_pixmap', None):
+                pix = self._original_pixmap
+            else:
+                pix = getattr(self, '_edit_pixmap', None)
+            if pix and not pix.isNull():
+                self.editor_canvas.repaint()  # canvas draws pix on paintEvent
+            else:
+                self.editor_canvas.clear()
+        except Exception:
+            pass
+
     def _create_video_controls(self) -> QWidget:
         """Create video playback controls (play/pause, seek, volume, time)."""
         controls = QWidget()
@@ -1164,22 +3986,6 @@ class MediaLightbox(QDialog):
         self.volume_slider.valueChanged.connect(self._on_volume_changed)
         layout.addWidget(self.volume_slider)
 
-        # Playback speed button
-        self.speed_btn = QPushButton("1.0x")
-        self.speed_btn.setFocusPolicy(Qt.NoFocus)
-        self.speed_btn.setFixedHeight(32)
-        self.speed_btn.setStyleSheet("""
-            QPushButton {
-                background: rgba(255, 255, 255, 0.15);
-                color: white;
-                border: none;
-                border-radius: 6px;
-                padding: 6px 10px;
-            }
-            QPushButton:hover {
-                background: rgba(255, 255, 255, 0.25);
-            }
-        """)
         # Playback speed button
         self.speed_btn = QPushButton("1.0x")
         self.speed_btn.setFocusPolicy(Qt.NoFocus)
@@ -1669,6 +4475,10 @@ class MediaLightbox(QDialog):
                 self.video_controls_widget.show()
             if hasattr(self, 'bottom_toolbar'):
                 self.bottom_toolbar.show()  # Show bottom toolbar for video controls
+                # CRITICAL FIX: Set opacity to 1.0 to make controls visible
+                # Bug: opacity was initialized to 0.0 (line 965), causing invisible controls
+                if hasattr(self, 'bottom_toolbar_opacity'):
+                    self.bottom_toolbar_opacity.setOpacity(1.0)
 
             # Set volume
             if hasattr(self, 'volume_slider') and hasattr(self, 'audio_output'):
@@ -1785,6 +4595,13 @@ class MediaLightbox(QDialog):
         from PySide6.QtGui import QPixmap
 
         try:
+            # CRITICAL FIX: Ensure mode_stack is on viewer page (0), not editor page (1)
+            # Bug: If user was in edit mode, photos load but aren't visible
+            if hasattr(self, 'mode_stack'):
+                if self.mode_stack.currentIndex() != 0:
+                    print(f"[MediaLightbox] ⚠️ Mode stack was on page {self.mode_stack.currentIndex()}, switching to viewer (0)")
+                    self.mode_stack.setCurrentIndex(0)
+
             # Hide video widget and controls if they exist
             if hasattr(self, 'video_widget'):
                 self.video_widget.hide()
@@ -2726,23 +5543,44 @@ class MediaLightbox(QDialog):
             self._rotate_image()
             event.accept()
 
-        # PHASE C #3: E key - Auto-enhance
+        # PHASE C #3: E key - Enter Editor Mode (was auto-enhance)
         elif key == Qt.Key_E:
-            print("[MediaLightbox] E pressed - auto-enhance")
-            self._auto_enhance()
+            print("[MediaLightbox] E pressed - enter editor mode")
+            self._enter_edit_mode()
             event.accept()
 
-        # PHASE C #3: C key - Toggle crop mode
+        # PHASE C #3: C key - Toggle crop mode (ONLY IN EDITOR MODE)
         elif key == Qt.Key_C:
-            print("[MediaLightbox] C pressed - toggle crop mode")
-            self._toggle_crop_mode()
-            event.accept()
+            # Check if in editor mode
+            if hasattr(self, 'mode_stack') and self.mode_stack.currentIndex() == 1:
+                print("[MediaLightbox] C pressed - toggle EDITOR crop mode")
+                # Click the crop button programmatically
+                if hasattr(self, 'crop_btn'):
+                    self.crop_btn.click()
+                event.accept()
+            else:
+                print("[MediaLightbox] C pressed - Enter editor mode first (press E or click ✨ button)")
+                event.accept()
 
         # PHASE C #2: Ctrl+Shift+S - Share/Export dialog
         elif key == Qt.Key_S and modifiers == (Qt.ControlModifier | Qt.ShiftModifier):
             print("[MediaLightbox] Ctrl+Shift+S pressed - share dialog")
             self._show_share_dialog()
             event.accept()
+        
+        # COPY/PASTE: Ctrl+Shift+C - Copy adjustments
+        elif key == Qt.Key_C and modifiers == (Qt.ControlModifier | Qt.ShiftModifier):
+            if hasattr(self, 'mode_stack') and self.mode_stack.currentIndex() == 1:
+                print("[MediaLightbox] Ctrl+Shift+C pressed - copy adjustments")
+                self._copy_adjustments()
+                event.accept()
+        
+        # COPY/PASTE: Ctrl+Shift+V - Paste adjustments
+        elif key == Qt.Key_V and modifiers == (Qt.ControlModifier | Qt.ShiftModifier):
+            if hasattr(self, 'mode_stack') and self.mode_stack.currentIndex() == 1:
+                print("[MediaLightbox] Ctrl+Shift+V pressed - paste adjustments")
+                self._paste_adjustments()
+                event.accept()
 
         # PHASE C #4: M key - Toggle compare mode (for burst photos/edits)
         elif key == Qt.Key_M:
@@ -3544,81 +6382,104 @@ class MediaLightbox(QDialog):
 
     def _on_thumbnail_loaded(self, pixmap):
         """PHASE A #2: Handle progressive loading - thumbnail quality loaded."""
+        print(f"[SIGNAL] _on_thumbnail_loaded called, pixmap={'valid' if pixmap and not pixmap.isNull() else 'NULL'}")
+
         if not pixmap or pixmap.isNull():
+            print(f"[ERROR] ⚠️ Thumbnail pixmap is null or invalid! Photo won't display.")
+            self._hide_loading_indicator()  # Hide loading indicator on error
             return
 
         from PySide6.QtCore import Qt
 
-        # Store as original for zoom operations
-        self.original_pixmap = pixmap
+        try:
+            # Store as original for zoom operations
+            self.original_pixmap = pixmap
 
-        # Scale to fit viewport
-        viewport_size = self.scroll_area.viewport().size()
-        scaled_pixmap = pixmap.scaled(
-            viewport_size,
-            Qt.KeepAspectRatio,
-            Qt.SmoothTransformation
-        )
+            # Scale to fit viewport
+            viewport_size = self.scroll_area.viewport().size()
+            print(f"[SIGNAL] Viewport size: {viewport_size.width()}x{viewport_size.height()}")
+            scaled_pixmap = pixmap.scaled(
+                viewport_size,
+                Qt.KeepAspectRatio,
+                Qt.SmoothTransformation
+            )
 
-        # Display thumbnail (instant!)
-        self.image_label.setPixmap(scaled_pixmap)
-        self.image_label.resize(scaled_pixmap.size())
-        self.media_container.resize(scaled_pixmap.size())
+            # Display thumbnail (instant!)
+            self.image_label.setPixmap(scaled_pixmap)
+            self.image_label.resize(scaled_pixmap.size())
+            self.media_container.resize(scaled_pixmap.size())
 
-        self.thumbnail_quality_loaded = True
+            self.thumbnail_quality_loaded = True
 
-        # Update status
-        self._show_loading_indicator("📥 Loading full resolution...")
+            # Update status
+            self._show_loading_indicator("📥 Loading full resolution...")
 
-        print(f"[MediaLightbox] ✓ Thumbnail displayed (progressive load)")
+            print(f"[MediaLightbox] ✓ Thumbnail displayed (progressive load)")
+        except Exception as e:
+            print(f"[ERROR] ⚠️ Failed to display thumbnail: {e}")
+            import traceback
+            traceback.print_exc()
+            self._hide_loading_indicator()
 
     def _on_full_quality_loaded(self, pixmap):
         """PHASE A #2: Handle progressive loading - full quality loaded."""
+        print(f"[SIGNAL] _on_full_quality_loaded called, pixmap={'valid' if pixmap and not pixmap.isNull() else 'NULL'}")
+
         if not pixmap or pixmap.isNull():
+            print(f"[ERROR] ⚠️ Full quality pixmap is null or invalid!")
+            self._hide_loading_indicator()  # Hide loading indicator on error
             return
 
         from PySide6.QtCore import Qt
 
-        # Store as original for zoom operations
-        self.original_pixmap = pixmap
+        try:
+            # Store as original for zoom operations
+            self.original_pixmap = pixmap
 
-        # Scale to fit viewport
-        viewport_size = self.scroll_area.viewport().size()
-        scaled_pixmap = pixmap.scaled(
-            viewport_size,
-            Qt.KeepAspectRatio,
-            Qt.SmoothTransformation
-        )
+            # Scale to fit viewport
+            viewport_size = self.scroll_area.viewport().size()
+            scaled_pixmap = pixmap.scaled(
+                viewport_size,
+                Qt.KeepAspectRatio,
+                Qt.SmoothTransformation
+            )
 
-        # Swap with subtle fade
-        from PySide6.QtCore import QPropertyAnimation, QEasingCurve
+            # Swap with subtle fade
+            from PySide6.QtCore import QPropertyAnimation, QEasingCurve
 
-        # Create fade animation if not exists
-        if not self.image_label.graphicsEffect():
-            opacity_effect = QGraphicsOpacityEffect()
-            self.image_label.setGraphicsEffect(opacity_effect)
+            # Create fade animation if not exists
+            if not self.image_label.graphicsEffect():
+                opacity_effect = QGraphicsOpacityEffect()
+                self.image_label.setGraphicsEffect(opacity_effect)
 
-        opacity_effect = self.image_label.graphicsEffect()
+            opacity_effect = self.image_label.graphicsEffect()
 
-        # Quick fade out/in
-        fade = QPropertyAnimation(opacity_effect, b"opacity")
-        fade.setDuration(150)
-        fade.setStartValue(0.7)
-        fade.setEndValue(1.0)
-        fade.setEasingCurve(QEasingCurve.OutCubic)
+            # Quick fade out/in
+            fade = QPropertyAnimation(opacity_effect, b"opacity")
+            fade.setDuration(150)
+            fade.setStartValue(0.7)
+            fade.setEndValue(1.0)
+            fade.setEasingCurve(QEasingCurve.OutCubic)
 
-        # Update pixmap
-        self.image_label.setPixmap(scaled_pixmap)
-        self.image_label.resize(scaled_pixmap.size())
-        self.media_container.resize(scaled_pixmap.size())
+            # Update pixmap
+            self.image_label.setPixmap(scaled_pixmap)
+            self.image_label.resize(scaled_pixmap.size())
+            self.media_container.resize(scaled_pixmap.size())
 
-        fade.start()
-        self.setProperty("quality_fade", fade)  # Prevent GC
+            fade.start()
+            self.setProperty("quality_fade", fade)  # Prevent GC
 
-        self.full_quality_loaded = True
+            self.full_quality_loaded = True
 
-        # Hide loading indicator
-        self._hide_loading_indicator()
+            # Hide loading indicator
+            self._hide_loading_indicator()
+
+            print(f"[MediaLightbox] ✓ Full quality displayed (progressive load complete)")
+        except Exception as e:
+            print(f"[ERROR] ⚠️ Failed to display full quality: {e}")
+            import traceback
+            traceback.print_exc()
+            self._hide_loading_indicator()
 
         # Calculate zoom level
         self.zoom_level = scaled_pixmap.width() / pixmap.width()
@@ -4085,23 +6946,15 @@ class MediaLightbox(QDialog):
 
             print(f"[MediaLightbox] Image rotated: {self.rotation_angle}°")
 
-    def _toggle_crop_mode(self):
+    def _toggle_crop_mode_OLD_DISABLED(self):
         """
-        PHASE C #3: Toggle crop mode on/off.
-
-        C key enables crop mode where user can select crop rectangle.
+        PHASE C #3: OLD crop mode stub - DISABLED.
+        
+        This has been replaced by the editor crop mode.
+        Use 'E' key to enter editor, then 'C' to toggle crop.
         """
-        if self._is_video(self.media_path):
-            return  # Don't crop videos
-
-        self.crop_mode_active = not self.crop_mode_active
-
-        if self.crop_mode_active:
-            print("[MediaLightbox] Crop mode ENABLED - Select area to crop (not yet implemented)")
-            # TODO: Show crop overlay and selection rectangle
-        else:
-            print("[MediaLightbox] Crop mode DISABLED")
-            self.crop_rect = None
+        print("[MediaLightbox] OLD crop mode disabled - use Editor mode instead (press E, then C)")
+        return  # Disabled - use editor crop mode instead
 
     def _auto_enhance(self):
         """
