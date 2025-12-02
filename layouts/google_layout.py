@@ -4002,22 +4002,6 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 background: rgba(255, 255, 255, 0.25);
             }
         """)
-        # Playback speed button
-        self.speed_btn = QPushButton("1.0x")
-        self.speed_btn.setFocusPolicy(Qt.NoFocus)
-        self.speed_btn.setFixedHeight(32)
-        self.speed_btn.setStyleSheet("""
-            QPushButton {
-                background: rgba(255, 255, 255, 0.15);
-                color: white;
-                border: none;
-                border-radius: 6px;
-                padding: 6px 10px;
-            }
-            QPushButton:hover {
-                background: rgba(255, 255, 255, 0.25);
-            }
-        """)
         # Start at normal speed
         self.current_speed_index = 1  # 0.5x, 1.0x, 1.5x, 2.0x -> index 1 = 1.0x
         self.speed_btn.clicked.connect(self._on_speed_clicked)
@@ -4491,6 +4475,10 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 self.video_controls_widget.show()
             if hasattr(self, 'bottom_toolbar'):
                 self.bottom_toolbar.show()  # Show bottom toolbar for video controls
+                # CRITICAL FIX: Set opacity to 1.0 to make controls visible
+                # Bug: opacity was initialized to 0.0 (line 965), causing invisible controls
+                if hasattr(self, 'bottom_toolbar_opacity'):
+                    self.bottom_toolbar_opacity.setOpacity(1.0)
 
             # Set volume
             if hasattr(self, 'volume_slider') and hasattr(self, 'audio_output'):
@@ -4607,6 +4595,13 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         from PySide6.QtGui import QPixmap
 
         try:
+            # CRITICAL FIX: Ensure mode_stack is on viewer page (0), not editor page (1)
+            # Bug: If user was in edit mode, photos load but aren't visible
+            if hasattr(self, 'mode_stack'):
+                if self.mode_stack.currentIndex() != 0:
+                    print(f"[MediaLightbox] ⚠️ Mode stack was on page {self.mode_stack.currentIndex()}, switching to viewer (0)")
+                    self.mode_stack.setCurrentIndex(0)
+
             # Hide video widget and controls if they exist
             if hasattr(self, 'video_widget'):
                 self.video_widget.hide()
@@ -6387,81 +6382,104 @@ class MediaLightbox(QDialog, VideoEditorMixin):
 
     def _on_thumbnail_loaded(self, pixmap):
         """PHASE A #2: Handle progressive loading - thumbnail quality loaded."""
+        print(f"[SIGNAL] _on_thumbnail_loaded called, pixmap={'valid' if pixmap and not pixmap.isNull() else 'NULL'}")
+
         if not pixmap or pixmap.isNull():
+            print(f"[ERROR] ⚠️ Thumbnail pixmap is null or invalid! Photo won't display.")
+            self._hide_loading_indicator()  # Hide loading indicator on error
             return
 
         from PySide6.QtCore import Qt
 
-        # Store as original for zoom operations
-        self.original_pixmap = pixmap
+        try:
+            # Store as original for zoom operations
+            self.original_pixmap = pixmap
 
-        # Scale to fit viewport
-        viewport_size = self.scroll_area.viewport().size()
-        scaled_pixmap = pixmap.scaled(
-            viewport_size,
-            Qt.KeepAspectRatio,
-            Qt.SmoothTransformation
-        )
+            # Scale to fit viewport
+            viewport_size = self.scroll_area.viewport().size()
+            print(f"[SIGNAL] Viewport size: {viewport_size.width()}x{viewport_size.height()}")
+            scaled_pixmap = pixmap.scaled(
+                viewport_size,
+                Qt.KeepAspectRatio,
+                Qt.SmoothTransformation
+            )
 
-        # Display thumbnail (instant!)
-        self.image_label.setPixmap(scaled_pixmap)
-        self.image_label.resize(scaled_pixmap.size())
-        self.media_container.resize(scaled_pixmap.size())
+            # Display thumbnail (instant!)
+            self.image_label.setPixmap(scaled_pixmap)
+            self.image_label.resize(scaled_pixmap.size())
+            self.media_container.resize(scaled_pixmap.size())
 
-        self.thumbnail_quality_loaded = True
+            self.thumbnail_quality_loaded = True
 
-        # Update status
-        self._show_loading_indicator("📥 Loading full resolution...")
+            # Update status
+            self._show_loading_indicator("📥 Loading full resolution...")
 
-        print(f"[MediaLightbox] ✓ Thumbnail displayed (progressive load)")
+            print(f"[MediaLightbox] ✓ Thumbnail displayed (progressive load)")
+        except Exception as e:
+            print(f"[ERROR] ⚠️ Failed to display thumbnail: {e}")
+            import traceback
+            traceback.print_exc()
+            self._hide_loading_indicator()
 
     def _on_full_quality_loaded(self, pixmap):
         """PHASE A #2: Handle progressive loading - full quality loaded."""
+        print(f"[SIGNAL] _on_full_quality_loaded called, pixmap={'valid' if pixmap and not pixmap.isNull() else 'NULL'}")
+
         if not pixmap or pixmap.isNull():
+            print(f"[ERROR] ⚠️ Full quality pixmap is null or invalid!")
+            self._hide_loading_indicator()  # Hide loading indicator on error
             return
 
         from PySide6.QtCore import Qt
 
-        # Store as original for zoom operations
-        self.original_pixmap = pixmap
+        try:
+            # Store as original for zoom operations
+            self.original_pixmap = pixmap
 
-        # Scale to fit viewport
-        viewport_size = self.scroll_area.viewport().size()
-        scaled_pixmap = pixmap.scaled(
-            viewport_size,
-            Qt.KeepAspectRatio,
-            Qt.SmoothTransformation
-        )
+            # Scale to fit viewport
+            viewport_size = self.scroll_area.viewport().size()
+            scaled_pixmap = pixmap.scaled(
+                viewport_size,
+                Qt.KeepAspectRatio,
+                Qt.SmoothTransformation
+            )
 
-        # Swap with subtle fade
-        from PySide6.QtCore import QPropertyAnimation, QEasingCurve
+            # Swap with subtle fade
+            from PySide6.QtCore import QPropertyAnimation, QEasingCurve
 
-        # Create fade animation if not exists
-        if not self.image_label.graphicsEffect():
-            opacity_effect = QGraphicsOpacityEffect()
-            self.image_label.setGraphicsEffect(opacity_effect)
+            # Create fade animation if not exists
+            if not self.image_label.graphicsEffect():
+                opacity_effect = QGraphicsOpacityEffect()
+                self.image_label.setGraphicsEffect(opacity_effect)
 
-        opacity_effect = self.image_label.graphicsEffect()
+            opacity_effect = self.image_label.graphicsEffect()
 
-        # Quick fade out/in
-        fade = QPropertyAnimation(opacity_effect, b"opacity")
-        fade.setDuration(150)
-        fade.setStartValue(0.7)
-        fade.setEndValue(1.0)
-        fade.setEasingCurve(QEasingCurve.OutCubic)
+            # Quick fade out/in
+            fade = QPropertyAnimation(opacity_effect, b"opacity")
+            fade.setDuration(150)
+            fade.setStartValue(0.7)
+            fade.setEndValue(1.0)
+            fade.setEasingCurve(QEasingCurve.OutCubic)
 
-        # Update pixmap
-        self.image_label.setPixmap(scaled_pixmap)
-        self.image_label.resize(scaled_pixmap.size())
-        self.media_container.resize(scaled_pixmap.size())
+            # Update pixmap
+            self.image_label.setPixmap(scaled_pixmap)
+            self.image_label.resize(scaled_pixmap.size())
+            self.media_container.resize(scaled_pixmap.size())
 
-        fade.start()
-        self.setProperty("quality_fade", fade)  # Prevent GC
+            fade.start()
+            self.setProperty("quality_fade", fade)  # Prevent GC
 
-        self.full_quality_loaded = True
+            self.full_quality_loaded = True
 
-        # Hide loading indicator
-        self._hide_loading_indicator()
+            # Hide loading indicator
+            self._hide_loading_indicator()
+
+            print(f"[MediaLightbox] ✓ Full quality displayed (progressive load complete)")
+        except Exception as e:
+            print(f"[ERROR] ⚠️ Failed to display full quality: {e}")
+            import traceback
+            traceback.print_exc()
+            self._hide_loading_indicator()
 
         # Calculate zoom level
         self.zoom_level = scaled_pixmap.width() / pixmap.width()
