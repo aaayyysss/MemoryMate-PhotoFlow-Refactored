@@ -4602,18 +4602,19 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                     print(f"[MediaLightbox] ⚠️ Mode stack was on page {self.mode_stack.currentIndex()}, switching to viewer (0)")
                     self.mode_stack.setCurrentIndex(0)
 
-            # Hide video widget and controls if they exist
-            if hasattr(self, 'video_widget'):
+            # CRITICAL FIX: Hide video widget and controls if they exist AND are not None
+            # Bug: hasattr() returns True even if value is None, causing AttributeError
+            if hasattr(self, 'video_widget') and self.video_widget is not None:
                 self.video_widget.hide()
-                if hasattr(self, 'video_player'):
+                if hasattr(self, 'video_player') and self.video_player is not None:
                     self.video_player.stop()
-                    if hasattr(self, 'position_timer'):
+                    if hasattr(self, 'position_timer') and self.position_timer is not None:
                         self.position_timer.stop()
 
             # Hide video controls
-            if hasattr(self, 'video_controls_widget'):
+            if hasattr(self, 'video_controls_widget') and self.video_controls_widget is not None:
                 self.video_controls_widget.hide()
-            if hasattr(self, 'bottom_toolbar'):
+            if hasattr(self, 'bottom_toolbar') and self.bottom_toolbar is not None:
                 self.bottom_toolbar.hide()  # Hide bottom toolbar when showing photos
 
             # Show image label (simple show/hide, no widget replacement!)
