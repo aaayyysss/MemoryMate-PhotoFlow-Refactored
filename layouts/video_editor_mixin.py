@@ -5,9 +5,9 @@
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QSlider, QComboBox, QFileDialog, QMessageBox
+    QSlider, QComboBox, QFileDialog, QMessageBox, QProgressDialog, QApplication
 )
-from PySide6.QtCore import Qt, QUrl
+from PySide6.QtCore import Qt, QUrl, QTimer
 from PySide6.QtGui import QPixmap, QImage
 import os
 
@@ -122,12 +122,12 @@ class VideoEditorMixin:
     # ========== ROTATE CONTROLS (Editor-Only) ==========
     
     def _create_video_rotate_controls(self) -> QWidget:
-        """Create rotate buttons for video."""
+        """Create rotate buttons for video with status label."""
         container = QWidget()
         layout = QHBoxLayout(container)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(8)
-        
+
         rotate_left_btn = QPushButton("↶ 90°")
         rotate_left_btn.setToolTip("Rotate 90° Left (Counterclockwise)")
         rotate_left_btn.clicked.connect(lambda: self._rotate_video(-90))
@@ -146,7 +146,21 @@ class VideoEditorMixin:
             }
         """)
         layout.addWidget(rotate_left_btn)
-        
+
+        # Rotation status label
+        self.rotation_status_label = QLabel("Original")
+        self.rotation_status_label.setStyleSheet("""
+            QLabel {
+                color: white;
+                font-size: 10pt;
+                font-weight: bold;
+                background: rgba(66, 133, 244, 0.8);
+                border-radius: 4px;
+                padding: 8px 16px;
+            }
+        """)
+        layout.addWidget(self.rotation_status_label)
+
         rotate_right_btn = QPushButton("↷ 90°")
         rotate_right_btn.setToolTip("Rotate 90° Right (Clockwise)")
         rotate_right_btn.clicked.connect(lambda: self._rotate_video(90))
@@ -165,7 +179,7 @@ class VideoEditorMixin:
             }
         """)
         layout.addWidget(rotate_right_btn)
-        
+
         return container
     
     # ========== TRIM/ROTATE/EXPORT METHODS (Editor-Only) ==========
@@ -174,38 +188,69 @@ class VideoEditorMixin:
         """Set trim start point to current position. REUSES existing video_player."""
         if not hasattr(self, 'video_player') or not self.video_player:
             return
-        
+
         self.video_trim_start = self.video_player.position()
         self.trim_start_label.setText(self._format_time(self.video_trim_start))
         print(f"[VideoEditor] Trim start: {self._format_time(self.video_trim_start)}")
+
+        # Update visual trim markers on seek slider
+        if hasattr(self, 'seek_slider') and hasattr(self.seek_slider, 'set_trim_markers'):
+            duration = getattr(self, '_video_duration', 0)
+            self.seek_slider.set_trim_markers(self.video_trim_start, self.video_trim_end, duration)
     
     def _set_trim_end(self):
         """Set trim end point to current position. REUSES existing video_player."""
         if not hasattr(self, 'video_player') or not self.video_player:
             return
-        
+
         self.video_trim_end = self.video_player.position()
         self.trim_end_label.setText(self._format_time(self.video_trim_end))
         print(f"[VideoEditor] Trim end: {self._format_time(self.video_trim_end)}")
+
+        # Update visual trim markers on seek slider
+        if hasattr(self, 'seek_slider') and hasattr(self.seek_slider, 'set_trim_markers'):
+            duration = getattr(self, '_video_duration', 0)
+            self.seek_slider.set_trim_markers(self.video_trim_start, self.video_trim_end, duration)
     
     def _reset_trim(self):
         """Reset trim points to full video duration."""
         if not hasattr(self, 'video_player') or not self.video_player:
             return
-        
+
         self.video_trim_start = 0
         # Get duration from existing player (stored in MediaLightbox as _video_duration)
         duration = getattr(self, '_video_duration', 0)
         self.video_trim_end = duration
-        
+
         self.trim_start_label.setText("00:00")
         self.trim_end_label.setText(self._format_time(duration))
         print(f"[VideoEditor] Trim reset to full duration: {self._format_time(duration)}")
+
+        # Clear visual trim markers (or set to full range)
+        if hasattr(self, 'seek_slider') and hasattr(self.seek_slider, 'clear_trim_markers'):
+            self.seek_slider.clear_trim_markers()
     
     def _rotate_video(self, degrees):
         """Rotate video by degrees (90, -90). Visual rotation applied during export."""
         self.video_rotation_angle = (self.video_rotation_angle + degrees) % 360
         print(f"[VideoEditor] Rotation: {self.video_rotation_angle}°")
+
+        # Update rotation status label
+        if hasattr(self, 'rotation_status_label'):
+            if self.video_rotation_angle == 0:
+                label_text = "Original"
+            elif self.video_rotation_angle == 90:
+                label_text = "↷ 90° (Clockwise)"
+            elif self.video_rotation_angle == 180:
+                label_text = "↕ 180° (Upside Down)"
+            elif self.video_rotation_angle == 270:
+                label_text = "↶ 90° (Counterclockwise)"
+            else:
+                label_text = f"{self.video_rotation_angle}°"
+
+            self.rotation_status_label.setText(label_text)
+            print(f"[VideoEditor] Rotation status: {label_text}")
+
         # Note: QVideoWidget doesn't support rotation - applied during export
     
     def _format_time(self, milliseconds):
@@ -258,9 +303,10 @@ class VideoEditorMixin:
     
     def _export_video_with_edits(self, output_path):
         """Export video with all edits applied (trim, rotate). REUSES existing video state."""
+        progress_dialog = None
         try:
             print(f"[VideoEditor] Exporting video to: {output_path}")
-            
+
             # Check if moviepy is available
             try:
                 from moviepy.editor import VideoFileClip
@@ -272,15 +318,15 @@ class VideoEditorMixin:
                     "moviepy library not installed.\n\nInstall with: pip install moviepy"
                 )
                 return False
-            
+
             # Use self.media_path (existing video file)
             if not hasattr(self, 'media_path') or not self.media_path:
                 print("[VideoEditor] No video loaded")
                 return False
-            
+
             # Load video with moviepy
             clip = VideoFileClip(self.media_path)
-            
+
             # Apply trim (if set)
             duration_ms = getattr(self, '_video_duration', clip.duration * 1000)
             if self.video_trim_start > 0 or self.video_trim_end < duration_ms:
@@ -288,7 +334,7 @@ class VideoEditorMixin:
                 end_sec = self.video_trim_end / 1000.0 if self.video_trim_end > 0 else clip.duration
                 clip = clip.subclip(start_sec, end_sec)
                 print(f"[VideoEditor] Trimmed: {start_sec:.2f}s - {end_sec:.2f}s")
-            
+
             # Apply rotation
             if self.video_rotation_angle != 0:
                 if self.video_rotation_angle == 90:
@@ -298,29 +344,108 @@ class VideoEditorMixin:
                 elif self.video_rotation_angle == 270:
                     clip = clip.rotate(270)
                 print(f"[VideoEditor] Rotated: {self.video_rotation_angle}°")
-            
+
             # Note: Speed change done in viewer playback only (not exported)
             # Note: Mute done in viewer playback only (not exported)
             # Phase 2: Can add speed/mute to export if needed
-            
-            # Export video
+
+            # Create progress dialog
+            progress_dialog = QProgressDialog("Initializing export...", "Cancel", 0, 100, self)
+            progress_dialog.setWindowTitle("Exporting Video")
+            progress_dialog.setWindowModality(Qt.WindowModal)
+            progress_dialog.setMinimumDuration(0)  # Show immediately
+            progress_dialog.setValue(0)
+            progress_dialog.show()
+            QApplication.processEvents()
+
+            # Track if user cancelled
+            export_cancelled = False
+
+            # Custom progress logger for moviepy
+            class QtProgressLogger:
+                def __init__(self, progress_dialog, duration):
+                    self.progress_dialog = progress_dialog
+                    self.duration = duration
+                    self.last_progress = 0
+
+                def __call__(self, message):
+                    """Called by moviepy with progress messages."""
+                    # Check if user cancelled
+                    if self.progress_dialog.wasCanceled():
+                        nonlocal export_cancelled
+                        export_cancelled = True
+                        raise Exception("Export cancelled by user")
+
+                    # Parse moviepy progress message (format: "t: 1.23s")
+                    if message.startswith('t:'):
+                        try:
+                            # Extract time value
+                            time_str = message.split(':')[1].strip().rstrip('s')
+                            current_time = float(time_str)
+
+                            # Calculate percentage
+                            progress = int((current_time / self.duration) * 100)
+                            progress = min(progress, 100)  # Cap at 100%
+
+                            # Update dialog only if progress changed significantly
+                            if progress > self.last_progress:
+                                self.last_progress = progress
+                                self.progress_dialog.setValue(progress)
+
+                                # Calculate time remaining (rough estimate)
+                                if progress > 0:
+                                    elapsed_per_percent = current_time / progress
+                                    remaining_time = elapsed_per_percent * (100 - progress)
+                                    remaining_mins = int(remaining_time // 60)
+                                    remaining_secs = int(remaining_time % 60)
+
+                                    self.progress_dialog.setLabelText(
+                                        f"Exporting video: {progress}%\n"
+                                        f"Time remaining: {remaining_mins:02d}:{remaining_secs:02d}"
+                                    )
+                                else:
+                                    self.progress_dialog.setLabelText(f"Exporting video: {progress}%")
+
+                                QApplication.processEvents()
+                        except (ValueError, IndexError):
+                            # Ignore malformed messages
+                            pass
+
+            # Create progress logger
+            logger = QtProgressLogger(progress_dialog, clip.duration)
+
+            # Export video with progress tracking
             clip.write_videofile(
                 output_path,
                 codec='libx264',
                 audio_codec='aac',
                 temp_audiofile='temp-audio.m4a',
                 remove_temp=True,
-                verbose=False,
-                logger=None
+                verbose=True,  # Enable verbose to get progress messages
+                logger=logger  # Custom progress logger
             )
-            
+
+            # Close progress dialog
+            if progress_dialog:
+                progress_dialog.setValue(100)
+                progress_dialog.close()
+
             # Cleanup
             clip.close()
-            
+
             print(f"[VideoEditor] ✓ Video exported successfully!")
             return True
-            
+
         except Exception as e:
+            # Close progress dialog on error
+            if progress_dialog:
+                progress_dialog.close()
+
+            # Don't show error if user cancelled
+            if export_cancelled:
+                print(f"[VideoEditor] Export cancelled by user")
+                return False
+
             import traceback
             print(f"[VideoEditor] Error exporting video: {e}")
             traceback.print_exc()
