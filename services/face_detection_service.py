@@ -291,7 +291,22 @@ def _get_insightface_app():
                             logger.error("  1. Model files are corrupted or incomplete")
                             logger.error("  2. InsightFace version incompatible with models")
                             logger.error("  3. Wrong directory structure")
-                            raise RuntimeError(f"Failed to prepare InsightFace models: {prepare_error}") from prepare_error
+
+                            # FALLBACK: Try initialization with limited modules (detection + recognition only)
+                            logger.warning("⚠️ Attempting fallback initialization with detection+recognition only (no landmarks)")
+                            try:
+                                _insightface_app = FaceAnalysis(
+                                    name='buffalo_l',
+                                    root=buffalo_dir,
+                                    allowed_modules=['detection', 'recognition'],
+                                    providers=providers
+                                )
+                                _insightface_app.prepare(ctx_id=ctx_id, det_size=(640, 640))
+                                logger.warning("✅ Fallback initialization succeeded - running WITHOUT landmark detection")
+                                logger.warning("   Face detection and recognition will work, but some features may be limited")
+                            except Exception as fallback_error:
+                                logger.error(f"❌ Fallback initialization also failed: {fallback_error}")
+                                raise RuntimeError(f"Failed to prepare InsightFace models (fallback also failed): {prepare_error}") from prepare_error
                     else:
                         # OLDER VERSION: Use ctx_id approach (proof of concept compatibility)
                         logger.info(f"✓ Using ctx_id approach (older InsightFace, proof of concept compatible)")
@@ -315,7 +330,21 @@ def _get_insightface_app():
                             logger.error("  1. Model files are corrupted or incomplete")
                             logger.error("  2. InsightFace version incompatible with models")
                             logger.error("  3. Wrong directory structure")
-                            raise RuntimeError(f"Failed to prepare InsightFace models: {prepare_error}") from prepare_error
+
+                            # FALLBACK: Try initialization with limited modules (detection + recognition only)
+                            logger.warning("⚠️ Attempting fallback initialization with detection+recognition only (no landmarks)")
+                            try:
+                                _insightface_app = FaceAnalysis(
+                                    name='buffalo_l',
+                                    root=buffalo_dir,
+                                    allowed_modules=['detection', 'recognition']
+                                )
+                                _insightface_app.prepare(ctx_id=ctx_id, det_size=(640, 640))
+                                logger.warning("✅ Fallback initialization succeeded - running WITHOUT landmark detection")
+                                logger.warning("   Face detection and recognition will work, but some features may be limited")
+                            except Exception as fallback_error:
+                                logger.error(f"❌ Fallback initialization also failed: {fallback_error}")
+                                raise RuntimeError(f"Failed to prepare InsightFace models (fallback also failed): {prepare_error}") from prepare_error
 
                 except ImportError as e:
                     logger.error(f"❌ InsightFace library not installed: {e}")
