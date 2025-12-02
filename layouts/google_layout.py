@@ -2094,15 +2094,43 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                         self.trim_end_label.setText(self._format_time(duration))
                     
                     print("[Editor] Video trim/rotate controls shown")
-                    
-                    # Skip photo editing setup for videos
-                    # Show editor page
+
+                    # CRITICAL FIX: Reparent video widget to editor canvas for edit mode
+                    # The editor page (page 1) has the crop_toolbar with video controls
+                    # We need to move the video_widget from viewer page to editor page
+
+                    if hasattr(self, 'video_widget') and self.video_widget:
+                        # Remove from viewer page layout
+                        if self.video_widget.parent():
+                            current_layout = self.video_widget.parent().layout()
+                            if current_layout:
+                                current_layout.removeWidget(self.video_widget)
+
+                        # Add to editor canvas
+                        if hasattr(self, 'editor_canvas'):
+                            # Create layout for editor canvas if not exists
+                            if not self.editor_canvas.layout():
+                                from PySide6.QtWidgets import QVBoxLayout
+                                canvas_layout = QVBoxLayout(self.editor_canvas)
+                                canvas_layout.setContentsMargins(0, 0, 0, 0)
+
+                            # Add video widget to editor canvas
+                            self.editor_canvas.layout().addWidget(self.video_widget)
+                            self.video_widget.show()
+                            print("[Editor] ✓ Video widget reparented to editor canvas")
+
+                    # Switch to editor page to show video controls
                     if hasattr(self, 'mode_stack'):
                         self.mode_stack.setCurrentIndex(1)
+                        print("[Editor] ✓ Switched to editor page for video editing")
+
+                    # Hide nav buttons during edit mode
                     if hasattr(self, 'prev_btn'):
                         self.prev_btn.hide()
                     if hasattr(self, 'next_btn'):
                         self.next_btn.hide()
+
+                    print("[Editor] Video edit mode active (video on editor page)")
                     return  # Skip photo editing setup
                 
                 else:
@@ -2209,15 +2237,35 @@ class MediaLightbox(QDialog, VideoEditorMixin):
 
     def _save_edits(self):
         try:
+            # Handle video edit mode - move video back to viewer page
+            if getattr(self, 'is_video_file', False) and hasattr(self, 'video_widget') and self.video_widget:
+                # Remove from editor canvas
+                if self.video_widget.parent():
+                    current_layout = self.video_widget.parent().layout()
+                    if current_layout:
+                        current_layout.removeWidget(self.video_widget)
+
+                # Add back to viewer page media_container
+                if hasattr(self, 'media_container'):
+                    container_layout = self.media_container.layout()
+                    if container_layout:
+                        container_layout.addWidget(self.video_widget)
+                        self.video_widget.show()
+                        print("[Editor] ✓ Video widget moved back to viewer page")
+
+            # Handle photo edit mode
             if getattr(self, '_edit_pixmap', None) and not self._edit_pixmap.isNull():
                 # AUTO-SAVE: Save current edit state before applying
                 self._save_edit_state()
-                
+
                 self.original_pixmap = self._edit_pixmap
                 if hasattr(self, 'image_label'):
                     self.image_label.setPixmap(self.original_pixmap)
+
+            # Switch back to viewer page
             if hasattr(self, 'mode_stack'):
                 self.mode_stack.setCurrentIndex(0)
+
             # Restore overlay navigation in viewer mode
             if hasattr(self, 'prev_btn'):
                 self.prev_btn.show()
@@ -2225,15 +2273,49 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 self.next_btn.show()
             if hasattr(self, '_position_nav_buttons'):
                 self._position_nav_buttons()
-            
-            print("[Editor] ✓ Edits saved and edit state persisted")
+
+            print("[Editor] ✓ Edits saved and returned to viewer mode")
         except Exception as e:
             print(f"[EditMode] Error saving edits: {e}")
 
     def _cancel_edits(self):
         try:
+            # Handle video edit mode - move video back to viewer page
+            if getattr(self, 'is_video_file', False) and hasattr(self, 'video_widget') and self.video_widget:
+                # Remove from editor canvas
+                if self.video_widget.parent():
+                    current_layout = self.video_widget.parent().layout()
+                    if current_layout:
+                        current_layout.removeWidget(self.video_widget)
+
+                # Add back to viewer page media_container
+                if hasattr(self, 'media_container'):
+                    container_layout = self.media_container.layout()
+                    if container_layout:
+                        container_layout.addWidget(self.video_widget)
+                        self.video_widget.show()
+                        print("[Editor] ✓ Video widget moved back to viewer page")
+
+                # Reset video edits
+                self.video_trim_start = 0
+                duration = getattr(self, '_video_duration', 0)
+                self.video_trim_end = duration
+                self.video_rotation_angle = 0
+
+                # Clear trim markers
+                if hasattr(self, 'seek_slider') and hasattr(self.seek_slider, 'clear_trim_markers'):
+                    self.seek_slider.clear_trim_markers()
+
+                # Reset rotation status label
+                if hasattr(self, 'rotation_status_label'):
+                    self.rotation_status_label.setText("Original")
+
+                print("[Editor] ✓ Video edits cancelled and reset")
+
+            # Switch back to viewer page
             if hasattr(self, 'mode_stack'):
                 self.mode_stack.setCurrentIndex(0)
+
             # Restore overlay navigation in viewer mode
             if hasattr(self, 'prev_btn'):
                 self.prev_btn.show()
@@ -2241,6 +2323,8 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 self.next_btn.show()
             if hasattr(self, '_position_nav_buttons'):
                 self._position_nav_buttons()
+
+            print("[Editor] ✓ Edits cancelled and returned to viewer mode")
         except Exception as e:
             print(f"[EditMode] Error cancelling edits: {e}")
 
