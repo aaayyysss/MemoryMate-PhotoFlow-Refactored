@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (
     QInputDialog, QMessageBox, QSlider, QSpinBox, QComboBox
 )
 from PySide6.QtCore import Qt, Signal, QSize, QEvent, QRunnable, QThreadPool, QObject, QTimer, QUrl
-from PySide6.QtGui import QPixmap, QIcon, QKeyEvent, QImage, QColor, QAction
+from PySide6.QtGui import QPixmap, QIcon, QKeyEvent, QImage, QColor, QAction, QPainter, QPen
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from .base_layout import BaseLayout
@@ -3410,7 +3410,73 @@ class MediaLightbox(QDialog, VideoEditorMixin):
     def keyPressEvent(self, event):
         try:
             from PySide6.QtCore import Qt
-            # Undo/Redo shortcuts
+
+            # Video editing shortcuts (only when video is loaded and in edit mode)
+            is_video_loaded = hasattr(self, 'video_player') and self.video_player is not None
+            in_edit_mode = hasattr(self, 'mode_stack') and self.mode_stack.currentIndex() == 1
+
+            if is_video_loaded and in_edit_mode:
+                # I key: Set trim IN point (start)
+                if event.key() == Qt.Key_I:
+                    if hasattr(self, '_set_trim_start'):
+                        self._set_trim_start()
+                        print("[MediaLightbox] Keyboard: Set trim start (I key)")
+                    return
+
+                # O key: Set trim OUT point (end)
+                elif event.key() == Qt.Key_O:
+                    if hasattr(self, '_set_trim_end'):
+                        self._set_trim_end()
+                        print("[MediaLightbox] Keyboard: Set trim end (O key)")
+                    return
+
+                # J key: Rewind
+                elif event.key() == Qt.Key_J:
+                    current_pos = self.video_player.position()
+                    new_pos = max(0, current_pos - 5000)  # Rewind 5 seconds
+                    self.video_player.setPosition(new_pos)
+                    print(f"[MediaLightbox] Keyboard: Rewind to {new_pos}ms (J key)")
+                    return
+
+                # K key: Play/Pause toggle
+                elif event.key() == Qt.Key_K:
+                    if self.video_player.playbackState() == QMediaPlayer.PlayingState:
+                        self.video_player.pause()
+                        print("[MediaLightbox] Keyboard: Pause (K key)")
+                    else:
+                        self.video_player.play()
+                        print("[MediaLightbox] Keyboard: Play (K key)")
+                    return
+
+                # L key: Fast forward
+                elif event.key() == Qt.Key_L:
+                    current_pos = self.video_player.position()
+                    duration = getattr(self, '_video_duration', 0)
+                    new_pos = min(duration, current_pos + 5000)  # Forward 5 seconds
+                    self.video_player.setPosition(new_pos)
+                    print(f"[MediaLightbox] Keyboard: Fast forward to {new_pos}ms (L key)")
+                    return
+
+                # Left arrow: Previous frame
+                elif event.key() == Qt.Key_Left:
+                    current_pos = self.video_player.position()
+                    frame_ms = 1000 / 30  # Assume 30 fps (~33ms per frame)
+                    new_pos = max(0, current_pos - frame_ms)
+                    self.video_player.setPosition(int(new_pos))
+                    print(f"[MediaLightbox] Keyboard: Previous frame (← key)")
+                    return
+
+                # Right arrow: Next frame
+                elif event.key() == Qt.Key_Right:
+                    current_pos = self.video_player.position()
+                    duration = getattr(self, '_video_duration', 0)
+                    frame_ms = 1000 / 30  # Assume 30 fps (~33ms per frame)
+                    new_pos = min(duration, current_pos + frame_ms)
+                    self.video_player.setPosition(int(new_pos))
+                    print(f"[MediaLightbox] Keyboard: Next frame (→ key)")
+                    return
+
+            # Undo/Redo shortcuts (for photo editing)
             if event.modifiers() & Qt.ControlModifier:
                 if event.key() == Qt.Key_Z:
                     self._editor_undo()
@@ -3418,9 +3484,11 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 elif event.key() == Qt.Key_Y:
                     self._editor_redo()
                     return
+
             # Pass to parent
             super().keyPressEvent(event)
-        except Exception:
+        except Exception as e:
+            print(f"[MediaLightbox] Error in keyPressEvent: {e}")
             super().keyPressEvent(event)
 
     def _set_crop_aspect(self, ratio):
@@ -3878,9 +3946,8 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         self.time_current_label.setStyleSheet("color: white; font-size: 9pt; background: transparent;")
         layout.addWidget(self.time_current_label)
 
-        # Seek slider
-        from PySide6.QtWidgets import QSlider
-        self.seek_slider = QSlider(Qt.Horizontal)
+        # Seek slider (custom with trim markers)
+        self.seek_slider = TrimMarkerSlider(Qt.Horizontal)
         self.seek_slider.setFocusPolicy(Qt.NoFocus)
         self.seek_slider.setMouseTracking(True)  # PHASE B #3: Enable hover detection
         self.seek_slider.setStyleSheet("""
@@ -7209,6 +7276,76 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         """PHASE C #5: Hide motion photo indicator."""
         if hasattr(self, 'motion_indicator'):
             self.motion_indicator.hide()
+
+
+# === CUSTOM SEEK SLIDER WITH TRIM MARKERS ===
+class TrimMarkerSlider(QSlider):
+    """Custom QSlider that displays visual trim markers for video editing."""
+
+    def __init__(self, orientation, parent=None):
+        super().__init__(orientation, parent)
+        self.trim_start = 0  # Start trim position (0-100 scale)
+        self.trim_end = 100  # End trim position (0-100 scale)
+        self.video_duration_ms = 0  # Total video duration in milliseconds
+        self.show_markers = False  # Only show markers in edit mode
+
+    def set_trim_markers(self, start_ms, end_ms, duration_ms):
+        """Set trim marker positions in milliseconds."""
+        self.video_duration_ms = duration_ms
+        if duration_ms > 0:
+            # Convert milliseconds to slider range (0-100 or 0-max)
+            slider_max = self.maximum()
+            self.trim_start = int((start_ms / duration_ms) * slider_max)
+            self.trim_end = int((end_ms / duration_ms) * slider_max)
+        else:
+            self.trim_start = 0
+            self.trim_end = slider_max
+        self.show_markers = True
+        self.update()  # Trigger repaint
+
+    def clear_trim_markers(self):
+        """Hide trim markers."""
+        self.show_markers = False
+        self.update()
+
+    def paintEvent(self, event):
+        """Override paint event to draw trim markers."""
+        # First, draw the standard slider
+        super().paintEvent(event)
+
+        # If markers enabled and in valid range, draw them
+        if not self.show_markers or self.video_duration_ms == 0:
+            return
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+
+        # Calculate marker positions in pixels
+        slider_width = self.width()
+        handle_width = 12  # From stylesheet
+        usable_width = slider_width - handle_width
+
+        # Convert trim positions to pixel coordinates
+        slider_max = self.maximum()
+        if slider_max > 0:
+            start_x = int((self.trim_start / slider_max) * usable_width) + (handle_width // 2)
+            end_x = int((self.trim_end / slider_max) * usable_width) + (handle_width // 2)
+        else:
+            return
+
+        # Draw shaded regions OUTSIDE trim range (semi-transparent gray)
+        painter.fillRect(0, 0, start_x, self.height(), QColor(0, 0, 0, 80))
+        painter.fillRect(end_x, 0, slider_width - end_x, self.height(), QColor(0, 0, 0, 80))
+
+        # Draw green marker for trim start (🟢)
+        painter.setPen(QPen(QColor(76, 175, 80), 3))  # Green, 3px thick
+        painter.drawLine(start_x, 0, start_x, self.height())
+
+        # Draw red marker for trim end (🔴)
+        painter.setPen(QPen(QColor(244, 67, 54), 3))  # Red, 3px thick
+        painter.drawLine(end_x, 0, end_x, self.height())
+
+        painter.end()
 
 
 class GooglePhotosLayout(BaseLayout):
