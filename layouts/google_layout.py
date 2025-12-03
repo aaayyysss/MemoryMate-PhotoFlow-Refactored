@@ -2089,6 +2089,20 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                     self.video_rotate_controls.show()
                     self.crop_btn.hide()  # Hide crop for videos
 
+                    # CRITICAL FIX: Hide photo editing controls to prevent toolbar overflow
+                    # The crop_toolbar contains photo controls (straighten, rotate) that conflict with video controls
+                    if hasattr(self, 'straighten_slider'):
+                        self.straighten_slider.parent().hide()  # Hide straighten container
+                    if hasattr(self, 'rotate_left_btn'):
+                        self.rotate_left_btn.hide()
+                    if hasattr(self, 'rotate_right_btn'):
+                        self.rotate_right_btn.hide()
+                    # Hide aspect ratio controls if they exist
+                    for widget in ['aspect_original_btn', 'aspect_square_btn', 'aspect_169_btn',
+                                   'aspect_43_btn', 'aspect_916_btn', 'aspect_free_btn']:
+                        if hasattr(self, widget):
+                            getattr(self, widget).hide()
+
                     # CRITICAL FIX: Show the crop_toolbar itself!
                     # The video controls are INSIDE crop_toolbar, so the toolbar must be visible
                     if hasattr(self, 'crop_toolbar'):

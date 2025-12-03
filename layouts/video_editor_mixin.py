@@ -188,7 +188,7 @@ class VideoEditorMixin:
         layout.setSpacing(8)
 
         rotate_left_btn = QPushButton("↶ 90°")
-        rotate_left_btn.setToolTip("Rotate 90° Left (Counterclockwise)")
+        rotate_left_btn.setToolTip("Rotate 90° Left (Counterclockwise)\nNote: Rotation applies during export, not in preview")
         rotate_left_btn.clicked.connect(lambda: self._rotate_video(-90))
         rotate_left_btn.setStyleSheet("""
             QPushButton {
@@ -221,7 +221,7 @@ class VideoEditorMixin:
         layout.addWidget(self.rotation_status_label)
 
         rotate_right_btn = QPushButton("↷ 90°")
-        rotate_right_btn.setToolTip("Rotate 90° Right (Clockwise)")
+        rotate_right_btn.setToolTip("Rotate 90° Right (Clockwise)\nNote: Rotation applies during export, not in preview")
         rotate_right_btn.clicked.connect(lambda: self._rotate_video(90))
         rotate_right_btn.setStyleSheet("""
             QPushButton {
@@ -286,31 +286,51 @@ class VideoEditorMixin:
     
     def _set_trim_start(self):
         """Set trim start point to current position. REUSES existing video_player."""
-        if not hasattr(self, 'video_player') or not self.video_player:
-            return
+        try:
+            if not hasattr(self, 'video_player') or not self.video_player:
+                print("[VideoEditor] ⚠️ Cannot set trim start: video_player not available")
+                return
 
-        self.video_trim_start = self.video_player.position()
-        self.trim_start_label.setText(self._format_time(self.video_trim_start))
-        print(f"[VideoEditor] Trim start: {self._format_time(self.video_trim_start)}")
+            self.video_trim_start = self.video_player.position()
 
-        # Update visual trim markers on seek slider
-        if hasattr(self, 'seek_slider') and hasattr(self.seek_slider, 'set_trim_markers'):
-            duration = getattr(self, '_video_duration', 0)
-            self.seek_slider.set_trim_markers(self.video_trim_start, self.video_trim_end, duration)
-    
+            # Update label if it exists
+            if hasattr(self, 'trim_start_label'):
+                self.trim_start_label.setText(self._format_time(self.video_trim_start))
+
+            print(f"[VideoEditor] Trim start: {self._format_time(self.video_trim_start)}")
+
+            # Update visual trim markers on seek slider
+            if hasattr(self, 'seek_slider') and hasattr(self.seek_slider, 'set_trim_markers'):
+                duration = getattr(self, '_video_duration', 0)
+                self.seek_slider.set_trim_markers(self.video_trim_start, self.video_trim_end, duration)
+        except Exception as e:
+            print(f"[VideoEditor] ⚠️ Error setting trim start: {e}")
+            import traceback
+            traceback.print_exc()
+
     def _set_trim_end(self):
         """Set trim end point to current position. REUSES existing video_player."""
-        if not hasattr(self, 'video_player') or not self.video_player:
-            return
+        try:
+            if not hasattr(self, 'video_player') or not self.video_player:
+                print("[VideoEditor] ⚠️ Cannot set trim end: video_player not available")
+                return
 
-        self.video_trim_end = self.video_player.position()
-        self.trim_end_label.setText(self._format_time(self.video_trim_end))
-        print(f"[VideoEditor] Trim end: {self._format_time(self.video_trim_end)}")
+            self.video_trim_end = self.video_player.position()
 
-        # Update visual trim markers on seek slider
-        if hasattr(self, 'seek_slider') and hasattr(self.seek_slider, 'set_trim_markers'):
-            duration = getattr(self, '_video_duration', 0)
-            self.seek_slider.set_trim_markers(self.video_trim_start, self.video_trim_end, duration)
+            # Update label if it exists
+            if hasattr(self, 'trim_end_label'):
+                self.trim_end_label.setText(self._format_time(self.video_trim_end))
+
+            print(f"[VideoEditor] Trim end: {self._format_time(self.video_trim_end)}")
+
+            # Update visual trim markers on seek slider
+            if hasattr(self, 'seek_slider') and hasattr(self.seek_slider, 'set_trim_markers'):
+                duration = getattr(self, '_video_duration', 0)
+                self.seek_slider.set_trim_markers(self.video_trim_start, self.video_trim_end, duration)
+        except Exception as e:
+            print(f"[VideoEditor] ⚠️ Error setting trim end: {e}")
+            import traceback
+            traceback.print_exc()
     
     def _reset_trim(self):
         """Reset trim points to full video duration."""
