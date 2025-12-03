@@ -5,6 +5,8 @@
 import os
 import platform
 import time
+import sys
+import shutil
 from pathlib import Path
 from typing import Optional, List, Tuple, Callable, Dict, Any, Set
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
@@ -310,17 +312,23 @@ class PhotoScanService:
 
                     batch_rows.append(row)
                     print(f"[SCAN] Added to batch: {file_path.name} [batch size: {len(batch_rows)}/{self.batch_size}]")
+                    sys.stdout.flush()  # Force log output immediately
 
                     # Flush batch if needed
                     if len(batch_rows) >= self.batch_size:
                         print(f"[SCAN] ⚡ Writing batch to database: {len(batch_rows)} photos")
+                        sys.stdout.flush()
                         logger.info(f"Writing batch of {len(batch_rows)} photos to database")
                         self._write_batch(batch_rows, project_id)
                         print(f"[SCAN] ✓ Batch write complete")
+                        sys.stdout.flush()
                         batch_rows.clear()
 
                     # Report progress (check cancellation here too for responsiveness)
                     if progress_callback and (i % 10 == 0 or i == total_files):
+                        print(f"[SCAN] 🔍 Progress checkpoint at file {i}/{total_files}")
+                        sys.stdout.flush()
+
                         # RESPONSIVE CANCEL: Check during progress reporting
                         if self._cancelled:
                             logger.info("Scan cancelled during progress reporting")
@@ -339,7 +347,10 @@ class PhotoScanService:
                             file_size_kb = round(row[2], 1) if row[2] else 0
 
                         progress_msg = f"📷 {file_name} ({file_size_kb} KB)\nIndexed: {self._stats['photos_indexed']}/{total_files} photos"
-                        
+
+                        print(f"[SCAN] 📊 Creating progress object...")
+                        sys.stdout.flush()
+
                         progress = ScanProgress(
                             current=i,
                             total=total_files,
@@ -347,7 +358,18 @@ class PhotoScanService:
                             message=progress_msg,
                             current_file=str(file_path)
                         )
-                        progress_callback(progress)
+
+                        print(f"[SCAN] 📡 Calling progress_callback...")
+                        sys.stdout.flush()
+
+                        try:
+                            progress_callback(progress)
+                            print(f"[SCAN] ✓ Progress callback completed")
+                            sys.stdout.flush()
+                        except Exception as e:
+                            logger.error(f"Progress callback error: {e}", exc_info=True)
+                            print(f"[SCAN] ⚠️ Progress callback failed: {e}")
+                            sys.stdout.flush()
 
                 # Final batch flush
                 if batch_rows and not self._cancelled:
@@ -650,13 +672,16 @@ class PhotoScanService:
 
         path_str = str(file_path)
         print(f"[SCAN] _process_file started for: {os.path.basename(path_str)}")
+        sys.stdout.flush()
 
         # Step 1: Get file stats with timeout protection
         try:
             print(f"[SCAN] Getting file stats...")
+            sys.stdout.flush()
             future = executor.submit(os.stat, path_str)
             stat_result = future.result(timeout=self.stat_timeout)
             print(f"[SCAN] File stats retrieved successfully")
+            sys.stdout.flush()
         except FuturesTimeoutError:
             logger.warning(f"os.stat timeout for {path_str}")
             self._stats['photos_failed'] += 1
@@ -706,11 +731,13 @@ class PhotoScanService:
                 # DIAGNOSTIC: Always log which file is being processed (can help identify freeze cause)
                 logger.info(f"📷 Processing: {os.path.basename(path_str)} ({size_kb:.1f} KB)")
                 print(f"[SCAN] Processing: {os.path.basename(path_str)}")
+                sys.stdout.flush()
 
                 future = executor.submit(self.metadata_service.extract_basic_metadata, str(file_path))
                 width, height, date_taken = future.result(timeout=metadata_timeout)
 
                 print(f"[SCAN] ✓ Metadata extracted: {os.path.basename(path_str)} [w={width}, h={height}, date={date_taken}]")
+                sys.stdout.flush()
                 logger.info(f"[Scan] Metadata extracted successfully: {os.path.basename(path_str)} [w={width}, h={height}, date={date_taken}]")
             except FuturesTimeoutError:
                 logger.warning(f"Metadata extraction timeout for {path_str} (5s limit) - continuing without metadata")
@@ -753,8 +780,10 @@ class PhotoScanService:
         # Step 5: Ensure folder hierarchy exists
         try:
             print(f"[SCAN] Creating folder hierarchy for: {os.path.basename(path_str)}")
+            sys.stdout.flush()
             folder_id = self._ensure_folder_hierarchy(file_path.parent, root_path, project_id)
             print(f"[SCAN] ✓ Folder hierarchy created: folder_id={folder_id}")
+            sys.stdout.flush()
         except Exception as e:
             logger.error(f"Failed to create folder hierarchy for {path_str}: {e}")
             self._stats['photos_failed'] += 1
@@ -763,6 +792,7 @@ class PhotoScanService:
         # Success
         self._stats['photos_indexed'] += 1
         print(f"[SCAN] ✓ File processed successfully: {os.path.basename(path_str)}")
+        sys.stdout.flush()
 
         # Return row tuple for batch insert
         # BUG FIX #7: Include created_ts, created_date, created_year for date hierarchy
