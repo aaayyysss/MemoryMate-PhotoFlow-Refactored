@@ -467,6 +467,21 @@ class ScanController:
                                                 detail_label.setText(f"Found {total_faces} faces in {success_count} photos")
                                                 QApplication.processEvents()
 
+                                                # CRITICAL FIX: Refresh Google Photos layout People grid after clustering
+                                                # Without this, user must manually toggle layouts to see faces
+                                                self.logger.info("Refreshing People grid after face clustering...")
+                                                try:
+                                                    if hasattr(self.main, 'layout_manager') and self.main.layout_manager:
+                                                        current_layout_id = self.main.layout_manager._current_layout_id
+                                                        if current_layout_id == "google":
+                                                            current_layout = self.main.layout_manager._current_layout
+                                                            if current_layout and hasattr(current_layout, '_build_people_tree'):
+                                                                # Refresh People grid with newly clustered faces
+                                                                current_layout._build_people_tree()
+                                                                self.logger.info("✓ People grid refreshed with detected faces")
+                                                except Exception as refresh_err:
+                                                    self.logger.error(f"Failed to refresh People grid: {refresh_err}", exc_info=True)
+
                                                 # Close dialog after short delay
                                                 QTimer.singleShot(1500, progress_dialog.accept)
                                             except Exception as e:
