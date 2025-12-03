@@ -5,11 +5,13 @@
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QSlider, QComboBox, QFileDialog, QMessageBox, QProgressDialog, QApplication
+    QSlider, QComboBox, QFileDialog, QMessageBox, QProgressDialog, QApplication,
+    QCheckBox, QGroupBox
 )
 from PySide6.QtCore import Qt, QUrl, QTimer
 from PySide6.QtGui import QPixmap, QImage
 import os
+import shutil
 
 
 class VideoEditorMixin:
@@ -176,6 +178,29 @@ class VideoEditorMixin:
         """)
         layout.addWidget(preview_trim_btn)
 
+        # Phase 3: Duration display showing trimmed length
+        layout.addSpacing(20)
+        self.trim_duration_label = QLabel("Duration: 00:00 / 00:00")
+        self.trim_duration_label.setStyleSheet("color: #FFC107; font-weight: bold; font-size: 10pt;")
+        self.trim_duration_label.setToolTip("Trimmed length / Original length")
+        layout.addWidget(self.trim_duration_label)
+
+        # Phase 3: Trim validation warning (hidden by default)
+        self.trim_warning_label = QLabel("⚠️ Invalid trim range!")
+        self.trim_warning_label.setStyleSheet("""
+            QLabel {
+                color: #FF5252;
+                font-weight: bold;
+                font-size: 10pt;
+                background: rgba(255, 82, 82, 0.2);
+                border-radius: 4px;
+                padding: 4px 8px;
+            }
+        """)
+        self.trim_warning_label.setToolTip("Start time must be before end time")
+        self.trim_warning_label.hide()
+        layout.addWidget(self.trim_warning_label)
+
         return container
     
     # ========== ROTATE CONTROLS (Editor-Only) ==========
@@ -280,6 +305,71 @@ class VideoEditorMixin:
         """)
         layout.addWidget(self.export_quality_combo)
 
+        # Phase 3: Playback speed control
+        layout.addSpacing(20)
+        speed_label = QLabel("Speed:")
+        speed_label.setStyleSheet("color: white; font-size: 10pt; font-weight: bold;")
+        layout.addWidget(speed_label)
+
+        self.export_speed_combo = QComboBox()
+        self.export_speed_combo.addItems(["0.5x (Slow)", "1.0x (Normal)", "1.5x (Fast)", "2.0x (Very Fast)"])
+        self.export_speed_combo.setCurrentIndex(1)  # Default to 1.0x
+        self.export_speed_combo.setToolTip("Playback speed (applies to export)")
+        self.export_speed_combo.setStyleSheet("""
+            QComboBox {
+                background: rgba(255, 255, 255, 0.15);
+                color: white;
+                border: 1px solid rgba(255, 255, 255, 0.3);
+                border-radius: 4px;
+                padding: 6px 12px;
+                font-size: 10pt;
+            }
+            QComboBox:hover {
+                background: rgba(255, 255, 255, 0.25);
+            }
+            QComboBox::drop-down {
+                border: none;
+            }
+            QComboBox::down-arrow {
+                image: none;
+                border-left: 4px solid transparent;
+                border-right: 4px solid transparent;
+                border-top: 6px solid white;
+                margin-right: 6px;
+            }
+            QComboBox QAbstractItemView {
+                background: rgba(40, 40, 40, 0.95);
+                color: white;
+                selection-background-color: rgba(66, 133, 244, 0.8);
+                border: 1px solid rgba(255, 255, 255, 0.3);
+            }
+        """)
+        layout.addWidget(self.export_speed_combo)
+
+        # Phase 3: Audio controls
+        layout.addSpacing(20)
+        self.mute_audio_checkbox = QCheckBox("Mute Audio")
+        self.mute_audio_checkbox.setStyleSheet("""
+            QCheckBox {
+                color: white;
+                font-size: 10pt;
+                font-weight: bold;
+            }
+            QCheckBox::indicator {
+                width: 16px;
+                height: 16px;
+                border: 2px solid rgba(255, 255, 255, 0.5);
+                border-radius: 3px;
+                background: rgba(255, 255, 255, 0.1);
+            }
+            QCheckBox::indicator:checked {
+                background: rgba(66, 133, 244, 0.8);
+                border-color: rgba(66, 133, 244, 1.0);
+            }
+        """)
+        self.mute_audio_checkbox.setToolTip("Remove audio from exported video")
+        layout.addWidget(self.mute_audio_checkbox)
+
         return container
     
     # ========== TRIM/ROTATE/EXPORT METHODS (Editor-Only) ==========
@@ -293,6 +383,14 @@ class VideoEditorMixin:
 
             self.video_trim_start = self.video_player.position()
 
+            # Phase 3: Auto-adjust trim end if start is beyond current end
+            if self.video_trim_start >= self.video_trim_end:
+                duration = getattr(self, '_video_duration', 0)
+                self.video_trim_end = duration
+                if hasattr(self, 'trim_end_label'):
+                    self.trim_end_label.setText(self._format_time(self.video_trim_end))
+                print(f"[VideoEditor] Auto-adjusted trim end to full duration")
+
             # Update label if it exists
             if hasattr(self, 'trim_start_label'):
                 self.trim_start_label.setText(self._format_time(self.video_trim_start))
@@ -303,6 +401,10 @@ class VideoEditorMixin:
             if hasattr(self, 'seek_slider') and hasattr(self.seek_slider, 'set_trim_markers'):
                 duration = getattr(self, '_video_duration', 0)
                 self.seek_slider.set_trim_markers(self.video_trim_start, self.video_trim_end, duration)
+
+            # Phase 3: Update duration display and validation
+            self._update_trim_duration()
+            self._validate_trim_range()
         except Exception as e:
             print(f"[VideoEditor] ⚠️ Error setting trim start: {e}")
             import traceback
@@ -317,6 +419,13 @@ class VideoEditorMixin:
 
             self.video_trim_end = self.video_player.position()
 
+            # Phase 3: Auto-adjust trim start if end is before current start
+            if self.video_trim_end <= self.video_trim_start:
+                self.video_trim_start = 0
+                if hasattr(self, 'trim_start_label'):
+                    self.trim_start_label.setText("00:00")
+                print(f"[VideoEditor] Auto-adjusted trim start to beginning")
+
             # Update label if it exists
             if hasattr(self, 'trim_end_label'):
                 self.trim_end_label.setText(self._format_time(self.video_trim_end))
@@ -327,6 +436,10 @@ class VideoEditorMixin:
             if hasattr(self, 'seek_slider') and hasattr(self.seek_slider, 'set_trim_markers'):
                 duration = getattr(self, '_video_duration', 0)
                 self.seek_slider.set_trim_markers(self.video_trim_start, self.video_trim_end, duration)
+
+            # Phase 3: Update duration display and validation
+            self._update_trim_duration()
+            self._validate_trim_range()
         except Exception as e:
             print(f"[VideoEditor] ⚠️ Error setting trim end: {e}")
             import traceback
@@ -447,32 +560,171 @@ class VideoEditorMixin:
         minutes = seconds // 60
         seconds = seconds % 60
         return f"{minutes:02d}:{seconds:02d}"
-    
+
+    # ========== PHASE 3: VALIDATION & FEEDBACK METHODS ==========
+
+    def _update_trim_duration(self):
+        """Update trim duration display showing trimmed length vs original (Phase 3)."""
+        try:
+            if not hasattr(self, 'trim_duration_label'):
+                return
+
+            duration = getattr(self, '_video_duration', 0)
+            trim_length = max(0, self.video_trim_end - self.video_trim_start)
+
+            trimmed_time = self._format_time(trim_length)
+            original_time = self._format_time(duration)
+
+            self.trim_duration_label.setText(f"Duration: {trimmed_time} / {original_time}")
+            print(f"[VideoEditor] Duration: {trimmed_time} trimmed / {original_time} original")
+        except Exception as e:
+            print(f"[VideoEditor] Error updating duration: {e}")
+
+    def _validate_trim_range(self):
+        """Validate trim range and show/hide warning (Phase 3)."""
+        try:
+            if not hasattr(self, 'trim_warning_label'):
+                return
+
+            # Check if trim range is valid
+            is_valid = self.video_trim_start < self.video_trim_end
+
+            if is_valid:
+                self.trim_warning_label.hide()
+            else:
+                self.trim_warning_label.show()
+                print(f"[VideoEditor] ⚠️ Invalid trim range: start={self._format_time(self.video_trim_start)}, end={self._format_time(self.video_trim_end)}")
+
+            return is_valid
+        except Exception as e:
+            print(f"[VideoEditor] Error validating trim: {e}")
+            return True  # Assume valid on error
+
+    def _estimate_output_size(self, input_path, trim_start_ms, trim_end_ms, quality_preset):
+        """Estimate output file size based on input and settings (Phase 3)."""
+        try:
+            # Get input file size
+            input_size_bytes = os.path.getsize(input_path)
+            input_size_mb = input_size_bytes / (1024 * 1024)
+
+            # Calculate trim ratio
+            duration = getattr(self, '_video_duration', 0)
+            if duration > 0:
+                trim_length = trim_end_ms - trim_start_ms
+                trim_ratio = trim_length / duration
+            else:
+                trim_ratio = 1.0
+
+            # Quality multipliers (approximate)
+            quality_multipliers = {
+                0: 1.0,   # High: ~same size
+                1: 0.4,   # Medium: ~40% of original
+                2: 0.15   # Low: ~15% of original
+            }
+
+            multiplier = quality_multipliers.get(quality_preset, 1.0)
+
+            # Estimate output size
+            estimated_mb = input_size_mb * trim_ratio * multiplier
+
+            return estimated_mb
+        except Exception as e:
+            print(f"[VideoEditor] Error estimating file size: {e}")
+            return None
+
+    def _check_disk_space(self, output_path, estimated_size_mb):
+        """Check if there's enough disk space for export (Phase 3)."""
+        try:
+            # Get disk space for output directory
+            output_dir = os.path.dirname(os.path.abspath(output_path))
+            stat = shutil.disk_usage(output_dir)
+            free_space_mb = stat.free / (1024 * 1024)
+
+            # Add 10% safety margin
+            required_mb = estimated_size_mb * 1.1
+
+            has_space = free_space_mb >= required_mb
+
+            print(f"[VideoEditor] Disk space check: {free_space_mb:.1f} MB available, {required_mb:.1f} MB required")
+
+            return has_space, free_space_mb, required_mb
+        except Exception as e:
+            print(f"[VideoEditor] Error checking disk space: {e}")
+            return True, 0, 0  # Assume OK on error
+
     # ========== EXPORT PIPELINE (Editor-Only) ==========
     
     def _export_edited_video(self):
         """Show export dialog and export video with all edits (trim, rotate, speed)."""
         try:
+            # Phase 3: Pre-export validation
+            if not self._validate_trim_range():
+                QMessageBox.warning(
+                    self,
+                    "Invalid Trim Range",
+                    "Trim start must be before trim end.\n\nPlease adjust your trim markers."
+                )
+                return
+
+            # Phase 3: Estimate output file size
+            quality_index = 0
+            if hasattr(self, 'export_quality_combo'):
+                quality_index = self.export_quality_combo.currentIndex()
+
+            estimated_size = self._estimate_output_size(
+                self.media_path,
+                self.video_trim_start,
+                self.video_trim_end,
+                quality_index
+            )
+
+            # Show file size estimate to user
+            if estimated_size:
+                size_info = f"\n\nEstimated output size: ~{estimated_size:.1f} MB"
+            else:
+                size_info = ""
+
             # Get output path from user
             default_name = os.path.splitext(os.path.basename(self.media_path))[0] + "_edited.mp4"
             output_path, _ = QFileDialog.getSaveFileName(
                 self,
-                "Export Edited Video",
+                "Export Edited Video" + size_info,
                 default_name,
                 "MP4 Video (*.mp4);;All Files (*)"
             )
-            
+
             if not output_path:
                 return  # User cancelled
-            
+
+            # Phase 3: Check disk space
+            if estimated_size:
+                has_space, free_mb, required_mb = self._check_disk_space(output_path, estimated_size)
+                if not has_space:
+                    reply = QMessageBox.warning(
+                        self,
+                        "Low Disk Space",
+                        f"Warning: Low disk space!\n\n"
+                        f"Available: {free_mb:.1f} MB\n"
+                        f"Required: ~{required_mb:.1f} MB\n\n"
+                        f"Continue anyway?",
+                        QMessageBox.Yes | QMessageBox.No,
+                        QMessageBox.No
+                    )
+                    if reply != QMessageBox.Yes:
+                        return
+
             # Perform export
             success = self._export_video_with_edits(output_path)
-            
+
             if success:
+                # Show actual output file size
+                actual_size_mb = os.path.getsize(output_path) / (1024 * 1024)
                 QMessageBox.information(
                     self,
                     "Export Successful",
-                    f"Video exported successfully to:\n{output_path}"
+                    f"Video exported successfully!\n\n"
+                    f"Location: {output_path}\n"
+                    f"File size: {actual_size_mb:.1f} MB"
                 )
             else:
                 QMessageBox.warning(
@@ -480,7 +732,7 @@ class VideoEditorMixin:
                     "Export Failed",
                     "Failed to export video. Check console for errors."
                 )
-        
+
         except Exception as e:
             import traceback
             print(f"[VideoEditor] Error in export dialog: {e}")
@@ -531,9 +783,26 @@ class VideoEditorMixin:
                     clip = clip.rotate(270)
                 print(f"[VideoEditor] Rotated: {self.video_rotation_angle}°")
 
-            # Note: Speed change done in viewer playback only (not exported)
-            # Note: Mute done in viewer playback only (not exported)
-            # Phase 2: Can add speed/mute to export if needed
+            # Phase 3: Apply speed change
+            speed_index = 1  # Default to 1.0x
+            if hasattr(self, 'export_speed_combo'):
+                speed_index = self.export_speed_combo.currentIndex()
+
+            speed_factors = [0.5, 1.0, 1.5, 2.0]
+            speed_factor = speed_factors[speed_index]
+
+            if speed_factor != 1.0:
+                clip = clip.fx(lambda c: c.speedx(speed_factor))
+                print(f"[VideoEditor] Speed: {speed_factor}x")
+
+            # Phase 3: Handle audio muting
+            mute_audio = False
+            if hasattr(self, 'mute_audio_checkbox'):
+                mute_audio = self.mute_audio_checkbox.isChecked()
+
+            if mute_audio:
+                clip = clip.without_audio()
+                print(f"[VideoEditor] Audio muted")
 
             # Create progress dialog
             progress_dialog = QProgressDialog("Initializing export...", "Cancel", 0, 100, self)
