@@ -8081,6 +8081,29 @@ class GooglePhotosLayout(BaseLayout):
             self.nav_buttons[section_attr] = btn
 
         nav_layout.addStretch()
+
+        # "Expand All" button at bottom
+        expand_all_btn = QPushButton("☰")
+        expand_all_btn.setToolTip("Expand All Sections")
+        expand_all_btn.setFixedSize(40, 40)
+        expand_all_btn.setCursor(Qt.PointingHandCursor)
+        expand_all_btn.setStyleSheet("""
+            QPushButton {
+                background: transparent;
+                border: none;
+                border-radius: 8px;
+                font-size: 16pt;
+            }
+            QPushButton:hover {
+                background: rgba(26, 115, 232, 0.08);
+            }
+            QPushButton:pressed {
+                background: rgba(26, 115, 232, 0.15);
+            }
+        """)
+        expand_all_btn.clicked.connect(self._expand_all_sections)
+        nav_layout.addWidget(expand_all_btn)
+
         main_layout.addWidget(nav_bar)
 
         # Content area (sections)
@@ -8253,6 +8276,10 @@ class GooglePhotosLayout(BaseLayout):
         content_layout.addWidget(self.sidebar_scroll)
 
         print("[GooglePhotosLayout] ✅ Sidebar created with vertical nav bar, collapsible sections, and People grid view")
+
+        # CRITICAL FIX: Populate People grid immediately after sidebar creation
+        # This ensures faces are visible on initial load, not just after filtering
+        QTimer.singleShot(100, self._build_people_tree)
 
         return sidebar
 
@@ -8458,13 +8485,19 @@ class GooglePhotosLayout(BaseLayout):
             # Group photos by date
             photos_by_date = self._group_photos_by_date(rows)
 
-            # Build timeline, folders, people, and videos trees (only if not filtering)
-            # This shows ALL years/months/folders/people/videos, not just filtered ones
+            # Build sidebar sections
+            # CRITICAL: Sidebar should ALWAYS show ALL items (not filtered)
+            # Only the photo grid should be filtered, not the sidebar navigation
             if filter_year is None and filter_month is None and filter_folder is None and filter_person is None:
+                # Full rebuild of all sections when no filters active
                 self._build_timeline_tree(photos_by_date)
                 self._build_folders_tree(rows)
                 self._build_people_tree()
                 self._build_videos_tree()
+            else:
+                # When filtering photos, still update People section
+                # (user should always see all faces to switch between them)
+                self._build_people_tree()
 
             # Track all displayed paths for Shift+Ctrl multi-selection
             self.all_displayed_paths = [photo[0] for photos_list in photos_by_date.values() for photo in photos_list]
@@ -8996,21 +9029,110 @@ class GooglePhotosLayout(BaseLayout):
 
     def _scroll_to_section(self, section_attr: str):
         """
-        Scroll sidebar to make a section visible (Phase 3: Vertical Navigation).
+        Focus on a section: Expand it and collapse others (accordion style).
+
+        PHASE 3: Navigation Filtering - Show only the selected section for focused view.
+        This matches iPhone Photos behavior where tapping a section focuses on it.
 
         Args:
             section_attr: Attribute name of the section (e.g., "timeline_section")
         """
-        if hasattr(self, section_attr):
-            section = getattr(self, section_attr)
-            if section and hasattr(self, 'sidebar_scroll'):
-                # Ensure section is expanded
-                if hasattr(section, 'is_expanded') and not section.is_expanded:
-                    section.expand()
+        if not hasattr(self, section_attr):
+            return
 
-                # Scroll to make section visible
-                self.sidebar_scroll.ensureWidgetVisible(section, 0, 50)
-                print(f"[GooglePhotosLayout] Scrolled to section: {section_attr}")
+        section = getattr(self, section_attr)
+        if not section or not hasattr(self, 'sidebar_scroll'):
+            return
+
+        print(f"[GooglePhotosLayout] Focusing on section: {section_attr}")
+
+        # ACCORDION BEHAVIOR: Collapse all other sections, expand clicked section
+        all_sections = ['timeline_section', 'folders_section', 'people_section', 'videos_section']
+
+        for sect_attr in all_sections:
+            if not hasattr(self, sect_attr):
+                continue
+
+            sect = getattr(self, sect_attr)
+            if sect and hasattr(sect, 'is_expanded'):
+                if sect_attr == section_attr:
+                    # Expand clicked section
+                    if not sect.is_expanded:
+                        sect.expand()
+                else:
+                    # Collapse other sections for focused view
+                    if sect.is_expanded:
+                        sect.collapse()
+
+        # Scroll to make section visible at top
+        self.sidebar_scroll.ensureWidgetVisible(section, 0, 20)
+
+        # Update navigation button visual state (highlight active)
+        if hasattr(self, 'nav_buttons'):
+            for btn_attr, btn in self.nav_buttons.items():
+                if btn_attr == section_attr:
+                    # Highlight active button
+                    btn.setStyleSheet("""
+                        QPushButton {
+                            background: rgba(26, 115, 232, 0.15);
+                            border: none;
+                            border-radius: 8px;
+                            font-size: 18pt;
+                        }
+                        QPushButton:hover {
+                            background: rgba(26, 115, 232, 0.25);
+                        }
+                    """)
+                else:
+                    # Reset inactive buttons
+                    btn.setStyleSheet("""
+                        QPushButton {
+                            background: transparent;
+                            border: none;
+                            border-radius: 8px;
+                            font-size: 18pt;
+                        }
+                        QPushButton:hover {
+                            background: rgba(26, 115, 232, 0.08);
+                        }
+                        QPushButton:pressed {
+                            background: rgba(26, 115, 232, 0.15);
+                        }
+                    """)
+
+    def _expand_all_sections(self):
+        """
+        Expand all sidebar sections (reset accordion state).
+
+        Useful after using accordion mode to focus on one section.
+        """
+        print("[GooglePhotosLayout] Expanding all sections")
+
+        all_sections = ['timeline_section', 'folders_section', 'people_section', 'videos_section']
+
+        for sect_attr in all_sections:
+            if hasattr(self, sect_attr):
+                sect = getattr(self, sect_attr)
+                if sect and hasattr(sect, 'is_expanded') and not sect.is_expanded:
+                    sect.expand()
+
+        # Reset all navigation button highlights
+        if hasattr(self, 'nav_buttons'):
+            for btn in self.nav_buttons.values():
+                btn.setStyleSheet("""
+                    QPushButton {
+                        background: transparent;
+                        border: none;
+                        border-radius: 8px;
+                        font-size: 18pt;
+                    }
+                    QPushButton:hover {
+                        background: rgba(26, 115, 232, 0.08);
+                    }
+                    QPushButton:pressed {
+                        background: rgba(26, 115, 232, 0.15);
+                    }
+                """)
 
     def _show_people_context_menu(self, pos):
         """
@@ -9059,7 +9181,11 @@ class GooglePhotosLayout(BaseLayout):
         menu.exec(self.people_tree.viewport().mapToGlobal(pos))
 
     def _rename_person(self, item: QTreeWidgetItem, branch_key: str, current_name: str):
-        """Rename a person/face cluster."""
+        """
+        Rename a person/face cluster.
+
+        Works for both grid view (item=None) and tree view (item=QTreeWidgetItem).
+        """
         from PySide6.QtWidgets import QInputDialog, QMessageBox
 
         new_name, ok = QInputDialog.getText(
@@ -9097,16 +9223,21 @@ class GooglePhotosLayout(BaseLayout):
 
                 conn.commit()
 
-            # Update UI - preserve count
-            old_text = item.text(0)
-            count_part = old_text.split('(')[-1] if '(' in old_text else "0)"
-            item.setText(0, f"{new_name} ({count_part}")
+            # Update UI based on view type
+            if item is not None:
+                # Tree view: Update tree item
+                old_text = item.text(0)
+                count_part = old_text.split('(')[-1] if '(' in old_text else "0)"
+                item.setText(0, f"{new_name} ({count_part}")
 
-            # Update data
-            data = item.data(0, Qt.UserRole)
-            if data:
-                data["label"] = new_name
-                item.setData(0, Qt.UserRole, data)
+                # Update data
+                data = item.data(0, Qt.UserRole)
+                if data:
+                    data["label"] = new_name
+                    item.setData(0, Qt.UserRole, data)
+            else:
+                # Grid view: Refresh the entire people grid to show updated name
+                self._build_people_tree()
 
             print(f"[GooglePhotosLayout] Person renamed: {current_name} → {new_name}")
             QMessageBox.information(self.main_window, "Renamed", f"Person renamed to '{new_name}'")
