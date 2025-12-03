@@ -6,10 +6,15 @@ from PySide6.QtWidgets import (
     QScrollArea, QSplitter, QToolBar, QLineEdit, QTreeWidget,
     QTreeWidgetItem, QFrame, QGridLayout, QStackedWidget, QSizePolicy, QDialog,
     QGraphicsOpacityEffect, QMenu, QListWidget, QDialogButtonBox,
-    QInputDialog, QMessageBox, QSlider, QSpinBox, QComboBox
+    QInputDialog, QMessageBox, QSlider, QSpinBox, QComboBox, QLayout
 )
-from PySide6.QtCore import Qt, Signal, QSize, QEvent, QRunnable, QThreadPool, QObject, QTimer, QUrl
-from PySide6.QtGui import QPixmap, QIcon, QKeyEvent, QImage, QColor, QAction, QPainter, QPen
+from PySide6.QtCore import (
+    Qt, Signal, QSize, QEvent, QRunnable, QThreadPool, QObject, QTimer, QUrl,
+    QPropertyAnimation, QEasingCurve, QRect, QPoint
+)
+from PySide6.QtGui import (
+    QPixmap, QIcon, QKeyEvent, QImage, QColor, QAction, QPainter, QPen, QPainterPath
+)
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from .base_layout import BaseLayout
@@ -8002,11 +8007,17 @@ class GooglePhotosLayout(BaseLayout):
 
     def _create_sidebar(self) -> QWidget:
         """
-        Create minimal sidebar with timeline navigation, folders, and people.
+        Create modern sidebar with collapsible sections and grid view for People.
+
+        Phase 1+2 Implementation:
+        - Collapsible sections (Timeline, Folders, People, Videos)
+        - Grid view for People (replaces tree)
+        - Smooth expand/collapse animations
+        - Better space utilization (3x more faces visible)
         """
         sidebar = QWidget()
-        sidebar.setMinimumWidth(180)
-        sidebar.setMaximumWidth(250)
+        sidebar.setMinimumWidth(200)
+        sidebar.setMaximumWidth(280)  # Slightly wider for grid
         sidebar.setStyleSheet("""
             QWidget {
                 background: white;
@@ -8014,39 +8025,35 @@ class GooglePhotosLayout(BaseLayout):
             }
         """)
 
-        layout = QVBoxLayout(sidebar)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(12)
+        main_layout = QVBoxLayout(sidebar)
+        main_layout.setContentsMargins(8, 8, 8, 8)
+        main_layout.setSpacing(4)  # Tighter spacing for sections
 
-        # Timeline navigation header (clickable to clear filters)
-        timeline_header = QPushButton("📅 Timeline")
-        timeline_header.setFlat(True)
-        timeline_header.setCursor(Qt.PointingHandCursor)
-        timeline_header.setStyleSheet("""
-            QPushButton {
-                text-align: left;
-                font-size: 12pt;
-                font-weight: bold;
-                color: #202124;
-                border: none;
-                padding: 4px 0px;
-            }
-            QPushButton:hover {
-                color: #1a73e8;
+        # Scroll area for all sections (allows overflow)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setStyleSheet("""
+            QScrollArea {
                 background: transparent;
+                border: none;
             }
         """)
-        timeline_header.clicked.connect(self._on_section_header_clicked)
-        layout.addWidget(timeline_header)
+
+        scroll_content = QWidget()
+        scroll_layout = QVBoxLayout(scroll_content)
+        scroll_layout.setContentsMargins(0, 0, 0, 0)
+        scroll_layout.setSpacing(4)
+
+        # === SECTION 1: Timeline (Collapsible) ===
+        self.timeline_section = CollapsibleSection("Timeline", "📅", 0)
 
         # Timeline tree (Years > Months)
         self.timeline_tree = QTreeWidget()
         self.timeline_tree.setHeaderHidden(True)
-
-        # CRITICAL FIX: Disable horizontal scrollbar
         self.timeline_tree.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.timeline_tree.setTextElideMode(Qt.ElideRight)
-
         self.timeline_tree.setStyleSheet("""
             QTreeWidget {
                 border: none;
@@ -8064,40 +8071,20 @@ class GooglePhotosLayout(BaseLayout):
                 color: #1a73e8;
             }
         """)
-        # Connect click signal to filter handler
         self.timeline_tree.itemClicked.connect(self._on_timeline_item_clicked)
-        layout.addWidget(self.timeline_tree)
 
-        # Folders section header (clickable to clear filters)
-        folders_header = QPushButton("📁 Folders")
-        folders_header.setFlat(True)
-        folders_header.setCursor(Qt.PointingHandCursor)
-        folders_header.setStyleSheet("""
-            QPushButton {
-                text-align: left;
-                font-size: 12pt;
-                font-weight: bold;
-                color: #202124;
-                border: none;
-                padding: 4px 0px;
-                margin-top: 12px;
-            }
-            QPushButton:hover {
-                color: #1a73e8;
-                background: transparent;
-            }
-        """)
-        folders_header.clicked.connect(self._on_section_header_clicked)
-        layout.addWidget(folders_header)
+        # Add timeline tree to section
+        self.timeline_section.add_widget(self.timeline_tree)
+        scroll_layout.addWidget(self.timeline_section)
+
+        # === SECTION 2: Folders (Collapsible) ===
+        self.folders_section = CollapsibleSection("Folders", "📁", 0)
 
         # Folders tree
         self.folders_tree = QTreeWidget()
         self.folders_tree.setHeaderHidden(True)
-
-        # CRITICAL FIX: Disable horizontal scrollbar (use tooltips for full paths)
         self.folders_tree.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.folders_tree.setTextElideMode(Qt.ElideMiddle)  # Elide middle for paths
-
+        self.folders_tree.setTextElideMode(Qt.ElideMiddle)
         self.folders_tree.setStyleSheet("""
             QTreeWidget {
                 border: none;
@@ -8115,93 +8102,35 @@ class GooglePhotosLayout(BaseLayout):
                 color: #1a73e8;
             }
         """)
-        # Connect click signal to filter handler
         self.folders_tree.itemClicked.connect(self._on_folder_item_clicked)
-        layout.addWidget(self.folders_tree)
 
-        # People section header (clickable to clear filters)
-        people_header = QPushButton("👥 People")
-        people_header.setFlat(True)
-        people_header.setCursor(Qt.PointingHandCursor)
-        people_header.setStyleSheet("""
-            QPushButton {
-                text-align: left;
-                font-size: 12pt;
-                font-weight: bold;
-                color: #202124;
-                border: none;
-                padding: 4px 0px;
-                margin-top: 12px;
-            }
-            QPushButton:hover {
-                color: #1a73e8;
-                background: transparent;
-            }
-        """)
-        people_header.clicked.connect(self._on_section_header_clicked)
-        layout.addWidget(people_header)
+        # Add folders tree to section
+        self.folders_section.add_widget(self.folders_tree)
+        scroll_layout.addWidget(self.folders_section)
 
-        # People tree
+        # === SECTION 3: People (Collapsible + GRID VIEW!) ===
+        self.people_section = CollapsibleSection("People", "👥", 0)
+
+        # NEW: Grid view for people (replaces tree!)
+        self.people_grid = PeopleGridView()
+        self.people_grid.person_clicked.connect(self._on_person_clicked_from_grid)
+
+        # Add grid to section
+        self.people_section.add_widget(self.people_grid)
+        scroll_layout.addWidget(self.people_section)
+
+        # Keep old people_tree for backward compatibility (but hide it)
+        # This prevents errors in code that references self.people_tree
         self.people_tree = QTreeWidget()
         self.people_tree.setHeaderHidden(True)
-
-        # ENHANCEMENT: Larger icon size for better face visibility (64x64)
-        # Was not set explicitly, defaulted to ~16px - now 64px for clear face identification
         self.people_tree.setIconSize(QSize(64, 64))
-
-        # CRITICAL FIX: Disable horizontal scrollbar (text elision instead)
-        self.people_tree.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.people_tree.setTextElideMode(Qt.ElideRight)  # Elide text instead of scrolling
-
-        # ENHANCEMENT: Enable context menu for face management (rename/merge/delete)
         self.people_tree.setContextMenuPolicy(Qt.CustomContextMenu)
         self.people_tree.customContextMenuRequested.connect(self._show_people_context_menu)
-
-        self.people_tree.setStyleSheet("""
-            QTreeWidget {
-                border: none;
-                background: transparent;
-                font-size: 10pt;
-            }
-            QTreeWidget::item {
-                padding: 6px;
-                min-height: 70px;
-            }
-            QTreeWidget::item:hover {
-                background: #f1f3f4;
-                border-radius: 4px;
-            }
-            QTreeWidget::item:selected {
-                background: #e8f0fe;
-                color: #1a73e8;
-                border-radius: 4px;
-            }
-        """)
-        # Connect click signal to filter handler
         self.people_tree.itemClicked.connect(self._on_people_item_clicked)
-        layout.addWidget(self.people_tree)
+        self.people_tree.hide()  # Hidden - grid is used instead
 
-        # Videos section header (clickable to show all videos)
-        videos_header = QPushButton("🎬 Videos")
-        videos_header.setFlat(True)
-        videos_header.setCursor(Qt.PointingHandCursor)
-        videos_header.setStyleSheet("""
-            QPushButton {
-                text-align: left;
-                font-size: 12pt;
-                font-weight: bold;
-                color: #202124;
-                border: none;
-                padding: 4px 0px;
-                margin-top: 12px;
-            }
-            QPushButton:hover {
-                color: #1a73e8;
-                background: transparent;
-            }
-        """)
-        videos_header.clicked.connect(self._on_videos_header_clicked)
-        layout.addWidget(videos_header)
+        # === SECTION 4: Videos (Collapsible) ===
+        self.videos_section = CollapsibleSection("Videos", "🎬", 0)
 
         # Videos tree
         self.videos_tree = QTreeWidget()
@@ -8223,12 +8152,19 @@ class GooglePhotosLayout(BaseLayout):
                 color: #1a73e8;
             }
         """)
-        # Connect click signal to filter handler
         self.videos_tree.itemClicked.connect(self._on_videos_item_clicked)
-        layout.addWidget(self.videos_tree)
+
+        # Add videos tree to section
+        self.videos_section.add_widget(self.videos_tree)
+        scroll_layout.addWidget(self.videos_section)
 
         # Spacer at bottom
-        layout.addStretch()
+        scroll_layout.addStretch()
+
+        scroll.setWidget(scroll_content)
+        main_layout.addWidget(scroll)
+
+        print("[GooglePhotosLayout] ✅ Sidebar created with collapsible sections and People grid view")
 
         return sidebar
 
@@ -8664,21 +8600,22 @@ class GooglePhotosLayout(BaseLayout):
 
     def _build_people_tree(self):
         """
-        Build people tree in sidebar (face clusters with counts).
+        Build people grid/tree in sidebar (face clusters with counts).
 
+        Phase 1+2: Now populates both grid view AND tree (tree hidden, kept for compatibility).
         Queries face_branch_reps table for detected faces/people.
         """
         try:
             from reference_db import ReferenceDB
             db = ReferenceDB()
 
-            # Query face clusters for current project (with representative image)
+            # Query ALL face clusters for current project (removed LIMIT 10)
+            # Grid view can handle many more people than tree view!
             query = """
                 SELECT branch_key, label, count, rep_path, rep_thumb_png
                 FROM face_branch_reps
                 WHERE project_id = ?
                 ORDER BY count DESC
-                LIMIT 10
             """
 
             print(f"[GooglePhotosLayout] 👥 Querying face_branch_reps for project_id={self.project_id}")
@@ -8690,37 +8627,77 @@ class GooglePhotosLayout(BaseLayout):
                 rows = cur.fetchall()
 
             print(f"[GooglePhotosLayout] 👥 Found {len(rows)} face clusters")
-            for branch_key, label, count, rep_path, rep_thumb_png in rows:
-                print(f"[GooglePhotosLayout]   - {branch_key}: {label or 'Unnamed'} ({count} photos)")
+
+            # Update section count badge
+            if hasattr(self, 'people_section'):
+                self.people_section.update_count(len(rows))
+
+            # Clear existing grid
+            if hasattr(self, 'people_grid'):
+                self.people_grid.clear()
 
             if not rows:
-                # No face clusters found - show placeholder
-                no_faces_item = QTreeWidgetItem(["  (Run face detection first)"])
-                no_faces_item.setDisabled(True)
-                self.people_tree.addTopLevelItem(no_faces_item)
+                # No face clusters found
+                print("[GooglePhotosLayout] No faces found - grid will show empty state")
+                # Grid shows its own empty state message
                 return
 
-            # Build tree with thumbnails
+            # Populate GRID VIEW (Phase 1+2)
             for branch_key, label, count, rep_path, rep_thumb_png in rows:
                 # Use label if set, otherwise use "Unnamed Person"
-                display_name = label if label else f"Unnamed Person"
+                display_name = label if label else f"Unnamed"
 
-                # Create tree item
+                # Load face thumbnail as pixmap
+                face_pixmap = None
+                if rep_thumb_png:
+                    try:
+                        from PySide6.QtGui import QPixmap
+                        import base64
+                        img_data = base64.b64decode(rep_thumb_png)
+                        face_pixmap = QPixmap()
+                        face_pixmap.loadFromData(img_data)
+                    except Exception as e:
+                        print(f"[GooglePhotosLayout] ⚠️ Error loading face pixmap: {e}")
+
+                # Add to grid
+                # PersonCard will display the display_name, but emit branch_key when clicked
+                if hasattr(self, 'people_grid'):
+                    # Store branch_key in card's person_name for filtering
+                    # But we need to update PersonCard to accept display_name separately
+                    # For now, create a modified add_person that stores both
+                    self.people_grid.add_person(branch_key, face_pixmap, count)
+                    # Update the last added card's name label
+                    if self.people_grid.flow_layout.count() > 0:
+                        last_card = self.people_grid.flow_layout.itemAt(self.people_grid.flow_layout.count() - 1).widget()
+                        if isinstance(last_card, PersonCard):
+                            # Update the name label to show display_name
+                            name_label = last_card.findChild(QLabel)
+                            if name_label and len(display_name) <= 10:
+                                name_label.setText(display_name)
+                            elif name_label:
+                                name_label.setText(display_name[:9] + "…")
+                            name_label.setToolTip(f"{display_name} ({count} photos)")
+                    print(f"[GooglePhotosLayout]   ✓ Added to grid: {display_name} ({count} photos)")
+
+            print(f"[GooglePhotosLayout] ✅ Populated people grid with {len(rows)} faces")
+
+            # Also populate old tree (hidden, for backward compatibility)
+            # This ensures any code that references self.people_tree still works
+            for branch_key, label, count, rep_path, rep_thumb_png in rows:
+                display_name = label if label else f"Unnamed Person"
                 person_item = QTreeWidgetItem([f"{display_name} ({count})"])
                 person_item.setData(0, Qt.UserRole, {"type": "person", "branch_key": branch_key, "label": label})
 
-                # Load and set face thumbnail as icon
                 icon = self._load_face_thumbnail(rep_path, rep_thumb_png)
                 if icon:
                     person_item.setIcon(0, icon)
                 else:
-                    # Fallback to emoji icon if no thumbnail available
                     person_item.setText(0, f"👤 {display_name} ({count})")
 
                 self.people_tree.addTopLevelItem(person_item)
 
         except Exception as e:
-            print(f"[GooglePhotosLayout] ⚠️ Error building people tree: {e}")
+            print(f"[GooglePhotosLayout] ⚠️ Error building people grid: {e}")
             import traceback
             traceback.print_exc()
 
@@ -8840,6 +8817,22 @@ class GooglePhotosLayout(BaseLayout):
                 filter_folder=None,
                 filter_person=branch_key
             )
+
+    def _on_person_clicked_from_grid(self, person_name: str):
+        """
+        Handle person card click from grid view - filter by person.
+
+        Args:
+            person_name: Name of person clicked (branch_key format: "cluster_X" or name)
+        """
+        print(f"[GooglePhotosLayout] Filtering by person from grid: {person_name}")
+        self._load_photos(
+            thumb_size=self.current_thumb_size,
+            filter_year=None,
+            filter_month=None,
+            filter_folder=None,
+            filter_person=person_name  # person_name is the branch_key
+        )
 
     def _show_people_context_menu(self, pos):
         """
@@ -11862,3 +11855,398 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
 
         # Reload photos for the new project
         self._load_photos()
+
+
+# =============================================================================
+# SIDEBAR REDESIGN: NEW WIDGETS (Phase 1 + Phase 2)
+# =============================================================================
+
+class FlowLayout(QLayout):
+    """
+    Flow layout that arranges items left-to-right, wrapping to next row when needed.
+    Perfect for grid views where items should flow naturally.
+    
+    Based on Qt's Flow Layout example, adapted for sidebar people grid.
+    """
+    def __init__(self, parent=None, margin=0, spacing=-1):
+        super().__init__(parent)
+        if parent is not None:
+            self.setContentsMargins(margin, margin, margin, margin)
+        self.setSpacing(spacing)
+        self.itemList = []
+
+    def __del__(self):
+        item = self.takeAt(0)
+        while item:
+            item = self.takeAt(0)
+
+    def addItem(self, item):
+        self.itemList.append(item)
+
+    def count(self):
+        return len(self.itemList)
+
+    def itemAt(self, index):
+        if 0 <= index < len(self.itemList):
+            return self.itemList[index]
+        return None
+
+    def takeAt(self, index):
+        if 0 <= index < len(self.itemList):
+            return self.itemList.pop(index)
+        return None
+
+    def expandingDirections(self):
+        return Qt.Orientation(0)
+
+    def hasHeightForWidth(self):
+        return True
+
+    def heightForWidth(self, width):
+        height = self._do_layout(QRect(0, 0, width, 0), True)
+        return height
+
+    def setGeometry(self, rect):
+        super().setGeometry(rect)
+        self._do_layout(rect, False)
+
+    def sizeHint(self):
+        return self.minimumSize()
+
+    def minimumSize(self):
+        size = QSize()
+        for item in self.itemList:
+            size = size.expandedTo(item.minimumSize())
+        margin, _, _, _ = self.getContentsMargins()
+        size += QSize(2 * margin, 2 * margin)
+        return size
+
+    def _do_layout(self, rect, test_only):
+        """Arrange items in flow layout."""
+        x = rect.x()
+        y = rect.y()
+        line_height = 0
+        spacing = self.spacing()
+
+        for item in self.itemList:
+            widget = item.widget()
+            space_x = spacing + widget.style().layoutSpacing(
+                QSizePolicy.PushButton, QSizePolicy.PushButton, Qt.Horizontal
+            )
+            space_y = spacing + widget.style().layoutSpacing(
+                QSizePolicy.PushButton, QSizePolicy.PushButton, Qt.Vertical
+            )
+
+            next_x = x + item.sizeHint().width() + space_x
+            if next_x - space_x > rect.right() and line_height > 0:
+                x = rect.x()
+                y = y + line_height + space_y
+                next_x = x + item.sizeHint().width() + space_x
+                line_height = 0
+
+            if not test_only:
+                item.setGeometry(QRect(QPoint(x, y), item.sizeHint()))
+
+            x = next_x
+            line_height = max(line_height, item.sizeHint().height())
+
+        return y + line_height - rect.y()
+
+
+class CollapsibleSection(QWidget):
+    """
+    Collapsible section with smooth expand/collapse animation.
+    
+    Features:
+    - Click header to toggle expand/collapse
+    - Smooth QPropertyAnimation (200ms)
+    - Shows item count badge
+    - Visual indicators (▼ expanded, ▶ collapsed)
+    - Content area can contain any widget
+    """
+    def __init__(self, title, icon, count=0, parent=None):
+        super().__init__(parent)
+        self.is_expanded = True
+        self.title = title
+        self.icon = icon
+        self.count = count
+
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+
+        # Header button (clickable)
+        self.header_btn = QPushButton(f"▼ {icon} {title}  ({count})")
+        self.header_btn.setFlat(True)
+        self.header_btn.setCursor(Qt.PointingHandCursor)
+        self.header_btn.setStyleSheet("""
+            QPushButton {
+                text-align: left;
+                font-size: 11pt;
+                font-weight: bold;
+                color: #202124;
+                border: none;
+                padding: 8px 4px;
+                background: transparent;
+            }
+            QPushButton:hover {
+                color: #1a73e8;
+                background: rgba(26, 115, 232, 0.08);
+                border-radius: 4px;
+            }
+        """)
+        self.header_btn.clicked.connect(self.toggle)
+        main_layout.addWidget(self.header_btn)
+
+        # Content widget (collapsible)
+        self.content_widget = QWidget()
+        self.content_layout = QVBoxLayout(self.content_widget)
+        self.content_layout.setContentsMargins(0, 0, 0, 0)
+        self.content_layout.setSpacing(4)
+        main_layout.addWidget(self.content_widget)
+
+        # Animation for smooth expand/collapse
+        self.animation = QPropertyAnimation(self.content_widget, b"maximumHeight")
+        self.animation.setDuration(200)  # 200ms smooth
+        self.animation.setEasingCurve(QEasingCurve.InOutCubic)
+
+    def toggle(self):
+        """Toggle expand/collapse."""
+        if self.is_expanded:
+            self.collapse()
+        else:
+            self.expand()
+
+    def collapse(self):
+        """Collapse section (hide content)."""
+        self.animation.setStartValue(self.content_widget.height())
+        self.animation.setEndValue(0)
+        self.animation.start()
+        self.is_expanded = False
+        self.header_btn.setText(f"▶ {self.icon} {self.title}  ({self.count})")
+        print(f"[CollapsibleSection] Collapsed: {self.title}")
+
+    def expand(self):
+        """Expand section (show content)."""
+        self.content_widget.setMaximumHeight(16777215)  # Remove max height limit
+        content_height = self.content_widget.sizeHint().height()
+        self.animation.setStartValue(0)
+        self.animation.setEndValue(content_height)
+        self.animation.start()
+        self.is_expanded = True
+        self.header_btn.setText(f"▼ {self.icon} {self.title}  ({self.count})")
+        print(f"[CollapsibleSection] Expanded: {self.title}")
+
+    def update_count(self, count):
+        """Update count badge."""
+        self.count = count
+        arrow = "▼" if self.is_expanded else "▶"
+        self.header_btn.setText(f"{arrow} {self.icon} {self.title}  ({count})")
+
+    def add_widget(self, widget):
+        """Add widget to content area."""
+        self.content_layout.addWidget(widget)
+
+
+class PersonCard(QWidget):
+    """
+    Single person card with circular face thumbnail and name.
+    
+    Features:
+    - 80x100px compact card size
+    - Circular face thumbnail (64px diameter)
+    - Name label (truncated if long)
+    - Photo count badge
+    - Hover effect
+    - Click to filter by person
+    """
+    clicked = Signal(str)  # Emits person name
+
+    def __init__(self, name, face_pixmap, photo_count, parent=None):
+        super().__init__(parent)
+        self.person_name = name
+        self.setFixedSize(80, 100)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setStyleSheet("""
+            PersonCard {
+                background: transparent;
+                border-radius: 6px;
+            }
+            PersonCard:hover {
+                background: rgba(26, 115, 232, 0.08);
+            }
+        """)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(4)
+        layout.setAlignment(Qt.AlignCenter)
+
+        # Circular face thumbnail
+        face_label = QLabel()
+        if face_pixmap and not face_pixmap.isNull():
+            # Make circular mask
+            circular_pixmap = self._make_circular(face_pixmap, 64)
+            face_label.setPixmap(circular_pixmap)
+        else:
+            # Placeholder if no face image
+            face_label.setPixmap(QPixmap())
+            face_label.setFixedSize(64, 64)
+            face_label.setStyleSheet("""
+                QLabel {
+                    background: #e8eaed;
+                    border-radius: 32px;
+                    font-size: 24pt;
+                }
+            """)
+            face_label.setText("👤")
+            face_label.setAlignment(Qt.AlignCenter)
+
+        face_label.setFixedSize(64, 64)
+        face_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(face_label)
+
+        # Name label
+        name_label = QLabel(name if len(name) <= 10 else name[:9] + "…")
+        name_label.setAlignment(Qt.AlignCenter)
+        name_label.setWordWrap(False)
+        name_label.setStyleSheet("""
+            QLabel {
+                font-size: 9pt;
+                color: #202124;
+                font-weight: 500;
+            }
+        """)
+        name_label.setToolTip(name)  # Full name on hover
+        layout.addWidget(name_label)
+
+        # Count badge
+        count_label = QLabel(f"({photo_count})")
+        count_label.setAlignment(Qt.AlignCenter)
+        count_label.setStyleSheet("""
+            QLabel {
+                font-size: 8pt;
+                color: #5f6368;
+            }
+        """)
+        layout.addWidget(count_label)
+
+    def _make_circular(self, pixmap, size):
+        """Convert pixmap to circular thumbnail."""
+        # Scale to size while maintaining aspect ratio
+        scaled = pixmap.scaled(
+            size, size,
+            Qt.KeepAspectRatioByExpanding,
+            Qt.SmoothTransformation
+        )
+
+        # Crop to square
+        if scaled.width() > size or scaled.height() > size:
+            x = (scaled.width() - size) // 2
+            y = (scaled.height() - size) // 2
+            scaled = scaled.copy(x, y, size, size)
+
+        # Create circular mask
+        output = QPixmap(size, size)
+        output.fill(Qt.transparent)
+
+        painter = QPainter(output)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.SmoothPixmapTransform)
+
+        # Draw circle path
+        path = QPainterPath()
+        path.addEllipse(0, 0, size, size)
+        painter.setClipPath(path)
+
+        # Draw image
+        painter.drawPixmap(0, 0, scaled)
+        painter.end()
+
+        return output
+
+    def mousePressEvent(self, event):
+        """Handle click on person card."""
+        if event.button() == Qt.LeftButton:
+            self.clicked.emit(self.person_name)
+            print(f"[PersonCard] Clicked: {self.person_name}")
+
+
+class PeopleGridView(QWidget):
+    """
+    Grid view for displaying people with face thumbnails.
+    
+    Replaces tree view for better space utilization.
+    Uses FlowLayout to arrange PersonCards in responsive grid.
+    
+    Features:
+    - Flow layout (wraps to next row automatically)
+    - Scrollable (can handle 100+ people)
+    - Circular face thumbnails
+    - Click to filter by person
+    - Empty state message
+    """
+    person_clicked = Signal(str)  # Emits person name when clicked
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+
+        # Scroll area
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setFrameShape(QFrame.NoFrame)
+        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.scroll_area.setStyleSheet("""
+            QScrollArea {
+                background: transparent;
+                border: none;
+            }
+        """)
+
+        # Container with flow layout
+        self.grid_container = QWidget()
+        self.flow_layout = FlowLayout(self.grid_container, margin=4, spacing=8)
+
+        # Empty state label (hidden when people added)
+        self.empty_label = QLabel("No people detected yet\n\nRun face detection to see people here")
+        self.empty_label.setAlignment(Qt.AlignCenter)
+        self.empty_label.setStyleSheet("""
+            QLabel {
+                color: #5f6368;
+                font-size: 10pt;
+                padding: 20px;
+            }
+        """)
+        self.empty_label.hide()
+
+        # Add to scroll
+        self.scroll_area.setWidget(self.grid_container)
+        main_layout.addWidget(self.scroll_area)
+        main_layout.addWidget(self.empty_label)
+
+    def add_person(self, name, face_pixmap, photo_count):
+        """Add person to grid."""
+        card = PersonCard(name, face_pixmap, photo_count)
+        card.clicked.connect(self._on_person_clicked)
+        self.flow_layout.addWidget(card)
+        self.empty_label.hide()
+
+    def _on_person_clicked(self, name):
+        """Forward person click signal."""
+        self.person_clicked.emit(name)
+
+    def clear(self):
+        """Remove all person cards."""
+        while self.flow_layout.count():
+            item = self.flow_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        self.empty_label.show()
+
+    def count(self):
+        """Return number of people in grid."""
+        return self.flow_layout.count()
