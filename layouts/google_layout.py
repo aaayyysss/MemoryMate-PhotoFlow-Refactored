@@ -7404,9 +7404,10 @@ class TrimMarkerSlider(QSlider):
     def set_trim_markers(self, start_ms, end_ms, duration_ms):
         """Set trim marker positions in milliseconds."""
         self.video_duration_ms = duration_ms
+        slider_max = self.maximum()  # Get slider max BEFORE if/else blocks
+
         if duration_ms > 0:
             # Convert milliseconds to slider range (0-100 or 0-max)
-            slider_max = self.maximum()
             self.trim_start = int((start_ms / duration_ms) * slider_max)
             self.trim_end = int((end_ms / duration_ms) * slider_max)
         else:
