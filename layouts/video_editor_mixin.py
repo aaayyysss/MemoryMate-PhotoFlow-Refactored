@@ -48,6 +48,45 @@ class VideoEditorMixin:
         trim_label = QLabel("✂️ Trim:")
         trim_label.setStyleSheet("color: white; font-weight: bold; font-size: 10pt;")
         layout.addWidget(trim_label)
+
+        # Frame navigation buttons (Phase 2 Feature 6)
+        prev_frame_btn = QPushButton("◀")
+        prev_frame_btn.setToolTip("Previous frame (or use ← key)")
+        prev_frame_btn.clicked.connect(self._previous_frame)
+        prev_frame_btn.setStyleSheet("""
+            QPushButton {
+                background: rgba(255, 255, 255, 0.15);
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 6px 12px;
+                font-size: 11pt;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background: rgba(255, 255, 255, 0.25);
+            }
+        """)
+        layout.addWidget(prev_frame_btn)
+
+        next_frame_btn = QPushButton("▶")
+        next_frame_btn.setToolTip("Next frame (or use → key)")
+        next_frame_btn.clicked.connect(self._next_frame)
+        next_frame_btn.setStyleSheet("""
+            QPushButton {
+                background: rgba(255, 255, 255, 0.15);
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 6px 12px;
+                font-size: 11pt;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background: rgba(255, 255, 255, 0.25);
+            }
+        """)
+        layout.addWidget(next_frame_btn)
         
         # Set Start button
         self.trim_start_btn = QPushButton("[ Set Start")
@@ -116,7 +155,27 @@ class VideoEditorMixin:
             }
         """)
         layout.addWidget(reset_trim_btn)
-        
+
+        # Preview Trim button (Phase 2 Feature 5)
+        preview_trim_btn = QPushButton("▶ Preview Trim")
+        preview_trim_btn.setToolTip("Play only the trimmed region")
+        preview_trim_btn.clicked.connect(self._preview_trim)
+        preview_trim_btn.setStyleSheet("""
+            QPushButton {
+                background: rgba(66, 133, 244, 0.8);
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 6px 16px;
+                font-size: 10pt;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background: rgba(66, 133, 244, 1.0);
+            }
+        """)
+        layout.addWidget(preview_trim_btn)
+
         return container
     
     # ========== ROTATE CONTROLS (Editor-Only) ==========
@@ -180,6 +239,47 @@ class VideoEditorMixin:
         """)
         layout.addWidget(rotate_right_btn)
 
+        # Export quality preset selector (Phase 2 Feature 7)
+        layout.addSpacing(20)
+        quality_label = QLabel("Quality:")
+        quality_label.setStyleSheet("color: white; font-size: 10pt; font-weight: bold;")
+        layout.addWidget(quality_label)
+
+        self.export_quality_combo = QComboBox()
+        self.export_quality_combo.addItems(["High (Original)", "Medium (Balanced)", "Low (Small File)"])
+        self.export_quality_combo.setCurrentIndex(0)  # Default to High
+        self.export_quality_combo.setToolTip("Select export quality/file size")
+        self.export_quality_combo.setStyleSheet("""
+            QComboBox {
+                background: rgba(255, 255, 255, 0.15);
+                color: white;
+                border: 1px solid rgba(255, 255, 255, 0.3);
+                border-radius: 4px;
+                padding: 6px 12px;
+                font-size: 10pt;
+            }
+            QComboBox:hover {
+                background: rgba(255, 255, 255, 0.25);
+            }
+            QComboBox::drop-down {
+                border: none;
+            }
+            QComboBox::down-arrow {
+                image: none;
+                border-left: 4px solid transparent;
+                border-right: 4px solid transparent;
+                border-top: 6px solid white;
+                margin-right: 6px;
+            }
+            QComboBox QAbstractItemView {
+                background: rgba(40, 40, 40, 0.95);
+                color: white;
+                selection-background-color: rgba(66, 133, 244, 0.8);
+                border: 1px solid rgba(255, 255, 255, 0.3);
+            }
+        """)
+        layout.addWidget(self.export_quality_combo)
+
         return container
     
     # ========== TRIM/ROTATE/EXPORT METHODS (Editor-Only) ==========
@@ -229,7 +329,73 @@ class VideoEditorMixin:
         # Clear visual trim markers (or set to full range)
         if hasattr(self, 'seek_slider') and hasattr(self.seek_slider, 'clear_trim_markers'):
             self.seek_slider.clear_trim_markers()
-    
+
+    def _preview_trim(self):
+        """Preview only the trimmed region (Phase 2 Feature 5)."""
+        if not hasattr(self, 'video_player') or not self.video_player:
+            return
+
+        # Validate trim points
+        if self.video_trim_start >= self.video_trim_end:
+            print("[VideoEditor] Cannot preview: trim start >= trim end")
+            return
+
+        # Seek to trim start
+        self.video_player.setPosition(self.video_trim_start)
+
+        # Start playback
+        self.video_player.play()
+        print(f"[VideoEditor] Previewing trim: {self._format_time(self.video_trim_start)} - {self._format_time(self.video_trim_end)}")
+
+        # Create monitor timer if not exists
+        if not hasattr(self, '_trim_preview_timer'):
+            self._trim_preview_timer = QTimer(self)
+            self._trim_preview_timer.timeout.connect(self._check_trim_preview_position)
+
+        # Start monitoring (check every 100ms)
+        self._trim_preview_timer.start(100)
+
+    def _check_trim_preview_position(self):
+        """Monitor video position during trim preview and stop at trim end."""
+        if not hasattr(self, 'video_player') or not self.video_player:
+            if hasattr(self, '_trim_preview_timer'):
+                self._trim_preview_timer.stop()
+            return
+
+        current_pos = self.video_player.position()
+
+        # Stop if reached trim end (with 100ms tolerance)
+        if current_pos >= self.video_trim_end - 100:
+            self.video_player.pause()
+            # Seek back to trim start for easy replay
+            self.video_player.setPosition(self.video_trim_start)
+            if hasattr(self, '_trim_preview_timer'):
+                self._trim_preview_timer.stop()
+            print(f"[VideoEditor] Trim preview complete")
+
+    def _previous_frame(self):
+        """Go to previous frame (Phase 2 Feature 6)."""
+        if not hasattr(self, 'video_player') or not self.video_player:
+            return
+
+        current_pos = self.video_player.position()
+        frame_ms = 1000 / 30  # Assume 30 fps (~33ms per frame)
+        new_pos = max(0, current_pos - frame_ms)
+        self.video_player.setPosition(int(new_pos))
+        print(f"[VideoEditor] Previous frame: {self._format_time(int(new_pos))}")
+
+    def _next_frame(self):
+        """Go to next frame (Phase 2 Feature 6)."""
+        if not hasattr(self, 'video_player') or not self.video_player:
+            return
+
+        current_pos = self.video_player.position()
+        duration = getattr(self, '_video_duration', 0)
+        frame_ms = 1000 / 30  # Assume 30 fps (~33ms per frame)
+        new_pos = min(duration, current_pos + frame_ms)
+        self.video_player.setPosition(int(new_pos))
+        print(f"[VideoEditor] Next frame: {self._format_time(int(new_pos))}")
+
     def _rotate_video(self, degrees):
         """Rotate video by degrees (90, -90). Visual rotation applied during export."""
         self.video_rotation_angle = (self.video_rotation_angle + degrees) % 360
@@ -414,16 +580,41 @@ class VideoEditorMixin:
             # Create progress logger
             logger = QtProgressLogger(progress_dialog, clip.duration)
 
-            # Export video with progress tracking
-            clip.write_videofile(
-                output_path,
-                codec='libx264',
-                audio_codec='aac',
-                temp_audiofile='temp-audio.m4a',
-                remove_temp=True,
-                verbose=True,  # Enable verbose to get progress messages
-                logger=logger  # Custom progress logger
-            )
+            # Get quality preset settings (Phase 2 Feature 7)
+            quality_index = 0  # Default to High
+            if hasattr(self, 'export_quality_combo'):
+                quality_index = self.export_quality_combo.currentIndex()
+
+            # Quality presets: [bitrate, preset, fps]
+            quality_presets = {
+                0: {'bitrate': None, 'preset': 'medium', 'fps': None},  # High: Original quality
+                1: {'bitrate': '2000k', 'preset': 'fast', 'fps': None},  # Medium: 2 Mbps, faster encode
+                2: {'bitrate': '500k', 'preset': 'faster', 'fps': 24}   # Low: 500 Kbps, reduce fps
+            }
+
+            preset = quality_presets.get(quality_index, quality_presets[0])
+            print(f"[VideoEditor] Export quality: {['High', 'Medium', 'Low'][quality_index]} (bitrate={preset['bitrate']}, preset={preset['preset']})")
+
+            # Build write_videofile parameters
+            write_params = {
+                'filename': output_path,
+                'codec': 'libx264',
+                'audio_codec': 'aac',
+                'temp_audiofile': 'temp-audio.m4a',
+                'remove_temp': True,
+                'verbose': True,
+                'logger': logger,
+                'preset': preset['preset']
+            }
+
+            # Add optional parameters
+            if preset['bitrate']:
+                write_params['bitrate'] = preset['bitrate']
+            if preset['fps']:
+                write_params['fps'] = preset['fps']
+
+            # Export video with progress tracking and quality preset
+            clip.write_videofile(**write_params)
 
             # Close progress dialog
             if progress_dialog:
