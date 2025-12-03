@@ -279,17 +279,23 @@ class GooglePhotosEventFilter(QObject):
                     return True
 
         # Timeline viewport drag-select
-        if hasattr(self.layout, 'timeline_scroll') and obj == self.layout.timeline_scroll.viewport():
-            if event.type() == QEvent.MouseButtonPress:
-                if self.layout._handle_drag_select_press(event.pos()):
-                    return True
-            elif event.type() == QEvent.MouseMove:
-                self.layout._handle_drag_select_move(event.pos())
-                return self.layout.is_dragging  # Consume event if dragging
-            elif event.type() == QEvent.MouseButtonRelease:
-                if self.layout.is_dragging:
-                    self.layout._handle_drag_select_release(event.pos())
-                    return True
+        # CRITICAL FIX: Check if timeline_scroll still exists before accessing viewport
+        # RuntimeError occurs when switching layouts - Qt C++ object gets deleted
+        try:
+            if hasattr(self.layout, 'timeline_scroll') and obj == self.layout.timeline_scroll.viewport():
+                if event.type() == QEvent.MouseButtonPress:
+                    if self.layout._handle_drag_select_press(event.pos()):
+                        return True
+                elif event.type() == QEvent.MouseMove:
+                    self.layout._handle_drag_select_move(event.pos())
+                    return self.layout.is_dragging  # Consume event if dragging
+                elif event.type() == QEvent.MouseButtonRelease:
+                    if self.layout.is_dragging:
+                        self.layout._handle_drag_select_release(event.pos())
+                        return True
+        except RuntimeError:
+            # QScrollArea was deleted - safe to ignore
+            pass
 
         return False
 
@@ -12051,6 +12057,13 @@ class CollapsibleSection(QWidget):
         """Expand section (show content)."""
         self.content_widget.setMaximumHeight(16777215)  # Remove max height limit
         content_height = self.content_widget.sizeHint().height()
+
+        # CRITICAL FIX: Ensure minimum visible height for content
+        # If sizeHint() returns tiny value (e.g., <100px), use reasonable default
+        # This prevents People grid from being too tiny to see faces
+        if content_height < 100:
+            content_height = 250  # Reasonable default for ~2 rows of face cards
+
         self.animation.setStartValue(0)
         self.animation.setEndValue(content_height)
         self.animation.start()
@@ -12221,6 +12234,9 @@ class PeopleGridView(QWidget):
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setFrameShape(QFrame.NoFrame)
         self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        # CRITICAL FIX: Set minimum height so faces are visible (not tiny!)
+        # With 80x100px cards + spacing, 3 rows = ~340px minimum
+        self.scroll_area.setMinimumHeight(340)
         self.scroll_area.setStyleSheet("""
             QScrollArea {
                 background: transparent;
@@ -12271,3 +12287,33 @@ class PeopleGridView(QWidget):
     def count(self):
         """Return number of people in grid."""
         return self.flow_layout.count()
+
+    def sizeHint(self):
+        """
+        Return recommended size for the grid.
+
+        CRITICAL: CollapsibleSection uses this to determine expand height.
+        Without this, section collapses to tiny ~50px area showing only 2 faces!
+
+        Returns:
+            QSize: Recommended size (width flexible, height based on content)
+        """
+        # Calculate based on number of cards and card size
+        card_count = self.flow_layout.count()
+        if card_count == 0:
+            # Empty state - small height
+            return QSize(200, 100)
+
+        # Card size: 80x100px per PersonCard + spacing
+        card_height = 100
+        spacing = 8
+        cards_per_row = 2  # Sidebar width ~240px / 80px cards = ~2 per row
+
+        # Calculate rows needed
+        rows = (card_count + cards_per_row - 1) // cards_per_row
+
+        # Total height: rows * (card_height + spacing) + margins
+        # Cap at 400px to allow scrolling for many faces
+        content_height = min(rows * (card_height + spacing) + 20, 400)
+
+        return QSize(200, content_height)
