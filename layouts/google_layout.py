@@ -8605,6 +8605,7 @@ class GooglePhotosLayout(BaseLayout):
         Phase 1+2: Now populates both grid view AND tree (tree hidden, kept for compatibility).
         Queries face_branch_reps table for detected faces/people.
         """
+        print("[GooglePhotosLayout] 🔍 _build_people_tree() called")
         try:
             from reference_db import ReferenceDB
             db = ReferenceDB()
@@ -8626,15 +8627,22 @@ class GooglePhotosLayout(BaseLayout):
                 cur.execute(query, (self.project_id,))
                 rows = cur.fetchall()
 
-            print(f"[GooglePhotosLayout] 👥 Found {len(rows)} face clusters")
+            print(f"[GooglePhotosLayout] 👥 Found {len(rows)} face clusters in database")
 
             # Update section count badge
             if hasattr(self, 'people_section'):
                 self.people_section.update_count(len(rows))
+                print(f"[GooglePhotosLayout] ✓ Updated people section count badge: {len(rows)}")
+            else:
+                print("[GooglePhotosLayout] ⚠️ people_section not found!")
 
             # Clear existing grid
             if hasattr(self, 'people_grid'):
                 self.people_grid.clear()
+                print(f"[GooglePhotosLayout] ✓ Cleared people grid")
+            else:
+                print("[GooglePhotosLayout] ⚠️ people_grid not found!")
+                return
 
             if not rows:
                 # No face clusters found
@@ -8643,6 +8651,7 @@ class GooglePhotosLayout(BaseLayout):
                 return
 
             # Populate GRID VIEW (Phase 1+2)
+            added_count = 0
             for branch_key, label, count, rep_path, rep_thumb_png in rows:
                 # Use label if set, otherwise use "Unnamed Person"
                 display_name = label if label else f"Unnamed"
@@ -8655,9 +8664,15 @@ class GooglePhotosLayout(BaseLayout):
                         import base64
                         img_data = base64.b64decode(rep_thumb_png)
                         face_pixmap = QPixmap()
-                        face_pixmap.loadFromData(img_data)
+                        success = face_pixmap.loadFromData(img_data)
+                        if success:
+                            print(f"[GooglePhotosLayout]   ✓ Loaded pixmap for {display_name}: {face_pixmap.width()}x{face_pixmap.height()}")
+                        else:
+                            print(f"[GooglePhotosLayout]   ⚠️ Failed to load pixmap for {display_name}")
+                            face_pixmap = None
                     except Exception as e:
-                        print(f"[GooglePhotosLayout] ⚠️ Error loading face pixmap: {e}")
+                        print(f"[GooglePhotosLayout] ⚠️ Error loading face pixmap for {display_name}: {e}")
+                        face_pixmap = None
 
                 # Add to grid
                 # PersonCard will display the display_name, but emit branch_key when clicked
@@ -8671,15 +8686,19 @@ class GooglePhotosLayout(BaseLayout):
                         last_card = self.people_grid.flow_layout.itemAt(self.people_grid.flow_layout.count() - 1).widget()
                         if isinstance(last_card, PersonCard):
                             # Update the name label to show display_name
-                            name_label = last_card.findChild(QLabel)
-                            if name_label and len(display_name) <= 10:
-                                name_label.setText(display_name)
-                            elif name_label:
-                                name_label.setText(display_name[:9] + "…")
-                            name_label.setToolTip(f"{display_name} ({count} photos)")
-                    print(f"[GooglePhotosLayout]   ✓ Added to grid: {display_name} ({count} photos)")
+                            # Find all QLabel children
+                            labels = last_card.findChildren(QLabel)
+                            if len(labels) >= 2:  # Should have face_label, name_label, count_label
+                                name_label = labels[1]  # Second label is the name
+                                if name_label and len(display_name) <= 10:
+                                    name_label.setText(display_name)
+                                elif name_label:
+                                    name_label.setText(display_name[:9] + "…")
+                                name_label.setToolTip(f"{display_name} ({count} photos)")
+                    added_count += 1
+                    print(f"[GooglePhotosLayout]   ✓ Added to grid [{added_count}/{len(rows)}]: {display_name} ({count} photos)")
 
-            print(f"[GooglePhotosLayout] ✅ Populated people grid with {len(rows)} faces")
+            print(f"[GooglePhotosLayout] ✅ Populated people grid with {added_count} faces")
 
             # Also populate old tree (hidden, for backward compatibility)
             # This ensures any code that references self.people_tree still works
@@ -8695,6 +8714,8 @@ class GooglePhotosLayout(BaseLayout):
                     person_item.setText(0, f"👤 {display_name} ({count})")
 
                 self.people_tree.addTopLevelItem(person_item)
+
+            print(f"[GooglePhotosLayout] ✅ _build_people_tree() completed successfully")
 
         except Exception as e:
             print(f"[GooglePhotosLayout] ⚠️ Error building people grid: {e}")
