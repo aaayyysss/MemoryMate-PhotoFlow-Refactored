@@ -8120,6 +8120,7 @@ class GooglePhotosLayout(BaseLayout):
         # NEW: Grid view for people (replaces tree!)
         self.people_grid = PeopleGridView()
         self.people_grid.person_clicked.connect(self._on_person_clicked_from_grid)
+        self.people_grid.context_menu_requested.connect(self._on_person_context_menu)
 
         # Add grid to section
         self.people_section.add_widget(self.people_grid)
@@ -8659,8 +8660,8 @@ class GooglePhotosLayout(BaseLayout):
             # Populate GRID VIEW (Phase 1+2)
             added_count = 0
             for branch_key, label, count, rep_path, rep_thumb_png in rows:
-                # Use label if set, otherwise use "Unnamed Person"
-                display_name = label if label else f"Unnamed"
+                # Use label if set, otherwise use "Unnamed"
+                display_name = label if label else "Unnamed"
 
                 # Load face thumbnail as pixmap
                 face_pixmap = None
@@ -8680,27 +8681,9 @@ class GooglePhotosLayout(BaseLayout):
                         print(f"[GooglePhotosLayout] ⚠️ Error loading face pixmap for {display_name}: {e}")
                         face_pixmap = None
 
-                # Add to grid
-                # PersonCard will display the display_name, but emit branch_key when clicked
+                # Add to grid with both branch_key and display_name
                 if hasattr(self, 'people_grid'):
-                    # Store branch_key in card's person_name for filtering
-                    # But we need to update PersonCard to accept display_name separately
-                    # For now, create a modified add_person that stores both
-                    self.people_grid.add_person(branch_key, face_pixmap, count)
-                    # Update the last added card's name label
-                    if self.people_grid.flow_layout.count() > 0:
-                        last_card = self.people_grid.flow_layout.itemAt(self.people_grid.flow_layout.count() - 1).widget()
-                        if isinstance(last_card, PersonCard):
-                            # Update the name label to show display_name
-                            # Find all QLabel children
-                            labels = last_card.findChildren(QLabel)
-                            if len(labels) >= 2:  # Should have face_label, name_label, count_label
-                                name_label = labels[1]  # Second label is the name
-                                if name_label and len(display_name) <= 10:
-                                    name_label.setText(display_name)
-                                elif name_label:
-                                    name_label.setText(display_name[:9] + "…")
-                                name_label.setToolTip(f"{display_name} ({count} photos)")
+                    self.people_grid.add_person(branch_key, display_name, face_pixmap, count)
                     added_count += 1
                     print(f"[GooglePhotosLayout]   ✓ Added to grid [{added_count}/{len(rows)}]: {display_name} ({count} photos)")
 
@@ -8860,6 +8843,41 @@ class GooglePhotosLayout(BaseLayout):
             filter_folder=None,
             filter_person=person_name  # person_name is the branch_key
         )
+
+    def _on_person_context_menu(self, branch_key: str, action: str):
+        """
+        Handle context menu action on person card.
+
+        Args:
+            branch_key: Person identifier (e.g., "cluster_0")
+            action: Action to perform ("rename", "merge", or "delete")
+        """
+        print(f"[GooglePhotosLayout] Context menu action '{action}' for {branch_key}")
+
+        # Get current display name from database
+        from reference_db import ReferenceDB
+        db = ReferenceDB()
+
+        try:
+            query = "SELECT label FROM face_branch_reps WHERE project_id = ? AND branch_key = ?"
+            with db._connect() as conn:
+                cur = conn.cursor()
+                cur.execute(query, (self.project_id, branch_key))
+                row = cur.fetchone()
+                current_name = row[0] if row and row[0] else "Unnamed"
+        except Exception as e:
+            print(f"[GooglePhotosLayout] Error fetching person name: {e}")
+            current_name = "Unnamed"
+
+        # Dispatch to appropriate handler
+        if action == "rename":
+            self._rename_person(None, branch_key, current_name)
+        elif action == "merge":
+            self._merge_person(branch_key, current_name)
+        elif action == "delete":
+            self._delete_person(branch_key, current_name)
+        else:
+            print(f"[GooglePhotosLayout] Unknown action: {action}")
 
     def _show_people_context_menu(self, pos):
         """
@@ -12085,7 +12103,7 @@ class CollapsibleSection(QWidget):
 class PersonCard(QWidget):
     """
     Single person card with circular face thumbnail and name.
-    
+
     Features:
     - 80x100px compact card size
     - Circular face thumbnail (64px diameter)
@@ -12093,12 +12111,23 @@ class PersonCard(QWidget):
     - Photo count badge
     - Hover effect
     - Click to filter by person
+    - Context menu for rename/merge/delete
     """
-    clicked = Signal(str)  # Emits person name
+    clicked = Signal(str)  # Emits branch_key when clicked
+    context_menu_requested = Signal(str, str)  # Emits (branch_key, display_name)
 
-    def __init__(self, name, face_pixmap, photo_count, parent=None):
+    def __init__(self, branch_key, display_name, face_pixmap, photo_count, parent=None):
+        """
+        Args:
+            branch_key: Unique identifier for this person (e.g., "cluster_0")
+            display_name: Human-readable name to display (e.g., "John" or "Unnamed")
+            face_pixmap: QPixmap with face thumbnail
+            photo_count: Number of photos with this person
+        """
         super().__init__(parent)
-        self.person_name = name
+        self.branch_key = branch_key
+        self.display_name = display_name
+        self.person_name = branch_key  # Keep for backward compatibility
         self.setFixedSize(80, 100)
         self.setCursor(Qt.PointingHandCursor)
         self.setStyleSheet("""
@@ -12117,53 +12146,53 @@ class PersonCard(QWidget):
         layout.setAlignment(Qt.AlignCenter)
 
         # Circular face thumbnail
-        face_label = QLabel()
+        self.face_label = QLabel()
         if face_pixmap and not face_pixmap.isNull():
             # Make circular mask
             circular_pixmap = self._make_circular(face_pixmap, 64)
-            face_label.setPixmap(circular_pixmap)
+            self.face_label.setPixmap(circular_pixmap)
         else:
             # Placeholder if no face image
-            face_label.setPixmap(QPixmap())
-            face_label.setFixedSize(64, 64)
-            face_label.setStyleSheet("""
+            self.face_label.setPixmap(QPixmap())
+            self.face_label.setFixedSize(64, 64)
+            self.face_label.setStyleSheet("""
                 QLabel {
                     background: #e8eaed;
                     border-radius: 32px;
                     font-size: 24pt;
                 }
             """)
-            face_label.setText("👤")
-            face_label.setAlignment(Qt.AlignCenter)
+            self.face_label.setText("👤")
+            self.face_label.setAlignment(Qt.AlignCenter)
 
-        face_label.setFixedSize(64, 64)
-        face_label.setAlignment(Qt.AlignCenter)
-        layout.addWidget(face_label)
+        self.face_label.setFixedSize(64, 64)
+        self.face_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self.face_label)
 
         # Name label
-        name_label = QLabel(name if len(name) <= 10 else name[:9] + "…")
-        name_label.setAlignment(Qt.AlignCenter)
-        name_label.setWordWrap(False)
-        name_label.setStyleSheet("""
+        self.name_label = QLabel(display_name if len(display_name) <= 10 else display_name[:9] + "…")
+        self.name_label.setAlignment(Qt.AlignCenter)
+        self.name_label.setWordWrap(False)
+        self.name_label.setStyleSheet("""
             QLabel {
                 font-size: 9pt;
                 color: #202124;
                 font-weight: 500;
             }
         """)
-        name_label.setToolTip(name)  # Full name on hover
-        layout.addWidget(name_label)
+        self.name_label.setToolTip(f"{display_name} ({photo_count} photos)")
+        layout.addWidget(self.name_label)
 
         # Count badge
-        count_label = QLabel(f"({photo_count})")
-        count_label.setAlignment(Qt.AlignCenter)
-        count_label.setStyleSheet("""
+        self.count_label = QLabel(f"({photo_count})")
+        self.count_label.setAlignment(Qt.AlignCenter)
+        self.count_label.setStyleSheet("""
             QLabel {
                 font-size: 8pt;
                 color: #5f6368;
             }
         """)
-        layout.addWidget(count_label)
+        layout.addWidget(self.count_label)
 
     def _make_circular(self, pixmap, size):
         """Convert pixmap to circular thumbnail."""
@@ -12202,8 +12231,32 @@ class PersonCard(QWidget):
     def mousePressEvent(self, event):
         """Handle click on person card."""
         if event.button() == Qt.LeftButton:
-            self.clicked.emit(self.person_name)
-            print(f"[PersonCard] Clicked: {self.person_name}")
+            self.clicked.emit(self.branch_key)
+            print(f"[PersonCard] Clicked: {self.display_name} (branch: {self.branch_key})")
+        elif event.button() == Qt.RightButton:
+            # Show context menu
+            self._show_context_menu(event.globalPos())
+
+    def _show_context_menu(self, global_pos):
+        """Show context menu for rename/merge/delete."""
+        from PySide6.QtWidgets import QMenu
+        menu = QMenu(self)
+
+        # Rename action
+        rename_action = menu.addAction("✏️ Rename Person")
+        rename_action.triggered.connect(lambda: self.context_menu_requested.emit(self.branch_key, "rename"))
+
+        # Merge action
+        merge_action = menu.addAction("🔗 Merge with Another Person")
+        merge_action.triggered.connect(lambda: self.context_menu_requested.emit(self.branch_key, "merge"))
+
+        menu.addSeparator()
+
+        # Delete action
+        delete_action = menu.addAction("🗑️ Delete Person")
+        delete_action.triggered.connect(lambda: self.context_menu_requested.emit(self.branch_key, "delete"))
+
+        menu.exec(global_pos)
 
 
 class PeopleGridView(QWidget):
@@ -12220,7 +12273,8 @@ class PeopleGridView(QWidget):
     - Click to filter by person
     - Empty state message
     """
-    person_clicked = Signal(str)  # Emits person name when clicked
+    person_clicked = Signal(str)  # Emits branch_key when clicked
+    context_menu_requested = Signal(str, str)  # Emits (branch_key, action)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -12265,16 +12319,29 @@ class PeopleGridView(QWidget):
         main_layout.addWidget(self.scroll_area)
         main_layout.addWidget(self.empty_label)
 
-    def add_person(self, name, face_pixmap, photo_count):
-        """Add person to grid."""
-        card = PersonCard(name, face_pixmap, photo_count)
+    def add_person(self, branch_key, display_name, face_pixmap, photo_count):
+        """
+        Add person to grid.
+
+        Args:
+            branch_key: Unique identifier (e.g., "cluster_0")
+            display_name: Display name (e.g., "John" or "Unnamed")
+            face_pixmap: Face thumbnail
+            photo_count: Number of photos
+        """
+        card = PersonCard(branch_key, display_name, face_pixmap, photo_count)
         card.clicked.connect(self._on_person_clicked)
+        card.context_menu_requested.connect(self._on_context_menu_requested)
         self.flow_layout.addWidget(card)
         self.empty_label.hide()
 
-    def _on_person_clicked(self, name):
+    def _on_person_clicked(self, branch_key):
         """Forward person click signal."""
-        self.person_clicked.emit(name)
+        self.person_clicked.emit(branch_key)
+
+    def _on_context_menu_requested(self, branch_key, action):
+        """Forward context menu request."""
+        self.context_menu_requested.emit(branch_key, action)
 
     def clear(self):
         """Remove all person cards."""
