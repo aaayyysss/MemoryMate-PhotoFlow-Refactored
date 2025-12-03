@@ -8022,8 +8022,8 @@ class GooglePhotosLayout(BaseLayout):
         - Better space utilization (3x more faces visible)
         """
         sidebar = QWidget()
-        sidebar.setMinimumWidth(200)
-        sidebar.setMaximumWidth(280)  # Slightly wider for grid
+        sidebar.setMinimumWidth(240)
+        sidebar.setMaximumWidth(300)  # Slightly wider for nav + content
         sidebar.setStyleSheet("""
             QWidget {
                 background: white;
@@ -8031,16 +8031,71 @@ class GooglePhotosLayout(BaseLayout):
             }
         """)
 
-        main_layout = QVBoxLayout(sidebar)
-        main_layout.setContentsMargins(8, 8, 8, 8)
-        main_layout.setSpacing(4)  # Tighter spacing for sections
+        main_layout = QHBoxLayout(sidebar)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+
+        # PHASE 3: Vertical navigation bar (icon-based quick navigation)
+        nav_bar = QWidget()
+        nav_bar.setFixedWidth(48)
+        nav_bar.setStyleSheet("""
+            QWidget {
+                background: #f8f9fa;
+                border-right: 1px solid #e8eaed;
+            }
+        """)
+        nav_layout = QVBoxLayout(nav_bar)
+        nav_layout.setContentsMargins(4, 12, 4, 4)
+        nav_layout.setSpacing(8)
+
+        # Navigation buttons with icons
+        nav_buttons = [
+            ("📅", "Timeline", "timeline_section"),
+            ("📁", "Folders", "folders_section"),
+            ("👥", "People", "people_section"),
+            ("🎬", "Videos", "videos_section"),
+        ]
+
+        self.nav_buttons = {}
+        for icon, tooltip, section_attr in nav_buttons:
+            btn = QPushButton(icon)
+            btn.setToolTip(tooltip)
+            btn.setFixedSize(40, 40)
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.setStyleSheet("""
+                QPushButton {
+                    background: transparent;
+                    border: none;
+                    border-radius: 8px;
+                    font-size: 18pt;
+                }
+                QPushButton:hover {
+                    background: rgba(26, 115, 232, 0.08);
+                }
+                QPushButton:pressed {
+                    background: rgba(26, 115, 232, 0.15);
+                }
+            """)
+            btn.clicked.connect(lambda checked, attr=section_attr: self._scroll_to_section(attr))
+            nav_layout.addWidget(btn)
+            self.nav_buttons[section_attr] = btn
+
+        nav_layout.addStretch()
+        main_layout.addWidget(nav_bar)
+
+        # Content area (sections)
+        content_widget = QWidget()
+        content_layout = QVBoxLayout(content_widget)
+        content_layout.setContentsMargins(8, 8, 8, 8)
+        content_layout.setSpacing(4)
+        main_layout.addWidget(content_widget)
 
         # Scroll area for all sections (allows overflow)
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.NoFrame)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        scroll.setStyleSheet("""
+        self.sidebar_scroll = QScrollArea()
+        self.sidebar_scroll.setWidgetResizable(True)
+        self.sidebar_scroll.setFrameShape(QFrame.NoFrame)
+        self.sidebar_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.sidebar_scroll.setStyleSheet("""
             QScrollArea {
                 background: transparent;
                 border: none;
@@ -8114,16 +8169,42 @@ class GooglePhotosLayout(BaseLayout):
         self.folders_section.add_widget(self.folders_tree)
         scroll_layout.addWidget(self.folders_section)
 
-        # === SECTION 3: People (Collapsible + GRID VIEW!) ===
+        # === SECTION 3: People (Collapsible + GRID VIEW + SEARCH!) ===
         self.people_section = CollapsibleSection("People", "👥", 0)
+
+        # PHASE 3: Search bar for filtering faces by name
+        people_container = QWidget()
+        people_layout = QVBoxLayout(people_container)
+        people_layout.setContentsMargins(0, 0, 0, 0)
+        people_layout.setSpacing(4)
+
+        self.people_search = QLineEdit()
+        self.people_search.setPlaceholderText("🔍 Search people...")
+        self.people_search.setClearButtonEnabled(True)
+        self.people_search.setStyleSheet("""
+            QLineEdit {
+                padding: 6px 8px;
+                border: 1px solid #dadce0;
+                border-radius: 16px;
+                background: #f8f9fa;
+                font-size: 10pt;
+            }
+            QLineEdit:focus {
+                border: 1px solid #1a73e8;
+                background: white;
+            }
+        """)
+        self.people_search.textChanged.connect(self._on_people_search)
+        people_layout.addWidget(self.people_search)
 
         # NEW: Grid view for people (replaces tree!)
         self.people_grid = PeopleGridView()
         self.people_grid.person_clicked.connect(self._on_person_clicked_from_grid)
         self.people_grid.context_menu_requested.connect(self._on_person_context_menu)
+        people_layout.addWidget(self.people_grid)
 
-        # Add grid to section
-        self.people_section.add_widget(self.people_grid)
+        # Add container to section
+        self.people_section.add_widget(people_container)
         scroll_layout.addWidget(self.people_section)
 
         # Keep old people_tree for backward compatibility (but hide it)
@@ -8168,10 +8249,10 @@ class GooglePhotosLayout(BaseLayout):
         # Spacer at bottom
         scroll_layout.addStretch()
 
-        scroll.setWidget(scroll_content)
-        main_layout.addWidget(scroll)
+        self.sidebar_scroll.setWidget(scroll_content)
+        content_layout.addWidget(self.sidebar_scroll)
 
-        print("[GooglePhotosLayout] ✅ Sidebar created with collapsible sections and People grid view")
+        print("[GooglePhotosLayout] ✅ Sidebar created with vertical nav bar, collapsible sections, and People grid view")
 
         return sidebar
 
@@ -8878,6 +8959,58 @@ class GooglePhotosLayout(BaseLayout):
             self._delete_person(branch_key, current_name)
         else:
             print(f"[GooglePhotosLayout] Unknown action: {action}")
+
+    def _on_people_search(self, text: str):
+        """
+        Filter people grid by search text (Phase 3).
+
+        Args:
+            text: Search query to filter by name
+        """
+        search_query = text.lower().strip()
+        print(f"[GooglePhotosLayout] Searching people: '{search_query}'")
+
+        # Show/hide cards based on search
+        if hasattr(self, 'people_grid') and hasattr(self.people_grid, 'flow_layout'):
+            visible_count = 0
+            for i in range(self.people_grid.flow_layout.count()):
+                item = self.people_grid.flow_layout.itemAt(i)
+                if item and item.widget():
+                    card = item.widget()
+                    if isinstance(card, PersonCard):
+                        # Check if display name matches search
+                        name_matches = search_query in card.display_name.lower()
+                        card.setVisible(name_matches or not search_query)
+                        if card.isVisible():
+                            visible_count += 1
+
+            print(f"[GooglePhotosLayout] Search results: {visible_count} people visible")
+
+            # Update section count badge to show filtered count
+            if hasattr(self, 'people_section'):
+                total_count = self.people_grid.flow_layout.count()
+                if search_query:
+                    self.people_section.update_count(f"{visible_count}/{total_count}")
+                else:
+                    self.people_section.update_count(total_count)
+
+    def _scroll_to_section(self, section_attr: str):
+        """
+        Scroll sidebar to make a section visible (Phase 3: Vertical Navigation).
+
+        Args:
+            section_attr: Attribute name of the section (e.g., "timeline_section")
+        """
+        if hasattr(self, section_attr):
+            section = getattr(self, section_attr)
+            if section and hasattr(self, 'sidebar_scroll'):
+                # Ensure section is expanded
+                if hasattr(section, 'is_expanded') and not section.is_expanded:
+                    section.expand()
+
+                # Scroll to make section visible
+                self.sidebar_scroll.ensureWidgetVisible(section, 0, 50)
+                print(f"[GooglePhotosLayout] Scrolled to section: {section_attr}")
 
     def _show_people_context_menu(self, pos):
         """
