@@ -2088,7 +2088,13 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                     self.video_trim_controls.show()
                     self.video_rotate_controls.show()
                     self.crop_btn.hide()  # Hide crop for videos
-                    
+
+                    # CRITICAL FIX: Show the crop_toolbar itself!
+                    # The video controls are INSIDE crop_toolbar, so the toolbar must be visible
+                    if hasattr(self, 'crop_toolbar'):
+                        self.crop_toolbar.show()
+                        print("[Editor] ✓ crop_toolbar shown for video editing")
+
                     # Update trim labels with current duration
                     if hasattr(self, 'trim_end_label'):
                         self.trim_end_label.setText(self._format_time(duration))
@@ -2253,6 +2259,10 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                         self.video_widget.show()
                         print("[Editor] ✓ Video widget moved back to viewer page")
 
+                # Hide crop_toolbar when exiting video edit mode
+                if hasattr(self, 'crop_toolbar'):
+                    self.crop_toolbar.hide()
+
             # Handle photo edit mode
             if getattr(self, '_edit_pixmap', None) and not self._edit_pixmap.isNull():
                 # AUTO-SAVE: Save current edit state before applying
@@ -2309,6 +2319,10 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 # Reset rotation status label
                 if hasattr(self, 'rotation_status_label'):
                     self.rotation_status_label.setText("Original")
+
+                # Hide crop_toolbar when exiting video edit mode
+                if hasattr(self, 'crop_toolbar'):
+                    self.crop_toolbar.hide()
 
                 print("[Editor] ✓ Video edits cancelled and reset")
 
