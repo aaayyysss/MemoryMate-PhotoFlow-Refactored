@@ -8022,8 +8022,8 @@ class GooglePhotosLayout(BaseLayout):
         - Better space utilization (3x more faces visible)
         """
         sidebar = QWidget()
-        sidebar.setMinimumWidth(200)
-        sidebar.setMaximumWidth(280)  # Slightly wider for grid
+        sidebar.setMinimumWidth(240)
+        sidebar.setMaximumWidth(300)  # Slightly wider for nav + content
         sidebar.setStyleSheet("""
             QWidget {
                 background: white;
@@ -8031,16 +8031,71 @@ class GooglePhotosLayout(BaseLayout):
             }
         """)
 
-        main_layout = QVBoxLayout(sidebar)
-        main_layout.setContentsMargins(8, 8, 8, 8)
-        main_layout.setSpacing(4)  # Tighter spacing for sections
+        main_layout = QHBoxLayout(sidebar)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+
+        # PHASE 3: Vertical navigation bar (icon-based quick navigation)
+        nav_bar = QWidget()
+        nav_bar.setFixedWidth(48)
+        nav_bar.setStyleSheet("""
+            QWidget {
+                background: #f8f9fa;
+                border-right: 1px solid #e8eaed;
+            }
+        """)
+        nav_layout = QVBoxLayout(nav_bar)
+        nav_layout.setContentsMargins(4, 12, 4, 4)
+        nav_layout.setSpacing(8)
+
+        # Navigation buttons with icons
+        nav_buttons = [
+            ("📅", "Timeline", "timeline_section"),
+            ("📁", "Folders", "folders_section"),
+            ("👥", "People", "people_section"),
+            ("🎬", "Videos", "videos_section"),
+        ]
+
+        self.nav_buttons = {}
+        for icon, tooltip, section_attr in nav_buttons:
+            btn = QPushButton(icon)
+            btn.setToolTip(tooltip)
+            btn.setFixedSize(40, 40)
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.setStyleSheet("""
+                QPushButton {
+                    background: transparent;
+                    border: none;
+                    border-radius: 8px;
+                    font-size: 18pt;
+                }
+                QPushButton:hover {
+                    background: rgba(26, 115, 232, 0.08);
+                }
+                QPushButton:pressed {
+                    background: rgba(26, 115, 232, 0.15);
+                }
+            """)
+            btn.clicked.connect(lambda checked, attr=section_attr: self._scroll_to_section(attr))
+            nav_layout.addWidget(btn)
+            self.nav_buttons[section_attr] = btn
+
+        nav_layout.addStretch()
+        main_layout.addWidget(nav_bar)
+
+        # Content area (sections)
+        content_widget = QWidget()
+        content_layout = QVBoxLayout(content_widget)
+        content_layout.setContentsMargins(8, 8, 8, 8)
+        content_layout.setSpacing(4)
+        main_layout.addWidget(content_widget)
 
         # Scroll area for all sections (allows overflow)
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.NoFrame)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        scroll.setStyleSheet("""
+        self.sidebar_scroll = QScrollArea()
+        self.sidebar_scroll.setWidgetResizable(True)
+        self.sidebar_scroll.setFrameShape(QFrame.NoFrame)
+        self.sidebar_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.sidebar_scroll.setStyleSheet("""
             QScrollArea {
                 background: transparent;
                 border: none;
@@ -8114,15 +8169,42 @@ class GooglePhotosLayout(BaseLayout):
         self.folders_section.add_widget(self.folders_tree)
         scroll_layout.addWidget(self.folders_section)
 
-        # === SECTION 3: People (Collapsible + GRID VIEW!) ===
+        # === SECTION 3: People (Collapsible + GRID VIEW + SEARCH!) ===
         self.people_section = CollapsibleSection("People", "👥", 0)
+
+        # PHASE 3: Search bar for filtering faces by name
+        people_container = QWidget()
+        people_layout = QVBoxLayout(people_container)
+        people_layout.setContentsMargins(0, 0, 0, 0)
+        people_layout.setSpacing(4)
+
+        self.people_search = QLineEdit()
+        self.people_search.setPlaceholderText("🔍 Search people...")
+        self.people_search.setClearButtonEnabled(True)
+        self.people_search.setStyleSheet("""
+            QLineEdit {
+                padding: 6px 8px;
+                border: 1px solid #dadce0;
+                border-radius: 16px;
+                background: #f8f9fa;
+                font-size: 10pt;
+            }
+            QLineEdit:focus {
+                border: 1px solid #1a73e8;
+                background: white;
+            }
+        """)
+        self.people_search.textChanged.connect(self._on_people_search)
+        people_layout.addWidget(self.people_search)
 
         # NEW: Grid view for people (replaces tree!)
         self.people_grid = PeopleGridView()
         self.people_grid.person_clicked.connect(self._on_person_clicked_from_grid)
+        self.people_grid.context_menu_requested.connect(self._on_person_context_menu)
+        people_layout.addWidget(self.people_grid)
 
-        # Add grid to section
-        self.people_section.add_widget(self.people_grid)
+        # Add container to section
+        self.people_section.add_widget(people_container)
         scroll_layout.addWidget(self.people_section)
 
         # Keep old people_tree for backward compatibility (but hide it)
@@ -8167,10 +8249,10 @@ class GooglePhotosLayout(BaseLayout):
         # Spacer at bottom
         scroll_layout.addStretch()
 
-        scroll.setWidget(scroll_content)
-        main_layout.addWidget(scroll)
+        self.sidebar_scroll.setWidget(scroll_content)
+        content_layout.addWidget(self.sidebar_scroll)
 
-        print("[GooglePhotosLayout] ✅ Sidebar created with collapsible sections and People grid view")
+        print("[GooglePhotosLayout] ✅ Sidebar created with vertical nav bar, collapsible sections, and People grid view")
 
         return sidebar
 
@@ -8659,8 +8741,8 @@ class GooglePhotosLayout(BaseLayout):
             # Populate GRID VIEW (Phase 1+2)
             added_count = 0
             for branch_key, label, count, rep_path, rep_thumb_png in rows:
-                # Use label if set, otherwise use "Unnamed Person"
-                display_name = label if label else f"Unnamed"
+                # Use label if set, otherwise use "Unnamed"
+                display_name = label if label else "Unnamed"
 
                 # Load face thumbnail as pixmap
                 face_pixmap = None
@@ -8680,27 +8762,9 @@ class GooglePhotosLayout(BaseLayout):
                         print(f"[GooglePhotosLayout] ⚠️ Error loading face pixmap for {display_name}: {e}")
                         face_pixmap = None
 
-                # Add to grid
-                # PersonCard will display the display_name, but emit branch_key when clicked
+                # Add to grid with both branch_key and display_name
                 if hasattr(self, 'people_grid'):
-                    # Store branch_key in card's person_name for filtering
-                    # But we need to update PersonCard to accept display_name separately
-                    # For now, create a modified add_person that stores both
-                    self.people_grid.add_person(branch_key, face_pixmap, count)
-                    # Update the last added card's name label
-                    if self.people_grid.flow_layout.count() > 0:
-                        last_card = self.people_grid.flow_layout.itemAt(self.people_grid.flow_layout.count() - 1).widget()
-                        if isinstance(last_card, PersonCard):
-                            # Update the name label to show display_name
-                            # Find all QLabel children
-                            labels = last_card.findChildren(QLabel)
-                            if len(labels) >= 2:  # Should have face_label, name_label, count_label
-                                name_label = labels[1]  # Second label is the name
-                                if name_label and len(display_name) <= 10:
-                                    name_label.setText(display_name)
-                                elif name_label:
-                                    name_label.setText(display_name[:9] + "…")
-                                name_label.setToolTip(f"{display_name} ({count} photos)")
+                    self.people_grid.add_person(branch_key, display_name, face_pixmap, count)
                     added_count += 1
                     print(f"[GooglePhotosLayout]   ✓ Added to grid [{added_count}/{len(rows)}]: {display_name} ({count} photos)")
 
@@ -8860,6 +8924,93 @@ class GooglePhotosLayout(BaseLayout):
             filter_folder=None,
             filter_person=person_name  # person_name is the branch_key
         )
+
+    def _on_person_context_menu(self, branch_key: str, action: str):
+        """
+        Handle context menu action on person card.
+
+        Args:
+            branch_key: Person identifier (e.g., "cluster_0")
+            action: Action to perform ("rename", "merge", or "delete")
+        """
+        print(f"[GooglePhotosLayout] Context menu action '{action}' for {branch_key}")
+
+        # Get current display name from database
+        from reference_db import ReferenceDB
+        db = ReferenceDB()
+
+        try:
+            query = "SELECT label FROM face_branch_reps WHERE project_id = ? AND branch_key = ?"
+            with db._connect() as conn:
+                cur = conn.cursor()
+                cur.execute(query, (self.project_id, branch_key))
+                row = cur.fetchone()
+                current_name = row[0] if row and row[0] else "Unnamed"
+        except Exception as e:
+            print(f"[GooglePhotosLayout] Error fetching person name: {e}")
+            current_name = "Unnamed"
+
+        # Dispatch to appropriate handler
+        if action == "rename":
+            self._rename_person(None, branch_key, current_name)
+        elif action == "merge":
+            self._merge_person(branch_key, current_name)
+        elif action == "delete":
+            self._delete_person(branch_key, current_name)
+        else:
+            print(f"[GooglePhotosLayout] Unknown action: {action}")
+
+    def _on_people_search(self, text: str):
+        """
+        Filter people grid by search text (Phase 3).
+
+        Args:
+            text: Search query to filter by name
+        """
+        search_query = text.lower().strip()
+        print(f"[GooglePhotosLayout] Searching people: '{search_query}'")
+
+        # Show/hide cards based on search
+        if hasattr(self, 'people_grid') and hasattr(self.people_grid, 'flow_layout'):
+            visible_count = 0
+            for i in range(self.people_grid.flow_layout.count()):
+                item = self.people_grid.flow_layout.itemAt(i)
+                if item and item.widget():
+                    card = item.widget()
+                    if isinstance(card, PersonCard):
+                        # Check if display name matches search
+                        name_matches = search_query in card.display_name.lower()
+                        card.setVisible(name_matches or not search_query)
+                        if card.isVisible():
+                            visible_count += 1
+
+            print(f"[GooglePhotosLayout] Search results: {visible_count} people visible")
+
+            # Update section count badge to show filtered count
+            if hasattr(self, 'people_section'):
+                total_count = self.people_grid.flow_layout.count()
+                if search_query:
+                    self.people_section.update_count(f"{visible_count}/{total_count}")
+                else:
+                    self.people_section.update_count(total_count)
+
+    def _scroll_to_section(self, section_attr: str):
+        """
+        Scroll sidebar to make a section visible (Phase 3: Vertical Navigation).
+
+        Args:
+            section_attr: Attribute name of the section (e.g., "timeline_section")
+        """
+        if hasattr(self, section_attr):
+            section = getattr(self, section_attr)
+            if section and hasattr(self, 'sidebar_scroll'):
+                # Ensure section is expanded
+                if hasattr(section, 'is_expanded') and not section.is_expanded:
+                    section.expand()
+
+                # Scroll to make section visible
+                self.sidebar_scroll.ensureWidgetVisible(section, 0, 50)
+                print(f"[GooglePhotosLayout] Scrolled to section: {section_attr}")
 
     def _show_people_context_menu(self, pos):
         """
@@ -12085,7 +12236,7 @@ class CollapsibleSection(QWidget):
 class PersonCard(QWidget):
     """
     Single person card with circular face thumbnail and name.
-    
+
     Features:
     - 80x100px compact card size
     - Circular face thumbnail (64px diameter)
@@ -12093,12 +12244,23 @@ class PersonCard(QWidget):
     - Photo count badge
     - Hover effect
     - Click to filter by person
+    - Context menu for rename/merge/delete
     """
-    clicked = Signal(str)  # Emits person name
+    clicked = Signal(str)  # Emits branch_key when clicked
+    context_menu_requested = Signal(str, str)  # Emits (branch_key, display_name)
 
-    def __init__(self, name, face_pixmap, photo_count, parent=None):
+    def __init__(self, branch_key, display_name, face_pixmap, photo_count, parent=None):
+        """
+        Args:
+            branch_key: Unique identifier for this person (e.g., "cluster_0")
+            display_name: Human-readable name to display (e.g., "John" or "Unnamed")
+            face_pixmap: QPixmap with face thumbnail
+            photo_count: Number of photos with this person
+        """
         super().__init__(parent)
-        self.person_name = name
+        self.branch_key = branch_key
+        self.display_name = display_name
+        self.person_name = branch_key  # Keep for backward compatibility
         self.setFixedSize(80, 100)
         self.setCursor(Qt.PointingHandCursor)
         self.setStyleSheet("""
@@ -12117,53 +12279,53 @@ class PersonCard(QWidget):
         layout.setAlignment(Qt.AlignCenter)
 
         # Circular face thumbnail
-        face_label = QLabel()
+        self.face_label = QLabel()
         if face_pixmap and not face_pixmap.isNull():
             # Make circular mask
             circular_pixmap = self._make_circular(face_pixmap, 64)
-            face_label.setPixmap(circular_pixmap)
+            self.face_label.setPixmap(circular_pixmap)
         else:
             # Placeholder if no face image
-            face_label.setPixmap(QPixmap())
-            face_label.setFixedSize(64, 64)
-            face_label.setStyleSheet("""
+            self.face_label.setPixmap(QPixmap())
+            self.face_label.setFixedSize(64, 64)
+            self.face_label.setStyleSheet("""
                 QLabel {
                     background: #e8eaed;
                     border-radius: 32px;
                     font-size: 24pt;
                 }
             """)
-            face_label.setText("👤")
-            face_label.setAlignment(Qt.AlignCenter)
+            self.face_label.setText("👤")
+            self.face_label.setAlignment(Qt.AlignCenter)
 
-        face_label.setFixedSize(64, 64)
-        face_label.setAlignment(Qt.AlignCenter)
-        layout.addWidget(face_label)
+        self.face_label.setFixedSize(64, 64)
+        self.face_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self.face_label)
 
         # Name label
-        name_label = QLabel(name if len(name) <= 10 else name[:9] + "…")
-        name_label.setAlignment(Qt.AlignCenter)
-        name_label.setWordWrap(False)
-        name_label.setStyleSheet("""
+        self.name_label = QLabel(display_name if len(display_name) <= 10 else display_name[:9] + "…")
+        self.name_label.setAlignment(Qt.AlignCenter)
+        self.name_label.setWordWrap(False)
+        self.name_label.setStyleSheet("""
             QLabel {
                 font-size: 9pt;
                 color: #202124;
                 font-weight: 500;
             }
         """)
-        name_label.setToolTip(name)  # Full name on hover
-        layout.addWidget(name_label)
+        self.name_label.setToolTip(f"{display_name} ({photo_count} photos)")
+        layout.addWidget(self.name_label)
 
         # Count badge
-        count_label = QLabel(f"({photo_count})")
-        count_label.setAlignment(Qt.AlignCenter)
-        count_label.setStyleSheet("""
+        self.count_label = QLabel(f"({photo_count})")
+        self.count_label.setAlignment(Qt.AlignCenter)
+        self.count_label.setStyleSheet("""
             QLabel {
                 font-size: 8pt;
                 color: #5f6368;
             }
         """)
-        layout.addWidget(count_label)
+        layout.addWidget(self.count_label)
 
     def _make_circular(self, pixmap, size):
         """Convert pixmap to circular thumbnail."""
@@ -12202,8 +12364,32 @@ class PersonCard(QWidget):
     def mousePressEvent(self, event):
         """Handle click on person card."""
         if event.button() == Qt.LeftButton:
-            self.clicked.emit(self.person_name)
-            print(f"[PersonCard] Clicked: {self.person_name}")
+            self.clicked.emit(self.branch_key)
+            print(f"[PersonCard] Clicked: {self.display_name} (branch: {self.branch_key})")
+        elif event.button() == Qt.RightButton:
+            # Show context menu
+            self._show_context_menu(event.globalPos())
+
+    def _show_context_menu(self, global_pos):
+        """Show context menu for rename/merge/delete."""
+        from PySide6.QtWidgets import QMenu
+        menu = QMenu(self)
+
+        # Rename action
+        rename_action = menu.addAction("✏️ Rename Person")
+        rename_action.triggered.connect(lambda: self.context_menu_requested.emit(self.branch_key, "rename"))
+
+        # Merge action
+        merge_action = menu.addAction("🔗 Merge with Another Person")
+        merge_action.triggered.connect(lambda: self.context_menu_requested.emit(self.branch_key, "merge"))
+
+        menu.addSeparator()
+
+        # Delete action
+        delete_action = menu.addAction("🗑️ Delete Person")
+        delete_action.triggered.connect(lambda: self.context_menu_requested.emit(self.branch_key, "delete"))
+
+        menu.exec(global_pos)
 
 
 class PeopleGridView(QWidget):
@@ -12220,7 +12406,8 @@ class PeopleGridView(QWidget):
     - Click to filter by person
     - Empty state message
     """
-    person_clicked = Signal(str)  # Emits person name when clicked
+    person_clicked = Signal(str)  # Emits branch_key when clicked
+    context_menu_requested = Signal(str, str)  # Emits (branch_key, action)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -12265,16 +12452,29 @@ class PeopleGridView(QWidget):
         main_layout.addWidget(self.scroll_area)
         main_layout.addWidget(self.empty_label)
 
-    def add_person(self, name, face_pixmap, photo_count):
-        """Add person to grid."""
-        card = PersonCard(name, face_pixmap, photo_count)
+    def add_person(self, branch_key, display_name, face_pixmap, photo_count):
+        """
+        Add person to grid.
+
+        Args:
+            branch_key: Unique identifier (e.g., "cluster_0")
+            display_name: Display name (e.g., "John" or "Unnamed")
+            face_pixmap: Face thumbnail
+            photo_count: Number of photos
+        """
+        card = PersonCard(branch_key, display_name, face_pixmap, photo_count)
         card.clicked.connect(self._on_person_clicked)
+        card.context_menu_requested.connect(self._on_context_menu_requested)
         self.flow_layout.addWidget(card)
         self.empty_label.hide()
 
-    def _on_person_clicked(self, name):
+    def _on_person_clicked(self, branch_key):
         """Forward person click signal."""
-        self.person_clicked.emit(name)
+        self.person_clicked.emit(branch_key)
+
+    def _on_context_menu_requested(self, branch_key, action):
+        """Forward context menu request."""
+        self.context_menu_requested.emit(branch_key, action)
 
     def clear(self):
         """Remove all person cards."""
