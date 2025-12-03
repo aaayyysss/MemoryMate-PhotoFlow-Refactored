@@ -440,22 +440,65 @@ class ScanController:
                                         from workers.face_cluster_worker import cluster_faces
                                         cluster_params = face_config.get_clustering_params()
 
-                                        cluster_faces(
-                                            current_project_id,
-                                            eps=cluster_params["eps"],
-                                            min_samples=cluster_params["min_samples"]
-                                        )
+                                        # CRITICAL FIX: Run clustering asynchronously to avoid UI freeze
+                                        # DO NOT call cluster_faces() directly - it blocks during DBSCAN computation!
 
-                                        self.logger.info("Face clustering completed")
+                                        def run_clustering_async():
+                                            """Run clustering in background thread"""
+                                            try:
+                                                cluster_faces(
+                                                    current_project_id,
+                                                    eps=cluster_params["eps"],
+                                                    min_samples=cluster_params["min_samples"]
+                                                )
+                                                self.logger.info("Face clustering completed")
+                                            except Exception as e:
+                                                self.logger.error(f"Error during clustering: {e}", exc_info=True)
 
-                                    # Final update
-                                    progress_bar.setValue(100)
-                                    status_label.setText("Complete!")
-                                    detail_label.setText(f"Found {total_faces} faces in {success_count} photos")
-                                    QApplication.processEvents()
+                                        def on_clustering_finished():
+                                            """Handle clustering completion on main thread"""
+                                            try:
+                                                # Final update
+                                                progress_bar.setValue(100)
+                                                status_label.setText("Complete!")
+                                                detail_label.setText(f"Found {total_faces} faces in {success_count} photos")
+                                                QApplication.processEvents()
 
-                                    # Close dialog after short delay
-                                    QTimer.singleShot(1500, progress_dialog.accept)
+                                                # Close dialog after short delay
+                                                QTimer.singleShot(1500, progress_dialog.accept)
+                                            except Exception as e:
+                                                self.logger.error(f"Error in clustering completion handler: {e}", exc_info=True)
+                                                progress_dialog.accept()
+
+                                        # Run clustering in thread pool (NON-BLOCKING!)
+                                        from PySide6.QtCore import QRunnable, QThreadPool, pyqtSignal, QObject
+
+                                        class ClusterSignals(QObject):
+                                            finished = pyqtSignal()
+
+                                        class ClusterRunnable(QRunnable):
+                                            def __init__(self, cluster_func):
+                                                super().__init__()
+                                                self.cluster_func = cluster_func
+                                                self.signals = ClusterSignals()
+
+                                            def run(self):
+                                                self.cluster_func()
+                                                self.signals.finished.emit()
+
+                                        cluster_runnable = ClusterRunnable(run_clustering_async)
+                                        cluster_runnable.signals.finished.connect(on_clustering_finished)
+                                        QThreadPool.globalInstance().start(cluster_runnable)
+
+                                    else:
+                                        # No clustering needed, finish immediately
+                                        progress_bar.setValue(100)
+                                        status_label.setText("Complete!")
+                                        detail_label.setText(f"Found {total_faces} faces in {success_count} photos")
+                                        QApplication.processEvents()
+
+                                        # Close dialog after short delay
+                                        QTimer.singleShot(1500, progress_dialog.accept)
 
                                 except Exception as e:
                                     self.logger.error(f"Error in face detection completion handler: {e}", exc_info=True)
