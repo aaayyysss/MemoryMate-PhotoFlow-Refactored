@@ -326,9 +326,6 @@ class PhotoScanService:
 
                     # Report progress (check cancellation here too for responsiveness)
                     if progress_callback and (i % 10 == 0 or i == total_files):
-                        print(f"[SCAN] 🔍 Progress checkpoint at file {i}/{total_files}")
-                        sys.stdout.flush()
-
                         # RESPONSIVE CANCEL: Check during progress reporting
                         if self._cancelled:
                             logger.info("Scan cancelled during progress reporting")
@@ -348,9 +345,6 @@ class PhotoScanService:
 
                         progress_msg = f"📷 {file_name} ({file_size_kb} KB)\nIndexed: {self._stats['photos_indexed']}/{total_files} photos"
 
-                        print(f"[SCAN] 📊 Creating progress object...")
-                        sys.stdout.flush()
-
                         progress = ScanProgress(
                             current=i,
                             total=total_files,
@@ -359,13 +353,8 @@ class PhotoScanService:
                             current_file=str(file_path)
                         )
 
-                        print(f"[SCAN] 📡 Calling progress_callback...")
-                        sys.stdout.flush()
-
                         try:
                             progress_callback(progress)
-                            print(f"[SCAN] ✓ Progress callback completed")
-                            sys.stdout.flush()
                         except Exception as e:
                             logger.error(f"Progress callback error: {e}", exc_info=True)
                             print(f"[SCAN] ⚠️ Progress callback failed: {e}")

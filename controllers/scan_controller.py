@@ -135,9 +135,12 @@ class ScanController:
             self.worker.moveToThread(self.thread)
             print(f"[ScanController] Worker moved to thread")
 
-            self.worker.progress.connect(self._on_progress)
-            self.worker.finished.connect(self._on_finished)
-            self.worker.error.connect(self._on_error)
+            # CRITICAL FIX: Use Qt.QueuedConnection explicitly to prevent deadlock
+            # When progress is emitted from worker thread via synchronous callback,
+            # we need to ensure the emit() returns immediately without blocking
+            self.worker.progress.connect(self._on_progress, Qt.QueuedConnection)
+            self.worker.finished.connect(self._on_finished, Qt.QueuedConnection)
+            self.worker.error.connect(self._on_error, Qt.QueuedConnection)
             self.thread.started.connect(lambda: print("[ScanController] QThread STARTED!"))
             self.thread.started.connect(self.worker.run)
             self.worker.finished.connect(lambda f, p, v=0: self.thread.quit())
