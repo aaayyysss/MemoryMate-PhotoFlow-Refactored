@@ -14430,6 +14430,7 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
     def _populate_project_selector(self):
         """
         Populate the project selector combobox with available projects.
+        Google Photos pattern: "+ New Project..." as first item.
         """
         try:
             from app_services import list_projects
@@ -14439,20 +14440,31 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
             self.project_combo.blockSignals(True)
             self.project_combo.clear()
 
+            # Google Photos pattern: Add "+ New Project..." as first item
+            self.project_combo.addItem("➕ New Project...", userData="__new_project__")
+
+            # Add separator after "New Project" option
+            self.project_combo.insertSeparator(1)
+
             if not projects:
                 self.project_combo.addItem("(No projects)", None)
-                self.project_combo.setEnabled(False)
+                # Still enable dropdown so user can create new project
+                self.project_combo.setEnabled(True)
             else:
                 for proj in projects:
                     self.project_combo.addItem(proj["name"], proj["id"])
                 self.project_combo.setEnabled(True)
 
-                # Select current project
+                # Select current project (skip index 0 and 1 which are "+ New" and separator)
                 if self.project_id:
-                    for i in range(self.project_combo.count()):
+                    for i in range(2, self.project_combo.count()):  # Start from index 2
                         if self.project_combo.itemData(i) == self.project_id:
                             self.project_combo.setCurrentIndex(i)
                             break
+                else:
+                    # If no project_id, select first actual project (index 2)
+                    if self.project_combo.count() > 2:
+                        self.project_combo.setCurrentIndex(2)
 
             # Unblock signals and connect change handler
             self.project_combo.blockSignals(False)
@@ -14462,7 +14474,7 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
                 pass  # No previous connection
             self.project_combo.currentIndexChanged.connect(self._on_project_changed)
 
-            print(f"[GooglePhotosLayout] Project selector populated with {len(projects)} projects")
+            print(f"[GooglePhotosLayout] Project selector populated with {len(projects)} projects (+ New Project option)")
 
         except Exception as e:
             print(f"[GooglePhotosLayout] ⚠️ Error populating project selector: {e}")
@@ -14470,8 +14482,36 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
     def _on_project_changed(self, index: int):
         """
         Handle project selection change in combobox.
+        Detects "+ New Project..." selection and opens create dialog.
         """
         new_project_id = self.project_combo.itemData(index)
+
+        # Check if user selected "+ New Project..." option
+        if new_project_id == "__new_project__":
+            print("[GooglePhotosLayout] ➕ New Project option selected")
+
+            # Block signals to prevent recursion
+            self.project_combo.blockSignals(True)
+
+            # Restore previous selection (don't stay on "+ New Project")
+            if self.project_id:
+                for i in range(2, self.project_combo.count()):
+                    if self.project_combo.itemData(i) == self.project_id:
+                        self.project_combo.setCurrentIndex(i)
+                        break
+            else:
+                # If no current project, select first actual project
+                if self.project_combo.count() > 2:
+                    self.project_combo.setCurrentIndex(2)
+
+            # Unblock signals
+            self.project_combo.blockSignals(False)
+
+            # Open project creation dialog
+            self._on_create_project_clicked()
+            return
+
+        # Normal project change handling
         if new_project_id is None or new_project_id == self.project_id:
             return
 
