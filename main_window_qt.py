@@ -1304,8 +1304,8 @@ class MainWindow(QMainWindow):
         dark.setColor(QPalette.WindowText, Qt.white)
         dark.setColor(QPalette.Base, QColor(25, 25, 25))
         dark.setColor(QPalette.AlternateBase, QColor(35, 35, 35))
-        dark.setColor(QPalette.ToolTipBase, Qt.white)
-        dark.setColor(QPalette.ToolTipText, Qt.white)
+        dark.setColor(QPalette.ToolTipBase, QColor(0, 0, 0))
+        dark.setColor(QPalette.ToolTipText, QColor(255, 255, 255))
         dark.setColor(QPalette.Text, Qt.white)
         dark.setColor(QPalette.Button, QColor(45, 45, 45))
         dark.setColor(QPalette.ButtonText, Qt.white)
@@ -1314,6 +1314,30 @@ class MainWindow(QMainWindow):
         dark.setColor(QPalette.Highlight, QColor(42, 130, 218))
         dark.setColor(QPalette.HighlightedText, Qt.black)
         app.setPalette(dark)
+        app.setStyleSheet("""
+            QToolTip {
+                color: #f0f0f0;
+                background-color: rgba(20,20,20,0.96);
+                border: 1px solid #444;
+                padding: 6px 10px;
+                border-radius: 6px;
+            }
+            QMessageBox {
+                background-color: #121212;
+                color: #f0f0f0;
+            }
+            QMessageBox QLabel { color: #f0f0f0; }
+            QMessageBox QPushButton {
+                background: rgba(255,255,255,0.15);
+                color: #f0f0f0;
+                border: none;
+                border-radius: 6px;
+                padding: 6px 12px;
+            }
+            QMessageBox QPushButton:hover {
+                background: rgba(255,255,255,0.25);
+            }
+        """)
 
 
     def _run_date_migration(self):
@@ -2002,6 +2026,14 @@ class MainWindow(QMainWindow):
                     if hasattr(self, "sidebar"):
                         self.sidebar.reload()
 
+                    # CRITICAL FIX: Also refresh Google Photos layout people section
+                    if hasattr(self.grid, "_build_people_tree"):
+                        print("[MainWindow] Refreshing Google Photos layout people section...")
+                        self.grid._build_people_tree()
+                        # Prompt quick naming for unnamed clusters
+                        if hasattr(self.grid, "_prompt_quick_name_dialog"):
+                            self.grid._prompt_quick_name_dialog()
+
                     # Show success notification
                     QMessageBox.information(
                         self,
@@ -2114,6 +2146,14 @@ class MainWindow(QMainWindow):
                 # Refresh sidebar to show new clusters
                 if hasattr(self, "sidebar"):
                     self.sidebar.reload()
+
+                # CRITICAL FIX: Also refresh Google Photos layout people section
+                if hasattr(self.grid, "_build_people_tree"):
+                    print("[MainWindow] Refreshing Google Photos layout people section...")
+                    self.grid._build_people_tree()
+                    # Prompt quick naming for unnamed clusters
+                    if hasattr(self.grid, "_prompt_quick_name_dialog"):
+                        self.grid._prompt_quick_name_dialog()
 
                 QMessageBox.information(
                     self,

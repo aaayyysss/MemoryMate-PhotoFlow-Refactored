@@ -42,16 +42,17 @@ class VideoEditorMixin:
                 border-radius: 8px;
             }
         """)
-        layout = QHBoxLayout(container)
-        layout.setContentsMargins(16, 8, 16, 8)
-        layout.setSpacing(12)
+        outer = QVBoxLayout(container)
+        outer.setContentsMargins(16, 8, 16, 8)
+        outer.setSpacing(10)
         
-        # Trim label
-        trim_label = QLabel("✂️ Trim:")
+        # Header
+        trim_label = QLabel("✂️ Trim")
         trim_label.setStyleSheet("color: white; font-weight: bold; font-size: 10pt;")
-        layout.addWidget(trim_label)
-
-        # Frame navigation buttons (Phase 2 Feature 6)
+        outer.addWidget(trim_label)
+        
+        # Row: frame navigation
+        row_nav = QHBoxLayout()
         prev_frame_btn = QPushButton("◀")
         prev_frame_btn.setToolTip("Previous frame (or use ← key)")
         prev_frame_btn.clicked.connect(self._previous_frame)
@@ -69,8 +70,8 @@ class VideoEditorMixin:
                 background: rgba(255, 255, 255, 0.25);
             }
         """)
-        layout.addWidget(prev_frame_btn)
-
+        row_nav.addWidget(prev_frame_btn)
+        
         next_frame_btn = QPushButton("▶")
         next_frame_btn.setToolTip("Next frame (or use → key)")
         next_frame_btn.clicked.connect(self._next_frame)
@@ -88,11 +89,14 @@ class VideoEditorMixin:
                 background: rgba(255, 255, 255, 0.25);
             }
         """)
-        layout.addWidget(next_frame_btn)
+        row_nav.addWidget(next_frame_btn)
+        outer.addLayout(row_nav)
         
-        # Set Start button
+        # Row: set start
+        row_start = QHBoxLayout()
         self.trim_start_btn = QPushButton("[ Set Start")
         self.trim_start_btn.clicked.connect(self._set_trim_start)
+        self.trim_start_btn.setToolTip("Set Trim Start (Shortcut: I)")
         self.trim_start_btn.setStyleSheet("""
             QPushButton {
                 background: rgba(76, 175, 80, 0.8);
@@ -107,23 +111,18 @@ class VideoEditorMixin:
                 background: rgba(76, 175, 80, 1.0);
             }
         """)
-        layout.addWidget(self.trim_start_btn)
-        
-        # Start time label
+        row_start.addWidget(self.trim_start_btn)
         self.trim_start_label = QLabel("00:00")
         self.trim_start_label.setStyleSheet("color: #4CAF50; font-weight: bold; font-size: 10pt;")
-        layout.addWidget(self.trim_start_label)
+        row_start.addWidget(self.trim_start_label)
+        row_start.addStretch()
+        outer.addLayout(row_start)
         
-        layout.addStretch()
-        
-        # End time label
-        self.trim_end_label = QLabel("00:00")
-        self.trim_end_label.setStyleSheet("color: #F44336; font-weight: bold; font-size: 10pt;")
-        layout.addWidget(self.trim_end_label)
-        
-        # Set End button
+        # Row: set end
+        row_end = QHBoxLayout()
         self.trim_end_btn = QPushButton("Set End ]")
         self.trim_end_btn.clicked.connect(self._set_trim_end)
+        self.trim_end_btn.setToolTip("Set Trim End (Shortcut: O)")
         self.trim_end_btn.setStyleSheet("""
             QPushButton {
                 background: rgba(244, 67, 54, 0.8);
@@ -138,9 +137,15 @@ class VideoEditorMixin:
                 background: rgba(244, 67, 54, 1.0);
             }
         """)
-        layout.addWidget(self.trim_end_btn)
+        self.trim_end_label = QLabel("00:00")
+        self.trim_end_label.setStyleSheet("color: #F44336; font-weight: bold; font-size: 10pt;")
+        row_end.addWidget(self.trim_end_btn)
+        row_end.addWidget(self.trim_end_label)
+        row_end.addStretch()
+        outer.addLayout(row_end)
         
-        # Reset trim button
+        # Row: reset + preview
+        row_actions = QHBoxLayout()
         reset_trim_btn = QPushButton("↺ Reset")
         reset_trim_btn.clicked.connect(self._reset_trim)
         reset_trim_btn.setStyleSheet("""
@@ -156,9 +161,7 @@ class VideoEditorMixin:
                 background: rgba(255, 255, 255, 0.25);
             }
         """)
-        layout.addWidget(reset_trim_btn)
-
-        # Preview Trim button (Phase 2 Feature 5)
+        row_actions.addWidget(reset_trim_btn)
         preview_trim_btn = QPushButton("▶ Preview Trim")
         preview_trim_btn.setToolTip("Play only the trimmed region")
         preview_trim_btn.clicked.connect(self._preview_trim)
@@ -176,16 +179,16 @@ class VideoEditorMixin:
                 background: rgba(66, 133, 244, 1.0);
             }
         """)
-        layout.addWidget(preview_trim_btn)
-
-        # Phase 3: Duration display showing trimmed length
-        layout.addSpacing(20)
+        row_actions.addWidget(preview_trim_btn)
+        row_actions.addStretch()
+        outer.addLayout(row_actions)
+        
+        # Row: duration and warning
         self.trim_duration_label = QLabel("Duration: 00:00 / 00:00")
         self.trim_duration_label.setStyleSheet("color: #FFC107; font-weight: bold; font-size: 10pt;")
         self.trim_duration_label.setToolTip("Trimmed length / Original length")
-        layout.addWidget(self.trim_duration_label)
-
-        # Phase 3: Trim validation warning (hidden by default)
+        outer.addWidget(self.trim_duration_label)
+        
         self.trim_warning_label = QLabel("⚠️ Invalid trim range!")
         self.trim_warning_label.setStyleSheet("""
             QLabel {
@@ -199,8 +202,8 @@ class VideoEditorMixin:
         """)
         self.trim_warning_label.setToolTip("Start time must be before end time")
         self.trim_warning_label.hide()
-        layout.addWidget(self.trim_warning_label)
-
+        outer.addWidget(self.trim_warning_label)
+        
         return container
     
     # ========== ROTATE CONTROLS (Editor-Only) ==========
@@ -208,10 +211,12 @@ class VideoEditorMixin:
     def _create_video_rotate_controls(self) -> QWidget:
         """Create rotate buttons for video with status label."""
         container = QWidget()
-        layout = QHBoxLayout(container)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(8)
-
+        outer = QVBoxLayout(container)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(8)
+        
+        # Row: rotation buttons
+        row_rotate = QHBoxLayout()
         rotate_left_btn = QPushButton("↶ 90°")
         rotate_left_btn.setToolTip("Rotate 90° Left (Counterclockwise)\nNote: Rotation applies during export, not in preview")
         rotate_left_btn.clicked.connect(lambda: self._rotate_video(-90))
@@ -229,22 +234,8 @@ class VideoEditorMixin:
                 background: rgba(255, 255, 255, 0.25);
             }
         """)
-        layout.addWidget(rotate_left_btn)
-
-        # Rotation status label
-        self.rotation_status_label = QLabel("Original")
-        self.rotation_status_label.setStyleSheet("""
-            QLabel {
-                color: white;
-                font-size: 10pt;
-                font-weight: bold;
-                background: rgba(66, 133, 244, 0.8);
-                border-radius: 4px;
-                padding: 8px 16px;
-            }
-        """)
-        layout.addWidget(self.rotation_status_label)
-
+        row_rotate.addWidget(rotate_left_btn)
+        
         rotate_right_btn = QPushButton("↷ 90°")
         rotate_right_btn.setToolTip("Rotate 90° Right (Clockwise)\nNote: Rotation applies during export, not in preview")
         rotate_right_btn.clicked.connect(lambda: self._rotate_video(90))
@@ -262,17 +253,31 @@ class VideoEditorMixin:
                 background: rgba(255, 255, 255, 0.25);
             }
         """)
-        layout.addWidget(rotate_right_btn)
-
-        # Export quality preset selector (Phase 2 Feature 7)
-        layout.addSpacing(20)
+        row_rotate.addWidget(rotate_right_btn)
+        outer.addLayout(row_rotate)
+        
+        # Row: rotation status
+        self.rotation_status_label = QLabel("Original")
+        self.rotation_status_label.setStyleSheet("""
+            QLabel {
+                color: white;
+                font-size: 10pt;
+                font-weight: bold;
+                background: rgba(66, 133, 244, 0.8);
+                border-radius: 4px;
+                padding: 8px 16px;
+            }
+        """)
+        outer.addWidget(self.rotation_status_label)
+        
+        # Row: export quality
+        row_quality = QHBoxLayout()
         quality_label = QLabel("Quality:")
         quality_label.setStyleSheet("color: white; font-size: 10pt; font-weight: bold;")
-        layout.addWidget(quality_label)
-
+        row_quality.addWidget(quality_label)
         self.export_quality_combo = QComboBox()
         self.export_quality_combo.addItems(["High (Original)", "Medium (Balanced)", "Low (Small File)"])
-        self.export_quality_combo.setCurrentIndex(0)  # Default to High
+        self.export_quality_combo.setCurrentIndex(0)
         self.export_quality_combo.setToolTip("Select export quality/file size")
         self.export_quality_combo.setStyleSheet("""
             QComboBox {
@@ -286,9 +291,7 @@ class VideoEditorMixin:
             QComboBox:hover {
                 background: rgba(255, 255, 255, 0.25);
             }
-            QComboBox::drop-down {
-                border: none;
-            }
+            QComboBox::drop-down { border: none; }
             QComboBox::down-arrow {
                 image: none;
                 border-left: 4px solid transparent;
@@ -303,17 +306,18 @@ class VideoEditorMixin:
                 border: 1px solid rgba(255, 255, 255, 0.3);
             }
         """)
-        layout.addWidget(self.export_quality_combo)
-
-        # Phase 3: Playback speed control
-        layout.addSpacing(20)
+        row_quality.addWidget(self.export_quality_combo)
+        row_quality.addStretch()
+        outer.addLayout(row_quality)
+        
+        # Row: export speed
+        row_speed = QHBoxLayout()
         speed_label = QLabel("Speed:")
         speed_label.setStyleSheet("color: white; font-size: 10pt; font-weight: bold;")
-        layout.addWidget(speed_label)
-
+        row_speed.addWidget(speed_label)
         self.export_speed_combo = QComboBox()
         self.export_speed_combo.addItems(["0.5x (Slow)", "1.0x (Normal)", "1.5x (Fast)", "2.0x (Very Fast)"])
-        self.export_speed_combo.setCurrentIndex(1)  # Default to 1.0x
+        self.export_speed_combo.setCurrentIndex(1)
         self.export_speed_combo.setToolTip("Playback speed (applies to export)")
         self.export_speed_combo.setStyleSheet("""
             QComboBox {
@@ -324,12 +328,8 @@ class VideoEditorMixin:
                 padding: 6px 12px;
                 font-size: 10pt;
             }
-            QComboBox:hover {
-                background: rgba(255, 255, 255, 0.25);
-            }
-            QComboBox::drop-down {
-                border: none;
-            }
+            QComboBox:hover { background: rgba(255, 255, 255, 0.25); }
+            QComboBox::drop-down { border: none; }
             QComboBox::down-arrow {
                 image: none;
                 border-left: 4px solid transparent;
@@ -344,10 +344,11 @@ class VideoEditorMixin:
                 border: 1px solid rgba(255, 255, 255, 0.3);
             }
         """)
-        layout.addWidget(self.export_speed_combo)
-
-        # Phase 3: Audio controls
-        layout.addSpacing(20)
+        row_speed.addWidget(self.export_speed_combo)
+        row_speed.addStretch()
+        outer.addLayout(row_speed)
+        
+        # Row: audio mute
         self.mute_audio_checkbox = QCheckBox("Mute Audio")
         self.mute_audio_checkbox.setStyleSheet("""
             QCheckBox {
@@ -368,8 +369,8 @@ class VideoEditorMixin:
             }
         """)
         self.mute_audio_checkbox.setToolTip("Remove audio from exported video")
-        layout.addWidget(self.mute_audio_checkbox)
-
+        outer.addWidget(self.mute_audio_checkbox)
+        
         return container
     
     # ========== TRIM/ROTATE/EXPORT METHODS (Editor-Only) ==========
@@ -551,6 +552,9 @@ class VideoEditorMixin:
             print(f"[VideoEditor] Rotation status: {label_text}")
 
         # Note: QVideoWidget doesn't support rotation - applied during export
+        # Apply preview rotation when using QGraphicsVideoItem
+        if hasattr(self, '_apply_preview_rotation'):
+            self._apply_preview_rotation()
     
     def _format_time(self, milliseconds):
         """Format time from milliseconds to MM:SS."""
@@ -561,7 +565,172 @@ class VideoEditorMixin:
         seconds = seconds % 60
         return f"{minutes:02d}:{seconds:02d}"
 
+    def _apply_preview_rotation(self):
+        """Apply current rotation to preview if QGraphicsVideoItem is used."""
+        try:
+            if not hasattr(self, 'video_item') or self.video_item is None:
+                return
+            angle = getattr(self, 'video_rotation_angle', 0)
+            br = self.video_item.boundingRect()
+            self.video_item.setTransformOriginPoint(br.center())
+            self.video_item.setRotation(angle)
+            if hasattr(self, 'video_graphics_view') and hasattr(self, 'video_scene') and self.video_graphics_view and self.video_scene:
+                rect = self.video_scene.itemsBoundingRect()
+                if rect.isValid():
+                    from PySide6.QtWidgets import QGraphicsView
+                    # Fit using center anchor to avoid drift, then restore under-mouse for interactive zoom
+                    prev_trans = self.video_graphics_view.transformationAnchor()
+                    prev_resize = self.video_graphics_view.resizeAnchor()
+                    self.video_graphics_view.setTransformationAnchor(QGraphicsView.AnchorViewCenter)
+                    self.video_graphics_view.setResizeAnchor(QGraphicsView.AnchorViewCenter)
+                    self.video_graphics_view.resetTransform()
+                    self.video_graphics_view.fitInView(rect, Qt.KeepAspectRatio)
+                    # Record base fit scale for consistent zooming
+                    try:
+                        self.video_base_scale = self.video_graphics_view.transform().m11()
+                    except Exception:
+                        self.video_base_scale = 1.0
+                    self.edit_zoom_level = 1.0
+                    self.video_graphics_view.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
+                    self.video_graphics_view.setResizeAnchor(QGraphicsView.AnchorUnderMouse)
+        except Exception as e:
+            print(f"[VideoEditor] Preview rotation apply failed: {e}")
+
+    def _fit_video_view(self):
+        """Fit video content to the view at 100% initial scale."""
+        try:
+            if hasattr(self, 'video_graphics_view') and hasattr(self, 'video_scene') and self.video_graphics_view and self.video_scene:
+                rect = self.video_scene.itemsBoundingRect()
+                rect = self.video_scene.itemsBoundingRect()
+                if rect.isValid():
+                    from PySide6.QtWidgets import QGraphicsView
+                    # Fit using center anchor to avoid drift, then restore under-mouse for interactive zoom
+                    prev_trans = self.video_graphics_view.transformationAnchor()
+                    prev_resize = self.video_graphics_view.resizeAnchor()
+                    self.video_graphics_view.setTransformationAnchor(QGraphicsView.AnchorViewCenter)
+                    self.video_graphics_view.setResizeAnchor(QGraphicsView.AnchorViewCenter)
+                    self.video_graphics_view.resetTransform()
+                    self.video_graphics_view.fitInView(rect, Qt.KeepAspectRatio)
+                    # Record base fit scale for consistent zooming
+                    try:
+                        self.video_base_scale = self.video_graphics_view.transform().m11()
+                    except Exception:
+                        self.video_base_scale = 1.0
+                    self.edit_zoom_level = 1.0
+                    self.video_graphics_view.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
+                    self.video_graphics_view.setResizeAnchor(QGraphicsView.AnchorUnderMouse)
+        except Exception as e:
+            print(f"[VideoEditor] Fit video view failed: {e}")
+
+    # ========== ZOOM & EDITOR ACTIONS ==========
+    def _apply_video_zoom(self):
+        """Apply zoom to video preview using QGraphicsVideoItem/QGraphicsView."""
+        try:
+            if not hasattr(self, 'video_item') or self.video_item is None:
+                return
+            # Clamp scale
+            self.edit_zoom_level = max(0.25, min(getattr(self, 'edit_zoom_level', 1.0), 4.0))
+            # Origin at center prevents drift
+            br = self.video_item.boundingRect()
+            self.video_item.setTransformOriginPoint(br.center())
+            # Use view transform for zoom to support AnchorUnderMouse wheel zoom
+            if hasattr(self, 'video_graphics_view') and self.video_graphics_view:
+                self.video_graphics_view.resetTransform()
+                from PySide6.QtGui import QTransform
+                base = getattr(self, 'video_base_scale', 1.0)
+                t = QTransform()
+                t.scale(base * self.edit_zoom_level, base * self.edit_zoom_level)
+                self.video_graphics_view.setTransform(t)
+                from PySide6.QtWidgets import QGraphicsView
+                self.video_graphics_view.setDragMode(QGraphicsView.ScrollHandDrag)
+        except Exception as e:
+            print(f"[VideoEditor] Apply video zoom failed: {e}")
+
+    def _editor_zoom_in(self):
+        self.edit_zoom_level = getattr(self, 'edit_zoom_level', 1.0) * 1.15
+        self._apply_video_zoom()
+        print(f"[VideoEditor] Zoom In → {self.edit_zoom_level:.2f}")
+
+    def _editor_zoom_out(self):
+        self.edit_zoom_level = getattr(self, 'edit_zoom_level', 1.0) / 1.15
+        self._apply_video_zoom()
+        print(f"[VideoEditor] Zoom Out → {self.edit_zoom_level:.2f}")
+
+    def _editor_zoom_reset(self):
+        self.edit_zoom_level = 1.0
+        self._apply_video_zoom()
+        print("[VideoEditor] Zoom Reset → 1.00")
+
+    def _toggle_crop_mode(self):
+        self.crop_mode_active = not getattr(self, 'crop_mode_active', False)
+        print(f"[VideoEditor] Crop mode: {'ON' if self.crop_mode_active else 'OFF'}")
+
+    def _toggle_filters_panel(self):
+        self.filters_panel_visible = not getattr(self, 'filters_panel_visible', False)
+        print(f"[VideoEditor] Filters panel: {'Visible' if self.filters_panel_visible else 'Hidden'}")
+
+    def _toggle_before_after(self):
+        self.before_after_active = not getattr(self, 'before_after_active', False)
+        print(f"[VideoEditor] Before/After: {'ON' if self.before_after_active else 'OFF'}")
+
+    def _editor_undo(self):
+        print("[VideoEditor] Undo clicked (not yet implemented for video adjustments)")
+
+    def _editor_redo(self):
+        print("[VideoEditor] Redo clicked (not yet implemented for video adjustments)")
+
+    def _copy_adjustments(self):
+        try:
+            self.copied_adjustments = getattr(self, 'adjustments', {}).copy()
+            print("[VideoEditor] Adjustments copied")
+        except Exception as e:
+            print(f"[VideoEditor] Copy adjustments failed: {e}")
+
+    def _paste_adjustments(self):
+        try:
+            if hasattr(self, 'copied_adjustments') and self.copied_adjustments:
+                self.adjustments = self.copied_adjustments.copy()
+                print("[VideoEditor] Adjustments pasted")
+            else:
+                print("[VideoEditor] No adjustments to paste")
+        except Exception as e:
+            print(f"[VideoEditor] Paste adjustments failed: {e}")
+
+    def eventFilter(self, obj, event):
+        """Mouse-wheel zoom for videos: scale around cursor using view transform."""
+        try:
+            from PySide6.QtCore import QEvent, Qt
+            # Intercept wheel on the video view (Ctrl+Wheel to zoom)
+            if hasattr(self, 'video_graphics_view') and (obj == self.video_graphics_view.viewport() or obj == self.video_graphics_view) and event.type() == QEvent.Wheel:
+                # Zoom only when Ctrl is pressed
+                if not (event.modifiers() & Qt.ControlModifier):
+                    return True
+                delta = event.angleDelta().y()
+                requested_factor = 1.15 if delta > 0 else 1/1.15
+                current = getattr(self, 'edit_zoom_level', 1.0)
+                target = max(0.25, min(current * requested_factor, 4.0))
+                # Compute effective factor to respect bounds
+                effective_factor = target / (current if current != 0 else 1.0)
+                if hasattr(self, 'video_graphics_view') and self.video_graphics_view:
+                    self.video_graphics_view.scale(effective_factor, effective_factor)
+                self.edit_zoom_level = target
+                try:
+                    from PySide6.QtWidgets import QGraphicsView
+                    self.video_graphics_view.setDragMode(QGraphicsView.ScrollHandDrag)
+                except Exception:
+                    pass
+                if hasattr(self, '_update_zoom_status'):
+                    self._update_zoom_status()
+                return True
+            # Swallow wheel on parent scroll area to prevent unintended scrolling
+            if hasattr(self, 'scroll_area') and obj == self.scroll_area.viewport() and event.type() == QEvent.Wheel:
+                return True
+        except Exception as e:
+            print(f"[VideoEditor] Wheel zoom failed: {e}")
+        return super().eventFilter(obj, event)
+
     # ========== PHASE 3: VALIDATION & FEEDBACK METHODS ==========
+
 
     def _update_trim_duration(self):
         """Update trim duration display showing trimmed length vs original (Phase 3)."""
@@ -686,15 +855,28 @@ class VideoEditorMixin:
 
             # Get output path from user
             default_name = os.path.splitext(os.path.basename(self.media_path))[0] + "_edited.mp4"
+            initial_path = os.path.join(os.path.dirname(self.media_path), default_name)
             output_path, _ = QFileDialog.getSaveFileName(
                 self,
                 "Export Edited Video" + size_info,
-                default_name,
+                initial_path,
                 "MP4 Video (*.mp4);;All Files (*)"
             )
 
             if not output_path:
                 return  # User cancelled
+
+            # Overwrite confirmation if file exists
+            if os.path.exists(output_path):
+                reply = QMessageBox.question(
+                    self,
+                    "Overwrite File",
+                    f"The file already exists:\n\n{output_path}\n\nDo you want to overwrite it?",
+                    QMessageBox.Yes | QMessageBox.No,
+                    QMessageBox.No
+                )
+                if reply != QMessageBox.Yes:
+                    return
 
             # Phase 3: Check disk space
             if estimated_size:
@@ -726,6 +908,28 @@ class VideoEditorMixin:
                     f"Location: {output_path}\n"
                     f"File size: {actual_size_mb:.1f} MB"
                 )
+
+                # Offer to open containing folder
+                open_reply = QMessageBox.question(
+                    self,
+                    "Open Folder",
+                    "Open the exported video's folder?",
+                    QMessageBox.Yes | QMessageBox.No,
+                    QMessageBox.Yes
+                )
+                if open_reply == QMessageBox.Yes:
+                    try:
+                        import platform, subprocess
+                        system = platform.system()
+                        folder = os.path.dirname(output_path)
+                        if system == "Windows":
+                            subprocess.run(['explorer', os.path.normpath(folder)])
+                        elif system == "Darwin":
+                            subprocess.run(['open', folder])
+                        else:
+                            subprocess.run(['xdg-open', folder])
+                    except Exception as e:
+                        print(f"[VideoEditor] Failed to open folder: {e}")
             else:
                 QMessageBox.warning(
                     self,
