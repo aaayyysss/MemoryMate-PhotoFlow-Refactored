@@ -8153,14 +8153,14 @@ class GooglePhotosLayout(BaseLayout):
 
         scan_action = QAction("📂  Scan Repository", self)
         scan_action.setToolTip("Scan folder to add new photos")
-        if hasattr(self, 'btn_scan'):
-            scan_action.triggered.connect(self.btn_scan.click)
+        if hasattr(self, '_scan_repository_handler'):
+            scan_action.triggered.connect(self._scan_repository_handler)
         menu.addAction(scan_action)
 
         faces_action = QAction("👤  Detect Faces", self)
         faces_action.setToolTip("Run face detection on photos")
-        if hasattr(self, 'btn_faces'):
-            faces_action.triggered.connect(self.btn_faces.click)
+        if hasattr(self, '_detect_faces_handler'):
+            faces_action.triggered.connect(self._detect_faces_handler)
         menu.addAction(faces_action)
 
         refresh_action = QAction("↻  Refresh Timeline", self)
@@ -14380,25 +14380,15 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
         """Called when this layout becomes active."""
         print("[GooglePhotosLayout] 📍 Layout activated")
 
-        # CRITICAL FIX: Disconnect before connecting to prevent duplicate signal connections
-        # Create Project button is already connected in toolbar creation
-        try:
-            self.btn_scan.clicked.disconnect()
-        except:
-            pass
-        try:
-            self.btn_faces.clicked.disconnect()
-        except:
-            pass
-
-        # Connect Scan and Faces buttons to MainWindow actions
+        # Store main_window method references for Settings menu
+        # (btn_scan and btn_faces removed from toolbar, now in Settings menu)
         if hasattr(self.main_window, '_on_scan_repository'):
-            self.btn_scan.clicked.connect(self.main_window._on_scan_repository)
-            print("[GooglePhotosLayout] ✓ Connected Scan button")
+            self._scan_repository_handler = self.main_window._on_scan_repository
+            print("[GooglePhotosLayout] ✓ Stored Scan Repository handler")
 
         if hasattr(self.main_window, '_on_detect_and_group_faces'):
-            self.btn_faces.clicked.connect(self.main_window._on_detect_and_group_faces)
-            print("[GooglePhotosLayout] ✓ Connected Faces button")
+            self._detect_faces_handler = self.main_window._on_detect_and_group_faces
+            print("[GooglePhotosLayout] ✓ Stored Detect Faces handler")
 
     def _on_create_project_clicked(self):
         """Handle Create Project button click."""
