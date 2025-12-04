@@ -4749,6 +4749,25 @@ class ReferenceDB:
             moved_faces = cur.rowcount
 
             # 2) project_images → keep branch-based browsing consistent
+            # CRITICAL FIX: Delete duplicate entries BEFORE updating to prevent UNIQUE constraint violation
+            # If image_path exists in both source and target branches, the UPDATE would create duplicates
+            cur.execute(
+                f"""
+                DELETE FROM project_images
+                WHERE project_id = ?
+                  AND branch_key IN ({src_placeholders})
+                  AND image_path IN (
+                      SELECT image_path
+                      FROM project_images
+                      WHERE project_id = ? AND branch_key = ?
+                  )
+                """,
+                [project_id] + src_list + [project_id, target_branch],
+            )
+            deleted_duplicates = cur.rowcount
+            print(f"[merge_face_clusters] Deleted {deleted_duplicates} duplicate project_images entries")
+
+            # Now safe to UPDATE remaining source entries to target
             cur.execute(
                 f"""
                 UPDATE project_images
@@ -4758,7 +4777,7 @@ class ReferenceDB:
                 """,
                 [target_branch, project_id] + src_list,
             )
-            moved_images = cur.rowcount
+            moved_images = cur.rowcount + deleted_duplicates  # Total affected
 
             # 3) Representatives: delete reps for source clusters (target kept as-is)
             cur.execute(

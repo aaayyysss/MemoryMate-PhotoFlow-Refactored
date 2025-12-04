@@ -9999,7 +9999,7 @@ class GooglePhotosLayout(BaseLayout):
 
             # Rebuild people tree to show updated counts
             self._build_people_tree()
-            
+
             # Update undo/redo button states
             self._update_undo_redo_state()
 
@@ -11070,6 +11070,179 @@ class GooglePhotosLayout(BaseLayout):
         outer.addLayout(actions)
         
         return dlg
+
+    def _on_drag_merge(self, source_branch: str, target_branch: str):
+        """Handle drag-and-drop merge from People grid."""
+        try:
+            from reference_db import ReferenceDB
+            db = ReferenceDB()
+
+            # Get source name for confirmation feedback
+            with db._connect() as conn:
+                cur = conn.cursor()
+                cur.execute("SELECT label FROM face_branch_reps WHERE project_id = ? AND branch_key = ?", (self.project_id, source_branch))
+                row = cur.fetchone()
+                source_name = row[0] if row and row[0] else source_branch
+
+            # Perform merge using existing method
+            self._perform_merge(source_branch, target_branch, source_name)
+
+        except Exception as e:
+            print(f"[GooglePhotosLayout] Drag-drop merge failed: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def _undo_last_merge(self):
+        """Undo the last face merge operation."""
+        from PySide6.QtWidgets import QMessageBox
+
+        try:
+            from reference_db import ReferenceDB
+            db = ReferenceDB()
+
+            # Get the last merge before undoing (for redo stack)
+            with db._connect() as conn:
+                cur = conn.cursor()
+                cur.execute(
+                    "SELECT id, target_branch, source_branches, snapshot FROM face_merge_history WHERE project_id = ? ORDER BY id DESC LIMIT 1",
+                    (self.project_id,)
+                )
+                last_merge = cur.fetchone()
+
+            # Perform undo
+            result = db.undo_last_face_merge(self.project_id)
+
+            if result:
+                # Add to redo stack
+                if last_merge:
+                    self.redo_stack.append({
+                        'id': last_merge[0],
+                        'target': last_merge[1],
+                        'sources': last_merge[2],
+                        'snapshot': last_merge[3]
+                    })
+
+                # Rebuild people tree to show restored clusters
+                self._build_people_tree()
+
+                # Update undo/redo button states
+                self._update_undo_redo_state()
+
+                QMessageBox.information(
+                    self.main_window,
+                    "Undo Successful",
+                    f"✅ Merge undone successfully\n\n"
+                    f"Restored {result['clusters']} person(s)\n"
+                    f"Moved {result['faces']} face(s) back"
+                )
+                print(f"[GooglePhotosLayout] Undo successful: {result}")
+            else:
+                QMessageBox.information(
+                    self.main_window,
+                    "No Undo Available",
+                    "There are no recent merges to undo."
+                )
+
+        except Exception as e:
+            print(f"[GooglePhotosLayout] Undo failed: {e}")
+            import traceback
+            traceback.print_exc()
+            QMessageBox.critical(self.main_window, "Undo Failed", f"Error: {e}")
+
+    def _redo_last_undo(self):
+        """Redo the last undone merge operation."""
+        from PySide6.QtWidgets import QMessageBox
+
+        if not self.redo_stack:
+            QMessageBox.information(
+                self.main_window,
+                "No Redo Available",
+                "There are no undone operations to redo."
+            )
+            return
+
+        try:
+            from reference_db import ReferenceDB
+            import json
+            db = ReferenceDB()
+
+            # Pop from redo stack
+            redo_op = self.redo_stack.pop()
+            snapshot = json.loads(redo_op['snapshot']) if isinstance(redo_op['snapshot'], str) else redo_op['snapshot']
+
+            # Re-apply the merge by restoring snapshot state
+            # Get source branches from snapshot
+            branch_keys = snapshot.get('branch_keys', [])
+            target = redo_op['target']
+            sources = [k for k in branch_keys if k != target]
+
+            if sources:
+                # Re-merge using existing method
+                result = db.merge_face_clusters(
+                    project_id=self.project_id,
+                    target_branch=target,
+                    source_branches=sources,
+                    log_undo=True
+                )
+
+                # Rebuild people tree
+                self._build_people_tree()
+
+                # Update button states
+                self._update_undo_redo_state()
+
+                QMessageBox.information(
+                    self.main_window,
+                    "Redo Successful",
+                    f"✅ Merge reapplied successfully\n\n"
+                    f"Moved {result['moved_faces']} face(s)"
+                )
+                print(f"[GooglePhotosLayout] Redo successful: {result}")
+            else:
+                QMessageBox.warning(
+                    self.main_window,
+                    "Redo Failed",
+                    "Could not determine source branches for redo."
+                )
+
+        except Exception as e:
+            print(f"[GooglePhotosLayout] Redo failed: {e}")
+            import traceback
+            traceback.print_exc()
+            QMessageBox.critical(self.main_window, "Redo Failed", f"Error: {e}")
+
+    def _update_undo_redo_state(self):
+        """Update undo/redo button enabled/disabled states."""
+        try:
+            from reference_db import ReferenceDB
+            db = ReferenceDB()
+
+            # Check if there are any undo records
+            with db._connect() as conn:
+                cur = conn.cursor()
+                cur.execute(
+                    "SELECT COUNT(*) FROM face_merge_history WHERE project_id = ?",
+                    (self.project_id,)
+                )
+                undo_count = cur.fetchone()[0]
+
+                # Update undo button
+                if hasattr(self, 'people_undo_btn'):
+                    self.people_undo_btn.setEnabled(undo_count > 0)
+                    self.people_undo_btn.setToolTip(
+                        f"Undo Last Merge ({undo_count} available)" if undo_count > 0 else "No merges to undo"
+                    )
+
+                # Update redo button
+                if hasattr(self, 'people_redo_btn'):
+                    redo_count = len(self.redo_stack) if hasattr(self, 'redo_stack') else 0
+                    self.people_redo_btn.setEnabled(redo_count > 0)
+                    self.people_redo_btn.setToolTip(
+                        f"Redo Last Undo ({redo_count} available)" if redo_count > 0 else "No undos to redo"
+                    )
+
+        except Exception as e:
+            print(f"[GooglePhotosLayout] Failed to update undo/redo state: {e}")
 
     def _delete_person(self, branch_key: str, person_name: str):
         """Delete a person/face cluster."""
