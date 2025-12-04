@@ -204,9 +204,17 @@ def _get_insightface_app():
                     # This prevents fallback app from downloading models to wrong location
                     _buffalo_dir_path = buffalo_dir
                     logger.debug(f"[INIT] Stored buffalo_dir for fallback use: {buffalo_dir}")
+                    
+                    # VALIDATION: Check for duplicate buffalo_l subdirectory (common packaging error)
+                    nested_buffalo = os.path.join(buffalo_dir, 'models', 'buffalo_l')
+                    if os.path.exists(nested_buffalo):
+                        logger.warning(f"⚠️ Detected nested buffalo_l directory: {nested_buffalo}")
+                        logger.warning("⚠️ This may cause model loading issues. Expected structure:")
+                        logger.warning("   buffalo_l/det_10g.onnx")
+                        logger.warning("   NOT buffalo_l/models/buffalo_l/det_10g.onnx")
+                        logger.warning("   Please check your model directory structure.")
 
                     # P1-8 FIX: Validate ONNX model files exist and have reasonable size
-                    import os
                     required_models = ['det_10g.onnx', 'genderage.onnx', 'w600k_r50.onnx']
                     for model_file in required_models:
                         model_path = os.path.join(buffalo_dir, model_file)
@@ -264,6 +272,7 @@ def _get_insightface_app():
                         init_params['providers'] = providers
                         logger.info(f"✓ Using providers parameter (newer InsightFace v{insightface_version})")
                         logger.info(f"✓ Providers: {providers}")
+                        logger.info(f"✓ Version detection: API signature check confirmed providers parameter support")
                         _insightface_app = FaceAnalysis(**init_params)
 
                         # For newer versions, ctx_id is derived from providers automatically
@@ -291,10 +300,26 @@ def _get_insightface_app():
                             logger.error("  1. Model files are corrupted or incomplete")
                             logger.error("  2. InsightFace version incompatible with models")
                             logger.error("  3. Wrong directory structure")
-                            raise RuntimeError(f"Failed to prepare InsightFace models: {prepare_error}") from prepare_error
+
+                            # FALLBACK: Try initialization with limited modules (detection + recognition only)
+                            logger.warning("⚠️ Attempting fallback initialization with detection+recognition only (no landmarks)")
+                            try:
+                                _insightface_app = FaceAnalysis(
+                                    name='buffalo_l',
+                                    root=buffalo_dir,
+                                    allowed_modules=['detection', 'recognition'],
+                                    providers=providers
+                                )
+                                _insightface_app.prepare(ctx_id=ctx_id, det_size=(640, 640))
+                                logger.warning("✅ Fallback initialization succeeded - running WITHOUT landmark detection")
+                                logger.warning("   Face detection and recognition will work, but some features may be limited")
+                            except Exception as fallback_error:
+                                logger.error(f"❌ Fallback initialization also failed: {fallback_error}")
+                                raise RuntimeError(f"Failed to prepare InsightFace models (fallback also failed): {prepare_error}") from prepare_error
                     else:
                         # OLDER VERSION: Use ctx_id approach (proof of concept compatibility)
-                        logger.info(f"✓ Using ctx_id approach (older InsightFace, proof of concept compatible)")
+                        logger.info(f"✓ Using ctx_id approach (older InsightFace v{insightface_version}, proof of concept compatible)")
+                        logger.info(f"✓ Version detection: API signature check confirmed no providers parameter (older API)")
                         _insightface_app = FaceAnalysis(**init_params)
 
                         # Use providers ONLY for ctx_id selection (proof of concept approach)
@@ -315,7 +340,21 @@ def _get_insightface_app():
                             logger.error("  1. Model files are corrupted or incomplete")
                             logger.error("  2. InsightFace version incompatible with models")
                             logger.error("  3. Wrong directory structure")
-                            raise RuntimeError(f"Failed to prepare InsightFace models: {prepare_error}") from prepare_error
+
+                            # FALLBACK: Try initialization with limited modules (detection + recognition only)
+                            logger.warning("⚠️ Attempting fallback initialization with detection+recognition only (no landmarks)")
+                            try:
+                                _insightface_app = FaceAnalysis(
+                                    name='buffalo_l',
+                                    root=buffalo_dir,
+                                    allowed_modules=['detection', 'recognition']
+                                )
+                                _insightface_app.prepare(ctx_id=ctx_id, det_size=(640, 640))
+                                logger.warning("✅ Fallback initialization succeeded - running WITHOUT landmark detection")
+                                logger.warning("   Face detection and recognition will work, but some features may be limited")
+                            except Exception as fallback_error:
+                                logger.error(f"❌ Fallback initialization also failed: {fallback_error}")
+                                raise RuntimeError(f"Failed to prepare InsightFace models (fallback also failed): {prepare_error}") from prepare_error
 
                 except ImportError as e:
                     logger.error(f"❌ InsightFace library not installed: {e}")
@@ -784,20 +823,63 @@ class FaceDetectionService:
                             # CRITICAL FIX: Use the same buffalo_dir as main app
                             # This prevents downloading models to ~/.insightface/ (wrong location)
                             # and ensures recognition module is loaded correctly
-                            global _buffalo_dir_path
+                            global _buffalo_dir_path, _providers_used
                             if _buffalo_dir_path is None:
                                 logger.error("[INSIGHTFACE] ❌ Buffalo dir path not available for fallback app!")
                                 raise RuntimeError("Buffalo directory not initialized - cannot create fallback app")
 
                             logger.info(f"[INSIGHTFACE] 📁 Using bundled models for fallback: {_buffalo_dir_path}")
 
-                            self.fallback_app = FaceAnalysis(
-                                name=self.model,
-                                root=_buffalo_dir_path,  # ✅ CRITICAL: Use bundled models, not download!
-                                allowed_modules=['detection', 'recognition']  # ✅ WITH recognition for embeddings
-                            )
-                            self.fallback_app.prepare(ctx_id=-1, det_size=(640, 640))
-                            logger.info(f"[INSIGHTFACE] ✅ Fallback app cached with embeddings support")
+                            # CRITICAL FIX: InsightFace ignores 'root' parameter when 'allowed_modules' is set
+                            # Workaround: Temporarily override INSIGHTFACE_HOME environment variable
+                            import os as os_module
+                            original_home = os_module.environ.get('INSIGHTFACE_HOME')
+                            try:
+                                # Point InsightFace to parent of buffalo_l directory
+                                parent_dir = os.path.dirname(_buffalo_dir_path)
+                                os_module.environ['INSIGHTFACE_HOME'] = parent_dir
+                                logger.debug(f"[INSIGHTFACE] Temporarily set INSIGHTFACE_HOME to: {parent_dir}")
+
+                                # Version detection: Check if FaceAnalysis supports providers parameter
+                                import inspect
+                                sig = inspect.signature(FaceAnalysis.__init__)
+                                supports_providers = 'providers' in sig.parameters
+
+                                # Initialize fallback app with version-appropriate parameters
+                                if supports_providers:
+                                    # NEWER VERSION: Pass providers for optimal performance
+                                    logger.debug(f"[INSIGHTFACE] Fallback using providers parameter (newer version)")
+                                    self.fallback_app = FaceAnalysis(
+                                        name=self.model,
+                                        allowed_modules=['detection', 'recognition'],
+                                        providers=_providers_used if _providers_used else ['CPUExecutionProvider']
+                                    )
+                                else:
+                                    # OLDER VERSION: Use ctx_id approach (no providers parameter)
+                                    logger.debug(f"[INSIGHTFACE] Fallback using ctx_id approach (older version)")
+                                    self.fallback_app = FaceAnalysis(
+                                        name=self.model,
+                                        allowed_modules=['detection', 'recognition']
+                                    )
+
+                                # Prepare with appropriate context
+                                use_cuda = isinstance(_providers_used, (list, tuple)) and 'CUDAExecutionProvider' in _providers_used if _providers_used else False
+                                ctx_id = 0 if use_cuda else -1
+                                
+                                try:
+                                    self.fallback_app.prepare(ctx_id=ctx_id, det_size=(640, 640))
+                                    logger.info(f"[INSIGHTFACE] ✅ Fallback app cached with embeddings support (ctx_id={ctx_id})")
+                                except TypeError:
+                                    # det_size not supported in some versions
+                                    self.fallback_app.prepare(ctx_id=ctx_id)
+                                    logger.info(f"[INSIGHTFACE] ✅ Fallback app cached (default det_size, ctx_id={ctx_id})")
+                            finally:
+                                # Restore original INSIGHTFACE_HOME
+                                if original_home is not None:
+                                    os_module.environ['INSIGHTFACE_HOME'] = original_home
+                                else:
+                                    os_module.environ.pop('INSIGHTFACE_HOME', None)
+                                logger.debug(f"[INSIGHTFACE] Restored INSIGHTFACE_HOME")
                         else:
                             logger.debug(f"[INSIGHTFACE] Using cached fallback app (no reinitialization)")
 
