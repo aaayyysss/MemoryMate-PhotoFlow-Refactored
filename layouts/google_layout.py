@@ -7807,8 +7807,8 @@ class GooglePhotosLayout(BaseLayout):
         self.timeline = self._create_timeline()
         self.splitter.addWidget(self.timeline)
 
-        # Set splitter sizes (200px sidebar, rest for timeline)
-        self.splitter.setSizes([200, 1000])
+        # Set splitter sizes (280px sidebar initially, rest for timeline)
+        self.splitter.setSizes([280, 1000])
         self.splitter.setStretchFactor(0, 0)
         self.splitter.setStretchFactor(1, 1)
 
@@ -8361,7 +8361,7 @@ class GooglePhotosLayout(BaseLayout):
         """
         sidebar = QWidget()
         sidebar.setMinimumWidth(240)
-        sidebar.setMaximumWidth(300)  # Slightly wider for nav + content
+        sidebar.setMaximumWidth(500)  # Expandable wider for buttons and content
         sidebar.setStyleSheet("""
             QWidget {
                 background: white;
@@ -13286,14 +13286,19 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
 
     def keyPressEvent(self, event: QKeyEvent):
         """
-        QUICK WIN #7: Keyboard navigation in photo grid.
+        Phase 0.1: Keyboard Shortcuts Foundation (Google Photos + Lightroom patterns).
 
         Shortcuts:
         - Ctrl+A: Select all photos
-        - Escape: Clear selection
+        - Ctrl+D: Deselect all photos
+        - Escape: Clear selection/filter
         - Delete: Delete selected photos
         - Ctrl+F: Focus search box
+        - Ctrl+N: New project
         - Enter: Open first selected photo in lightbox
+        - Space: Quick preview (full screen)
+        - S: Toggle selection mode
+        - +/-: Zoom in/out thumbnail size
 
         Args:
             event: QKeyEvent
@@ -13307,11 +13312,24 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
             self._on_select_all()
             event.accept()
 
-        # Escape: Clear selection
+        # Ctrl+D: Deselect All
+        elif key == Qt.Key_D and modifiers == Qt.ControlModifier:
+            if len(self.selected_photos) > 0:
+                print("[GooglePhotosLayout] ⌨️ Ctrl+D - Deselect all")
+                self._on_clear_selection()
+                event.accept()
+            else:
+                super().keyPressEvent(event)
+
+        # Escape: Clear selection/filter
         elif key == Qt.Key_Escape:
             if len(self.selected_photos) > 0:
                 print("[GooglePhotosLayout] ⌨️ ESC - Clear selection")
                 self._on_clear_selection()
+                event.accept()
+            elif hasattr(self, 'active_person_filter') and self.active_person_filter:
+                print("[GooglePhotosLayout] ⌨️ ESC - Clear person filter")
+                self._clear_filter()
                 event.accept()
             else:
                 super().keyPressEvent(event)
@@ -13333,11 +13351,27 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
                 self.search_box.selectAll()
             event.accept()
 
+        # Ctrl+N: New project
+        elif key == Qt.Key_N and modifiers == Qt.ControlModifier:
+            print("[GooglePhotosLayout] ⌨️ Ctrl+N - New project")
+            self._on_create_project_clicked()
+            event.accept()
+
         # Enter: Open first selected photo
         elif key == Qt.Key_Return or key == Qt.Key_Enter:
             if len(self.selected_photos) > 0:
                 first_photo = list(self.selected_photos)[0]
                 print(f"[GooglePhotosLayout] ⌨️ ENTER - Open {first_photo}")
+                self._on_photo_clicked(first_photo)
+                event.accept()
+            else:
+                super().keyPressEvent(event)
+
+        # Space: Quick preview (full screen)
+        elif key == Qt.Key_Space:
+            if len(self.selected_photos) > 0:
+                first_photo = list(self.selected_photos)[0]
+                print(f"[GooglePhotosLayout] ⌨️ SPACE - Quick preview {first_photo}")
                 self._on_photo_clicked(first_photo)
                 event.accept()
             else:
@@ -13349,6 +13383,22 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
             if hasattr(self, 'btn_select'):
                 self.btn_select.setChecked(not self.btn_select.isChecked())
                 self._toggle_selection_mode(self.btn_select.isChecked())
+            event.accept()
+
+        # +/=: Zoom in
+        elif key in (Qt.Key_Plus, Qt.Key_Equal):
+            print("[GooglePhotosLayout] ⌨️ + - Zoom in")
+            if hasattr(self, 'zoom_slider'):
+                current = self.zoom_slider.value()
+                self.zoom_slider.setValue(min(current + 50, self.zoom_slider.maximum()))
+            event.accept()
+
+        # -: Zoom out
+        elif key == Qt.Key_Minus:
+            print("[GooglePhotosLayout] ⌨️ - - Zoom out")
+            if hasattr(self, 'zoom_slider'):
+                current = self.zoom_slider.value()
+                self.zoom_slider.setValue(max(current - 50, self.zoom_slider.minimum()))
             event.accept()
 
         else:
@@ -13816,9 +13866,14 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
 
     def _show_search_suggestions(self, text: str):
         """
-        PHASE 2 #3: Show search suggestions based on input text.
+        Phase 0.2: Enhanced search suggestions (Google Photos pattern).
 
-        Queries database for matching filenames, dates, and folders.
+        Shows categorized suggestions:
+        - People: Face clusters/named persons
+        - Filenames: Matching photo filenames
+        - Folders: Matching folder names
+
+        Google Photos DNA: Icons, categories, photo counts
         """
         if not text or len(text) < 2:
             self.search_suggestions.hide()
@@ -13828,48 +13883,79 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
             from reference_db import ReferenceDB
             db = ReferenceDB()
 
-            suggestions = set()
-
-            # Get unique filename patterns
-            query = """
-                SELECT DISTINCT pm.path
-                FROM photo_metadata pm
-                JOIN project_images pi ON pm.path = pi.image_path
-                WHERE pi.project_id = ?
-                AND LOWER(pm.path) LIKE ?
-                LIMIT 10
-            """
+            suggestions = []  # Changed to list to maintain order
 
             pattern = f"%{text.lower()}%"
 
             with db._connect() as conn:
                 cur = conn.cursor()
-                cur.execute(query, (self.project_id, pattern))
-                rows = cur.fetchall()
 
-                for row in rows:
-                    path = row[0]
+                # CATEGORY 1: People matching text
+                people_query = """
+                    SELECT branch_key, display_name, COUNT(DISTINCT fc.image_path) as photo_count
+                    FROM branches b
+                    LEFT JOIN face_crops fc ON b.project_id = fc.project_id AND b.branch_key = fc.branch_key
+                    WHERE b.project_id = ?
+                    AND (LOWER(b.display_name) LIKE ? OR LOWER(b.branch_key) LIKE ?)
+                    GROUP BY b.branch_key, b.display_name
+                    ORDER BY photo_count DESC
+                    LIMIT 5
+                """
+                cur.execute(people_query, (self.project_id, pattern, pattern))
+                people_rows = cur.fetchall()
+
+                for branch_key, display_name, photo_count in people_rows:
+                    name = display_name if display_name else branch_key
+                    if photo_count > 0:
+                        suggestions.append(f"👥 {name} ({photo_count} photos)")
+
+                # CATEGORY 2: Filenames and folders
+                files_query = """
+                    SELECT DISTINCT pm.path
+                    FROM photo_metadata pm
+                    JOIN project_images pi ON pm.path = pi.image_path
+                    WHERE pi.project_id = ?
+                    AND LOWER(pm.path) LIKE ?
+                    LIMIT 10
+                """
+                cur.execute(files_query, (self.project_id, pattern))
+                files_rows = cur.fetchall()
+
+                filenames = set()
+                folders = set()
+
+                for (path,) in files_rows:
                     filename = os.path.basename(path)
                     folder = os.path.basename(os.path.dirname(path))
 
                     # Add filename if it matches
                     if text.lower() in filename.lower():
-                        suggestions.add(f"📷 {filename}")
+                        filenames.add(filename)
 
                     # Add folder if it matches
                     if text.lower() in folder.lower() and folder:
-                        suggestions.add(f"📁 {folder}")
+                        folders.add(folder)
+
+                # Add folders first (limit 3)
+                for folder in sorted(folders)[:3]:
+                    suggestions.append(f"📁 {folder}")
+
+                # Add filenames (limit remaining slots)
+                remaining = 8 - len(suggestions)
+                for filename in sorted(filenames)[:remaining]:
+                    suggestions.append(f"📷 {filename}")
 
             # Populate suggestions list
             self.search_suggestions.clear()
 
             if suggestions:
-                for suggestion in sorted(suggestions)[:8]:
+                for suggestion in suggestions:
                     self.search_suggestions.addItem(suggestion)
 
                 # Position below search box
                 search_box_global = self.search_box.mapToGlobal(self.search_box.rect().bottomLeft())
                 self.search_suggestions.move(search_box_global)
+                self.search_suggestions.resize(400, min(len(suggestions) * 40, 300))
                 self.search_suggestions.show()
                 self.search_suggestions.raise_()
             else:
@@ -13877,19 +13963,43 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
 
         except Exception as e:
             print(f"[GooglePhotosLayout] Error generating suggestions: {e}")
+            import traceback
+            traceback.print_exc()
             self.search_suggestions.hide()
 
     def _on_suggestion_clicked(self, item):
-        """PHASE 2 #3: Handle clicking on a suggestion."""
+        """
+        Phase 0.2: Handle clicking on a search suggestion.
+
+        Supports:
+        - People: Filters to that person
+        - Folders/Files: Sets search text and performs search
+        """
         suggestion_text = item.text()
 
-        # Remove emoji prefix
-        if " " in suggestion_text:
-            suggestion_text = suggestion_text.split(" ", 1)[1]
+        # Extract the actual text without emoji and metadata
+        if suggestion_text.startswith("👥 "):
+            # People suggestion: "👥 John (45 photos)" -> "John"
+            name_part = suggestion_text[2:]  # Remove "👥 "
+            if " (" in name_part:
+                person_name = name_part.split(" (")[0]
+            else:
+                person_name = name_part
 
-        # Set search box text and perform search
-        self.search_box.setText(suggestion_text)
-        self._perform_search(suggestion_text)
+            # Set search box and perform person search
+            self.search_box.setText(person_name)
+            self._perform_search(person_name)
+
+        elif " " in suggestion_text and suggestion_text[0] in ("📁", "📷"):
+            # Folder/file suggestion: Remove emoji prefix
+            clean_text = suggestion_text.split(" ", 1)[1]
+            self.search_box.setText(clean_text)
+            self._perform_search(clean_text)
+        else:
+            # Fallback: use as-is
+            self.search_box.setText(suggestion_text)
+            self._perform_search(suggestion_text)
+
         self.search_suggestions.hide()
 
     def _on_search_text_changed(self, text: str):

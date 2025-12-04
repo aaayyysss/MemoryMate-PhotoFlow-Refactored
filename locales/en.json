@@ -596,5 +596,32 @@
     "merge_failed_message": "Could not merge people:\n{error}",
     "rename_person": "Rename person",
     "new_name": "New name:"
+  },
+
+  "google_layout": {
+    "search_placeholder": "🔍 Search photos, people, places...",
+    "search_tooltip": "Search photos (Ctrl+F)",
+    "zoom_out_tooltip": "Zoom out (decrease thumbnail size)",
+    "zoom_in_tooltip": "Zoom in (increase thumbnail size)",
+    "zoom_slider_tooltip": "Adjust thumbnail size (+/-)",
+    "settings_tooltip": "Settings and tools",
+    "settings_menu": {
+      "quick_actions_section": "🔧 Quick Actions",
+      "scan_repository": "📂  Scan Repository",
+      "detect_faces": "👤  Detect Faces",
+      "refresh_view": "🔄  Refresh View",
+      "tools_section": "⚙️ Tools",
+      "database_maintenance": "📊  Database Maintenance",
+      "clear_cache": "🗑️  Clear Thumbnail Cache",
+      "view_section": "🎨 View",
+      "toggle_dark_mode": "🌓  Toggle Dark Mode",
+      "sidebar_mode": "📏  Sidebar Mode (List/Tabs)",
+      "help_section": "📖 Help",
+      "keyboard_shortcuts": "📚  Keyboard Shortcuts"
+    },
+    "project_dropdown": {
+      "new_project": "➕ New Project...",
+      "no_projects": "(No projects)"
+    }
   }
 }
