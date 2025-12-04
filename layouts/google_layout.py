@@ -5,11 +5,16 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QScrollArea, QSplitter, QToolBar, QLineEdit, QTreeWidget,
     QTreeWidgetItem, QFrame, QGridLayout, QStackedWidget, QSizePolicy, QDialog,
-    QGraphicsOpacityEffect, QMenu, QListWidget, QDialogButtonBox,
-    QInputDialog, QMessageBox, QSlider, QSpinBox, QComboBox
+    QGraphicsOpacityEffect, QMenu, QListWidget, QListWidgetItem, QDialogButtonBox,
+    QInputDialog, QMessageBox, QSlider, QSpinBox, QComboBox, QLayout
 )
-from PySide6.QtCore import Qt, Signal, QSize, QEvent, QRunnable, QThreadPool, QObject, QTimer, QUrl
-from PySide6.QtGui import QPixmap, QIcon, QKeyEvent, QImage, QColor, QAction
+from PySide6.QtCore import (
+    Qt, Signal, QSize, QEvent, QRunnable, QThreadPool, QObject, QTimer, QUrl,
+    QPropertyAnimation, QEasingCurve, QRect, QPoint
+)
+from PySide6.QtGui import (
+    QPixmap, QIcon, QKeyEvent, QImage, QColor, QAction, QPainter, QPen, QPainterPath
+)
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from .base_layout import BaseLayout
@@ -274,17 +279,23 @@ class GooglePhotosEventFilter(QObject):
                     return True
 
         # Timeline viewport drag-select
-        if hasattr(self.layout, 'timeline_scroll') and obj == self.layout.timeline_scroll.viewport():
-            if event.type() == QEvent.MouseButtonPress:
-                if self.layout._handle_drag_select_press(event.pos()):
-                    return True
-            elif event.type() == QEvent.MouseMove:
-                self.layout._handle_drag_select_move(event.pos())
-                return self.layout.is_dragging  # Consume event if dragging
-            elif event.type() == QEvent.MouseButtonRelease:
-                if self.layout.is_dragging:
-                    self.layout._handle_drag_select_release(event.pos())
-                    return True
+        # CRITICAL FIX: Check if timeline_scroll still exists before accessing viewport
+        # RuntimeError occurs when switching layouts - Qt C++ object gets deleted
+        try:
+            if hasattr(self.layout, 'timeline_scroll') and obj == self.layout.timeline_scroll.viewport():
+                if event.type() == QEvent.MouseButtonPress:
+                    if self.layout._handle_drag_select_press(event.pos()):
+                        return True
+                elif event.type() == QEvent.MouseMove:
+                    self.layout._handle_drag_select_move(event.pos())
+                    return self.layout.is_dragging  # Consume event if dragging
+                elif event.type() == QEvent.MouseButtonRelease:
+                    if self.layout.is_dragging:
+                        self.layout._handle_drag_select_release(event.pos())
+                        return True
+        except RuntimeError:
+            # QScrollArea was deleted - safe to ignore
+            pass
 
         return False
 
@@ -495,7 +506,7 @@ class MediaLightbox(QDialog, VideoEditorMixin):
 
     def _setup_ui(self):
         """Setup Google Photos-style lightbox UI with overlay controls."""
-        from PySide6.QtWidgets import QApplication
+        from PySide6.QtWidgets import QApplication, QScrollArea, QWidget, QLabel, QPushButton, QSizePolicy, QVBoxLayout, QHBoxLayout, QStackedWidget, QFrame
         from PySide6.QtCore import QPropertyAnimation, QTimer, QRect
 
         # Window settings - ADAPTIVE SIZING: Based on screen resolution and DPI
@@ -789,6 +800,32 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         """)
         self.before_after_btn.clicked.connect(self._toggle_before_after)
         editor_topbar_layout.addWidget(self.before_after_btn)
+        
+        # Tools panel toggle (show/hide right-side editing tools)
+        self.tools_toggle_btn = QPushButton("🛠 Tools")
+        self.tools_toggle_btn.setCheckable(True)
+        self.tools_toggle_btn.setChecked(True)
+        self.tools_toggle_btn.setToolTip("Show/Hide right-side editing tools")
+        self.tools_toggle_btn.setStyleSheet("""
+            QPushButton {
+                background: rgba(255, 255, 255, 0.15);
+                color: white;
+                border: 1px solid rgba(255, 255, 255, 0.3);
+                border-radius: 6px;
+                padding: 8px 16px;
+                font-size: 10pt;
+            }
+            QPushButton:hover {
+                background: rgba(255, 255, 255, 0.25);
+            }
+            QPushButton:checked {
+                background: rgba(66, 133, 244, 0.8);
+                border: 1px solid rgba(66, 133, 244, 1.0);
+            }
+        """)
+        self.tools_toggle_btn.toggled.connect(lambda v: (self.editor_right_scroll.setVisible(v), self.editor_right_panel.setVisible(v)) if hasattr(self, 'editor_right_scroll') else (self.editor_right_panel.setVisible(v) if hasattr(self, 'editor_right_panel') else None))
+        editor_topbar_layout.addWidget(self.tools_toggle_btn)
+        
         editor_topbar_layout.addStretch()  # Push buttons to left, Undo/Redo/Export to right
         # Undo/Redo buttons (MORE PROMINENT)
         self.undo_btn = QPushButton("↶ Undo")
@@ -912,11 +949,30 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         editor_row = QWidget()
         editor_row_layout = QHBoxLayout(editor_row)
         self.editor_canvas = self._create_edit_canvas()
+        
+        # Right tools panel wrapped in scroll area (always accessible)
+        from PySide6.QtWidgets import QScrollArea
         self.editor_right_panel = QWidget()
         self.editor_right_panel.setFixedWidth(400)
         self.editor_right_panel.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
-        editor_row_layout.addWidget(self.editor_canvas, 1)
-        editor_row_layout.addWidget(self.editor_right_panel)
+        self.editor_right_scroll = QScrollArea()
+        self.editor_right_scroll.setWidget(self.editor_right_panel)
+        self.editor_right_scroll.setWidgetResizable(True)
+        self.editor_right_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.editor_right_scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+        # Toggle right tools panel visibility and resize splitter
+        if hasattr(self, 'tools_toggle_btn'):
+            self.tools_toggle_btn.toggled.connect(lambda checked: (
+                self.editor_right_scroll.setVisible(checked),
+                self.editor_splitter.setSizes([int(self.width()*0.7), 400]) if checked else self.editor_splitter.setSizes([int(self.width()*0.95), 0])
+            ))
+        
+        from PySide6.QtWidgets import QSplitter
+        self.editor_splitter = QSplitter(Qt.Horizontal)
+        self.editor_splitter.addWidget(self.editor_canvas)
+        self.editor_splitter.addWidget(self.editor_right_scroll)
+        self.editor_splitter.setSizes([int(self.width()*0.7), 400])
+        editor_row_layout.addWidget(self.editor_splitter)
         editor_vlayout.addWidget(editor_row, 1)
         # Build adjustments panel in right placeholder
         self._init_adjustments_panel()
@@ -975,6 +1031,25 @@ class MediaLightbox(QDialog, VideoEditorMixin):
 
         # PHASE A #5: Create keyboard shortcut help overlay
         self._create_help_overlay()
+
+    def showEvent(self, event):
+        """Ensure media loads and overlays position when the window first shows."""
+        try:
+            super().showEvent(event)
+            from PySide6.QtCore import QTimer
+            # Load current media after the widget has a valid size
+            QTimer.singleShot(0, self._load_media_safe)
+            # Make top toolbar visible on first show
+            if hasattr(self, 'top_toolbar_opacity'):
+                self.top_toolbar_opacity.setOpacity(1.0)
+            # Bottom toolbar opacity reflects visibility (videos only)
+            if hasattr(self, 'bottom_toolbar_opacity') and hasattr(self, 'bottom_toolbar'):
+                self.bottom_toolbar_opacity.setOpacity(1.0 if self.bottom_toolbar.isVisible() else 0.0)
+            # Position overlay buttons and caption shortly after layout
+            QTimer.singleShot(10, self._position_nav_buttons)
+            QTimer.singleShot(10, self._position_media_caption)
+        except Exception as e:
+            print(f"[MediaLightbox] showEvent error: {e}")
 
     def closeEvent(self, event):
         """Clean up resources when lightbox closes."""
@@ -1386,19 +1461,30 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             return False
 
     def _editor_zoom_in(self):
-        self.edit_zoom_level = min(8.0, self.edit_zoom_level * 1.15)
-        self._apply_editor_zoom()
+        self.edit_zoom_level = min(4.0, getattr(self, 'edit_zoom_level', 1.0) * 1.15)
+        if hasattr(self, '_apply_video_zoom'):
+            self._apply_video_zoom()
+        if hasattr(self, '_update_zoom_status'):
+            self._update_zoom_status()
 
     def _editor_zoom_out(self):
-        self.edit_zoom_level = max(0.1, self.edit_zoom_level / 1.15)
-        self._apply_editor_zoom()
+        self.edit_zoom_level = max(0.25, getattr(self, 'edit_zoom_level', 1.0) / 1.15)
+        if hasattr(self, '_apply_video_zoom'):
+            self._apply_video_zoom()
+        if hasattr(self, '_update_zoom_status'):
+            self._update_zoom_status()
 
     def _editor_zoom_reset(self):
         self.edit_zoom_level = 1.0
-        self._apply_editor_zoom()
+        if hasattr(self, '_apply_video_zoom'):
+            self._apply_video_zoom()
+        if hasattr(self, '_update_zoom_status'):
+            self._update_zoom_status()
 
     def _apply_editor_zoom(self):
         try:
+            if hasattr(self, '_apply_video_zoom'):
+                self._apply_video_zoom()
             if getattr(self, 'editor_canvas', None):
                 self.editor_canvas.update()
         except Exception as e:
@@ -2072,37 +2158,139 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                     self.video_trim_end = duration
                     self.video_rotation_angle = 0
                     
-                    # Show trim/rotate controls (create if not exists)
+                    # Show trim/rotate controls in right-side tools panel
+                    if not hasattr(self, 'video_tools_container'):
+                        from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel
+                        self.video_tools_container = QWidget()
+                        self.video_tools_container.setStyleSheet("background: rgba(0,0,0,0.6);")
+                        self.video_tools_layout = QVBoxLayout(self.video_tools_container)
+                        self.video_tools_layout.setContentsMargins(12, 12, 12, 12)
+                        self.video_tools_layout.setSpacing(8)
+                        header = QLabel("Video Tools")
+                        header.setStyleSheet("color: white; font-size: 11pt; font-weight: bold;")
+                        self.video_tools_layout.addWidget(header)
+                        # Mount into right panel
+                        if hasattr(self, 'editor_right_panel') and self.editor_right_panel.layout():
+                            self.editor_right_panel.layout().addWidget(self.video_tools_container)
+                        elif hasattr(self, 'editor_right_panel'):
+                            from PySide6.QtWidgets import QVBoxLayout
+                            rp_layout = QVBoxLayout(self.editor_right_panel)
+                            rp_layout.setContentsMargins(12, 12, 12, 12)
+                            rp_layout.setSpacing(8)
+                            rp_layout.addWidget(self.video_tools_container)
+                    
                     if not hasattr(self, 'video_trim_controls'):
                         self.video_trim_controls = self._create_video_trim_controls()
-                        self.video_trim_controls.setParent(self.crop_toolbar)
-                        # Insert after crop toolbar buttons
-                        self.crop_toolbar.layout().insertWidget(0, self.video_trim_controls)
+                        from PySide6.QtWidgets import QGroupBox, QVBoxLayout
+                        trim_group = QGroupBox("Trim")
+                        trim_group.setStyleSheet("QGroupBox { color: white; font-weight: bold; }")
+                        trim_layout = QVBoxLayout(trim_group)
+                        trim_layout.setContentsMargins(8, 8, 8, 8)
+                        trim_layout.addWidget(self.video_trim_controls)
+                        self.video_tools_layout.addWidget(trim_group)
                     
                     if not hasattr(self, 'video_rotate_controls'):
                         self.video_rotate_controls = self._create_video_rotate_controls()
-                        self.video_rotate_controls.setParent(self.crop_toolbar)
-                        self.crop_toolbar.layout().addWidget(self.video_rotate_controls)
+                        from PySide6.QtWidgets import QGroupBox, QVBoxLayout
+                        rotate_group = QGroupBox("Rotate / Output")
+                        rotate_group.setStyleSheet("QGroupBox { color: white; font-weight: bold; }")
+                        rotate_layout = QVBoxLayout(rotate_group)
+                        rotate_layout.setContentsMargins(8, 8, 8, 8)
+                        rotate_layout.addWidget(self.video_rotate_controls)
+                        self.video_tools_layout.addWidget(rotate_group)
                     
                     # Show video controls, hide photo controls
-                    self.video_trim_controls.show()
-                    self.video_rotate_controls.show()
+                    self.video_tools_container.show()
+                    if hasattr(self, 'video_trim_controls'):
+                        self.video_trim_controls.show()
+                    if hasattr(self, 'video_rotate_controls'):
+                        self.video_rotate_controls.show()
                     self.crop_btn.hide()  # Hide crop for videos
+                    
+                    # Hide photo editing controls to prevent toolbar overflow
+                    if hasattr(self, 'straighten_slider'):
+                        self.straighten_slider.parent().hide()
+                    if hasattr(self, 'rotate_left_btn'):
+                        self.rotate_left_btn.hide()
+                    if hasattr(self, 'rotate_right_btn'):
+                        self.rotate_right_btn.hide()
+                    for widget in ['aspect_original_btn', 'aspect_square_btn', 'aspect_169_btn',
+                                   'aspect_43_btn', 'aspect_916_btn', 'aspect_free_btn']:
+                        if hasattr(self, widget):
+                            getattr(self, widget).hide()
+                    
+                    # Hide crop toolbar entirely for videos
+                    if hasattr(self, 'crop_toolbar'):
+                        self.crop_toolbar.hide()
+                    
+                    # Ensure bottom video controls are visible
+                    if hasattr(self, 'bottom_toolbar'):
+                        self.bottom_toolbar.show()
+                    if hasattr(self, 'video_controls_widget'):
+                        self.video_controls_widget.show()
+                    self._show_toolbars() if hasattr(self, '_show_toolbars') else None
+                    
+                    # Make media area adapt so controls aren't hidden
+                    if hasattr(self, 'scroll_area'):
+                        try:
+                            self._original_scroll_resizable = self.scroll_area.widgetResizable()
+                        except Exception:
+                            self._original_scroll_resizable = False
+                        self.scroll_area.setWidgetResizable(True)
                     
                     # Update trim labels with current duration
                     if hasattr(self, 'trim_end_label'):
                         self.trim_end_label.setText(self._format_time(duration))
                     
-                    print("[Editor] Video trim/rotate controls shown")
+                    # Hide photo adjustments groups in right panel for videos
+                    for w in [getattr(self, "histogram_label", None), getattr(self, "light_toggle", None), getattr(self, "light_group_container", None), getattr(self, "color_toggle", None), getattr(self, "color_group_container", None), getattr(self, "raw_toggle", None), getattr(self, "raw_group_container", None), getattr(self, "filters_container", None)]:
+                        (w.hide() if w else None)
+                    print("[Editor] Video tools shown on right panel")
+
+                    # Update trim labels with current duration
+                    if hasattr(self, 'trim_end_label'):
+                        self.trim_end_label.setText(self._format_time(duration))
                     
-                    # Skip photo editing setup for videos
-                    # Show editor page
+                    print("[Editor] Video trim/rotate controls shown")
+
+                    # CRITICAL FIX: Reparent video widget to editor canvas for edit mode
+                    # The editor page (page 1) has the crop_toolbar with video controls
+                    # We need to move the video_widget from viewer page to editor page
+
+                    if hasattr(self, 'video_widget') and self.video_widget:
+                        # Remove from viewer page layout
+                        if self.video_widget.parent():
+                            current_layout = self.video_widget.parent().layout()
+                            if current_layout:
+                                current_layout.removeWidget(self.video_widget)
+
+                        # Add to editor canvas
+                        if hasattr(self, 'editor_canvas'):
+                            # Create layout for editor canvas if not exists
+                            if not self.editor_canvas.layout():
+                                from PySide6.QtWidgets import QVBoxLayout
+                                canvas_layout = QVBoxLayout(self.editor_canvas)
+                                canvas_layout.setContentsMargins(0, 0, 0, 0)
+
+                            # Add video widget to editor canvas
+                            self.editor_canvas.layout().addWidget(self.video_widget)
+                            self.video_widget.show()
+                            if hasattr(self, '_fit_video_view'):
+                                self._fit_video_view()
+                            print("[Editor] ✓ Video widget reparented to editor canvas")
+
+                    # Switch to editor page to show video controls
                     if hasattr(self, 'mode_stack'):
                         self.mode_stack.setCurrentIndex(1)
+                        print("[Editor] ✓ Switched to editor page for video editing")
+
+                    # Hide nav buttons during edit mode
                     if hasattr(self, 'prev_btn'):
                         self.prev_btn.hide()
                     if hasattr(self, 'next_btn'):
                         self.next_btn.hide()
+
+                    print("[Editor] Video edit mode active (video on editor page)")
                     return  # Skip photo editing setup
                 
                 else:
@@ -2209,15 +2397,39 @@ class MediaLightbox(QDialog, VideoEditorMixin):
 
     def _save_edits(self):
         try:
+            # Handle video edit mode - move video back to viewer page
+            if getattr(self, 'is_video_file', False) and hasattr(self, 'video_widget') and self.video_widget:
+                # Remove from editor canvas
+                if self.video_widget.parent():
+                    current_layout = self.video_widget.parent().layout()
+                    if current_layout:
+                        current_layout.removeWidget(self.video_widget)
+
+                # Add back to viewer page media_container
+                if hasattr(self, 'media_container'):
+                    container_layout = self.media_container.layout()
+                    if container_layout:
+                        container_layout.addWidget(self.video_widget)
+                        self.video_widget.show()
+                        print("[Editor] ✓ Video widget moved back to viewer page")
+
+                # Hide crop_toolbar when exiting video edit mode
+                if hasattr(self, 'crop_toolbar'):
+                    self.crop_toolbar.hide()
+
+            # Handle photo edit mode
             if getattr(self, '_edit_pixmap', None) and not self._edit_pixmap.isNull():
                 # AUTO-SAVE: Save current edit state before applying
                 self._save_edit_state()
-                
+
                 self.original_pixmap = self._edit_pixmap
                 if hasattr(self, 'image_label'):
                     self.image_label.setPixmap(self.original_pixmap)
+
+            # Switch back to viewer page
             if hasattr(self, 'mode_stack'):
                 self.mode_stack.setCurrentIndex(0)
+
             # Restore overlay navigation in viewer mode
             if hasattr(self, 'prev_btn'):
                 self.prev_btn.show()
@@ -2225,15 +2437,53 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 self.next_btn.show()
             if hasattr(self, '_position_nav_buttons'):
                 self._position_nav_buttons()
-            
-            print("[Editor] ✓ Edits saved and edit state persisted")
+
+            print("[Editor] ✓ Edits saved and returned to viewer mode")
         except Exception as e:
             print(f"[EditMode] Error saving edits: {e}")
 
     def _cancel_edits(self):
         try:
+            # Handle video edit mode - move video back to viewer page
+            if getattr(self, 'is_video_file', False) and hasattr(self, 'video_widget') and self.video_widget:
+                # Remove from editor canvas
+                if self.video_widget.parent():
+                    current_layout = self.video_widget.parent().layout()
+                    if current_layout:
+                        current_layout.removeWidget(self.video_widget)
+
+                # Add back to viewer page media_container
+                if hasattr(self, 'media_container'):
+                    container_layout = self.media_container.layout()
+                    if container_layout:
+                        container_layout.addWidget(self.video_widget)
+                        self.video_widget.show()
+                        print("[Editor] ✓ Video widget moved back to viewer page")
+
+                # Reset video edits
+                self.video_trim_start = 0
+                duration = getattr(self, '_video_duration', 0)
+                self.video_trim_end = duration
+                self.video_rotation_angle = 0
+
+                # Clear trim markers
+                if hasattr(self, 'seek_slider') and hasattr(self.seek_slider, 'clear_trim_markers'):
+                    self.seek_slider.clear_trim_markers()
+
+                # Reset rotation status label
+                if hasattr(self, 'rotation_status_label'):
+                    self.rotation_status_label.setText("Original")
+
+                # Hide crop_toolbar when exiting video edit mode
+                if hasattr(self, 'crop_toolbar'):
+                    self.crop_toolbar.hide()
+
+                print("[Editor] ✓ Video edits cancelled and reset")
+
+            # Switch back to viewer page
             if hasattr(self, 'mode_stack'):
                 self.mode_stack.setCurrentIndex(0)
+
             # Restore overlay navigation in viewer mode
             if hasattr(self, 'prev_btn'):
                 self.prev_btn.show()
@@ -2241,6 +2491,8 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 self.next_btn.show()
             if hasattr(self, '_position_nav_buttons'):
                 self._position_nav_buttons()
+
+            print("[Editor] ✓ Edits cancelled and returned to viewer mode")
         except Exception as e:
             print(f"[EditMode] Error cancelling edits: {e}")
 
@@ -3410,7 +3662,73 @@ class MediaLightbox(QDialog, VideoEditorMixin):
     def keyPressEvent(self, event):
         try:
             from PySide6.QtCore import Qt
-            # Undo/Redo shortcuts
+
+            # Video editing shortcuts (only when video is loaded and in edit mode)
+            is_video_loaded = hasattr(self, 'video_player') and self.video_player is not None
+            in_edit_mode = hasattr(self, 'mode_stack') and self.mode_stack.currentIndex() == 1
+
+            if is_video_loaded and in_edit_mode:
+                # I key: Set trim IN point (start)
+                if event.key() == Qt.Key_I:
+                    if hasattr(self, '_set_trim_start'):
+                        self._set_trim_start()
+                        print("[MediaLightbox] Keyboard: Set trim start (I key)")
+                    return
+
+                # O key: Set trim OUT point (end)
+                elif event.key() == Qt.Key_O:
+                    if hasattr(self, '_set_trim_end'):
+                        self._set_trim_end()
+                        print("[MediaLightbox] Keyboard: Set trim end (O key)")
+                    return
+
+                # J key: Rewind
+                elif event.key() == Qt.Key_J:
+                    current_pos = self.video_player.position()
+                    new_pos = max(0, current_pos - 5000)  # Rewind 5 seconds
+                    self.video_player.setPosition(new_pos)
+                    print(f"[MediaLightbox] Keyboard: Rewind to {new_pos}ms (J key)")
+                    return
+
+                # K key: Play/Pause toggle
+                elif event.key() == Qt.Key_K:
+                    if self.video_player.playbackState() == QMediaPlayer.PlayingState:
+                        self.video_player.pause()
+                        print("[MediaLightbox] Keyboard: Pause (K key)")
+                    else:
+                        self.video_player.play()
+                        print("[MediaLightbox] Keyboard: Play (K key)")
+                    return
+
+                # L key: Fast forward
+                elif event.key() == Qt.Key_L:
+                    current_pos = self.video_player.position()
+                    duration = getattr(self, '_video_duration', 0)
+                    new_pos = min(duration, current_pos + 5000)  # Forward 5 seconds
+                    self.video_player.setPosition(new_pos)
+                    print(f"[MediaLightbox] Keyboard: Fast forward to {new_pos}ms (L key)")
+                    return
+
+                # Left arrow: Previous frame
+                elif event.key() == Qt.Key_Left:
+                    current_pos = self.video_player.position()
+                    frame_ms = 1000 / 30  # Assume 30 fps (~33ms per frame)
+                    new_pos = max(0, current_pos - frame_ms)
+                    self.video_player.setPosition(int(new_pos))
+                    print(f"[MediaLightbox] Keyboard: Previous frame (← key)")
+                    return
+
+                # Right arrow: Next frame
+                elif event.key() == Qt.Key_Right:
+                    current_pos = self.video_player.position()
+                    duration = getattr(self, '_video_duration', 0)
+                    frame_ms = 1000 / 30  # Assume 30 fps (~33ms per frame)
+                    new_pos = min(duration, current_pos + frame_ms)
+                    self.video_player.setPosition(int(new_pos))
+                    print(f"[MediaLightbox] Keyboard: Next frame (→ key)")
+                    return
+
+            # Undo/Redo shortcuts (for photo editing)
             if event.modifiers() & Qt.ControlModifier:
                 if event.key() == Qt.Key_Z:
                     self._editor_undo()
@@ -3418,9 +3736,11 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 elif event.key() == Qt.Key_Y:
                     self._editor_redo()
                     return
+
             # Pass to parent
             super().keyPressEvent(event)
-        except Exception:
+        except Exception as e:
+            print(f"[MediaLightbox] Error in keyPressEvent: {e}")
             super().keyPressEvent(event)
 
     def _set_crop_aspect(self, ratio):
@@ -3878,9 +4198,8 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         self.time_current_label.setStyleSheet("color: white; font-size: 9pt; background: transparent;")
         layout.addWidget(self.time_current_label)
 
-        # Seek slider
-        from PySide6.QtWidgets import QSlider
-        self.seek_slider = QSlider(Qt.Horizontal)
+        # Seek slider (custom with trim markers)
+        self.seek_slider = TrimMarkerSlider(Qt.Horizontal)
         self.seek_slider.setFocusPolicy(Qt.NoFocus)
         self.seek_slider.setMouseTracking(True)  # PHASE B #3: Enable hover detection
         self.seek_slider.setStyleSheet("""
@@ -3986,22 +4305,6 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         self.volume_slider.valueChanged.connect(self._on_volume_changed)
         layout.addWidget(self.volume_slider)
 
-        # Playback speed button
-        self.speed_btn = QPushButton("1.0x")
-        self.speed_btn.setFocusPolicy(Qt.NoFocus)
-        self.speed_btn.setFixedHeight(32)
-        self.speed_btn.setStyleSheet("""
-            QPushButton {
-                background: rgba(255, 255, 255, 0.15);
-                color: white;
-                border: none;
-                border-radius: 6px;
-                padding: 6px 10px;
-            }
-            QPushButton:hover {
-                background: rgba(255, 255, 255, 0.25);
-            }
-        """)
         # Playback speed button
         self.speed_btn = QPushButton("1.0x")
         self.speed_btn.setFocusPolicy(Qt.NoFocus)
@@ -4443,15 +4746,41 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 self.audio_output = QAudioOutput(self)
                 self.video_player.setAudioOutput(self.audio_output)
 
-                # Create video widget
-                self.video_widget = QVideoWidget()
-                self.video_widget.setStyleSheet("background: black;")
-                self.video_player.setVideoOutput(self.video_widget)
+                # Create video view (QGraphicsView + QGraphicsVideoItem) to support rotation in preview
+                from PySide6.QtWidgets import QGraphicsView, QGraphicsScene, QFrame, QSizePolicy
+                from PySide6.QtMultimediaWidgets import QGraphicsVideoItem
 
-                # Add video widget to container
+                self.video_graphics_view = QGraphicsView()
+                self.video_graphics_view.setStyleSheet("background: black;")
+                self.video_graphics_view.setFrameShape(QFrame.NoFrame)
+                self.video_graphics_view.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+                self.video_graphics_view.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+                # Enable smooth zoom/pan behavior
+                self.video_graphics_view.setResizeAnchor(QGraphicsView.AnchorUnderMouse)
+                self.video_graphics_view.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
+                self.video_graphics_view.setDragMode(QGraphicsView.ScrollHandDrag)
+                self.video_graphics_view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+                self.video_scene = QGraphicsScene(self.video_graphics_view)
+                self.video_graphics_view.setScene(self.video_scene)
+                self.video_graphics_view.viewport().installEventFilter(self)
+                self.video_graphics_view.installEventFilter(self)
+                self.video_graphics_view.setFocusPolicy(Qt.WheelFocus)
+                self.video_graphics_view.setFocus()
+
+                self.video_item = QGraphicsVideoItem()
+                self.video_scene.addItem(self.video_item)
+
+                # Use QGraphicsVideoItem as the video output
+                self.video_player.setVideoOutput(self.video_item)
+
+                # For compatibility, keep using video_widget name for sizing/grab
+                self.video_widget = self.video_graphics_view
+
+                # Add video view to container
                 container_layout = self.media_container.layout()
                 if container_layout:
-                    container_layout.addWidget(self.video_widget)
+                    container_layout.addWidget(self.video_graphics_view)
+                    self.scroll_area.viewport().installEventFilter(self)
 
                 # Connect video player signals with error handling
                 try:
@@ -4491,6 +4820,10 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 self.video_controls_widget.show()
             if hasattr(self, 'bottom_toolbar'):
                 self.bottom_toolbar.show()  # Show bottom toolbar for video controls
+                # CRITICAL FIX: Set opacity to 1.0 to make controls visible
+                # Bug: opacity was initialized to 0.0 (line 965), causing invisible controls
+                if hasattr(self, 'bottom_toolbar_opacity'):
+                    self.bottom_toolbar_opacity.setOpacity(1.0)
 
             # Set volume
             if hasattr(self, 'volume_slider') and hasattr(self, 'audio_output'):
@@ -4526,6 +4859,13 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             self._load_metadata()
 
             print(f"[MediaLightbox] ✓ Video player started: {os.path.basename(self.media_path)}")
+
+            # Apply preview rotation to QGraphicsVideoItem (if available)
+            if hasattr(self, '_apply_preview_rotation'):
+                self._apply_preview_rotation()
+            # Fit video to view at initial load for consistent size
+            if hasattr(self, '_fit_video_view'):
+                self._fit_video_view()
             
             # Update and show caption
             self._update_media_caption(os.path.basename(self.media_path))
@@ -4607,18 +4947,26 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         from PySide6.QtGui import QPixmap
 
         try:
-            # Hide video widget and controls if they exist
-            if hasattr(self, 'video_widget'):
+            # CRITICAL FIX: Ensure mode_stack is on viewer page (0), not editor page (1)
+            # Bug: If user was in edit mode, photos load but aren't visible
+            if hasattr(self, 'mode_stack'):
+                if self.mode_stack.currentIndex() != 0:
+                    print(f"[MediaLightbox] ⚠️ Mode stack was on page {self.mode_stack.currentIndex()}, switching to viewer (0)")
+                    self.mode_stack.setCurrentIndex(0)
+
+            # CRITICAL FIX: Hide video widget and controls if they exist AND are not None
+            # Bug: hasattr() returns True even if value is None, causing AttributeError
+            if hasattr(self, 'video_widget') and self.video_widget is not None:
                 self.video_widget.hide()
-                if hasattr(self, 'video_player'):
+                if hasattr(self, 'video_player') and self.video_player is not None:
                     self.video_player.stop()
-                    if hasattr(self, 'position_timer'):
+                    if hasattr(self, 'position_timer') and self.position_timer is not None:
                         self.position_timer.stop()
 
             # Hide video controls
-            if hasattr(self, 'video_controls_widget'):
+            if hasattr(self, 'video_controls_widget') and self.video_controls_widget is not None:
                 self.video_controls_widget.hide()
-            if hasattr(self, 'bottom_toolbar'):
+            if hasattr(self, 'bottom_toolbar') and self.bottom_toolbar is not None:
                 self.bottom_toolbar.hide()  # Hide bottom toolbar when showing photos
 
             # Show image label (simple show/hide, no widget replacement!)
@@ -5119,13 +5467,18 @@ class MediaLightbox(QDialog, VideoEditorMixin):
 
     def _show_nav_buttons(self):
         """Show navigation buttons with instant visibility (always visible for usability)."""
+        if not hasattr(self, 'nav_buttons_visible'):
+            return
         if not self.nav_buttons_visible:
             self.nav_buttons_visible = True
-            self.prev_btn_opacity.setOpacity(1.0)
-            self.next_btn_opacity.setOpacity(1.0)
+            if hasattr(self, 'prev_btn_opacity'):
+                self.prev_btn_opacity.setOpacity(1.0)
+            if hasattr(self, 'next_btn_opacity'):
+                self.next_btn_opacity.setOpacity(1.0)
 
         # Cancel any pending hide
-        self.nav_hide_timer.stop()
+        if hasattr(self, 'nav_hide_timer'):
+            self.nav_hide_timer.stop()
 
     def _hide_nav_buttons(self):
         """Hide navigation buttons (auto-hide disabled for better UX)."""
@@ -5140,14 +5493,19 @@ class MediaLightbox(QDialog, VideoEditorMixin):
 
     def leaveEvent(self, event):
         """Hide navigation buttons after delay on mouse leave."""
-        self.nav_hide_timer.start(500)  # Hide after 500ms
+        if hasattr(self, 'nav_hide_timer'):
+            self.nav_hide_timer.start(500)  # Hide after 500ms
         super().leaveEvent(event)
 
     def resizeEvent(self, event):
         """Reposition navigation buttons and auto-adjust zoom on window resize."""
         super().resizeEvent(event)
         self._position_nav_buttons()
-
+        
+        # Keep video fitted on resize for consistent initial size
+        if hasattr(self, '_fit_video_view') and hasattr(self, 'video_graphics_view') and self.video_graphics_view:
+            self._fit_video_view()
+        
         # CRITICAL: Ensure buttons stay on top after resize
         if hasattr(self, 'prev_btn') and hasattr(self, 'next_btn'):
             self.prev_btn.raise_()
@@ -5657,14 +6015,17 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         # Update zoom level during animation
         def update_zoom(value):
             self.zoom_level = value
-            # Switch to custom zoom mode if zooming from fit/fill
-            if not is_video and self.zoom_level > self.fit_zoom_level * 1.01:
+            # For video: keep edit_zoom_level in sync
+            if self._is_video(self.media_path):
+                self.edit_zoom_level = self.zoom_level
+            # Switch to custom zoom mode if zooming from fit/fill (photos)
+            if not self._is_video(self.media_path) and self.zoom_level > self.fit_zoom_level * 1.01:
                 self.zoom_mode = "custom"
-            elif not is_video and abs(self.zoom_level - self.fit_zoom_level) < 0.01:
+            elif not self._is_video(self.media_path) and abs(self.zoom_level - self.fit_zoom_level) < 0.01:
                 self.zoom_mode = "fit"
             
             # Apply zoom based on media type
-            if is_video:
+            if self._is_video(self.media_path):
                 self._apply_video_zoom()
             else:
                 self._apply_zoom()
@@ -5719,32 +6080,31 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             self.scroll_area.setCursor(Qt.ArrowCursor)
 
     def _apply_video_zoom(self):
-        """Apply current zoom level to video widget."""
-        if not hasattr(self, 'video_widget') or not self.video_widget:
-            return
-        
-        # Get viewport dimensions
-        viewport = self.scroll_area.viewport()
-        base_width = viewport.width()
-        base_height = viewport.height()
-        
-        # Apply zoom to video dimensions
-        zoomed_width = int(base_width * self.zoom_level)
-        zoomed_height = int(base_height * self.zoom_level)
-        
-        # Resize video widget and container
-        self.video_widget.setMinimumSize(zoomed_width, zoomed_height)
-        self.video_widget.resize(zoomed_width, zoomed_height)
-        self.media_container.setMinimumSize(zoomed_width, zoomed_height)
-        self.media_container.resize(zoomed_width, zoomed_height)
-        
-        print(f"[MediaLightbox] Video zoom applied: {int(self.zoom_level * 100)}% ({zoomed_width}x{zoomed_height})")
+        """Apply current zoom level to video preview using view transform."""
+        try:
+            if not hasattr(self, 'video_graphics_view') or not self.video_graphics_view:
+                return
+            # Clamp and apply using base fit scale
+            self.edit_zoom_level = max(0.25, min(getattr(self, 'edit_zoom_level', 1.0), 4.0))
+            base = getattr(self, 'video_base_scale', 1.0)
+            from PySide6.QtGui import QTransform
+            t = QTransform()
+            t.scale(base * self.edit_zoom_level, base * self.edit_zoom_level)
+            self.video_graphics_view.setTransform(t)
+            from PySide6.QtWidgets import QGraphicsView
+            self.video_graphics_view.setDragMode(QGraphicsView.ScrollHandDrag)
+            # Mirror level into generic zoom_level for status labels
+            self.zoom_level = self.edit_zoom_level
+            if hasattr(self, '_update_zoom_status'):
+                self._update_zoom_status()
+            print(f"[MediaLightbox] Video zoom applied: {int(self.edit_zoom_level * 100)}%")
+        except Exception as e:
+            print(f"[MediaLightbox] Video zoom apply failed: {e}")
 
     def _zoom_to_fit(self):
         """Zoom to fit window (Keyboard: 0) - Letterboxing if needed."""
         if self._is_video(self.media_path):
-            # Reset video to original size
-            self.zoom_level = 1.0
+            self.edit_zoom_level = 1.0
             self._apply_video_zoom()
             self._update_zoom_status()
             return
@@ -5756,7 +6116,7 @@ class MediaLightbox(QDialog, VideoEditorMixin):
     def _zoom_to_actual(self):
         """Zoom to 100% actual size (Keyboard: 1) - 1:1 pixel mapping."""
         if self._is_video(self.media_path):
-            self.zoom_level = 1.0
+            self.edit_zoom_level = 1.0
             self._apply_video_zoom()
             self._update_zoom_status()
             return
@@ -6387,81 +6747,104 @@ class MediaLightbox(QDialog, VideoEditorMixin):
 
     def _on_thumbnail_loaded(self, pixmap):
         """PHASE A #2: Handle progressive loading - thumbnail quality loaded."""
+        print(f"[SIGNAL] _on_thumbnail_loaded called, pixmap={'valid' if pixmap and not pixmap.isNull() else 'NULL'}")
+
         if not pixmap or pixmap.isNull():
+            print(f"[ERROR] ⚠️ Thumbnail pixmap is null or invalid! Photo won't display.")
+            self._hide_loading_indicator()  # Hide loading indicator on error
             return
 
         from PySide6.QtCore import Qt
 
-        # Store as original for zoom operations
-        self.original_pixmap = pixmap
+        try:
+            # Store as original for zoom operations
+            self.original_pixmap = pixmap
 
-        # Scale to fit viewport
-        viewport_size = self.scroll_area.viewport().size()
-        scaled_pixmap = pixmap.scaled(
-            viewport_size,
-            Qt.KeepAspectRatio,
-            Qt.SmoothTransformation
-        )
+            # Scale to fit viewport
+            viewport_size = self.scroll_area.viewport().size()
+            print(f"[SIGNAL] Viewport size: {viewport_size.width()}x{viewport_size.height()}")
+            scaled_pixmap = pixmap.scaled(
+                viewport_size,
+                Qt.KeepAspectRatio,
+                Qt.SmoothTransformation
+            )
 
-        # Display thumbnail (instant!)
-        self.image_label.setPixmap(scaled_pixmap)
-        self.image_label.resize(scaled_pixmap.size())
-        self.media_container.resize(scaled_pixmap.size())
+            # Display thumbnail (instant!)
+            self.image_label.setPixmap(scaled_pixmap)
+            self.image_label.resize(scaled_pixmap.size())
+            self.media_container.resize(scaled_pixmap.size())
 
-        self.thumbnail_quality_loaded = True
+            self.thumbnail_quality_loaded = True
 
-        # Update status
-        self._show_loading_indicator("📥 Loading full resolution...")
+            # Update status
+            self._show_loading_indicator("📥 Loading full resolution...")
 
-        print(f"[MediaLightbox] ✓ Thumbnail displayed (progressive load)")
+            print(f"[MediaLightbox] ✓ Thumbnail displayed (progressive load)")
+        except Exception as e:
+            print(f"[ERROR] ⚠️ Failed to display thumbnail: {e}")
+            import traceback
+            traceback.print_exc()
+            self._hide_loading_indicator()
 
     def _on_full_quality_loaded(self, pixmap):
         """PHASE A #2: Handle progressive loading - full quality loaded."""
+        print(f"[SIGNAL] _on_full_quality_loaded called, pixmap={'valid' if pixmap and not pixmap.isNull() else 'NULL'}")
+
         if not pixmap or pixmap.isNull():
+            print(f"[ERROR] ⚠️ Full quality pixmap is null or invalid!")
+            self._hide_loading_indicator()  # Hide loading indicator on error
             return
 
         from PySide6.QtCore import Qt
 
-        # Store as original for zoom operations
-        self.original_pixmap = pixmap
+        try:
+            # Store as original for zoom operations
+            self.original_pixmap = pixmap
 
-        # Scale to fit viewport
-        viewport_size = self.scroll_area.viewport().size()
-        scaled_pixmap = pixmap.scaled(
-            viewport_size,
-            Qt.KeepAspectRatio,
-            Qt.SmoothTransformation
-        )
+            # Scale to fit viewport
+            viewport_size = self.scroll_area.viewport().size()
+            scaled_pixmap = pixmap.scaled(
+                viewport_size,
+                Qt.KeepAspectRatio,
+                Qt.SmoothTransformation
+            )
 
-        # Swap with subtle fade
-        from PySide6.QtCore import QPropertyAnimation, QEasingCurve
+            # Swap with subtle fade
+            from PySide6.QtCore import QPropertyAnimation, QEasingCurve
 
-        # Create fade animation if not exists
-        if not self.image_label.graphicsEffect():
-            opacity_effect = QGraphicsOpacityEffect()
-            self.image_label.setGraphicsEffect(opacity_effect)
+            # Create fade animation if not exists
+            if not self.image_label.graphicsEffect():
+                opacity_effect = QGraphicsOpacityEffect()
+                self.image_label.setGraphicsEffect(opacity_effect)
 
-        opacity_effect = self.image_label.graphicsEffect()
+            opacity_effect = self.image_label.graphicsEffect()
 
-        # Quick fade out/in
-        fade = QPropertyAnimation(opacity_effect, b"opacity")
-        fade.setDuration(150)
-        fade.setStartValue(0.7)
-        fade.setEndValue(1.0)
-        fade.setEasingCurve(QEasingCurve.OutCubic)
+            # Quick fade out/in
+            fade = QPropertyAnimation(opacity_effect, b"opacity")
+            fade.setDuration(150)
+            fade.setStartValue(0.7)
+            fade.setEndValue(1.0)
+            fade.setEasingCurve(QEasingCurve.OutCubic)
 
-        # Update pixmap
-        self.image_label.setPixmap(scaled_pixmap)
-        self.image_label.resize(scaled_pixmap.size())
-        self.media_container.resize(scaled_pixmap.size())
+            # Update pixmap
+            self.image_label.setPixmap(scaled_pixmap)
+            self.image_label.resize(scaled_pixmap.size())
+            self.media_container.resize(scaled_pixmap.size())
 
-        fade.start()
-        self.setProperty("quality_fade", fade)  # Prevent GC
+            fade.start()
+            self.setProperty("quality_fade", fade)  # Prevent GC
 
-        self.full_quality_loaded = True
+            self.full_quality_loaded = True
 
-        # Hide loading indicator
-        self._hide_loading_indicator()
+            # Hide loading indicator
+            self._hide_loading_indicator()
+
+            print(f"[MediaLightbox] ✓ Full quality displayed (progressive load complete)")
+        except Exception as e:
+            print(f"[ERROR] ⚠️ Failed to display full quality: {e}")
+            import traceback
+            traceback.print_exc()
+            self._hide_loading_indicator()
 
         # Calculate zoom level
         self.zoom_level = scaled_pixmap.width() / pixmap.width()
@@ -6850,13 +7233,19 @@ class MediaLightbox(QDialog, VideoEditorMixin):
     # ==================== PHASE C IMPROVEMENTS ====================
 
     def _on_media_status_changed(self, status):
-        """Loop video when enabled and playback ends."""
+        """Loop video when enabled and fit to view once loaded."""
         try:
             from PySide6.QtMultimedia import QMediaPlayer
+            # Looping behavior at end of media
             if status == QMediaPlayer.EndOfMedia and getattr(self, 'loop_enabled', False):
                 self.video_player.setPosition(0)
                 self.video_player.play()
                 print("[MediaLightbox] Looping video to start")
+            # Fit video to view when media becomes ready
+            if status in (QMediaPlayer.LoadedMedia, QMediaPlayer.BufferedMedia):
+                if hasattr(self, '_fit_video_view'):
+                    self._fit_video_view()
+                    print("[MediaLightbox] Fit video to view after media loaded")
         except Exception as e:
             print(f"[MediaLightbox] mediaStatusChanged handler error: {e}")
 
@@ -7190,6 +7579,109 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         """PHASE C #5: Hide motion photo indicator."""
         if hasattr(self, 'motion_indicator'):
             self.motion_indicator.hide()
+
+
+# === CUSTOM SEEK SLIDER WITH TRIM MARKERS ===
+class TrimMarkerSlider(QSlider):
+    """Custom QSlider that displays visual trim markers for video editing."""
+
+    def __init__(self, orientation, parent=None):
+        super().__init__(orientation, parent)
+        self.trim_start = 0  # Start trim position (0-100 scale)
+        self.trim_end = 100  # End trim position (0-100 scale)
+        self.video_duration_ms = 0  # Total video duration in milliseconds
+        self.show_markers = False  # Only show markers in edit mode
+
+    def set_trim_markers(self, start_ms, end_ms, duration_ms):
+        """Set trim marker positions in milliseconds."""
+        self.video_duration_ms = duration_ms
+        slider_max = self.maximum()  # Get slider max BEFORE if/else blocks
+
+        if duration_ms > 0:
+            # Convert milliseconds to slider range (0-100 or 0-max)
+            self.trim_start = int((start_ms / duration_ms) * slider_max)
+            self.trim_end = int((end_ms / duration_ms) * slider_max)
+        else:
+            self.trim_start = 0
+            self.trim_end = slider_max
+        self.show_markers = True
+        self.update()  # Trigger repaint
+
+    def clear_trim_markers(self):
+        """Hide trim markers."""
+        self.show_markers = False
+        self.update()
+
+    def paintEvent(self, event):
+        """Override paint event to draw trim markers."""
+        # First, draw the standard slider
+        super().paintEvent(event)
+
+        # If markers enabled and in valid range, draw them
+        if not self.show_markers or self.video_duration_ms == 0:
+            return
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+
+        # Calculate marker positions in pixels
+        slider_width = self.width()
+        handle_width = 12  # From stylesheet
+        usable_width = slider_width - handle_width
+
+        # Convert trim positions to pixel coordinates
+        slider_max = self.maximum()
+        if slider_max > 0:
+            start_x = int((self.trim_start / slider_max) * usable_width) + (handle_width // 2)
+            end_x = int((self.trim_end / slider_max) * usable_width) + (handle_width // 2)
+        else:
+            return
+
+        # Draw shaded regions OUTSIDE trim range (semi-transparent gray)
+        painter.fillRect(0, 0, start_x, self.height(), QColor(0, 0, 0, 80))
+        painter.fillRect(end_x, 0, slider_width - end_x, self.height(), QColor(0, 0, 0, 80))
+
+        # Draw green marker for trim start (🟢)
+        painter.setPen(QPen(QColor(76, 175, 80), 3))  # Green, 3px thick
+        painter.drawLine(start_x, 0, start_x, self.height())
+
+        # Draw red marker for trim end (🔴)
+        painter.setPen(QPen(QColor(244, 67, 54), 3))  # Red, 3px thick
+        painter.drawLine(end_x, 0, end_x, self.height())
+
+        painter.end()
+
+
+class AutocompleteEventFilter(QObject):
+    """Event filter for people search autocomplete keyboard navigation."""
+    
+    def __init__(self, search_widget, autocomplete_widget, parent_layout):
+        super().__init__()
+        self.search_widget = search_widget
+        self.autocomplete_widget = autocomplete_widget
+        self.parent_layout = parent_layout
+    
+    def eventFilter(self, obj, event):
+        """Handle keyboard events for autocomplete navigation."""
+        if obj == self.search_widget and event.type() == QEvent.KeyPress:
+            if self.autocomplete_widget.isVisible():
+                key = event.key()
+                if key == Qt.Key_Down:
+                    # Move to autocomplete list
+                    self.autocomplete_widget.setFocus()
+                    self.autocomplete_widget.setCurrentRow(0)
+                    return True
+                elif key == Qt.Key_Escape:
+                    self.autocomplete_widget.hide()
+                    return True
+                elif key == Qt.Key_Return or key == Qt.Key_Enter:
+                    # Select first item if autocomplete is visible
+                    if self.autocomplete_widget.count() > 0:
+                        first_item = self.autocomplete_widget.item(0)
+                        self.parent_layout._on_autocomplete_selected(first_item)
+                        return True
+        
+        return super().eventFilter(obj, event)
 
 
 class GooglePhotosLayout(BaseLayout):
@@ -7733,11 +8225,17 @@ class GooglePhotosLayout(BaseLayout):
 
     def _create_sidebar(self) -> QWidget:
         """
-        Create minimal sidebar with timeline navigation, folders, and people.
+        Create modern sidebar with collapsible sections and grid view for People.
+
+        Phase 1+2 Implementation:
+        - Collapsible sections (Timeline, Folders, People, Videos)
+        - Grid view for People (replaces tree)
+        - Smooth expand/collapse animations
+        - Better space utilization (3x more faces visible)
         """
         sidebar = QWidget()
-        sidebar.setMinimumWidth(180)
-        sidebar.setMaximumWidth(250)
+        sidebar.setMinimumWidth(240)
+        sidebar.setMaximumWidth(300)  # Slightly wider for nav + content
         sidebar.setStyleSheet("""
             QWidget {
                 background: white;
@@ -7745,39 +8243,113 @@ class GooglePhotosLayout(BaseLayout):
             }
         """)
 
-        layout = QVBoxLayout(sidebar)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(12)
+        main_layout = QHBoxLayout(sidebar)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
 
-        # Timeline navigation header (clickable to clear filters)
-        timeline_header = QPushButton("📅 Timeline")
-        timeline_header.setFlat(True)
-        timeline_header.setCursor(Qt.PointingHandCursor)
-        timeline_header.setStyleSheet("""
-            QPushButton {
-                text-align: left;
-                font-size: 12pt;
-                font-weight: bold;
-                color: #202124;
-                border: none;
-                padding: 4px 0px;
-            }
-            QPushButton:hover {
-                color: #1a73e8;
-                background: transparent;
+        # PHASE 3: Vertical navigation bar (icon-based quick navigation)
+        nav_bar = QWidget()
+        nav_bar.setFixedWidth(48)
+        nav_bar.setStyleSheet("""
+            QWidget {
+                background: #f8f9fa;
+                border-right: 1px solid #e8eaed;
             }
         """)
-        timeline_header.clicked.connect(self._on_section_header_clicked)
-        layout.addWidget(timeline_header)
+        nav_layout = QVBoxLayout(nav_bar)
+        nav_layout.setContentsMargins(4, 12, 4, 4)
+        nav_layout.setSpacing(8)
+
+        # Navigation buttons with icons
+        nav_buttons = [
+            ("📅", "Timeline", "timeline_section"),
+            ("📁", "Folders", "folders_section"),
+            ("👥", "People", "people_section"),
+            ("🎬", "Videos", "videos_section"),
+        ]
+
+        self.nav_buttons = {}
+        for icon, tooltip, section_attr in nav_buttons:
+            btn = QPushButton(icon)
+            btn.setToolTip(tooltip)
+            btn.setFixedSize(40, 40)
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.setStyleSheet("""
+                QPushButton {
+                    background: transparent;
+                    border: none;
+                    border-radius: 8px;
+                    font-size: 18pt;
+                }
+                QPushButton:hover {
+                    background: rgba(26, 115, 232, 0.08);
+                }
+                QPushButton:pressed {
+                    background: rgba(26, 115, 232, 0.15);
+                }
+            """)
+            btn.clicked.connect(lambda checked, attr=section_attr: self._scroll_to_section(attr))
+            nav_layout.addWidget(btn)
+            self.nav_buttons[section_attr] = btn
+
+        nav_layout.addStretch()
+
+        # "Expand All" button at bottom
+        expand_all_btn = QPushButton("☰")
+        expand_all_btn.setToolTip("Expand All Sections")
+        expand_all_btn.setFixedSize(40, 40)
+        expand_all_btn.setCursor(Qt.PointingHandCursor)
+        expand_all_btn.setStyleSheet("""
+            QPushButton {
+                background: transparent;
+                border: none;
+                border-radius: 8px;
+                font-size: 16pt;
+            }
+            QPushButton:hover {
+                background: rgba(26, 115, 232, 0.08);
+            }
+            QPushButton:pressed {
+                background: rgba(26, 115, 232, 0.15);
+            }
+        """)
+        expand_all_btn.clicked.connect(self._expand_all_sections)
+        nav_layout.addWidget(expand_all_btn)
+
+        main_layout.addWidget(nav_bar)
+
+        # Content area (sections)
+        content_widget = QWidget()
+        content_layout = QVBoxLayout(content_widget)
+        content_layout.setContentsMargins(8, 8, 8, 8)
+        content_layout.setSpacing(4)
+        main_layout.addWidget(content_widget)
+
+        # Scroll area for all sections (allows overflow)
+        self.sidebar_scroll = QScrollArea()
+        self.sidebar_scroll.setWidgetResizable(True)
+        self.sidebar_scroll.setFrameShape(QFrame.NoFrame)
+        self.sidebar_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.sidebar_scroll.setStyleSheet("""
+            QScrollArea {
+                background: transparent;
+                border: none;
+            }
+        """)
+
+        scroll_content = QWidget()
+        scroll_layout = QVBoxLayout(scroll_content)
+        scroll_layout.setContentsMargins(0, 0, 0, 0)
+        scroll_layout.setSpacing(4)
+
+        # === SECTION 1: Timeline (Collapsible) ===
+        self.timeline_section = CollapsibleSection("Timeline", "📅", 0)
 
         # Timeline tree (Years > Months)
         self.timeline_tree = QTreeWidget()
         self.timeline_tree.setHeaderHidden(True)
-
-        # CRITICAL FIX: Disable horizontal scrollbar
         self.timeline_tree.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.timeline_tree.setTextElideMode(Qt.ElideRight)
-
         self.timeline_tree.setStyleSheet("""
             QTreeWidget {
                 border: none;
@@ -7795,40 +8367,20 @@ class GooglePhotosLayout(BaseLayout):
                 color: #1a73e8;
             }
         """)
-        # Connect click signal to filter handler
         self.timeline_tree.itemClicked.connect(self._on_timeline_item_clicked)
-        layout.addWidget(self.timeline_tree)
 
-        # Folders section header (clickable to clear filters)
-        folders_header = QPushButton("📁 Folders")
-        folders_header.setFlat(True)
-        folders_header.setCursor(Qt.PointingHandCursor)
-        folders_header.setStyleSheet("""
-            QPushButton {
-                text-align: left;
-                font-size: 12pt;
-                font-weight: bold;
-                color: #202124;
-                border: none;
-                padding: 4px 0px;
-                margin-top: 12px;
-            }
-            QPushButton:hover {
-                color: #1a73e8;
-                background: transparent;
-            }
-        """)
-        folders_header.clicked.connect(self._on_section_header_clicked)
-        layout.addWidget(folders_header)
+        # Add timeline tree to section
+        self.timeline_section.add_widget(self.timeline_tree)
+        scroll_layout.addWidget(self.timeline_section)
+
+        # === SECTION 2: Folders (Collapsible) ===
+        self.folders_section = CollapsibleSection("Folders", "📁", 0)
 
         # Folders tree
         self.folders_tree = QTreeWidget()
         self.folders_tree.setHeaderHidden(True)
-
-        # CRITICAL FIX: Disable horizontal scrollbar (use tooltips for full paths)
         self.folders_tree.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.folders_tree.setTextElideMode(Qt.ElideMiddle)  # Elide middle for paths
-
+        self.folders_tree.setTextElideMode(Qt.ElideMiddle)
         self.folders_tree.setStyleSheet("""
             QTreeWidget {
                 border: none;
@@ -7846,93 +8398,153 @@ class GooglePhotosLayout(BaseLayout):
                 color: #1a73e8;
             }
         """)
-        # Connect click signal to filter handler
         self.folders_tree.itemClicked.connect(self._on_folder_item_clicked)
-        layout.addWidget(self.folders_tree)
 
-        # People section header (clickable to clear filters)
-        people_header = QPushButton("👥 People")
-        people_header.setFlat(True)
-        people_header.setCursor(Qt.PointingHandCursor)
-        people_header.setStyleSheet("""
-            QPushButton {
-                text-align: left;
-                font-size: 12pt;
-                font-weight: bold;
-                color: #202124;
-                border: none;
-                padding: 4px 0px;
-                margin-top: 12px;
-            }
-            QPushButton:hover {
-                color: #1a73e8;
-                background: transparent;
-            }
+        # Add folders tree to section
+        self.folders_section.add_widget(self.folders_tree)
+        scroll_layout.addWidget(self.folders_section)
+
+        # === SECTION 3: People (Collapsible + GRID VIEW + SEARCH!) ===
+        self.people_section = CollapsibleSection("People", "👥", 0)
+        # Add a dedicated People tools button in header
+        self.people_tools_btn = QPushButton("🛠️")
+        self.people_tools_btn.setToolTip("Open People Tools")
+        self.people_tools_btn.setFixedSize(28, 28)
+        self.people_tools_btn.setCursor(Qt.PointingHandCursor)
+        self.people_tools_btn.setStyleSheet("""
+            QPushButton { border: 1px solid #dadce0; border-radius: 6px; background: white; }
+            QPushButton:hover { background: #f1f3f4; }
         """)
-        people_header.clicked.connect(self._on_section_header_clicked)
-        layout.addWidget(people_header)
+        self.people_tools_btn.clicked.connect(lambda: getattr(self, '_prompt_bulk_face_review', lambda: None)())
+        self.people_section.add_header_action(self.people_tools_btn)
+        
+        # Add Undo button for merge operations
+        self.people_undo_btn = QPushButton("↺")
+        self.people_undo_btn.setToolTip("Undo Last Merge")
+        self.people_undo_btn.setFixedSize(28, 28)
+        self.people_undo_btn.setCursor(Qt.PointingHandCursor)
+        self.people_undo_btn.setStyleSheet("""
+            QPushButton { border: 1px solid #dadce0; border-radius: 6px; background: white; font-size: 14pt; }
+            QPushButton:hover { background: #fff3cd; border-color: #ffc107; }
+            QPushButton:disabled { color: #dadce0; background: #f8f9fa; }
+        """)
+        self.people_undo_btn.clicked.connect(self._undo_last_merge)
+        self.people_undo_btn.setEnabled(False)  # Initially disabled
+        self.people_section.add_header_action(self.people_undo_btn)
+        
+        # Add Redo button for merge operations
+        self.people_redo_btn = QPushButton("↻")
+        self.people_redo_btn.setToolTip("Redo Last Undo")
+        self.people_redo_btn.setFixedSize(28, 28)
+        self.people_redo_btn.setCursor(Qt.PointingHandCursor)
+        self.people_redo_btn.setStyleSheet("""
+            QPushButton { border: 1px solid #dadce0; border-radius: 6px; background: white; font-size: 14pt; }
+            QPushButton:hover { background: #d4edda; border-color: #28a745; }
+            QPushButton:disabled { color: #dadce0; background: #f8f9fa; }
+        """)
+        self.people_redo_btn.clicked.connect(self._redo_last_undo)
+        self.people_redo_btn.setEnabled(False)  # Initially disabled
+        self.people_section.add_header_action(self.people_redo_btn)
+        
+        # Add History button to view all merge operations
+        self.people_history_btn = QPushButton("📜")
+        self.people_history_btn.setToolTip("View Merge History")
+        self.people_history_btn.setFixedSize(28, 28)
+        self.people_history_btn.setCursor(Qt.PointingHandCursor)
+        self.people_history_btn.setStyleSheet("""
+            QPushButton { border: 1px solid #dadce0; border-radius: 6px; background: white; }
+            QPushButton:hover { background: #e3f2fd; border-color: #2196f3; }
+        """)
+        self.people_history_btn.clicked.connect(self._show_merge_history)
+        self.people_section.add_header_action(self.people_history_btn)
+        
+        # Initialize undo/redo stacks
+        self.undo_stack = []  # Stack of undo operations
+        self.redo_stack = []  # Stack of redo operations
+        
+        # Check if undo is available on startup
+        QTimer.singleShot(500, self._update_undo_redo_state)
 
-        # People tree
-        self.people_tree = QTreeWidget()
-        self.people_tree.setHeaderHidden(True)
+        # PHASE 3: Search bar for filtering faces by name with autocomplete
+        people_container = QWidget()
+        people_layout = QVBoxLayout(people_container)
+        people_layout.setContentsMargins(0, 0, 0, 0)
+        people_layout.setSpacing(4)
 
-        # ENHANCEMENT: Larger icon size for better face visibility (64x64)
-        # Was not set explicitly, defaulted to ~16px - now 64px for clear face identification
-        self.people_tree.setIconSize(QSize(64, 64))
-
-        # CRITICAL FIX: Disable horizontal scrollbar (text elision instead)
-        self.people_tree.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.people_tree.setTextElideMode(Qt.ElideRight)  # Elide text instead of scrolling
-
-        # ENHANCEMENT: Enable context menu for face management (rename/merge/delete)
-        self.people_tree.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.people_tree.customContextMenuRequested.connect(self._show_people_context_menu)
-
-        self.people_tree.setStyleSheet("""
-            QTreeWidget {
-                border: none;
-                background: transparent;
+        self.people_search = QLineEdit()
+        self.people_search.setPlaceholderText("🔍 Search people... (e.g., 'John', '>10 photos', 'John AND Alice')")
+        self.people_search.setClearButtonEnabled(True)
+        self.people_search.setStyleSheet("""
+            QLineEdit {
+                padding: 6px 8px;
+                border: 1px solid #dadce0;
+                border-radius: 16px;
+                background: #f8f9fa;
                 font-size: 10pt;
             }
-            QTreeWidget::item {
-                padding: 6px;
-                min-height: 70px;
+            QLineEdit:focus {
+                border: 1px solid #1a73e8;
+                background: white;
             }
-            QTreeWidget::item:hover {
-                background: #f1f3f4;
+        """)
+        self.people_search.textChanged.connect(self._on_people_search)
+        people_layout.addWidget(self.people_search)
+        
+        # Autocomplete dropdown for people search
+        self.people_autocomplete = QListWidget()
+        self.people_autocomplete.setWindowFlags(Qt.Popup | Qt.FramelessWindowHint)
+        self.people_autocomplete.setStyleSheet("""
+            QListWidget {
+                background: white;
+                border: 1px solid #dadce0;
                 border-radius: 4px;
+                padding: 4px;
             }
-            QTreeWidget::item:selected {
+            QListWidget::item {
+                padding: 8px 12px;
+                border-radius: 2px;
+            }
+            QListWidget::item:hover {
+                background: #f1f3f4;
+            }
+            QListWidget::item:selected {
                 background: #e8f0fe;
                 color: #1a73e8;
-                border-radius: 4px;
             }
         """)
-        # Connect click signal to filter handler
-        self.people_tree.itemClicked.connect(self._on_people_item_clicked)
-        layout.addWidget(self.people_tree)
+        self.people_autocomplete.setMaximumHeight(200)
+        self.people_autocomplete.hide()
+        self.people_autocomplete.itemClicked.connect(self._on_autocomplete_selected)
+        
+        # Install event filter for keyboard navigation in autocomplete
+        self.autocomplete_event_filter = AutocompleteEventFilter(
+            self.people_search, self.people_autocomplete, self
+        )
+        self.people_search.installEventFilter(self.autocomplete_event_filter)
 
-        # Videos section header (clickable to show all videos)
-        videos_header = QPushButton("🎬 Videos")
-        videos_header.setFlat(True)
-        videos_header.setCursor(Qt.PointingHandCursor)
-        videos_header.setStyleSheet("""
-            QPushButton {
-                text-align: left;
-                font-size: 12pt;
-                font-weight: bold;
-                color: #202124;
-                border: none;
-                padding: 4px 0px;
-                margin-top: 12px;
-            }
-            QPushButton:hover {
-                color: #1a73e8;
-                background: transparent;
-            }
-        """)
-        videos_header.clicked.connect(self._on_videos_header_clicked)
-        layout.addWidget(videos_header)
+        # NEW: Grid view for people (replaces tree!)
+        self.people_grid = PeopleGridView()
+        self.people_grid.person_clicked.connect(self._on_person_clicked_from_grid)
+        self.people_grid.context_menu_requested.connect(self._on_person_context_menu)
+        self.people_grid.drag_merge_requested.connect(self._on_drag_merge)
+        people_layout.addWidget(self.people_grid)
+
+        # Add container to section
+        self.people_section.add_widget(people_container)
+        scroll_layout.addWidget(self.people_section)
+
+        # Keep old people_tree for backward compatibility (but hide it)
+        # This prevents errors in code that references self.people_tree
+        self.people_tree = QTreeWidget()
+        self.people_tree.setHeaderHidden(True)
+        self.people_tree.setIconSize(QSize(64, 64))
+        self.people_tree.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.people_tree.customContextMenuRequested.connect(self._show_people_context_menu)
+        self.people_tree.itemClicked.connect(self._on_people_item_clicked)
+        self.people_tree.hide()  # Hidden - grid is used instead
+
+        # === SECTION 4: Videos (Collapsible) ===
+        self.videos_section = CollapsibleSection("Videos", "🎬", 0)
 
         # Videos tree
         self.videos_tree = QTreeWidget()
@@ -7954,12 +8566,23 @@ class GooglePhotosLayout(BaseLayout):
                 color: #1a73e8;
             }
         """)
-        # Connect click signal to filter handler
         self.videos_tree.itemClicked.connect(self._on_videos_item_clicked)
-        layout.addWidget(self.videos_tree)
+
+        # Add videos tree to section
+        self.videos_section.add_widget(self.videos_tree)
+        scroll_layout.addWidget(self.videos_section)
 
         # Spacer at bottom
-        layout.addStretch()
+        scroll_layout.addStretch()
+
+        self.sidebar_scroll.setWidget(scroll_content)
+        content_layout.addWidget(self.sidebar_scroll)
+
+        print("[GooglePhotosLayout] ✅ Sidebar created with vertical nav bar, collapsible sections, and People grid view")
+
+        # CRITICAL FIX: Populate People grid immediately after sidebar creation
+        # This ensures faces are visible on initial load, not just after filtering
+        QTimer.singleShot(100, self._build_people_tree)
 
         return sidebar
 
@@ -8165,13 +8788,19 @@ class GooglePhotosLayout(BaseLayout):
             # Group photos by date
             photos_by_date = self._group_photos_by_date(rows)
 
-            # Build timeline, folders, people, and videos trees (only if not filtering)
-            # This shows ALL years/months/folders/people/videos, not just filtered ones
+            # Build sidebar sections
+            # CRITICAL: Sidebar should ALWAYS show ALL items (not filtered)
+            # Only the photo grid should be filtered, not the sidebar navigation
             if filter_year is None and filter_month is None and filter_folder is None and filter_person is None:
+                # Full rebuild of all sections when no filters active
                 self._build_timeline_tree(photos_by_date)
                 self._build_folders_tree(rows)
                 self._build_people_tree()
                 self._build_videos_tree()
+            else:
+                # When filtering photos, still update People section
+                # (user should always see all faces to switch between them)
+                self._build_people_tree()
 
             # Track all displayed paths for Shift+Ctrl multi-selection
             self.all_displayed_paths = [photo[0] for photos_list in photos_by_date.values() for photo in photos_list]
@@ -8395,21 +9024,23 @@ class GooglePhotosLayout(BaseLayout):
 
     def _build_people_tree(self):
         """
-        Build people tree in sidebar (face clusters with counts).
+        Build people grid/tree in sidebar (face clusters with counts).
 
+        Phase 1+2: Now populates both grid view AND tree (tree hidden, kept for compatibility).
         Queries face_branch_reps table for detected faces/people.
         """
+        print("[GooglePhotosLayout] 🔍 _build_people_tree() called")
         try:
             from reference_db import ReferenceDB
             db = ReferenceDB()
 
-            # Query face clusters for current project (with representative image)
+            # Query ALL face clusters for current project (removed LIMIT 10)
+            # Grid view can handle many more people than tree view!
             query = """
                 SELECT branch_key, label, count, rep_path, rep_thumb_png
                 FROM face_branch_reps
                 WHERE project_id = ?
                 ORDER BY count DESC
-                LIMIT 10
             """
 
             print(f"[GooglePhotosLayout] 👥 Querying face_branch_reps for project_id={self.project_id}")
@@ -8420,38 +9051,96 @@ class GooglePhotosLayout(BaseLayout):
                 cur.execute(query, (self.project_id,))
                 rows = cur.fetchall()
 
-            print(f"[GooglePhotosLayout] 👥 Found {len(rows)} face clusters")
-            for branch_key, label, count, rep_path, rep_thumb_png in rows:
-                print(f"[GooglePhotosLayout]   - {branch_key}: {label or 'Unnamed'} ({count} photos)")
+            print(f"[GooglePhotosLayout] 👥 Found {len(rows)} face clusters in database")
 
-            if not rows:
-                # No face clusters found - show placeholder
-                no_faces_item = QTreeWidgetItem(["  (Run face detection first)"])
-                no_faces_item.setDisabled(True)
-                self.people_tree.addTopLevelItem(no_faces_item)
+            # Update section count badge
+            if hasattr(self, 'people_section'):
+                self.people_section.update_count(len(rows))
+                print(f"[GooglePhotosLayout] ✓ Updated people section count badge: {len(rows)}")
+            else:
+                print("[GooglePhotosLayout] ⚠️ people_section not found!")
+
+            # Clear existing grid
+            if hasattr(self, 'people_grid'):
+                self.people_grid.clear()
+                print(f"[GooglePhotosLayout] ✓ Cleared people grid")
+            else:
+                print("[GooglePhotosLayout] ⚠️ people_grid not found!")
                 return
 
-            # Build tree with thumbnails
-            for branch_key, label, count, rep_path, rep_thumb_png in rows:
-                # Use label if set, otherwise use "Unnamed Person"
-                display_name = label if label else f"Unnamed Person"
+            if not rows:
+                # No face clusters found
+                print("[GooglePhotosLayout] No faces found - grid will show empty state")
+                # Grid shows its own empty state message
+                return
 
-                # Create tree item
+            # Populate GRID VIEW (Phase 1+2)
+            added_count = 0
+            for branch_key, label, count, rep_path, rep_thumb_png in rows:
+                # Use label if set, otherwise use "Unnamed"
+                display_name = label if label else "Unnamed"
+
+                # Load face thumbnail as pixmap
+                face_pixmap = None
+                if rep_thumb_png:
+                    try:
+                        from PySide6.QtGui import QPixmap
+                        import base64
+                        img_data = base64.b64decode(rep_thumb_png)
+                        face_pixmap = QPixmap()
+                        success = face_pixmap.loadFromData(img_data)
+                        if success:
+                            print(f"[GooglePhotosLayout]   ✓ Loaded pixmap for {display_name}: {face_pixmap.width()}x{face_pixmap.height()}")
+                        else:
+                            print(f"[GooglePhotosLayout]   ⚠️ Failed to load pixmap for {display_name}")
+                            face_pixmap = None
+                    except Exception as e:
+                        print(f"[GooglePhotosLayout] ⚠️ Error loading face pixmap for {display_name}: {e}")
+                        face_pixmap = None
+                # Fallback: if no BLOB thumbnail, try loading from representative file path
+                if face_pixmap is None and rep_path:
+                    try:
+                        from PySide6.QtGui import QPixmap
+                        import os
+                        if os.path.exists(rep_path):
+                            file_pixmap = QPixmap(rep_path)
+                            if not file_pixmap.isNull():
+                                face_pixmap = file_pixmap
+                                print(f"[GooglePhotosLayout]   ✓ Loaded pixmap from file for {display_name}")
+                            else:
+                                print(f"[GooglePhotosLayout]   ⚠️ Pixmap from file is null for {display_name}")
+                        else:
+                            print(f"[GooglePhotosLayout]   ⚠️ rep_path not found for {display_name}: {rep_path}")
+                    except Exception as e:
+                        print(f"[GooglePhotosLayout] ⚠️ Error loading face pixmap from file for {display_name}: {e}")
+
+                # Add to grid with both branch_key and display_name
+                if hasattr(self, 'people_grid'):
+                    self.people_grid.add_person(branch_key, display_name, face_pixmap, count)
+                    added_count += 1
+                    print(f"[GooglePhotosLayout]   ✓ Added to grid [{added_count}/{len(rows)}]: {display_name} ({count} photos)")
+
+            print(f"[GooglePhotosLayout] ✅ Populated people grid with {added_count} faces")
+
+            # Also populate old tree (hidden, for backward compatibility)
+            # This ensures any code that references self.people_tree still works
+            for branch_key, label, count, rep_path, rep_thumb_png in rows:
+                display_name = label if label else f"Unnamed Person"
                 person_item = QTreeWidgetItem([f"{display_name} ({count})"])
                 person_item.setData(0, Qt.UserRole, {"type": "person", "branch_key": branch_key, "label": label})
 
-                # Load and set face thumbnail as icon
                 icon = self._load_face_thumbnail(rep_path, rep_thumb_png)
                 if icon:
                     person_item.setIcon(0, icon)
                 else:
-                    # Fallback to emoji icon if no thumbnail available
                     person_item.setText(0, f"👤 {display_name} ({count})")
 
                 self.people_tree.addTopLevelItem(person_item)
 
+            print(f"[GooglePhotosLayout] ✅ _build_people_tree() completed successfully")
+
         except Exception as e:
-            print(f"[GooglePhotosLayout] ⚠️ Error building people tree: {e}")
+            print(f"[GooglePhotosLayout] ⚠️ Error building people grid: {e}")
             import traceback
             traceback.print_exc()
 
@@ -8572,6 +9261,559 @@ class GooglePhotosLayout(BaseLayout):
                 filter_person=branch_key
             )
 
+    def _on_person_clicked_from_grid(self, person_name: str):
+        """
+        Handle person card click from grid view - filter by person.
+
+        Args:
+            person_name: Name of person clicked (branch_key format: "cluster_X" or name)
+        """
+        print(f"[GooglePhotosLayout] Filtering by person from grid: {person_name}")
+        self._load_photos(
+            thumb_size=self.current_thumb_size,
+            filter_year=None,
+            filter_month=None,
+            filter_folder=None,
+            filter_person=person_name  # person_name is the branch_key
+        )
+
+    def _prompt_quick_name_dialog(self):
+        """Show a quick naming dialog for unnamed face clusters (top 12)."""
+        try:
+            from PySide6.QtWidgets import (
+                QDialog, QVBoxLayout, QLabel, QGridLayout, QPushButton, QLineEdit, QWidget, QScrollArea, QMessageBox
+            )
+            from PySide6.QtGui import QPixmap
+            import base64, os
+            from reference_db import ReferenceDB
+
+            # Fetch unnamed clusters
+            db = ReferenceDB()
+            rows = []
+            with db._connect() as conn:
+                cur = conn.cursor()
+                cur.execute(
+                    """
+                    SELECT branch_key, label, count, rep_path, rep_thumb_png
+                    FROM face_branch_reps
+                    WHERE project_id = ? AND (label IS NULL OR TRIM(label) = '')
+                    ORDER BY count DESC
+                    LIMIT 12
+                    """,
+                    (self.project_id,)
+                )
+                rows = cur.fetchall() or []
+
+            if not rows:
+                return  # Nothing to name
+
+            dlg = QDialog(self.main_window)
+            dlg.setWindowTitle("Review & Name People")
+            outer = QVBoxLayout(dlg)
+            outer.setContentsMargins(16, 16, 16, 16)
+            outer.setSpacing(12)
+
+            header = QLabel("Face detection complete – name these people")
+            header.setStyleSheet("color: white; font-size: 12pt;")
+            outer.addWidget(header)
+
+            # Scrollable grid of cards
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            container = QWidget()
+            grid = QGridLayout(container)
+            grid.setContentsMargins(8, 8, 8, 8)
+            grid.setSpacing(12)
+
+            editors = {}
+
+            for i, row in enumerate(rows):
+                branch_key, label, count, rep_path, rep_thumb = row
+                card = QWidget()
+                v = QVBoxLayout(card)
+                v.setContentsMargins(8, 8, 8, 8)
+                v.setSpacing(6)
+
+                # Face preview
+                face = QLabel()
+                face.setFixedSize(200, 200)
+                pix = None
+                try:
+                    if rep_thumb:
+                        data = base64.b64decode(rep_thumb) if isinstance(rep_thumb, str) else rep_thumb
+                        pix = QPixmap()
+                        pix.loadFromData(data)
+                    if (pix is None or pix.isNull()) and rep_path and os.path.exists(rep_path):
+                        pix = QPixmap(rep_path)
+                    if pix and not pix.isNull():
+                        face.setPixmap(pix.scaled(200, 200, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+                except Exception:
+                    pass
+                v.addWidget(face)
+
+                # Name editor
+                name_edit = QLineEdit()
+                name_edit.setPlaceholderText(f"Unnamed ({count} photos)")
+                editors[branch_key] = name_edit
+                v.addWidget(name_edit)
+
+                # Place in grid
+                row_i = i // 4
+                col_i = i % 4
+                grid.addWidget(card, row_i, col_i)
+
+            scroll.setWidget(container)
+            outer.addWidget(scroll, 1)
+
+            # Actions
+            actions = QWidget()
+            ha = QHBoxLayout(actions)
+            ha.setContentsMargins(0, 0, 0, 0)
+            ha.addStretch()
+            btn_skip = QPushButton("Review Later")
+            btn_apply = QPushButton("Name Selected")
+            ha.addWidget(btn_skip)
+            ha.addWidget(btn_apply)
+            outer.addWidget(actions)
+
+            def apply_names():
+                try:
+                    updates = [(bk, editors[bk].text().strip()) for bk in editors]
+                    updates = [(bk, nm) for bk, nm in updates if nm]
+                    if not updates:
+                        dlg.accept()
+                        return
+                    with db._connect() as conn:
+                        cur = conn.cursor()
+                        for bk, nm in updates:
+                            cur.execute(
+                                "UPDATE face_branch_reps SET label = ? WHERE project_id = ? AND branch_key = ?",
+                                (nm, self.project_id, bk)
+                            )
+                            cur.execute(
+                                "UPDATE branches SET display_name = ? WHERE project_id = ? AND branch_key = ?",
+                                (nm, self.project_id, bk)
+                            )
+                        conn.commit()
+                    # Refresh people UI
+                    if hasattr(self, '_build_people_tree'):
+                        self._build_people_tree()
+                    QMessageBox.information(dlg, "Saved", f"Named {len(updates)} people.")
+                    dlg.accept()
+                except Exception as e:
+                    QMessageBox.critical(dlg, "Error", f"Failed to save names: {e}")
+
+            btn_apply.clicked.connect(apply_names)
+            btn_skip.clicked.connect(dlg.reject)
+
+            dlg.exec()
+        except Exception as e:
+            print(f"[GooglePhotosLayout] Quick name dialog failed: {e}")
+
+    def _prompt_bulk_face_review(self):
+        """Bulk review grid for all unnamed clusters with simple filters."""
+        try:
+            from PySide6.QtWidgets import (
+                QDialog, QVBoxLayout, QHBoxLayout, QLabel, QGridLayout, QPushButton, QComboBox, QLineEdit, QWidget, QScrollArea, QMessageBox
+            )
+            from PySide6.QtGui import QPixmap
+            import base64, os
+            from reference_db import ReferenceDB
+
+            db = ReferenceDB()
+            with db._connect() as conn:
+                cur = conn.cursor()
+                cur.execute(
+                    """
+                    SELECT branch_key, label, count, rep_path, rep_thumb_png
+                    FROM face_branch_reps
+                    WHERE project_id = ? AND (label IS NULL OR TRIM(label) = '')
+                    ORDER BY count DESC
+                    """,
+                    (self.project_id,)
+                )
+                rows = cur.fetchall() or []
+
+            if not rows:
+                QMessageBox.information(self.main_window, "No Unnamed People", "All people are already named.")
+                return
+
+            dlg = QDialog(self.main_window)
+            dlg.setWindowTitle("Bulk Review: Name Unnamed People")
+            outer = QVBoxLayout(dlg)
+            outer.setContentsMargins(16, 16, 16, 16)
+            outer.setSpacing(10)
+
+            # Header + filter
+            header_row = QHBoxLayout()
+            header = QLabel("Review all unnamed people")
+            header.setStyleSheet("color: white; font-size: 12pt;")
+            header_row.addWidget(header)
+            header_row.addStretch()
+            filter_combo = QComboBox()
+            filter_combo.addItems(["All", "Large groups (≥5)", "Uncertain (<5)"])
+            header_row.addWidget(filter_combo)
+            outer.addLayout(header_row)
+
+            # Search box
+            search_box = QLineEdit()
+            search_box.setPlaceholderText("Filter by suggested name…")
+            outer.addWidget(search_box)
+
+            # Scrollable grid
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            container = QWidget()
+            grid = QGridLayout(container)
+            grid.setContentsMargins(8, 8, 8, 8)
+            grid.setSpacing(12)
+
+            editors = {}
+            cards = []
+
+            def populate():
+                # Clear existing
+                while grid.count():
+                    it = grid.takeAt(0)
+                    if it and it.widget():
+                        it.widget().deleteLater()
+                cards.clear()
+
+                # Filter function
+                selected = filter_combo.currentIndex()
+                text = search_box.text().strip().lower()
+                def passes(count):
+                    return (
+                        selected == 0 or
+                        (selected == 1 and count >= 5) or
+                        (selected == 2 and count < 5)
+                    )
+
+                # Populate
+                i = 0
+                for row in rows:
+                    branch_key, label, count, rep_path, rep_thumb = row
+                    if not passes(count):
+                        continue
+                    # Build card
+                    card = QWidget()
+                    v = QVBoxLayout(card)
+                    v.setContentsMargins(8, 8, 8, 8)
+                    v.setSpacing(6)
+
+                    # Face preview
+                    face = QLabel()
+                    face.setFixedSize(200, 200)
+                    pix = None
+                    try:
+                        if rep_thumb:
+                            data = base64.b64decode(rep_thumb) if isinstance(rep_thumb, str) else rep_thumb
+                            pix = QPixmap()
+                            pix.loadFromData(data)
+                        if (pix is None or pix.isNull()) and rep_path and os.path.exists(rep_path):
+                            pix = QPixmap(rep_path)
+                        if pix and not pix.isNull():
+                            face.setPixmap(pix.scaled(200, 200, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+                    except Exception:
+                        pass
+                    v.addWidget(face)
+
+                    # Confidence hint based on compactness (mean similarity to centroid)
+                    try:
+                        import numpy as np
+                        from reference_db import ReferenceDB
+                        db_local = ReferenceDB()
+                        with db_local._connect() as conn2:
+                            cur2 = conn2.cursor()
+                            cur2.execute("SELECT centroid FROM face_branch_reps WHERE project_id = ? AND branch_key = ?", (self.project_id, branch_key))
+                            r = cur2.fetchone()
+                            centroid_vec = np.frombuffer(r[0], dtype=np.float32) if r and r[0] else None
+                            mean_sim = 0.0
+                            if centroid_vec is not None:
+                                cur2.execute("SELECT embedding FROM face_crops WHERE project_id = ? AND branch_key = ? AND embedding IS NOT NULL LIMIT 30", (self.project_id, branch_key))
+                                embs = [np.frombuffer(e[0], dtype=np.float32) for e in cur2.fetchall() if e and e[0]]
+                                sims = []
+                                for vec in embs:
+                                    denom = (np.linalg.norm(centroid_vec) * np.linalg.norm(vec))
+                                    if denom > 0:
+                                        sims.append(float(np.dot(centroid_vec, vec) / denom))
+                                if sims:
+                                    mean_sim = float(np.mean(sims))
+                            # Badge by compactness
+                            conf = "✅" if mean_sim >= 0.85 else ("⚠️" if mean_sim >= 0.70 else "❓")
+                            hint = QLabel(f"{conf} compactness: {int(mean_sim*100)}% • {count} photos")
+                    except Exception:
+                        conf = "✅" if count >= 10 else ("⚠️" if count >= 5 else "❓")
+                        hint = QLabel(f"{conf} {count} photos")
+                    hint.setStyleSheet("color: #5f6368;")
+                    v.addWidget(hint)
+
+                    # Name editor
+                    name_edit = QLineEdit()
+                    name_edit.setPlaceholderText(f"Unnamed ({count} photos)")
+                    editors[branch_key] = name_edit
+                    v.addWidget(name_edit)
+
+                    row_i = i // 4
+                    col_i = i % 4
+                    grid.addWidget(card, row_i, col_i)
+                    cards.append(card)
+                    i += 1
+
+            populate()
+
+            def apply_names():
+                try:
+                    updates = [(bk, editors[bk].text().strip()) for bk in editors]
+                    updates = [(bk, nm) for bk, nm in updates if nm]
+                    if not updates:
+                        dlg.accept()
+                        return
+                    db = ReferenceDB()
+                    with db._connect() as conn:
+                        cur = conn.cursor()
+                        for bk, nm in updates:
+                            cur.execute("UPDATE face_branch_reps SET label = ? WHERE project_id = ? AND branch_key = ?", (nm, self.project_id, bk))
+                            cur.execute("UPDATE branches SET display_name = ? WHERE project_id = ? AND branch_key = ?", (nm, self.project_id, bk))
+                        conn.commit()
+                    if hasattr(self, '_build_people_tree'):
+                        self._build_people_tree()
+                    QMessageBox.information(dlg, "Saved", f"Named {len(updates)} people.")
+                    dlg.accept()
+                except Exception as e:
+                    QMessageBox.critical(dlg, "Error", f"Failed to save names: {e}")
+
+            scroll.setWidget(container)
+            outer.addWidget(scroll, 1)
+
+            # Actions
+            actions = QWidget()
+            ha = QHBoxLayout(actions)
+            ha.setContentsMargins(0, 0, 0, 0)
+            ha.addStretch()
+            btn_close = QPushButton("Close")
+            btn_apply = QPushButton("Name Selected")
+            ha.addWidget(btn_close)
+            ha.addWidget(btn_apply)
+            outer.addWidget(actions)
+
+            btn_apply.clicked.connect(apply_names)
+            btn_close.clicked.connect(dlg.reject)
+            filter_combo.currentIndexChanged.connect(lambda _: populate())
+            search_box.textChanged.connect(lambda _: populate())
+
+            dlg.exec()
+        except Exception as e:
+            print(f"[GooglePhotosLayout] Bulk review dialog failed: {e}")
+    def _on_person_context_menu(self, branch_key: str, action: str):
+        """Handle context menu action on person card."""
+        print(f"[GooglePhotosLayout] Context menu action '{action}' for {branch_key}")
+
+        # Get current display name from database
+        from reference_db import ReferenceDB
+        db = ReferenceDB()
+
+        try:
+            query = "SELECT label FROM face_branch_reps WHERE project_id = ? AND branch_key = ?"
+            with db._connect() as conn:
+                cur = conn.cursor()
+                cur.execute(query, (self.project_id, branch_key))
+                row = cur.fetchone()
+                current_name = row[0] if row and row[0] else "Unnamed"
+        except Exception as e:
+            print(f"[GooglePhotosLayout] Error fetching person name: {e}")
+            current_name = "Unnamed"
+
+        # Dispatch to appropriate handler
+        if action == "rename":
+            self._rename_person(None, branch_key, current_name)
+        elif action == "merge":
+            self._merge_person(branch_key, current_name)
+        elif action == "delete":
+            self._delete_person(branch_key, current_name)
+        elif action == "suggest_merge":
+            if hasattr(self, '_prompt_merge_suggestions'):
+                self._prompt_merge_suggestions(branch_key)
+        elif action == "details":
+            if hasattr(self, '_open_person_detail'):
+                self._open_person_detail(branch_key)
+
+    def _filter_people_grid(self, text: str):
+        """
+        Filter people grid by search text.
+
+        Args:
+            text: Search query to filter by name
+        """
+        search_query = text.lower().strip()
+        print(f"[GooglePhotosLayout] Filtering people grid: '{search_query}'")
+
+        # Show/hide cards based on search
+        if hasattr(self, 'people_grid') and hasattr(self.people_grid, 'flow_layout'):
+            visible_count = 0
+            for i in range(self.people_grid.flow_layout.count()):
+                item = self.people_grid.flow_layout.itemAt(i)
+                if item and item.widget():
+                    card = item.widget()
+                    if isinstance(card, PersonCard):
+                        # Check if display name matches search
+                        name_matches = search_query in card.display_name.lower()
+                        card.setVisible(name_matches or not search_query)
+                        if card.isVisible():
+                            visible_count += 1
+
+            print(f"[GooglePhotosLayout] Filter results: {visible_count} people visible")
+
+            # Update section count badge to show filtered count
+            if hasattr(self, 'people_section'):
+                total_count = self.people_grid.flow_layout.count()
+                if search_query:
+                    self.people_section.update_count(f"{visible_count}/{total_count}")
+                else:
+                    self.people_section.update_count(total_count)
+    
+    def _on_people_search_OLD_REMOVED(self, text: str):
+        """
+        Filter people grid by search text (Phase 3).
+        DEPRECATED: Replaced by enhanced version with autocomplete.
+
+        Args:
+            text: Search query to filter by name
+        """
+        search_query = text.lower().strip()
+        print(f"[GooglePhotosLayout] Searching people: '{search_query}'")
+
+        # Show/hide cards based on search
+        if hasattr(self, 'people_grid') and hasattr(self.people_grid, 'flow_layout'):
+            visible_count = 0
+            for i in range(self.people_grid.flow_layout.count()):
+                item = self.people_grid.flow_layout.itemAt(i)
+                if item and item.widget():
+                    card = item.widget()
+                    if isinstance(card, PersonCard):
+                        # Check if display name matches search
+                        name_matches = search_query in card.display_name.lower()
+                        card.setVisible(name_matches or not search_query)
+                        if card.isVisible():
+                            visible_count += 1
+
+            print(f"[GooglePhotosLayout] Search results: {visible_count} people visible")
+
+            # Update section count badge to show filtered count
+            if hasattr(self, 'people_section'):
+                total_count = self.people_grid.flow_layout.count()
+                if search_query:
+                    self.people_section.update_count(f"{visible_count}/{total_count}")
+                else:
+                    self.people_section.update_count(total_count)
+
+    def _scroll_to_section(self, section_attr: str):
+        """
+        Focus on a section: Expand it and collapse others (accordion style).
+
+        PHASE 3: Navigation Filtering - Show only the selected section for focused view.
+        This matches iPhone Photos behavior where tapping a section focuses on it.
+
+        Args:
+            section_attr: Attribute name of the section (e.g., "timeline_section")
+        """
+        if not hasattr(self, section_attr):
+            return
+
+        section = getattr(self, section_attr)
+        if not section or not hasattr(self, 'sidebar_scroll'):
+            return
+
+        print(f"[GooglePhotosLayout] Focusing on section: {section_attr}")
+
+        # ACCORDION BEHAVIOR: Collapse all other sections, expand clicked section
+        all_sections = ['timeline_section', 'folders_section', 'people_section', 'videos_section']
+
+        for sect_attr in all_sections:
+            if not hasattr(self, sect_attr):
+                continue
+
+            sect = getattr(self, sect_attr)
+            if sect and hasattr(sect, 'is_expanded'):
+                if sect_attr == section_attr:
+                    # Expand clicked section
+                    if not sect.is_expanded:
+                        sect.expand()
+                else:
+                    # Collapse other sections for focused view
+                    if sect.is_expanded:
+                        sect.collapse()
+
+        # Scroll to make section visible at top
+        self.sidebar_scroll.ensureWidgetVisible(section, 0, 20)
+
+        # Update navigation button visual state (highlight active)
+        if hasattr(self, 'nav_buttons'):
+            for btn_attr, btn in self.nav_buttons.items():
+                if btn_attr == section_attr:
+                    # Highlight active button
+                    btn.setStyleSheet("""
+                        QPushButton {
+                            background: rgba(26, 115, 232, 0.15);
+                            border: none;
+                            border-radius: 8px;
+                            font-size: 18pt;
+                        }
+                        QPushButton:hover {
+                            background: rgba(26, 115, 232, 0.25);
+                        }
+                    """)
+                else:
+                    # Reset inactive buttons
+                    btn.setStyleSheet("""
+                        QPushButton {
+                            background: transparent;
+                            border: none;
+                            border-radius: 8px;
+                            font-size: 18pt;
+                        }
+                        QPushButton:hover {
+                            background: rgba(26, 115, 232, 0.08);
+                        }
+                        QPushButton:pressed {
+                            background: rgba(26, 115, 232, 0.15);
+                        }
+                    """)
+
+    def _expand_all_sections(self):
+        """
+        Expand all sidebar sections (reset accordion state).
+
+        Useful after using accordion mode to focus on one section.
+        """
+        print("[GooglePhotosLayout] Expanding all sections")
+
+        all_sections = ['timeline_section', 'folders_section', 'people_section', 'videos_section']
+
+        for sect_attr in all_sections:
+            if hasattr(self, sect_attr):
+                sect = getattr(self, sect_attr)
+                if sect and hasattr(sect, 'is_expanded') and not sect.is_expanded:
+                    sect.expand()
+
+        # Reset all navigation button highlights
+        if hasattr(self, 'nav_buttons'):
+            for btn in self.nav_buttons.values():
+                btn.setStyleSheet("""
+                    QPushButton {
+                        background: transparent;
+                        border: none;
+                        border-radius: 8px;
+                        font-size: 18pt;
+                    }
+                    QPushButton:hover {
+                        background: rgba(26, 115, 232, 0.08);
+                    }
+                    QPushButton:pressed {
+                        background: rgba(26, 115, 232, 0.15);
+                    }
+                """)
+
     def _show_people_context_menu(self, pos):
         """
         Show context menu for people tree items (rename/merge/delete).
@@ -8619,7 +9861,11 @@ class GooglePhotosLayout(BaseLayout):
         menu.exec(self.people_tree.viewport().mapToGlobal(pos))
 
     def _rename_person(self, item: QTreeWidgetItem, branch_key: str, current_name: str):
-        """Rename a person/face cluster."""
+        """
+        Rename a person/face cluster.
+
+        Works for both grid view (item=None) and tree view (item=QTreeWidgetItem).
+        """
         from PySide6.QtWidgets import QInputDialog, QMessageBox
 
         new_name, ok = QInputDialog.getText(
@@ -8657,16 +9903,21 @@ class GooglePhotosLayout(BaseLayout):
 
                 conn.commit()
 
-            # Update UI - preserve count
-            old_text = item.text(0)
-            count_part = old_text.split('(')[-1] if '(' in old_text else "0)"
-            item.setText(0, f"{new_name} ({count_part}")
+            # Update UI based on view type
+            if item is not None:
+                # Tree view: Update tree item
+                old_text = item.text(0)
+                count_part = old_text.split('(')[-1] if '(' in old_text else "0)"
+                item.setText(0, f"{new_name} ({count_part}")
 
-            # Update data
-            data = item.data(0, Qt.UserRole)
-            if data:
-                data["label"] = new_name
-                item.setData(0, Qt.UserRole, data)
+                # Update data
+                data = item.data(0, Qt.UserRole)
+                if data:
+                    data["label"] = new_name
+                    item.setData(0, Qt.UserRole, data)
+            else:
+                # Grid view: Refresh the entire people grid to show updated name
+                self._build_people_tree()
 
             print(f"[GooglePhotosLayout] Person renamed: {current_name} → {new_name}")
             QMessageBox.information(self.main_window, "Renamed", f"Person renamed to '{new_name}'")
@@ -8677,7 +9928,7 @@ class GooglePhotosLayout(BaseLayout):
 
     def _merge_person(self, source_branch_key: str, source_name: str):
         """Merge this person with another person."""
-        from PySide6.QtWidgets import QDialog, QListWidget, QDialogButtonBox, QVBoxLayout, QLabel, QMessageBox
+        from PySide6.QtWidgets import QDialog, QListWidget, QListWidgetItem, QDialogButtonBox, QVBoxLayout, QLabel, QMessageBox
 
         # Get all other persons
         from reference_db import ReferenceDB
@@ -8734,36 +9985,1091 @@ class GooglePhotosLayout(BaseLayout):
             from reference_db import ReferenceDB
             db = ReferenceDB()
 
-            with db._connect() as conn:
-                # Move all faces from source to target
-                conn.execute("""
-                    UPDATE face_crops
-                    SET branch_key = ?
-                    WHERE project_id = ? AND branch_key = ?
-                """, (target_key, self.project_id, source_key))
+            # Use the proper merge_face_clusters method that handles counts correctly
+            result = db.merge_face_clusters(
+                project_id=self.project_id,
+                target_branch=target_key,
+                source_branches=[source_key],
+                log_undo=True
+            )
 
-                # Delete source branch
-                conn.execute("""
-                    DELETE FROM face_branch_reps
-                    WHERE project_id = ? AND branch_key = ?
-                """, (self.project_id, source_key))
+            # Clear redo stack (new merge invalidates redo history)
+            if hasattr(self, 'redo_stack'):
+                self.redo_stack.clear()
 
-                conn.execute("""
-                    DELETE FROM branches
-                    WHERE project_id = ? AND branch_key = ?
-                """, (self.project_id, source_key))
-
-                conn.commit()
-
-            # Rebuild people tree
+            # Rebuild people tree to show updated counts
             self._build_people_tree()
+            
+            # Update undo/redo button states
+            self._update_undo_redo_state()
 
-            print(f"[GooglePhotosLayout] Merge successful: {source_name} merged")
-            QMessageBox.information(self.main_window, "Merged", f"'{source_name}' merged successfully")
+            print(f"[GooglePhotosLayout] Merge successful: {source_name} merged into {target_key}")
+            print(f"[GooglePhotosLayout] Merge result: {result}")
+            QMessageBox.information(
+                self.main_window,
+                "Merged",
+                f"'{source_name}' merged successfully\n"
+                f"Moved {result['moved_faces']} face(s)"
+            )
 
         except Exception as e:
             print(f"[GooglePhotosLayout] Merge failed: {e}")
+            import traceback
+            traceback.print_exc()
             QMessageBox.critical(self.main_window, "Merge Failed", f"Error: {e}")
+    
+    def _on_drag_merge(self, source_branch: str, target_branch: str):
+        """Handle drag-and-drop merge from People grid."""
+        try:
+            from reference_db import ReferenceDB
+            db = ReferenceDB()
+            
+            # Get source name for confirmation feedback
+            with db._connect() as conn:
+                cur = conn.cursor()
+                cur.execute("SELECT label FROM face_branch_reps WHERE project_id = ? AND branch_key = ?", (self.project_id, source_branch))
+                row = cur.fetchone()
+                source_name = row[0] if row and row[0] else source_branch
+            
+            # Perform merge using existing method
+            self._perform_merge(source_branch, target_branch, source_name)
+            
+        except Exception as e:
+            print(f"[GooglePhotosLayout] Drag-drop merge failed: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def _undo_last_merge(self):
+        """Undo the last face merge operation."""
+        from PySide6.QtWidgets import QMessageBox
+        
+        try:
+            from reference_db import ReferenceDB
+            db = ReferenceDB()
+            
+            # Get the last merge before undoing (for redo stack)
+            with db._connect() as conn:
+                cur = conn.cursor()
+                cur.execute(
+                    "SELECT id, target_branch, source_branches, snapshot FROM face_merge_history WHERE project_id = ? ORDER BY id DESC LIMIT 1",
+                    (self.project_id,)
+                )
+                last_merge = cur.fetchone()
+            
+            # Perform undo
+            result = db.undo_last_face_merge(self.project_id)
+            
+            if result:
+                # Add to redo stack
+                if last_merge:
+                    self.redo_stack.append({
+                        'id': last_merge[0],
+                        'target': last_merge[1],
+                        'sources': last_merge[2],
+                        'snapshot': last_merge[3]
+                    })
+                
+                # Rebuild people tree to show restored clusters
+                self._build_people_tree()
+                
+                # Update undo/redo button states
+                self._update_undo_redo_state()
+                
+                QMessageBox.information(
+                    self.main_window,
+                    "Undo Successful",
+                    f"✅ Merge undone successfully\n\n"
+                    f"Restored {result['clusters']} person(s)\n"
+                    f"Moved {result['faces']} face(s) back"
+                )
+                print(f"[GooglePhotosLayout] Undo successful: {result}")
+            else:
+                QMessageBox.information(
+                    self.main_window,
+                    "No Undo Available",
+                    "There are no recent merges to undo."
+                )
+                
+        except Exception as e:
+            print(f"[GooglePhotosLayout] Undo failed: {e}")
+            import traceback
+            traceback.print_exc()
+            QMessageBox.critical(self.main_window, "Undo Failed", f"Error: {e}")
+    
+    def _redo_last_undo(self):
+        """Redo the last undone merge operation."""
+        from PySide6.QtWidgets import QMessageBox
+        
+        if not self.redo_stack:
+            QMessageBox.information(
+                self.main_window,
+                "No Redo Available",
+                "There are no undone operations to redo."
+            )
+            return
+        
+        try:
+            from reference_db import ReferenceDB
+            import json
+            db = ReferenceDB()
+            
+            # Pop from redo stack
+            redo_op = self.redo_stack.pop()
+            snapshot = json.loads(redo_op['snapshot']) if isinstance(redo_op['snapshot'], str) else redo_op['snapshot']
+            
+            # Re-apply the merge by restoring snapshot state
+            # Get source branches from snapshot
+            branch_keys = snapshot.get('branch_keys', [])
+            target = redo_op['target']
+            sources = [k for k in branch_keys if k != target]
+            
+            if sources:
+                # Re-merge using existing method
+                result = db.merge_face_clusters(
+                    project_id=self.project_id,
+                    target_branch=target,
+                    source_branches=sources,
+                    log_undo=True
+                )
+                
+                # Rebuild people tree
+                self._build_people_tree()
+                
+                # Update button states
+                self._update_undo_redo_state()
+                
+                QMessageBox.information(
+                    self.main_window,
+                    "Redo Successful",
+                    f"✅ Merge re-applied successfully\n\n"
+                    f"Moved {result['moved_faces']} face(s)"
+                )
+                print(f"[GooglePhotosLayout] Redo successful: {result}")
+            
+        except Exception as e:
+            print(f"[GooglePhotosLayout] Redo failed: {e}")
+            import traceback
+            traceback.print_exc()
+            QMessageBox.critical(self.main_window, "Redo Failed", f"Error: {e}")
+    
+    def _update_undo_redo_state(self):
+        """Update undo/redo button enabled/disabled states."""
+        try:
+            from reference_db import ReferenceDB
+            db = ReferenceDB()
+            
+            # Check if there are any undo records
+            with db._connect() as conn:
+                cur = conn.cursor()
+                cur.execute(
+                    "SELECT COUNT(*) FROM face_merge_history WHERE project_id = ?",
+                    (self.project_id,)
+                )
+                undo_count = cur.fetchone()[0]
+                
+                # Update undo button
+                if hasattr(self, 'people_undo_btn'):
+                    self.people_undo_btn.setEnabled(undo_count > 0)
+                    self.people_undo_btn.setToolTip(
+                        f"Undo Last Merge ({undo_count} available)" if undo_count > 0 else "No merges to undo"
+                    )
+                
+                # Update redo button
+                if hasattr(self, 'people_redo_btn'):
+                    redo_count = len(self.redo_stack)
+                    self.people_redo_btn.setEnabled(redo_count > 0)
+                    self.people_redo_btn.setToolTip(
+                        f"Redo Last Undo ({redo_count} available)" if redo_count > 0 else "No undos to redo"
+                    )
+                    
+        except Exception as e:
+            print(f"[GooglePhotosLayout] Failed to update undo/redo buttons: {e}")
+    
+    def _show_merge_history(self):
+        """Show merge history dialog with undo/redo options."""
+        from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QListWidget, QListWidgetItem, QMessageBox
+        
+        try:
+            from reference_db import ReferenceDB
+            import json
+            from datetime import datetime
+            db = ReferenceDB()
+            
+            # Fetch merge history
+            with db._connect() as conn:
+                cur = conn.cursor()
+                cur.execute(
+                    """SELECT id, target_branch, source_branches, snapshot, created_at 
+                       FROM face_merge_history 
+                       WHERE project_id = ? 
+                       ORDER BY id DESC
+                       LIMIT 50""",
+                    (self.project_id,)
+                )
+                history = cur.fetchall()
+            
+            if not history:
+                QMessageBox.information(
+                    self.main_window,
+                    "No History",
+                    "No merge operations have been performed yet."
+                )
+                return
+            
+            # Create dialog
+            dlg = QDialog(self.main_window)
+            dlg.setWindowTitle("📜 Merge History")
+            dlg.resize(600, 500)
+            layout = QVBoxLayout(dlg)
+            
+            # Header
+            header = QLabel(f"<b>Merge History</b> ({len(history)} operations)")
+            header.setStyleSheet("font-size: 12pt; padding: 8px;")
+            layout.addWidget(header)
+            
+            # History list
+            history_list = QListWidget()
+            history_list.setStyleSheet("""
+                QListWidget::item {
+                    padding: 12px;
+                    border-bottom: 1px solid #e8eaed;
+                }
+                QListWidget::item:hover {
+                    background: #f8f9fa;
+                }
+            """)
+            
+            for merge_id, target, sources, snapshot_str, created_at in history:
+                # Parse snapshot to get names
+                try:
+                    snapshot = json.loads(snapshot_str)
+                    branch_keys = snapshot.get('branch_keys', [])
+                    
+                    # Get person names
+                    with db._connect() as conn2:
+                        cur2 = conn2.cursor()
+                        cur2.execute(
+                            f"SELECT branch_key, label FROM face_branch_reps WHERE project_id = ? AND branch_key IN ({','.join(['?']*len(branch_keys))})",
+                            [self.project_id] + branch_keys
+                        )
+                        names = {row[0]: row[1] or row[0] for row in cur2.fetchall()}
+                    
+                    target_name = names.get(target, target)
+                    source_names = [names.get(s, s) for s in sources.split(',')]
+                    
+                    # Format timestamp
+                    try:
+                        dt = datetime.fromisoformat(created_at)
+                        time_str = dt.strftime("%Y-%m-%d %H:%M")
+                    except:
+                        time_str = created_at
+                    
+                    item_text = f"⏰ {time_str}\n🔗 Merged {', '.join(source_names)} → {target_name}"
+                    
+                except Exception as e:
+                    print(f"Failed to parse merge history item: {e}")
+                    item_text = f"🔗 Merge #{merge_id} ({created_at})"
+                
+                item = QListWidgetItem(item_text)
+                item.setData(Qt.UserRole, merge_id)
+                history_list.addItem(item)
+            
+            layout.addWidget(history_list)
+            
+            # Actions
+            actions = QHBoxLayout()
+            
+            def undo_selected():
+                selected = history_list.currentItem()
+                if selected:
+                    merge_id = selected.data(Qt.UserRole)
+                    # Undo all operations up to and including this one
+                    reply = QMessageBox.question(
+                        dlg,
+                        "Confirm Undo",
+                        "Undo this merge and all subsequent merges?",
+                        QMessageBox.Yes | QMessageBox.No
+                    )
+                    if reply == QMessageBox.Yes:
+                        # Perform undo
+                        self._undo_last_merge()
+                        dlg.accept()
+                        self._show_merge_history()  # Refresh history
+            
+            undo_btn = QPushButton("↺ Undo Selected")
+            undo_btn.clicked.connect(undo_selected)
+            actions.addWidget(undo_btn)
+            
+            actions.addStretch()
+            
+            close_btn = QPushButton("Close")
+            close_btn.clicked.connect(dlg.accept)
+            actions.addWidget(close_btn)
+            
+            layout.addLayout(actions)
+            
+            dlg.exec()
+            
+        except Exception as e:
+            print(f"[GooglePhotosLayout] Failed to show merge history: {e}")
+            import traceback
+            traceback.print_exc()
+            QMessageBox.critical(self.main_window, "Error", f"Failed to load history: {e}")
+
+    def _prompt_merge_suggestions(self, target_branch_key: str):
+        """Suggest similar people to merge into the target using centroid cosine similarity."""
+        try:
+            from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel, QScrollArea, QWidget, QGridLayout, QCheckBox, QPushButton, QHBoxLayout
+            from PySide6.QtGui import QPixmap
+            import numpy as np, os, base64
+            from reference_db import ReferenceDB
+            db = ReferenceDB()
+            # Fetch target centroid and face preview
+            target = None
+            with db._connect() as conn:
+                cur = conn.cursor()
+                cur.execute("SELECT label, centroid, rep_path, rep_thumb_png FROM face_branch_reps WHERE project_id = ? AND branch_key = ?", (self.project_id, target_branch_key))
+                row = cur.fetchone()
+                if not row or not row[1]:
+                    return
+                target_name = row[0] or target_branch_key
+                target = np.frombuffer(row[1], dtype=np.float32)
+                target_rep_path = row[2]
+                target_rep_thumb = row[3]
+                # Fetch others with face previews
+                cur.execute("SELECT branch_key, label, count, centroid, rep_path, rep_thumb_png FROM face_branch_reps WHERE project_id = ? AND branch_key != ?", (self.project_id, target_branch_key))
+                others = cur.fetchall() or []
+            # Compute similarities
+            suggestions = []
+            for bk, label, cnt, centroid, rep_path, rep_thumb in others:
+                if not centroid:
+                    continue
+                vec = np.frombuffer(centroid, dtype=np.float32)
+                denom = (np.linalg.norm(target) * np.linalg.norm(vec))
+                if denom == 0:
+                    continue
+                sim = float(np.dot(target, vec) / denom)
+                suggestions.append((bk, label or bk, cnt or 0, sim, rep_path, rep_thumb))
+            suggestions.sort(key=lambda x: x[3], reverse=True)
+            # Filter by threshold
+            threshold = 0.80
+            suggestions = [s for s in suggestions if s[3] >= threshold][:12]
+            if not suggestions:
+                from PySide6.QtWidgets import QMessageBox
+                QMessageBox.information(self.main_window, "No Suggestions", "No similar people found above threshold.")
+                return
+            # Build dialog with visual previews
+            dlg = QDialog(self.main_window)
+            dlg.setWindowTitle(f"Suggest Merge into '{target_name}'")
+            dlg.resize(700, 600)
+            outer = QVBoxLayout(dlg)
+            
+            # Header with target person preview
+            header = QWidget()
+            header_layout = QHBoxLayout(header)
+            header_layout.setContentsMargins(8, 8, 8, 8)
+            header_layout.setSpacing(12)
+            
+            # Target face preview
+            target_face = QLabel()
+            target_face.setFixedSize(80, 80)
+            target_pix = None
+            try:
+                if target_rep_thumb:
+                    data = base64.b64decode(target_rep_thumb) if isinstance(target_rep_thumb, str) else target_rep_thumb
+                    target_pix = QPixmap()
+                    target_pix.loadFromData(data)
+                if (target_pix is None or target_pix.isNull()) and target_rep_path and os.path.exists(target_rep_path):
+                    target_pix = QPixmap(target_rep_path)
+                if target_pix and not target_pix.isNull():
+                    # Make circular
+                    from PySide6.QtGui import QPainter, QPainterPath
+                    from PySide6.QtCore import QRect, QPoint
+                    scaled = target_pix.scaled(80, 80, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+                    if scaled.width() > 80 or scaled.height() > 80:
+                        x = (scaled.width() - 80) // 2
+                        y = (scaled.height() - 80) // 2
+                        scaled = scaled.copy(x, y, 80, 80)
+                    output = QPixmap(80, 80)
+                    output.fill(Qt.transparent)
+                    painter = QPainter(output)
+                    painter.setRenderHint(QPainter.Antialiasing)
+                    path = QPainterPath()
+                    path.addEllipse(0, 0, 80, 80)
+                    painter.setClipPath(path)
+                    painter.drawPixmap(0, 0, scaled)
+                    painter.end()
+                    target_face.setPixmap(output)
+            except Exception as e:
+                print(f"[GooglePhotosLayout] Failed to load target preview: {e}")
+            target_face.setStyleSheet("border: 2px solid #1a73e8; border-radius: 40px;")
+            header_layout.addWidget(target_face)
+            
+            # Target info
+            info_label = QLabel(f"<b>Merge into: {target_name}</b><br><span style='color:#5f6368;'>Select similar people below (similarity ≥ {int(threshold*100)}%)</span>")
+            info_label.setWordWrap(True)
+            header_layout.addWidget(info_label, 1)
+            outer.addWidget(header)
+            
+            # Recently merged section (if any)
+            recent_merges = []
+            try:
+                with db._connect() as conn:
+                    cur = conn.cursor()
+                    cur.execute("""
+                        SELECT target_branch, source_branches, created_at
+                        FROM face_merge_history
+                        WHERE project_id = ?
+                        ORDER BY created_at DESC
+                        LIMIT 5
+                    """, (self.project_id,))
+                    recent_merges = cur.fetchall() or []
+            except Exception as e:
+                print(f"[GooglePhotosLayout] Failed to load merge history: {e}")
+            
+            if recent_merges:
+                recent_header = QLabel("🕒 <b>Recently Merged</b> <span style='color:#5f6368; font-size:9pt;'>(Quick undo available)</span>")
+                recent_header.setStyleSheet("padding: 8px; background: #f8f9fa; border-radius: 4px; margin: 4px 0;")
+                outer.addWidget(recent_header)
+                
+                recent_widget = QWidget()
+                recent_layout = QVBoxLayout(recent_widget)
+                recent_layout.setContentsMargins(8, 4, 8, 4)
+                recent_layout.setSpacing(4)
+                
+                for target_bk, source_bks, created_at in recent_merges:
+                    # Get target name
+                    with db._connect() as conn:
+                        cur = conn.cursor()
+                        cur.execute("SELECT label FROM face_branch_reps WHERE project_id = ? AND branch_key = ?", (self.project_id, target_bk))
+                        target_row = cur.fetchone()
+                        target_label = (target_row[0] if target_row and target_row[0] else target_bk)
+                    
+                    merge_label = QLabel(f"• <b>{len(source_bks.split(','))} people</b> → <b>{target_label}</b> <span style='color:#5f6368; font-size:8pt;'>({created_at})</span>")
+                    merge_label.setStyleSheet("font-size: 9pt; padding: 2px 8px;")
+                    recent_layout.addWidget(merge_label)
+                
+                outer.addWidget(recent_widget)
+            
+            # Scrollable suggestions grid with face previews
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            container = QWidget()
+            grid = QGridLayout(container)
+            grid.setContentsMargins(8, 8, 8, 8)
+            grid.setSpacing(12)
+            checks = {}
+            
+            for i, (bk, name, cnt, sim, rep_path, rep_thumb) in enumerate(suggestions):
+                card = QWidget()
+                card.setStyleSheet("""
+                    QWidget {
+                        background: white;
+                        border: 1px solid #dadce0;
+                        border-radius: 8px;
+                    }
+                    QWidget:hover {
+                        border: 2px solid #1a73e8;
+                        background: #f8f9fa;
+                    }
+                """)
+                v = QVBoxLayout(card)
+                v.setContentsMargins(8, 8, 8, 8)
+                v.setSpacing(6)
+                
+                # Face preview (80x80 circular)
+                face_label = QLabel()
+                face_label.setFixedSize(80, 80)
+                face_label.setAlignment(Qt.AlignCenter)
+                try:
+                    pix = None
+                    if rep_thumb:
+                        data = base64.b64decode(rep_thumb) if isinstance(rep_thumb, str) else rep_thumb
+                        pix = QPixmap()
+                        pix.loadFromData(data)
+                    if (pix is None or pix.isNull()) and rep_path and os.path.exists(rep_path):
+                        pix = QPixmap(rep_path)
+                    if pix and not pix.isNull():
+                        # Make circular
+                        from PySide6.QtGui import QPainter, QPainterPath
+                        scaled = pix.scaled(80, 80, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+                        if scaled.width() > 80 or scaled.height() > 80:
+                            x = (scaled.width() - 80) // 2
+                            y = (scaled.height() - 80) // 2
+                            scaled = scaled.copy(x, y, 80, 80)
+                        output = QPixmap(80, 80)
+                        output.fill(Qt.transparent)
+                        painter = QPainter(output)
+                        painter.setRenderHint(QPainter.Antialiasing)
+                        path = QPainterPath()
+                        path.addEllipse(0, 0, 80, 80)
+                        painter.setClipPath(path)
+                        painter.drawPixmap(0, 0, scaled)
+                        painter.end()
+                        face_label.setPixmap(output)
+                    else:
+                        face_label.setStyleSheet("background: #e8eaed; border-radius: 40px; font-size: 24pt;")
+                        face_label.setText("👤")
+                except Exception as e:
+                    face_label.setStyleSheet("background: #e8eaed; border-radius: 40px; font-size: 24pt;")
+                    face_label.setText("👤")
+                    print(f"[GooglePhotosLayout] Failed to load suggestion preview: {e}")
+                v.addWidget(face_label)
+                
+                # Name and similarity
+                name_label = QLabel(f"<b>{name}</b>")
+                name_label.setAlignment(Qt.AlignCenter)
+                name_label.setWordWrap(True)
+                v.addWidget(name_label)
+                
+                sim_label = QLabel(f"{int(sim*100)}% match • {cnt} photos")
+                sim_label.setStyleSheet("color: #1a73e8; font-size: 9pt;")
+                sim_label.setAlignment(Qt.AlignCenter)
+                v.addWidget(sim_label)
+                
+                # Checkbox
+                cb = QCheckBox("Select to merge")
+                cb.setStyleSheet("font-size: 9pt;")
+                checks[bk] = cb
+                v.addWidget(cb, 0, Qt.AlignCenter)
+                
+                row = i // 3
+                col = i % 3
+                grid.addWidget(card, row, col)
+            
+            scroll.setWidget(container)
+            outer.addWidget(scroll, 1)
+            
+            # Actions
+            btns = QHBoxLayout()
+            btns.addStretch()
+            cancel_btn = QPushButton("Cancel")
+            apply_btn = QPushButton("🔗 Merge Selected")
+            apply_btn.setStyleSheet("""
+                QPushButton {
+                    background: #1a73e8;
+                    color: white;
+                    border: none;
+                    padding: 8px 16px;
+                    border-radius: 4px;
+                    font-weight: bold;
+                }
+                QPushButton:hover {
+                    background: #1557b0;
+                }
+            """)
+            btns.addWidget(cancel_btn)
+            btns.addWidget(apply_btn)
+            outer.addLayout(btns)
+            
+            def do_merge():
+                selected = [bk for bk, cb in checks.items() if cb.isChecked()]
+                if not selected:
+                    dlg.accept()
+                    return
+                for src in selected:
+                    # Use source name for message
+                    from reference_db import ReferenceDB
+                    db2 = ReferenceDB()
+                    with db2._connect() as conn:
+                        label_row = conn.execute("SELECT label FROM face_branch_reps WHERE project_id = ? AND branch_key = ?", (self.project_id, src)).fetchone()
+                        src_name = (label_row[0] if label_row and label_row[0] else src)
+                    self._perform_merge(src, target_branch_key, src_name)
+                dlg.accept()
+            
+            apply_btn.clicked.connect(do_merge)
+            cancel_btn.clicked.connect(dlg.reject)
+            dlg.exec()
+        except Exception as e:
+            print(f"[GooglePhotosLayout] Merge suggestions failed: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def _open_person_detail(self, branch_key: str):
+        """Person detail view with batch remove/merge and confidence filter."""
+        try:
+            from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel, QComboBox, QScrollArea, QWidget, QGridLayout, QCheckBox, QPushButton, QHBoxLayout
+            import numpy as np, os
+            from PySide6.QtGui import QPixmap
+            from reference_db import ReferenceDB
+            db = ReferenceDB()
+            # Fetch centroid
+            centroid_vec = None
+            with db._connect() as conn:
+                cur = conn.cursor()
+                cur.execute("SELECT label, centroid FROM face_branch_reps WHERE project_id = ? AND branch_key = ?", (self.project_id, branch_key))
+                row = cur.fetchone()
+                person_name = (row[0] if row and row[0] else branch_key)
+                centroid_vec = np.frombuffer(row[1], dtype=np.float32) if row and row[1] else None
+                # Fetch crops
+                cur.execute("SELECT id, crop_path, embedding FROM face_crops WHERE project_id = ? AND branch_key = ?", (self.project_id, branch_key))
+                crops = cur.fetchall() or []
+            # Build list with confidence
+            items = []
+            for rid, crop_path, emb in crops:
+                sim = 0.0
+                if centroid_vec is not None and emb:
+                    vec = np.frombuffer(emb, dtype=np.float32)
+                    denom = (np.linalg.norm(centroid_vec) * np.linalg.norm(vec))
+                    if denom > 0:
+                        sim = float(np.dot(centroid_vec, vec) / denom)
+                items.append((rid, crop_path, sim))
+            # Dialog
+            dlg = QDialog(self.main_window)
+            dlg.setWindowTitle(f"Person Details: {person_name}")
+            outer = QVBoxLayout(dlg)
+            # Filter
+            filter_combo = QComboBox(); filter_combo.addItems(["All", "High (≥0.85)", "Medium (0.70–0.85)", "Low (<0.70)"])
+            outer.addWidget(filter_combo)
+            # Grid
+            scroll = QScrollArea(); scroll.setWidgetResizable(True)
+            container = QWidget(); grid = QGridLayout(container); grid.setContentsMargins(8,8,8,8); grid.setSpacing(8)
+            checks = {}
+            def populate():
+                # Clear
+                while grid.count():
+                    it = grid.takeAt(0)
+                    if it and it.widget():
+                        it.widget().deleteLater()
+                idx = 0
+                sel = filter_combo.currentIndex()
+                for rid, path, sim in items:
+                    if sel == 1 and sim < 0.85: continue
+                    if sel == 2 and (sim < 0.70 or sim >= 0.85): continue
+                    if sel == 3 and sim >= 0.70: continue
+                    card = QWidget(); v = QVBoxLayout(card); v.setContentsMargins(4,4,4,4); v.setSpacing(4)
+                    img = QLabel(); img.setFixedSize(140,140)
+                    px = QPixmap(path) if path and os.path.exists(path) else QPixmap()
+                    if not px.isNull(): img.setPixmap(px.scaled(140,140,Qt.KeepAspectRatio,Qt.SmoothTransformation))
+                    v.addWidget(img)
+                    lbl = QLabel(f"Similarity: {int(sim*100)}%")
+                    lbl.setStyleSheet("color:#5f6368;")
+                    v.addWidget(lbl)
+                    cb = QCheckBox("Select")
+                    checks[rid] = cb
+                    v.addWidget(cb)
+                    grid.addWidget(card, idx//4, idx%4); idx += 1
+            populate()
+            scroll.setWidget(container)
+            outer.addWidget(scroll)
+            # Actions
+            actions = QHBoxLayout(); actions.addStretch()
+            remove_btn = QPushButton("Remove Selected")
+            merge_btn = QPushButton("Merge Selected Into…")
+            close_btn = QPushButton("Close")
+            actions.addWidget(close_btn); actions.addWidget(remove_btn); actions.addWidget(merge_btn)
+            outer.addLayout(actions)
+            def remove_selected():
+                """Move selected faces to unidentified cluster and update counts."""
+                target = "face_unidentified"
+                ids = [rid for rid,cb in checks.items() if cb.isChecked()]
+                if not ids: return
+                
+                # Get source branch_key from the current person
+                source_branch = branch_key
+                
+                with ReferenceDB()._connect() as conn:
+                    cur = conn.cursor()
+                    placeholders = ",".join(["?"]*len(ids))
+                    cur.execute(f"UPDATE face_crops SET branch_key = ? WHERE project_id = ? AND id IN ({placeholders})", [target, self.project_id] + ids)
+                    
+                    # CRITICAL: Update counts for both source and target clusters
+                    # Update source cluster count
+                    cur.execute("""
+                        UPDATE face_branch_reps
+                        SET count = (
+                            SELECT COUNT(DISTINCT image_path)
+                            FROM face_crops
+                            WHERE project_id = ? AND branch_key = ?
+                        )
+                        WHERE project_id = ? AND branch_key = ?
+                    """, (self.project_id, source_branch, self.project_id, source_branch))
+                    
+                    # Update target (unidentified) cluster count
+                    cur.execute("""
+                        UPDATE face_branch_reps
+                        SET count = (
+                            SELECT COUNT(DISTINCT image_path)
+                            FROM face_crops
+                            WHERE project_id = ? AND branch_key = ?
+                        )
+                        WHERE project_id = ? AND branch_key = ?
+                    """, (self.project_id, target, self.project_id, target))
+                    
+                    conn.commit()
+                    print(f"[GooglePhotosLayout] Removed {len(ids)} faces from {source_branch} to {target}, counts updated")
+                
+                # Refresh people UI
+                if hasattr(self, '_build_people_tree'):
+                    self._build_people_tree()
+                populate()
+            def merge_selected():
+                """Merge selected faces into another person with visual picker."""
+                ids = [rid for rid, cb in checks.items() if cb.isChecked()]
+                if not ids:
+                    return
+                
+                # Get source branch_key from the current person
+                source_branch = branch_key
+                
+                # Show visual person picker dialog
+                picker_dlg = self._create_person_picker_dialog(exclude_branch=source_branch)
+                if picker_dlg.exec() == QDialog.Accepted:
+                    selected_target = getattr(picker_dlg, 'selected_branch', None)
+                    if not selected_target:
+                        return
+                    
+                    # Move faces
+                    with ReferenceDB()._connect() as conn:
+                        cur = conn.cursor()
+                        placeholders = ",".join(["?"]*len(ids))
+                        cur.execute(f"UPDATE face_crops SET branch_key = ? WHERE project_id = ? AND id IN ({placeholders})", [selected_target, self.project_id] + ids)
+                        
+                        # CRITICAL: Update counts for both source and target clusters
+                        # Update source cluster count
+                        cur.execute("""
+                            UPDATE face_branch_reps
+                            SET count = (
+                                SELECT COUNT(DISTINCT image_path)
+                                FROM face_crops
+                                WHERE project_id = ? AND branch_key = ?
+                            )
+                            WHERE project_id = ? AND branch_key = ?
+                        """, (self.project_id, source_branch, self.project_id, source_branch))
+                        
+                        # Update target cluster count
+                        cur.execute("""
+                            UPDATE face_branch_reps
+                            SET count = (
+                                SELECT COUNT(DISTINCT image_path)
+                                FROM face_crops
+                                WHERE project_id = ? AND branch_key = ?
+                            )
+                            WHERE project_id = ? AND branch_key = ?
+                        """, (self.project_id, selected_target, self.project_id, selected_target))
+                        
+                        conn.commit()
+                        print(f"[GooglePhotosLayout] Merged {len(ids)} faces from {source_branch} to {selected_target}, counts updated")
+                    
+                    if hasattr(self, '_build_people_tree'):
+                        self._build_people_tree()
+                    populate()
+            filter_combo.currentIndexChanged.connect(lambda _: populate())
+            close_btn.clicked.connect(dlg.reject)
+            remove_btn.clicked.connect(remove_selected)
+            merge_btn.clicked.connect(merge_selected)
+            dlg.exec()
+        except Exception as e:
+            print(f"[GooglePhotosLayout] Person detail failed: {e}")
+
+    def _create_person_picker_dialog(self, exclude_branch=None):
+        """Create a visual person picker dialog with face previews."""
+        from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel, QScrollArea, QWidget, QGridLayout, QPushButton, QHBoxLayout, QLineEdit
+        from PySide6.QtGui import QPixmap, QPainter, QPainterPath
+        from PySide6.QtCore import Qt
+        import base64, os
+        from reference_db import ReferenceDB
+        
+        dlg = QDialog(self.main_window)
+        dlg.setWindowTitle("Select Merge Target")
+        dlg.resize(700, 600)
+        dlg.selected_branch = None
+        
+        outer = QVBoxLayout(dlg)
+        outer.setContentsMargins(16, 16, 16, 16)
+        outer.setSpacing(12)
+        
+        # Header
+        header = QLabel("<b>Select a person to merge into:</b>")
+        header.setStyleSheet("font-size: 12pt;")
+        outer.addWidget(header)
+        
+        # Search box
+        search_box = QLineEdit()
+        search_box.setPlaceholderText("🔍 Search people...")
+        search_box.setClearButtonEnabled(True)
+        search_box.setStyleSheet("""
+            QLineEdit {
+                padding: 8px 12px;
+                border: 1px solid #dadce0;
+                border-radius: 20px;
+                background: #f8f9fa;
+                font-size: 10pt;
+            }
+            QLineEdit:focus {
+                border: 2px solid #1a73e8;
+                background: white;
+            }
+        """)
+        outer.addWidget(search_box)
+        
+        # Fetch all people with multiple face samples
+        db = ReferenceDB()
+        people = []
+        with db._connect() as conn:
+            cur = conn.cursor()
+            query = "SELECT branch_key, label, count, rep_path, rep_thumb_png FROM face_branch_reps WHERE project_id = ?"
+            params = [self.project_id]
+            if exclude_branch:
+                query += " AND branch_key != ?"
+                params.append(exclude_branch)
+            query += " ORDER BY count DESC"
+            cur.execute(query, params)
+            people = cur.fetchall() or []
+            
+            # Fetch additional face samples for preview grid (top 3 per person)
+            face_samples = {}
+            for branch_key, _, _, _, _ in people:
+                cur.execute(
+                    "SELECT crop_path FROM face_crops WHERE project_id = ? AND branch_key = ? LIMIT 3",
+                    (self.project_id, branch_key)
+                )
+                face_samples[branch_key] = [r[0] for r in cur.fetchall()]
+        
+        # Scrollable grid
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setStyleSheet("QScrollArea { border: none; background: white; }")
+        container = QWidget()
+        grid = QGridLayout(container)
+        grid.setContentsMargins(8, 8, 8, 8)
+        grid.setSpacing(12)
+        
+        person_cards = []
+        
+        def create_person_card(branch_key, label, count, rep_path, rep_thumb):
+            card = QPushButton()
+            card.setFixedSize(140, 180)  # Larger to fit multiple faces
+            card.setCursor(Qt.PointingHandCursor)
+            card.setStyleSheet("""
+                QPushButton {
+                    background: white;
+                    border: 2px solid #dadce0;
+                    border-radius: 8px;
+                    text-align: center;
+                }
+                QPushButton:hover {
+                    border: 2px solid #1a73e8;
+                    background: #f8f9fa;
+                }
+                QPushButton:pressed {
+                    background: #e8eaed;
+                }
+                QPushButton:focus {
+                    border: 3px solid #1a73e8;
+                    outline: none;
+                }
+            """)
+            
+            # Build card content
+            card_layout = QVBoxLayout(card)
+            card_layout.setContentsMargins(8, 8, 8, 8)
+            card_layout.setSpacing(4)
+            
+            # Multiple face previews (grid of 2-3 faces)
+            samples = face_samples.get(branch_key, [])
+            if len(samples) > 1:
+                # Show 2-3 faces in a grid
+                faces_container = QWidget()
+                faces_layout = QHBoxLayout(faces_container)
+                faces_layout.setContentsMargins(0, 0, 0, 0)
+                faces_layout.setSpacing(4)
+                
+                for idx, sample_path in enumerate(samples[:3]):
+                    mini_face = QLabel()
+                    size = 38 if len(samples) >= 3 else 50  # Smaller if showing 3
+                    mini_face.setFixedSize(size, size)
+                    mini_face.setAlignment(Qt.AlignCenter)
+                    try:
+                        pix = QPixmap(sample_path) if sample_path and os.path.exists(sample_path) else None
+                        if pix and not pix.isNull():
+                            scaled = pix.scaled(size, size, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+                            if scaled.width() > size or scaled.height() > size:
+                                x = (scaled.width() - size) // 2
+                                y = (scaled.height() - size) // 2
+                                scaled = scaled.copy(x, y, size, size)
+                            output = QPixmap(size, size)
+                            output.fill(Qt.transparent)
+                            painter = QPainter(output)
+                            painter.setRenderHint(QPainter.Antialiasing)
+                            path = QPainterPath()
+                            path.addEllipse(0, 0, size, size)
+                            painter.setClipPath(path)
+                            painter.drawPixmap(0, 0, scaled)
+                            painter.end()
+                            mini_face.setPixmap(output)
+                        else:
+                            mini_face.setStyleSheet(f"background: #e8eaed; border-radius: {size//2}px; font-size: {size//2}pt;")
+                            mini_face.setText("👤")
+                    except Exception:
+                        mini_face.setStyleSheet(f"background: #e8eaed; border-radius: {size//2}px; font-size: {size//2}pt;")
+                        mini_face.setText("👤")
+                    faces_layout.addWidget(mini_face)
+                
+                card_layout.addWidget(faces_container, 0, Qt.AlignCenter)
+            else:
+                # Single face preview (80x80 circular)
+                face_label = QLabel()
+                face_label.setFixedSize(80, 80)
+                face_label.setAlignment(Qt.AlignCenter)
+                try:
+                    pix = None
+                    if rep_thumb:
+                        data = base64.b64decode(rep_thumb) if isinstance(rep_thumb, str) else rep_thumb
+                        pix = QPixmap()
+                        pix.loadFromData(data)
+                    if (pix is None or pix.isNull()) and rep_path and os.path.exists(rep_path):
+                        pix = QPixmap(rep_path)
+                    if pix and not pix.isNull():
+                        # Make circular
+                        scaled = pix.scaled(80, 80, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+                        if scaled.width() > 80 or scaled.height() > 80:
+                            x = (scaled.width() - 80) // 2
+                            y = (scaled.height() - 80) // 2
+                            scaled = scaled.copy(x, y, 80, 80)
+                        output = QPixmap(80, 80)
+                        output.fill(Qt.transparent)
+                        painter = QPainter(output)
+                        painter.setRenderHint(QPainter.Antialiasing)
+                        path = QPainterPath()
+                        path.addEllipse(0, 0, 80, 80)
+                        painter.setClipPath(path)
+                        painter.drawPixmap(0, 0, scaled)
+                        painter.end()
+                        face_label.setPixmap(output)
+                    else:
+                        face_label.setStyleSheet("background: #e8eaed; border-radius: 40px; font-size: 24pt;")
+                        face_label.setText("👤")
+                except Exception:
+                    face_label.setStyleSheet("background: #e8eaed; border-radius: 40px; font-size: 24pt;")
+                    face_label.setText("👤")
+                card_layout.addWidget(face_label, 0, Qt.AlignCenter)
+            
+            # Name
+            name_label = QLabel(label or "Unnamed")
+            name_label.setAlignment(Qt.AlignCenter)
+            name_label.setWordWrap(True)
+            name_label.setStyleSheet("font-size: 10pt; font-weight: bold; color: #202124;")
+            card_layout.addWidget(name_label)
+            
+            # Count with confidence badge
+            conf_badge = "✅" if count >= 10 else ("⚠️" if count >= 5 else "❓")
+            count_label = QLabel(f"{conf_badge} {count} photos")
+            count_label.setAlignment(Qt.AlignCenter)
+            count_label.setStyleSheet("font-size: 8pt; color: #5f6368;")
+            card_layout.addWidget(count_label)
+            
+            # Store data
+            card.branch_key = branch_key
+            card.display_name = label or "Unnamed"
+            card.setFocusPolicy(Qt.StrongFocus)  # Enable keyboard focus
+            
+            # Click handler
+            def on_click():
+                dlg.selected_branch = branch_key
+                dlg.accept()
+            card.clicked.connect(on_click)
+            
+            return card
+        
+        # Populate grid
+        for i, (branch_key, label, count, rep_path, rep_thumb) in enumerate(people):
+            card = create_person_card(branch_key, label, count, rep_path, rep_thumb)
+            person_cards.append(card)
+            row = i // 4
+            col = i % 4
+            grid.addWidget(card, row, col)
+        
+        scroll.setWidget(container)
+        outer.addWidget(scroll, 1)
+        
+        # Keyboard navigation support
+        dlg.current_focus_index = 0
+        
+        def navigate_cards(direction):
+            """Navigate through person cards with arrow keys."""
+            visible_cards = [c for c in person_cards if c.isVisible()]
+            if not visible_cards:
+                return
+            
+            cols = 4
+            current_idx = dlg.current_focus_index
+            
+            if direction == "right" and current_idx < len(visible_cards) - 1:
+                current_idx += 1
+            elif direction == "left" and current_idx > 0:
+                current_idx -= 1
+            elif direction == "down":
+                next_idx = current_idx + cols
+                if next_idx < len(visible_cards):
+                    current_idx = next_idx
+            elif direction == "up":
+                prev_idx = current_idx - cols
+                if prev_idx >= 0:
+                    current_idx = prev_idx
+            
+            dlg.current_focus_index = current_idx
+            visible_cards[current_idx].setFocus()
+            # Ensure card is visible in scroll area
+            scroll.ensureWidgetVisible(visible_cards[current_idx])
+        
+        def select_focused_card():
+            """Select the currently focused card with Enter/Return."""
+            visible_cards = [c for c in person_cards if c.isVisible()]
+            if visible_cards and 0 <= dlg.current_focus_index < len(visible_cards):
+                focused_card = visible_cards[dlg.current_focus_index]
+                dlg.selected_branch = focused_card.branch_key
+                dlg.accept()
+        
+        # Install event filter for keyboard navigation
+        from PySide6.QtCore import QEvent
+        class KeyNavFilter(QObject):
+            def eventFilter(self, obj, event):
+                if event.type() == QEvent.KeyPress:
+                    key = event.key()
+                    if key == Qt.Key_Right:
+                        navigate_cards("right")
+                        return True
+                    elif key == Qt.Key_Left:
+                        navigate_cards("left")
+                        return True
+                    elif key == Qt.Key_Down:
+                        navigate_cards("down")
+                        return True
+                    elif key == Qt.Key_Up:
+                        navigate_cards("up")
+                        return True
+                    elif key in (Qt.Key_Return, Qt.Key_Enter):
+                        select_focused_card()
+                        return True
+                return False
+        
+        key_filter = KeyNavFilter()
+        dlg.installEventFilter(key_filter)
+        
+        # Set initial focus
+        if person_cards:
+            person_cards[0].setFocus()
+        
+        # Search filter
+        def filter_cards(text):
+            query = text.lower().strip()
+            for card in person_cards:
+                if not query or query in card.display_name.lower():
+                    card.setVisible(True)
+                else:
+                    card.setVisible(False)
+        search_box.textChanged.connect(filter_cards)
+        
+        # Actions
+        actions = QHBoxLayout()
+        actions.addStretch()
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.clicked.connect(dlg.reject)
+        actions.addWidget(cancel_btn)
+        outer.addLayout(actions)
+        
+        return dlg
 
     def _delete_person(self, branch_key: str, person_name: str):
         """Delete a person/face cluster."""
@@ -11309,6 +13615,12 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
     def _perform_search(self, text: str = None):
         """
         Perform search and filter photos.
+        NOW SUPPORTS: People names, filenames, folders, advanced filters
+        EXAMPLES:
+        - "John" - search person name
+        - "John AND Alice" - photos with both people
+        - ">10 photos" - people with more than 10 photos  
+        - "<5 photos" - people with less than 5 photos
 
         Args:
             text: Search query (if None, use search_box text)
@@ -11316,7 +13628,8 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
         if text is None:
             text = self.search_box.text()
 
-        text = text.strip().lower()
+        text = text.strip()
+        text_lower = text.lower()
 
         print(f"[GooglePhotosLayout] 🔍 Searching for: '{text}'")
 
@@ -11325,13 +13638,59 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
             self._load_photos()
             return
 
-        # Search in photo paths (filename search)
-        # Future: could extend to EXIF data, tags, etc.
+        # Parse advanced search syntax
         try:
             from reference_db import ReferenceDB
             db = ReferenceDB()
 
-            # Search query with LIKE pattern
+            # CHECK 1: Advanced face count filter (e.g., ">10 photos", "<5 photos")
+            import re
+            count_pattern = r'^([><]=?)\s*(\d+)\s*photos?'
+            count_match = re.match(count_pattern, text_lower)
+            if count_match:
+                operator = count_match.group(1)
+                threshold = int(count_match.group(2))
+                self._filter_people_by_count(operator, threshold)
+                return
+            
+            # CHECK 2: Multi-person search with AND (e.g., "John AND Alice")
+            if ' AND ' in text.upper() or ' and ' in text:
+                person_names = [name.strip() for name in re.split(r'\s+AND\s+', text, flags=re.IGNORECASE)]
+                self._search_multi_person(person_names)
+                return
+
+            # CHECK 3: Single person name search
+            person_match = None
+            with db._connect() as conn:
+                cur = conn.cursor()
+                cur.execute(
+                    "SELECT branch_key, label, count FROM face_branch_reps WHERE project_id = ? AND LOWER(label) LIKE ?",
+                    (self.project_id, f"%{text_lower}%")
+                )
+                people_results = cur.fetchall()
+                
+                if people_results:
+                    # If exact match or close match, filter by that person
+                    for branch_key, label, count in people_results:
+                        if label and text_lower in label.lower():
+                            person_match = (branch_key, label, count)
+                            print(f"[GooglePhotosLayout] 👥 Found person: {label} ({count} photos)")
+                            
+                            # Filter People section to show only this person
+                            self._filter_people_grid(label)
+                            
+                            # Filter timeline photos by this person
+                            self._load_photos(
+                                thumb_size=self.current_thumb_size,
+                                filter_person=branch_key
+                            )
+                            # Show search result header
+                            QTimer.singleShot(100, lambda: self._add_search_header(
+                                f"👥 Showing {count} photos of '{label}'"
+                            ))
+                            return
+
+            # CHECK 4: Filename/folder search
             query = """
                 SELECT DISTINCT pm.path, pm.date_taken, pm.width, pm.height
                 FROM photo_metadata pm
@@ -11342,7 +13701,7 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
                 ORDER BY pm.date_taken DESC
             """
 
-            search_pattern = f"%{text}%"
+            search_pattern = f"%{text_lower}%"
 
             with db._connect() as conn:
                 conn.execute("PRAGMA busy_timeout = 5000")
@@ -11355,6 +13714,245 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
 
         except Exception as e:
             print(f"[GooglePhotosLayout] ⚠️ Search error: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def _filter_people_by_count(self, operator: str, threshold: int):
+        """Filter people grid by photo count."""
+        try:
+            from reference_db import ReferenceDB
+            db = ReferenceDB()
+            
+            # Build SQL condition
+            if operator == '>':
+                condition = "count > ?"
+            elif operator == '>=':
+                condition = "count >= ?"
+            elif operator == '<':
+                condition = "count < ?"
+            elif operator == '<=':
+                condition = "count <= ?"
+            else:
+                condition = "count = ?"
+            
+            with db._connect() as conn:
+                cur = conn.cursor()
+                cur.execute(
+                    f"SELECT branch_key, label, count FROM face_branch_reps WHERE project_id = ? AND {condition} ORDER BY count DESC",
+                    (self.project_id, threshold)
+                )
+                results = cur.fetchall()
+            
+            # Rebuild people grid with filtered results
+            self.people_grid.clear()
+            
+            for branch_key, label, count in results:
+                # Load face thumbnail
+                with db._connect() as conn2:
+                    cur2 = conn2.cursor()
+                    cur2.execute(
+                        "SELECT rep_path, rep_thumb_png FROM face_branch_reps WHERE project_id = ? AND branch_key = ?",
+                        (self.project_id, branch_key)
+                    )
+                    row = cur2.fetchone()
+                    if row:
+                        rep_path, rep_thumb = row
+                        face_pix = None
+                        if rep_thumb:
+                            import base64
+                            data = base64.b64decode(rep_thumb) if isinstance(rep_thumb, str) else rep_thumb
+                            face_pix = QPixmap()
+                            face_pix.loadFromData(data)
+                        elif rep_path and os.path.exists(rep_path):
+                            face_pix = QPixmap(rep_path)
+                        
+                        self.people_grid.add_person(branch_key, label or "Unnamed", face_pix, count)
+            
+            # Show result message
+            op_text = {'>': 'more than', '>=': 'at least', '<': 'less than', '<=': 'at most'}.get(operator, '')
+            QMessageBox.information(
+                self.main_window,
+                "Filtered Results",
+                f"📊 Found {len(results)} people with {op_text} {threshold} photos"
+            )
+            
+        except Exception as e:
+            print(f"[GooglePhotosLayout] Failed to filter by count: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def _search_multi_person(self, person_names: list):
+        """Search for photos containing multiple people (AND logic)."""
+        try:
+            from reference_db import ReferenceDB
+            db = ReferenceDB()
+            
+            # Find branch keys for each person
+            branch_keys = []
+            found_names = []
+            
+            with db._connect() as conn:
+                cur = conn.cursor()
+                for name in person_names:
+                    cur.execute(
+                        "SELECT branch_key, label FROM face_branch_reps WHERE project_id = ? AND LOWER(label) LIKE ?",
+                        (self.project_id, f"%{name.lower()}%")
+                    )
+                    result = cur.fetchone()
+                    if result:
+                        branch_keys.append(result[0])
+                        found_names.append(result[1] or result[0])
+            
+            if len(branch_keys) < len(person_names):
+                QMessageBox.warning(
+                    self.main_window,
+                    "Not All Found",
+                    f"Could only find {len(branch_keys)} of {len(person_names)} people.\n\nFound: {', '.join(found_names)}"
+                )
+                if not branch_keys:
+                    return
+            
+            # Filter People section to show only these people
+            if len(found_names) == 1:
+                self._filter_people_grid(found_names[0])
+            elif len(found_names) > 1:
+                # For multi-person, show all matched people
+                # Clear all first, then show only matched ones
+                search_pattern = "|".join([name.lower() for name in found_names])
+                for i in range(self.people_grid.flow_layout.count()):
+                    item = self.people_grid.flow_layout.itemAt(i)
+                    if item and item.widget():
+                        card = item.widget()
+                        if isinstance(card, PersonCard):
+                            matches = any(name.lower() in card.display_name.lower() for name in found_names)
+                            card.setVisible(matches)
+            
+            # Find photos that contain ALL these people
+            with db._connect() as conn:
+                cur = conn.cursor()
+                
+                # Build query to find images with all branch keys
+                # Use INTERSECT to find common images
+                queries = []
+                for bk in branch_keys:
+                    queries.append(f"""
+                        SELECT DISTINCT fc.image_path
+                        FROM face_crops fc
+                        WHERE fc.project_id = ? AND fc.branch_key = ?
+                    """)
+                
+                full_query = " INTERSECT ".join(queries)
+                params = []
+                for bk in branch_keys:
+                    params.extend([self.project_id, bk])
+                
+                cur.execute(full_query, params)
+                image_paths = [row[0] for row in cur.fetchall()]
+                
+                # Get full photo metadata
+                if image_paths:
+                    placeholders = ','.join(['?'] * len(image_paths))
+                    cur.execute(
+                        f"SELECT DISTINCT path, date_taken, width, height FROM photo_metadata WHERE path IN ({placeholders}) ORDER BY date_taken DESC",
+                        image_paths
+                    )
+                    rows = cur.fetchall()
+                else:
+                    rows = []
+            
+            # Rebuild timeline with results
+            self._rebuild_timeline_with_results(
+                rows,
+                f"{' AND '.join(found_names)} (multi-person)"
+            )
+            
+        except Exception as e:
+            print(f"[GooglePhotosLayout] Multi-person search failed: {e}")
+            import traceback
+            traceback.print_exc()
+            QMessageBox.critical(self.main_window, "Search Failed", f"Error: {e}")
+    
+    def _add_search_header(self, message: str):
+        """Add a search result header to the timeline (for person filters)."""
+        try:
+            # Check if header already exists and remove it
+            for i in range(self.timeline_layout.count()):
+                widget = self.timeline_layout.itemAt(i).widget()
+                if widget and hasattr(widget, 'objectName') and widget.objectName() == "search_header":
+                    widget.deleteLater()
+                    break
+            
+            # Add new header
+            header = QLabel(message)
+            header.setObjectName("search_header")
+            header.setStyleSheet("font-size: 11pt; font-weight: bold; padding: 10px 20px; color: #1a73e8;")
+            self.timeline_layout.insertWidget(0, header)
+        except Exception as e:
+            print(f"[GooglePhotosLayout] Failed to add search header: {e}")
+    
+    def _on_autocomplete_selected(self, item):
+        """Handle autocomplete selection."""
+        # Get the actual person name from stored data (not the display text with count)
+        person_name = item.data(Qt.UserRole)
+        if person_name:
+            # Set search box to just the person name
+            self.people_search.setText(person_name)
+            self.people_autocomplete.hide()
+            # Trigger search with person name
+            self._perform_search(person_name)
+        else:
+            # Fallback to display text if no data stored
+            self.people_search.setText(item.text())
+            self.people_autocomplete.hide()
+            self._perform_search(item.text())
+    
+    def _on_people_search(self, text: str):
+        """Handle people search text change with autocomplete."""
+        if not text or len(text) < 2:
+            self.people_autocomplete.hide()
+            # Filter people grid
+            self._filter_people_grid(text)
+            return
+        
+        try:
+            from reference_db import ReferenceDB
+            db = ReferenceDB()
+            
+            # Fetch matching people
+            with db._connect() as conn:
+                cur = conn.cursor()
+                cur.execute(
+                    "SELECT label, count FROM face_branch_reps WHERE project_id = ? AND LOWER(label) LIKE ? ORDER BY count DESC LIMIT 10",
+                    (self.project_id, f"%{text.lower()}%")
+                )
+                results = cur.fetchall()
+            
+            # Populate autocomplete
+            self.people_autocomplete.clear()
+            
+            if results:
+                for label, count in results:
+                    if label:
+                        item_text = f"{label} ({count} photos)"
+                        item = QListWidgetItem(item_text)
+                        item.setData(Qt.UserRole, label)  # Store actual name
+                        self.people_autocomplete.addItem(item)
+                
+                # Position autocomplete below search box
+                search_global = self.people_search.mapToGlobal(self.people_search.rect().bottomLeft())
+                self.people_autocomplete.move(search_global)
+                self.people_autocomplete.setFixedWidth(self.people_search.width())
+                self.people_autocomplete.show()
+                self.people_autocomplete.raise_()
+            else:
+                self.people_autocomplete.hide()
+            
+            # Also filter people grid
+            self._filter_people_grid(text)
+            
+        except Exception as e:
+            print(f"[GooglePhotosLayout] Autocomplete error: {e}")
+            self.people_autocomplete.hide()
 
     def _rebuild_timeline_with_results(self, rows, search_text: str):
         """
@@ -11593,3 +14191,648 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
 
         # Reload photos for the new project
         self._load_photos()
+
+
+# =============================================================================
+# SIDEBAR REDESIGN: NEW WIDGETS (Phase 1 + Phase 2)
+# =============================================================================
+
+class FlowLayout(QLayout):
+    """
+    Flow layout that arranges items left-to-right, wrapping to next row when needed.
+    Perfect for grid views where items should flow naturally.
+    
+    Based on Qt's Flow Layout example, adapted for sidebar people grid.
+    """
+    def __init__(self, parent=None, margin=0, spacing=-1):
+        super().__init__(parent)
+        if parent is not None:
+            self.setContentsMargins(margin, margin, margin, margin)
+        self.setSpacing(spacing)
+        self.itemList = []
+
+    def __del__(self):
+        item = self.takeAt(0)
+        while item:
+            item = self.takeAt(0)
+
+    def addItem(self, item):
+        self.itemList.append(item)
+
+    def count(self):
+        return len(self.itemList)
+
+    def itemAt(self, index):
+        if 0 <= index < len(self.itemList):
+            return self.itemList[index]
+        return None
+
+    def takeAt(self, index):
+        if 0 <= index < len(self.itemList):
+            return self.itemList.pop(index)
+        return None
+
+    def expandingDirections(self):
+        return Qt.Orientation(0)
+
+    def hasHeightForWidth(self):
+        return True
+
+    def heightForWidth(self, width):
+        height = self._do_layout(QRect(0, 0, width, 0), True)
+        return height
+
+    def setGeometry(self, rect):
+        super().setGeometry(rect)
+        self._do_layout(rect, False)
+
+    def sizeHint(self):
+        return self.minimumSize()
+
+    def minimumSize(self):
+        size = QSize()
+        for item in self.itemList:
+            size = size.expandedTo(item.minimumSize())
+        margin, _, _, _ = self.getContentsMargins()
+        size += QSize(2 * margin, 2 * margin)
+        return size
+
+    def _do_layout(self, rect, test_only):
+        """Arrange items in flow layout."""
+        x = rect.x()
+        y = rect.y()
+        line_height = 0
+        spacing = self.spacing()
+
+        for item in self.itemList:
+            widget = item.widget()
+            space_x = spacing + widget.style().layoutSpacing(
+                QSizePolicy.PushButton, QSizePolicy.PushButton, Qt.Horizontal
+            )
+            space_y = spacing + widget.style().layoutSpacing(
+                QSizePolicy.PushButton, QSizePolicy.PushButton, Qt.Vertical
+            )
+
+            next_x = x + item.sizeHint().width() + space_x
+            if next_x - space_x > rect.right() and line_height > 0:
+                x = rect.x()
+                y = y + line_height + space_y
+                next_x = x + item.sizeHint().width() + space_x
+                line_height = 0
+
+            if not test_only:
+                item.setGeometry(QRect(QPoint(x, y), item.sizeHint()))
+
+            x = next_x
+            line_height = max(line_height, item.sizeHint().height())
+
+        return y + line_height - rect.y()
+
+
+class CollapsibleSection(QWidget):
+    """
+    Collapsible section with smooth expand/collapse animation.
+    
+    Features:
+    - Click header to toggle expand/collapse
+    - Smooth QPropertyAnimation (200ms)
+    - Shows item count badge
+    - Visual indicators (▼ expanded, ▶ collapsed)
+    - Content area can contain any widget
+    """
+    def __init__(self, title, icon, count=0, parent=None):
+        super().__init__(parent)
+        self.is_expanded = True
+        self.title = title
+        self.icon = icon
+        self.count = count
+
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+
+        # Header bar with actions area
+        self.header_bar = QWidget()
+        hb = QHBoxLayout(self.header_bar)
+        hb.setContentsMargins(0, 0, 0, 0)
+        hb.setSpacing(4)
+
+        self.header_btn = QPushButton(f"▼ {icon} {title}  ({count})")
+        self.header_btn.setFlat(True)
+        self.header_btn.setCursor(Qt.PointingHandCursor)
+        self.header_btn.setStyleSheet("""
+            QPushButton {
+                text-align: left;
+                font-size: 11pt;
+                font-weight: bold;
+                color: #202124;
+                border: none;
+                padding: 8px 4px;
+                background: transparent;
+            }
+            QPushButton:hover {
+                color: #1a73e8;
+                background: rgba(26, 115, 232, 0.08);
+                border-radius: 4px;
+            }
+        """)
+        self.header_btn.clicked.connect(self.toggle)
+        hb.addWidget(self.header_btn, 1)
+
+        # Actions container on the right
+        self._header_actions_container = QWidget()
+        self.header_actions = QHBoxLayout(self._header_actions_container)
+        self.header_actions.setContentsMargins(0, 0, 0, 0)
+        self.header_actions.setSpacing(4)
+        hb.addWidget(self._header_actions_container, 0)
+
+        main_layout.addWidget(self.header_bar)
+
+        # Content widget (collapsible)
+        self.content_widget = QWidget()
+        self.content_layout = QVBoxLayout(self.content_widget)
+        self.content_layout.setContentsMargins(0, 0, 0, 0)
+        self.content_layout.setSpacing(4)
+        main_layout.addWidget(self.content_widget)
+
+        # Animation for smooth expand/collapse
+        self.animation = QPropertyAnimation(self.content_widget, b"maximumHeight")
+        self.animation.setDuration(200)  # 200ms smooth
+        self.animation.setEasingCurve(QEasingCurve.InOutCubic)
+
+    def toggle(self):
+        """Toggle expand/collapse."""
+        if self.is_expanded:
+            self.collapse()
+        else:
+            self.expand()
+
+    def collapse(self):
+        """Collapse section (hide content)."""
+        self.animation.setStartValue(self.content_widget.height())
+        self.animation.setEndValue(0)
+        self.animation.start()
+        self.is_expanded = False
+        self.header_btn.setText(f"▶ {self.icon} {self.title}  ({self.count})")
+        print(f"[CollapsibleSection] Collapsed: {self.title}")
+
+    def expand(self):
+        """Expand section (show content)."""
+        self.content_widget.setMaximumHeight(16777215)  # Remove max height limit
+        content_height = self.content_widget.sizeHint().height()
+
+        # CRITICAL FIX: Ensure minimum visible height for content
+        # If sizeHint() returns tiny value (e.g., <100px), use reasonable default
+        # This prevents People grid from being too tiny to see faces
+        if content_height < 100:
+            content_height = 250  # Reasonable default for ~2 rows of face cards
+
+        self.animation.setStartValue(0)
+        self.animation.setEndValue(content_height)
+        self.animation.start()
+        self.is_expanded = True
+        self.header_btn.setText(f"▼ {self.icon} {self.title}  ({self.count})")
+        print(f"[CollapsibleSection] Expanded: {self.title}")
+
+    def update_count(self, count):
+        """Update count badge."""
+        self.count = count
+        arrow = "▼" if self.is_expanded else "▶"
+        self.header_btn.setText(f"{arrow} {self.icon} {self.title}  ({count})")
+
+    def add_widget(self, widget):
+        """Add widget to content area."""
+        self.content_layout.addWidget(widget)
+
+    def add_header_action(self, widget):
+        """Add a small action widget to the header right side."""
+        try:
+            self.header_actions.addWidget(widget)
+        except Exception:
+            pass
+
+
+class PersonCard(QWidget):
+    """
+    Single person card with circular face thumbnail and name.
+
+    Features:
+    - 80x100px compact card size
+    - Circular face thumbnail (64px diameter)
+    - Name label (truncated if long)
+    - Photo count badge
+    - Hover effect
+    - Click to filter by person
+    - Context menu for rename/merge/delete
+    - Drag-and-drop merge support
+    """
+    clicked = Signal(str)  # Emits branch_key when clicked
+    context_menu_requested = Signal(str, str)  # Emits (branch_key, display_name)
+    drag_merge_requested = Signal(str, str)  # Emits (source_branch, target_branch)
+
+    def __init__(self, branch_key, display_name, face_pixmap, photo_count, parent=None):
+        """
+        Args:
+            branch_key: Unique identifier for this person (e.g., "cluster_0")
+            display_name: Human-readable name to display (e.g., "John" or "Unnamed")
+            face_pixmap: QPixmap with face thumbnail
+            photo_count: Number of photos with this person
+        """
+        super().__init__(parent)
+        self.branch_key = branch_key
+        self.display_name = display_name
+        self.person_name = branch_key  # Keep for backward compatibility
+        self.setFixedSize(80, 100)
+        self.setCursor(Qt.PointingHandCursor)
+        
+        # Enable drag-and-drop
+        self.setAcceptDrops(True)
+        
+        self.setStyleSheet("""
+            PersonCard {
+                background: transparent;
+                border-radius: 6px;
+            }
+            PersonCard:hover {
+                background: rgba(26, 115, 232, 0.08);
+            }
+        """)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(4)
+        layout.setAlignment(Qt.AlignCenter)
+
+        # Circular face thumbnail
+        self.face_label = QLabel()
+        if face_pixmap and not face_pixmap.isNull():
+            # Make circular mask
+            circular_pixmap = self._make_circular(face_pixmap, 64)
+            self.face_label.setPixmap(circular_pixmap)
+        else:
+            # Placeholder if no face image
+            self.face_label.setPixmap(QPixmap())
+            self.face_label.setFixedSize(64, 64)
+            self.face_label.setStyleSheet("""
+                QLabel {
+                    background: #e8eaed;
+                    border-radius: 32px;
+                    font-size: 24pt;
+                }
+            """)
+            self.face_label.setText("👤")
+            self.face_label.setAlignment(Qt.AlignCenter)
+
+        self.face_label.setFixedSize(64, 64)
+        self.face_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self.face_label)
+
+        # Name label
+        self.name_label = QLabel(display_name if len(display_name) <= 10 else display_name[:9] + "…")
+        self.name_label.setAlignment(Qt.AlignCenter)
+        self.name_label.setWordWrap(False)
+        self.name_label.setStyleSheet("""
+            QLabel {
+                font-size: 9pt;
+                color: #202124;
+                font-weight: 500;
+            }
+        """)
+        self.name_label.setToolTip(f"{display_name} ({photo_count} photos)")
+        layout.addWidget(self.name_label)
+
+        # Count badge with confidence icon
+        conf = "✅" if photo_count >= 10 else ("⚠️" if photo_count >= 5 else "❓")
+        self.count_label = QLabel(f"{conf} ({photo_count})")
+        self.count_label.setAlignment(Qt.AlignCenter)
+        self.count_label.setStyleSheet("""
+            QLabel {
+                font-size: 8pt;
+                color: #5f6368;
+            }
+        """)
+        layout.addWidget(self.count_label)
+
+    def _make_circular(self, pixmap, size):
+        """Convert pixmap to circular thumbnail."""
+        # Scale to size while maintaining aspect ratio
+        scaled = pixmap.scaled(
+            size, size,
+            Qt.KeepAspectRatioByExpanding,
+            Qt.SmoothTransformation
+        )
+
+        # Crop to square
+        if scaled.width() > size or scaled.height() > size:
+            x = (scaled.width() - size) // 2
+            y = (scaled.height() - size) // 2
+            scaled = scaled.copy(x, y, size, size)
+
+        # Create circular mask
+        output = QPixmap(size, size)
+        output.fill(Qt.transparent)
+
+        painter = QPainter(output)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.SmoothPixmapTransform)
+
+        # Draw circle path
+        path = QPainterPath()
+        path.addEllipse(0, 0, size, size)
+        painter.setClipPath(path)
+
+        # Draw image
+        painter.drawPixmap(0, 0, scaled)
+        painter.end()
+
+        return output
+
+    def mousePressEvent(self, event):
+        """Handle click and drag initiation on person card."""
+        if event.button() == Qt.LeftButton:
+            # Store drag start position for drag detection
+            self.drag_start_pos = event.pos()
+        elif event.button() == Qt.RightButton:
+            # Show context menu
+            self._show_context_menu(event.globalPos())
+    
+    def mouseMoveEvent(self, event):
+        """Handle drag operation."""
+        if not (event.buttons() & Qt.LeftButton):
+            return
+        if not hasattr(self, 'drag_start_pos'):
+            return
+        
+        # Check if drag threshold exceeded
+        from PySide6.QtCore import QPoint
+        from PySide6.QtWidgets import QApplication
+        if (event.pos() - self.drag_start_pos).manhattanLength() < QApplication.startDragDistance():
+            return
+        
+        # Start drag operation
+        from PySide6.QtCore import QMimeData
+        from PySide6.QtGui import QDrag
+        
+        drag = QDrag(self)
+        mime_data = QMimeData()
+        mime_data.setText(f"person_branch:{self.branch_key}:{self.display_name}")
+        drag.setMimeData(mime_data)
+        
+        # Create drag pixmap (semi-transparent face)
+        if self.face_label.pixmap() and not self.face_label.pixmap().isNull():
+            drag_pixmap = QPixmap(self.face_label.pixmap())
+        else:
+            # Create placeholder
+            drag_pixmap = QPixmap(64, 64)
+            drag_pixmap.fill(Qt.transparent)
+            from PySide6.QtGui import QPainter
+            painter = QPainter(drag_pixmap)
+            painter.drawText(drag_pixmap.rect(), Qt.AlignCenter, "👤")
+            painter.end()
+        
+        drag.setPixmap(drag_pixmap)
+        drag.setHotSpot(QPoint(32, 32))
+        
+        # Execute drag
+        drag.exec(Qt.CopyAction)
+    
+    def mouseReleaseEvent(self, event):
+        """Handle click after mouse release (if not dragged)."""
+        if event.button() == Qt.LeftButton:
+            # Only emit click if we didn't drag
+            if hasattr(self, 'drag_start_pos'):
+                if (event.pos() - self.drag_start_pos).manhattanLength() < 5:
+                    self.clicked.emit(self.branch_key)
+                    print(f"[PersonCard] Clicked: {self.display_name} (branch: {self.branch_key})")
+                delattr(self, 'drag_start_pos')
+    
+    def dragEnterEvent(self, event):
+        """Handle drag enter (highlight as drop target)."""
+        if event.mimeData().hasText() and event.mimeData().text().startswith("person_branch:"):
+            # Extract source branch
+            parts = event.mimeData().text().split(":")
+            if len(parts) >= 2:
+                source_branch = parts[1]
+                # Don't allow dropping onto self
+                if source_branch != self.branch_key:
+                    event.acceptProposedAction()
+                    self.setStyleSheet("""
+                        PersonCard {
+                            background: rgba(26, 115, 232, 0.2);
+                            border: 2px dashed #1a73e8;
+                            border-radius: 6px;
+                        }
+                    """)
+    
+    def dragLeaveEvent(self, event):
+        """Handle drag leave (remove highlight)."""
+        self.setStyleSheet("""
+            PersonCard {
+                background: transparent;
+                border-radius: 6px;
+            }
+            PersonCard:hover {
+                background: rgba(26, 115, 232, 0.08);
+            }
+        """)
+    
+    def dropEvent(self, event):
+        """Handle drop (initiate merge)."""
+        if event.mimeData().hasText() and event.mimeData().text().startswith("person_branch:"):
+            parts = event.mimeData().text().split(":")
+            if len(parts) >= 3:
+                source_branch = parts[1]
+                source_name = parts[2]
+                
+                # Confirm merge
+                from PySide6.QtWidgets import QMessageBox
+                reply = QMessageBox.question(
+                    self,
+                    "Confirm Drag-Drop Merge",
+                    f"🔄 Merge '{source_name}' into '{self.display_name}'?\n\n"
+                    f"This will move all faces from '{source_name}' to '{self.display_name}'.",
+                    QMessageBox.Yes | QMessageBox.No,
+                    QMessageBox.No
+                )
+                
+                if reply == QMessageBox.Yes:
+                    event.acceptProposedAction()
+                    self.drag_merge_requested.emit(source_branch, self.branch_key)
+                
+                # Reset style
+                self.setStyleSheet("""
+                    PersonCard {
+                        background: transparent;
+                        border-radius: 6px;
+                    }
+                    PersonCard:hover {
+                        background: rgba(26, 115, 232, 0.08);
+                    }
+                """)
+
+    def _show_context_menu(self, global_pos):
+        """Show context menu for rename/merge/delete."""
+        from PySide6.QtWidgets import QMenu
+        menu = QMenu(self)
+
+        # Rename action
+        rename_action = menu.addAction("✏️ Rename Person")
+        rename_action.triggered.connect(lambda: self.context_menu_requested.emit(self.branch_key, "rename"))
+
+        # Merge action
+        merge_action = menu.addAction("🔗 Merge with Another Person")
+        merge_action.triggered.connect(lambda: self.context_menu_requested.emit(self.branch_key, "merge"))
+
+        # Suggest merge action
+        suggest_action = menu.addAction("🤝 Suggest Merge…")
+        suggest_action.triggered.connect(lambda: self.context_menu_requested.emit(self.branch_key, "suggest_merge"))
+
+        # View details action
+        details_action = menu.addAction("👁️ View Details…")
+        details_action.triggered.connect(lambda: self.context_menu_requested.emit(self.branch_key, "details"))
+
+        menu.addSeparator()
+
+        # Delete action
+        delete_action = menu.addAction("🗑️ Delete Person")
+        delete_action.triggered.connect(lambda: self.context_menu_requested.emit(self.branch_key, "delete"))
+
+        menu.addSeparator()
+        review_action = menu.addAction("📝 Review Unnamed People…")
+        review_action.triggered.connect(lambda: self.context_menu_requested.emit(self.branch_key, "review_unnamed"))
+
+        menu.exec(global_pos)
+
+
+class PeopleGridView(QWidget):
+    """
+    Grid view for displaying people with face thumbnails.
+    
+    Replaces tree view for better space utilization.
+    Uses FlowLayout to arrange PersonCards in responsive grid.
+    
+    Features:
+    - Flow layout (wraps to next row automatically)
+    - Scrollable (can handle 100+ people)
+    - Circular face thumbnails
+    - Click to filter by person
+    - Empty state message
+    - Drag-and-drop merge support
+    """
+    person_clicked = Signal(str)  # Emits branch_key when clicked
+    context_menu_requested = Signal(str, str)  # Emits (branch_key, action)
+    drag_merge_requested = Signal(str, str)  # Emits (source_branch, target_branch)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+
+        # Scroll area
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setFrameShape(QFrame.NoFrame)
+        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        # CRITICAL FIX: Set minimum height so faces are visible (not tiny!)
+        # With 80x100px cards + spacing, 3 rows = ~340px minimum
+        self.scroll_area.setMinimumHeight(340)
+        self.scroll_area.setStyleSheet("""
+            QScrollArea {
+                background: transparent;
+                border: none;
+            }
+        """)
+
+        # Container with flow layout
+        self.grid_container = QWidget()
+        self.flow_layout = FlowLayout(self.grid_container, margin=4, spacing=8)
+
+        # Empty state label (hidden when people added)
+        self.empty_label = QLabel("No people detected yet\n\nRun face detection to see people here")
+        self.empty_label.setAlignment(Qt.AlignCenter)
+        self.empty_label.setStyleSheet("""
+            QLabel {
+                color: #5f6368;
+                font-size: 10pt;
+                padding: 20px;
+            }
+        """)
+        self.empty_label.hide()
+
+        # Add to scroll
+        self.scroll_area.setWidget(self.grid_container)
+        main_layout.addWidget(self.scroll_area)
+        main_layout.addWidget(self.empty_label)
+
+    def add_person(self, branch_key, display_name, face_pixmap, photo_count):
+        """
+        Add person to grid.
+
+        Args:
+            branch_key: Unique identifier (e.g., "cluster_0")
+            display_name: Display name (e.g., "John" or "Unnamed")
+            face_pixmap: Face thumbnail
+            photo_count: Number of photos
+        """
+        card = PersonCard(branch_key, display_name, face_pixmap, photo_count)
+        card.clicked.connect(self._on_person_clicked)
+        card.context_menu_requested.connect(self._on_context_menu_requested)
+        card.drag_merge_requested.connect(self._on_drag_merge_requested)
+        self.flow_layout.addWidget(card)
+        self.empty_label.hide()
+
+    def _on_person_clicked(self, branch_key):
+        """Forward person click signal."""
+        self.person_clicked.emit(branch_key)
+
+    def _on_context_menu_requested(self, branch_key, action):
+        """Forward context menu request."""
+        self.context_menu_requested.emit(branch_key, action)
+    
+    def _on_drag_merge_requested(self, source_branch, target_branch):
+        """Forward drag-drop merge request."""
+        self.drag_merge_requested.emit(source_branch, target_branch)
+
+    def clear(self):
+        """Remove all person cards."""
+        while self.flow_layout.count():
+            item = self.flow_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        self.empty_label.show()
+
+    def count(self):
+        """Return number of people in grid."""
+        return self.flow_layout.count()
+
+    def sizeHint(self):
+        """
+        Return recommended size for the grid.
+
+        CRITICAL: CollapsibleSection uses this to determine expand height.
+        Without this, section collapses to tiny ~50px area showing only 2 faces!
+
+        Returns:
+            QSize: Recommended size (width flexible, height based on content)
+        """
+        # Calculate based on number of cards and card size
+        card_count = self.flow_layout.count()
+        if card_count == 0:
+            # Empty state - small height
+            return QSize(200, 100)
+
+        # Card size: 80x100px per PersonCard + spacing
+        card_height = 100
+        spacing = 8
+        cards_per_row = 2  # Sidebar width ~240px / 80px cards = ~2 per row
+
+        # Calculate rows needed
+        rows = (card_count + cards_per_row - 1) // cards_per_row
+
+        # Total height: rows * (card_height + spacing) + margins
+        # Cap at 400px to allow scrolling for many faces
+        content_height = min(rows * (card_height + spacing) + 20, 400)
+
+        return QSize(200, content_height)
