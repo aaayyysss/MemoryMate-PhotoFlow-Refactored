@@ -156,6 +156,20 @@ class FaceClusterWorker(QRunnable):
 
                 logger.info(f"[FaceClusterWorker] Found {cluster_count} clusters")
 
+                # If no clusters found, retry once with looser parameters
+                if cluster_count == 0:
+                    try:
+                        retry_eps = max(0.40, eps)  # loosen threshold slightly
+                        retry_min_samples = max(1, min_samples - 1)  # allow singletons
+                        logger.info(f"[FaceClusterWorker] ⚠️ No clusters found, retrying with eps={retry_eps}, min_samples={retry_min_samples}")
+                        dbscan_retry = DBSCAN(eps=retry_eps, min_samples=retry_min_samples, metric='cosine')
+                        labels = dbscan_retry.fit_predict(X)
+                        unique_labels = sorted([l for l in set(labels) if l != -1])
+                        cluster_count = len(unique_labels)
+                        logger.info(f"[FaceClusterWorker] Retry found {cluster_count} clusters")
+                    except Exception as retry_error:
+                        logger.warning(f"[FaceClusterWorker] Retry clustering failed: {retry_error}")
+
                 # Count unclustered faces (noise, label == -1)
                 noise_count = np.sum(labels == -1)
                 if noise_count > 0:
