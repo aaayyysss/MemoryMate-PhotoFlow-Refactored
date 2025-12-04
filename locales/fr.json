@@ -593,5 +593,32 @@
     "merge_failed_message": "Impossible de fusionner les personnes:\n{error}",
     "rename_person": "Renommer la personne",
     "new_name": "Nouveau nom:"
+  },
+
+  "google_layout": {
+    "search_placeholder": "🔍 Rechercher photos, personnes, lieux...",
+    "search_tooltip": "Rechercher des photos (Ctrl+F)",
+    "zoom_out_tooltip": "Dézoomer (réduire la taille des miniatures)",
+    "zoom_in_tooltip": "Zoomer (augmenter la taille des miniatures)",
+    "zoom_slider_tooltip": "Ajuster la taille des miniatures (+/-)",
+    "settings_tooltip": "Paramètres et outils",
+    "settings_menu": {
+      "quick_actions_section": "🔧 Actions Rapides",
+      "scan_repository": "📂  Scanner le Référentiel",
+      "detect_faces": "👤  Détecter les Visages",
+      "refresh_view": "🔄  Actualiser la Vue",
+      "tools_section": "⚙️ Outils",
+      "database_maintenance": "📊  Maintenance de la Base de Données",
+      "clear_cache": "🗑️  Vider le Cache des Miniatures",
+      "view_section": "🎨 Affichage",
+      "toggle_dark_mode": "🌓  Basculer en Mode Sombre",
+      "sidebar_mode": "📏  Mode Barre Latérale (Liste/Onglets)",
+      "help_section": "📖 Aide",
+      "keyboard_shortcuts": "📚  Raccourcis Clavier"
+    },
+    "project_dropdown": {
+      "new_project": "➕ Nouveau Projet...",
+      "no_projects": "(Aucun projet)"
+    }
   }
 }
