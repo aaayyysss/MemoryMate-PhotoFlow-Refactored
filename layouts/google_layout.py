@@ -7857,19 +7857,8 @@ class GooglePhotosLayout(BaseLayout):
             }
         """)
 
-        # Primary actions
-        self.btn_create_project = QPushButton("➕ New Project")
-        self.btn_create_project.setToolTip("Create a new project")
-        # CRITICAL FIX: Connect button immediately, not in on_layout_activated
-        self.btn_create_project.clicked.connect(self._on_create_project_clicked)
-        print("[GooglePhotosLayout] ✅ Create Project button connected in toolbar creation")
-        toolbar.addWidget(self.btn_create_project)
-
-        # Project selector
+        # Project selector (compact, no label - Google Photos style)
         from PySide6.QtWidgets import QComboBox, QLabel
-        project_label = QLabel("Project:")
-        project_label.setStyleSheet("padding: 0 8px; font-weight: bold;")
-        toolbar.addWidget(project_label)
 
         self.project_combo = QComboBox()
         self.project_combo.setMinimumWidth(150)
@@ -7896,49 +7885,42 @@ class GooglePhotosLayout(BaseLayout):
 
         toolbar.addSeparator()
 
-        self.btn_scan = QPushButton("📂 Scan Repository")
-        self.btn_scan.setToolTip("Scan folder to add new photos to database")
-        toolbar.addWidget(self.btn_scan)
-
-        self.btn_faces = QPushButton("👤 Detect Faces")
-        self.btn_faces.setToolTip("Run face detection and clustering on photos")
-        toolbar.addWidget(self.btn_faces)
-
-        toolbar.addSeparator()
-
-        # Search box
+        # Search box (enlarged - Google Photos hero element)
         self.search_box = QLineEdit()
-        self.search_box.setPlaceholderText("🔍 Search your photos...")
-        self.search_box.setMinimumWidth(300)
+        self.search_box.setPlaceholderText("🔍 Search photos, people, places...")
+        self.search_box.setMinimumWidth(400)  # Enlarged from 300px to 400px minimum
+        self.search_box.setToolTip("Search photos (Ctrl+F)")
         self.search_box.setStyleSheet("""
             QLineEdit {
                 background: white;
                 border: 1px solid #dadce0;
-                border-radius: 4px;
-                padding: 6px 12px;
+                border-radius: 20px;
+                padding: 8px 16px;
                 font-size: 11pt;
             }
             QLineEdit:focus {
                 border-color: #1a73e8;
+                border-width: 2px;
             }
         """)
         # Phase 2: Connect search functionality
         self.search_box.textChanged.connect(self._on_search_text_changed)
         self.search_box.returnPressed.connect(self._perform_search)
-        toolbar.addWidget(self.search_box)
+
+        # Make search box expand to take available space (Google Photos pattern)
+        search_container = QWidget()
+        search_layout = QHBoxLayout(search_container)
+        search_layout.setContentsMargins(0, 0, 0, 0)
+        search_layout.addWidget(self.search_box)
+        search_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        toolbar.addWidget(search_container)
 
         # PHASE 2 #3: Create search suggestions dropdown
         self._create_search_suggestions()
 
         toolbar.addSeparator()
 
-        # Refresh button
-        self.btn_refresh = QPushButton("↻ Refresh")
-        self.btn_refresh.setToolTip("Reload timeline from database")
-        self.btn_refresh.clicked.connect(self._load_photos)
-        toolbar.addWidget(self.btn_refresh)
-
-        # Clear Filter button (initially hidden)
+        # Clear Filter button (initially hidden, Google Photos style)
         self.btn_clear_filter = QPushButton("✕ Clear Filter")
         self.btn_clear_filter.setToolTip("Show all photos (remove date/folder filters)")
         self.btn_clear_filter.clicked.connect(self._clear_filter)
@@ -7959,46 +7941,74 @@ class GooglePhotosLayout(BaseLayout):
 
         # Phase 2: Selection mode toggle
         self.btn_select = QPushButton("☑️ Select")
-        self.btn_select.setToolTip("Enable selection mode to select multiple photos")
+        self.btn_select.setToolTip("Enable selection mode (Ctrl+A to select all)")
         self.btn_select.setCheckable(True)
         self.btn_select.clicked.connect(self._toggle_selection_mode)
         toolbar.addWidget(self.btn_select)
 
         toolbar.addSeparator()
 
-        # Phase 2: Zoom slider for thumbnail size
+        # Zoom controls (Google Photos style - +/- buttons with slider)
         from PySide6.QtWidgets import QLabel, QSlider
-        zoom_label = QLabel("🔎 Zoom:")
-        zoom_label.setStyleSheet("padding: 0 4px;")
-        toolbar.addWidget(zoom_label)
+
+        # Zoom out button
+        self.btn_zoom_out = QPushButton("➖")
+        self.btn_zoom_out.setToolTip("Zoom out (decrease thumbnail size)")
+        self.btn_zoom_out.setFixedSize(28, 28)
+        self.btn_zoom_out.clicked.connect(lambda: self.zoom_slider.setValue(self.zoom_slider.value() - 50))
+        self.btn_zoom_out.setStyleSheet("""
+            QPushButton {
+                background: white;
+                border: 1px solid #dadce0;
+                border-radius: 4px;
+                font-size: 14pt;
+            }
+            QPushButton:hover {
+                background: #f1f3f4;
+            }
+        """)
+        toolbar.addWidget(self.btn_zoom_out)
 
         self.zoom_slider = QSlider(Qt.Horizontal)
         self.zoom_slider.setMinimum(100)  # 100px thumbnails
         self.zoom_slider.setMaximum(400)  # 400px thumbnails
         self.zoom_slider.setValue(200)    # Default 200px
-        self.zoom_slider.setFixedWidth(120)
-        self.zoom_slider.setToolTip("Adjust thumbnail size")
+        self.zoom_slider.setFixedWidth(100)
+        self.zoom_slider.setToolTip("Adjust thumbnail size (+/-)")
         self.zoom_slider.valueChanged.connect(self._on_zoom_changed)
         toolbar.addWidget(self.zoom_slider)
 
-        # Zoom value label
-        self.zoom_value_label = QLabel("200px")
-        self.zoom_value_label.setFixedWidth(50)
-        self.zoom_value_label.setStyleSheet("padding: 0 4px; font-size: 10pt;")
+        # Zoom in button
+        self.btn_zoom_in = QPushButton("➕")
+        self.btn_zoom_in.setToolTip("Zoom in (increase thumbnail size)")
+        self.btn_zoom_in.setFixedSize(28, 28)
+        self.btn_zoom_in.clicked.connect(lambda: self.zoom_slider.setValue(self.zoom_slider.value() + 50))
+        self.btn_zoom_in.setStyleSheet("""
+            QPushButton {
+                background: white;
+                border: 1px solid #dadce0;
+                border-radius: 4px;
+                font-size: 14pt;
+            }
+            QPushButton:hover {
+                background: #f1f3f4;
+            }
+        """)
+        toolbar.addWidget(self.btn_zoom_in)
+
+        # Zoom value label (smaller, optional)
+        self.zoom_value_label = QLabel("200")
+        self.zoom_value_label.setFixedWidth(35)
+        self.zoom_value_label.setStyleSheet("padding: 0 4px; font-size: 9pt; color: #5f6368;")
+        self.zoom_value_label.setToolTip("Current thumbnail size")
         toolbar.addWidget(self.zoom_value_label)
 
-        toolbar.addSeparator()
-
-        # PHASE 2 #5: Aspect ratio toggle buttons
-        aspect_label = QLabel("📐 Aspect:")
-        aspect_label.setStyleSheet("padding: 0 4px;")
-        toolbar.addWidget(aspect_label)
-
+        # PHASE 2 #5: Aspect ratio toggle buttons (icons only, no label)
         self.btn_aspect_square = QPushButton("⬜")
         self.btn_aspect_square.setToolTip("Square thumbnails (1:1)")
         self.btn_aspect_square.setCheckable(True)
         self.btn_aspect_square.setChecked(True)
-        self.btn_aspect_square.setFixedSize(32, 32)
+        self.btn_aspect_square.setFixedSize(24, 24)
         self.btn_aspect_square.clicked.connect(lambda: self._set_aspect_ratio("square"))
         self.btn_aspect_square.setStyleSheet("""
             QPushButton {
@@ -8019,7 +8029,7 @@ class GooglePhotosLayout(BaseLayout):
         self.btn_aspect_original = QPushButton("🖼️")
         self.btn_aspect_original.setToolTip("Original aspect ratio")
         self.btn_aspect_original.setCheckable(True)
-        self.btn_aspect_original.setFixedSize(32, 32)
+        self.btn_aspect_original.setFixedSize(24, 24)
         self.btn_aspect_original.clicked.connect(lambda: self._set_aspect_ratio("original"))
         self.btn_aspect_original.setStyleSheet("""
             QPushButton {
@@ -8040,7 +8050,7 @@ class GooglePhotosLayout(BaseLayout):
         self.btn_aspect_16_9 = QPushButton("▬")
         self.btn_aspect_16_9.setToolTip("16:9 widescreen")
         self.btn_aspect_16_9.setCheckable(True)
-        self.btn_aspect_16_9.setFixedSize(32, 32)
+        self.btn_aspect_16_9.setFixedSize(24, 24)
         self.btn_aspect_16_9.clicked.connect(lambda: self._set_aspect_ratio("16:9"))
         self.btn_aspect_16_9.setStyleSheet("""
             QPushButton {
@@ -8058,7 +8068,30 @@ class GooglePhotosLayout(BaseLayout):
         """)
         toolbar.addWidget(self.btn_aspect_16_9)
 
-        # Spacer
+        toolbar.addSeparator()
+
+        # Settings button (Google Photos pattern - before spacer)
+        self.btn_settings = QPushButton("⚙️")
+        self.btn_settings.setToolTip("Settings and tools")
+        self.btn_settings.setFixedSize(32, 32)
+        self.btn_settings.clicked.connect(self._show_settings_menu)
+        self.btn_settings.setStyleSheet("""
+            QPushButton {
+                background: white;
+                border: 1px solid #dadce0;
+                border-radius: 16px;
+                font-size: 14pt;
+            }
+            QPushButton:hover {
+                background: #f1f3f4;
+            }
+            QPushButton:pressed {
+                background: #e8eaed;
+            }
+        """)
+        toolbar.addWidget(self.btn_settings)
+
+        # Spacer (push remaining items to the right)
         spacer = QWidget()
         spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         toolbar.addWidget(spacer)
@@ -8087,6 +8120,98 @@ class GooglePhotosLayout(BaseLayout):
         self._toolbar = toolbar
 
         return toolbar
+
+    def _show_settings_menu(self):
+        """Show Settings menu (Google Photos pattern) - Phase 2."""
+        from PySide6.QtWidgets import QMenu, QMessageBox
+        from PySide6.QtGui import QAction
+
+        menu = QMenu(self)
+        menu.setStyleSheet("""
+            QMenu {
+                background: white;
+                border: 1px solid #dadce0;
+                border-radius: 4px;
+                padding: 8px 0;
+            }
+            QMenu::item {
+                padding: 8px 24px;
+                font-size: 11pt;
+            }
+            QMenu::item:selected {
+                background: #f1f3f4;
+            }
+            QMenu::separator {
+                height: 1px;
+                background: #dadce0;
+                margin: 4px 0;
+            }
+        """)
+
+        # QUICK ACTIONS section
+        menu.addSection("🔧 Quick Actions")
+
+        scan_action = QAction("📂  Scan Repository", self)
+        scan_action.setToolTip("Scan folder to add new photos")
+        if hasattr(self, 'btn_scan'):
+            scan_action.triggered.connect(self.btn_scan.click)
+        menu.addAction(scan_action)
+
+        faces_action = QAction("👤  Detect Faces", self)
+        faces_action.setToolTip("Run face detection on photos")
+        if hasattr(self, 'btn_faces'):
+            faces_action.triggered.connect(self.btn_faces.click)
+        menu.addAction(faces_action)
+
+        refresh_action = QAction("↻  Refresh Timeline", self)
+        refresh_action.setToolTip("Reload photos from database")
+        refresh_action.triggered.connect(self._load_photos)
+        menu.addAction(refresh_action)
+
+        menu.addSeparator()
+
+        # VIEW OPTIONS section
+        menu.addSection("📊 View Options")
+
+        # TODO: These are placeholders - implement actual toggles
+        metadata_action = QAction("Show Metadata Overlay", self)
+        metadata_action.setCheckable(True)
+        metadata_action.setChecked(False)
+        menu.addAction(metadata_action)
+
+        count_action = QAction("Show Photo Count", self)
+        count_action.setCheckable(True)
+        count_action.setChecked(True)
+        menu.addAction(count_action)
+
+        menu.addSeparator()
+
+        # PREFERENCES section
+        menu.addSection("⚙️ Preferences")
+
+        appearance_action = QAction("🎨  Appearance Settings", self)
+        appearance_action.setToolTip("Customize theme and colors")
+        menu.addAction(appearance_action)
+
+        import_action = QAction("🗂️  Import Settings", self)
+        import_action.setToolTip("Configure import behavior")
+        menu.addAction(import_action)
+
+        menu.addSeparator()
+
+        # ABOUT section
+        menu.addSection("ℹ️ About")
+
+        about_action = QAction("ℹ️  About MemoryMate", self)
+        about_action.triggered.connect(lambda: QMessageBox.information(
+            self,
+            "About MemoryMate",
+            "MemoryMate PhotoFlow\nVersion 1.0\n\nPhoto management with AI-powered face detection"
+        ))
+        menu.addAction(about_action)
+
+        # Show menu below the Settings button
+        menu.exec(self.btn_settings.mapToGlobal(self.btn_settings.rect().bottomLeft()))
 
     def _create_floating_toolbar(self, parent: QWidget) -> QWidget:
         """
@@ -14181,8 +14306,8 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
         """
         print(f"[GooglePhotosLayout] 🔎 Zoom changed to: {value}px")
 
-        # Update label
-        self.zoom_value_label.setText(f"{value}px")
+        # Update label (just the number, no "px")
+        self.zoom_value_label.setText(f"{value}")
 
         # Reload photos with new thumbnail size
         # Store current scroll position
