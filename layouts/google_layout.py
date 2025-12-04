@@ -8152,19 +8152,19 @@ class GooglePhotosLayout(BaseLayout):
         # QUICK ACTIONS section
         menu.addSection("🔧 Quick Actions")
 
-        scan_action = QAction("📂  Scan Repository", self)
+        scan_action = QAction("📂  Scan Repository", menu)
         scan_action.setToolTip("Scan folder to add new photos")
         if hasattr(self, '_scan_repository_handler'):
             scan_action.triggered.connect(self._scan_repository_handler)
         menu.addAction(scan_action)
 
-        faces_action = QAction("👤  Detect Faces", self)
+        faces_action = QAction("👤  Detect Faces", menu)
         faces_action.setToolTip("Run face detection on photos")
         if hasattr(self, '_detect_faces_handler'):
             faces_action.triggered.connect(self._detect_faces_handler)
         menu.addAction(faces_action)
 
-        refresh_action = QAction("↻  Refresh Timeline", self)
+        refresh_action = QAction("↻  Refresh Timeline", menu)
         refresh_action.setToolTip("Reload photos from database")
         refresh_action.triggered.connect(self._load_photos)
         menu.addAction(refresh_action)
@@ -8175,12 +8175,12 @@ class GooglePhotosLayout(BaseLayout):
         menu.addSection("📊 View Options")
 
         # TODO: These are placeholders - implement actual toggles
-        metadata_action = QAction("Show Metadata Overlay", self)
+        metadata_action = QAction("Show Metadata Overlay", menu)
         metadata_action.setCheckable(True)
         metadata_action.setChecked(False)
         menu.addAction(metadata_action)
 
-        count_action = QAction("Show Photo Count", self)
+        count_action = QAction("Show Photo Count", menu)
         count_action.setCheckable(True)
         count_action.setChecked(True)
         menu.addAction(count_action)
@@ -8190,11 +8190,11 @@ class GooglePhotosLayout(BaseLayout):
         # PREFERENCES section
         menu.addSection("⚙️ Preferences")
 
-        appearance_action = QAction("🎨  Appearance Settings", self)
+        appearance_action = QAction("🎨  Appearance Settings", menu)
         appearance_action.setToolTip("Customize theme and colors")
         menu.addAction(appearance_action)
 
-        import_action = QAction("🗂️  Import Settings", self)
+        import_action = QAction("🗂️  Import Settings", menu)
         import_action.setToolTip("Configure import behavior")
         menu.addAction(import_action)
 
@@ -8203,9 +8203,9 @@ class GooglePhotosLayout(BaseLayout):
         # ABOUT section
         menu.addSection("ℹ️ About")
 
-        about_action = QAction("ℹ️  About MemoryMate", self)
+        about_action = QAction("ℹ️  About MemoryMate", menu)
         about_action.triggered.connect(lambda: QMessageBox.information(
-            self,
+            self.main_window,
             "About MemoryMate",
             "MemoryMate PhotoFlow\nVersion 1.0\n\nPhoto management with AI-powered face detection"
         ))
