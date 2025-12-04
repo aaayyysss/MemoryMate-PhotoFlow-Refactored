@@ -8126,7 +8126,8 @@ class GooglePhotosLayout(BaseLayout):
         from PySide6.QtWidgets import QMenu, QMessageBox
         from PySide6.QtGui import QAction
 
-        menu = QMenu(self)
+        # Create menu with proper parent (main_window is a QWidget)
+        menu = QMenu(self.main_window)
         menu.setStyleSheet("""
             QMenu {
                 background: white;
