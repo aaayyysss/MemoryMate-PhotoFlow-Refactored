@@ -70,10 +70,9 @@ sys.excepthook = exception_hook
 
 if __name__ == "__main__":
 
-    # CRITICAL: Enable high-DPI scaling BEFORE QApplication creation
-    # This ensures the app adapts to Windows display scale settings (100%, 125%, 150%, 200%)
-    QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)  # Enable DPI scaling
-    QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)     # Scale pixmaps/icons
+    # CRITICAL: Qt 6 has built-in high-DPI support enabled by default
+    # The AA_EnableHighDpiScaling and AA_UseHighDpiPixmaps attributes are deprecated
+    # and no longer needed in Qt 6 (they are automatically enabled)
     
     # Qt app
     app = QApplication(sys.argv)
