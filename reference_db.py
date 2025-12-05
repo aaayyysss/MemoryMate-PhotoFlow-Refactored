@@ -4800,25 +4800,37 @@ class ReferenceDB:
             moved_faces = cur.rowcount
 
             # 2) project_images → keep branch-based browsing consistent
-            # CRITICAL FIX: Delete duplicate entries BEFORE updating to prevent UNIQUE constraint violation
-            # If image_path exists in both source and target branches, the UPDATE would create duplicates
+            # CRITICAL FIX (2025-12-05): Properly handle merging of project_images
+            # Previous bug: Deleted source entries if target had same image_path, but
+            # didn't ensure they were properly linked to target. This caused photos to
+            # disappear from grid (no project_images link).
+            #
+            # NEW APPROACH:
+            # - If photo exists in BOTH source and target: keep target, delete source (true duplicate)
+            # - If photo exists ONLY in source: UPDATE to target (move the link)
+            # This ensures no photos lose their project_images link during merge
+
+            # First, handle true duplicates (photos in both source AND target branches)
+            # These can be safely deleted from source since target already has them
             cur.execute(
                 f"""
                 DELETE FROM project_images
                 WHERE project_id = ?
                   AND branch_key IN ({src_placeholders})
                   AND image_path IN (
-                      SELECT image_path
-                      FROM project_images
-                      WHERE project_id = ? AND branch_key = ?
+                      SELECT pi_target.image_path
+                      FROM project_images pi_target
+                      WHERE pi_target.project_id = ?
+                        AND pi_target.branch_key = ?
                   )
                 """,
                 [project_id] + src_list + [project_id, target_branch],
             )
             deleted_duplicates = cur.rowcount
-            print(f"[merge_face_clusters] Deleted {deleted_duplicates} duplicate project_images entries")
+            print(f"[merge_face_clusters] Deleted {deleted_duplicates} TRUE duplicate project_images entries (photos already in target)")
 
-            # Now safe to UPDATE remaining source entries to target
+            # Now UPDATE remaining source entries to target (photos that only exist in source)
+            # These are NOT duplicates - they need to be moved to target branch
             cur.execute(
                 f"""
                 UPDATE project_images
@@ -4828,7 +4840,48 @@ class ReferenceDB:
                 """,
                 [target_branch, project_id] + src_list,
             )
-            moved_images = cur.rowcount + deleted_duplicates  # Total affected
+            moved_images = cur.rowcount
+            print(f"[merge_face_clusters] Moved {moved_images} unique project_images entries from source to target")
+
+            # VALIDATION: Ensure all face_crops photos have project_images entries
+            # This catches any logic bugs where photos might lose their link
+            cur.execute(
+                """
+                SELECT COUNT(DISTINCT fc.image_path)
+                FROM face_crops fc
+                LEFT JOIN project_images pi ON fc.image_path = pi.image_path
+                                            AND pi.project_id = fc.project_id
+                                            AND pi.branch_key = fc.branch_key
+                WHERE fc.project_id = ? AND fc.branch_key = ?
+                  AND pi.image_path IS NULL
+                """,
+                [project_id, target_branch],
+            )
+            orphaned_count = cur.fetchone()[0]
+
+            if orphaned_count > 0:
+                # BUG: Some face_crops lost their project_images link!
+                print(f"[merge_face_clusters] ⚠️ WARNING: {orphaned_count} face_crops for {target_branch} have no project_images link!")
+                print(f"[merge_face_clusters] ⚠️ This will cause count mismatch in grid. Auto-fixing...")
+
+                # Auto-fix: Insert missing project_images entries
+                cur.execute(
+                    """
+                    INSERT OR IGNORE INTO project_images (project_id, branch_key, image_path)
+                    SELECT fc.project_id, fc.branch_key, fc.image_path
+                    FROM face_crops fc
+                    LEFT JOIN project_images pi ON fc.image_path = pi.image_path
+                                                AND pi.project_id = fc.project_id
+                                                AND pi.branch_key = fc.branch_key
+                    WHERE fc.project_id = ? AND fc.branch_key = ?
+                      AND pi.image_path IS NULL
+                    """,
+                    [project_id, target_branch],
+                )
+                fixed_count = cur.rowcount
+                print(f"[merge_face_clusters] ✓ Auto-fixed {fixed_count} missing project_images entries")
+
+            total_moved = moved_images + deleted_duplicates
 
             # 3) Representatives: delete reps for source clusters (target kept as-is)
             cur.execute(
@@ -4872,7 +4925,7 @@ class ReferenceDB:
 
             result = {
                 "moved_faces": moved_faces,
-                "moved_images": moved_images,
+                "moved_images": total_moved,  # Total affected (moved + deleted duplicates)
                 "deleted_reps": deleted_reps,
                 "sources": src_list,
                 "target": target_branch,
