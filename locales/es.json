@@ -2,8 +2,8 @@
   "_metadata": {
     "language_code": "es",
     "language_name": "Español",
-    "version": "1.0.0",
-    "last_updated": "2025-11-17"
+    "version": "2.0.0",
+    "last_updated": "2025-12-05"
   },
 
   "app": {
@@ -593,5 +593,69 @@
     "merge_failed_message": "No se pudieron fusionar personas:\n{error}",
     "rename_person": "Renombrar persona",
     "new_name": "Nuevo nombre:"
+  },
+
+  "google_layout": {
+    "search_placeholder": "🔍 Buscar fotos, personas, lugares...",
+    "search_tooltip": "Buscar fotos (Ctrl+F)",
+    "zoom_out_tooltip": "Alejar (reducir tamaño de miniaturas)",
+    "zoom_in_tooltip": "Acercar (aumentar tamaño de miniaturas)",
+    "zoom_slider_tooltip": "Ajustar tamaño de miniaturas (+/-)",
+    "settings_tooltip": "Configuración y herramientas",
+    "settings_menu": {
+      "quick_actions_section": "🔧 Acciones Rápidas",
+      "scan_repository": "📂  Escanear Repositorio",
+      "detect_faces": "👤  Detectar Rostros",
+      "refresh_view": "🔄  Actualizar Vista",
+      "tools_section": "⚙️ Herramientas",
+      "database_maintenance": "📊  Mantenimiento de Base de Datos",
+      "clear_cache": "🗑️  Limpiar Caché de Miniaturas",
+      "view_section": "🎨 Vista",
+      "toggle_dark_mode": "🌓  Alternar Modo Oscuro",
+      "sidebar_mode": "📏  Modo Barra Lateral (Lista/Pestañas)",
+      "help_section": "📖 Ayuda",
+      "keyboard_shortcuts": "📚  Atajos de Teclado"
+    },
+    "project_dropdown": {
+      "new_project": "➕ Nuevo Proyecto...",
+      "no_projects": "(Sin proyectos)"
+    },
+    "lightbox": {
+      "window_title": "Visor de Medios",
+      "loading": "⏳ Cargando...",
+      "motion_photo_tooltip": "Foto en movimiento - Mantener pulsado para reproducir",
+      "delete_tooltip": "Eliminar (D)",
+      "favorite_tooltip": "Favorito (F)",
+      "share_tooltip": "Compartir/Exportar (Ctrl+Shift+S)",
+      "zoom_out_tooltip": "Alejar (-)",
+      "zoom_in_tooltip": "Acercar (+)",
+      "slideshow_tooltip": "Diapositivas (S)",
+      "info_tooltip": "Información (I)",
+      "edit_tooltip": "Modo de Edición - Ajustes, Recorte, Filtros (E)",
+      "save_button": "✔ Guardar",
+      "save_tooltip": "Aplicar cambios y volver al visor",
+      "cancel_button": "✖ Cancelar",
+      "cancel_tooltip": "Descartar cambios y volver al visor",
+      "zoom_reset_tooltip": "Restablecer Zoom",
+      "crop_button": "✂ Recortar",
+      "crop_tooltip": "Entrar en modo recorte",
+      "filters_button": "🎨 Filtros",
+      "filters_tooltip": "Mostrar panel de presets",
+      "before_after_button": "🔄 Antes/Después",
+      "before_after_tooltip": "Alternar vista de comparación",
+      "tools_button": "🛠 Herramientas",
+      "tools_tooltip": "Mostrar/Ocultar herramientas de edición",
+      "undo_button": "↶ Deshacer",
+      "undo_tooltip": "Deshacer último cambio (Ctrl+Z)",
+      "redo_button": "↷ Rehacer",
+      "redo_tooltip": "Rehacer (Ctrl+Y)",
+      "copy_button": "📋 Copiar",
+      "copy_tooltip": "Copiar ajustes actuales (Ctrl+Shift+C)",
+      "paste_button": "📌 Pegar",
+      "paste_tooltip": "Pegar ajustes copiados (Ctrl+Shift+V)",
+      "export_button": "💾 Exportar",
+      "export_tooltip": "Exportar imagen o video editado",
+      "adjustments_header": "Ajustes"
+    }
   }
 }
