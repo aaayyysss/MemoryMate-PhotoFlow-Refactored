@@ -2,8 +2,8 @@
   "_metadata": {
     "language_code": "de",
     "language_name": "Deutsch (German)",
-    "version": "1.0.0",
-    "last_updated": "2025-01-22"
+    "version": "2.0.0",
+    "last_updated": "2025-12-05"
   },
 
   "app": {
@@ -593,5 +593,69 @@
     "merge_failed_message": "Personen konnten nicht zusammengeführt werden:\n{error}",
     "rename_person": "Person Umbenennen",
     "new_name": "Neuer Name:"
+  },
+
+  "google_layout": {
+    "search_placeholder": "🔍 Fotos, Personen, Orte suchen...",
+    "search_tooltip": "Fotos suchen (Strg+F)",
+    "zoom_out_tooltip": "Verkleinern (Miniaturgröße verringern)",
+    "zoom_in_tooltip": "Vergrößern (Miniaturgröße erhöhen)",
+    "zoom_slider_tooltip": "Miniaturgröße anpassen (+/-)",
+    "settings_tooltip": "Einstellungen und Werkzeuge",
+    "settings_menu": {
+      "quick_actions_section": "🔧 Schnellaktionen",
+      "scan_repository": "📂  Repository Scannen",
+      "detect_faces": "👤  Gesichter Erkennen",
+      "refresh_view": "🔄  Ansicht Aktualisieren",
+      "tools_section": "⚙️ Werkzeuge",
+      "database_maintenance": "📊  Datenbankwartung",
+      "clear_cache": "🗑️  Miniatur-Cache Leeren",
+      "view_section": "🎨 Ansicht",
+      "toggle_dark_mode": "🌓  Dunkelmodus Umschalten",
+      "sidebar_mode": "📏  Seitenleistenmodus (Liste/Registerkarten)",
+      "help_section": "📖 Hilfe",
+      "keyboard_shortcuts": "📚  Tastenkombinationen"
+    },
+    "project_dropdown": {
+      "new_project": "➕ Neues Projekt...",
+      "no_projects": "(Keine Projekte)"
+    },
+    "lightbox": {
+      "window_title": "Medienanzeige",
+      "loading": "⏳ Lädt...",
+      "motion_photo_tooltip": "Bewegtes Foto - Lang drücken zum Abspielen",
+      "delete_tooltip": "Löschen (D)",
+      "favorite_tooltip": "Favorit (F)",
+      "share_tooltip": "Teilen/Exportieren (Ctrl+Shift+S)",
+      "zoom_out_tooltip": "Verkleinern (-)",
+      "zoom_in_tooltip": "Vergrößern (+)",
+      "slideshow_tooltip": "Diashow (S)",
+      "info_tooltip": "Info (I)",
+      "edit_tooltip": "Bearbeitungsmodus - Anpassungen, Zuschneiden, Filter (E)",
+      "save_button": "✔ Speichern",
+      "save_tooltip": "Änderungen anwenden und zur Anzeige zurückkehren",
+      "cancel_button": "✖ Abbrechen",
+      "cancel_tooltip": "Änderungen verwerfen und zur Anzeige zurückkehren",
+      "zoom_reset_tooltip": "Zoom zurücksetzen",
+      "crop_button": "✂ Zuschneiden",
+      "crop_tooltip": "In den Zuschneidemodus wechseln",
+      "filters_button": "🎨 Filter",
+      "filters_tooltip": "Voreinstellungs-Panel anzeigen",
+      "before_after_button": "🔄 Vorher/Nachher",
+      "before_after_tooltip": "Vergleichsansicht umschalten",
+      "tools_button": "🛠 Werkzeuge",
+      "tools_tooltip": "Bearbeitungswerkzeuge anzeigen/ausblenden",
+      "undo_button": "↶ Rückgängig",
+      "undo_tooltip": "Letzte Änderung rückgängig (Ctrl+Z)",
+      "redo_button": "↷ Wiederholen",
+      "redo_tooltip": "Wiederholen (Ctrl+Y)",
+      "copy_button": "📋 Kopieren",
+      "copy_tooltip": "Aktuelle Anpassungen kopieren (Ctrl+Shift+C)",
+      "paste_button": "📌 Einfügen",
+      "paste_tooltip": "Kopierte Anpassungen einfügen (Ctrl+Shift+V)",
+      "export_button": "💾 Exportieren",
+      "export_tooltip": "Bearbeitetes Bild oder Video exportieren",
+      "adjustments_header": "Anpassungen"
+    }
   }
 }
