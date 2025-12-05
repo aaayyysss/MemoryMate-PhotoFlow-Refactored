@@ -18,6 +18,9 @@ from PySide6.QtGui import (
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from .base_layout import BaseLayout
+from logging_config import get_logger
+
+logger = get_logger(__name__)
 from .video_editor_mixin import VideoEditorMixin
 from typing import Dict, List, Tuple
 from collections import defaultdict
@@ -7892,6 +7895,20 @@ class GooglePhotosLayout(BaseLayout):
     - Layout-specific toolbar with Scan/Faces
     """
 
+    # Badge overlay configuration (Google Photos style)
+    # PERFORMANCE FIX: Extracted to class constant (was recreated on every badge render)
+    TAG_BADGE_CONFIG = {
+        'favorite': ('★', QColor(255, 215, 0, 230), Qt.black),
+        'face': ('👤', QColor(70, 130, 180, 220), Qt.white),
+        'important': ('⚑', QColor(255, 69, 0, 220), Qt.white),
+        'work': ('💼', QColor(0, 128, 255, 220), Qt.white),
+        'travel': ('✈', QColor(34, 139, 34, 220), Qt.white),
+        'personal': ('♥', QColor(255, 20, 147, 220), Qt.white),
+        'family': ('👨\u200d👩\u200d👧', QColor(255, 140, 0, 220), Qt.white),
+        'archive': ('📦', QColor(128, 128, 128, 220), Qt.white),
+    }
+    DEFAULT_BADGE_CONFIG = ('🏷', QColor(150, 150, 150, 230), Qt.white)
+
     def get_name(self) -> str:
         return "Google Photos Style"
 
@@ -7971,6 +7988,17 @@ class GooglePhotosLayout(BaseLayout):
                 print("[GooglePhotosLayout] ⚠️ WARNING: No projects found! Please create a project first.")
         else:
             print(f"[GooglePhotosLayout] Using default project: {self.project_id}")
+
+        # PERFORMANCE FIX: Cache badge overlay settings (read once vs per-photo)
+        # Previously: SettingsManager read on every _create_tag_badge_overlay call
+        # Now: Cache at initialization, improving performance with large photo libraries
+        from settings_manager_qt import SettingsManager
+        sm = SettingsManager()
+        self._badge_settings = {
+            'enabled': sm.get("badge_overlays_enabled", True),
+            'size': int(sm.get("badge_size_px", 22)),
+            'max_count': int(sm.get("badge_max_count", 4))
+        }
 
         # Main container
         main_widget = QWidget()
@@ -13254,55 +13282,44 @@ class GooglePhotosLayout(BaseLayout):
             container_width: Actual width of the container widget (for correct badge positioning)
         """
         try:
-            from reference_db import ReferenceDB
-            from settings_manager_qt import SettingsManager
-            
-            # Query tags for this photo from database
-            db = ReferenceDB()
-            tags = db.get_tags_for_photo(path, self.project_id) or []
-            
-            # Debug: Log tag query result
-            print(f"[GooglePhotosLayout] Badge overlay for {os.path.basename(path)}: tags={tags}")
-            
+            from services.tag_service import get_tag_service
+
+            # Query tags for this photo using proper service layer
+            tag_service = get_tag_service()
+            tags = tag_service.get_tags_for_path(path, self.project_id) or []
+
+            # Log tag query result (debug level to avoid spam)
+            logger.debug(f"Badge overlay for {os.path.basename(path)}: tags={tags}")
+
             if not tags:
                 return  # No tags to display
-            
-            # Settings
-            sm = SettingsManager()
-            if not sm.get("badge_overlays_enabled", True):
+
+            # PERFORMANCE FIX: Use cached settings instead of reading SettingsManager every time
+            if not self._badge_settings['enabled']:
                 return  # Badges disabled by user
-            
-            badge_size = int(sm.get("badge_size_px", 22))
-            max_badges = int(sm.get("badge_max_count", 4))
+
+            badge_size = self._badge_settings['size']
+            max_badges = self._badge_settings['max_count']
             badge_margin = 4
-            
+
             # Calculate badge positions (top-right corner, stacked vertically)
             x_right = container_width - badge_margin - badge_size
             y_top = badge_margin
-            
-            # Map tags to badge icons and colors (matches Current layout)
-            TAG_BADGE_CONFIG = {
-                'favorite': ('★', QColor(255, 215, 0, 230), Qt.black),
-                'face': ('👤', QColor(70, 130, 180, 220), Qt.white),
-                'important': ('⚑', QColor(255, 69, 0, 220), Qt.white),
-                'work': ('💼', QColor(0, 128, 255, 220), Qt.white),
-                'travel': ('✈', QColor(34, 139, 34, 220), Qt.white),
-                'personal': ('♥', QColor(255, 20, 147, 220), Qt.white),
-                'family': ('👨\u200d👩\u200d👧', QColor(255, 140, 0, 220), Qt.white),
-                'archive': ('📦', QColor(128, 128, 128, 220), Qt.white),
-            }
-            
+
+            # PERFORMANCE FIX: Use class constant (not recreated on every call)
+            badge_config = self.TAG_BADGE_CONFIG
+
             # Create badge labels
             badge_count = 0
             for tag in tags:
                 tag_lower = str(tag).lower().strip()
-                
+
                 # Get badge config or use default
-                if tag_lower in TAG_BADGE_CONFIG:
-                    icon, bg_color, fg_color = TAG_BADGE_CONFIG[tag_lower]
+                if tag_lower in badge_config:
+                    icon, bg_color, fg_color = badge_config[tag_lower]
                 else:
                     # Default badge for custom tags
-                    icon, bg_color, fg_color = ('🏷', QColor(150, 150, 150, 230), Qt.white)
+                    icon, bg_color, fg_color = self.DEFAULT_BADGE_CONFIG
                 
                 if badge_count >= max_badges:
                     break  # Max badges reached
@@ -13357,14 +13374,12 @@ class GooglePhotosLayout(BaseLayout):
                 overflow_badge.show()  # Explicitly show the overflow badge
                 overflow_badge.raise_()
                 
-            # Debug: Log badge creation
+            # Log badge creation (debug level to avoid spam)
             if badge_count > 0:
-                print(f"[GooglePhotosLayout] ✓ Created {badge_count} tag badge(s) for {os.path.basename(path)}: {tags[:max_badges]}")
-            
+                logger.debug(f"Created {badge_count} tag badge(s) for {os.path.basename(path)}: {tags[:max_badges]}")
+
         except Exception as e:
-            print(f"[GooglePhotosLayout] ⚠️ Error creating tag badges for {os.path.basename(path)}: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Error creating tag badges for {os.path.basename(path)}: {e}", exc_info=True)
 
     def _on_photo_clicked(self, path: str):
         """
@@ -13710,10 +13725,15 @@ class GooglePhotosLayout(BaseLayout):
 
     def _show_photo_context_menu(self, path: str, global_pos):
         """
-        PHASE 2 #1: Show context menu for photo thumbnail (right-click).
+        Show comprehensive context menu for photo thumbnail (right-click).
+
+        MERGED IMPLEMENTATION: Combines tag operations (using TagService) with
+        file operations (Open, Delete, Properties, etc.)
 
         Actions available:
         - Open: View in lightbox
+        - Checkable common tags (favorite, face, important, etc.)
+        - New Tag/Remove All Tags
         - Select/Deselect: Toggle selection
         - Delete: Remove photo
         - Show in Explorer: Open file location
@@ -13723,98 +13743,154 @@ class GooglePhotosLayout(BaseLayout):
         Args:
             path: Photo file path
             global_pos: Global position for menu
+
+        Fixes:
+        - Uses TagService instead of ReferenceDB (proper architecture)
+        - Merges duplicate implementations (was also at line 15465)
+        - Provides comprehensive functionality in single method
         """
-        from PySide6.QtWidgets import QMenu
+        from PySide6.QtWidgets import QMenu, QMessageBox
         from PySide6.QtGui import QAction
 
-        menu = QMenu()
-        menu.setStyleSheet("""
-            QMenu {
-                background: white;
-                border: 1px solid #dadce0;
-                border-radius: 4px;
-                padding: 4px;
-            }
-            QMenu::item {
-                padding: 6px 24px 6px 12px;
-                border-radius: 2px;
-            }
-            QMenu::item:selected {
-                background: #f1f3f4;
-            }
-            QMenu::separator {
-                height: 1px;
-                background: #e8eaed;
-                margin: 4px 0;
-            }
-        """)
+        try:
+            # Get current tags using proper service layer (not ReferenceDB)
+            from services.tag_service import get_tag_service
+            tag_service = get_tag_service()
+            current_tags = [t.lower() for t in (tag_service.get_tags_for_path(path, self.project_id) or [])]
 
-        # Open action
-        open_action = QAction("📂 Open", parent=menu)
-        open_action.triggered.connect(lambda: self._on_photo_clicked(path))
-        menu.addAction(open_action)
+            menu = QMenu(self.main_window)
+            menu.setStyleSheet("""
+                QMenu {
+                    background: white;
+                    border: 1px solid #dadce0;
+                    border-radius: 4px;
+                    padding: 4px;
+                }
+                QMenu::item {
+                    padding: 6px 24px 6px 12px;
+                    border-radius: 2px;
+                }
+                QMenu::item:selected {
+                    background: #f1f3f4;
+                }
+                QMenu::separator {
+                    height: 1px;
+                    background: #e8eaed;
+                    margin: 4px 0;
+                }
+            """)
 
-        menu.addSeparator()
+            # Open action
+            open_action = QAction("📂 Open", parent=menu)
+            open_action.triggered.connect(lambda: self._on_photo_clicked(path))
+            menu.addAction(open_action)
 
-        # Favorite/Tag actions
-        from reference_db import ReferenceDB
-        db = ReferenceDB()
-        current_tags = db.get_tags_for_photo(path, self.project_id) or []
-        is_favorited = "favorite" in current_tags
-        
-        if is_favorited:
-            favorite_action = QAction("⭐ Unfavorite", parent=menu)
-            favorite_action.triggered.connect(lambda: self._toggle_favorite_single(path))
-        else:
-            favorite_action = QAction("☆ Add to Favorites", parent=menu)
-            favorite_action.triggered.connect(lambda: self._toggle_favorite_single(path))
-        menu.addAction(favorite_action)
-        
-        # Add custom tag
-        tag_action = QAction("🏷️ Add Tag...", parent=menu)
-        tag_action.triggered.connect(lambda: self._add_tag_to_photo(path))
-        menu.addAction(tag_action)
-        
-        menu.addSeparator()
+            menu.addSeparator()
 
-        # Select/Deselect toggle
-        is_selected = path in self.selected_photos
-        if is_selected:
-            select_action = QAction("✓ Deselect", parent=menu)
-            select_action.triggered.connect(lambda: self._toggle_photo_selection(path))
-        else:
-            select_action = QAction("☐ Select", parent=menu)
-            select_action.triggered.connect(lambda: self._toggle_photo_selection(path))
-        menu.addAction(select_action)
+            # Common tags (checkable items show ✓ when present)
+            common_tags = [
+                ("favorite", "⭐ Favorite"),
+                ("face", "👤 Face"),
+                ("important", "⚑ Important"),
+                ("work", "💼 Work"),
+                ("travel", "✈ Travel"),
+                ("personal", "♥ Personal"),
+                ("family", "👨‍👩‍👧 Family"),
+                ("archive", "📦 Archive"),
+            ]
+            tag_actions = {}
+            for key, label in common_tags:
+                act = menu.addAction(label)
+                act.setCheckable(True)
+                act.setChecked(key in current_tags)
+                tag_actions[act] = key
 
-        menu.addSeparator()
+            menu.addSeparator()
 
-        # Delete action
-        delete_action = QAction("🗑️ Delete", parent=menu)
-        delete_action.triggered.connect(lambda: self._delete_single_photo(path))
-        menu.addAction(delete_action)
+            # Tag management actions
+            act_new_tag = menu.addAction("🏷️ New Tag…")
+            act_remove_all_tags = menu.addAction("🗑️ Remove All Tags")
 
-        menu.addSeparator()
+            menu.addSeparator()
 
-        # Show in Explorer action
-        explorer_action = QAction("📁 Show in Explorer", parent=menu)
-        explorer_action.triggered.connect(lambda: self._show_in_explorer(path))
-        menu.addAction(explorer_action)
+            # Select/Deselect toggle
+            is_selected = path in self.selected_photos
+            if is_selected:
+                select_action = QAction("✓ Deselect", parent=menu)
+                select_action.triggered.connect(lambda: self._toggle_photo_selection(path))
+            else:
+                select_action = QAction("☐ Select", parent=menu)
+                select_action.triggered.connect(lambda: self._toggle_photo_selection(path))
+            menu.addAction(select_action)
 
-        # Copy path action
-        copy_action = QAction("📋 Copy Path", parent=menu)
-        copy_action.triggered.connect(lambda: self._copy_path_to_clipboard(path))
-        menu.addAction(copy_action)
+            menu.addSeparator()
 
-        menu.addSeparator()
+            # Delete photo action
+            delete_action = QAction("🗑️ Delete Photo", parent=menu)
+            delete_action.triggered.connect(lambda: self._delete_single_photo(path))
+            menu.addAction(delete_action)
 
-        # Properties action
-        properties_action = QAction("ℹ️ Properties", parent=menu)
-        properties_action.triggered.connect(lambda: self._show_photo_properties(path))
-        menu.addAction(properties_action)
+            menu.addSeparator()
 
-        # Show menu at cursor position
-        menu.exec(global_pos)
+            # File operations
+            explorer_action = QAction("📁 Show in Explorer", parent=menu)
+            explorer_action.triggered.connect(lambda: self._show_in_explorer(path))
+            menu.addAction(explorer_action)
+
+            copy_action = QAction("📋 Copy Path", parent=menu)
+            copy_action.triggered.connect(lambda: self._copy_path_to_clipboard(path))
+            menu.addAction(copy_action)
+
+            menu.addSeparator()
+
+            # Properties action
+            properties_action = QAction("ℹ️ Properties", parent=menu)
+            properties_action.triggered.connect(lambda: self._show_photo_properties(path))
+            menu.addAction(properties_action)
+
+            # Show menu and handle selection
+            chosen = menu.exec(global_pos)
+            if not chosen:
+                return
+
+            # Handle tag actions
+            if chosen is act_new_tag:
+                self._add_tag_to_photo(path)
+                return
+
+            if chosen is act_remove_all_tags:
+                # Remove all tags from this photo
+                for tag_name in list(current_tags):
+                    try:
+                        tag_service.remove_tag(path, tag_name, self.project_id)
+                    except Exception as e:
+                        print(f"[GooglePhotosLayout] ⚠️ Failed to remove tag '{tag_name}': {e}")
+                # Refresh overlays and tags section
+                self._refresh_tag_overlays([path])
+                try:
+                    self._build_tags_tree()
+                except Exception:
+                    pass
+                return
+
+            # Handle checkable tag toggle
+            tag_key = tag_actions.get(chosen)
+            if tag_key:
+                if tag_key in current_tags:
+                    tag_service.remove_tag(path, tag_key, self.project_id)
+                else:
+                    tag_service.assign_tags_bulk([path], tag_key, self.project_id)
+                # Refresh overlays and tags section
+                self._refresh_tag_overlays([path])
+                try:
+                    self._build_tags_tree()
+                except Exception:
+                    pass
+
+        except Exception as e:
+            print(f"[GooglePhotosLayout] ⚠️ Context menu error: {e}")
+            import traceback
+            traceback.print_exc()
 
     def _delete_single_photo(self, path: str):
         """Delete a single photo (context menu action)."""
@@ -15462,78 +15538,8 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
                     f"Failed to add tag:\n{str(e)}"
                 )
     
-    def _show_photo_context_menu(self, path: str, global_pos):
-        from PySide6.QtWidgets import QMenu, QMessageBox
-        try:
-            from services.tag_service import get_tag_service
-            tag_service = get_tag_service()
-            current_tags = [t.lower() for t in (tag_service.get_tags_for_path(path, self.project_id) or [])]
-            
-            menu = QMenu(self.main_window)
-            # Common tags (checkable items show a ✓ when present)
-            common_tags = [
-                ("favorite", "⭐ Favorite"),
-                ("face", "👤 Face"),
-                ("important", "⚑ Important"),
-                ("work", "💼 Work"),
-                ("travel", "✈ Travel"),
-                ("personal", "♥ Personal"),
-                ("family", "👨‍👩‍👧 Family"),
-                ("archive", "📦 Archive"),
-            ]
-            actions = {}
-            for key, label in common_tags:
-                act = menu.addAction(label)
-                act.setCheckable(True)
-                act.setChecked(key in current_tags)
-                actions[act] = key
-            menu.addSeparator()
-            act_new = menu.addAction("➕ New Tag…")
-            act_remove_all = menu.addAction("🗑️ Remove All Tags")
-            
-            chosen = menu.exec(global_pos)
-            if not chosen:
-                return
-            
-            if chosen is act_new:
-                # Reuse existing add-tag flow
-                self._add_tag_to_photo(path)
-                return
-            
-            if chosen is act_remove_all:
-                # Remove all tags from this photo (includes custom tags)
-                for tag_name in list(current_tags):
-                    try:
-                        tag_service.remove_tag(path, tag_name, self.project_id)
-                    except Exception as e:
-                        print(f"[GooglePhotosLayout] ⚠️ Failed to remove tag '{tag_name}': {e}")
-                # Refresh overlays and tags section
-                self._refresh_tag_overlays([path])
-                try:
-                    self._build_tags_tree()
-                except Exception:
-                    pass
-                return
-            
-            tag_key = actions.get(chosen)
-            if tag_key:
-                if tag_key in current_tags:
-                    tag_service.remove_tag(path, tag_key, self.project_id)
-                else:
-                    tag_service.assign_tags_bulk([path], tag_key, self.project_id)
-                # Refresh overlays and tags section
-                self._refresh_tag_overlays([path])
-                try:
-                    self._build_tags_tree()
-                except Exception:
-                    pass
-        except Exception as e:
-            print(f"[GooglePhotosLayout] ⚠️ Context menu error: {e}")
-            QMessageBox.critical(self.main_window, "Error", str(e))
-
-    def _refresh_tag_ovverlays(self, paths):
-        """Backward-compat alias for a misspelled method name used in older code paths."""
-        return self._refresh_tag_overlays(paths)
+    # NOTE: Duplicate _show_photo_context_menu removed - see line ~13711 for merged implementation
+    # NOTE: Typo method _refresh_tag_ovverlays removed - use _refresh_tag_overlays instead
 
     def _on_tags_context_menu(self, pos):
         from PySide6.QtWidgets import QMenu, QInputDialog, QMessageBox

@@ -3185,19 +3185,46 @@ class ReferenceDB:
                 conn.commit()
 
     def get_tags_for_photo(self, path: str, project_id: int | None = None) -> list[str]:
-        """Return list of tags assigned to a specific photo path."""
+        """
+        Return list of tags assigned to a specific photo path.
+
+        DEPRECATED: Use TagService.get_tags_for_path() instead for proper architecture.
+        This method is kept for backward compatibility only.
+
+        CRITICAL FIX (2025-12-05): Added project_id filtering to prevent cross-project tag leakage.
+        Previous implementation joined tags table without filtering by project_id, which could
+        return tags from other projects if photo_id existed across multiple projects.
+
+        Args:
+            path: Photo file path
+            project_id: Project ID for tag isolation (Schema v3.1.0)
+
+        Returns:
+            List of tag names for the photo within the specified project
+        """
         photo_id = self._get_photo_id_by_path(path, project_id)
         if not photo_id:
             return []
         with self._connect() as conn:
             cur = conn.cursor()
-            cur.execute("""
-                SELECT t.name
-                FROM tags t
-                JOIN photo_tags pt ON pt.tag_id = t.id
-                WHERE pt.photo_id = ?
-                ORDER BY t.name COLLATE NOCASE
-            """, (photo_id,))
+            # CRITICAL FIX: Added project_id filtering to prevent cross-project tag leakage
+            if project_id is not None:
+                cur.execute("""
+                    SELECT t.name
+                    FROM tags t
+                    JOIN photo_tags pt ON pt.tag_id = t.id
+                    WHERE pt.photo_id = ? AND t.project_id = ?
+                    ORDER BY t.name COLLATE NOCASE
+                """, (photo_id, project_id))
+            else:
+                # Fallback for legacy code that doesn't pass project_id (not recommended)
+                cur.execute("""
+                    SELECT t.name
+                    FROM tags t
+                    JOIN photo_tags pt ON pt.tag_id = t.id
+                    WHERE pt.photo_id = ?
+                    ORDER BY t.name COLLATE NOCASE
+                """, (photo_id,))
             return [r[0] for r in cur.fetchall()]
 
     def get_photos_by_tag(self, tag_name: str) -> list[str]:
