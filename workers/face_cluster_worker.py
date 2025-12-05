@@ -103,13 +103,28 @@ class FaceClusterWorker(QRunnable):
                 cur = conn.cursor()
 
                 # Step 1: Load embeddings from face_crops table
+                # CRITICAL FIX (2025-12-05): Only load faces for photos that exist in
+                # photo_metadata AND project_images. This ensures counts match grid displays.
+                # Previous bug: Loaded all face_crops, including orphaned entries for deleted photos
+                # This caused count mismatch: face_branch_reps showed 14 but grid only showed 12
                 self.signals.progress.emit(0, 100, "Loading face embeddings...")
 
                 cur.execute("""
-                    SELECT id, crop_path, image_path, embedding FROM face_crops
-                    WHERE project_id=? AND embedding IS NOT NULL
+                    SELECT fc.id, fc.crop_path, fc.image_path, fc.embedding
+                    FROM face_crops fc
+                    JOIN photo_metadata pm ON fc.image_path = pm.path
+                    JOIN project_images pi ON fc.image_path = pi.image_path AND pi.project_id = fc.project_id
+                    WHERE fc.project_id=? AND fc.embedding IS NOT NULL
                 """, (self.project_id,))
                 rows = cur.fetchall()
+
+                # Log if we're skipping orphaned face_crops entries
+                cur.execute("SELECT COUNT(*) FROM face_crops WHERE project_id=? AND embedding IS NOT NULL", (self.project_id,))
+                total_faces_in_db = cur.fetchone()[0]
+                if len(rows) < total_faces_in_db:
+                    skipped = total_faces_in_db - len(rows)
+                    logger.warning(f"[FaceClusterWorker] Skipped {skipped} orphaned face_crops (photos not in photo_metadata/project_images)")
+                    logger.warning(f"[FaceClusterWorker] Run cleanup_face_crops.py utility to remove orphaned entries")
 
                 if not rows:
                     logger.warning(f"[FaceClusterWorker] No embeddings found for project {self.project_id}")
