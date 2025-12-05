@@ -2,8 +2,8 @@
   "_metadata": {
     "language_code": "en",
     "language_name": "English",
-    "version": "1.0.0",
-    "last_updated": "2025-11-17"
+    "version": "2.0.0",
+    "last_updated": "2025-12-05"
   },
 
   "app": {
@@ -622,6 +622,43 @@
     "project_dropdown": {
       "new_project": "➕ New Project...",
       "no_projects": "(No projects)"
+    },
+    "lightbox": {
+      "window_title": "Media Viewer",
+      "loading": "⏳ Loading...",
+      "motion_photo_tooltip": "Motion Photo - Long-press to play",
+      "delete_tooltip": "Delete (D)",
+      "favorite_tooltip": "Favorite (F)",
+      "share_tooltip": "Share/Export (Ctrl+Shift+S)",
+      "zoom_out_tooltip": "Zoom Out (-)",
+      "zoom_in_tooltip": "Zoom In (+)",
+      "slideshow_tooltip": "Slideshow (S)",
+      "info_tooltip": "Info (I)",
+      "edit_tooltip": "Edit Mode - Adjustments, Crop, Filters (E)",
+      "save_button": "✔ Save",
+      "save_tooltip": "Apply edits and return to viewer",
+      "cancel_button": "✖ Cancel",
+      "cancel_tooltip": "Discard edits and return to viewer",
+      "zoom_reset_tooltip": "Reset Zoom",
+      "crop_button": "✂ Crop",
+      "crop_tooltip": "Enter crop mode",
+      "filters_button": "🎨 Filters",
+      "filters_tooltip": "Show presets panel",
+      "before_after_button": "🔄 Before/After",
+      "before_after_tooltip": "Toggle comparison view",
+      "tools_button": "🛠 Tools",
+      "tools_tooltip": "Show/Hide right-side editing tools",
+      "undo_button": "↶ Undo",
+      "undo_tooltip": "Undo last edit (Ctrl+Z)",
+      "redo_button": "↷ Redo",
+      "redo_tooltip": "Redo (Ctrl+Y)",
+      "copy_button": "📋 Copy",
+      "copy_tooltip": "Copy current adjustments (Ctrl+Shift+C)",
+      "paste_button": "📌 Paste",
+      "paste_tooltip": "Paste copied adjustments (Ctrl+Shift+V)",
+      "export_button": "💾 Export",
+      "export_tooltip": "Export edited image or video",
+      "adjustments_header": "Adjustments"
     }
   }
 }

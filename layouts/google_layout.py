@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (
     QScrollArea, QSplitter, QToolBar, QLineEdit, QTreeWidget,
     QTreeWidgetItem, QFrame, QGridLayout, QStackedWidget, QSizePolicy, QDialog,
     QGraphicsOpacityEffect, QMenu, QListWidget, QListWidgetItem, QDialogButtonBox,
-    QInputDialog, QMessageBox, QSlider, QSpinBox, QComboBox, QLayout
+    QInputDialog, QMessageBox, QSlider, QSpinBox, QComboBox, QLayout, QTabBar
 )
 from PySide6.QtCore import (
     Qt, Signal, QSize, QEvent, QRunnable, QThreadPool, QObject, QTimer, QUrl,
@@ -23,6 +23,139 @@ from typing import Dict, List, Tuple
 from collections import defaultdict
 from datetime import datetime
 import os
+from translation_manager import tr as t
+
+
+# === CUSTOM PHOTO BUTTON WITH PAINTED BADGES ===
+class PhotoButton(QPushButton):
+    """
+    Custom button that paints tag badges directly on the thumbnail.
+    Matches Current layout's delegate painting approach for stable badge rendering.
+    """
+    def __init__(self, photo_path: str, project_id: int, parent=None):
+        super().__init__(parent)
+        self.photo_path = photo_path
+        self.project_id = project_id
+        self._tags = []
+        
+    def set_tags(self, tags: list):
+        """Update tags and trigger repaint."""
+        self._tags = tags or []
+        self.update()  # Trigger repaint
+        
+    def paintEvent(self, event):
+        """Paint button with tag badges overlay."""
+        # Paint base button first
+        super().paintEvent(event)
+        
+        # Paint tag badges on top (only if tags exist)
+        if not self._tags:
+            return
+        
+        # Import Qt classes needed for painting
+        from PySide6.QtGui import QPainter, QPen, QFont, QColor
+        from PySide6.QtCore import QRect, Qt
+            
+        painter = QPainter(self)
+        painter.setRenderHints(QPainter.Antialiasing | QPainter.TextAntialiasing)
+        
+        try:
+            from settings_manager_qt import SettingsManager
+            sm = SettingsManager()
+            
+            if not sm.get("badge_overlays_enabled", True):
+                return  # Badges disabled
+            
+            badge_size = int(sm.get("badge_size_px", 22))
+            max_badges = int(sm.get("badge_max_count", 4))
+            badge_shape = str(sm.get("badge_shape", "circle")).lower()
+            badge_margin = 4
+            
+            # Position badges in top-right corner
+            x_right = self.width() - badge_margin - badge_size
+            y_top = badge_margin
+            
+            # Map tags to icons and colors
+            TAG_BADGE_CONFIG = {
+                'favorite': ('★', QColor(255, 215, 0, 230), Qt.black),
+                'face': ('👤', QColor(70, 130, 180, 220), Qt.white),
+                'important': ('⚑', QColor(255, 69, 0, 220), Qt.white),
+                'work': ('💼', QColor(0, 128, 255, 220), Qt.white),
+                'travel': ('✈', QColor(34, 139, 34, 220), Qt.white),
+                'personal': ('♥', QColor(255, 20, 147, 220), Qt.white),
+                'family': ('👨‍👩‍👧', QColor(255, 140, 0, 220), Qt.white),
+                'archive': ('📦', QColor(128, 128, 128, 220), Qt.white),
+            }
+            
+            # Draw badges
+            badge_count = 0
+            for tag in self._tags:
+                if badge_count >= max_badges:
+                    break
+                
+                tag_lower = str(tag).lower().strip()
+                
+                # Get badge config
+                if tag_lower in TAG_BADGE_CONFIG:
+                    icon, bg_color, fg_color = TAG_BADGE_CONFIG[tag_lower]
+                else:
+                    icon, bg_color, fg_color = ('🏷', QColor(150, 150, 150, 230), Qt.white)
+                
+                # Calculate position
+                y_pos = y_top + (badge_count * (badge_size + 4))
+                badge_rect = QRect(x_right, y_pos, badge_size, badge_size)
+                
+                # Draw shadow
+                if sm.get("badge_shadow", True):
+                    painter.setPen(Qt.NoPen)
+                    painter.setBrush(QColor(0, 0, 0, 100))
+                    painter.drawEllipse(badge_rect.adjusted(2, 2, 2, 2))
+                
+                # Draw badge background
+                painter.setPen(Qt.NoPen)
+                painter.setBrush(bg_color)
+                if badge_shape == 'square':
+                    painter.drawRect(badge_rect)
+                elif badge_shape == 'rounded':
+                    painter.drawRoundedRect(badge_rect, 4, 4)
+                else:  # circle
+                    painter.drawEllipse(badge_rect)
+                
+                # Draw icon
+                painter.setPen(QPen(fg_color))
+                font = QFont()
+                font.setPointSize(11)
+                font.setBold(True)
+                painter.setFont(font)
+                painter.drawText(badge_rect, Qt.AlignCenter, icon)
+                
+                badge_count += 1
+            
+            # Draw overflow indicator if more tags exist
+            if len(self._tags) > max_badges:
+                y_pos = y_top + (max_badges * (badge_size + 4))
+                more_rect = QRect(x_right, y_pos, badge_size, badge_size)
+                
+                painter.setPen(Qt.NoPen)
+                painter.setBrush(QColor(60, 60, 60, 220))
+                if badge_shape == 'square':
+                    painter.drawRect(more_rect)
+                elif badge_shape == 'rounded':
+                    painter.drawRoundedRect(more_rect, 4, 4)
+                else:
+                    painter.drawEllipse(more_rect)
+                
+                painter.setPen(QPen(Qt.white))
+                font2 = QFont()
+                font2.setPointSize(10)
+                font2.setBold(True)
+                painter.setFont(font2)
+                painter.drawText(more_rect, Qt.AlignCenter, f"+{len(self._tags) - max_badges}")
+                
+        except Exception as e:
+            print(f"[PhotoButton] Error painting badges: {e}")
+        finally:
+            painter.end()
 
 
 # === ASYNC THUMBNAIL LOADING ===
@@ -510,7 +643,7 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         from PySide6.QtCore import QPropertyAnimation, QTimer, QRect
 
         # Window settings - ADAPTIVE SIZING: Based on screen resolution and DPI
-        self.setWindowTitle("Media Viewer")
+        self.setWindowTitle(t('google_layout.lightbox.window_title'))
 
         # Get screen information with DPI awareness
         screen = QApplication.primaryScreen()
@@ -623,7 +756,7 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 border-radius: 10px;
             }
         """)
-        self.loading_indicator.setText("⏳ Loading...")
+        self.loading_indicator.setText(t('google_layout.lightbox.loading'))
         self.loading_indicator.hide()
         self.loading_indicator.raise_()  # Ensure it's on top
 
@@ -640,7 +773,7 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 border-radius: 24px;
             }
         """)
-        self.motion_indicator.setToolTip("Motion Photo - Long-press to play")
+        self.motion_indicator.setToolTip(t('google_layout.lightbox.motion_photo_tooltip'))
         self.motion_indicator.hide()
 
         # Video display will be added to container on first video load
@@ -679,8 +812,10 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         editor_topbar.setStyleSheet("background: rgba(0,0,0,0.5);")
         editor_topbar_layout = QHBoxLayout(editor_topbar)
         editor_topbar_layout.setContentsMargins(12, 8, 12, 8)
-        save_btn = QPushButton("✔ Save")
-        save_btn.setToolTip("Apply edits and return to viewer")
+        save_btn = QPushButton()
+        cancel_btn = QPushButton()
+        save_btn.setText(t('google_layout.lightbox.save_button'))
+        save_btn.setToolTip(t('google_layout.lightbox.save_tooltip'))
         save_btn.setStyleSheet("""
             QPushButton {
                 background: rgba(34, 139, 34, 0.9);
@@ -696,8 +831,8 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             }
         """)
         save_btn.clicked.connect(self._save_edits)
-        cancel_btn = QPushButton("✖ Cancel")
-        cancel_btn.setToolTip("Discard edits and return to viewer")
+        cancel_btn.setText(t('google_layout.lightbox.cancel_button'))
+        cancel_btn.setToolTip(t('google_layout.lightbox.cancel_tooltip'))
         cancel_btn.setStyleSheet("""
             QPushButton {
                 background: rgba(220, 53, 69, 0.9);
@@ -719,22 +854,23 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         # Editor zoom controls
         self.edit_zoom_level = 1.0
         zoom_out_btn_edit = QPushButton("−")
-        zoom_out_btn_edit.setToolTip("Zoom Out")
+        zoom_out_btn_edit.setToolTip(t('google_layout.lightbox.zoom_out_tooltip'))
         zoom_out_btn_edit.clicked.connect(self._editor_zoom_out)
         zoom_in_btn_edit = QPushButton("+")
-        zoom_in_btn_edit.setToolTip("Zoom In")
+        zoom_in_btn_edit.setToolTip(t('google_layout.lightbox.zoom_in_tooltip'))
         zoom_in_btn_edit.clicked.connect(self._editor_zoom_in)
         zoom_reset_btn_edit = QPushButton("100%")
-        zoom_reset_btn_edit.setToolTip("Reset Zoom")
+        zoom_reset_btn_edit.setToolTip(t('google_layout.lightbox.zoom_reset_tooltip'))
         zoom_reset_btn_edit.clicked.connect(self._editor_zoom_reset)
         editor_topbar_layout.addSpacing(12)
         editor_topbar_layout.addWidget(zoom_out_btn_edit)
         editor_topbar_layout.addWidget(zoom_in_btn_edit)
         editor_topbar_layout.addWidget(zoom_reset_btn_edit)
         # Crop toggle (STYLED)
-        self.crop_btn = QPushButton("✂ Crop")
+        self.crop_btn = QPushButton()
+        self.crop_btn.setText(t('google_layout.lightbox.crop_button'))
         self.crop_btn.setCheckable(True)
-        self.crop_btn.setToolTip("Enter crop mode")
+        self.crop_btn.setToolTip(t('google_layout.lightbox.crop_tooltip'))
         self.crop_btn.setStyleSheet("""
             QPushButton {
                 background: rgba(255, 255, 255, 0.15);
@@ -755,9 +891,10 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         self.crop_btn.clicked.connect(self._toggle_crop_mode)
         editor_topbar_layout.addWidget(self.crop_btn)
         # Filters toggle (STYLED)
-        self.filters_btn = QPushButton("🎨 Filters")
+        self.filters_btn = QPushButton()
+        self.filters_btn.setText(t('google_layout.lightbox.filters_button'))
         self.filters_btn.setCheckable(True)
-        self.filters_btn.setToolTip("Show presets panel")
+        self.filters_btn.setToolTip(t('google_layout.lightbox.filters_tooltip'))
         self.filters_btn.setStyleSheet("""
             QPushButton {
                 background: rgba(255, 255, 255, 0.15);
@@ -778,9 +915,10 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         self.filters_btn.clicked.connect(self._toggle_filters_panel)
         editor_topbar_layout.addWidget(self.filters_btn)
         # Before/After toggle (STYLED)
-        self.before_after_btn = QPushButton("🔄 Before/After")
+        self.before_after_btn = QPushButton()
+        self.before_after_btn.setText(t('google_layout.lightbox.before_after_button'))
         self.before_after_btn.setCheckable(True)
-        self.before_after_btn.setToolTip("Toggle comparison view")
+        self.before_after_btn.setToolTip(t('google_layout.lightbox.before_after_tooltip'))
         self.before_after_btn.setStyleSheet("""
             QPushButton {
                 background: rgba(255, 255, 255, 0.15);
@@ -802,10 +940,11 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         editor_topbar_layout.addWidget(self.before_after_btn)
         
         # Tools panel toggle (show/hide right-side editing tools)
-        self.tools_toggle_btn = QPushButton("🛠 Tools")
+        self.tools_toggle_btn = QPushButton()
+        self.tools_toggle_btn.setText(t('google_layout.lightbox.tools_button'))
         self.tools_toggle_btn.setCheckable(True)
         self.tools_toggle_btn.setChecked(True)
-        self.tools_toggle_btn.setToolTip("Show/Hide right-side editing tools")
+        self.tools_toggle_btn.setToolTip(t('google_layout.lightbox.tools_tooltip'))
         self.tools_toggle_btn.setStyleSheet("""
             QPushButton {
                 background: rgba(255, 255, 255, 0.15);
@@ -828,8 +967,10 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         
         editor_topbar_layout.addStretch()  # Push buttons to left, Undo/Redo/Export to right
         # Undo/Redo buttons (MORE PROMINENT)
-        self.undo_btn = QPushButton("↶ Undo")
-        self.undo_btn.setToolTip("Undo last edit (Ctrl+Z)")
+        self.undo_btn = QPushButton()
+        self.redo_btn = QPushButton()
+        self.undo_btn.setText(t('google_layout.lightbox.undo_button'))
+        self.undo_btn.setToolTip(t('google_layout.lightbox.undo_tooltip'))
         self.undo_btn.setEnabled(False)
         self.undo_btn.setStyleSheet("""
             QPushButton {
@@ -851,8 +992,8 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         """)
         self.undo_btn.clicked.connect(self._editor_undo)
         editor_topbar_layout.addWidget(self.undo_btn)
-        self.redo_btn = QPushButton("↷ Redo")
-        self.redo_btn.setToolTip("Redo (Ctrl+Y)")
+        self.redo_btn.setText(t('google_layout.lightbox.redo_button'))
+        self.redo_btn.setToolTip(t('google_layout.lightbox.redo_tooltip'))
         self.redo_btn.setEnabled(False)
         self.redo_btn.setStyleSheet("""
             QPushButton {
@@ -877,8 +1018,10 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         editor_topbar_layout.addSpacing(16)  # Visual separator
         
         # Copy/Paste buttons (BATCH EDITING)
-        self.copy_adj_btn = QPushButton("📋 Copy")
-        self.copy_adj_btn.setToolTip("Copy current adjustments (Ctrl+Shift+C)")
+        self.copy_adj_btn = QPushButton()
+        self.paste_adj_btn = QPushButton()
+        self.copy_adj_btn.setText(t('google_layout.lightbox.copy_button'))
+        self.copy_adj_btn.setToolTip(t('google_layout.lightbox.copy_tooltip'))
         self.copy_adj_btn.setStyleSheet("""
             QPushButton {
                 background: rgba(255, 193, 7, 0.8);
@@ -896,8 +1039,8 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         self.copy_adj_btn.clicked.connect(self._copy_adjustments)
         editor_topbar_layout.addWidget(self.copy_adj_btn)
         
-        self.paste_adj_btn = QPushButton("📌 Paste")
-        self.paste_adj_btn.setToolTip("Paste copied adjustments (Ctrl+Shift+V)")
+        self.paste_adj_btn.setText(t('google_layout.lightbox.paste_button'))
+        self.paste_adj_btn.setToolTip(t('google_layout.lightbox.paste_tooltip'))
         self.paste_adj_btn.setEnabled(False)  # Disabled until something is copied
         self.paste_adj_btn.setStyleSheet("""
             QPushButton {
@@ -922,8 +1065,9 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         editor_topbar_layout.addSpacing(16)  # Visual separator
         
         # Export button (MORE PROMINENT) - Handles both photos and videos
-        self.export_btn = QPushButton("💾 Export")
-        self.export_btn.setToolTip("Export edited image or video")
+        self.export_btn = QPushButton()
+        self.export_btn.setText(t('google_layout.lightbox.export_button'))
+        self.export_btn.setToolTip(t('google_layout.lightbox.export_tooltip'))
         self.export_btn.setStyleSheet("""
             QPushButton {
                 background: rgba(34, 139, 34, 0.9);
@@ -1151,7 +1295,7 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         self.delete_btn.setFixedSize(56, 56)
         self.delete_btn.setStyleSheet(btn_style)
         self.delete_btn.clicked.connect(self._delete_current_media)
-        self.delete_btn.setToolTip("Delete (D)")
+        self.delete_btn.setToolTip(t('google_layout.lightbox.delete_tooltip'))
         layout.addWidget(self.delete_btn)
 
         # Favorite button
@@ -1160,7 +1304,7 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         self.favorite_btn.setFixedSize(56, 56)
         self.favorite_btn.setStyleSheet(btn_style)
         self.favorite_btn.clicked.connect(self._toggle_favorite)
-        self.favorite_btn.setToolTip("Favorite (F)")
+        self.favorite_btn.setToolTip(t('google_layout.lightbox.favorite_tooltip'))
         layout.addWidget(self.favorite_btn)
 
         # PHASE C #2: Share/Export button
@@ -1169,7 +1313,7 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         self.share_btn.setFixedSize(56, 56)
         self.share_btn.setStyleSheet(btn_style)
         self.share_btn.clicked.connect(self._show_share_dialog)
-        self.share_btn.setToolTip("Share/Export (Ctrl+Shift+S)")
+        self.share_btn.setToolTip(t('google_layout.lightbox.share_tooltip'))
         layout.addWidget(self.share_btn)
 
         layout.addStretch()
@@ -1204,7 +1348,7 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         self.zoom_out_btn.setFixedSize(32, 32)
         self.zoom_out_btn.setStyleSheet(btn_style + "QPushButton { font-size: 18pt; font-weight: bold; }")
         self.zoom_out_btn.clicked.connect(self._zoom_out)
-        self.zoom_out_btn.setToolTip("Zoom Out (-)")
+        self.zoom_out_btn.setToolTip(t('google_layout.lightbox.zoom_out_tooltip'))
         layout.addWidget(self.zoom_out_btn)
 
         # Zoom in button
@@ -1213,7 +1357,7 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         self.zoom_in_btn.setFixedSize(32, 32)
         self.zoom_in_btn.setStyleSheet(btn_style + "QPushButton { font-size: 16pt; font-weight: bold; }")
         self.zoom_in_btn.clicked.connect(self._zoom_in)
-        self.zoom_in_btn.setToolTip("Zoom In (+)")
+        self.zoom_in_btn.setToolTip(t('google_layout.lightbox.zoom_in_tooltip'))
         layout.addWidget(self.zoom_in_btn)
 
         layout.addSpacing(8)
@@ -1224,7 +1368,7 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         self.slideshow_btn.setFixedSize(56, 56)
         self.slideshow_btn.setStyleSheet(btn_style)
         self.slideshow_btn.clicked.connect(self._toggle_slideshow)
-        self.slideshow_btn.setToolTip("Slideshow (S)")
+        self.slideshow_btn.setToolTip(t('google_layout.lightbox.slideshow_tooltip'))
         layout.addWidget(self.slideshow_btn)
 
 
@@ -1235,7 +1379,7 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         self.info_btn.setFixedSize(56, 56)
         self.info_btn.setStyleSheet(btn_style)
         self.info_btn.clicked.connect(self._toggle_info_panel)
-        self.info_btn.setToolTip("Info (I)")
+        self.info_btn.setToolTip(t('google_layout.lightbox.info_tooltip'))
         layout.addWidget(self.info_btn)
 
         # Edit/Enhance panel toggle (photos only)
@@ -1243,7 +1387,7 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         self.edit_btn.setFocusPolicy(Qt.NoFocus)
         self.edit_btn.setFixedSize(56, 56)
         self.edit_btn.setStyleSheet(btn_style)
-        self.edit_btn.setToolTip("Edit Mode - Adjustments, Crop, Filters (E)")
+        self.edit_btn.setToolTip(t('google_layout.lightbox.edit_tooltip'))
         self.edit_btn.clicked.connect(self._enter_edit_mode)
         layout.addWidget(self.edit_btn)
         self.photo_only_buttons.append(self.edit_btn)
@@ -1550,7 +1694,7 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             'warmth': 0,
         }
         # Header
-        header = QLabel("Adjustments")
+        header = QLabel(t('google_layout.lightbox.adjustments_header'))
         header.setStyleSheet("color: white; font-size: 11pt;")
         self.adjustments_layout.addWidget(header)
         # Histogram at top
@@ -6501,17 +6645,60 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 err.exec()
 
     def _toggle_favorite(self):
-        """Toggle favorite status of current media."""
-        # TODO: Implement favorite in database
-        # For now, just toggle button appearance
-        if self.favorite_btn.text() == "♡":
-            self.favorite_btn.setText("♥")
-            self.favorite_btn.setStyleSheet(self.favorite_btn.styleSheet() + "\nQPushButton { color: #ff4444; }")
-            print(f"[MediaLightbox] Favorited: {os.path.basename(self.media_path)}")
-        else:
-            self.favorite_btn.setText("♡")
-            self.favorite_btn.setStyleSheet(self.favorite_btn.styleSheet().replace("\nQPushButton { color: #ff4444; }", ""))
-            print(f"[MediaLightbox] Unfavorited: {os.path.basename(self.media_path)}")
+        """Toggle favorite status of current media (DB-backed)."""
+        try:
+            # Get project_id from parent window's grid or layout
+            project_id = None
+            if hasattr(self, 'parent') and self.parent():
+                parent = self.parent()
+                # Try to get project_id from grid (MainWindow has grid.project_id)
+                if hasattr(parent, 'grid') and hasattr(parent.grid, 'project_id'):
+                    project_id = parent.grid.project_id
+                # Fallback: try to get from layout manager's active layout
+                elif hasattr(parent, 'layout_manager'):
+                    layout = parent.layout_manager.get_active_layout()
+                    if layout and hasattr(layout, 'project_id'):
+                        project_id = layout.project_id
+            
+            if project_id is None:
+                print("[MediaLightbox] ⚠️ Cannot toggle favorite: project_id not available")
+                return
+            
+            # Check current favorite status from database
+            from reference_db import ReferenceDB
+            db = ReferenceDB()
+            current_tags = db.get_tags_for_photo(self.media_path, project_id)
+            is_favorited = "favorite" in current_tags
+            
+            # Toggle in database
+            if is_favorited:
+                # Remove favorite
+                db.remove_tag(self.media_path, "favorite", project_id)
+                self.favorite_btn.setText("♡")
+                self.favorite_btn.setStyleSheet(self.favorite_btn.styleSheet().replace("\nQPushButton { color: #ff4444; }", ""))
+                status_msg = f"⭐ Removed from favorites: {os.path.basename(self.media_path)}"
+                print(f"[MediaLightbox] Unfavorited: {os.path.basename(self.media_path)}")
+            else:
+                # Add favorite
+                db.add_tag(self.media_path, "favorite", project_id)
+                self.favorite_btn.setText("♥")
+                self.favorite_btn.setStyleSheet(self.favorite_btn.styleSheet() + "\nQPushButton { color: #ff4444; }")
+                status_msg = f"⭐ Added to favorites: {os.path.basename(self.media_path)}"
+                print(f"[MediaLightbox] Favorited: {os.path.basename(self.media_path)}")
+            
+            # Show status message in parent window's status bar
+            if hasattr(self, 'parent') and self.parent():
+                parent = self.parent()
+                if hasattr(parent, 'statusBar'):
+                    try:
+                        parent.statusBar().showMessage(status_msg, 3000)
+                    except Exception as sb_err:
+                        print(f"[MediaLightbox] Could not update status bar: {sb_err}")
+        
+        except Exception as e:
+            print(f"[MediaLightbox] ⚠️ Error toggling favorite: {e}")
+            import traceback
+            traceback.print_exc()
 
     def _rate_media(self, rating: int):
         """Rate current media with 1-5 stars."""
@@ -7795,6 +7982,31 @@ class GooglePhotosLayout(BaseLayout):
         toolbar = self._create_toolbar()
         main_layout.addWidget(toolbar)
 
+        # Phase 3: Main view tabs (Photos, People, Folders, Videos, Favorites)
+        self.view_tabs = QTabBar()
+        self.view_tabs.addTab("📸 Photos")
+        self.view_tabs.addTab("👥 People")
+        self.view_tabs.addTab("📁 Folders")
+        self.view_tabs.addTab("🎬 Videos")
+        self.view_tabs.addTab("⭐ Favorites")
+        self.view_tabs.currentChanged.connect(self._on_view_tab_changed)
+        main_layout.addWidget(self.view_tabs)
+
+        # Photos mode switcher (Grid / Timeline / Single)
+        self.photos_mode_bar = QToolBar()
+        self.photos_mode_bar.setMovable(False)
+        self.btn_mode_grid = QPushButton("Grid")
+        self.btn_mode_timeline = QPushButton("Timeline")
+        self.btn_mode_single = QPushButton("Single")
+        self.btn_mode_grid.clicked.connect(self._show_grid_view)
+        self.btn_mode_timeline.clicked.connect(self._show_timeline_view)
+        self.btn_mode_single.clicked.connect(self._show_single_view)
+        self.photos_mode_bar.addWidget(self.btn_mode_grid)
+        self.photos_mode_bar.addWidget(self.btn_mode_timeline)
+        self.photos_mode_bar.addWidget(self.btn_mode_single)
+        main_layout.addWidget(self.photos_mode_bar)
+        self.photos_mode_bar.setVisible(True)
+
         # Create horizontal splitter (Sidebar | Timeline)
         self.splitter = QSplitter(Qt.Horizontal)
         self.splitter.setHandleWidth(3)
@@ -7887,9 +8099,9 @@ class GooglePhotosLayout(BaseLayout):
 
         # Search box (enlarged - Google Photos hero element)
         self.search_box = QLineEdit()
-        self.search_box.setPlaceholderText("🔍 Search photos, people, places...")
+        self.search_box.setPlaceholderText(t('google_layout.search_placeholder'))
         self.search_box.setMinimumWidth(400)  # Enlarged from 300px to 400px minimum
-        self.search_box.setToolTip("Search photos (Ctrl+F)")
+        self.search_box.setToolTip(t('google_layout.search_tooltip'))
         self.search_box.setStyleSheet("""
             QLineEdit {
                 background: white;
@@ -7953,7 +8165,7 @@ class GooglePhotosLayout(BaseLayout):
 
         # Zoom out button
         self.btn_zoom_out = QPushButton("➖")
-        self.btn_zoom_out.setToolTip("Zoom out (decrease thumbnail size)")
+        self.btn_zoom_out.setToolTip(t('google_layout.zoom_out_tooltip'))
         self.btn_zoom_out.setFixedSize(28, 28)
         self.btn_zoom_out.clicked.connect(lambda: self.zoom_slider.setValue(self.zoom_slider.value() - 50))
         self.btn_zoom_out.setStyleSheet("""
@@ -7974,13 +8186,13 @@ class GooglePhotosLayout(BaseLayout):
         self.zoom_slider.setMaximum(400)  # 400px thumbnails
         self.zoom_slider.setValue(200)    # Default 200px
         self.zoom_slider.setFixedWidth(100)
-        self.zoom_slider.setToolTip("Adjust thumbnail size (+/-)")
+        self.zoom_slider.setToolTip(t('google_layout.zoom_slider_tooltip'))
         self.zoom_slider.valueChanged.connect(self._on_zoom_changed)
         toolbar.addWidget(self.zoom_slider)
 
         # Zoom in button
         self.btn_zoom_in = QPushButton("➕")
-        self.btn_zoom_in.setToolTip("Zoom in (increase thumbnail size)")
+        self.btn_zoom_in.setToolTip(t('google_layout.zoom_in_tooltip'))
         self.btn_zoom_in.setFixedSize(28, 28)
         self.btn_zoom_in.clicked.connect(lambda: self.zoom_slider.setValue(self.zoom_slider.value() + 50))
         self.btn_zoom_in.setStyleSheet("""
@@ -8072,7 +8284,7 @@ class GooglePhotosLayout(BaseLayout):
 
         # Settings button (Google Photos pattern - before spacer)
         self.btn_settings = QPushButton("⚙️")
-        self.btn_settings.setToolTip("Settings and tools")
+        self.btn_settings.setToolTip(t('google_layout.settings_tooltip'))
         self.btn_settings.setFixedSize(32, 32)
         self.btn_settings.clicked.connect(self._show_settings_menu)
         self.btn_settings.setStyleSheet("""
@@ -8150,53 +8362,87 @@ class GooglePhotosLayout(BaseLayout):
         """)
 
         # QUICK ACTIONS section
-        menu.addSection("🔧 Quick Actions")
+        menu.addSection(t('google_layout.settings_menu.quick_actions_section'))
 
-        scan_action = QAction("📂  Scan Repository", menu)
-        scan_action.setToolTip("Scan folder to add new photos")
+        scan_action = QAction(t('google_layout.settings_menu.scan_repository'), menu)
+        scan_action.setToolTip(t('google_layout.settings_menu.scan_repository'))
         if hasattr(self, '_scan_repository_handler'):
             scan_action.triggered.connect(self._scan_repository_handler)
         menu.addAction(scan_action)
 
-        faces_action = QAction("👤  Detect Faces", menu)
-        faces_action.setToolTip("Run face detection on photos")
+        faces_action = QAction(t('google_layout.settings_menu.detect_faces'), menu)
+        faces_action.setToolTip(t('google_layout.settings_menu.detect_faces'))
         if hasattr(self, '_detect_faces_handler'):
             faces_action.triggered.connect(self._detect_faces_handler)
         menu.addAction(faces_action)
 
-        refresh_action = QAction("↻  Refresh Timeline", menu)
-        refresh_action.setToolTip("Reload photos from database")
+        refresh_action = QAction(t('google_layout.settings_menu.refresh_view'), menu)
+        refresh_action.setToolTip(t('google_layout.settings_menu.refresh_view'))
         refresh_action.triggered.connect(self._load_photos)
         menu.addAction(refresh_action)
 
         menu.addSeparator()
 
-        # VIEW OPTIONS section
-        menu.addSection("📊 View Options")
+        # TOOLS section
+        menu.addSection(t('google_layout.settings_menu.tools_section'))
 
-        # TODO: These are placeholders - implement actual toggles
-        metadata_action = QAction("Show Metadata Overlay", menu)
-        metadata_action.setCheckable(True)
-        metadata_action.setChecked(False)
-        menu.addAction(metadata_action)
+        db_action = QAction(t('google_layout.settings_menu.database_maintenance'), menu)
+        if hasattr(self.main_window, '_on_database_maintenance'):
+            db_action.triggered.connect(self.main_window._on_database_maintenance)
+        else:
+            db_action.triggered.connect(lambda: QMessageBox.information(
+                self.main_window, "Tools", "Database Maintenance not available"))
+        menu.addAction(db_action)
 
-        count_action = QAction("Show Photo Count", menu)
-        count_action.setCheckable(True)
-        count_action.setChecked(True)
-        menu.addAction(count_action)
+        clear_cache_action = QAction(t('google_layout.settings_menu.clear_cache'), menu)
+        if hasattr(self.main_window, '_on_clear_thumbnail_cache'):
+            clear_cache_action.triggered.connect(self.main_window._on_clear_thumbnail_cache)
+        else:
+            clear_cache_action.triggered.connect(lambda: QMessageBox.information(
+                self.main_window, "Tools", "Clear Thumbnail Cache not available"))
+        menu.addAction(clear_cache_action)
 
         menu.addSeparator()
 
-        # PREFERENCES section
-        menu.addSection("⚙️ Preferences")
+        # VIEW section
+        menu.addSection(t('google_layout.settings_menu.view_section'))
 
-        appearance_action = QAction("🎨  Appearance Settings", menu)
-        appearance_action.setToolTip("Customize theme and colors")
-        menu.addAction(appearance_action)
+        dark_mode_action = QAction(t('google_layout.settings_menu.toggle_dark_mode'), menu)
+        dark_mode_action.setCheckable(True)
+        try:
+            dark_mode_action.setChecked(bool(self.main_window.is_dark_mode_enabled()))
+        except Exception:
+            dark_mode_action.setChecked(False)
+        if hasattr(self.main_window, 'toggle_dark_mode'):
+            dark_mode_action.triggered.connect(self.main_window.toggle_dark_mode)
+        else:
+            dark_mode_action.triggered.connect(lambda: QMessageBox.information(
+                self.main_window, "View", "Dark mode toggle not available"))
+        menu.addAction(dark_mode_action)
 
-        import_action = QAction("🗂️  Import Settings", menu)
-        import_action.setToolTip("Configure import behavior")
-        menu.addAction(import_action)
+        sidebar_mode_action = QAction(t('google_layout.settings_menu.sidebar_mode'), menu)
+        if hasattr(self.main_window, 'toggle_sidebar_mode'):
+            sidebar_mode_action.triggered.connect(self.main_window.toggle_sidebar_mode)
+        else:
+            sidebar_mode_action.triggered.connect(lambda: QMessageBox.information(
+                self.main_window, "View", "Sidebar mode toggle not available"))
+        menu.addAction(sidebar_mode_action)
+
+        menu.addSeparator()
+
+        # HELP section
+        menu.addSection(t('google_layout.settings_menu.help_section'))
+
+        shortcuts_action = QAction(t('google_layout.settings_menu.keyboard_shortcuts'), menu)
+        if hasattr(self.main_window, 'show_keyboard_shortcuts_dialog'):
+            shortcuts_action.triggered.connect(self.main_window.show_keyboard_shortcuts_dialog)
+        else:
+            shortcuts_action.triggered.connect(lambda: QMessageBox.information(
+                self.main_window,
+                "Keyboard Shortcuts",
+                "Ctrl+F: Search\nCtrl+A: Select all\nCtrl+D: Deselect\nEscape: Clear\nDelete: Delete\nEnter: Open\nSpace: Quick preview\nS: Toggle selection\n+/-: Zoom\nG: Grid\nT: Timeline\nE: Single"
+            ))
+        menu.addAction(shortcuts_action)
 
         menu.addSeparator()
 
@@ -8390,6 +8636,7 @@ class GooglePhotosLayout(BaseLayout):
         nav_buttons = [
             ("📅", "Timeline", "timeline_section"),
             ("📁", "Folders", "folders_section"),
+            ("⭐", "Favorites", "tags_section"),
             ("👥", "People", "people_section"),
             ("🎬", "Videos", "videos_section"),
         ]
@@ -8529,6 +8776,46 @@ class GooglePhotosLayout(BaseLayout):
         # Add folders tree to section
         self.folders_section.add_widget(self.folders_tree)
         scroll_layout.addWidget(self.folders_section)
+
+        # === SECTION 2.5: Tags (Collapsible) ===
+        self.tags_section = CollapsibleSection("Tags", "🏷️", 0)
+        
+        # Tags tree/list (shows all tags with counts)
+        self.tags_tree = QTreeWidget()
+        self.tags_tree.setHeaderHidden(True)
+        self.tags_tree.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.tags_tree.setTextElideMode(Qt.ElideRight)
+        self.tags_tree.setStyleSheet("""
+            QTreeWidget {
+                border: none;
+                background: transparent;
+                font-size: 10pt;
+            }
+            QTreeWidget::item {
+                padding: 4px;
+            }
+            QTreeWidget::item:hover {
+                background: #f1f3f4;
+            }
+            QTreeWidget::item:selected {
+                background: #e8f0fe;
+                color: #1a73e8;
+            }
+        """)
+        self.tags_tree.itemClicked.connect(self._on_tags_item_clicked)
+        self.tags_tree.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.tags_tree.customContextMenuRequested.connect(self._on_tags_context_menu)
+        
+        # Container for tags content
+        tags_container = QWidget()
+        tags_layout = QVBoxLayout(tags_container)
+        tags_layout.setContentsMargins(0, 0, 0, 0)
+        tags_layout.setSpacing(4)
+        tags_layout.addWidget(self.tags_tree)
+        
+        # Add tags to section
+        self.tags_section.add_widget(tags_container)
+        scroll_layout.addWidget(self.tags_section)
 
         # === SECTION 3: People (Collapsible + GRID VIEW + SEARCH!) ===
         self.people_section = CollapsibleSection("People", "👥", 0)
@@ -8890,6 +9177,17 @@ class GooglePhotosLayout(BaseLayout):
                     # Debug logging
                     print(f"[GooglePhotosLayout] 📊 Loaded {len(rows)} photos from database")
 
+                    # Update section counts: timeline and videos
+                    try:
+                        if hasattr(self, 'timeline_section'):
+                            self.timeline_section.update_count(len(rows))
+                        if hasattr(self, 'videos_section'):
+                            video_exts = {'.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v', '.3gp'}
+                            video_count = sum(1 for (p, _, _, _) in rows if os.path.splitext(p)[1].lower() in video_exts)
+                            self.videos_section.update_count(video_count)
+                    except Exception:
+                        pass
+
             except Exception as db_error:
                 print(f"[GooglePhotosLayout] ⚠️ Database query failed: {db_error}")
                 # Show error state but don't crash
@@ -8921,11 +9219,13 @@ class GooglePhotosLayout(BaseLayout):
                 # Full rebuild of all sections when no filters active
                 self._build_timeline_tree(photos_by_date)
                 self._build_folders_tree(rows)
+                self._build_tags_tree()
                 self._build_people_tree()
                 self._build_videos_tree()
             else:
                 # When filtering photos, still update People section
                 # (user should always see all faces to switch between them)
+                self._build_tags_tree()
                 self._build_people_tree()
 
             # Track all displayed paths for Shift+Ctrl multi-selection
@@ -9086,6 +9386,12 @@ class GooglePhotosLayout(BaseLayout):
             folder_item.setData(0, Qt.UserRole, {"type": "folder", "path": folder})
             folder_item.setToolTip(0, folder)  # Show full path on hover
             self.folders_tree.addTopLevelItem(folder_item)
+        # Update Folders section count (sum of all photos across folders)
+        try:
+            if hasattr(self, 'folders_section'):
+                self.folders_section.update_count(sum(folder_counts.values()))
+        except Exception:
+            pass
 
     def _on_timeline_item_clicked(self, item: QTreeWidgetItem, column: int):
         """
@@ -9148,6 +9454,57 @@ class GooglePhotosLayout(BaseLayout):
                 filter_person=None
             )
 
+    def _build_tags_tree(self):
+        """
+        Build tags tree in sidebar (shows all tags with counts).
+        """
+        try:
+            from services.tag_service import get_tag_service
+            tag_service = get_tag_service()
+            tag_rows = tag_service.get_all_tags_with_counts(self.project_id) or []
+        except Exception as e:
+            print(f"[GooglePhotosLayout] ⚠️ Error loading tags: {e}")
+            import traceback
+            traceback.print_exc()
+            return
+        
+        # Clear and update count
+        self.tags_tree.clear()
+        total_count = sum(int(c or 0) for _, c in tag_rows)
+        if hasattr(self, 'tags_section'):
+            self.tags_section.update_count(total_count)
+        
+        # Icon mapping for common tags
+        ICONS = {
+            'favorite': '⭐',
+            'face': '👤',
+            'important': '⚑',
+            'work': '💼',
+            'travel': '✈',
+            'personal': '♥',
+            'family': '👨‍👩‍👧',
+            'archive': '📦',
+        }
+        
+        # Populate tree
+        for tag_name, count in tag_rows:
+            icon = ICONS.get(tag_name.lower(), '🏷️')
+            count_text = f" ({count})" if count else ""
+            display = f"{icon} {tag_name}{count_text}"
+            item = QTreeWidgetItem([display])
+            item.setData(0, Qt.UserRole, tag_name)
+            self.tags_tree.addTopLevelItem(item)
+        
+        print(f"[GooglePhotosLayout] ✓ Built tags tree: {len(tag_rows)} tags")
+    
+    def _on_tags_item_clicked(self, item: QTreeWidgetItem, column: int):
+        """Handle tags tree item click - filter timeline by tag."""
+        tag_name = item.data(0, Qt.UserRole)
+        if not tag_name:
+            return
+        self._filter_by_tag(tag_name)
+
+
     def _build_people_tree(self):
         """
         Build people grid/tree in sidebar (face clusters with counts).
@@ -9181,8 +9538,9 @@ class GooglePhotosLayout(BaseLayout):
 
             # Update section count badge
             if hasattr(self, 'people_section'):
-                self.people_section.update_count(len(rows))
-                print(f"[GooglePhotosLayout] ✓ Updated people section count badge: {len(rows)}")
+                total_photos = sum(int(c or 0) for _, _, c, _, _ in rows)
+                self.people_section.update_count(total_photos)
+                print(f"[GooglePhotosLayout] ✓ Updated people section count badge: {total_photos}")
             else:
                 print("[GooglePhotosLayout] ⚠️ people_section not found!")
 
@@ -9307,6 +9665,89 @@ class GooglePhotosLayout(BaseLayout):
         painter.end()
 
         return QIcon(circular)
+
+    def _build_tags_tree(self):
+        """
+        Build tags tree in sidebar (shows all tags with counts).
+        """
+        try:
+            from services.tag_service import get_tag_service
+            tag_service = get_tag_service()
+            tag_rows = tag_service.get_all_tags_with_counts(self.project_id) or []
+        except Exception as e:
+            print(f"[GooglePhotosLayout] ⚠️ Error loading tags: {e}")
+            import traceback
+            traceback.print_exc()
+            return
+        
+        # Clear and update count
+        self.tags_tree.clear()
+        total_count = sum(int(c or 0) for _, c in tag_rows)
+        if hasattr(self, 'tags_section'):
+            self.tags_section.update_count(total_count)
+        
+        # Icon mapping for common tags
+        ICONS = {
+            'favorite': '⭐',
+            'face': '👤',
+            'important': '⚑',
+            'work': '💼',
+            'travel': '✈',
+            'personal': '♥',
+            'family': '👨‍👩‍👧',
+            'archive': '📦',
+        }
+        
+        # Populate tree
+        for tag_name, count in tag_rows:
+            icon = ICONS.get(tag_name.lower(), '🏷️')
+            count_text = f" ({count})" if count else ""
+            display = f"{icon} {tag_name}{count_text}"
+            item = QTreeWidgetItem([display])
+            item.setData(0, Qt.UserRole, tag_name)
+            self.tags_tree.addTopLevelItem(item)
+        
+        print(f"[GooglePhotosLayout] ✓ Built tags tree: {len(tag_rows)} tags")
+
+    def _on_tags_item_clicked(self, item: QTreeWidgetItem, column: int):
+        """Handle tags tree item click - filter timeline by tag."""
+        tag_name = item.data(0, Qt.UserRole)
+        if not tag_name:
+            return
+        self._filter_by_tag(tag_name)
+
+    def _filter_by_tag(self, tag_name: str):
+        """Filter timeline to show photos by the given tag."""
+        try:
+            from services.tag_service import get_tag_service
+            tag_service = get_tag_service()
+            paths = tag_service.get_paths_by_tag(tag_name, self.project_id)
+            if not paths:
+                self._rebuild_timeline_with_results([], f"Tag: {tag_name}")
+                return
+            
+            # Build rows with date information
+            rows = []
+            from reference_db import ReferenceDB
+            db = ReferenceDB()
+            with db._connect() as conn:
+                cur = conn.cursor()
+                for p in paths:
+                    cur.execute(
+                        """
+                        SELECT path, COALESCE(date_taken, created_date) AS date_taken, width, height
+                        FROM photo_metadata
+                        WHERE path = ? AND project_id = ?
+                        """,
+                        (p, self.project_id)
+                    )
+                    r = cur.fetchone()
+                    if r:
+                        rows.append((r[0], r[1], r[2], r[3]))
+            
+            self._rebuild_timeline_with_results(rows, f"Tag: {tag_name}")
+        except Exception as e:
+            print(f"[GooglePhotosLayout] ⚠️ Error filtering by tag '{tag_name}': {e}")
 
     def _load_face_thumbnail(self, rep_path: str, rep_thumb_png: bytes) -> QIcon:
         """
@@ -9853,7 +10294,7 @@ class GooglePhotosLayout(BaseLayout):
         print(f"[GooglePhotosLayout] Focusing on section: {section_attr}")
 
         # ACCORDION BEHAVIOR: Collapse all other sections, expand clicked section
-        all_sections = ['timeline_section', 'folders_section', 'people_section', 'videos_section']
+        all_sections = ['timeline_section', 'folders_section', 'tags_section', 'people_section', 'videos_section']
 
         for sect_attr in all_sections:
             if not hasattr(self, sect_attr):
@@ -9914,7 +10355,7 @@ class GooglePhotosLayout(BaseLayout):
         """
         print("[GooglePhotosLayout] Expanding all sections")
 
-        all_sections = ['timeline_section', 'folders_section', 'people_section', 'videos_section']
+        all_sections = ['timeline_section', 'folders_section', 'tags_section', 'people_section', 'videos_section']
 
         for sect_attr in all_sections:
             if hasattr(self, sect_attr):
@@ -12688,7 +13129,7 @@ class GooglePhotosLayout(BaseLayout):
         container.setStyleSheet("background: transparent;")
 
         # Thumbnail button with placeholder
-        thumb = QPushButton(container)
+        thumb = PhotoButton(path, self.project_id, container)  # Use custom PhotoButton
         thumb.setGeometry(0, 0, container_width, container_height)
         # QUICK WIN #8: Modern hover effects with smooth transitions
         # QUICK WIN #9: Skeleton loading state with gradient
@@ -12726,6 +13167,17 @@ class GooglePhotosLayout(BaseLayout):
 
         # Store button for async update
         self.thumbnail_buttons[path] = thumb
+        
+        # Load and set tags for badge painting
+        # ARCHITECTURE: Use TagService layer (Schema v3.1.0) instead of direct ReferenceDB calls
+        try:
+            from services.tag_service import get_tag_service
+            tag_service = get_tag_service()
+            tags_map = tag_service.get_tags_for_paths([path], self.project_id)
+            tags = tags_map.get(path, [])  # Extract tags for this photo
+            thumb.set_tags(tags)  # Set tags on PhotoButton for painting
+        except Exception as e:
+            print(f"[GooglePhotosLayout] Warning: Could not load tags for {os.path.basename(path)}: {e}")
 
         # QUICK WIN #1: Load first 50 immediately, rest on scroll
         # This removes the 30-photo limit while maintaining initial performance
@@ -12774,6 +13226,8 @@ class GooglePhotosLayout(BaseLayout):
         container.setProperty("photo_path", path)
         container.setProperty("thumbnail_button", thumb)
         container.setProperty("checkbox", checkbox)
+        
+        # NOTE: Tag badges are now painted directly on PhotoButton, not as QLabel overlays
 
         # Connect signals
         thumb.clicked.connect(lambda: self._on_photo_clicked(path))
@@ -12784,6 +13238,133 @@ class GooglePhotosLayout(BaseLayout):
         thumb.customContextMenuRequested.connect(lambda pos: self._show_photo_context_menu(path, thumb.mapToGlobal(pos)))
 
         return container
+
+    def _create_tag_badge_overlay(self, container: QWidget, path: str, container_width: int):
+        """
+        Create tag badge overlays for photo thumbnail (Google Photos + Current layout pattern).
+        
+        Displays stacked badges in top-right corner for:
+        - ★ Favorite (gold)
+        - 👤 Face (blue)
+        - 🏷 Custom tags (gray)
+        
+        Args:
+            container: Parent container widget
+            path: Photo path
+            container_width: Actual width of the container widget (for correct badge positioning)
+        """
+        try:
+            from reference_db import ReferenceDB
+            from settings_manager_qt import SettingsManager
+            
+            # Query tags for this photo from database
+            db = ReferenceDB()
+            tags = db.get_tags_for_photo(path, self.project_id) or []
+            
+            # Debug: Log tag query result
+            print(f"[GooglePhotosLayout] Badge overlay for {os.path.basename(path)}: tags={tags}")
+            
+            if not tags:
+                return  # No tags to display
+            
+            # Settings
+            sm = SettingsManager()
+            if not sm.get("badge_overlays_enabled", True):
+                return  # Badges disabled by user
+            
+            badge_size = int(sm.get("badge_size_px", 22))
+            max_badges = int(sm.get("badge_max_count", 4))
+            badge_margin = 4
+            
+            # Calculate badge positions (top-right corner, stacked vertically)
+            x_right = container_width - badge_margin - badge_size
+            y_top = badge_margin
+            
+            # Map tags to badge icons and colors (matches Current layout)
+            TAG_BADGE_CONFIG = {
+                'favorite': ('★', QColor(255, 215, 0, 230), Qt.black),
+                'face': ('👤', QColor(70, 130, 180, 220), Qt.white),
+                'important': ('⚑', QColor(255, 69, 0, 220), Qt.white),
+                'work': ('💼', QColor(0, 128, 255, 220), Qt.white),
+                'travel': ('✈', QColor(34, 139, 34, 220), Qt.white),
+                'personal': ('♥', QColor(255, 20, 147, 220), Qt.white),
+                'family': ('👨\u200d👩\u200d👧', QColor(255, 140, 0, 220), Qt.white),
+                'archive': ('📦', QColor(128, 128, 128, 220), Qt.white),
+            }
+            
+            # Create badge labels
+            badge_count = 0
+            for tag in tags:
+                tag_lower = str(tag).lower().strip()
+                
+                # Get badge config or use default
+                if tag_lower in TAG_BADGE_CONFIG:
+                    icon, bg_color, fg_color = TAG_BADGE_CONFIG[tag_lower]
+                else:
+                    # Default badge for custom tags
+                    icon, bg_color, fg_color = ('🏷', QColor(150, 150, 150, 230), Qt.white)
+                
+                if badge_count >= max_badges:
+                    break  # Max badges reached
+                
+                # Create badge label
+                badge = QLabel(icon, container)
+                badge.setFixedSize(badge_size, badge_size)
+                badge.setAlignment(Qt.AlignCenter)
+                badge.setStyleSheet(f"""
+                    QLabel {{
+                        background-color: rgba({bg_color.red()}, {bg_color.green()}, {bg_color.blue()}, {bg_color.alpha()});
+                        color: {'black' if fg_color == Qt.black else 'white'};
+                        border-radius: {badge_size // 2}px;
+                        font-size: 11pt;
+                        font-weight: bold;
+                    }}
+                """)
+                
+                # Position badge (stacked vertically)
+                y_pos = y_top + (badge_count * (badge_size + 4))
+                badge.move(x_right, y_pos)
+                badge.setToolTip(tag)  # Show tag name on hover
+                badge.show()  # Explicitly show the badge
+                badge.raise_()  # Bring to front
+                
+                # Store reference for updates
+                if not hasattr(container, '_tag_badges'):
+                    container.setProperty('_tag_badges', [])
+                badges_list = container.property('_tag_badges') or []
+                badges_list.append(badge)
+                container.setProperty('_tag_badges', badges_list)
+                
+                badge_count += 1
+            
+            # Show "+n" indicator if more tags exist
+            if len(tags) > max_badges:
+                overflow_badge = QLabel(f"+{len(tags) - max_badges}", container)
+                overflow_badge.setFixedSize(badge_size, badge_size)
+                overflow_badge.setAlignment(Qt.AlignCenter)
+                overflow_badge.setStyleSheet(f"""
+                    QLabel {{
+                        background-color: rgba(60, 60, 60, 220);
+                        color: white;
+                        border-radius: {badge_size // 2}px;
+                        font-size: 9pt;
+                        font-weight: bold;
+                    }}
+                """)
+                y_pos = y_top + (max_badges * (badge_size + 4))
+                overflow_badge.move(x_right, y_pos)
+                overflow_badge.setToolTip(f"{len(tags) - max_badges} more tags: {', '.join(tags[max_badges:])}")
+                overflow_badge.show()  # Explicitly show the overflow badge
+                overflow_badge.raise_()
+                
+            # Debug: Log badge creation
+            if badge_count > 0:
+                print(f"[GooglePhotosLayout] ✓ Created {badge_count} tag badge(s) for {os.path.basename(path)}: {tags[:max_badges]}")
+            
+        except Exception as e:
+            print(f"[GooglePhotosLayout] ⚠️ Error creating tag badges for {os.path.basename(path)}: {e}")
+            import traceback
+            traceback.print_exc()
 
     def _on_photo_clicked(self, path: str):
         """
@@ -12866,6 +13447,10 @@ class GooglePhotosLayout(BaseLayout):
             lightbox = MediaLightbox(path, all_media, parent=self.main_window)
             lightbox.exec()
             print("[GooglePhotosLayout] ✓ MediaLightbox closed")
+            
+            # PHASE 3: Refresh tag overlays after lightbox closes
+            # (user may have favorited/unfavorited in lightbox)
+            self._refresh_tag_overlays([path])
 
         except Exception as e:
             print(f"[GooglePhotosLayout] ⚠️ Error opening lightbox: {e}")
@@ -13171,6 +13756,27 @@ class GooglePhotosLayout(BaseLayout):
 
         menu.addSeparator()
 
+        # Favorite/Tag actions
+        from reference_db import ReferenceDB
+        db = ReferenceDB()
+        current_tags = db.get_tags_for_photo(path, self.project_id) or []
+        is_favorited = "favorite" in current_tags
+        
+        if is_favorited:
+            favorite_action = QAction("⭐ Unfavorite", parent=menu)
+            favorite_action.triggered.connect(lambda: self._toggle_favorite_single(path))
+        else:
+            favorite_action = QAction("☆ Add to Favorites", parent=menu)
+            favorite_action.triggered.connect(lambda: self._toggle_favorite_single(path))
+        menu.addAction(favorite_action)
+        
+        # Add custom tag
+        tag_action = QAction("🏷️ Add Tag...", parent=menu)
+        tag_action.triggered.connect(lambda: self._add_tag_to_photo(path))
+        menu.addAction(tag_action)
+        
+        menu.addSeparator()
+
         # Select/Deselect toggle
         is_selected = path in self.selected_photos
         if is_selected:
@@ -13400,6 +14006,36 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
                 current = self.zoom_slider.value()
                 self.zoom_slider.setValue(max(current - 50, self.zoom_slider.minimum()))
             event.accept()
+
+        # G: Grid View
+        elif key == Qt.Key_G and not modifiers:
+            print("[GooglePhotosLayout] ⌨️ G - Grid view")
+            if hasattr(self, '_show_grid_view'):
+                self._show_grid_view()
+            event.accept()
+
+        # T: Timeline View
+        elif key == Qt.Key_T and not modifiers:
+            print("[GooglePhotosLayout] ⌨️ T - Timeline view")
+            if hasattr(self, '_show_timeline_view'):
+                self._show_timeline_view()
+            event.accept()
+
+        # E: Single View
+        elif key == Qt.Key_E and not modifiers:
+            print("[GooglePhotosLayout] ⌨️ E - Single view")
+            if hasattr(self, '_show_single_view'):
+                self._show_single_view()
+            event.accept()
+        
+        # F: Toggle favorite for selected photos
+        elif key == Qt.Key_F and not modifiers:
+            if len(self.selected_photos) > 0:
+                print(f"[GooglePhotosLayout] ⌨️ F - Toggle favorite for {len(self.selected_photos)} photos")
+                self._on_favorite_selected()
+                event.accept()
+            else:
+                super().keyPressEvent(event)
 
         else:
             # Pass to parent for other keys
@@ -13679,27 +14315,61 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
 
     def _on_favorite_selected(self):
         """
-        Mark all selected photos as favorites.
+        Toggle favorite tag for all selected photos (batch operation).
+        
+        Follows Current layout pattern:
+        - Check if any photo is already favorited
+        - If any favorited: unfavorite all
+        - If none favorited: favorite all
+        - Refresh tag overlays after operation
+        - Show status message
         """
-        from PySide6.QtWidgets import QMessageBox
-
         if not self.selected_photos:
             return
-
-        count = len(self.selected_photos)
-
-        print(f"[GooglePhotosLayout] Marking {count} photos as favorites...")
-
-        # TODO Phase 2: Implement actual favorite tagging in database
-        # For now, just show message
-        QMessageBox.information(
-            self.main_window,
-            "Mark as Favorite",
-            f"{count} photo{'s' if count > 1 else ''} marked as favorite!\n\n"
-            "(Note: Favorite tagging not yet implemented - Phase 2 placeholder)"
-        )
-
-        self._clear_selection()
+        
+        try:
+            from reference_db import ReferenceDB
+            
+            paths = list(self.selected_photos)
+            count = len(paths)
+            
+            # Check if any photo is already favorited
+            db = ReferenceDB()
+            has_favorite = False
+            for path in paths:
+                tags = db.get_tags_for_photo(path, self.project_id) or []
+                if "favorite" in tags:
+                    has_favorite = True
+                    break
+            
+            # Toggle: if any is favorite, unfavorite all; otherwise favorite all
+            if has_favorite:
+                # Unfavorite all
+                for path in paths:
+                    db.remove_tag(path, "favorite", self.project_id)
+                msg = f"⭐ Removed favorite from {count} photo{'s' if count > 1 else ''}"
+                print(f"[GooglePhotosLayout] Unfavorited {count} photos")
+            else:
+                # Favorite all
+                for path in paths:
+                    db.add_tag(path, "favorite", self.project_id)
+                msg = f"⭐ Added {count} photo{'s' if count > 1 else ''} to favorites"
+                print(f"[GooglePhotosLayout] Favorited {count} photos")
+            
+            # Refresh tag overlays for affected photos
+            self._refresh_tag_overlays(paths)
+            
+            # Show status message in parent window
+            if hasattr(self.main_window, 'statusBar'):
+                self.main_window.statusBar().showMessage(msg, 3000)
+            
+            # Clear selection after operation
+            self._clear_selection()
+            
+        except Exception as e:
+            print(f"[GooglePhotosLayout] ⚠️ Error toggling favorites: {e}")
+            import traceback
+            traceback.print_exc()
 
     def _on_share_selected(self):
         """
@@ -14177,7 +14847,11 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
                         
                         self.people_grid.add_person(branch_key, label or "Unnamed", face_pix, count)
             
-            # Show result message
+            # Update People section count and show result message
+            try:
+                self.people_section.update_count(len(results))
+            except Exception:
+                pass
             op_text = {'>': 'more than', '>=': 'at least', '<': 'less than', '<=': 'at most'}.get(operator, '')
             QMessageBox.information(
                 self.main_window,
@@ -14374,9 +15048,6 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
                 child.widget().deleteLater()
 
         self.timeline_tree.clear()
-        self.folders_tree.clear()  # Clear folders too for consistency
-        self.people_tree.clear()  # Clear people too for consistency
-        self.videos_tree.clear()  # Clear videos too for consistency
 
         if not rows:
             # No results
@@ -14398,7 +15069,8 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
 
         # Create date groups (use current thumb size)
         thumb_size = getattr(self, 'current_thumb_size', 200)
-        for date_str, photos in photos_by_date.items():
+        for date_str in sorted(photos_by_date.keys(), reverse=True):
+            photos = photos_by_date.get(date_str, [])
             date_group = self._create_date_group(date_str, photos, thumb_size)
             self.timeline_layout.addWidget(date_group)
 
@@ -14487,6 +15159,69 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
         """Grid is integrated into timeline view."""
         return None
 
+    def _on_view_tab_changed(self, index: int):
+        tab_text = self.view_tabs.tabText(index)
+        if "Photos" in tab_text:
+            if hasattr(self, 'photos_mode_bar'):
+                self.photos_mode_bar.setVisible(True)
+            self._show_timeline_view()
+        else:
+            if hasattr(self, 'photos_mode_bar'):
+                self.photos_mode_bar.setVisible(False)
+            if "People" in tab_text:
+                self._scroll_to_section('people_section')
+            elif "Folders" in tab_text:
+                self._scroll_to_section('folders_section')
+            elif "Videos" in tab_text:
+                self._scroll_to_section('videos_section')
+            elif "Favorites" in tab_text:
+                self._filter_by_tag("favorite")
+
+    def _filter_favorites(self):
+        """Filter timeline to show only photos tagged as favorites."""
+        try:
+            from reference_db import ReferenceDB
+            db = ReferenceDB()
+            with db._connect() as conn:
+                cur = conn.cursor()
+                query = """
+                    SELECT DISTINCT pm.path, COALESCE(pm.date_taken, pm.created_date) as date_taken
+                    FROM photo_metadata pm
+                    JOIN project_images pi ON pm.path = pi.image_path
+                    JOIN tags t ON t.name = ? AND t.project_id = ?
+                    JOIN photo_tags pt ON pt.tag_id = t.id AND pt.photo_id = pm.id
+                    WHERE pi.project_id = ?
+                    ORDER BY date_taken DESC
+                """
+                cur.execute(query, ("favorite", self.project_id, self.project_id))
+                rows = cur.fetchall()
+            self._rebuild_timeline_with_results(rows, "Favorites")
+        except Exception as e:
+            print(f"[GooglePhotosLayout] ⚠️ Error filtering favorites: {e}")
+    def _set_photos_mode(self, mode: str):
+        self.view_mode = mode
+
+    def _show_grid_view(self):
+        self._set_photos_mode('grid')
+        # TODO: Implement dedicated grid renderer; reload for now
+        self._load_photos(thumb_size=getattr(self, 'current_thumb_size', 200))
+
+    def _show_timeline_view(self):
+        self._set_photos_mode('timeline')
+        self._load_photos(thumb_size=getattr(self, 'current_thumb_size', 200))
+
+    def _show_single_view(self):
+        self._set_photos_mode('single')
+        try:
+            paths = self._get_all_media_paths()
+            if not paths:
+                from PySide6.QtWidgets import QMessageBox
+                QMessageBox.information(self.main_window, "Single View", "No media available.")
+                return
+            lightbox = MediaLightbox(paths[0], paths, parent=self.main_window)
+            lightbox.exec()
+        except Exception as e:
+            print(f"[GooglePhotosLayout] ⚠️ Error opening single view: {e}")
     def on_layout_activated(self):
         """Called when this layout becomes active."""
         print("[GooglePhotosLayout] 📍 Layout activated")
@@ -14630,6 +15365,234 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
 
         # Reload photos for the new project
         self._load_photos()
+
+    # ============ PHASE 3: Tag Operations ============
+    
+    def _toggle_favorite_single(self, path: str):
+        """
+        Toggle favorite status for a single photo (context menu action).
+        """
+        try:
+            from services.tag_service import get_tag_service
+            tag_service = get_tag_service()
+            
+            current_tags = tag_service.get_tags_for_path(path, self.project_id) or []
+            is_favorited = any(t.lower() == "favorite" for t in current_tags)
+            
+            if is_favorited:
+                tag_service.remove_tag(path, "favorite", self.project_id)
+                msg = f"⭐ Removed from favorites: {os.path.basename(path)}"
+                print(f"[GooglePhotosLayout] Unfavorited: {os.path.basename(path)}")
+            else:
+                tag_service.assign_tags_bulk([path], "favorite", self.project_id)
+                msg = f"⭐ Added to favorites: {os.path.basename(path)}"
+                print(f"[GooglePhotosLayout] Favorited: {os.path.basename(path)}")
+            
+            # Refresh tag overlay for this photo
+            self._refresh_tag_overlays([path])
+            
+            # Show status message
+            if hasattr(self.main_window, 'statusBar'):
+                self.main_window.statusBar().showMessage(msg, 3000)
+        
+        except Exception as e:
+            print(f"[GooglePhotosLayout] ⚠️ Error toggling favorite: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def _add_tag_to_photo(self, path: str):
+        """
+        Add a custom tag to a single photo (context menu action).
+        
+        ARCHITECTURE: Uses TagService layer (Schema v3.1.0) instead of direct ReferenceDB calls.
+        This ensures proper photo_metadata creation and tag isolation.
+        
+        Args:
+            path: Photo file path
+        """
+        from PySide6.QtWidgets import QInputDialog
+        
+        tag_name, ok = QInputDialog.getText(
+            self.main_window,
+            "Add Tag",
+            "Enter tag name:",
+            QLineEdit.Normal,
+            ""
+        )
+        
+        if ok and tag_name.strip():
+            try:
+                # ARCHITECTURE: Use TagService layer (matches Current layout approach)
+                from services.tag_service import get_tag_service
+                tag_service = get_tag_service()
+                
+                # Ensure tag exists and assign to photo
+                tag_service.ensure_tag_exists(tag_name.strip(), self.project_id)
+                count = tag_service.assign_tags_bulk([path], tag_name.strip(), self.project_id)
+                
+                if count > 0:
+                    msg = f"🏷️ Tagged '{tag_name.strip()}': {os.path.basename(path)}"
+                    print(f"[GooglePhotosLayout] {msg}")
+                    
+                    # Refresh tag overlay
+                    self._refresh_tag_overlays([path])
+                    
+                    # Show success message
+                    if hasattr(self.main_window, 'statusBar'):
+                        self.main_window.statusBar().showMessage(msg, 3000)
+                else:
+                    # Tag assignment failed
+                    error_msg = f"⚠️ Failed to add tag '{tag_name.strip()}' to {os.path.basename(path)}"
+                    print(f"[GooglePhotosLayout] {error_msg}")
+                    from PySide6.QtWidgets import QMessageBox
+                    QMessageBox.warning(
+                        self.main_window,
+                        "Tag Failed",
+                        f"Failed to add tag '{tag_name.strip()}'.\n\nThe photo may not exist in the database or the tag could not be created."
+                    )
+            
+            except Exception as e:
+                print(f"[GooglePhotosLayout] ⚠️ Error adding tag: {e}")
+                import traceback
+                traceback.print_exc()
+                from PySide6.QtWidgets import QMessageBox
+                QMessageBox.critical(
+                    self.main_window,
+                    "Tag Failed",
+                    f"Failed to add tag:\n{str(e)}"
+                )
+    
+    def _show_photo_context_menu(self, path: str, global_pos):
+        from PySide6.QtWidgets import QMenu, QMessageBox
+        try:
+            from services.tag_service import get_tag_service
+            tag_service = get_tag_service()
+            current_tags = [t.lower() for t in (tag_service.get_tags_for_path(path, self.project_id) or [])]
+            
+            menu = QMenu(self.main_window)
+            # Common tags (checkable items show a ✓ when present)
+            common_tags = [
+                ("favorite", "⭐ Favorite"),
+                ("face", "👤 Face"),
+                ("important", "⚑ Important"),
+                ("work", "💼 Work"),
+                ("travel", "✈ Travel"),
+                ("personal", "♥ Personal"),
+                ("family", "👨‍👩‍👧 Family"),
+                ("archive", "📦 Archive"),
+            ]
+            actions = {}
+            for key, label in common_tags:
+                act = menu.addAction(label)
+                act.setCheckable(True)
+                act.setChecked(key in current_tags)
+                actions[act] = key
+            menu.addSeparator()
+            act_new = menu.addAction("➕ New Tag…")
+            act_remove_all = menu.addAction("🗑️ Remove All Tags")
+            
+            chosen = menu.exec(global_pos)
+            if not chosen:
+                return
+            
+            if chosen is act_new:
+                # Reuse existing add-tag flow
+                self._add_tag_to_photo(path)
+                return
+            
+            if chosen is act_remove_all:
+                # Remove all tags from this photo (includes custom tags)
+                for tag_name in list(current_tags):
+                    try:
+                        tag_service.remove_tag(path, tag_name, self.project_id)
+                    except Exception as e:
+                        print(f"[GooglePhotosLayout] ⚠️ Failed to remove tag '{tag_name}': {e}")
+                # Refresh overlays and tags section
+                self._refresh_tag_overlays([path])
+                try:
+                    self._build_tags_tree()
+                except Exception:
+                    pass
+                return
+            
+            tag_key = actions.get(chosen)
+            if tag_key:
+                if tag_key in current_tags:
+                    tag_service.remove_tag(path, tag_key, self.project_id)
+                else:
+                    tag_service.assign_tags_bulk([path], tag_key, self.project_id)
+                # Refresh overlays and tags section
+                self._refresh_tag_overlays([path])
+                try:
+                    self._build_tags_tree()
+                except Exception:
+                    pass
+        except Exception as e:
+            print(f"[GooglePhotosLayout] ⚠️ Context menu error: {e}")
+            QMessageBox.critical(self.main_window, "Error", str(e))
+
+    def _refresh_tag_ovverlays(self, paths):
+        """Backward-compat alias for a misspelled method name used in older code paths."""
+        return self._refresh_tag_overlays(paths)
+
+    def _on_tags_context_menu(self, pos):
+        from PySide6.QtWidgets import QMenu, QInputDialog, QMessageBox
+        menu = QMenu(self.tags_tree)
+        act_new = menu.addAction("➕ New Tag…")
+        chosen = menu.exec(self.tags_tree.viewport().mapToGlobal(pos))
+        if chosen is act_new:
+            name, ok = QInputDialog.getText(self.main_window, "New Tag", "Tag name:")
+            if ok and name.strip():
+                try:
+                    from services.tag_service import get_tag_service
+                    tag_service = get_tag_service()
+                    tag_service.ensure_tag_exists(name.strip(), self.project_id)
+                    self._build_tags_tree()
+                except Exception as e:
+                    QMessageBox.critical(self.main_window, "Create Failed", str(e))
+
+    def _refresh_tag_overlays(self, paths: List[str]):
+        """
+        Refresh tag badge overlays for given photos.
+        
+        ARCHITECTURE: Uses TagService layer (Schema v3.1.0) for proper data access.
+        Updates PhotoButton's painted badges and triggers repaint.
+        
+        Args:
+            paths: List of photo paths to refresh
+        """
+        try:
+            # ARCHITECTURE: Use TagService layer (matches Current layout approach)
+            from services.tag_service import get_tag_service
+            tag_service = get_tag_service()
+            
+            # Bulk query tags for all paths (more efficient than individual queries)
+            tags_map = tag_service.get_tags_for_paths(paths, self.project_id)
+            
+            for path in paths:
+                # Find the PhotoButton for this path
+                button = self.thumbnail_buttons.get(path)
+                if not button or not isinstance(button, PhotoButton):
+                    continue
+                
+                # Get tags from the bulk query result
+                tags = tags_map.get(path, [])
+                
+                # Update button's tags (triggers automatic repaint)
+                button.set_tags(tags)
+            
+            print(f"[GooglePhotosLayout] ✓ Refreshed tag badges for {len(paths)} photos")
+            
+            # Also refresh Favorites sidebar section
+            try:
+                self._build_tags_tree()
+            except Exception as e:
+                print(f"[GooglePhotosLayout] ⚠️ Could not refresh tags section: {e}")
+        
+        except Exception as e:
+            print(f"[GooglePhotosLayout] ⚠️ Error refreshing tag overlays: {e}")
+            import traceback
+            traceback.print_exc()
 
 
 # =============================================================================

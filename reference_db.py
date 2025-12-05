@@ -1,5 +1,5 @@
 # reference_db.py
-# Version 09.32.01.01 dated 20251122
+# Version 09.42.01.01 dated 20251205
 # FIX: Convert db_file to absolute path in __init__ for consistency with DatabaseConnection
 # PHASE 4 CLEANUP: Removed unnecessary ensure_created_date_fields() calls
 # UPDATED: Now uses repository layer for schema management
@@ -3141,16 +3141,34 @@ class ReferenceDB:
             return
         photo_id = self._get_photo_id_by_path(path, project_id)
         if not photo_id:
+            print(f"[ReferenceDB] ⚠️ Cannot add tag '{tag_name}': photo not found for path {path}")
             return
         with self._connect() as conn:
             cur = conn.cursor()
-            # ensure tag exists
-            cur.execute("INSERT OR IGNORE INTO tags (name) VALUES (?)", (tag_name,))
-            cur.execute("SELECT id FROM tags WHERE name = ?", (tag_name,))
-            tag_id = cur.fetchone()[0]
-            # link
-            cur.execute("INSERT OR IGNORE INTO photo_tags (photo_id, tag_id) VALUES (?, ?)", (photo_id, tag_id))
-            conn.commit()
+            
+            # Ensure tag exists in tags table
+            try:
+                cur.execute("INSERT OR IGNORE INTO tags (name) VALUES (?)", (tag_name,))
+                conn.commit()  # Commit to make the tag visible to subsequent queries
+                
+                # Verify tag was created/exists
+                cur.execute("SELECT id FROM tags WHERE name = ? COLLATE NOCASE", (tag_name,))
+                row = cur.fetchone()
+                if not row:
+                    print(f"[ReferenceDB] ⚠️ Failed to create/find tag '{tag_name}' - database may be locked or corrupted")
+                    return
+                tag_id = row[0]
+                
+                # Link photo to tag
+                cur.execute("INSERT OR IGNORE INTO photo_tags (photo_id, tag_id) VALUES (?, ?)", (photo_id, tag_id))
+                conn.commit()
+                
+                print(f"[ReferenceDB] ✓ Tagged photo {photo_id} with '{tag_name}' (tag_id={tag_id})")
+            except Exception as e:
+                print(f"[ReferenceDB] ⚠️ Error adding tag '{tag_name}': {e}")
+                import traceback
+                traceback.print_exc()
+                raise
 
     def remove_tag(self, path: str, tag_name: str, project_id: int | None = None):
         """Remove a tag from a photo by path."""
@@ -3255,6 +3273,7 @@ class ReferenceDB:
         with self._connect() as conn:
             cur = conn.cursor()
             cur.execute("INSERT OR IGNORE INTO tags (name) VALUES (?)", (tag_name,))
+            conn.commit()  # Commit to make the tag visible
             cur.execute("SELECT id FROM tags WHERE name = ?", (tag_name,))
             row = cur.fetchone()
             return row[0] if row else None
@@ -3272,8 +3291,13 @@ class ReferenceDB:
             cur = conn.cursor()
             # ensure new tag exists
             cur.execute("INSERT OR IGNORE INTO tags (name) VALUES (?)", (new_name,))
+            conn.commit()  # Commit to make the tag visible
             cur.execute("SELECT id FROM tags WHERE name = ?", (new_name,))
-            new_id = cur.fetchone()[0]
+            row = cur.fetchone()
+            if not row:
+                print(f"[ReferenceDB] ⚠️ Failed to create/find new tag '{new_name}'")
+                return
+            new_id = row[0]
 
             # get old tag id
             cur.execute("SELECT id FROM tags WHERE name = ?", (old_name,))
