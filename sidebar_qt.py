@@ -5432,7 +5432,7 @@ class SidebarQt(QWidget):
             stats = self.db.merge_face_clusters(self.project_id, target_key, source_keys)
 
             # Build comprehensive merge notification following Google Photos pattern
-            msg_lines = [f"✓ Merged {len(source_keys)} people into "{target_name}""]
+            msg_lines = [f"✓ Merged {len(source_keys)} people into '{target_name}'"]
             msg_lines.append("")  # Blank line
 
             # Show duplicate detection if any found
@@ -5453,7 +5453,7 @@ class SidebarQt(QWidget):
 
             msg_lines.append(f"• Reassigned {moved_faces} face crop{'s' if moved_faces != 1 else ''}")
             msg_lines.append("")
-            msg_lines.append(f"Total: {total_photos} photo{'s' if total_photos != 1 else ''} in "{target_name}"")
+            msg_lines.append(f"Total: {total_photos} photo{'s' if total_photos != 1 else ''} in '{target_name}'")
 
             QMessageBox.information(
                 self,

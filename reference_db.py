@@ -4904,22 +4904,27 @@ class ReferenceDB:
                 [project_id] + src_list,
             )
 
-            # 5) CRITICAL: Update count for target cluster to reflect merged face_crops
-            # Without this, the sidebar shows stale counts even after refresh
+            # 5) CRITICAL: Update count for target cluster to reflect UNIQUE PHOTOS
+            # Count must be based on DISTINCT photos (not face_crops count) to match grid display
+            # Why: A photo can have multiple faces, but should count as 1 photo in the UI
+            # Fix: Use COUNT(DISTINCT image_path) from face_crops + project_images join
             cur.execute(
                 """
                 UPDATE face_branch_reps
                 SET count = (
-                    SELECT COUNT(*)
-                    FROM face_crops
-                    WHERE project_id = ? AND branch_key = ?
+                    SELECT COUNT(DISTINCT fc.image_path)
+                    FROM face_crops fc
+                    JOIN project_images pi ON fc.image_path = pi.image_path
+                                          AND fc.project_id = pi.project_id
+                                          AND fc.branch_key = pi.branch_key
+                    WHERE fc.project_id = ? AND fc.branch_key = ?
                 )
                 WHERE project_id = ? AND branch_key = ?
                 """,
                 [project_id, target_branch, project_id, target_branch],
             )
             updated_count = cur.rowcount
-            print(f"[merge_face_clusters] Updated count for target '{target_branch}' (rowcount={updated_count})")
+            print(f"[merge_face_clusters] Updated count for target '{target_branch}' to reflect unique photos (rowcount={updated_count})")
 
             # 6) Get final photo count in target cluster (unique photos)
             cur.execute(
@@ -4931,6 +4936,29 @@ class ReferenceDB:
                 [project_id, target_branch],
             )
             total_photos = cur.fetchone()[0]
+
+            # 7) BEST PRACTICE: Refresh ALL face cluster counts to reflect final database state
+            # This ensures consistency across all clusters after merge operations
+            # Especially important when dealing with photos that have multiple faces
+            print(f"[merge_face_clusters] Refreshing ALL face cluster counts for project {project_id}...")
+            cur.execute(
+                """
+                UPDATE face_branch_reps
+                SET count = (
+                    SELECT COUNT(DISTINCT fc.image_path)
+                    FROM face_crops fc
+                    JOIN project_images pi ON fc.image_path = pi.image_path
+                                          AND fc.project_id = pi.project_id
+                                          AND fc.branch_key = pi.branch_key
+                    WHERE fc.project_id = face_branch_reps.project_id
+                      AND fc.branch_key = face_branch_reps.branch_key
+                )
+                WHERE project_id = ?
+                """,
+                [project_id],
+            )
+            refreshed_count = cur.rowcount
+            print(f"[merge_face_clusters] ✓ Refreshed counts for {refreshed_count} face clusters")
 
             conn.commit()
 
@@ -5062,6 +5090,28 @@ class ReferenceDB:
 
             # Remove history entry we just consumed
             cur.execute("DELETE FROM face_merge_history WHERE id = ?", (log_id,))
+
+            # BEST PRACTICE: Refresh ALL face cluster counts after undo
+            # Ensures counts reflect actual database state after restoration
+            print(f"[undo_last_face_merge] Refreshing ALL face cluster counts for project {project_id}...")
+            cur.execute(
+                """
+                UPDATE face_branch_reps
+                SET count = (
+                    SELECT COUNT(DISTINCT fc.image_path)
+                    FROM face_crops fc
+                    JOIN project_images pi ON fc.image_path = pi.image_path
+                                          AND fc.project_id = pi.project_id
+                                          AND fc.branch_key = pi.branch_key
+                    WHERE fc.project_id = face_branch_reps.project_id
+                      AND fc.branch_key = face_branch_reps.branch_key
+                )
+                WHERE project_id = ?
+                """,
+                [project_id],
+            )
+            refreshed_count = cur.rowcount
+            print(f"[undo_last_face_merge] ✓ Refreshed counts for {refreshed_count} face clusters")
 
             conn.commit()
 
