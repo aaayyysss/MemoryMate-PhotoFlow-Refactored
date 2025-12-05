@@ -5430,12 +5430,35 @@ class SidebarQt(QWidget):
         # --- Perform merge via DB ---
         try:
             stats = self.db.merge_face_clusters(self.project_id, target_key, source_keys)
-            moved = stats.get("moved_faces", 0) if isinstance(stats, dict) else 0
+
+            # Build comprehensive merge notification following Google Photos pattern
+            msg_lines = [f"✓ Merged {len(source_keys)} people into "{target_name}""]
+            msg_lines.append("")  # Blank line
+
+            # Show duplicate detection if any found
+            duplicates = stats.get("duplicates_found", 0) if isinstance(stats, dict) else 0
+            unique_moved = stats.get("unique_moved", 0) if isinstance(stats, dict) else 0
+            total_photos = stats.get("total_photos", 0) if isinstance(stats, dict) else 0
+            moved_faces = stats.get("moved_faces", 0) if isinstance(stats, dict) else 0
+
+            if duplicates > 0:
+                msg_lines.append(f"⚠️ Found {duplicates} duplicate photo{'s' if duplicates != 1 else ''}")
+                msg_lines.append("   (already in target, not duplicated)")
+                msg_lines.append("")
+
+            if unique_moved > 0:
+                msg_lines.append(f"• Moved {unique_moved} unique photo{'s' if unique_moved != 1 else ''}")
+            elif duplicates > 0:
+                msg_lines.append(f"• No unique photos to move (all were duplicates)")
+
+            msg_lines.append(f"• Reassigned {moved_faces} face crop{'s' if moved_faces != 1 else ''}")
+            msg_lines.append("")
+            msg_lines.append(f"Total: {total_photos} photo{'s' if total_photos != 1 else ''} in "{target_name}"")
+
             QMessageBox.information(
                 self,
                 "Merge complete",
-                f"Merged {len(source_keys)} people into “{target_name}”.\n"
-                f"Approx. {moved} face crops were reassigned.",
+                "\n".join(msg_lines),
             )
         except Exception as e:
             QMessageBox.warning(
