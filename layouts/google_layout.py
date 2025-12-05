@@ -10600,11 +10600,33 @@ class GooglePhotosLayout(BaseLayout):
 
             print(f"[GooglePhotosLayout] Merge successful: {source_name} merged into {target_key}")
             print(f"[GooglePhotosLayout] Merge result: {result}")
+
+            # Build comprehensive merge notification following Google Photos pattern
+            msg_lines = [f"✓ '{source_name}' merged successfully", ""]
+
+            duplicates = result.get('duplicates_found', 0)
+            unique_moved = result.get('unique_moved', 0)
+            total_photos = result.get('total_photos', 0)
+            moved_faces = result.get('moved_faces', 0)
+
+            if duplicates > 0:
+                msg_lines.append(f"⚠️ Found {duplicates} duplicate photo{'s' if duplicates != 1 else ''}")
+                msg_lines.append("   (already in target, not duplicated)")
+                msg_lines.append("")
+
+            if unique_moved > 0:
+                msg_lines.append(f"• Moved {unique_moved} unique photo{'s' if unique_moved != 1 else ''}")
+            elif duplicates > 0:
+                msg_lines.append(f"• No unique photos to move (all were duplicates)")
+
+            msg_lines.append(f"• Reassigned {moved_faces} face crop{'s' if moved_faces != 1 else ''}")
+            msg_lines.append("")
+            msg_lines.append(f"Total: {total_photos} photo{'s' if total_photos != 1 else ''}")
+
             QMessageBox.information(
                 self.main_window,
                 "Merged",
-                f"'{source_name}' merged successfully\n"
-                f"Moved {result['moved_faces']} face(s)"
+                "\n".join(msg_lines)
             )
 
         except Exception as e:
@@ -10732,12 +10754,33 @@ class GooglePhotosLayout(BaseLayout):
                 
                 # Update button states
                 self._update_undo_redo_state()
-                
+
+                # Build comprehensive redo notification
+                msg_lines = ["✅ Merge re-applied successfully", ""]
+
+                duplicates = result.get('duplicates_found', 0)
+                unique_moved = result.get('unique_moved', 0)
+                total_photos = result.get('total_photos', 0)
+                moved_faces = result.get('moved_faces', 0)
+
+                if duplicates > 0:
+                    msg_lines.append(f"⚠️ Found {duplicates} duplicate photo{'s' if duplicates != 1 else ''}")
+                    msg_lines.append("   (already in target, not duplicated)")
+                    msg_lines.append("")
+
+                if unique_moved > 0:
+                    msg_lines.append(f"• Moved {unique_moved} unique photo{'s' if unique_moved != 1 else ''}")
+                elif duplicates > 0:
+                    msg_lines.append(f"• No unique photos to move (all were duplicates)")
+
+                msg_lines.append(f"• Reassigned {moved_faces} face crop{'s' if moved_faces != 1 else ''}")
+                msg_lines.append("")
+                msg_lines.append(f"Total: {total_photos} photo{'s' if total_photos != 1 else ''}")
+
                 QMessageBox.information(
                     self.main_window,
                     "Redo Successful",
-                    f"✅ Merge re-applied successfully\n\n"
-                    f"Moved {result['moved_faces']} face(s)"
+                    "\n".join(msg_lines)
                 )
                 print(f"[GooglePhotosLayout] Redo successful: {result}")
             
@@ -11786,11 +11829,32 @@ class GooglePhotosLayout(BaseLayout):
                 # Update button states
                 self._update_undo_redo_state()
 
+                # Build comprehensive redo notification
+                msg_lines = ["✅ Merge reapplied successfully", ""]
+
+                duplicates = result.get('duplicates_found', 0)
+                unique_moved = result.get('unique_moved', 0)
+                total_photos = result.get('total_photos', 0)
+                moved_faces = result.get('moved_faces', 0)
+
+                if duplicates > 0:
+                    msg_lines.append(f"⚠️ Found {duplicates} duplicate photo{'s' if duplicates != 1 else ''}")
+                    msg_lines.append("   (already in target, not duplicated)")
+                    msg_lines.append("")
+
+                if unique_moved > 0:
+                    msg_lines.append(f"• Moved {unique_moved} unique photo{'s' if unique_moved != 1 else ''}")
+                elif duplicates > 0:
+                    msg_lines.append(f"• No unique photos to move (all were duplicates)")
+
+                msg_lines.append(f"• Reassigned {moved_faces} face crop{'s' if moved_faces != 1 else ''}")
+                msg_lines.append("")
+                msg_lines.append(f"Total: {total_photos} photo{'s' if total_photos != 1 else ''}")
+
                 QMessageBox.information(
                     self.main_window,
                     "Redo Successful",
-                    f"✅ Merge reapplied successfully\n\n"
-                    f"Moved {result['moved_faces']} face(s)"
+                    "\n".join(msg_lines)
                 )
                 print(f"[GooglePhotosLayout] Redo successful: {result}")
             else:

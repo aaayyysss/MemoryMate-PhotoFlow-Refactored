@@ -4921,16 +4921,37 @@ class ReferenceDB:
             updated_count = cur.rowcount
             print(f"[merge_face_clusters] Updated count for target '{target_branch}' (rowcount={updated_count})")
 
+            # 6) Get final photo count in target cluster (unique photos)
+            cur.execute(
+                """
+                SELECT COUNT(DISTINCT image_path)
+                FROM project_images
+                WHERE project_id = ? AND branch_key = ?
+                """,
+                [project_id, target_branch],
+            )
+            total_photos = cur.fetchone()[0]
+
             conn.commit()
 
+            # Enhanced result with duplicate detection info for UI notifications
             result = {
-                "moved_faces": moved_faces,
-                "moved_images": total_moved,  # Total affected (moved + deleted duplicates)
+                "moved_faces": moved_faces,           # Face crops reassigned to target
+                "duplicates_found": deleted_duplicates,  # Photos already in target (not duplicated)
+                "unique_moved": moved_images,         # Unique photos moved from source
+                "total_photos": total_photos,         # Final unique photo count in target
+                "moved_images": total_moved,          # Total affected (for backwards compatibility)
                 "deleted_reps": deleted_reps,
                 "sources": src_list,
                 "target": target_branch,
             }
-            print(f"[merge_face_clusters] SUCCESS: {result}")
+
+            # Enhanced logging for debugging
+            if deleted_duplicates > 0:
+                print(f"[merge_face_clusters] ⚠️ DUPLICATE DETECTION: Found {deleted_duplicates} photos already in target")
+            print(f"[merge_face_clusters] SUCCESS: Moved {moved_faces} faces, {deleted_duplicates} duplicates, {moved_images} unique photos")
+            print(f"[merge_face_clusters] Final result: {total_photos} unique photos in '{target_branch}'")
+
             return result
 
 
