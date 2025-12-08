@@ -267,18 +267,37 @@ class AccordionSidebar(QWidget):
         self.sections = {}  # section_id -> AccordionSection
         self.expanded_section_id = None
         self.db = ReferenceDB()
+        self.nav_buttons = {}  # section_id -> QPushButton
 
         # Store content widgets for each section
         self.people_view = None
 
         self._dbg("AccordionSidebar __init__ started")
 
-        # Main layout
-        main_layout = QVBoxLayout(self)
+        # MAIN HORIZONTAL LAYOUT: [Vertical Nav Bar] | [Sections]
+        main_layout = QHBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.setSpacing(4)
+        main_layout.setSpacing(0)
 
-        # Container for all sections
+        # === LEFT: Vertical Navigation Bar (MS Outlook style) ===
+        nav_bar = QWidget()
+        nav_bar.setFixedWidth(48)
+        nav_bar.setStyleSheet("""
+            QWidget {
+                background: #f8f9fa;
+                border-right: 1px solid #dadce0;
+            }
+        """)
+        nav_layout = QVBoxLayout(nav_bar)
+        nav_layout.setContentsMargins(4, 12, 4, 4)
+        nav_layout.setSpacing(8)
+
+        # Navigation buttons (will be created in _build_sections)
+        self.nav_layout = nav_layout
+
+        main_layout.addWidget(nav_bar)
+
+        # === RIGHT: Container for all sections ===
         self.sections_container = QWidget()
         self.sections_layout = QVBoxLayout(self.sections_container)
         self.sections_layout.setContentsMargins(4, 4, 4, 4)
@@ -307,7 +326,7 @@ class AccordionSidebar(QWidget):
         print(f"[{ts}] [AccordionSidebar] {msg}")
 
     def _build_sections(self):
-        """Create all accordion sections."""
+        """Create all accordion sections AND vertical navigation buttons."""
         self._dbg("Building accordion sections...")
 
         # Define sections in priority order
@@ -316,26 +335,54 @@ class AccordionSidebar(QWidget):
             ("dates",    "📅 By Date",     "📅"),
             ("folders",  "📁 Folders",     "📁"),
             ("tags",     "🏷️  Tags",       "🏷️"),
-            ("branches", "🌿 Branches",    "🌿"),
+            ("branches", "🔀 Branches",    "🔀"),
             ("quick",    "⚡ Quick Dates", "⚡"),
         ]
 
         for section_id, title, icon in sections_config:
+            # Create section
             section = AccordionSection(section_id, title, icon)
             section.expandRequested.connect(self.expand_section)
 
             self.sections[section_id] = section
             self.sections_layout.addWidget(section)
 
-        # Add stretch at the end to push collapsed sections to bottom
+            # Create navigation button in vertical nav bar
+            nav_btn = QPushButton(icon)
+            nav_btn.setToolTip(title)
+            nav_btn.setFixedSize(40, 40)
+            nav_btn.setCursor(Qt.PointingHandCursor)
+            nav_btn.setStyleSheet("""
+                QPushButton {
+                    background: transparent;
+                    border: none;
+                    border-radius: 8px;
+                    font-size: 18pt;
+                }
+                QPushButton:hover {
+                    background: rgba(26, 115, 232, 0.08);
+                }
+                QPushButton:pressed {
+                    background: rgba(26, 115, 232, 0.15);
+                }
+            """)
+            nav_btn.clicked.connect(lambda checked, sid=section_id: self.expand_section(sid))
+
+            self.nav_buttons[section_id] = nav_btn
+            self.nav_layout.addWidget(nav_btn)
+
+        # Add stretch at the end (both nav and sections)
+        self.nav_layout.addStretch()
         self.sections_layout.addStretch()
 
-        self._dbg(f"Created {len(self.sections)} sections")
+        self._dbg(f"Created {len(self.sections)} sections with nav buttons")
 
     def expand_section(self, section_id: str):
         """
         Expand one section to full height, collapse all others.
         This is the core accordion behavior.
+
+        Also updates vertical navigation bar button highlighting.
         """
         self._dbg(f"Expanding section: {section_id}")
 
@@ -351,6 +398,9 @@ class AccordionSidebar(QWidget):
         self.sections[section_id].set_expanded(True)
         self.expanded_section_id = section_id
 
+        # Update navigation button highlighting
+        self._update_nav_buttons(section_id)
+
         # Reorder sections: expanded on top, collapsed at bottom
         self._reorder_sections()
 
@@ -358,6 +408,39 @@ class AccordionSidebar(QWidget):
         self._load_section_content(section_id)
 
         self._dbg(f"✓ Section expanded: {section_id}")
+
+    def _update_nav_buttons(self, active_section_id: str):
+        """Update navigation button styles to highlight active section."""
+        for sid, btn in self.nav_buttons.items():
+            if sid == active_section_id:
+                # Highlight active button
+                btn.setStyleSheet("""
+                    QPushButton {
+                        background: rgba(26, 115, 232, 0.15);
+                        border: none;
+                        border-radius: 8px;
+                        font-size: 18pt;
+                    }
+                    QPushButton:hover {
+                        background: rgba(26, 115, 232, 0.25);
+                    }
+                """)
+            else:
+                # Reset inactive buttons
+                btn.setStyleSheet("""
+                    QPushButton {
+                        background: transparent;
+                        border: none;
+                        border-radius: 8px;
+                        font-size: 18pt;
+                    }
+                    QPushButton:hover {
+                        background: rgba(26, 115, 232, 0.08);
+                    }
+                    QPushButton:pressed {
+                        background: rgba(26, 115, 232, 0.15);
+                    }
+                """)
 
     def _reorder_sections(self):
         """
