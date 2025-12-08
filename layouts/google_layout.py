@@ -8747,15 +8747,10 @@ class GooglePhotosLayout(BaseLayout):
             # CRITICAL FIX: Only clear trees when NOT filtering
             # When filtering, we want to keep the tree structure visible
             # so users can see all available years/months/folders/people and switch between them
-            has_filters = filter_year is not None or filter_month is not None or filter_folder is not None or filter_person is not None
-            if not has_filters:
-                # Clear trees only when showing all photos (no filters)
-                self.timeline_tree.clear()
-                self.folders_tree.clear()
-                self.people_tree.clear()
-                self.videos_tree.clear()
+            # NOTE: With AccordionSidebar, clearing is handled internally - no action needed here
+            pass
         except Exception as e:
-            print(f"[GooglePhotosLayout] ⚠️ Error clearing timeline: {e}")
+            print(f"[GooglePhotosLayout] ⚠️ Error in _load_photos setup: {e}")
             # Continue anyway
 
         # Get photos from database
@@ -8983,7 +8978,12 @@ class GooglePhotosLayout(BaseLayout):
         Build timeline tree in sidebar (Years > Months with counts).
 
         Uses created_date which is always in YYYY-MM-DD format.
+        NOTE: With AccordionSidebar, this is handled internally - this method is a no-op.
         """
+        # Old sidebar implementation - no longer needed with AccordionSidebar
+        if not hasattr(self, 'timeline_tree'):
+            return
+
         # Group by year and month
         years_months = defaultdict(lambda: defaultdict(int))
 
@@ -9019,7 +9019,12 @@ class GooglePhotosLayout(BaseLayout):
 
         Args:
             rows: List of (path, date_taken, width, height) tuples
+        NOTE: With AccordionSidebar, this is handled internally - this method is a no-op.
         """
+        # Old sidebar implementation - no longer needed with AccordionSidebar
+        if not hasattr(self, 'folders_tree'):
+            return
+
         # Group photos by parent folder
         folder_counts = defaultdict(int)
 
@@ -9113,7 +9118,12 @@ class GooglePhotosLayout(BaseLayout):
     def _build_tags_tree(self):
         """
         Build tags tree in sidebar (shows all tags with counts).
+        NOTE: With AccordionSidebar, this is handled internally - this method is a no-op.
         """
+        # Old sidebar implementation - no longer needed with AccordionSidebar
+        if not hasattr(self, 'tags_tree'):
+            return
+
         try:
             from services.tag_service import get_tag_service
             tag_service = get_tag_service()
@@ -9123,13 +9133,13 @@ class GooglePhotosLayout(BaseLayout):
             import traceback
             traceback.print_exc()
             return
-        
+
         # Clear and update count
         self.tags_tree.clear()
         total_count = sum(int(c or 0) for _, c in tag_rows)
         if hasattr(self, 'tags_section'):
             self.tags_section.update_count(total_count)
-        
+
         # Icon mapping for common tags
         ICONS = {
             'favorite': '⭐',
@@ -9141,7 +9151,7 @@ class GooglePhotosLayout(BaseLayout):
             'family': '👨‍👩‍👧',
             'archive': '📦',
         }
-        
+
         # Populate tree
         for tag_name, count in tag_rows:
             icon = ICONS.get(tag_name.lower(), '🏷️')
@@ -9150,7 +9160,7 @@ class GooglePhotosLayout(BaseLayout):
             item = QTreeWidgetItem([display])
             item.setData(0, Qt.UserRole, tag_name)
             self.tags_tree.addTopLevelItem(item)
-        
+
         print(f"[GooglePhotosLayout] ✓ Built tags tree: {len(tag_rows)} tags")
     
     def _on_tags_item_clicked(self, item: QTreeWidgetItem, column: int):
@@ -9167,7 +9177,12 @@ class GooglePhotosLayout(BaseLayout):
 
         Phase 1+2: Now populates both grid view AND tree (tree hidden, kept for compatibility).
         Queries face_branch_reps table for detected faces/people.
+        NOTE: With AccordionSidebar, this is handled internally - this method is a no-op.
         """
+        # Old sidebar implementation - no longer needed with AccordionSidebar
+        if not hasattr(self, 'people_grid') and not hasattr(self, 'people_tree'):
+            return
+
         print("[GooglePhotosLayout] 🔍 _build_people_tree() called")
         try:
             from reference_db import ReferenceDB
@@ -9325,7 +9340,12 @@ class GooglePhotosLayout(BaseLayout):
     def _build_tags_tree(self):
         """
         Build tags tree in sidebar (shows all tags with counts).
+        NOTE: With AccordionSidebar, this is handled internally - this method is a no-op.
         """
+        # Old sidebar implementation - no longer needed with AccordionSidebar
+        if not hasattr(self, 'tags_tree'):
+            return
+
         try:
             from services.tag_service import get_tag_service
             tag_service = get_tag_service()
@@ -9335,13 +9355,13 @@ class GooglePhotosLayout(BaseLayout):
             import traceback
             traceback.print_exc()
             return
-        
+
         # Clear and update count
         self.tags_tree.clear()
         total_count = sum(int(c or 0) for _, c in tag_rows)
         if hasattr(self, 'tags_section'):
             self.tags_section.update_count(total_count)
-        
+
         # Icon mapping for common tags
         ICONS = {
             'favorite': '⭐',
@@ -9353,7 +9373,7 @@ class GooglePhotosLayout(BaseLayout):
             'family': '👨‍👩‍👧',
             'archive': '📦',
         }
-        
+
         # Populate tree
         for tag_name, count in tag_rows:
             icon = ICONS.get(tag_name.lower(), '🏷️')
@@ -9362,7 +9382,7 @@ class GooglePhotosLayout(BaseLayout):
             item = QTreeWidgetItem([display])
             item.setData(0, Qt.UserRole, tag_name)
             self.tags_tree.addTopLevelItem(item)
-        
+
         print(f"[GooglePhotosLayout] ✓ Built tags tree: {len(tag_rows)} tags")
 
     def _on_tags_item_clicked(self, item: QTreeWidgetItem, column: int):
@@ -11609,7 +11629,12 @@ class GooglePhotosLayout(BaseLayout):
         - By Duration (Short/Medium/Long)
         - By Resolution (SD/HD/FHD/4K)
         - By Date (Year/Month hierarchy)
+        NOTE: With AccordionSidebar, this is handled internally - this method is a no-op.
         """
+        # Old sidebar implementation - no longer needed with AccordionSidebar
+        if not hasattr(self, 'videos_tree'):
+            return
+
         try:
             from services.video_service import VideoService
             video_service = VideoService()
@@ -14811,7 +14836,7 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
             if child.widget():
                 child.widget().deleteLater()
 
-        self.timeline_tree.clear()
+        # NOTE: With AccordionSidebar, clearing is handled internally - no action needed here
 
         if not rows:
             # No results
