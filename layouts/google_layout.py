@@ -8853,10 +8853,12 @@ class GooglePhotosLayout(BaseLayout):
                     except Exception:
                         pass
 
-                    # Refresh accordion sidebar after scan completes
-                    if hasattr(self, 'accordion_sidebar'):
-                        # Reload all sections to reflect updated data
-                        self.accordion_sidebar.reload_all_sections()
+                    # NOTE: Sidebar reload removed from here to fix "Cannot operate on a closed database" error
+                    # The sidebar should only reload when:
+                    # 1. Actually scanning new photos from disk (handled in scan completion callback)
+                    # 2. After face detection completes (handled in face detection callback)
+                    # 3. After renaming/merging people (handled in person actions)
+                    # NOT when just filtering existing photos (causes database connection conflicts)
 
             except Exception as db_error:
                 print(f"[GooglePhotosLayout] ⚠️ Database query failed: {db_error}")
