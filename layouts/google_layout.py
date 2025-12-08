@@ -8637,7 +8637,8 @@ class GooglePhotosLayout(BaseLayout):
         # Import and instantiate AccordionSidebar
         from accordion_sidebar import AccordionSidebar
 
-        sidebar = AccordionSidebar(project_id=self.project_id, parent=self)
+        # CRITICAL FIX: GooglePhotosLayout is NOT a QWidget, so pass None as parent
+        sidebar = AccordionSidebar(project_id=self.project_id, parent=None)
         sidebar.setMinimumWidth(240)
         sidebar.setMaximumWidth(500)
         sidebar.setStyleSheet("""
