@@ -17,9 +17,13 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
     QScrollArea, QFrame, QSizePolicy
 )
-from PySide6.QtCore import Qt, Signal, QPropertyAnimation, QEasingCurve, QSize
+from PySide6.QtCore import Qt, Signal, QPropertyAnimation, QEasingCurve, QSize, QThreadPool
 from PySide6.QtGui import QFont, QIcon
 from datetime import datetime
+
+# Import database and UI components
+from reference_db import ReferenceDB
+from ui.people_list_view import PeopleListView
 
 
 class SectionHeader(QFrame):
@@ -241,6 +245,10 @@ class AccordionSidebar(QWidget):
         self.project_id = project_id
         self.sections = {}  # section_id -> AccordionSection
         self.expanded_section_id = None
+        self.db = ReferenceDB()
+
+        # Store content widgets for each section
+        self.people_view = None
 
         self._dbg("AccordionSidebar __init__ started")
 
@@ -348,30 +356,136 @@ class AccordionSidebar(QWidget):
                 self.sections_layout.addWidget(section, stretch=0)
 
     def _load_section_content(self, section_id: str):
-        """
-        Load content for the specified section.
-        This will be implemented in Phase 2.
-        """
+        """Load content for the specified section."""
         self._dbg(f"Loading content for section: {section_id}")
 
-        # TODO: Phase 2 - Load actual content widgets
-        # For now, just show placeholder
-        section = self.sections[section_id]
-        placeholder = QLabel(f"Content for {section_id} will load here...")
-        placeholder.setAlignment(Qt.AlignCenter)
-        placeholder.setStyleSheet("padding: 20px; color: #666;")
-        section.set_content_widget(placeholder)
+        if section_id == "people":
+            self._load_people_section()
+        elif section_id == "dates":
+            self._load_dates_section()
+        elif section_id == "folders":
+            self._load_folders_section()
+        elif section_id == "tags":
+            self._load_tags_section()
+        elif section_id == "branches":
+            self._load_branches_section()
+        elif section_id == "quick":
+            self._load_quick_section()
+        else:
+            # Fallback placeholder
+            section = self.sections[section_id]
+            placeholder = QLabel(f"Content for {section_id} coming soon...")
+            placeholder.setAlignment(Qt.AlignCenter)
+            placeholder.setStyleSheet("padding: 20px; color: #666;")
+            section.set_content_widget(placeholder)
+
+    def _load_people_section(self):
+        """Load People/Face Clusters section content."""
+        self._dbg("Loading People section...")
+
+        section = self.sections.get("people")
+        if not section or not self.project_id:
+            return
+
+        try:
+            # Load face cluster data from database
+            rows = self.db.get_face_clusters(self.project_id)
+            self._dbg(f"Loaded {len(rows)} face clusters")
+
+            # Create or reuse PeopleListView widget
+            if not self.people_view:
+                self.people_view = PeopleListView(self)
+                self.people_view.set_database(self.db, self.project_id)
+
+                # Connect signals
+                self.people_view.personActivated.connect(self._on_person_activated)
+
+            # Load people data
+            self.people_view.load_people(rows)
+
+            # Update count badge
+            section.set_count(len(rows))
+
+            # Set as content widget
+            section.set_content_widget(self.people_view)
+
+            self._dbg(f"✓ People section loaded with {len(rows)} clusters")
+
+        except Exception as e:
+            self._dbg(f"⚠️ Error loading people section: {e}")
+            import traceback
+            traceback.print_exc()
+
+            # Show error placeholder
+            error_label = QLabel(f"Error loading people:\n{str(e)}")
+            error_label.setAlignment(Qt.AlignCenter)
+            error_label.setStyleSheet("padding: 20px; color: #ff0000;")
+            section.set_content_widget(error_label)
+
+    def _on_person_activated(self, branch_key: str):
+        """Handle person click - emit signal to filter grid."""
+        self._dbg(f"Person activated: {branch_key}")
+        # Emit branch selection signal for grid filtering
+        self.selectBranch.emit(f"branch:{branch_key}")
+
+    def _load_dates_section(self):
+        """Load By Date section content. TODO: Phase 3"""
+        section = self.sections.get("dates")
+        if section:
+            placeholder = QLabel("Dates content coming in Phase 3...")
+            placeholder.setAlignment(Qt.AlignCenter)
+            placeholder.setStyleSheet("padding: 20px; color: #666;")
+            section.set_content_widget(placeholder)
+
+    def _load_folders_section(self):
+        """Load Folders section content. TODO: Phase 3"""
+        section = self.sections.get("folders")
+        if section:
+            placeholder = QLabel("Folders content coming in Phase 3...")
+            placeholder.setAlignment(Qt.AlignCenter)
+            placeholder.setStyleSheet("padding: 20px; color: #666;")
+            section.set_content_widget(placeholder)
+
+    def _load_tags_section(self):
+        """Load Tags section content. TODO: Phase 3"""
+        section = self.sections.get("tags")
+        if section:
+            placeholder = QLabel("Tags content coming in Phase 3...")
+            placeholder.setAlignment(Qt.AlignCenter)
+            placeholder.setStyleSheet("padding: 20px; color: #666;")
+            section.set_content_widget(placeholder)
+
+    def _load_branches_section(self):
+        """Load Branches section content. TODO: Phase 3"""
+        section = self.sections.get("branches")
+        if section:
+            placeholder = QLabel("Branches content coming in Phase 3...")
+            placeholder.setAlignment(Qt.AlignCenter)
+            placeholder.setStyleSheet("padding: 20px; color: #666;")
+            section.set_content_widget(placeholder)
+
+    def _load_quick_section(self):
+        """Load Quick Dates section content. TODO: Phase 3"""
+        section = self.sections.get("quick")
+        if section:
+            placeholder = QLabel("Quick dates content coming in Phase 3...")
+            placeholder.setAlignment(Qt.AlignCenter)
+            placeholder.setStyleSheet("padding: 20px; color: #666;")
+            section.set_content_widget(placeholder)
 
     def set_project(self, project_id: int | None):
         """Update project and refresh all sections."""
         self._dbg(f"Setting project: {project_id}")
         self.project_id = project_id
-        # TODO: Reload all section content
+        self.refresh_all(force=True)
 
     def refresh_all(self, force=False):
         """Refresh all sections (reload content)."""
         self._dbg(f"Refreshing all sections (force={force})")
-        # TODO: Reload all section content
+
+        # Reload currently expanded section
+        if self.expanded_section_id:
+            self._load_section_content(self.expanded_section_id)
 
     def get_section(self, section_id: str) -> AccordionSection:
         """Get a specific section by ID."""
