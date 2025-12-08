@@ -8641,9 +8641,12 @@ class GooglePhotosLayout(BaseLayout):
         sidebar = AccordionSidebar(project_id=self.project_id, parent=None)
         sidebar.setMinimumWidth(240)
         sidebar.setMaximumWidth(500)
+
+        # CRITICAL: Don't set generic QWidget stylesheet - it overrides accordion's internal styling
+        # AccordionSidebar handles its own styling internally (nav bar, headers, content areas)
+        # Only set border on the container itself
         sidebar.setStyleSheet("""
-            QWidget {
-                background: white;
+            AccordionSidebar {
                 border-right: 1px solid #dadce0;
             }
         """)
