@@ -9274,18 +9274,14 @@ class GooglePhotosLayout(BaseLayout):
             # Build sidebar sections
             # CRITICAL: Sidebar should ALWAYS show ALL items (not filtered)
             # Only the photo grid should be filtered, not the sidebar navigation
+            # NOTE: With AccordionSidebar, sections load their own data on demand
+            # No need to build sidebar trees here - accordion handles it internally
             if filter_year is None and filter_month is None and filter_folder is None and filter_person is None:
-                # Full rebuild of all sections when no filters active
-                self._build_timeline_tree(photos_by_date)
-                self._build_folders_tree(rows)
-                self._build_tags_tree()
-                self._build_people_tree()
-                self._build_videos_tree()
+                # Full rebuild - accordion sidebar refreshes automatically
+                pass
             else:
-                # When filtering photos, still update People section
-                # (user should always see all faces to switch between them)
-                self._build_tags_tree()
-                self._build_people_tree()
+                # When filtering photos, accordion sidebar stays independent
+                pass
 
             # Track all displayed paths for Shift+Ctrl multi-selection
             self.all_displayed_paths = [photo[0] for photos_list in photos_by_date.values() for photo in photos_list]
