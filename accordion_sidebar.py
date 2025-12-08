@@ -212,6 +212,14 @@ class AccordionSection(QWidget):
 
     def set_content_widget(self, widget: QWidget):
         """Set the content widget for this section."""
+        # CRITICAL FIX: If the widget is already in the layout, don't delete it
+        # This prevents RuntimeError when reusing PeopleListView across reloads
+        existing_widget = self.content_layout.itemAt(0).widget() if self.content_layout.count() > 0 else None
+
+        if existing_widget is widget:
+            # Widget is already set - no need to remove/re-add
+            return
+
         # Clear existing content
         while self.content_layout.count():
             item = self.content_layout.takeAt(0)
