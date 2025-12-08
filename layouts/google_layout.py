@@ -8853,6 +8853,11 @@ class GooglePhotosLayout(BaseLayout):
                     except Exception:
                         pass
 
+                    # Refresh accordion sidebar after scan completes
+                    if hasattr(self, 'accordion_sidebar'):
+                        # Reload all sections to reflect updated data
+                        self.accordion_sidebar.reload_all_sections()
+
             except Exception as db_error:
                 print(f"[GooglePhotosLayout] ⚠️ Database query failed: {db_error}")
                 # Show error state but don't crash
@@ -9766,6 +9771,9 @@ class GooglePhotosLayout(BaseLayout):
                     # Refresh people UI
                     if hasattr(self, '_build_people_tree'):
                         self._build_people_tree()
+                    # Refresh accordion sidebar people section
+                    if hasattr(self, 'accordion_sidebar'):
+                        self.accordion_sidebar.reload_section("people")
                     QMessageBox.information(dlg, "Saved", f"Named {len(updates)} people.")
                     dlg.accept()
                 except Exception as e:

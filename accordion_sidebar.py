@@ -1002,6 +1002,36 @@ class AccordionSidebar(QWidget):
             placeholder.setStyleSheet("padding: 20px; color: #666;")
             section.set_content_widget(placeholder)
 
+    def reload_section(self, section_id: str):
+        """
+        Public method to reload a specific section's content.
+
+        This is useful for refreshing the sidebar after:
+        - Photo scanning completes
+        - Face detection finishes
+        - Tags are added/modified
+        - Folders are reorganized
+
+        Args:
+            section_id: Section to reload ("people", "dates", "folders", "tags", "branches", "quick")
+        """
+        self._dbg(f"Reloading section: {section_id}")
+        if section_id in self.sections:
+            self._load_section_content(section_id)
+        else:
+            self._dbg(f"⚠️ Section '{section_id}' not found")
+
+    def reload_all_sections(self):
+        """
+        Reload all sections in the sidebar.
+
+        This is useful for refreshing the entire sidebar after major operations
+        like bulk photo imports or database migrations.
+        """
+        self._dbg("Reloading all sections...")
+        for section_id in self.sections.keys():
+            self._load_section_content(section_id)
+
     def _load_people_section(self):
         """Load People/Face Clusters section content with flow grid layout and full features."""
         self._dbg("Loading People section...")
