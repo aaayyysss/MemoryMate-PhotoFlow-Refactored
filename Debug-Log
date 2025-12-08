@@ -1,12 +1,87 @@
-[SidebarQt] reload() blocked - widget not visible (likely being deleted)
+2025-12-08 16:44:40,170 [INFO] [FaceClusterWorker] Complete in 0.1s: 36 person clusters + 0 unidentified faces
+[FaceCluster] Clustering complete: 36 branches created
+[FaceCluster] Complete: 36 person groups created
+[SidebarQt] reload() called, display_mode=list, tabs_visible=False
+[SidebarQt] Calling _build_tree_model() instead of tabs refresh
+[SidebarQt] _build_tree_model() called with project_id=1
+[Sidebar] Detaching old model from tree view
+[Sidebar] Pending events processed (skipped explicit processEvents)
+[Sidebar] Creating fresh model (avoiding Qt segfault)
+[Sidebar] Attaching fresh model to tree view
+[SidebarQt] list_branches() returned 1 branches
+[SidebarQt] Sample branches: [{'branch_key': 'all', 'display_name': '📁 All Photos', 'count': 102}]
+[Sidebar] Loaded 23 folder counts in batch (performance optimization)
+[Sidebar] Loaded date counts in batch: 3 years, 15 months, 37 days
+[Sidebar] Loading videos for project_id=1
+[Sidebar] Found 3 videos in project 1
+[VideoDateHierarchy] Building: 1 years, 1 months, 3 videos
+[Sidebar] Added 🎬 Videos section with 3 videos and filters.
+
+[Sidebar] ===== Initiating mobile device scan from sidebar =====
+[Sidebar] Database: <reference_db.ReferenceDB object at 0x000002ED7FBEA790>
+[Sidebar] Register devices: True
+
+[DeviceScanner] ===== Starting device scan  =====
+[DeviceScanner] Platform: Windows
+[DeviceScanner] Database registration: enabled
+[DeviceScanner] Scanning Windows drives...
+[DeviceScanner]   Checking drive letters D:-Z:...
+[DeviceScanner]   Checking portable devices (MTP/PTP)...
+[DeviceScanner]     Attempting Shell COM enumeration...
+[DeviceScanner]     COM initialized for current thread
+[DeviceScanner]     Found 1 items under 'This PC'
+[DeviceScanner]       → Item: '(C:) Lokaler Datenträger' | IsFolder=True | IsFileSystem=True
+[DeviceScanner]     COM uninitialized
+[DeviceScanner] ===== Scan complete: 0 device(s) found =====
+[DeviceScanner] Results cached for 5.0s
+
+[Sidebar] ===== Scan complete: 0 mobile device(s) found =====
+[Sidebar]   ✗ No devices found
+[Sidebar] ===== End device scan =====
+
+[Sidebar] No mobile devices detected - added help message
+[Sidebar] starting async count population for 1 branch targets
+[Sidebar][counts worker gen=8] running for 1 targets...
+[Sidebar][counts worker gen=8] finished scanning targets, scheduling UI update
+[Sidebar][counts applied] updated UI with counts
+[16:44:45.066] [AccordionSidebar] Expanding section: people
+[16:44:45.069] [AccordionSidebar] Loading content for section: people
+[16:44:45.069] [AccordionSidebar] Loading People section...
+[16:44:45.069] [AccordionSidebar] Loaded 36 face clusters
+[16:44:45.223] [AccordionSidebar] ✓ People section loaded with 36 clusters
+[16:44:45.223] [AccordionSidebar] ✓ Section expanded: people
+[16:44:59.944] [AccordionSidebar] Person activated: facecluster:face_003
 
 [GRID] ====== reload() CALLED ======
 [GRID] project_id=1, load_mode=branch
 [GRID] Step 1: Setting _reloading=True
-[GRID] Fetched tags for 0 paths, got 0 entries
-2025-12-08 16:10:52,959 [INFO] Generated thumbnail for c:\users\suleimaa\desktop\eigen\syria\syria-song.mp4 at .thumb_cache\syria-song_mp4_thumb.jpg
-[GRID] Loaded 0 thumbnails.
-[GRID] Reloaded 0 thumbnails in None-mode (base=0)
+[get_images_by_branch] project_id=1, branch_key='all'
+[get_images_by_branch] Found 102 photos
+[DB_TAGS_DEBUG] Sample normalized paths being queried:
+  [0] norm='c:/users/suleimaa/desktop/eigen/1.png'
+      orig='c:/users/suleimaa/desktop/eigen/1.png'
+  [1] norm='c:/users/suleimaa/desktop/eigen/20241127-lastminutes.png'
+      orig='c:/users/suleimaa/desktop/eigen/20241127-lastminutes.png'
+  [2] norm='c:/users/suleimaa/desktop/eigen/20250122_g+d genai cheat sheet 1.jpg'
+      orig='c:/users/suleimaa/desktop/eigen/20250122_g+d genai cheat sheet 1.jpg'
+[DB_TAGS_SQL] Photos query:
+                        SELECT pm.path, t.name
+                        FROM photo_metadata pm
+                        JOIN photo_tags pt ON pt.photo_...
+[DB_TAGS_SQL] Videos query:
+                        SELECT vm.path, t.name
+                        FROM video_metadata vm
+                        JOIN video_tags vt ON vt.video_...
+[DB_TAGS_SQL] First 3 params: ['c:/users/suleimaa/desktop/eigen/1.png', 'c:/users/suleimaa/desktop/eigen/20241127-lastminutes.png', 'c:/users/suleimaa/desktop/eigen/20250122_g+d genai cheat sheet 1.jpg']
+[DB_TAGS_SQL] project_id: 1
+[DB_TAGS_SQL] Query returned 0 rows (0 photos + 0 videos)
+[DB_TAGS_SQL] No rows returned! Checking if ANY tags exist in DB...
+[DB_TAGS_SQL] Sample tagged PHOTOS in DB:
+[DB_TAGS_SQL] Sample tagged VIDEOS in DB:
+[DB_TAGS] Retrieved 0 tags for 0/102 paths (project_id=1)
+[GRID] Fetched tags for 102 paths, got 102 entries
+[GRID] Loaded 102 thumbnails.
+[GRID] Reloaded 102 thumbnails in branch-mode (base=102)
 [GRID] Step 5: Emitting gridReloaded signal...
 
 [Breadcrumb] _update_breadcrumb() CALLED
@@ -29,13 +104,429 @@
 [GRID] ====== reload() COMPLETED SUCCESSFULLY ======
 
 [GRID] Finally block: Setting _reloading=False
-2025-12-08 16:10:52,991 [INFO] Generated thumbnail for c:\users\suleimaa\desktop\eigen\syria\qouzleh_mitsubtitles.mp4 at .thumb_cache\qouzleh_mitsubtitles_mp4_thumb.jpg
-2025-12-08 16:10:52,991 [INFO] [VideoThumbnailWorker] ✓ c:\users\suleimaa\desktop\eigen\syria\qouzleh_mitsubtitles-ezgif.com-resize-video.mp4
-2025-12-08 16:10:52,993 [INFO] Refreshing Google Photos layout after scan...
-2025-12-08 16:10:52,993 [INFO] ✓ Google Photos layout refresh scheduled
-2025-12-08 16:10:53,000 [INFO] [VideoThumbnailWorker] ✓ c:\users\suleimaa\desktop\eigen\syria\syria-song.mp4
-2025-12-08 16:10:53,009 [INFO] [VideoThumbnailWorker] ✓ c:\users\suleimaa\desktop\eigen\syria\qouzleh_mitsubtitles.mp4
-2025-12-08 16:10:53,009 [INFO] [VideoThumbnailWorker] Finished: 3 success, 0 failed
+
+[GRID] ====== reload() CALLED ======
+[GRID] project_id=1, load_mode=branch
+[GRID] Step 1: Setting _reloading=True
+[get_images_by_branch] project_id=1, branch_key='branch:facecluster:face_003'
+[get_images_by_branch] Found 0 photos
+[get_images_by_branch] Available branch_keys in DB: ['all', 'by_date:2024-08-11', 'by_date:2024-10-07', 'by_date:2024-11-18', 'by_date:2024-11-29', 'by_date:2024-12-02', 'by_date:2024-12-16', 'by_date:2025-03-07', 'by_date:2025-07-04', 'by_date:2025-07-06']
+[GRID] Fetched tags for 0 paths, got 0 entries
+[GRID] Loaded 0 thumbnails.
+[GRID] Reloaded 0 thumbnails in branch-mode (base=0)
+[GRID] Step 5: Emitting gridReloaded signal...
+
+[Breadcrumb] _update_breadcrumb() CALLED
+[Breadcrumb] Grid state: navigation_mode=branch, project_id=1
+[Breadcrumb] Looking for CURRENT project_id=1 in 1 projects
+[Breadcrumb] Found CURRENT project name: P01
+[Breadcrumb] Added project segment: P01
+[Breadcrumb] Added branch segment: All Photos
+[Breadcrumb] Calling set_path() with 2 segments
+[BreadcrumbNav] set_path() called with 2 segments
+[BreadcrumbNav] Clearing 3 existing widgets
+[BreadcrumbNav] Cleared all existing widgets
+[BreadcrumbNav] Added segment 0: P01
+[BreadcrumbNav] Added segment 1: All Photos
+[BreadcrumbNav] set_path() completed - 2 segments added
+[Breadcrumb] set_path() completed successfully
+[Breadcrumb] _update_breadcrumb() COMPLETED
+
+[GRID] Step 5: ✓ gridReloaded signal emitted
+[GRID] ====== reload() COMPLETED SUCCESSFULLY ======
+
+[GRID] Finally block: Setting _reloading=False
+[16:45:16.617] [AccordionSidebar] Person activated: facecluster:face_001
+
+[GRID] ====== reload() CALLED ======
+[GRID] project_id=1, load_mode=branch
+[GRID] Step 1: Setting _reloading=True
+[get_images_by_branch] project_id=1, branch_key='branch:facecluster:face_003'
+[get_images_by_branch] Found 0 photos
+[get_images_by_branch] Available branch_keys in DB: ['all', 'by_date:2024-08-11', 'by_date:2024-10-07', 'by_date:2024-11-18', 'by_date:2024-11-29', 'by_date:2024-12-02', 'by_date:2024-12-16', 'by_date:2025-03-07', 'by_date:2025-07-04', 'by_date:2025-07-06']
+[GRID] Fetched tags for 0 paths, got 0 entries
+[GRID] Loaded 0 thumbnails.
+[GRID] Reloaded 0 thumbnails in branch-mode (base=0)
+[GRID] Step 5: Emitting gridReloaded signal...
+
+[Breadcrumb] _update_breadcrumb() CALLED
+[Breadcrumb] Grid state: navigation_mode=branch, project_id=1
+[Breadcrumb] Looking for CURRENT project_id=1 in 1 projects
+[Breadcrumb] Found CURRENT project name: P01
+[Breadcrumb] Added project segment: P01
+[Breadcrumb] Added branch segment: All Photos
+[Breadcrumb] Calling set_path() with 2 segments
+[BreadcrumbNav] set_path() called with 2 segments
+[BreadcrumbNav] Clearing 3 existing widgets
+[BreadcrumbNav] Cleared all existing widgets
+[BreadcrumbNav] Added segment 0: P01
+[BreadcrumbNav] Added segment 1: All Photos
+[BreadcrumbNav] set_path() completed - 2 segments added
+[Breadcrumb] set_path() completed successfully
+[Breadcrumb] _update_breadcrumb() COMPLETED
+
+[GRID] Step 5: ✓ gridReloaded signal emitted
+[GRID] ====== reload() COMPLETED SUCCESSFULLY ======
+
+[GRID] Finally block: Setting _reloading=False
+
+[GRID] ====== reload() CALLED ======
+[GRID] project_id=1, load_mode=branch
+[GRID] Step 1: Setting _reloading=True
+[get_images_by_branch] project_id=1, branch_key='branch:facecluster:face_001'
+[get_images_by_branch] Found 0 photos
+[get_images_by_branch] Available branch_keys in DB: ['all', 'by_date:2024-08-11', 'by_date:2024-10-07', 'by_date:2024-11-18', 'by_date:2024-11-29', 'by_date:2024-12-02', 'by_date:2024-12-16', 'by_date:2025-03-07', 'by_date:2025-07-04', 'by_date:2025-07-06']
+[GRID] Fetched tags for 0 paths, got 0 entries
+[GRID] Loaded 0 thumbnails.
+[GRID] Reloaded 0 thumbnails in branch-mode (base=0)
+[GRID] Step 5: Emitting gridReloaded signal...
+
+[Breadcrumb] _update_breadcrumb() CALLED
+[Breadcrumb] Grid state: navigation_mode=branch, project_id=1
+[Breadcrumb] Looking for CURRENT project_id=1 in 1 projects
+[Breadcrumb] Found CURRENT project name: P01
+[Breadcrumb] Added project segment: P01
+[Breadcrumb] Added branch segment: All Photos
+[Breadcrumb] Calling set_path() with 2 segments
+[BreadcrumbNav] set_path() called with 2 segments
+[BreadcrumbNav] Clearing 3 existing widgets
+[BreadcrumbNav] Cleared all existing widgets
+[BreadcrumbNav] Added segment 0: P01
+[BreadcrumbNav] Added segment 1: All Photos
+[BreadcrumbNav] set_path() completed - 2 segments added
+[Breadcrumb] set_path() completed successfully
+[Breadcrumb] _update_breadcrumb() COMPLETED
+
+[GRID] Step 5: ✓ gridReloaded signal emitted
+[GRID] ====== reload() COMPLETED SUCCESSFULLY ======
+
+[GRID] Finally block: Setting _reloading=False
+[16:45:22.122] [AccordionSidebar] Expanding section: people
+[16:45:22.130] [AccordionSidebar] Loading content for section: people
+[16:45:22.130] [AccordionSidebar] Loading People section...
+[16:45:22.130] [AccordionSidebar] Loaded 36 face clusters
+[16:45:22.254] [AccordionSidebar] ✓ People section loaded with 36 clusters
+[16:45:22.254] [AccordionSidebar] ✓ Section expanded: people
+[16:45:23.834] [AccordionSidebar] Expanding section: dates
+[16:45:23.834] [AccordionSidebar] Loading content for section: dates
+[16:45:23.834] [AccordionSidebar] Loading Dates section...
+[16:45:23.834] [AccordionSidebar] ✓ Section expanded: dates
+[16:45:23.850] [AccordionSidebar] Loaded 3 years of date data
+[16:45:23.868] [AccordionSidebar] ✓ Dates section loaded with 3 years
+
+[GRID] ====== reload() CALLED ======
+[GRID] project_id=1, load_mode=branch
+[GRID] Step 1: Setting _reloading=True
+[get_images_by_branch] project_id=1, branch_key='branch:facecluster:face_001'
+[get_images_by_branch] Found 0 photos
+[get_images_by_branch] Available branch_keys in DB: ['all', 'by_date:2024-08-11', 'by_date:2024-10-07', 'by_date:2024-11-18', 'by_date:2024-11-29', 'by_date:2024-12-02', 'by_date:2024-12-16', 'by_date:2025-03-07', 'by_date:2025-07-04', 'by_date:2025-07-06']
+[GRID] Fetched tags for 0 paths, got 0 entries
+[GRID] Loaded 0 thumbnails.
+[GRID] Reloaded 0 thumbnails in branch-mode (base=0)
+[GRID] Step 5: Emitting gridReloaded signal...
+
+[Breadcrumb] _update_breadcrumb() CALLED
+[Breadcrumb] Grid state: navigation_mode=branch, project_id=1
+[Breadcrumb] Looking for CURRENT project_id=1 in 1 projects
+[Breadcrumb] Found CURRENT project name: P01
+[Breadcrumb] Added project segment: P01
+[Breadcrumb] Added branch segment: All Photos
+[Breadcrumb] Calling set_path() with 2 segments
+[BreadcrumbNav] set_path() called with 2 segments
+[BreadcrumbNav] Clearing 3 existing widgets
+[BreadcrumbNav] Cleared all existing widgets
+[BreadcrumbNav] Added segment 0: P01
+[BreadcrumbNav] Added segment 1: All Photos
+[BreadcrumbNav] set_path() completed - 2 segments added
+[Breadcrumb] set_path() completed successfully
+[Breadcrumb] _update_breadcrumb() COMPLETED
+
+[GRID] Step 5: ✓ gridReloaded signal emitted
+[GRID] ====== reload() COMPLETED SUCCESSFULLY ======
+
+[GRID] Finally block: Setting _reloading=False
+
+[GRID] ====== reload() CALLED ======
+[GRID] project_id=1, load_mode=branch
+[GRID] Step 1: Setting _reloading=True
+[DB_TAGS_DEBUG] Sample normalized paths being queried:
+  [0] norm='c:/users/suleimaa/desktop/eigen/reisepass/suleimanammar-revised.jpg'
+      orig='c:/users/suleimaa/desktop/eigen/reisepass/suleimanammar-revised.jpg'
+  [1] norm='c:/users/suleimaa/desktop/eigen/suleimanammar-businesscard.jpg'
+      orig='c:/users/suleimaa/desktop/eigen/suleimanammar-businesscard.jpg'
+  [2] norm='c:/users/suleimaa/desktop/eigen/20250122_g+d genai cheat sheet 1.jpg'
+      orig='c:/users/suleimaa/desktop/eigen/20250122_g+d genai cheat sheet 1.jpg'
+[DB_TAGS_SQL] Photos query:
+                        SELECT pm.path, t.name
+                        FROM photo_metadata pm
+                        JOIN photo_tags pt ON pt.photo_...
+[DB_TAGS_SQL] Videos query:
+                        SELECT vm.path, t.name
+                        FROM video_metadata vm
+                        JOIN video_tags vt ON vt.video_...
+[DB_TAGS_SQL] First 3 params: ['c:/users/suleimaa/desktop/eigen/reisepass/suleimanammar-revised.jpg', 'c:/users/suleimaa/desktop/eigen/suleimanammar-businesscard.jpg', 'c:/users/suleimaa/desktop/eigen/20250122_g+d genai cheat sheet 1.jpg']
+[DB_TAGS_SQL] project_id: 1
+[DB_TAGS_SQL] Query returned 0 rows (0 photos + 0 videos)
+[DB_TAGS_SQL] No rows returned! Checking if ANY tags exist in DB...
+[DB_TAGS_SQL] Sample tagged PHOTOS in DB:
+[DB_TAGS_SQL] Sample tagged VIDEOS in DB:
+[DB_TAGS] Retrieved 0 tags for 0/71 paths (project_id=1)
+[GRID] Fetched tags for 71 paths, got 71 entries
+[GRID] Using scroll-based start position: 0 (scroll: 0/718)
+[GRID] Near bottom, loading all remaining 30 items
+[GRID] Loading viewport range: 0-70 of 71
+[GRID] Queued 71 new thumbnail workers
+[GRID] Near bottom, loading all remaining 30 items
+[GRID] Loading viewport range: 0-70 of 71
+[GRID] Near bottom, loading all remaining 30 items
+[GRID] Loading viewport range: 0-70 of 71
+[GRID] Near bottom, loading all remaining 30 items
+[GRID] Loading viewport range: 0-70 of 71
+[GRID] Loaded 71 thumbnails.
+[GRID] Reloaded 71 thumbnails in date-mode (base=71)
+[GRID] Step 5: Emitting gridReloaded signal...
+
+[Breadcrumb] _update_breadcrumb() CALLED
+[Breadcrumb] Grid state: navigation_mode=branch, project_id=1
+[Breadcrumb] Looking for CURRENT project_id=1 in 1 projects
+[Breadcrumb] Found CURRENT project name: P01
+[Breadcrumb] Added project segment: P01
+[Breadcrumb] Added branch segment: All Photos
+[Breadcrumb] Calling set_path() with 2 segments
+[BreadcrumbNav] set_path() called with 2 segments
+[BreadcrumbNav] Clearing 3 existing widgets
+[BreadcrumbNav] Cleared all existing widgets
+[BreadcrumbNav] Added segment 0: P01
+[BreadcrumbNav] Added segment 1: All Photos
+[BreadcrumbNav] set_path() completed - 2 segments added
+[Breadcrumb] set_path() completed successfully
+[Breadcrumb] _update_breadcrumb() COMPLETED
+
+[GRID] Step 5: ✓ gridReloaded signal emitted
+[GRID] ====== reload() COMPLETED SUCCESSFULLY ======
+
+[GRID] Finally block: Setting _reloading=False
+[GRID] Near bottom, loading all remaining 30 items
+[GRID] Loading viewport range: 0-70 of 71
+[GRID] Queued 1 new thumbnail workers
+[GRID] Near bottom, loading all remaining 30 items
+[GRID] Loading viewport range: 0-70 of 71
+[GRID] Queued 10 new thumbnail workers
+
+[GRID] ====== reload() CALLED ======
+[GRID] project_id=1, load_mode=date
+[GRID] Step 1: Setting _reloading=True
+[DB_TAGS_DEBUG] Sample normalized paths being queried:
+  [0] norm='c:/users/suleimaa/desktop/eigen/reisepass/suleimanammar-revised.jpg'
+      orig='c:/users/suleimaa/desktop/eigen/reisepass/suleimanammar-revised.jpg'
+  [1] norm='c:/users/suleimaa/desktop/eigen/suleimanammar-businesscard.jpg'
+      orig='c:/users/suleimaa/desktop/eigen/suleimanammar-businesscard.jpg'
+  [2] norm='c:/users/suleimaa/desktop/eigen/20250122_g+d genai cheat sheet 1.jpg'
+      orig='c:/users/suleimaa/desktop/eigen/20250122_g+d genai cheat sheet 1.jpg'
+[DB_TAGS_SQL] Photos query:
+                        SELECT pm.path, t.name
+                        FROM photo_metadata pm
+                        JOIN photo_tags pt ON pt.photo_...
+[DB_TAGS_SQL] Videos query:
+                        SELECT vm.path, t.name
+                        FROM video_metadata vm
+                        JOIN video_tags vt ON vt.video_...
+[DB_TAGS_SQL] First 3 params: ['c:/users/suleimaa/desktop/eigen/reisepass/suleimanammar-revised.jpg', 'c:/users/suleimaa/desktop/eigen/suleimanammar-businesscard.jpg', 'c:/users/suleimaa/desktop/eigen/20250122_g+d genai cheat sheet 1.jpg']
+[DB_TAGS_SQL] project_id: 1
+[DB_TAGS_SQL] Query returned 0 rows (0 photos + 0 videos)
+[DB_TAGS_SQL] No rows returned! Checking if ANY tags exist in DB...
+[DB_TAGS_SQL] Sample tagged PHOTOS in DB:
+[DB_TAGS_SQL] Sample tagged VIDEOS in DB:
+[DB_TAGS] Retrieved 0 tags for 0/71 paths (project_id=1)
+[GRID] Fetched tags for 71 paths, got 71 entries
+[GRID] Loaded 71 thumbnails.
+[GRID] Reloaded 71 thumbnails in date-mode (base=71)
+[GRID] Step 5: Emitting gridReloaded signal...
+
+[Breadcrumb] _update_breadcrumb() CALLED
+[Breadcrumb] Grid state: navigation_mode=branch, project_id=1
+[Breadcrumb] Looking for CURRENT project_id=1 in 1 projects
+[Breadcrumb] Found CURRENT project name: P01
+[Breadcrumb] Added project segment: P01
+[Breadcrumb] Added branch segment: All Photos
+[Breadcrumb] Calling set_path() with 2 segments
+[BreadcrumbNav] set_path() called with 2 segments
+[BreadcrumbNav] Clearing 3 existing widgets
+[BreadcrumbNav] Cleared all existing widgets
+[BreadcrumbNav] Added segment 0: P01
+[BreadcrumbNav] Added segment 1: All Photos
+[BreadcrumbNav] set_path() completed - 2 segments added
+[Breadcrumb] set_path() completed successfully
+[Breadcrumb] _update_breadcrumb() COMPLETED
+
+[GRID] Step 5: ✓ gridReloaded signal emitted
+[GRID] ====== reload() COMPLETED SUCCESSFULLY ======
+
+[GRID] Finally block: Setting _reloading=False
+
+[GRID] ====== reload() CALLED ======
+[GRID] project_id=1, load_mode=date
+[GRID] Step 1: Setting _reloading=True
+[DB_TAGS_DEBUG] Sample normalized paths being queried:
+  [0] norm='c:/users/suleimaa/desktop/eigen/syria/_screenshots/screenshot_1764691385.png'
+      orig='c:/users/suleimaa/desktop/eigen/syria/_screenshots/screenshot_1764691385.png'
+[DB_TAGS_SQL] Photos query:
+                        SELECT pm.path, t.name
+                        FROM photo_metadata pm
+                        JOIN photo_tags pt ON pt.photo_...
+[DB_TAGS_SQL] Videos query:
+                        SELECT vm.path, t.name
+                        FROM video_metadata vm
+                        JOIN video_tags vt ON vt.video_...
+[DB_TAGS_SQL] First 3 params: ['c:/users/suleimaa/desktop/eigen/syria/_screenshots/screenshot_1764691385.png']
+[DB_TAGS_SQL] project_id: 1
+[DB_TAGS_SQL] Query returned 0 rows (0 photos + 0 videos)
+[DB_TAGS_SQL] No rows returned! Checking if ANY tags exist in DB...
+[DB_TAGS_SQL] Sample tagged PHOTOS in DB:
+[DB_TAGS_SQL] Sample tagged VIDEOS in DB:
+[DB_TAGS] Retrieved 0 tags for 0/1 paths (project_id=1)
+[GRID] Fetched tags for 1 paths, got 1 entries
+[GRID] Loaded 1 thumbnails.
+[GRID] Reloaded 1 thumbnails in date-mode (base=1)
+[GRID] Step 5: Emitting gridReloaded signal...
+
+[Breadcrumb] _update_breadcrumb() CALLED
+[Breadcrumb] Grid state: navigation_mode=branch, project_id=1
+[Breadcrumb] Looking for CURRENT project_id=1 in 1 projects
+[Breadcrumb] Found CURRENT project name: P01
+[Breadcrumb] Added project segment: P01
+[Breadcrumb] Added branch segment: All Photos
+[Breadcrumb] Calling set_path() with 2 segments
+[BreadcrumbNav] set_path() called with 2 segments
+[BreadcrumbNav] Clearing 3 existing widgets
+[BreadcrumbNav] Cleared all existing widgets
+[BreadcrumbNav] Added segment 0: P01
+[BreadcrumbNav] Added segment 1: All Photos
+[BreadcrumbNav] set_path() completed - 2 segments added
+[Breadcrumb] set_path() completed successfully
+[Breadcrumb] _update_breadcrumb() COMPLETED
+
+[GRID] Step 5: ✓ gridReloaded signal emitted
+[GRID] ====== reload() COMPLETED SUCCESSFULLY ======
+
+[GRID] Finally block: Setting _reloading=False
+[GRID] Using scroll-based start position: 0 (scroll: 0/0)
+[GRID] Loading viewport range: 0-0 of 1
+[GRID] Queued 1 new thumbnail workers
+[GRID] Loading viewport range: 0-0 of 1
+[GRID] Queued 1 new thumbnail workers
+
+[GRID] ====== reload() CALLED ======
+[GRID] project_id=1, load_mode=date
+[GRID] Step 1: Setting _reloading=True
+[DB_TAGS_DEBUG] Sample normalized paths being queried:
+  [0] norm='c:/users/suleimaa/desktop/eigen/syria/_screenshots/screenshot_1764691385.png'
+      orig='c:/users/suleimaa/desktop/eigen/syria/_screenshots/screenshot_1764691385.png'
+[DB_TAGS_SQL] Photos query:
+                        SELECT pm.path, t.name
+                        FROM photo_metadata pm
+                        JOIN photo_tags pt ON pt.photo_...
+[DB_TAGS_SQL] Videos query:
+                        SELECT vm.path, t.name
+                        FROM video_metadata vm
+                        JOIN video_tags vt ON vt.video_...
+[DB_TAGS_SQL] First 3 params: ['c:/users/suleimaa/desktop/eigen/syria/_screenshots/screenshot_1764691385.png']
+[DB_TAGS_SQL] project_id: 1
+[DB_TAGS_SQL] Query returned 0 rows (0 photos + 0 videos)
+[DB_TAGS_SQL] No rows returned! Checking if ANY tags exist in DB...
+[DB_TAGS_SQL] Sample tagged PHOTOS in DB:
+[DB_TAGS_SQL] Sample tagged VIDEOS in DB:
+[DB_TAGS] Retrieved 0 tags for 0/1 paths (project_id=1)
+[GRID] Fetched tags for 1 paths, got 1 entries
+[GRID] Loaded 1 thumbnails.
+[GRID] Reloaded 1 thumbnails in date-mode (base=1)
+[GRID] Step 5: Emitting gridReloaded signal...
+
+[Breadcrumb] _update_breadcrumb() CALLED
+[Breadcrumb] Grid state: navigation_mode=branch, project_id=1
+[Breadcrumb] Looking for CURRENT project_id=1 in 1 projects
+[Breadcrumb] Found CURRENT project name: P01
+[Breadcrumb] Added project segment: P01
+[Breadcrumb] Added branch segment: All Photos
+[Breadcrumb] Calling set_path() with 2 segments
+[BreadcrumbNav] set_path() called with 2 segments
+[BreadcrumbNav] Clearing 3 existing widgets
+[BreadcrumbNav] Cleared all existing widgets
+[BreadcrumbNav] Added segment 0: P01
+[BreadcrumbNav] Added segment 1: All Photos
+[BreadcrumbNav] set_path() completed - 2 segments added
+[Breadcrumb] set_path() completed successfully
+[Breadcrumb] _update_breadcrumb() COMPLETED
+
+[GRID] Step 5: ✓ gridReloaded signal emitted
+[GRID] ====== reload() COMPLETED SUCCESSFULLY ======
+
+[GRID] Finally block: Setting _reloading=False
+
+[GRID] ====== reload() CALLED ======
+[GRID] project_id=1, load_mode=date
+[GRID] Step 1: Setting _reloading=True
+[DB_TAGS_DEBUG] Sample normalized paths being queried:
+  [0] norm='c:/users/suleimaa/desktop/eigen/lufthansainternet.png'
+      orig='c:/users/suleimaa/desktop/eigen/lufthansainternet.png'
+[DB_TAGS_SQL] Photos query:
+                        SELECT pm.path, t.name
+                        FROM photo_metadata pm
+                        JOIN photo_tags pt ON pt.photo_...
+[DB_TAGS_SQL] Videos query:
+                        SELECT vm.path, t.name
+                        FROM video_metadata vm
+                        JOIN video_tags vt ON vt.video_...
+[DB_TAGS_SQL] First 3 params: ['c:/users/suleimaa/desktop/eigen/lufthansainternet.png']
+[DB_TAGS_SQL] project_id: 1
+[DB_TAGS_SQL] Query returned 0 rows (0 photos + 0 videos)
+[DB_TAGS_SQL] No rows returned! Checking if ANY tags exist in DB...
+[DB_TAGS_SQL] Sample tagged PHOTOS in DB:
+[DB_TAGS_SQL] Sample tagged VIDEOS in DB:
+[DB_TAGS] Retrieved 0 tags for 0/1 paths (project_id=1)
+[GRID] Fetched tags for 1 paths, got 1 entries
+[GRID] Loaded 1 thumbnails.
+[GRID] Reloaded 1 thumbnails in date-mode (base=1)
+[GRID] Step 5: Emitting gridReloaded signal...
+
+[Breadcrumb] _update_breadcrumb() CALLED
+[Breadcrumb] Grid state: navigation_mode=branch, project_id=1
+[Breadcrumb] Looking for CURRENT project_id=1 in 1 projects
+[Breadcrumb] Found CURRENT project name: P01
+[Breadcrumb] Added project segment: P01
+[Breadcrumb] Added branch segment: All Photos
+[Breadcrumb] Calling set_path() with 2 segments
+[BreadcrumbNav] set_path() called with 2 segments
+[BreadcrumbNav] Clearing 3 existing widgets
+[BreadcrumbNav] Cleared all existing widgets
+[BreadcrumbNav] Added segment 0: P01
+[BreadcrumbNav] Added segment 1: All Photos
+[BreadcrumbNav] set_path() completed - 2 segments added
+[Breadcrumb] set_path() completed successfully
+[Breadcrumb] _update_breadcrumb() COMPLETED
+
+[GRID] Step 5: ✓ gridReloaded signal emitted
+[GRID] ====== reload() COMPLETED SUCCESSFULLY ======
+
+[GRID] Finally block: Setting _reloading=False
+[GRID] Loading viewport range: 0-0 of 1
+[GRID] Queued 1 new thumbnail workers
+[GRID] Loading viewport range: 0-0 of 1
+[LayoutManager] Switching layout: current → google
+[LayoutManager] 💾 Took ownership of original central widget: QWidget
+[GooglePhotosLayout] Using default project: 1
+[GooglePhotosLayout] Project selector populated with 1 projects (+ New Project option)
+[16:45:37.301] [AccordionSidebar] AccordionSidebar __init__ started
+[16:45:37.301] [AccordionSidebar] Building accordion sections...
+[16:45:37.310] [AccordionSidebar] Created 6 sections with nav buttons
+[16:45:37.310] [AccordionSidebar] Expanding section: people
+[16:45:37.310] [AccordionSidebar] Loading content for section: people
+[16:45:37.310] [AccordionSidebar] Loading People section...
+[16:45:37.314] [AccordionSidebar] Loaded 36 face clusters
+[16:45:37.434] [AccordionSidebar] ✓ People section loaded with 36 clusters
+[16:45:37.434] [AccordionSidebar] ✓ Section expanded: people
+[16:45:37.434] [AccordionSidebar] AccordionSidebar __init__ completed
+[GooglePhotosLayout] ✅ Scroll-triggered lazy loading enabled
 [GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px)...
 [GooglePhotosLayout] 🔄 Clearing existing timeline and thumbnail cache...
 [GooglePhotosLayout] 🔍 Scanning database for photos in project 1...
@@ -54,85 +545,23 @@ ORDER BY pm.date_taken DESC
 [GooglePhotosLayout] ✅ Grouped into 37 date groups
 [GooglePhotosLayout] Tracking 102 paths for multi-selection
 [GooglePhotosLayout] 🚀 Setting up virtual scrolling for 37 date groups...
-[GooglePhotosLayout] 📐 Responsive grid: 7 columns (viewport: 1517px, thumb: 200px)
+[GooglePhotosLayout] 📐 Responsive grid: 2 columns (viewport: 640px, thumb: 200px)
 [GooglePhotosLayout] ✅ Virtual scrolling enabled: 37 total date groups
 [GooglePhotosLayout] 📊 Rendered: 5 groups | Placeholders: 32 groups
 [GooglePhotosLayout] 🖼️ Queued 6 thumbnails for loading (initial limit: 50)
 [GooglePhotosLayout] ✅ Photo loading complete! Thumbnails will load progressively.
-[16:10:56.078] [AccordionSidebar] Expanding section: people
-[16:10:56.089] [AccordionSidebar] Loading content for section: people
-[16:10:56.093] [AccordionSidebar] Loading People section...
-[16:10:56.093] [AccordionSidebar] ✓ Section expanded: people
-[16:10:57.885] [AccordionSidebar] Expanding section: dates
-[16:10:57.892] [AccordionSidebar] Loading content for section: dates
-[16:10:57.892] [AccordionSidebar] Loading Dates section...
-[16:10:57.892] [AccordionSidebar] ✓ Section expanded: dates
-[16:10:59.746] [AccordionSidebar] Expanding section: dates
-[16:10:59.759] [AccordionSidebar] Loading content for section: dates
-[16:10:59.762] [AccordionSidebar] Loading Dates section...
-[16:10:59.762] [AccordionSidebar] ✓ Section expanded: dates
-[16:11:00.541] [AccordionSidebar] Expanding section: dates
-[16:11:00.552] [AccordionSidebar] Loading content for section: dates
-[16:11:00.552] [AccordionSidebar] Loading Dates section...
-[16:11:00.552] [AccordionSidebar] ✓ Section expanded: dates
-[16:11:01.399] [AccordionSidebar] Expanding section: dates
-[16:11:01.415] [AccordionSidebar] Loading content for section: dates
-[16:11:01.415] [AccordionSidebar] Loading Dates section...
-[16:11:01.415] [AccordionSidebar] ✓ Section expanded: dates
-[16:11:02.813] [AccordionSidebar] Expanding section: dates
-[16:11:02.829] [AccordionSidebar] Loading content for section: dates
-[16:11:02.829] [AccordionSidebar] Loading Dates section...
-[16:11:02.829] [AccordionSidebar] ✓ Section expanded: dates
-[16:11:03.034] [AccordionSidebar] Expanding section: dates
-[16:11:03.034] [AccordionSidebar] Loading content for section: dates
-[16:11:03.034] [AccordionSidebar] Loading Dates section...
-[16:11:03.034] [AccordionSidebar] ✓ Section expanded: dates
-[16:11:04.057] [AccordionSidebar] Expanding section: dates
-[16:11:04.057] [AccordionSidebar] Loading content for section: dates
-[16:11:04.057] [AccordionSidebar] Loading Dates section...
-[16:11:04.072] [AccordionSidebar] ✓ Section expanded: dates
-[16:11:04.246] [AccordionSidebar] Expanding section: dates
-[16:11:04.246] [AccordionSidebar] Loading content for section: dates
-[16:11:04.246] [AccordionSidebar] Loading Dates section...
-[16:11:04.246] [AccordionSidebar] ✓ Section expanded: dates
-[16:11:05.389] [AccordionSidebar] Expanding section: folders
-[16:11:05.409] [AccordionSidebar] Loading content for section: folders
-[16:11:05.410] [AccordionSidebar] Loading Folders section...
-[16:11:05.410] [AccordionSidebar] ✓ Section expanded: folders
-[16:11:07.178] [AccordionSidebar] Expanding section: folders
-[16:11:07.194] [AccordionSidebar] Loading content for section: folders
-[16:11:07.210] [AccordionSidebar] Loading Folders section...
-[16:11:07.210] [AccordionSidebar] ✓ Section expanded: folders
-[16:11:08.618] [AccordionSidebar] Expanding section: folders
-[16:11:08.632] [AccordionSidebar] Loading content for section: folders
-[16:11:08.632] [AccordionSidebar] Loading Folders section...
-[16:11:08.632] [AccordionSidebar] ✓ Section expanded: folders
-[16:11:11.239] [AccordionSidebar] Expanding section: folders
-[16:11:11.255] [AccordionSidebar] Loading content for section: folders
-[16:11:11.255] [AccordionSidebar] Loading Folders section...
-[16:11:11.255] [AccordionSidebar] ✓ Section expanded: folders
-[16:11:12.807] [AccordionSidebar] Expanding section: folders
-[16:11:12.807] [AccordionSidebar] Loading content for section: folders
-[16:11:12.822] [AccordionSidebar] Loading Folders section...
-[16:11:12.822] [AccordionSidebar] ✓ Section expanded: folders
-[16:11:13.773] [AccordionSidebar] Expanding section: dates
-[16:11:13.788] [AccordionSidebar] Loading content for section: dates
-[16:11:13.804] [AccordionSidebar] Loading Dates section...
-[16:11:13.804] [AccordionSidebar] ✓ Section expanded: dates
-[16:11:15.544] [AccordionSidebar] Expanding section: branches
-[16:11:15.560] [AccordionSidebar] Loading content for section: branches
-[16:11:15.560] [AccordionSidebar] Loading Branches section...
-[16:11:15.560] [AccordionSidebar] ✓ Section expanded: branches
-[16:11:17.728] [AccordionSidebar] Expanding section: quick
-[16:11:17.744] [AccordionSidebar] Loading content for section: quick
-[16:11:17.744] [AccordionSidebar] Loading Quick Dates section...
-[16:11:17.744] [AccordionSidebar] ✓ Section expanded: quick
-[16:11:17.751] [AccordionSidebar] Loaded 6 quick date items
-[16:11:17.771] [AccordionSidebar] ✓ Quick dates section loaded with 6 items
-[GooglePhotosLayout] Accordion date clicked: this-year
-[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px)...
+[LayoutManager] Setting new central widget: QWidget
+[GooglePhotosLayout] 📍 Layout activated
+[GooglePhotosLayout] ✓ Stored Scan Repository handler
+[GooglePhotosLayout] ✓ Stored Detect Faces handler
+[LayoutManager] ✓ Switched to: Google Photos Style
+[MainWindow] ✓ Switched to layout: google
+[16:45:48.504] [AccordionSidebar] Person activated: facecluster:face_011
+[GooglePhotosLayout] Accordion branch clicked: branch:facecluster:face_011
+[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px) [person=facecluster:face_011]...
 [GooglePhotosLayout] 🔄 Clearing existing timeline and thumbnail cache...
 [GooglePhotosLayout] 🔍 Scanning database for photos in project 1...
+[GooglePhotosLayout] Filtering by person: facecluster:face_011
 [GooglePhotosLayout] 🔍 SQL Query:
 
                 SELECT DISTINCT pm.path, pm.created_date as date_taken, pm.width, pm.height
@@ -140,22 +569,25 @@ ORDER BY pm.date_taken DESC
                 JOIN project_images pi ON pm.path = pi.image_path
                 WHERE pi.project_id = ?
 
+
+                    AND pm.path IN (
+                        SELECT DISTINCT image_path
+                        FROM face_crops
+                        WHERE project_id = ? AND branch_key = ?
+                    )
+
 ORDER BY pm.date_taken DESC
-[GooglePhotosLayout] 🔍 Parameters: [1]
-[GooglePhotosLayout] ✅ Found 102 photos in database
+[GooglePhotosLayout] 🔍 Parameters: [1, 1, 'facecluster:face_011']
+[GooglePhotosLayout] 🔍 Person filter: project_id=1, branch_key=facecluster:face_011
+[GooglePhotosLayout] ✅ Found 0 photos in database
 [GooglePhotosLayout] 📊 Database scan complete - preparing to load thumbnails...
-[GooglePhotosLayout] 📅 Grouping 102 photos by date...
-[GooglePhotosLayout] ✅ Grouped into 37 date groups
-[GooglePhotosLayout] Tracking 102 paths for multi-selection
-[GooglePhotosLayout] 🚀 Setting up virtual scrolling for 37 date groups...
-[GooglePhotosLayout] ✅ Virtual scrolling enabled: 37 total date groups
-[GooglePhotosLayout] 📊 Rendered: 5 groups | Placeholders: 32 groups
-[GooglePhotosLayout] 🖼️ Queued 6 thumbnails for loading (initial limit: 50)
-[GooglePhotosLayout] ✅ Photo loading complete! Thumbnails will load progressively.
-[GooglePhotosLayout] Accordion date clicked: indexed-7d
-[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px)...
+[GooglePhotosLayout] No photos found in project 1
+[16:45:49.911] [AccordionSidebar] Person activated: facecluster:face_003
+[GooglePhotosLayout] Accordion branch clicked: branch:facecluster:face_003
+[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px) [person=facecluster:face_003]...
 [GooglePhotosLayout] 🔄 Clearing existing timeline and thumbnail cache...
 [GooglePhotosLayout] 🔍 Scanning database for photos in project 1...
+[GooglePhotosLayout] Filtering by person: facecluster:face_003
 [GooglePhotosLayout] 🔍 SQL Query:
 
                 SELECT DISTINCT pm.path, pm.created_date as date_taken, pm.width, pm.height
@@ -163,22 +595,47 @@ ORDER BY pm.date_taken DESC
                 JOIN project_images pi ON pm.path = pi.image_path
                 WHERE pi.project_id = ?
 
+
+                    AND pm.path IN (
+                        SELECT DISTINCT image_path
+                        FROM face_crops
+                        WHERE project_id = ? AND branch_key = ?
+                    )
+
 ORDER BY pm.date_taken DESC
-[GooglePhotosLayout] 🔍 Parameters: [1]
-[GooglePhotosLayout] ✅ Found 102 photos in database
+[GooglePhotosLayout] 🔍 Parameters: [1, 1, 'facecluster:face_003']
+[GooglePhotosLayout] 🔍 Person filter: project_id=1, branch_key=facecluster:face_003
+[GooglePhotosLayout] ✅ Found 0 photos in database
 [GooglePhotosLayout] 📊 Database scan complete - preparing to load thumbnails...
-[GooglePhotosLayout] 📅 Grouping 102 photos by date...
-[GooglePhotosLayout] ✅ Grouped into 37 date groups
-[GooglePhotosLayout] Tracking 102 paths for multi-selection
-[GooglePhotosLayout] 🚀 Setting up virtual scrolling for 37 date groups...
-[GooglePhotosLayout] ✅ Virtual scrolling enabled: 37 total date groups
-[GooglePhotosLayout] 📊 Rendered: 5 groups | Placeholders: 32 groups
-[GooglePhotosLayout] 🖼️ Queued 6 thumbnails for loading (initial limit: 50)
-[GooglePhotosLayout] ✅ Photo loading complete! Thumbnails will load progressively.
-[GooglePhotosLayout] Accordion date clicked: this-week
-[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px)...
+[GooglePhotosLayout] No photos found in project 1
+[16:45:52.947] [AccordionSidebar] Expanding section: dates
+[16:45:52.963] [AccordionSidebar] Loading content for section: dates
+[16:45:52.963] [AccordionSidebar] Loading Dates section...
+[16:45:52.968] [AccordionSidebar] ✓ Section expanded: dates
+[16:45:52.968] [AccordionSidebar] Loaded 3 years of date data
+[16:45:53.011] [AccordionSidebar] ✓ Dates section loaded with 3 years
+[16:45:55.204] [AccordionSidebar] Expanding section: folders
+[16:45:55.216] [AccordionSidebar] Loading content for section: folders
+[16:45:55.216] [AccordionSidebar] Loading Folders section...
+[16:45:55.216] [AccordionSidebar] ✓ Section expanded: folders
+[16:45:55.220] [AccordionSidebar] Loaded 23 folders
+[16:45:55.248] [AccordionSidebar] ✓ Folders section loaded with 23 folders
+[16:46:00.314] [AccordionSidebar] Expanding section: tags
+[16:46:00.314] [AccordionSidebar] Loading content for section: tags
+[16:46:00.314] [AccordionSidebar] Loading Tags section...
+[16:46:00.314] [AccordionSidebar] ✓ Section expanded: tags
+[16:46:00.314] [AccordionSidebar] Loaded 0 tags
+[16:46:01.549] [AccordionSidebar] Expanding section: branches
+[16:46:01.561] [AccordionSidebar] Loading content for section: branches
+[16:46:01.561] [AccordionSidebar] Loading Branches section...
+[16:46:01.561] [AccordionSidebar] ✓ Section expanded: branches
+[16:46:01.565] [AccordionSidebar] Loaded 39 branches
+[16:46:01.594] [AccordionSidebar] ✓ Branches section loaded with 39 branches
+[GooglePhotosLayout] Accordion branch clicked: face_000
+[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px) [person=face_000]...
 [GooglePhotosLayout] 🔄 Clearing existing timeline and thumbnail cache...
 [GooglePhotosLayout] 🔍 Scanning database for photos in project 1...
+[GooglePhotosLayout] Filtering by person: face_000
 [GooglePhotosLayout] 🔍 SQL Query:
 
                 SELECT DISTINCT pm.path, pm.created_date as date_taken, pm.width, pm.height
@@ -186,67 +643,32 @@ ORDER BY pm.date_taken DESC
                 JOIN project_images pi ON pm.path = pi.image_path
                 WHERE pi.project_id = ?
 
+
+                    AND pm.path IN (
+                        SELECT DISTINCT image_path
+                        FROM face_crops
+                        WHERE project_id = ? AND branch_key = ?
+                    )
+
 ORDER BY pm.date_taken DESC
-[GooglePhotosLayout] 🔍 Parameters: [1]
-[GooglePhotosLayout] ✅ Found 102 photos in database
+[GooglePhotosLayout] 🔍 Parameters: [1, 1, 'face_000']
+[GooglePhotosLayout] 🔍 Person filter: project_id=1, branch_key=face_000
+[GooglePhotosLayout] ✅ Found 1 photos in database
 [GooglePhotosLayout] 📊 Database scan complete - preparing to load thumbnails...
-[GooglePhotosLayout] 📅 Grouping 102 photos by date...
-[GooglePhotosLayout] ✅ Grouped into 37 date groups
-[GooglePhotosLayout] Tracking 102 paths for multi-selection
-[GooglePhotosLayout] 🚀 Setting up virtual scrolling for 37 date groups...
-[GooglePhotosLayout] ✅ Virtual scrolling enabled: 37 total date groups
-[GooglePhotosLayout] 📊 Rendered: 5 groups | Placeholders: 32 groups
-[GooglePhotosLayout] 🖼️ Queued 6 thumbnails for loading (initial limit: 50)
+[GooglePhotosLayout] 📅 Grouping 1 photos by date...
+[GooglePhotosLayout] ✅ Grouped into 1 date groups
+[GooglePhotosLayout] Tracking 1 paths for multi-selection
+[GooglePhotosLayout] 🚀 Setting up virtual scrolling for 1 date groups...
+[GooglePhotosLayout] 📐 Responsive grid: 6 columns (viewport: 1386px, thumb: 200px)
+[GooglePhotosLayout] ✅ Virtual scrolling enabled: 1 total date groups
+[GooglePhotosLayout] 📊 Rendered: 1 groups | Placeholders: 0 groups
+[GooglePhotosLayout] 🖼️ Queued 1 thumbnails for loading (initial limit: 50)
 [GooglePhotosLayout] ✅ Photo loading complete! Thumbnails will load progressively.
-[16:11:38.693] [AccordionSidebar] Expanding section: quick
-[16:11:38.709] [AccordionSidebar] Loading content for section: quick
-[16:11:38.709] [AccordionSidebar] Loading Quick Dates section...
-[16:11:38.715] [AccordionSidebar] ✓ Section expanded: quick
-[16:11:38.715] [AccordionSidebar] Loaded 6 quick date items
-[16:11:38.725] [AccordionSidebar] ✓ Quick dates section loaded with 6 items
-[16:11:40.036] [AccordionSidebar] Expanding section: quick
-[16:11:40.052] [AccordionSidebar] Loading content for section: quick
-[16:11:40.052] [AccordionSidebar] Loading Quick Dates section...
-[16:11:40.052] [AccordionSidebar] ✓ Section expanded: quick
-[16:11:40.067] [AccordionSidebar] Loaded 6 quick date items
-[16:11:40.075] [AccordionSidebar] ✓ Quick dates section loaded with 6 items
-[16:11:40.939] [AccordionSidebar] Expanding section: quick
-[16:11:40.939] [AccordionSidebar] Loading content for section: quick
-[16:11:40.955] [AccordionSidebar] Loading Quick Dates section...
-[16:11:40.955] [AccordionSidebar] ✓ Section expanded: quick
-[16:11:40.955] [AccordionSidebar] Loaded 6 quick date items
-[16:11:40.955] [AccordionSidebar] ✓ Quick dates section loaded with 6 items
-[16:11:43.001] [AccordionSidebar] Expanding section: dates
-[16:11:43.006] [AccordionSidebar] Loading content for section: dates
-[16:11:43.025] [AccordionSidebar] Loading Dates section...
-[16:11:43.025] [AccordionSidebar] ✓ Section expanded: dates
-[16:11:44.088] [AccordionSidebar] Expanding section: dates
-[16:11:44.096] [AccordionSidebar] Loading content for section: dates
-[16:11:44.109] [AccordionSidebar] Loading Dates section...
-[16:11:44.109] [AccordionSidebar] ✓ Section expanded: dates
-[16:11:44.649] [AccordionSidebar] Expanding section: dates
-[16:11:44.664] [AccordionSidebar] Loading content for section: dates
-[16:11:44.664] [AccordionSidebar] Loading Dates section...
-[16:11:44.664] [AccordionSidebar] ✓ Section expanded: dates
-[16:11:57.368] [AccordionSidebar] Expanding section: dates
-[16:11:57.368] [AccordionSidebar] Loading content for section: dates
-[16:11:57.382] [AccordionSidebar] Loading Dates section...
-[16:11:57.382] [AccordionSidebar] ✓ Section expanded: dates
-[16:11:57.638] [AccordionSidebar] Expanding section: dates
-[16:11:57.654] [AccordionSidebar] Loading content for section: dates
-[16:11:57.654] [AccordionSidebar] Loading Dates section...
-[16:11:57.663] [AccordionSidebar] ✓ Section expanded: dates
-[16:11:58.543] [AccordionSidebar] Expanding section: dates
-[16:11:58.543] [AccordionSidebar] Loading content for section: dates
-[16:11:58.557] [AccordionSidebar] Loading Dates section...
-[16:11:58.557] [AccordionSidebar] ✓ Section expanded: dates
-[16:11:58.733] [AccordionSidebar] Expanding section: dates
-[16:11:58.749] [AccordionSidebar] Loading content for section: dates
-[16:11:58.756] [AccordionSidebar] Loading Dates section...
-[16:11:58.756] [AccordionSidebar] ✓ Section expanded: dates
-[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px)...
+[GooglePhotosLayout] Accordion branch clicked: face_001
+[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px) [person=face_001]...
 [GooglePhotosLayout] 🔄 Clearing existing timeline and thumbnail cache...
 [GooglePhotosLayout] 🔍 Scanning database for photos in project 1...
+[GooglePhotosLayout] Filtering by person: face_001
 [GooglePhotosLayout] 🔍 SQL Query:
 
                 SELECT DISTINCT pm.path, pm.created_date as date_taken, pm.width, pm.height
@@ -254,21 +676,31 @@ ORDER BY pm.date_taken DESC
                 JOIN project_images pi ON pm.path = pi.image_path
                 WHERE pi.project_id = ?
 
+
+                    AND pm.path IN (
+                        SELECT DISTINCT image_path
+                        FROM face_crops
+                        WHERE project_id = ? AND branch_key = ?
+                    )
+
 ORDER BY pm.date_taken DESC
-[GooglePhotosLayout] 🔍 Parameters: [1]
-[GooglePhotosLayout] ✅ Found 102 photos in database
+[GooglePhotosLayout] 🔍 Parameters: [1, 1, 'face_001']
+[GooglePhotosLayout] 🔍 Person filter: project_id=1, branch_key=face_001
+[GooglePhotosLayout] ✅ Found 2 photos in database
 [GooglePhotosLayout] 📊 Database scan complete - preparing to load thumbnails...
-[GooglePhotosLayout] 📅 Grouping 102 photos by date...
-[GooglePhotosLayout] ✅ Grouped into 37 date groups
-[GooglePhotosLayout] Tracking 102 paths for multi-selection
-[GooglePhotosLayout] 🚀 Setting up virtual scrolling for 37 date groups...
-[GooglePhotosLayout] ✅ Virtual scrolling enabled: 37 total date groups
-[GooglePhotosLayout] 📊 Rendered: 5 groups | Placeholders: 32 groups
-[GooglePhotosLayout] 🖼️ Queued 6 thumbnails for loading (initial limit: 50)
+[GooglePhotosLayout] 📅 Grouping 2 photos by date...
+[GooglePhotosLayout] ✅ Grouped into 1 date groups
+[GooglePhotosLayout] Tracking 2 paths for multi-selection
+[GooglePhotosLayout] 🚀 Setting up virtual scrolling for 1 date groups...
+[GooglePhotosLayout] ✅ Virtual scrolling enabled: 1 total date groups
+[GooglePhotosLayout] 📊 Rendered: 1 groups | Placeholders: 0 groups
+[GooglePhotosLayout] 🖼️ Queued 2 thumbnails for loading (initial limit: 50)
 [GooglePhotosLayout] ✅ Photo loading complete! Thumbnails will load progressively.
-[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px)...
+[GooglePhotosLayout] Accordion branch clicked: face_003
+[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px) [person=face_003]...
 [GooglePhotosLayout] 🔄 Clearing existing timeline and thumbnail cache...
 [GooglePhotosLayout] 🔍 Scanning database for photos in project 1...
+[GooglePhotosLayout] Filtering by person: face_003
 [GooglePhotosLayout] 🔍 SQL Query:
 
                 SELECT DISTINCT pm.path, pm.created_date as date_taken, pm.width, pm.height
@@ -276,21 +708,44 @@ ORDER BY pm.date_taken DESC
                 JOIN project_images pi ON pm.path = pi.image_path
                 WHERE pi.project_id = ?
 
+
+                    AND pm.path IN (
+                        SELECT DISTINCT image_path
+                        FROM face_crops
+                        WHERE project_id = ? AND branch_key = ?
+                    )
+
 ORDER BY pm.date_taken DESC
-[GooglePhotosLayout] 🔍 Parameters: [1]
-[GooglePhotosLayout] ✅ Found 102 photos in database
+[GooglePhotosLayout] 🔍 Parameters: [1, 1, 'face_003']
+[GooglePhotosLayout] 🔍 Person filter: project_id=1, branch_key=face_003
+[GooglePhotosLayout] ✅ Found 10 photos in database
 [GooglePhotosLayout] 📊 Database scan complete - preparing to load thumbnails...
-[GooglePhotosLayout] 📅 Grouping 102 photos by date...
-[GooglePhotosLayout] ✅ Grouped into 37 date groups
-[GooglePhotosLayout] Tracking 102 paths for multi-selection
-[GooglePhotosLayout] 🚀 Setting up virtual scrolling for 37 date groups...
-[GooglePhotosLayout] ✅ Virtual scrolling enabled: 37 total date groups
-[GooglePhotosLayout] 📊 Rendered: 5 groups | Placeholders: 32 groups
-[GooglePhotosLayout] 🖼️ Queued 6 thumbnails for loading (initial limit: 50)
+[GooglePhotosLayout] 📅 Grouping 10 photos by date...
+[GooglePhotosLayout] ✅ Grouped into 7 date groups
+[GooglePhotosLayout] Tracking 10 paths for multi-selection
+[GooglePhotosLayout] 🚀 Setting up virtual scrolling for 7 date groups...
+[GooglePhotosLayout] ✅ Virtual scrolling enabled: 7 total date groups
+[GooglePhotosLayout] 📊 Rendered: 5 groups | Placeholders: 2 groups
+[GooglePhotosLayout] 🖼️ Queued 5 thumbnails for loading (initial limit: 50)
 [GooglePhotosLayout] ✅ Photo loading complete! Thumbnails will load progressively.
-[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px)...
+[16:46:18.606] [AccordionSidebar] Expanding section: quick
+[16:46:18.621] [AccordionSidebar] Loading content for section: quick
+[16:46:18.621] [AccordionSidebar] Loading Quick Dates section...
+[16:46:18.621] [AccordionSidebar] ✓ Section expanded: quick
+[16:46:18.621] [AccordionSidebar] Loaded 6 quick date items
+[16:46:18.668] [AccordionSidebar] ✓ Quick dates section loaded with 6 items
+[16:46:23.042] [AccordionSidebar] Expanding section: people
+[16:46:23.057] [AccordionSidebar] Loading content for section: people
+[16:46:23.057] [AccordionSidebar] Loading People section...
+[16:46:23.057] [AccordionSidebar] Loaded 36 face clusters
+[16:46:23.231] [AccordionSidebar] ✓ People section loaded with 36 clusters
+[16:46:23.231] [AccordionSidebar] ✓ Section expanded: people
+[16:46:31.966] [AccordionSidebar] Person activated: facecluster:face_001
+[GooglePhotosLayout] Accordion branch clicked: branch:facecluster:face_001
+[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px) [person=facecluster:face_001]...
 [GooglePhotosLayout] 🔄 Clearing existing timeline and thumbnail cache...
 [GooglePhotosLayout] 🔍 Scanning database for photos in project 1...
+[GooglePhotosLayout] Filtering by person: facecluster:face_001
 [GooglePhotosLayout] 🔍 SQL Query:
 
                 SELECT DISTINCT pm.path, pm.created_date as date_taken, pm.width, pm.height
@@ -298,60 +753,16 @@ ORDER BY pm.date_taken DESC
                 JOIN project_images pi ON pm.path = pi.image_path
                 WHERE pi.project_id = ?
 
+
+                    AND pm.path IN (
+                        SELECT DISTINCT image_path
+                        FROM face_crops
+                        WHERE project_id = ? AND branch_key = ?
+                    )
+
 ORDER BY pm.date_taken DESC
-[GooglePhotosLayout] 🔍 Parameters: [1]
-[GooglePhotosLayout] ✅ Found 102 photos in database
+[GooglePhotosLayout] 🔍 Parameters: [1, 1, 'facecluster:face_001']
+[GooglePhotosLayout] 🔍 Person filter: project_id=1, branch_key=facecluster:face_001
+[GooglePhotosLayout] ✅ Found 0 photos in database
 [GooglePhotosLayout] 📊 Database scan complete - preparing to load thumbnails...
-[GooglePhotosLayout] 📅 Grouping 102 photos by date...
-[GooglePhotosLayout] ✅ Grouped into 37 date groups
-[GooglePhotosLayout] Tracking 102 paths for multi-selection
-[GooglePhotosLayout] 🚀 Setting up virtual scrolling for 37 date groups...
-[GooglePhotosLayout] ✅ Virtual scrolling enabled: 37 total date groups
-[GooglePhotosLayout] 📊 Rendered: 5 groups | Placeholders: 32 groups
-[GooglePhotosLayout] 🖼️ Queued 6 thumbnails for loading (initial limit: 50)
-[GooglePhotosLayout] ✅ Photo loading complete! Thumbnails will load progressively.
-[MediaLightbox] Screen: 1920x1200 (DPI: 1.0x)
-[MediaLightbox] Window: 1766x1104 (92% of screen)
-[MediaLightbox] _position_nav_buttons: Missing attributes (prev_btn=False, scroll_area=False)
-[MediaLightbox] resizeEvent: media not loaded yet, triggering load...
-[MediaLightbox] showEvent triggered, _media_loaded=False
-[MediaLightbox] Scheduling media load in 100ms...
-[MediaLightbox] Creating overlay navigation buttons...
-[MediaLightbox] ✓ Nav buttons created and shown
-[MediaLightbox] showEvent triggered, _media_loaded=False
-[MediaLightbox] Nav buttons raised to top in showEvent
-[MediaLightbox] Scheduling media load in 100ms...
-[MediaLightbox] ✓ Nav buttons positioned: left=16, right=1702, y=528
-[MediaLightbox] _load_media called for: img_6995.jpeg
-[MediaLightbox] Loading photo: img_6995.jpeg
-[MediaLightbox] Starting progressive load...
-[EXIFParser] ✓ HEIC/HEIF support enabled (pillow-heif)
-[MediaLightbox] Preloading: img_6934.jpeg
-[MediaLightbox] Preloading: img_6850.jpeg
-[MediaLightbox] Filmstrip: Showing 11 thumbnails (range 0-11 of 102)
-[ProgressiveImageWorker] ✓ Thumbnail loaded: img_6995.jpeg
-[MediaLightbox] Zoom state restored: fit @ 100%
-[MediaLightbox] Filmstrip: Showing 11 thumbnails (range 0-11 of 102)
-[SIGNAL] _on_thumbnail_loaded called, pixmap=valid
-[SIGNAL] Viewport size: 1766x1024
-[MediaLightbox] ✓ Thumbnail displayed (progressive load)
-[ProgressiveImageWorker] ✓ Full quality loaded: img_6995.jpeg
-[SIGNAL] _on_full_quality_loaded called, pixmap=valid
-[MediaLightbox] ✓ Full quality displayed (progressive load complete)
-[MediaLightbox] ✓ Full quality displayed (progressive load complete)
-[PreloadImageWorker] ✓ Preloaded: img_6934.jpeg
-[MediaLightbox] ✓ Cached: img_6934.jpeg (cache size: 1)
-[MediaLightbox] Closing - cleaning up resources...
-[PreloadImageWorker] ✓ Preloaded: img_6850.jpeg
-[MediaLightbox] ✓ All resources cleaned up
-[MediaLightbox] ✓ Cached: img_6850.jpeg (cache size: 1)
-[GooglePhotosLayout] 🎨 Rendering 1 date groups that entered viewport...
-[GooglePhotosLayout] ✓ Now 6/37 groups rendered
-[16:12:22.407] [AccordionSidebar] Expanding section: people
-[16:12:22.419] [AccordionSidebar] Loading content for section: people
-[16:12:22.419] [AccordionSidebar] Loading People section...
-[16:12:22.419] [AccordionSidebar] ✓ Section expanded: people
-[16:12:23.720] [AccordionSidebar] Expanding section: folders
-[16:12:23.730] [AccordionSidebar] Loading content for section: folders
-[16:12:23.745] [AccordionSidebar] Loading Folders section...
-[16:12:23.745] [AccordionSidebar] ✓ Section expanded: folders
+[GooglePhotosLayout] No photos found in project 1
