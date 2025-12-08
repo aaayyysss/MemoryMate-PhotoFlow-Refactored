@@ -8727,11 +8727,14 @@ class GooglePhotosLayout(BaseLayout):
             filter_desc.append(f"person={filter_person}")
 
         filter_str = f" [{', '.join(filter_desc)}]" if filter_desc else ""
-        print(f"[GooglePhotosLayout] Loading photos from database (thumb size: {thumb_size}px){filter_str}...")
+        print(f"[GooglePhotosLayout] 📷 Loading photos from database (thumb size: {thumb_size}px){filter_str}...")
 
         # Show/hide Clear Filter button based on whether filters are active
         has_filters = filter_year is not None or filter_month is not None or filter_folder is not None or filter_person is not None
         self.btn_clear_filter.setVisible(has_filters)
+
+        # === PROGRESS: Clearing existing timeline ===
+        print(f"[GooglePhotosLayout] 🔄 Clearing existing timeline and thumbnail cache...")
 
         # Clear existing timeline and thumbnail cache
         try:
@@ -8752,6 +8755,9 @@ class GooglePhotosLayout(BaseLayout):
         except Exception as e:
             print(f"[GooglePhotosLayout] ⚠️ Error in _load_photos setup: {e}")
             # Continue anyway
+
+        # === PROGRESS: Scanning database for photos ===
+        print(f"[GooglePhotosLayout] 🔍 Scanning database for photos in project {self.project_id}...")
 
         # Get photos from database
         try:
@@ -8829,8 +8835,9 @@ class GooglePhotosLayout(BaseLayout):
                     cur.execute(query, tuple(params))
                     rows = cur.fetchall()
 
-                    # Debug logging
-                    print(f"[GooglePhotosLayout] 📊 Loaded {len(rows)} photos from database")
+                    # === PROGRESS: Photos found in database ===
+                    print(f"[GooglePhotosLayout] ✅ Found {len(rows)} photos in database")
+                    print(f"[GooglePhotosLayout] 📊 Database scan complete - preparing to load thumbnails...")
 
                     # Update section counts: timeline and videos
                     try:
@@ -8864,8 +8871,13 @@ class GooglePhotosLayout(BaseLayout):
                 print(f"[GooglePhotosLayout] No photos found in project {self.project_id}")
                 return
 
+            # === PROGRESS: Grouping photos by date ===
+            print(f"[GooglePhotosLayout] 📅 Grouping {len(rows)} photos by date...")
+
             # Group photos by date
             photos_by_date = self._group_photos_by_date(rows)
+
+            print(f"[GooglePhotosLayout] ✅ Grouped into {len(photos_by_date)} date groups")
 
             # Build sidebar sections
             # CRITICAL: Sidebar should ALWAYS show ALL items (not filtered)
@@ -8882,6 +8894,9 @@ class GooglePhotosLayout(BaseLayout):
             # Track all displayed paths for Shift+Ctrl multi-selection
             self.all_displayed_paths = [photo[0] for photos_list in photos_by_date.values() for photo in photos_list]
             print(f"[GooglePhotosLayout] Tracking {len(self.all_displayed_paths)} paths for multi-selection")
+
+            # === PROGRESS: Virtual scrolling setup ===
+            print(f"[GooglePhotosLayout] 🚀 Setting up virtual scrolling for {len(photos_by_date)} date groups...")
 
             # QUICK WIN #3: Virtual scrolling - create date groups with lazy rendering
             self.date_groups_metadata.clear()
@@ -8920,11 +8935,15 @@ class GooglePhotosLayout(BaseLayout):
             # Add spacer at bottom
             self.timeline_layout.addStretch()
 
+            # === PROGRESS: Rendering complete ===
             if self.virtual_scroll_enabled:
-                print(f"[GooglePhotosLayout] 🚀 Virtual scrolling: {len(photos_by_date)} date groups ({len(self.rendered_date_groups)} rendered, {len(photos_by_date) - len(self.rendered_date_groups)} placeholders)")
+                print(f"[GooglePhotosLayout] ✅ Virtual scrolling enabled: {len(photos_by_date)} total date groups")
+                print(f"[GooglePhotosLayout] 📊 Rendered: {len(self.rendered_date_groups)} groups | Placeholders: {len(photos_by_date) - len(self.rendered_date_groups)} groups")
             else:
-                print(f"[GooglePhotosLayout] Loaded {len(rows)} photos in {len(photos_by_date)} date groups")
-            print(f"[GooglePhotosLayout] Queued {self.thumbnail_load_count} thumbnails for loading (initial limit: {self.initial_load_limit})")
+                print(f"[GooglePhotosLayout] ✅ Loaded {len(rows)} photos in {len(photos_by_date)} date groups")
+
+            print(f"[GooglePhotosLayout] 🖼️ Queued {self.thumbnail_load_count} thumbnails for loading (initial limit: {self.initial_load_limit})")
+            print(f"[GooglePhotosLayout] ✅ Photo loading complete! Thumbnails will load progressively.")
 
         except Exception as e:
             # CRITICAL: Catch ALL exceptions to prevent layout crashes
