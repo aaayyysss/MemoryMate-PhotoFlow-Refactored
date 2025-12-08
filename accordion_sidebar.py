@@ -16,10 +16,10 @@ Architecture:
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
     QScrollArea, QFrame, QSizePolicy, QTreeWidget, QTreeWidgetItem,
-    QTableWidget, QTableWidgetItem, QHeaderView
+    QTableWidget, QTableWidgetItem, QHeaderView, QGridLayout
 )
 from PySide6.QtCore import Qt, Signal, QPropertyAnimation, QEasingCurve, QSize, QThreadPool
-from PySide6.QtGui import QFont, QIcon, QColor
+from PySide6.QtGui import QFont, QIcon, QColor, QPixmap
 from datetime import datetime
 import threading
 import traceback
@@ -27,7 +27,6 @@ import time
 
 # Import database and UI components
 from reference_db import ReferenceDB
-from ui.people_list_view import PeopleListView
 from services.tag_service import get_tag_service
 from translation_manager import tr
 
@@ -277,9 +276,6 @@ class AccordionSidebar(QWidget):
         self.db = ReferenceDB()
         self.nav_buttons = {}  # section_id -> QPushButton
 
-        # Store content widgets for each section
-        self.people_view = None
-
         self._dbg("AccordionSidebar __init__ started")
 
         # MAIN HORIZONTAL LAYOUT: [Vertical Nav Bar] | [Sections]
@@ -506,7 +502,7 @@ class AccordionSidebar(QWidget):
             section.set_content_widget(placeholder)
 
     def _load_people_section(self):
-        """Load People/Face Clusters section content."""
+        """Load People/Face Clusters section content with multi-row grid layout."""
         self._dbg("Loading People section...")
 
         section = self.sections.get("people")
@@ -518,22 +514,100 @@ class AccordionSidebar(QWidget):
             rows = self.db.get_face_clusters(self.project_id)
             self._dbg(f"Loaded {len(rows)} face clusters")
 
-            # Create or reuse PeopleListView widget
-            if not self.people_view:
-                self.people_view = PeopleListView(self)
-                self.people_view.set_database(self.db, self.project_id)
+            if len(rows) == 0:
+                # Show "No faces" placeholder
+                placeholder = QLabel("No faces detected yet.\n\nRun face detection to see people here.")
+                placeholder.setAlignment(Qt.AlignCenter)
+                placeholder.setStyleSheet("padding: 40px 20px; color: #666; font-size: 11pt;")
+                section.set_content_widget(placeholder)
+                section.set_count(0)
+                return
 
-                # Connect signals
-                self.people_view.personActivated.connect(self._on_person_activated)
+            # Create multi-row grid layout (Google Photos style)
+            grid_widget = QWidget()
+            grid_layout = QGridLayout(grid_widget)
+            grid_layout.setContentsMargins(8, 8, 8, 8)
+            grid_layout.setSpacing(12)
 
-            # Load people data
-            self.people_view.load_people(rows)
+            # Display faces in a 2-column grid for compact accordion sidebar
+            faces_per_row = 2
+            for idx, row in enumerate(rows):
+                branch_key = row.get("branch_key") or row.get("cluster_id") or f"facecluster:face_{idx:03d}"
+                representative_crop = row.get("representative_crop")
+                face_count = row.get("face_count", 1)
+                cluster_name = row.get("cluster_name") or f"Person {idx + 1}"
+
+                # Create face button container
+                face_container = QWidget()
+                face_layout = QVBoxLayout(face_container)
+                face_layout.setContentsMargins(0, 0, 0, 0)
+                face_layout.setSpacing(4)
+
+                # Face thumbnail button
+                face_btn = QPushButton()
+                face_btn.setFixedSize(80, 80)
+                face_btn.setCursor(Qt.PointingHandCursor)
+                face_btn.setStyleSheet("""
+                    QPushButton {
+                        border: 2px solid #e0e0e0;
+                        border-radius: 40px;
+                        background: #f5f5f5;
+                    }
+                    QPushButton:hover {
+                        border-color: #1a73e8;
+                        background: #e8f0fe;
+                    }
+                """)
+
+                # Load and set face thumbnail
+                if representative_crop:
+                    try:
+                        from PIL import Image
+                        import io
+                        img = Image.open(io.BytesIO(representative_crop))
+                        img = img.resize((76, 76), Image.Resampling.LANCZOS)
+
+                        # Convert to QPixmap
+                        img_byte_arr = io.BytesIO()
+                        img.save(img_byte_arr, format='PNG')
+                        pixmap = QPixmap()
+                        pixmap.loadFromData(img_byte_arr.getvalue())
+
+                        # Make circular
+                        circular = self._make_circular_pixmap(pixmap, 76)
+                        face_btn.setIcon(QIcon(circular))
+                        face_btn.setIconSize(QSize(76, 76))
+                    except Exception as e:
+                        self._dbg(f"Error loading face thumbnail: {e}")
+                        face_btn.setText("👤")
+
+                # Connect click event
+                face_btn.clicked.connect(lambda checked, key=branch_key: self._on_person_activated(key))
+
+                # Name label (truncated)
+                name_label = QLabel(cluster_name[:15] + "..." if len(cluster_name) > 15 else cluster_name)
+                name_label.setAlignment(Qt.AlignCenter)
+                name_label.setStyleSheet("font-size: 10pt; color: #333;")
+
+                # Count label
+                count_label = QLabel(f"{face_count} photo{'s' if face_count != 1 else ''}")
+                count_label.setAlignment(Qt.AlignCenter)
+                count_label.setStyleSheet("font-size: 9pt; color: #999;")
+
+                face_layout.addWidget(face_btn, alignment=Qt.AlignCenter)
+                face_layout.addWidget(name_label)
+                face_layout.addWidget(count_label)
+
+                # Add to grid
+                grid_row = idx // faces_per_row
+                grid_col = idx % faces_per_row
+                grid_layout.addWidget(face_container, grid_row, grid_col)
 
             # Update count badge
             section.set_count(len(rows))
 
             # Set as content widget
-            section.set_content_widget(self.people_view)
+            section.set_content_widget(grid_widget)
 
             self._dbg(f"✓ People section loaded with {len(rows)} clusters")
 
@@ -547,6 +621,28 @@ class AccordionSidebar(QWidget):
             error_label.setAlignment(Qt.AlignCenter)
             error_label.setStyleSheet("padding: 20px; color: #ff0000;")
             section.set_content_widget(error_label)
+
+    def _make_circular_pixmap(self, pixmap: QPixmap, size: int) -> QPixmap:
+        """Create a circular pixmap from a square one."""
+        from PySide6.QtGui import QPainter, QPainterPath
+
+        scaled = pixmap.scaled(size, size, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+        circular = QPixmap(size, size)
+        circular.fill(Qt.transparent)
+
+        painter = QPainter(circular)
+        painter.setRenderHint(QPainter.Antialiasing)
+
+        path = QPainterPath()
+        path.addEllipse(0, 0, size, size)
+        painter.setClipPath(path)
+
+        x_offset = (scaled.width() - size) // 2
+        y_offset = (scaled.height() - size) // 2
+        painter.drawPixmap(-x_offset, -y_offset, scaled)
+        painter.end()
+
+        return circular
 
     def _on_person_activated(self, branch_key: str):
         """Handle person click - emit signal to filter grid."""
