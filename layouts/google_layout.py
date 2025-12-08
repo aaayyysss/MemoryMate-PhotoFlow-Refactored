@@ -8625,17 +8625,47 @@ class GooglePhotosLayout(BaseLayout):
 
     def _create_sidebar(self) -> QWidget:
         """
-        Create modern sidebar with collapsible sections and grid view for People.
+        Create Google Photos-style accordion sidebar.
 
-        Phase 1+2 Implementation:
-        - Collapsible sections (Timeline, Folders, People, Videos)
-        - Grid view for People (replaces tree)
-        - Smooth expand/collapse animations
-        - Better space utilization (3x more faces visible)
+        Phase 3 Implementation:
+        - AccordionSidebar with all 6 sections (People, Dates, Folders, Tags, Branches, Quick)
+        - One section expanded at a time (full height)
+        - Other sections collapsed to headers
+        - ONE universal scrollbar per section
+        - Clean, modern Google Photos UX
+        """
+        # Import and instantiate AccordionSidebar
+        from accordion_sidebar import AccordionSidebar
+
+        sidebar = AccordionSidebar(project_id=self.project_id, parent=self)
+        sidebar.setMinimumWidth(240)
+        sidebar.setMaximumWidth(500)
+        sidebar.setStyleSheet("""
+            QWidget {
+                background: white;
+                border-right: 1px solid #dadce0;
+            }
+        """)
+
+        # Connect accordion signals to grid filtering
+        sidebar.selectBranch.connect(self._on_accordion_branch_clicked)
+        sidebar.selectFolder.connect(self._on_accordion_folder_clicked)
+        sidebar.selectDate.connect(self._on_accordion_date_clicked)
+        sidebar.selectTag.connect(self._on_accordion_tag_clicked)
+
+        # Store reference for refreshing
+        self.accordion_sidebar = sidebar
+
+        return sidebar
+
+    def _create_sidebar_old_collapsible(self) -> QWidget:
+        """
+        OLD IMPLEMENTATION: Collapsible sections with vertical nav bar.
+        Kept for reference but not used anymore.
         """
         sidebar = QWidget()
         sidebar.setMinimumWidth(240)
-        sidebar.setMaximumWidth(500)  # Expandable wider for buttons and content
+        sidebar.setMaximumWidth(500)
         sidebar.setStyleSheet("""
             QWidget {
                 background: white;
@@ -8647,7 +8677,7 @@ class GooglePhotosLayout(BaseLayout):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
-        # PHASE 3: Vertical navigation bar (icon-based quick navigation)
+        # Vertical navigation bar (icon-based quick navigation)
         nav_bar = QWidget()
         nav_bar.setFixedWidth(48)
         nav_bar.setStyleSheet("""
@@ -9743,6 +9773,109 @@ class GooglePhotosLayout(BaseLayout):
         if not tag_name:
             return
         self._filter_by_tag(tag_name)
+
+    # === Accordion Sidebar Click Handlers ===
+
+    def _on_accordion_date_clicked(self, date_key: str):
+        """
+        Handle accordion sidebar date selection.
+
+        Args:
+            date_key: Date in format "YYYY", "YYYY-MM", or "YYYY-MM-DD"
+        """
+        print(f"[GooglePhotosLayout] Accordion date clicked: {date_key}")
+
+        # Parse date_key to extract year, month, day
+        parts = date_key.split("-")
+        year = None
+        month = None
+
+        if len(parts) >= 1:
+            try:
+                year = int(parts[0])
+            except ValueError:
+                pass
+
+        if len(parts) >= 2:
+            try:
+                month = int(parts[1])
+            except ValueError:
+                pass
+
+        # Filter by year or month
+        self._load_photos(
+            thumb_size=self.current_thumb_size,
+            filter_year=year,
+            filter_month=month,
+            filter_folder=None,
+            filter_person=None
+        )
+
+    def _on_accordion_folder_clicked(self, folder_id: int):
+        """
+        Handle accordion sidebar folder selection.
+
+        Args:
+            folder_id: Folder ID from database
+        """
+        print(f"[GooglePhotosLayout] Accordion folder clicked: {folder_id}")
+
+        # Get folder path from database
+        try:
+            from reference_db import ReferenceDB
+            db = ReferenceDB()
+            with db._connect() as conn:
+                cur = conn.cursor()
+                cur.execute("SELECT path FROM folders WHERE id = ?", (folder_id,))
+                row = cur.fetchone()
+                if row:
+                    folder_path = row[0]
+                    print(f"[GooglePhotosLayout] Filtering by folder: {folder_path}")
+                    self._load_photos(
+                        thumb_size=self.current_thumb_size,
+                        filter_year=None,
+                        filter_month=None,
+                        filter_folder=folder_path,
+                        filter_person=None
+                    )
+        except Exception as e:
+            print(f"[GooglePhotosLayout] Error loading folder: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def _on_accordion_tag_clicked(self, tag_name: str):
+        """
+        Handle accordion sidebar tag selection.
+
+        Args:
+            tag_name: Tag name to filter by
+        """
+        print(f"[GooglePhotosLayout] Accordion tag clicked: {tag_name}")
+        self._filter_by_tag(tag_name)
+
+    def _on_accordion_branch_clicked(self, branch_key: str):
+        """
+        Handle accordion sidebar branch/person selection.
+
+        Args:
+            branch_key: Branch key, may include "branch:" prefix or "facecluster:" prefix
+        """
+        print(f"[GooglePhotosLayout] Accordion branch clicked: {branch_key}")
+
+        # Remove prefixes if present
+        if branch_key.startswith("branch:"):
+            branch_key = branch_key[7:]
+        elif branch_key.startswith("facecluster:"):
+            branch_key = branch_key[12:]
+
+        # Filter by person/branch
+        self._load_photos(
+            thumb_size=self.current_thumb_size,
+            filter_year=None,
+            filter_month=None,
+            filter_folder=None,
+            filter_person=branch_key
+        )
 
     def _filter_by_tag(self, tag_name: str):
         """Filter timeline to show photos by the given tag."""
@@ -15502,6 +15635,10 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
 
         print(f"[GooglePhotosLayout] 📂 Project changed: {self.project_id} → {new_project_id}")
         self.project_id = new_project_id
+
+        # Update accordion sidebar with new project
+        if hasattr(self, 'accordion_sidebar'):
+            self.accordion_sidebar.set_project(new_project_id)
 
         # Reload photos for the new project
         self._load_photos()
