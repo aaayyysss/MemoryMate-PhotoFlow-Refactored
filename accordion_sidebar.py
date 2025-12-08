@@ -58,7 +58,7 @@ class SectionHeader(QFrame):
 
         # Layout
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(12, 8, 12, 8)
+        layout.setContentsMargins(10, 6, 10, 6)
         layout.setSpacing(8)
 
         # Icon + Title
@@ -103,12 +103,12 @@ class SectionHeader(QFrame):
             self.chevron_label.setText("▼")  # Down arrow
             self.setStyleSheet("""
                 SectionHeader {
-                    background-color: #e3f2fd;
+                    background-color: #e8f0fe;
                     border: none;
-                    border-radius: 4px;
+                    border-radius: 6px;
                 }
                 SectionHeader:hover {
-                    background-color: #bbdefb;
+                    background-color: #d2e3fc;
                 }
             """)
         else:
@@ -118,12 +118,12 @@ class SectionHeader(QFrame):
             self.chevron_label.setText("▶")  # Right arrow
             self.setStyleSheet("""
                 SectionHeader {
-                    background-color: #f5f5f5;
-                    border: none;
-                    border-radius: 4px;
+                    background-color: #f8f9fa;
+                    border: 1px solid #e8eaed;
+                    border-radius: 6px;
                 }
                 SectionHeader:hover {
-                    background-color: #e0e0e0;
+                    background-color: #f1f3f4;
                 }
             """)
 
@@ -170,12 +170,12 @@ class AccordionSection(QWidget):
         # Header (always visible)
         self.header = SectionHeader(section_id, title, icon)
         self.header.clicked.connect(self._on_header_clicked)
-        layout.addWidget(self.header)
+        layout.addWidget(self.header, stretch=0)
 
         # Content area (visible only when expanded)
         self.content_container = QWidget()
         self.content_layout = QVBoxLayout(self.content_container)
-        self.content_layout.setContentsMargins(0, 0, 0, 0)
+        self.content_layout.setContentsMargins(8, 8, 8, 8)
         self.content_layout.setSpacing(0)
 
         # Scroll area for content (ONE scrollbar here)
@@ -186,8 +186,9 @@ class AccordionSection(QWidget):
         self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.scroll_area.setFrameShape(QFrame.NoFrame)
         self.scroll_area.setVisible(False)  # Hidden by default
+        self.scroll_area.setMinimumHeight(300)  # CRITICAL: Ensure minimum content height
 
-        layout.addWidget(self.scroll_area, stretch=1)  # Takes all available space when expanded
+        layout.addWidget(self.scroll_area, stretch=100)  # Takes all available space when expanded
 
         # Set size policy
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
@@ -203,12 +204,15 @@ class AccordionSection(QWidget):
         self.scroll_area.setVisible(expanded)
 
         if expanded:
-            # Expanded: Allow vertical expansion
+            # Expanded: Allow vertical expansion and remove height constraints
             self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+            self.setMaximumHeight(16777215)  # Remove any maximum height constraint
+            self.setMinimumHeight(400)  # Ensure expanded section has substantial height
         else:
             # Collapsed: Fixed height (header only)
-            self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
-            self.setMaximumHeight(self.header.sizeHint().height())
+            self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            self.setMaximumHeight(50)  # Compact header
+            self.setMinimumHeight(50)
 
     def set_content_widget(self, widget: QWidget):
         """Set the content widget for this section."""
@@ -281,16 +285,16 @@ class AccordionSidebar(QWidget):
 
         # === LEFT: Vertical Navigation Bar (MS Outlook style) ===
         nav_bar = QWidget()
-        nav_bar.setFixedWidth(48)
+        nav_bar.setFixedWidth(52)
         nav_bar.setStyleSheet("""
             QWidget {
-                background: #f8f9fa;
+                background: #ffffff;
                 border-right: 1px solid #dadce0;
             }
         """)
         nav_layout = QVBoxLayout(nav_bar)
-        nav_layout.setContentsMargins(4, 12, 4, 4)
-        nav_layout.setSpacing(8)
+        nav_layout.setContentsMargins(6, 12, 6, 4)
+        nav_layout.setSpacing(4)
 
         # Navigation buttons (will be created in _build_sections)
         self.nav_layout = nav_layout
@@ -299,11 +303,16 @@ class AccordionSidebar(QWidget):
 
         # === RIGHT: Container for all sections ===
         self.sections_container = QWidget()
+        self.sections_container.setStyleSheet("""
+            QWidget {
+                background: #ffffff;
+            }
+        """)
         self.sections_layout = QVBoxLayout(self.sections_container)
-        self.sections_layout.setContentsMargins(4, 4, 4, 4)
-        self.sections_layout.setSpacing(4)
+        self.sections_layout.setContentsMargins(6, 6, 6, 6)
+        self.sections_layout.setSpacing(3)  # Tighter spacing between sections
 
-        main_layout.addWidget(self.sections_container)
+        main_layout.addWidget(self.sections_container, stretch=1)
 
         # Build sections
         self._build_sections()
@@ -350,20 +359,20 @@ class AccordionSidebar(QWidget):
             # Create navigation button in vertical nav bar
             nav_btn = QPushButton(icon)
             nav_btn.setToolTip(title)
-            nav_btn.setFixedSize(40, 40)
+            nav_btn.setFixedSize(44, 44)
             nav_btn.setCursor(Qt.PointingHandCursor)
             nav_btn.setStyleSheet("""
                 QPushButton {
                     background: transparent;
                     border: none;
-                    border-radius: 8px;
-                    font-size: 18pt;
+                    border-radius: 10px;
+                    font-size: 20pt;
                 }
                 QPushButton:hover {
-                    background: rgba(26, 115, 232, 0.08);
+                    background: rgba(26, 115, 232, 0.10);
                 }
                 QPushButton:pressed {
-                    background: rgba(26, 115, 232, 0.15);
+                    background: rgba(26, 115, 232, 0.20);
                 }
             """)
             nav_btn.clicked.connect(lambda checked, sid=section_id: self.expand_section(sid))
@@ -371,9 +380,9 @@ class AccordionSidebar(QWidget):
             self.nav_buttons[section_id] = nav_btn
             self.nav_layout.addWidget(nav_btn)
 
-        # Add stretch at the end (both nav and sections)
+        # Add stretch at the end of nav bar only
         self.nav_layout.addStretch()
-        self.sections_layout.addStretch()
+        # NO stretch in sections_layout - will be managed by _reorder_sections()
 
         self._dbg(f"Created {len(self.sections)} sections with nav buttons")
 
@@ -413,16 +422,16 @@ class AccordionSidebar(QWidget):
         """Update navigation button styles to highlight active section."""
         for sid, btn in self.nav_buttons.items():
             if sid == active_section_id:
-                # Highlight active button
+                # Highlight active button with Google blue accent
                 btn.setStyleSheet("""
                     QPushButton {
-                        background: rgba(26, 115, 232, 0.15);
+                        background: rgba(26, 115, 232, 0.20);
                         border: none;
-                        border-radius: 8px;
-                        font-size: 18pt;
+                        border-radius: 10px;
+                        font-size: 20pt;
                     }
                     QPushButton:hover {
-                        background: rgba(26, 115, 232, 0.25);
+                        background: rgba(26, 115, 232, 0.30);
                     }
                 """)
             else:
@@ -431,14 +440,14 @@ class AccordionSidebar(QWidget):
                     QPushButton {
                         background: transparent;
                         border: none;
-                        border-radius: 8px;
-                        font-size: 18pt;
+                        border-radius: 10px;
+                        font-size: 20pt;
                     }
                     QPushButton:hover {
-                        background: rgba(26, 115, 232, 0.08);
+                        background: rgba(26, 115, 232, 0.10);
                     }
                     QPushButton:pressed {
-                        background: rgba(26, 115, 232, 0.15);
+                        background: rgba(26, 115, 232, 0.20);
                     }
                 """)
 
@@ -456,15 +465,17 @@ class AccordionSidebar(QWidget):
         while self.sections_layout.count() > 0:
             item = self.sections_layout.takeAt(0)
 
-        # Add expanded section first (with stretch to take full height)
+        # Add expanded section first (with HIGH stretch to take maximum height)
         if self.expanded_section_id:
             expanded_section = self.sections[self.expanded_section_id]
-            self.sections_layout.addWidget(expanded_section, stretch=1)
+            self.sections_layout.addWidget(expanded_section, stretch=100)
 
         # Add collapsed sections (no stretch, fixed size)
         for section_id, section in self.sections.items():
             if section_id != self.expanded_section_id:
                 self.sections_layout.addWidget(section, stretch=0)
+
+        # NO stretch spacer at the end - let collapsed sections sit at bottom naturally
 
     def _load_section_content(self, section_id: str):
         """Load content for the specified section."""
