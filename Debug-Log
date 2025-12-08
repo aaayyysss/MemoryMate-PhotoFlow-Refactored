@@ -1,89 +1,5 @@
-[FaceDetection] Complete: 99 photos, 58 faces detected
-2025-12-05 14:06:31,423 [INFO] [FaceClusterWorker] Starting face clustering for project 1
-[FaceCluster] Loading face embeddings...
-2025-12-05 14:06:31,423 [INFO] [FaceClusterWorker] Loaded 74 face embeddings
-[FaceCluster] Clustering 74 faces...
-2025-12-05 14:06:31,455 [INFO] [FaceClusterWorker] Found 36 clusters
-[FaceCluster] Found 36 person groups...
-2025-12-05 14:06:31,455 [INFO] [FaceClusterWorker] Cluster 0 → 1 faces
-[FaceCluster] Saving cluster 1/36: Person 1 (1 faces)
-2025-12-05 14:06:31,455 [INFO] [FaceClusterWorker] Cluster 1 → 2 faces
-[FaceCluster] Saving cluster 2/36: Person 2 (2 faces)
-2025-12-05 14:06:31,455 [INFO] [FaceClusterWorker] Cluster 2 → 2 faces
-[FaceCluster] Saving cluster 3/36: Person 3 (2 faces)
-2025-12-05 14:06:31,455 [INFO] [FaceClusterWorker] Cluster 3 → 10 faces
-[FaceCluster] Saving cluster 4/36: Person 4 (10 faces)
-2025-12-05 14:06:31,466 [INFO] [FaceClusterWorker] Cluster 4 → 1 faces
-[FaceCluster] Saving cluster 5/36: Person 5 (1 faces)
-2025-12-05 14:06:31,466 [INFO] [FaceClusterWorker] Cluster 5 → 1 faces
-[FaceCluster] Saving cluster 6/36: Person 6 (1 faces)
-2025-12-05 14:06:31,466 [INFO] [FaceClusterWorker] Cluster 6 → 1 faces
-[FaceCluster] Saving cluster 7/36: Person 7 (1 faces)
-2025-12-05 14:06:31,466 [INFO] [FaceClusterWorker] Cluster 7 → 1 faces
-[FaceCluster] Saving cluster 8/36: Person 8 (1 faces)
-2025-12-05 14:06:31,466 [INFO] [FaceClusterWorker] Cluster 8 → 1 faces
-[FaceCluster] Saving cluster 9/36: Person 9 (1 faces)
-2025-12-05 14:06:31,466 [INFO] [FaceClusterWorker] Cluster 9 → 1 faces
-[FaceCluster] Saving cluster 10/36: Person 10 (1 faces)
-2025-12-05 14:06:31,471 [INFO] [FaceClusterWorker] Cluster 10 → 1 faces
-[FaceCluster] Saving cluster 11/36: Person 11 (1 faces)
-2025-12-05 14:06:31,471 [INFO] [FaceClusterWorker] Cluster 11 → 12 faces
-[FaceCluster] Saving cluster 12/36: Person 12 (12 faces)
-2025-12-05 14:06:31,471 [INFO] [FaceClusterWorker] Cluster 12 → 1 faces
-[FaceCluster] Saving cluster 13/36: Person 13 (1 faces)
-2025-12-05 14:06:31,471 [INFO] [FaceClusterWorker] Cluster 13 → 1 faces
-[FaceCluster] Saving cluster 14/36: Person 14 (1 faces)
-2025-12-05 14:06:31,471 [INFO] [FaceClusterWorker] Cluster 14 → 1 faces
-[FaceCluster] Saving cluster 15/36: Person 15 (1 faces)
-2025-12-05 14:06:31,471 [INFO] [FaceClusterWorker] Cluster 15 → 1 faces
-[FaceCluster] Saving cluster 16/36: Person 16 (1 faces)
-2025-12-05 14:06:31,471 [INFO] [FaceClusterWorker] Cluster 16 → 1 faces
-2025-12-05 14:06:31,471 [INFO] [FaceClusterWorker] Cluster 17 → 1 faces
-[FaceCluster] Saving cluster 17/36: Person 17 (1 faces)
-[FaceCluster] Saving cluster 18/36: Person 18 (1 faces)
-2025-12-05 14:06:31,480 [INFO] [FaceClusterWorker] Cluster 18 → 1 faces
-[FaceCluster] Saving cluster 19/36: Person 19 (1 faces)
-2025-12-05 14:06:31,481 [INFO] [FaceClusterWorker] Cluster 19 → 1 faces
-[FaceCluster] Saving cluster 20/36: Person 20 (1 faces)
-2025-12-05 14:06:31,482 [INFO] [FaceClusterWorker] Cluster 20 → 1 faces
-[FaceCluster] Saving cluster 21/36: Person 21 (1 faces)
-2025-12-05 14:06:31,484 [INFO] [FaceClusterWorker] Cluster 21 → 1 faces
-[FaceCluster] Saving cluster 22/36: Person 22 (1 faces)
-2025-12-05 14:06:31,485 [INFO] [FaceClusterWorker] Cluster 22 → 1 faces
-[FaceCluster] Saving cluster 23/36: Person 23 (1 faces)
-2025-12-05 14:06:31,485 [INFO] [FaceClusterWorker] Cluster 23 → 1 faces
-[FaceCluster] Saving cluster 24/36: Person 24 (1 faces)
-2025-12-05 14:06:31,486 [INFO] [FaceClusterWorker] Cluster 24 → 1 faces
-[FaceCluster] Saving cluster 25/36: Person 25 (1 faces)
-2025-12-05 14:06:31,487 [INFO] [FaceClusterWorker] Cluster 25 → 1 faces
-[FaceCluster] Saving cluster 26/36: Person 26 (1 faces)
-2025-12-05 14:06:31,488 [INFO] [FaceClusterWorker] Cluster 26 → 1 faces
-[FaceCluster] Saving cluster 27/36: Person 27 (1 faces)
-2025-12-05 14:06:31,489 [INFO] [FaceClusterWorker] Cluster 27 → 1 faces
-[FaceCluster] Saving cluster 28/36: Person 28 (1 faces)
-2025-12-05 14:06:31,490 [INFO] [FaceClusterWorker] Cluster 28 → 1 faces
-[FaceCluster] Saving cluster 29/36: Person 29 (1 faces)
-2025-12-05 14:06:31,491 [INFO] [FaceClusterWorker] Cluster 29 → 1 faces
-[FaceCluster] Saving cluster 30/36: Person 30 (1 faces)
-2025-12-05 14:06:31,494 [INFO] [FaceClusterWorker] Cluster 30 → 1 faces
-[FaceCluster] Saving cluster 31/36: Person 31 (1 faces)
-2025-12-05 14:06:31,497 [INFO] [FaceClusterWorker] Cluster 31 → 1 faces
-[FaceCluster] Saving cluster 32/36: Person 32 (1 faces)
-2025-12-05 14:06:31,498 [INFO] [FaceClusterWorker] Cluster 32 → 1 faces
-[FaceCluster] Saving cluster 33/36: Person 33 (1 faces)
-2025-12-05 14:06:31,500 [INFO] [FaceClusterWorker] Cluster 33 → 1 faces
-[FaceCluster] Saving cluster 34/36: Person 34 (1 faces)
-2025-12-05 14:06:31,501 [INFO] [FaceClusterWorker] Cluster 34 → 1 faces
-[FaceCluster] Saving cluster 35/36: Person 35 (1 faces)
-2025-12-05 14:06:31,503 [INFO] [FaceClusterWorker] Cluster 35 → 1 faces
-[FaceCluster] Saving cluster 36/36: Person 36 (1 faces)
-2025-12-05 14:06:31,506 [INFO] [FaceClusterWorker] Complete in 0.1s: 36 person clusters + 0 unidentified faces
-[FaceCluster] Clustering complete: 36 branches created
-[FaceCluster] Complete: 36 person groups created
-[SidebarQt] reload() blocked - widget not visible (likely being deleted)
-[CollapsibleSection] Collapsed: Tags
-[GooglePhotosLayout] Filtering by folder: inbox
-[GooglePhotosLayout] Loading photos from database (thumb size: 200px) [folder=c:/users/suleimaa/desktop/eigen/alya/photos/inbox]...
+[GooglePhotosLayout] Loading photos from database (thumb size: 200px)...
+[GooglePhotosLayout] ⚠️ Error clearing timeline: 'GooglePhotosLayout' object has no attribute 'timeline_tree'
 [GooglePhotosLayout] 🔍 SQL Query:
 
                 SELECT DISTINCT pm.path, pm.created_date as date_taken, pm.width, pm.height
@@ -91,96 +7,844 @@
                 JOIN project_images pi ON pm.path = pi.image_path
                 WHERE pi.project_id = ?
 
-AND pm.path LIKE ?
 ORDER BY pm.date_taken DESC
-[GooglePhotosLayout] 🔍 Parameters: [1, 'c:/users/suleimaa/desktop/eigen/alya/photos/inbox%']
-[GooglePhotosLayout] 📊 Loaded 14 photos from database
-[GooglePhotosLayout] ✓ Built tags tree: 0 tags
-[GooglePhotosLayout] 🔍 _build_people_tree() called
-[GooglePhotosLayout] 👥 Querying face_branch_reps for project_id=1
-[GooglePhotosLayout] 👥 Found 36 face clusters in database
-[GooglePhotosLayout] ✓ Updated people section count badge: 58
-[GooglePhotosLayout] ✓ Cleared people grid
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [1/36]: Unnamed (12 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [2/36]: Unnamed (10 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [3/36]: Unnamed (2 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [4/36]: Unnamed (2 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [5/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [6/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [7/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [8/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [9/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [10/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [11/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [12/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [13/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [14/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [15/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [16/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [17/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [18/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [19/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [20/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [21/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [22/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [23/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [24/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [25/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [26/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [27/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [28/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [29/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [30/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [31/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [32/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [33/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [34/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [35/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [36/36]: Unnamed (1 photos)
-[GooglePhotosLayout] ✅ Populated people grid with 36 faces
-[GooglePhotosLayout] ✅ _build_people_tree() completed successfully
-[GooglePhotosLayout] Tracking 14 paths for multi-selection
-[GooglePhotosLayout] 🚀 Virtual scrolling: 10 date groups (5 rendered, 5 placeholders)
+[GooglePhotosLayout] 🔍 Parameters: [1]
+[GooglePhotosLayout] 📊 Loaded 102 photos from database
+[GooglePhotosLayout] Tracking 102 paths for multi-selection
+[GooglePhotosLayout] 📐 Responsive grid: 7 columns (viewport: 1517px, thumb: 200px)
+[GooglePhotosLayout] 🚀 Virtual scrolling: 37 date groups (5 rendered, 32 placeholders)
 [GooglePhotosLayout] Queued 6 thumbnails for loading (initial limit: 50)
-[GooglePhotosLayout] Filtering by person from grid: face_003
-[GooglePhotosLayout] Loading photos from database (thumb size: 200px) [person=face_003]...
-[GooglePhotosLayout] Filtering by person: face_003
+[14:13:50.949] [AccordionSidebar] Expanding section: people
+[14:13:50.965] [AccordionSidebar] Loading content for section: people
+[14:13:50.980] [AccordionSidebar] Loading People section...
+[14:13:50.980] [AccordionSidebar] ✓ Section expanded: people
+[14:14:04.842] [AccordionSidebar] Expanding section: dates
+[14:14:04.858] [AccordionSidebar] Loading content for section: dates
+[14:14:04.861] [AccordionSidebar] Loading Dates section...
+[14:14:04.861] [AccordionSidebar] ✓ Section expanded: dates
+[14:14:06.522] [AccordionSidebar] Expanding section: people
+[14:14:06.528] [AccordionSidebar] Loading content for section: people
+[14:14:06.528] [AccordionSidebar] Loading People section...
+[14:14:06.528] [AccordionSidebar] ✓ Section expanded: people
+[14:14:08.833] [AccordionSidebar] Expanding section: people
+[14:14:08.857] [AccordionSidebar] Loading content for section: people
+[14:14:08.873] [AccordionSidebar] Loading People section...
+[14:14:08.873] [AccordionSidebar] ✓ Section expanded: people
+[14:14:10.766] [AccordionSidebar] Expanding section: folders
+[14:14:10.781] [AccordionSidebar] Loading content for section: folders
+[14:14:10.798] [AccordionSidebar] Loading Folders section...
+[14:14:10.798] [AccordionSidebar] ✓ Section expanded: folders
+[14:14:12.153] [AccordionSidebar] Expanding section: tags
+[14:14:12.169] [AccordionSidebar] Loading content for section: tags
+[14:14:12.204] [AccordionSidebar] Loading Tags section...
+[14:14:12.204] [AccordionSidebar] ✓ Section expanded: tags
+[14:14:13.574] [AccordionSidebar] Expanding section: branches
+[14:14:13.590] [AccordionSidebar] Loading content for section: branches
+[14:14:13.590] [AccordionSidebar] Loading Branches section...
+[14:14:13.590] [AccordionSidebar] ✓ Section expanded: branches
+[14:14:15.090] [AccordionSidebar] Expanding section: quick
+[14:14:15.103] [AccordionSidebar] Loading content for section: quick
+[14:14:15.135] [AccordionSidebar] Loading Quick Dates section...
+[14:14:15.137] [AccordionSidebar] ✓ Section expanded: quick
+[14:14:15.137] [AccordionSidebar] Loaded 6 quick date items
+[14:14:15.167] [AccordionSidebar] ✓ Quick dates section loaded with 6 items
+[LayoutManager] Already using layout: google
+[MainWindow] ✓ Switched to layout: google
+[LayoutManager] Switching layout: google → current
+[LayoutManager] 🔄 Restoring original central widget: QWidget
+[CurrentLayout] Layout activated - scheduling deferred refresh
+[LayoutManager] ✓ Switched to: Current Layout
+[MainWindow] ✓ Switched to layout: current
+[CurrentLayout] Executing deferred reload...
+[CurrentLayout] Reloading sidebar...
+[SidebarQt] reload() called, display_mode=list, tabs_visible=False
+[SidebarQt] Calling _build_tree_model() instead of tabs refresh
+[SidebarQt] _build_tree_model() called with project_id=1
+[Sidebar] Detaching old model from tree view
+[Sidebar] Pending events processed (skipped explicit processEvents)
+[Sidebar] Creating fresh model (avoiding Qt segfault)
+[Sidebar] Attaching fresh model to tree view
+[SidebarQt] list_branches() returned 1 branches
+[SidebarQt] Sample branches: [{'branch_key': 'all', 'display_name': '📁 All Photos', 'count': 102}]
+[Sidebar] Loaded 23 folder counts in batch (performance optimization)
+[Sidebar] Loaded date counts in batch: 3 years, 15 months, 37 days
+[Sidebar] Loading videos for project_id=1
+[Sidebar] Found 3 videos in project 1
+[VideoDateHierarchy] Building: 1 years, 1 months, 3 videos
+[Sidebar] Added 🎬 Videos section with 3 videos and filters.
+
+[Sidebar] ===== Initiating mobile device scan from sidebar =====
+[Sidebar] Database: <reference_db.ReferenceDB object at 0x000001D8CC3BA790>
+[Sidebar] Register devices: True
+
+[DeviceScanner] ===== Starting device scan  =====
+[DeviceScanner] Platform: Windows
+[DeviceScanner] Database registration: enabled
+[DeviceScanner] Scanning Windows drives...
+[DeviceScanner]   Checking drive letters D:-Z:...
+[DeviceScanner]   Checking portable devices (MTP/PTP)...
+[DeviceScanner]     Attempting Shell COM enumeration...
+[DeviceScanner]     COM initialized for current thread
+[DeviceScanner]     Found 1 items under 'This PC'
+[DeviceScanner]       → Item: '(C:) Lokaler Datenträger' | IsFolder=True | IsFileSystem=True
+[DeviceScanner]     COM uninitialized
+[DeviceScanner] ===== Scan complete: 0 device(s) found =====
+[DeviceScanner] Results cached for 5.0s
+
+[Sidebar] ===== Scan complete: 0 mobile device(s) found =====
+[Sidebar]   ✗ No devices found
+[Sidebar] ===== End device scan =====
+
+[Sidebar] No mobile devices detected - added help message
+[Sidebar] starting async count population for 1 branch targets
+[Sidebar][counts worker gen=4] running for 1 targets...
+[CurrentLayout] ✓ Sidebar reload completed
+[CurrentLayout] Reloading grid...
+
+[GRID] ====== reload() CALLED ======
+[GRID] project_id=1, load_mode=branch
+[GRID] Step 1: Setting _reloading=True
+[GRID] Fetched tags for 0 paths, got 0 entries
+[Sidebar][counts worker gen=4] finished scanning targets, scheduling UI update
+[GRID] Loaded 0 thumbnails.
+[GRID] Reloaded 0 thumbnails in None-mode (base=0)
+[GRID] Step 5: Emitting gridReloaded signal...
+
+[Breadcrumb] _update_breadcrumb() CALLED
+[Breadcrumb] Grid state: navigation_mode=branch, project_id=1
+[Breadcrumb] Looking for CURRENT project_id=1 in 1 projects
+[Breadcrumb] Found CURRENT project name: P01
+[Breadcrumb] Added project segment: P01
+[Breadcrumb] Added branch segment: All Photos
+[Breadcrumb] Calling set_path() with 2 segments
+[BreadcrumbNav] set_path() called with 2 segments
+[BreadcrumbNav] Clearing 3 existing widgets
+[BreadcrumbNav] Cleared all existing widgets
+[BreadcrumbNav] Added segment 0: P01
+[BreadcrumbNav] Added segment 1: All Photos
+[BreadcrumbNav] set_path() completed - 2 segments added
+[Breadcrumb] set_path() completed successfully
+[Breadcrumb] _update_breadcrumb() COMPLETED
+
+[GRID] Step 5: ✓ gridReloaded signal emitted
+[GRID] ====== reload() COMPLETED SUCCESSFULLY ======
+
+[GRID] Finally block: Setting _reloading=False
+[CurrentLayout] ✓ Grid reload completed
+[Sidebar][counts applied] updated UI with counts
+
+[GRID] ====== reload() CALLED ======
+[GRID] project_id=1, load_mode=branch
+[GRID] Step 1: Setting _reloading=True
+[get_images_by_branch] project_id=1, branch_key='all'
+[get_images_by_branch] Found 102 photos
+[DB_TAGS_DEBUG] Sample normalized paths being queried:
+  [0] norm='c:/users/suleimaa/desktop/eigen/1.png'
+      orig='c:/users/suleimaa/desktop/eigen/1.png'
+  [1] norm='c:/users/suleimaa/desktop/eigen/20241127-lastminutes.png'
+      orig='c:/users/suleimaa/desktop/eigen/20241127-lastminutes.png'
+  [2] norm='c:/users/suleimaa/desktop/eigen/20250122_g+d genai cheat sheet 1.jpg'
+      orig='c:/users/suleimaa/desktop/eigen/20250122_g+d genai cheat sheet 1.jpg'
+[DB_TAGS_SQL] Photos query:
+                        SELECT pm.path, t.name
+                        FROM photo_metadata pm
+                        JOIN photo_tags pt ON pt.photo_...
+[DB_TAGS_SQL] Videos query:
+                        SELECT vm.path, t.name
+                        FROM video_metadata vm
+                        JOIN video_tags vt ON vt.video_...
+[DB_TAGS_SQL] First 3 params: ['c:/users/suleimaa/desktop/eigen/1.png', 'c:/users/suleimaa/desktop/eigen/20241127-lastminutes.png', 'c:/users/suleimaa/desktop/eigen/20250122_g+d genai cheat sheet 1.jpg']
+[DB_TAGS_SQL] project_id: 1
+[DB_TAGS_SQL] Query returned 0 rows (0 photos + 0 videos)
+[DB_TAGS_SQL] No rows returned! Checking if ANY tags exist in DB...
+[DB_TAGS_SQL] Sample tagged PHOTOS in DB:
+[DB_TAGS_SQL] Sample tagged VIDEOS in DB:
+[DB_TAGS] Retrieved 0 tags for 0/102 paths (project_id=1)
+[GRID] Fetched tags for 102 paths, got 102 entries
+[GRID] Using scroll-based start position: 0 (scroll: 0/1222)
+[GRID] Near bottom, loading all remaining 37 items
+[GRID] Loading viewport range: 0-101 of 102
+[GRID] Queued 102 new thumbnail workers
+[GRID] Near bottom, loading all remaining 37 items
+[GRID] Loading viewport range: 0-101 of 102
+[GRID] Near bottom, loading all remaining 37 items
+[GRID] Loading viewport range: 0-101 of 102
+[GRID] Loaded 102 thumbnails.
+[GRID] Reloaded 102 thumbnails in branch-mode (base=102)
+[GRID] Step 5: Emitting gridReloaded signal...
+
+[Breadcrumb] _update_breadcrumb() CALLED
+[Breadcrumb] Grid state: navigation_mode=branch, project_id=1
+[Breadcrumb] Looking for CURRENT project_id=1 in 1 projects
+[Breadcrumb] Found CURRENT project name: P01
+[Breadcrumb] Added project segment: P01
+[Breadcrumb] Added branch segment: All Photos
+[Breadcrumb] Calling set_path() with 2 segments
+[BreadcrumbNav] set_path() called with 2 segments
+[BreadcrumbNav] Clearing 3 existing widgets
+[BreadcrumbNav] Cleared all existing widgets
+[BreadcrumbNav] Added segment 0: P01
+[BreadcrumbNav] Added segment 1: All Photos
+[BreadcrumbNav] set_path() completed - 2 segments added
+[Breadcrumb] set_path() completed successfully
+[Breadcrumb] _update_breadcrumb() COMPLETED
+
+[GRID] Step 5: ✓ gridReloaded signal emitted
+[GRID] ====== reload() COMPLETED SUCCESSFULLY ======
+
+[GRID] Finally block: Setting _reloading=False
+[GRID] Near bottom, loading all remaining 37 items
+[GRID] Loading viewport range: 0-101 of 102
+[GRID] Queued 10 new thumbnail workers
+2025-12-08 14:15:17,379 [WARNING] Cannot open image file c:/users/suleimaa/desktop/eigen/syria/chatgpt image 6. mai 2025, 16_50_55.png: cannot identify image file 'c:/users/suleimaa/desktop/eigen/syria/chatgpt image 6. mai 2025, 16_50_55.png'
+2025-12-08 14:15:17,379 [INFO] Marked as failed (will not retry): c:/users/suleimaa/desktop/eigen/syria/chatgpt image 6. mai 2025, 16_50_55.png
+[SidebarQt] switch_display_mode(tabs) - canceling old workers
+[SidebarQt] Canceled list workers (new gen=5)
+[SidebarQt] Hiding tree view and accordion
+[SidebarQt] Showing tabs controller
+[SidebarQt] Calling tabs_controller.refresh_all(force=True) after mode switch
+[14:15:18.964] [Tabs] refresh_all(force=True) called
+[14:15:18.964] [Tabs] refresh_all: key=branches, idx=0, force=True
+[14:15:18.964] [Tabs] _populate_tab(branches, idx=0, force=True)
+[14:15:18.964] [Tabs]   populated=True, loading=False
+[14:15:18.964] [Tabs]   Force refresh: removing branches from populated set
+[14:15:18.964] [Tabs]   Starting load for branches
+[14:15:18.964] [Tabs] _show_loading idx=0 label='Loading Branches…'
+[14:15:18.964] [Tabs] _clear_tab idx=0
+[14:15:18.964] [Tabs] refresh_all: key=folders, idx=1, force=True
+[14:15:18.964] [Tabs] _populate_tab(folders, idx=1, force=True)
+[14:15:18.964] [Tabs]   populated=True, loading=False
+[14:15:18.964] [Tabs]   Force refresh: removing folders from populated set
+[14:15:18.964] [Tabs]   Starting load for folders
+[14:15:18.964] [Tabs] _show_loading idx=1 label='Loading Folders…'
+[14:15:18.964] [Tabs] _clear_tab idx=1
+[14:15:18.964] [Tabs] refresh_all: key=dates, idx=2, force=True
+[14:15:18.964] [Tabs] _populate_tab(dates, idx=2, force=True)
+[14:15:18.964] [Tabs]   populated=True, loading=False
+[14:15:18.964] [Tabs] _load_folders → got 23 rows for project_id=1
+[14:15:18.979] [Tabs]   Force refresh: removing dates from populated set
+[14:15:18.979] [Tabs]   Starting load for dates
+[14:15:18.979] [Tabs] _show_loading idx=2 label='Loading Dates…'
+[14:15:18.979] [Tabs] _clear_tab idx=2
+[14:15:18.982] [Tabs] refresh_all: key=tags, idx=3, force=True
+[14:15:18.982] [Tabs] _populate_tab(tags, idx=3, force=True)
+[14:15:18.982] [Tabs]   populated=True, loading=False
+[14:15:18.982] [Tabs]   Force refresh: removing tags from populated set
+[14:15:18.982] [Tabs]   Starting load for tags
+[14:15:18.982] [Tabs] _show_loading idx=3 label='Loading Tags…'
+[14:15:18.982] [Tabs] _clear_tab idx=3
+[14:15:18.982] [Tabs] _load_dates → got hierarchy data for project_id=1
+[14:15:18.982] [Tabs] refresh_all: key=quick, idx=5, force=True
+[14:15:18.982] [Tabs] _populate_tab(quick, idx=5, force=True)
+[14:15:18.982] [Tabs]   populated=True, loading=False
+[14:15:18.982] [Tabs]   Force refresh: removing quick from populated set
+[14:15:18.982] [Tabs]   Starting load for quick
+[14:15:18.982] [Tabs] _show_loading idx=5 label='Loading Quick Dates…'
+[14:15:18.982] [Tabs] _clear_tab idx=5
+[14:15:18.982] [Tabs] _load_tags → got 0 rows for project_id=1
+[14:15:18.982] [Tabs] refresh_all(force=True) completed
+[SidebarQt] tabs_controller.refresh_all() completed after mode switch
+[14:15:18.982] [Tabs] _load_quick → got 6 rows
+[14:15:18.982] [Tabs] _clear_tab idx=0
+[TAG FILTER] Cleared by navigation.
+
+[GRID] ====== reload() CALLED ======
+[GRID] project_id=1, load_mode=branch
+[GRID] Step 1: Setting _reloading=True
+[get_images_by_branch] project_id=1, branch_key='all'
+[get_images_by_branch] Found 102 photos
+[DB_TAGS_DEBUG] Sample normalized paths being queried:
+  [0] norm='c:/users/suleimaa/desktop/eigen/1.png'
+      orig='c:/users/suleimaa/desktop/eigen/1.png'
+  [1] norm='c:/users/suleimaa/desktop/eigen/20241127-lastminutes.png'
+      orig='c:/users/suleimaa/desktop/eigen/20241127-lastminutes.png'
+  [2] norm='c:/users/suleimaa/desktop/eigen/20250122_g+d genai cheat sheet 1.jpg'
+      orig='c:/users/suleimaa/desktop/eigen/20250122_g+d genai cheat sheet 1.jpg'
+[DB_TAGS_SQL] Photos query:
+                        SELECT pm.path, t.name
+                        FROM photo_metadata pm
+                        JOIN photo_tags pt ON pt.photo_...
+[DB_TAGS_SQL] Videos query:
+                        SELECT vm.path, t.name
+                        FROM video_metadata vm
+                        JOIN video_tags vt ON vt.video_...
+[DB_TAGS_SQL] First 3 params: ['c:/users/suleimaa/desktop/eigen/1.png', 'c:/users/suleimaa/desktop/eigen/20241127-lastminutes.png', 'c:/users/suleimaa/desktop/eigen/20250122_g+d genai cheat sheet 1.jpg']
+[DB_TAGS_SQL] project_id: 1
+[DB_TAGS_SQL] Query returned 0 rows (0 photos + 0 videos)
+[DB_TAGS_SQL] No rows returned! Checking if ANY tags exist in DB...
+[DB_TAGS_SQL] Sample tagged PHOTOS in DB:
+[DB_TAGS_SQL] Sample tagged VIDEOS in DB:
+[DB_TAGS] Retrieved 0 tags for 0/102 paths (project_id=1)
+[GRID] Fetched tags for 102 paths, got 102 entries
+[14:15:19.016] [Tabs] _clear_tab idx=1
+[14:15:19.016] [Tabs] _clear_tab idx=2
+[14:15:19.029] [Tabs] _finish_tags called: idx=3, gen=3, rows_count=0
+[14:15:19.029] [Tabs] _clear_tab idx=3
+[14:15:19.032] [Tabs] _clear_tab idx=5
+[GRID] Loaded 102 thumbnails.
+[GRID] Reloaded 102 thumbnails in branch-mode (base=102)
+[GRID] Step 5: Emitting gridReloaded signal...
+
+[Breadcrumb] _update_breadcrumb() CALLED
+[Breadcrumb] Grid state: navigation_mode=branch, project_id=1
+[Breadcrumb] Looking for CURRENT project_id=1 in 1 projects
+[Breadcrumb] Found CURRENT project name: P01
+[Breadcrumb] Added project segment: P01
+[Breadcrumb] Added branch segment: All Photos
+[Breadcrumb] Calling set_path() with 2 segments
+[BreadcrumbNav] set_path() called with 2 segments
+[BreadcrumbNav] Clearing 3 existing widgets
+[BreadcrumbNav] Cleared all existing widgets
+[BreadcrumbNav] Added segment 0: P01
+[BreadcrumbNav] Added segment 1: All Photos
+[BreadcrumbNav] set_path() completed - 2 segments added
+[Breadcrumb] set_path() completed successfully
+[Breadcrumb] _update_breadcrumb() COMPLETED
+
+[GRID] Step 5: ✓ gridReloaded signal emitted
+[GRID] ====== reload() COMPLETED SUCCESSFULLY ======
+
+[GRID] Finally block: Setting _reloading=False
+
+[GRID] ====== reload() CALLED ======
+[GRID] project_id=1, load_mode=branch
+[GRID] Step 1: Setting _reloading=True
+[get_images_by_branch] project_id=1, branch_key='all'
+[get_images_by_branch] Found 102 photos
+[DB_TAGS_DEBUG] Sample normalized paths being queried:
+  [0] norm='c:/users/suleimaa/desktop/eigen/1.png'
+      orig='c:/users/suleimaa/desktop/eigen/1.png'
+  [1] norm='c:/users/suleimaa/desktop/eigen/20241127-lastminutes.png'
+      orig='c:/users/suleimaa/desktop/eigen/20241127-lastminutes.png'
+  [2] norm='c:/users/suleimaa/desktop/eigen/20250122_g+d genai cheat sheet 1.jpg'
+      orig='c:/users/suleimaa/desktop/eigen/20250122_g+d genai cheat sheet 1.jpg'
+[DB_TAGS_SQL] Photos query:
+                        SELECT pm.path, t.name
+                        FROM photo_metadata pm
+                        JOIN photo_tags pt ON pt.photo_...
+[DB_TAGS_SQL] Videos query:
+                        SELECT vm.path, t.name
+                        FROM video_metadata vm
+                        JOIN video_tags vt ON vt.video_...
+[DB_TAGS_SQL] First 3 params: ['c:/users/suleimaa/desktop/eigen/1.png', 'c:/users/suleimaa/desktop/eigen/20241127-lastminutes.png', 'c:/users/suleimaa/desktop/eigen/20250122_g+d genai cheat sheet 1.jpg']
+[DB_TAGS_SQL] project_id: 1
+[DB_TAGS_SQL] Query returned 0 rows (0 photos + 0 videos)
+[DB_TAGS_SQL] No rows returned! Checking if ANY tags exist in DB...
+[DB_TAGS_SQL] Sample tagged PHOTOS in DB:
+[DB_TAGS_SQL] Sample tagged VIDEOS in DB:
+[DB_TAGS] Retrieved 0 tags for 0/102 paths (project_id=1)
+[GRID] Fetched tags for 102 paths, got 102 entries
+[GRID] Loaded 102 thumbnails.
+[GRID] Reloaded 102 thumbnails in branch-mode (base=102)
+[GRID] Step 5: Emitting gridReloaded signal...
+
+[Breadcrumb] _update_breadcrumb() CALLED
+[Breadcrumb] Grid state: navigation_mode=branch, project_id=1
+[Breadcrumb] Looking for CURRENT project_id=1 in 1 projects
+[Breadcrumb] Found CURRENT project name: P01
+[Breadcrumb] Added project segment: P01
+[Breadcrumb] Added branch segment: All Photos
+[Breadcrumb] Calling set_path() with 2 segments
+[BreadcrumbNav] set_path() called with 2 segments
+[BreadcrumbNav] Clearing 3 existing widgets
+[BreadcrumbNav] Cleared all existing widgets
+[BreadcrumbNav] Added segment 0: P01
+[BreadcrumbNav] Added segment 1: All Photos
+[BreadcrumbNav] set_path() completed - 2 segments added
+[Breadcrumb] set_path() completed successfully
+[Breadcrumb] _update_breadcrumb() COMPLETED
+
+[GRID] Step 5: ✓ gridReloaded signal emitted
+[GRID] ====== reload() COMPLETED SUCCESSFULLY ======
+
+[GRID] Finally block: Setting _reloading=False
+[GRID] Near bottom, loading all remaining 37 items
+[GRID] Loading viewport range: 0-101 of 102
+[GRID] Queued 102 new thumbnail workers
+[GRID] Near bottom, loading all remaining 37 items
+[GRID] Loading viewport range: 0-101 of 102
+[14:15:23.932] [Tabs] _on_tab_changed(idx=1)
+[14:15:23.932] [Tabs] _start_timeout idx=1 type=folders
+[14:15:23.933] [Tabs] _populate_tab(folders, idx=1, force=False)
+[14:15:23.933] [Tabs]   populated=True, loading=False
+[14:15:23.933] [Tabs]   Skipping folders: already populated or loading
+[14:15:23.933] [Tabs] _on_tab_changed → tab_type=folders
+[14:15:27.031] [Tabs] _on_tab_changed(idx=2)
+[14:15:27.031] [Tabs] _start_timeout idx=2 type=dates
+[14:15:27.047] [Tabs] _populate_tab(dates, idx=2, force=False)
+[14:15:27.047] [Tabs]   populated=True, loading=False
+[14:15:27.047] [Tabs]   Skipping dates: already populated or loading
+[14:15:27.047] [Tabs] _on_tab_changed → tab_type=dates
+[14:15:28.594] [Tabs] _on_tab_changed(idx=3)
+[14:15:28.594] [Tabs] _start_timeout idx=3 type=tags
+[14:15:28.594] [Tabs] _populate_tab(tags, idx=3, force=False)
+[14:15:28.594] [Tabs]   populated=True, loading=False
+[14:15:28.594] [Tabs]   Skipping tags: already populated or loading
+[14:15:28.594] [Tabs] _on_tab_changed → tab_type=tags
+[14:15:29.732] [Tabs] _on_tab_changed(idx=4)
+[14:15:29.732] [Tabs] _start_timeout idx=4 type=people
+[14:15:29.745] [Tabs] _populate_tab(people, idx=4, force=False)
+[14:15:29.745] [Tabs]   populated=False, loading=False
+[14:15:29.745] [Tabs]   Starting load for people
+[14:15:29.745] [Tabs] _show_loading idx=4 label='Loading People…'
+[14:15:29.748] [Tabs] _clear_tab idx=4
+[14:15:29.748] [Tabs] _on_tab_changed → tab_type=people
+[14:15:29.748] [Tabs] _load_people → got 0 clusters
+[14:15:29.764] [Tabs] _clear_tab idx=4
+[People] No faces detected yet
+[14:15:31.948] [Tabs] _on_tab_changed(idx=5)
+[14:15:31.948] [Tabs] _start_timeout idx=5 type=quick
+[14:15:31.948] [Tabs] _populate_tab(quick, idx=5, force=False)
+[14:15:31.948] [Tabs]   populated=True, loading=False
+[14:15:31.948] [Tabs]   Skipping quick: already populated or loading
+[14:15:31.948] [Tabs] _on_tab_changed → tab_type=quick
+[14:15:40.173] [Tabs] _on_tab_changed(idx=0)
+[14:15:40.173] [Tabs] _start_timeout idx=0 type=branches
+[14:15:40.173] [Tabs] _populate_tab(branches, idx=0, force=False)
+[14:15:40.173] [Tabs]   populated=True, loading=False
+[14:15:40.173] [Tabs]   Skipping branches: already populated or loading
+[14:15:40.173] [Tabs] _on_tab_changed → tab_type=branches
+[14:15:44.518] [Tabs] _on_tab_changed(idx=1)
+[14:15:44.518] [Tabs] _start_timeout idx=1 type=folders
+[14:15:44.518] [Tabs] _populate_tab(folders, idx=1, force=False)
+[14:15:44.518] [Tabs]   populated=True, loading=False
+[14:15:44.518] [Tabs]   Skipping folders: already populated or loading
+[14:15:44.518] [Tabs] _on_tab_changed → tab_type=folders
+[14:15:53.663] [Tabs] _on_tab_changed(idx=2)
+[14:15:53.671] [Tabs] _start_timeout idx=2 type=dates
+[14:15:53.691] [Tabs] _populate_tab(dates, idx=2, force=False)
+[14:15:53.691] [Tabs]   populated=True, loading=False
+[14:15:53.693] [Tabs]   Skipping dates: already populated or loading
+[14:15:53.693] [Tabs] _on_tab_changed → tab_type=dates
+
+[GRID] ====== reload() CALLED ======
+[GRID] project_id=1, load_mode=branch
+[GRID] Step 1: Setting _reloading=True
+[get_images_by_branch] project_id=1, branch_key='all'
+[get_images_by_branch] Found 102 photos
+[DB_TAGS_DEBUG] Sample normalized paths being queried:
+  [0] norm='c:/users/suleimaa/desktop/eigen/1.png'
+      orig='c:/users/suleimaa/desktop/eigen/1.png'
+  [1] norm='c:/users/suleimaa/desktop/eigen/20241127-lastminutes.png'
+      orig='c:/users/suleimaa/desktop/eigen/20241127-lastminutes.png'
+  [2] norm='c:/users/suleimaa/desktop/eigen/20250122_g+d genai cheat sheet 1.jpg'
+      orig='c:/users/suleimaa/desktop/eigen/20250122_g+d genai cheat sheet 1.jpg'
+[DB_TAGS_SQL] Photos query:
+                        SELECT pm.path, t.name
+                        FROM photo_metadata pm
+                        JOIN photo_tags pt ON pt.photo_...
+[DB_TAGS_SQL] Videos query:
+                        SELECT vm.path, t.name
+                        FROM video_metadata vm
+                        JOIN video_tags vt ON vt.video_...
+[DB_TAGS_SQL] First 3 params: ['c:/users/suleimaa/desktop/eigen/1.png', 'c:/users/suleimaa/desktop/eigen/20241127-lastminutes.png', 'c:/users/suleimaa/desktop/eigen/20250122_g+d genai cheat sheet 1.jpg']
+[DB_TAGS_SQL] project_id: 1
+[DB_TAGS_SQL] Query returned 0 rows (0 photos + 0 videos)
+[DB_TAGS_SQL] No rows returned! Checking if ANY tags exist in DB...
+[DB_TAGS_SQL] Sample tagged PHOTOS in DB:
+[DB_TAGS_SQL] Sample tagged VIDEOS in DB:
+[DB_TAGS] Retrieved 0 tags for 0/102 paths (project_id=1)
+[GRID] Fetched tags for 102 paths, got 102 entries
+[GRID] Loaded 102 thumbnails.
+[GRID] Reloaded 102 thumbnails in branch-mode (base=102)
+[GRID] Step 5: Emitting gridReloaded signal...
+
+[Breadcrumb] _update_breadcrumb() CALLED
+[Breadcrumb] Grid state: navigation_mode=branch, project_id=1
+[Breadcrumb] Looking for CURRENT project_id=1 in 1 projects
+[Breadcrumb] Found CURRENT project name: P01
+[Breadcrumb] Added project segment: P01
+[Breadcrumb] Added branch segment: All Photos
+[Breadcrumb] Calling set_path() with 2 segments
+[BreadcrumbNav] set_path() called with 2 segments
+[BreadcrumbNav] Clearing 3 existing widgets
+[BreadcrumbNav] Cleared all existing widgets
+[BreadcrumbNav] Added segment 0: P01
+[BreadcrumbNav] Added segment 1: All Photos
+[BreadcrumbNav] set_path() completed - 2 segments added
+[Breadcrumb] set_path() completed successfully
+[Breadcrumb] _update_breadcrumb() COMPLETED
+
+[GRID] Step 5: ✓ gridReloaded signal emitted
+[GRID] ====== reload() COMPLETED SUCCESSFULLY ======
+
+[GRID] Finally block: Setting _reloading=False
+
+[GRID] ====== reload() CALLED ======
+[GRID] project_id=1, load_mode=branch
+[GRID] Step 1: Setting _reloading=True
+[DB_TAGS_DEBUG] Sample normalized paths being queried:
+  [0] norm='c:/users/suleimaa/desktop/eigen/reisepass/suleimanammar-revised.jpg'
+      orig='c:/users/suleimaa/desktop/eigen/reisepass/suleimanammar-revised.jpg'
+  [1] norm='c:/users/suleimaa/desktop/eigen/suleimanammar-businesscard.jpg'
+      orig='c:/users/suleimaa/desktop/eigen/suleimanammar-businesscard.jpg'
+  [2] norm='c:/users/suleimaa/desktop/eigen/20250122_g+d genai cheat sheet 1.jpg'
+      orig='c:/users/suleimaa/desktop/eigen/20250122_g+d genai cheat sheet 1.jpg'
+[DB_TAGS_SQL] Photos query:
+                        SELECT pm.path, t.name
+                        FROM photo_metadata pm
+                        JOIN photo_tags pt ON pt.photo_...
+[DB_TAGS_SQL] Videos query:
+                        SELECT vm.path, t.name
+                        FROM video_metadata vm
+                        JOIN video_tags vt ON vt.video_...
+[DB_TAGS_SQL] First 3 params: ['c:/users/suleimaa/desktop/eigen/reisepass/suleimanammar-revised.jpg', 'c:/users/suleimaa/desktop/eigen/suleimanammar-businesscard.jpg', 'c:/users/suleimaa/desktop/eigen/20250122_g+d genai cheat sheet 1.jpg']
+[DB_TAGS_SQL] project_id: 1
+[DB_TAGS_SQL] Query returned 0 rows (0 photos + 0 videos)
+[DB_TAGS_SQL] No rows returned! Checking if ANY tags exist in DB...
+[DB_TAGS_SQL] Sample tagged PHOTOS in DB:
+[DB_TAGS_SQL] Sample tagged VIDEOS in DB:
+[DB_TAGS] Retrieved 0 tags for 0/71 paths (project_id=1)
+[GRID] Fetched tags for 71 paths, got 71 entries
+[GRID] Using scroll-based start position: 0 (scroll: 0/592)
+[GRID] Near bottom, loading all remaining 30 items
+[GRID] Loading viewport range: 0-70 of 71
+[GRID] Queued 71 new thumbnail workers
+[GRID] Loaded 71 thumbnails.
+[GRID] Reloaded 71 thumbnails in date-mode (base=71)
+[GRID] Step 5: Emitting gridReloaded signal...
+
+[Breadcrumb] _update_breadcrumb() CALLED
+[Breadcrumb] Grid state: navigation_mode=branch, project_id=1
+[Breadcrumb] Looking for CURRENT project_id=1 in 1 projects
+[Breadcrumb] Found CURRENT project name: P01
+[Breadcrumb] Added project segment: P01
+[Breadcrumb] Added branch segment: All Photos
+[Breadcrumb] Calling set_path() with 2 segments
+[BreadcrumbNav] set_path() called with 2 segments
+[BreadcrumbNav] Clearing 3 existing widgets
+[BreadcrumbNav] Cleared all existing widgets
+[BreadcrumbNav] Added segment 0: P01
+[BreadcrumbNav] Added segment 1: All Photos
+[BreadcrumbNav] set_path() completed - 2 segments added
+[Breadcrumb] set_path() completed successfully
+[Breadcrumb] _update_breadcrumb() COMPLETED
+
+[GRID] Step 5: ✓ gridReloaded signal emitted
+[GRID] ====== reload() COMPLETED SUCCESSFULLY ======
+
+[GRID] Finally block: Setting _reloading=False
+[GRID] Near bottom, loading all remaining 30 items
+[GRID] Loading viewport range: 0-70 of 71
+
+[GRID] ====== reload() CALLED ======
+[GRID] project_id=1, load_mode=date
+[GRID] Step 1: Setting _reloading=True
+[DB_TAGS_DEBUG] Sample normalized paths being queried:
+  [0] norm='c:/users/suleimaa/desktop/eigen/reisepass/suleimanammar-revised.jpg'
+      orig='c:/users/suleimaa/desktop/eigen/reisepass/suleimanammar-revised.jpg'
+  [1] norm='c:/users/suleimaa/desktop/eigen/suleimanammar-businesscard.jpg'
+      orig='c:/users/suleimaa/desktop/eigen/suleimanammar-businesscard.jpg'
+  [2] norm='c:/users/suleimaa/desktop/eigen/20250122_g+d genai cheat sheet 1.jpg'
+      orig='c:/users/suleimaa/desktop/eigen/20250122_g+d genai cheat sheet 1.jpg'
+[DB_TAGS_SQL] Photos query:
+                        SELECT pm.path, t.name
+                        FROM photo_metadata pm
+                        JOIN photo_tags pt ON pt.photo_...
+[DB_TAGS_SQL] Videos query:
+                        SELECT vm.path, t.name
+                        FROM video_metadata vm
+                        JOIN video_tags vt ON vt.video_...
+[DB_TAGS_SQL] First 3 params: ['c:/users/suleimaa/desktop/eigen/reisepass/suleimanammar-revised.jpg', 'c:/users/suleimaa/desktop/eigen/suleimanammar-businesscard.jpg', 'c:/users/suleimaa/desktop/eigen/20250122_g+d genai cheat sheet 1.jpg']
+[DB_TAGS_SQL] project_id: 1
+[DB_TAGS_SQL] Query returned 0 rows (0 photos + 0 videos)
+[DB_TAGS_SQL] No rows returned! Checking if ANY tags exist in DB...
+[DB_TAGS_SQL] Sample tagged PHOTOS in DB:
+[DB_TAGS_SQL] Sample tagged VIDEOS in DB:
+[DB_TAGS] Retrieved 0 tags for 0/71 paths (project_id=1)
+[GRID] Fetched tags for 71 paths, got 71 entries
+[GRID] Loaded 71 thumbnails.
+[GRID] Reloaded 71 thumbnails in date-mode (base=71)
+[GRID] Step 5: Emitting gridReloaded signal...
+
+[Breadcrumb] _update_breadcrumb() CALLED
+[Breadcrumb] Grid state: navigation_mode=branch, project_id=1
+[Breadcrumb] Looking for CURRENT project_id=1 in 1 projects
+[Breadcrumb] Found CURRENT project name: P01
+[Breadcrumb] Added project segment: P01
+[Breadcrumb] Added branch segment: All Photos
+[Breadcrumb] Calling set_path() with 2 segments
+[BreadcrumbNav] set_path() called with 2 segments
+[BreadcrumbNav] Clearing 3 existing widgets
+[BreadcrumbNav] Cleared all existing widgets
+[BreadcrumbNav] Added segment 0: P01
+[BreadcrumbNav] Added segment 1: All Photos
+[BreadcrumbNav] set_path() completed - 2 segments added
+[Breadcrumb] set_path() completed successfully
+[Breadcrumb] _update_breadcrumb() COMPLETED
+
+[GRID] Step 5: ✓ gridReloaded signal emitted
+[GRID] ====== reload() COMPLETED SUCCESSFULLY ======
+
+[GRID] Finally block: Setting _reloading=False
+
+[GRID] ====== reload() CALLED ======
+[GRID] project_id=1, load_mode=date
+[GRID] Step 1: Setting _reloading=True
+[DB_TAGS_DEBUG] Sample normalized paths being queried:
+  [0] norm='c:/users/suleimaa/desktop/eigen/syria/_screenshots/screenshot_1764691385.png'
+      orig='c:/users/suleimaa/desktop/eigen/syria/_screenshots/screenshot_1764691385.png'
+[DB_TAGS_SQL] Photos query:
+                        SELECT pm.path, t.name
+                        FROM photo_metadata pm
+                        JOIN photo_tags pt ON pt.photo_...
+[DB_TAGS_SQL] Videos query:
+                        SELECT vm.path, t.name
+                        FROM video_metadata vm
+                        JOIN video_tags vt ON vt.video_...
+[DB_TAGS_SQL] First 3 params: ['c:/users/suleimaa/desktop/eigen/syria/_screenshots/screenshot_1764691385.png']
+[DB_TAGS_SQL] project_id: 1
+[DB_TAGS_SQL] Query returned 0 rows (0 photos + 0 videos)
+[DB_TAGS_SQL] No rows returned! Checking if ANY tags exist in DB...
+[DB_TAGS_SQL] Sample tagged PHOTOS in DB:
+[DB_TAGS_SQL] Sample tagged VIDEOS in DB:
+[DB_TAGS] Retrieved 0 tags for 0/1 paths (project_id=1)
+[GRID] Fetched tags for 1 paths, got 1 entries
+[GRID] Loaded 1 thumbnails.
+[GRID] Reloaded 1 thumbnails in date-mode (base=1)
+[GRID] Step 5: Emitting gridReloaded signal...
+
+[Breadcrumb] _update_breadcrumb() CALLED
+[Breadcrumb] Grid state: navigation_mode=branch, project_id=1
+[Breadcrumb] Looking for CURRENT project_id=1 in 1 projects
+[Breadcrumb] Found CURRENT project name: P01
+[Breadcrumb] Added project segment: P01
+[Breadcrumb] Added branch segment: All Photos
+[Breadcrumb] Calling set_path() with 2 segments
+[BreadcrumbNav] set_path() called with 2 segments
+[BreadcrumbNav] Clearing 3 existing widgets
+[BreadcrumbNav] Cleared all existing widgets
+[BreadcrumbNav] Added segment 0: P01
+[BreadcrumbNav] Added segment 1: All Photos
+[BreadcrumbNav] set_path() completed - 2 segments added
+[Breadcrumb] set_path() completed successfully
+[Breadcrumb] _update_breadcrumb() COMPLETED
+
+[GRID] Step 5: ✓ gridReloaded signal emitted
+[GRID] ====== reload() COMPLETED SUCCESSFULLY ======
+
+[GRID] Finally block: Setting _reloading=False
+[GRID] Using scroll-based start position: 0 (scroll: 0/0)
+[GRID] Loading viewport range: 0-0 of 1
+[GRID] Queued 1 new thumbnail workers
+[GRID] Loading viewport range: 0-0 of 1
+
+[GRID] ====== reload() CALLED ======
+[GRID] project_id=1, load_mode=date
+[GRID] Step 1: Setting _reloading=True
+[DB_TAGS_DEBUG] Sample normalized paths being queried:
+  [0] norm='c:/users/suleimaa/desktop/eigen/syria/_screenshots/screenshot_1764691385.png'
+      orig='c:/users/suleimaa/desktop/eigen/syria/_screenshots/screenshot_1764691385.png'
+[DB_TAGS_SQL] Photos query:
+                        SELECT pm.path, t.name
+                        FROM photo_metadata pm
+                        JOIN photo_tags pt ON pt.photo_...
+[DB_TAGS_SQL] Videos query:
+                        SELECT vm.path, t.name
+                        FROM video_metadata vm
+                        JOIN video_tags vt ON vt.video_...
+[DB_TAGS_SQL] First 3 params: ['c:/users/suleimaa/desktop/eigen/syria/_screenshots/screenshot_1764691385.png']
+[DB_TAGS_SQL] project_id: 1
+[DB_TAGS_SQL] Query returned 0 rows (0 photos + 0 videos)
+[DB_TAGS_SQL] No rows returned! Checking if ANY tags exist in DB...
+[DB_TAGS_SQL] Sample tagged PHOTOS in DB:
+[DB_TAGS_SQL] Sample tagged VIDEOS in DB:
+[DB_TAGS] Retrieved 0 tags for 0/1 paths (project_id=1)
+[GRID] Fetched tags for 1 paths, got 1 entries
+[GRID] Loaded 1 thumbnails.
+[GRID] Reloaded 1 thumbnails in date-mode (base=1)
+[GRID] Step 5: Emitting gridReloaded signal...
+
+[Breadcrumb] _update_breadcrumb() CALLED
+[Breadcrumb] Grid state: navigation_mode=branch, project_id=1
+[Breadcrumb] Looking for CURRENT project_id=1 in 1 projects
+[Breadcrumb] Found CURRENT project name: P01
+[Breadcrumb] Added project segment: P01
+[Breadcrumb] Added branch segment: All Photos
+[Breadcrumb] Calling set_path() with 2 segments
+[BreadcrumbNav] set_path() called with 2 segments
+[BreadcrumbNav] Clearing 3 existing widgets
+[BreadcrumbNav] Cleared all existing widgets
+[BreadcrumbNav] Added segment 0: P01
+[BreadcrumbNav] Added segment 1: All Photos
+[BreadcrumbNav] set_path() completed - 2 segments added
+[Breadcrumb] set_path() completed successfully
+[Breadcrumb] _update_breadcrumb() COMPLETED
+
+[GRID] Step 5: ✓ gridReloaded signal emitted
+[GRID] ====== reload() COMPLETED SUCCESSFULLY ======
+
+[GRID] Finally block: Setting _reloading=False
+
+[GRID] ====== reload() CALLED ======
+[GRID] project_id=1, load_mode=date
+[GRID] Step 1: Setting _reloading=True
+[DB_TAGS_DEBUG] Sample normalized paths being queried:
+  [0] norm='c:/users/suleimaa/desktop/eigen/syria/_screenshots/screenshot_1764691385.png'
+      orig='c:/users/suleimaa/desktop/eigen/syria/_screenshots/screenshot_1764691385.png'
+[DB_TAGS_SQL] Photos query:
+                        SELECT pm.path, t.name
+                        FROM photo_metadata pm
+                        JOIN photo_tags pt ON pt.photo_...
+[DB_TAGS_SQL] Videos query:
+                        SELECT vm.path, t.name
+                        FROM video_metadata vm
+                        JOIN video_tags vt ON vt.video_...
+[DB_TAGS_SQL] First 3 params: ['c:/users/suleimaa/desktop/eigen/syria/_screenshots/screenshot_1764691385.png']
+[DB_TAGS_SQL] project_id: 1
+[DB_TAGS_SQL] Query returned 0 rows (0 photos + 0 videos)
+[DB_TAGS_SQL] No rows returned! Checking if ANY tags exist in DB...
+[DB_TAGS_SQL] Sample tagged PHOTOS in DB:
+[DB_TAGS_SQL] Sample tagged VIDEOS in DB:
+[DB_TAGS] Retrieved 0 tags for 0/1 paths (project_id=1)
+[GRID] Fetched tags for 1 paths, got 1 entries
+[GRID] Loaded 1 thumbnails.
+[GRID] Reloaded 1 thumbnails in date-mode (base=1)
+[GRID] Step 5: Emitting gridReloaded signal...
+
+[Breadcrumb] _update_breadcrumb() CALLED
+[Breadcrumb] Grid state: navigation_mode=branch, project_id=1
+[Breadcrumb] Looking for CURRENT project_id=1 in 1 projects
+[Breadcrumb] Found CURRENT project name: P01
+[Breadcrumb] Added project segment: P01
+[Breadcrumb] Added branch segment: All Photos
+[Breadcrumb] Calling set_path() with 2 segments
+[BreadcrumbNav] set_path() called with 2 segments
+[BreadcrumbNav] Clearing 3 existing widgets
+[BreadcrumbNav] Cleared all existing widgets
+[BreadcrumbNav] Added segment 0: P01
+[BreadcrumbNav] Added segment 1: All Photos
+[BreadcrumbNav] set_path() completed - 2 segments added
+[Breadcrumb] set_path() completed successfully
+[Breadcrumb] _update_breadcrumb() COMPLETED
+
+[GRID] Step 5: ✓ gridReloaded signal emitted
+[GRID] ====== reload() COMPLETED SUCCESSFULLY ======
+
+[GRID] Finally block: Setting _reloading=False
+[GRID] Loading viewport range: 0-0 of 1
+[GRID] Queued 1 new thumbnail workers
+[GRID] Loading viewport range: 0-0 of 1
+
+[GRID] ====== reload() CALLED ======
+[GRID] project_id=1, load_mode=date
+[GRID] Step 1: Setting _reloading=True
+[DB_TAGS_DEBUG] Sample normalized paths being queried:
+  [0] norm='c:/users/suleimaa/desktop/eigen/syria/_screenshots/screenshot_1764691385.png'
+      orig='c:/users/suleimaa/desktop/eigen/syria/_screenshots/screenshot_1764691385.png'
+[DB_TAGS_SQL] Photos query:
+                        SELECT pm.path, t.name
+                        FROM photo_metadata pm
+                        JOIN photo_tags pt ON pt.photo_...
+[DB_TAGS_SQL] Videos query:
+                        SELECT vm.path, t.name
+                        FROM video_metadata vm
+                        JOIN video_tags vt ON vt.video_...
+[DB_TAGS_SQL] First 3 params: ['c:/users/suleimaa/desktop/eigen/syria/_screenshots/screenshot_1764691385.png']
+[DB_TAGS_SQL] project_id: 1
+[DB_TAGS_SQL] Query returned 0 rows (0 photos + 0 videos)
+[DB_TAGS_SQL] No rows returned! Checking if ANY tags exist in DB...
+[DB_TAGS_SQL] Sample tagged PHOTOS in DB:
+[DB_TAGS_SQL] Sample tagged VIDEOS in DB:
+[DB_TAGS] Retrieved 0 tags for 0/1 paths (project_id=1)
+[GRID] Fetched tags for 1 paths, got 1 entries
+[GRID] Loaded 1 thumbnails.
+[GRID] Reloaded 1 thumbnails in date-mode (base=1)
+[GRID] Step 5: Emitting gridReloaded signal...
+
+[Breadcrumb] _update_breadcrumb() CALLED
+[Breadcrumb] Grid state: navigation_mode=branch, project_id=1
+[Breadcrumb] Looking for CURRENT project_id=1 in 1 projects
+[Breadcrumb] Found CURRENT project name: P01
+[Breadcrumb] Added project segment: P01
+[Breadcrumb] Added branch segment: All Photos
+[Breadcrumb] Calling set_path() with 2 segments
+[BreadcrumbNav] set_path() called with 2 segments
+[BreadcrumbNav] Clearing 3 existing widgets
+[BreadcrumbNav] Cleared all existing widgets
+[BreadcrumbNav] Added segment 0: P01
+[BreadcrumbNav] Added segment 1: All Photos
+[BreadcrumbNav] set_path() completed - 2 segments added
+[Breadcrumb] set_path() completed successfully
+[Breadcrumb] _update_breadcrumb() COMPLETED
+
+[GRID] Step 5: ✓ gridReloaded signal emitted
+[GRID] ====== reload() COMPLETED SUCCESSFULLY ======
+
+[GRID] Finally block: Setting _reloading=False
+
+[GRID] ====== reload() CALLED ======
+[GRID] project_id=1, load_mode=date
+[GRID] Step 1: Setting _reloading=True
+[DB_TAGS_DEBUG] Sample normalized paths being queried:
+  [0] norm='c:/users/suleimaa/desktop/eigen/alya/aufenthalt/04-fraualyaahmad--photo.jpg'
+      orig='c:/users/suleimaa/desktop/eigen/alya/aufenthalt/04-fraualyaahmad--photo.jpg'
+  [1] norm='c:/users/suleimaa/desktop/eigen/alya/photos/inbox/img_6934.jpeg'
+      orig='c:/users/suleimaa/desktop/eigen/alya/photos/inbox/img_6934.jpeg'
+  [2] norm='c:/users/suleimaa/desktop/eigen/alya/photos/inbox/img_6995.jpeg'
+      orig='c:/users/suleimaa/desktop/eigen/alya/photos/inbox/img_6995.jpeg'
+[DB_TAGS_SQL] Photos query:
+                        SELECT pm.path, t.name
+                        FROM photo_metadata pm
+                        JOIN photo_tags pt ON pt.photo_...
+[DB_TAGS_SQL] Videos query:
+                        SELECT vm.path, t.name
+                        FROM video_metadata vm
+                        JOIN video_tags vt ON vt.video_...
+[DB_TAGS_SQL] First 3 params: ['c:/users/suleimaa/desktop/eigen/alya/aufenthalt/04-fraualyaahmad--photo.jpg', 'c:/users/suleimaa/desktop/eigen/alya/photos/inbox/img_6934.jpeg', 'c:/users/suleimaa/desktop/eigen/alya/photos/inbox/img_6995.jpeg']
+[DB_TAGS_SQL] project_id: 1
+[DB_TAGS_SQL] Query returned 0 rows (0 photos + 0 videos)
+[DB_TAGS_SQL] No rows returned! Checking if ANY tags exist in DB...
+[DB_TAGS_SQL] Sample tagged PHOTOS in DB:
+[DB_TAGS_SQL] Sample tagged VIDEOS in DB:
+[DB_TAGS] Retrieved 0 tags for 0/8 paths (project_id=1)
+[GRID] Fetched tags for 8 paths, got 8 entries
+[GRID] Loaded 8 thumbnails.
+[GRID] Reloaded 8 thumbnails in date-mode (base=8)
+[GRID] Step 5: Emitting gridReloaded signal...
+
+[Breadcrumb] _update_breadcrumb() CALLED
+[Breadcrumb] Grid state: navigation_mode=branch, project_id=1
+[Breadcrumb] Looking for CURRENT project_id=1 in 1 projects
+[Breadcrumb] Found CURRENT project name: P01
+[Breadcrumb] Added project segment: P01
+[Breadcrumb] Added branch segment: All Photos
+[Breadcrumb] Calling set_path() with 2 segments
+[BreadcrumbNav] set_path() called with 2 segments
+[BreadcrumbNav] Clearing 3 existing widgets
+[BreadcrumbNav] Cleared all existing widgets
+[BreadcrumbNav] Added segment 0: P01
+[BreadcrumbNav] Added segment 1: All Photos
+[BreadcrumbNav] set_path() completed - 2 segments added
+[Breadcrumb] set_path() completed successfully
+[Breadcrumb] _update_breadcrumb() COMPLETED
+
+[GRID] Step 5: ✓ gridReloaded signal emitted
+[GRID] ====== reload() COMPLETED SUCCESSFULLY ======
+
+[GRID] Finally block: Setting _reloading=False
+[GRID] Using scroll-based start position: 0 (scroll: 0/0)
+[GRID] Loading viewport range: 0-7 of 8
+[GRID] Queued 8 new thumbnail workers
+[GRID] Loading viewport range: 0-7 of 8
+[GRID] Queued 2 new thumbnail workers
+[LayoutManager] Switching layout: current → google
+[LayoutManager] 💾 Took ownership of original central widget: QWidget
+[GooglePhotosLayout] Using default project: 1
+[GooglePhotosLayout] Project selector populated with 1 projects (+ New Project option)
+[14:16:06.017] [AccordionSidebar] AccordionSidebar __init__ started
+[14:16:06.017] [AccordionSidebar] Building accordion sections...
+[14:16:06.025] [AccordionSidebar] Created 6 sections
+[14:16:06.028] [AccordionSidebar] Expanding section: people
+[14:16:06.029] [AccordionSidebar] Loading content for section: people
+[14:16:06.029] [AccordionSidebar] Loading People section...
+[14:16:06.029] [AccordionSidebar] Loaded 0 face clusters
+[14:16:06.034] [AccordionSidebar] ✓ People section loaded with 0 clusters
+[14:16:06.034] [AccordionSidebar] ✓ Section expanded: people
+[14:16:06.034] [AccordionSidebar] AccordionSidebar __init__ completed
+[GooglePhotosLayout] ✅ Scroll-triggered lazy loading enabled
+[GooglePhotosLayout] Loading photos from database (thumb size: 200px)...
+[GooglePhotosLayout] ⚠️ Error clearing timeline: 'GooglePhotosLayout' object has no attribute 'timeline_tree'
 [GooglePhotosLayout] 🔍 SQL Query:
 
                 SELECT DISTINCT pm.path, pm.created_date as date_taken, pm.width, pm.height
@@ -188,1279 +852,14 @@ ORDER BY pm.date_taken DESC
                 JOIN project_images pi ON pm.path = pi.image_path
                 WHERE pi.project_id = ?
 
-
-                    AND pm.path IN (
-                        SELECT DISTINCT image_path
-                        FROM face_crops
-                        WHERE project_id = ? AND branch_key = ?
-                    )
-
 ORDER BY pm.date_taken DESC
-[GooglePhotosLayout] 🔍 Parameters: [1, 1, 'face_003']
-[GooglePhotosLayout] 🔍 Person filter: project_id=1, branch_key=face_003
-[GooglePhotosLayout] 📊 Loaded 10 photos from database
-[GooglePhotosLayout] ✓ Built tags tree: 0 tags
-[GooglePhotosLayout] 🔍 _build_people_tree() called
-[GooglePhotosLayout] 👥 Querying face_branch_reps for project_id=1
-[GooglePhotosLayout] 👥 Found 36 face clusters in database
-[GooglePhotosLayout] ✓ Updated people section count badge: 58
-[GooglePhotosLayout] ✓ Cleared people grid
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [1/36]: Unnamed (12 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [2/36]: Unnamed (10 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [3/36]: Unnamed (2 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [4/36]: Unnamed (2 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [5/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [6/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [7/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [8/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [9/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [10/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [11/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [12/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [13/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [14/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [15/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [16/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [17/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [18/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [19/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [20/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [21/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [22/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [23/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [24/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [25/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [26/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [27/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [28/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [29/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [30/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [31/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [32/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [33/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [34/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [35/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [36/36]: Unnamed (1 photos)
-[GooglePhotosLayout] ✅ Populated people grid with 36 faces
-[GooglePhotosLayout] ✅ _build_people_tree() completed successfully
-[GooglePhotosLayout] Tracking 10 paths for multi-selection
-[GooglePhotosLayout] 📐 Responsive grid: 6 columns (viewport: 1285px, thumb: 200px)
-[GooglePhotosLayout] 🚀 Virtual scrolling: 7 date groups (5 rendered, 2 placeholders)
-[GooglePhotosLayout] Queued 5 thumbnails for loading (initial limit: 50)
-[PersonCard] Clicked: Unnamed (branch: face_003)
-[GooglePhotosLayout] Filtering by person from grid: face_001
-[GooglePhotosLayout] Loading photos from database (thumb size: 200px) [person=face_001]...
-[GooglePhotosLayout] Filtering by person: face_001
-[GooglePhotosLayout] 🔍 SQL Query:
-
-                SELECT DISTINCT pm.path, pm.created_date as date_taken, pm.width, pm.height
-                FROM photo_metadata pm
-                JOIN project_images pi ON pm.path = pi.image_path
-                WHERE pi.project_id = ?
-
-
-                    AND pm.path IN (
-                        SELECT DISTINCT image_path
-                        FROM face_crops
-                        WHERE project_id = ? AND branch_key = ?
-                    )
-
-ORDER BY pm.date_taken DESC
-[GooglePhotosLayout] 🔍 Parameters: [1, 1, 'face_001']
-[GooglePhotosLayout] 🔍 Person filter: project_id=1, branch_key=face_001
-[GooglePhotosLayout] 📊 Loaded 2 photos from database
-[GooglePhotosLayout] ✓ Built tags tree: 0 tags
-[GooglePhotosLayout] 🔍 _build_people_tree() called
-[GooglePhotosLayout] 👥 Querying face_branch_reps for project_id=1
-[GooglePhotosLayout] 👥 Found 36 face clusters in database
-[GooglePhotosLayout] ✓ Updated people section count badge: 58
-[GooglePhotosLayout] ✓ Cleared people grid
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [1/36]: Unnamed (12 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [2/36]: Unnamed (10 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [3/36]: Unnamed (2 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [4/36]: Unnamed (2 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [5/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [6/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [7/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [8/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [9/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [10/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [11/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [12/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [13/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [14/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [15/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [16/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [17/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [18/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [19/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [20/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [21/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [22/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [23/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [24/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [25/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [26/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [27/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [28/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [29/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [30/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [31/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [32/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [33/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [34/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [35/36]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [36/36]: Unnamed (1 photos)
-[GooglePhotosLayout] ✅ Populated people grid with 36 faces
-[GooglePhotosLayout] ✅ _build_people_tree() completed successfully
-[GooglePhotosLayout] Tracking 2 paths for multi-selection
-[GooglePhotosLayout] 🚀 Virtual scrolling: 1 date groups (1 rendered, 0 placeholders)
-[GooglePhotosLayout] Queued 2 thumbnails for loading (initial limit: 50)
-[PersonCard] Clicked: Unnamed (branch: face_001)
-[merge_face_clusters] project_id=1, target='face_003', sources=['face_001']
-[merge_face_clusters] Found 2 branches. Row type: <class 'sqlite3.Row'>
-[merge_face_clusters] Found 2 face_branch_reps rows
-[merge_face_clusters] Deleted 0 duplicate project_images entries
-[merge_face_clusters] Updated count for target 'face_003' (rowcount=1)
-[merge_face_clusters] SUCCESS: {'moved_faces': 2, 'moved_images': 2, 'deleted_reps': 1, 'sources': ['face_001'], 'target': 'face_003'}
-[GooglePhotosLayout] 🔍 _build_people_tree() called
-[GooglePhotosLayout] 👥 Querying face_branch_reps for project_id=1
-[GooglePhotosLayout] 👥 Found 35 face clusters in database
-[GooglePhotosLayout] ✓ Updated people section count badge: 58
-[GooglePhotosLayout] ✓ Cleared people grid
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [1/35]: Unnamed (12 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [2/35]: Unnamed (12 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [3/35]: Unnamed (2 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [4/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [5/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [6/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [7/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [8/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [9/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [10/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [11/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [12/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [13/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [14/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [15/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [16/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [17/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [18/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [19/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [20/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [21/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [22/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [23/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [24/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [25/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [26/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [27/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [28/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [29/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [30/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [31/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [32/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [33/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [34/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [35/35]: Unnamed (1 photos)
-[GooglePhotosLayout] ✅ Populated people grid with 35 faces
-[GooglePhotosLayout] ✅ _build_people_tree() completed successfully
-[GooglePhotosLayout] Merge successful: face_001 merged into face_003
-[GooglePhotosLayout] Merge result: {'moved_faces': 2, 'moved_images': 2, 'deleted_reps': 1, 'sources': ['face_001'], 'target': 'face_003'}
-[GooglePhotosLayout] Filtering by person from grid: face_003
-[GooglePhotosLayout] Loading photos from database (thumb size: 200px) [person=face_003]...
-[GooglePhotosLayout] Filtering by person: face_003
-[GooglePhotosLayout] 🔍 SQL Query:
-
-                SELECT DISTINCT pm.path, pm.created_date as date_taken, pm.width, pm.height
-                FROM photo_metadata pm
-                JOIN project_images pi ON pm.path = pi.image_path
-                WHERE pi.project_id = ?
-
-
-                    AND pm.path IN (
-                        SELECT DISTINCT image_path
-                        FROM face_crops
-                        WHERE project_id = ? AND branch_key = ?
-                    )
-
-ORDER BY pm.date_taken DESC
-[GooglePhotosLayout] 🔍 Parameters: [1, 1, 'face_003']
-[GooglePhotosLayout] 🔍 Person filter: project_id=1, branch_key=face_003
-[GooglePhotosLayout] 📊 Loaded 12 photos from database
-[GooglePhotosLayout] ✓ Built tags tree: 0 tags
-[GooglePhotosLayout] 🔍 _build_people_tree() called
-[GooglePhotosLayout] 👥 Querying face_branch_reps for project_id=1
-[GooglePhotosLayout] 👥 Found 35 face clusters in database
-[GooglePhotosLayout] ✓ Updated people section count badge: 58
-[GooglePhotosLayout] ✓ Cleared people grid
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [1/35]: Unnamed (12 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [2/35]: Unnamed (12 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [3/35]: Unnamed (2 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [4/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [5/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [6/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [7/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [8/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [9/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [10/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [11/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [12/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [13/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [14/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [15/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [16/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [17/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [18/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [19/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [20/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [21/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [22/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [23/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [24/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [25/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [26/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [27/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [28/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [29/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [30/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [31/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [32/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [33/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [34/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [35/35]: Unnamed (1 photos)
-[GooglePhotosLayout] ✅ Populated people grid with 35 faces
-[GooglePhotosLayout] ✅ _build_people_tree() completed successfully
-[GooglePhotosLayout] Tracking 12 paths for multi-selection
-[GooglePhotosLayout] 🚀 Virtual scrolling: 8 date groups (5 rendered, 3 placeholders)
+[GooglePhotosLayout] 🔍 Parameters: [1]
+[GooglePhotosLayout] 📊 Loaded 102 photos from database
+[GooglePhotosLayout] Tracking 102 paths for multi-selection
+[GooglePhotosLayout] 📐 Responsive grid: 2 columns (viewport: 640px, thumb: 200px)
+[GooglePhotosLayout] 🚀 Virtual scrolling: 37 date groups (5 rendered, 32 placeholders)
 [GooglePhotosLayout] Queued 6 thumbnails for loading (initial limit: 50)
-[PersonCard] Clicked: Unnamed (branch: face_003)
-[GooglePhotosLayout] 🎨 Rendering 1 date groups that entered viewport...
-[GooglePhotosLayout] ✓ Now 6/8 groups rendered
-[GooglePhotosLayout] 🎨 Rendering 1 date groups that entered viewport...
-[GooglePhotosLayout] ✓ Now 7/8 groups rendered
-[GooglePhotosLayout] 🎨 Rendering 1 date groups that entered viewport...
-[GooglePhotosLayout] ✓ Now 8/8 groups rendered
-[GooglePhotosLayout] Filtering by person from grid: face_002
-[GooglePhotosLayout] Loading photos from database (thumb size: 200px) [person=face_002]...
-[GooglePhotosLayout] Filtering by person: face_002
-[GooglePhotosLayout] 🔍 SQL Query:
-
-                SELECT DISTINCT pm.path, pm.created_date as date_taken, pm.width, pm.height
-                FROM photo_metadata pm
-                JOIN project_images pi ON pm.path = pi.image_path
-                WHERE pi.project_id = ?
-
-
-                    AND pm.path IN (
-                        SELECT DISTINCT image_path
-                        FROM face_crops
-                        WHERE project_id = ? AND branch_key = ?
-                    )
-
-ORDER BY pm.date_taken DESC
-[GooglePhotosLayout] 🔍 Parameters: [1, 1, 'face_002']
-[GooglePhotosLayout] 🔍 Person filter: project_id=1, branch_key=face_002
-[GooglePhotosLayout] 📊 Loaded 2 photos from database
-[GooglePhotosLayout] ✓ Built tags tree: 0 tags
-[GooglePhotosLayout] 🔍 _build_people_tree() called
-[GooglePhotosLayout] 👥 Querying face_branch_reps for project_id=1
-[GooglePhotosLayout] 👥 Found 35 face clusters in database
-[GooglePhotosLayout] ✓ Updated people section count badge: 58
-[GooglePhotosLayout] ✓ Cleared people grid
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [1/35]: Unnamed (12 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [2/35]: Unnamed (12 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [3/35]: Unnamed (2 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [4/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [5/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [6/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [7/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [8/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [9/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [10/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [11/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [12/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [13/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [14/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [15/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [16/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [17/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [18/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [19/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [20/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [21/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [22/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [23/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [24/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [25/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [26/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [27/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [28/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [29/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [30/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [31/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [32/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [33/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [34/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [35/35]: Unnamed (1 photos)
-[GooglePhotosLayout] ✅ Populated people grid with 35 faces
-[GooglePhotosLayout] ✅ _build_people_tree() completed successfully
-[GooglePhotosLayout] Tracking 2 paths for multi-selection
-[GooglePhotosLayout] 🚀 Virtual scrolling: 1 date groups (1 rendered, 0 placeholders)
-[GooglePhotosLayout] Queued 2 thumbnails for loading (initial limit: 50)
-[PersonCard] Clicked: Unnamed (branch: face_002)
-[GooglePhotosLayout] Filtering by person from grid: face_002
-[GooglePhotosLayout] Loading photos from database (thumb size: 200px) [person=face_002]...
-[GooglePhotosLayout] Filtering by person: face_002
-[GooglePhotosLayout] 🔍 SQL Query:
-
-                SELECT DISTINCT pm.path, pm.created_date as date_taken, pm.width, pm.height
-                FROM photo_metadata pm
-                JOIN project_images pi ON pm.path = pi.image_path
-                WHERE pi.project_id = ?
-
-
-                    AND pm.path IN (
-                        SELECT DISTINCT image_path
-                        FROM face_crops
-                        WHERE project_id = ? AND branch_key = ?
-                    )
-
-ORDER BY pm.date_taken DESC
-[GooglePhotosLayout] 🔍 Parameters: [1, 1, 'face_002']
-[GooglePhotosLayout] 🔍 Person filter: project_id=1, branch_key=face_002
-[GooglePhotosLayout] 📊 Loaded 2 photos from database
-[GooglePhotosLayout] ✓ Built tags tree: 0 tags
-[GooglePhotosLayout] 🔍 _build_people_tree() called
-[GooglePhotosLayout] 👥 Querying face_branch_reps for project_id=1
-[GooglePhotosLayout] 👥 Found 35 face clusters in database
-[GooglePhotosLayout] ✓ Updated people section count badge: 58
-[GooglePhotosLayout] ✓ Cleared people grid
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [1/35]: Unnamed (12 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [2/35]: Unnamed (12 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [3/35]: Unnamed (2 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [4/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [5/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [6/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [7/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [8/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [9/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [10/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [11/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [12/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [13/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [14/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [15/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [16/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [17/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [18/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [19/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [20/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [21/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [22/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [23/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [24/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [25/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [26/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [27/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [28/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [29/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [30/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [31/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [32/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [33/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [34/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [35/35]: Unnamed (1 photos)
-[GooglePhotosLayout] ✅ Populated people grid with 35 faces
-[GooglePhotosLayout] ✅ _build_people_tree() completed successfully
-[GooglePhotosLayout] Tracking 2 paths for multi-selection
-[GooglePhotosLayout] 🚀 Virtual scrolling: 1 date groups (1 rendered, 0 placeholders)
-[GooglePhotosLayout] Queued 2 thumbnails for loading (initial limit: 50)
-[PersonCard] Clicked: Unnamed (branch: face_002)
-[GooglePhotosLayout] Filtering by person from grid: face_003
-[GooglePhotosLayout] Loading photos from database (thumb size: 200px) [person=face_003]...
-[GooglePhotosLayout] Filtering by person: face_003
-[GooglePhotosLayout] 🔍 SQL Query:
-
-                SELECT DISTINCT pm.path, pm.created_date as date_taken, pm.width, pm.height
-                FROM photo_metadata pm
-                JOIN project_images pi ON pm.path = pi.image_path
-                WHERE pi.project_id = ?
-
-
-                    AND pm.path IN (
-                        SELECT DISTINCT image_path
-                        FROM face_crops
-                        WHERE project_id = ? AND branch_key = ?
-                    )
-
-ORDER BY pm.date_taken DESC
-[GooglePhotosLayout] 🔍 Parameters: [1, 1, 'face_003']
-[GooglePhotosLayout] 🔍 Person filter: project_id=1, branch_key=face_003
-[GooglePhotosLayout] 📊 Loaded 12 photos from database
-[GooglePhotosLayout] ✓ Built tags tree: 0 tags
-[GooglePhotosLayout] 🔍 _build_people_tree() called
-[GooglePhotosLayout] 👥 Querying face_branch_reps for project_id=1
-[GooglePhotosLayout] 👥 Found 35 face clusters in database
-[GooglePhotosLayout] ✓ Updated people section count badge: 58
-[GooglePhotosLayout] ✓ Cleared people grid
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [1/35]: Unnamed (12 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [2/35]: Unnamed (12 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [3/35]: Unnamed (2 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [4/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [5/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [6/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [7/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [8/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [9/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [10/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [11/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [12/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [13/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [14/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [15/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [16/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [17/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [18/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [19/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [20/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [21/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [22/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [23/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [24/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [25/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [26/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [27/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [28/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [29/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [30/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [31/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [32/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [33/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [34/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [35/35]: Unnamed (1 photos)
-[GooglePhotosLayout] ✅ Populated people grid with 35 faces
-[GooglePhotosLayout] ✅ _build_people_tree() completed successfully
-[GooglePhotosLayout] Tracking 12 paths for multi-selection
-[GooglePhotosLayout] 🚀 Virtual scrolling: 8 date groups (5 rendered, 3 placeholders)
-[GooglePhotosLayout] Queued 6 thumbnails for loading (initial limit: 50)
-[PersonCard] Clicked: Unnamed (branch: face_003)
-[GooglePhotosLayout] Context menu action 'rename' for face_003
-[GooglePhotosLayout] 🔍 _build_people_tree() called
-[GooglePhotosLayout] 👥 Querying face_branch_reps for project_id=1
-[GooglePhotosLayout] 👥 Found 35 face clusters in database
-[GooglePhotosLayout] ✓ Updated people section count badge: 58
-[GooglePhotosLayout] ✓ Cleared people grid
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Alya
-[GooglePhotosLayout]   ✓ Added to grid [1/35]: Alya (12 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [2/35]: Unnamed (12 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [3/35]: Unnamed (2 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [4/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [5/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [6/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [7/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [8/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [9/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [10/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [11/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [12/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [13/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [14/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [15/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [16/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [17/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [18/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [19/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [20/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [21/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [22/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [23/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [24/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [25/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [26/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [27/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [28/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [29/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [30/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [31/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [32/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [33/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [34/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [35/35]: Unnamed (1 photos)
-[GooglePhotosLayout] ✅ Populated people grid with 35 faces
-[GooglePhotosLayout] ✅ _build_people_tree() completed successfully
-[GooglePhotosLayout] Person renamed: Unnamed → Alya
-[GooglePhotosLayout] Filtering by person from grid: face_003
-[GooglePhotosLayout] Loading photos from database (thumb size: 200px) [person=face_003]...
-[GooglePhotosLayout] Filtering by person: face_003
-[GooglePhotosLayout] 🔍 SQL Query:
-
-                SELECT DISTINCT pm.path, pm.created_date as date_taken, pm.width, pm.height
-                FROM photo_metadata pm
-                JOIN project_images pi ON pm.path = pi.image_path
-                WHERE pi.project_id = ?
-
-
-                    AND pm.path IN (
-                        SELECT DISTINCT image_path
-                        FROM face_crops
-                        WHERE project_id = ? AND branch_key = ?
-                    )
-
-ORDER BY pm.date_taken DESC
-[GooglePhotosLayout] 🔍 Parameters: [1, 1, 'face_003']
-[GooglePhotosLayout] 🔍 Person filter: project_id=1, branch_key=face_003
-[GooglePhotosLayout] 📊 Loaded 12 photos from database
-[GooglePhotosLayout] ✓ Built tags tree: 0 tags
-[GooglePhotosLayout] 🔍 _build_people_tree() called
-[GooglePhotosLayout] 👥 Querying face_branch_reps for project_id=1
-[GooglePhotosLayout] 👥 Found 35 face clusters in database
-[GooglePhotosLayout] ✓ Updated people section count badge: 58
-[GooglePhotosLayout] ✓ Cleared people grid
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Alya
-[GooglePhotosLayout]   ✓ Added to grid [1/35]: Alya (12 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [2/35]: Unnamed (12 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [3/35]: Unnamed (2 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [4/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [5/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [6/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [7/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [8/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [9/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [10/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [11/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [12/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [13/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [14/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [15/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [16/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [17/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [18/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [19/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [20/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [21/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [22/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [23/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [24/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [25/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [26/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [27/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [28/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [29/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [30/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [31/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [32/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [33/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [34/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [35/35]: Unnamed (1 photos)
-[GooglePhotosLayout] ✅ Populated people grid with 35 faces
-[GooglePhotosLayout] ✅ _build_people_tree() completed successfully
-[GooglePhotosLayout] Tracking 12 paths for multi-selection
-[GooglePhotosLayout] 🚀 Virtual scrolling: 8 date groups (5 rendered, 3 placeholders)
-[GooglePhotosLayout] Queued 6 thumbnails for loading (initial limit: 50)
-[PersonCard] Clicked: Alya (branch: face_003)
-[GooglePhotosLayout] Filtering by person from grid: face_002
-[GooglePhotosLayout] Loading photos from database (thumb size: 200px) [person=face_002]...
-[GooglePhotosLayout] Filtering by person: face_002
-[GooglePhotosLayout] 🔍 SQL Query:
-
-                SELECT DISTINCT pm.path, pm.created_date as date_taken, pm.width, pm.height
-                FROM photo_metadata pm
-                JOIN project_images pi ON pm.path = pi.image_path
-                WHERE pi.project_id = ?
-
-
-                    AND pm.path IN (
-                        SELECT DISTINCT image_path
-                        FROM face_crops
-                        WHERE project_id = ? AND branch_key = ?
-                    )
-
-ORDER BY pm.date_taken DESC
-[GooglePhotosLayout] 🔍 Parameters: [1, 1, 'face_002']
-[GooglePhotosLayout] 🔍 Person filter: project_id=1, branch_key=face_002
-[GooglePhotosLayout] 📊 Loaded 2 photos from database
-[GooglePhotosLayout] ✓ Built tags tree: 0 tags
-[GooglePhotosLayout] 🔍 _build_people_tree() called
-[GooglePhotosLayout] 👥 Querying face_branch_reps for project_id=1
-[GooglePhotosLayout] 👥 Found 35 face clusters in database
-[GooglePhotosLayout] ✓ Updated people section count badge: 58
-[GooglePhotosLayout] ✓ Cleared people grid
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Alya
-[GooglePhotosLayout]   ✓ Added to grid [1/35]: Alya (12 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [2/35]: Unnamed (12 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [3/35]: Unnamed (2 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [4/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [5/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [6/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [7/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [8/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [9/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [10/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [11/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [12/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [13/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [14/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [15/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [16/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [17/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [18/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [19/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [20/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [21/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [22/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [23/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [24/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [25/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [26/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [27/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [28/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [29/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [30/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [31/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [32/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [33/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [34/35]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [35/35]: Unnamed (1 photos)
-[GooglePhotosLayout] ✅ Populated people grid with 35 faces
-[GooglePhotosLayout] ✅ _build_people_tree() completed successfully
-[GooglePhotosLayout] Tracking 2 paths for multi-selection
-[GooglePhotosLayout] 🚀 Virtual scrolling: 1 date groups (1 rendered, 0 placeholders)
-[GooglePhotosLayout] Queued 2 thumbnails for loading (initial limit: 50)
-[PersonCard] Clicked: Unnamed (branch: face_002)
-[merge_face_clusters] project_id=1, target='face_003', sources=['face_002']
-[merge_face_clusters] Found 2 branches. Row type: <class 'sqlite3.Row'>
-[merge_face_clusters] Found 2 face_branch_reps rows
-[merge_face_clusters] Deleted 2 duplicate project_images entries
-[merge_face_clusters] Updated count for target 'face_003' (rowcount=1)
-[merge_face_clusters] SUCCESS: {'moved_faces': 2, 'moved_images': 2, 'deleted_reps': 1, 'sources': ['face_002'], 'target': 'face_003'}
-[GooglePhotosLayout] 🔍 _build_people_tree() called
-[GooglePhotosLayout] 👥 Querying face_branch_reps for project_id=1
-[GooglePhotosLayout] 👥 Found 34 face clusters in database
-[GooglePhotosLayout] ✓ Updated people section count badge: 58
-[GooglePhotosLayout] ✓ Cleared people grid
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Alya
-[GooglePhotosLayout]   ✓ Added to grid [1/34]: Alya (14 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [2/34]: Unnamed (12 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [3/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [4/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [5/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [6/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [7/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [8/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [9/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [10/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [11/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [12/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [13/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [14/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [15/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [16/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [17/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [18/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [19/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [20/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [21/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [22/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [23/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [24/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [25/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [26/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [27/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [28/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [29/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [30/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [31/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [32/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [33/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [34/34]: Unnamed (1 photos)
-[GooglePhotosLayout] ✅ Populated people grid with 34 faces
-[GooglePhotosLayout] ✅ _build_people_tree() completed successfully
-[GooglePhotosLayout] Merge successful: face_002 merged into face_003
-[GooglePhotosLayout] Merge result: {'moved_faces': 2, 'moved_images': 2, 'deleted_reps': 1, 'sources': ['face_002'], 'target': 'face_003'}
-[GooglePhotosLayout] Filtering by person from grid: face_003
-[GooglePhotosLayout] Loading photos from database (thumb size: 200px) [person=face_003]...
-[GooglePhotosLayout] Filtering by person: face_003
-[GooglePhotosLayout] 🔍 SQL Query:
-
-                SELECT DISTINCT pm.path, pm.created_date as date_taken, pm.width, pm.height
-                FROM photo_metadata pm
-                JOIN project_images pi ON pm.path = pi.image_path
-                WHERE pi.project_id = ?
-
-
-                    AND pm.path IN (
-                        SELECT DISTINCT image_path
-                        FROM face_crops
-                        WHERE project_id = ? AND branch_key = ?
-                    )
-
-ORDER BY pm.date_taken DESC
-[GooglePhotosLayout] 🔍 Parameters: [1, 1, 'face_003']
-[GooglePhotosLayout] 🔍 Person filter: project_id=1, branch_key=face_003
-[GooglePhotosLayout] 📊 Loaded 12 photos from database
-[GooglePhotosLayout] ✓ Built tags tree: 0 tags
-[GooglePhotosLayout] 🔍 _build_people_tree() called
-[GooglePhotosLayout] 👥 Querying face_branch_reps for project_id=1
-[GooglePhotosLayout] 👥 Found 34 face clusters in database
-[GooglePhotosLayout] ✓ Updated people section count badge: 58
-[GooglePhotosLayout] ✓ Cleared people grid
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Alya
-[GooglePhotosLayout]   ✓ Added to grid [1/34]: Alya (14 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [2/34]: Unnamed (12 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [3/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [4/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [5/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [6/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [7/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [8/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [9/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [10/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [11/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [12/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [13/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [14/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [15/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [16/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [17/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [18/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [19/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [20/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [21/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [22/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [23/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [24/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [25/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [26/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [27/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [28/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [29/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [30/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [31/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [32/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [33/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [34/34]: Unnamed (1 photos)
-[GooglePhotosLayout] ✅ Populated people grid with 34 faces
-[GooglePhotosLayout] ✅ _build_people_tree() completed successfully
-[GooglePhotosLayout] Tracking 12 paths for multi-selection
-[GooglePhotosLayout] 🚀 Virtual scrolling: 8 date groups (5 rendered, 3 placeholders)
-[GooglePhotosLayout] Queued 6 thumbnails for loading (initial limit: 50)
-[PersonCard] Clicked: Alya (branch: face_003)
-[GooglePhotosLayout] 🎨 Rendering 3 date groups that entered viewport...
-[GooglePhotosLayout] ✓ Now 8/8 groups rendered
-[GooglePhotosLayout] Filtering by person from grid: face_003
-[GooglePhotosLayout] Loading photos from database (thumb size: 200px) [person=face_003]...
-[GooglePhotosLayout] Filtering by person: face_003
-[GooglePhotosLayout] 🔍 SQL Query:
-
-                SELECT DISTINCT pm.path, pm.created_date as date_taken, pm.width, pm.height
-                FROM photo_metadata pm
-                JOIN project_images pi ON pm.path = pi.image_path
-                WHERE pi.project_id = ?
-
-
-                    AND pm.path IN (
-                        SELECT DISTINCT image_path
-                        FROM face_crops
-                        WHERE project_id = ? AND branch_key = ?
-                    )
-
-ORDER BY pm.date_taken DESC
-[GooglePhotosLayout] 🔍 Parameters: [1, 1, 'face_003']
-[GooglePhotosLayout] 🔍 Person filter: project_id=1, branch_key=face_003
-[GooglePhotosLayout] 📊 Loaded 12 photos from database
-[GooglePhotosLayout] ✓ Built tags tree: 0 tags
-[GooglePhotosLayout] 🔍 _build_people_tree() called
-[GooglePhotosLayout] 👥 Querying face_branch_reps for project_id=1
-[GooglePhotosLayout] 👥 Found 34 face clusters in database
-[GooglePhotosLayout] ✓ Updated people section count badge: 58
-[GooglePhotosLayout] ✓ Cleared people grid
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Alya
-[GooglePhotosLayout]   ✓ Added to grid [1/34]: Alya (14 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [2/34]: Unnamed (12 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [3/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [4/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [5/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [6/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [7/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [8/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [9/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [10/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [11/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [12/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [13/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [14/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [15/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [16/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [17/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [18/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [19/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [20/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [21/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [22/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [23/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [24/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [25/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [26/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [27/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [28/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [29/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [30/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [31/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [32/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [33/34]: Unnamed (1 photos)
-[GooglePhotosLayout]   ✓ Loaded pixmap from file for Unnamed
-[GooglePhotosLayout]   ✓ Added to grid [34/34]: Unnamed (1 photos)
-[GooglePhotosLayout] ✅ Populated people grid with 34 faces
-[GooglePhotosLayout] ✅ _build_people_tree() completed successfully
-[GooglePhotosLayout] Tracking 12 paths for multi-selection
-[GooglePhotosLayout] 🚀 Virtual scrolling: 8 date groups (5 rendered, 3 placeholders)
-[GooglePhotosLayout] Queued 6 thumbnails for loading (initial limit: 50)
-[PersonCard] Clicked: Alya (branch: face_003)
+[LayoutManager] Setting new central widget: QWidget
+[GooglePhotosLayout] 📍 Layout activated
+[GooglePhotosLayout] ✓ Stored Scan Repository handler
+[GooglePhotosLayout] ✓ Stored Detect Faces handler
