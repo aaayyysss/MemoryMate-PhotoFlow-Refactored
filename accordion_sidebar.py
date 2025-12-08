@@ -174,6 +174,7 @@ class AccordionSection(QWidget):
 
         # Content area (visible only when expanded)
         self.content_container = QWidget()
+        self.content_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.content_layout = QVBoxLayout(self.content_container)
         self.content_layout.setContentsMargins(8, 8, 8, 8)
         self.content_layout.setSpacing(0)
@@ -232,7 +233,10 @@ class AccordionSection(QWidget):
 
         # Add new content
         if widget:
-            self.content_layout.addWidget(widget)
+            # CRITICAL: Ensure widget has proper size policy for expansion
+            widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+            widget.setVisible(True)  # Ensure widget is visible
+            self.content_layout.addWidget(widget, stretch=1)
 
     def set_count(self, count: int):
         """Update the count badge in header."""
@@ -612,6 +616,8 @@ class AccordionSidebar(QWidget):
         tree.setSelectionMode(QTreeWidget.SingleSelection)
         tree.setEditTriggers(QTreeWidget.NoEditTriggers)
         tree.setAlternatingRowColors(True)
+        tree.setMinimumHeight(200)  # CRITICAL: Ensure tree is visible
+        tree.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         tree.header().setStretchLastSection(False)
         tree.header().setSectionResizeMode(0, QHeaderView.Stretch)
         tree.header().setSectionResizeMode(1, QHeaderView.ResizeToContents)
@@ -733,6 +739,8 @@ class AccordionSidebar(QWidget):
         tree.setSelectionMode(QTreeWidget.SingleSelection)
         tree.setEditTriggers(QTreeWidget.NoEditTriggers)
         tree.setAlternatingRowColors(True)
+        tree.setMinimumHeight(200)  # CRITICAL: Ensure tree is visible
+        tree.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         tree.header().setStretchLastSection(False)
         tree.header().setSectionResizeMode(0, QHeaderView.Stretch)
         tree.header().setSectionResizeMode(1, QHeaderView.ResizeToContents)
@@ -902,6 +910,8 @@ class AccordionSidebar(QWidget):
         table.setSelectionBehavior(QTableWidget.SelectRows)
         table.setSelectionMode(QTableWidget.SingleSelection)
         table.setEditTriggers(QTableWidget.NoEditTriggers)
+        table.setMinimumHeight(200)  # CRITICAL: Ensure table is visible
+        table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         table.verticalHeader().setVisible(False)
         table.horizontalHeader().setStretchLastSection(False)
         table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
@@ -1014,6 +1024,8 @@ class AccordionSidebar(QWidget):
         table.setSelectionBehavior(QTableWidget.SelectRows)
         table.setSelectionMode(QTableWidget.SingleSelection)
         table.setEditTriggers(QTableWidget.NoEditTriggers)
+        table.setMinimumHeight(200)  # CRITICAL: Ensure table is visible
+        table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         table.verticalHeader().setVisible(False)
         table.horizontalHeader().setStretchLastSection(False)
         table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
@@ -1133,6 +1145,8 @@ class AccordionSidebar(QWidget):
         table.setSelectionBehavior(QTableWidget.SelectRows)
         table.setSelectionMode(QTableWidget.SingleSelection)
         table.setEditTriggers(QTableWidget.NoEditTriggers)
+        table.setMinimumHeight(200)  # CRITICAL: Ensure table is visible
+        table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         table.verticalHeader().setVisible(False)
         table.horizontalHeader().setStretchLastSection(False)
         table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
