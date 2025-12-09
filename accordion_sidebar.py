@@ -2186,9 +2186,10 @@ class AccordionSidebar(QWidget):
         """Refresh all sections (reload content)."""
         self._dbg(f"Refreshing all sections (force={force})")
 
-        # Reload currently expanded section
-        if self.expanded_section_id:
-            self._load_section_content(self.expanded_section_id)
+        # CRITICAL FIX: Reload ALL sections, not just the expanded one
+        # This ensures all sections have fresh data after project changes
+        for section_id in self.sections.keys():
+            self._load_section_content(section_id)
 
     def get_section(self, section_id: str) -> AccordionSection:
         """Get a specific section by ID."""
