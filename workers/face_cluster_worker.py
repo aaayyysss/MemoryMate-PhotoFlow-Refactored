@@ -110,7 +110,9 @@ class FaceClusterWorker(QRunnable):
                 self.signals.progress.emit(0, 100, "Loading face embeddings...")
 
                 cur.execute("""
-                    SELECT fc.id, fc.crop_path, fc.image_path, fc.embedding
+                    SELECT fc.id, fc.crop_path, fc.image_path, fc.embedding,
+                           fc.confidence, fc.bbox_x, fc.bbox_y, fc.bbox_w, fc.bbox_h,
+                           pm.width, pm.height
                     FROM face_crops fc
                     JOIN photo_metadata pm ON fc.image_path = pm.path
                     JOIN project_images pi ON fc.image_path = pi.image_path AND pi.project_id = fc.project_id
@@ -133,7 +135,8 @@ class FaceClusterWorker(QRunnable):
 
                 # Parse embeddings
                 ids, paths, image_paths, vecs = [], [], [], []
-                for rid, path, img_path, blob in rows:
+                qualities = []  # Store (confidence, face_ratio, aspect_ratio) for quality filtering
+                for rid, path, img_path, blob, conf, bx, by, bw, bh, img_w, img_h in rows:
                     try:
                         vec = np.frombuffer(blob, dtype=np.float32)
                         if vec.size:
@@ -141,6 +144,13 @@ class FaceClusterWorker(QRunnable):
                             paths.append(path)
                             image_paths.append(img_path)
                             vecs.append(vec)
+                            
+                            # Compute quality metrics for later filtering
+                            face_area = (bw or 0) * (bh or 0)
+                            img_area = (img_w or 0) * (img_h or 0)
+                            face_ratio = (face_area / img_area) if (face_area > 0 and img_area > 0) else 0.0
+                            aspect_ratio = (bw / bh) if (bw and bh) else 0.0
+                            qualities.append((conf or 0.0, face_ratio, aspect_ratio))
                     except Exception as e:
                         logger.warning(f"[FaceClusterWorker] Failed to parse embedding: {e}")
 
@@ -209,15 +219,42 @@ class FaceClusterWorker(QRunnable):
                     cluster_paths = np.array(paths)[mask].tolist()
                     cluster_image_paths = np.array(image_paths)[mask].tolist()
                     cluster_ids = np.array(ids)[mask].tolist()
+                    cluster_quals = np.array(qualities)[mask]
 
                     centroid_vec = np.mean(cluster_vecs, axis=0).astype(np.float32)
-                    # Choose representative closest to centroid (medoid)
-                    try:
-                        dists = np.linalg.norm(cluster_vecs - centroid_vec, axis=1)
-                        rep_idx = int(np.argmin(dists))
-                        rep_path = cluster_paths[rep_idx]
-                    except Exception:
-                        rep_path = cluster_paths[0]
+                    
+                    # QUALITY FILTER: Choose high-quality representative (Google Photos style)
+                    # Criteria:
+                    # - confidence >= 0.6 (reliable detection)
+                    # - face_ratio >= 0.02 (face must be at least 2% of image area)
+                    # - aspect_ratio 0.5-1.6 (reasonable head shape, not extreme boxes)
+                    conf = cluster_quals[:, 0]
+                    face_ratio = cluster_quals[:, 1]
+                    aspect_ratio = cluster_quals[:, 2]
+                    
+                    good_mask = (
+                        (conf >= 0.6) &
+                        (face_ratio >= 0.02) &
+                        (aspect_ratio >= 0.5) & (aspect_ratio <= 1.6)
+                    )
+                    
+                    if np.any(good_mask):
+                        # Among good faces, pick one closest to centroid
+                        good_vecs = cluster_vecs[good_mask]
+                        good_paths = np.array(cluster_paths)[good_mask].tolist()
+                        dists_good = np.linalg.norm(good_vecs - centroid_vec, axis=1)
+                        rep_idx_local = int(np.argmin(dists_good))
+                        rep_path = good_paths[rep_idx_local]
+                        logger.debug(f"[FaceClusterWorker] Cluster {cid}: Selected high-quality rep from {np.sum(good_mask)}/{len(cluster_paths)} candidates")
+                    else:
+                        # Fallback: No faces pass quality filter, use centroid-based selection
+                        try:
+                            dists = np.linalg.norm(cluster_vecs - centroid_vec, axis=1)
+                            rep_idx = int(np.argmin(dists))
+                            rep_path = cluster_paths[rep_idx]
+                            logger.debug(f"[FaceClusterWorker] Cluster {cid}: No high-quality faces, using centroid fallback")
+                        except Exception:
+                            rep_path = cluster_paths[0]
                     centroid = centroid_vec.tobytes()
                     branch_key = f"face_{cid:03d}"
                     display_name = f"Person {cid+1}"

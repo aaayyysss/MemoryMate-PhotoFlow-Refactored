@@ -372,6 +372,8 @@ class MainWindow(QMainWindow):
         # === Toolbar & Menus via UIBuilder ===
         ui = UIBuilder(self)
         tb = ui.make_toolbar("Tools")
+        # Tag main toolbar so LayoutManager can toggle it per layout
+        tb.setObjectName("main_toolbar")
         # Defer connecting handlers until grid exists
         act_select_all = ui.action(tr('toolbar.select_all'))
         act_clear_sel = ui.action(tr('toolbar.clear'))

@@ -25,6 +25,7 @@ import threading
 import traceback
 import time
 import io
+from functools import partial  # For memory-safe signal connections
 
 # Import database and UI components
 from reference_db import ReferenceDB
@@ -365,16 +366,24 @@ class PersonCard(QWidget):
                     event.acceptProposedAction()
                     self.drag_merge_requested.emit(source_branch, self.branch_key)
 
-                # Reset style
-                self.setStyleSheet("""
-                    PersonCard {
-                        background: transparent;
-                        border-radius: 6px;
-                    }
-                    PersonCard:hover {
-                        background: rgba(26, 115, 232, 0.08);
-                    }
-                """)
+                # CRITICAL FIX: Check if widget still exists before resetting style
+                # After merge, parent grid may have deleted this widget during reload
+                try:
+                    if not self.isVisible():
+                        # Widget was deleted during merge, skip style reset
+                        return
+                    self.setStyleSheet("""
+                        PersonCard {
+                            background: transparent;
+                            border-radius: 6px;
+                        }
+                        PersonCard:hover {
+                            background: rgba(26, 115, 232, 0.08);
+                        }
+                    """)
+                except RuntimeError:
+                    # C++ object already deleted - this is expected after grid reload
+                    pass
 
     def _show_context_menu(self, global_pos):
         """Show context menu for rename/merge/delete."""
@@ -725,11 +734,27 @@ class AccordionSection(QWidget):
             # Widget is already set - no need to remove/re-add
             return
 
-        # Clear existing content
+        # Clear existing content WITH SIGNAL CLEANUP
         while self.content_layout.count():
             item = self.content_layout.takeAt(0)
             if item.widget():
-                item.widget().deleteLater()
+                w = item.widget()
+                
+                # CRITICAL: Cleanup before deletion to prevent signal/slot leaks
+                if hasattr(w, '_cleanup') and callable(w._cleanup):
+                    try:
+                        w._cleanup()
+                    except Exception as e:
+                        print(f"[AccordionSection] Cleanup failed for {type(w).__name__}: {e}")
+                
+                # Disconnect all signals to prevent crashes
+                try:
+                    w.blockSignals(True)
+                    w.setParent(None)
+                except RuntimeError:
+                    pass  # Widget already deleted by Qt
+                
+                w.deleteLater()
 
         # Add new content
         if widget:
@@ -761,6 +786,7 @@ class AccordionSidebar(QWidget):
     selectDate   = Signal(str)     # e.g. "2025-10" or "2025"
     selectTag    = Signal(str)     # tag name
     selectPerson = Signal(str)     # person branch_key
+    selectVideo  = Signal(str)     # video filter type (e.g., "all", "short", "hd")
 
     # Internal signals for thread-safe UI updates
     _datesLoaded = Signal(dict)    # Thread → UI: dates data ready
@@ -768,6 +794,8 @@ class AccordionSidebar(QWidget):
     _tagsLoaded = Signal(list)     # Thread → UI: tags data ready
     _branchesLoaded = Signal(list) # Thread → UI: branches data ready
     _quickLoaded = Signal(list)    # Thread → UI: quick dates data ready
+    _peopleLoaded = Signal(list)   # Thread → UI: people data ready (NEW)
+    _videosLoaded = Signal(list)   # Thread → UI: videos data ready (NEW)
 
     def __init__(self, project_id: int | None, parent=None):
         super().__init__(parent)
@@ -824,6 +852,8 @@ class AccordionSidebar(QWidget):
         self._tagsLoaded.connect(self._build_tags_table, Qt.QueuedConnection)
         self._branchesLoaded.connect(self._build_branches_table, Qt.QueuedConnection)
         self._quickLoaded.connect(self._build_quick_table, Qt.QueuedConnection)
+        self._peopleLoaded.connect(self._build_people_grid, Qt.QueuedConnection)
+        self._videosLoaded.connect(self._build_videos_tree, Qt.QueuedConnection)
 
         # Expand default section (People)
         self.expand_section("people")
@@ -844,6 +874,7 @@ class AccordionSidebar(QWidget):
             ("people",   "👥 People",      "👥"),
             ("dates",    "📅 By Date",     "📅"),
             ("folders",  "📁 Folders",     "📁"),
+            ("videos",   "🎬 Videos",      "🎬"),  # NEW: Videos section
             ("tags",     "🏷️  Tags",       "🏷️"),
             ("branches", "🔀 Branches",    "🔀"),
             ("quick",    "⚡ Quick Dates", "⚡"),
@@ -876,7 +907,9 @@ class AccordionSidebar(QWidget):
                     background: rgba(26, 115, 232, 0.20);
                 }
             """)
-            nav_btn.clicked.connect(lambda checked, sid=section_id: self.expand_section(sid))
+            # CRITICAL FIX: Use partial() instead of lambda to prevent memory leaks
+            # Lambda closures hold references preventing garbage collection
+            nav_btn.clicked.connect(partial(self.expand_section, section_id))
 
             self.nav_buttons[section_id] = nav_btn
             self.nav_layout.addWidget(nav_btn)
@@ -988,6 +1021,8 @@ class AccordionSidebar(QWidget):
             self._load_dates_section()
         elif section_id == "folders":
             self._load_folders_section()
+        elif section_id == "videos":
+            self._load_videos_section()  # NEW: Load videos
         elif section_id == "tags":
             self._load_tags_section()
         elif section_id == "branches":
@@ -1033,18 +1068,44 @@ class AccordionSidebar(QWidget):
             self._load_section_content(section_id)
 
     def _load_people_section(self):
-        """Load People/Face Clusters section content with flow grid layout and full features."""
+        """Load People/Face Clusters section content asynchronously (thread-safe)."""
         self._dbg("Loading People section...")
 
         section = self.sections.get("people")
         if not section or not self.project_id:
             return
 
-        try:
-            # Load face cluster data from database
-            rows = self.db.get_face_clusters(self.project_id)
-            self._dbg(f"Loaded {len(rows)} face clusters")
+        # Background worker (matches dates/folders/tags pattern for consistency)
+        def work():
+            try:
+                rows = self.db.get_face_clusters(self.project_id)
+                self._dbg(f"Loaded {len(rows)} face clusters")
+                return rows
+            except Exception as e:
+                self._dbg(f"⚠️ Error loading people: {e}")
+                import traceback
+                traceback.print_exc()
+                return []
 
+        # Thread with signal emission (ensures UI updates on main thread)
+        def on_complete():
+            try:
+                rows = work()
+                self._peopleLoaded.emit(rows)
+            except Exception as e:
+                self._dbg(f"⚠️ Error in people thread: {e}")
+                import traceback
+                traceback.print_exc()
+
+        threading.Thread(target=on_complete, daemon=True).start()
+
+    def _build_people_grid(self, rows: list):
+        """Build people grid from loaded data (runs on main thread via signal)."""
+        section = self.sections.get("people")
+        if not section:
+            return
+
+        try:
             # Create PeopleGridView
             people_grid = PeopleGridView()
 
@@ -1083,7 +1144,7 @@ class AccordionSidebar(QWidget):
             self._dbg(f"✓ People section loaded with {len(rows)} clusters")
 
         except Exception as e:
-            self._dbg(f"⚠️ Error loading people section: {e}")
+            self._dbg(f"⚠️ Error building people grid: {e}")
             import traceback
             traceback.print_exc()
 
@@ -1165,34 +1226,87 @@ class AccordionSidebar(QWidget):
     def _on_person_drag_merge(self, source_branch: str, target_branch: str):
         """Handle drag-and-drop merge from People grid."""
         try:
-            # Get source name for confirmation feedback
+            # Get source and target names for confirmation feedback
             with self.db._connect() as conn:
                 cur = conn.cursor()
+                
+                # Get source name
                 cur.execute(
-                    "SELECT label FROM face_branch_reps WHERE project_id = ? AND branch_key = ?",
+                    "SELECT label, count FROM face_branch_reps WHERE project_id = ? AND branch_key = ?",
                     (self.project_id, source_branch)
                 )
-                row = cur.fetchone()
-                source_name = row[0] if row and row[0] else source_branch
+                source_row = cur.fetchone()
+                source_name = source_row[0] if source_row and source_row[0] else source_branch
+                source_count = source_row[1] if source_row else 0
+                
+                # Get target name
+                cur.execute(
+                    "SELECT label, count FROM face_branch_reps WHERE project_id = ? AND branch_key = ?",
+                    (self.project_id, target_branch)
+                )
+                target_row = cur.fetchone()
+                target_name = target_row[0] if target_row and target_row[0] else target_branch
+                target_count = target_row[1] if target_row else 0
 
-            self._dbg(f"Drag-drop merge: {source_name} -> {target_branch}")
+            self._dbg(f"Drag-drop merge: '{source_name}' ({source_count} photos) -> '{target_name}' ({target_count} photos)")
 
-            # Perform merge (you need to implement this in your main layout)
-            # For now, just show a message
-            QMessageBox.information(
-                None,
-                "Merge Initiated",
-                f"✅ Merging {source_name} into {target_branch}\n\n"
-                f"This feature requires integration with your main layout's merge handler."
+            # CRITICAL FIX: Use ReferenceDB.merge_face_clusters (the proper method)
+            # Previous bug: Tried to use non-existent 'face_instances' table
+            # Correct tables: face_crops, face_branch_reps, project_images, branches
+            result = self.db.merge_face_clusters(
+                project_id=self.project_id,
+                target_branch=target_branch,
+                source_branches=[source_branch],
+                log_undo=True
             )
 
-            # Reload people section to reflect changes
-            self._load_people_section()
+            # CRITICAL FIX: Delay grid reload to avoid C++ object deletion crash
+            # The dropEvent handler on PersonCard widget needs time to complete cleanup
+            # before we delete widgets during _load_people_section()
+            # QTimer.singleShot ensures reload happens AFTER dropEvent completes
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(100, self._load_people_section)
+
+            # Build comprehensive merge notification following Google Photos pattern
+            msg_lines = [f"✓ '{source_name}' merged successfully", ""]
+
+            duplicates = result.get('duplicates_found', 0)
+            unique_moved = result.get('unique_moved', 0)
+            total_photos = result.get('total_photos', 0)
+            moved_faces = result.get('moved_faces', 0)
+
+            if duplicates > 0:
+                msg_lines.append(f"⚠️ Found {duplicates} duplicate photo{'s' if duplicates != 1 else ''}")
+                msg_lines.append("   (already in target, not duplicated)")
+                msg_lines.append("")
+
+            if unique_moved > 0:
+                msg_lines.append(f"• Moved {unique_moved} unique photo{'s' if unique_moved != 1 else ''}")
+            elif duplicates > 0:
+                msg_lines.append(f"• No unique photos to move (all were duplicates)")
+
+            msg_lines.append(f"• Reassigned {moved_faces} face crop{'s' if moved_faces != 1 else ''}")
+            msg_lines.append("")
+            msg_lines.append(f"Total: {total_photos} photo{'s' if total_photos != 1 else ''}")
+
+            QMessageBox.information(
+                None,
+                "Merged",
+                "\n".join(msg_lines)
+            )
+            
+            self._dbg(f"Merge successful: {result}")
 
         except Exception as e:
             self._dbg(f"Drag-drop merge failed: {e}")
             import traceback
             traceback.print_exc()
+            QMessageBox.critical(
+                None, 
+                "Merge Failed", 
+                f"❌ Error merging face clusters:\n\n{str(e)}\n\n"
+                f"Please check the logs for details."
+            )
 
     def _handle_rename_person(self, branch_key: str):
         """Handle rename person action."""
@@ -1984,6 +2098,246 @@ class AccordionSidebar(QWidget):
         section.set_content_widget(table)
 
         self._dbg(f"✓ Quick dates section loaded with {len(quick_items)} items")
+
+    def _load_videos_section(self):
+        """Load Videos section content asynchronously (thread-safe)."""
+        self._dbg("Loading Videos section...")
+
+        section = self.sections.get("videos")
+        if not section or not self.project_id:
+            return
+
+        # Background worker
+        def work():
+            try:
+                from services.video_service import VideoService
+                video_service = VideoService()
+                videos = video_service.get_videos_by_project(self.project_id) if self.project_id else []
+                self._dbg(f"Loaded {len(videos)} videos")
+                return videos
+            except Exception as e:
+                self._dbg(f"⚠️ Error loading videos: {e}")
+                import traceback
+                traceback.print_exc()
+                return []
+
+        # Thread with signal emission
+        def on_complete():
+            try:
+                videos = work()
+                self._videosLoaded.emit(videos)
+            except Exception as e:
+                self._dbg(f"⚠️ Error in videos thread: {e}")
+                import traceback
+                traceback.print_exc()
+
+        threading.Thread(target=on_complete, daemon=True).start()
+
+    def _build_videos_tree(self, videos: list):
+        """Build videos tree from loaded data (runs on main thread via signal)."""
+        section = self.sections.get("videos")
+        if not section:
+            return
+
+        try:
+            # Create tree widget
+            tree = QTreeWidget()
+            tree.setHeaderHidden(True)
+            tree.setIndentation(16)
+            tree.setStyleSheet("""
+                QTreeWidget {
+                    border: none;
+                    background: transparent;
+                }
+                QTreeWidget::item {
+                    padding: 4px;
+                }
+                QTreeWidget::item:hover {
+                    background: #f1f3f4;
+                }
+                QTreeWidget::item:selected {
+                    background: #e8f0fe;
+                    color: #1a73e8;
+                }
+            """)
+
+            total_videos = len(videos)
+
+            if total_videos == 0:
+                # No videos - show message
+                no_videos_item = QTreeWidgetItem(["  (No videos yet)"])
+                no_videos_item.setForeground(0, QColor("#888888"))
+                tree.addTopLevelItem(no_videos_item)
+                section.set_content_widget(tree)
+                section.set_count(0)
+                return
+
+            # All Videos
+            all_item = QTreeWidgetItem([f"All Videos ({total_videos})"])
+            all_item.setData(0, Qt.UserRole, {"type": "all_videos"})
+            tree.addTopLevelItem(all_item)
+
+            # By Duration
+            # BUG FIX: Use 'duration_seconds' not 'duration' (database field name)
+            short_videos = [v for v in videos if v.get("duration_seconds") and v["duration_seconds"] < 30]
+            medium_videos = [v for v in videos if v.get("duration_seconds") and 30 <= v["duration_seconds"] < 300]
+            long_videos = [v for v in videos if v.get("duration_seconds") and v["duration_seconds"] >= 300]
+
+            # BUG FIX: Count videos WITH duration metadata (not sum of categories)
+            videos_with_duration = [v for v in videos if v.get("duration_seconds")]
+            duration_parent = QTreeWidgetItem([f"⏱️ By Duration ({len(videos_with_duration)})"])
+            duration_parent.setData(0, Qt.UserRole, {"type": "duration_header"})
+            tree.addTopLevelItem(duration_parent)
+
+            short_item = QTreeWidgetItem([f"Short < 30s ({len(short_videos)})"])
+            short_item.setData(0, Qt.UserRole, {"type": "duration", "filter": "short"})
+            duration_parent.addChild(short_item)
+
+            medium_item = QTreeWidgetItem([f"Medium 30s-5min ({len(medium_videos)})"])
+            medium_item.setData(0, Qt.UserRole, {"type": "duration", "filter": "medium"})
+            duration_parent.addChild(medium_item)
+
+            long_item = QTreeWidgetItem([f"Long > 5min ({len(long_videos)})"])
+            long_item.setData(0, Qt.UserRole, {"type": "duration", "filter": "long"})
+            duration_parent.addChild(long_item)
+
+            # By Resolution
+            sd_videos = [v for v in videos if v.get("height", 0) > 0 and v.get("height") < 720]
+            hd_videos = [v for v in videos if v.get("height", 0) >= 720 and v.get("height") < 1080]
+            fhd_videos = [v for v in videos if v.get("height", 0) >= 1080 and v.get("height") < 2160]
+            uhd_videos = [v for v in videos if v.get("height", 0) >= 2160]
+
+            # BUG FIX: Count videos WITH resolution metadata (not sum of categories)
+            videos_with_resolution = [v for v in videos if v.get("height", 0) > 0]
+            resolution_parent = QTreeWidgetItem([f"📺 By Resolution ({len(videos_with_resolution)})"])
+            resolution_parent.setData(0, Qt.UserRole, {"type": "resolution_header"})
+            tree.addTopLevelItem(resolution_parent)
+
+            sd_item = QTreeWidgetItem([f"SD < 720p ({len(sd_videos)})"])
+            sd_item.setData(0, Qt.UserRole, {"type": "resolution", "filter": "sd"})
+            resolution_parent.addChild(sd_item)
+
+            hd_item = QTreeWidgetItem([f"HD 720p ({len(hd_videos)})"])
+            hd_item.setData(0, Qt.UserRole, {"type": "resolution", "filter": "hd"})
+            resolution_parent.addChild(hd_item)
+
+            fhd_item = QTreeWidgetItem([f"Full HD 1080p ({len(fhd_videos)})"])
+            fhd_item.setData(0, Qt.UserRole, {"type": "resolution", "filter": "fhd"})
+            resolution_parent.addChild(fhd_item)
+
+            uhd_item = QTreeWidgetItem([f"4K 2160p+ ({len(uhd_videos)})"])
+            uhd_item.setData(0, Qt.UserRole, {"type": "resolution", "filter": "4k"})
+            resolution_parent.addChild(uhd_item)
+
+            # By Codec (NEW: Missing from AccordionSidebar)
+            h264_videos = [v for v in videos if v.get("codec") and v["codec"].lower() in ["h264", "avc"]]
+            hevc_videos = [v for v in videos if v.get("codec") and v["codec"].lower() in ["hevc", "h265"]]
+            vp9_videos = [v for v in videos if v.get("codec") and v["codec"].lower() == "vp9"]
+            av1_videos = [v for v in videos if v.get("codec") and v["codec"].lower() == "av1"]
+            mpeg4_videos = [v for v in videos if v.get("codec") and v["codec"].lower() in ["mpeg4", "xvid", "divx"]]
+
+            # BUG FIX: Count videos WITH codec metadata (not sum of categories - might miss unknown codecs)
+            videos_with_codec = [v for v in videos if v.get("codec")]
+            codec_parent = QTreeWidgetItem([f"🎞️ By Codec ({len(videos_with_codec)})"])
+            codec_parent.setData(0, Qt.UserRole, {"type": "codec_header"})
+            tree.addTopLevelItem(codec_parent)
+
+            h264_item = QTreeWidgetItem([f"H.264 / AVC ({len(h264_videos)})"])
+            h264_item.setData(0, Qt.UserRole, {"type": "codec", "filter": "h264"})
+            codec_parent.addChild(h264_item)
+
+            hevc_item = QTreeWidgetItem([f"H.265 / HEVC ({len(hevc_videos)})"])
+            hevc_item.setData(0, Qt.UserRole, {"type": "codec", "filter": "hevc"})
+            codec_parent.addChild(hevc_item)
+
+            vp9_item = QTreeWidgetItem([f"VP9 ({len(vp9_videos)})"])
+            vp9_item.setData(0, Qt.UserRole, {"type": "codec", "filter": "vp9"})
+            codec_parent.addChild(vp9_item)
+
+            av1_item = QTreeWidgetItem([f"AV1 ({len(av1_videos)})"])
+            av1_item.setData(0, Qt.UserRole, {"type": "codec", "filter": "av1"})
+            codec_parent.addChild(av1_item)
+
+            mpeg4_item = QTreeWidgetItem([f"MPEG-4 ({len(mpeg4_videos)})"])
+            mpeg4_item.setData(0, Qt.UserRole, {"type": "codec", "filter": "mpeg4"})
+            codec_parent.addChild(mpeg4_item)
+
+            # By File Size (NEW: Missing from AccordionSidebar)
+            small_videos = [v for v in videos if v.get("size_kb") and v["size_kb"] / 1024 < 100]
+            medium_size_videos = [v for v in videos if v.get("size_kb") and 100 <= v["size_kb"] / 1024 < 1024]
+            large_videos = [v for v in videos if v.get("size_kb") and 1024 <= v["size_kb"] / 1024 < 5120]
+            xlarge_videos = [v for v in videos if v.get("size_kb") and v["size_kb"] / 1024 >= 5120]
+
+            # BUG FIX: Count videos WITH size metadata (not sum of categories)
+            videos_with_size = [v for v in videos if v.get("size_kb")]
+            size_parent = QTreeWidgetItem([f"📦 By File Size ({len(videos_with_size)})"])
+            size_parent.setData(0, Qt.UserRole, {"type": "size_header"})
+            tree.addTopLevelItem(size_parent)
+
+            small_item = QTreeWidgetItem([f"Small (< 100MB) ({len(small_videos)})"])
+            small_item.setData(0, Qt.UserRole, {"type": "size", "filter": "small"})
+            size_parent.addChild(small_item)
+
+            medium_item = QTreeWidgetItem([f"Medium (100MB - 1GB) ({len(medium_size_videos)})"])
+            medium_item.setData(0, Qt.UserRole, {"type": "size", "filter": "medium"})
+            size_parent.addChild(medium_item)
+
+            large_item = QTreeWidgetItem([f"Large (1GB - 5GB) ({len(large_videos)})"])
+            large_item.setData(0, Qt.UserRole, {"type": "size", "filter": "large"})
+            size_parent.addChild(large_item)
+
+            xlarge_item = QTreeWidgetItem([f"XLarge (> 5GB) ({len(xlarge_videos)})"])
+            xlarge_item.setData(0, Qt.UserRole, {"type": "size", "filter": "xlarge"})
+            size_parent.addChild(xlarge_item)
+
+            # Connect tree item click
+            tree.itemClicked.connect(self._on_video_item_clicked)
+
+            # Update count badge
+            section.set_count(total_videos)
+
+            # Set as content widget
+            section.set_content_widget(tree)
+
+            self._dbg(f"✓ Videos section loaded with {total_videos} videos")
+
+        except Exception as e:
+            self._dbg(f"⚠️ Error building videos tree: {e}")
+            import traceback
+            traceback.print_exc()
+
+            error_label = QLabel(f"Error loading videos:\n{str(e)}")
+            error_label.setAlignment(Qt.AlignCenter)
+            error_label.setStyleSheet("padding: 20px; color: #ff0000;")
+            section.set_content_widget(error_label)
+
+    def _on_video_item_clicked(self, item: QTreeWidgetItem, column: int):
+        """Handle video tree item click - emit selectVideo signal."""
+        data = item.data(0, Qt.UserRole)
+        if not data:
+            return
+
+        video_type = data.get("type")
+        video_filter = data.get("filter", "all")
+
+        self._dbg(f"Video item clicked: type={video_type}, filter={video_filter}")
+
+        # Emit selectVideo signal for parent to handle
+        if video_type == "all_videos":
+            self.selectVideo.emit("all")
+        elif video_type == "duration":
+            self.selectVideo.emit(f"duration:{video_filter}")
+        elif video_type == "resolution":
+            self.selectVideo.emit(f"resolution:{video_filter}")
+        elif video_type == "codec":
+            # NEW: Codec filter support
+            self.selectVideo.emit(f"codec:{video_filter}")
+        elif video_type == "size":
+            # NEW: File size filter support
+            self.selectVideo.emit(f"size:{video_filter}")
+        else:
+            # Header clicked - show all videos
+            self.selectVideo.emit("all")
 
     def set_project(self, project_id: int | None):
         """Update project and refresh all sections."""

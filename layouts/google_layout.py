@@ -640,6 +640,37 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         self.grabGesture(Qt.SwipeGesture)
         self.grabGesture(Qt.PinchGesture)
 
+    def __del__(self):
+        """Cleanup when layout is destroyed to prevent memory leaks."""
+        try:
+            # Remove event filters to prevent RuntimeError on deleted widgets
+            if hasattr(self, 'event_filter') and self.event_filter:
+                if hasattr(self, 'search_box') and self.search_box:
+                    try:
+                        self.search_box.removeEventFilter(self.event_filter)
+                    except RuntimeError:
+                        pass  # Widget already deleted
+                if hasattr(self, 'timeline_scroll') and self.timeline_scroll:
+                    try:
+                        self.timeline_scroll.viewport().removeEventFilter(self.event_filter)
+                    except RuntimeError:
+                        pass  # Widget already deleted
+                        
+            # Disconnect thumbnail loading signals
+            if hasattr(self, 'thumbnail_signals'):
+                try:
+                    self.thumbnail_signals.loaded.disconnect()
+                except (RuntimeError, TypeError):
+                    pass
+                    
+            # Clear preload cache to free memory
+            if hasattr(self, 'preload_cache'):
+                self.preload_cache.clear()
+                
+            print("[GooglePhotosLayout] Cleanup completed")
+        except Exception as e:
+            print(f"[GooglePhotosLayout] Cleanup error: {e}")
+
     def _setup_ui(self):
         """Setup Google Photos-style lightbox UI with overlay controls."""
         from PySide6.QtWidgets import QApplication, QScrollArea, QWidget, QLabel, QPushButton, QSizePolicy, QVBoxLayout, QHBoxLayout, QStackedWidget, QFrame
@@ -1203,6 +1234,9 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         print("[MediaLightbox] Closing - cleaning up resources...")
         
         try:
+            # PHASE 2 FIX: Disconnect video signals before cleanup
+            self._disconnect_video_signals()
+            
             # Stop and cleanup video player
             if hasattr(self, 'video_player') and self.video_player is not None:
                 try:
@@ -1216,6 +1250,17 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 except Exception as video_cleanup_err:
                     print(f"[MediaLightbox] Warning during video cleanup: {video_cleanup_err}")
             
+            # PHASE 2 FIX: Cleanup audio output
+            if hasattr(self, 'audio_output') and self.audio_output is not None:
+                try:
+                    if hasattr(self, 'video_player') and self.video_player is not None:
+                        self.video_player.setAudioOutput(None)  # Detach first
+                    self.audio_output.deleteLater()
+                    self.audio_output = None
+                    print("[MediaLightbox] ✓ Audio output cleaned up")
+                except Exception as audio_cleanup_err:
+                    print(f"[MediaLightbox] Warning during audio cleanup: {audio_cleanup_err}")
+            
             # Stop slideshow timer
             if hasattr(self, 'slideshow_timer') and self.slideshow_timer:
                 self.slideshow_timer.stop()
@@ -1224,10 +1269,20 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             if hasattr(self, 'preload_cache'):
                 self.preload_cache.clear()
             
-            # Stop thread pools
+            # PHASE 2 FIX: Cancel and stop thread pools
             if hasattr(self, 'preload_thread_pool'):
+                # Set cancellation flag for running tasks
+                if hasattr(self, 'preload_cancelled'):
+                    self.preload_cancelled = True
+                
+                # Cancel pending tasks
                 self.preload_thread_pool.clear()
-                self.preload_thread_pool.waitForDone(1000)  # Wait max 1 second
+                
+                # Wait for completion with timeout
+                if not self.preload_thread_pool.waitForDone(1000):
+                    print("[MediaLightbox] ⚠️ Preload tasks didn't finish in time")
+                else:
+                    print("[MediaLightbox] ✓ Preload thread pool stopped")
             
             print("[MediaLightbox] ✓ All resources cleaned up")
         except Exception as e:
@@ -1235,6 +1290,40 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         
         # Accept the close event
         event.accept()
+    
+    def _disconnect_video_signals(self):
+        """PHASE 2: Safely disconnect all video player signals to prevent memory leaks.
+        
+        This prevents signal accumulation when navigating through multiple videos.
+        Without this, each video load adds new connections, causing:
+        - Callback storms (slot called 50x after 50 videos)
+        - Memory leaks from stale slot references
+        - Performance degradation
+        """
+        if not hasattr(self, 'video_player') or self.video_player is None:
+            return
+        
+        try:
+            self.video_player.durationChanged.disconnect(self._on_duration_changed)
+        except (TypeError, RuntimeError):
+            pass  # Not connected or already disconnected
+        
+        try:
+            self.video_player.positionChanged.disconnect(self._on_position_changed)
+        except (TypeError, RuntimeError):
+            pass
+        
+        try:
+            self.video_player.errorOccurred.disconnect(self._on_video_error)
+        except (TypeError, RuntimeError):
+            pass
+        
+        try:
+            self.video_player.mediaStatusChanged.disconnect(self._on_media_status_changed)
+        except (TypeError, RuntimeError):
+            pass
+        
+        print("[MediaLightbox] ✓ Video signals disconnected")
     
     def resizeEvent(self, event):
         """Handle window resize - reposition navigation buttons and caption."""
@@ -4929,12 +5018,17 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                     container_layout.addWidget(self.video_graphics_view)
                     self.scroll_area.viewport().installEventFilter(self)
 
+                # PHASE 2 FIX: Disconnect old signals before connecting new ones
+                # This prevents signal accumulation when navigating through multiple videos
+                self._disconnect_video_signals()
+
                 # Connect video player signals with error handling
                 try:
                     self.video_player.durationChanged.connect(self._on_duration_changed)
                     self.video_player.positionChanged.connect(self._on_position_changed)
                     self.video_player.errorOccurred.connect(self._on_video_error)
                     self.video_player.mediaStatusChanged.connect(self._on_media_status_changed)
+                    print("[MediaLightbox] ✓ Video signals connected")
                 except Exception as signal_err:
                     print(f"[MediaLightbox] Warning: Could not connect video signals: {signal_err}")
 
@@ -7971,6 +8065,7 @@ class GooglePhotosLayout(BaseLayout):
         self.current_thumb_size = 200
         self.current_filter_year = None
         self.current_filter_month = None
+        self.current_filter_day = None
         self.current_filter_folder = None
         self.current_filter_person = None
 
@@ -8656,6 +8751,7 @@ class GooglePhotosLayout(BaseLayout):
         sidebar.selectFolder.connect(self._on_accordion_folder_clicked)
         sidebar.selectDate.connect(self._on_accordion_date_clicked)
         sidebar.selectTag.connect(self._on_accordion_tag_clicked)
+        sidebar.selectVideo.connect(self._on_accordion_video_clicked)  # NEW: Video filtering
 
         # Store reference for refreshing
         self.accordion_sidebar = sidebar
@@ -8698,7 +8794,7 @@ class GooglePhotosLayout(BaseLayout):
 
         return self.timeline_scroll
 
-    def _load_photos(self, thumb_size: int = 200, filter_year: int = None, filter_month: int = None, filter_folder: str = None, filter_person: str = None):
+    def _load_photos(self, thumb_size: int = 200, filter_year: int = None, filter_month: int = None, filter_day: int = None, filter_folder: str = None, filter_person: str = None):
         """
         Load photos from database and populate timeline.
 
@@ -8706,6 +8802,7 @@ class GooglePhotosLayout(BaseLayout):
             thumb_size: Thumbnail size in pixels (default 200)
             filter_year: Optional year filter (e.g., 2024)
             filter_month: Optional month filter (1-12, requires filter_year)
+            filter_day: Optional day filter (1-31, requires filter_year and filter_month)
             filter_folder: Optional folder path filter
             filter_person: Optional person/face cluster filter (branch_key)
 
@@ -8716,6 +8813,7 @@ class GooglePhotosLayout(BaseLayout):
         self.current_thumb_size = thumb_size
         self.current_filter_year = filter_year
         self.current_filter_month = filter_month
+        self.current_filter_day = filter_day
         self.current_filter_folder = filter_folder
         self.current_filter_person = filter_person
 
@@ -8724,6 +8822,8 @@ class GooglePhotosLayout(BaseLayout):
             filter_desc.append(f"year={filter_year}")
         if filter_month:
             filter_desc.append(f"month={filter_month}")
+        if filter_day:
+            filter_desc.append(f"day={filter_day}")
         if filter_folder:
             filter_desc.append(f"folder={filter_folder}")
         if filter_person:
@@ -8733,7 +8833,7 @@ class GooglePhotosLayout(BaseLayout):
         print(f"[GooglePhotosLayout] 📷 Loading photos from database (thumb size: {thumb_size}px){filter_str}...")
 
         # Show/hide Clear Filter button based on whether filters are active
-        has_filters = filter_year is not None or filter_month is not None or filter_folder is not None or filter_person is not None
+        has_filters = filter_year is not None or filter_month is not None or filter_day is not None or filter_folder is not None or filter_person is not None
         self.btn_clear_filter.setVisible(has_filters)
 
         # === PROGRESS: Clearing existing timeline ===
@@ -8783,45 +8883,113 @@ class GooglePhotosLayout(BaseLayout):
             # CRITICAL FIX: Use created_date instead of date_taken
             # created_date is ALWAYS populated (uses date_taken if available, otherwise file modified date)
             # This matches Current Layout behavior and ensures ALL photos appear
-            query_parts = ["""
+            
+            # PHASE 0 FIX: Query BOTH photo_metadata AND video_metadata tables
+            # When filtering by folder, we need to show both photos and videos in that folder
+            query_parts = []
+            params_list = []
+            
+            # PHOTOS QUERY
+            photo_query_parts = ["""
                 SELECT DISTINCT pm.path, pm.created_date as date_taken, pm.width, pm.height
                 FROM photo_metadata pm
                 JOIN project_images pi ON pm.path = pi.image_path
                 WHERE pi.project_id = ?
             """]
-
-            params = [self.project_id]
+            photo_params = [self.project_id]
 
             # Add year filter (using created_date which is always populated)
             if filter_year is not None:
-                query_parts.append("AND strftime('%Y', pm.created_date) = ?")
-                params.append(str(filter_year))
+                photo_query_parts.append("AND strftime('%Y', pm.created_date) = ?")
+                photo_params.append(str(filter_year))
 
             # Add month filter (requires year)
             if filter_month is not None and filter_year is not None:
-                query_parts.append("AND strftime('%m', pm.created_date) = ?")
-                params.append(f"{filter_month:02d}")
+                photo_query_parts.append("AND strftime('%m', pm.created_date) = ?")
+                photo_params.append(f"{filter_month:02d}")
+            
+            # BUG FIX: Add day filter (requires year and month)
+            if filter_day is not None and filter_year is not None and filter_month is not None:
+                photo_query_parts.append("AND strftime('%d', pm.created_date) = ?")
+                photo_params.append(f"{filter_day:02d}")
 
             # Add folder filter
+            # CRITICAL FIX: Normalize folder path to match database storage format
+            # Database stores paths as: c:/users/... (forward slashes, lowercase on Windows)
+            # Without normalization, backslash paths won't match: C:\Users\... != c:/users/...
             if filter_folder is not None:
-                query_parts.append("AND pm.path LIKE ?")
-                params.append(f"{filter_folder}%")
+                # Normalize path: convert backslashes to forward slashes, lowercase on Windows
+                import platform
+                normalized_folder = filter_folder.replace('\\', '/')
+                if platform.system() == 'Windows':
+                    normalized_folder = normalized_folder.lower()
+                
+                photo_query_parts.append("AND pm.path LIKE ?")
+                photo_params.append(f"{normalized_folder}%")
 
             # Add person/face filter (photos containing this person)
             if filter_person is not None:
                 print(f"[GooglePhotosLayout] Filtering by person: {filter_person}")
-                query_parts.append("""
+                photo_query_parts.append("""
                     AND pm.path IN (
                         SELECT DISTINCT image_path
                         FROM face_crops
                         WHERE project_id = ? AND branch_key = ?
                     )
                 """)
-                params.append(self.project_id)
-                params.append(filter_person)
-
-            query_parts.append("ORDER BY pm.date_taken DESC")
-            query = "\n".join(query_parts)
+                photo_params.append(self.project_id)
+                photo_params.append(filter_person)
+            
+            # VIDEOS QUERY (mirror photo query structure)
+            video_query_parts = ["""
+                SELECT DISTINCT vm.path, vm.created_date as date_taken, vm.width, vm.height
+                FROM video_metadata vm
+                JOIN project_videos pv ON vm.path = pv.video_path
+                WHERE pv.project_id = ?
+            """]
+            video_params = [self.project_id]
+            
+            # Add year filter for videos
+            if filter_year is not None:
+                video_query_parts.append("AND strftime('%Y', vm.created_date) = ?")
+                video_params.append(str(filter_year))
+            
+            # Add month filter for videos
+            if filter_month is not None and filter_year is not None:
+                video_query_parts.append("AND strftime('%m', vm.created_date) = ?")
+                video_params.append(f"{filter_month:02d}")
+            
+            # BUG FIX: Add day filter for videos (requires year and month)
+            if filter_day is not None and filter_year is not None and filter_month is not None:
+                video_query_parts.append("AND strftime('%d', vm.created_date) = ?")
+                video_params.append(f"{filter_day:02d}")
+            
+            # Add folder filter for videos
+            # CRITICAL FIX: Normalize folder path (same as photos above)
+            if filter_folder is not None:
+                # Normalize path: convert backslashes to forward slashes, lowercase on Windows
+                import platform
+                normalized_folder = filter_folder.replace('\\', '/')
+                if platform.system() == 'Windows':
+                    normalized_folder = normalized_folder.lower()
+                
+                video_query_parts.append("AND vm.path LIKE ?")
+                video_params.append(f"{normalized_folder}%")
+            
+            # Videos don't have person filters (no face detection on videos)
+            
+            # COMBINE QUERIES WITH UNION ALL
+            photo_query = "\n".join(photo_query_parts)
+            video_query = "\n".join(video_query_parts)
+            
+            # Only include videos if NOT filtering by person (videos have no faces)
+            if filter_person is None:
+                query = f"{photo_query}\nUNION ALL\n{video_query}\nORDER BY date_taken DESC"
+                params = photo_params + video_params
+            else:
+                # Person filter: only photos (videos have no faces)
+                query = f"{photo_query}\nORDER BY date_taken DESC"
+                params = photo_params
 
             # Debug: Log SQL query and parameters
             print(f"[GooglePhotosLayout] 🔍 SQL Query:\n{query}")
@@ -8894,7 +9062,7 @@ class GooglePhotosLayout(BaseLayout):
             # Only the photo grid should be filtered, not the sidebar navigation
             # NOTE: With AccordionSidebar, sections load their own data on demand
             # No need to build sidebar trees here - accordion handles it internally
-            if filter_year is None and filter_month is None and filter_folder is None and filter_person is None:
+            if filter_year is None and filter_month is None and filter_day is None and filter_folder is None and filter_person is None:
                 # Full rebuild - accordion sidebar refreshes automatically
                 pass
             else:
@@ -9104,6 +9272,7 @@ class GooglePhotosLayout(BaseLayout):
                 thumb_size=self.current_thumb_size,
                 filter_year=year,
                 filter_month=None,
+                filter_day=None,
                 filter_folder=None,
                 filter_person=None
             )
@@ -9116,6 +9285,7 @@ class GooglePhotosLayout(BaseLayout):
                 thumb_size=self.current_thumb_size,
                 filter_year=year,
                 filter_month=month,
+                filter_day=None,
                 filter_folder=None,
                 filter_person=None
             )
@@ -9140,6 +9310,7 @@ class GooglePhotosLayout(BaseLayout):
                 thumb_size=self.current_thumb_size,
                 filter_year=None,
                 filter_month=None,
+                filter_day=None,
                 filter_folder=folder_path,
                 filter_person=None
             )
@@ -9436,6 +9607,7 @@ class GooglePhotosLayout(BaseLayout):
         parts = date_key.split("-")
         year = None
         month = None
+        day = None
 
         if len(parts) >= 1:
             try:
@@ -9448,12 +9620,20 @@ class GooglePhotosLayout(BaseLayout):
                 month = int(parts[1])
             except ValueError:
                 pass
+        
+        # BUG FIX: Parse day from date_key (was missing!)
+        if len(parts) >= 3:
+            try:
+                day = int(parts[2])
+            except ValueError:
+                pass
 
-        # Filter by year or month
+        # Filter by year, month, or day
         self._load_photos(
             thumb_size=self.current_thumb_size,
             filter_year=year,
             filter_month=month,
+            filter_day=day,
             filter_folder=None,
             filter_person=None
         )
@@ -9473,7 +9653,8 @@ class GooglePhotosLayout(BaseLayout):
             db = ReferenceDB()
             with db._connect() as conn:
                 cur = conn.cursor()
-                cur.execute("SELECT path FROM folders WHERE id = ?", (folder_id,))
+                # CRITICAL FIX: Use photo_folders table instead of non-existent folders table
+                cur.execute("SELECT path FROM photo_folders WHERE id = ?", (folder_id,))
                 row = cur.fetchone()
                 if row:
                     folder_path = row[0]
@@ -9482,6 +9663,7 @@ class GooglePhotosLayout(BaseLayout):
                         thumb_size=self.current_thumb_size,
                         filter_year=None,
                         filter_month=None,
+                        filter_day=None,
                         filter_folder=folder_path,
                         filter_person=None
                     )
@@ -9520,9 +9702,202 @@ class GooglePhotosLayout(BaseLayout):
             thumb_size=self.current_thumb_size,
             filter_year=None,
             filter_month=None,
+            filter_day=None,
             filter_folder=None,
             filter_person=branch_key
         )
+
+    def _on_accordion_video_clicked(self, filter_spec: str):
+        """
+        Handle accordion sidebar video selection.
+
+        Args:
+            filter_spec: Video filter specification (e.g., "all", "duration:short", "resolution:hd", "codec:h264", "size:small")
+        """
+        print(f"[GooglePhotosLayout] Accordion video clicked: {filter_spec}")
+
+        # For now, just show all videos by clearing filters
+        # Future enhancement: implement duration/resolution filtering
+        # Videos are mixed with photos, so filter by video extensions
+        try:
+            from reference_db import ReferenceDB
+            db = ReferenceDB()
+
+            # Get all videos from database
+            with db._connect() as conn:
+                cur = conn.cursor()
+                cur.execute("""
+                    SELECT DISTINCT vm.path, vm.created_date as date_taken, vm.width, vm.height
+                    FROM video_metadata vm
+                    JOIN project_videos pv ON vm.path = pv.video_path
+                    WHERE pv.project_id = ?
+                    ORDER BY vm.created_date DESC
+                """, (self.project_id,))
+                video_rows = cur.fetchall()
+
+            # Apply duration filter if specified
+            if ":" in filter_spec:
+                filter_type, filter_value = filter_spec.split(":", 1)
+
+                if filter_type == "duration":
+                    # Filter by duration: short, medium, long
+                    with db._connect() as conn:
+                        cur = conn.cursor()
+                        if filter_value == "short":
+                            cur.execute("""
+                                SELECT DISTINCT vm.path, vm.created_date as date_taken, vm.width, vm.height
+                                FROM video_metadata vm
+                                JOIN project_videos pv ON vm.path = pv.video_path
+                                WHERE pv.project_id = ? AND vm.duration_seconds > 0 AND vm.duration_seconds < 30
+                                ORDER BY vm.created_date DESC
+                            """, (self.project_id,))
+                        elif filter_value == "medium":
+                            cur.execute("""
+                                SELECT DISTINCT vm.path, vm.created_date as date_taken, vm.width, vm.height
+                                FROM video_metadata vm
+                                JOIN project_videos pv ON vm.path = pv.video_path
+                                WHERE pv.project_id = ? AND vm.duration_seconds >= 30 AND vm.duration_seconds < 300
+                                ORDER BY vm.created_date DESC
+                            """, (self.project_id,))
+                        elif filter_value == "long":
+                            cur.execute("""
+                                SELECT DISTINCT vm.path, vm.created_date as date_taken, vm.width, vm.height
+                                FROM video_metadata vm
+                                JOIN project_videos pv ON vm.path = pv.video_path
+                                WHERE pv.project_id = ? AND vm.duration_seconds >= 300
+                                ORDER BY vm.created_date DESC
+                            """, (self.project_id,))
+                        video_rows = cur.fetchall()
+
+                elif filter_type == "resolution":
+                    # Filter by resolution: sd, hd, fhd, 4k
+                    with db._connect() as conn:
+                        cur = conn.cursor()
+                        if filter_value == "sd":
+                            cur.execute("""
+                                SELECT DISTINCT vm.path, vm.created_date as date_taken, vm.width, vm.height
+                                FROM video_metadata vm
+                                JOIN project_videos pv ON vm.path = pv.video_path
+                                WHERE pv.project_id = ? AND vm.height > 0 AND vm.height < 720
+                                ORDER BY vm.created_date DESC
+                            """, (self.project_id,))
+                        elif filter_value == "hd":
+                            cur.execute("""
+                                SELECT DISTINCT vm.path, vm.created_date as date_taken, vm.width, vm.height
+                                FROM video_metadata vm
+                                JOIN project_videos pv ON vm.path = pv.video_path
+                                WHERE pv.project_id = ? AND vm.height >= 720 AND vm.height < 1080
+                                ORDER BY vm.created_date DESC
+                            """, (self.project_id,))
+                        elif filter_value == "fhd":
+                            cur.execute("""
+                                SELECT DISTINCT vm.path, vm.created_date as date_taken, vm.width, vm.height
+                                FROM video_metadata vm
+                                JOIN project_videos pv ON vm.path = pv.video_path
+                                WHERE pv.project_id = ? AND vm.height >= 1080 AND vm.height < 2160
+                                ORDER BY vm.created_date DESC
+                            """, (self.project_id,))
+                        elif filter_value == "4k":
+                            cur.execute("""
+                                SELECT DISTINCT vm.path, vm.created_date as date_taken, vm.width, vm.height
+                                FROM video_metadata vm
+                                JOIN project_videos pv ON vm.path = pv.video_path
+                                WHERE pv.project_id = ? AND vm.height >= 2160
+                                ORDER BY vm.created_date DESC
+                            """, (self.project_id,))
+                        video_rows = cur.fetchall()
+
+                elif filter_type == "codec":
+                    # NEW: Filter by codec: h264, hevc, vp9, av1, mpeg4
+                    with db._connect() as conn:
+                        cur = conn.cursor()
+                        if filter_value == "h264":
+                            cur.execute("""
+                                SELECT DISTINCT vm.path, vm.created_date as date_taken, vm.width, vm.height
+                                FROM video_metadata vm
+                                JOIN project_videos pv ON vm.path = pv.video_path
+                                WHERE pv.project_id = ? AND vm.codec IS NOT NULL AND LOWER(vm.codec) IN ('h264', 'avc')
+                                ORDER BY vm.created_date DESC
+                            """, (self.project_id,))
+                        elif filter_value == "hevc":
+                            cur.execute("""
+                                SELECT DISTINCT vm.path, vm.created_date as date_taken, vm.width, vm.height
+                                FROM video_metadata vm
+                                JOIN project_videos pv ON vm.path = pv.video_path
+                                WHERE pv.project_id = ? AND vm.codec IS NOT NULL AND LOWER(vm.codec) IN ('hevc', 'h265')
+                                ORDER BY vm.created_date DESC
+                            """, (self.project_id,))
+                        elif filter_value == "vp9":
+                            cur.execute("""
+                                SELECT DISTINCT vm.path, vm.created_date as date_taken, vm.width, vm.height
+                                FROM video_metadata vm
+                                JOIN project_videos pv ON vm.path = pv.video_path
+                                WHERE pv.project_id = ? AND vm.codec IS NOT NULL AND LOWER(vm.codec) = 'vp9'
+                                ORDER BY vm.created_date DESC
+                            """, (self.project_id,))
+                        elif filter_value == "av1":
+                            cur.execute("""
+                                SELECT DISTINCT vm.path, vm.created_date as date_taken, vm.width, vm.height
+                                FROM video_metadata vm
+                                JOIN project_videos pv ON vm.path = pv.video_path
+                                WHERE pv.project_id = ? AND vm.codec IS NOT NULL AND LOWER(vm.codec) = 'av1'
+                                ORDER BY vm.created_date DESC
+                            """, (self.project_id,))
+                        elif filter_value == "mpeg4":
+                            cur.execute("""
+                                SELECT DISTINCT vm.path, vm.created_date as date_taken, vm.width, vm.height
+                                FROM video_metadata vm
+                                JOIN project_videos pv ON vm.path = pv.video_path
+                                WHERE pv.project_id = ? AND vm.codec IS NOT NULL AND LOWER(vm.codec) IN ('mpeg4', 'xvid', 'divx')
+                                ORDER BY vm.created_date DESC
+                            """, (self.project_id,))
+                        video_rows = cur.fetchall()
+
+                elif filter_type == "size":
+                    # NEW: Filter by file size: small, medium, large, xlarge
+                    with db._connect() as conn:
+                        cur = conn.cursor()
+                        if filter_value == "small":
+                            cur.execute("""
+                                SELECT DISTINCT vm.path, vm.created_date as date_taken, vm.width, vm.height
+                                FROM video_metadata vm
+                                JOIN project_videos pv ON vm.path = pv.video_path
+                                WHERE pv.project_id = ? AND vm.size_kb IS NOT NULL AND vm.size_kb / 1024 < 100
+                                ORDER BY vm.created_date DESC
+                            """, (self.project_id,))
+                        elif filter_value == "medium":
+                            cur.execute("""
+                                SELECT DISTINCT vm.path, vm.created_date as date_taken, vm.width, vm.height
+                                FROM video_metadata vm
+                                JOIN project_videos pv ON vm.path = pv.video_path
+                                WHERE pv.project_id = ? AND vm.size_kb IS NOT NULL AND vm.size_kb / 1024 >= 100 AND vm.size_kb / 1024 < 1024
+                                ORDER BY vm.created_date DESC
+                            """, (self.project_id,))
+                        elif filter_value == "large":
+                            cur.execute("""
+                                SELECT DISTINCT vm.path, vm.created_date as date_taken, vm.width, vm.height
+                                FROM video_metadata vm
+                                JOIN project_videos pv ON vm.path = pv.video_path
+                                WHERE pv.project_id = ? AND vm.size_kb IS NOT NULL AND vm.size_kb / 1024 >= 1024 AND vm.size_kb / 1024 < 5120
+                                ORDER BY vm.created_date DESC
+                            """, (self.project_id,))
+                        elif filter_value == "xlarge":
+                            cur.execute("""
+                                SELECT DISTINCT vm.path, vm.created_date as date_taken, vm.width, vm.height
+                                FROM video_metadata vm
+                                JOIN project_videos pv ON vm.path = pv.video_path
+                                WHERE pv.project_id = ? AND vm.size_kb IS NOT NULL AND vm.size_kb / 1024 >= 5120
+                                ORDER BY vm.created_date DESC
+                            """, (self.project_id,))
+                        video_rows = cur.fetchall()
+
+            # Rebuild timeline with video results
+            self._rebuild_timeline_with_results(video_rows, f"Videos: {filter_spec}")
+
+        except Exception as e:
+            print(f"[GooglePhotosLayout] ⚠️ Error filtering videos: {e}")
+            import traceback
+            traceback.print_exc()
 
     def _filter_by_tag(self, tag_name: str):
         """Filter timeline to show photos by the given tag."""
@@ -14964,6 +15339,7 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
             thumb_size=self.current_thumb_size,
             filter_year=None,
             filter_month=None,
+            filter_day=None,
             filter_folder=None,
             filter_person=None
         )
