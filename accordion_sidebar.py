@@ -842,6 +842,7 @@ class AccordionSidebar(QWidget):
         # Define sections in priority order
         sections_config = [
             ("people",   "👥 People",      "👥"),
+            ("videos",   "🎬 Videos",      "🎬"),
             ("dates",    "📅 By Date",     "📅"),
             ("folders",  "📁 Folders",     "📁"),
             ("tags",     "🏷️  Tags",       "🏷️"),
@@ -984,6 +985,8 @@ class AccordionSidebar(QWidget):
 
         if section_id == "people":
             self._load_people_section()
+        elif section_id == "videos":
+            self._load_videos_section()
         elif section_id == "dates":
             self._load_dates_section()
         elif section_id == "folders":
@@ -1347,6 +1350,165 @@ class AccordionSidebar(QWidget):
         self._dbg(f"Person activated: {branch_key}")
         # Emit branch selection signal for grid filtering
         self.selectBranch.emit(f"branch:{branch_key}")
+
+    def _load_videos_section(self):
+        """Load Videos section with list of all videos."""
+        self._dbg("Loading Videos section...")
+
+        section = self.sections.get("videos")
+        if not section or not self.project_id:
+            return
+
+        try:
+            # Query videos from database
+            with self.db._connect() as conn:
+                cur = conn.cursor()
+                cur.execute("""
+                    SELECT video_path, duration_seconds, width, height, size_bytes, status
+                    FROM videos
+                    WHERE project_id = ?
+                    ORDER BY video_path ASC
+                """, (self.project_id,))
+                rows = cur.fetchall()
+
+            self._dbg(f"Loaded {len(rows)} videos")
+
+            if len(rows) == 0:
+                # Show "No videos" placeholder
+                placeholder = QLabel("No videos found.\n\nScan your repository to index videos.")
+                placeholder.setAlignment(Qt.AlignCenter)
+                placeholder.setStyleSheet("padding: 40px 20px; color: #666; font-size: 11pt;")
+                section.set_content_widget(placeholder)
+                section.set_count(0)
+                return
+
+            # Create table widget for videos
+            table = QTableWidget()
+            table.setColumnCount(4)
+            table.setHorizontalHeaderLabels(["Name", "Duration", "Size", "Resolution"])
+            table.setSelectionBehavior(QTableWidget.SelectRows)
+            table.setSelectionMode(QTableWidget.SingleSelection)
+            table.setEditTriggers(QTableWidget.NoEditTriggers)
+            table.verticalHeader().setVisible(False)
+            table.setAlternatingRowColors(True)
+            table.setMinimumHeight(200)
+            table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+            # Set column widths
+            header = table.horizontalHeader()
+            header.setStretchLastSection(False)
+            header.setSectionResizeMode(0, QHeaderView.Stretch)  # Name column stretches
+            header.setSectionResizeMode(1, QHeaderView.Fixed)
+            header.setSectionResizeMode(2, QHeaderView.Fixed)
+            header.setSectionResizeMode(3, QHeaderView.Fixed)
+            table.setColumnWidth(1, 80)  # Duration
+            table.setColumnWidth(2, 80)  # Size
+            table.setColumnWidth(3, 100)  # Resolution
+
+            # Style the table
+            table.setStyleSheet("""
+                QTableWidget {
+                    background: white;
+                    border: 1px solid #e0e0e0;
+                    border-radius: 4px;
+                    gridline-color: #f0f0f0;
+                }
+                QTableWidget::item {
+                    padding: 8px 4px;
+                    border: none;
+                }
+                QTableWidget::item:selected {
+                    background: #e8f0fe;
+                    color: #1a73e8;
+                }
+                QHeaderView::section {
+                    background: #f8f9fa;
+                    padding: 8px 4px;
+                    border: none;
+                    border-bottom: 2px solid #e0e0e0;
+                    font-weight: bold;
+                    color: #5f6368;
+                }
+            """)
+
+            # Populate table
+            table.setRowCount(len(rows))
+            for idx, row in enumerate(rows):
+                video_path = row[0]
+                duration_seconds = row[1]
+                width = row[2]
+                height = row[3]
+                size_bytes = row[4]
+                status = row[5]
+
+                # Video name (filename only)
+                import os
+                video_name = os.path.basename(video_path)
+                name_item = QTableWidgetItem(video_name)
+                name_item.setToolTip(video_path)
+                if status == "completed":
+                    name_item.setIcon(QIcon.fromTheme("video-x-generic"))
+                table.setItem(idx, 0, name_item)
+
+                # Duration
+                if duration_seconds:
+                    minutes = int(duration_seconds // 60)
+                    seconds = int(duration_seconds % 60)
+                    duration_str = f"{minutes}:{seconds:02d}"
+                else:
+                    duration_str = "—"
+                duration_item = QTableWidgetItem(duration_str)
+                duration_item.setTextAlignment(Qt.AlignCenter)
+                table.setItem(idx, 1, duration_item)
+
+                # Size
+                if size_bytes:
+                    if size_bytes < 1024 * 1024:
+                        size_str = f"{size_bytes / 1024:.1f} KB"
+                    elif size_bytes < 1024 * 1024 * 1024:
+                        size_str = f"{size_bytes / (1024 * 1024):.1f} MB"
+                    else:
+                        size_str = f"{size_bytes / (1024 * 1024 * 1024):.2f} GB"
+                else:
+                    size_str = "—"
+                size_item = QTableWidgetItem(size_str)
+                size_item.setTextAlignment(Qt.AlignCenter)
+                table.setItem(idx, 2, size_item)
+
+                # Resolution
+                if width and height:
+                    resolution_str = f"{width}×{height}"
+                else:
+                    resolution_str = "—"
+                resolution_item = QTableWidgetItem(resolution_str)
+                resolution_item.setTextAlignment(Qt.AlignCenter)
+                table.setItem(idx, 3, resolution_item)
+
+            # Connect row click to video filtering
+            table.cellClicked.connect(lambda row, col: self._on_video_activated(rows[row][0]))
+
+            # Update count and set content
+            section.set_count(len(rows))
+            section.set_content_widget(table)
+
+            self._dbg(f"✓ Videos section loaded with {len(rows)} videos")
+
+        except Exception as e:
+            self._dbg(f"⚠️ Error loading videos section: {e}")
+            import traceback
+            traceback.print_exc()
+
+            # Show error placeholder
+            error_label = QLabel(f"Error loading videos:\n{str(e)}")
+            error_label.setAlignment(Qt.AlignCenter)
+            error_label.setStyleSheet("padding: 20px; color: #ff0000;")
+            section.set_content_widget(error_label)
+
+    def _on_video_activated(self, video_path: str):
+        """Handle video click - emit signal to filter grid."""
+        self._dbg(f"Video activated: {video_path}")
+        # For now, just log - later can implement video filtering
+        # self.selectBranch.emit(f"video:{video_path}")
 
     def _load_dates_section(self):
         """Load By Date section with hierarchical tree (Year > Month > Day)."""
