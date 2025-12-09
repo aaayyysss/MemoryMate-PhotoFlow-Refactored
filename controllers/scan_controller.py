@@ -577,9 +577,25 @@ class ScanController:
                 self.logger.info("Reloading sidebar after date branches built...")
                 # CRITICAL FIX: Only reload sidebar if it wasn't just updated via set_project()
                 # set_project() already calls reload(), so reloading again causes double refresh crash
-                if not sidebar_was_updated and hasattr(self.main.sidebar, "reload"):
-                    self.main.sidebar.reload()
-                    self.logger.debug("Sidebar reload completed (mode-aware)")
+                if not sidebar_was_updated:
+                    # Check which layout is active and reload appropriate sidebar
+                    if hasattr(self.main, 'layout_manager') and self.main.layout_manager:
+                        current_layout_id = self.main.layout_manager._current_layout_id
+                        if current_layout_id == "google":
+                            # Google Layout uses AccordionSidebar
+                            current_layout = self.main.layout_manager._current_layout
+                            if current_layout and hasattr(current_layout, 'accordion_sidebar'):
+                                self.logger.debug("Reloading AccordionSidebar for Google Layout...")
+                                current_layout.accordion_sidebar.reload_all_sections()
+                                self.logger.debug("AccordionSidebar reload completed")
+                        elif hasattr(self.main.sidebar, "reload"):
+                            # Current Layout uses old SidebarQt
+                            self.main.sidebar.reload()
+                            self.logger.debug("Sidebar reload completed (mode-aware)")
+                    elif hasattr(self.main.sidebar, "reload"):
+                        # Fallback to old sidebar if layout manager not available
+                        self.main.sidebar.reload()
+                        self.logger.debug("Sidebar reload completed (fallback)")
                 elif sidebar_was_updated:
                     self.logger.debug("Skipping sidebar reload - already updated by set_project()")
             except Exception as e:
