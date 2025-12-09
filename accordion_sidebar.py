@@ -1352,7 +1352,7 @@ class AccordionSidebar(QWidget):
         self.selectBranch.emit(f"branch:{branch_key}")
 
     def _load_videos_section(self):
-        """Load Videos section with list of all videos."""
+        """Load Videos section with hierarchical tree (based on previous working version)."""
         self._dbg("Loading Videos section...")
 
         section = self.sections.get("videos")
@@ -1360,20 +1360,16 @@ class AccordionSidebar(QWidget):
             return
 
         try:
-            # Query videos from database
-            with self.db._connect() as conn:
-                cur = conn.cursor()
-                cur.execute("""
-                    SELECT video_path, duration_seconds, width, height, size_bytes, status
-                    FROM videos
-                    WHERE project_id = ?
-                    ORDER BY video_path ASC
-                """, (self.project_id,))
-                rows = cur.fetchall()
+            # Use VideoService to get videos (as in previous working version)
+            from services.video_service import VideoService
+            video_service = VideoService()
 
-            self._dbg(f"Loaded {len(rows)} videos")
+            self._dbg(f"Fetching videos for project_id={self.project_id}")
+            videos = video_service.get_videos_by_project(self.project_id) if self.project_id else []
+            total_videos = len(videos)
+            self._dbg(f"Loaded {total_videos} videos")
 
-            if len(rows) == 0:
+            if total_videos == 0:
                 # Show "No videos" placeholder
                 placeholder = QLabel("No videos found.\n\nScan your repository to index videos.")
                 placeholder.setAlignment(Qt.AlignCenter)
@@ -1382,116 +1378,122 @@ class AccordionSidebar(QWidget):
                 section.set_count(0)
                 return
 
-            # Create table widget for videos
-            table = QTableWidget()
-            table.setColumnCount(4)
-            table.setHorizontalHeaderLabels(["Name", "Duration", "Size", "Resolution"])
-            table.setSelectionBehavior(QTableWidget.SelectRows)
-            table.setSelectionMode(QTableWidget.SingleSelection)
-            table.setEditTriggers(QTableWidget.NoEditTriggers)
-            table.verticalHeader().setVisible(False)
-            table.setAlternatingRowColors(True)
-            table.setMinimumHeight(200)
-            table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-
-            # Set column widths
-            header = table.horizontalHeader()
-            header.setStretchLastSection(False)
-            header.setSectionResizeMode(0, QHeaderView.Stretch)  # Name column stretches
-            header.setSectionResizeMode(1, QHeaderView.Fixed)
-            header.setSectionResizeMode(2, QHeaderView.Fixed)
-            header.setSectionResizeMode(3, QHeaderView.Fixed)
-            table.setColumnWidth(1, 80)  # Duration
-            table.setColumnWidth(2, 80)  # Size
-            table.setColumnWidth(3, 100)  # Resolution
-
-            # Style the table
-            table.setStyleSheet("""
-                QTableWidget {
+            # Create tree widget for videos (like the previous version)
+            tree = QTreeWidget()
+            tree.setHeaderHidden(True)
+            tree.setIndentation(12)
+            tree.setMinimumHeight(200)
+            tree.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+            tree.setStyleSheet("""
+                QTreeWidget {
                     background: white;
                     border: 1px solid #e0e0e0;
                     border-radius: 4px;
-                    gridline-color: #f0f0f0;
                 }
-                QTableWidget::item {
-                    padding: 8px 4px;
-                    border: none;
+                QTreeWidget::item {
+                    padding: 6px 4px;
                 }
-                QTableWidget::item:selected {
+                QTreeWidget::item:hover {
+                    background: #f5f5f5;
+                }
+                QTreeWidget::item:selected {
                     background: #e8f0fe;
                     color: #1a73e8;
                 }
-                QHeaderView::section {
-                    background: #f8f9fa;
-                    padding: 8px 4px;
-                    border: none;
-                    border-bottom: 2px solid #e0e0e0;
-                    font-weight: bold;
-                    color: #5f6368;
-                }
             """)
 
-            # Populate table
-            table.setRowCount(len(rows))
-            for idx, row in enumerate(rows):
-                video_path = row[0]
-                duration_seconds = row[1]
-                width = row[2]
-                height = row[3]
-                size_bytes = row[4]
-                status = row[5]
+            # All Videos
+            all_item = QTreeWidgetItem([f"📁 All Videos ({total_videos})"])
+            all_item.setData(0, Qt.UserRole, {"type": "all_videos"})
+            tree.addTopLevelItem(all_item)
 
-                # Video name (filename only)
-                import os
-                video_name = os.path.basename(video_path)
-                name_item = QTableWidgetItem(video_name)
-                name_item.setToolTip(video_path)
-                if status == "completed":
-                    name_item.setIcon(QIcon.fromTheme("video-x-generic"))
-                table.setItem(idx, 0, name_item)
+            # By Duration
+            short_videos = [v for v in videos if v.get('duration_seconds') and v['duration_seconds'] < 30]
+            medium_videos = [v for v in videos if v.get('duration_seconds') and 30 <= v['duration_seconds'] < 300]
+            long_videos = [v for v in videos if v.get('duration_seconds') and v['duration_seconds'] >= 300]
 
-                # Duration
-                if duration_seconds:
-                    minutes = int(duration_seconds // 60)
-                    seconds = int(duration_seconds % 60)
-                    duration_str = f"{minutes}:{seconds:02d}"
-                else:
-                    duration_str = "—"
-                duration_item = QTableWidgetItem(duration_str)
-                duration_item.setTextAlignment(Qt.AlignCenter)
-                table.setItem(idx, 1, duration_item)
+            if short_videos or medium_videos or long_videos:
+                duration_parent = QTreeWidgetItem(["⏱️  By Duration"])
+                tree.addTopLevelItem(duration_parent)
 
-                # Size
-                if size_bytes:
-                    if size_bytes < 1024 * 1024:
-                        size_str = f"{size_bytes / 1024:.1f} KB"
-                    elif size_bytes < 1024 * 1024 * 1024:
-                        size_str = f"{size_bytes / (1024 * 1024):.1f} MB"
-                    else:
-                        size_str = f"{size_bytes / (1024 * 1024 * 1024):.2f} GB"
-                else:
-                    size_str = "—"
-                size_item = QTableWidgetItem(size_str)
-                size_item.setTextAlignment(Qt.AlignCenter)
-                table.setItem(idx, 2, size_item)
+                if short_videos:
+                    short_item = QTreeWidgetItem([f"  Short < 30s ({len(short_videos)})"])
+                    short_item.setData(0, Qt.UserRole, {"type": "duration", "key": "short", "videos": short_videos})
+                    duration_parent.addChild(short_item)
 
-                # Resolution
-                if width and height:
-                    resolution_str = f"{width}×{height}"
-                else:
-                    resolution_str = "—"
-                resolution_item = QTableWidgetItem(resolution_str)
-                resolution_item.setTextAlignment(Qt.AlignCenter)
-                table.setItem(idx, 3, resolution_item)
+                if medium_videos:
+                    medium_item = QTreeWidgetItem([f"  Medium 30s-5m ({len(medium_videos)})"])
+                    medium_item.setData(0, Qt.UserRole, {"type": "duration", "key": "medium", "videos": medium_videos})
+                    duration_parent.addChild(medium_item)
 
-            # Connect row click to video filtering
-            table.cellClicked.connect(lambda row, col: self._on_video_activated(rows[row][0]))
+                if long_videos:
+                    long_item = QTreeWidgetItem([f"  Long > 5m ({len(long_videos)})"])
+                    long_item.setData(0, Qt.UserRole, {"type": "duration", "key": "long", "videos": long_videos})
+                    duration_parent.addChild(long_item)
+
+            # By Resolution
+            sd_videos = [v for v in videos if v.get('width') and v.get('height') and v['height'] < 720]
+            hd_videos = [v for v in videos if v.get('width') and v.get('height') and 720 <= v['height'] < 1080]
+            fhd_videos = [v for v in videos if v.get('width') and v.get('height') and 1080 <= v['height'] < 2160]
+            uhd_videos = [v for v in videos if v.get('width') and v.get('height') and v['height'] >= 2160]
+
+            if sd_videos or hd_videos or fhd_videos or uhd_videos:
+                res_parent = QTreeWidgetItem(["📺 By Resolution"])
+                tree.addTopLevelItem(res_parent)
+
+                if sd_videos:
+                    sd_item = QTreeWidgetItem([f"  SD < 720p ({len(sd_videos)})"])
+                    sd_item.setData(0, Qt.UserRole, {"type": "resolution", "key": "sd", "videos": sd_videos})
+                    res_parent.addChild(sd_item)
+
+                if hd_videos:
+                    hd_item = QTreeWidgetItem([f"  HD 720p ({len(hd_videos)})"])
+                    hd_item.setData(0, Qt.UserRole, {"type": "resolution", "key": "hd", "videos": hd_videos})
+                    res_parent.addChild(hd_item)
+
+                if fhd_videos:
+                    fhd_item = QTreeWidgetItem([f"  Full HD 1080p ({len(fhd_videos)})"])
+                    fhd_item.setData(0, Qt.UserRole, {"type": "resolution", "key": "fhd", "videos": fhd_videos})
+                    res_parent.addChild(fhd_item)
+
+                if uhd_videos:
+                    uhd_item = QTreeWidgetItem([f"  4K 2160p+ ({len(uhd_videos)})"])
+                    uhd_item.setData(0, Qt.UserRole, {"type": "resolution", "key": "4k", "videos": uhd_videos})
+                    res_parent.addChild(uhd_item)
+
+            # By Date (Year/Month hierarchy)
+            try:
+                video_hier = self.db.get_video_date_hierarchy(self.project_id) or {}
+
+                if video_hier:
+                    date_parent = QTreeWidgetItem(["📅 By Date"])
+                    tree.addTopLevelItem(date_parent)
+
+                    for year in sorted(video_hier.keys(), key=lambda y: int(str(y)), reverse=True):
+                        year_count = self.db.count_videos_for_year(year, self.project_id)
+                        year_item = QTreeWidgetItem([f"  {year} ({year_count})"])
+                        year_item.setData(0, Qt.UserRole, {"type": "video_year", "year": year})
+                        date_parent.addChild(year_item)
+
+                        # Month nodes under year
+                        months = video_hier[year]
+                        for month in sorted(months.keys(), key=lambda m: int(str(m))):
+                            month_label = f"{int(month):02d}"
+                            month_count = self.db.count_videos_for_month(year, month, self.project_id)
+                            month_item = QTreeWidgetItem([f"    {month_label} ({month_count})"])
+                            month_item.setData(0, Qt.UserRole, {"type": "video_month", "year": year, "month": month_label})
+                            year_item.addChild(month_item)
+            except Exception as e:
+                self._dbg(f"Failed to build video date hierarchy: {e}")
+
+            # Connect click handler
+            tree.itemClicked.connect(self._on_video_tree_clicked)
 
             # Update count and set content
-            section.set_count(len(rows))
-            section.set_content_widget(table)
+            section.set_count(total_videos)
+            section.set_content_widget(tree)
 
-            self._dbg(f"✓ Videos section loaded with {len(rows)} videos")
+            self._dbg(f"✓ Videos section loaded with {total_videos} videos")
 
         except Exception as e:
             self._dbg(f"⚠️ Error loading videos section: {e}")
@@ -1504,11 +1506,17 @@ class AccordionSidebar(QWidget):
             error_label.setStyleSheet("padding: 20px; color: #ff0000;")
             section.set_content_widget(error_label)
 
-    def _on_video_activated(self, video_path: str):
-        """Handle video click - emit signal to filter grid."""
-        self._dbg(f"Video activated: {video_path}")
-        # For now, just log - later can implement video filtering
-        # self.selectBranch.emit(f"video:{video_path}")
+    def _on_video_tree_clicked(self, item: QTreeWidgetItem, column: int):
+        """Handle video tree item click."""
+        data = item.data(0, Qt.UserRole)
+        if not data:
+            return
+
+        item_type = data.get("type")
+        self._dbg(f"Video tree item clicked: {item_type}")
+
+        # For now, just log - can implement filtering later
+        # self.selectBranch.emit(f"video:{item_type}")
 
     def _load_dates_section(self):
         """Load By Date section with hierarchical tree (Year > Month > Day)."""
