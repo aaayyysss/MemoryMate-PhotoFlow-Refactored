@@ -1357,6 +1357,7 @@ class AccordionSidebar(QWidget):
 
         section = self.sections.get("videos")
         if not section or not self.project_id:
+            self._dbg(f"⚠️ Section or project_id missing: section={section}, project_id={self.project_id}")
             return
 
         try:
@@ -1367,7 +1368,27 @@ class AccordionSidebar(QWidget):
             self._dbg(f"Fetching videos for project_id={self.project_id}")
             videos = video_service.get_videos_by_project(self.project_id) if self.project_id else []
             total_videos = len(videos)
-            self._dbg(f"Loaded {total_videos} videos")
+            self._dbg(f"Loaded {total_videos} videos from VideoService")
+
+            # DEBUG: Check database directly if VideoService returns 0
+            if total_videos == 0:
+                self._dbg("⚠️ VideoService returned empty - checking database directly...")
+                try:
+                    with self.db._connect() as conn:
+                        cur = conn.cursor()
+                        cur.execute("SELECT COUNT(*) FROM video_metadata WHERE project_id = ?", (self.project_id,))
+                        count = cur.fetchone()[0]
+                        self._dbg(f"Direct query: video_metadata has {count} rows for project {self.project_id}")
+
+                        if count > 0:
+                            cur.execute("SELECT id, path, metadata_status, project_id FROM video_metadata WHERE project_id = ? LIMIT 3", (self.project_id,))
+                            samples = cur.fetchall()
+                            for sample in samples:
+                                self._dbg(f"Sample video in DB: id={sample[0]}, path={sample[1]}, status={sample[2]}, project={sample[3]}")
+                except Exception as db_err:
+                    self._dbg(f"Database check failed: {db_err}")
+                    import traceback
+                    traceback.print_exc()
 
             if total_videos == 0:
                 # Show "No videos" placeholder
