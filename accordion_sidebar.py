@@ -366,24 +366,16 @@ class PersonCard(QWidget):
                     event.acceptProposedAction()
                     self.drag_merge_requested.emit(source_branch, self.branch_key)
 
-                # CRITICAL FIX: Check if widget still exists before resetting style
-                # After merge, parent grid may have deleted this widget during reload
-                try:
-                    if not self.isVisible():
-                        # Widget was deleted during merge, skip style reset
-                        return
-                    self.setStyleSheet("""
-                        PersonCard {
-                            background: transparent;
-                            border-radius: 6px;
-                        }
-                        PersonCard:hover {
-                            background: rgba(26, 115, 232, 0.08);
-                        }
-                    """)
-                except RuntimeError:
-                    # C++ object already deleted - this is expected after grid reload
-                    pass
+                # Reset style
+                self.setStyleSheet("""
+                    PersonCard {
+                        background: transparent;
+                        border-radius: 6px;
+                    }
+                    PersonCard:hover {
+                        background: rgba(26, 115, 232, 0.08);
+                    }
+                """)
 
     def _show_context_menu(self, global_pos):
         """Show context menu for rename/merge/delete."""
@@ -1263,12 +1255,8 @@ class AccordionSidebar(QWidget):
                 log_undo=True
             )
 
-            # CRITICAL FIX: Delay grid reload to avoid C++ object deletion crash
-            # The dropEvent handler on PersonCard widget needs time to complete cleanup
-            # before we delete widgets during _load_people_section()
-            # QTimer.singleShot ensures reload happens AFTER dropEvent completes
-            from PySide6.QtCore import QTimer
-            QTimer.singleShot(100, self._load_people_section)
+            # Reload people section to reflect changes
+            self._load_people_section()
 
             # Build comprehensive merge notification following Google Photos pattern
             msg_lines = [f"✓ '{source_name}' merged successfully", ""]
