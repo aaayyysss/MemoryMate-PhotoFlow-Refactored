@@ -1508,13 +1508,12 @@ class SidebarQt(QWidget):
         top_layout.addWidget(title_lbl)
         top_layout.addStretch(1)
 
-        # Mode toggle
+        # Mode toggle (cycle through: List → Tabs → Accordion → List ...)
         self.btn_mode_toggle = QPushButton("")
-        self.btn_mode_toggle.setCheckable(True)
+        self.btn_mode_toggle.setCheckable(False)  # Not checkable, we cycle through 3 modes
         current_mode = self.settings.get("sidebar_mode", "list") if self.settings else "list"
-        self.btn_mode_toggle.setChecked(current_mode.lower() == "tabs")
         self._update_mode_toggle_text()
-        self.btn_mode_toggle.setToolTip("Toggle Sidebar Mode: List / Tabs")
+        self.btn_mode_toggle.setToolTip("Cycle Sidebar Mode: List → Tabs → Accordion")
         self.btn_mode_toggle.clicked.connect(self._on_mode_toggled)
         self.btn_mode_toggle.setStyleSheet("""
             QPushButton {
@@ -1671,6 +1670,20 @@ class SidebarQt(QWidget):
         self.tabs_controller.selectTag.connect(
             lambda name: self.window()._apply_tag_filter(name) if hasattr(self.window(), "_apply_tag_filter") else None
         )
+
+        # Accordion controller (Google Photos-style accordion sidebar)
+        from accordion_sidebar import AccordionSidebar
+        self.accordion_controller = AccordionSidebar(project_id=self.project_id, parent=self)
+        self.accordion_controller.hide()       # start hidden if default is list
+        layout.addWidget(self.accordion_controller, 1)
+
+        # Connect AccordionSidebar signals to your grid helpers
+        self.accordion_controller.selectBranch.connect(lambda key: self._set_grid_context("branch", key))
+        self.accordion_controller.selectFolder.connect(lambda folder_id: self._set_grid_context("folder", folder_id))
+        self.accordion_controller.selectDate.connect(lambda key: self._set_grid_context("date", key))
+        self.accordion_controller.selectTag.connect(
+            lambda name: self.window()._apply_tag_filter(name) if hasattr(self.window(), "_apply_tag_filter") else None
+        )
         
         # Connect counts update signal from worker thread to UI handler
         self._countsReady.connect(self._apply_counts_defensive, Qt.QueuedConnection)        
@@ -1685,8 +1698,9 @@ class SidebarQt(QWidget):
 
         # Start with persisted mode
         try:
-            if current_mode.lower() == "tabs":
-                self.switch_display_mode("tabs")
+            mode = current_mode.lower()
+            if mode in ("tabs", "accordion"):
+                self.switch_display_mode(mode)
             else:
                 self.switch_display_mode("list")
         except Exception:
@@ -1755,17 +1769,29 @@ class SidebarQt(QWidget):
         return (None, None)
 
     def _update_mode_toggle_text(self):
-        self.btn_mode_toggle.setText("Tabs" if self.btn_mode_toggle.isChecked() else "List")
+        # Cycle through 3 modes: List → Tabs → Accordion → List ...
+        current_mode = self.settings.get("sidebar_mode", "list") if self.settings else "list"
+        mode_labels = {"list": "List", "tabs": "Tabs", "accordion": "Accordion"}
+        self.btn_mode_toggle.setText(mode_labels.get(current_mode, "List"))
 
     def _on_mode_toggled(self, checked):
+        # Cycle through 3 modes instead of toggle between 2
+        current_mode = self.settings.get("sidebar_mode", "list") if self.settings else "list"
+
+        # Cycle: list → tabs → accordion → list ...
+        mode_cycle = {"list": "tabs", "tabs": "accordion", "accordion": "list"}
+        next_mode = mode_cycle.get(current_mode, "list")
+
         self._update_mode_toggle_text()
-        mode = "tabs" if checked else "list"
         try:
             if self.settings:
-                self.settings.set("sidebar_mode", mode)
+                self.settings.set("sidebar_mode", next_mode)
         except Exception:
             pass
-        self.switch_display_mode(mode)
+        self.switch_display_mode(next_mode)
+
+        # Update button text after mode switch
+        self._update_mode_toggle_text()
 
     def _on_refresh_clicked(self):
         self._start_spinner()
@@ -4370,6 +4396,7 @@ class SidebarQt(QWidget):
         print(f"[SidebarQt] set_project({project_id}) called")
         self.project_id = project_id
         self.tabs_controller.set_project(project_id)   # <-- delegate
+        self.accordion_controller.set_project(project_id)  # <-- delegate accordion too
         print(f"[SidebarQt] Calling reload() after setting project_id")
         self.reload()
 
@@ -5430,12 +5457,35 @@ class SidebarQt(QWidget):
         # --- Perform merge via DB ---
         try:
             stats = self.db.merge_face_clusters(self.project_id, target_key, source_keys)
-            moved = stats.get("moved_faces", 0) if isinstance(stats, dict) else 0
+
+            # Build comprehensive merge notification following Google Photos pattern
+            msg_lines = [f"✓ Merged {len(source_keys)} people into '{target_name}'"]
+            msg_lines.append("")  # Blank line
+
+            # Show duplicate detection if any found
+            duplicates = stats.get("duplicates_found", 0) if isinstance(stats, dict) else 0
+            unique_moved = stats.get("unique_moved", 0) if isinstance(stats, dict) else 0
+            total_photos = stats.get("total_photos", 0) if isinstance(stats, dict) else 0
+            moved_faces = stats.get("moved_faces", 0) if isinstance(stats, dict) else 0
+
+            if duplicates > 0:
+                msg_lines.append(f"⚠️ Found {duplicates} duplicate photo{'s' if duplicates != 1 else ''}")
+                msg_lines.append("   (already in target, not duplicated)")
+                msg_lines.append("")
+
+            if unique_moved > 0:
+                msg_lines.append(f"• Moved {unique_moved} unique photo{'s' if unique_moved != 1 else ''}")
+            elif duplicates > 0:
+                msg_lines.append(f"• No unique photos to move (all were duplicates)")
+
+            msg_lines.append(f"• Reassigned {moved_faces} face crop{'s' if moved_faces != 1 else ''}")
+            msg_lines.append("")
+            msg_lines.append(f"Total: {total_photos} photo{'s' if total_photos != 1 else ''} in '{target_name}'")
+
             QMessageBox.information(
                 self,
                 "Merge complete",
-                f"Merged {len(source_keys)} people into “{target_name}”.\n"
-                f"Approx. {moved} face crops were reassigned.",
+                "\n".join(msg_lines),
             )
         except Exception as e:
             QMessageBox.warning(
@@ -5832,7 +5882,7 @@ class SidebarQt(QWidget):
 
     def switch_display_mode(self, mode: str):
         mode = (mode or "list").lower()
-        if mode not in ("list", "tabs"):
+        if mode not in ("list", "tabs", "accordion"):
             mode = "list"
         try:
             if self.settings:
@@ -5854,8 +5904,9 @@ class SidebarQt(QWidget):
             self._list_worker_gen = (self._list_worker_gen + 1) % 1_000_000
             print(f"[SidebarQt] Canceled list workers (new gen={self._list_worker_gen})")
 
-            print("[SidebarQt] Hiding tree view")
+            print("[SidebarQt] Hiding tree view and accordion")
             self.tree.hide()
+            self.accordion_controller.hide()
             print("[SidebarQt] Showing tabs controller")
             self.tabs_controller.show_tabs()
             # Force refresh tabs when switching to tabs mode (ensures fresh data after scans)
@@ -5867,16 +5918,36 @@ class SidebarQt(QWidget):
                 print(f"[SidebarQt] ERROR in tabs_controller.refresh_all() after mode switch: {e}")
                 import traceback
                 traceback.print_exc()
-        else:
-            # Cancel tab workers via hide_tabs() which bumps their generations
-            print("[SidebarQt] Hiding tabs controller")
-            self.tabs_controller.hide_tabs()
-            print("[SidebarQt] Canceled tab workers via hide_tabs()")
+        elif mode == "accordion":
+            # Cancel list mode and tabs mode workers
+            self._list_worker_gen = (self._list_worker_gen + 1) % 1_000_000
+            print(f"[SidebarQt] Canceled list workers (new gen={self._list_worker_gen})")
 
-            # Process events again after hiding tabs to clear tab widgets
+            print("[SidebarQt] Hiding tree view and tabs")
+            self.tree.hide()
+            self.tabs_controller.hide_tabs()
+            print("[SidebarQt] Showing accordion controller")
+            self.accordion_controller.show()
+            # Force refresh accordion when switching to accordion mode (ensures fresh data after scans)
+            print("[SidebarQt] Calling accordion_controller.refresh_all(force=True) after mode switch")
+            try:
+                self.accordion_controller.refresh_all(force=True)
+                print("[SidebarQt] accordion_controller.refresh_all() completed after mode switch")
+            except Exception as e:
+                print(f"[SidebarQt] ERROR in accordion_controller.refresh_all() after mode switch: {e}")
+                import traceback
+                traceback.print_exc()
+        else:
+            # Cancel tab and accordion workers
+            print("[SidebarQt] Hiding tabs controller and accordion")
+            self.tabs_controller.hide_tabs()
+            self.accordion_controller.hide()
+            print("[SidebarQt] Canceled tab/accordion workers via hide")
+
+            # Process events again after hiding tabs/accordion to clear widgets
             # Only after initialization is complete
             if self._initialized:
-                print("[SidebarQt] Processing pending events after hide_tabs()")
+                print("[SidebarQt] Processing pending events after hide_tabs()/hide()")
                 from PySide6.QtCore import QCoreApplication
                 QCoreApplication.processEvents()
                 print("[SidebarQt] Finished processing events")
