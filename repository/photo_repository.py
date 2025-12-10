@@ -1,5 +1,5 @@
 # repository/photo_repository.py
-# Version 01.00.00.00 dated 20251102
+# Version 02.00.00.00 dated 20251205
 # Repository for photo_metadata table operations
 
 from typing import Optional, List, Dict, Any
@@ -22,6 +22,10 @@ class PhotoRepository(BaseRepository):
 
     def _table_name(self) -> str:
         return "photo_metadata"
+
+    def get_by_id(self, photo_id: int) -> Optional[Dict[str, Any]]:
+        """Get photo metadata by primary ID."""
+        return self.find_by_id(photo_id, id_column="id")
 
     def get_by_path(self, path: str, project_id: int) -> Optional[Dict[str, Any]]:
         """

@@ -4,7 +4,7 @@
     "language_name": "العربية (Arabic)",
     "version": "2.0.0",
     "contributors": ["Translation Team"],
-    "last_updated": "2025-11-18"
+    "last_updated": "2025-12-05"
   },
 
   "app": {
@@ -616,6 +616,44 @@
     "project_dropdown": {
       "new_project": "➕ مشروع جديد...",
       "no_projects": "(لا توجد مشاريع)"
+    },
+    "lightbox": {
+      "window_title": "عارض الوسائط",
+      "loading": "⏳ جارٍ التحميل...",
+      "motion_photo_tooltip": "صورة متحركة - اضغط مطولًا للتشغيل",
+      "delete_tooltip": "حذف (D)",
+      "favorite_tooltip": "مفضلة (F)",
+      "share_tooltip": "مشاركة/تصدير (Ctrl+Shift+S)",
+      "zoom_out_tooltip": "تصغير (-)",
+      "zoom_in_tooltip": "تكبير (+)",
+      "slideshow_tooltip": "عرض شرائح (S)",
+      "info_tooltip": "معلومات (I)",
+      "edit_tooltip": "وضع التحرير - تعديلات، قص، فلاتر (E)",
+      "save_button": "✔ حفظ",
+      "save_tooltip": "تطبيق التعديلات والعودة إلى العارض",
+      "cancel_button": "✖ إلغاء",
+      "cancel_tooltip": "تجاهل التعديلات والعودة إلى العارض",
+      "zoom_reset_tooltip": "إعادة ضبط التكبير",
+      "crop_button": "✂ قص",
+      "crop_tooltip": "الدخول إلى وضع القص",
+      "filters_button": "🎨 فلاتر",
+      "filters_tooltip": "إظهار لوحة الإعدادات المسبقة",
+      "before_after_button": "🔄 قبل/بعد",
+      "before_after_tooltip": "تبديل عرض المقارنة",
+      "tools_button": "🛠 أدوات",
+      "tools_tooltip": "إظهار/إخفاء أدوات التحرير",
+      "undo_button": "↶ تراجع",
+      "undo_tooltip": "التراجع عن آخر تعديل (Ctrl+Z)",
+      "redo_button": "↷ إعادة",
+      "redo_tooltip": "إعادة (Ctrl+Y)",
+      "copy_button": "📋 نسخ",
+      "copy_tooltip": "نسخ التعديلات الحالية (Ctrl+Shift+C)",
+      "paste_button": "📌 لصق",
+      "paste_tooltip": "لصق التعديلات المنسوخة (Ctrl+Shift+V)",
+      "export_button": "💾 تصدير",
+      "export_tooltip": "تصدير الصورة أو الفيديو المعدّل",
+      "adjustments_header": "التعديلات"
     }
   }
 }
+

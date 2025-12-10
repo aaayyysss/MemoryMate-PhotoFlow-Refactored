@@ -343,12 +343,22 @@ class PhotoScanService:
                             # Row format: (path, folder_id, size_kb, ...)
                             file_size_kb = round(row[2], 1) if row[2] else 0
 
-                        progress_msg = f"📷 {file_name} ({file_size_kb} KB)\nIndexed: {self._stats['photos_indexed']}/{total_files} photos"
+                        # RICH PROGRESS FEEDBACK: Show percentage, current/total count, file path, and stats
+                        percentage = int((i / total_files) * 100)
+                        total_photos = self._stats['photos_indexed']
+                        total_videos = self._stats['videos_indexed']
+                        
+                        progress_msg = (
+                            f"[{i}/{total_files}] ({percentage}%)\n"
+                            f"📷 {file_name} ({file_size_kb} KB)\n"
+                            f"Path: {file_path}\n"
+                            f"Photos: {total_photos} | Videos: {total_videos}"
+                        )
 
                         progress = ScanProgress(
                             current=i,
                             total=total_files,
-                            percent=int((i / total_files) * 100),
+                            percent=percentage,
                             message=progress_msg,
                             current_file=str(file_path)
                         )

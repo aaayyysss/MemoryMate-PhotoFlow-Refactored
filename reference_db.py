@@ -1,5 +1,5 @@
 # reference_db.py
-# Version 09.32.01.01 dated 20251122
+# Version 09.42.01.01 dated 20251205
 # FIX: Convert db_file to absolute path in __init__ for consistency with DatabaseConnection
 # PHASE 4 CLEANUP: Removed unnecessary ensure_created_date_fields() calls
 # UPDATED: Now uses repository layer for schema management
@@ -3141,16 +3141,34 @@ class ReferenceDB:
             return
         photo_id = self._get_photo_id_by_path(path, project_id)
         if not photo_id:
+            print(f"[ReferenceDB] ⚠️ Cannot add tag '{tag_name}': photo not found for path {path}")
             return
         with self._connect() as conn:
             cur = conn.cursor()
-            # ensure tag exists
-            cur.execute("INSERT OR IGNORE INTO tags (name) VALUES (?)", (tag_name,))
-            cur.execute("SELECT id FROM tags WHERE name = ?", (tag_name,))
-            tag_id = cur.fetchone()[0]
-            # link
-            cur.execute("INSERT OR IGNORE INTO photo_tags (photo_id, tag_id) VALUES (?, ?)", (photo_id, tag_id))
-            conn.commit()
+            
+            # Ensure tag exists in tags table
+            try:
+                cur.execute("INSERT OR IGNORE INTO tags (name) VALUES (?)", (tag_name,))
+                conn.commit()  # Commit to make the tag visible to subsequent queries
+                
+                # Verify tag was created/exists
+                cur.execute("SELECT id FROM tags WHERE name = ? COLLATE NOCASE", (tag_name,))
+                row = cur.fetchone()
+                if not row:
+                    print(f"[ReferenceDB] ⚠️ Failed to create/find tag '{tag_name}' - database may be locked or corrupted")
+                    return
+                tag_id = row[0]
+                
+                # Link photo to tag
+                cur.execute("INSERT OR IGNORE INTO photo_tags (photo_id, tag_id) VALUES (?, ?)", (photo_id, tag_id))
+                conn.commit()
+                
+                print(f"[ReferenceDB] ✓ Tagged photo {photo_id} with '{tag_name}' (tag_id={tag_id})")
+            except Exception as e:
+                print(f"[ReferenceDB] ⚠️ Error adding tag '{tag_name}': {e}")
+                import traceback
+                traceback.print_exc()
+                raise
 
     def remove_tag(self, path: str, tag_name: str, project_id: int | None = None):
         """Remove a tag from a photo by path."""
@@ -3167,19 +3185,46 @@ class ReferenceDB:
                 conn.commit()
 
     def get_tags_for_photo(self, path: str, project_id: int | None = None) -> list[str]:
-        """Return list of tags assigned to a specific photo path."""
+        """
+        Return list of tags assigned to a specific photo path.
+
+        DEPRECATED: Use TagService.get_tags_for_path() instead for proper architecture.
+        This method is kept for backward compatibility only.
+
+        CRITICAL FIX (2025-12-05): Added project_id filtering to prevent cross-project tag leakage.
+        Previous implementation joined tags table without filtering by project_id, which could
+        return tags from other projects if photo_id existed across multiple projects.
+
+        Args:
+            path: Photo file path
+            project_id: Project ID for tag isolation (Schema v3.1.0)
+
+        Returns:
+            List of tag names for the photo within the specified project
+        """
         photo_id = self._get_photo_id_by_path(path, project_id)
         if not photo_id:
             return []
         with self._connect() as conn:
             cur = conn.cursor()
-            cur.execute("""
-                SELECT t.name
-                FROM tags t
-                JOIN photo_tags pt ON pt.tag_id = t.id
-                WHERE pt.photo_id = ?
-                ORDER BY t.name COLLATE NOCASE
-            """, (photo_id,))
+            # CRITICAL FIX: Added project_id filtering to prevent cross-project tag leakage
+            if project_id is not None:
+                cur.execute("""
+                    SELECT t.name
+                    FROM tags t
+                    JOIN photo_tags pt ON pt.tag_id = t.id
+                    WHERE pt.photo_id = ? AND t.project_id = ?
+                    ORDER BY t.name COLLATE NOCASE
+                """, (photo_id, project_id))
+            else:
+                # Fallback for legacy code that doesn't pass project_id (not recommended)
+                cur.execute("""
+                    SELECT t.name
+                    FROM tags t
+                    JOIN photo_tags pt ON pt.tag_id = t.id
+                    WHERE pt.photo_id = ?
+                    ORDER BY t.name COLLATE NOCASE
+                """, (photo_id,))
             return [r[0] for r in cur.fetchall()]
 
     def get_photos_by_tag(self, tag_name: str) -> list[str]:
@@ -3255,6 +3300,7 @@ class ReferenceDB:
         with self._connect() as conn:
             cur = conn.cursor()
             cur.execute("INSERT OR IGNORE INTO tags (name) VALUES (?)", (tag_name,))
+            conn.commit()  # Commit to make the tag visible
             cur.execute("SELECT id FROM tags WHERE name = ?", (tag_name,))
             row = cur.fetchone()
             return row[0] if row else None
@@ -3272,8 +3318,13 @@ class ReferenceDB:
             cur = conn.cursor()
             # ensure new tag exists
             cur.execute("INSERT OR IGNORE INTO tags (name) VALUES (?)", (new_name,))
+            conn.commit()  # Commit to make the tag visible
             cur.execute("SELECT id FROM tags WHERE name = ?", (new_name,))
-            new_id = cur.fetchone()[0]
+            row = cur.fetchone()
+            if not row:
+                print(f"[ReferenceDB] ⚠️ Failed to create/find new tag '{new_name}'")
+                return
+            new_id = row[0]
 
             # get old tag id
             cur.execute("SELECT id FROM tags WHERE name = ?", (old_name,))
@@ -4749,25 +4800,37 @@ class ReferenceDB:
             moved_faces = cur.rowcount
 
             # 2) project_images → keep branch-based browsing consistent
-            # CRITICAL FIX: Delete duplicate entries BEFORE updating to prevent UNIQUE constraint violation
-            # If image_path exists in both source and target branches, the UPDATE would create duplicates
+            # CRITICAL FIX (2025-12-05): Properly handle merging of project_images
+            # Previous bug: Deleted source entries if target had same image_path, but
+            # didn't ensure they were properly linked to target. This caused photos to
+            # disappear from grid (no project_images link).
+            #
+            # NEW APPROACH:
+            # - If photo exists in BOTH source and target: keep target, delete source (true duplicate)
+            # - If photo exists ONLY in source: UPDATE to target (move the link)
+            # This ensures no photos lose their project_images link during merge
+
+            # First, handle true duplicates (photos in both source AND target branches)
+            # These can be safely deleted from source since target already has them
             cur.execute(
                 f"""
                 DELETE FROM project_images
                 WHERE project_id = ?
                   AND branch_key IN ({src_placeholders})
                   AND image_path IN (
-                      SELECT image_path
-                      FROM project_images
-                      WHERE project_id = ? AND branch_key = ?
+                      SELECT pi_target.image_path
+                      FROM project_images pi_target
+                      WHERE pi_target.project_id = ?
+                        AND pi_target.branch_key = ?
                   )
                 """,
                 [project_id] + src_list + [project_id, target_branch],
             )
             deleted_duplicates = cur.rowcount
-            print(f"[merge_face_clusters] Deleted {deleted_duplicates} duplicate project_images entries")
+            print(f"[merge_face_clusters] Deleted {deleted_duplicates} TRUE duplicate project_images entries (photos already in target)")
 
-            # Now safe to UPDATE remaining source entries to target
+            # Now UPDATE remaining source entries to target (photos that only exist in source)
+            # These are NOT duplicates - they need to be moved to target branch
             cur.execute(
                 f"""
                 UPDATE project_images
@@ -4777,7 +4840,48 @@ class ReferenceDB:
                 """,
                 [target_branch, project_id] + src_list,
             )
-            moved_images = cur.rowcount + deleted_duplicates  # Total affected
+            moved_images = cur.rowcount
+            print(f"[merge_face_clusters] Moved {moved_images} unique project_images entries from source to target")
+
+            # VALIDATION: Ensure all face_crops photos have project_images entries
+            # This catches any logic bugs where photos might lose their link
+            cur.execute(
+                """
+                SELECT COUNT(DISTINCT fc.image_path)
+                FROM face_crops fc
+                LEFT JOIN project_images pi ON fc.image_path = pi.image_path
+                                            AND pi.project_id = fc.project_id
+                                            AND pi.branch_key = fc.branch_key
+                WHERE fc.project_id = ? AND fc.branch_key = ?
+                  AND pi.image_path IS NULL
+                """,
+                [project_id, target_branch],
+            )
+            orphaned_count = cur.fetchone()[0]
+
+            if orphaned_count > 0:
+                # BUG: Some face_crops lost their project_images link!
+                print(f"[merge_face_clusters] ⚠️ WARNING: {orphaned_count} face_crops for {target_branch} have no project_images link!")
+                print(f"[merge_face_clusters] ⚠️ This will cause count mismatch in grid. Auto-fixing...")
+
+                # Auto-fix: Insert missing project_images entries
+                cur.execute(
+                    """
+                    INSERT OR IGNORE INTO project_images (project_id, branch_key, image_path)
+                    SELECT fc.project_id, fc.branch_key, fc.image_path
+                    FROM face_crops fc
+                    LEFT JOIN project_images pi ON fc.image_path = pi.image_path
+                                                AND pi.project_id = fc.project_id
+                                                AND pi.branch_key = fc.branch_key
+                    WHERE fc.project_id = ? AND fc.branch_key = ?
+                      AND pi.image_path IS NULL
+                    """,
+                    [project_id, target_branch],
+                )
+                fixed_count = cur.rowcount
+                print(f"[merge_face_clusters] ✓ Auto-fixed {fixed_count} missing project_images entries")
+
+            total_moved = moved_images + deleted_duplicates
 
             # 3) Representatives: delete reps for source clusters (target kept as-is)
             cur.execute(
@@ -4800,33 +4904,82 @@ class ReferenceDB:
                 [project_id] + src_list,
             )
 
-            # 5) CRITICAL: Update count for target cluster to reflect merged face_crops
-            # Without this, the sidebar shows stale counts even after refresh
+            # 5) CRITICAL: Update count for target cluster to reflect UNIQUE PHOTOS
+            # Count must be based on DISTINCT photos (not face_crops count) to match grid display
+            # Why: A photo can have multiple faces, but should count as 1 photo in the UI
+            # Fix: Use COUNT(DISTINCT image_path) from face_crops + project_images join
             cur.execute(
                 """
                 UPDATE face_branch_reps
                 SET count = (
-                    SELECT COUNT(*)
-                    FROM face_crops
-                    WHERE project_id = ? AND branch_key = ?
+                    SELECT COUNT(DISTINCT fc.image_path)
+                    FROM face_crops fc
+                    JOIN project_images pi ON fc.image_path = pi.image_path
+                                          AND fc.project_id = pi.project_id
+                                          AND fc.branch_key = pi.branch_key
+                    WHERE fc.project_id = ? AND fc.branch_key = ?
                 )
                 WHERE project_id = ? AND branch_key = ?
                 """,
                 [project_id, target_branch, project_id, target_branch],
             )
             updated_count = cur.rowcount
-            print(f"[merge_face_clusters] Updated count for target '{target_branch}' (rowcount={updated_count})")
+            print(f"[merge_face_clusters] Updated count for target '{target_branch}' to reflect unique photos (rowcount={updated_count})")
+
+            # 6) Get final photo count in target cluster (unique photos)
+            cur.execute(
+                """
+                SELECT COUNT(DISTINCT image_path)
+                FROM project_images
+                WHERE project_id = ? AND branch_key = ?
+                """,
+                [project_id, target_branch],
+            )
+            total_photos = cur.fetchone()[0]
+
+            # 7) BEST PRACTICE: Refresh ALL face cluster counts to reflect final database state
+            # This ensures consistency across all clusters after merge operations
+            # Especially important when dealing with photos that have multiple faces
+            print(f"[merge_face_clusters] Refreshing ALL face cluster counts for project {project_id}...")
+            cur.execute(
+                """
+                UPDATE face_branch_reps
+                SET count = (
+                    SELECT COUNT(DISTINCT fc.image_path)
+                    FROM face_crops fc
+                    JOIN project_images pi ON fc.image_path = pi.image_path
+                                          AND fc.project_id = pi.project_id
+                                          AND fc.branch_key = pi.branch_key
+                    WHERE fc.project_id = face_branch_reps.project_id
+                      AND fc.branch_key = face_branch_reps.branch_key
+                )
+                WHERE project_id = ?
+                """,
+                [project_id],
+            )
+            refreshed_count = cur.rowcount
+            print(f"[merge_face_clusters] ✓ Refreshed counts for {refreshed_count} face clusters")
 
             conn.commit()
 
+            # Enhanced result with duplicate detection info for UI notifications
             result = {
-                "moved_faces": moved_faces,
-                "moved_images": moved_images,
+                "moved_faces": moved_faces,           # Face crops reassigned to target
+                "duplicates_found": deleted_duplicates,  # Photos already in target (not duplicated)
+                "unique_moved": moved_images,         # Unique photos moved from source
+                "total_photos": total_photos,         # Final unique photo count in target
+                "moved_images": total_moved,          # Total affected (for backwards compatibility)
                 "deleted_reps": deleted_reps,
                 "sources": src_list,
                 "target": target_branch,
             }
-            print(f"[merge_face_clusters] SUCCESS: {result}")
+
+            # Enhanced logging for debugging
+            if deleted_duplicates > 0:
+                print(f"[merge_face_clusters] ⚠️ DUPLICATE DETECTION: Found {deleted_duplicates} photos already in target")
+            print(f"[merge_face_clusters] SUCCESS: Moved {moved_faces} faces, {deleted_duplicates} duplicates, {moved_images} unique photos")
+            print(f"[merge_face_clusters] Final result: {total_photos} unique photos in '{target_branch}'")
+
             return result
 
 
@@ -4937,6 +5090,28 @@ class ReferenceDB:
 
             # Remove history entry we just consumed
             cur.execute("DELETE FROM face_merge_history WHERE id = ?", (log_id,))
+
+            # BEST PRACTICE: Refresh ALL face cluster counts after undo
+            # Ensures counts reflect actual database state after restoration
+            print(f"[undo_last_face_merge] Refreshing ALL face cluster counts for project {project_id}...")
+            cur.execute(
+                """
+                UPDATE face_branch_reps
+                SET count = (
+                    SELECT COUNT(DISTINCT fc.image_path)
+                    FROM face_crops fc
+                    JOIN project_images pi ON fc.image_path = pi.image_path
+                                          AND fc.project_id = pi.project_id
+                                          AND fc.branch_key = pi.branch_key
+                    WHERE fc.project_id = face_branch_reps.project_id
+                      AND fc.branch_key = face_branch_reps.branch_key
+                )
+                WHERE project_id = ?
+                """,
+                [project_id],
+            )
+            refreshed_count = cur.rowcount
+            print(f"[undo_last_face_merge] ✓ Refreshed counts for {refreshed_count} face clusters")
 
             conn.commit()
 

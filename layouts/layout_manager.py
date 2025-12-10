@@ -152,6 +152,17 @@ class LayoutManager:
         self._current_layout = new_layout
         self._current_layout_id = layout_id
 
+        # UX FIX: Hide/Show MainWindow toolbar based on layout
+        # - Current Layout: SHOW main toolbar
+        # - Other layouts (Google/Apple/Lightroom): HIDE main toolbar
+        try:
+            from PySide6.QtWidgets import QToolBar
+            main_toolbar = self.main_window.findChild(QToolBar, "main_toolbar")
+            if main_toolbar:
+                main_toolbar.setVisible(layout_id == "current")
+        except Exception as e:
+            print(f"[LayoutManager] Toolbar toggle error: {e}")
+
         # Restore layout state
         if self.settings:
             saved_state = self.settings.get(f"layout_{layout_id}_state", {})

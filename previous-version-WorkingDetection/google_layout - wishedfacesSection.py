@@ -640,37 +640,6 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         self.grabGesture(Qt.SwipeGesture)
         self.grabGesture(Qt.PinchGesture)
 
-    def __del__(self):
-        """Cleanup when layout is destroyed to prevent memory leaks."""
-        try:
-            # Remove event filters to prevent RuntimeError on deleted widgets
-            if hasattr(self, 'event_filter') and self.event_filter:
-                if hasattr(self, 'search_box') and self.search_box:
-                    try:
-                        self.search_box.removeEventFilter(self.event_filter)
-                    except RuntimeError:
-                        pass  # Widget already deleted
-                if hasattr(self, 'timeline_scroll') and self.timeline_scroll:
-                    try:
-                        self.timeline_scroll.viewport().removeEventFilter(self.event_filter)
-                    except RuntimeError:
-                        pass  # Widget already deleted
-                        
-            # Disconnect thumbnail loading signals
-            if hasattr(self, 'thumbnail_signals'):
-                try:
-                    self.thumbnail_signals.loaded.disconnect()
-                except (RuntimeError, TypeError):
-                    pass
-                    
-            # Clear preload cache to free memory
-            if hasattr(self, 'preload_cache'):
-                self.preload_cache.clear()
-                
-            print("[GooglePhotosLayout] Cleanup completed")
-        except Exception as e:
-            print(f"[GooglePhotosLayout] Cleanup error: {e}")
-
     def _setup_ui(self):
         """Setup Google Photos-style lightbox UI with overlay controls."""
         from PySide6.QtWidgets import QApplication, QScrollArea, QWidget, QLabel, QPushButton, QSizePolicy, QVBoxLayout, QHBoxLayout, QStackedWidget, QFrame
@@ -1234,9 +1203,6 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         print("[MediaLightbox] Closing - cleaning up resources...")
         
         try:
-            # PHASE 2 FIX: Disconnect video signals before cleanup
-            self._disconnect_video_signals()
-            
             # Stop and cleanup video player
             if hasattr(self, 'video_player') and self.video_player is not None:
                 try:
@@ -1250,17 +1216,6 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 except Exception as video_cleanup_err:
                     print(f"[MediaLightbox] Warning during video cleanup: {video_cleanup_err}")
             
-            # PHASE 2 FIX: Cleanup audio output
-            if hasattr(self, 'audio_output') and self.audio_output is not None:
-                try:
-                    if hasattr(self, 'video_player') and self.video_player is not None:
-                        self.video_player.setAudioOutput(None)  # Detach first
-                    self.audio_output.deleteLater()
-                    self.audio_output = None
-                    print("[MediaLightbox] ✓ Audio output cleaned up")
-                except Exception as audio_cleanup_err:
-                    print(f"[MediaLightbox] Warning during audio cleanup: {audio_cleanup_err}")
-            
             # Stop slideshow timer
             if hasattr(self, 'slideshow_timer') and self.slideshow_timer:
                 self.slideshow_timer.stop()
@@ -1269,20 +1224,10 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             if hasattr(self, 'preload_cache'):
                 self.preload_cache.clear()
             
-            # PHASE 2 FIX: Cancel and stop thread pools
+            # Stop thread pools
             if hasattr(self, 'preload_thread_pool'):
-                # Set cancellation flag for running tasks
-                if hasattr(self, 'preload_cancelled'):
-                    self.preload_cancelled = True
-                
-                # Cancel pending tasks
                 self.preload_thread_pool.clear()
-                
-                # Wait for completion with timeout
-                if not self.preload_thread_pool.waitForDone(1000):
-                    print("[MediaLightbox] ⚠️ Preload tasks didn't finish in time")
-                else:
-                    print("[MediaLightbox] ✓ Preload thread pool stopped")
+                self.preload_thread_pool.waitForDone(1000)  # Wait max 1 second
             
             print("[MediaLightbox] ✓ All resources cleaned up")
         except Exception as e:
@@ -1290,40 +1235,6 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         
         # Accept the close event
         event.accept()
-    
-    def _disconnect_video_signals(self):
-        """PHASE 2: Safely disconnect all video player signals to prevent memory leaks.
-        
-        This prevents signal accumulation when navigating through multiple videos.
-        Without this, each video load adds new connections, causing:
-        - Callback storms (slot called 50x after 50 videos)
-        - Memory leaks from stale slot references
-        - Performance degradation
-        """
-        if not hasattr(self, 'video_player') or self.video_player is None:
-            return
-        
-        try:
-            self.video_player.durationChanged.disconnect(self._on_duration_changed)
-        except (TypeError, RuntimeError):
-            pass  # Not connected or already disconnected
-        
-        try:
-            self.video_player.positionChanged.disconnect(self._on_position_changed)
-        except (TypeError, RuntimeError):
-            pass
-        
-        try:
-            self.video_player.errorOccurred.disconnect(self._on_video_error)
-        except (TypeError, RuntimeError):
-            pass
-        
-        try:
-            self.video_player.mediaStatusChanged.disconnect(self._on_media_status_changed)
-        except (TypeError, RuntimeError):
-            pass
-        
-        print("[MediaLightbox] ✓ Video signals disconnected")
     
     def resizeEvent(self, event):
         """Handle window resize - reposition navigation buttons and caption."""
@@ -5018,17 +4929,12 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                     container_layout.addWidget(self.video_graphics_view)
                     self.scroll_area.viewport().installEventFilter(self)
 
-                # PHASE 2 FIX: Disconnect old signals before connecting new ones
-                # This prevents signal accumulation when navigating through multiple videos
-                self._disconnect_video_signals()
-
                 # Connect video player signals with error handling
                 try:
                     self.video_player.durationChanged.connect(self._on_duration_changed)
                     self.video_player.positionChanged.connect(self._on_position_changed)
                     self.video_player.errorOccurred.connect(self._on_video_error)
                     self.video_player.mediaStatusChanged.connect(self._on_media_status_changed)
-                    print("[MediaLightbox] ✓ Video signals connected")
                 except Exception as signal_err:
                     print(f"[MediaLightbox] Warning: Could not connect video signals: {signal_err}")
 
@@ -8065,7 +7971,6 @@ class GooglePhotosLayout(BaseLayout):
         self.current_thumb_size = 200
         self.current_filter_year = None
         self.current_filter_month = None
-        self.current_filter_day = None
         self.current_filter_folder = None
         self.current_filter_person = None
 
@@ -8720,41 +8625,405 @@ class GooglePhotosLayout(BaseLayout):
 
     def _create_sidebar(self) -> QWidget:
         """
-        Create Google Photos-style accordion sidebar.
+        Create modern sidebar with collapsible sections and grid view for People.
 
-        Phase 3 Implementation:
-        - AccordionSidebar with all 6 sections (People, Dates, Folders, Tags, Branches, Quick)
-        - One section expanded at a time (full height)
-        - Other sections collapsed to headers
-        - ONE universal scrollbar per section
-        - Clean, modern Google Photos UX
+        Phase 1+2 Implementation:
+        - Collapsible sections (Timeline, Folders, People, Videos)
+        - Grid view for People (replaces tree)
+        - Smooth expand/collapse animations
+        - Better space utilization (3x more faces visible)
         """
-        # Import and instantiate AccordionSidebar
-        from accordion_sidebar import AccordionSidebar
-
-        # CRITICAL FIX: GooglePhotosLayout is NOT a QWidget, so pass None as parent
-        sidebar = AccordionSidebar(project_id=self.project_id, parent=None)
+        sidebar = QWidget()
         sidebar.setMinimumWidth(240)
-        sidebar.setMaximumWidth(500)
-
-        # CRITICAL: Don't set generic QWidget stylesheet - it overrides accordion's internal styling
-        # AccordionSidebar handles its own styling internally (nav bar, headers, content areas)
-        # Only set border on the container itself
+        sidebar.setMaximumWidth(500)  # Expandable wider for buttons and content
         sidebar.setStyleSheet("""
-            AccordionSidebar {
+            QWidget {
+                background: white;
                 border-right: 1px solid #dadce0;
             }
         """)
 
-        # Connect accordion signals to grid filtering
-        sidebar.selectBranch.connect(self._on_accordion_branch_clicked)
-        sidebar.selectFolder.connect(self._on_accordion_folder_clicked)
-        sidebar.selectDate.connect(self._on_accordion_date_clicked)
-        sidebar.selectTag.connect(self._on_accordion_tag_clicked)
-        sidebar.selectVideo.connect(self._on_accordion_video_clicked)  # NEW: Video filtering
+        main_layout = QHBoxLayout(sidebar)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
 
-        # Store reference for refreshing
-        self.accordion_sidebar = sidebar
+        # PHASE 3: Vertical navigation bar (icon-based quick navigation)
+        nav_bar = QWidget()
+        nav_bar.setFixedWidth(48)
+        nav_bar.setStyleSheet("""
+            QWidget {
+                background: #f8f9fa;
+                border-right: 1px solid #e8eaed;
+            }
+        """)
+        nav_layout = QVBoxLayout(nav_bar)
+        nav_layout.setContentsMargins(4, 12, 4, 4)
+        nav_layout.setSpacing(8)
+
+        # Navigation buttons with icons
+        nav_buttons = [
+            ("📅", "Timeline", "timeline_section"),
+            ("📁", "Folders", "folders_section"),
+            ("⭐", "Favorites", "tags_section"),
+            ("👥", "People", "people_section"),
+            ("🎬", "Videos", "videos_section"),
+        ]
+
+        self.nav_buttons = {}
+        for icon, tooltip, section_attr in nav_buttons:
+            btn = QPushButton(icon)
+            btn.setToolTip(tooltip)
+            btn.setFixedSize(40, 40)
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.setStyleSheet("""
+                QPushButton {
+                    background: transparent;
+                    border: none;
+                    border-radius: 8px;
+                    font-size: 18pt;
+                }
+                QPushButton:hover {
+                    background: rgba(26, 115, 232, 0.08);
+                }
+                QPushButton:pressed {
+                    background: rgba(26, 115, 232, 0.15);
+                }
+            """)
+            btn.clicked.connect(lambda checked, attr=section_attr: self._scroll_to_section(attr))
+            nav_layout.addWidget(btn)
+            self.nav_buttons[section_attr] = btn
+
+        nav_layout.addStretch()
+
+        # "Expand All" button at bottom
+        expand_all_btn = QPushButton("☰")
+        expand_all_btn.setToolTip("Expand All Sections")
+        expand_all_btn.setFixedSize(40, 40)
+        expand_all_btn.setCursor(Qt.PointingHandCursor)
+        expand_all_btn.setStyleSheet("""
+            QPushButton {
+                background: transparent;
+                border: none;
+                border-radius: 8px;
+                font-size: 16pt;
+            }
+            QPushButton:hover {
+                background: rgba(26, 115, 232, 0.08);
+            }
+            QPushButton:pressed {
+                background: rgba(26, 115, 232, 0.15);
+            }
+        """)
+        expand_all_btn.clicked.connect(self._expand_all_sections)
+        nav_layout.addWidget(expand_all_btn)
+
+        main_layout.addWidget(nav_bar)
+
+        # Content area (sections)
+        content_widget = QWidget()
+        content_layout = QVBoxLayout(content_widget)
+        content_layout.setContentsMargins(8, 8, 8, 8)
+        content_layout.setSpacing(4)
+        main_layout.addWidget(content_widget)
+
+        # Scroll area for all sections (allows overflow)
+        self.sidebar_scroll = QScrollArea()
+        self.sidebar_scroll.setWidgetResizable(True)
+        self.sidebar_scroll.setFrameShape(QFrame.NoFrame)
+        self.sidebar_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.sidebar_scroll.setStyleSheet("""
+            QScrollArea {
+                background: transparent;
+                border: none;
+            }
+        """)
+
+        scroll_content = QWidget()
+        scroll_layout = QVBoxLayout(scroll_content)
+        scroll_layout.setContentsMargins(0, 0, 0, 0)
+        scroll_layout.setSpacing(4)
+
+        # === SECTION 1: Timeline (Collapsible) ===
+        self.timeline_section = CollapsibleSection("Timeline", "📅", 0)
+
+        # Timeline tree (Years > Months)
+        self.timeline_tree = QTreeWidget()
+        self.timeline_tree.setHeaderHidden(True)
+        self.timeline_tree.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.timeline_tree.setTextElideMode(Qt.ElideRight)
+        self.timeline_tree.setStyleSheet("""
+            QTreeWidget {
+                border: none;
+                background: transparent;
+                font-size: 10pt;
+            }
+            QTreeWidget::item {
+                padding: 4px;
+            }
+            QTreeWidget::item:hover {
+                background: #f1f3f4;
+            }
+            QTreeWidget::item:selected {
+                background: #e8f0fe;
+                color: #1a73e8;
+            }
+        """)
+        self.timeline_tree.itemClicked.connect(self._on_timeline_item_clicked)
+
+        # Add timeline tree to section
+        self.timeline_section.add_widget(self.timeline_tree)
+        scroll_layout.addWidget(self.timeline_section)
+
+        # === SECTION 2: Folders (Collapsible) ===
+        self.folders_section = CollapsibleSection("Folders", "📁", 0)
+
+        # Folders tree
+        self.folders_tree = QTreeWidget()
+        self.folders_tree.setHeaderHidden(True)
+        self.folders_tree.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.folders_tree.setTextElideMode(Qt.ElideMiddle)
+        self.folders_tree.setStyleSheet("""
+            QTreeWidget {
+                border: none;
+                background: transparent;
+                font-size: 10pt;
+            }
+            QTreeWidget::item {
+                padding: 4px;
+            }
+            QTreeWidget::item:hover {
+                background: #f1f3f4;
+            }
+            QTreeWidget::item:selected {
+                background: #e8f0fe;
+                color: #1a73e8;
+            }
+        """)
+        self.folders_tree.itemClicked.connect(self._on_folder_item_clicked)
+
+        # Add folders tree to section
+        self.folders_section.add_widget(self.folders_tree)
+        scroll_layout.addWidget(self.folders_section)
+
+        # === SECTION 2.5: Tags (Collapsible) ===
+        self.tags_section = CollapsibleSection("Tags", "🏷️", 0)
+        
+        # Tags tree/list (shows all tags with counts)
+        self.tags_tree = QTreeWidget()
+        self.tags_tree.setHeaderHidden(True)
+        self.tags_tree.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.tags_tree.setTextElideMode(Qt.ElideRight)
+        self.tags_tree.setStyleSheet("""
+            QTreeWidget {
+                border: none;
+                background: transparent;
+                font-size: 10pt;
+            }
+            QTreeWidget::item {
+                padding: 4px;
+            }
+            QTreeWidget::item:hover {
+                background: #f1f3f4;
+            }
+            QTreeWidget::item:selected {
+                background: #e8f0fe;
+                color: #1a73e8;
+            }
+        """)
+        self.tags_tree.itemClicked.connect(self._on_tags_item_clicked)
+        self.tags_tree.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.tags_tree.customContextMenuRequested.connect(self._on_tags_context_menu)
+        
+        # Container for tags content
+        tags_container = QWidget()
+        tags_layout = QVBoxLayout(tags_container)
+        tags_layout.setContentsMargins(0, 0, 0, 0)
+        tags_layout.setSpacing(4)
+        tags_layout.addWidget(self.tags_tree)
+        
+        # Add tags to section
+        self.tags_section.add_widget(tags_container)
+        scroll_layout.addWidget(self.tags_section)
+
+        # === SECTION 3: People (Collapsible + GRID VIEW + SEARCH!) ===
+        self.people_section = CollapsibleSection("People", "👥", 0)
+        # Add a dedicated People tools button in header
+        self.people_tools_btn = QPushButton("🛠️")
+        self.people_tools_btn.setToolTip("Open People Tools")
+        self.people_tools_btn.setFixedSize(28, 28)
+        self.people_tools_btn.setCursor(Qt.PointingHandCursor)
+        self.people_tools_btn.setStyleSheet("""
+            QPushButton { border: 1px solid #dadce0; border-radius: 6px; background: white; }
+            QPushButton:hover { background: #f1f3f4; }
+        """)
+        self.people_tools_btn.clicked.connect(lambda: getattr(self, '_prompt_bulk_face_review', lambda: None)())
+        self.people_section.add_header_action(self.people_tools_btn)
+        
+        # Add Undo button for merge operations
+        self.people_undo_btn = QPushButton("↺")
+        self.people_undo_btn.setToolTip("Undo Last Merge")
+        self.people_undo_btn.setFixedSize(28, 28)
+        self.people_undo_btn.setCursor(Qt.PointingHandCursor)
+        self.people_undo_btn.setStyleSheet("""
+            QPushButton { border: 1px solid #dadce0; border-radius: 6px; background: white; font-size: 14pt; }
+            QPushButton:hover { background: #fff3cd; border-color: #ffc107; }
+            QPushButton:disabled { color: #dadce0; background: #f8f9fa; }
+        """)
+        self.people_undo_btn.clicked.connect(self._undo_last_merge)
+        self.people_undo_btn.setEnabled(False)  # Initially disabled
+        self.people_section.add_header_action(self.people_undo_btn)
+        
+        # Add Redo button for merge operations
+        self.people_redo_btn = QPushButton("↻")
+        self.people_redo_btn.setToolTip("Redo Last Undo")
+        self.people_redo_btn.setFixedSize(28, 28)
+        self.people_redo_btn.setCursor(Qt.PointingHandCursor)
+        self.people_redo_btn.setStyleSheet("""
+            QPushButton { border: 1px solid #dadce0; border-radius: 6px; background: white; font-size: 14pt; }
+            QPushButton:hover { background: #d4edda; border-color: #28a745; }
+            QPushButton:disabled { color: #dadce0; background: #f8f9fa; }
+        """)
+        self.people_redo_btn.clicked.connect(self._redo_last_undo)
+        self.people_redo_btn.setEnabled(False)  # Initially disabled
+        self.people_section.add_header_action(self.people_redo_btn)
+        
+        # Add History button to view all merge operations
+        self.people_history_btn = QPushButton("📜")
+        self.people_history_btn.setToolTip("View Merge History")
+        self.people_history_btn.setFixedSize(28, 28)
+        self.people_history_btn.setCursor(Qt.PointingHandCursor)
+        self.people_history_btn.setStyleSheet("""
+            QPushButton { border: 1px solid #dadce0; border-radius: 6px; background: white; }
+            QPushButton:hover { background: #e3f2fd; border-color: #2196f3; }
+        """)
+        self.people_history_btn.clicked.connect(self._show_merge_history)
+        self.people_section.add_header_action(self.people_history_btn)
+        
+        # Initialize undo/redo stacks
+        self.undo_stack = []  # Stack of undo operations
+        self.redo_stack = []  # Stack of redo operations
+        
+        # Check if undo is available on startup
+        QTimer.singleShot(500, self._update_undo_redo_state)
+
+        # PHASE 3: Search bar for filtering faces by name with autocomplete
+        people_container = QWidget()
+        people_layout = QVBoxLayout(people_container)
+        people_layout.setContentsMargins(0, 0, 0, 0)
+        people_layout.setSpacing(4)
+
+        self.people_search = QLineEdit()
+        self.people_search.setPlaceholderText("🔍 Search people... (e.g., 'John', '>10 photos', 'John AND Alice')")
+        self.people_search.setClearButtonEnabled(True)
+        self.people_search.setStyleSheet("""
+            QLineEdit {
+                padding: 6px 8px;
+                border: 1px solid #dadce0;
+                border-radius: 16px;
+                background: #f8f9fa;
+                font-size: 10pt;
+            }
+            QLineEdit:focus {
+                border: 1px solid #1a73e8;
+                background: white;
+            }
+        """)
+        self.people_search.textChanged.connect(self._on_people_search)
+        people_layout.addWidget(self.people_search)
+        
+        # Autocomplete dropdown for people search
+        self.people_autocomplete = QListWidget()
+        self.people_autocomplete.setWindowFlags(Qt.Popup | Qt.FramelessWindowHint)
+        self.people_autocomplete.setStyleSheet("""
+            QListWidget {
+                background: white;
+                border: 1px solid #dadce0;
+                border-radius: 4px;
+                padding: 4px;
+            }
+            QListWidget::item {
+                padding: 8px 12px;
+                border-radius: 2px;
+            }
+            QListWidget::item:hover {
+                background: #f1f3f4;
+            }
+            QListWidget::item:selected {
+                background: #e8f0fe;
+                color: #1a73e8;
+            }
+        """)
+        self.people_autocomplete.setMaximumHeight(200)
+        self.people_autocomplete.hide()
+        self.people_autocomplete.itemClicked.connect(self._on_autocomplete_selected)
+        
+        # Install event filter for keyboard navigation in autocomplete
+        self.autocomplete_event_filter = AutocompleteEventFilter(
+            self.people_search, self.people_autocomplete, self
+        )
+        self.people_search.installEventFilter(self.autocomplete_event_filter)
+
+        # NEW: Grid view for people (replaces tree!)
+        self.people_grid = PeopleGridView()
+        self.people_grid.person_clicked.connect(self._on_person_clicked_from_grid)
+        self.people_grid.context_menu_requested.connect(self._on_person_context_menu)
+        self.people_grid.drag_merge_requested.connect(self._on_drag_merge)
+        people_layout.addWidget(self.people_grid)
+
+        # Add container to section
+        self.people_section.add_widget(people_container)
+        scroll_layout.addWidget(self.people_section)
+
+        # Keep old people_tree for backward compatibility (but hide it)
+        # This prevents errors in code that references self.people_tree
+        self.people_tree = QTreeWidget()
+        self.people_tree.setHeaderHidden(True)
+        self.people_tree.setIconSize(QSize(64, 64))
+        self.people_tree.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.people_tree.customContextMenuRequested.connect(self._show_people_context_menu)
+        self.people_tree.itemClicked.connect(self._on_people_item_clicked)
+        self.people_tree.hide()  # Hidden - grid is used instead
+
+        # === SECTION 4: Videos (Collapsible) ===
+        self.videos_section = CollapsibleSection("Videos", "🎬", 0)
+
+        # Videos tree
+        self.videos_tree = QTreeWidget()
+        self.videos_tree.setHeaderHidden(True)
+        self.videos_tree.setStyleSheet("""
+            QTreeWidget {
+                border: none;
+                background: transparent;
+                font-size: 10pt;
+            }
+            QTreeWidget::item {
+                padding: 4px;
+            }
+            QTreeWidget::item:hover {
+                background: #f1f3f4;
+            }
+            QTreeWidget::item:selected {
+                background: #e8f0fe;
+                color: #1a73e8;
+            }
+        """)
+        self.videos_tree.itemClicked.connect(self._on_videos_item_clicked)
+
+        # Add videos tree to section
+        self.videos_section.add_widget(self.videos_tree)
+        scroll_layout.addWidget(self.videos_section)
+
+        # Spacer at bottom
+        scroll_layout.addStretch()
+
+        self.sidebar_scroll.setWidget(scroll_content)
+        content_layout.addWidget(self.sidebar_scroll)
+
+        print("[GooglePhotosLayout] ✅ Sidebar created with vertical nav bar, collapsible sections, and People grid view")
+
+        # CRITICAL FIX: Populate People grid immediately after sidebar creation
+        # This ensures faces are visible on initial load, not just after filtering
+        QTimer.singleShot(100, self._build_people_tree)
 
         return sidebar
 
@@ -8794,7 +9063,7 @@ class GooglePhotosLayout(BaseLayout):
 
         return self.timeline_scroll
 
-    def _load_photos(self, thumb_size: int = 200, filter_year: int = None, filter_month: int = None, filter_day: int = None, filter_folder: str = None, filter_person: str = None):
+    def _load_photos(self, thumb_size: int = 200, filter_year: int = None, filter_month: int = None, filter_folder: str = None, filter_person: str = None):
         """
         Load photos from database and populate timeline.
 
@@ -8802,7 +9071,6 @@ class GooglePhotosLayout(BaseLayout):
             thumb_size: Thumbnail size in pixels (default 200)
             filter_year: Optional year filter (e.g., 2024)
             filter_month: Optional month filter (1-12, requires filter_year)
-            filter_day: Optional day filter (1-31, requires filter_year and filter_month)
             filter_folder: Optional folder path filter
             filter_person: Optional person/face cluster filter (branch_key)
 
@@ -8813,7 +9081,6 @@ class GooglePhotosLayout(BaseLayout):
         self.current_thumb_size = thumb_size
         self.current_filter_year = filter_year
         self.current_filter_month = filter_month
-        self.current_filter_day = filter_day
         self.current_filter_folder = filter_folder
         self.current_filter_person = filter_person
 
@@ -8822,22 +9089,17 @@ class GooglePhotosLayout(BaseLayout):
             filter_desc.append(f"year={filter_year}")
         if filter_month:
             filter_desc.append(f"month={filter_month}")
-        if filter_day:
-            filter_desc.append(f"day={filter_day}")
         if filter_folder:
             filter_desc.append(f"folder={filter_folder}")
         if filter_person:
             filter_desc.append(f"person={filter_person}")
 
         filter_str = f" [{', '.join(filter_desc)}]" if filter_desc else ""
-        print(f"[GooglePhotosLayout] 📷 Loading photos from database (thumb size: {thumb_size}px){filter_str}...")
+        print(f"[GooglePhotosLayout] Loading photos from database (thumb size: {thumb_size}px){filter_str}...")
 
         # Show/hide Clear Filter button based on whether filters are active
-        has_filters = filter_year is not None or filter_month is not None or filter_day is not None or filter_folder is not None or filter_person is not None
+        has_filters = filter_year is not None or filter_month is not None or filter_folder is not None or filter_person is not None
         self.btn_clear_filter.setVisible(has_filters)
-
-        # === PROGRESS: Clearing existing timeline ===
-        print(f"[GooglePhotosLayout] 🔄 Clearing existing timeline and thumbnail cache...")
 
         # Clear existing timeline and thumbnail cache
         try:
@@ -8853,14 +9115,16 @@ class GooglePhotosLayout(BaseLayout):
             # CRITICAL FIX: Only clear trees when NOT filtering
             # When filtering, we want to keep the tree structure visible
             # so users can see all available years/months/folders/people and switch between them
-            # NOTE: With AccordionSidebar, clearing is handled internally - no action needed here
-            pass
+            has_filters = filter_year is not None or filter_month is not None or filter_folder is not None or filter_person is not None
+            if not has_filters:
+                # Clear trees only when showing all photos (no filters)
+                self.timeline_tree.clear()
+                self.folders_tree.clear()
+                self.people_tree.clear()
+                self.videos_tree.clear()
         except Exception as e:
-            print(f"[GooglePhotosLayout] ⚠️ Error in _load_photos setup: {e}")
+            print(f"[GooglePhotosLayout] ⚠️ Error clearing timeline: {e}")
             # Continue anyway
-
-        # === PROGRESS: Scanning database for photos ===
-        print(f"[GooglePhotosLayout] 🔍 Scanning database for photos in project {self.project_id}...")
 
         # Get photos from database
         try:
@@ -8883,113 +9147,45 @@ class GooglePhotosLayout(BaseLayout):
             # CRITICAL FIX: Use created_date instead of date_taken
             # created_date is ALWAYS populated (uses date_taken if available, otherwise file modified date)
             # This matches Current Layout behavior and ensures ALL photos appear
-            
-            # PHASE 0 FIX: Query BOTH photo_metadata AND video_metadata tables
-            # When filtering by folder, we need to show both photos and videos in that folder
-            query_parts = []
-            params_list = []
-            
-            # PHOTOS QUERY
-            photo_query_parts = ["""
+            query_parts = ["""
                 SELECT DISTINCT pm.path, pm.created_date as date_taken, pm.width, pm.height
                 FROM photo_metadata pm
                 JOIN project_images pi ON pm.path = pi.image_path
                 WHERE pi.project_id = ?
             """]
-            photo_params = [self.project_id]
+
+            params = [self.project_id]
 
             # Add year filter (using created_date which is always populated)
             if filter_year is not None:
-                photo_query_parts.append("AND strftime('%Y', pm.created_date) = ?")
-                photo_params.append(str(filter_year))
+                query_parts.append("AND strftime('%Y', pm.created_date) = ?")
+                params.append(str(filter_year))
 
             # Add month filter (requires year)
             if filter_month is not None and filter_year is not None:
-                photo_query_parts.append("AND strftime('%m', pm.created_date) = ?")
-                photo_params.append(f"{filter_month:02d}")
-            
-            # BUG FIX: Add day filter (requires year and month)
-            if filter_day is not None and filter_year is not None and filter_month is not None:
-                photo_query_parts.append("AND strftime('%d', pm.created_date) = ?")
-                photo_params.append(f"{filter_day:02d}")
+                query_parts.append("AND strftime('%m', pm.created_date) = ?")
+                params.append(f"{filter_month:02d}")
 
             # Add folder filter
-            # CRITICAL FIX: Normalize folder path to match database storage format
-            # Database stores paths as: c:/users/... (forward slashes, lowercase on Windows)
-            # Without normalization, backslash paths won't match: C:\Users\... != c:/users/...
             if filter_folder is not None:
-                # Normalize path: convert backslashes to forward slashes, lowercase on Windows
-                import platform
-                normalized_folder = filter_folder.replace('\\', '/')
-                if platform.system() == 'Windows':
-                    normalized_folder = normalized_folder.lower()
-                
-                photo_query_parts.append("AND pm.path LIKE ?")
-                photo_params.append(f"{normalized_folder}%")
+                query_parts.append("AND pm.path LIKE ?")
+                params.append(f"{filter_folder}%")
 
             # Add person/face filter (photos containing this person)
             if filter_person is not None:
                 print(f"[GooglePhotosLayout] Filtering by person: {filter_person}")
-                photo_query_parts.append("""
+                query_parts.append("""
                     AND pm.path IN (
                         SELECT DISTINCT image_path
                         FROM face_crops
                         WHERE project_id = ? AND branch_key = ?
                     )
                 """)
-                photo_params.append(self.project_id)
-                photo_params.append(filter_person)
-            
-            # VIDEOS QUERY (mirror photo query structure)
-            video_query_parts = ["""
-                SELECT DISTINCT vm.path, vm.created_date as date_taken, vm.width, vm.height
-                FROM video_metadata vm
-                JOIN project_videos pv ON vm.path = pv.video_path
-                WHERE pv.project_id = ?
-            """]
-            video_params = [self.project_id]
-            
-            # Add year filter for videos
-            if filter_year is not None:
-                video_query_parts.append("AND strftime('%Y', vm.created_date) = ?")
-                video_params.append(str(filter_year))
-            
-            # Add month filter for videos
-            if filter_month is not None and filter_year is not None:
-                video_query_parts.append("AND strftime('%m', vm.created_date) = ?")
-                video_params.append(f"{filter_month:02d}")
-            
-            # BUG FIX: Add day filter for videos (requires year and month)
-            if filter_day is not None and filter_year is not None and filter_month is not None:
-                video_query_parts.append("AND strftime('%d', vm.created_date) = ?")
-                video_params.append(f"{filter_day:02d}")
-            
-            # Add folder filter for videos
-            # CRITICAL FIX: Normalize folder path (same as photos above)
-            if filter_folder is not None:
-                # Normalize path: convert backslashes to forward slashes, lowercase on Windows
-                import platform
-                normalized_folder = filter_folder.replace('\\', '/')
-                if platform.system() == 'Windows':
-                    normalized_folder = normalized_folder.lower()
-                
-                video_query_parts.append("AND vm.path LIKE ?")
-                video_params.append(f"{normalized_folder}%")
-            
-            # Videos don't have person filters (no face detection on videos)
-            
-            # COMBINE QUERIES WITH UNION ALL
-            photo_query = "\n".join(photo_query_parts)
-            video_query = "\n".join(video_query_parts)
-            
-            # Only include videos if NOT filtering by person (videos have no faces)
-            if filter_person is None:
-                query = f"{photo_query}\nUNION ALL\n{video_query}\nORDER BY date_taken DESC"
-                params = photo_params + video_params
-            else:
-                # Person filter: only photos (videos have no faces)
-                query = f"{photo_query}\nORDER BY date_taken DESC"
-                params = photo_params
+                params.append(self.project_id)
+                params.append(filter_person)
+
+            query_parts.append("ORDER BY pm.date_taken DESC")
+            query = "\n".join(query_parts)
 
             # Debug: Log SQL query and parameters
             print(f"[GooglePhotosLayout] 🔍 SQL Query:\n{query}")
@@ -9006,9 +9202,8 @@ class GooglePhotosLayout(BaseLayout):
                     cur.execute(query, tuple(params))
                     rows = cur.fetchall()
 
-                    # === PROGRESS: Photos found in database ===
-                    print(f"[GooglePhotosLayout] ✅ Found {len(rows)} photos in database")
-                    print(f"[GooglePhotosLayout] 📊 Database scan complete - preparing to load thumbnails...")
+                    # Debug logging
+                    print(f"[GooglePhotosLayout] 📊 Loaded {len(rows)} photos from database")
 
                     # Update section counts: timeline and videos
                     try:
@@ -9020,13 +9215,6 @@ class GooglePhotosLayout(BaseLayout):
                             self.videos_section.update_count(video_count)
                     except Exception:
                         pass
-
-                    # NOTE: Sidebar reload removed from here to fix "Cannot operate on a closed database" error
-                    # The sidebar should only reload when:
-                    # 1. Actually scanning new photos from disk (handled in scan completion callback)
-                    # 2. After face detection completes (handled in face detection callback)
-                    # 3. After renaming/merging people (handled in person actions)
-                    # NOT when just filtering existing photos (causes database connection conflicts)
 
             except Exception as db_error:
                 print(f"[GooglePhotosLayout] ⚠️ Database query failed: {db_error}")
@@ -9049,32 +9237,28 @@ class GooglePhotosLayout(BaseLayout):
                 print(f"[GooglePhotosLayout] No photos found in project {self.project_id}")
                 return
 
-            # === PROGRESS: Grouping photos by date ===
-            print(f"[GooglePhotosLayout] 📅 Grouping {len(rows)} photos by date...")
-
             # Group photos by date
             photos_by_date = self._group_photos_by_date(rows)
-
-            print(f"[GooglePhotosLayout] ✅ Grouped into {len(photos_by_date)} date groups")
 
             # Build sidebar sections
             # CRITICAL: Sidebar should ALWAYS show ALL items (not filtered)
             # Only the photo grid should be filtered, not the sidebar navigation
-            # NOTE: With AccordionSidebar, sections load their own data on demand
-            # No need to build sidebar trees here - accordion handles it internally
-            if filter_year is None and filter_month is None and filter_day is None and filter_folder is None and filter_person is None:
-                # Full rebuild - accordion sidebar refreshes automatically
-                pass
+            if filter_year is None and filter_month is None and filter_folder is None and filter_person is None:
+                # Full rebuild of all sections when no filters active
+                self._build_timeline_tree(photos_by_date)
+                self._build_folders_tree(rows)
+                self._build_tags_tree()
+                self._build_people_tree()
+                self._build_videos_tree()
             else:
-                # When filtering photos, accordion sidebar stays independent
-                pass
+                # When filtering photos, still update People section
+                # (user should always see all faces to switch between them)
+                self._build_tags_tree()
+                self._build_people_tree()
 
             # Track all displayed paths for Shift+Ctrl multi-selection
             self.all_displayed_paths = [photo[0] for photos_list in photos_by_date.values() for photo in photos_list]
             print(f"[GooglePhotosLayout] Tracking {len(self.all_displayed_paths)} paths for multi-selection")
-
-            # === PROGRESS: Virtual scrolling setup ===
-            print(f"[GooglePhotosLayout] 🚀 Setting up virtual scrolling for {len(photos_by_date)} date groups...")
 
             # QUICK WIN #3: Virtual scrolling - create date groups with lazy rendering
             self.date_groups_metadata.clear()
@@ -9113,15 +9297,11 @@ class GooglePhotosLayout(BaseLayout):
             # Add spacer at bottom
             self.timeline_layout.addStretch()
 
-            # === PROGRESS: Rendering complete ===
             if self.virtual_scroll_enabled:
-                print(f"[GooglePhotosLayout] ✅ Virtual scrolling enabled: {len(photos_by_date)} total date groups")
-                print(f"[GooglePhotosLayout] 📊 Rendered: {len(self.rendered_date_groups)} groups | Placeholders: {len(photos_by_date) - len(self.rendered_date_groups)} groups")
+                print(f"[GooglePhotosLayout] 🚀 Virtual scrolling: {len(photos_by_date)} date groups ({len(self.rendered_date_groups)} rendered, {len(photos_by_date) - len(self.rendered_date_groups)} placeholders)")
             else:
-                print(f"[GooglePhotosLayout] ✅ Loaded {len(rows)} photos in {len(photos_by_date)} date groups")
-
-            print(f"[GooglePhotosLayout] 🖼️ Queued {self.thumbnail_load_count} thumbnails for loading (initial limit: {self.initial_load_limit})")
-            print(f"[GooglePhotosLayout] ✅ Photo loading complete! Thumbnails will load progressively.")
+                print(f"[GooglePhotosLayout] Loaded {len(rows)} photos in {len(photos_by_date)} date groups")
+            print(f"[GooglePhotosLayout] Queued {self.thumbnail_load_count} thumbnails for loading (initial limit: {self.initial_load_limit})")
 
         except Exception as e:
             # CRITICAL: Catch ALL exceptions to prevent layout crashes
@@ -9175,12 +9355,7 @@ class GooglePhotosLayout(BaseLayout):
         Build timeline tree in sidebar (Years > Months with counts).
 
         Uses created_date which is always in YYYY-MM-DD format.
-        NOTE: With AccordionSidebar, this is handled internally - this method is a no-op.
         """
-        # Old sidebar implementation - no longer needed with AccordionSidebar
-        if not hasattr(self, 'timeline_tree'):
-            return
-
         # Group by year and month
         years_months = defaultdict(lambda: defaultdict(int))
 
@@ -9216,12 +9391,7 @@ class GooglePhotosLayout(BaseLayout):
 
         Args:
             rows: List of (path, date_taken, width, height) tuples
-        NOTE: With AccordionSidebar, this is handled internally - this method is a no-op.
         """
-        # Old sidebar implementation - no longer needed with AccordionSidebar
-        if not hasattr(self, 'folders_tree'):
-            return
-
         # Group photos by parent folder
         folder_counts = defaultdict(int)
 
@@ -9272,7 +9442,6 @@ class GooglePhotosLayout(BaseLayout):
                 thumb_size=self.current_thumb_size,
                 filter_year=year,
                 filter_month=None,
-                filter_day=None,
                 filter_folder=None,
                 filter_person=None
             )
@@ -9285,7 +9454,6 @@ class GooglePhotosLayout(BaseLayout):
                 thumb_size=self.current_thumb_size,
                 filter_year=year,
                 filter_month=month,
-                filter_day=None,
                 filter_folder=None,
                 filter_person=None
             )
@@ -9310,7 +9478,6 @@ class GooglePhotosLayout(BaseLayout):
                 thumb_size=self.current_thumb_size,
                 filter_year=None,
                 filter_month=None,
-                filter_day=None,
                 filter_folder=folder_path,
                 filter_person=None
             )
@@ -9318,12 +9485,7 @@ class GooglePhotosLayout(BaseLayout):
     def _build_tags_tree(self):
         """
         Build tags tree in sidebar (shows all tags with counts).
-        NOTE: With AccordionSidebar, this is handled internally - this method is a no-op.
         """
-        # Old sidebar implementation - no longer needed with AccordionSidebar
-        if not hasattr(self, 'tags_tree'):
-            return
-
         try:
             from services.tag_service import get_tag_service
             tag_service = get_tag_service()
@@ -9333,13 +9495,13 @@ class GooglePhotosLayout(BaseLayout):
             import traceback
             traceback.print_exc()
             return
-
+        
         # Clear and update count
         self.tags_tree.clear()
         total_count = sum(int(c or 0) for _, c in tag_rows)
         if hasattr(self, 'tags_section'):
             self.tags_section.update_count(total_count)
-
+        
         # Icon mapping for common tags
         ICONS = {
             'favorite': '⭐',
@@ -9351,7 +9513,7 @@ class GooglePhotosLayout(BaseLayout):
             'family': '👨‍👩‍👧',
             'archive': '📦',
         }
-
+        
         # Populate tree
         for tag_name, count in tag_rows:
             icon = ICONS.get(tag_name.lower(), '🏷️')
@@ -9360,7 +9522,7 @@ class GooglePhotosLayout(BaseLayout):
             item = QTreeWidgetItem([display])
             item.setData(0, Qt.UserRole, tag_name)
             self.tags_tree.addTopLevelItem(item)
-
+        
         print(f"[GooglePhotosLayout] ✓ Built tags tree: {len(tag_rows)} tags")
     
     def _on_tags_item_clicked(self, item: QTreeWidgetItem, column: int):
@@ -9377,12 +9539,7 @@ class GooglePhotosLayout(BaseLayout):
 
         Phase 1+2: Now populates both grid view AND tree (tree hidden, kept for compatibility).
         Queries face_branch_reps table for detected faces/people.
-        NOTE: With AccordionSidebar, this is handled internally - this method is a no-op.
         """
-        # Old sidebar implementation - no longer needed with AccordionSidebar
-        if not hasattr(self, 'people_grid') and not hasattr(self, 'people_tree'):
-            return
-
         print("[GooglePhotosLayout] 🔍 _build_people_tree() called")
         try:
             from reference_db import ReferenceDB
@@ -9540,12 +9697,7 @@ class GooglePhotosLayout(BaseLayout):
     def _build_tags_tree(self):
         """
         Build tags tree in sidebar (shows all tags with counts).
-        NOTE: With AccordionSidebar, this is handled internally - this method is a no-op.
         """
-        # Old sidebar implementation - no longer needed with AccordionSidebar
-        if not hasattr(self, 'tags_tree'):
-            return
-
         try:
             from services.tag_service import get_tag_service
             tag_service = get_tag_service()
@@ -9555,13 +9707,13 @@ class GooglePhotosLayout(BaseLayout):
             import traceback
             traceback.print_exc()
             return
-
+        
         # Clear and update count
         self.tags_tree.clear()
         total_count = sum(int(c or 0) for _, c in tag_rows)
         if hasattr(self, 'tags_section'):
             self.tags_section.update_count(total_count)
-
+        
         # Icon mapping for common tags
         ICONS = {
             'favorite': '⭐',
@@ -9573,7 +9725,7 @@ class GooglePhotosLayout(BaseLayout):
             'family': '👨‍👩‍👧',
             'archive': '📦',
         }
-
+        
         # Populate tree
         for tag_name, count in tag_rows:
             icon = ICONS.get(tag_name.lower(), '🏷️')
@@ -9582,7 +9734,7 @@ class GooglePhotosLayout(BaseLayout):
             item = QTreeWidgetItem([display])
             item.setData(0, Qt.UserRole, tag_name)
             self.tags_tree.addTopLevelItem(item)
-
+        
         print(f"[GooglePhotosLayout] ✓ Built tags tree: {len(tag_rows)} tags")
 
     def _on_tags_item_clicked(self, item: QTreeWidgetItem, column: int):
@@ -9591,313 +9743,6 @@ class GooglePhotosLayout(BaseLayout):
         if not tag_name:
             return
         self._filter_by_tag(tag_name)
-
-    # === Accordion Sidebar Click Handlers ===
-
-    def _on_accordion_date_clicked(self, date_key: str):
-        """
-        Handle accordion sidebar date selection.
-
-        Args:
-            date_key: Date in format "YYYY", "YYYY-MM", or "YYYY-MM-DD"
-        """
-        print(f"[GooglePhotosLayout] Accordion date clicked: {date_key}")
-
-        # Parse date_key to extract year, month, day
-        parts = date_key.split("-")
-        year = None
-        month = None
-        day = None
-
-        if len(parts) >= 1:
-            try:
-                year = int(parts[0])
-            except ValueError:
-                pass
-
-        if len(parts) >= 2:
-            try:
-                month = int(parts[1])
-            except ValueError:
-                pass
-        
-        # BUG FIX: Parse day from date_key (was missing!)
-        if len(parts) >= 3:
-            try:
-                day = int(parts[2])
-            except ValueError:
-                pass
-
-        # Filter by year, month, or day
-        self._load_photos(
-            thumb_size=self.current_thumb_size,
-            filter_year=year,
-            filter_month=month,
-            filter_day=day,
-            filter_folder=None,
-            filter_person=None
-        )
-
-    def _on_accordion_folder_clicked(self, folder_id: int):
-        """
-        Handle accordion sidebar folder selection.
-
-        Args:
-            folder_id: Folder ID from database
-        """
-        print(f"[GooglePhotosLayout] Accordion folder clicked: {folder_id}")
-
-        # Get folder path from database
-        try:
-            from reference_db import ReferenceDB
-            db = ReferenceDB()
-            with db._connect() as conn:
-                cur = conn.cursor()
-                # CRITICAL FIX: Use photo_folders table instead of non-existent folders table
-                cur.execute("SELECT path FROM photo_folders WHERE id = ?", (folder_id,))
-                row = cur.fetchone()
-                if row:
-                    folder_path = row[0]
-                    print(f"[GooglePhotosLayout] Filtering by folder: {folder_path}")
-                    self._load_photos(
-                        thumb_size=self.current_thumb_size,
-                        filter_year=None,
-                        filter_month=None,
-                        filter_day=None,
-                        filter_folder=folder_path,
-                        filter_person=None
-                    )
-        except Exception as e:
-            print(f"[GooglePhotosLayout] Error loading folder: {e}")
-            import traceback
-            traceback.print_exc()
-
-    def _on_accordion_tag_clicked(self, tag_name: str):
-        """
-        Handle accordion sidebar tag selection.
-
-        Args:
-            tag_name: Tag name to filter by
-        """
-        print(f"[GooglePhotosLayout] Accordion tag clicked: {tag_name}")
-        self._filter_by_tag(tag_name)
-
-    def _on_accordion_branch_clicked(self, branch_key: str):
-        """
-        Handle accordion sidebar branch/person selection.
-
-        Args:
-            branch_key: Branch key, may include "branch:" prefix or "facecluster:" prefix
-        """
-        print(f"[GooglePhotosLayout] Accordion branch clicked: {branch_key}")
-
-        # Remove prefixes if present
-        if branch_key.startswith("branch:"):
-            branch_key = branch_key[7:]
-        elif branch_key.startswith("facecluster:"):
-            branch_key = branch_key[12:]
-
-        # Filter by person/branch
-        self._load_photos(
-            thumb_size=self.current_thumb_size,
-            filter_year=None,
-            filter_month=None,
-            filter_day=None,
-            filter_folder=None,
-            filter_person=branch_key
-        )
-
-    def _on_accordion_video_clicked(self, filter_spec: str):
-        """
-        Handle accordion sidebar video selection.
-
-        Args:
-            filter_spec: Video filter specification (e.g., "all", "duration:short", "resolution:hd", "codec:h264", "size:small")
-        """
-        print(f"[GooglePhotosLayout] Accordion video clicked: {filter_spec}")
-
-        # For now, just show all videos by clearing filters
-        # Future enhancement: implement duration/resolution filtering
-        # Videos are mixed with photos, so filter by video extensions
-        try:
-            from reference_db import ReferenceDB
-            db = ReferenceDB()
-
-            # Get all videos from database
-            with db._connect() as conn:
-                cur = conn.cursor()
-                cur.execute("""
-                    SELECT DISTINCT vm.path, vm.created_date as date_taken, vm.width, vm.height
-                    FROM video_metadata vm
-                    JOIN project_videos pv ON vm.path = pv.video_path
-                    WHERE pv.project_id = ?
-                    ORDER BY vm.created_date DESC
-                """, (self.project_id,))
-                video_rows = cur.fetchall()
-
-            # Apply duration filter if specified
-            if ":" in filter_spec:
-                filter_type, filter_value = filter_spec.split(":", 1)
-
-                if filter_type == "duration":
-                    # Filter by duration: short, medium, long
-                    with db._connect() as conn:
-                        cur = conn.cursor()
-                        if filter_value == "short":
-                            cur.execute("""
-                                SELECT DISTINCT vm.path, vm.created_date as date_taken, vm.width, vm.height
-                                FROM video_metadata vm
-                                JOIN project_videos pv ON vm.path = pv.video_path
-                                WHERE pv.project_id = ? AND vm.duration_seconds > 0 AND vm.duration_seconds < 30
-                                ORDER BY vm.created_date DESC
-                            """, (self.project_id,))
-                        elif filter_value == "medium":
-                            cur.execute("""
-                                SELECT DISTINCT vm.path, vm.created_date as date_taken, vm.width, vm.height
-                                FROM video_metadata vm
-                                JOIN project_videos pv ON vm.path = pv.video_path
-                                WHERE pv.project_id = ? AND vm.duration_seconds >= 30 AND vm.duration_seconds < 300
-                                ORDER BY vm.created_date DESC
-                            """, (self.project_id,))
-                        elif filter_value == "long":
-                            cur.execute("""
-                                SELECT DISTINCT vm.path, vm.created_date as date_taken, vm.width, vm.height
-                                FROM video_metadata vm
-                                JOIN project_videos pv ON vm.path = pv.video_path
-                                WHERE pv.project_id = ? AND vm.duration_seconds >= 300
-                                ORDER BY vm.created_date DESC
-                            """, (self.project_id,))
-                        video_rows = cur.fetchall()
-
-                elif filter_type == "resolution":
-                    # Filter by resolution: sd, hd, fhd, 4k
-                    with db._connect() as conn:
-                        cur = conn.cursor()
-                        if filter_value == "sd":
-                            cur.execute("""
-                                SELECT DISTINCT vm.path, vm.created_date as date_taken, vm.width, vm.height
-                                FROM video_metadata vm
-                                JOIN project_videos pv ON vm.path = pv.video_path
-                                WHERE pv.project_id = ? AND vm.height > 0 AND vm.height < 720
-                                ORDER BY vm.created_date DESC
-                            """, (self.project_id,))
-                        elif filter_value == "hd":
-                            cur.execute("""
-                                SELECT DISTINCT vm.path, vm.created_date as date_taken, vm.width, vm.height
-                                FROM video_metadata vm
-                                JOIN project_videos pv ON vm.path = pv.video_path
-                                WHERE pv.project_id = ? AND vm.height >= 720 AND vm.height < 1080
-                                ORDER BY vm.created_date DESC
-                            """, (self.project_id,))
-                        elif filter_value == "fhd":
-                            cur.execute("""
-                                SELECT DISTINCT vm.path, vm.created_date as date_taken, vm.width, vm.height
-                                FROM video_metadata vm
-                                JOIN project_videos pv ON vm.path = pv.video_path
-                                WHERE pv.project_id = ? AND vm.height >= 1080 AND vm.height < 2160
-                                ORDER BY vm.created_date DESC
-                            """, (self.project_id,))
-                        elif filter_value == "4k":
-                            cur.execute("""
-                                SELECT DISTINCT vm.path, vm.created_date as date_taken, vm.width, vm.height
-                                FROM video_metadata vm
-                                JOIN project_videos pv ON vm.path = pv.video_path
-                                WHERE pv.project_id = ? AND vm.height >= 2160
-                                ORDER BY vm.created_date DESC
-                            """, (self.project_id,))
-                        video_rows = cur.fetchall()
-
-                elif filter_type == "codec":
-                    # NEW: Filter by codec: h264, hevc, vp9, av1, mpeg4
-                    with db._connect() as conn:
-                        cur = conn.cursor()
-                        if filter_value == "h264":
-                            cur.execute("""
-                                SELECT DISTINCT vm.path, vm.created_date as date_taken, vm.width, vm.height
-                                FROM video_metadata vm
-                                JOIN project_videos pv ON vm.path = pv.video_path
-                                WHERE pv.project_id = ? AND vm.codec IS NOT NULL AND LOWER(vm.codec) IN ('h264', 'avc')
-                                ORDER BY vm.created_date DESC
-                            """, (self.project_id,))
-                        elif filter_value == "hevc":
-                            cur.execute("""
-                                SELECT DISTINCT vm.path, vm.created_date as date_taken, vm.width, vm.height
-                                FROM video_metadata vm
-                                JOIN project_videos pv ON vm.path = pv.video_path
-                                WHERE pv.project_id = ? AND vm.codec IS NOT NULL AND LOWER(vm.codec) IN ('hevc', 'h265')
-                                ORDER BY vm.created_date DESC
-                            """, (self.project_id,))
-                        elif filter_value == "vp9":
-                            cur.execute("""
-                                SELECT DISTINCT vm.path, vm.created_date as date_taken, vm.width, vm.height
-                                FROM video_metadata vm
-                                JOIN project_videos pv ON vm.path = pv.video_path
-                                WHERE pv.project_id = ? AND vm.codec IS NOT NULL AND LOWER(vm.codec) = 'vp9'
-                                ORDER BY vm.created_date DESC
-                            """, (self.project_id,))
-                        elif filter_value == "av1":
-                            cur.execute("""
-                                SELECT DISTINCT vm.path, vm.created_date as date_taken, vm.width, vm.height
-                                FROM video_metadata vm
-                                JOIN project_videos pv ON vm.path = pv.video_path
-                                WHERE pv.project_id = ? AND vm.codec IS NOT NULL AND LOWER(vm.codec) = 'av1'
-                                ORDER BY vm.created_date DESC
-                            """, (self.project_id,))
-                        elif filter_value == "mpeg4":
-                            cur.execute("""
-                                SELECT DISTINCT vm.path, vm.created_date as date_taken, vm.width, vm.height
-                                FROM video_metadata vm
-                                JOIN project_videos pv ON vm.path = pv.video_path
-                                WHERE pv.project_id = ? AND vm.codec IS NOT NULL AND LOWER(vm.codec) IN ('mpeg4', 'xvid', 'divx')
-                                ORDER BY vm.created_date DESC
-                            """, (self.project_id,))
-                        video_rows = cur.fetchall()
-
-                elif filter_type == "size":
-                    # NEW: Filter by file size: small, medium, large, xlarge
-                    with db._connect() as conn:
-                        cur = conn.cursor()
-                        if filter_value == "small":
-                            cur.execute("""
-                                SELECT DISTINCT vm.path, vm.created_date as date_taken, vm.width, vm.height
-                                FROM video_metadata vm
-                                JOIN project_videos pv ON vm.path = pv.video_path
-                                WHERE pv.project_id = ? AND vm.size_kb IS NOT NULL AND vm.size_kb / 1024 < 100
-                                ORDER BY vm.created_date DESC
-                            """, (self.project_id,))
-                        elif filter_value == "medium":
-                            cur.execute("""
-                                SELECT DISTINCT vm.path, vm.created_date as date_taken, vm.width, vm.height
-                                FROM video_metadata vm
-                                JOIN project_videos pv ON vm.path = pv.video_path
-                                WHERE pv.project_id = ? AND vm.size_kb IS NOT NULL AND vm.size_kb / 1024 >= 100 AND vm.size_kb / 1024 < 1024
-                                ORDER BY vm.created_date DESC
-                            """, (self.project_id,))
-                        elif filter_value == "large":
-                            cur.execute("""
-                                SELECT DISTINCT vm.path, vm.created_date as date_taken, vm.width, vm.height
-                                FROM video_metadata vm
-                                JOIN project_videos pv ON vm.path = pv.video_path
-                                WHERE pv.project_id = ? AND vm.size_kb IS NOT NULL AND vm.size_kb / 1024 >= 1024 AND vm.size_kb / 1024 < 5120
-                                ORDER BY vm.created_date DESC
-                            """, (self.project_id,))
-                        elif filter_value == "xlarge":
-                            cur.execute("""
-                                SELECT DISTINCT vm.path, vm.created_date as date_taken, vm.width, vm.height
-                                FROM video_metadata vm
-                                JOIN project_videos pv ON vm.path = pv.video_path
-                                WHERE pv.project_id = ? AND vm.size_kb IS NOT NULL AND vm.size_kb / 1024 >= 5120
-                                ORDER BY vm.created_date DESC
-                            """, (self.project_id,))
-                        video_rows = cur.fetchall()
-
-            # Rebuild timeline with video results
-            self._rebuild_timeline_with_results(video_rows, f"Videos: {filter_spec}")
-
-        except Exception as e:
-            print(f"[GooglePhotosLayout] ⚠️ Error filtering videos: {e}")
-            import traceback
-            traceback.print_exc()
 
     def _filter_by_tag(self, tag_name: str):
         """Filter timeline to show photos by the given tag."""
@@ -10148,9 +9993,6 @@ class GooglePhotosLayout(BaseLayout):
                     # Refresh people UI
                     if hasattr(self, '_build_people_tree'):
                         self._build_people_tree()
-                    # Refresh accordion sidebar people section
-                    if hasattr(self, 'accordion_sidebar'):
-                        self.accordion_sidebar.reload_section("people")
                     QMessageBox.information(dlg, "Saved", f"Named {len(updates)} people.")
                     dlg.accept()
                 except Exception as e:
@@ -10458,7 +10300,114 @@ class GooglePhotosLayout(BaseLayout):
                 if search_query:
                     self.people_section.update_count(f"{visible_count}/{total_count}")
                 else:
-                    pass  # Old sidebar section count update - no longer needed with AccordionSidebar
+                    self.people_section.update_count(total_count)
+
+    def _scroll_to_section(self, section_attr: str):
+        """
+        Focus on a section: Expand it and collapse others (accordion style).
+
+        PHASE 3: Navigation Filtering - Show only the selected section for focused view.
+        This matches iPhone Photos behavior where tapping a section focuses on it.
+
+        Args:
+            section_attr: Attribute name of the section (e.g., "timeline_section")
+        """
+        if not hasattr(self, section_attr):
+            return
+
+        section = getattr(self, section_attr)
+        if not section or not hasattr(self, 'sidebar_scroll'):
+            return
+
+        print(f"[GooglePhotosLayout] Focusing on section: {section_attr}")
+
+        # ACCORDION BEHAVIOR: Collapse all other sections, expand clicked section
+        all_sections = ['timeline_section', 'folders_section', 'tags_section', 'people_section', 'videos_section']
+
+        for sect_attr in all_sections:
+            if not hasattr(self, sect_attr):
+                continue
+
+            sect = getattr(self, sect_attr)
+            if sect and hasattr(sect, 'is_expanded'):
+                if sect_attr == section_attr:
+                    # Expand clicked section
+                    if not sect.is_expanded:
+                        sect.expand()
+                else:
+                    # Collapse other sections for focused view
+                    if sect.is_expanded:
+                        sect.collapse()
+
+        # Scroll to make section visible at top
+        self.sidebar_scroll.ensureWidgetVisible(section, 0, 20)
+
+        # Update navigation button visual state (highlight active)
+        if hasattr(self, 'nav_buttons'):
+            for btn_attr, btn in self.nav_buttons.items():
+                if btn_attr == section_attr:
+                    # Highlight active button
+                    btn.setStyleSheet("""
+                        QPushButton {
+                            background: rgba(26, 115, 232, 0.15);
+                            border: none;
+                            border-radius: 8px;
+                            font-size: 18pt;
+                        }
+                        QPushButton:hover {
+                            background: rgba(26, 115, 232, 0.25);
+                        }
+                    """)
+                else:
+                    # Reset inactive buttons
+                    btn.setStyleSheet("""
+                        QPushButton {
+                            background: transparent;
+                            border: none;
+                            border-radius: 8px;
+                            font-size: 18pt;
+                        }
+                        QPushButton:hover {
+                            background: rgba(26, 115, 232, 0.08);
+                        }
+                        QPushButton:pressed {
+                            background: rgba(26, 115, 232, 0.15);
+                        }
+                    """)
+
+    def _expand_all_sections(self):
+        """
+        Expand all sidebar sections (reset accordion state).
+
+        Useful after using accordion mode to focus on one section.
+        """
+        print("[GooglePhotosLayout] Expanding all sections")
+
+        all_sections = ['timeline_section', 'folders_section', 'tags_section', 'people_section', 'videos_section']
+
+        for sect_attr in all_sections:
+            if hasattr(self, sect_attr):
+                sect = getattr(self, sect_attr)
+                if sect and hasattr(sect, 'is_expanded') and not sect.is_expanded:
+                    sect.expand()
+
+        # Reset all navigation button highlights
+        if hasattr(self, 'nav_buttons'):
+            for btn in self.nav_buttons.values():
+                btn.setStyleSheet("""
+                    QPushButton {
+                        background: transparent;
+                        border: none;
+                        border-radius: 8px;
+                        font-size: 18pt;
+                    }
+                    QPushButton:hover {
+                        background: rgba(26, 115, 232, 0.08);
+                    }
+                    QPushButton:pressed {
+                        background: rgba(26, 115, 232, 0.15);
+                    }
+                """)
 
     def _show_people_context_menu(self, pos):
         """
@@ -12036,12 +11985,7 @@ class GooglePhotosLayout(BaseLayout):
         - By Duration (Short/Medium/Long)
         - By Resolution (SD/HD/FHD/4K)
         - By Date (Year/Month hierarchy)
-        NOTE: With AccordionSidebar, this is handled internally - this method is a no-op.
         """
-        # Old sidebar implementation - no longer needed with AccordionSidebar
-        if not hasattr(self, 'videos_tree'):
-            return
-
         try:
             from services.video_service import VideoService
             video_service = VideoService()
@@ -15243,7 +15187,7 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
             if child.widget():
                 child.widget().deleteLater()
 
-        # NOTE: With AccordionSidebar, clearing is handled internally - no action needed here
+        self.timeline_tree.clear()
 
         if not rows:
             # No results
@@ -15339,7 +15283,6 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
             thumb_size=self.current_thumb_size,
             filter_year=None,
             filter_month=None,
-            filter_day=None,
             filter_folder=None,
             filter_person=None
         )
@@ -15365,9 +15308,13 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
         else:
             if hasattr(self, 'photos_mode_bar'):
                 self.photos_mode_bar.setVisible(False)
-            # Old sidebar navigation - no longer needed with AccordionSidebar
-            # AccordionSidebar handles section expansion internally
-            if "Favorites" in tab_text:
+            if "People" in tab_text:
+                self._scroll_to_section('people_section')
+            elif "Folders" in tab_text:
+                self._scroll_to_section('folders_section')
+            elif "Videos" in tab_text:
+                self._scroll_to_section('videos_section')
+            elif "Favorites" in tab_text:
                 self._filter_by_tag("favorite")
 
     def _filter_favorites(self):
@@ -15428,196 +15375,6 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
         if hasattr(self.main_window, '_on_detect_and_group_faces'):
             self._detect_faces_handler = self.main_window._on_detect_and_group_faces
             print("[GooglePhotosLayout] ✓ Stored Detect Faces handler")
-
-    def on_layout_deactivated(self):
-        """
-        CRITICAL FIX: Called when layout is being switched or destroyed.
-        Cleans up all resources to prevent memory leaks.
-        """
-        print("[GooglePhotosLayout] 🧹 Layout deactivated - starting cleanup...")
-        self.cleanup()
-        print("[GooglePhotosLayout] ✓ Cleanup complete")
-
-    def cleanup(self):
-        """
-        CRITICAL FIX: Comprehensive resource cleanup to prevent memory leaks.
-
-        Addresses audit findings:
-        - Issue #1: 173 signal connections never disconnected
-        - Issue #2: 8 event filters never removed
-        - Issue #3: 47 timers never stopped
-        - Issue #4: Thread pool never cleaned up
-        - Issue #7: Unbounded pixmap cache
-        """
-        print("[GooglePhotosLayout] Cleaning up resources...")
-
-        # 1. Disconnect all signals (CRITICAL - prevents 173 connection leak)
-        self._disconnect_all_signals()
-
-        # 2. Remove event filters (CRITICAL - prevents 8 filter leak)
-        self._remove_event_filters()
-
-        # 3. Stop all timers (CRITICAL - prevents timer crash after deletion)
-        self._stop_all_timers()
-
-        # 4. Stop thread pools (CRITICAL - prevents background thread leak)
-        self._cleanup_thread_pools()
-
-        # 5. Clear caches (HIGH - prevents unbounded memory growth)
-        self._clear_caches()
-
-        # 6. Clean up child widgets with animations
-        self._stop_animations()
-
-        # 7. Call parent cleanup
-        if hasattr(super(), 'cleanup'):
-            super().cleanup()
-
-    def _disconnect_all_signals(self):
-        """Disconnect all signal connections to prevent memory leaks."""
-        print("[GooglePhotosLayout]   ↳ Disconnecting signals...")
-
-        # Thumbnail loading signals
-        if hasattr(self, 'thumbnail_signals'):
-            try:
-                self.thumbnail_signals.loaded.disconnect(self._on_thumbnail_loaded)
-            except:
-                pass
-
-        # Search box signals
-        if hasattr(self, 'search_box'):
-            try:
-                self.search_box.textChanged.disconnect(self._on_search_text_changed)
-            except:
-                pass
-            try:
-                self.search_box.returnPressed.disconnect(self._perform_search)
-            except:
-                pass
-
-        # Zoom slider signals
-        if hasattr(self, 'zoom_slider'):
-            try:
-                self.zoom_slider.valueChanged.disconnect(self._on_zoom_changed)
-            except:
-                pass
-
-        # Project combo signals
-        if hasattr(self, 'project_combo'):
-            try:
-                self.project_combo.currentIndexChanged.disconnect(self._on_project_changed)
-            except:
-                pass
-
-        # Scroll area signals
-        if hasattr(self, 'timeline_scroll'):
-            try:
-                self.timeline_scroll.verticalScrollBar().valueChanged.disconnect(self._on_scroll)
-            except:
-                pass
-
-        print("[GooglePhotosLayout]   ✓ Signals disconnected")
-
-    def _remove_event_filters(self):
-        """Remove all event filters to prevent memory leaks."""
-        print("[GooglePhotosLayout]   ↳ Removing event filters...")
-
-        # Timeline scroll viewport filter
-        if hasattr(self, 'timeline_scroll') and hasattr(self, 'event_filter'):
-            try:
-                self.timeline_scroll.viewport().removeEventFilter(self.event_filter)
-            except:
-                pass
-
-        # Search box filter
-        if hasattr(self, 'search_box') and hasattr(self, 'event_filter'):
-            try:
-                self.search_box.removeEventFilter(self.event_filter)
-            except:
-                pass
-
-        # People search filter
-        if hasattr(self, 'people_search') and hasattr(self, 'autocomplete_event_filter'):
-            try:
-                self.people_search.removeEventFilter(self.autocomplete_event_filter)
-            except:
-                pass
-
-        print("[GooglePhotosLayout]   ✓ Event filters removed")
-
-    def _stop_all_timers(self):
-        """Stop all QTimer instances to prevent crashes after widget deletion."""
-        print("[GooglePhotosLayout]   ↳ Stopping timers...")
-
-        timer_names = [
-            'scroll_debounce_timer',
-            'date_indicator_hide_timer',
-            '_search_timer',
-            '_autosave_timer',
-            '_adjust_debounce_timer'
-        ]
-
-        for timer_name in timer_names:
-            if hasattr(self, timer_name):
-                timer = getattr(self, timer_name)
-                if timer:
-                    try:
-                        timer.stop()
-                        timer.deleteLater()
-                    except:
-                        pass
-
-        print("[GooglePhotosLayout]   ✓ Timers stopped")
-
-    def _cleanup_thread_pools(self):
-        """Clean up thread pools to prevent background thread leaks."""
-        print("[GooglePhotosLayout]   ↳ Cleaning up thread pools...")
-
-        if hasattr(self, 'thumbnail_thread_pool'):
-            try:
-                self.thumbnail_thread_pool.clear()
-                self.thumbnail_thread_pool.waitForDone(2000)  # Wait max 2 seconds
-            except:
-                pass
-
-        print("[GooglePhotosLayout]   ✓ Thread pools cleaned")
-
-    def _clear_caches(self):
-        """Clear all caches to prevent unbounded memory growth."""
-        print("[GooglePhotosLayout]   ↳ Clearing caches...")
-
-        # Clear thumbnail button cache
-        if hasattr(self, 'thumbnail_buttons'):
-            for btn in list(self.thumbnail_buttons.values()):
-                try:
-                    btn.deleteLater()
-                except:
-                    pass
-            self.thumbnail_buttons.clear()
-
-        # Clear unloaded thumbnails cache
-        if hasattr(self, 'unloaded_thumbnails'):
-            self.unloaded_thumbnails.clear()
-
-        print("[GooglePhotosLayout]   ✓ Caches cleared")
-
-    def _stop_animations(self):
-        """Stop all animations in child widgets (CollapsibleSection)."""
-        print("[GooglePhotosLayout]   ↳ Stopping animations...")
-
-        # Find all CollapsibleSection widgets and stop their animations
-        section_names = ['timeline_section', 'folders_section', 'people_section', 'videos_section']
-
-        for section_name in section_names:
-            if hasattr(self, section_name):
-                section = getattr(self, section_name)
-                if hasattr(section, 'cleanup'):
-                    try:
-                        section.cleanup()
-                    except:
-                        pass
-
-        print("[GooglePhotosLayout]   ✓ Animations stopped")
 
     def _on_create_project_clicked(self):
         """Handle Create Project button click."""
@@ -15745,10 +15502,6 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
 
         print(f"[GooglePhotosLayout] 📂 Project changed: {self.project_id} → {new_project_id}")
         self.project_id = new_project_id
-
-        # Update accordion sidebar with new project
-        if hasattr(self, 'accordion_sidebar'):
-            self.accordion_sidebar.set_project(new_project_id)
 
         # Reload photos for the new project
         self._load_photos()
@@ -16130,27 +15883,6 @@ class CollapsibleSection(QWidget):
         except Exception:
             pass
 
-    def cleanup(self):
-        """
-        CRITICAL FIX: Clean up animation and signals to prevent memory leaks.
-        Addresses Issue #8 from audit: Animation continues after widget deletion.
-        """
-        # Disconnect header button signal
-        if hasattr(self, 'header_btn'):
-            try:
-                self.header_btn.clicked.disconnect(self.toggle)
-            except:
-                pass
-
-        # Stop and clean up animation
-        if hasattr(self, 'animation'):
-            try:
-                self.animation.stop()
-                self.animation.setTargetObject(None)  # Break reference to widget
-                self.animation.deleteLater()
-            except:
-                pass
-
 
 class PersonCard(QWidget):
     """
@@ -16442,27 +16174,6 @@ class PersonCard(QWidget):
         review_action.triggered.connect(lambda: self.context_menu_requested.emit(self.branch_key, "review_unnamed"))
 
         menu.exec(global_pos)
-
-    def cleanup(self):
-        """
-        CRITICAL FIX: Disconnect signals to prevent memory leaks.
-        Addresses Issue #1 from audit: Signals never disconnected.
-        """
-        # Disconnect all signals
-        try:
-            self.clicked.disconnect()
-        except:
-            pass
-
-        try:
-            self.context_menu_requested.disconnect()
-        except:
-            pass
-
-        try:
-            self.drag_merge_requested.disconnect()
-        except:
-            pass
 
 
 class PeopleGridView(QWidget):
