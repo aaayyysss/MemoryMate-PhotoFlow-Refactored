@@ -8986,11 +8986,12 @@ class GooglePhotosLayout(BaseLayout):
                 photo_params.append(filter_person)
             
             # VIDEOS QUERY (mirror photo query structure)
+            # CRITICAL FIX: Use video_metadata.project_id directly (no project_videos table exists)
+            # Videos are stored in video_metadata with project_id column, matching photo_metadata pattern
             video_query_parts = ["""
                 SELECT DISTINCT vm.path, vm.created_date as date_taken, vm.width, vm.height
                 FROM video_metadata vm
-                JOIN project_videos pv ON vm.path = pv.video_path
-                WHERE pv.project_id = ?
+                WHERE vm.project_id = ?
             """]
             video_params = [self.project_id]
             
