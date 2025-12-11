@@ -139,7 +139,7 @@ python3 -m py_compile accordion_sidebar.py reference_db.py controllers/scan_cont
 - Cancel button responsive
 
 ### Folders Section:
-- Header: "Folder | Photos | Videos"
+- Header: "Folder" and "Photos | Videos" (two columns)
 - Display format examples:
   - Folder with both: "📁 Vacation **21📷 7🎬**"
   - Folder with videos only: "📁 Movies **7🎬**"
@@ -147,7 +147,7 @@ python3 -m py_compile accordion_sidebar.py reference_db.py controllers/scan_cont
 - Counts include all subfolders recursively
 
 ### Dates Section:
-- Header: "Year/Month/Day | Photos | Videos"
+- Header: "Year/Month/Day" and "Photos | Videos" (two columns)
 - Display format examples:
   - Day with both: "2021-03-10 **15📷 12🎬**"
   - Day with videos only: "2019-12-01 **1🎬**"
