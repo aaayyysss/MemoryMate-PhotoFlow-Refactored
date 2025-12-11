@@ -9691,7 +9691,8 @@ class GooglePhotosLayout(BaseLayout):
         Args:
             folder_id: Folder ID from database
         """
-        print(f"[GooglePhotosLayout] Accordion folder clicked: {folder_id}")
+        print(f"[GooglePhotosLayout] ========================================")
+        print(f"[GooglePhotosLayout] Accordion folder clicked: folder_id={folder_id}")
 
         # Get folder path from database
         try:
@@ -9704,7 +9705,8 @@ class GooglePhotosLayout(BaseLayout):
                 row = cur.fetchone()
                 if row:
                     folder_path = row[0]
-                    print(f"[GooglePhotosLayout] Filtering by folder: {folder_path}")
+                    print(f"[GooglePhotosLayout] Found folder path: {folder_path}")
+                    print(f"[GooglePhotosLayout] Calling _load_photos with filter_folder={folder_path}")
                     self._load_photos(
                         thumb_size=self.current_thumb_size,
                         filter_year=None,
@@ -9713,10 +9715,14 @@ class GooglePhotosLayout(BaseLayout):
                         filter_folder=folder_path,
                         filter_person=None
                     )
+                    print(f"[GooglePhotosLayout] _load_photos call completed")
+                else:
+                    print(f"[GooglePhotosLayout] ERROR: No folder found with id={folder_id}")
         except Exception as e:
-            print(f"[GooglePhotosLayout] Error loading folder: {e}")
+            print(f"[GooglePhotosLayout] ERROR loading folder: {e}")
             import traceback
             traceback.print_exc()
+        print(f"[GooglePhotosLayout] ========================================")
 
     def _on_accordion_tag_clicked(self, tag_name: str):
         """
