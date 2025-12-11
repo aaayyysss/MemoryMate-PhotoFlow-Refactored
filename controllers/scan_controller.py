@@ -37,10 +37,10 @@ class ScanController:
         self.cancel_requested = False
         self.logger = logging.getLogger(__name__)
 
-        # CRITICAL FIX: Progress dialog threshold to prevent UI freeze on small scans
+        # CRITICAL FIX: Progress dialog threshold to prevent UI freeze on tiny scans
         # Only show progress dialog if file count exceeds this threshold
-        # Working version had PROGRESS_DIALOG_THRESHOLD = 10
-        self.PROGRESS_DIALOG_THRESHOLD = 50
+        # Threshold of 20 shows dialog for medium/large scans
+        self.PROGRESS_DIALOG_THRESHOLD = 20
         self._total_files_found = 0
 
     def start_scan(self, folder, incremental: bool):
@@ -201,18 +201,25 @@ class ScanController:
         - Worker thread isolation means main thread stays responsive
         """
         # Parse file count from discovery message if available
-        # Example: "Discovered 108 candidate image files and 3 video files"
+        # Example: "Discovered 21 candidate image files and 14 video files"
+        # CRITICAL FIX: Extract BOTH photo AND video counts for accurate total
         if msg and "Discovered" in msg and "candidate" in msg:
             try:
-                # Extract number from message
-                parts = msg.split()
-                for i, part in enumerate(parts):
-                    if part == "Discovered" and i + 1 < len(parts):
-                        self._total_files_found = int(parts[i + 1])
-                        self.logger.info(f"Detected {self._total_files_found} files to process")
-                        break
-            except (ValueError, IndexError):
-                pass
+                import re
+                # Extract all numbers from the message
+                numbers = re.findall(r'\d+', msg)
+                if len(numbers) >= 2:
+                    # Has both photo and video counts
+                    total_photos = int(numbers[0])
+                    total_videos = int(numbers[1])
+                    self._total_files_found = total_photos + total_videos
+                    self.logger.info(f"Detected {total_photos} photos + {total_videos} videos = {self._total_files_found} total files")
+                elif len(numbers) == 1:
+                    # Only photo count available
+                    self._total_files_found = int(numbers[0])
+                    self.logger.info(f"Detected {self._total_files_found} files to process")
+            except Exception as e:
+                self.logger.warning(f"Could not parse file count from message: {e}")
 
         # CRITICAL FIX: Only create progress dialog if file count exceeds threshold
         if not self.main._scan_progress:

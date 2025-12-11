@@ -2772,6 +2772,32 @@ class ReferenceDB:
             row = cur.fetchone()
             return int(row[0] if row and row[0] is not None else 0)
 
+    def count_videos_for_day(self, day_yyyymmdd: str, project_id: int | None = None) -> int:
+        """
+        Count videos for a given day.
+
+        Args:
+            day_yyyymmdd: Date in YYYY-MM-DD format
+            project_id: Filter by project_id if provided, otherwise count all videos globally
+        """
+        with self._connect() as conn:
+            cur = conn.cursor()
+            if project_id is not None:
+                cur.execute("""
+                    SELECT COUNT(*)
+                    FROM video_metadata
+                    WHERE project_id = ?
+                      AND created_date = ?
+                """, (project_id, day_yyyymmdd))
+            else:
+                # No project filter - count all videos globally
+                cur.execute("""
+                    SELECT COUNT(*) FROM video_metadata
+                    WHERE created_date = ?
+                """, (day_yyyymmdd,))
+            row = cur.fetchone()
+            return int(row[0] if row and row[0] is not None else 0)
+
 
     # ===============================================
     # 🎬 VIDEO DATE HIERARCHY + COUNTS
@@ -3956,6 +3982,52 @@ class ReferenceDB:
                     )
                     SELECT COUNT(*) FROM photo_metadata p
                     WHERE p.folder_id IN (SELECT id FROM subfolders)
+                """, (folder_id,))
+            row = cur.fetchone()
+            return row[0] if row else 0
+
+    def get_video_count_recursive(self, folder_id: int, project_id: int | None = None) -> int:
+        """
+        Return total number of videos under this folder, including its subfolders.
+
+        Args:
+            folder_id: Folder ID to count videos in
+            project_id: Filter count to only videos from this project.
+                       If None, counts all videos (backward compatibility).
+
+        Uses recursive CTE for performance, matching photo count implementation.
+        """
+        with self._connect() as conn:
+            cur = conn.cursor()
+            if project_id is not None:
+                # Use direct project_id column from video_metadata
+                cur.execute("""
+                    WITH RECURSIVE subfolders(id) AS (
+                        SELECT id FROM photo_folders
+                        WHERE id = ? AND project_id = ?
+                        UNION ALL
+                        SELECT f.id
+                        FROM photo_folders f
+                        JOIN subfolders s ON f.parent_id = s.id
+                        WHERE f.project_id = ?
+                    )
+                    SELECT COUNT(*)
+                    FROM video_metadata vm
+                    WHERE vm.folder_id IN (SELECT id FROM subfolders)
+                      AND vm.project_id = ?
+                """, (folder_id, project_id, project_id, project_id))
+            else:
+                # No filter - count all videos (backward compatibility)
+                cur.execute("""
+                    WITH RECURSIVE subfolders(id) AS (
+                        SELECT id FROM photo_folders WHERE id = ?
+                        UNION ALL
+                        SELECT f.id
+                        FROM photo_folders f
+                        JOIN subfolders s ON f.parent_id = s.id
+                    )
+                    SELECT COUNT(*) FROM video_metadata v
+                    WHERE v.folder_id IN (SELECT id FROM subfolders)
                 """, (folder_id,))
             row = cur.fetchone()
             return row[0] if row else 0
