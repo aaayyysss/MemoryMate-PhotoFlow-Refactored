@@ -852,7 +852,7 @@ class AccordionSidebar(QWidget):
         # Define sections in priority order
         sections_config = [
             ("people",   "👥 People",      "👥"),
-            ("videos",   "🎬 Videos",      "🎬"),
+#            ("videos",   "🎬 Videos",      "🎬"),    # >>> FIX: keep only the NEW videos entry
             ("dates",    "📅 By Date",     "📅"),
             ("folders",  "📁 Folders",     "📁"),
             ("videos",   "🎬 Videos",      "🎬"),  # NEW: Videos section
@@ -998,8 +998,8 @@ class AccordionSidebar(QWidget):
 
         if section_id == "people":
             self._load_people_section()
-        elif section_id == "videos":
-            self._load_videos_section()
+#        elif section_id == "videos":
+#            self._load_videos_section()
         elif section_id == "dates":
             self._load_dates_section()
         elif section_id == "folders":
