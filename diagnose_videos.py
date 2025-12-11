@@ -6,6 +6,12 @@ Checks why videos aren't showing in the accordion sidebar.
 
 import sqlite3
 import sys
+import io
+
+# Fix Windows console encoding issues
+if sys.platform == 'win32':
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
 def diagnose_videos():
     """Run comprehensive video diagnostics."""
@@ -19,9 +25,9 @@ def diagnose_videos():
         conn = sqlite3.connect('reference_data.db')
         conn.row_factory = sqlite3.Row
         cur = conn.cursor()
-        print("✓ Connected to reference_data.db\n")
+        print("[OK] Connected to reference_data.db\n")
     except Exception as e:
-        print(f"❌ Failed to connect to database: {e}")
+        print(f"[ERROR] Failed to connect to database: {e}")
         return
 
     # Check 1: Projects
@@ -42,7 +48,7 @@ def diagnose_videos():
     print(f"  Total videos in video_metadata: {total_videos}")
 
     if total_videos == 0:
-        print("  ❌ NO VIDEOS IN video_metadata TABLE!")
+        print("  [ERROR] NO VIDEOS IN video_metadata TABLE!")
         print("  This means videos were NOT inserted during scan.")
         return
 
@@ -79,7 +85,7 @@ def diagnose_videos():
     print(f"  Total entries in project_videos: {pv_count}")
 
     if pv_count == 0:
-        print("  ⚠️  project_videos table is EMPTY!")
+        print("  [WARNING] project_videos table is EMPTY!")
         print("  This is OK if videos have no dates (build_video_date_branches finds 0).")
 
     # Check 5: Test the actual query used by VideoRepository
@@ -94,9 +100,9 @@ def diagnose_videos():
         print(f"  Project {p['id']}: Query returned {len(videos)} videos")
 
         if len(videos) > 0:
-            print("  ✓ Videos FOUND! They should appear in accordion.")
+            print("  [OK] Videos FOUND! They should appear in accordion.")
         else:
-            print("  ❌ Query returned 0 videos!")
+            print("  [ERROR] Query returned 0 videos!")
             print("  Checking for path case-sensitivity issues...")
 
             # Check if videos exist with different case
@@ -108,7 +114,7 @@ def diagnose_videos():
             """)
             dupes = cur.fetchall()
             if dupes:
-                print("  ⚠️  Found duplicate paths with different casing:")
+                print("  [WARNING] Found duplicate paths with different casing:")
                 for d in dupes:
                     print(f"    - {d['path']} (count: {d['count']})")
 
@@ -122,13 +128,13 @@ def diagnose_videos():
             videos = video_service.get_videos_by_project(p['id'])
             print(f"  Project {p['id']}: VideoService returned {len(videos)} videos")
             if videos:
-                print("  ✓ VideoService working correctly!")
+                print("  [OK] VideoService working correctly!")
                 for i, v in enumerate(videos[:3], 1):
                     print(f"    {i}. {v.get('path', 'N/A')}")
             else:
-                print("  ❌ VideoService returned EMPTY list!")
+                print("  [ERROR] VideoService returned EMPTY list!")
     except Exception as e:
-        print(f"  ❌ VideoService error: {e}")
+        print(f"  [ERROR] VideoService error: {e}")
         import traceback
         traceback.print_exc()
 
