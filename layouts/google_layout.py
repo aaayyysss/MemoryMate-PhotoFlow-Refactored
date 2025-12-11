@@ -387,7 +387,15 @@ class GooglePhotosEventFilter(QObject):
         self.layout = layout
 
     def eventFilter(self, obj, event):
-        """Handle events for search box and timeline viewport."""
+        """Handle events for search box, timeline viewport, and search suggestions popup."""
+        # NUCLEAR FIX: Block Show events on search_suggestions popup during layout changes
+        if hasattr(self.layout, 'search_suggestions') and obj == self.layout.search_suggestions:
+            if event.type() == QEvent.Show:
+                # Check if popup is blocked due to layout changes
+                if hasattr(self.layout, '_popup_blocked') and self.layout._popup_blocked:
+                    # Block the show event - popup will not appear
+                    return True
+
         # Search box keyboard navigation
         if obj == self.layout.search_box and event.type() == QEvent.KeyPress:
             if hasattr(self.layout, 'search_suggestions') and self.layout.search_suggestions.isVisible():
@@ -9912,9 +9920,16 @@ class GooglePhotosLayout(BaseLayout):
         Args:
             section_id: The section being expanded (e.g., "people", "dates", "folders")
         """
+        # NUCLEAR FIX: Block popup from showing during layout changes
+        self._popup_blocked = True
+
         # Hide search suggestions popup if visible
         if hasattr(self, 'search_suggestions') and self.search_suggestions.isVisible():
             self.search_suggestions.hide()
+
+        # Unblock popup after layout changes complete (300ms delay)
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(300, lambda: setattr(self, '_popup_blocked', False))
 
     def _filter_by_tag(self, tag_name: str):
         """Filter timeline to show photos by the given tag."""
@@ -14739,6 +14754,9 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
         self.search_suggestions.setMinimumWidth(300)
         self.search_suggestions.hide()
 
+        # NUCLEAR FIX: Initialize flag to block popup during layout changes
+        self._popup_blocked = False
+
         # Connect click event
         self.search_suggestions.itemClicked.connect(self._on_suggestion_clicked)
 
@@ -14748,6 +14766,9 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
 
         # Install event filter on search box to handle arrow keys
         self.search_box.installEventFilter(self.event_filter)
+
+        # NUCLEAR FIX: Install event filter on popup itself to block Show events during layout changes
+        self.search_suggestions.installEventFilter(self.event_filter)
 
     def _show_search_suggestions(self, text: str):
         """
@@ -14762,6 +14783,10 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
         """
         # FIX 2: Check if suggestions are enabled (prevent showing during layout operations)
         if hasattr(self, '_suggestions_disabled') and self._suggestions_disabled:
+            return
+
+        # NUCLEAR FIX: Don't show popup if blocked due to layout changes
+        if hasattr(self, '_popup_blocked') and self._popup_blocked:
             return
 
         if not text or len(text) < 2:
