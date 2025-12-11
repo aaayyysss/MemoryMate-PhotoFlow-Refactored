@@ -1504,7 +1504,7 @@ class AccordionSidebar(QWidget):
 
         # Create tree widget: Years → Months → Days
         tree = QTreeWidget()
-        tree.setHeaderLabels([tr('sidebar.header_year_month_day'), tr('sidebar.header_photos')])
+        tree.setHeaderLabels([tr('sidebar.header_year_month_day'), "Photos | Videos"])
         tree.setColumnCount(2)
         tree.setSelectionMode(QTreeWidget.SingleSelection)
         tree.setEditTriggers(QTreeWidget.NoEditTriggers)
@@ -1564,17 +1564,36 @@ class AccordionSidebar(QWidget):
 
                 # Days (children of month)
                 for day in sorted(days_list, reverse=True):
-                    day_count = 0
+                    # Get photo count for this day
+                    photo_count = 0
                     try:
                         if hasattr(self.db, "count_for_day"):
-                            day_count = self.db.count_for_day(day, project_id=self.project_id)
+                            photo_count = self.db.count_for_day(day, project_id=self.project_id)
                         else:
                             day_paths = self.db.get_images_by_date(day) if hasattr(self.db, "get_images_by_date") else []
-                            day_count = len(day_paths) if day_paths else 0
+                            photo_count = len(day_paths) if day_paths else 0
                     except Exception:
-                        day_count = 0
+                        photo_count = 0
 
-                    day_item = QTreeWidgetItem([str(day), str(day_count) if day_count > 0 else ""])
+                    # Get video count for this day
+                    video_count = 0
+                    try:
+                        if hasattr(self.db, "count_videos_for_day"):
+                            video_count = self.db.count_videos_for_day(day, project_id=self.project_id)
+                    except Exception:
+                        video_count = 0
+
+                    # Format count display
+                    if photo_count > 0 and video_count > 0:
+                        count_text = f"{photo_count}📷 {video_count}🎬"
+                    elif video_count > 0:
+                        count_text = f"{video_count}🎬"
+                    elif photo_count > 0:
+                        count_text = str(photo_count)
+                    else:
+                        count_text = ""
+
+                    day_item = QTreeWidgetItem([str(day), count_text])
                     day_item.setData(0, Qt.UserRole, str(day))
                     month_item.addChild(day_item)
 
@@ -1627,7 +1646,7 @@ class AccordionSidebar(QWidget):
 
         # Create tree widget
         tree = QTreeWidget()
-        tree.setHeaderLabels([tr('sidebar.header_folder'), tr('sidebar.header_photos')])
+        tree.setHeaderLabels([tr('sidebar.header_folder'), "Photos | Videos"])
         tree.setColumnCount(2)
         tree.setSelectionMode(QTreeWidget.SingleSelection)
         tree.setEditTriggers(QTreeWidget.NoEditTriggers)
@@ -1696,7 +1715,7 @@ class AccordionSidebar(QWidget):
 
             # Get recursive photo count (includes subfolders)
             if hasattr(self.db, "get_image_count_recursive"):
-                photo_count = int(self.db.get_image_count_recursive(fid) or 0)
+                photo_count = int(self.db.get_image_count_recursive(fid, project_id=self.project_id) or 0)
             else:
                 try:
                     folder_paths = self.db.get_images_by_folder(fid, project_id=self.project_id)
@@ -1704,8 +1723,22 @@ class AccordionSidebar(QWidget):
                 except Exception:
                     photo_count = 0
 
+            # Get recursive video count (includes subfolders)
+            if hasattr(self.db, "get_video_count_recursive"):
+                video_count = int(self.db.get_video_count_recursive(fid, project_id=self.project_id) or 0)
+            else:
+                video_count = 0
+
+            # Format count display with emoji icons
+            if photo_count > 0 and video_count > 0:
+                count_text = f"{photo_count}📷 {video_count}🎬"
+            elif video_count > 0:
+                count_text = f"{video_count}🎬"
+            else:
+                count_text = f"{photo_count:>5}"
+
             # Create tree item with emoji prefix
-            item = QTreeWidgetItem([f"📁 {name}", f"{photo_count:>5}"])
+            item = QTreeWidgetItem([f"📁 {name}", count_text])
             item.setData(0, Qt.UserRole, int(fid))
 
             # Set count column formatting (right-aligned, grey color)
