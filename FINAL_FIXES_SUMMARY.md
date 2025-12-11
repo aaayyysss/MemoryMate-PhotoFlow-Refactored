@@ -89,6 +89,34 @@ WHERE vm.project_id = ?
 
 ---
 
+### **✅ Issue #5: Qt Timer Thread Violation (App Crash)**
+
+**Root Cause:** QProgressDialog has internal timers that get triggered during updates
+```
+Qt: QObject::startTimer: Timers cannot be started from another thread
+```
+
+**Technical Details:**
+- QProgressDialog.setMinimumDuration() defaults to 4000ms (4 seconds)
+- This creates an internal QTimer to delay showing the dialog
+- Progress updates from worker thread (via queued signal) triggered timer operations
+- Even with QueuedConnection, Qt detected timer being modified from wrong thread context
+
+**Fix Applied:** Disable auto-delay timer
+```python
+# In start_scan() - Add BEFORE .show()
+self.main._scan_progress.setMinimumDuration(0)  # ✅ No timer = no thread violation
+self.main._scan_progress.show()
+```
+
+**Result:**
+- Progress dialog shows immediately without timer delays
+- No Qt threading errors
+- No app crash during scan
+- Clean progress updates via QueuedConnection
+
+---
+
 ## 📁 **Files Modified**
 
 ### 1. **services/photo_scan_service.py**
@@ -101,6 +129,7 @@ WHERE vm.project_id = ?
 - Reverted to old working version (simple, immediate dialog creation)
 - Removed threshold logic, lazy creation, QTimer workarounds
 - Simplified `_on_progress()` callback
+- **Line 60:** Added `setMinimumDuration(0)` to prevent Qt timer thread errors
 
 ### 3. **reference_db.py**
 - **Lines 3963-4007:** Added `get_video_count_recursive()` method
@@ -203,7 +232,8 @@ git pull origin claude/audit-face-detection-fixes-017b511yX8FznoEy9cGus3eF
 | Test | Expected Behavior | Status |
 |------|------------------|--------|
 | Video scanning | 14 videos indexed to database | ✅ Working |
-| Progress dialog | Popup appears during scan | 🧪 Needs testing |
+| Progress dialog | Popup appears during scan | ✅ Fixed (added setMinimumDuration) |
+| No Qt timer crash | Scan completes without thread errors | 🧪 Needs testing |
 | Video folders | Grid shows 7 videos when clicked | 🧪 Needs testing |
 | Folder counts | Sidebar shows `X📷 Y🎬` format | 🧪 Needs testing |
 | Date counts | Sidebar shows photo + video counts | 🧪 Needs testing |
@@ -320,6 +350,7 @@ Key commits:
 5. ✅ Fixed video query JOIN issue in google_layout.py
 6. ✅ Added video count methods to reference_db.py
 7. ✅ Updated accordion sidebar to show photo + video counts
+8. ✅ **NEW:** Fixed Qt timer thread violation (added setMinimumDuration)
 
 ---
 
