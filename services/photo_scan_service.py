@@ -389,9 +389,24 @@ class PhotoScanService:
                         logger.warning(f"Final executor shutdown error: {e}")
 
             # Step 4: Process videos
+            print(f"\n[SCAN] === STEP 4: VIDEO PROCESSING ===")
+            print(f"[SCAN] total_videos={total_videos}")
+            print(f"[SCAN] self._cancelled={self._cancelled}")
+            print(f"[SCAN] Condition check: {total_videos} > 0 and not {self._cancelled} = {total_videos > 0 and not self._cancelled}")
+            sys.stdout.flush()
+
             if total_videos > 0 and not self._cancelled:
+                print(f"[SCAN] Condition TRUE - calling _process_videos()")
+                sys.stdout.flush()
                 logger.info(f"Processing {total_videos} videos...")
                 self._process_videos(all_videos, root_path, project_id, folders_seen, progress_callback)
+            else:
+                print(f"[SCAN] Condition FALSE - skipping video processing!")
+                if total_videos == 0:
+                    print(f"[SCAN]   Reason: No videos found (total_videos=0)")
+                if self._cancelled:
+                    print(f"[SCAN]   Reason: Scan was cancelled")
+                sys.stdout.flush()
 
             # Step 5: Create default project and branch if needed
             self._ensure_default_project(root_folder)
