@@ -57,6 +57,7 @@ class ScanController:
         self.main._scan_progress.setWindowModality(Qt.WindowModal)
         self.main._scan_progress.setAutoClose(False)
         self.main._scan_progress.setAutoReset(False)
+        self.main._scan_progress.setMinimumDuration(0)  # CRITICAL: Show immediately, no timer delay (prevents Qt timer thread errors)
         self.main._scan_progress.show()
 
         # DB writer
