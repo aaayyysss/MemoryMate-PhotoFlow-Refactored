@@ -8753,6 +8753,9 @@ class GooglePhotosLayout(BaseLayout):
         sidebar.selectTag.connect(self._on_accordion_tag_clicked)
         sidebar.selectVideo.connect(self._on_accordion_video_clicked)  # NEW: Video filtering
 
+        # FIX: Connect section expansion signal to hide search suggestions popup
+        sidebar.sectionExpanding.connect(self._on_accordion_section_expanding)
+
         # Store reference for refreshing
         self.accordion_sidebar = sidebar
 
@@ -9898,6 +9901,20 @@ class GooglePhotosLayout(BaseLayout):
             print(f"[GooglePhotosLayout] ⚠️ Error filtering videos: {e}")
             import traceback
             traceback.print_exc()
+
+    def _on_accordion_section_expanding(self, section_id: str):
+        """
+        Handle accordion section expansion - hide search suggestions popup.
+
+        This prevents the popup from briefly appearing during layout changes
+        when accordion sections expand/collapse.
+
+        Args:
+            section_id: The section being expanded (e.g., "people", "dates", "folders")
+        """
+        # Hide search suggestions popup if visible
+        if hasattr(self, 'search_suggestions') and self.search_suggestions.isVisible():
+            self.search_suggestions.hide()
 
     def _filter_by_tag(self, tag_name: str):
         """Filter timeline to show photos by the given tag."""
@@ -14743,8 +14760,14 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
 
         Google Photos DNA: Icons, categories, photo counts
         """
+        # FIX 2: Check if suggestions are enabled (prevent showing during layout operations)
+        if hasattr(self, '_suggestions_disabled') and self._suggestions_disabled:
+            return
+
         if not text or len(text) < 2:
-            self.search_suggestions.hide()
+            # FIX 2: Only hide if actually visible (prevents unnecessary operations)
+            if self.search_suggestions.isVisible():
+                self.search_suggestions.hide()
             return
 
         try:

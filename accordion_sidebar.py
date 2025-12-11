@@ -768,6 +768,9 @@ class AccordionSidebar(QWidget):
     selectPerson = Signal(str)     # person branch_key
     selectVideo  = Signal(str)     # video filter type (e.g., "all", "short", "hd")
 
+    # Section expansion signal (emitted when a section is being expanded)
+    sectionExpanding = Signal(str)  # section_id - Emitted before section expansion
+
     # Internal signals for thread-safe UI updates
     _datesLoaded = Signal(dict)    # Thread → UI: dates data ready
     _foldersLoaded = Signal(list)  # Thread → UI: folders data ready
@@ -913,6 +916,9 @@ class AccordionSidebar(QWidget):
         if section_id not in self.sections:
             self._dbg(f"⚠️ Section not found: {section_id}")
             return
+
+        # Emit signal before expanding (allows parent to hide popups, etc.)
+        self.sectionExpanding.emit(section_id)
 
         # Collapse all sections first
         for sid, section in self.sections.items():
