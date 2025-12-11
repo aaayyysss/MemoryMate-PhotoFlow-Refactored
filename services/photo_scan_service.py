@@ -243,6 +243,22 @@ class PhotoScanService:
 
             logger.info(f"Discovered {total_files} candidate image files and {total_videos} video files")
 
+            # CRITICAL FIX: Send discovery message to progress callback for dialog threshold check
+            # scan_controller.py needs this message to parse file count and decide whether to show dialog
+            if progress_callback:
+                discovery_msg = f"Discovered {total_files} candidate image files and {total_videos} video files"
+                progress = ScanProgress(
+                    current=0,
+                    total=total_files + total_videos,
+                    percent=0,
+                    message=discovery_msg,
+                    current_file=None
+                )
+                try:
+                    progress_callback(progress)
+                except Exception as e:
+                    logger.warning(f"Progress callback error during discovery: {e}")
+
             if total_files == 0 and total_videos == 0:
                 logger.warning("No media files found")
                 return ScanResult(0, 0, 0, 0, 0, time.time() - start_time)
