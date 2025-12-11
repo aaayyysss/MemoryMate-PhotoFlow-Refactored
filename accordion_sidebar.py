@@ -425,27 +425,16 @@ class PeopleGridView(QWidget):
         super().__init__(parent)
 
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setContentsMargins(4, 4, 4, 4)
         main_layout.setSpacing(0)
 
-        # Scroll area
-        self.scroll_area = QScrollArea()
-        self.scroll_area.setWidgetResizable(True)
-        self.scroll_area.setFrameShape(QFrame.NoFrame)
-        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        # CRITICAL FIX: Set minimum height so faces are visible (not tiny!)
-        # With 80x100px cards + spacing, 3 rows = ~340px minimum
-        self.scroll_area.setMinimumHeight(340)
-        self.scroll_area.setStyleSheet("""
-            QScrollArea {
-                background: transparent;
-                border: none;
-            }
-        """)
-
-        # Container with flow layout
+        # CRITICAL FIX: Remove nested scroll area - parent AccordionSection already provides scrolling
+        # Container with flow layout (directly in main layout, no scroll wrapper)
         self.grid_container = QWidget()
         self.flow_layout = FlowLayout(self.grid_container, margin=4, spacing=8)
+
+        # Set minimum height for visibility (3 rows of 80x100px cards)
+        self.grid_container.setMinimumHeight(340)
 
         # Empty state label (hidden when people added)
         self.empty_label = QLabel("No people detected yet\n\nRun face detection to see people here")
@@ -459,9 +448,8 @@ class PeopleGridView(QWidget):
         """)
         self.empty_label.hide()
 
-        # Add to scroll
-        self.scroll_area.setWidget(self.grid_container)
-        main_layout.addWidget(self.scroll_area)
+        # Add directly to main layout (no scroll wrapper)
+        main_layout.addWidget(self.grid_container)
         main_layout.addWidget(self.empty_label)
 
     def add_person(self, branch_key, display_name, face_pixmap, photo_count):
@@ -780,6 +768,9 @@ class AccordionSidebar(QWidget):
     selectPerson = Signal(str)     # person branch_key
     selectVideo  = Signal(str)     # video filter type (e.g., "all", "short", "hd")
 
+    # Section expansion signal (emitted when a section is being expanded)
+    sectionExpanding = Signal(str)  # section_id - Emitted before section expansion
+
     # Internal signals for thread-safe UI updates
     _datesLoaded = Signal(dict)    # Thread → UI: dates data ready
     _foldersLoaded = Signal(list)  # Thread → UI: folders data ready
@@ -864,7 +855,7 @@ class AccordionSidebar(QWidget):
         # Define sections in priority order
         sections_config = [
             ("people",   "👥 People",      "👥"),
-            ("videos",   "🎬 Videos",      "🎬"),
+#            ("videos",   "🎬 Videos",      "🎬"),    # >>> FIX: keep only the NEW videos entry
             ("dates",    "📅 By Date",     "📅"),
             ("folders",  "📁 Folders",     "📁"),
             ("videos",   "🎬 Videos",      "🎬"),  # NEW: Videos section
@@ -925,6 +916,9 @@ class AccordionSidebar(QWidget):
         if section_id not in self.sections:
             self._dbg(f"⚠️ Section not found: {section_id}")
             return
+
+        # Emit signal before expanding (allows parent to hide popups, etc.)
+        self.sectionExpanding.emit(section_id)
 
         # Collapse all sections first
         for sid, section in self.sections.items():
@@ -1010,8 +1004,8 @@ class AccordionSidebar(QWidget):
 
         if section_id == "people":
             self._load_people_section()
-        elif section_id == "videos":
-            self._load_videos_section()
+#        elif section_id == "videos":
+#            self._load_videos_section()
         elif section_id == "dates":
             self._load_dates_section()
         elif section_id == "folders":
@@ -1452,194 +1446,6 @@ class AccordionSidebar(QWidget):
         self._dbg(f"Person activated: {branch_key}")
         # Emit branch selection signal for grid filtering
         self.selectBranch.emit(f"branch:{branch_key}")
-
-    def _load_videos_section(self):
-        """Load Videos section with hierarchical tree (based on previous working version)."""
-        self._dbg("Loading Videos section...")
-
-        section = self.sections.get("videos")
-        if not section or not self.project_id:
-            self._dbg(f"⚠️ Section or project_id missing: section={section}, project_id={self.project_id}")
-            return
-
-        try:
-            # Use VideoService to get videos (as in previous working version)
-            from services.video_service import VideoService
-            video_service = VideoService()
-
-            self._dbg(f"Fetching videos for project_id={self.project_id}")
-            videos = video_service.get_videos_by_project(self.project_id) if self.project_id else []
-            total_videos = len(videos)
-            self._dbg(f"Loaded {total_videos} videos from VideoService")
-
-            # DEBUG: Check database directly if VideoService returns 0
-            if total_videos == 0:
-                self._dbg("⚠️ VideoService returned empty - checking database directly...")
-                try:
-                    with self.db._connect() as conn:
-                        cur = conn.cursor()
-                        cur.execute("SELECT COUNT(*) FROM video_metadata WHERE project_id = ?", (self.project_id,))
-                        count = cur.fetchone()[0]
-                        self._dbg(f"Direct query: video_metadata has {count} rows for project {self.project_id}")
-
-                        if count > 0:
-                            cur.execute("SELECT id, path, metadata_status, project_id FROM video_metadata WHERE project_id = ? LIMIT 3", (self.project_id,))
-                            samples = cur.fetchall()
-                            for sample in samples:
-                                self._dbg(f"Sample video in DB: id={sample[0]}, path={sample[1]}, status={sample[2]}, project={sample[3]}")
-                except Exception as db_err:
-                    self._dbg(f"Database check failed: {db_err}")
-                    import traceback
-                    traceback.print_exc()
-
-            if total_videos == 0:
-                # Show "No videos" placeholder
-                placeholder = QLabel("No videos found.\n\nScan your repository to index videos.")
-                placeholder.setAlignment(Qt.AlignCenter)
-                placeholder.setStyleSheet("padding: 40px 20px; color: #666; font-size: 11pt;")
-                section.set_content_widget(placeholder)
-                section.set_count(0)
-                return
-
-            # Create tree widget for videos (like the previous version)
-            tree = QTreeWidget()
-            tree.setHeaderHidden(True)
-            tree.setIndentation(12)
-            tree.setMinimumHeight(200)
-            tree.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-            tree.setStyleSheet("""
-                QTreeWidget {
-                    background: white;
-                    border: 1px solid #e0e0e0;
-                    border-radius: 4px;
-                }
-                QTreeWidget::item {
-                    padding: 6px 4px;
-                }
-                QTreeWidget::item:hover {
-                    background: #f5f5f5;
-                }
-                QTreeWidget::item:selected {
-                    background: #e8f0fe;
-                    color: #1a73e8;
-                }
-            """)
-
-            # All Videos
-            all_item = QTreeWidgetItem([f"📁 All Videos ({total_videos})"])
-            all_item.setData(0, Qt.UserRole, {"type": "all_videos"})
-            tree.addTopLevelItem(all_item)
-
-            # By Duration
-            short_videos = [v for v in videos if v.get('duration_seconds') and v['duration_seconds'] < 30]
-            medium_videos = [v for v in videos if v.get('duration_seconds') and 30 <= v['duration_seconds'] < 300]
-            long_videos = [v for v in videos if v.get('duration_seconds') and v['duration_seconds'] >= 300]
-
-            if short_videos or medium_videos or long_videos:
-                duration_parent = QTreeWidgetItem(["⏱️  By Duration"])
-                tree.addTopLevelItem(duration_parent)
-
-                if short_videos:
-                    short_item = QTreeWidgetItem([f"  Short < 30s ({len(short_videos)})"])
-                    short_item.setData(0, Qt.UserRole, {"type": "duration", "key": "short", "videos": short_videos})
-                    duration_parent.addChild(short_item)
-
-                if medium_videos:
-                    medium_item = QTreeWidgetItem([f"  Medium 30s-5m ({len(medium_videos)})"])
-                    medium_item.setData(0, Qt.UserRole, {"type": "duration", "key": "medium", "videos": medium_videos})
-                    duration_parent.addChild(medium_item)
-
-                if long_videos:
-                    long_item = QTreeWidgetItem([f"  Long > 5m ({len(long_videos)})"])
-                    long_item.setData(0, Qt.UserRole, {"type": "duration", "key": "long", "videos": long_videos})
-                    duration_parent.addChild(long_item)
-
-            # By Resolution
-            sd_videos = [v for v in videos if v.get('width') and v.get('height') and v['height'] < 720]
-            hd_videos = [v for v in videos if v.get('width') and v.get('height') and 720 <= v['height'] < 1080]
-            fhd_videos = [v for v in videos if v.get('width') and v.get('height') and 1080 <= v['height'] < 2160]
-            uhd_videos = [v for v in videos if v.get('width') and v.get('height') and v['height'] >= 2160]
-
-            if sd_videos or hd_videos or fhd_videos or uhd_videos:
-                res_parent = QTreeWidgetItem(["📺 By Resolution"])
-                tree.addTopLevelItem(res_parent)
-
-                if sd_videos:
-                    sd_item = QTreeWidgetItem([f"  SD < 720p ({len(sd_videos)})"])
-                    sd_item.setData(0, Qt.UserRole, {"type": "resolution", "key": "sd", "videos": sd_videos})
-                    res_parent.addChild(sd_item)
-
-                if hd_videos:
-                    hd_item = QTreeWidgetItem([f"  HD 720p ({len(hd_videos)})"])
-                    hd_item.setData(0, Qt.UserRole, {"type": "resolution", "key": "hd", "videos": hd_videos})
-                    res_parent.addChild(hd_item)
-
-                if fhd_videos:
-                    fhd_item = QTreeWidgetItem([f"  Full HD 1080p ({len(fhd_videos)})"])
-                    fhd_item.setData(0, Qt.UserRole, {"type": "resolution", "key": "fhd", "videos": fhd_videos})
-                    res_parent.addChild(fhd_item)
-
-                if uhd_videos:
-                    uhd_item = QTreeWidgetItem([f"  4K 2160p+ ({len(uhd_videos)})"])
-                    uhd_item.setData(0, Qt.UserRole, {"type": "resolution", "key": "4k", "videos": uhd_videos})
-                    res_parent.addChild(uhd_item)
-
-            # By Date (Year/Month hierarchy)
-            try:
-                video_hier = self.db.get_video_date_hierarchy(self.project_id) or {}
-
-                if video_hier:
-                    date_parent = QTreeWidgetItem(["📅 By Date"])
-                    tree.addTopLevelItem(date_parent)
-
-                    for year in sorted(video_hier.keys(), key=lambda y: int(str(y)), reverse=True):
-                        year_count = self.db.count_videos_for_year(year, self.project_id)
-                        year_item = QTreeWidgetItem([f"  {year} ({year_count})"])
-                        year_item.setData(0, Qt.UserRole, {"type": "video_year", "year": year})
-                        date_parent.addChild(year_item)
-
-                        # Month nodes under year
-                        months = video_hier[year]
-                        for month in sorted(months.keys(), key=lambda m: int(str(m))):
-                            month_label = f"{int(month):02d}"
-                            month_count = self.db.count_videos_for_month(year, month, self.project_id)
-                            month_item = QTreeWidgetItem([f"    {month_label} ({month_count})"])
-                            month_item.setData(0, Qt.UserRole, {"type": "video_month", "year": year, "month": month_label})
-                            year_item.addChild(month_item)
-            except Exception as e:
-                self._dbg(f"Failed to build video date hierarchy: {e}")
-
-            # Connect click handler
-            tree.itemClicked.connect(self._on_video_tree_clicked)
-
-            # Update count and set content
-            section.set_count(total_videos)
-            section.set_content_widget(tree)
-
-            self._dbg(f"✓ Videos section loaded with {total_videos} videos")
-
-        except Exception as e:
-            self._dbg(f"⚠️ Error loading videos section: {e}")
-            import traceback
-            traceback.print_exc()
-
-            # Show error placeholder
-            error_label = QLabel(f"Error loading videos:\n{str(e)}")
-            error_label.setAlignment(Qt.AlignCenter)
-            error_label.setStyleSheet("padding: 20px; color: #ff0000;")
-            section.set_content_widget(error_label)
-
-    def _on_video_tree_clicked(self, item: QTreeWidgetItem, column: int):
-        """Handle video tree item click."""
-        data = item.data(0, Qt.UserRole)
-        if not data:
-            return
-
-        item_type = data.get("type")
-        self._dbg(f"Video tree item clicked: {item_type}")
-
-        # For now, just log - can implement filtering later
-        # self.selectBranch.emit(f"video:{item_type}")
 
     def _load_dates_section(self):
         """Load By Date section with hierarchical tree (Year > Month > Day)."""
@@ -2323,6 +2129,9 @@ class AccordionSidebar(QWidget):
             tree = QTreeWidget()
             tree.setHeaderHidden(True)
             tree.setIndentation(16)
+            # CRITICAL FIX: Set minimum height and size policy to prevent cluttering
+            tree.setMinimumHeight(300)
+            tree.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
             tree.setStyleSheet("""
                 QTreeWidget {
                     border: none;

@@ -375,6 +375,40 @@ class ProgressiveImageWorker(QRunnable):
             import traceback
             traceback.print_exc()
 
+            # FALLBACK: Create "broken image" placeholder pixmap
+            from PySide6.QtGui import QPixmap, QPainter, QColor, QFont
+            from PySide6.QtCore import Qt
+
+            # Create a placeholder pixmap (400x400 gray box with error icon)
+            placeholder = QPixmap(400, 400)
+            placeholder.fill(QColor(240, 240, 240))  # Light gray background
+
+            painter = QPainter(placeholder)
+            painter.setRenderHint(QPainter.Antialiasing)
+
+            # Draw red border
+            painter.setPen(QColor(220, 53, 69))  # Bootstrap danger red
+            painter.drawRect(0, 0, 399, 399)
+
+            # Draw error icon (❌) and text
+            painter.setPen(QColor(100, 100, 100))
+            font = QFont()
+            font.setPointSize(48)
+            painter.setFont(font)
+            painter.drawText(placeholder.rect(), Qt.AlignCenter, "❌\n\nImage Error")
+
+            # Draw filename at bottom
+            font.setPointSize(10)
+            painter.setFont(font)
+            painter.drawText(10, 380, os.path.basename(self.path)[:50])
+
+            painter.end()
+
+            # Emit placeholder for both thumbnail and full quality
+            self.signals.thumbnail_loaded.emit(placeholder)
+            self.signals.full_loaded.emit(placeholder)
+            print(f"[ProgressiveImageWorker] ✓ Emitted error placeholder for: {os.path.basename(self.path)}")
+
 
 class GooglePhotosEventFilter(QObject):
     """
@@ -387,7 +421,15 @@ class GooglePhotosEventFilter(QObject):
         self.layout = layout
 
     def eventFilter(self, obj, event):
-        """Handle events for search box and timeline viewport."""
+        """Handle events for search box, timeline viewport, and search suggestions popup."""
+        # NUCLEAR FIX: Block Show events on search_suggestions popup during layout changes
+        if hasattr(self.layout, 'search_suggestions') and obj == self.layout.search_suggestions:
+            if event.type() == QEvent.Show:
+                # Check if popup is blocked due to layout changes
+                if hasattr(self.layout, '_popup_blocked') and self.layout._popup_blocked:
+                    # Block the show event - popup will not appear
+                    return True
+
         # Search box keyboard navigation
         if obj == self.layout.search_box and event.type() == QEvent.KeyPress:
             if hasattr(self.layout, 'search_suggestions') and self.layout.search_suggestions.isVisible():
@@ -8753,6 +8795,9 @@ class GooglePhotosLayout(BaseLayout):
         sidebar.selectTag.connect(self._on_accordion_tag_clicked)
         sidebar.selectVideo.connect(self._on_accordion_video_clicked)  # NEW: Video filtering
 
+        # FIX: Connect section expansion signal to hide search suggestions popup
+        sidebar.sectionExpanding.connect(self._on_accordion_section_expanding)
+
         # Store reference for refreshing
         self.accordion_sidebar = sidebar
 
@@ -9898,6 +9943,27 @@ class GooglePhotosLayout(BaseLayout):
             print(f"[GooglePhotosLayout] ⚠️ Error filtering videos: {e}")
             import traceback
             traceback.print_exc()
+
+    def _on_accordion_section_expanding(self, section_id: str):
+        """
+        Handle accordion section expansion - hide search suggestions popup.
+
+        This prevents the popup from briefly appearing during layout changes
+        when accordion sections expand/collapse.
+
+        Args:
+            section_id: The section being expanded (e.g., "people", "dates", "folders")
+        """
+        # NUCLEAR FIX: Block popup from showing during layout changes
+        self._popup_blocked = True
+
+        # Hide search suggestions popup if visible
+        if hasattr(self, 'search_suggestions') and self.search_suggestions.isVisible():
+            self.search_suggestions.hide()
+
+        # Unblock popup after layout changes complete (300ms delay)
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(300, lambda: setattr(self, '_popup_blocked', False))
 
     def _filter_by_tag(self, tag_name: str):
         """Filter timeline to show photos by the given tag."""
@@ -12025,7 +12091,9 @@ class GooglePhotosLayout(BaseLayout):
 
         # Also clear search box
         if self.search_box.text():
+            self.search_box.blockSignals(True)
             self.search_box.clear()
+            self.search_box.blockSignals(False)
 
     def _build_videos_tree(self):
         """
@@ -14720,6 +14788,9 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
         self.search_suggestions.setMinimumWidth(300)
         self.search_suggestions.hide()
 
+        # NUCLEAR FIX: Initialize flag to block popup during layout changes
+        self._popup_blocked = False
+
         # Connect click event
         self.search_suggestions.itemClicked.connect(self._on_suggestion_clicked)
 
@@ -14729,6 +14800,9 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
 
         # Install event filter on search box to handle arrow keys
         self.search_box.installEventFilter(self.event_filter)
+
+        # NUCLEAR FIX: Install event filter on popup itself to block Show events during layout changes
+        self.search_suggestions.installEventFilter(self.event_filter)
 
     def _show_search_suggestions(self, text: str):
         """
@@ -14741,8 +14815,18 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
 
         Google Photos DNA: Icons, categories, photo counts
         """
+        # FIX 2: Check if suggestions are enabled (prevent showing during layout operations)
+        if hasattr(self, '_suggestions_disabled') and self._suggestions_disabled:
+            return
+
+        # NUCLEAR FIX: Don't show popup if blocked due to layout changes
+        if hasattr(self, '_popup_blocked') and self._popup_blocked:
+            return
+
         if not text or len(text) < 2:
-            self.search_suggestions.hide()
+            # FIX 2: Only hide if actually visible (prevents unnecessary operations)
+            if self.search_suggestions.isVisible():
+                self.search_suggestions.hide()
             return
 
         try:
@@ -14853,17 +14937,23 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
                 person_name = name_part
 
             # Set search box and perform person search
+            self.search_box.blockSignals(True)
             self.search_box.setText(person_name)
+            self.search_box.blockSignals(False)
             self._perform_search(person_name)
 
         elif " " in suggestion_text and suggestion_text[0] in ("📁", "📷"):
             # Folder/file suggestion: Remove emoji prefix
             clean_text = suggestion_text.split(" ", 1)[1]
+            self.search_box.blockSignals(True)
             self.search_box.setText(clean_text)
+            self.search_box.blockSignals(False)
             self._perform_search(clean_text)
         else:
             # Fallback: use as-is
+            self.search_box.blockSignals(True)
             self.search_box.setText(suggestion_text)
+            self.search_box.blockSignals(False)
             self._perform_search(suggestion_text)
 
         self.search_suggestions.hide()
@@ -15346,7 +15436,9 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
 
         # Clear search box as well if it has text
         if self.search_box.text():
+            self.search_box.blockSignals(True)
             self.search_box.clear()
+            self.search_box.blockSignals(False)
 
     def get_sidebar(self):
         """Get sidebar component."""
