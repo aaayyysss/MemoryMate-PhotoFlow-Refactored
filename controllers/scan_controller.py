@@ -37,19 +37,23 @@ class ScanController:
         self.cancel_requested = False
         self.logger = logging.getLogger(__name__)
 
+        # CRITICAL FIX: Progress dialog threshold to prevent UI freeze on small scans
+        # Only show progress dialog if file count exceeds this threshold
+        # Working version had PROGRESS_DIALOG_THRESHOLD = 10
+        self.PROGRESS_DIALOG_THRESHOLD = 50
+        self._total_files_found = 0
+
     def start_scan(self, folder, incremental: bool):
         """Entry point called from MainWindow toolbar action."""
         self.cancel_requested = False
         self.main.statusBar().showMessage(f"📸 Scanning repository: {folder} (incremental={incremental})")
         self.main._committed_total = 0
 
-        # Progress dialog
-        self.main._scan_progress = QProgressDialog("Preparing scan...", "Cancel", 0, 100, self.main)
-        self.main._scan_progress.setWindowTitle("Scanning Photos")
-        self.main._scan_progress.setWindowModality(Qt.WindowModal)
-        self.main._scan_progress.setAutoClose(False)
-        self.main._scan_progress.setAutoReset(False)
-        self.main._scan_progress.show()
+        # CRITICAL FIX: Don't create progress dialog immediately
+        # Will be created lazily in _on_progress() if file count exceeds threshold
+        # This prevents UI freeze on small scans (< 50 photos)
+        self.main._scan_progress = None
+        self._total_files_found = 0  # Reset file count tracker
 
         # DB writer
         # NOTE: Schema creation handled automatically by repository layer
@@ -187,24 +191,57 @@ class ScanController:
         """
         Handle progress updates from scan worker thread.
 
+        CRITICAL FIX: Create progress dialog lazily to avoid UI freeze on small scans.
+        Only show dialog if file count exceeds threshold.
+
         CRITICAL: Do NOT call QApplication.processEvents() here!
         - This method is a Qt SLOT called from worker thread via signal
         - Calling processEvents() causes re-entrancy and deadlocks
         - Qt's event loop handles progress dialog updates naturally
         - Worker thread isolation means main thread stays responsive
         """
-        if not self.main._scan_progress:
-            return
-        pct_i = max(0, min(100, int(pct or 0)))
-        self.main._scan_progress.setValue(pct_i)
-        if msg:
-            # Enhanced progress display with file details
-            label = f"{msg}\nCommitted: {self.main._committed_total}"
-            self.main._scan_progress.setLabelText(label)
+        # Parse file count from discovery message if available
+        # Example: "Discovered 108 candidate image files and 3 video files"
+        if msg and "Discovered" in msg and "candidate" in msg:
+            try:
+                # Extract number from message
+                parts = msg.split()
+                for i, part in enumerate(parts):
+                    if part == "Discovered" and i + 1 < len(parts):
+                        self._total_files_found = int(parts[i + 1])
+                        self.logger.info(f"Detected {self._total_files_found} files to process")
+                        break
+            except (ValueError, IndexError):
+                pass
 
-        # Check for cancellation (no processEvents needed!)
-        if self.main._scan_progress.wasCanceled():
-            self.cancel()
+        # CRITICAL FIX: Only create progress dialog if file count exceeds threshold
+        if not self.main._scan_progress:
+            if self._total_files_found > self.PROGRESS_DIALOG_THRESHOLD:
+                self.logger.info(f"File count ({self._total_files_found}) exceeds threshold ({self.PROGRESS_DIALOG_THRESHOLD}), showing progress dialog")
+                self.main._scan_progress = QProgressDialog("Scanning...", "Cancel", 0, 100, self.main)
+                self.main._scan_progress.setWindowTitle("Scanning Photos")
+                self.main._scan_progress.setWindowModality(Qt.WindowModal)
+                self.main._scan_progress.setAutoClose(False)
+                self.main._scan_progress.setAutoReset(False)
+                self.main._scan_progress.show()
+            else:
+                # Small scan - just use status bar, no dialog
+                if msg:
+                    self.main.statusBar().showMessage(msg)
+                return
+
+        # Update progress dialog if it exists
+        if self.main._scan_progress:
+            pct_i = max(0, min(100, int(pct or 0)))
+            self.main._scan_progress.setValue(pct_i)
+            if msg:
+                # Enhanced progress display with file details
+                label = f"{msg}\nCommitted: {self.main._committed_total}"
+                self.main._scan_progress.setLabelText(label)
+
+            # Check for cancellation (no processEvents needed!)
+            if self.main._scan_progress.wasCanceled():
+                self.cancel()
 
     def _on_finished(self, folders, photos, videos=0):
         print(f"[ScanController] scan finished: {folders} folders, {photos} photos, {videos} videos")
