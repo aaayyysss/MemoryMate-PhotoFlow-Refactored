@@ -425,27 +425,16 @@ class PeopleGridView(QWidget):
         super().__init__(parent)
 
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setContentsMargins(4, 4, 4, 4)
         main_layout.setSpacing(0)
 
-        # Scroll area
-        self.scroll_area = QScrollArea()
-        self.scroll_area.setWidgetResizable(True)
-        self.scroll_area.setFrameShape(QFrame.NoFrame)
-        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        # CRITICAL FIX: Set minimum height so faces are visible (not tiny!)
-        # With 80x100px cards + spacing, 3 rows = ~340px minimum
-        self.scroll_area.setMinimumHeight(340)
-        self.scroll_area.setStyleSheet("""
-            QScrollArea {
-                background: transparent;
-                border: none;
-            }
-        """)
-
-        # Container with flow layout
+        # CRITICAL FIX: Remove nested scroll area - parent AccordionSection already provides scrolling
+        # Container with flow layout (directly in main layout, no scroll wrapper)
         self.grid_container = QWidget()
         self.flow_layout = FlowLayout(self.grid_container, margin=4, spacing=8)
+
+        # Set minimum height for visibility (3 rows of 80x100px cards)
+        self.grid_container.setMinimumHeight(340)
 
         # Empty state label (hidden when people added)
         self.empty_label = QLabel("No people detected yet\n\nRun face detection to see people here")
@@ -459,9 +448,8 @@ class PeopleGridView(QWidget):
         """)
         self.empty_label.hide()
 
-        # Add to scroll
-        self.scroll_area.setWidget(self.grid_container)
-        main_layout.addWidget(self.scroll_area)
+        # Add directly to main layout (no scroll wrapper)
+        main_layout.addWidget(self.grid_container)
         main_layout.addWidget(self.empty_label)
 
     def add_person(self, branch_key, display_name, face_pixmap, photo_count):
@@ -864,6 +852,7 @@ class AccordionSidebar(QWidget):
         # Define sections in priority order
         sections_config = [
             ("people",   "👥 People",      "👥"),
+#            ("videos",   "🎬 Videos",      "🎬"),    # >>> FIX: keep only the NEW videos entry
             ("dates",    "📅 By Date",     "📅"),
             ("folders",  "📁 Folders",     "📁"),
             ("videos",   "🎬 Videos",      "🎬"),  # NEW: Videos section
@@ -1009,6 +998,8 @@ class AccordionSidebar(QWidget):
 
         if section_id == "people":
             self._load_people_section()
+#        elif section_id == "videos":
+#            self._load_videos_section()
         elif section_id == "dates":
             self._load_dates_section()
         elif section_id == "folders":
@@ -2132,6 +2123,9 @@ class AccordionSidebar(QWidget):
             tree = QTreeWidget()
             tree.setHeaderHidden(True)
             tree.setIndentation(16)
+            # CRITICAL FIX: Set minimum height and size policy to prevent cluttering
+            tree.setMinimumHeight(300)
+            tree.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
             tree.setStyleSheet("""
                 QTreeWidget {
                     border: none;
@@ -2337,9 +2331,10 @@ class AccordionSidebar(QWidget):
         """Refresh all sections (reload content)."""
         self._dbg(f"Refreshing all sections (force={force})")
 
-        # Reload currently expanded section
-        if self.expanded_section_id:
-            self._load_section_content(self.expanded_section_id)
+        # CRITICAL FIX: Reload ALL sections, not just the expanded one
+        # This ensures all sections have fresh data after project changes
+        for section_id in self.sections.keys():
+            self._load_section_content(section_id)
 
     def get_section(self, section_id: str) -> AccordionSection:
         """Get a specific section by ID."""
