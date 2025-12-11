@@ -225,12 +225,23 @@ class ScanController:
         if not self.main._scan_progress:
             if self._total_files_found > self.PROGRESS_DIALOG_THRESHOLD:
                 self.logger.info(f"File count ({self._total_files_found}) exceeds threshold ({self.PROGRESS_DIALOG_THRESHOLD}), showing progress dialog")
-                self.main._scan_progress = QProgressDialog("Scanning...", "Cancel", 0, 100, self.main)
-                self.main._scan_progress.setWindowTitle("Scanning Photos")
-                self.main._scan_progress.setWindowModality(Qt.WindowModal)
-                self.main._scan_progress.setAutoClose(False)
-                self.main._scan_progress.setAutoReset(False)
-                self.main._scan_progress.show()
+
+                # CRITICAL: Create dialog in main thread using QTimer to avoid Qt threading violation
+                # Creating QProgressDialog directly here can fail with "Cannot set parent, new parent is in a different thread"
+                # even though signal uses QueuedConnection, because Qt hasn't processed the queued call yet
+                def create_dialog():
+                    """Create progress dialog in main thread."""
+                    if not self.main._scan_progress:  # Check again in case of race condition
+                        self.main._scan_progress = QProgressDialog("Scanning...", "Cancel", 0, 100, self.main)
+                        self.main._scan_progress.setWindowTitle("Scanning Photos")
+                        self.main._scan_progress.setWindowModality(Qt.WindowModal)
+                        self.main._scan_progress.setAutoClose(False)
+                        self.main._scan_progress.setAutoReset(False)
+                        self.main._scan_progress.show()
+                        self.logger.info("✓ Progress dialog created and shown")
+
+                # Schedule dialog creation in main thread's next event loop iteration
+                QTimer.singleShot(0, create_dialog)
             else:
                 # Small scan - just use status bar, no dialog
                 if msg:
