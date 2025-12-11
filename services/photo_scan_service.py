@@ -967,7 +967,13 @@ class PhotoScanService:
                     created_ts, created_date, created_year = self._compute_created_fields(video_date_taken, modified)
 
                     # Index video WITH date fields (using modified as fallback until workers extract date_taken)
-                    video_service.index_video(
+                    print(f"[VIDEO_INDEX] Attempting to index: {os.path.basename(str(video_path))}")
+                    print(f"[VIDEO_INDEX]   project_id={project_id}, folder_id={folder_id}")
+                    print(f"[VIDEO_INDEX]   size_kb={size_kb}, modified={modified}")
+                    print(f"[VIDEO_INDEX]   created_ts={created_ts}, created_date={created_date}, created_year={created_year}")
+                    sys.stdout.flush()
+
+                    video_id = video_service.index_video(
                         path=str(video_path),
                         project_id=project_id,
                         folder_id=folder_id,
@@ -977,10 +983,21 @@ class PhotoScanService:
                         created_date=created_date,
                         created_year=created_year
                     )
-                    self._stats['videos_indexed'] += 1
+
+                    if video_id:
+                        print(f"[VIDEO_INDEX] SUCCESS: video_id={video_id}")
+                        self._stats['videos_indexed'] += 1
+                    else:
+                        print(f"[VIDEO_INDEX] FAILED: video_service.index_video returned None")
+                        logger.error(f"Video indexing returned None for {video_path}")
+                    sys.stdout.flush()
 
                 except Exception as e:
+                    print(f"[VIDEO_INDEX] EXCEPTION: {type(e).__name__}: {e}")
                     logger.warning(f"Failed to index video {video_path}: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    sys.stdout.flush()
 
                 # Report progress
                 if progress_callback and (i % 10 == 0 or i == len(video_files)):
