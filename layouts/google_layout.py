@@ -12025,7 +12025,9 @@ class GooglePhotosLayout(BaseLayout):
 
         # Also clear search box
         if self.search_box.text():
+            self.search_box.blockSignals(True)
             self.search_box.clear()
+            self.search_box.blockSignals(False)
 
     def _build_videos_tree(self):
         """
@@ -14853,17 +14855,23 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
                 person_name = name_part
 
             # Set search box and perform person search
+            self.search_box.blockSignals(True)
             self.search_box.setText(person_name)
+            self.search_box.blockSignals(False)
             self._perform_search(person_name)
 
         elif " " in suggestion_text and suggestion_text[0] in ("📁", "📷"):
             # Folder/file suggestion: Remove emoji prefix
             clean_text = suggestion_text.split(" ", 1)[1]
+            self.search_box.blockSignals(True)
             self.search_box.setText(clean_text)
+            self.search_box.blockSignals(False)
             self._perform_search(clean_text)
         else:
             # Fallback: use as-is
+            self.search_box.blockSignals(True)
             self.search_box.setText(suggestion_text)
+            self.search_box.blockSignals(False)
             self._perform_search(suggestion_text)
 
         self.search_suggestions.hide()
@@ -15346,7 +15354,9 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
 
         # Clear search box as well if it has text
         if self.search_box.text():
+            self.search_box.blockSignals(True)
             self.search_box.clear()
+            self.search_box.blockSignals(False)
 
     def get_sidebar(self):
         """Get sidebar component."""
