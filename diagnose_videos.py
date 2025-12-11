@@ -32,13 +32,13 @@ def diagnose_videos():
 
     # Check 1: Projects
     print("[1] CHECKING PROJECTS:")
-    cur.execute("SELECT id, title FROM projects")
+    cur.execute("SELECT id, name, folder FROM projects")
     projects = cur.fetchall()
     if projects:
         for p in projects:
-            print(f"  - Project {p['id']}: {p['title']}")
+            print(f"  - Project {p['id']}: {p['name']} (folder: {p['folder']})")
     else:
-        print("  ❌ NO PROJECTS FOUND!")
+        print("  [ERROR] NO PROJECTS FOUND!")
         return
 
     # Check 2: Video metadata table
