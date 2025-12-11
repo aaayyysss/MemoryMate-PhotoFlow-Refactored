@@ -460,7 +460,8 @@ class PhotoScanService:
 
             for filename in filenames:
                 ext = Path(filename).suffix.lower()
-                if ext in self.SUPPORTED_EXTENSIONS:
+                # FIX: Only discover IMAGE files, not videos
+                if ext in self.IMAGE_EXTENSIONS:
                     image_files.append(Path(dirpath) / filename)
 
         return image_files
