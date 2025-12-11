@@ -346,13 +346,13 @@ class PhotoScanService:
                         # RICH PROGRESS FEEDBACK: Show percentage, current/total count, file path, and stats
                         percentage = int((i / total_files) * 100)
                         total_photos = self._stats['photos_indexed']
-                        total_videos = self._stats['videos_indexed']
-                        
+                        indexed_videos = self._stats['videos_indexed']  # CRITICAL FIX: Don't overwrite total_videos!
+
                         progress_msg = (
                             f"[{i}/{total_files}] ({percentage}%)\n"
                             f"📷 {file_name} ({file_size_kb} KB)\n"
                             f"Path: {file_path}\n"
-                            f"Photos: {total_photos} | Videos: {total_videos}"
+                            f"Photos: {total_photos} | Videos: {indexed_videos}"
                         )
 
                         progress = ScanProgress(
@@ -488,8 +488,7 @@ class PhotoScanService:
 
             for filename in filenames:
                 ext = Path(filename).suffix.lower()
-                # FIX: Only discover IMAGE files, not videos
-                if ext in self.IMAGE_EXTENSIONS:
+                if ext in self.IMAGE_EXTENSIONS:  # CRITICAL FIX: Use IMAGE_EXTENSIONS, not SUPPORTED_EXTENSIONS
                     image_files.append(Path(dirpath) / filename)
 
         return image_files
