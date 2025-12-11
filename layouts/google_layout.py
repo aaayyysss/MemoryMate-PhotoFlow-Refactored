@@ -375,6 +375,40 @@ class ProgressiveImageWorker(QRunnable):
             import traceback
             traceback.print_exc()
 
+            # FALLBACK: Create "broken image" placeholder pixmap
+            from PySide6.QtGui import QPixmap, QPainter, QColor, QFont
+            from PySide6.QtCore import Qt
+
+            # Create a placeholder pixmap (400x400 gray box with error icon)
+            placeholder = QPixmap(400, 400)
+            placeholder.fill(QColor(240, 240, 240))  # Light gray background
+
+            painter = QPainter(placeholder)
+            painter.setRenderHint(QPainter.Antialiasing)
+
+            # Draw red border
+            painter.setPen(QColor(220, 53, 69))  # Bootstrap danger red
+            painter.drawRect(0, 0, 399, 399)
+
+            # Draw error icon (❌) and text
+            painter.setPen(QColor(100, 100, 100))
+            font = QFont()
+            font.setPointSize(48)
+            painter.setFont(font)
+            painter.drawText(placeholder.rect(), Qt.AlignCenter, "❌\n\nImage Error")
+
+            # Draw filename at bottom
+            font.setPointSize(10)
+            painter.setFont(font)
+            painter.drawText(10, 380, os.path.basename(self.path)[:50])
+
+            painter.end()
+
+            # Emit placeholder for both thumbnail and full quality
+            self.signals.thumbnail_loaded.emit(placeholder)
+            self.signals.full_loaded.emit(placeholder)
+            print(f"[ProgressiveImageWorker] ✓ Emitted error placeholder for: {os.path.basename(self.path)}")
+
 
 class GooglePhotosEventFilter(QObject):
     """
