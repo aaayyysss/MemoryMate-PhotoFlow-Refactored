@@ -155,6 +155,8 @@ class AccordionSidebar(QWidget):
 
         # Create UI widgets for each section
         for section_id, section_logic in self.section_logic.items():
+            self._ensure_loaded_connection(section_id, section_logic)
+
             # Create AccordionSection UI container
             section_widget = AccordionSection(
                 section_id=section_id,
@@ -247,24 +249,34 @@ class AccordionSidebar(QWidget):
         self.expanded_section_id = section_id
 
         # Load section data if not already loaded
+        self._trigger_section_load(section_id)
+
+    def _trigger_section_load(self, section_id: str):
+        """Ensure signals are wired and start loading the given section."""
         section_logic = self.section_logic.get(section_id)
-        if section_logic and not section_logic.is_loading():
-            signals = getattr(section_logic, 'signals', None)
-            loaded_signal = getattr(signals, 'loaded', None)
+        if not section_logic or section_logic.is_loading():
+            return
 
-            # Connect before triggering load to avoid missing fast emissions
-            if loaded_signal and not getattr(section_logic, '_loaded_connected', False):
-                loaded_signal.connect(
-                    lambda gen, data: self._on_section_loaded(section_id, gen, data)
-                )
-                section_logic._loaded_connected = True
+        self._ensure_loaded_connection(section_id, section_logic)
 
-            result = section_logic.load_section()
+        result = section_logic.load_section()
 
-            # Fallback: some stub sections complete synchronously without emitting
-            if not section_logic.is_loading():
-                generation = getattr(section_logic, '_generation', 0)
-                self._on_section_loaded(section_id, generation, result)
+        # Fallback: some stub sections complete synchronously without emitting
+        if not section_logic.is_loading():
+            generation = getattr(section_logic, '_generation', 0)
+            self._on_section_loaded(section_id, generation, result)
+
+    def _ensure_loaded_connection(self, section_id: str, section_logic):
+        """Connect loaded signal to accordion handler exactly once."""
+        signals = getattr(section_logic, 'signals', None)
+        loaded_signal = getattr(signals, 'loaded', None)
+
+        # Connect before triggering load to avoid missing fast emissions
+        if loaded_signal and not getattr(section_logic, '_loaded_connected', False):
+            loaded_signal.connect(
+                lambda gen, data, sid=section_id: self._on_section_loaded(sid, gen, data)
+            )
+            section_logic._loaded_connected = True
 
     def _on_section_loaded(self, section_id: str, generation: int, data):
         """Handle section data loaded."""
@@ -322,14 +334,14 @@ class AccordionSidebar(QWidget):
         if self.expanded_section_id:
             section = self.section_logic.get(self.expanded_section_id)
             if section:
-                section.load_section()
+                self._trigger_section_load(self.expanded_section_id)
 
     def reload_all_sections(self):
         """Reload all sections from database."""
         logger.info("[AccordionSidebar] Reloading all sections")
 
         for section_id, section in self.section_logic.items():
-            section.load_section()
+            self._trigger_section_load(section_id)
 
     def cleanup(self):
         """Clean up resources before destruction."""

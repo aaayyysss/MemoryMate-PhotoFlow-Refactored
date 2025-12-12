@@ -8332,6 +8332,7 @@ class GooglePhotosLayout(BaseLayout):
 
         # Debounced zoom handling (prevents repeated reloads while dragging)
         self._pending_zoom_value = None
+        self._pending_scroll_restore = None
         # Parent the timer to the top-level widget (QObject) to avoid
         # passing this layout helper, which is not a QObject subclass.
         self.zoom_change_timer = QTimer(main_widget)
@@ -13206,6 +13207,12 @@ class GooglePhotosLayout(BaseLayout):
         # Add spacer at bottom
         self.timeline_layout.addStretch()
 
+        # Restore pending scroll position (e.g., after zoom/aspect change)
+        if self._pending_scroll_restore is not None:
+            pct = self._pending_scroll_restore
+            self._pending_scroll_restore = None
+            QTimer.singleShot(0, lambda: self._restore_scroll_percentage(pct))
+
         # === PROGRESS: Rendering complete ===
         if self.virtual_scroll_enabled:
             print(f"[GooglePhotosLayout] ✅ Virtual scrolling enabled: {len(photos_by_date)} total date groups")
@@ -15519,13 +15526,26 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
         )
 
         # Reload with new size
-        self._load_photos(thumb_size=value)
-
-        # Restore scroll PERCENTAGE after reload (maintains visual viewport)
-        QTimer.singleShot(
-            100,
-            lambda: self._restore_scroll_percentage(scroll_percentage),
+        self._queue_scroll_restore(scroll_percentage)
+        self._load_photos(
+            thumb_size=value,
+            filter_year=self.current_filter_year,
+            filter_month=self.current_filter_month,
+            filter_day=self.current_filter_day,
+            filter_folder=self.current_filter_folder,
+            filter_person=self.current_filter_person,
         )
+
+        # Clear pending value once dispatched
+        self._pending_zoom_value = None
+
+    def _queue_scroll_restore(self, percentage: float):
+        """Cache a pending scroll restoration percentage for the next render."""
+        try:
+            percentage = max(0.0, min(1.0, float(percentage)))
+        except Exception:
+            percentage = 0.0
+        self._pending_scroll_restore = percentage
 
     def _restore_scroll_percentage(self, percentage: float):
         """
@@ -15588,11 +15608,15 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
 
         # Reload with current thumb size
         current_size = self.zoom_slider.value()
-        self._load_photos(thumb_size=current_size)
-
-        # Restore scroll PERCENTAGE after reload
-        from PySide6.QtCore import QTimer
-        QTimer.singleShot(100, lambda: self._restore_scroll_percentage(scroll_percentage))
+        self._queue_scroll_restore(scroll_percentage)
+        self._load_photos(
+            thumb_size=current_size,
+            filter_year=self.current_filter_year,
+            filter_month=self.current_filter_month,
+            filter_day=self.current_filter_day,
+            filter_folder=self.current_filter_folder,
+            filter_person=self.current_filter_person,
+        )
 
     def _clear_filter(self):
         """
