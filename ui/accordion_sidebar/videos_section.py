@@ -4,7 +4,6 @@
 import threading
 import traceback
 import logging
-from typing import Optional
 from PySide6.QtWidgets import QTreeWidget, QTreeWidgetItem, QSizePolicy, QLabel
 from PySide6.QtCore import Signal, Qt, QObject
 from PySide6.QtGui import QColor
@@ -95,6 +94,52 @@ class VideosSection(BaseSection):
         """Create videos tree widget."""
         videos = data or []  # List of video dictionaries from VideoService
 
+        def _resolution_bucket(video: dict) -> str:
+            width = video.get("width") or 0
+            height = video.get("height") or 0
+            resolution = max(width, height)
+            if resolution >= 2160:
+                return "4k"
+            if resolution >= 1080:
+                return "fhd"
+            if resolution >= 720:
+                return "hd"
+            if resolution > 0:
+                return "sd"
+            return "unknown"
+
+        def _size_bucket_mb(video: dict) -> str:
+            size_mb = (video.get("size_kb") or 0) / 1024
+            if size_mb <= 0:
+                return "unknown"
+            if size_mb < 100:
+                return "small"
+            if size_mb < 1024:
+                return "medium"
+            if size_mb < 5120:
+                return "large"
+            return "xlarge"
+
+        def _year_for_video(video: dict) -> int | None:
+            year = video.get("created_year")
+            if year:
+                return int(year)
+
+            created_date = video.get("created_date") or ""
+            if isinstance(created_date, str) and len(created_date) >= 4:
+                try:
+                    return int(created_date[:4])
+                except ValueError:
+                    pass
+
+            date_taken = video.get("date_taken") or ""
+            if isinstance(date_taken, str) and len(date_taken) >= 4:
+                try:
+                    return int(date_taken[:4])
+                except ValueError:
+                    pass
+            return None
+
         # Create tree widget
         tree = QTreeWidget()
         tree.setHeaderHidden(True)
@@ -133,50 +178,156 @@ class VideosSection(BaseSection):
         tree.addTopLevelItem(all_item)
 
         # By Duration
-        # Use 'duration_seconds' field from video metadata
         short_videos = [v for v in videos if v.get("duration_seconds") and v["duration_seconds"] < 30]
         medium_videos = [v for v in videos if v.get("duration_seconds") and 30 <= v["duration_seconds"] < 300]
         long_videos = [v for v in videos if v.get("duration_seconds") and v["duration_seconds"] >= 300]
 
-        # Count videos WITH duration metadata
         videos_with_duration = [v for v in videos if v.get("duration_seconds")]
         duration_parent = QTreeWidgetItem([f"⏱️ By Duration ({len(videos_with_duration)})"])
         duration_parent.setData(0, Qt.UserRole, {"type": "duration_header"})
         tree.addTopLevelItem(duration_parent)
 
-        if short_videos:
-            short_item = QTreeWidgetItem([f"  Short (< 30s) - {len(short_videos)}"])
-            short_item.setData(0, Qt.UserRole, {"type": "duration", "filter": "short"})
-            duration_parent.addChild(short_item)
+        short_item = QTreeWidgetItem([f"Short (< 30s) ({len(short_videos)})"])
+        short_item.setData(0, Qt.UserRole, {"type": "duration", "filter": "short"})
+        duration_parent.addChild(short_item)
 
-        if medium_videos:
-            medium_item = QTreeWidgetItem([f"  Medium (30s-5m) - {len(medium_videos)}"])
-            medium_item.setData(0, Qt.UserRole, {"type": "duration", "filter": "medium"})
-            duration_parent.addChild(medium_item)
+        medium_item = QTreeWidgetItem([f"Medium (30s - 5m) ({len(medium_videos)})"])
+        medium_item.setData(0, Qt.UserRole, {"type": "duration", "filter": "medium"})
+        duration_parent.addChild(medium_item)
 
-        if long_videos:
-            long_item = QTreeWidgetItem([f"  Long (> 5m) - {len(long_videos)}"])
-            long_item.setData(0, Qt.UserRole, {"type": "duration", "filter": "long"})
-            duration_parent.addChild(long_item)
+        long_item = QTreeWidgetItem([f"Long (> 5m) ({len(long_videos)})"])
+        long_item.setData(0, Qt.UserRole, {"type": "duration", "filter": "long"})
+        duration_parent.addChild(long_item)
 
-        # By Quality (if width/height available)
-        hd_videos = [v for v in videos if v.get("width") and v["width"] >= 1280]
-        four_k_videos = [v for v in videos if v.get("width") and v["width"] >= 3840]
+        # By Resolution (use max dimension height/width)
+        resolution_buckets = {"sd": 0, "hd": 0, "fhd": 0, "4k": 0}
+        videos_with_resolution = []
+        for video in videos:
+            bucket = _resolution_bucket(video)
+            if bucket != "unknown":
+                videos_with_resolution.append(video)
+            if bucket in resolution_buckets:
+                resolution_buckets[bucket] += 1
 
-        if hd_videos or four_k_videos:
-            quality_parent = QTreeWidgetItem([f"📺 By Quality"])
-            quality_parent.setData(0, Qt.UserRole, {"type": "quality_header"})
-            tree.addTopLevelItem(quality_parent)
+        resolution_parent = QTreeWidgetItem([f"📺 By Resolution ({len(videos_with_resolution)})"])
+        resolution_parent.setData(0, Qt.UserRole, {"type": "resolution_header"})
+        tree.addTopLevelItem(resolution_parent)
 
-            if four_k_videos:
-                four_k_item = QTreeWidgetItem([f"  4K+ - {len(four_k_videos)}"])
-                four_k_item.setData(0, Qt.UserRole, {"type": "quality", "filter": "4k"})
-                quality_parent.addChild(four_k_item)
+        sd_item = QTreeWidgetItem([f"SD (< 720p) ({resolution_buckets['sd']})"])
+        sd_item.setData(0, Qt.UserRole, {"type": "resolution", "filter": "sd"})
+        resolution_parent.addChild(sd_item)
 
-            if hd_videos:
-                hd_item = QTreeWidgetItem([f"  HD - {len(hd_videos)}"])
-                hd_item.setData(0, Qt.UserRole, {"type": "quality", "filter": "hd"})
-                quality_parent.addChild(hd_item)
+        hd_item = QTreeWidgetItem([f"HD (720p) ({resolution_buckets['hd']})"])
+        hd_item.setData(0, Qt.UserRole, {"type": "resolution", "filter": "hd"})
+        resolution_parent.addChild(hd_item)
+
+        fhd_item = QTreeWidgetItem([f"Full HD (1080p) ({resolution_buckets['fhd']})"])
+        fhd_item.setData(0, Qt.UserRole, {"type": "resolution", "filter": "fhd"})
+        resolution_parent.addChild(fhd_item)
+
+        uhd_item = QTreeWidgetItem([f"4K (2160p+) ({resolution_buckets['4k']})"])
+        uhd_item.setData(0, Qt.UserRole, {"type": "resolution", "filter": "4k"})
+        resolution_parent.addChild(uhd_item)
+
+        # By Codec
+        codec_counts = {
+            "h264": 0,
+            "hevc": 0,
+            "vp9": 0,
+            "av1": 0,
+            "mpeg4": 0,
+        }
+        videos_with_codec = []
+        for video in videos:
+            codec = (video.get("codec") or "").lower()
+            if codec:
+                videos_with_codec.append(video)
+            if codec in ["h264", "avc"]:
+                codec_counts["h264"] += 1
+            elif codec in ["hevc", "h265"]:
+                codec_counts["hevc"] += 1
+            elif codec == "vp9":
+                codec_counts["vp9"] += 1
+            elif codec == "av1":
+                codec_counts["av1"] += 1
+            elif codec in ["mpeg4", "xvid", "divx"]:
+                codec_counts["mpeg4"] += 1
+
+        codec_parent = QTreeWidgetItem([f"🎞️ By Codec ({len(videos_with_codec)})"])
+        codec_parent.setData(0, Qt.UserRole, {"type": "codec_header"})
+        tree.addTopLevelItem(codec_parent)
+
+        h264_item = QTreeWidgetItem([f"H.264 / AVC ({codec_counts['h264']})"])
+        h264_item.setData(0, Qt.UserRole, {"type": "codec", "filter": "h264"})
+        codec_parent.addChild(h264_item)
+
+        hevc_item = QTreeWidgetItem([f"H.265 / HEVC ({codec_counts['hevc']})"])
+        hevc_item.setData(0, Qt.UserRole, {"type": "codec", "filter": "hevc"})
+        codec_parent.addChild(hevc_item)
+
+        vp9_item = QTreeWidgetItem([f"VP9 ({codec_counts['vp9']})"])
+        vp9_item.setData(0, Qt.UserRole, {"type": "codec", "filter": "vp9"})
+        codec_parent.addChild(vp9_item)
+
+        av1_item = QTreeWidgetItem([f"AV1 ({codec_counts['av1']})"])
+        av1_item.setData(0, Qt.UserRole, {"type": "codec", "filter": "av1"})
+        codec_parent.addChild(av1_item)
+
+        mpeg4_item = QTreeWidgetItem([f"MPEG-4 ({codec_counts['mpeg4']})"])
+        mpeg4_item.setData(0, Qt.UserRole, {"type": "codec", "filter": "mpeg4"})
+        codec_parent.addChild(mpeg4_item)
+
+        # By File Size
+        size_counts = {"small": 0, "medium": 0, "large": 0, "xlarge": 0}
+        videos_with_size = []
+        for video in videos:
+            bucket = _size_bucket_mb(video)
+            if bucket != "unknown":
+                videos_with_size.append(video)
+            if bucket in size_counts:
+                size_counts[bucket] += 1
+
+        size_parent = QTreeWidgetItem([f"📦 By File Size ({len(videos_with_size)})"])
+        size_parent.setData(0, Qt.UserRole, {"type": "size_header"})
+        tree.addTopLevelItem(size_parent)
+
+        small_item = QTreeWidgetItem([f"Small (< 100MB) ({size_counts['small']})"])
+        small_item.setData(0, Qt.UserRole, {"type": "size", "filter": "small"})
+        size_parent.addChild(small_item)
+
+        medium_item = QTreeWidgetItem([f"Medium (100MB - 1GB) ({size_counts['medium']})"])
+        medium_item.setData(0, Qt.UserRole, {"type": "size", "filter": "medium"})
+        size_parent.addChild(medium_item)
+
+        large_item = QTreeWidgetItem([f"Large (1GB - 5GB) ({size_counts['large']})"])
+        large_item.setData(0, Qt.UserRole, {"type": "size", "filter": "large"})
+        size_parent.addChild(large_item)
+
+        xlarge_item = QTreeWidgetItem([f"XLarge (> 5GB) ({size_counts['xlarge']})"])
+        xlarge_item.setData(0, Qt.UserRole, {"type": "size", "filter": "xlarge"})
+        size_parent.addChild(xlarge_item)
+
+        # By Date (years)
+        year_counts: dict[int, int] = {}
+        for video in videos:
+            year = _year_for_video(video)
+            if year:
+                year_counts[year] = year_counts.get(year, 0) + 1
+
+        if year_counts:
+            date_parent = QTreeWidgetItem([tr("📅 By Date") + f" ({sum(year_counts.values())})"])
+            date_parent.setData(0, Qt.UserRole, {"type": "date_header"})
+            tree.addTopLevelItem(date_parent)
+
+            for year in sorted(year_counts.keys(), reverse=True):
+                year_item = QTreeWidgetItem([f"{year} ({year_counts[year]})"])
+                year_item.setData(0, Qt.UserRole, {"type": "date", "filter": str(year)})
+                date_parent.addChild(year_item)
+
+        # Search shortcut
+        search_item = QTreeWidgetItem([tr("🔍 Search Videos...")])
+        search_item.setData(0, Qt.UserRole, {"type": "search"})
+        tree.addTopLevelItem(search_item)
 
         # Connect double-click to emit filter selection
         tree.itemDoubleClicked.connect(
@@ -193,10 +344,12 @@ class VideosSection(BaseSection):
             filter_type = data.get("type")
             if filter_type == "all_videos":
                 self.videoFilterSelected.emit("all")
-            elif filter_type in ["duration", "quality"]:
+            elif filter_type in ["duration", "resolution", "codec", "size", "date"]:
                 filter_value = data.get("filter", "")
                 if filter_value:
-                    self.videoFilterSelected.emit(filter_value)
+                    self.videoFilterSelected.emit(f"{filter_type}:{filter_value}")
+            elif filter_type == "search":
+                self.videoFilterSelected.emit("search")
 
     def _on_data_loaded(self, generation: int, videos: list):
         """Callback when videos data is loaded."""
