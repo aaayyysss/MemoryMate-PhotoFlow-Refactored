@@ -553,6 +553,10 @@ class GooglePhotosEventFilter(QObject):
 
     def eventFilter(self, obj, event):
         """Handle events for search box, timeline viewport, and search suggestions popup."""
+        # BUGFIX: Defensive check - ensure layout and search_box exist
+        if not hasattr(self, 'layout'):
+            return super().eventFilter(obj, event)
+
         # NUCLEAR FIX: Block Show events on search_suggestions popup during layout changes
         if hasattr(self.layout, 'search_suggestions') and obj == self.layout.search_suggestions:
             if event.type() == QEvent.Show:
@@ -561,8 +565,8 @@ class GooglePhotosEventFilter(QObject):
                     # Block the show event - popup will not appear
                     return True
 
-        # Search box keyboard navigation
-        if obj == self.layout.search_box and event.type() == QEvent.KeyPress:
+        # Search box keyboard navigation - check search_box exists
+        if hasattr(self.layout, 'search_box') and obj == self.layout.search_box and event.type() == QEvent.KeyPress:
             if hasattr(self.layout, 'search_suggestions') and self.layout.search_suggestions.isVisible():
                 key = event.key()
 
