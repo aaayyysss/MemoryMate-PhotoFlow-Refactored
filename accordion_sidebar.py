@@ -788,6 +788,18 @@ class AccordionSidebar(QWidget):
         self.db = ReferenceDB()
         self.nav_buttons = {}  # section_id -> QPushButton
 
+        # PHASE 1 Task 1.2: Generation tokens to prevent overlapping reloads
+        # Track reload version for each section to discard stale data
+        self._reload_generations = {
+            "people": 0,
+            "dates": 0,
+            "folders": 0,
+            "tags": 0,
+            "branches": 0,
+            "quick": 0,
+            "videos": 0
+        }
+
         self._dbg("AccordionSidebar __init__ started")
 
         # MAIN HORIZONTAL LAYOUT: [Vertical Nav Bar] | [Sections]
@@ -1064,6 +1076,11 @@ class AccordionSidebar(QWidget):
         if not section or not self.project_id:
             return
 
+        # PHASE 1 Task 1.2: Increment generation to track this reload
+        self._reload_generations["people"] += 1
+        current_generation = self._reload_generations["people"]
+        self._dbg(f"People reload generation: {current_generation}")
+
         # Background worker (matches dates/folders/tags pattern for consistency)
         # THREAD-SAFE: Create per-thread ReferenceDB instance
         def work():
@@ -1071,7 +1088,7 @@ class AccordionSidebar(QWidget):
             try:
                 db = ReferenceDB()  # Per-thread instance
                 rows = db.get_face_clusters(self.project_id)
-                self._dbg(f"Loaded {len(rows)} face clusters")
+                self._dbg(f"Loaded {len(rows)} face clusters (gen {current_generation})")
                 return rows
             except Exception as e:
                 self._dbg(f"⚠️ Error loading people: {e}")
@@ -1089,7 +1106,11 @@ class AccordionSidebar(QWidget):
         def on_complete():
             try:
                 rows = work()
-                self._peopleLoaded.emit(rows)
+                # PHASE 1 Task 1.2: Only emit if this is still the latest reload
+                if current_generation == self._reload_generations["people"]:
+                    self._peopleLoaded.emit(rows)
+                else:
+                    self._dbg(f"Discarding stale people data (gen {current_generation} vs {self._reload_generations['people']})")
             except Exception as e:
                 self._dbg(f"⚠️ Error in people thread: {e}")
                 import traceback
@@ -1464,6 +1485,11 @@ class AccordionSidebar(QWidget):
         if not section or not self.project_id:
             return
 
+        # PHASE 1 Task 1.2: Increment generation to track this reload
+        self._reload_generations["dates"] += 1
+        current_generation = self._reload_generations["dates"]
+        self._dbg(f"Dates reload generation: {current_generation}")
+
         # THREAD-SAFE: Create per-thread ReferenceDB instance
         def work():
             db = None
@@ -1480,7 +1506,7 @@ class AccordionSidebar(QWidget):
                     year_list = db.list_years_with_counts(self.project_id) or []
                     year_counts = {str(y): c for y, c in year_list}
 
-                self._dbg(f"Loaded {len(hier)} years of date data")
+                self._dbg(f"Loaded {len(hier)} years of date data (gen {current_generation})")
                 return {"hierarchy": hier, "year_counts": year_counts}
             except Exception as e:
                 self._dbg(f"⚠️ Error loading dates: {e}")
@@ -1497,7 +1523,11 @@ class AccordionSidebar(QWidget):
         def on_complete():
             try:
                 result = work()
-                self._datesLoaded.emit(result)
+                # PHASE 1 Task 1.2: Only emit if this is still the latest reload
+                if current_generation == self._reload_generations["dates"]:
+                    self._datesLoaded.emit(result)
+                else:
+                    self._dbg(f"Discarding stale dates data (gen {current_generation} vs {self._reload_generations['dates']})")
             except Exception as e:
                 self._dbg(f"⚠️ Error in dates thread: {e}")
                 traceback.print_exc()
@@ -1634,6 +1664,11 @@ class AccordionSidebar(QWidget):
         if not section or not self.project_id:
             return
 
+        # PHASE 1 Task 1.2: Increment generation to track this reload
+        self._reload_generations["folders"] += 1
+        current_generation = self._reload_generations["folders"]
+        self._dbg(f"Folders reload generation: {current_generation}")
+
         # THREAD-SAFE: Create per-thread ReferenceDB instance
         def work():
             db = None
@@ -1641,7 +1676,7 @@ class AccordionSidebar(QWidget):
                 db = ReferenceDB()  # Per-thread instance
                 # Get all folders for the project
                 rows = db.get_all_folders(self.project_id) or []
-                self._dbg(f"Loaded {len(rows)} folders")
+                self._dbg(f"Loaded {len(rows)} folders (gen {current_generation})")
                 return rows
             except Exception as e:
                 self._dbg(f"⚠️ Error loading folders: {e}")
@@ -1658,7 +1693,11 @@ class AccordionSidebar(QWidget):
         def on_complete():
             try:
                 rows = work()
-                self._foldersLoaded.emit(rows)
+                # PHASE 1 Task 1.2: Only emit if this is still the latest reload
+                if current_generation == self._reload_generations["folders"]:
+                    self._foldersLoaded.emit(rows)
+                else:
+                    self._dbg(f"Discarding stale folders data (gen {current_generation} vs {self._reload_generations['folders']})")
             except Exception as e:
                 self._dbg(f"⚠️ Error in folders thread: {e}")
                 traceback.print_exc()
@@ -1918,13 +1957,18 @@ class AccordionSidebar(QWidget):
         if not section or not self.project_id:
             return
 
+        # PHASE 1 Task 1.2: Increment generation to track this reload
+        self._reload_generations["branches"] += 1
+        current_generation = self._reload_generations["branches"]
+        self._dbg(f"Branches reload generation: {current_generation}")
+
         # THREAD-SAFE: Create per-thread ReferenceDB instance
         def work():
             db = None
             try:
                 db = ReferenceDB()  # Per-thread instance
                 rows = db.get_branches(self.project_id) or []
-                self._dbg(f"Loaded {len(rows)} branches")
+                self._dbg(f"Loaded {len(rows)} branches (gen {current_generation})")
                 return rows
             except Exception as e:
                 self._dbg(f"⚠️ Error loading branches: {e}")
@@ -1941,7 +1985,11 @@ class AccordionSidebar(QWidget):
         def on_complete():
             try:
                 rows = work()
-                self._branchesLoaded.emit(rows)
+                # PHASE 1 Task 1.2: Only emit if this is still the latest reload
+                if current_generation == self._reload_generations["branches"]:
+                    self._branchesLoaded.emit(rows)
+                else:
+                    self._dbg(f"Discarding stale branches data (gen {current_generation} vs {self._reload_generations['branches']})")
             except Exception as e:
                 self._dbg(f"⚠️ Error in branches thread: {e}")
                 traceback.print_exc()
@@ -2041,6 +2089,11 @@ class AccordionSidebar(QWidget):
         if not section:
             return
 
+        # PHASE 1 Task 1.2: Increment generation to track this reload
+        self._reload_generations["quick"] += 1
+        current_generation = self._reload_generations["quick"]
+        self._dbg(f"Quick dates reload generation: {current_generation}")
+
         # THREAD-SAFE: Create per-thread ReferenceDB instance
         def work():
             db = None
@@ -2055,7 +2108,7 @@ class AccordionSidebar(QWidget):
                         {"key": "this-week", "label": "This Week", "count": 0},
                         {"key": "this-month", "label": "This Month", "count": 0}
                     ]
-                self._dbg(f"Loaded {len(rows)} quick date items")
+                self._dbg(f"Loaded {len(rows)} quick date items (gen {current_generation})")
                 return rows
             except Exception as e:
                 self._dbg(f"⚠️ Error loading quick dates: {e}")
@@ -2072,7 +2125,11 @@ class AccordionSidebar(QWidget):
         def on_complete():
             try:
                 rows = work()
-                self._quickLoaded.emit(rows)
+                # PHASE 1 Task 1.2: Only emit if this is still the latest reload
+                if current_generation == self._reload_generations["quick"]:
+                    self._quickLoaded.emit(rows)
+                else:
+                    self._dbg(f"Discarding stale quick dates data (gen {current_generation} vs {self._reload_generations['quick']})")
             except Exception as e:
                 self._dbg(f"⚠️ Error in quick dates thread: {e}")
                 traceback.print_exc()
@@ -2170,13 +2227,18 @@ class AccordionSidebar(QWidget):
         if not section or not self.project_id:
             return
 
+        # PHASE 1 Task 1.2: Increment generation to track this reload
+        self._reload_generations["videos"] += 1
+        current_generation = self._reload_generations["videos"]
+        self._dbg(f"Videos reload generation: {current_generation}")
+
         # Background worker
         def work():
             try:
                 from services.video_service import VideoService
                 video_service = VideoService()
                 videos = video_service.get_videos_by_project(self.project_id) if self.project_id else []
-                self._dbg(f"Loaded {len(videos)} videos")
+                self._dbg(f"Loaded {len(videos)} videos (gen {current_generation})")
                 return videos
             except Exception as e:
                 self._dbg(f"⚠️ Error loading videos: {e}")
@@ -2188,7 +2250,11 @@ class AccordionSidebar(QWidget):
         def on_complete():
             try:
                 videos = work()
-                self._videosLoaded.emit(videos)
+                # PHASE 1 Task 1.2: Only emit if this is still the latest reload
+                if current_generation == self._reload_generations["videos"]:
+                    self._videosLoaded.emit(videos)
+                else:
+                    self._dbg(f"Discarding stale videos data (gen {current_generation} vs {self._reload_generations['videos']})")
             except Exception as e:
                 self._dbg(f"⚠️ Error in videos thread: {e}")
                 import traceback
