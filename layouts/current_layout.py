@@ -4,6 +4,7 @@
 
 from PySide6.QtWidgets import QWidget, QSplitter, QVBoxLayout, QHBoxLayout, QPushButton
 from PySide6.QtCore import Qt
+from typing import Optional
 from .base_layout import BaseLayout
 
 
@@ -98,3 +99,68 @@ class CurrentLayout(BaseLayout):
 
         # Schedule deferred reload (100ms delay to allow widget to become visible)
         QTimer.singleShot(100, deferred_reload)
+
+    # ========== PHASE 3 Task 3.1: BaseLayout Interface Implementation ==========
+
+    def set_project(self, project_id: int) -> None:
+        """Delegate to MainWindow's sidebar and grid."""
+        sidebar = self.get_sidebar()
+        if sidebar and hasattr(sidebar, 'set_project'):
+            sidebar.set_project(project_id)
+
+        grid = self.get_grid()
+        if grid and hasattr(grid, 'set_project'):
+            grid.set_project(project_id)
+
+    def get_current_project(self) -> Optional[int]:
+        """Get current project from MainWindow."""
+        if hasattr(self.main_window, 'current_project_id'):
+            return self.main_window.current_project_id
+        return None
+
+    def refresh_after_scan(self) -> None:
+        """Delegate to sidebar and grid reload."""
+        sidebar = self.get_sidebar()
+        if sidebar and hasattr(sidebar, 'reload'):
+            sidebar.reload()
+
+        grid = self.get_grid()
+        if grid and hasattr(grid, 'reload'):
+            grid.reload()
+
+    def refresh_thumbnails(self) -> None:
+        """Delegate to grid reload."""
+        grid = self.get_grid()
+        if grid and hasattr(grid, 'reload'):
+            grid.reload()
+
+    def filter_by_date(self, year: Optional[int] = None,
+                      month: Optional[int] = None,
+                      day: Optional[int] = None) -> None:
+        """Not implemented for Current layout."""
+        print(f"[CurrentLayout] filter_by_date not implemented (year={year}, month={month}, day={day})")
+
+    def filter_by_folder(self, folder_path: str) -> None:
+        """Not implemented for Current layout."""
+        print(f"[CurrentLayout] filter_by_folder not implemented (folder={folder_path})")
+
+    def filter_by_person(self, person_branch_key: str) -> None:
+        """Not implemented for Current layout."""
+        print(f"[CurrentLayout] filter_by_person not implemented (person={person_branch_key})")
+
+    def clear_filters(self) -> None:
+        """Not implemented for Current layout."""
+        print("[CurrentLayout] clear_filters not implemented")
+
+    def get_selected_paths(self) -> list:
+        """Get selected paths from grid."""
+        grid = self.get_grid()
+        if grid and hasattr(grid, 'get_selected_paths'):
+            return grid.get_selected_paths()
+        return []
+
+    def clear_selection(self) -> None:
+        """Delegate to grid clear_selection."""
+        grid = self.get_grid()
+        if grid and hasattr(grid, 'clear_selection'):
+            grid.clear_selection()
