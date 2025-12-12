@@ -289,14 +289,17 @@ class AccordionSidebar(QWidget):
             else:
                 normalized_data = {}
 
-        # Create content widget
-        content_widget = section_logic.create_content_widget(normalized_data)
-        if content_widget:
-            section_widget.set_content_widget(content_widget)
+        try:
+            content_widget = section_logic.create_content_widget(normalized_data)
+            if content_widget:
+                section_widget.set_content_widget(content_widget)
 
-            # Update count if available
-            if hasattr(normalized_data, '__len__'):
-                section_widget.set_count(len(normalized_data))
+                # Update count if available
+                if hasattr(normalized_data, '__len__'):
+                    section_widget.set_count(len(normalized_data))
+        except Exception:
+            logger.exception(f"[AccordionSidebar] Failed to build content for {section_id}")
+            return
 
         logger.info(f"[AccordionSidebar] Section {section_id} loaded and displayed")
 
