@@ -341,7 +341,9 @@ class PhotoScanService:
                         batch_rows.clear()
 
                     # Report progress (check cancellation here too for responsiveness)
-                    if progress_callback and (i % 10 == 0 or i == total_files):
+                    # CRITICAL FIX: Reduce update frequency to prevent Qt timer violations
+                    # Update every 50 files instead of every 10 (prevents QProgressDialog timer issues)
+                    if progress_callback and (i % 50 == 0 or i == total_files):
                         # RESPONSIVE CANCEL: Check during progress reporting
                         if self._cancelled:
                             logger.info("Scan cancelled during progress reporting")
@@ -1044,7 +1046,8 @@ class PhotoScanService:
                     sys.stdout.flush()
 
                 # Report progress
-                if progress_callback and (i % 10 == 0 or i == len(video_files)):
+                # CRITICAL FIX: Reduce update frequency to prevent Qt timer violations
+                if progress_callback and (i % 50 == 0 or i == len(video_files)):
                     progress = ScanProgress(
                         current=i,
                         total=len(video_files),
