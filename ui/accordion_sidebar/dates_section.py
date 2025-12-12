@@ -108,6 +108,7 @@ class DatesSection(BaseSection):
 
     def create_content_widget(self, data):
         """Create dates tree widget."""
+        data = data or {}
         hier = data.get("hierarchy", {})
         year_counts = data.get("year_counts", {})
 
