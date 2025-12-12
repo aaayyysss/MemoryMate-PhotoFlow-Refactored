@@ -1065,9 +1065,12 @@ class AccordionSidebar(QWidget):
             return
 
         # Background worker (matches dates/folders/tags pattern for consistency)
+        # THREAD-SAFE: Create per-thread ReferenceDB instance
         def work():
+            db = None
             try:
-                rows = self.db.get_face_clusters(self.project_id)
+                db = ReferenceDB()  # Per-thread instance
+                rows = db.get_face_clusters(self.project_id)
                 self._dbg(f"Loaded {len(rows)} face clusters")
                 return rows
             except Exception as e:
@@ -1075,6 +1078,12 @@ class AccordionSidebar(QWidget):
                 import traceback
                 traceback.print_exc()
                 return []
+            finally:
+                if db:
+                    try:
+                        db.close()
+                    except Exception:
+                        pass
 
         # Thread with signal emission (ensures UI updates on main thread)
         def on_complete():
@@ -1455,17 +1464,20 @@ class AccordionSidebar(QWidget):
         if not section or not self.project_id:
             return
 
+        # THREAD-SAFE: Create per-thread ReferenceDB instance
         def work():
+            db = None
             try:
+                db = ReferenceDB()  # Per-thread instance
                 # Get hierarchical date data: {year: {month: [days]}}
                 hier = {}
                 year_counts = {}
 
-                if hasattr(self.db, "get_date_hierarchy"):
-                    hier = self.db.get_date_hierarchy(self.project_id) or {}
+                if hasattr(db, "get_date_hierarchy"):
+                    hier = db.get_date_hierarchy(self.project_id) or {}
 
-                if hasattr(self.db, "list_years_with_counts"):
-                    year_list = self.db.list_years_with_counts(self.project_id) or []
+                if hasattr(db, "list_years_with_counts"):
+                    year_list = db.list_years_with_counts(self.project_id) or []
                     year_counts = {str(y): c for y, c in year_list}
 
                 self._dbg(f"Loaded {len(hier)} years of date data")
@@ -1474,6 +1486,12 @@ class AccordionSidebar(QWidget):
                 self._dbg(f"⚠️ Error loading dates: {e}")
                 traceback.print_exc()
                 return {"hierarchy": {}, "year_counts": {}}
+            finally:
+                if db:
+                    try:
+                        db.close()
+                    except Exception:
+                        pass
 
         # Run in thread to avoid blocking UI (emit signal for thread-safe UI update)
         def on_complete():
@@ -1616,16 +1634,25 @@ class AccordionSidebar(QWidget):
         if not section or not self.project_id:
             return
 
+        # THREAD-SAFE: Create per-thread ReferenceDB instance
         def work():
+            db = None
             try:
+                db = ReferenceDB()  # Per-thread instance
                 # Get all folders for the project
-                rows = self.db.get_all_folders(self.project_id) or []
+                rows = db.get_all_folders(self.project_id) or []
                 self._dbg(f"Loaded {len(rows)} folders")
                 return rows
             except Exception as e:
                 self._dbg(f"⚠️ Error loading folders: {e}")
                 traceback.print_exc()
                 return []
+            finally:
+                if db:
+                    try:
+                        db.close()
+                    except Exception:
+                        pass
 
         # Run in thread to avoid blocking UI (emit signal for thread-safe UI update)
         def on_complete():
@@ -1891,15 +1918,24 @@ class AccordionSidebar(QWidget):
         if not section or not self.project_id:
             return
 
+        # THREAD-SAFE: Create per-thread ReferenceDB instance
         def work():
+            db = None
             try:
-                rows = self.db.get_branches(self.project_id) or []
+                db = ReferenceDB()  # Per-thread instance
+                rows = db.get_branches(self.project_id) or []
                 self._dbg(f"Loaded {len(rows)} branches")
                 return rows
             except Exception as e:
                 self._dbg(f"⚠️ Error loading branches: {e}")
                 traceback.print_exc()
                 return []
+            finally:
+                if db:
+                    try:
+                        db.close()
+                    except Exception:
+                        pass
 
         # Run in thread to avoid blocking UI (emit signal for thread-safe UI update)
         def on_complete():
@@ -2005,10 +2041,13 @@ class AccordionSidebar(QWidget):
         if not section:
             return
 
+        # THREAD-SAFE: Create per-thread ReferenceDB instance
         def work():
+            db = None
             try:
-                if hasattr(self.db, "get_quick_date_counts"):
-                    rows = self.db.get_quick_date_counts() or []
+                db = ReferenceDB()  # Per-thread instance
+                if hasattr(db, "get_quick_date_counts"):
+                    rows = db.get_quick_date_counts() or []
                 else:
                     # Fallback: simple list without counts
                     rows = [
@@ -2022,6 +2061,12 @@ class AccordionSidebar(QWidget):
                 self._dbg(f"⚠️ Error loading quick dates: {e}")
                 traceback.print_exc()
                 return []
+            finally:
+                if db:
+                    try:
+                        db.close()
+                    except Exception:
+                        pass
 
         # Run in thread to avoid blocking UI (emit signal for thread-safe UI update)
         def on_complete():
