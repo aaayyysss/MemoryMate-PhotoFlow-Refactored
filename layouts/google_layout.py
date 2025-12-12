@@ -15852,6 +15852,36 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
         # Reload photos for the new project
         self._load_photos()
 
+    def set_project(self, project_id: int):
+        """
+        PHASE 1 Task 1.3: Public API for external project switching.
+        Called by ProjectController when user changes project from main window.
+
+        Args:
+            project_id: ID of project to switch to
+        """
+        if project_id is None or project_id == self.project_id:
+            return
+
+        print(f"[GooglePhotosLayout] set_project() called: {self.project_id} → {project_id}")
+        self.project_id = project_id
+
+        # Update accordion sidebar with new project
+        if hasattr(self, 'accordion_sidebar'):
+            self.accordion_sidebar.set_project(project_id)
+
+        # Reload photos for the new project
+        self._load_photos()
+
+        # Update project combo box to match (if it exists)
+        if hasattr(self, 'project_combo'):
+            self.project_combo.blockSignals(True)
+            for i in range(self.project_combo.count()):
+                if self.project_combo.itemData(i) == project_id:
+                    self.project_combo.setCurrentIndex(i)
+                    break
+            self.project_combo.blockSignals(False)
+
     # ============ PHASE 3: Tag Operations ============
     
     def _toggle_favorite_single(self, path: str):
