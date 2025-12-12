@@ -371,9 +371,8 @@ class PhotoLoadWorker(QRunnable):
             import traceback
             error_msg = f"{str(e)}\n{traceback.format_exc()}"
             self.signals.error.emit(self.generation, error_msg)
-        finally:
-            if db:
-                db.close()
+        # NOTE: No finally block needed - ReferenceDB uses connection pooling
+        # The 'with db._connect() as conn:' context manager handles cleanup automatically
 
 
 class PreloadImageSignals(QObject):
