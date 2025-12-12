@@ -128,7 +128,10 @@ class AccordionSidebar(QWidget):
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        scroll.setFrameShape(0)  # No frame
+
+        # BUGFIX: Use QFrame.NoFrame enum instead of integer
+        from PySide6.QtWidgets import QFrame
+        scroll.setFrameShape(QFrame.NoFrame)  # No frame
 
         main_layout.addWidget(scroll)
 
