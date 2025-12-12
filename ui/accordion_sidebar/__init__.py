@@ -279,14 +279,24 @@ class AccordionSidebar(QWidget):
             logger.debug(f"[AccordionSidebar] Discarding stale data for {section_id}")
             return
 
+        # Normalize missing data so section builders never crash on None
+        normalized_data = data
+        if normalized_data is None:
+            if section_id in {"folders", "videos"}:
+                normalized_data = []
+            elif section_id == "dates":
+                normalized_data = {}
+            else:
+                normalized_data = {}
+
         # Create content widget
-        content_widget = section_logic.create_content_widget(data)
+        content_widget = section_logic.create_content_widget(normalized_data)
         if content_widget:
             section_widget.set_content_widget(content_widget)
 
             # Update count if available
-            if hasattr(data, '__len__'):
-                section_widget.set_count(len(data))
+            if hasattr(normalized_data, '__len__'):
+                section_widget.set_count(len(normalized_data))
 
         logger.info(f"[AccordionSidebar] Section {section_id} loaded and displayed")
 
