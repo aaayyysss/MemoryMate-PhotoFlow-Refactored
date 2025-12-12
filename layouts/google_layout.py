@@ -244,6 +244,138 @@ class ThumbnailLoader(QRunnable):
         self.signals.loaded.emit(self.path, pixmap, self.size)
 
 
+# PHASE 2 Task 2.1: Photo loading worker (move database queries off GUI thread)
+class PhotoLoadSignals(QObject):
+    """Signals for async photo database queries."""
+    loaded = Signal(int, list)  # (generation, rows)  # rows = [(path, date_taken, width, height), ...]
+    error = Signal(int, str)  # (generation, error_message)
+
+
+class PhotoLoadWorker(QRunnable):
+    """
+    PHASE 2 Task 2.1: Background worker for loading photos from database.
+    Prevents GUI freezes with large datasets (10,000+ photos).
+    """
+    def __init__(self, project_id, filter_params, generation, signals):
+        super().__init__()
+        self.project_id = project_id
+        self.filter_params = filter_params  # Dict with year, month, day, folder, person
+        self.generation = generation
+        self.signals = signals
+
+    def run(self):
+        """Query database in background thread."""
+        db = None
+        try:
+            from reference_db import ReferenceDB
+            db = ReferenceDB()  # Per-thread instance (thread-safe)
+
+            # Build photo query
+            photo_query_parts = ["""
+                SELECT DISTINCT pm.path, pm.created_date as date_taken, pm.width, pm.height
+                FROM photo_metadata pm
+                JOIN project_images pi ON pm.path = pi.image_path
+                WHERE pi.project_id = ?
+            """]
+            photo_params = [self.project_id]
+
+            # Add filters
+            filter_year = self.filter_params.get('year')
+            filter_month = self.filter_params.get('month')
+            filter_day = self.filter_params.get('day')
+            filter_folder = self.filter_params.get('folder')
+            filter_person = self.filter_params.get('person')
+
+            if filter_year is not None:
+                photo_query_parts.append("AND strftime('%Y', pm.created_date) = ?")
+                photo_params.append(str(filter_year))
+
+            if filter_month is not None and filter_year is not None:
+                photo_query_parts.append("AND strftime('%m', pm.created_date) = ?")
+                photo_params.append(f"{filter_month:02d}")
+
+            if filter_day is not None and filter_year is not None and filter_month is not None:
+                photo_query_parts.append("AND strftime('%d', pm.created_date) = ?")
+                photo_params.append(f"{filter_day:02d}")
+
+            if filter_folder is not None:
+                import platform
+                normalized_folder = filter_folder.replace('\\', '/')
+                if platform.system() == 'Windows':
+                    normalized_folder = normalized_folder.lower()
+                photo_query_parts.append("AND pm.path LIKE ?")
+                photo_params.append(f"{normalized_folder}%")
+
+            if filter_person is not None:
+                photo_query_parts.append("""
+                    AND pm.path IN (
+                        SELECT DISTINCT image_path
+                        FROM face_crops
+                        WHERE project_id = ? AND branch_key = ?
+                    )
+                """)
+                photo_params.append(self.project_id)
+                photo_params.append(filter_person)
+
+            # Build video query (mirror photo query structure)
+            video_query_parts = ["""
+                SELECT DISTINCT vm.path, vm.created_date as date_taken, vm.width, vm.height
+                FROM video_metadata vm
+                WHERE vm.project_id = ?
+            """]
+            video_params = [self.project_id]
+
+            if filter_year is not None:
+                video_query_parts.append("AND strftime('%Y', vm.created_date) = ?")
+                video_params.append(str(filter_year))
+
+            if filter_month is not None and filter_year is not None:
+                video_query_parts.append("AND strftime('%m', vm.created_date) = ?")
+                video_params.append(f"{filter_month:02d}")
+
+            if filter_day is not None and filter_year is not None and filter_month is not None:
+                video_query_parts.append("AND strftime('%d', vm.created_date) = ?")
+                video_params.append(f"{filter_day:02d}")
+
+            if filter_folder is not None:
+                import platform
+                normalized_folder = filter_folder.replace('\\', '/')
+                if platform.system() == 'Windows':
+                    normalized_folder = normalized_folder.lower()
+                video_query_parts.append("AND vm.path LIKE ?")
+                video_params.append(f"{normalized_folder}%")
+
+            # Combine queries
+            photo_query = "\n".join(photo_query_parts)
+            video_query = "\n".join(video_query_parts)
+
+            # Only include videos if NOT filtering by person
+            if filter_person is None:
+                query = f"{photo_query}\nUNION ALL\n{video_query}\nORDER BY date_taken DESC"
+                params = photo_params + video_params
+            else:
+                query = f"{photo_query}\nORDER BY date_taken DESC"
+                params = photo_params
+
+            # Execute query
+            with db._connect() as conn:
+                conn.execute("PRAGMA busy_timeout = 5000")
+                cur = conn.cursor()
+                cur.execute(query, tuple(params))
+                rows = cur.fetchall()
+
+            # Emit results with generation number
+            self.signals.loaded.emit(self.generation, rows)
+
+        except Exception as e:
+            import traceback
+            error_msg = f"{str(e)}\n{traceback.format_exc()}"
+            self.signals.error.emit(self.generation, error_msg)
+        finally:
+            if db:
+                db.close()
+
+
 class PreloadImageSignals(QObject):
     """Signals for async image preloading."""
     loaded = Signal(str, object)  # (path, pixmap or None)
@@ -8103,6 +8235,11 @@ class GooglePhotosLayout(BaseLayout):
         self.thumbnail_signals = ThumbnailSignals()
         self.thumbnail_signals.loaded.connect(self._on_thumbnail_loaded)
 
+        # PHASE 2 Task 2.1: Shared signal for async photo loading
+        self.photo_load_signals = PhotoLoadSignals()
+        self.photo_load_signals.loaded.connect(self._on_photos_loaded)
+        self.photo_load_signals.error.connect(self._on_photos_load_error)
+
         # Initialize filter state
         self.current_thumb_size = 200
         self.current_filter_year = None
@@ -8110,6 +8247,12 @@ class GooglePhotosLayout(BaseLayout):
         self.current_filter_day = None
         self.current_filter_folder = None
         self.current_filter_person = None
+
+        # PHASE 2 Task 2.1: Async photo loading (move queries off GUI thread)
+        # Generation counter prevents stale results from overwriting newer data
+        self._photo_load_generation = 0
+        self._photo_load_in_progress = False
+        self._loading_indicator = None  # Will be created in _create_timeline()
 
         # Get current project ID (CRITICAL: Photos are organized by project)
         from app_services import get_default_project_id, list_projects
@@ -13116,6 +13259,59 @@ class GooglePhotosLayout(BaseLayout):
         except Exception as e:
             print(f"[GooglePhotosLayout] Error updating thumbnail for {path}: {e}")
             button.setText("❌")
+
+    # PHASE 2 Task 2.1: Async photo loading handlers
+    def _on_photos_loaded(self, generation: int, rows: list):
+        """
+        Callback when async photo database query completes.
+        Only display results if generation matches (discard stale results).
+        """
+        logger.info(f"Photo query complete: generation={generation}, current={self._photo_load_generation}, rows={len(rows)}")
+
+        # Check if this is stale data
+        if generation != self._photo_load_generation:
+            logger.debug(f"Discarding stale photo query results (gen {generation} vs current {self._photo_load_generation})")
+            return
+
+        # Clear loading state
+        self._photo_load_in_progress = False
+
+        # Hide loading indicator
+        if self._loading_indicator:
+            self._loading_indicator.hide()
+
+        # Display photos in timeline
+        self._display_photos_in_timeline(rows)
+
+    def _on_photos_load_error(self, generation: int, error_msg: str):
+        """
+        Callback when async photo database query fails.
+        """
+        logger.error(f"Photo query error (gen {generation}): {error_msg}")
+
+        # Only show error if this is the current generation
+        if generation != self._photo_load_generation:
+            return
+
+        # Clear loading state
+        self._photo_load_in_progress = False
+
+        # Hide loading indicator
+        if self._loading_indicator:
+            self._loading_indicator.hide()
+
+        # Show error in timeline
+        error_label = QLabel(
+            f"⚠️ Failed to load photos\n\n"
+            f"Error: {error_msg}\n\n"
+            f"Try:\n"
+            f"• Click Refresh button\n"
+            f"• Switch to Current layout and back\n"
+            f"• Restart the application"
+        )
+        error_label.setAlignment(Qt.AlignCenter)
+        error_label.setStyleSheet("font-size: 11pt; color: #d32f2f; padding: 40px;")
+        self.timeline_layout.addWidget(error_label)
 
     def _on_timeline_scrolled(self):
         """
