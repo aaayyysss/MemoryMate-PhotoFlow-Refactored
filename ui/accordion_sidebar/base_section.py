@@ -9,10 +9,11 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-class BaseSection(ABC):
+class BaseSection(QObject, ABC):
     """
     Abstract base class for accordion sidebar sections.
 
+    IMPORTANT: Inherits from QObject to support Qt Signals.
     All sections (Folders, Dates, Videos, etc.) must implement this interface
     to ensure consistent behavior and enable independent testing.
 
@@ -37,7 +38,9 @@ class BaseSection(ABC):
         Args:
             parent: Parent QObject (typically the main AccordionSidebar)
         """
-        self.parent = parent
+        # CRITICAL: Initialize QObject first
+        super().__init__(parent)
+
         self.project_id: Optional[int] = None
         self.db_path: str = "reference_data.db"
         self._generation: int = 0  # Generation counter for staleness checking
