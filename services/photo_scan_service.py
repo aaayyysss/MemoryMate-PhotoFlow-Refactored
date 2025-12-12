@@ -194,6 +194,36 @@ class PhotoScanService:
         self._scan_root = None
         self._last_progress_emit = 0.0
 
+        # Tracking for richer progress feedback
+        self._total_photos = 0
+        self._total_videos = 0
+        self._total_media_files = 0
+        self._photos_processed = 0
+        self._videos_processed = 0
+        self._scan_start_time = time.time()
+        self._scan_root = None
+        self._last_progress_emit = 0.0
+
+        # Tracking for richer progress feedback
+        self._total_photos = 0
+        self._total_videos = 0
+        self._total_media_files = 0
+        self._photos_processed = 0
+        self._videos_processed = 0
+        self._scan_start_time = time.time()
+        self._scan_root = None
+        self._last_progress_emit = 0.0
+
+        # Tracking for richer progress feedback
+        self._total_photos = 0
+        self._total_videos = 0
+        self._total_media_files = 0
+        self._photos_processed = 0
+        self._videos_processed = 0
+        self._scan_start_time = time.time()
+        self._scan_root = None
+        self._last_progress_emit = 0.0
+
         # Video workers (initialized when videos are processed)
         self.video_metadata_worker = None
         self.video_thumbnail_worker = None
