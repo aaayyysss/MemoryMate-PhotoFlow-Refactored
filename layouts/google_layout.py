@@ -8332,7 +8332,9 @@ class GooglePhotosLayout(BaseLayout):
 
         # Debounced zoom handling (prevents repeated reloads while dragging)
         self._pending_zoom_value = None
-        self.zoom_change_timer = QTimer(self)
+        # Parent the timer to the top-level widget (QObject) to avoid
+        # passing this layout helper, which is not a QObject subclass.
+        self.zoom_change_timer = QTimer(main_widget)
         self.zoom_change_timer.setSingleShot(True)
         self.zoom_change_timer.setInterval(120)  # Match Google Photos-like feel
         self.zoom_change_timer.timeout.connect(self._commit_zoom_change)
