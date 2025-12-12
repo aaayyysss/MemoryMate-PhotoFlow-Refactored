@@ -93,7 +93,7 @@ class VideosSection(BaseSection):
 
     def create_content_widget(self, data):
         """Create videos tree widget."""
-        videos = data  # List of video dictionaries from VideoService
+        videos = data or []  # List of video dictionaries from VideoService
 
         # Create tree widget
         tree = QTreeWidget()
