@@ -22,7 +22,7 @@ from logging_config import get_logger
 
 logger = get_logger(__name__)
 from .video_editor_mixin import VideoEditorMixin
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
 from collections import defaultdict
 from datetime import datetime
 import os
@@ -15967,8 +15967,129 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
                     break
             self.project_combo.blockSignals(False)
 
+    # ========== PHASE 3 Task 3.1: BaseLayout Interface Implementation ==========
+
+    def get_current_project(self) -> Optional[int]:
+        """
+        Get currently displayed project ID.
+
+        Returns:
+            int: Current project ID, or None if no project loaded
+        """
+        return self.project_id
+
+    def refresh_after_scan(self) -> None:
+        """
+        Reload data after scan completes.
+
+        Called by ScanController after photo scan, video metadata extraction,
+        or face detection finishes.
+        """
+        # Reload photos with current filters
+        self._load_photos(
+            thumb_size=self.current_thumb_size,
+            filter_year=self.current_filter_year,
+            filter_month=self.current_filter_month,
+            filter_day=self.current_filter_day,
+            filter_folder=self.current_filter_folder,
+            filter_person=self.current_filter_person
+        )
+
+        # Reload accordion sidebar sections
+        if hasattr(self, 'accordion_sidebar'):
+            self.accordion_sidebar.reload_all_sections()
+
+    def refresh_thumbnails(self) -> None:
+        """
+        Reload thumbnails without requerying database.
+
+        Called when thumbnail cache is cleared or window is resized.
+        """
+        # Clear thumbnail cache
+        self.thumbnail_buttons.clear()
+
+        # Reload with current filters
+        self.refresh_after_scan()
+
+    def filter_by_date(self, year: Optional[int] = None,
+                      month: Optional[int] = None,
+                      day: Optional[int] = None) -> None:
+        """
+        Filter displayed items by date.
+
+        Args:
+            year: Year filter (e.g., 2024), or None for all years
+            month: Month filter (1-12), requires year
+            day: Day filter (1-31), requires year and month
+        """
+        self._load_photos(
+            thumb_size=self.current_thumb_size,
+            filter_year=year,
+            filter_month=month,
+            filter_day=day,
+            filter_folder=None,  # Clear folder filter when filtering by date
+            filter_person=None   # Clear person filter when filtering by date
+        )
+
+    def filter_by_folder(self, folder_path: str) -> None:
+        """
+        Filter displayed items by folder.
+
+        Args:
+            folder_path: Folder path string from folder_hierarchy table
+        """
+        self._load_photos(
+            thumb_size=self.current_thumb_size,
+            filter_year=None,    # Clear date filters when filtering by folder
+            filter_month=None,
+            filter_day=None,
+            filter_folder=folder_path,
+            filter_person=None
+        )
+
+    def filter_by_person(self, person_branch_key: str) -> None:
+        """
+        Filter displayed items by person (face cluster).
+
+        Args:
+            person_branch_key: Person identifier from face_crops table
+        """
+        self._load_photos(
+            thumb_size=self.current_thumb_size,
+            filter_year=None,    # Clear date/folder filters when filtering by person
+            filter_month=None,
+            filter_day=None,
+            filter_folder=None,
+            filter_person=person_branch_key
+        )
+
+    def clear_filters(self) -> None:
+        """
+        Remove all active filters and show all items.
+
+        Delegates to existing _clear_filter() method.
+        """
+        self._clear_filter()
+
+    def get_selected_paths(self) -> list:
+        """
+        Get list of currently selected file paths.
+
+        Returns:
+            list[str]: Absolute paths to selected photos/videos
+        """
+        return list(self.selected_photos)
+
+    def clear_selection(self) -> None:
+        """
+        Deselect all items.
+
+        Delegates to existing _clear_selection() method.
+        """
+        self._clear_selection()
+
     # ============ PHASE 3: Tag Operations ============
-    
+
     def _toggle_favorite_single(self, path: str):
         """
         Toggle favorite status for a single photo (context menu action).

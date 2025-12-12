@@ -152,3 +152,157 @@ class BaseLayout(ABC):
         when it's activated (e.g., start timers, refresh data, etc.)
         """
         pass
+
+    # ========== PHASE 3 Task 3.1: Project Management ==========
+
+    @abstractmethod
+    def set_project(self, project_id: int) -> None:
+        """
+        Switch to a different project.
+
+        Args:
+            project_id: ID of project to display (from projects table)
+
+        Implementation Requirements:
+            - Clear existing UI state
+            - Update internal project_id
+            - Reload data for new project
+            - Update sidebar/grid components
+            - Emit signals if needed
+        """
+        pass
+
+    @abstractmethod
+    def get_current_project(self) -> Optional[int]:
+        """
+        Get currently displayed project ID.
+
+        Returns:
+            int: Current project ID, or None if no project loaded
+        """
+        pass
+
+    # ========== PHASE 3 Task 3.1: Data Refresh ==========
+
+    @abstractmethod
+    def refresh_after_scan(self) -> None:
+        """
+        Reload data after scan completes.
+
+        Called by ScanController when:
+            - Photo scan finishes
+            - Video metadata extraction completes
+            - Face detection finishes
+
+        Implementation Requirements:
+            - Reload photo/video list from database
+            - Update sidebar sections (dates, folders, people)
+            - Refresh thumbnail cache
+            - Keep current filters active if possible
+        """
+        pass
+
+    @abstractmethod
+    def refresh_thumbnails(self) -> None:
+        """
+        Reload thumbnails without requerying database.
+
+        Called when:
+            - Thumbnail cache is cleared
+            - Window is resized
+            - User changes thumbnail size setting
+        """
+        pass
+
+    # ========== PHASE 3 Task 3.1: Filtering ==========
+
+    @abstractmethod
+    def filter_by_date(self, year: Optional[int] = None,
+                      month: Optional[int] = None,
+                      day: Optional[int] = None) -> None:
+        """
+        Filter displayed items by date.
+
+        Args:
+            year: Year filter (e.g., 2024), or None for all years
+            month: Month filter (1-12), requires year
+            day: Day filter (1-31), requires year and month
+
+        Implementation Requirements:
+            - Update timeline/grid to show only matching items
+            - Keep sidebar showing all available dates
+            - Update "Clear Filter" button visibility
+        """
+        pass
+
+    @abstractmethod
+    def filter_by_folder(self, folder_path: str) -> None:
+        """
+        Filter displayed items by folder.
+
+        Args:
+            folder_path: Folder path string from folder_hierarchy table
+
+        Implementation Requirements:
+            - Show only items in specified folder (and subfolders)
+            - Keep sidebar showing all folders
+            - Highlight active folder in sidebar
+        """
+        pass
+
+    @abstractmethod
+    def filter_by_person(self, person_branch_key: str) -> None:
+        """
+        Filter displayed items by person (face cluster).
+
+        Args:
+            person_branch_key: Person identifier from face_crops table
+
+        Implementation Requirements:
+            - Show only photos containing this person
+            - Exclude videos (no face detection on videos)
+            - Keep sidebar showing all people
+        """
+        pass
+
+    @abstractmethod
+    def clear_filters(self) -> None:
+        """
+        Remove all active filters and show all items.
+
+        Implementation Requirements:
+            - Reset date/folder/person filters to None
+            - Reload full photo/video list
+            - Hide "Clear Filter" button
+            - Update UI to reflect unfiltered state
+        """
+        pass
+
+    # ========== PHASE 3 Task 3.1: Selection ==========
+
+    @abstractmethod
+    def get_selected_paths(self) -> list:
+        """
+        Get list of currently selected file paths.
+
+        Returns:
+            list[str]: Absolute paths to selected photos/videos
+
+        Used by:
+            - Delete operation
+            - Export operation
+            - Bulk tagging
+        """
+        pass
+
+    @abstractmethod
+    def clear_selection(self) -> None:
+        """
+        Deselect all items.
+
+        Implementation Requirements:
+            - Clear internal selection state
+            - Update UI to show no selection
+            - Emit selection_changed signal if applicable
+        """
+        pass

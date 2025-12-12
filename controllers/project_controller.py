@@ -12,6 +12,10 @@ Responsibilities:
 Version: 09.20.00.00
 """
 
+# PHASE 3 Task 3.1: Import BaseLayout for type hints
+from typing import Optional
+from layouts.base_layout import BaseLayout
+
 
 class ProjectController:
     """Owns project switching & persistence logic."""
@@ -19,6 +23,14 @@ class ProjectController:
         self.main = main
 
     def on_project_changed(self, idx: int):
+        """
+        Handle project selection change from combo box.
+
+        Args:
+            idx: Index of selected project in combo box
+
+        PHASE 3 Task 3.1: Enhanced with type-safe layout interface.
+        """
         pid = self.main.project_combo.itemData(idx)
         if pid is None:
             return
@@ -29,9 +41,11 @@ class ProjectController:
         self.main.sidebar.set_project(pid)
         self.main.grid.set_project(pid)
 
-        # PHASE 1 Task 1.3: Also update Google Layout if active
+        # PHASE 3 Task 3.1: Type-safe layout update using BaseLayout interface
         if hasattr(self.main, 'layout_manager') and self.main.layout_manager:
-            current_layout = self.main.layout_manager._current_layout
-            if current_layout and hasattr(current_layout, 'set_project'):
+            current_layout: Optional[BaseLayout] = self.main.layout_manager._current_layout
+            if current_layout:
+                # Type checker now knows current_layout has set_project() method
+                # IDE provides autocomplete for all BaseLayout methods
                 current_layout.set_project(pid)
-                print(f"[ProjectController] Updated Google Layout to project {pid}")
+                print(f"[ProjectController] Updated layout to project {pid}")
