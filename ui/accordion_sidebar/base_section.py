@@ -1,7 +1,7 @@
 # ui/accordion_sidebar/base_section.py
 # Abstract base class for accordion sidebar sections
 
-from abc import ABC, abstractmethod
+from abc import ABC, ABCMeta, abstractmethod
 from PySide6.QtCore import QObject, Signal, QThread
 from typing import Optional, Any
 import logging
@@ -9,7 +9,19 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-class BaseSection(QObject, ABC):
+# CRITICAL FIX: Combine QObject metaclass with ABCMeta to avoid metaclass conflict
+# QObject has its own metaclass, ABC uses ABCMeta - we need both
+class QABCMeta(type(QObject), ABCMeta):
+    """
+    Combined metaclass for QObject and ABC compatibility.
+
+    This resolves the metaclass conflict when inheriting from both QObject and ABC.
+    Required for classes that need both Qt Signals (QObject) and abstract methods (ABC).
+    """
+    pass
+
+
+class BaseSection(QObject, ABC, metaclass=QABCMeta):
     """
     Abstract base class for accordion sidebar sections.
 
