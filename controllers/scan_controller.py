@@ -75,6 +75,7 @@ class ScanController:
         self.main._scan_progress.setAutoClose(False)
         self.main._scan_progress.setAutoReset(False)
         self.main._scan_progress.setMinimumDuration(0)  # CRITICAL: Show immediately, no timer delay (prevents Qt timer thread errors)
+        self.main._scan_progress.setMinimumWidth(520)
         self.main._scan_progress.show()
 
         # DB writer
@@ -222,8 +223,13 @@ class ScanController:
 
         if msg:
             # Enhanced progress display with file details
-            label = f"{msg}\nCommitted: {self.main._committed_total}"
-            self.main._scan_progress.setLabelText(label)
+            label = f"{msg}\nCommitted: {self.main._committed_total} rows"
+        else:
+            label = f"Progress: {pct_i}%\nCommitted: {self.main._committed_total} rows"
+
+        self.main._scan_progress.setLabelText(label)
+        self.main._scan_progress.setWindowTitle(f"{tr('messages.scan_dialog_title')} ({pct_i}%)")
+        QApplication.processEvents()
 
         # Check for cancellation
         if self.main._scan_progress.wasCanceled():
