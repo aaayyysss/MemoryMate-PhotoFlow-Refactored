@@ -8913,8 +8913,8 @@ class GooglePhotosLayout(BaseLayout):
         - ONE universal scrollbar per section
         - Clean, modern Google Photos UX
         """
-        # Import and instantiate AccordionSidebar
-        from accordion_sidebar import AccordionSidebar
+        # Import and instantiate AccordionSidebar (PHASE 3: Using modular version)
+        from ui.accordion_sidebar import AccordionSidebar
 
         # CRITICAL FIX: GooglePhotosLayout is NOT a QWidget, so pass None as parent
         sidebar = AccordionSidebar(project_id=self.project_id, parent=None)
@@ -15462,6 +15462,10 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
         """
         Handle zoom slider change - adjust thumbnail size.
 
+        BUG FIX: Use percentage-based scroll restoration to maintain viewport position.
+        When thumbnail size changes, grid height changes proportionally.
+        Restoring absolute pixel position causes viewport to jump.
+
         Args:
             value: New thumbnail size in pixels (100-400)
         """
@@ -15470,20 +15474,46 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
         # Update label (just the number, no "px")
         self.zoom_value_label.setText(f"{value}")
 
-        # Reload photos with new thumbnail size
-        # Store current scroll position
-        scroll_pos = self.timeline.verticalScrollBar().value()
+        # BUG FIX: Calculate scroll PERCENTAGE before reload (Google Photos pattern)
+        scrollbar = self.timeline.verticalScrollBar()
+        max_scroll = scrollbar.maximum()
+        current_scroll = scrollbar.value()
+
+        # Calculate percentage (0.0 to 1.0)
+        scroll_percentage = current_scroll / max_scroll if max_scroll > 0 else 0.0
+
+        print(f"[GooglePhotosLayout] Saving scroll position: {current_scroll}/{max_scroll} ({scroll_percentage:.2%})")
 
         # Reload with new size
         self._load_photos(thumb_size=value)
 
-        # Restore scroll position (approximate)
+        # Restore scroll PERCENTAGE after reload (maintains visual viewport)
         from PySide6.QtCore import QTimer
-        QTimer.singleShot(100, lambda: self.timeline.verticalScrollBar().setValue(scroll_pos))
+        QTimer.singleShot(100, lambda: self._restore_scroll_percentage(scroll_percentage))
+
+    def _restore_scroll_percentage(self, percentage: float):
+        """
+        Restore scroll position to a percentage of maximum scroll.
+
+        BUG FIX: Maintains viewport position when grid height changes.
+        Used after zoom or aspect ratio changes.
+
+        Args:
+            percentage: Scroll percentage (0.0 to 1.0)
+        """
+        scrollbar = self.timeline.verticalScrollBar()
+        new_max = scrollbar.maximum()
+        new_position = int(new_max * percentage)
+
+        print(f"[GooglePhotosLayout] Restoring scroll position: {new_position}/{new_max} ({percentage:.2%})")
+
+        scrollbar.setValue(new_position)
 
     def _set_aspect_ratio(self, mode: str):
         """
         PHASE 2 #5: Set thumbnail aspect ratio mode.
+
+        BUG FIX: Use percentage-based scroll restoration (same as zoom).
 
         Args:
             mode: "square", "original", or "16:9"
@@ -15498,17 +15528,19 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
         self.btn_aspect_original.setChecked(mode == "original")
         self.btn_aspect_16_9.setChecked(mode == "16:9")
 
-        # Reload photos with new aspect ratio
-        # Store current scroll position
-        scroll_pos = self.timeline.verticalScrollBar().value()
+        # BUG FIX: Calculate scroll PERCENTAGE before reload
+        scrollbar = self.timeline.verticalScrollBar()
+        max_scroll = scrollbar.maximum()
+        current_scroll = scrollbar.value()
+        scroll_percentage = current_scroll / max_scroll if max_scroll > 0 else 0.0
 
         # Reload with current thumb size
         current_size = self.zoom_slider.value()
         self._load_photos(thumb_size=current_size)
 
-        # Restore scroll position (approximate)
+        # Restore scroll PERCENTAGE after reload
         from PySide6.QtCore import QTimer
-        QTimer.singleShot(100, lambda: self.timeline.verticalScrollBar().setValue(scroll_pos))
+        QTimer.singleShot(100, lambda: self._restore_scroll_percentage(scroll_percentage))
 
     def _clear_filter(self):
         """
