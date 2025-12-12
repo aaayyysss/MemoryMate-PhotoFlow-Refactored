@@ -184,6 +184,16 @@ class PhotoScanService:
             'folders_found': 0
         }
 
+        # Tracking for richer progress feedback
+        self._total_photos = 0
+        self._total_videos = 0
+        self._total_media_files = 0
+        self._photos_processed = 0
+        self._videos_processed = 0
+        self._scan_start_time = time.time()
+        self._scan_root = None
+        self._last_progress_emit = 0.0
+
         # Video workers (initialized when videos are processed)
         self.video_metadata_worker = None
         self.video_thumbnail_worker = None
@@ -219,8 +229,13 @@ class PhotoScanService:
         start_time = time.time()
         self._cancelled = False
         self._stats = {'photos_indexed': 0, 'photos_skipped': 0, 'photos_failed': 0, 'videos_indexed': 0, 'folders_found': 0}
+        self._photos_processed = 0
+        self._videos_processed = 0
+        self._scan_start_time = start_time
+        self._last_progress_emit = 0.0
 
         root_path = Path(root_folder).resolve()
+        self._scan_root = root_path
         if not root_path.exists():
             raise ValueError(f"Root folder does not exist: {root_folder}")
 
@@ -240,16 +255,25 @@ class PhotoScanService:
 
             total_files = len(all_files)
             total_videos = len(all_videos)
+            self._total_photos = total_files
+            self._total_videos = total_videos
+            self._total_media_files = total_files + total_videos
 
             logger.info(f"Discovered {total_files} candidate image files and {total_videos} video files")
 
             # CRITICAL FIX: Send discovery message to progress callback for dialog threshold check
             # scan_controller.py needs this message to parse file count and decide whether to show dialog
             if progress_callback:
-                discovery_msg = f"Discovered {total_files} candidate image files and {total_videos} video files"
+                discovery_msg = self._build_progress_message(
+                    status_line="Preparing scan…",
+                    current_path=root_path,
+                    processed_count=0,
+                    total_count=self._total_media_files,
+                    discovery=True
+                )
                 progress = ScanProgress(
                     current=0,
-                    total=total_files + total_videos,
+                    total=self._total_media_files,
                     percent=0,
                     message=discovery_msg,
                     current_file=None
@@ -340,53 +364,61 @@ class PhotoScanService:
                         sys.stdout.flush()
                         batch_rows.clear()
 
+                    self._photos_processed = i
+
                     # Report progress (check cancellation here too for responsiveness)
-                    # CRITICAL FIX: Reduce update frequency to prevent Qt timer violations
-                    # Update every 50 files instead of every 10 (prevents QProgressDialog timer issues)
-                    if progress_callback and (i % 50 == 0 or i == total_files):
-                        # RESPONSIVE CANCEL: Check during progress reporting
-                        if self._cancelled:
-                            logger.info("Scan cancelled during progress reporting")
-                            break
-
-                        # Enhanced progress message with file details
-                        file_name = file_path.name
-
-                        # CRITICAL FIX: Get file size safely without blocking
-                        # BUG: file_path.stat() can HANG on slow/network drives or permission issues
-                        # This caused freeze at file 10, 20, 30 (every progress_callback % 10 == 0)
-                        # SOLUTION: Use size from already-processed row, or skip size if unavailable
-                        file_size_kb = 0
-                        if row is not None and len(row) > 2:
-                            # Row format: (path, folder_id, size_kb, ...)
-                            file_size_kb = round(row[2], 1) if row[2] else 0
-
-                        # RICH PROGRESS FEEDBACK: Show percentage, current/total count, file path, and stats
-                        percentage = int((i / total_files) * 100)
-                        total_photos = self._stats['photos_indexed']
-                        indexed_videos = self._stats['videos_indexed']  # CRITICAL FIX: Don't overwrite total_videos!
-
-                        progress_msg = (
-                            f"[{i}/{total_files}] ({percentage}%)\n"
-                            f"📷 {file_name} ({file_size_kb} KB)\n"
-                            f"Path: {file_path}\n"
-                            f"Photos: {total_photos} | Videos: {indexed_videos}"
+                    if progress_callback:
+                        now = time.time()
+                        should_emit = (
+                            i == total_files
+                            or i <= 5  # show early feedback immediately
+                            or (now - self._last_progress_emit) >= 0.35
+                            or i % 25 == 0
                         )
 
-                        progress = ScanProgress(
-                            current=i,
-                            total=total_files,
-                            percent=percentage,
-                            message=progress_msg,
-                            current_file=str(file_path)
-                        )
+                        if should_emit:
+                            # RESPONSIVE CANCEL: Check during progress reporting
+                            if self._cancelled:
+                                logger.info("Scan cancelled during progress reporting")
+                                break
 
-                        try:
-                            progress_callback(progress)
-                        except Exception as e:
-                            logger.error(f"Progress callback error: {e}", exc_info=True)
-                            print(f"[SCAN] ⚠️ Progress callback failed: {e}")
-                            sys.stdout.flush()
+                            # Enhanced progress message with file details
+                            file_name = file_path.name
+
+                            # CRITICAL FIX: Get file size safely without blocking
+                            # BUG: file_path.stat() can HANG on slow/network drives or permission issues
+                            # This caused freeze at file 10, 20, 30 (every progress_callback % 10 == 0)
+                            # SOLUTION: Use size from already-processed row, or skip size if unavailable
+                            file_size_kb = 0
+                            if row is not None and len(row) > 2:
+                                # Row format: (path, folder_id, size_kb, ...)
+                                file_size_kb = round(row[2], 1) if row[2] else 0
+
+                            processed_media = self._photos_processed + self._videos_processed
+                            percentage = int((processed_media / max(1, self._total_media_files)) * 100)
+
+                            progress_msg = self._build_progress_message(
+                                status_line=f"📷 {file_name} ({file_size_kb} KB)",
+                                current_path=file_path,
+                                processed_count=processed_media,
+                                total_count=self._total_media_files
+                            )
+
+                            progress = ScanProgress(
+                                current=processed_media,
+                                total=self._total_media_files,
+                                percent=percentage,
+                                message=progress_msg,
+                                current_file=str(file_path)
+                            )
+
+                            try:
+                                progress_callback(progress)
+                                self._last_progress_emit = now
+                            except Exception as e:
+                                logger.error(f"Progress callback error: {e}", exc_info=True)
+                                print(f"[SCAN] ⚠️ Progress callback failed: {e}")
+                                sys.stdout.flush()
 
                     # CRITICAL FIX: Process Qt events periodically to keep UI responsive
                     # This prevents the progress dialog from freezing during long scans
@@ -1046,15 +1078,24 @@ class PhotoScanService:
                     sys.stdout.flush()
 
                 # Report progress
-                # CRITICAL FIX: Reduce update frequency to prevent Qt timer violations
-                if progress_callback and (i % 50 == 0 or i == len(video_files)):
+                if progress_callback:
+                    self._videos_processed = i
+                    processed_media = self._photos_processed + self._videos_processed
+                    percent = int((processed_media / max(1, self._total_media_files)) * 100)
+
                     progress = ScanProgress(
-                        current=i,
-                        total=len(video_files),
-                        percent=int((i / len(video_files)) * 100),
-                        message=f"Indexed {self._stats['videos_indexed']}/{len(video_files)} videos",
+                        current=processed_media,
+                        total=self._total_media_files,
+                        percent=percent,
+                        message=self._build_progress_message(
+                            status_line=f"🎬 {video_path.name} ({size_kb:.0f} KB)",
+                            current_path=video_path,
+                            processed_count=processed_media,
+                            total_count=self._total_media_files
+                        ),
                         current_file=str(video_path)
                     )
+                    self._last_progress_emit = time.time()
                     progress_callback(progress)
 
             logger.info(f"Indexed {self._stats['videos_indexed']} videos (metadata extraction pending)")
@@ -1127,3 +1168,45 @@ class PhotoScanService:
         except Exception as e:
             logger.error(f"Error launching video workers: {e}", exc_info=True)
             return None, None
+
+    def _build_progress_message(self,
+                                status_line: str,
+                                current_path: Optional[Path],
+                                processed_count: int,
+                                total_count: int,
+                                discovery: bool = False) -> str:
+        """Generate a rich, multi-line progress string for the scan dialog."""
+        safe_total = max(1, total_count or 0)
+        percent = max(0, min(100, int((processed_count / safe_total) * 100)))
+        elapsed = max(0.0, time.time() - self._scan_start_time) if self._scan_start_time else 0.0
+
+        lines = []
+        if self._scan_root:
+            lines.append(f"📂 {self._scan_root}")
+
+        if self._total_media_files:
+            lines.append(
+                f"Discovered: {self._total_photos} photos • {self._total_videos} videos (total {self._total_media_files})"
+            )
+
+        if discovery:
+            lines.append("Preparing file system walk and metadata extraction…")
+
+        lines.append(f"Progress: {processed_count}/{safe_total} files ({percent}%)")
+
+        if status_line:
+            lines.append(status_line)
+
+        if current_path:
+            lines.append(f"Path: {current_path}")
+
+        lines.append(
+            f"Indexed → Photos: {self._stats['photos_indexed']} | Videos: {self._stats['videos_indexed']}"
+        )
+        lines.append(
+            f"Skipped: {self._stats['photos_skipped']} | Failed: {self._stats['photos_failed']}"
+        )
+        lines.append(f"Elapsed: {elapsed:.1f}s")
+        lines.append("Tip: You can cancel safely; completed items stay indexed.")
+
+        return "\n".join(lines)
