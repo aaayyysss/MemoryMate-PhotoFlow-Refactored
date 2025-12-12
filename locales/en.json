@@ -436,7 +436,26 @@
     "cancelling_scan": "Cancelling scan...",
     "cancel": "Cancel",
     "starting_import": "Starting import...",
-    "no_image": "No\nImage"
+    "no_image": "No\nImage",
+
+    "scan_preparing": "Preparing scan...",
+    "scan_dialog_title": "Scanning Photos",
+    "scan_cancel_button": "Cancel",
+    "progress_building_branches": "Building date branches...",
+    "progress_processing": "Processing...",
+    "progress_building_photo_branches": "Building photo date branches...",
+    "progress_backfilling_metadata": "Backfilling photo metadata...",
+    "progress_processing_photos": "Processing Photos",
+    "progress_detecting_faces": "Detecting faces... ({current}/{total})",
+    "progress_processing_file": "Processing: {filename}",
+    "progress_loading_models": "Loading face detection models...",
+    "progress_models_first_run": "This may take a few seconds on first run...",
+    "progress_grouping_faces": "Grouping similar faces...",
+    "progress_clustering_faces": "Clustering {total_faces} detected faces into person groups...",
+    "progress_complete": "Complete!",
+    "progress_faces_found": "Found {total_faces} faces in {success_count} photos",
+    "progress_refreshing_sidebar": "Refreshing sidebar...",
+    "progress_loading_thumbnails": "Loading thumbnails..."
   },
 
   "status_bar": {

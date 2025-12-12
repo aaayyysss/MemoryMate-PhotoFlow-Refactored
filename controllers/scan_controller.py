@@ -64,8 +64,13 @@ class ScanController:
         # Progress dialog - REVERT TO OLD WORKING VERSION
         # Create and show dialog IMMEDIATELY (no threshold, no lazy creation)
         # This is simpler and avoids Qt threading issues
-        self.main._scan_progress = QProgressDialog("Preparing scan...", "Cancel", 0, 100, self.main)
-        self.main._scan_progress.setWindowTitle("Scanning Photos")
+        from translation_manager import tr
+        self.main._scan_progress = QProgressDialog(
+            tr("messages.scan_preparing"),
+            tr("messages.scan_cancel_button"),
+            0, 100, self.main
+        )
+        self.main._scan_progress.setWindowTitle(tr("messages.scan_dialog_title"))
         self.main._scan_progress.setWindowModality(Qt.WindowModal)
         self.main._scan_progress.setAutoClose(False)
         self.main._scan_progress.setAutoReset(False)
@@ -293,8 +298,8 @@ class ScanController:
         self.main._scan_complete_msgbox = msgbox
 
         # Show progress indicator for post-scan processing
-        progress = QProgressDialog("Building date branches...", None, 0, 4, self.main)
-        progress.setWindowTitle("Processing...")
+        progress = QProgressDialog(tr("messages.progress_building_branches"), None, 0, 4, self.main)
+        progress.setWindowTitle(tr("messages.progress_processing"))
         progress.setWindowModality(Qt.WindowModal)
         progress.setAutoClose(True)
         progress.setValue(0)
@@ -304,7 +309,7 @@ class ScanController:
         # Build date branches after scan completes
         sidebar_was_updated = False
         try:
-            progress.setLabelText("Building photo date branches...")
+            progress.setLabelText(tr("messages.progress_building_photo_branches"))
             progress.setValue(1)
             QApplication.processEvents()
 
@@ -333,7 +338,7 @@ class ScanController:
             video_branch_count = db.build_video_date_branches(current_project_id)
             self.logger.info(f"Created {video_branch_count} video date branch entries for project {current_project_id}")
 
-            progress.setLabelText("Backfilling photo metadata...")
+            progress.setLabelText(tr("messages.progress_backfilling_metadata"))
             progress.setValue(2)
             QApplication.processEvents()
 
@@ -396,7 +401,7 @@ class ScanController:
                             # Note: All required widgets already imported at module level
 
                             progress_dialog = QDialog(self.main)
-                            progress_dialog.setWindowTitle("Processing Photos")
+                            progress_dialog.setWindowTitle(tr("messages.progress_processing_photos"))
                             progress_dialog.setModal(False)  # Non-modal allows UI to stay responsive
                             progress_dialog.setMinimumWidth(500)
                             progress_dialog.setWindowFlags(
@@ -430,15 +435,15 @@ class ScanController:
                             def update_progress(current, total, filename):
                                 percent = int((current / total) * 80) if total > 0 else 0  # 80% for detection
                                 progress_bar.setValue(percent)
-                                status_label.setText(f"Detecting faces... ({current}/{total})")
-                                detail_label.setText(f"Processing: {filename}")
+                                status_label.setText(tr("messages.progress_detecting_faces", current=current, total=total))
+                                detail_label.setText(tr("messages.progress_processing_file", filename=filename))
                                 QApplication.processEvents()
 
                             face_worker.signals.progress.connect(update_progress)
 
                             # Update initial status
-                            status_label.setText("Loading face detection models...")
-                            detail_label.setText("This may take a few seconds on first run...")
+                            status_label.setText(tr("messages.progress_loading_models"))
+                            detail_label.setText(tr("messages.progress_models_first_run"))
                             QApplication.processEvents()
 
                             # CRITICAL FIX: Run face detection asynchronously using QThreadPool
@@ -452,8 +457,8 @@ class ScanController:
                                     # Update for clustering phase
                                     if face_config.get("clustering_enabled", True) and total_faces > 0:
                                         progress_bar.setValue(85)
-                                        status_label.setText("Grouping similar faces...")
-                                        detail_label.setText(f"Clustering {total_faces} detected faces into person groups...")
+                                        status_label.setText(tr("messages.progress_grouping_faces"))
+                                        detail_label.setText(tr("messages.progress_clustering_faces", total_faces=total_faces))
                                         QApplication.processEvents()
 
                                         self.logger.info("Starting face clustering...")
@@ -481,8 +486,8 @@ class ScanController:
                                             try:
                                                 # Final update
                                                 progress_bar.setValue(100)
-                                                status_label.setText("Complete!")
-                                                detail_label.setText(f"Found {total_faces} faces in {success_count} photos")
+                                                status_label.setText(tr("messages.progress_complete"))
+                                                detail_label.setText(tr("messages.progress_faces_found", total_faces=total_faces, success_count=success_count))
                                                 QApplication.processEvents()
 
                                                 # CRITICAL FIX: Refresh Google Photos layout People grid after clustering
@@ -529,8 +534,8 @@ class ScanController:
                                     else:
                                         # No clustering needed, finish immediately
                                         progress_bar.setValue(100)
-                                        status_label.setText("Complete!")
-                                        detail_label.setText(f"Found {total_faces} faces in {success_count} photos")
+                                        status_label.setText(tr("messages.progress_complete"))
+                                        detail_label.setText(tr("messages.progress_faces_found", total_faces=total_faces, success_count=success_count))
                                         QApplication.processEvents()
 
                                         # Close dialog after short delay
@@ -623,7 +628,7 @@ class ScanController:
         # Sidebar & grid refresh
         # CRITICAL: Schedule UI updates in main thread (this method may run in worker thread)
         try:
-            progress.setLabelText("Refreshing sidebar...")
+            progress.setLabelText(tr("messages.progress_refreshing_sidebar"))
             progress.setValue(3)
             QApplication.processEvents()
 
@@ -663,7 +668,7 @@ class ScanController:
             self.logger.error(f"Error reloading grid: {e}", exc_info=True)
 
         try:
-            progress.setLabelText("Loading thumbnails...")
+            progress.setLabelText(tr("messages.progress_loading_thumbnails"))
             progress.setValue(4)
             QApplication.processEvents()
 
