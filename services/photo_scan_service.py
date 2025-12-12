@@ -420,19 +420,6 @@ class PhotoScanService:
                                 print(f"[SCAN] ⚠️ Progress callback failed: {e}")
                                 sys.stdout.flush()
 
-                    # CRITICAL FIX: Process Qt events periodically to keep UI responsive
-                    # This prevents the progress dialog from freezing during long scans
-                    # Only process events every 20 photos to minimize overhead
-                    if i % 20 == 0:
-                        try:
-                            # Import here to avoid circular dependencies
-                            from PySide6.QtWidgets import QApplication
-                            if QApplication.instance():
-                                QApplication.processEvents()
-                        except Exception:
-                            # Not running in Qt environment or import failed - ignore
-                            pass
-
                 # Final batch flush
                 if batch_rows and not self._cancelled:
                     print(f"[SCAN] ⚡ Writing final batch to database: {len(batch_rows)} photos")
