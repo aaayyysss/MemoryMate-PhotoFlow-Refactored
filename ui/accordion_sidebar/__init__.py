@@ -249,14 +249,22 @@ class AccordionSidebar(QWidget):
         # Load section data if not already loaded
         section_logic = self.section_logic.get(section_id)
         if section_logic and not section_logic.is_loading():
-            section_logic.load_section()
+            signals = getattr(section_logic, 'signals', None)
+            loaded_signal = getattr(signals, 'loaded', None)
 
-            # Wait for data to load and create widget
-            # (In full implementation, this is handled by signal connections)
-            if hasattr(section_logic, 'signals') and hasattr(section_logic.signals, 'loaded'):
-                section_logic.signals.loaded.connect(
+            # Connect before triggering load to avoid missing fast emissions
+            if loaded_signal and not getattr(section_logic, '_loaded_connected', False):
+                loaded_signal.connect(
                     lambda gen, data: self._on_section_loaded(section_id, gen, data)
                 )
+                section_logic._loaded_connected = True
+
+            result = section_logic.load_section()
+
+            # Fallback: some stub sections complete synchronously without emitting
+            if not section_logic.is_loading():
+                generation = getattr(section_logic, '_generation', 0)
+                self._on_section_loaded(section_id, generation, result)
 
     def _on_section_loaded(self, section_id: str, generation: int, data):
         """Handle section data loaded."""
