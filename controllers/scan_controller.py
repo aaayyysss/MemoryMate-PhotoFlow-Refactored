@@ -43,11 +43,23 @@ class ScanController:
         self.PROGRESS_DIALOG_THRESHOLD = 20
         self._total_files_found = 0
 
+        # PHASE 2 Task 2.2: Debounce reload operations
+        # Track pending async operations to coordinate single refresh after ALL complete
+        self._scan_operations_pending = set()
+        self._scan_refresh_scheduled = False
+        self._scan_result_cached = None  # Cache scan results for final refresh
+
     def start_scan(self, folder, incremental: bool):
         """Entry point called from MainWindow toolbar action."""
         self.cancel_requested = False
         self.main.statusBar().showMessage(f"📸 Scanning repository: {folder} (incremental={incremental})")
         self.main._committed_total = 0
+
+        # PHASE 2 Task 2.2: Initialize pending operations tracker
+        # Main scan will mark these complete as each operation finishes
+        self._scan_operations_pending = {"main_scan", "date_branches"}
+        self._scan_refresh_scheduled = False
+        self._scan_result_cached = None
 
         # Progress dialog - REVERT TO OLD WORKING VERSION
         # Create and show dialog IMMEDIATELY (no threshold, no lazy creation)
@@ -102,14 +114,16 @@ class ScanController:
             print(f"[ScanController] QThread created")
 
             # CRITICAL: Define callback for video metadata extraction completion
-            # This will refresh the sidebar counts after metadata extraction finishes
+            # PHASE 2 Task 2.2: This now marks operation complete instead of refreshing immediately
             def on_video_metadata_finished(success, failed):
-                """Refresh sidebar video counts after metadata extraction completes."""
+                """Mark video metadata extraction complete and trigger coordinated refresh."""
                 self.logger.info(f"Video metadata extraction complete ({success} success, {failed} failed)")
 
                 # CRITICAL FIX: ALWAYS run video date backfill after scan (not conditional)
                 # Without this, video date branches show 0 count and no dates appear
                 if success > 0:
+                    # PHASE 2 Task 2.2: Track video backfill as separate operation
+                    self._scan_operations_pending.add("video_backfill")
                     self.logger.info("Auto-running video metadata backfill...")
                     # Run backfill in background to populate date fields
                     from backfill_video_dates import backfill_video_dates
@@ -122,19 +136,16 @@ class ScanController:
                         self.logger.info(f"✓ Video backfill complete: {stats['updated']} videos updated")
                     except Exception as e:
                         self.logger.error(f"Video backfill failed: {e}", exc_info=True)
+                    finally:
+                        # PHASE 2 Task 2.2: Mark backfill complete
+                        self._scan_operations_pending.discard("video_backfill")
+                        self._check_and_trigger_final_refresh()
 
-                # Schedule sidebar refresh in main thread
-                self.logger.info("Refreshing sidebar to update video filter counts...")
-                from PySide6.QtCore import QTimer
-                def refresh_sidebar_videos():
-                    try:
-                        if hasattr(self.main, 'sidebar') and hasattr(self.main.sidebar, "refresh_all"):
-                            self.main.sidebar.refresh_all(force=True)
-                            self.logger.info("✓ Sidebar refreshed after video metadata extraction")
-                    except Exception as e:
-                        self.logger.error(f"Error refreshing sidebar after metadata extraction: {e}")
-
-                QTimer.singleShot(0, refresh_sidebar_videos)
+                # PHASE 2 Task 2.2: Mark video metadata complete and check for final refresh
+                # DON'T refresh immediately - let coordinator handle it
+                self._scan_operations_pending.discard("video_metadata")
+                self.logger.info(f"Video metadata operation complete. Remaining: {self._scan_operations_pending}")
+                self._check_and_trigger_final_refresh()
 
             self.worker = ScanWorker(folder, current_project_id, incremental, self.main.settings,
                                     db_writer=self.db_writer,
@@ -573,49 +584,85 @@ class ScanController:
         except Exception as e:
             self.logger.error(f"Error building date branches: {e}", exc_info=True)
 
+        # PHASE 2 Task 2.2: Mark main_scan and date_branches as complete
+        # This will check if all operations are done and trigger final refresh
+        self._scan_operations_pending.discard("main_scan")
+        self._scan_operations_pending.discard("date_branches")
+        self._scan_result_cached = (f, p, v, sidebar_was_updated, progress)
+        self.logger.info(f"Main scan operations complete. Remaining: {self._scan_operations_pending}")
+        self._check_and_trigger_final_refresh()
+
+        # PHASE 2 Task 2.2: OLD refresh_ui() moved to _finalize_scan_refresh()
+        # This ensures only ONE refresh happens after ALL async operations complete
+
+    def _check_and_trigger_final_refresh(self):
+        """
+        PHASE 2 Task 2.2: Check if all scan operations are complete.
+        If yes, trigger final debounced refresh. If no, wait for other operations.
+        """
+        if not self._scan_operations_pending and not self._scan_refresh_scheduled:
+            self._scan_refresh_scheduled = True
+            self.logger.info("✓ All scan operations complete. Triggering final refresh...")
+            # Debounce with 100ms delay to ensure all signals propagate
+            QTimer.singleShot(100, self._finalize_scan_refresh)
+        elif self._scan_operations_pending:
+            self.logger.info(f"⏳ Waiting for operations: {self._scan_operations_pending}")
+
+    def _finalize_scan_refresh(self):
+        """
+        PHASE 2 Task 2.2: Perform ONE coordinated refresh after ALL scan operations complete.
+        This replaces the old refresh_ui() function and eliminates duplicate reloads.
+        """
+        if not self._scan_result_cached:
+            self.logger.warning("No cached scan results - cannot refresh")
+            return
+
+        f, p, v, sidebar_was_updated, progress = self._scan_result_cached
+        self.logger.info("🔄 Starting final coordinated refresh...")
+
         # Sidebar & grid refresh
         # CRITICAL: Schedule UI updates in main thread (this method may run in worker thread)
-        def refresh_ui():
-            try:
-                progress.setLabelText("Refreshing sidebar...")
-                progress.setValue(3)
-                QApplication.processEvents()
+        try:
+            progress.setLabelText("Refreshing sidebar...")
+            progress.setValue(3)
+            QApplication.processEvents()
 
-                self.logger.info("Reloading sidebar after date branches built...")
-                # CRITICAL FIX: Only reload sidebar if it wasn't just updated via set_project()
-                # set_project() already calls reload(), so reloading again causes double refresh crash
-                if not sidebar_was_updated:
-                    # Check which layout is active and reload appropriate sidebar
-                    if hasattr(self.main, 'layout_manager') and self.main.layout_manager:
-                        current_layout_id = self.main.layout_manager._current_layout_id
-                        if current_layout_id == "google":
-                            # Google Layout uses AccordionSidebar
-                            current_layout = self.main.layout_manager._current_layout
-                            if current_layout and hasattr(current_layout, 'accordion_sidebar'):
-                                self.logger.debug("Reloading AccordionSidebar for Google Layout...")
-                                current_layout.accordion_sidebar.reload_all_sections()
-                                self.logger.debug("AccordionSidebar reload completed")
-                        elif hasattr(self.main.sidebar, "reload"):
-                            # Current Layout uses old SidebarQt
-                            self.main.sidebar.reload()
-                            self.logger.debug("Sidebar reload completed (mode-aware)")
+            self.logger.info("Reloading sidebar after date branches built...")
+            # CRITICAL FIX: Only reload sidebar if it wasn't just updated via set_project()
+            # set_project() already calls reload(), so reloading again causes double refresh crash
+            if not sidebar_was_updated:
+                # Check which layout is active and reload appropriate sidebar
+                if hasattr(self.main, 'layout_manager') and self.main.layout_manager:
+                    current_layout_id = self.main.layout_manager._current_layout_id
+                    if current_layout_id == "google":
+                        # Google Layout uses AccordionSidebar
+                        current_layout = self.main.layout_manager._current_layout
+                        if current_layout and hasattr(current_layout, 'accordion_sidebar'):
+                            self.logger.debug("Reloading AccordionSidebar for Google Layout...")
+                            current_layout.accordion_sidebar.reload_all_sections()
+                            self.logger.debug("AccordionSidebar reload completed")
                     elif hasattr(self.main.sidebar, "reload"):
-                        # Fallback to old sidebar if layout manager not available
+                        # Current Layout uses old SidebarQt
                         self.main.sidebar.reload()
-                        self.logger.debug("Sidebar reload completed (fallback)")
-                elif sidebar_was_updated:
-                    self.logger.debug("Skipping sidebar reload - already updated by set_project()")
-            except Exception as e:
-                self.logger.error(f"Error reloading sidebar: {e}", exc_info=True)
+                        self.logger.debug("Sidebar reload completed (mode-aware)")
+                elif hasattr(self.main.sidebar, "reload"):
+                    # Fallback to old sidebar if layout manager not available
+                    self.main.sidebar.reload()
+                    self.logger.debug("Sidebar reload completed (fallback)")
+            elif sidebar_was_updated:
+                self.logger.debug("Skipping sidebar reload - already updated by set_project()")
+        except Exception as e:
+            self.logger.error(f"Error reloading sidebar: {e}", exc_info=True)
 
-            # CRITICAL FIX: Always reload grid - needed for Current layout even if Google is active
-            try:
-                if hasattr(self.main.grid, "reload"):
-                    self.main.grid.reload()
-                    self.logger.debug("Grid reload completed")
-            except Exception as e:
-                self.logger.error(f"Error reloading grid: {e}", exc_info=True)
+        # CRITICAL FIX: Always reload grid - needed for Current layout even if Google is active
+        try:
+            if hasattr(self.main.grid, "reload"):
+                self.main.grid.reload()
+                self.logger.debug("Grid reload completed")
+        except Exception as e:
+            self.logger.error(f"Error reloading grid: {e}", exc_info=True)
 
+        try:
             progress.setLabelText("Loading thumbnails...")
             progress.setValue(4)
             QApplication.processEvents()
@@ -627,45 +674,43 @@ class ScanController:
             # CRITICAL FIX: Also refresh Google Photos layout if active
             # This is IN ADDITION to refreshing Current layout above
             # Both layouts are kept in sync after scan
-            try:
-                if hasattr(self.main, 'layout_manager') and self.main.layout_manager:
-                    current_layout_id = self.main.layout_manager._current_layout_id
-                    if current_layout_id == "google":
-                        self.logger.info("Refreshing Google Photos layout after scan...")
-                        current_layout = self.main.layout_manager._current_layout
-                        if current_layout and hasattr(current_layout, '_load_photos'):
-                            # Use QTimer.singleShot to defer refresh and prevent blocking
-                            # This ensures UI remains responsive
-                            from PySide6.QtCore import QTimer
-                            QTimer.singleShot(500, current_layout._load_photos)
-                            self.logger.info("✓ Google Photos layout refresh scheduled")
-            except Exception as e:
-                # CRITICAL: Catch ALL exceptions to prevent scan cleanup from failing
-                self.logger.error(f"Error refreshing Google Photos layout: {e}", exc_info=True)
-                # Don't let layout refresh errors break scan completion
+            if hasattr(self.main, 'layout_manager') and self.main.layout_manager:
+                current_layout_id = self.main.layout_manager._current_layout_id
+                if current_layout_id == "google":
+                    self.logger.info("Refreshing Google Photos layout after scan...")
+                    current_layout = self.main.layout_manager._current_layout
+                    if current_layout and hasattr(current_layout, '_load_photos'):
+                        # PHASE 2 Task 2.2: Call directly instead of QTimer.singleShot
+                        # All async operations already complete, no need for additional delay
+                        current_layout._load_photos()
+                        self.logger.info("✓ Google Photos layout refreshed")
+        except Exception as e:
+            # CRITICAL: Catch ALL exceptions to prevent scan cleanup from failing
+            self.logger.error(f"Error refreshing Google Photos layout: {e}", exc_info=True)
+            # Don't let layout refresh errors break scan completion
 
-            # CRITICAL FIX: Close scan completion message box if still open
-            try:
-                if hasattr(self.main, '_scan_complete_msgbox') and self.main._scan_complete_msgbox:
-                    self.main._scan_complete_msgbox.close()
-                    self.main._scan_complete_msgbox.deleteLater()
-                    self.main._scan_complete_msgbox = None
-            except Exception as e:
-                self.logger.error(f"Error closing scan message box: {e}")
+        # CRITICAL FIX: Close scan completion message box if still open
+        try:
+            if hasattr(self.main, '_scan_complete_msgbox') and self.main._scan_complete_msgbox:
+                self.main._scan_complete_msgbox.close()
+                self.main._scan_complete_msgbox.deleteLater()
+                self.main._scan_complete_msgbox = None
+        except Exception as e:
+            self.logger.error(f"Error closing scan message box: {e}")
 
-            # Close progress dialog
+        # Close progress dialog
+        try:
             progress.close()
+        except Exception as e:
+            self.logger.error(f"Error closing progress dialog: {e}")
 
-            # Final status message
-            self.main.statusBar().showMessage(f"✓ Scan complete: {p} photos, {v} videos indexed", 5000)
+        # Final status message
+        self.main.statusBar().showMessage(f"✓ Scan complete: {p} photos, {v} videos indexed", 5000)
+        self.logger.info(f"✅ Final refresh complete: {p} photos, {v} videos")
 
-        # Schedule refresh in main thread's event loop
-        if sidebar_was_updated:
-            # Wait 500ms before refreshing if sidebar was just updated
-            QTimer.singleShot(500, refresh_ui)
-        else:
-            # Immediate refresh (next event loop iteration)
-            QTimer.singleShot(0, refresh_ui)
+        # PHASE 2 Task 2.2: Reset state for next scan
+        self._scan_refresh_scheduled = False
+        self._scan_result_cached = None
 
         # Note: Video metadata worker callback is now connected at worker creation time
         # in start_scan() to avoid race conditions with worker finishing before cleanup runs
