@@ -15483,7 +15483,7 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
         Args:
             value: New thumbnail size in pixels (100-400)
         """
-        print(f"[GooglePhotosLayout] 🔎 Zoom changed to: {value}px")
+        logger.info("[GooglePhotosLayout] 🔎 Zoom changed to: %spx", value)
 
         # Update label immediately (just the number, no "px")
         self.zoom_value_label.setText(f"{value}")
@@ -15511,15 +15511,21 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
         # Calculate percentage (0.0 to 1.0)
         scroll_percentage = current_scroll / max_scroll if max_scroll > 0 else 0.0
 
-        print(
-            f"[GooglePhotosLayout] Saving scroll position: {current_scroll}/{max_scroll} ({scroll_percentage:.2%})"
+        logger.info(
+            "[GooglePhotosLayout] Saving scroll position: %s/%s (%0.2f%%)",
+            current_scroll,
+            max_scroll,
+            scroll_percentage * 100,
         )
 
         # Reload with new size
         self._load_photos(thumb_size=value)
 
         # Restore scroll PERCENTAGE after reload (maintains visual viewport)
-        QTimer.singleShot(100, lambda: self._restore_scroll_percentage(scroll_percentage))
+        QTimer.singleShot(
+            100,
+            lambda: self._restore_scroll_percentage(scroll_percentage),
+        )
 
     def _restore_scroll_percentage(self, percentage: float):
         """
@@ -15531,11 +15537,27 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
         Args:
             percentage: Scroll percentage (0.0 to 1.0)
         """
-        scrollbar = self.timeline.verticalScrollBar()
+        timeline = getattr(self, "timeline", None)
+        if not timeline:
+            logger.debug("[GooglePhotosLayout] Timeline gone during scroll restore; skipping")
+            return
+
+        try:
+            scrollbar = timeline.verticalScrollBar()
+        except RuntimeError:
+            logger.debug(
+                "[GooglePhotosLayout] Timeline destroyed before scroll restore; skipping",
+            )
+            return
         new_max = scrollbar.maximum()
         new_position = int(new_max * percentage)
 
-        print(f"[GooglePhotosLayout] Restoring scroll position: {new_position}/{new_max} ({percentage:.2%})")
+        logger.info(
+            "[GooglePhotosLayout] Restoring scroll position: %s/%s (%0.2f%%)",
+            new_position,
+            new_max,
+            percentage * 100,
+        )
 
         scrollbar.setValue(new_position)
 
@@ -15548,7 +15570,7 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
         Args:
             mode: "square", "original", or "16:9"
         """
-        print(f"[GooglePhotosLayout] 📐 Aspect ratio changed to: {mode}")
+        logger.info("[GooglePhotosLayout] 📐 Aspect ratio changed to: %s", mode)
 
         # Update state
         self.thumbnail_aspect_ratio = mode

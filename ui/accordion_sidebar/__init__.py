@@ -295,7 +295,10 @@ class AccordionSidebar(QWidget):
                 section_widget.set_content_widget(content_widget)
 
                 # Update count if available
-                if hasattr(normalized_data, '__len__'):
+                if section_id == "dates" and isinstance(normalized_data, dict):
+                    year_counts = normalized_data.get("year_counts", {}) or {}
+                    section_widget.set_count(sum(year_counts.values()))
+                elif hasattr(normalized_data, '__len__'):
                     section_widget.set_count(len(normalized_data))
         except Exception:
             logger.exception(f"[AccordionSidebar] Failed to build content for {section_id}")
