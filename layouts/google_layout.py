@@ -8968,6 +8968,21 @@ class GooglePhotosLayout(BaseLayout):
         self.timeline_layout.setSpacing(30)
         self.timeline_layout.setAlignment(Qt.AlignTop)
 
+        # PHASE 2 Task 2.1: Create loading indicator (initially hidden)
+        # This shows while async photo query runs in background thread
+        self._loading_indicator = QLabel("Loading photos...")
+        self._loading_indicator.setAlignment(Qt.AlignCenter)
+        self._loading_indicator.setStyleSheet("""
+            QLabel {
+                font-size: 14pt;
+                color: #666;
+                padding: 60px;
+                background: white;
+            }
+        """)
+        self._loading_indicator.hide()  # Initially hidden
+        self.timeline_layout.addWidget(self._loading_indicator)
+
         self.timeline_scroll.setWidget(self.timeline_container)
 
         # QUICK WIN #1: Connect scroll event for lazy thumbnail loading
@@ -9047,292 +9062,50 @@ class GooglePhotosLayout(BaseLayout):
             print(f"[GooglePhotosLayout] ⚠️ Error in _load_photos setup: {e}")
             # Continue anyway
 
-        # === PROGRESS: Scanning database for photos ===
-        print(f"[GooglePhotosLayout] 🔍 Scanning database for photos in project {self.project_id}...")
+        # PHASE 2 Task 2.1: Increment generation (discard stale results)
+        self._photo_load_generation += 1
+        current_gen = self._photo_load_generation
+        self._photo_load_in_progress = True
 
-        # Get photos from database
-        try:
-            from reference_db import ReferenceDB
-            db = ReferenceDB()
+        print(f"[GooglePhotosLayout] 🔍 Starting async photo load (generation {current_gen})...")
 
-            # CRITICAL: Check if we have a valid project
-            if self.project_id is None:
-                # No project - show empty state with instructions
-                empty_label = QLabel("📂 No project selected\n\nClick '➕ New Project' to create your first project")
-                empty_label.setAlignment(Qt.AlignCenter)
-                empty_label.setStyleSheet("font-size: 12pt; color: #888; padding: 60px;")
-                self.timeline_layout.addWidget(empty_label)
-                print("[GooglePhotosLayout] ⚠️ No project selected")
-                return
+        # Show loading indicator
+        if self._loading_indicator:
+            self._loading_indicator.show()
 
-            # Query photos for the current project (join with project_images)
-            # CRITICAL FIX: Filter by project_id using project_images table
-            # Build query with optional filters
-            # CRITICAL FIX: Use created_date instead of date_taken
-            # created_date is ALWAYS populated (uses date_taken if available, otherwise file modified date)
-            # This matches Current Layout behavior and ensures ALL photos appear
-            
-            # PHASE 0 FIX: Query BOTH photo_metadata AND video_metadata tables
-            # When filtering by folder, we need to show both photos and videos in that folder
-            query_parts = []
-            params_list = []
-            
-            # PHOTOS QUERY
-            photo_query_parts = ["""
-                SELECT DISTINCT pm.path, pm.created_date as date_taken, pm.width, pm.height
-                FROM photo_metadata pm
-                JOIN project_images pi ON pm.path = pi.image_path
-                WHERE pi.project_id = ?
-            """]
-            photo_params = [self.project_id]
+        # CRITICAL: Check if we have a valid project
+        if self.project_id is None:
+            # No project - show empty state with instructions
+            empty_label = QLabel("📂 No project selected\n\nClick '➕ New Project' to create your first project")
+            empty_label.setAlignment(Qt.AlignCenter)
+            empty_label.setStyleSheet("font-size: 12pt; color: #888; padding: 60px;")
+            self.timeline_layout.addWidget(empty_label)
+            print("[GooglePhotosLayout] ⚠️ No project selected")
+            if self._loading_indicator:
+                self._loading_indicator.hide()
+            return
 
-            # Add year filter (using created_date which is always populated)
-            if filter_year is not None:
-                photo_query_parts.append("AND strftime('%Y', pm.created_date) = ?")
-                photo_params.append(str(filter_year))
+        # Build filter params
+        filter_params = {
+            'year': filter_year,
+            'month': filter_month,
+            'day': filter_day,
+            'folder': filter_folder,
+            'person': filter_person
+        }
 
-            # Add month filter (requires year)
-            if filter_month is not None and filter_year is not None:
-                photo_query_parts.append("AND strftime('%m', pm.created_date) = ?")
-                photo_params.append(f"{filter_month:02d}")
-            
-            # BUG FIX: Add day filter (requires year and month)
-            if filter_day is not None and filter_year is not None and filter_month is not None:
-                photo_query_parts.append("AND strftime('%d', pm.created_date) = ?")
-                photo_params.append(f"{filter_day:02d}")
+        # PHASE 2 Task 2.1: Start async worker (non-blocking)
+        worker = PhotoLoadWorker(
+            project_id=self.project_id,
+            filter_params=filter_params,
+            generation=current_gen,
+            signals=self.photo_load_signals
+        )
 
-            # Add folder filter
-            # CRITICAL FIX: Normalize folder path to match database storage format
-            # Database stores paths as: c:/users/... (forward slashes, lowercase on Windows)
-            # Without normalization, backslash paths won't match: C:\Users\... != c:/users/...
-            if filter_folder is not None:
-                # Normalize path: convert backslashes to forward slashes, lowercase on Windows
-                import platform
-                normalized_folder = filter_folder.replace('\\', '/')
-                if platform.system() == 'Windows':
-                    normalized_folder = normalized_folder.lower()
-                
-                photo_query_parts.append("AND pm.path LIKE ?")
-                photo_params.append(f"{normalized_folder}%")
+        # Run worker in thread pool
+        QThreadPool.globalInstance().start(worker)
 
-            # Add person/face filter (photos containing this person)
-            if filter_person is not None:
-                print(f"[GooglePhotosLayout] Filtering by person: {filter_person}")
-                photo_query_parts.append("""
-                    AND pm.path IN (
-                        SELECT DISTINCT image_path
-                        FROM face_crops
-                        WHERE project_id = ? AND branch_key = ?
-                    )
-                """)
-                photo_params.append(self.project_id)
-                photo_params.append(filter_person)
-            
-            # VIDEOS QUERY (mirror photo query structure)
-            # CRITICAL FIX: Use video_metadata.project_id directly (no project_videos table exists)
-            # Videos are stored in video_metadata with project_id column, matching photo_metadata pattern
-            video_query_parts = ["""
-                SELECT DISTINCT vm.path, vm.created_date as date_taken, vm.width, vm.height
-                FROM video_metadata vm
-                WHERE vm.project_id = ?
-            """]
-            video_params = [self.project_id]
-            
-            # Add year filter for videos
-            if filter_year is not None:
-                video_query_parts.append("AND strftime('%Y', vm.created_date) = ?")
-                video_params.append(str(filter_year))
-            
-            # Add month filter for videos
-            if filter_month is not None and filter_year is not None:
-                video_query_parts.append("AND strftime('%m', vm.created_date) = ?")
-                video_params.append(f"{filter_month:02d}")
-            
-            # BUG FIX: Add day filter for videos (requires year and month)
-            if filter_day is not None and filter_year is not None and filter_month is not None:
-                video_query_parts.append("AND strftime('%d', vm.created_date) = ?")
-                video_params.append(f"{filter_day:02d}")
-            
-            # Add folder filter for videos
-            # CRITICAL FIX: Normalize folder path (same as photos above)
-            if filter_folder is not None:
-                # Normalize path: convert backslashes to forward slashes, lowercase on Windows
-                import platform
-                normalized_folder = filter_folder.replace('\\', '/')
-                if platform.system() == 'Windows':
-                    normalized_folder = normalized_folder.lower()
-                
-                video_query_parts.append("AND vm.path LIKE ?")
-                video_params.append(f"{normalized_folder}%")
-            
-            # Videos don't have person filters (no face detection on videos)
-            
-            # COMBINE QUERIES WITH UNION ALL
-            photo_query = "\n".join(photo_query_parts)
-            video_query = "\n".join(video_query_parts)
-            
-            # Only include videos if NOT filtering by person (videos have no faces)
-            if filter_person is None:
-                query = f"{photo_query}\nUNION ALL\n{video_query}\nORDER BY date_taken DESC"
-                params = photo_params + video_params
-            else:
-                # Person filter: only photos (videos have no faces)
-                query = f"{photo_query}\nORDER BY date_taken DESC"
-                params = photo_params
-
-            # Debug: Log SQL query and parameters
-            print(f"[GooglePhotosLayout] 🔍 SQL Query:\n{query}")
-            print(f"[GooglePhotosLayout] 🔍 Parameters: {params}")
-            if filter_person is not None:
-                print(f"[GooglePhotosLayout] 🔍 Person filter: project_id={self.project_id}, branch_key={filter_person}")
-
-            # Use ReferenceDB's connection pattern with timeout protection
-            try:
-                with db._connect() as conn:
-                    # Set a timeout to prevent blocking if database is locked
-                    conn.execute("PRAGMA busy_timeout = 5000")  # 5 second timeout
-                    cur = conn.cursor()
-                    cur.execute(query, tuple(params))
-                    rows = cur.fetchall()
-
-                    # === PROGRESS: Photos found in database ===
-                    print(f"[GooglePhotosLayout] ✅ Found {len(rows)} photos in database")
-                    print(f"[GooglePhotosLayout] 📊 Database scan complete - preparing to load thumbnails...")
-
-                    # Update section counts: timeline and videos
-                    try:
-                        if hasattr(self, 'timeline_section'):
-                            self.timeline_section.update_count(len(rows))
-                        if hasattr(self, 'videos_section'):
-                            video_exts = {'.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v', '.3gp'}
-                            video_count = sum(1 for (p, _, _, _) in rows if os.path.splitext(p)[1].lower() in video_exts)
-                            self.videos_section.update_count(video_count)
-                    except Exception:
-                        pass
-
-                    # NOTE: Sidebar reload removed from here to fix "Cannot operate on a closed database" error
-                    # The sidebar should only reload when:
-                    # 1. Actually scanning new photos from disk (handled in scan completion callback)
-                    # 2. After face detection completes (handled in face detection callback)
-                    # 3. After renaming/merging people (handled in person actions)
-                    # NOT when just filtering existing photos (causes database connection conflicts)
-
-            except Exception as db_error:
-                print(f"[GooglePhotosLayout] ⚠️ Database query failed: {db_error}")
-                # Show error state but don't crash
-                error_label = QLabel(f"⚠️ Error loading photos\n\n{str(db_error)}\n\nTry clicking Refresh")
-                error_label.setAlignment(Qt.AlignCenter)
-                error_label.setStyleSheet("font-size: 11pt; color: #d32f2f; padding: 60px;")
-                self.timeline_layout.addWidget(error_label)
-                return
-
-            if not rows:
-                # PHASE 2 #7: Enhanced empty state with friendly illustration
-                empty_widget = self._create_empty_state(
-                    icon="📷",
-                    title="No photos yet",
-                    message="Your photo collection is waiting to be filled!\n\nClick 'Scan Repository' to import photos.",
-                    action_text="or drag and drop photos here"
-                )
-                self.timeline_layout.addWidget(empty_widget)
-                print(f"[GooglePhotosLayout] No photos found in project {self.project_id}")
-                return
-
-            # === PROGRESS: Grouping photos by date ===
-            print(f"[GooglePhotosLayout] 📅 Grouping {len(rows)} photos by date...")
-
-            # Group photos by date
-            photos_by_date = self._group_photos_by_date(rows)
-
-            print(f"[GooglePhotosLayout] ✅ Grouped into {len(photos_by_date)} date groups")
-
-            # Build sidebar sections
-            # CRITICAL: Sidebar should ALWAYS show ALL items (not filtered)
-            # Only the photo grid should be filtered, not the sidebar navigation
-            # NOTE: With AccordionSidebar, sections load their own data on demand
-            # No need to build sidebar trees here - accordion handles it internally
-            if filter_year is None and filter_month is None and filter_day is None and filter_folder is None and filter_person is None:
-                # Full rebuild - accordion sidebar refreshes automatically
-                pass
-            else:
-                # When filtering photos, accordion sidebar stays independent
-                pass
-
-            # Track all displayed paths for Shift+Ctrl multi-selection
-            self.all_displayed_paths = [photo[0] for photos_list in photos_by_date.values() for photo in photos_list]
-            print(f"[GooglePhotosLayout] Tracking {len(self.all_displayed_paths)} paths for multi-selection")
-
-            # === PROGRESS: Virtual scrolling setup ===
-            print(f"[GooglePhotosLayout] 🚀 Setting up virtual scrolling for {len(photos_by_date)} date groups...")
-
-            # QUICK WIN #3: Virtual scrolling - create date groups with lazy rendering
-            self.date_groups_metadata.clear()
-            self.date_group_widgets.clear()
-            self.rendered_date_groups.clear()
-
-            # Store metadata for all date groups
-            for index, (date_str, photos) in enumerate(photos_by_date.items()):
-                self.date_groups_metadata.append({
-                    'index': index,
-                    'date_str': date_str,
-                    'photos': photos,
-                    'thumb_size': thumb_size
-                })
-
-            # Create widgets (placeholders or rendered) for each group
-            for metadata in self.date_groups_metadata:
-                index = metadata['index']
-
-                # Render first N groups immediately, placeholders for the rest
-                if self.virtual_scroll_enabled and index >= self.initial_render_count:
-                    # Create placeholder for off-screen groups
-                    widget = self._create_date_group_placeholder(metadata)
-                else:
-                    # Render initial groups
-                    widget = self._create_date_group(
-                        metadata['date_str'],
-                        metadata['photos'],
-                        metadata['thumb_size']
-                    )
-                    self.rendered_date_groups.add(index)
-
-                self.date_group_widgets[index] = widget
-                self.timeline_layout.addWidget(widget)
-
-            # Add spacer at bottom
-            self.timeline_layout.addStretch()
-
-            # === PROGRESS: Rendering complete ===
-            if self.virtual_scroll_enabled:
-                print(f"[GooglePhotosLayout] ✅ Virtual scrolling enabled: {len(photos_by_date)} total date groups")
-                print(f"[GooglePhotosLayout] 📊 Rendered: {len(self.rendered_date_groups)} groups | Placeholders: {len(photos_by_date) - len(self.rendered_date_groups)} groups")
-            else:
-                print(f"[GooglePhotosLayout] ✅ Loaded {len(rows)} photos in {len(photos_by_date)} date groups")
-
-            print(f"[GooglePhotosLayout] 🖼️ Queued {self.thumbnail_load_count} thumbnails for loading (initial limit: {self.initial_load_limit})")
-            print(f"[GooglePhotosLayout] ✅ Photo loading complete! Thumbnails will load progressively.")
-
-        except Exception as e:
-            # CRITICAL: Catch ALL exceptions to prevent layout crashes
-            print(f"[GooglePhotosLayout] ⚠️ CRITICAL ERROR loading photos: {e}")
-            import traceback
-            traceback.print_exc()
-
-            # Show error state with actionable message
-            try:
-                error_label = QLabel(
-                    f"⚠️ Failed to load photos\n\n"
-                    f"Error: {str(e)}\n\n"
-                    f"Try:\n"
-                    f"• Click Refresh button\n"
-                    f"• Switch to Current layout and back\n"
-                    f"• Restart the application"
-                )
-                error_label.setAlignment(Qt.AlignCenter)
-                error_label.setStyleSheet("font-size: 11pt; color: #d32f2f; padding: 40px;")
-                self.timeline_layout.addWidget(error_label)
-            except:
-                pass  # Even error display failed - just log it
+        print(f"[GooglePhotosLayout] ✅ Photo load worker started (generation {current_gen})")
 
     def _group_photos_by_date(self, rows) -> Dict[str, List[Tuple]]:
         """
@@ -13312,6 +13085,99 @@ class GooglePhotosLayout(BaseLayout):
         error_label.setAlignment(Qt.AlignCenter)
         error_label.setStyleSheet("font-size: 11pt; color: #d32f2f; padding: 40px;")
         self.timeline_layout.addWidget(error_label)
+
+    def _display_photos_in_timeline(self, rows: list):
+        """
+        PHASE 2 Task 2.1: Display photos in timeline after async query completes.
+        This method contains the UI update logic extracted from _load_photos().
+
+        Args:
+            rows: List of (path, date_taken, width, height) tuples from database
+        """
+        if not rows:
+            # PHASE 2 #7: Enhanced empty state with friendly illustration
+            empty_widget = self._create_empty_state(
+                icon="📷",
+                title="No photos yet",
+                message="Your photo collection is waiting to be filled!\n\nClick 'Scan Repository' to import photos.",
+                action_text="or drag and drop photos here"
+            )
+            self.timeline_layout.addWidget(empty_widget)
+            print(f"[GooglePhotosLayout] No photos found in project {self.project_id}")
+            return
+
+        # === PROGRESS: Grouping photos by date ===
+        print(f"[GooglePhotosLayout] 📅 Grouping {len(rows)} photos by date...")
+
+        # Group photos by date
+        photos_by_date = self._group_photos_by_date(rows)
+
+        print(f"[GooglePhotosLayout] ✅ Grouped into {len(photos_by_date)} date groups")
+
+        # Update section counts: timeline and videos
+        try:
+            if hasattr(self, 'timeline_section'):
+                self.timeline_section.update_count(len(rows))
+            if hasattr(self, 'videos_section'):
+                video_exts = {'.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v', '.3gp'}
+                video_count = sum(1 for (p, _, _, _) in rows if os.path.splitext(p)[1].lower() in video_exts)
+                self.videos_section.update_count(video_count)
+        except Exception:
+            pass
+
+        # Track all displayed paths for Shift+Ctrl multi-selection
+        self.all_displayed_paths = [photo[0] for photos_list in photos_by_date.values() for photo in photos_list]
+        print(f"[GooglePhotosLayout] Tracking {len(self.all_displayed_paths)} paths for multi-selection")
+
+        # === PROGRESS: Virtual scrolling setup ===
+        print(f"[GooglePhotosLayout] 🚀 Setting up virtual scrolling for {len(photos_by_date)} date groups...")
+
+        # QUICK WIN #3: Virtual scrolling - create date groups with lazy rendering
+        self.date_groups_metadata.clear()
+        self.date_group_widgets.clear()
+        self.rendered_date_groups.clear()
+
+        # Store metadata for all date groups
+        for index, (date_str, photos) in enumerate(photos_by_date.items()):
+            self.date_groups_metadata.append({
+                'index': index,
+                'date_str': date_str,
+                'photos': photos,
+                'thumb_size': self.current_thumb_size
+            })
+
+        # Create widgets (placeholders or rendered) for each group
+        for metadata in self.date_groups_metadata:
+            index = metadata['index']
+
+            # Render first N groups immediately, placeholders for the rest
+            if self.virtual_scroll_enabled and index >= self.initial_render_count:
+                # Create placeholder for off-screen groups
+                widget = self._create_date_group_placeholder(metadata)
+            else:
+                # Render initial groups
+                widget = self._create_date_group(
+                    metadata['date_str'],
+                    metadata['photos'],
+                    metadata['thumb_size']
+                )
+                self.rendered_date_groups.add(index)
+
+            self.date_group_widgets[index] = widget
+            self.timeline_layout.addWidget(widget)
+
+        # Add spacer at bottom
+        self.timeline_layout.addStretch()
+
+        # === PROGRESS: Rendering complete ===
+        if self.virtual_scroll_enabled:
+            print(f"[GooglePhotosLayout] ✅ Virtual scrolling enabled: {len(photos_by_date)} total date groups")
+            print(f"[GooglePhotosLayout] 📊 Rendered: {len(self.rendered_date_groups)} groups | Placeholders: {len(photos_by_date) - len(self.rendered_date_groups)} groups")
+        else:
+            print(f"[GooglePhotosLayout] ✅ Loaded {len(rows)} photos in {len(photos_by_date)} date groups")
+
+        print(f"[GooglePhotosLayout] 🖼️ Queued {self.thumbnail_load_count} thumbnails for loading (initial limit: {self.initial_load_limit})")
+        print(f"[GooglePhotosLayout] ✅ Photo loading complete! Thumbnails will load progressively.")
 
     def _on_timeline_scrolled(self):
         """
