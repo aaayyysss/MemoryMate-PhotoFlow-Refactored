@@ -9069,8 +9069,23 @@ class GooglePhotosLayout(BaseLayout):
 
         print(f"[GooglePhotosLayout] 🔍 Starting async photo load (generation {current_gen})...")
 
-        # Show loading indicator
-        if self._loading_indicator:
+        # PHASE 2 Task 2.1: Recreate loading indicator if it was deleted during timeline clear
+        try:
+            if self._loading_indicator:
+                self._loading_indicator.show()
+        except RuntimeError:
+            # C++ object was deleted - recreate it
+            self._loading_indicator = QLabel("Loading photos...")
+            self._loading_indicator.setAlignment(Qt.AlignCenter)
+            self._loading_indicator.setStyleSheet("""
+                QLabel {
+                    font-size: 14pt;
+                    color: #666;
+                    padding: 60px;
+                    background: white;
+                }
+            """)
+            self.timeline_layout.addWidget(self._loading_indicator)
             self._loading_indicator.show()
 
         # CRITICAL: Check if we have a valid project
@@ -9081,8 +9096,11 @@ class GooglePhotosLayout(BaseLayout):
             empty_label.setStyleSheet("font-size: 12pt; color: #888; padding: 60px;")
             self.timeline_layout.addWidget(empty_label)
             print("[GooglePhotosLayout] ⚠️ No project selected")
-            if self._loading_indicator:
-                self._loading_indicator.hide()
+            try:
+                if self._loading_indicator:
+                    self._loading_indicator.hide()
+            except RuntimeError:
+                pass  # Already deleted
             return
 
         # Build filter params
@@ -13050,8 +13068,11 @@ class GooglePhotosLayout(BaseLayout):
         self._photo_load_in_progress = False
 
         # Hide loading indicator
-        if self._loading_indicator:
-            self._loading_indicator.hide()
+        try:
+            if self._loading_indicator:
+                self._loading_indicator.hide()
+        except RuntimeError:
+            pass  # Already deleted
 
         # Display photos in timeline
         self._display_photos_in_timeline(rows)
@@ -13070,8 +13091,11 @@ class GooglePhotosLayout(BaseLayout):
         self._photo_load_in_progress = False
 
         # Hide loading indicator
-        if self._loading_indicator:
-            self._loading_indicator.hide()
+        try:
+            if self._loading_indicator:
+                self._loading_indicator.hide()
+        except RuntimeError:
+            pass  # Already deleted
 
         # Show error in timeline
         error_label = QLabel(
