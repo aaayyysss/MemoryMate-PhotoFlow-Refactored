@@ -5,12 +5,10 @@
     "version": "2.0.0",
     "last_updated": "2025-12-05"
   },
-
   "app": {
     "name": "MemoryMate-PhotoFlow",
     "tagline": "Ihr Persönlicher Fotobibliotheks-Manager"
   },
-
   "common": {
     "ok": "OK",
     "cancel": "Abbrechen",
@@ -35,7 +33,6 @@
     "info": "Information",
     "loading": "Laden..."
   },
-
   "menu": {
     "file": "Datei",
     "file_scan": "Repository Scannen…",
@@ -77,7 +74,6 @@
     "help": "Hilfe",
     "help_about": "Über"
   },
-
   "context_menu": {
     "open": "Öffnen",
     "reveal_explorer": "Im Explorer Anzeigen",
@@ -101,7 +97,6 @@
     "scan_devices": "🔄 Nach Geräten Suchen",
     "create_project": "📁 Neues Projekt Erstellen…"
   },
-
   "toolbar": {
     "select_all": "Alles Auswählen",
     "clear": "Löschen",
@@ -130,7 +125,6 @@
     "this_week": "Diese Woche",
     "this_month": "Diesen Monat"
   },
-
   "sidebar": {
     "all_photos": "Alle Fotos",
     "favorites": "Favoriten",
@@ -168,7 +162,6 @@
     "size_large": "Groß (> 200 MB)",
     "by_date": "📅 Nach Datum",
     "search_videos": "🔍 Videos Suchen...",
-    "locations": "🌍 Orte",
     "no_faces_detected": "Keine Gesichter erkannt",
     "tabs_mode": "Tabs",
     "list_mode": "Liste",
@@ -191,14 +184,13 @@
     "month_sep": "Sep",
     "month_oct": "Okt",
     "month_nov": "Nov",
-    "month_dec": "Dez"
+    "month_dec": "Dez",
+    "header_people": "Personen"
   },
-
   "preferences": {
     "title": "Anwendungseinstellungen",
     "unsaved_changes": "Nicht Gespeicherte Änderungen",
     "unsaved_changes_message": "Sie haben nicht gespeicherte Änderungen. Möchten Sie diese vor dem Schließen speichern?",
-
     "nav": {
       "general": "Allgemein",
       "appearance": "Erscheinungsbild",
@@ -207,7 +199,6 @@
       "video": "Video",
       "advanced": "Erweitert"
     },
-
     "general": {
       "title": "Allgemeine Einstellungen",
       "skip_unchanged": "Unveränderte Fotos beim Scannen überspringen",
@@ -215,7 +206,6 @@
       "use_exif_dates": "EXIF-Daten für Fotodaten verwenden",
       "use_exif_dates_hint": "Datum/Zeit aus Foto-Metadaten extrahieren statt Dateiänderungsdatum"
     },
-
     "appearance": {
       "title": "Erscheinungsbild",
       "dark_mode": "Dunklen Modus aktivieren",
@@ -237,14 +227,12 @@
       "badge_position_bottom_left": "Unten Links",
       "badge_position_bottom_right": "Unten Rechts"
     },
-
     "scanning": {
       "title": "Scan-Einstellungen",
       "ignore_folders": "Ordner Ignorieren",
       "ignore_folders_hint": "Ein Muster pro Zeile (z.B. .git, node_modules, *_backup)",
       "ignore_folders_placeholder": "Geben Sie Ordnermuster zum Ignorieren ein...\nBeispiel:\n.git\nnode_modules\n*_backup"
     },
-
     "face_detection": {
       "title": "Gesichtserkennung",
       "model": "Erkennungsmodell",
@@ -256,7 +244,6 @@
       "min_face_size": "Minimale Gesichtsgröße",
       "min_face_size_hint": "Minimale Gesichtsgröße in Pixeln (kleiner = kleinere Gesichter erkennen)"
     },
-
     "cache": {
       "title": "Miniaturansichten-Cache",
       "enabled": "Miniaturansichten-Cache aktivieren",
@@ -270,7 +257,6 @@
       "clear_cache_confirm": "Sind Sie sicher, dass Sie den Miniaturansichten-Cache löschen möchten?",
       "cache_cleared": "Cache erfolgreich gelöscht"
     },
-
     "diagnostics": {
       "title": "Diagnose",
       "decoder_warnings": "Bild-Decoder-Warnungen anzeigen",
@@ -280,7 +266,6 @@
       "restart_recommended": "Neustart Empfohlen",
       "restart_recommended_message": "Die Unterdrückung von Decoder-Warnungen wird nach einem Neustart der Anwendung vollständig angewendet."
     },
-
     "gps_location": {
       "title": "GPS & Standort",
       "clustering": "Standort-Gruppierung",
@@ -294,7 +279,6 @@
       "cache_locations": "Ortsnamen zwischenspeichern (reduziert API-Aufrufe)",
       "cache_locations_hint": "Ortsnamen lokal speichern, um wiederholte API-Anfragen zu vermeiden"
     },
-
     "developer": {
       "title": "Entwickler-Tools",
       "db_debug": "Datenbank-Debug-Protokollierung aktivieren",
@@ -303,7 +287,6 @@
       "sql_queries_hint": "Alle SQL-Abfragen in der Konsolenausgabe anzeigen",
       "developer_mode_enabled": "🧩 Entwicklermodus: DB-Debug-Protokollierung aktiviert."
     },
-
     "metadata": {
       "title": "Metadaten-Extraktion",
       "workers": "Worker-Threads",
@@ -315,7 +298,6 @@
       "auto_run": "Automatisch nach Scan ausführen",
       "auto_run_hint": "Metadaten automatisch nach Abschluss des Foto-Scans extrahieren"
     },
-
     "video": {
       "title": "Video-Einstellungen",
       "ffprobe_path": "FFprobe-Pfad",
@@ -337,7 +319,6 @@
       "restart_required_message": "Die FFmpeg/FFprobe-Konfiguration wurde aktualisiert.\n\nDie Anwendung muss neu gestartet werden, damit die Änderungen wirksam werden.\nDie FFmpeg-Verfügbarkeitsprüfung wird beim nächsten Start ausgeführt.\n\nMöchten Sie jetzt neu starten?"
     }
   },
-
   "face_detection": {
     "detecting_faces": "Erkenne Gesichter...",
     "faces_found": "{count} Gesichter gefunden",
@@ -349,7 +330,6 @@
     "model_failed": "❌ Initialisierung von InsightFace fehlgeschlagen",
     "processing_photo": "Verarbeite {current} von {total}: {filename}"
   },
-
   "people": {
     "unnamed_person": "Unbenannte Person",
     "person_photos": "{count} Fotos",
@@ -360,7 +340,6 @@
     "delete_person": "Person Löschen",
     "delete_confirm": "Sind Sie sicher, dass Sie diese Person löschen möchten?"
   },
-
   "photo_grid": {
     "select_mode": "Auswahlmodus",
     "selected_count": "{count} ausgewählt",
@@ -371,7 +350,6 @@
     "set_favorite": "Zu Favoriten Hinzufügen",
     "unset_favorite": "Aus Favoriten Entfernen"
   },
-
   "scanning": {
     "select_folder": "Fotoordner Auswählen",
     "scanning_folder": "Scanne Ordner: {path}",
@@ -381,7 +359,6 @@
     "scan_failed": "Scan fehlgeschlagen: {error}",
     "scanning_repository": "📸 Scanne Repository: {folder} (inkrementell={incremental})"
   },
-
   "messages": {
     "scan_error": "Scan-Fehler",
     "scan_error_worker": "Fehler beim Erstellen des Scan-Workers:\n\n{error}",
@@ -435,7 +412,6 @@
     "starting_import": "Import wird gestartet...",
     "no_image": "Kein\nBild"
   },
-
   "status_bar": {
     "ready": "Bereit",
     "total_photos": "{count} Fotos",
@@ -445,7 +421,6 @@
     "metadata_extraction": "Extrahiere Metadaten...",
     "person_selected": "Ausgewählt: {name}"
   },
-
   "errors": {
     "database_error": "Datenbankfehler",
     "database_error_message": "Ein Fehler ist beim Zugriff auf die Datenbank aufgetreten:\n{error}",
@@ -458,7 +433,6 @@
     "unknown_error": "Unbekannter Fehler",
     "unknown_error_message": "Ein unerwarteter Fehler ist aufgetreten:\n{error}"
   },
-
   "about": {
     "title": "Über MemoryMate-PhotoFlow",
     "version": "Version {version}",
@@ -466,7 +440,6 @@
     "copyright": "Copyright © 2025",
     "license": "Lizenziert unter MIT-Lizenz"
   },
-
   "metadata": {
     "section_database": "Datenbank",
     "section_exif": "EXIF",
@@ -508,7 +481,6 @@
     "video_preview": "(Video)",
     "no_preview": "(Keine Vorschau)"
   },
-
   "search": {
     "placeholder_main": "Fotos durchsuchen (Dateiname, Pfad, Tags...)",
     "placeholder_filename": "z.B. urlaub, IMG_2024",
@@ -523,7 +495,6 @@
     "error_title": "Suchfehler",
     "error_message": "Suche fehlgeschlagen:\n{error}"
   },
-
   "status_messages": {
     "ready": "Bereit",
     "scan_cancel_requested": "🛑 Scan-Abbruch angefordert…",
@@ -538,7 +509,6 @@
     "backfill_complete_status": "Auffüllung abgeschlossen!",
     "no_log_yet": "(noch kein Protokoll)"
   },
-
   "message_boxes": {
     "startup_error_title": "Startfehler",
     "startup_error_message": "Initialisierung der App fehlgeschlagen.",
@@ -565,7 +535,6 @@
     "no_selection_title": "Keine Fotos Ausgewählt",
     "no_selection_message": "Bitte wählen Sie ein oder mehrere Fotos aus, bevor Sie ein Tag umschalten."
   },
-
   "dialogs": {
     "scanning_photos": "Fotos Scannen",
     "video_processing": "Video-Verarbeitung",
@@ -594,7 +563,6 @@
     "rename_person": "Person Umbenennen",
     "new_name": "Neuer Name:"
   },
-
   "google_layout": {
     "search_placeholder": "🔍 Fotos, Personen, Orte suchen...",
     "search_tooltip": "Fotos suchen (Strg+F)",
