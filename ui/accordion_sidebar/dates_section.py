@@ -68,6 +68,8 @@ class DatesSection(BaseSection):
                 # Get hierarchical date data: {year: {month: [days]}}
                 hier = {}
                 year_counts = {}
+                month_counts = {}
+                day_counts = {}
 
                 if hasattr(db, "get_date_hierarchy"):
                     hier = db.get_date_hierarchy(self.project_id) or {}
@@ -76,13 +78,34 @@ class DatesSection(BaseSection):
                     year_list = db.list_years_with_counts(self.project_id) or []
                     year_counts = {str(y): c for y, c in year_list}
 
+                # Derive month/day counts so the tree can show nested totals
+                for year, months in hier.items():
+                    for month, days in months.items():
+                        month_key = f"{int(month):02d}"
+                        ym = f"{year}-{month_key}"
+                        try:
+                            month_counts[ym] = db.count_for_month(year, month_key, self.project_id)
+                        except Exception:
+                            month_counts[ym] = len(days) if isinstance(days, list) else 0
+
+                        for day in days:
+                            try:
+                                day_counts[day] = db.count_for_day(day, self.project_id)
+                            except Exception:
+                                day_counts[day] = 0
+
                 logger.info(f"[DatesSection] Loaded {len(hier)} years (gen {current_gen})")
-                return {"hierarchy": hier, "year_counts": year_counts}
+                return {
+                    "hierarchy": hier,
+                    "year_counts": year_counts,
+                    "month_counts": month_counts,
+                    "day_counts": day_counts,
+                }
             except Exception as e:
                 error_msg = f"Error loading dates: {e}"
                 logger.error(f"[DatesSection] {error_msg}")
                 traceback.print_exc()
-                return {"hierarchy": {}, "year_counts": {}}
+                return {"hierarchy": {}, "year_counts": {}, "month_counts": {}, "day_counts": {}}
             finally:
                 if db:
                     try:
@@ -108,8 +131,11 @@ class DatesSection(BaseSection):
 
     def create_content_widget(self, data):
         """Create dates tree widget."""
+        data = data or {}
         hier = data.get("hierarchy", {})
         year_counts = data.get("year_counts", {})
+        month_counts = data.get("month_counts", {})
+        day_counts = data.get("day_counts", {})
 
         if not hier:
             placeholder = QLabel("No dates found")
@@ -159,7 +185,32 @@ class DatesSection(BaseSection):
             year_item.setForeground(1, QColor("#888888"))
             tree.addTopLevelItem(year_item)
 
-            # TODO: Add month and day levels (simplified for now)
+            months = hier.get(year, {}) or {}
+            for month in sorted(months.keys(), key=lambda m: int(m), reverse=True):
+                month_key = f"{int(month):02d}"
+                ym = f"{year}-{month_key}"
+                month_label = month_names[int(month)] if str(month).isdigit() else str(month)
+                month_count = month_counts.get(ym, 0)
+
+                month_item = QTreeWidgetItem([f"{month_label}", str(month_count)])
+                month_item.setData(0, Qt.UserRole, ym)
+                month_item.setTextAlignment(1, Qt.AlignRight | Qt.AlignVCenter)
+                month_item.setForeground(1, QColor("#888888"))
+                year_item.addChild(month_item)
+
+                days = months.get(month, []) or []
+                for day in sorted(days, reverse=True):
+                    day_count = day_counts.get(day, 0)
+                    try:
+                        day_label = day.split("-")[-1]
+                    except Exception:
+                        day_label = day
+
+                    day_item = QTreeWidgetItem([day_label, str(day_count)])
+                    day_item.setData(0, Qt.UserRole, day)
+                    day_item.setTextAlignment(1, Qt.AlignRight | Qt.AlignVCenter)
+                    day_item.setForeground(1, QColor("#888888"))
+                    month_item.addChild(day_item)
 
         # Connect double-click
         tree.itemDoubleClicked.connect(
