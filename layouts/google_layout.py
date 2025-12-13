@@ -8951,6 +8951,7 @@ class GooglePhotosLayout(BaseLayout):
         sidebar.selectDate.connect(self._on_accordion_date_clicked)
         sidebar.selectTag.connect(self._on_accordion_tag_clicked)
         sidebar.selectVideo.connect(self._on_accordion_video_clicked)  # NEW: Video filtering
+        sidebar.selectPerson.connect(self._on_accordion_person_clicked)
 
         # FIX: Connect section expansion signal to hide search suggestions popup
         sidebar.sectionExpanding.connect(self._on_accordion_section_expanding)
@@ -9705,6 +9706,29 @@ class GooglePhotosLayout(BaseLayout):
             filter_day=None,
             filter_folder=None,
             filter_person=branch_key
+        )
+
+    def _on_accordion_person_clicked(self, person_branch_key: str):
+        """
+        Handle people selection from the accordion sidebar.
+
+        Args:
+            person_branch_key: Identifier for the face cluster to filter by.
+        """
+        if not person_branch_key:
+            return
+
+        logger.info(
+            "[GooglePhotosLayout] Accordion person clicked: %s", person_branch_key
+        )
+
+        self._load_photos(
+            thumb_size=self.current_thumb_size,
+            filter_year=None,
+            filter_month=None,
+            filter_day=None,
+            filter_folder=None,
+            filter_person=person_branch_key,
         )
 
     def _on_accordion_video_clicked(self, filter_spec: str):
