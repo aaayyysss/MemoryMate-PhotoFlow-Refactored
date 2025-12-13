@@ -294,7 +294,7 @@ class AccordionSidebar(QWidget):
         # Normalize missing data so section builders never crash on None
         normalized_data = data
         if normalized_data is None:
-            if section_id in {"folders", "videos"}:
+            if section_id in {"folders", "videos", "people"}:
                 normalized_data = []
             elif section_id == "dates":
                 normalized_data = {}
