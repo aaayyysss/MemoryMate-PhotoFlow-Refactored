@@ -1,13 +1,15 @@
-C:\Users\suleimaa\Downloads\Photo-Sorter\09.45.01.01-Photo-App\MemoryMate-PhotoFlow-Refactored-main-07>python main_qt.py
+C:\Users\suleimaa\Downloads\Photo-Sorter\09.45.01.01-Photo-App\MemoryMate-PhotoFlow-Refactored-main-11>cd C:\Users\suleimaa\Downloads\Photo-Sorter\09.45.01.01-Photo-App\MemoryMate-PhotoFlow-Refactored-main-12
+
+C:\Users\suleimaa\Downloads\Photo-Sorter\09.45.01.01-Photo-App\MemoryMate-PhotoFlow-Refactored-main-12>python main_qt.py
 [Startup] pillow_heif available — HEIC/HEIF support enabled.
 🔇 Decoder warnings suppressed per settings.
 🔇 Decoder warnings suppressed (Qt, Pillow, ICC).
-✅ Loaded en translations from C:\Users\suleimaa\Downloads\Photo-Sorter\09.45.01.01-Photo-App\MemoryMate-PhotoFlow-Refactored-main-07\locales\en.json
+✅ Loaded en translations from C:\Users\suleimaa\Downloads\Photo-Sorter\09.45.01.01-Photo-App\MemoryMate-PhotoFlow-Refactored-main-12\locales\en.json
 🌍 Language initialized: en
-2025-12-12 13:39:03,067 [INFO] ================================================================================
-2025-12-12 13:39:03,068 [INFO] MemoryMate-PhotoFlow logging initialized (level=INFO)
-2025-12-12 13:39:03,068 [INFO] Log file: C:\Users\suleimaa\Downloads\Photo-Sorter\09.45.01.01-Photo-App\MemoryMate-PhotoFlow-Refactored-main-07\app_log.txt
-2025-12-12 13:39:03,068 [INFO] ================================================================================
+2025-12-12 14:37:57,065 [INFO] ================================================================================
+2025-12-12 14:37:57,065 [INFO] MemoryMate-PhotoFlow logging initialized (level=INFO)
+2025-12-12 14:37:57,071 [INFO] Log file: C:\Users\suleimaa\Downloads\Photo-Sorter\09.45.01.01-Photo-App\MemoryMate-PhotoFlow-Refactored-main-12\app_log.txt
+2025-12-12 14:37:57,073 [INFO] ================================================================================
 ============================================================
 SCREEN INFORMATION (DPI-Aware)
 ============================================================
@@ -20,16 +22,16 @@ Taskbar Height:  48px
 Adaptive Margin: 60px
 Adaptive Icons:  24px
 ============================================================
-2025-12-12 13:39:03,113 [INFO] Installed Qt message handler to suppress TIFF warnings
-2025-12-12 13:39:03,116 [INFO] Qt message handler installed to suppress TIFF warnings
+2025-12-12 14:37:57,131 [INFO] Installed Qt message handler to suppress TIFF warnings
+2025-12-12 14:37:57,131 [INFO] Qt message handler installed to suppress TIFF warnings
 [Main] Starting Qt event loop...
 [Startup] Database schema initialized successfully
-[Cache] {'entries': 0, 'size_mb': 0.0, 'path': 'C:\\Users\\suleimaa\\Downloads\\Photo-Sorter\\09.45.01.01-Photo-App\\MemoryMate-PhotoFlow-Refactored-main-07\\thumbnails_cache.db', 'last_updated': '2025-12-12 13:39'}
-2025-12-12 13:39:04,161 [INFO] SearchService initialized
+[Cache] {'entries': 0, 'size_mb': 0.0, 'path': 'C:\\Users\\suleimaa\\Downloads\\Photo-Sorter\\09.45.01.01-Photo-App\\MemoryMate-PhotoFlow-Refactored-main-12\\thumbnails_cache.db', 'last_updated': '2025-12-12 14:37'}
+2025-12-12 14:37:57,692 [INFO] SearchService initialized
 [Startup] SearchService initialized
-2025-12-12 13:39:04,167 [INFO] LRUCache initialized with capacity=200, max_memory=100.0MB
-2025-12-12 13:39:04,167 [INFO] ThumbnailService initialized (L1 capacity=200, max_memory=100.0MB, timeout=5.0s)
-2025-12-12 13:39:04,169 [INFO] Global ThumbnailService created with Phase 1B memory limits
+2025-12-12 14:37:57,696 [INFO] LRUCache initialized with capacity=200, max_memory=100.0MB
+2025-12-12 14:37:57,697 [INFO] ThumbnailService initialized (L1 capacity=200, max_memory=100.0MB, timeout=5.0s)
+2025-12-12 14:37:57,699 [INFO] Global ThumbnailService created with Phase 1B memory limits
 [Startup] ThumbnailService initialized
 🌍 Language switched to: en
 [MainWindow] Language loaded from settings: en
@@ -41,28 +43,28 @@ Adaptive Icons:  24px
 [MainWindow] Screen: 1920x1152 (DPI scale: 1.0x)
 [MainWindow] Window size: 1800x1032 with 60px margins
 🔇 Qt/Pillow decoder warnings silenced (per user settings).
-2025-12-12 13:39:04,218 [INFO] SearchService initialized
+2025-12-12 14:37:57,860 [INFO] SearchService initialized
 [Sidebar] Device auto-detection disabled (manual refresh only)
-[13:39:04.218] [Tabs] __init__ started
-[13:39:04.218] [Tabs] _build_tabs → building tab widgets
-[13:39:04.218] [Tabs] _on_tab_changed(idx=0)
-[13:39:04.218] [Tabs] _start_timeout idx=0 type=branches
-[13:39:04.218] [Tabs] _populate_tab(branches, idx=0, force=False)
-[13:39:04.218] [Tabs]   populated=False, loading=False
-[13:39:04.218] [Tabs]   Starting load for branches
-[13:39:04.218] [Tabs] _show_loading idx=0 label='Loading Branches…'
-[13:39:04.218] [Tabs] _clear_tab idx=0
-[13:39:04.232] [Tabs] _on_tab_changed → tab_type=branches
-[13:39:04.232] [Tabs] _build_tabs → added 6 tabs
-[13:39:04.232] [Tabs] __init__ completed
-[13:39:04.264] [AccordionSidebar] AccordionSidebar __init__ started
-[13:39:04.285] [AccordionSidebar] Building accordion sections...
-[13:39:04.302] [AccordionSidebar] Created 7 sections with nav buttons
-[13:39:04.302] [AccordionSidebar] Expanding section: people
-[13:39:04.302] [AccordionSidebar] Loading content for section: people
-[13:39:04.302] [AccordionSidebar] Loading People section...
-[13:39:04.302] [AccordionSidebar] ✓ Section expanded: people
-[13:39:04.312] [AccordionSidebar] AccordionSidebar __init__ completed
+[14:37:57.862] [Tabs] __init__ started
+[14:37:57.862] [Tabs] _build_tabs → building tab widgets
+[14:37:57.862] [Tabs] _on_tab_changed(idx=0)
+[14:37:57.862] [Tabs] _start_timeout idx=0 type=branches
+[14:37:57.862] [Tabs] _populate_tab(branches, idx=0, force=False)
+[14:37:57.862] [Tabs]   populated=False, loading=False
+[14:37:57.862] [Tabs]   Starting load for branches
+[14:37:57.862] [Tabs] _show_loading idx=0 label='Loading Branches…'
+[14:37:57.862] [Tabs] _clear_tab idx=0
+[14:37:57.862] [Tabs] _on_tab_changed → tab_type=branches
+[14:37:57.871] [Tabs] _build_tabs → added 6 tabs
+[14:37:57.871] [Tabs] __init__ completed
+[14:37:57.890] [AccordionSidebar] AccordionSidebar __init__ started
+[14:37:57.891] [AccordionSidebar] Building accordion sections...
+[14:37:57.904] [AccordionSidebar] Created 7 sections with nav buttons
+[14:37:57.905] [AccordionSidebar] Expanding section: people
+[14:37:57.905] [AccordionSidebar] Loading content for section: people
+[14:37:57.905] [AccordionSidebar] Loading People section...
+[14:37:57.905] [AccordionSidebar] ✓ Section expanded: people
+[14:37:57.905] [AccordionSidebar] AccordionSidebar __init__ completed
 [SidebarQt] _build_tree_model() called with project_id=None
 [Sidebar] Detaching old model from tree view
 [Sidebar] Pending events processed (skipped explicit processEvents)
@@ -73,7 +75,7 @@ Adaptive Icons:  24px
 [Sidebar] Found 0 videos in project None
 
 [Sidebar] ===== Initiating mobile device scan from sidebar =====
-[Sidebar] Database: <reference_db.ReferenceDB object at 0x00000261FFACA510>
+[Sidebar] Database: <reference_db.ReferenceDB object at 0x0000023E6563A510>
 [Sidebar] Register devices: True
 
 [DeviceScanner] ===== Starting device scan  =====
@@ -115,7 +117,7 @@ Adaptive Icons:  24px
 [Sidebar] No mobile devices detected - added help message
 [SidebarQt] switch_display_mode(list) - canceling old workers
 [SidebarQt] Hiding tabs controller and accordion
-[13:39:04.658] [Tabs] hide_tabs() called - canceling pending workers
+[14:37:58.517] [Tabs] hide_tabs() called - canceling pending workers
 [SidebarQt] Canceled tab/accordion workers via hide
 [SidebarQt] Clearing tree view selection before rebuild
 [SidebarQt] Showing tree view
@@ -130,11 +132,11 @@ Adaptive Icons:  24px
 [Sidebar] Found 0 videos in project None
 
 [Sidebar] ===== Initiating mobile device scan from sidebar =====
-[Sidebar] Database: <reference_db.ReferenceDB object at 0x00000261FFACA510>
+[Sidebar] Database: <reference_db.ReferenceDB object at 0x0000023E6563A510>
 [Sidebar] Register devices: True
 
 [DeviceScanner] ===== Using cached scan results =====
-[DeviceScanner] Cache age: 0.00s (TTL: 5.0s)
+[DeviceScanner] Cache age: 0.01s (TTL: 5.0s)
 [DeviceScanner] Cached devices: 0
 [DeviceScanner] ===== Scan complete (cached): 0 device(s) =====
 
@@ -150,10 +152,11 @@ Adaptive Icons:  24px
 [LayoutManager] 💾 Took ownership of original central widget: QWidget
 [GooglePhotosLayout] ⚠️ WARNING: No projects found! Please create a project first.
 [GooglePhotosLayout] Project selector populated with 0 projects (+ New Project option)
-2025-12-12 13:39:05,319 [INFO] [AccordionSidebar] Initializing with project_id=None
-2025-12-12 13:39:05,335 [INFO] [AccordionSidebar] Created 5 sections
-2025-12-12 13:39:05,335 [INFO] [AccordionSidebar] Expanding section: folders
-2025-12-12 13:39:05,335 [WARNING] [FoldersSection] No project_id set
+2025-12-12 14:37:59,110 [INFO] [AccordionSidebar] Initializing with project_id=None
+2025-12-12 14:37:59,129 [INFO] [AccordionSidebar] Created 5 sections
+2025-12-12 14:37:59,132 [INFO] [AccordionSidebar] Expanding section: folders
+2025-12-12 14:37:59,132 [WARNING] [FoldersSection] No project_id set
+2025-12-12 14:37:59,283 [INFO] [AccordionSidebar] Section folders loaded and displayed
 [GooglePhotosLayout] ✅ Scroll-triggered lazy loading enabled
 [GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px)...
 [GooglePhotosLayout] 🔄 Clearing existing timeline and thumbnail cache...
@@ -166,16 +169,15 @@ Adaptive Icons:  24px
 [LayoutManager] ✓ Switched to: Google Photos Style
 [Startup] Layout system initialized successfully
 [Startup] Database schema initialized successfully
-[13:39:05.368] [Tabs] _finish_branches (stale gen=1) — ignoring
-[13:39:05.368] [Tabs] _on_tab_changed(idx=0)
-[13:39:05.368] [Tabs] _start_timeout idx=0 type=branches
-[13:39:05.368] [Tabs] _populate_tab(branches, idx=0, force=False)
-[13:39:05.368] [Tabs]   populated=False, loading=False
-[13:39:05.368] [Tabs]   Starting load for branches
-[13:39:05.368] [Tabs] _show_loading idx=0 label='Loading Branches…'
-[13:39:05.368] [Tabs] _clear_tab idx=0
-[13:39:05.368] [Tabs] _on_tab_changed → tab_type=branches
-[13:39:05.368] [Tabs] _clear_tab idx=0
+[14:37:59.321] [Tabs] _finish_branches (stale gen=1) — ignoring
+[14:37:59.321] [Tabs] _on_tab_changed(idx=0)
+[14:37:59.321] [Tabs] _start_timeout idx=0 type=branches
+[14:37:59.321] [Tabs] _populate_tab(branches, idx=0, force=False)
+[14:37:59.321] [Tabs]   populated=False, loading=False
+[14:37:59.321] [Tabs]   Starting load for branches
+[14:37:59.321] [Tabs] _show_loading idx=0 label='Loading Branches…'
+[14:37:59.321] [Tabs] _clear_tab idx=0
+[14:37:59.337] [Tabs] _on_tab_changed → tab_type=branches
 
 [Breadcrumb] _update_breadcrumb() CALLED
 [Breadcrumb] Grid state: navigation_mode=None, project_id=None
@@ -191,9 +193,10 @@ Adaptive Icons:  24px
 [Breadcrumb] set_path() completed successfully
 [Breadcrumb] _update_breadcrumb() COMPLETED
 
+[14:37:59.344] [Tabs] _clear_tab idx=0
 ✅ FFmpeg and FFprobe detected (custom path: C:\ffmpeg\bin)
 ✅ InsightFace detected with buffalo_l models
-   Location: C:\Users\suleimaa\Downloads\Photo-Sorter\09.45.01.01-Photo-App\MemoryMate-PhotoFlow-Refactored-main-07\models\buffalo_l
+   Location: C:\Users\suleimaa\Downloads\Photo-Sorter\09.45.01.01-Photo-App\MemoryMate-PhotoFlow-Refactored-main-12\models\buffalo_l
 [GooglePhotosLayout] ➕ New Project option selected
 [GooglePhotosLayout] 🆕🆕🆕 CREATE PROJECT BUTTON CLICKED! 🆕🆕🆕
 [GooglePhotosLayout] ✓ Calling breadcrumb_nav._create_new_project()...
@@ -205,93 +208,93 @@ Adaptive Icons:  24px
 [MainWindow] Step 1: ✓ Set grid.project_id = 1
 [MainWindow] Step 2: Updating sidebar...
 [SidebarQt] set_project(1) called
-[13:39:18.056] [Tabs] refresh_all(force=True) called
-[13:39:18.056] [Tabs] refresh_all: key=branches, idx=0, force=True
-[13:39:18.056] [Tabs] _populate_tab(branches, idx=0, force=True)
-[13:39:18.056] [Tabs]   populated=True, loading=False
-[13:39:18.056] [Tabs]   Force refresh: removing branches from populated set
-[13:39:18.057] [Tabs]   Starting load for branches
-[13:39:18.057] [Tabs] _show_loading idx=0 label='Loading Branches…'
-[13:39:18.057] [Tabs] _clear_tab idx=0
-[13:39:18.057] [Tabs] refresh_all: key=folders, idx=1, force=True
-[13:39:18.057] [Tabs] _populate_tab(folders, idx=1, force=True)
-[13:39:18.057] [Tabs]   populated=False, loading=False
-[13:39:18.057] [Tabs]   Starting load for folders
-[13:39:18.057] [Tabs] _show_loading idx=1 label='Loading Folders…'
-[13:39:18.057] [Tabs] _clear_tab idx=1
-[13:39:18.062] [Tabs] refresh_all: key=dates, idx=2, force=True
-[13:39:18.062] [Tabs] _populate_tab(dates, idx=2, force=True)
-[13:39:18.062] [Tabs]   populated=False, loading=False
-[13:39:18.062] [Tabs]   Starting load for dates
-[13:39:18.062] [Tabs] _show_loading idx=2 label='Loading Dates…'
-[13:39:18.062] [Tabs] _clear_tab idx=2
-[13:39:18.062] [Tabs] _load_folders → got 0 rows for project_id=1
-[13:39:18.062] [Tabs] refresh_all: key=tags, idx=3, force=True
-[13:39:18.062] [Tabs] _populate_tab(tags, idx=3, force=True)
-[13:39:18.062] [Tabs]   populated=False, loading=False
-[13:39:18.062] [Tabs]   Starting load for tags
-[13:39:18.062] [Tabs] _show_loading idx=3 label='Loading Tags…'
-[13:39:18.062] [Tabs] _clear_tab idx=3
-[13:39:18.067] [Tabs] _load_dates → got hierarchy data for project_id=1
-[13:39:18.067] [Tabs] refresh_all: key=quick, idx=5, force=True
-[13:39:18.067] [Tabs] _populate_tab(quick, idx=5, force=True)
-[13:39:18.067] [Tabs]   populated=False, loading=False
-[13:39:18.067] [Tabs]   Starting load for quick
-[13:39:18.067] [Tabs] _show_loading idx=5 label='Loading Quick Dates…'
-[13:39:18.067] [Tabs] _clear_tab idx=5
-[13:39:18.069] [Tabs] _load_tags → got 0 rows for project_id=1
-[13:39:18.069] [Tabs] refresh_all(force=True) completed
-[13:39:18.069] [AccordionSidebar] Setting project: 1
-[13:39:18.069] [AccordionSidebar] Refreshing all sections (force=True)
-[13:39:18.069] [AccordionSidebar] Loading content for section: people
-[13:39:18.069] [AccordionSidebar] Loading People section...
-[13:39:18.069] [AccordionSidebar] People reload generation: 1
-[13:39:18.069] [AccordionSidebar] Loading content for section: dates
-[13:39:18.069] [AccordionSidebar] Loading Dates section...
-[13:39:18.069] [AccordionSidebar] Dates reload generation: 1
-[13:39:18.069] [Tabs] _load_quick → got 6 rows
-[13:39:18.069] [AccordionSidebar] Loading content for section: folders
-[13:39:18.069] [AccordionSidebar] Loading Folders section...
-[13:39:18.069] [AccordionSidebar] Loaded 0 face clusters (gen 1)
-[13:39:18.069] [AccordionSidebar] Folders reload generation: 1
-[13:39:18.069] [AccordionSidebar] Loading content for section: videos
-[13:39:18.072] [AccordionSidebar] Loading Videos section...
-[13:39:18.072] [AccordionSidebar] Videos reload generation: 1
-[13:39:18.072] [AccordionSidebar] Loaded 0 years of date data (gen 1)
-[13:39:18.072] [AccordionSidebar] Loading content for section: tags
-[13:39:18.072] [AccordionSidebar] Loaded 0 folders (gen 1)
-[13:39:18.072] [AccordionSidebar] Loading Tags section...
-[13:39:18.072] [AccordionSidebar] Loading content for section: branches
-[13:39:18.072] [AccordionSidebar] Loading Branches section...
-[13:39:18.072] [AccordionSidebar] Loaded 0 videos (gen 1)
-[13:39:18.072] [AccordionSidebar] Branches reload generation: 1
-[13:39:18.072] [AccordionSidebar] Loading content for section: quick
-[13:39:18.072] [AccordionSidebar] Loading Quick Dates section...
-[13:39:18.072] [AccordionSidebar] Quick dates reload generation: 1
-[13:39:18.072] [AccordionSidebar] Loaded 0 tags
+[14:38:10.688] [Tabs] refresh_all(force=True) called
+[14:38:10.688] [Tabs] refresh_all: key=branches, idx=0, force=True
+[14:38:10.688] [Tabs] _populate_tab(branches, idx=0, force=True)
+[14:38:10.688] [Tabs]   populated=True, loading=False
+[14:38:10.688] [Tabs]   Force refresh: removing branches from populated set
+[14:38:10.688] [Tabs]   Starting load for branches
+[14:38:10.688] [Tabs] _show_loading idx=0 label='Loading Branches…'
+[14:38:10.688] [Tabs] _clear_tab idx=0
+[14:38:10.688] [Tabs] refresh_all: key=folders, idx=1, force=True
+[14:38:10.688] [Tabs] _populate_tab(folders, idx=1, force=True)
+[14:38:10.688] [Tabs]   populated=False, loading=False
+[14:38:10.688] [Tabs]   Starting load for folders
+[14:38:10.688] [Tabs] _show_loading idx=1 label='Loading Folders…'
+[14:38:10.688] [Tabs] _clear_tab idx=1
+[14:38:10.688] [Tabs] refresh_all: key=dates, idx=2, force=True
+[14:38:10.688] [Tabs] _populate_tab(dates, idx=2, force=True)
+[14:38:10.688] [Tabs]   populated=False, loading=False
+[14:38:10.688] [Tabs]   Starting load for dates
+[14:38:10.688] [Tabs] _show_loading idx=2 label='Loading Dates…'
+[14:38:10.688] [Tabs] _clear_tab idx=2
+[14:38:10.697] [Tabs] _load_folders → got 0 rows for project_id=1
+[14:38:10.697] [Tabs] refresh_all: key=tags, idx=3, force=True
+[14:38:10.697] [Tabs] _populate_tab(tags, idx=3, force=True)
+[14:38:10.697] [Tabs]   populated=False, loading=False
+[14:38:10.697] [Tabs]   Starting load for tags
+[14:38:10.697] [Tabs] _show_loading idx=3 label='Loading Tags…'
+[14:38:10.697] [Tabs] _clear_tab idx=3
+[14:38:10.697] [Tabs] _load_dates → got hierarchy data for project_id=1
+[14:38:10.697] [Tabs] refresh_all: key=quick, idx=5, force=True
+[14:38:10.697] [Tabs] _populate_tab(quick, idx=5, force=True)
+[14:38:10.697] [Tabs]   populated=False, loading=False
+[14:38:10.697] [Tabs]   Starting load for quick
+[14:38:10.697] [Tabs] _show_loading idx=5 label='Loading Quick Dates…'
+[14:38:10.697] [Tabs] _clear_tab idx=5
+[14:38:10.702] [Tabs] _load_tags → got 0 rows for project_id=1
+[14:38:10.702] [Tabs] refresh_all(force=True) completed
+[14:38:10.702] [AccordionSidebar] Setting project: 1
+[14:38:10.702] [AccordionSidebar] Refreshing all sections (force=True)
+[14:38:10.702] [AccordionSidebar] Loading content for section: people
+[14:38:10.702] [AccordionSidebar] Loading People section...
+[14:38:10.702] [AccordionSidebar] People reload generation: 1
+[14:38:10.704] [AccordionSidebar] Loading content for section: dates
+[14:38:10.704] [AccordionSidebar] Loading Dates section...
+[14:38:10.704] [AccordionSidebar] Dates reload generation: 1
+[14:38:10.704] [Tabs] _load_quick → got 6 rows
+[14:38:10.705] [AccordionSidebar] Loading content for section: folders
+[14:38:10.705] [AccordionSidebar] Loading Folders section...
+[14:38:10.705] [AccordionSidebar] Folders reload generation: 1
+[14:38:10.705] [AccordionSidebar] Loaded 0 face clusters (gen 1)
+[14:38:10.705] [AccordionSidebar] Loading content for section: videos
+[14:38:10.705] [AccordionSidebar] Loading Videos section...
+[14:38:10.705] [AccordionSidebar] Videos reload generation: 1
+[14:38:10.705] [AccordionSidebar] Loaded 0 years of date data (gen 1)
+[14:38:10.705] [AccordionSidebar] Loading content for section: tags
+[14:38:10.705] [AccordionSidebar] Loading Tags section...
+[14:38:10.705] [AccordionSidebar] Loaded 0 folders (gen 1)
+[14:38:10.705] [AccordionSidebar] Loading content for section: branches
+[14:38:10.705] [AccordionSidebar] Loading Branches section...
+[14:38:10.707] [AccordionSidebar] Branches reload generation: 1
+[14:38:10.707] [AccordionSidebar] Loaded 0 videos (gen 1)
+[14:38:10.707] [AccordionSidebar] Loading content for section: quick
+[14:38:10.707] [AccordionSidebar] Loading Quick Dates section...
+[14:38:10.707] [AccordionSidebar] Quick dates reload generation: 1
+[14:38:10.707] [AccordionSidebar] Loaded 0 tags
 [SidebarQt] Calling reload() after setting project_id
 [SidebarQt] reload() blocked - widget not visible (likely being deleted)
 [MainWindow] Step 2: ✓ Sidebar.set_project(1) completed
 [MainWindow] Step 3: Reloading grid to 'all' branch...
-[13:39:18.072] [AccordionSidebar] Loaded 1 branches (gen 1)
 
 [GRID] >>>>>> set_branch('all') CALLED
+[14:38:10.707] [AccordionSidebar] Loaded 1 branches (gen 1)
 [GRID]   Current state: project_id=1, load_mode=None
 [GRID]   State updated, calling reload()...
 
 [GRID] ====== reload() CALLED ======
 [GRID] project_id=1, load_mode=branch
+[14:38:10.707] [AccordionSidebar] Loaded 6 quick date items (gen 1)
 [GRID] Step 1: Setting _reloading=True
-[13:39:18.072] [AccordionSidebar] Loaded 6 quick date items (gen 1)
 [GRID] Fetched tags for 0 paths, got 0 entries
-[13:39:18.072] [Tabs] _clear_tab idx=0
-[13:39:18.077] [Tabs] _clear_tab idx=1
-[13:39:18.077] [Tabs] _clear_tab idx=2
-[13:39:18.077] [Tabs] _finish_tags called: idx=3, gen=2, rows_count=0
-[13:39:18.077] [Tabs] _clear_tab idx=3
-[13:39:18.077] [Tabs] _clear_tab idx=5
-[13:39:18.444] [AccordionSidebar] ✓ Branches section loaded with 1 branches
-[13:39:18.511] [AccordionSidebar] ✓ Quick dates section loaded with 6 items
+[14:38:10.707] [Tabs] _clear_tab idx=0
+[14:38:10.707] [Tabs] _clear_tab idx=1
+[14:38:10.707] [Tabs] _clear_tab idx=2
+[14:38:10.707] [Tabs] _finish_tags called: idx=3, gen=2, rows_count=0
+[14:38:10.707] [Tabs] _clear_tab idx=3
+[14:38:10.707] [Tabs] _clear_tab idx=5
+[14:38:11.047] [AccordionSidebar] ✓ Branches section loaded with 1 branches
+[14:38:11.196] [AccordionSidebar] ✓ Quick dates section loaded with 6 items
 [GRID] Loaded 0 thumbnails.
 [GRID] Reloaded 0 thumbnails in None-mode (base=0)
 [GRID] Step 5: Emitting gridReloaded signal...
@@ -331,10 +334,11 @@ Adaptive Icons:  24px
 [GooglePhotosLayout] 🔍 Starting async photo load (generation 2)...
 [GooglePhotosLayout] ✅ Photo load worker started (generation 2)
 [GooglePhotosLayout] ✓ Layout refreshed after project creation
-2025-12-12 13:39:18,546 [INFO] Photo query complete: generation=2, current=2, rows=0
+2025-12-12 14:38:11,357 [INFO] Photo query complete: generation=2, current=2, rows=0
 [GooglePhotosLayout] No photos found in project 1
 [Schema] Database schema initialized successfully
 [ScanController] Creating ScanWorker for folder: C:/Users/suleimaa/Desktop/eigen
+2025-12-12 14:38:22,561 [INFO] DBWriter timer started in worker thread
 [ScanController] ScanWorker imported successfully
 [ScanController] QThread created
 [ScanController] ScanWorker instance created with project_id=1
@@ -342,2009 +346,794 @@ Adaptive Icons:  24px
 [ScanController] Signals connected
 [ScanController] Starting scan thread...
 [ScanController] thread.start() called
-2025-12-12 13:39:29,635 [INFO] DBWriter timer started in worker thread
-[ScanController] QThread STARTED!
 [ScanWorkerAdapter] run() method called!
+[ScanController] QThread STARTED!
 [ScanWorkerAdapter] folder=C:/Users/suleimaa/Desktop/eigen, incremental=True
-2025-12-12 13:39:29,651 [INFO] ScanWorkerAdapter starting scan of C:/Users/suleimaa/Desktop/eigen
+2025-12-12 14:38:22,659 [INFO] ScanWorkerAdapter starting scan of C:/Users/suleimaa/Desktop/eigen
 [ScanWorkerAdapter] Starting scan...
-2025-12-12 13:39:29,653 [INFO] Starting scan: C:/Users/suleimaa/Desktop/eigen (incremental=True)
-2025-12-12 13:39:29,681 [INFO] Discovered 108 candidate image files and 3 video files
-2025-12-12 13:39:29,683 [INFO] Loading existing metadata for incremental scan...
-2025-12-12 13:39:29,685 [INFO] ✓ Loaded 0 existing file records
+2025-12-12 14:38:22,659 [INFO] Starting scan: C:/Users/suleimaa/Desktop/eigen (incremental=True)
+2025-12-12 14:38:22,687 [INFO] Discovered 108 candidate image files and 3 video files
+2025-12-12 14:38:22,687 [INFO] Loading existing metadata for incremental scan...
+2025-12-12 14:38:22,687 [INFO] ✓ Loaded 0 existing file records
 [SCAN] Created single executor for scan (108 files)
 [SCAN] Starting file 1/108: 1.png
-2025-12-12 13:39:29,685 [INFO] [Scan] File 1/108: 1.png
+2025-12-12 14:38:22,687 [INFO] [Scan] File 1/108: 1.png
 [SCAN] _process_file started for: 1.png
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-12 13:39:29,685 [INFO] 📷 Processing: 1.png (1125.0 KB)
+2025-12-12 14:38:22,687 [INFO] 📷 Processing: 1.png (1125.0 KB)
 [SCAN] Processing: 1.png
 [SCAN] ✓ Metadata extracted: 1.png [w=1106, h=1027, date=None]
-2025-12-12 13:39:29,735 [INFO] [Scan] Metadata extracted successfully: 1.png [w=1106, h=1027, date=None]
+2025-12-12 14:38:22,737 [INFO] [Scan] Metadata extracted successfully: 1.png [w=1106, h=1027, date=None]
 [SCAN] Creating folder hierarchy for: 1.png
 [SCAN] ✓ Folder hierarchy created: folder_id=1
 [SCAN] ✓ File processed successfully: 1.png
 [SCAN] Added to batch: 1.png [batch size: 1/200]
 [SCAN] Starting file 2/108: 20241127-lastminutes.png
-2025-12-12 13:39:29,776 [INFO] [Scan] File 2/108: 20241127-lastminutes.png
+2025-12-12 14:38:22,770 [INFO] [Scan] File 2/108: 20241127-lastminutes.png
 [SCAN] _process_file started for: 20241127-lastminutes.png
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-12 13:39:29,776 [INFO] 📷 Processing: 20241127-lastminutes.png (65.2 KB)
+2025-12-12 14:38:22,777 [INFO] 📷 Processing: 20241127-lastminutes.png (65.2 KB)
 [SCAN] Processing: 20241127-lastminutes.png
 [SCAN] ✓ Metadata extracted: 20241127-lastminutes.png [w=1331, h=859, date=None]
-2025-12-12 13:39:29,776 [INFO] [Scan] Metadata extracted successfully: 20241127-lastminutes.png [w=1331, h=859, date=None]
+2025-12-12 14:38:22,783 [INFO] [Scan] Metadata extracted successfully: 20241127-lastminutes.png [w=1331, h=859, date=None]
 [SCAN] Creating folder hierarchy for: 20241127-lastminutes.png
 [SCAN] ✓ Folder hierarchy created: folder_id=1
 [SCAN] ✓ File processed successfully: 20241127-lastminutes.png
 [SCAN] Added to batch: 20241127-lastminutes.png [batch size: 2/200]
 [SCAN] Starting file 3/108: 20250122_G+D GenAI Cheat Sheet 1.jpg
-2025-12-12 13:39:29,791 [INFO] [Scan] File 3/108: 20250122_G+D GenAI Cheat Sheet 1.jpg
+2025-12-12 14:38:22,786 [INFO] [Scan] File 3/108: 20250122_G+D GenAI Cheat Sheet 1.jpg
 [SCAN] _process_file started for: 20250122_G+D GenAI Cheat Sheet 1.jpg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-12 13:39:29,791 [INFO] 📷 Processing: 20250122_G+D GenAI Cheat Sheet 1.jpg (270.8 KB)
+2025-12-12 14:38:22,786 [INFO] 📷 Processing: 20250122_G+D GenAI Cheat Sheet 1.jpg (270.8 KB)
 [SCAN] Processing: 20250122_G+D GenAI Cheat Sheet 1.jpg
 [SCAN] ✓ Metadata extracted: 20250122_G+D GenAI Cheat Sheet 1.jpg [w=794, h=1123, date=None]
-2025-12-12 13:39:29,806 [INFO] [Scan] Metadata extracted successfully: 20250122_G+D GenAI Cheat Sheet 1.jpg [w=794, h=1123, date=None]
+2025-12-12 14:38:22,798 [INFO] [Scan] Metadata extracted successfully: 20250122_G+D GenAI Cheat Sheet 1.jpg [w=794, h=1123, date=None]
 [SCAN] Creating folder hierarchy for: 20250122_G+D GenAI Cheat Sheet 1.jpg
 [SCAN] ✓ Folder hierarchy created: folder_id=1
 [SCAN] ✓ File processed successfully: 20250122_G+D GenAI Cheat Sheet 1.jpg
 [SCAN] Added to batch: 20250122_G+D GenAI Cheat Sheet 1.jpg [batch size: 3/200]
 [SCAN] Starting file 4/108: GvK28dRWkAAhxiK.jfif
-2025-12-12 13:39:29,806 [INFO] [Scan] File 4/108: GvK28dRWkAAhxiK.jfif
+2025-12-12 14:38:22,803 [INFO] [Scan] File 4/108: GvK28dRWkAAhxiK.jfif
 [SCAN] _process_file started for: GvK28dRWkAAhxiK.jfif
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-12 13:39:29,806 [INFO] 📷 Processing: GvK28dRWkAAhxiK.jfif (252.9 KB)
+2025-12-12 14:38:22,803 [INFO] 📷 Processing: GvK28dRWkAAhxiK.jfif (252.9 KB)
 [SCAN] Processing: GvK28dRWkAAhxiK.jfif
 [SCAN] ✓ Metadata extracted: GvK28dRWkAAhxiK.jfif [w=1024, h=1536, date=None]
-2025-12-12 13:39:29,840 [INFO] [Scan] Metadata extracted successfully: GvK28dRWkAAhxiK.jfif [w=1024, h=1536, date=None]
+2025-12-12 14:38:22,831 [INFO] [Scan] Metadata extracted successfully: GvK28dRWkAAhxiK.jfif [w=1024, h=1536, date=None]
 [SCAN] Creating folder hierarchy for: GvK28dRWkAAhxiK.jfif
 [SCAN] ✓ Folder hierarchy created: folder_id=1
 [SCAN] ✓ File processed successfully: GvK28dRWkAAhxiK.jfif
 [SCAN] Added to batch: GvK28dRWkAAhxiK.jfif [batch size: 4/200]
 [SCAN] Starting file 5/108: LufthansaInternet.png
-2025-12-12 13:39:29,851 [INFO] [Scan] File 5/108: LufthansaInternet.png
+2025-12-12 14:38:22,837 [INFO] [Scan] File 5/108: LufthansaInternet.png
 [SCAN] _process_file started for: LufthansaInternet.png
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-12 13:39:29,851 [INFO] 📷 Processing: LufthansaInternet.png (18.2 KB)
+2025-12-12 14:38:22,837 [INFO] 📷 Processing: LufthansaInternet.png (18.2 KB)
 [SCAN] Processing: LufthansaInternet.png
 [SCAN] ✓ Metadata extracted: LufthansaInternet.png [w=762, h=309, date=None]
-2025-12-12 13:39:29,854 [INFO] [Scan] Metadata extracted successfully: LufthansaInternet.png [w=762, h=309, date=None]
+2025-12-12 14:38:22,837 [INFO] [Scan] Metadata extracted successfully: LufthansaInternet.png [w=762, h=309, date=None]
 [SCAN] Creating folder hierarchy for: LufthansaInternet.png
 [SCAN] ✓ Folder hierarchy created: folder_id=1
 [SCAN] ✓ File processed successfully: LufthansaInternet.png
 [SCAN] Added to batch: LufthansaInternet.png [batch size: 5/200]
 [SCAN] Starting file 6/108: Schwartz.png
-2025-12-12 13:39:29,858 [INFO] [Scan] File 6/108: Schwartz.png
+2025-12-12 14:38:22,853 [INFO] [Scan] File 6/108: Schwartz.png
 [SCAN] _process_file started for: Schwartz.png
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-12 13:39:29,858 [INFO] 📷 Processing: Schwartz.png (4.3 KB)
+2025-12-12 14:38:22,853 [INFO] 📷 Processing: Schwartz.png (4.3 KB)
 [SCAN] Processing: Schwartz.png
 [SCAN] ✓ Metadata extracted: Schwartz.png [w=1440, h=1024, date=None]
-2025-12-12 13:39:29,868 [INFO] [Scan] Metadata extracted successfully: Schwartz.png [w=1440, h=1024, date=None]
+2025-12-12 14:38:22,853 [INFO] [Scan] Metadata extracted successfully: Schwartz.png [w=1440, h=1024, date=None]
 [SCAN] Creating folder hierarchy for: Schwartz.png
 [SCAN] ✓ Folder hierarchy created: folder_id=1
 [SCAN] ✓ File processed successfully: Schwartz.png
 [SCAN] Added to batch: Schwartz.png [batch size: 6/200]
 [SCAN] Starting file 7/108: SuleimanAmmar-BusinessCard.jpg
-2025-12-12 13:39:29,873 [INFO] [Scan] File 7/108: SuleimanAmmar-BusinessCard.jpg
+2025-12-12 14:38:22,870 [INFO] [Scan] File 7/108: SuleimanAmmar-BusinessCard.jpg
 [SCAN] _process_file started for: SuleimanAmmar-BusinessCard.jpg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-12 13:39:29,873 [INFO] 📷 Processing: SuleimanAmmar-BusinessCard.jpg (88.5 KB)
+2025-12-12 14:38:22,870 [INFO] 📷 Processing: SuleimanAmmar-BusinessCard.jpg (88.5 KB)
 [SCAN] Processing: SuleimanAmmar-BusinessCard.jpg
 [SCAN] ✓ Metadata extracted: SuleimanAmmar-BusinessCard.jpg [w=1600, h=1043, date=None]
-2025-12-12 13:39:29,887 [INFO] [Scan] Metadata extracted successfully: SuleimanAmmar-BusinessCard.jpg [w=1600, h=1043, date=None]
+2025-12-12 14:38:22,887 [INFO] [Scan] Metadata extracted successfully: SuleimanAmmar-BusinessCard.jpg [w=1600, h=1043, date=None]
 [SCAN] Creating folder hierarchy for: SuleimanAmmar-BusinessCard.jpg
 [SCAN] ✓ Folder hierarchy created: folder_id=1
 [SCAN] ✓ File processed successfully: SuleimanAmmar-BusinessCard.jpg
 [SCAN] Added to batch: SuleimanAmmar-BusinessCard.jpg [batch size: 7/200]
 [SCAN] Starting file 8/108: SuleimanAmmar-DEAusweis.jpg
-2025-12-12 13:39:29,897 [INFO] [Scan] File 8/108: SuleimanAmmar-DEAusweis.jpg
+2025-12-12 14:38:22,895 [INFO] [Scan] File 8/108: SuleimanAmmar-DEAusweis.jpg
 [SCAN] _process_file started for: SuleimanAmmar-DEAusweis.jpg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-12 13:39:29,897 [INFO] 📷 Processing: SuleimanAmmar-DEAusweis.jpg (284.7 KB)
+2025-12-12 14:38:22,895 [INFO] 📷 Processing: SuleimanAmmar-DEAusweis.jpg (284.7 KB)
 [SCAN] Processing: SuleimanAmmar-DEAusweis.jpg
 [SCAN] ✓ Metadata extracted: SuleimanAmmar-DEAusweis.jpg [w=826, h=1102, date=None]
-2025-12-12 13:39:29,901 [INFO] [Scan] Metadata extracted successfully: SuleimanAmmar-DEAusweis.jpg [w=826, h=1102, date=None]
+2025-12-12 14:38:22,903 [INFO] [Scan] Metadata extracted successfully: SuleimanAmmar-DEAusweis.jpg [w=826, h=1102, date=None]
 [SCAN] Creating folder hierarchy for: SuleimanAmmar-DEAusweis.jpg
 [SCAN] ✓ Folder hierarchy created: folder_id=1
 [SCAN] ✓ File processed successfully: SuleimanAmmar-DEAusweis.jpg
 [SCAN] Added to batch: SuleimanAmmar-DEAusweis.jpg [batch size: 8/200]
 [SCAN] Starting file 9/108: SYR.png
-2025-12-12 13:39:29,901 [INFO] [Scan] File 9/108: SYR.png
+2025-12-12 14:38:22,903 [INFO] [Scan] File 9/108: SYR.png
 [SCAN] _process_file started for: SYR.png
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-12 13:39:29,901 [INFO] 📷 Processing: SYR.png (295.3 KB)
+2025-12-12 14:38:22,903 [INFO] 📷 Processing: SYR.png (295.3 KB)
 [SCAN] Processing: SYR.png
 [SCAN] ✓ Metadata extracted: SYR.png [w=471, h=309, date=None]
-2025-12-12 13:39:29,918 [INFO] [Scan] Metadata extracted successfully: SYR.png [w=471, h=309, date=None]
+2025-12-12 14:38:22,915 [INFO] [Scan] Metadata extracted successfully: SYR.png [w=471, h=309, date=None]
 [SCAN] Creating folder hierarchy for: SYR.png
 [SCAN] ✓ Folder hierarchy created: folder_id=1
 [SCAN] ✓ File processed successfully: SYR.png
 [SCAN] Added to batch: SYR.png [batch size: 9/200]
 [SCAN] Starting file 10/108: AlyaYasserAhmad-Oman-ID-RS.jpg
-2025-12-12 13:39:29,918 [INFO] [Scan] File 10/108: AlyaYasserAhmad-Oman-ID-RS.jpg
+2025-12-12 14:38:22,920 [INFO] [Scan] File 10/108: AlyaYasserAhmad-Oman-ID-RS.jpg
 [SCAN] _process_file started for: AlyaYasserAhmad-Oman-ID-RS.jpg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-12 13:39:29,918 [INFO] 📷 Processing: AlyaYasserAhmad-Oman-ID-RS.jpg (155.6 KB)
+2025-12-12 14:38:22,927 [INFO] 📷 Processing: AlyaYasserAhmad-Oman-ID-RS.jpg (155.6 KB)
 [SCAN] Processing: AlyaYasserAhmad-Oman-ID-RS.jpg
 [SCAN] ✓ Metadata extracted: AlyaYasserAhmad-Oman-ID-RS.jpg [w=1280, h=781, date=None]
-2025-12-12 13:39:29,918 [INFO] [Scan] Metadata extracted successfully: AlyaYasserAhmad-Oman-ID-RS.jpg [w=1280, h=781, date=None]
+2025-12-12 14:38:22,928 [INFO] [Scan] Metadata extracted successfully: AlyaYasserAhmad-Oman-ID-RS.jpg [w=1280, h=781, date=None]
 [SCAN] Creating folder hierarchy for: AlyaYasserAhmad-Oman-ID-RS.jpg
 [SCAN] ✓ Folder hierarchy created: folder_id=11
 [SCAN] ✓ File processed successfully: AlyaYasserAhmad-Oman-ID-RS.jpg
 [SCAN] Added to batch: AlyaYasserAhmad-Oman-ID-RS.jpg [batch size: 10/200]
 [SCAN] Starting file 11/108: AlyaYasserAhmad-Oman-ID-VS.jpg
-2025-12-12 13:39:29,935 [INFO] [Scan] File 11/108: AlyaYasserAhmad-Oman-ID-VS.jpg
+2025-12-12 14:38:22,936 [INFO] [Scan] File 11/108: AlyaYasserAhmad-Oman-ID-VS.jpg
 [SCAN] _process_file started for: AlyaYasserAhmad-Oman-ID-VS.jpg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-12 13:39:29,935 [INFO] 📷 Processing: AlyaYasserAhmad-Oman-ID-VS.jpg (191.9 KB)
+2025-12-12 14:38:22,936 [INFO] 📷 Processing: AlyaYasserAhmad-Oman-ID-VS.jpg (191.9 KB)
 [SCAN] Processing: AlyaYasserAhmad-Oman-ID-VS.jpg
 [SCAN] ✓ Metadata extracted: AlyaYasserAhmad-Oman-ID-VS.jpg [w=1280, h=911, date=None]
-2025-12-12 13:39:29,935 [INFO] [Scan] Metadata extracted successfully: AlyaYasserAhmad-Oman-ID-VS.jpg [w=1280, h=911, date=None]
+2025-12-12 14:38:22,936 [INFO] [Scan] Metadata extracted successfully: AlyaYasserAhmad-Oman-ID-VS.jpg [w=1280, h=911, date=None]
 [SCAN] Creating folder hierarchy for: AlyaYasserAhmad-Oman-ID-VS.jpg
 [SCAN] ✓ Folder hierarchy created: folder_id=11
 [SCAN] ✓ File processed successfully: AlyaYasserAhmad-Oman-ID-VS.jpg
 [SCAN] Added to batch: AlyaYasserAhmad-Oman-ID-VS.jpg [batch size: 11/200]
 [SCAN] Starting file 12/108: MTCN-379-925-3908-AppScreenshot.jpeg
-2025-12-12 13:39:29,935 [INFO] [Scan] File 12/108: MTCN-379-925-3908-AppScreenshot.jpeg
+2025-12-12 14:38:22,944 [INFO] [Scan] File 12/108: MTCN-379-925-3908-AppScreenshot.jpeg
 [SCAN] _process_file started for: MTCN-379-925-3908-AppScreenshot.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-12 13:39:29,935 [INFO] 📷 Processing: MTCN-379-925-3908-AppScreenshot.jpeg (284.9 KB)
+2025-12-12 14:38:22,944 [INFO] 📷 Processing: MTCN-379-925-3908-AppScreenshot.jpeg (284.9 KB)
 [SCAN] Processing: MTCN-379-925-3908-AppScreenshot.jpeg
 [SCAN] ✓ Metadata extracted: MTCN-379-925-3908-AppScreenshot.jpeg [w=1170, h=2532, date=None]
-2025-12-12 13:39:29,950 [INFO] [Scan] Metadata extracted successfully: MTCN-379-925-3908-AppScreenshot.jpeg [w=1170, h=2532, date=None]
+2025-12-12 14:38:22,944 [INFO] [Scan] Metadata extracted successfully: MTCN-379-925-3908-AppScreenshot.jpeg [w=1170, h=2532, date=None]
 [SCAN] Creating folder hierarchy for: MTCN-379-925-3908-AppScreenshot.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=11
 [SCAN] ✓ File processed successfully: MTCN-379-925-3908-AppScreenshot.jpeg
 [SCAN] Added to batch: MTCN-379-925-3908-AppScreenshot.jpeg [batch size: 12/200]
 [SCAN] Starting file 13/108: MTCN-379-925-3908-AppScreenshot.jpg
-2025-12-12 13:39:29,957 [INFO] [Scan] File 13/108: MTCN-379-925-3908-AppScreenshot.jpg
+2025-12-12 14:38:22,958 [INFO] [Scan] File 13/108: MTCN-379-925-3908-AppScreenshot.jpg
 [SCAN] _process_file started for: MTCN-379-925-3908-AppScreenshot.jpg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-12 13:39:29,957 [INFO] 📷 Processing: MTCN-379-925-3908-AppScreenshot.jpg (284.9 KB)
+2025-12-12 14:38:22,958 [INFO] 📷 Processing: MTCN-379-925-3908-AppScreenshot.jpg (284.9 KB)
 [SCAN] Processing: MTCN-379-925-3908-AppScreenshot.jpg
 [SCAN] ✓ Metadata extracted: MTCN-379-925-3908-AppScreenshot.jpg [w=1170, h=2532, date=None]
-2025-12-12 13:39:29,957 [INFO] [Scan] Metadata extracted successfully: MTCN-379-925-3908-AppScreenshot.jpg [w=1170, h=2532, date=None]
+2025-12-12 14:38:22,958 [INFO] [Scan] Metadata extracted successfully: MTCN-379-925-3908-AppScreenshot.jpg [w=1170, h=2532, date=None]
 [SCAN] Creating folder hierarchy for: MTCN-379-925-3908-AppScreenshot.jpg
 [SCAN] ✓ Folder hierarchy created: folder_id=11
 [SCAN] ✓ File processed successfully: MTCN-379-925-3908-AppScreenshot.jpg
 [SCAN] Added to batch: MTCN-379-925-3908-AppScreenshot.jpg [batch size: 13/200]
 [SCAN] Starting file 14/108: MTCN-379-925-3908-AppScreenshot.png
-2025-12-12 13:39:29,968 [INFO] [Scan] File 14/108: MTCN-379-925-3908-AppScreenshot.png
+2025-12-12 14:38:22,975 [INFO] [Scan] File 14/108: MTCN-379-925-3908-AppScreenshot.png
 [SCAN] _process_file started for: MTCN-379-925-3908-AppScreenshot.png
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-12 13:39:29,968 [INFO] 📷 Processing: MTCN-379-925-3908-AppScreenshot.png (256.0 KB)
+2025-12-12 14:38:22,976 [INFO] 📷 Processing: MTCN-379-925-3908-AppScreenshot.png (256.0 KB)
 [SCAN] Processing: MTCN-379-925-3908-AppScreenshot.png
 [SCAN] ✓ Metadata extracted: MTCN-379-925-3908-AppScreenshot.png [w=1170, h=2532, date=None]
-2025-12-12 13:39:29,985 [INFO] [Scan] Metadata extracted successfully: MTCN-379-925-3908-AppScreenshot.png [w=1170, h=2532, date=None]
+2025-12-12 14:38:22,991 [INFO] [Scan] Metadata extracted successfully: MTCN-379-925-3908-AppScreenshot.png [w=1170, h=2532, date=None]
 [SCAN] Creating folder hierarchy for: MTCN-379-925-3908-AppScreenshot.png
 [SCAN] ✓ Folder hierarchy created: folder_id=11
 [SCAN] ✓ File processed successfully: MTCN-379-925-3908-AppScreenshot.png
 [SCAN] Added to batch: MTCN-379-925-3908-AppScreenshot.png [batch size: 14/200]
 [SCAN] Starting file 15/108: output_1746715144678.png
-2025-12-12 13:39:30,001 [INFO] [Scan] File 15/108: output_1746715144678.png
+2025-12-12 14:38:23,003 [INFO] [Scan] File 15/108: output_1746715144678.png
 [SCAN] _process_file started for: output_1746715144678.png
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-12 13:39:30,001 [INFO] 📷 Processing: output_1746715144678.png (1878.9 KB)
+2025-12-12 14:38:23,003 [INFO] 📷 Processing: output_1746715144678.png (1878.9 KB)
 [SCAN] Processing: output_1746715144678.png
 [SCAN] ✓ Metadata extracted: output_1746715144678.png [w=1024, h=1024, date=None]
-2025-12-12 13:39:30,045 [INFO] [Scan] Metadata extracted successfully: output_1746715144678.png [w=1024, h=1024, date=None]
+2025-12-12 14:38:23,039 [INFO] [Scan] Metadata extracted successfully: output_1746715144678.png [w=1024, h=1024, date=None]
 [SCAN] Creating folder hierarchy for: output_1746715144678.png
 [SCAN] ✓ Folder hierarchy created: folder_id=11
 [SCAN] ✓ File processed successfully: output_1746715144678.png
 [SCAN] Added to batch: output_1746715144678.png [batch size: 15/200]
 [SCAN] Starting file 16/108: output_1746715748246.png
-2025-12-12 13:39:30,051 [INFO] [Scan] File 16/108: output_1746715748246.png
+2025-12-12 14:38:23,055 [INFO] [Scan] File 16/108: output_1746715748246.png
 [SCAN] _process_file started for: output_1746715748246.png
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-12 13:39:30,051 [INFO] 📷 Processing: output_1746715748246.png (2364.7 KB)
+2025-12-12 14:38:23,055 [INFO] 📷 Processing: output_1746715748246.png (2364.7 KB)
 [SCAN] Processing: output_1746715748246.png
 [SCAN] ✓ Metadata extracted: output_1746715748246.png [w=1024, h=1024, date=None]
-2025-12-12 13:39:30,081 [INFO] [Scan] Metadata extracted successfully: output_1746715748246.png [w=1024, h=1024, date=None]
+2025-12-12 14:38:23,087 [INFO] [Scan] Metadata extracted successfully: output_1746715748246.png [w=1024, h=1024, date=None]
 [SCAN] Creating folder hierarchy for: output_1746715748246.png
 [SCAN] ✓ Folder hierarchy created: folder_id=11
 [SCAN] ✓ File processed successfully: output_1746715748246.png
 [SCAN] Added to batch: output_1746715748246.png [batch size: 16/200]
 [SCAN] Starting file 17/108: Sailor Moon-f48d04b5-89cd-49fa-aa16-94c2437dfa3b.png
-2025-12-12 13:39:30,092 [INFO] [Scan] File 17/108: Sailor Moon-f48d04b5-89cd-49fa-aa16-94c2437dfa3b.png
+2025-12-12 14:38:23,098 [INFO] [Scan] File 17/108: Sailor Moon-f48d04b5-89cd-49fa-aa16-94c2437dfa3b.png
 [SCAN] _process_file started for: Sailor Moon-f48d04b5-89cd-49fa-aa16-94c2437dfa3b.png
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-12 13:39:30,095 [INFO] 📷 Processing: Sailor Moon-f48d04b5-89cd-49fa-aa16-94c2437dfa3b.png (1928.2 KB)
+2025-12-12 14:38:23,098 [INFO] 📷 Processing: Sailor Moon-f48d04b5-89cd-49fa-aa16-94c2437dfa3b.png (1928.2 KB)
 [SCAN] Processing: Sailor Moon-f48d04b5-89cd-49fa-aa16-94c2437dfa3b.png
 [SCAN] ✓ Metadata extracted: Sailor Moon-f48d04b5-89cd-49fa-aa16-94c2437dfa3b.png [w=1024, h=1024, date=None]
-2025-12-12 13:39:30,124 [INFO] [Scan] Metadata extracted successfully: Sailor Moon-f48d04b5-89cd-49fa-aa16-94c2437dfa3b.png [w=1024, h=1024, date=None]
+2025-12-12 14:38:23,135 [INFO] [Scan] Metadata extracted successfully: Sailor Moon-f48d04b5-89cd-49fa-aa16-94c2437dfa3b.png [w=1024, h=1024, date=None]
 [SCAN] Creating folder hierarchy for: Sailor Moon-f48d04b5-89cd-49fa-aa16-94c2437dfa3b.png
 [SCAN] ✓ Folder hierarchy created: folder_id=11
 [SCAN] ✓ File processed successfully: Sailor Moon-f48d04b5-89cd-49fa-aa16-94c2437dfa3b.png
 [SCAN] Added to batch: Sailor Moon-f48d04b5-89cd-49fa-aa16-94c2437dfa3b.png [batch size: 17/200]
 [SCAN] Starting file 18/108: PHOTO-2025-04-08-11-45-49.jpg
-2025-12-12 13:39:30,140 [INFO] [Scan] File 18/108: PHOTO-2025-04-08-11-45-49.jpg
+2025-12-12 14:38:23,136 [INFO] [Scan] File 18/108: PHOTO-2025-04-08-11-45-49.jpg
 [SCAN] _process_file started for: PHOTO-2025-04-08-11-45-49.jpg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-12 13:39:30,140 [INFO] 📷 Processing: PHOTO-2025-04-08-11-45-49.jpg (191.9 KB)
+2025-12-12 14:38:23,136 [INFO] 📷 Processing: PHOTO-2025-04-08-11-45-49.jpg (191.9 KB)
 [SCAN] Processing: PHOTO-2025-04-08-11-45-49.jpg
 [SCAN] ✓ Metadata extracted: PHOTO-2025-04-08-11-45-49.jpg [w=1280, h=911, date=None]
-2025-12-12 13:39:30,140 [INFO] [Scan] Metadata extracted successfully: PHOTO-2025-04-08-11-45-49.jpg [w=1280, h=911, date=None]
+2025-12-12 14:38:23,136 [INFO] [Scan] Metadata extracted successfully: PHOTO-2025-04-08-11-45-49.jpg [w=1280, h=911, date=None]
 [SCAN] Creating folder hierarchy for: PHOTO-2025-04-08-11-45-49.jpg
 [SCAN] ✓ Folder hierarchy created: folder_id=28
 [SCAN] ✓ File processed successfully: PHOTO-2025-04-08-11-45-49.jpg
 [SCAN] Added to batch: PHOTO-2025-04-08-11-45-49.jpg [batch size: 18/200]
 [SCAN] Starting file 19/108: PHOTO-2025-04-08-11-46-14.jpg
-2025-12-12 13:39:30,157 [INFO] [Scan] File 19/108: PHOTO-2025-04-08-11-46-14.jpg
+2025-12-12 14:38:23,153 [INFO] [Scan] File 19/108: PHOTO-2025-04-08-11-46-14.jpg
 [SCAN] _process_file started for: PHOTO-2025-04-08-11-46-14.jpg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-12 13:39:30,157 [INFO] 📷 Processing: PHOTO-2025-04-08-11-46-14.jpg (155.6 KB)
+2025-12-12 14:38:23,153 [INFO] 📷 Processing: PHOTO-2025-04-08-11-46-14.jpg (155.6 KB)
 [SCAN] Processing: PHOTO-2025-04-08-11-46-14.jpg
 [SCAN] ✓ Metadata extracted: PHOTO-2025-04-08-11-46-14.jpg [w=1280, h=781, date=None]
-2025-12-12 13:39:30,157 [INFO] [Scan] Metadata extracted successfully: PHOTO-2025-04-08-11-46-14.jpg [w=1280, h=781, date=None]
+2025-12-12 14:38:23,153 [INFO] [Scan] Metadata extracted successfully: PHOTO-2025-04-08-11-46-14.jpg [w=1280, h=781, date=None]
 [SCAN] Creating folder hierarchy for: PHOTO-2025-04-08-11-46-14.jpg
 [SCAN] ✓ Folder hierarchy created: folder_id=28
 [SCAN] ✓ File processed successfully: PHOTO-2025-04-08-11-46-14.jpg
 [SCAN] Added to batch: PHOTO-2025-04-08-11-46-14.jpg [batch size: 19/200]
 [SCAN] Starting file 20/108: 04-FrauAlyaAhmad--PHOTO.jpg
-2025-12-12 13:39:30,172 [INFO] [Scan] File 20/108: 04-FrauAlyaAhmad--PHOTO.jpg
+2025-12-12 14:38:23,176 [INFO] [Scan] File 20/108: 04-FrauAlyaAhmad--PHOTO.jpg
 [SCAN] _process_file started for: 04-FrauAlyaAhmad--PHOTO.jpg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-12 13:39:30,173 [INFO] 📷 Processing: 04-FrauAlyaAhmad--PHOTO.jpg (181.4 KB)
+2025-12-12 14:38:23,176 [INFO] 📷 Processing: 04-FrauAlyaAhmad--PHOTO.jpg (181.4 KB)
 [SCAN] Processing: 04-FrauAlyaAhmad--PHOTO.jpg
 [SCAN] ✓ Metadata extracted: 04-FrauAlyaAhmad--PHOTO.jpg [w=965, h=1240, date=None]
-2025-12-12 13:39:30,173 [INFO] [Scan] Metadata extracted successfully: 04-FrauAlyaAhmad--PHOTO.jpg [w=965, h=1240, date=None]
+2025-12-12 14:38:23,187 [INFO] [Scan] Metadata extracted successfully: 04-FrauAlyaAhmad--PHOTO.jpg [w=965, h=1240, date=None]
 [SCAN] Creating folder hierarchy for: 04-FrauAlyaAhmad--PHOTO.jpg
 [SCAN] ✓ Folder hierarchy created: folder_id=34
 [SCAN] ✓ File processed successfully: 04-FrauAlyaAhmad--PHOTO.jpg
 [SCAN] Added to batch: 04-FrauAlyaAhmad--PHOTO.jpg [batch size: 20/200]
-2025-12-12 13:39:30,197 [WARNING] Qt: QObject::startTimer: Timers cannot be started from another thread
+2025-12-12 14:38:23,203 [WARNING] Qt: QObject::startTimer: Timers cannot be started from another thread
 [SCAN] Starting file 21/108: Alya.jpeg
-2025-12-12 13:39:30,202 [INFO] [Scan] File 21/108: Alya.jpeg
+2025-12-12 14:38:23,203 [INFO] [Scan] File 21/108: Alya.jpeg
 [SCAN] _process_file started for: Alya.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-12 13:39:30,202 [INFO] 📷 Processing: Alya.jpeg (181.4 KB)
+2025-12-12 14:38:23,203 [INFO] 📷 Processing: Alya.jpeg (181.4 KB)
 [SCAN] Processing: Alya.jpeg
 [SCAN] ✓ Metadata extracted: Alya.jpeg [w=965, h=1240, date=None]
-2025-12-12 13:39:30,210 [INFO] [Scan] Metadata extracted successfully: Alya.jpeg [w=965, h=1240, date=None]
+2025-12-12 14:38:23,220 [INFO] [Scan] Metadata extracted successfully: Alya.jpeg [w=965, h=1240, date=None]
 [SCAN] Creating folder hierarchy for: Alya.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=38
 [SCAN] ✓ File processed successfully: Alya.jpeg
 [SCAN] Added to batch: Alya.jpeg [batch size: 21/200]
 [SCAN] Starting file 22/108: Alya1.jpeg
-2025-12-12 13:39:30,219 [INFO] [Scan] File 22/108: Alya1.jpeg
+2025-12-12 14:38:23,247 [INFO] [Scan] File 22/108: Alya1.jpeg
 [SCAN] _process_file started for: Alya1.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-12 13:39:30,235 [INFO] 📷 Processing: Alya1.jpeg (345.2 KB)
+2025-12-12 14:38:23,247 [INFO] 📷 Processing: Alya1.jpeg (345.2 KB)
 [SCAN] Processing: Alya1.jpeg
 [SCAN] ✓ Metadata extracted: Alya1.jpeg [w=1440, h=2560, date=2024-11-29 17:04:13]
-2025-12-12 13:39:30,268 [INFO] [Scan] Metadata extracted successfully: Alya1.jpeg [w=1440, h=2560, date=2024-11-29 17:04:13]
+2025-12-12 14:38:23,279 [INFO] [Scan] Metadata extracted successfully: Alya1.jpeg [w=1440, h=2560, date=2024-11-29 17:04:13]
 [SCAN] Creating folder hierarchy for: Alya1.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=38
 [SCAN] ✓ File processed successfully: Alya1.jpeg
 [SCAN] Added to batch: Alya1.jpeg [batch size: 22/200]
 [SCAN] Starting file 23/108: Alya2.jpeg
-2025-12-12 13:39:30,285 [INFO] [Scan] File 23/108: Alya2.jpeg
+2025-12-12 14:38:23,298 [INFO] [Scan] File 23/108: Alya2.jpeg
 [SCAN] _process_file started for: Alya2.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-12 13:39:30,289 [INFO] 📷 Processing: Alya2.jpeg (107.1 KB)
+2025-12-12 14:38:23,298 [INFO] 📷 Processing: Alya2.jpeg (107.1 KB)
 [SCAN] Processing: Alya2.jpeg
 [SCAN] ✓ Metadata extracted: Alya2.jpeg [w=611, h=1081, date=2024-12-02 17:24:41]
-2025-12-12 13:39:30,289 [INFO] [Scan] Metadata extracted successfully: Alya2.jpeg [w=611, h=1081, date=2024-12-02 17:24:41]
+2025-12-12 14:38:23,298 [INFO] [Scan] Metadata extracted successfully: Alya2.jpeg [w=611, h=1081, date=2024-12-02 17:24:41]
 [SCAN] Creating folder hierarchy for: Alya2.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=38
 [SCAN] ✓ File processed successfully: Alya2.jpeg
 [SCAN] Added to batch: Alya2.jpeg [batch size: 23/200]
 [SCAN] Starting file 24/108: Alya3.jpeg
-2025-12-12 13:39:30,302 [INFO] [Scan] File 24/108: Alya3.jpeg
+2025-12-12 14:38:23,320 [INFO] [Scan] File 24/108: Alya3.jpeg
 [SCAN] _process_file started for: Alya3.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-12 13:39:30,302 [INFO] 📷 Processing: Alya3.jpeg (97.2 KB)
+2025-12-12 14:38:23,320 [INFO] 📷 Processing: Alya3.jpeg (97.2 KB)
 [SCAN] Processing: Alya3.jpeg
 [SCAN] ✓ Metadata extracted: Alya3.jpeg [w=1080, h=810, date=None]
-2025-12-12 13:39:30,302 [INFO] [Scan] Metadata extracted successfully: Alya3.jpeg [w=1080, h=810, date=None]
+2025-12-12 14:38:23,320 [INFO] [Scan] Metadata extracted successfully: Alya3.jpeg [w=1080, h=810, date=None]
 [SCAN] Creating folder hierarchy for: Alya3.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=38
 [SCAN] ✓ File processed successfully: Alya3.jpeg
 [SCAN] Added to batch: Alya3.jpeg [batch size: 24/200]
 [SCAN] Starting file 25/108: Alya4.jpeg
-2025-12-12 13:39:30,324 [INFO] [Scan] File 25/108: Alya4.jpeg
+2025-12-12 14:38:23,337 [INFO] [Scan] File 25/108: Alya4.jpeg
 [SCAN] _process_file started for: Alya4.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-12 13:39:30,324 [INFO] 📷 Processing: Alya4.jpeg (110.6 KB)
+2025-12-12 14:38:23,337 [INFO] 📷 Processing: Alya4.jpeg (110.6 KB)
 [SCAN] Processing: Alya4.jpeg
 [SCAN] ✓ Metadata extracted: Alya4.jpeg [w=960, h=1280, date=None]
-2025-12-12 13:39:30,324 [INFO] [Scan] Metadata extracted successfully: Alya4.jpeg [w=960, h=1280, date=None]
+2025-12-12 14:38:23,337 [INFO] [Scan] Metadata extracted successfully: Alya4.jpeg [w=960, h=1280, date=None]
 [SCAN] Creating folder hierarchy for: Alya4.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=38
 [SCAN] ✓ File processed successfully: Alya4.jpeg
 [SCAN] Added to batch: Alya4.jpeg [batch size: 25/200]
 [SCAN] Starting file 26/108: Alya5.jpeg
-2025-12-12 13:39:30,335 [INFO] [Scan] File 26/108: Alya5.jpeg
+2025-12-12 14:38:23,359 [INFO] [Scan] File 26/108: Alya5.jpeg
 [SCAN] _process_file started for: Alya5.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-12 13:39:30,335 [INFO] 📷 Processing: Alya5.jpeg (2497.7 KB)
+2025-12-12 14:38:23,359 [INFO] 📷 Processing: Alya5.jpeg (2497.7 KB)
 [SCAN] Processing: Alya5.jpeg
 [SCAN] ✓ Metadata extracted: Alya5.jpeg [w=3024, h=4032, date=2025-07-04 18:50:52]
-2025-12-12 13:39:30,351 [INFO] [Scan] Metadata extracted successfully: Alya5.jpeg [w=3024, h=4032, date=2025-07-04 18:50:52]
+2025-12-12 14:38:23,376 [INFO] [Scan] Metadata extracted successfully: Alya5.jpeg [w=3024, h=4032, date=2025-07-04 18:50:52]
 [SCAN] Creating folder hierarchy for: Alya5.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=38
 [SCAN] ✓ File processed successfully: Alya5.jpeg
 [SCAN] Added to batch: Alya5.jpeg [batch size: 26/200]
 [SCAN] Starting file 27/108: Alya6.jpeg
-2025-12-12 13:39:30,368 [INFO] [Scan] File 27/108: Alya6.jpeg
+2025-12-12 14:38:23,391 [INFO] [Scan] File 27/108: Alya6.jpeg
 [SCAN] _process_file started for: Alya6.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-12 13:39:30,368 [INFO] 📷 Processing: Alya6.jpeg (832.9 KB)
+2025-12-12 14:38:23,391 [INFO] 📷 Processing: Alya6.jpeg (832.9 KB)
 [SCAN] Processing: Alya6.jpeg
 [SCAN] ✓ Metadata extracted: Alya6.jpeg [w=2062, h=3664, date=2025-07-06 18:26:39]
-2025-12-12 13:39:30,378 [INFO] [Scan] Metadata extracted successfully: Alya6.jpeg [w=2062, h=3664, date=2025-07-06 18:26:39]
+2025-12-12 14:38:23,407 [INFO] [Scan] Metadata extracted successfully: Alya6.jpeg [w=2062, h=3664, date=2025-07-06 18:26:39]
 [SCAN] Creating folder hierarchy for: Alya6.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=38
 [SCAN] ✓ File processed successfully: Alya6.jpeg
 [SCAN] Added to batch: Alya6.jpeg [batch size: 27/200]
 [SCAN] Starting file 28/108: Ammar-Ref.png
-2025-12-12 13:39:30,402 [INFO] [Scan] File 28/108: Ammar-Ref.png
+2025-12-12 14:38:23,436 [INFO] [Scan] File 28/108: Ammar-Ref.png
 [SCAN] _process_file started for: Ammar-Ref.png
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-12 13:39:30,402 [INFO] 📷 Processing: Ammar-Ref.png (800.9 KB)
+2025-12-12 14:38:23,436 [INFO] 📷 Processing: Ammar-Ref.png (800.9 KB)
 [SCAN] Processing: Ammar-Ref.png
 [SCAN] ✓ Metadata extracted: Ammar-Ref.png [w=1140, h=791, date=None]
-2025-12-12 13:39:30,410 [INFO] [Scan] Metadata extracted successfully: Ammar-Ref.png [w=1140, h=791, date=None]
+2025-12-12 14:38:23,439 [INFO] [Scan] Metadata extracted successfully: Ammar-Ref.png [w=1140, h=791, date=None]
 [SCAN] Creating folder hierarchy for: Ammar-Ref.png
 [SCAN] ✓ Folder hierarchy created: folder_id=38
 [SCAN] ✓ File processed successfully: Ammar-Ref.png
 [SCAN] Added to batch: Ammar-Ref.png [batch size: 28/200]
 [SCAN] Starting file 29/108: Ammar1.jpeg
-2025-12-12 13:39:30,425 [INFO] [Scan] File 29/108: Ammar1.jpeg
+2025-12-12 14:38:23,470 [INFO] [Scan] File 29/108: Ammar1.jpeg
 [SCAN] _process_file started for: Ammar1.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-12 13:39:30,425 [INFO] 📷 Processing: Ammar1.jpeg (4364.7 KB)
+2025-12-12 14:38:23,470 [INFO] 📷 Processing: Ammar1.jpeg (4364.7 KB)
 [SCAN] Processing: Ammar1.jpeg
 [SCAN] ✓ Metadata extracted: Ammar1.jpeg [w=4032, h=3024, date=2024-08-11 19:40:38]
-2025-12-12 13:39:30,440 [INFO] [Scan] Metadata extracted successfully: Ammar1.jpeg [w=4032, h=3024, date=2024-08-11 19:40:38]
+2025-12-12 14:38:23,486 [INFO] [Scan] Metadata extracted successfully: Ammar1.jpeg [w=4032, h=3024, date=2024-08-11 19:40:38]
 [SCAN] Creating folder hierarchy for: Ammar1.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=38
 [SCAN] ✓ File processed successfully: Ammar1.jpeg
 [SCAN] Added to batch: Ammar1.jpeg [batch size: 29/200]
 [SCAN] Starting file 30/108: Ammar2.jpeg
-2025-12-12 13:39:30,457 [INFO] [Scan] File 30/108: Ammar2.jpeg
+2025-12-12 14:38:23,503 [INFO] [Scan] File 30/108: Ammar2.jpeg
 [SCAN] _process_file started for: Ammar2.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-12 13:39:30,468 [INFO] 📷 Processing: Ammar2.jpeg (2338.2 KB)
+2025-12-12 14:38:23,503 [INFO] 📷 Processing: Ammar2.jpeg (2338.2 KB)
 [SCAN] Processing: Ammar2.jpeg
 [SCAN] ✓ Metadata extracted: Ammar2.jpeg [w=3664, h=2062, date=2024-11-18 14:17:43]
-2025-12-12 13:39:30,468 [INFO] [Scan] Metadata extracted successfully: Ammar2.jpeg [w=3664, h=2062, date=2024-11-18 14:17:43]
+2025-12-12 14:38:23,503 [INFO] [Scan] Metadata extracted successfully: Ammar2.jpeg [w=3664, h=2062, date=2024-11-18 14:17:43]
 [SCAN] Creating folder hierarchy for: Ammar2.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=38
 [SCAN] ✓ File processed successfully: Ammar2.jpeg
 [SCAN] Added to batch: Ammar2.jpeg [batch size: 30/200]
 [SCAN] Starting file 31/108: Ammar3.jpeg
-2025-12-12 13:39:30,485 [INFO] [Scan] File 31/108: Ammar3.jpeg
+2025-12-12 14:38:23,520 [INFO] [Scan] File 31/108: Ammar3.jpeg
 [SCAN] _process_file started for: Ammar3.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-12 13:39:30,488 [INFO] 📷 Processing: Ammar3.jpeg (171.0 KB)
+2025-12-12 14:38:23,520 [INFO] 📷 Processing: Ammar3.jpeg (171.0 KB)
 [SCAN] Processing: Ammar3.jpeg
 [SCAN] ✓ Metadata extracted: Ammar3.jpeg [w=1284, h=2778, date=None]
-2025-12-12 13:39:30,497 [INFO] [Scan] Metadata extracted successfully: Ammar3.jpeg [w=1284, h=2778, date=None]
+2025-12-12 14:38:23,537 [INFO] [Scan] Metadata extracted successfully: Ammar3.jpeg [w=1284, h=2778, date=None]
 [SCAN] Creating folder hierarchy for: Ammar3.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=38
 [SCAN] ✓ File processed successfully: Ammar3.jpeg
 [SCAN] Added to batch: Ammar3.jpeg [batch size: 31/200]
 [SCAN] Starting file 32/108: IMG_6850.jpeg
-2025-12-12 13:39:30,506 [INFO] [Scan] File 32/108: IMG_6850.jpeg
+2025-12-12 14:38:23,553 [INFO] [Scan] File 32/108: IMG_6850.jpeg
 [SCAN] _process_file started for: IMG_6850.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-12 13:39:30,518 [INFO] 📷 Processing: IMG_6850.jpeg (3027.8 KB)
+2025-12-12 14:38:23,553 [INFO] 📷 Processing: IMG_6850.jpeg (3027.8 KB)
 [SCAN] Processing: IMG_6850.jpeg
 [SCAN] ✓ Metadata extracted: IMG_6850.jpeg [w=4032, h=3024, date=2025-07-30 23:19:46]
-2025-12-12 13:39:30,523 [INFO] [Scan] Metadata extracted successfully: IMG_6850.jpeg [w=4032, h=3024, date=2025-07-30 23:19:46]
+2025-12-12 14:38:23,570 [INFO] [Scan] Metadata extracted successfully: IMG_6850.jpeg [w=4032, h=3024, date=2025-07-30 23:19:46]
 [SCAN] Creating folder hierarchy for: IMG_6850.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=38
 [SCAN] ✓ File processed successfully: IMG_6850.jpeg
 [SCAN] Added to batch: IMG_6850.jpeg [batch size: 32/200]
 [SCAN] Starting file 33/108: IMG_6934.jpeg
-2025-12-12 13:39:30,552 [INFO] [Scan] File 33/108: IMG_6934.jpeg
+2025-12-12 14:38:23,586 [INFO] [Scan] File 33/108: IMG_6934.jpeg
 [SCAN] _process_file started for: IMG_6934.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-12 13:39:30,553 [INFO] 📷 Processing: IMG_6934.jpeg (3919.0 KB)
+2025-12-12 14:38:23,586 [INFO] 📷 Processing: IMG_6934.jpeg (3919.0 KB)
 [SCAN] Processing: IMG_6934.jpeg
 [SCAN] ✓ Metadata extracted: IMG_6934.jpeg [w=4032, h=3024, date=2025-08-09 09:01:16]
-2025-12-12 13:39:30,558 [INFO] [Scan] Metadata extracted successfully: IMG_6934.jpeg [w=4032, h=3024, date=2025-08-09 09:01:16]
+2025-12-12 14:38:23,599 [INFO] [Scan] Metadata extracted successfully: IMG_6934.jpeg [w=4032, h=3024, date=2025-08-09 09:01:16]
 [SCAN] Creating folder hierarchy for: IMG_6934.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=38
 [SCAN] ✓ File processed successfully: IMG_6934.jpeg
 [SCAN] Added to batch: IMG_6934.jpeg [batch size: 33/200]
 [SCAN] Starting file 34/108: IMG_6995.jpeg
-2025-12-12 13:39:30,585 [INFO] [Scan] File 34/108: IMG_6995.jpeg
+2025-12-12 14:38:23,620 [INFO] [Scan] File 34/108: IMG_6995.jpeg
 [SCAN] _process_file started for: IMG_6995.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-12 13:39:30,585 [INFO] 📷 Processing: IMG_6995.jpeg (4005.3 KB)
+2025-12-12 14:38:23,620 [INFO] 📷 Processing: IMG_6995.jpeg (4005.3 KB)
 [SCAN] Processing: IMG_6995.jpeg
 [SCAN] ✓ Metadata extracted: IMG_6995.jpeg [w=4032, h=3024, date=2025-08-09 13:06:18]
-2025-12-12 13:39:30,598 [INFO] [Scan] Metadata extracted successfully: IMG_6995.jpeg [w=4032, h=3024, date=2025-08-09 13:06:18]
+2025-12-12 14:38:23,636 [INFO] [Scan] Metadata extracted successfully: IMG_6995.jpeg [w=4032, h=3024, date=2025-08-09 13:06:18]
 [SCAN] Creating folder hierarchy for: IMG_6995.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=38
 [SCAN] ✓ File processed successfully: IMG_6995.jpeg
 [SCAN] Added to batch: IMG_6995.jpeg [batch size: 34/200]
 [SCAN] Starting file 35/108: Ammar-Ref.png
-2025-12-12 13:39:30,614 [INFO] [Scan] File 35/108: Ammar-Ref.png
+2025-12-12 14:38:23,653 [INFO] [Scan] File 35/108: Ammar-Ref.png
 [SCAN] _process_file started for: Ammar-Ref.png
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-12 13:39:30,614 [INFO] 📷 Processing: Ammar-Ref.png (800.9 KB)
+2025-12-12 14:38:23,653 [INFO] 📷 Processing: Ammar-Ref.png (800.9 KB)
 [SCAN] Processing: Ammar-Ref.png
 [SCAN] ✓ Metadata extracted: Ammar-Ref.png [w=1140, h=791, date=None]
-2025-12-12 13:39:30,618 [INFO] [Scan] Metadata extracted successfully: Ammar-Ref.png [w=1140, h=791, date=None]
+2025-12-12 14:38:23,670 [INFO] [Scan] Metadata extracted successfully: Ammar-Ref.png [w=1140, h=791, date=None]
 [SCAN] Creating folder hierarchy for: Ammar-Ref.png
 [SCAN] ✓ Folder hierarchy created: folder_id=95
 [SCAN] ✓ File processed successfully: Ammar-Ref.png
 [SCAN] Added to batch: Ammar-Ref.png [batch size: 35/200]
 [SCAN] Starting file 36/108: Alya.jpeg
-2025-12-12 13:39:30,654 [INFO] [Scan] File 36/108: Alya.jpeg
+2025-12-12 14:38:23,695 [INFO] [Scan] File 36/108: Alya.jpeg
 [SCAN] _process_file started for: Alya.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-12 13:39:30,656 [INFO] 📷 Processing: Alya.jpeg (181.4 KB)
+2025-12-12 14:38:23,695 [INFO] 📷 Processing: Alya.jpeg (181.4 KB)
 [SCAN] Processing: Alya.jpeg
 [SCAN] ✓ Metadata extracted: Alya.jpeg [w=965, h=1240, date=None]
-2025-12-12 13:39:30,664 [INFO] [Scan] Metadata extracted successfully: Alya.jpeg [w=965, h=1240, date=None]
+2025-12-12 14:38:23,703 [INFO] [Scan] Metadata extracted successfully: Alya.jpeg [w=965, h=1240, date=None]
 [SCAN] Creating folder hierarchy for: Alya.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=100
 [SCAN] ✓ File processed successfully: Alya.jpeg
 [SCAN] Added to batch: Alya.jpeg [batch size: 36/200]
 [SCAN] Starting file 37/108: 1.jpg
-2025-12-12 13:39:30,685 [INFO] [Scan] File 37/108: 1.jpg
+2025-12-12 14:38:23,727 [INFO] [Scan] File 37/108: 1.jpg
 [SCAN] _process_file started for: 1.jpg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-12 13:39:30,685 [INFO] 📷 Processing: 1.jpg (199.0 KB)
+2025-12-12 14:38:23,727 [INFO] 📷 Processing: 1.jpg (199.0 KB)
 [SCAN] Processing: 1.jpg
 [SCAN] ✓ Metadata extracted: 1.jpg [w=1080, h=1305, date=None]
-2025-12-12 13:39:30,694 [INFO] [Scan] Metadata extracted successfully: 1.jpg [w=1080, h=1305, date=None]
+2025-12-12 14:38:23,727 [INFO] [Scan] Metadata extracted successfully: 1.jpg [w=1080, h=1305, date=None]
 [SCAN] Creating folder hierarchy for: 1.jpg
 [SCAN] ✓ Folder hierarchy created: folder_id=102
 [SCAN] ✓ File processed successfully: 1.jpg
 [SCAN] Added to batch: 1.jpg [batch size: 37/200]
 [SCAN] Starting file 38/108: 2.jpg
-2025-12-12 13:39:30,701 [INFO] [Scan] File 38/108: 2.jpg
+2025-12-12 14:38:23,743 [INFO] [Scan] File 38/108: 2.jpg
 [SCAN] _process_file started for: 2.jpg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-12 13:39:30,701 [INFO] 📷 Processing: 2.jpg (212.0 KB)
+2025-12-12 14:38:23,743 [INFO] 📷 Processing: 2.jpg (212.0 KB)
 [SCAN] Processing: 2.jpg
 [SCAN] ✓ Metadata extracted: 2.jpg [w=1080, h=1276, date=None]
-2025-12-12 13:39:30,701 [INFO] [Scan] Metadata extracted successfully: 2.jpg [w=1080, h=1276, date=None]
+2025-12-12 14:38:23,743 [INFO] [Scan] Metadata extracted successfully: 2.jpg [w=1080, h=1276, date=None]
 [SCAN] Creating folder hierarchy for: 2.jpg
 [SCAN] ✓ Folder hierarchy created: folder_id=102
 [SCAN] ✓ File processed successfully: 2.jpg
 [SCAN] Added to batch: 2.jpg [batch size: 38/200]
 [SCAN] Starting file 39/108: 3.jpg
-2025-12-12 13:39:30,710 [INFO] [Scan] File 39/108: 3.jpg
+2025-12-12 14:38:23,753 [INFO] [Scan] File 39/108: 3.jpg
 [SCAN] _process_file started for: 3.jpg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-12 13:39:30,710 [INFO] 📷 Processing: 3.jpg (208.7 KB)
+2025-12-12 14:38:23,753 [INFO] 📷 Processing: 3.jpg (208.7 KB)
 [SCAN] Processing: 3.jpg
 [SCAN] ✓ Metadata extracted: 3.jpg [w=1080, h=1313, date=None]
-2025-12-12 13:39:30,718 [INFO] [Scan] Metadata extracted successfully: 3.jpg [w=1080, h=1313, date=None]
+2025-12-12 14:38:23,759 [INFO] [Scan] Metadata extracted successfully: 3.jpg [w=1080, h=1313, date=None]
 [SCAN] Creating folder hierarchy for: 3.jpg
 [SCAN] ✓ Folder hierarchy created: folder_id=102
 [SCAN] ✓ File processed successfully: 3.jpg
 [SCAN] Added to batch: 3.jpg [batch size: 39/200]
 [SCAN] Starting file 40/108: 4.jpg
-2025-12-12 13:39:30,726 [INFO] [Scan] File 40/108: 4.jpg
+2025-12-12 14:38:23,759 [INFO] [Scan] File 40/108: 4.jpg
 [SCAN] _process_file started for: 4.jpg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-12 13:39:30,726 [INFO] 📷 Processing: 4.jpg (204.6 KB)
+2025-12-12 14:38:23,770 [INFO] 📷 Processing: 4.jpg (204.6 KB)
 [SCAN] Processing: 4.jpg
 [SCAN] ✓ Metadata extracted: 4.jpg [w=1080, h=1267, date=None]
-2025-12-12 13:39:30,726 [INFO] [Scan] Metadata extracted successfully: 4.jpg [w=1080, h=1267, date=None]
+2025-12-12 14:38:23,770 [INFO] [Scan] Metadata extracted successfully: 4.jpg [w=1080, h=1267, date=None]
 [SCAN] Creating folder hierarchy for: 4.jpg
 [SCAN] ✓ Folder hierarchy created: folder_id=102
 [SCAN] ✓ File processed successfully: 4.jpg
 [SCAN] Added to batch: 4.jpg [batch size: 40/200]
 [SCAN] Starting file 41/108: 5.jpg
-2025-12-12 13:39:30,740 [INFO] [Scan] File 41/108: 5.jpg
+2025-12-12 14:38:23,776 [INFO] [Scan] File 41/108: 5.jpg
 [SCAN] _process_file started for: 5.jpg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-12 13:39:30,740 [INFO] 📷 Processing: 5.jpg (211.8 KB)
+2025-12-12 14:38:23,776 [INFO] 📷 Processing: 5.jpg (211.8 KB)
 [SCAN] Processing: 5.jpg
 [SCAN] ✓ Metadata extracted: 5.jpg [w=1080, h=1290, date=None]
-2025-12-12 13:39:30,742 [INFO] [Scan] Metadata extracted successfully: 5.jpg [w=1080, h=1290, date=None]
+2025-12-12 14:38:23,776 [INFO] [Scan] Metadata extracted successfully: 5.jpg [w=1080, h=1290, date=None]
 [SCAN] Creating folder hierarchy for: 5.jpg
 [SCAN] ✓ Folder hierarchy created: folder_id=102
 [SCAN] ✓ File processed successfully: 5.jpg
 [SCAN] Added to batch: 5.jpg [batch size: 41/200]
 [SCAN] Starting file 42/108: 6.jpg
-2025-12-12 13:39:30,752 [INFO] [Scan] File 42/108: 6.jpg
+2025-12-12 14:38:23,791 [INFO] [Scan] File 42/108: 6.jpg
 [SCAN] _process_file started for: 6.jpg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-12 13:39:30,752 [INFO] 📷 Processing: 6.jpg (202.6 KB)
+2025-12-12 14:38:23,791 [INFO] 📷 Processing: 6.jpg (202.6 KB)
 [SCAN] Processing: 6.jpg
 [SCAN] ✓ Metadata extracted: 6.jpg [w=1080, h=1298, date=None]
-2025-12-12 13:39:30,758 [INFO] [Scan] Metadata extracted successfully: 6.jpg [w=1080, h=1298, date=None]
+2025-12-12 14:38:23,791 [INFO] [Scan] Metadata extracted successfully: 6.jpg [w=1080, h=1298, date=None]
 [SCAN] Creating folder hierarchy for: 6.jpg
 [SCAN] ✓ Folder hierarchy created: folder_id=102
 [SCAN] ✓ File processed successfully: 6.jpg
 [SCAN] Added to batch: 6.jpg [batch size: 42/200]
 [SCAN] Starting file 43/108: 7.jpg
-2025-12-12 13:39:30,768 [INFO] [Scan] File 43/108: 7.jpg
+2025-12-12 14:38:23,803 [INFO] [Scan] File 43/108: 7.jpg
 [SCAN] _process_file started for: 7.jpg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-12 13:39:30,768 [INFO] 📷 Processing: 7.jpg (193.3 KB)
+2025-12-12 14:38:23,803 [INFO] 📷 Processing: 7.jpg (193.3 KB)
 [SCAN] Processing: 7.jpg
 [SCAN] ✓ Metadata extracted: 7.jpg [w=1080, h=1289, date=None]
-2025-12-12 13:39:30,770 [INFO] [Scan] Metadata extracted successfully: 7.jpg [w=1080, h=1289, date=None]
+2025-12-12 14:38:23,803 [INFO] [Scan] Metadata extracted successfully: 7.jpg [w=1080, h=1289, date=None]
 [SCAN] Creating folder hierarchy for: 7.jpg
 [SCAN] ✓ Folder hierarchy created: folder_id=102
 [SCAN] ✓ File processed successfully: 7.jpg
 [SCAN] Added to batch: 7.jpg [batch size: 43/200]
 [SCAN] Starting file 44/108: a4a32752-25bd-4ca2-b626-79cd20fad1a8.png
-2025-12-12 13:39:30,782 [INFO] [Scan] File 44/108: a4a32752-25bd-4ca2-b626-79cd20fad1a8.png
+2025-12-12 14:38:23,807 [INFO] [Scan] File 44/108: a4a32752-25bd-4ca2-b626-79cd20fad1a8.png
 [SCAN] _process_file started for: a4a32752-25bd-4ca2-b626-79cd20fad1a8.png
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-12 13:39:30,783 [INFO] 📷 Processing: a4a32752-25bd-4ca2-b626-79cd20fad1a8.png (234.9 KB)
+2025-12-12 14:38:23,807 [INFO] 📷 Processing: a4a32752-25bd-4ca2-b626-79cd20fad1a8.png (234.9 KB)
 [SCAN] Processing: a4a32752-25bd-4ca2-b626-79cd20fad1a8.png
 [SCAN] ✓ Metadata extracted: a4a32752-25bd-4ca2-b626-79cd20fad1a8.png [w=512, h=512, date=None]
-2025-12-12 13:39:30,802 [INFO] [Scan] Metadata extracted successfully: a4a32752-25bd-4ca2-b626-79cd20fad1a8.png [w=512, h=512, date=None]
+2025-12-12 14:38:23,823 [INFO] [Scan] Metadata extracted successfully: a4a32752-25bd-4ca2-b626-79cd20fad1a8.png [w=512, h=512, date=None]
 [SCAN] Creating folder hierarchy for: a4a32752-25bd-4ca2-b626-79cd20fad1a8.png
 [SCAN] ✓ Folder hierarchy created: folder_id=116
 [SCAN] ✓ File processed successfully: a4a32752-25bd-4ca2-b626-79cd20fad1a8.png
 [SCAN] Added to batch: a4a32752-25bd-4ca2-b626-79cd20fad1a8.png [batch size: 44/200]
 [SCAN] Starting file 45/108: AutoExpertChat.jpg
-2025-12-12 13:39:30,810 [INFO] [Scan] File 45/108: AutoExpertChat.jpg
+2025-12-12 14:38:23,839 [INFO] [Scan] File 45/108: AutoExpertChat.jpg
 [SCAN] _process_file started for: AutoExpertChat.jpg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-12 13:39:30,810 [INFO] 📷 Processing: AutoExpertChat.jpg (490.4 KB)
+2025-12-12 14:38:23,839 [INFO] 📷 Processing: AutoExpertChat.jpg (490.4 KB)
 [SCAN] Processing: AutoExpertChat.jpg
 [SCAN] ✓ Metadata extracted: AutoExpertChat.jpg [w=512, h=512, date=None]
-2025-12-12 13:39:30,836 [INFO] [Scan] Metadata extracted successfully: AutoExpertChat.jpg [w=512, h=512, date=None]
+2025-12-12 14:38:23,870 [INFO] [Scan] Metadata extracted successfully: AutoExpertChat.jpg [w=512, h=512, date=None]
 [SCAN] Creating folder hierarchy for: AutoExpertChat.jpg
 [SCAN] ✓ Folder hierarchy created: folder_id=116
 [SCAN] ✓ File processed successfully: AutoExpertChat.jpg
 [SCAN] Added to batch: AutoExpertChat.jpg [batch size: 45/200]
 [SCAN] Starting file 46/108: ParkAusweis.jpg
-2025-12-12 13:39:30,836 [INFO] [Scan] File 46/108: ParkAusweis.jpg
+2025-12-12 14:38:23,876 [INFO] [Scan] File 46/108: ParkAusweis.jpg
 [SCAN] _process_file started for: ParkAusweis.jpg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-12 13:39:30,836 [INFO] 📷 Processing: ParkAusweis.jpg (2772.0 KB)
+2025-12-12 14:38:23,876 [INFO] 📷 Processing: ParkAusweis.jpg (2772.0 KB)
 [SCAN] Processing: ParkAusweis.jpg
 [SCAN] ✓ Metadata extracted: ParkAusweis.jpg [w=4032, h=3024, date=None]
-2025-12-12 13:39:30,836 [INFO] [Scan] Metadata extracted successfully: ParkAusweis.jpg [w=4032, h=3024, date=None]
+2025-12-12 14:38:23,876 [INFO] [Scan] Metadata extracted successfully: ParkAusweis.jpg [w=4032, h=3024, date=None]
 [SCAN] Creating folder hierarchy for: ParkAusweis.jpg
 [SCAN] ✓ Folder hierarchy created: folder_id=120
 [SCAN] ✓ File processed successfully: ParkAusweis.jpg
 [SCAN] Added to batch: ParkAusweis.jpg [batch size: 46/200]
 [SCAN] Starting file 47/108: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_1.jpg
-2025-12-12 13:39:30,857 [INFO] [Scan] File 47/108: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_1.jpg
+2025-12-12 14:38:23,888 [INFO] [Scan] File 47/108: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_1.jpg
 [SCAN] _process_file started for: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_1.jpg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-12 13:39:30,857 [INFO] 📷 Processing: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_1.jpg (123.3 KB)
+2025-12-12 14:38:23,888 [INFO] 📷 Processing: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_1.jpg (123.3 KB)
 [SCAN] Processing: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_1.jpg
 [SCAN] ✓ Metadata extracted: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_1.jpg [w=724, h=1024, date=None]
-2025-12-12 13:39:30,857 [INFO] [Scan] Metadata extracted successfully: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_1.jpg [w=724, h=1024, date=None]
+2025-12-12 14:38:23,888 [INFO] [Scan] Metadata extracted successfully: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_1.jpg [w=724, h=1024, date=None]
 [SCAN] Creating folder hierarchy for: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_1.jpg
 [SCAN] ✓ Folder hierarchy created: folder_id=124
 [SCAN] ✓ File processed successfully: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_1.jpg
 [SCAN] Added to batch: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_1.jpg [batch size: 47/200]
 [SCAN] Starting file 48/108: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_2.jpg
-2025-12-12 13:39:30,878 [INFO] [Scan] File 48/108: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_2.jpg
+2025-12-12 14:38:23,903 [INFO] [Scan] File 48/108: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_2.jpg
 [SCAN] _process_file started for: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_2.jpg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-12 13:39:30,885 [INFO] 📷 Processing: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_2.jpg (149.2 KB)
+2025-12-12 14:38:23,903 [INFO] 📷 Processing: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_2.jpg (149.2 KB)
 [SCAN] Processing: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_2.jpg
 [SCAN] ✓ Metadata extracted: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_2.jpg [w=724, h=1024, date=None]
-2025-12-12 13:39:30,885 [INFO] [Scan] Metadata extracted successfully: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_2.jpg [w=724, h=1024, date=None]
+2025-12-12 14:38:23,903 [INFO] [Scan] Metadata extracted successfully: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_2.jpg [w=724, h=1024, date=None]
 [SCAN] Creating folder hierarchy for: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_2.jpg
 [SCAN] ✓ Folder hierarchy created: folder_id=124
 [SCAN] ✓ File processed successfully: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_2.jpg
 [SCAN] Added to batch: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_2.jpg [batch size: 48/200]
 [SCAN] Starting file 49/108: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_3.jpg
-2025-12-12 13:39:30,901 [INFO] [Scan] File 49/108: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_3.jpg
+2025-12-12 14:38:23,920 [INFO] [Scan] File 49/108: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_3.jpg
 [SCAN] _process_file started for: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_3.jpg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-12 13:39:30,901 [INFO] 📷 Processing: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_3.jpg (211.9 KB)
+2025-12-12 14:38:23,920 [INFO] 📷 Processing: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_3.jpg (211.9 KB)
 [SCAN] Processing: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_3.jpg
 [SCAN] ✓ Metadata extracted: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_3.jpg [w=724, h=1024, date=None]
-2025-12-12 13:39:30,901 [INFO] [Scan] Metadata extracted successfully: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_3.jpg [w=724, h=1024, date=None]
+2025-12-12 14:38:23,920 [INFO] [Scan] Metadata extracted successfully: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_3.jpg [w=724, h=1024, date=None]
 [SCAN] Creating folder hierarchy for: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_3.jpg
 [SCAN] ✓ Folder hierarchy created: folder_id=124
 [SCAN] ✓ File processed successfully: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_3.jpg
 [SCAN] Added to batch: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_3.jpg [batch size: 49/200]
 [SCAN] Starting file 50/108: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_4.jpg
-2025-12-12 13:39:30,923 [INFO] [Scan] File 50/108: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_4.jpg
+2025-12-12 14:38:23,951 [INFO] [Scan] File 50/108: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_4.jpg
 [SCAN] _process_file started for: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_4.jpg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-12 13:39:30,923 [INFO] 📷 Processing: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_4.jpg (279.3 KB)
+2025-12-12 14:38:23,953 [INFO] 📷 Processing: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_4.jpg (279.3 KB)
 [SCAN] Processing: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_4.jpg
 [SCAN] ✓ Metadata extracted: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_4.jpg [w=724, h=1024, date=None]
-2025-12-12 13:39:30,931 [INFO] [Scan] Metadata extracted successfully: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_4.jpg [w=724, h=1024, date=None]
+2025-12-12 14:38:23,953 [INFO] [Scan] Metadata extracted successfully: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_4.jpg [w=724, h=1024, date=None]
 [SCAN] Creating folder hierarchy for: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_4.jpg
 [SCAN] ✓ Folder hierarchy created: folder_id=124
 [SCAN] ✓ File processed successfully: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_4.jpg
 [SCAN] Added to batch: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_4.jpg [batch size: 50/200]
 [SCAN] Starting file 51/108: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_5.jpg
-2025-12-12 13:39:30,948 [INFO] [Scan] File 51/108: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_5.jpg
+2025-12-12 14:38:23,976 [INFO] [Scan] File 51/108: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_5.jpg
 [SCAN] _process_file started for: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_5.jpg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-12 13:39:30,948 [INFO] 📷 Processing: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_5.jpg (229.0 KB)
+2025-12-12 14:38:23,976 [INFO] 📷 Processing: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_5.jpg (229.0 KB)
 [SCAN] Processing: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_5.jpg
 [SCAN] ✓ Metadata extracted: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_5.jpg [w=724, h=1024, date=None]
-2025-12-12 13:39:30,952 [INFO] [Scan] Metadata extracted successfully: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_5.jpg [w=724, h=1024, date=None]
+2025-12-12 14:38:23,978 [INFO] [Scan] Metadata extracted successfully: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_5.jpg [w=724, h=1024, date=None]
 [SCAN] Creating folder hierarchy for: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_5.jpg
 [SCAN] ✓ Folder hierarchy created: folder_id=124
 [SCAN] ✓ File processed successfully: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_5.jpg
 [SCAN] Added to batch: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_5.jpg [batch size: 51/200]
 [SCAN] Starting file 52/108: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_6.jpg
-2025-12-12 13:39:30,968 [INFO] [Scan] File 52/108: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_6.jpg
+2025-12-12 14:38:23,994 [INFO] [Scan] File 52/108: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_6.jpg
 [SCAN] _process_file started for: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_6.jpg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-12 13:39:30,968 [INFO] 📷 Processing: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_6.jpg (136.7 KB)
+2025-12-12 14:38:23,994 [INFO] 📷 Processing: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_6.jpg (136.7 KB)
 [SCAN] Processing: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_6.jpg
 [SCAN] ✓ Metadata extracted: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_6.jpg [w=724, h=1024, date=None]
-2025-12-12 13:39:30,973 [INFO] [Scan] Metadata extracted successfully: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_6.jpg [w=724, h=1024, date=None]
+2025-12-12 14:38:23,994 [INFO] [Scan] Metadata extracted successfully: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_6.jpg [w=724, h=1024, date=None]
 [SCAN] Creating folder hierarchy for: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_6.jpg
 [SCAN] ✓ Folder hierarchy created: folder_id=124
 [SCAN] ✓ File processed successfully: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_6.jpg
 [SCAN] Added to batch: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_6.jpg [batch size: 52/200]
 [SCAN] Starting file 53/108: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_7.jpg
-2025-12-12 13:39:30,985 [INFO] [Scan] File 53/108: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_7.jpg
+2025-12-12 14:38:24,016 [INFO] [Scan] File 53/108: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_7.jpg
 [SCAN] _process_file started for: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_7.jpg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-12 13:39:30,994 [INFO] 📷 Processing: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_7.jpg (192.6 KB)
+2025-12-12 14:38:24,016 [INFO] 📷 Processing: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_7.jpg (192.6 KB)
 [SCAN] Processing: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_7.jpg
 [SCAN] ✓ Metadata extracted: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_7.jpg [w=724, h=1024, date=None]
-2025-12-12 13:39:30,994 [INFO] [Scan] Metadata extracted successfully: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_7.jpg [w=724, h=1024, date=None]
+2025-12-12 14:38:24,016 [INFO] [Scan] Metadata extracted successfully: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_7.jpg [w=724, h=1024, date=None]
 [SCAN] Creating folder hierarchy for: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_7.jpg
 [SCAN] ✓ Folder hierarchy created: folder_id=124
 [SCAN] ✓ File processed successfully: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_7.jpg
 [SCAN] Added to batch: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_7.jpg [batch size: 53/200]
 [SCAN] Starting file 54/108: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_8.jpg
-2025-12-12 13:39:31,011 [INFO] [Scan] File 54/108: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_8.jpg
+2025-12-12 14:38:24,032 [INFO] [Scan] File 54/108: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_8.jpg
 [SCAN] _process_file started for: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_8.jpg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-12 13:39:31,011 [INFO] 📷 Processing: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_8.jpg (143.3 KB)
+2025-12-12 14:38:24,037 [INFO] 📷 Processing: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_8.jpg (143.3 KB)
 [SCAN] Processing: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_8.jpg
 [SCAN] ✓ Metadata extracted: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_8.jpg [w=724, h=1024, date=None]
-2025-12-12 13:39:31,018 [INFO] [Scan] Metadata extracted successfully: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_8.jpg [w=724, h=1024, date=None]
+2025-12-12 14:38:24,037 [INFO] [Scan] Metadata extracted successfully: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_8.jpg [w=724, h=1024, date=None]
 [SCAN] Creating folder hierarchy for: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_8.jpg
 [SCAN] ✓ Folder hierarchy created: folder_id=124
 [SCAN] ✓ File processed successfully: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_8.jpg
 [SCAN] Added to batch: 1742469222089-2e20e4c4-7f2b-44c8-bab9-de675123abb0_8.jpg [batch size: 54/200]
 [SCAN] Starting file 55/108: R1.jpg
-2025-12-12 13:39:31,035 [INFO] [Scan] File 55/108: R1.jpg
+2025-12-12 14:38:24,053 [INFO] [Scan] File 55/108: R1.jpg
 [SCAN] _process_file started for: R1.jpg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-12 13:39:31,035 [INFO] 📷 Processing: R1.jpg (3160.8 KB)
+2025-12-12 14:38:24,053 [INFO] 📷 Processing: R1.jpg (3160.8 KB)
 [SCAN] Processing: R1.jpg
 [SCAN] ✓ Metadata extracted: R1.jpg [w=4032, h=3024, date=None]
-2025-12-12 13:39:31,035 [INFO] [Scan] Metadata extracted successfully: R1.jpg [w=4032, h=3024, date=None]
+2025-12-12 14:38:24,053 [INFO] [Scan] Metadata extracted successfully: R1.jpg [w=4032, h=3024, date=None]
 [SCAN] Creating folder hierarchy for: R1.jpg
 [SCAN] ✓ Folder hierarchy created: folder_id=155
 [SCAN] ✓ File processed successfully: R1.jpg
 [SCAN] Added to batch: R1.jpg [batch size: 55/200]
 [SCAN] Starting file 56/108: R2.jpg
-2025-12-12 13:39:31,051 [INFO] [Scan] File 56/108: R2.jpg
+2025-12-12 14:38:24,070 [INFO] [Scan] File 56/108: R2.jpg
 [SCAN] _process_file started for: R2.jpg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-12 13:39:31,051 [INFO] 📷 Processing: R2.jpg (2784.2 KB)
+2025-12-12 14:38:24,070 [INFO] 📷 Processing: R2.jpg (2784.2 KB)
 [SCAN] Processing: R2.jpg
 [SCAN] ✓ Metadata extracted: R2.jpg [w=4032, h=3024, date=None]
-2025-12-12 13:39:31,051 [INFO] [Scan] Metadata extracted successfully: R2.jpg [w=4032, h=3024, date=None]
+2025-12-12 14:38:24,070 [INFO] [Scan] Metadata extracted successfully: R2.jpg [w=4032, h=3024, date=None]
 [SCAN] Creating folder hierarchy for: R2.jpg
 [SCAN] ✓ Folder hierarchy created: folder_id=155
 [SCAN] ✓ File processed successfully: R2.jpg
 [SCAN] Added to batch: R2.jpg [batch size: 56/200]
 [SCAN] Starting file 57/108: R3.jpg
-2025-12-12 13:39:31,068 [INFO] [Scan] File 57/108: R3.jpg
+2025-12-12 14:38:24,086 [INFO] [Scan] File 57/108: R3.jpg
 [SCAN] _process_file started for: R3.jpg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-12 13:39:31,070 [INFO] 📷 Processing: R3.jpg (2224.6 KB)
+2025-12-12 14:38:24,086 [INFO] 📷 Processing: R3.jpg (2224.6 KB)
 [SCAN] Processing: R3.jpg
 [SCAN] ✓ Metadata extracted: R3.jpg [w=4032, h=3024, date=None]
-2025-12-12 13:39:31,070 [INFO] [Scan] Metadata extracted successfully: R3.jpg [w=4032, h=3024, date=None]
+2025-12-12 14:38:24,086 [INFO] [Scan] Metadata extracted successfully: R3.jpg [w=4032, h=3024, date=None]
 [SCAN] Creating folder hierarchy for: R3.jpg
 [SCAN] ✓ Folder hierarchy created: folder_id=155
 [SCAN] ✓ File processed successfully: R3.jpg
 [SCAN] Added to batch: R3.jpg [batch size: 57/200]
 [SCAN] Starting file 58/108: R4.jpg
-2025-12-12 13:39:31,085 [INFO] [Scan] File 58/108: R4.jpg
+2025-12-12 14:38:24,103 [INFO] [Scan] File 58/108: R4.jpg
 [SCAN] _process_file started for: R4.jpg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-12 13:39:31,085 [INFO] 📷 Processing: R4.jpg (2097.0 KB)
+2025-12-12 14:38:24,103 [INFO] 📷 Processing: R4.jpg (2097.0 KB)
 [SCAN] Processing: R4.jpg
 [SCAN] ✓ Metadata extracted: R4.jpg [w=4032, h=3024, date=None]
-2025-12-12 13:39:31,085 [INFO] [Scan] Metadata extracted successfully: R4.jpg [w=4032, h=3024, date=None]
+2025-12-12 14:38:24,103 [INFO] [Scan] Metadata extracted successfully: R4.jpg [w=4032, h=3024, date=None]
 [SCAN] Creating folder hierarchy for: R4.jpg
 [SCAN] ✓ Folder hierarchy created: folder_id=155
 [SCAN] ✓ File processed successfully: R4.jpg
 [SCAN] Added to batch: R4.jpg [batch size: 58/200]
 [SCAN] Starting file 59/108: RR1.jpg
-2025-12-12 13:39:31,103 [INFO] [Scan] File 59/108: RR1.jpg
+2025-12-12 14:38:24,120 [INFO] [Scan] File 59/108: RR1.jpg
 [SCAN] _process_file started for: RR1.jpg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-12 13:39:31,103 [INFO] 📷 Processing: RR1.jpg (673.8 KB)
+2025-12-12 14:38:24,120 [INFO] 📷 Processing: RR1.jpg (673.8 KB)
 [SCAN] Processing: RR1.jpg
 [SCAN] ✓ Metadata extracted: RR1.jpg [w=2016, h=1512, date=None]
-2025-12-12 13:39:31,103 [INFO] [Scan] Metadata extracted successfully: RR1.jpg [w=2016, h=1512, date=None]
+2025-12-12 14:38:24,120 [INFO] [Scan] Metadata extracted successfully: RR1.jpg [w=2016, h=1512, date=None]
 [SCAN] Creating folder hierarchy for: RR1.jpg
 [SCAN] ✓ Folder hierarchy created: folder_id=155
 [SCAN] ✓ File processed successfully: RR1.jpg
 [SCAN] Added to batch: RR1.jpg [batch size: 59/200]
 [SCAN] Starting file 60/108: RR2.jpg
-2025-12-12 13:39:31,118 [INFO] [Scan] File 60/108: RR2.jpg
+2025-12-12 14:38:24,136 [INFO] [Scan] File 60/108: RR2.jpg
 [SCAN] _process_file started for: RR2.jpg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-12 13:39:31,118 [INFO] 📷 Processing: RR2.jpg (562.0 KB)
+2025-12-12 14:38:24,136 [INFO] 📷 Processing: RR2.jpg (562.0 KB)
 [SCAN] Processing: RR2.jpg
 [SCAN] ✓ Metadata extracted: RR2.jpg [w=2016, h=1512, date=None]
-2025-12-12 13:39:31,119 [INFO] [Scan] Metadata extracted successfully: RR2.jpg [w=2016, h=1512, date=None]
+2025-12-12 14:38:24,136 [INFO] [Scan] Metadata extracted successfully: RR2.jpg [w=2016, h=1512, date=None]
 [SCAN] Creating folder hierarchy for: RR2.jpg
 [SCAN] ✓ Folder hierarchy created: folder_id=155
 [SCAN] ✓ File processed successfully: RR2.jpg
 [SCAN] Added to batch: RR2.jpg [batch size: 60/200]
-[SCAN] Starting file 61/108: RR3.jpg
-2025-12-12 13:39:31,139 [INFO] [Scan] File 61/108: RR3.jpg
-[SCAN] _process_file started for: RR3.jpg
-[SCAN] Getting file stats...
-[SCAN] File stats retrieved successfully
-2025-12-12 13:39:31,139 [INFO] 📷 Processing: RR3.jpg (458.1 KB)
-[SCAN] Processing: RR3.jpg
-[SCAN] ✓ Metadata extracted: RR3.jpg [w=2016, h=1512, date=None]
-2025-12-12 13:39:31,139 [INFO] [Scan] Metadata extracted successfully: RR3.jpg [w=2016, h=1512, date=None]
-[SCAN] Creating folder hierarchy for: RR3.jpg
-[SCAN] ✓ Folder hierarchy created: folder_id=155
-[SCAN] ✓ File processed successfully: RR3.jpg
-[SCAN] Added to batch: RR3.jpg [batch size: 61/200]
-[SCAN] Starting file 62/108: RR4.jpg
-2025-12-12 13:39:31,158 [INFO] [Scan] File 62/108: RR4.jpg
-[SCAN] _process_file started for: RR4.jpg
-[SCAN] Getting file stats...
-[SCAN] File stats retrieved successfully
-2025-12-12 13:39:31,158 [INFO] 📷 Processing: RR4.jpg (406.1 KB)
-[SCAN] Processing: RR4.jpg
-[SCAN] ✓ Metadata extracted: RR4.jpg [w=2016, h=1512, date=None]
-2025-12-12 13:39:31,158 [INFO] [Scan] Metadata extracted successfully: RR4.jpg [w=2016, h=1512, date=None]
-[SCAN] Creating folder hierarchy for: RR4.jpg
-[SCAN] ✓ Folder hierarchy created: folder_id=155
-[SCAN] ✓ File processed successfully: RR4.jpg
-[SCAN] Added to batch: RR4.jpg [batch size: 62/200]
-[SCAN] Starting file 63/108: 1-Wohnzimmer.jpeg
-2025-12-12 13:39:31,175 [INFO] [Scan] File 63/108: 1-Wohnzimmer.jpeg
-[SCAN] _process_file started for: 1-Wohnzimmer.jpeg
-[SCAN] Getting file stats...
-[SCAN] File stats retrieved successfully
-2025-12-12 13:39:31,181 [INFO] 📷 Processing: 1-Wohnzimmer.jpeg (2585.0 KB)
-[SCAN] Processing: 1-Wohnzimmer.jpeg
-[SCAN] ✓ Metadata extracted: 1-Wohnzimmer.jpeg [w=4032, h=3024, date=2024-10-07 23:32:32]
-2025-12-12 13:39:31,187 [INFO] [Scan] Metadata extracted successfully: 1-Wohnzimmer.jpeg [w=4032, h=3024, date=2024-10-07 23:32:32]
-[SCAN] Creating folder hierarchy for: 1-Wohnzimmer.jpeg
-[SCAN] ✓ Folder hierarchy created: folder_id=178
-[SCAN] ✓ File processed successfully: 1-Wohnzimmer.jpeg
-[SCAN] Added to batch: 1-Wohnzimmer.jpeg [batch size: 63/200]
-[SCAN] Starting file 64/108: 1-Wohnzimmer.jpg
-2025-12-12 13:39:31,201 [INFO] [Scan] File 64/108: 1-Wohnzimmer.jpg
-[SCAN] _process_file started for: 1-Wohnzimmer.jpg
-[SCAN] Getting file stats...
-[SCAN] File stats retrieved successfully
-2025-12-12 13:39:31,201 [INFO] 📷 Processing: 1-Wohnzimmer.jpg (254.6 KB)
-[SCAN] Processing: 1-Wohnzimmer.jpg
-[SCAN] ✓ Metadata extracted: 1-Wohnzimmer.jpg [w=2016, h=1512, date=None]
-2025-12-12 13:39:31,216 [INFO] [Scan] Metadata extracted successfully: 1-Wohnzimmer.jpg [w=2016, h=1512, date=None]
-[SCAN] Creating folder hierarchy for: 1-Wohnzimmer.jpg
-[SCAN] ✓ Folder hierarchy created: folder_id=178
-[SCAN] ✓ File processed successfully: 1-Wohnzimmer.jpg
-[SCAN] Added to batch: 1-Wohnzimmer.jpg [batch size: 64/200]
-[SCAN] Starting file 65/108: 2-KleinSchlaffzimmer.jpeg
-2025-12-12 13:39:31,230 [INFO] [Scan] File 65/108: 2-KleinSchlaffzimmer.jpeg
-[SCAN] _process_file started for: 2-KleinSchlaffzimmer.jpeg
-[SCAN] Getting file stats...
-[SCAN] File stats retrieved successfully
-2025-12-12 13:39:31,230 [INFO] 📷 Processing: 2-KleinSchlaffzimmer.jpeg (2325.9 KB)
-[SCAN] Processing: 2-KleinSchlaffzimmer.jpeg
-[SCAN] ✓ Metadata extracted: 2-KleinSchlaffzimmer.jpeg [w=4032, h=3024, date=2024-10-07 23:33:52]
-2025-12-12 13:39:31,235 [INFO] [Scan] Metadata extracted successfully: 2-KleinSchlaffzimmer.jpeg [w=4032, h=3024, date=2024-10-07 23:33:52]
-[SCAN] Creating folder hierarchy for: 2-KleinSchlaffzimmer.jpeg
-[SCAN] ✓ Folder hierarchy created: folder_id=178
-[SCAN] ✓ File processed successfully: 2-KleinSchlaffzimmer.jpeg
-[SCAN] Added to batch: 2-KleinSchlaffzimmer.jpeg [batch size: 65/200]
-[SCAN] Starting file 66/108: 2-KleinSchlaffzimmer.jpg
-2025-12-12 13:39:31,335 [INFO] [Scan] File 66/108: 2-KleinSchlaffzimmer.jpg
-[SCAN] _process_file started for: 2-KleinSchlaffzimmer.jpg
-[SCAN] Getting file stats...
-[SCAN] File stats retrieved successfully
-2025-12-12 13:39:31,335 [INFO] 📷 Processing: 2-KleinSchlaffzimmer.jpg (247.5 KB)
-[SCAN] Processing: 2-KleinSchlaffzimmer.jpg
-[SCAN] ✓ Metadata extracted: 2-KleinSchlaffzimmer.jpg [w=2016, h=1512, date=None]
-2025-12-12 13:39:31,352 [INFO] [Scan] Metadata extracted successfully: 2-KleinSchlaffzimmer.jpg [w=2016, h=1512, date=None]
-[SCAN] Creating folder hierarchy for: 2-KleinSchlaffzimmer.jpg
-[SCAN] ✓ Folder hierarchy created: folder_id=178
-[SCAN] ✓ File processed successfully: 2-KleinSchlaffzimmer.jpg
-[SCAN] Added to batch: 2-KleinSchlaffzimmer.jpg [batch size: 66/200]
-[SCAN] Starting file 67/108: 3-Schlaffzimmer.jpeg
-2025-12-12 13:39:31,369 [INFO] [Scan] File 67/108: 3-Schlaffzimmer.jpeg
-[SCAN] _process_file started for: 3-Schlaffzimmer.jpeg
-[SCAN] Getting file stats...
-[SCAN] File stats retrieved successfully
-2025-12-12 13:39:31,378 [INFO] 📷 Processing: 3-Schlaffzimmer.jpeg (2742.2 KB)
-[SCAN] Processing: 3-Schlaffzimmer.jpeg
-[SCAN] ✓ Metadata extracted: 3-Schlaffzimmer.jpeg [w=4032, h=3024, date=2024-10-07 23:36:08]
-2025-12-12 13:39:31,390 [INFO] [Scan] Metadata extracted successfully: 3-Schlaffzimmer.jpeg [w=4032, h=3024, date=2024-10-07 23:36:08]
-[SCAN] Creating folder hierarchy for: 3-Schlaffzimmer.jpeg
-[SCAN] ✓ Folder hierarchy created: folder_id=178
-[SCAN] ✓ File processed successfully: 3-Schlaffzimmer.jpeg
-[SCAN] Added to batch: 3-Schlaffzimmer.jpeg [batch size: 67/200]
-[SCAN] Starting file 68/108: 3-Schlaffzimmer.jpg
-2025-12-12 13:39:31,402 [INFO] [Scan] File 68/108: 3-Schlaffzimmer.jpg
-[SCAN] _process_file started for: 3-Schlaffzimmer.jpg
-[SCAN] Getting file stats...
-[SCAN] File stats retrieved successfully
-2025-12-12 13:39:31,402 [INFO] 📷 Processing: 3-Schlaffzimmer.jpg (235.6 KB)
-[SCAN] Processing: 3-Schlaffzimmer.jpg
-[SCAN] ✓ Metadata extracted: 3-Schlaffzimmer.jpg [w=2016, h=1512, date=None]
-2025-12-12 13:39:31,408 [INFO] [Scan] Metadata extracted successfully: 3-Schlaffzimmer.jpg [w=2016, h=1512, date=None]
-[SCAN] Creating folder hierarchy for: 3-Schlaffzimmer.jpg
-[SCAN] ✓ Folder hierarchy created: folder_id=178
-[SCAN] ✓ File processed successfully: 3-Schlaffzimmer.jpg
-[SCAN] Added to batch: 3-Schlaffzimmer.jpg [batch size: 68/200]
-[SCAN] Starting file 69/108: 4-Kuche.jpeg
-2025-12-12 13:39:31,425 [INFO] [Scan] File 69/108: 4-Kuche.jpeg
-[SCAN] _process_file started for: 4-Kuche.jpeg
-[SCAN] Getting file stats...
-[SCAN] File stats retrieved successfully
-2025-12-12 13:39:31,425 [INFO] 📷 Processing: 4-Kuche.jpeg (2227.0 KB)
-[SCAN] Processing: 4-Kuche.jpeg
-[SCAN] ✓ Metadata extracted: 4-Kuche.jpeg [w=4032, h=3024, date=2024-10-07 23:35:33]
-2025-12-12 13:39:31,435 [INFO] [Scan] Metadata extracted successfully: 4-Kuche.jpeg [w=4032, h=3024, date=2024-10-07 23:35:33]
-[SCAN] Creating folder hierarchy for: 4-Kuche.jpeg
-[SCAN] ✓ Folder hierarchy created: folder_id=178
-[SCAN] ✓ File processed successfully: 4-Kuche.jpeg
-[SCAN] Added to batch: 4-Kuche.jpeg [batch size: 69/200]
-[SCAN] Starting file 70/108: 4-Kuche.jpg
-2025-12-12 13:39:31,441 [INFO] [Scan] File 70/108: 4-Kuche.jpg
-[SCAN] _process_file started for: 4-Kuche.jpg
-[SCAN] Getting file stats...
-[SCAN] File stats retrieved successfully
-2025-12-12 13:39:31,451 [INFO] 📷 Processing: 4-Kuche.jpg (239.7 KB)
-[SCAN] Processing: 4-Kuche.jpg
-[SCAN] ✓ Metadata extracted: 4-Kuche.jpg [w=2016, h=1512, date=None]
-2025-12-12 13:39:31,457 [INFO] [Scan] Metadata extracted successfully: 4-Kuche.jpg [w=2016, h=1512, date=None]
-[SCAN] Creating folder hierarchy for: 4-Kuche.jpg
-[SCAN] ✓ Folder hierarchy created: folder_id=178
-[SCAN] ✓ File processed successfully: 4-Kuche.jpg
-[SCAN] Added to batch: 4-Kuche.jpg [batch size: 70/200]
-[SCAN] Starting file 71/108: 5-Bad.jpeg
-2025-12-12 13:39:31,472 [INFO] [Scan] File 71/108: 5-Bad.jpeg
-[SCAN] _process_file started for: 5-Bad.jpeg
-[SCAN] Getting file stats...
-[SCAN] File stats retrieved successfully
-2025-12-12 13:39:31,472 [INFO] 📷 Processing: 5-Bad.jpeg (2606.7 KB)
-[SCAN] Processing: 5-Bad.jpeg
-[SCAN] ✓ Metadata extracted: 5-Bad.jpeg [w=4032, h=3024, date=2024-10-07 23:36:29]
-2025-12-12 13:39:31,487 [INFO] [Scan] Metadata extracted successfully: 5-Bad.jpeg [w=4032, h=3024, date=2024-10-07 23:36:29]
-[SCAN] Creating folder hierarchy for: 5-Bad.jpeg
-[SCAN] ✓ Folder hierarchy created: folder_id=178
-[SCAN] ✓ File processed successfully: 5-Bad.jpeg
-[SCAN] Added to batch: 5-Bad.jpeg [batch size: 71/200]
-[SCAN] Starting file 72/108: 5-Bad.jpg
-2025-12-12 13:39:31,499 [INFO] [Scan] File 72/108: 5-Bad.jpg
-[SCAN] _process_file started for: 5-Bad.jpg
-[SCAN] Getting file stats...
-[SCAN] File stats retrieved successfully
-2025-12-12 13:39:31,499 [INFO] 📷 Processing: 5-Bad.jpg (182.8 KB)
-[SCAN] Processing: 5-Bad.jpg
-[SCAN] ✓ Metadata extracted: 5-Bad.jpg [w=2016, h=1512, date=None]
-2025-12-12 13:39:31,502 [INFO] [Scan] Metadata extracted successfully: 5-Bad.jpg [w=2016, h=1512, date=None]
-[SCAN] Creating folder hierarchy for: 5-Bad.jpg
-[SCAN] ✓ Folder hierarchy created: folder_id=178
-[SCAN] ✓ File processed successfully: 5-Bad.jpg
-[SCAN] Added to batch: 5-Bad.jpg [batch size: 72/200]
-[SCAN] Starting file 73/108: Kalt.jpeg
-2025-12-12 13:39:31,518 [INFO] [Scan] File 73/108: Kalt.jpeg
-[SCAN] _process_file started for: Kalt.jpeg
-[SCAN] Getting file stats...
-[SCAN] File stats retrieved successfully
-2025-12-12 13:39:31,518 [INFO] 📷 Processing: Kalt.jpeg (3048.3 KB)
-[SCAN] Processing: Kalt.jpeg
-[SCAN] ✓ Metadata extracted: Kalt.jpeg [w=4032, h=3024, date=2024-10-07 23:37:24]
-2025-12-12 13:39:31,535 [INFO] [Scan] Metadata extracted successfully: Kalt.jpeg [w=4032, h=3024, date=2024-10-07 23:37:24]
-[SCAN] Creating folder hierarchy for: Kalt.jpeg
-[SCAN] ✓ Folder hierarchy created: folder_id=178
-[SCAN] ✓ File processed successfully: Kalt.jpeg
-[SCAN] Added to batch: Kalt.jpeg [batch size: 73/200]
-[SCAN] Starting file 74/108: Kalt.jpg
-2025-12-12 13:39:31,539 [INFO] [Scan] File 74/108: Kalt.jpg
-[SCAN] _process_file started for: Kalt.jpg
-[SCAN] Getting file stats...
-[SCAN] File stats retrieved successfully
-2025-12-12 13:39:31,549 [INFO] 📷 Processing: Kalt.jpg (1314.5 KB)
-[SCAN] Processing: Kalt.jpg
-[SCAN] ✓ Metadata extracted: Kalt.jpg [w=4032, h=3024, date=None]
-2025-12-12 13:39:31,557 [INFO] [Scan] Metadata extracted successfully: Kalt.jpg [w=4032, h=3024, date=None]
-[SCAN] Creating folder hierarchy for: Kalt.jpg
-[SCAN] ✓ Folder hierarchy created: folder_id=178
-[SCAN] ✓ File processed successfully: Kalt.jpg
-[SCAN] Added to batch: Kalt.jpg [batch size: 74/200]
-[SCAN] Starting file 75/108: Warm.jpeg
-2025-12-12 13:39:31,569 [INFO] [Scan] File 75/108: Warm.jpeg
-[SCAN] _process_file started for: Warm.jpeg
-[SCAN] Getting file stats...
-[SCAN] File stats retrieved successfully
-2025-12-12 13:39:31,569 [INFO] 📷 Processing: Warm.jpeg (3020.9 KB)
-[SCAN] Processing: Warm.jpeg
-[SCAN] ✓ Metadata extracted: Warm.jpeg [w=4032, h=3024, date=2024-10-07 23:36:41]
-2025-12-12 13:39:31,585 [INFO] [Scan] Metadata extracted successfully: Warm.jpeg [w=4032, h=3024, date=2024-10-07 23:36:41]
-[SCAN] Creating folder hierarchy for: Warm.jpeg
-[SCAN] ✓ Folder hierarchy created: folder_id=178
-[SCAN] ✓ File processed successfully: Warm.jpeg
-[SCAN] Added to batch: Warm.jpeg [batch size: 75/200]
-[SCAN] Starting file 76/108: Warm.jpg
-2025-12-12 13:39:31,597 [INFO] [Scan] File 76/108: Warm.jpg
-[SCAN] _process_file started for: Warm.jpg
-[SCAN] Getting file stats...
-[SCAN] File stats retrieved successfully
-2025-12-12 13:39:31,598 [INFO] 📷 Processing: Warm.jpg (984.0 KB)
-[SCAN] Processing: Warm.jpg
-[SCAN] ✓ Metadata extracted: Warm.jpg [w=3629, h=2722, date=None]
-2025-12-12 13:39:31,607 [INFO] [Scan] Metadata extracted successfully: Warm.jpg [w=3629, h=2722, date=None]
-[SCAN] Creating folder hierarchy for: Warm.jpg
-[SCAN] ✓ Folder hierarchy created: folder_id=178
-[SCAN] ✓ File processed successfully: Warm.jpg
-[SCAN] Added to batch: Warm.jpg [batch size: 76/200]
-[SCAN] Starting file 77/108: RundV-MietkautionsBürgerschaft-20241004.png
-2025-12-12 13:39:31,618 [INFO] [Scan] File 77/108: RundV-MietkautionsBürgerschaft-20241004.png
-[SCAN] _process_file started for: RundV-MietkautionsBürgerschaft-20241004.png
-[SCAN] Getting file stats...
-[SCAN] File stats retrieved successfully
-2025-12-12 13:39:31,618 [INFO] 📷 Processing: RundV-MietkautionsBürgerschaft-20241004.png (70.9 KB)
-[SCAN] Processing: RundV-MietkautionsBürgerschaft-20241004.png
-[SCAN] ✓ Metadata extracted: RundV-MietkautionsBürgerschaft-20241004.png [w=1180, h=1100, date=None]
-2025-12-12 13:39:31,618 [INFO] [Scan] Metadata extracted successfully: RundV-MietkautionsBürgerschaft-20241004.png [w=1180, h=1100, date=None]
-[SCAN] Creating folder hierarchy for: RundV-MietkautionsBürgerschaft-20241004.png
-[SCAN] ✓ Folder hierarchy created: folder_id=207
-[SCAN] ✓ File processed successfully: RundV-MietkautionsBürgerschaft-20241004.png
-[SCAN] Added to batch: RundV-MietkautionsBürgerschaft-20241004.png [batch size: 77/200]
-[SCAN] Starting file 78/108: Waschmaschine.png
-2025-12-12 13:39:31,639 [INFO] [Scan] File 78/108: Waschmaschine.png
-[SCAN] _process_file started for: Waschmaschine.png
-[SCAN] Getting file stats...
-[SCAN] File stats retrieved successfully
-2025-12-12 13:39:31,639 [INFO] 📷 Processing: Waschmaschine.png (203.5 KB)
-[SCAN] Processing: Waschmaschine.png
-[SCAN] ✓ Metadata extracted: Waschmaschine.png [w=618, h=699, date=None]
-2025-12-12 13:39:31,644 [INFO] [Scan] Metadata extracted successfully: Waschmaschine.png [w=618, h=699, date=None]
-[SCAN] Creating folder hierarchy for: Waschmaschine.png
-[SCAN] ✓ Folder hierarchy created: folder_id=209
-[SCAN] ✓ File processed successfully: Waschmaschine.png
-[SCAN] Added to batch: Waschmaschine.png [batch size: 78/200]
-[SCAN] Starting file 79/108: 11.jpg
-2025-12-12 13:39:31,661 [INFO] [Scan] File 79/108: 11.jpg
-[SCAN] _process_file started for: 11.jpg
-[SCAN] Getting file stats...
-[SCAN] File stats retrieved successfully
-2025-12-12 13:39:31,661 [INFO] 📷 Processing: 11.jpg (225.0 KB)
-[SCAN] Processing: 11.jpg
-[SCAN] ✓ Metadata extracted: 11.jpg [w=652, h=900, date=None]
-2025-12-12 13:39:31,661 [INFO] [Scan] Metadata extracted successfully: 11.jpg [w=652, h=900, date=None]
-[SCAN] Creating folder hierarchy for: 11.jpg
-[SCAN] ✓ Folder hierarchy created: folder_id=211
-[SCAN] ✓ File processed successfully: 11.jpg
-[SCAN] Added to batch: 11.jpg [batch size: 79/200]
-[SCAN] Starting file 80/108: 20201119-20301118-SuleimanAmmar_DE_ePass_P3.jpg
-2025-12-12 13:39:31,675 [INFO] [Scan] File 80/108: 20201119-20301118-SuleimanAmmar_DE_ePass_P3.jpg
-[SCAN] _process_file started for: 20201119-20301118-SuleimanAmmar_DE_ePass_P3.jpg
-[SCAN] Getting file stats...
-[SCAN] File stats retrieved successfully
-2025-12-12 13:39:31,675 [INFO] 📷 Processing: 20201119-20301118-SuleimanAmmar_DE_ePass_P3.jpg (289.1 KB)
-[SCAN] Processing: 20201119-20301118-SuleimanAmmar_DE_ePass_P3.jpg
-[SCAN] ✓ Metadata extracted: 20201119-20301118-SuleimanAmmar_DE_ePass_P3.jpg [w=1120, h=800, date=None]
-2025-12-12 13:39:31,678 [INFO] [Scan] Metadata extracted successfully: 20201119-20301118-SuleimanAmmar_DE_ePass_P3.jpg [w=1120, h=800, date=None]
-[SCAN] Creating folder hierarchy for: 20201119-20301118-SuleimanAmmar_DE_ePass_P3.jpg
-[SCAN] ✓ Folder hierarchy created: folder_id=211
-[SCAN] ✓ File processed successfully: 20201119-20301118-SuleimanAmmar_DE_ePass_P3.jpg
-[SCAN] Added to batch: 20201119-20301118-SuleimanAmmar_DE_ePass_P3.jpg [batch size: 80/200]
-[SCAN] Starting file 81/108: 22.jpg
-2025-12-12 13:39:31,685 [INFO] [Scan] File 81/108: 22.jpg
-[SCAN] _process_file started for: 22.jpg
-[SCAN] Getting file stats...
-[SCAN] File stats retrieved successfully
-2025-12-12 13:39:31,685 [INFO] 📷 Processing: 22.jpg (149.3 KB)
-[SCAN] Processing: 22.jpg
-[SCAN] ✓ Metadata extracted: 22.jpg [w=628, h=863, date=None]
-2025-12-12 13:39:31,689 [INFO] [Scan] Metadata extracted successfully: 22.jpg [w=628, h=863, date=None]
-[SCAN] Creating folder hierarchy for: 22.jpg
-[SCAN] ✓ Folder hierarchy created: folder_id=211
-[SCAN] ✓ File processed successfully: 22.jpg
-[SCAN] Added to batch: 22.jpg [batch size: 81/200]
-[SCAN] Starting file 82/108: MTCN-379-925-3908-AppScreenshot.jpeg
-2025-12-12 13:39:31,702 [INFO] [Scan] File 82/108: MTCN-379-925-3908-AppScreenshot.jpeg
-[SCAN] _process_file started for: MTCN-379-925-3908-AppScreenshot.jpeg
-[SCAN] Getting file stats...
-[SCAN] File stats retrieved successfully
-2025-12-12 13:39:31,702 [INFO] 📷 Processing: MTCN-379-925-3908-AppScreenshot.jpeg (284.9 KB)
-[SCAN] Processing: MTCN-379-925-3908-AppScreenshot.jpeg
-[SCAN] ✓ Metadata extracted: MTCN-379-925-3908-AppScreenshot.jpeg [w=1170, h=2532, date=None]
-2025-12-12 13:39:31,702 [INFO] [Scan] Metadata extracted successfully: MTCN-379-925-3908-AppScreenshot.jpeg [w=1170, h=2532, date=None]
-[SCAN] Creating folder hierarchy for: MTCN-379-925-3908-AppScreenshot.jpeg
-[SCAN] ✓ Folder hierarchy created: folder_id=211
-[SCAN] ✓ File processed successfully: MTCN-379-925-3908-AppScreenshot.jpeg
-[SCAN] Added to batch: MTCN-379-925-3908-AppScreenshot.jpeg [batch size: 82/200]
-[SCAN] Starting file 83/108: SRO-KMMF-0123111311170.jpg
-2025-12-12 13:39:31,708 [INFO] [Scan] File 83/108: SRO-KMMF-0123111311170.jpg
-[SCAN] _process_file started for: SRO-KMMF-0123111311170.jpg
-[SCAN] Getting file stats...
-[SCAN] File stats retrieved successfully
-2025-12-12 13:39:31,708 [INFO] 📷 Processing: SRO-KMMF-0123111311170.jpg (592.0 KB)
-[SCAN] Processing: SRO-KMMF-0123111311170.jpg
-[SCAN] ✓ Metadata extracted: SRO-KMMF-0123111311170.jpg [w=4960, h=7015, date=None]
-2025-12-12 13:39:31,708 [INFO] [Scan] Metadata extracted successfully: SRO-KMMF-0123111311170.jpg [w=4960, h=7015, date=None]
-[SCAN] Creating folder hierarchy for: SRO-KMMF-0123111311170.jpg
-[SCAN] ✓ Folder hierarchy created: folder_id=211
-[SCAN] ✓ File processed successfully: SRO-KMMF-0123111311170.jpg
-[SCAN] Added to batch: SRO-KMMF-0123111311170.jpg [batch size: 83/200]
-[SCAN] Starting file 84/108: SuleimanAmmar - Kopie.jpg
-2025-12-12 13:39:31,724 [INFO] [Scan] File 84/108: SuleimanAmmar - Kopie.jpg
-[SCAN] _process_file started for: SuleimanAmmar - Kopie.jpg
-[SCAN] Getting file stats...
-[SCAN] File stats retrieved successfully
-2025-12-12 13:39:31,726 [INFO] 📷 Processing: SuleimanAmmar - Kopie.jpg (150.4 KB)
-[SCAN] Processing: SuleimanAmmar - Kopie.jpg
-[SCAN] ✓ Metadata extracted: SuleimanAmmar - Kopie.jpg [w=940, h=1218, date=None]
-2025-12-12 13:39:31,726 [INFO] [Scan] Metadata extracted successfully: SuleimanAmmar - Kopie.jpg [w=940, h=1218, date=None]
-[SCAN] Creating folder hierarchy for: SuleimanAmmar - Kopie.jpg
-[SCAN] ✓ Folder hierarchy created: folder_id=211
-[SCAN] ✓ File processed successfully: SuleimanAmmar - Kopie.jpg
-[SCAN] Added to batch: SuleimanAmmar - Kopie.jpg [batch size: 84/200]
-[SCAN] Starting file 85/108: SuleimanAmmar-Revised.jpg
-2025-12-12 13:39:31,735 [INFO] [Scan] File 85/108: SuleimanAmmar-Revised.jpg
-[SCAN] _process_file started for: SuleimanAmmar-Revised.jpg
-[SCAN] Getting file stats...
-[SCAN] File stats retrieved successfully
-2025-12-12 13:39:31,735 [INFO] 📷 Processing: SuleimanAmmar-Revised.jpg (89.3 KB)
-[SCAN] Processing: SuleimanAmmar-Revised.jpg
-[SCAN] ✓ Metadata extracted: SuleimanAmmar-Revised.jpg [w=844, h=1135, date=None]
-2025-12-12 13:39:31,739 [INFO] [Scan] Metadata extracted successfully: SuleimanAmmar-Revised.jpg [w=844, h=1135, date=None]
-[SCAN] Creating folder hierarchy for: SuleimanAmmar-Revised.jpg
-[SCAN] ✓ Folder hierarchy created: folder_id=211
-[SCAN] ✓ File processed successfully: SuleimanAmmar-Revised.jpg
-[SCAN] Added to batch: SuleimanAmmar-Revised.jpg [batch size: 85/200]
-[SCAN] Starting file 86/108: SuleimanAmmar.jpg
-2025-12-12 13:39:31,739 [INFO] [Scan] File 86/108: SuleimanAmmar.jpg
-[SCAN] _process_file started for: SuleimanAmmar.jpg
-[SCAN] Getting file stats...
-[SCAN] File stats retrieved successfully
-2025-12-12 13:39:31,739 [INFO] 📷 Processing: SuleimanAmmar.jpg (150.4 KB)
-[SCAN] Processing: SuleimanAmmar.jpg
-[SCAN] ✓ Metadata extracted: SuleimanAmmar.jpg [w=940, h=1218, date=None]
-2025-12-12 13:39:31,751 [INFO] [Scan] Metadata extracted successfully: SuleimanAmmar.jpg [w=940, h=1218, date=None]
-[SCAN] Creating folder hierarchy for: SuleimanAmmar.jpg
-[SCAN] ✓ Folder hierarchy created: folder_id=211
-[SCAN] ✓ File processed successfully: SuleimanAmmar.jpg
-[SCAN] Added to batch: SuleimanAmmar.jpg [batch size: 86/200]
-[SCAN] Starting file 87/108: IMG-20250526-WA0000.jpg
-2025-12-12 13:39:31,762 [INFO] [Scan] File 87/108: IMG-20250526-WA0000.jpg
-[SCAN] _process_file started for: IMG-20250526-WA0000.jpg
-[SCAN] Getting file stats...
-[SCAN] File stats retrieved successfully
-2025-12-12 13:39:31,762 [INFO] 📷 Processing: IMG-20250526-WA0000.jpg (142.6 KB)
-[SCAN] Processing: IMG-20250526-WA0000.jpg
-[SCAN] ✓ Metadata extracted: IMG-20250526-WA0000.jpg [w=931, h=1280, date=None]
-2025-12-12 13:39:31,773 [INFO] [Scan] Metadata extracted successfully: IMG-20250526-WA0000.jpg [w=931, h=1280, date=None]
-[SCAN] Creating folder hierarchy for: IMG-20250526-WA0000.jpg
-[SCAN] ✓ Folder hierarchy created: folder_id=228
-[SCAN] ✓ File processed successfully: IMG-20250526-WA0000.jpg
-[SCAN] Added to batch: IMG-20250526-WA0000.jpg [batch size: 87/200]
-[SCAN] Starting file 88/108: 1.jpg
-2025-12-12 13:39:31,790 [INFO] [Scan] File 88/108: 1.jpg
-[SCAN] _process_file started for: 1.jpg
-[SCAN] Getting file stats...
-[SCAN] File stats retrieved successfully
-2025-12-12 13:39:31,790 [INFO] 📷 Processing: 1.jpg (400.2 KB)
-[SCAN] Processing: 1.jpg
-[SCAN] ✓ Metadata extracted: 1.jpg [w=1440, h=1024, date=None]
-2025-12-12 13:39:31,792 [INFO] [Scan] Metadata extracted successfully: 1.jpg [w=1440, h=1024, date=None]
-[SCAN] Creating folder hierarchy for: 1.jpg
-[SCAN] ✓ Folder hierarchy created: folder_id=230
-[SCAN] ✓ File processed successfully: 1.jpg
-[SCAN] Added to batch: 1.jpg [batch size: 88/200]
-[SCAN] Starting file 89/108: 2.jpg
-2025-12-12 13:39:31,802 [INFO] [Scan] File 89/108: 2.jpg
-[SCAN] _process_file started for: 2.jpg
-[SCAN] Getting file stats...
-[SCAN] File stats retrieved successfully
-2025-12-12 13:39:31,802 [INFO] 📷 Processing: 2.jpg (485.3 KB)
-[SCAN] Processing: 2.jpg
-[SCAN] ✓ Metadata extracted: 2.jpg [w=1440, h=1024, date=None]
-2025-12-12 13:39:31,803 [INFO] [Scan] Metadata extracted successfully: 2.jpg [w=1440, h=1024, date=None]
-[SCAN] Creating folder hierarchy for: 2.jpg
-[SCAN] ✓ Folder hierarchy created: folder_id=230
-[SCAN] ✓ File processed successfully: 2.jpg
-[SCAN] Added to batch: 2.jpg [batch size: 89/200]
-[SCAN] Starting file 90/108: 3.jpg
-2025-12-12 13:39:31,812 [INFO] [Scan] File 90/108: 3.jpg
-[SCAN] _process_file started for: 3.jpg
-[SCAN] Getting file stats...
-[SCAN] File stats retrieved successfully
-2025-12-12 13:39:31,812 [INFO] 📷 Processing: 3.jpg (404.0 KB)
-[SCAN] Processing: 3.jpg
-[SCAN] ✓ Metadata extracted: 3.jpg [w=1440, h=1024, date=None]
-2025-12-12 13:39:31,812 [INFO] [Scan] Metadata extracted successfully: 3.jpg [w=1440, h=1024, date=None]
-[SCAN] Creating folder hierarchy for: 3.jpg
-[SCAN] ✓ Folder hierarchy created: folder_id=230
-[SCAN] ✓ File processed successfully: 3.jpg
-[SCAN] Added to batch: 3.jpg [batch size: 90/200]
-[SCAN] Starting file 91/108: 4.jpg
-2025-12-12 13:39:31,819 [INFO] [Scan] File 91/108: 4.jpg
-[SCAN] _process_file started for: 4.jpg
-[SCAN] Getting file stats...
-[SCAN] File stats retrieved successfully
-2025-12-12 13:39:31,819 [INFO] 📷 Processing: 4.jpg (451.3 KB)
-[SCAN] Processing: 4.jpg
-[SCAN] ✓ Metadata extracted: 4.jpg [w=1440, h=1024, date=None]
-2025-12-12 13:39:31,819 [INFO] [Scan] Metadata extracted successfully: 4.jpg [w=1440, h=1024, date=None]
-[SCAN] Creating folder hierarchy for: 4.jpg
-[SCAN] ✓ Folder hierarchy created: folder_id=230
-[SCAN] ✓ File processed successfully: 4.jpg
-[SCAN] Added to batch: 4.jpg [batch size: 91/200]
-[SCAN] Starting file 92/108: ChatGPT Image 6. Mai 2025, 16_50_55.png
-2025-12-12 13:39:31,835 [INFO] [Scan] File 92/108: ChatGPT Image 6. Mai 2025, 16_50_55.png
-[SCAN] _process_file started for: ChatGPT Image 6. Mai 2025, 16_50_55.png
-[SCAN] Getting file stats...
-[SCAN] File stats retrieved successfully
-2025-12-12 13:39:31,835 [INFO] 📷 Processing: ChatGPT Image 6. Mai 2025, 16_50_55.png (0.5 KB)
-[SCAN] Processing: ChatGPT Image 6. Mai 2025, 16_50_55.png
-[SCAN] ✓ Metadata extracted: ChatGPT Image 6. Mai 2025, 16_50_55.png [w=None, h=None, date=None]
-2025-12-12 13:39:31,931 [INFO] [Scan] Metadata extracted successfully: ChatGPT Image 6. Mai 2025, 16_50_55.png [w=None, h=None, date=None]
-[SCAN] Creating folder hierarchy for: ChatGPT Image 6. Mai 2025, 16_50_55.png
-[SCAN] ✓ Folder hierarchy created: folder_id=230
-[SCAN] ✓ File processed successfully: ChatGPT Image 6. Mai 2025, 16_50_55.png
-[SCAN] Added to batch: ChatGPT Image 6. Mai 2025, 16_50_55.png [batch size: 92/200]
-[SCAN] Starting file 93/108: 1.jpeg
-2025-12-12 13:39:31,943 [INFO] [Scan] File 93/108: 1.jpeg
-[SCAN] _process_file started for: 1.jpeg
-[SCAN] Getting file stats...
-[SCAN] File stats retrieved successfully
-2025-12-12 13:39:31,943 [INFO] 📷 Processing: 1.jpeg (150.5 KB)
-[SCAN] Processing: 1.jpeg
-[SCAN] ✓ Metadata extracted: 1.jpeg [w=594, h=396, date=2024-12-16 16:59:30]
-2025-12-12 13:39:31,952 [INFO] [Scan] Metadata extracted successfully: 1.jpeg [w=594, h=396, date=2024-12-16 16:59:30]
-[SCAN] Creating folder hierarchy for: 1.jpeg
-[SCAN] ✓ Folder hierarchy created: folder_id=241
-[SCAN] ✓ File processed successfully: 1.jpeg
-[SCAN] Added to batch: 1.jpeg [batch size: 93/200]
-[SCAN] Starting file 94/108: 10.png
-2025-12-12 13:39:31,969 [INFO] [Scan] File 94/108: 10.png
-[SCAN] _process_file started for: 10.png
-[SCAN] Getting file stats...
-[SCAN] File stats retrieved successfully
-2025-12-12 13:39:31,972 [INFO] 📷 Processing: 10.png (981.1 KB)
-[SCAN] Processing: 10.png
-[SCAN] ✓ Metadata extracted: 10.png [w=918, h=516, date=None]
-2025-12-12 13:39:31,994 [INFO] [Scan] Metadata extracted successfully: 10.png [w=918, h=516, date=None]
-[SCAN] Creating folder hierarchy for: 10.png
-[SCAN] ✓ Folder hierarchy created: folder_id=241
-[SCAN] ✓ File processed successfully: 10.png
-[SCAN] Added to batch: 10.png [batch size: 94/200]
-[SCAN] Starting file 95/108: 11.jpg
-2025-12-12 13:39:32,001 [INFO] [Scan] File 95/108: 11.jpg
-[SCAN] _process_file started for: 11.jpg
-[SCAN] Getting file stats...
-[SCAN] File stats retrieved successfully
-2025-12-12 13:39:32,001 [INFO] 📷 Processing: 11.jpg (282.8 KB)
-[SCAN] Processing: 11.jpg
-[SCAN] ✓ Metadata extracted: 11.jpg [w=1920, h=1080, date=None]
-2025-12-12 13:39:32,018 [INFO] [Scan] Metadata extracted successfully: 11.jpg [w=1920, h=1080, date=None]
-[SCAN] Creating folder hierarchy for: 11.jpg
-[SCAN] ✓ Folder hierarchy created: folder_id=241
-[SCAN] ✓ File processed successfully: 11.jpg
-[SCAN] Added to batch: 11.jpg [batch size: 95/200]
-[SCAN] Starting file 96/108: 13.jpg
-2025-12-12 13:39:32,027 [INFO] [Scan] File 96/108: 13.jpg
-[SCAN] _process_file started for: 13.jpg
-[SCAN] Getting file stats...
-[SCAN] File stats retrieved successfully
-2025-12-12 13:39:32,035 [INFO] 📷 Processing: 13.jpg (60.0 KB)
-[SCAN] Processing: 13.jpg
-[SCAN] ✓ Metadata extracted: 13.jpg [w=720, h=405, date=None]
-2025-12-12 13:39:32,042 [INFO] [Scan] Metadata extracted successfully: 13.jpg [w=720, h=405, date=None]
-[SCAN] Creating folder hierarchy for: 13.jpg
-[SCAN] ✓ Folder hierarchy created: folder_id=241
-[SCAN] ✓ File processed successfully: 13.jpg
-[SCAN] Added to batch: 13.jpg [batch size: 96/200]
-[SCAN] Starting file 97/108: 14.jpg
-2025-12-12 13:39:32,058 [INFO] [Scan] File 97/108: 14.jpg
-[SCAN] _process_file started for: 14.jpg
-[SCAN] Getting file stats...
-[SCAN] File stats retrieved successfully
-2025-12-12 13:39:32,058 [INFO] 📷 Processing: 14.jpg (182.3 KB)
-[SCAN] Processing: 14.jpg
-[SCAN] ✓ Metadata extracted: 14.jpg [w=1200, h=628, date=None]
-2025-12-12 13:39:32,068 [INFO] [Scan] Metadata extracted successfully: 14.jpg [w=1200, h=628, date=None]
-[SCAN] Creating folder hierarchy for: 14.jpg
-[SCAN] ✓ Folder hierarchy created: folder_id=241
-[SCAN] ✓ File processed successfully: 14.jpg
-[SCAN] Added to batch: 14.jpg [batch size: 97/200]
-[SCAN] Starting file 98/108: 16.jpg
-2025-12-12 13:39:32,085 [INFO] [Scan] File 98/108: 16.jpg
-[SCAN] _process_file started for: 16.jpg
-[SCAN] Getting file stats...
-[SCAN] File stats retrieved successfully
-2025-12-12 13:39:32,086 [INFO] 📷 Processing: 16.jpg (50.5 KB)
-[SCAN] Processing: 16.jpg
-[SCAN] ✓ Metadata extracted: 16.jpg [w=767, h=432, date=None]
-2025-12-12 13:39:32,090 [INFO] [Scan] Metadata extracted successfully: 16.jpg [w=767, h=432, date=None]
-[SCAN] Creating folder hierarchy for: 16.jpg
-[SCAN] ✓ Folder hierarchy created: folder_id=241
-[SCAN] ✓ File processed successfully: 16.jpg
-[SCAN] Added to batch: 16.jpg [batch size: 98/200]
-[SCAN] Starting file 99/108: 18.jpg
-2025-12-12 13:39:32,106 [INFO] [Scan] File 99/108: 18.jpg
-[SCAN] _process_file started for: 18.jpg
-[SCAN] Getting file stats...
-[SCAN] File stats retrieved successfully
-2025-12-12 13:39:32,106 [INFO] 📷 Processing: 18.jpg (104.4 KB)
-[SCAN] Processing: 18.jpg
-[SCAN] ✓ Metadata extracted: 18.jpg [w=1000, h=600, date=None]
-2025-12-12 13:39:32,123 [INFO] [Scan] Metadata extracted successfully: 18.jpg [w=1000, h=600, date=None]
-[SCAN] Creating folder hierarchy for: 18.jpg
-[SCAN] ✓ Folder hierarchy created: folder_id=241
-[SCAN] ✓ File processed successfully: 18.jpg
-[SCAN] Added to batch: 18.jpg [batch size: 99/200]
-[SCAN] Starting file 100/108: 2.jpg
-2025-12-12 13:39:32,141 [INFO] [Scan] File 100/108: 2.jpg
-[SCAN] _process_file started for: 2.jpg
-[SCAN] Getting file stats...
-[SCAN] File stats retrieved successfully
-2025-12-12 13:39:32,141 [INFO] 📷 Processing: 2.jpg (794.2 KB)
-[SCAN] Processing: 2.jpg
-[SCAN] ✓ Metadata extracted: 2.jpg [w=1920, h=1080, date=2024-12-16 17:27:11]
-2025-12-12 13:39:32,153 [INFO] [Scan] Metadata extracted successfully: 2.jpg [w=1920, h=1080, date=2024-12-16 17:27:11]
-[SCAN] Creating folder hierarchy for: 2.jpg
-[SCAN] ✓ Folder hierarchy created: folder_id=241
-[SCAN] ✓ File processed successfully: 2.jpg
-[SCAN] Added to batch: 2.jpg [batch size: 100/200]
-[SCAN] Starting file 101/108: 3.png
-2025-12-12 13:39:32,168 [INFO] [Scan] File 101/108: 3.png
-[SCAN] _process_file started for: 3.png
-[SCAN] Getting file stats...
-[SCAN] File stats retrieved successfully
-2025-12-12 13:39:32,168 [INFO] 📷 Processing: 3.png (1822.1 KB)
-[SCAN] Processing: 3.png
-[SCAN] ✓ Metadata extracted: 3.png [w=1280, h=724, date=None]
-2025-12-12 13:39:32,201 [INFO] [Scan] Metadata extracted successfully: 3.png [w=1280, h=724, date=None]
-[SCAN] Creating folder hierarchy for: 3.png
-[SCAN] ✓ Folder hierarchy created: folder_id=241
-[SCAN] ✓ File processed successfully: 3.png
-[SCAN] Added to batch: 3.png [batch size: 101/200]
-[SCAN] Starting file 102/108: 4.jpg
-2025-12-12 13:39:32,219 [INFO] [Scan] File 102/108: 4.jpg
-[SCAN] _process_file started for: 4.jpg
-[SCAN] Getting file stats...
-[SCAN] File stats retrieved successfully
-2025-12-12 13:39:32,219 [INFO] 📷 Processing: 4.jpg (211.7 KB)
-[SCAN] Processing: 4.jpg
-[SCAN] ✓ Metadata extracted: 4.jpg [w=1024, h=683, date=None]
-2025-12-12 13:39:32,232 [INFO] [Scan] Metadata extracted successfully: 4.jpg [w=1024, h=683, date=None]
-[SCAN] Creating folder hierarchy for: 4.jpg
-[SCAN] ✓ Folder hierarchy created: folder_id=241
-[SCAN] ✓ File processed successfully: 4.jpg
-[SCAN] Added to batch: 4.jpg [batch size: 102/200]
-[SCAN] Starting file 103/108: 5.jpg
-2025-12-12 13:39:32,248 [INFO] [Scan] File 103/108: 5.jpg
-[SCAN] _process_file started for: 5.jpg
-[SCAN] Getting file stats...
-[SCAN] File stats retrieved successfully
-2025-12-12 13:39:32,249 [INFO] 📷 Processing: 5.jpg (70.5 KB)
-[SCAN] Processing: 5.jpg
-[SCAN] ✓ Metadata extracted: 5.jpg [w=1280, h=720, date=None]
-2025-12-12 13:39:32,258 [INFO] [Scan] Metadata extracted successfully: 5.jpg [w=1280, h=720, date=None]
-[SCAN] Creating folder hierarchy for: 5.jpg
-[SCAN] ✓ Folder hierarchy created: folder_id=241
-[SCAN] ✓ File processed successfully: 5.jpg
-[SCAN] Added to batch: 5.jpg [batch size: 103/200]
-[SCAN] Starting file 104/108: 6.jpg
-2025-12-12 13:39:32,276 [INFO] [Scan] File 104/108: 6.jpg
-[SCAN] _process_file started for: 6.jpg
-[SCAN] Getting file stats...
-[SCAN] File stats retrieved successfully
-2025-12-12 13:39:32,276 [INFO] 📷 Processing: 6.jpg (57.2 KB)
-[SCAN] Processing: 6.jpg
-[SCAN] ✓ Metadata extracted: 6.jpg [w=750, h=500, date=2025-03-07 15:24:54]
-2025-12-12 13:39:32,285 [INFO] [Scan] Metadata extracted successfully: 6.jpg [w=750, h=500, date=2025-03-07 15:24:54]
-[SCAN] Creating folder hierarchy for: 6.jpg
-[SCAN] ✓ Folder hierarchy created: folder_id=241
-[SCAN] ✓ File processed successfully: 6.jpg
-[SCAN] Added to batch: 6.jpg [batch size: 104/200]
-[SCAN] Starting file 105/108: 7.jpg
-2025-12-12 13:39:32,302 [INFO] [Scan] File 105/108: 7.jpg
-[SCAN] _process_file started for: 7.jpg
-[SCAN] Getting file stats...
-[SCAN] File stats retrieved successfully
-2025-12-12 13:39:32,302 [INFO] 📷 Processing: 7.jpg (134.4 KB)
-[SCAN] Processing: 7.jpg
-[SCAN] ✓ Metadata extracted: 7.jpg [w=1024, h=576, date=None]
-2025-12-12 13:39:32,318 [INFO] [Scan] Metadata extracted successfully: 7.jpg [w=1024, h=576, date=None]
-[SCAN] Creating folder hierarchy for: 7.jpg
-[SCAN] ✓ Folder hierarchy created: folder_id=241
-[SCAN] ✓ File processed successfully: 7.jpg
-[SCAN] Added to batch: 7.jpg [batch size: 105/200]
-[SCAN] Starting file 106/108: 8.png
-2025-12-12 13:39:32,327 [INFO] [Scan] File 106/108: 8.png
-[SCAN] _process_file started for: 8.png
-[SCAN] Getting file stats...
-[SCAN] File stats retrieved successfully
-2025-12-12 13:39:32,327 [INFO] 📷 Processing: 8.png (413.4 KB)
-[SCAN] Processing: 8.png
-[SCAN] ✓ Metadata extracted: 8.png [w=1200, h=848, date=None]
-2025-12-12 13:39:32,351 [INFO] [Scan] Metadata extracted successfully: 8.png [w=1200, h=848, date=None]
-[SCAN] Creating folder hierarchy for: 8.png
-[SCAN] ✓ Folder hierarchy created: folder_id=241
-[SCAN] ✓ File processed successfully: 8.png
-[SCAN] Added to batch: 8.png [batch size: 106/200]
-[SCAN] Starting file 107/108: 9.png
-2025-12-12 13:39:32,386 [INFO] [Scan] File 107/108: 9.png
-[SCAN] _process_file started for: 9.png
-[SCAN] Getting file stats...
-[SCAN] File stats retrieved successfully
-2025-12-12 13:39:32,386 [INFO] 📷 Processing: 9.png (399.8 KB)
-[SCAN] Processing: 9.png
-[SCAN] ✓ Metadata extracted: 9.png [w=1024, h=597, date=None]
-2025-12-12 13:39:32,402 [INFO] [Scan] Metadata extracted successfully: 9.png [w=1024, h=597, date=None]
-[SCAN] Creating folder hierarchy for: 9.png
-[SCAN] ✓ Folder hierarchy created: folder_id=241
-[SCAN] ✓ File processed successfully: 9.png
-[SCAN] Added to batch: 9.png [batch size: 107/200]
-[SCAN] Starting file 108/108: screenshot_1764691385.png
-2025-12-12 13:39:32,418 [INFO] [Scan] File 108/108: screenshot_1764691385.png
-[SCAN] _process_file started for: screenshot_1764691385.png
-[SCAN] Getting file stats...
-[SCAN] File stats retrieved successfully
-2025-12-12 13:39:32,422 [INFO] 📷 Processing: screenshot_1764691385.png (5.3 KB)
-[SCAN] Processing: screenshot_1764691385.png
-[SCAN] ✓ Metadata extracted: screenshot_1764691385.png [w=1335, h=713, date=None]
-2025-12-12 13:39:32,422 [INFO] [Scan] Metadata extracted successfully: screenshot_1764691385.png [w=1335, h=713, date=None]
-[SCAN] Creating folder hierarchy for: screenshot_1764691385.png
-[SCAN] ✓ Folder hierarchy created: folder_id=286
-[SCAN] ✓ File processed successfully: screenshot_1764691385.png
-[SCAN] Added to batch: screenshot_1764691385.png [batch size: 108/200]
-[SCAN] ⚡ Writing final batch to database: 108 photos
-2025-12-12 13:39:32,439 [INFO] Writing final batch of 108 photos to database
-[SCAN] 💾 Starting bulk_upsert for 108 photos...
-2025-12-12 13:39:32,439 [INFO] [DB] Starting bulk_upsert for 108 photos
-2025-12-12 13:39:32,451 [INFO] Bulk upserted 108 photos for project 1
-[SCAN] ✓ Bulk_upsert completed: 108 photos written
-2025-12-12 13:39:32,454 [INFO] [DB] Bulk_upsert completed: 108 photos written
-[SCAN] ✓ Final batch write complete
-[SCAN] Shutting down executor
-2025-12-12 13:39:32,454 [INFO] Executor shutdown complete
-
-[SCAN] === STEP 4: VIDEO PROCESSING ===
-[SCAN] total_videos=3
-[SCAN] self._cancelled=False
-[SCAN] Condition check: 3 > 0 and not False = True
-[SCAN] Condition TRUE - calling _process_videos()
-2025-12-12 13:39:32,454 [INFO] Processing 3 videos...
-[VIDEO_INDEX] Attempting to index: Qouzleh_mitSubtitles-ezgif.com-resize-video.mp4
-[VIDEO_INDEX]   project_id=1, folder_id=230
-[VIDEO_INDEX]   size_kb=13086.185546875, modified=2025-05-06 18:38:04
-[VIDEO_INDEX]   created_ts=1746482400, created_date=2025-05-06, created_year=2025
-2025-12-12 13:39:32,501 [INFO] Indexed video C:\Users\suleimaa\Desktop\eigen\Syria\Qouzleh_mitSubtitles-ezgif.com-resize-video.mp4 (id=1, status=pending)
-[VIDEO_INDEX] SUCCESS: video_id=1
-[VIDEO_INDEX] Attempting to index: Qouzleh_mitSubtitles.mp4
-[VIDEO_INDEX]   project_id=1, folder_id=230
-[VIDEO_INDEX]   size_kb=57665.9013671875, modified=2025-05-06 16:05:10
-[VIDEO_INDEX]   created_ts=1746482400, created_date=2025-05-06, created_year=2025
-2025-12-12 13:39:32,518 [INFO] Indexed video C:\Users\suleimaa\Desktop\eigen\Syria\Qouzleh_mitSubtitles.mp4 (id=2, status=pending)
-[VIDEO_INDEX] SUCCESS: video_id=2
-[VIDEO_INDEX] Attempting to index: Syria-Song.mp4
-[VIDEO_INDEX]   project_id=1, folder_id=230
-[VIDEO_INDEX]   size_kb=21765.810546875, modified=2025-05-06 15:40:19
-[VIDEO_INDEX]   created_ts=1746482400, created_date=2025-05-06, created_year=2025
-2025-12-12 13:39:32,540 [INFO] Indexed video C:\Users\suleimaa\Desktop\eigen\Syria\Syria-Song.mp4 (id=3, status=pending)
-[VIDEO_INDEX] SUCCESS: video_id=3
-2025-12-12 13:39:32,540 [INFO] Indexed 3 videos (metadata extraction pending)
-2025-12-12 13:39:32,559 [INFO] Launching background workers for 3 videos...
-2025-12-12 13:39:32,565 [INFO] Using ffprobe from settings: C:\ffmpeg\bin\ffprobe.exe
-2025-12-12 13:39:32,600 [INFO] ffprobe detected at 'C:\ffmpeg\bin\ffprobe.exe' - video metadata extraction enabled
-2025-12-12 13:39:32,600 [INFO] Connected metadata finished callback for sidebar refresh
-2025-12-12 13:39:32,600 [INFO] ✓ Video metadata extraction worker started
-2025-12-12 13:39:32,600 [INFO] [VideoMetadataWorker] Starting for project_id=1
-2025-12-12 13:39:32,602 [INFO] Using ffmpeg from same directory as ffprobe: C:\ffmpeg\bin\ffmpeg.exe
-2025-12-12 13:39:32,602 [INFO] [VideoMetadataWorker] Found 3 videos to process
-2025-12-12 13:39:32,618 [INFO] [VideoMetadataWorker] Processing with 8 parallel workers
-2025-12-12 13:39:32,644 [INFO] ffmpeg detected at 'C:\ffmpeg\bin\ffmpeg.exe' - video thumbnail generation enabled
-2025-12-12 13:39:32,644 [INFO] ✓ Video thumbnail generation worker started
-2025-12-12 13:39:32,644 [INFO] 🎬 Processing 3 videos in background (check logs for progress)
-2025-12-12 13:39:32,644 [INFO] Scan complete: 108 photos indexed, 3 videos indexed, 0 skipped, 0 failed in 3.0s
-2025-12-12 13:39:32,644 [INFO] Scan completed: 108 photos, 3 videos, 20 folders in 3.0s
-2025-12-12 13:39:32,644 [INFO] [VideoThumbnailWorker] Starting for project_id=1
-[ScanController] cleanup after scan
-2025-12-12 13:39:32,651 [INFO] [VideoThumbnailWorker] Found 3 videos to process
-2025-12-12 13:39:32,651 [INFO] [VideoThumbnailWorker] Processing with 8 parallel workers
-2025-12-12 13:39:32,800 [INFO] [VideoMetadataWorker] ✓ c:\users\suleimaa\desktop\eigen\syria\syria-song.mp4
-2025-12-12 13:39:32,831 [INFO] [VideoMetadataWorker] ✓ c:\users\suleimaa\desktop\eigen\syria\qouzleh_mitsubtitles.mp4
-2025-12-12 13:39:32,834 [INFO] [VideoMetadataWorker] ✓ c:\users\suleimaa\desktop\eigen\syria\qouzleh_mitsubtitles-ezgif.com-resize-video.mp4
-2025-12-12 13:39:32,835 [INFO] [VideoMetadataWorker] Finished: 3 success, 0 failed
-2025-12-12 13:39:32,836 [INFO] Building date branches...
-2025-12-12 13:39:32,836 [INFO] Building date branches for project_id=1
-[build_date_branches] Using project_id=1
-[build_date_branches] Populating 'all' branch with 108 photos for project 1
-[build_date_branches] Inserted 108/108 photos into 'all' branch
-[build_date_branches] Found 11 unique dates for project 1
-[build_date_branches] Date 2024-08-11: found 1 photos for project 1
-[build_date_branches] Sample path: c:/users/suleimaa/desktop/eigen/alya/photos/inbox/ammar1.jpeg
-[build_date_branches] Date 2024-08-11: inserted 1/1 into project_images (new)
-[build_date_branches] Date 2024-10-07: found 7 photos for project 1
-[build_date_branches] Sample path: c:/users/suleimaa/desktop/eigen/mietwohnung/1-wohnzimmer.jpeg
-[build_date_branches] Date 2024-10-07: inserted 7/7 into project_images (new)
-[build_date_branches] Date 2024-11-18: found 1 photos for project 1
-[build_date_branches] Sample path: c:/users/suleimaa/desktop/eigen/alya/photos/inbox/ammar2.jpeg
-[build_date_branches] Date 2024-11-18: inserted 1/1 into project_images (new)
-[build_date_branches] Date 2024-11-29: found 1 photos for project 1
-[build_date_branches] Sample path: c:/users/suleimaa/desktop/eigen/alya/photos/inbox/alya1.jpeg
-[build_date_branches] Date 2024-11-29: inserted 1/1 into project_images (new)
-[build_date_branches] Date 2024-12-02: found 1 photos for project 1
-[build_date_branches] Sample path: c:/users/suleimaa/desktop/eigen/alya/photos/inbox/alya2.jpeg
-[build_date_branches] Date 2024-12-02: inserted 1/1 into project_images (new)
-[build_date_branches] Date 2024-12-16: found 2 photos for project 1
-[build_date_branches] Sample path: c:/users/suleimaa/desktop/eigen/syria/cnn/1.jpeg
-[build_date_branches] Date 2024-12-16: inserted 2/2 into project_images (new)
-[build_date_branches] Date 2025-03-07: found 1 photos for project 1
-[build_date_branches] Sample path: c:/users/suleimaa/desktop/eigen/syria/cnn/6.jpg
-[build_date_branches] Date 2025-03-07: inserted 1/1 into project_images (new)
-[build_date_branches] Date 2025-07-04: found 1 photos for project 1
-[build_date_branches] Sample path: c:/users/suleimaa/desktop/eigen/alya/photos/inbox/alya5.jpeg
-[build_date_branches] Date 2025-07-04: inserted 1/1 into project_images (new)
-[build_date_branches] Date 2025-07-06: found 1 photos for project 1
-[build_date_branches] Sample path: c:/users/suleimaa/desktop/eigen/alya/photos/inbox/alya6.jpeg
-[build_date_branches] Date 2025-07-06: inserted 1/1 into project_images (new)
-[build_date_branches] Date 2025-07-30: found 1 photos for project 1
-[build_date_branches] Sample path: c:/users/suleimaa/desktop/eigen/alya/photos/inbox/img_6850.jpeg
-[build_date_branches] Date 2025-07-30: inserted 1/1 into project_images (new)
-[build_date_branches] Date 2025-08-09: found 2 photos for project 1
-[build_date_branches] Sample path: c:/users/suleimaa/desktop/eigen/alya/photos/inbox/img_6934.jpeg
-[build_date_branches] Date 2025-08-09: inserted 2/2 into project_images (new)
-[build_date_branches] Total entries processed: 19
-[build_date_branches] project_images table has 127 rows for project 1
-2025-12-12 13:39:32,875 [INFO] Created 19 photo date branch entries for project 1
-2025-12-12 13:39:32,877 [INFO] Building video date branches for project_id=1
-[build_video_date_branches] Using project_id=1
-[build_video_date_branches] Found 3 videos with dates for project 1
-[build_video_date_branches] Inserted 3/3 videos into 'all' branch
-[build_video_date_branches] Found 1 unique video dates
-[build_video_date_branches] Date 2025-05-06: inserted 3/3 (new)
-[build_video_date_branches] Total entries processed: 3
-[build_video_date_branches] project_videos table has 6 rows for project 1
-2025-12-12 13:39:32,889 [INFO] Created 3 video date branch entries for project 1
-2025-12-12 13:39:32,892 [INFO] Backfilling created_date fields for photos...
-2025-12-12 13:39:32,899 [INFO] Backfilled 89 photo rows with created_date
-2025-12-12 13:39:32,899 [INFO] Backfilling created_date fields for videos...
-2025-12-12 13:39:32,912 [INFO] Generated thumbnail for c:\users\suleimaa\desktop\eigen\syria\qouzleh_mitsubtitles-ezgif.com-resize-video.mp4 at .thumb_cache\qouzleh_mitsubtitles-ezgif.com-resize-video_mp4_thumb.jpg
-2025-12-12 13:39:32,918 [INFO] Generated thumbnail for c:\users\suleimaa\desktop\eigen\syria\syria-song.mp4 at .thumb_cache\syria-song_mp4_thumb.jpg
-[FaceConfig] Loaded from C:\Users\suleimaa\.memorymate\face_detection_config.json
-2025-12-12 13:39:32,919 [INFO] Main scan operations complete. Remaining: set()
-2025-12-12 13:39:32,919 [INFO] ✓ All scan operations complete. Triggering final refresh...
-2025-12-12 13:39:32,921 [INFO] [VideoThumbnailWorker] ✓ c:\users\suleimaa\desktop\eigen\syria\qouzleh_mitsubtitles-ezgif.com-resize-video.mp4
-2025-12-12 13:39:32,930 [INFO] [VideoThumbnailWorker] ✓ c:\users\suleimaa\desktop\eigen\syria\syria-song.mp4
-2025-12-12 13:39:32,932 [INFO] Generated thumbnail for c:\users\suleimaa\desktop\eigen\syria\qouzleh_mitsubtitles.mp4 at .thumb_cache\qouzleh_mitsubtitles_mp4_thumb.jpg
-2025-12-12 13:39:32,941 [INFO] [VideoThumbnailWorker] ✓ c:\users\suleimaa\desktop\eigen\syria\qouzleh_mitsubtitles.mp4
-2025-12-12 13:39:32,942 [INFO] [VideoThumbnailWorker] Finished: 3 success, 0 failed
-2025-12-12 13:39:33,031 [INFO] 🔄 Starting final coordinated refresh...
-2025-12-12 13:39:33,033 [INFO] Reloading sidebar after date branches built...
-2025-12-12 13:39:33,033 [INFO] [AccordionSidebar] Reloading all sections
-2025-12-12 13:39:33,034 [WARNING] [FoldersSection] No project_id set
-2025-12-12 13:39:33,034 [WARNING] [DatesSection] No project_id set
-2025-12-12 13:39:33,034 [INFO] [VideosSection] Load section (stub)
-2025-12-12 13:39:33,034 [INFO] [PeopleSection] Load section (stub)
-2025-12-12 13:39:33,035 [INFO] [QuickSection] Load section (stub)
-
-[GRID] ====== reload() CALLED ======
-[GRID] project_id=1, load_mode=branch
-[GRID] Step 1: Setting _reloading=True
-[GRID] Fetched tags for 0 paths, got 0 entries
-[GRID] Loaded 0 thumbnails.
-[GRID] Reloaded 0 thumbnails in None-mode (base=0)
-[GRID] Step 5: Emitting gridReloaded signal...
-
-[Breadcrumb] _update_breadcrumb() CALLED
-[Breadcrumb] Grid state: navigation_mode=branch, project_id=1
-[Breadcrumb] Looking for CURRENT project_id=1 in 1 projects
-[Breadcrumb] Found CURRENT project name: P01
-[Breadcrumb] Added project segment: P01
-[Breadcrumb] Added branch segment: All Photos
-[Breadcrumb] Calling set_path() with 2 segments
-[BreadcrumbNav] set_path() called with 2 segments
-[BreadcrumbNav] Clearing 3 existing widgets
-[BreadcrumbNav] Cleared all existing widgets
-[BreadcrumbNav] Added segment 0: P01
-[BreadcrumbNav] Added segment 1: All Photos
-[BreadcrumbNav] set_path() completed - 2 segments added
-[Breadcrumb] set_path() completed successfully
-[Breadcrumb] _update_breadcrumb() COMPLETED
-
-[GRID] Step 5: ✓ gridReloaded signal emitted
-[GRID] ====== reload() COMPLETED SUCCESSFULLY ======
-
-[GRID] Finally block: Setting _reloading=False
-2025-12-12 13:39:33,058 [INFO] Refreshing Google Photos layout after scan...
-[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px)...
-[GooglePhotosLayout] 🔄 Clearing existing timeline and thumbnail cache...
-[GooglePhotosLayout] 🔍 Starting async photo load (generation 3)...
-[GooglePhotosLayout] ✅ Photo load worker started (generation 3)
-2025-12-12 13:39:33,060 [INFO] ✓ Google Photos layout refreshed
-2025-12-12 13:39:33,070 [INFO] ✅ Final refresh complete: 0 photos, 0 videos
-2025-12-12 13:39:33,072 [INFO] Photo query complete: generation=3, current=3, rows=111
-[GooglePhotosLayout] 📅 Grouping 111 photos by date...
-[GooglePhotosLayout] ✅ Grouped into 38 date groups
-[GooglePhotosLayout] Tracking 111 paths for multi-selection
-[GooglePhotosLayout] 🚀 Setting up virtual scrolling for 38 date groups...
-[GooglePhotosLayout] 📐 Responsive grid: 7 columns (viewport: 1517px, thumb: 200px)
-[GooglePhotosLayout] ✅ Virtual scrolling enabled: 38 total date groups
-[GooglePhotosLayout] 📊 Rendered: 5 groups | Placeholders: 33 groups
-[GooglePhotosLayout] 🖼️ Queued 18 thumbnails for loading (initial limit: 50)
-[GooglePhotosLayout] ✅ Photo loading complete! Thumbnails will load progressively.
-2025-12-12 13:39:36,200 [INFO] [AccordionSidebar] Expanding section: folders
-2025-12-12 13:39:36,209 [WARNING] [FoldersSection] No project_id set
-2025-12-12 13:39:39,789 [INFO] [AccordionSidebar] Expanding section: dates
-2025-12-12 13:39:39,803 [WARNING] [DatesSection] No project_id set
-2025-12-12 13:39:44,065 [INFO] [AccordionSidebar] Expanding section: videos
-2025-12-12 13:39:44,075 [INFO] [VideosSection] Load section (stub)
-2025-12-12 13:39:45,479 [INFO] [AccordionSidebar] Expanding section: people
-2025-12-12 13:39:45,479 [INFO] [PeopleSection] Load section (stub)
-2025-12-12 13:39:48,028 [INFO] [AccordionSidebar] Expanding section: quick
-2025-12-12 13:39:48,034 [INFO] [QuickSection] Load section (stub)
-[LayoutManager] Switching layout: google → current
-[GooglePhotosLayout] Cleaning up resources...
-[GooglePhotosLayout]   ↳ Disconnecting signals...
-[GooglePhotosLayout]   ✓ Signals disconnected
-[GooglePhotosLayout]   ↳ Removing event filters...
-[GooglePhotosLayout]   ✓ Event filters removed
-[GooglePhotosLayout]   ↳ Stopping timers...
-[GooglePhotosLayout]   ✓ Timers stopped
-[GooglePhotosLayout]   ↳ Cleaning up thread pools...
-[GooglePhotosLayout]   ✓ Thread pools cleaned
-[GooglePhotosLayout]   ↳ Clearing caches...
-[GooglePhotosLayout]   ✓ Caches cleared
-[GooglePhotosLayout]   ↳ Stopping animations...
-[GooglePhotosLayout]   ✓ Animations stopped
-[LayoutManager] 🔄 Restoring original central widget: QWidget
-[CurrentLayout] Layout activated - scheduling deferred refresh
-[LayoutManager] ✓ Switched to: Current Layout
-[MainWindow] ✓ Switched to layout: current
-[CurrentLayout] Executing deferred reload...
-[CurrentLayout] Reloading sidebar...
-[SidebarQt] reload() called, display_mode=list, tabs_visible=False
-[SidebarQt] Calling _build_tree_model() instead of tabs refresh
-[SidebarQt] _build_tree_model() called with project_id=1
-[Sidebar] Detaching old model from tree view
-[Sidebar] Pending events processed (skipped explicit processEvents)
-[Sidebar] Creating fresh model (avoiding Qt segfault)
-[Sidebar] Attaching fresh model to tree view
-[SidebarQt] list_branches() returned 1 branches
-[SidebarQt] Sample branches: [{'branch_key': 'all', 'display_name': '📁 All Photos', 'count': 108}]
-[Sidebar] Loaded 24 folder counts in batch (performance optimization)
-[Sidebar] Loaded date counts in batch: 3 years, 15 months, 38 days
-[Sidebar] Loading videos for project_id=1
-[Sidebar] Found 3 videos in project 1
-[VideoDateHierarchy] Building: 1 years, 1 months, 3 videos
-[Sidebar] Added 🎬 Videos section with 3 videos and filters.
-
-[Sidebar] ===== Initiating mobile device scan from sidebar =====
-[Sidebar] Database: <reference_db.ReferenceDB object at 0x00000261FFACA510>
-[Sidebar] Register devices: True
-
-[DeviceScanner] ===== Starting device scan  =====
-[DeviceScanner] Platform: Windows
-[DeviceScanner] Database registration: enabled
-[DeviceScanner] Scanning Windows drives...
-[DeviceScanner]   Checking drive letters D:-Z:...
-[DeviceScanner]     Drive H: exists, checking...
-[DeviceScanner]           Checking path: H:\
-[DeviceScanner]           Directories found: []
-[DeviceScanner]           Has DCIM folder: False
-[DeviceScanner]           No alternate structure found
-[DeviceScanner]           Checking subdirectories for DCIM (MTP mounts)...
-[DeviceScanner]           REJECTED: No DCIM or alternate structure
-[DeviceScanner]       ✗ No device on drive H:
-[DeviceScanner]     Drive P: exists, checking...
-[DeviceScanner]           Checking path: P:\
-[DeviceScanner]           Directories found: ['ALT', 'ALT2', 'ALT3', 'CITRIX', 'CONFIDENTIAL', 'GLOBAL', 'HOME', 'PROJECTS1', 'PROJECTS2', 'PROJECTS3', 'PROJECTS4', 'PROJECTS5', 'PROJECTS6', 'PROJECTS7']
-[DeviceScanner]           Has DCIM folder: False
-[DeviceScanner]           No alternate structure found
-[DeviceScanner]           Checking subdirectories for DCIM (MTP mounts)...
-[DeviceScanner]           REJECTED: No DCIM or alternate structure
-[DeviceScanner]       ✗ No device on drive P:
-[DeviceScanner]   Checking portable devices (MTP/PTP)...
-[DeviceScanner]     Attempting Shell COM enumeration...
-[DeviceScanner]     COM initialized for current thread
-[DeviceScanner]     Found 3 items under 'This PC'
-[DeviceScanner]       → Item: '(C:) Lokaler Datenträger' | IsFolder=True | IsFileSystem=True
-[DeviceScanner]       → Item: '(H:) SULEIMAA (\\ACCOUNTS.INTERN\SHARES\HOME)' | IsFolder=True | IsFileSystem=True
-[DeviceScanner]       → Item: '(P:) SHARES (\\ACCOUNTS.INTERN)' | IsFolder=True | IsFileSystem=True
-[DeviceScanner]     COM uninitialized
-[DeviceScanner] ===== Scan complete: 0 device(s) found =====
-[DeviceScanner] Results cached for 5.0s
-
-[Sidebar] ===== Scan complete: 0 mobile device(s) found =====
-[Sidebar]   ✗ No devices found
-[Sidebar] ===== End device scan =====
-
-[Sidebar] No mobile devices detected - added help message
-[Sidebar] starting async count population for 1 branch targets
-[Sidebar][counts worker gen=4] running for 1 targets...
-[CurrentLayout] ✓ Sidebar reload completed
-[CurrentLayout] Reloading grid...
-
-[GRID] ====== reload() CALLED ======
-[GRID] project_id=1, load_mode=branch
-[GRID] Step 1: Setting _reloading=True
-[GRID] Fetched tags for 0 paths, got 0 entries
-[Sidebar][counts worker gen=4] finished scanning targets, scheduling UI update
-[Sidebar][counts applied] updated UI with counts
-[GRID] Loaded 0 thumbnails.
-[GRID] Reloaded 0 thumbnails in None-mode (base=0)
-[GRID] Step 5: Emitting gridReloaded signal...
-
-[Breadcrumb] _update_breadcrumb() CALLED
-[Breadcrumb] Grid state: navigation_mode=branch, project_id=1
-[Breadcrumb] Looking for CURRENT project_id=1 in 1 projects
-[Breadcrumb] Found CURRENT project name: P01
-[Breadcrumb] Added project segment: P01
-[Breadcrumb] Added branch segment: All Photos
-[Breadcrumb] Calling set_path() with 2 segments
-[BreadcrumbNav] set_path() called with 2 segments
-[BreadcrumbNav] Clearing 3 existing widgets
-[BreadcrumbNav] Cleared all existing widgets
-[BreadcrumbNav] Added segment 0: P01
-[BreadcrumbNav] Added segment 1: All Photos
-[BreadcrumbNav] set_path() completed - 2 segments added
-[Breadcrumb] set_path() completed successfully
-[Breadcrumb] _update_breadcrumb() COMPLETED
-
-[GRID] Step 5: ✓ gridReloaded signal emitted
-[GRID] ====== reload() COMPLETED SUCCESSFULLY ======
-
-[GRID] Finally block: Setting _reloading=False
-[CurrentLayout] ✓ Grid reload completed
-
-[GRID] ====== reload() CALLED ======
-[GRID] project_id=1, load_mode=branch
-[GRID] Step 1: Setting _reloading=True
-[DB_TAGS_DEBUG] Sample normalized paths being queried:
-  [0] norm='c:/users/suleimaa/desktop/eigen/suleimanammar-deausweis.jpg'
-      orig='c:/users/suleimaa/desktop/eigen/suleimanammar-deausweis.jpg'
-  [1] norm='c:/users/suleimaa/desktop/eigen/reisepass/11.jpg'
-      orig='c:/users/suleimaa/desktop/eigen/reisepass/11.jpg'
-  [2] norm='c:/users/suleimaa/desktop/eigen/reisepass/22.jpg'
-      orig='c:/users/suleimaa/desktop/eigen/reisepass/22.jpg'
-[DB_TAGS_SQL] Photos query:
-                        SELECT pm.path, t.name
-                        FROM photo_metadata pm
-                        JOIN photo_tags pt ON pt.photo_...
-[DB_TAGS_SQL] Videos query:
-                        SELECT vm.path, t.name
-                        FROM video_metadata vm
-                        JOIN video_tags vt ON vt.video_...
-[DB_TAGS_SQL] First 3 params: ['c:/users/suleimaa/desktop/eigen/suleimanammar-deausweis.jpg', 'c:/users/suleimaa/desktop/eigen/reisepass/11.jpg', 'c:/users/suleimaa/desktop/eigen/reisepass/22.jpg']
-[DB_TAGS_SQL] project_id: 1
-[DB_TAGS_SQL] Query returned 0 rows (0 photos + 0 videos)
-[DB_TAGS_SQL] No rows returned! Checking if ANY tags exist in DB...
-[DB_TAGS_SQL] Sample tagged PHOTOS in DB:
-[DB_TAGS_SQL] Sample tagged VIDEOS in DB:
-[DB_TAGS] Retrieved 0 tags for 0/7 paths (project_id=1)
-[GRID] Fetched tags for 7 paths, got 7 entries
-[GRID] Loaded 7 thumbnails.
-[GRID] Reloaded 7 thumbnails in date-mode (base=7)
-[GRID] Step 5: Emitting gridReloaded signal...
-
-[Breadcrumb] _update_breadcrumb() CALLED
-[Breadcrumb] Grid state: navigation_mode=branch, project_id=1
-[Breadcrumb] Looking for CURRENT project_id=1 in 1 projects
-[Breadcrumb] Found CURRENT project name: P01
-[Breadcrumb] Added project segment: P01
-[Breadcrumb] Added branch segment: All Photos
-[Breadcrumb] Calling set_path() with 2 segments
-[BreadcrumbNav] set_path() called with 2 segments
-[BreadcrumbNav] Clearing 3 existing widgets
-[BreadcrumbNav] Cleared all existing widgets
-[BreadcrumbNav] Added segment 0: P01
-[BreadcrumbNav] Added segment 1: All Photos
-[BreadcrumbNav] set_path() completed - 2 segments added
-[Breadcrumb] set_path() completed successfully
-[Breadcrumb] _update_breadcrumb() COMPLETED
-
-[GRID] Step 5: ✓ gridReloaded signal emitted
-[GRID] ====== reload() COMPLETED SUCCESSFULLY ======
-
-[GRID] Finally block: Setting _reloading=False
-[GRID] Using scroll-based start position: 0 (scroll: 0/0)
-[GRID] Loading viewport range: 0-6 of 7
-[GRID] Queued 7 new thumbnail workers
-[GRID] Loading viewport range: 0-6 of 7
-[GRID] Loading viewport range: 0-6 of 7
-[GRID] Loading viewport range: 0-6 of 7
-[GRID] Queued 6 new thumbnail workers
-[LayoutManager] Switching layout: current → google
-[LayoutManager] 💾 Took ownership of original central widget: QWidget
-[GooglePhotosLayout] Using default project: 1
-[GooglePhotosLayout] Project selector populated with 1 projects (+ New Project option)
-2025-12-12 13:40:04,584 [INFO] [AccordionSidebar] Initializing with project_id=1
-2025-12-12 13:40:04,597 [INFO] [AccordionSidebar] Created 5 sections
-2025-12-12 13:40:04,597 [INFO] [AccordionSidebar] Expanding section: folders
-2025-12-12 13:40:04,597 [INFO] [FoldersSection] Loading folders (generation 2)...
-[GooglePhotosLayout] ✅ Scroll-triggered lazy loading enabled
-2025-12-12 13:40:04,612 [INFO] [FoldersSection] Loaded 24 folders (gen 2)
-[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px)...
-[GooglePhotosLayout] 🔄 Clearing existing timeline and thumbnail cache...
-[GooglePhotosLayout] 🔍 Starting async photo load (generation 1)...
-[GooglePhotosLayout] ✅ Photo load worker started (generation 1)
-[LayoutManager] Setting new central widget: QWidget
-[GooglePhotosLayout] 📍 Layout activated
-[GooglePhotosLayout] ✓ Stored Scan Repository handler
-[GooglePhotosLayout] ✓ Stored Detect Faces handler
-[LayoutManager] ✓ Switched to: Google Photos Style
-[MainWindow] ✓ Switched to layout: google
-2025-12-12 13:40:04,620 [INFO] [FoldersSection] Tree built with 1 top-level folders
-2025-12-12 13:40:04,620 [INFO] [FoldersSection] Data loaded successfully (gen 2)
-2025-12-12 13:40:04,629 [INFO] [FoldersSection] Tree built with 1 top-level folders
-2025-12-12 13:40:04,661 [INFO] [AccordionSidebar] Section folders loaded and displayed
-2025-12-12 13:40:04,752 [INFO] Photo query complete: generation=1, current=1, rows=111
-[GooglePhotosLayout] 📅 Grouping 111 photos by date...
-[GooglePhotosLayout] ✅ Grouped into 38 date groups
-[GooglePhotosLayout] Tracking 111 paths for multi-selection
-[GooglePhotosLayout] 🚀 Setting up virtual scrolling for 38 date groups...
-[GooglePhotosLayout] 📐 Responsive grid: 7 columns (viewport: 1517px, thumb: 200px)
-[GooglePhotosLayout] ✅ Virtual scrolling enabled: 38 total date groups
-[GooglePhotosLayout] 📊 Rendered: 5 groups | Placeholders: 33 groups
-[GooglePhotosLayout] 🖼️ Queued 18 thumbnails for loading (initial limit: 50)
-[GooglePhotosLayout] ✅ Photo loading complete! Thumbnails will load progressively.
-[GooglePhotosLayout] ========================================
-[GooglePhotosLayout] Accordion folder clicked: folder_id=286
-[GooglePhotosLayout] Found folder path: C:\Users\suleimaa\Desktop\eigen\Syria\_Screenshots
-[GooglePhotosLayout] Calling _load_photos with filter_folder=C:\Users\suleimaa\Desktop\eigen\Syria\_Screenshots
-[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px) [folder=C:\Users\suleimaa\Desktop\eigen\Syria\_Screenshots]...
-[GooglePhotosLayout] 🔄 Clearing existing timeline and thumbnail cache...
-[GooglePhotosLayout] 🔍 Starting async photo load (generation 2)...
-[GooglePhotosLayout] ✅ Photo load worker started (generation 2)
-[GooglePhotosLayout] _load_photos call completed
-[GooglePhotosLayout] ========================================
-2025-12-12 13:40:11,533 [INFO] Photo query complete: generation=2, current=2, rows=1
-[GooglePhotosLayout] 📅 Grouping 1 photos by date...
-[GooglePhotosLayout] ✅ Grouped into 1 date groups
-[GooglePhotosLayout] Tracking 1 paths for multi-selection
-[GooglePhotosLayout] 🚀 Setting up virtual scrolling for 1 date groups...
-[GooglePhotosLayout] ✅ Virtual scrolling enabled: 1 total date groups
-[GooglePhotosLayout] 📊 Rendered: 1 groups | Placeholders: 0 groups
-[GooglePhotosLayout] 🖼️ Queued 1 thumbnails for loading (initial limit: 50)
-[GooglePhotosLayout] ✅ Photo loading complete! Thumbnails will load progressively.
-[GooglePhotosLayout] ========================================
-[GooglePhotosLayout] Accordion folder clicked: folder_id=241
-[GooglePhotosLayout] Found folder path: C:\Users\suleimaa\Desktop\eigen\Syria\CNN
-[GooglePhotosLayout] Calling _load_photos with filter_folder=C:\Users\suleimaa\Desktop\eigen\Syria\CNN
-[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px) [folder=C:\Users\suleimaa\Desktop\eigen\Syria\CNN]...
-[GooglePhotosLayout] 🔄 Clearing existing timeline and thumbnail cache...
-[GooglePhotosLayout] 🔍 Starting async photo load (generation 3)...
-[GooglePhotosLayout] ✅ Photo load worker started (generation 3)
-[GooglePhotosLayout] _load_photos call completed
-[GooglePhotosLayout] ========================================
-2025-12-12 13:40:14,458 [INFO] Photo query complete: generation=3, current=3, rows=15
-[GooglePhotosLayout] 📅 Grouping 15 photos by date...
-[GooglePhotosLayout] ✅ Grouped into 3 date groups
-[GooglePhotosLayout] Tracking 15 paths for multi-selection
-[GooglePhotosLayout] 🚀 Setting up virtual scrolling for 3 date groups...
-[GooglePhotosLayout] ✅ Virtual scrolling enabled: 3 total date groups
-[GooglePhotosLayout] 📊 Rendered: 3 groups | Placeholders: 0 groups
-[GooglePhotosLayout] 🖼️ Queued 15 thumbnails for loading (initial limit: 50)
-[GooglePhotosLayout] ✅ Photo loading complete! Thumbnails will load progressively.
-[GooglePhotosLayout] ========================================
-[GooglePhotosLayout] Accordion folder clicked: folder_id=230
-[GooglePhotosLayout] Found folder path: C:\Users\suleimaa\Desktop\eigen\Syria
-[GooglePhotosLayout] Calling _load_photos with filter_folder=C:\Users\suleimaa\Desktop\eigen\Syria
-[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px) [folder=C:\Users\suleimaa\Desktop\eigen\Syria]...
-[GooglePhotosLayout] 🔄 Clearing existing timeline and thumbnail cache...
-[GooglePhotosLayout] 🔍 Starting async photo load (generation 4)...
-[GooglePhotosLayout] ✅ Photo load worker started (generation 4)
-[GooglePhotosLayout] _load_photos call completed
-[GooglePhotosLayout] ========================================
-2025-12-12 13:40:18,227 [INFO] Photo query complete: generation=4, current=4, rows=21
-[GooglePhotosLayout] 📅 Grouping 21 photos by date...
-[GooglePhotosLayout] ✅ Grouped into 6 date groups
-[GooglePhotosLayout] Tracking 21 paths for multi-selection
-[GooglePhotosLayout] 🚀 Setting up virtual scrolling for 6 date groups...
-2025-12-12 13:40:18,251 [WARNING] Cannot open image file c:/users/suleimaa/desktop/eigen/syria/chatgpt image 6. mai 2025, 16_50_55.png: cannot identify image file 'c:/users/suleimaa/desktop/eigen/syria/chatgpt image 6. mai 2025, 16_50_55.png'
-2025-12-12 13:40:18,251 [INFO] Marked as failed (will not retry): c:/users/suleimaa/desktop/eigen/syria/chatgpt image 6. mai 2025, 16_50_55.png
-[GooglePhotosLayout] ✅ Virtual scrolling enabled: 6 total date groups
-[GooglePhotosLayout] 📊 Rendered: 5 groups | Placeholders: 1 groups
-[GooglePhotosLayout] 🖼️ Queued 19 thumbnails for loading (initial limit: 50)
-[GooglePhotosLayout] ✅ Photo loading complete! Thumbnails will load progressively.
-[GooglePhotosLayout] 🎨 Rendering 1 date groups that entered viewport...
-[GooglePhotosLayout] ✓ Now 6/6 groups rendered
-2025-12-12 13:40:22,178 [INFO] [AccordionSidebar] Expanding section: videos
-2025-12-12 13:40:22,194 [INFO] [VideosSection] Load section (stub)
-2025-12-12 13:40:26,234 [INFO] [AccordionSidebar] Expanding section: videos
-2025-12-12 13:40:26,234 [INFO] [VideosSection] Load section (stub)
-2025-12-12 13:40:33,699 [INFO] [AccordionSidebar] Expanding section: videos
-2025-12-12 13:40:33,699 [INFO] [VideosSection] Load section (stub)
-2025-12-12 13:40:35,104 [INFO] [AccordionSidebar] Expanding section: people
-2025-12-12 13:40:35,120 [INFO] [PeopleSection] Load section (stub)
-2025-12-12 13:40:37,062 [INFO] [AccordionSidebar] Expanding section: quick
-2025-12-12 13:40:37,073 [INFO] [QuickSection] Load section (stub)
-2025-12-12 13:40:38,430 [INFO] [AccordionSidebar] Expanding section: dates
-2025-12-12 13:40:38,451 [INFO] [DatesSection] Loading dates (generation 2)...
-2025-12-12 13:40:38,458 [INFO] [DatesSection] Loaded 3 years (gen 2)
-2025-12-12 13:40:38,462 [INFO] [DatesSection] Data loaded successfully (gen 2)
-2025-12-12 13:40:38,468 [INFO] [DatesSection] Tree built with 3 years
-2025-12-12 13:40:38,551 [INFO] [AccordionSidebar] Section dates loaded and displayed
-[GooglePhotosLayout] Accordion date clicked: 2025
-[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px) [year=2025]...
-[GooglePhotosLayout] 🔄 Clearing existing timeline and thumbnail cache...
-[GooglePhotosLayout] 🔍 Starting async photo load (generation 5)...
-[GooglePhotosLayout] ✅ Photo load worker started (generation 5)
-2025-12-12 13:40:40,824 [INFO] Photo query complete: generation=5, current=5, rows=80
-[GooglePhotosLayout] 📅 Grouping 80 photos by date...
-[GooglePhotosLayout] ✅ Grouped into 25 date groups
-[GooglePhotosLayout] Tracking 80 paths for multi-selection
-[GooglePhotosLayout] 🚀 Setting up virtual scrolling for 25 date groups...
-[GooglePhotosLayout] ✅ Virtual scrolling enabled: 25 total date groups
-[GooglePhotosLayout] 📊 Rendered: 5 groups | Placeholders: 20 groups
-[GooglePhotosLayout] 🖼️ Queued 18 thumbnails for loading (initial limit: 50)
-[GooglePhotosLayout] ✅ Photo loading complete! Thumbnails will load progressively.
-[GooglePhotosLayout] Accordion date clicked: 2024
-[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px) [year=2024]...
-[GooglePhotosLayout] 🔄 Clearing existing timeline and thumbnail cache...
-[GooglePhotosLayout] 🔍 Starting async photo load (generation 6)...
-[GooglePhotosLayout] ✅ Photo load worker started (generation 6)
-2025-12-12 13:40:42,604 [INFO] Photo query complete: generation=6, current=6, rows=24
-[GooglePhotosLayout] 📅 Grouping 24 photos by date...
-[GooglePhotosLayout] ✅ Grouped into 10 date groups
-[GooglePhotosLayout] Tracking 24 paths for multi-selection
-[GooglePhotosLayout] 🚀 Setting up virtual scrolling for 10 date groups...
-[GooglePhotosLayout] ✅ Virtual scrolling enabled: 10 total date groups
-[GooglePhotosLayout] 📊 Rendered: 5 groups | Placeholders: 5 groups
-[GooglePhotosLayout] 🖼️ Queued 6 thumbnails for loading (initial limit: 50)
-[GooglePhotosLayout] ✅ Photo loading complete! Thumbnails will load progressively.
-[GooglePhotosLayout] Accordion date clicked: 2023
-[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px) [year=2023]...
-[GooglePhotosLayout] 🔄 Clearing existing timeline and thumbnail cache...
-[GooglePhotosLayout] 🔍 Starting async photo load (generation 7)...
-[GooglePhotosLayout] ✅ Photo load worker started (generation 7)
-2025-12-12 13:40:43,868 [INFO] Photo query complete: generation=7, current=7, rows=7
-[GooglePhotosLayout] 📅 Grouping 7 photos by date...
-[GooglePhotosLayout] ✅ Grouped into 3 date groups
-[GooglePhotosLayout] Tracking 7 paths for multi-selection
-[GooglePhotosLayout] 🚀 Setting up virtual scrolling for 3 date groups...
-[GooglePhotosLayout] ✅ Virtual scrolling enabled: 3 total date groups
-[GooglePhotosLayout] 📊 Rendered: 3 groups | Placeholders: 0 groups
-[GooglePhotosLayout] 🖼️ Queued 7 thumbnails for loading (initial limit: 50)
-[GooglePhotosLayout] ✅ Photo loading complete! Thumbnails will load progressively.
-2025-12-12 13:40:47,361 [INFO] [AccordionSidebar] Expanding section: videos
-2025-12-12 13:40:47,373 [INFO] [VideosSection] Load section (stub)
-2025-12-12 13:40:48,499 [INFO] [AccordionSidebar] Expanding section: videos
-2025-12-12 13:40:48,517 [INFO] [VideosSection] Load section (stub)
-2025-12-12 13:40:57,925 [INFO] [AccordionSidebar] Expanding section: people
-2025-12-12 13:40:57,925 [INFO] [PeopleSection] Load section (stub)
-2025-12-12 13:40:59,110 [INFO] [AccordionSidebar] Expanding section: videos
-2025-12-12 13:40:59,115 [INFO] [VideosSection] Load section (stub)
-2025-12-12 13:40:59,981 [INFO] [AccordionSidebar] Expanding section: dates
-2025-12-12 13:40:59,991 [INFO] [DatesSection] Loading dates (generation 3)...
-2025-12-12 13:40:59,996 [INFO] [DatesSection] Loaded 3 years (gen 3)
-2025-12-12 13:41:00,006 [INFO] [DatesSection] Data loaded successfully (gen 3)
-2025-12-12 13:41:00,009 [INFO] [DatesSection] Tree built with 3 years
-2025-12-12 13:41:00,067 [INFO] [AccordionSidebar] Section dates loaded and displayed
-2025-12-12 13:41:00,082 [INFO] [DatesSection] Tree built with 3 years
-2025-12-12 13:41:00,131 [INFO] [AccordionSidebar] Section dates loaded and displayed
-[GooglePhotosLayout] Accordion date clicked: 2023
-[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px) [year=2023]...
-[GooglePhotosLayout] 🔄 Clearing existing timeline and thumbnail cache...
-[GooglePhotosLayout] 🔍 Starting async photo load (generation 8)...
-[GooglePhotosLayout] ✅ Photo load worker started (generation 8)
-2025-12-12 13:41:02,942 [INFO] Photo query complete: generation=8, current=8, rows=7
-[GooglePhotosLayout] 📅 Grouping 7 photos by date...
-[GooglePhotosLayout] ✅ Grouped into 3 date groups
-[GooglePhotosLayout] Tracking 7 paths for multi-selection
-[GooglePhotosLayout] 🚀 Setting up virtual scrolling for 3 date groups...
-[GooglePhotosLayout] ✅ Virtual scrolling enabled: 3 total date groups
-[GooglePhotosLayout] 📊 Rendered: 3 groups | Placeholders: 0 groups
-[GooglePhotosLayout] 🖼️ Queued 7 thumbnails for loading (initial limit: 50)
-[GooglePhotosLayout] ✅ Photo loading complete! Thumbnails will load progressively.
-2025-12-12 13:41:09,501 [INFO] [AccordionSidebar] Expanding section: videos
-2025-12-12 13:41:09,501 [INFO] [VideosSection] Load section (stub)
-2025-12-12 13:41:12,729 [INFO] [AccordionSidebar] Expanding section: dates
-2025-12-12 13:41:12,745 [INFO] [DatesSection] Loading dates (generation 4)...
-2025-12-12 13:41:12,756 [INFO] [DatesSection] Loaded 3 years (gen 4)
-2025-12-12 13:41:12,761 [INFO] [DatesSection] Data loaded successfully (gen 4)
-2025-12-12 13:41:12,767 [INFO] [DatesSection] Tree built with 3 years
-2025-12-12 13:41:12,850 [INFO] [AccordionSidebar] Section dates loaded and displayed
-2025-12-12 13:41:12,859 [INFO] [DatesSection] Tree built with 3 years
-2025-12-12 13:41:12,905 [INFO] [AccordionSidebar] Section dates loaded and displayed
-2025-12-12 13:41:12,917 [INFO] [DatesSection] Tree built with 3 years
-2025-12-12 13:41:12,969 [INFO] [AccordionSidebar] Section dates loaded and displayed
-[GooglePhotosLayout] Accordion date clicked: 2025
-[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px) [year=2025]...
-[GooglePhotosLayout] 🔄 Clearing existing timeline and thumbnail cache...
-[GooglePhotosLayout] 🔍 Starting async photo load (generation 9)...
-[GooglePhotosLayout] ✅ Photo load worker started (generation 9)
-2025-12-12 13:41:15,056 [INFO] Photo query complete: generation=9, current=9, rows=80
-[GooglePhotosLayout] 📅 Grouping 80 photos by date...
-[GooglePhotosLayout] ✅ Grouped into 25 date groups
-[GooglePhotosLayout] Tracking 80 paths for multi-selection
-[GooglePhotosLayout] 🚀 Setting up virtual scrolling for 25 date groups...
-[GooglePhotosLayout] ✅ Virtual scrolling enabled: 25 total date groups
-[GooglePhotosLayout] 📊 Rendered: 5 groups | Placeholders: 20 groups
-[GooglePhotosLayout] 🖼️ Queued 18 thumbnails for loading (initial limit: 50)
-[GooglePhotosLayout] ✅ Photo loading complete! Thumbnails will load progressively.
-[GooglePhotosLayout] 🎨 Rendering 3 date groups that entered viewport...
-[GooglePhotosLayout] ✓ Now 8/25 groups rendered
-[GooglePhotosLayout] 🎨 Rendering 4 date groups that entered viewport...
-[GooglePhotosLayout] ✓ Now 12/25 groups rendered
-[GooglePhotosLayout] 🎨 Rendering 2 date groups that entered viewport...
-2025-12-12 13:41:20,170 [INFO] Using ffmpeg from same directory as ffprobe: C:\ffmpeg\bin\ffmpeg.exe
-2025-12-12 13:41:20,170 [INFO] Using ffmpeg from same directory as ffprobe: C:\ffmpeg\bin\ffmpeg.exe
-2025-12-12 13:41:20,170 [INFO] Using ffmpeg from same directory as ffprobe: C:\ffmpeg\bin\ffmpeg.exe
-[GooglePhotosLayout] Deferred thumbnail #51: 9.png
-[GooglePhotosLayout] ✓ Now 14/25 groups rendered
-2025-12-12 13:41:20,234 [INFO] ffmpeg detected at 'C:\ffmpeg\bin\ffmpeg.exe' - video thumbnail generation enabled
-2025-12-12 13:41:20,234 [INFO] ffmpeg detected at 'C:\ffmpeg\bin\ffmpeg.exe' - video thumbnail generation enabled
-[ThumbnailLoader] ✓ Video thumbnail: qouzleh_mitsubtitles-ezgif.com-resize-video.mp4
-[ThumbnailLoader] ✓ Video thumbnail: syria-song.mp4
-2025-12-12 13:41:20,259 [INFO] ffmpeg detected at 'C:\ffmpeg\bin\ffmpeg.exe' - video thumbnail generation enabled
-[ThumbnailLoader] ✓ Video thumbnail: qouzleh_mitsubtitles.mp4
-[GooglePhotosLayout] 📜 Scroll detected, loading 1 visible thumbnails...
-[GooglePhotosLayout] ✓ Loaded 1 thumbnails, 0 remaining
-[Shutdown] Grid threads shut down.
-[ThumbnailManager] Thread pool shut down.
-[Shutdown] ThumbnailManager threads shut down.
-[Shutdown] Thumbnail cache cleared.
-[Main] Qt event loop exited with code: 0
-[ThumbCacheDB] Closing cache gracefully...
