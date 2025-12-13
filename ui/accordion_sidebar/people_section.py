@@ -8,9 +8,15 @@ import threading
 import traceback
 from typing import Optional, List, Dict
 
-from PySide6.QtCore import Signal, Qt, QObject
-from PySide6.QtGui import QIcon, QPixmap, QImage
-from PySide6.QtWidgets import QLabel, QTreeWidget, QTreeWidgetItem, QSizePolicy, QHeaderView
+from PySide6.QtCore import Signal, Qt, QObject, QSize, QRect, QPoint
+from PySide6.QtGui import QPixmap, QImage
+from PySide6.QtWidgets import (
+    QLabel,
+    QScrollArea,
+    QWidget,
+    QVBoxLayout,
+    QLayout,
+)
 
 from reference_db import ReferenceDB
 from translation_manager import tr
@@ -94,7 +100,7 @@ class PeopleSection(BaseSection):
         threading.Thread(target=on_complete, daemon=True).start()
 
     def create_content_widget(self, data):
-        """Create a tree with people, thumbnails, and counts."""
+        """Create a flow-wrapped grid of faces (multi-row people view)."""
         rows: List[Dict] = data or []
         if not rows:
             placeholder = QLabel(tr("sidebar.people.empty") if callable(tr) else "No people detected yet")
@@ -102,35 +108,13 @@ class PeopleSection(BaseSection):
             placeholder.setStyleSheet("padding: 16px; color: #666;")
             return placeholder
 
-        tree = QTreeWidget()
-        tree.setHeaderLabels([self.get_title(), tr("sidebar.count") if callable(tr) else "Photos"])
-        tree.setColumnCount(2)
-        tree.setSelectionMode(QTreeWidget.SingleSelection)
-        tree.setEditTriggers(QTreeWidget.NoEditTriggers)
-        tree.setAlternatingRowColors(True)
-        tree.setMinimumHeight(200)
-        tree.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        tree.header().setStretchLastSection(False)
-        tree.header().setSectionResizeMode(0, QHeaderView.Stretch)
-        tree.header().setSectionResizeMode(1, QHeaderView.ResizeToContents)
-        tree.setStyleSheet(
-            """
-            QTreeWidget {
-                border: none;
-                background: transparent;
-            }
-            QTreeWidget::item {
-                padding: 4px;
-            }
-            QTreeWidget::item:hover {
-                background: #f1f3f4;
-            }
-            QTreeWidget::item:selected {
-                background: #e8f0fe;
-                color: #1a73e8;
-            }
-            """
-        )
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setFrameShape(QScrollArea.NoFrame)
+
+        container = QWidget()
+        flow = FlowLayout(container, margin=6, spacing=8)
 
         for idx, row in enumerate(rows):
             branch_key = row.get("branch_key") or f"cluster_{idx}"
@@ -139,23 +123,21 @@ class PeopleSection(BaseSection):
             rep_path = row.get("rep_path")
             rep_thumb = row.get("rep_thumb_png")
 
-            item = QTreeWidgetItem([display_name, str(member_count)])
-            item.setData(0, Qt.UserRole, branch_key)
-
             pixmap = self._load_face_thumbnail(rep_path, rep_thumb)
-            if pixmap:
-                icon = QIcon(pixmap)
-                item.setIcon(0, icon)
+            card = PersonCard(branch_key, display_name, member_count, pixmap)
+            card.clicked.connect(self.personSelected.emit)
+            flow.addWidget(card)
 
-            tree.addTopLevelItem(item)
+        container.setLayout(flow)
+        scroll.setWidget(container)
 
-        tree.itemDoubleClicked.connect(
-            lambda item, col: self.personSelected.emit(item.data(0, Qt.UserRole))
-            if item and item.data(0, Qt.UserRole) else None
-        )
+        wrapper = QWidget()
+        wrapper_layout = QVBoxLayout(wrapper)
+        wrapper_layout.setContentsMargins(0, 0, 0, 0)
+        wrapper_layout.addWidget(scroll)
 
-        logger.info(f"[PeopleSection] Tree built with {tree.topLevelItemCount()} people")
-        return tree
+        logger.info(f"[PeopleSection] Grid built with {flow.count()} people")
+        return wrapper
 
     def _load_face_thumbnail(self, rep_path: Optional[str], rep_thumb_png: Optional[bytes]) -> Optional[QPixmap]:
         """Load a face thumbnail from BLOB or file path."""
@@ -202,4 +184,147 @@ class PeopleSection(BaseSection):
             return
         self._loading = False
         logger.error(f"[PeopleSection] Load error: {message}")
+
+class FlowLayout(QLayout):
+    """Simple flow layout for wrapping person cards across rows."""
+
+    def __init__(self, parent=None, margin: int = 0, spacing: int = -1):
+        super().__init__(parent)
+        self.itemList = []
+        self.setContentsMargins(margin, margin, margin, margin)
+        self.setSpacing(spacing if spacing >= 0 else 6)
+
+    def addItem(self, item):
+        self.itemList.append(item)
+
+    def addWidget(self, widget):
+        super().addWidget(widget)
+        self.itemList.append(self.itemAt(self.count() - 1))
+
+    def count(self):
+        return len(self.itemList)
+
+    def itemAt(self, index):
+        if 0 <= index < len(self.itemList):
+            return self.itemList[index]
+        return None
+
+    def takeAt(self, index):
+        if 0 <= index < len(self.itemList):
+            return self.itemList.pop(index)
+        return None
+
+    def expandingDirections(self):
+        return Qt.Orientations(Qt.Orientation(0))
+
+    def hasHeightForWidth(self):
+        return True
+
+    def heightForWidth(self, width):
+        return self._do_layout(QRect(0, 0, width, 0), True)
+
+    def setGeometry(self, rect):
+        super().setGeometry(rect)
+        self._do_layout(rect, False)
+
+    def sizeHint(self):
+        return self.minimumSize()
+
+    def minimumSize(self):
+        size = QSize()
+        for item in self.itemList:
+            size = size.expandedTo(item.minimumSize())
+        margins = self.contentsMargins()
+        size += QSize(margins.left() + margins.right(), margins.top() + margins.bottom())
+        return size
+
+    def _do_layout(self, rect: QRect, test_only: bool) -> int:
+        x, y = rect.x(), rect.y()
+        line_height = 0
+        spacing = self.spacing()
+        for item in self.itemList:
+            widget = item.widget()
+            if not widget:
+                continue
+
+            next_x = x + item.sizeHint().width() + spacing
+            if next_x - spacing > rect.right() and line_height > 0:
+                x = rect.x()
+                y = y + line_height + spacing
+                next_x = x + item.sizeHint().width() + spacing
+                line_height = 0
+
+            if not test_only:
+                item.setGeometry(QRect(QPoint(x, y), item.sizeHint()))
+
+            x = next_x
+            line_height = max(line_height, item.sizeHint().height())
+
+        return y + line_height - rect.y()
+
+
+class PersonCard(QWidget):
+    """Compact face card with circular thumbnail and counts."""
+
+    clicked = Signal(str)
+
+    def __init__(self, branch_key: str, display_name: str, member_count: int, face_pixmap: Optional[QPixmap], parent=None):
+        super().__init__(parent)
+        self.branch_key = branch_key
+        self.display_name = display_name
+        self.setFixedSize(88, 112)
+        self.setCursor(Qt.PointingHandCursor)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(6, 6, 6, 6)
+        layout.setSpacing(6)
+        layout.setAlignment(Qt.AlignCenter)
+
+        avatar = QLabel()
+        avatar.setFixedSize(64, 64)
+        avatar.setAlignment(Qt.AlignCenter)
+        if face_pixmap and not face_pixmap.isNull():
+            avatar.setPixmap(self._make_circular(face_pixmap, 64))
+        else:
+            avatar.setText("👤")
+            avatar.setStyleSheet("background:#e8eaed;border-radius:32px;font-size:24px;")
+        layout.addWidget(avatar)
+
+        name_label = QLabel(display_name)
+        name_label.setAlignment(Qt.AlignCenter)
+        name_label.setWordWrap(True)
+        name_label.setStyleSheet("font-weight:600;font-size:11px;color:#202124;")
+        layout.addWidget(name_label)
+
+        count_label = QLabel(f"{member_count} photos")
+        count_label.setAlignment(Qt.AlignCenter)
+        count_label.setStyleSheet("color:#5f6368;font-size:10px;")
+        layout.addWidget(count_label)
+
+        self.setStyleSheet(
+            """
+            PersonCard { background: transparent; border-radius: 8px; }
+            PersonCard:hover { background: rgba(26,115,232,0.08); }
+            """
+        )
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.clicked.emit(self.branch_key)
+        super().mouseReleaseEvent(event)
+
+    def _make_circular(self, pixmap: QPixmap, size: int) -> QPixmap:
+        scaled = pixmap.scaled(size, size, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+        mask = QPixmap(size, size)
+        mask.fill(Qt.transparent)
+        from PySide6.QtGui import QPainter, QPainterPath
+
+        painter = QPainter(mask)
+        painter.setRenderHint(QPainter.Antialiasing)
+        path = QPainterPath()
+        path.addEllipse(0, 0, size, size)
+        painter.setClipPath(path)
+        painter.drawPixmap(0, 0, scaled)
+        painter.end()
+        return mask
 
