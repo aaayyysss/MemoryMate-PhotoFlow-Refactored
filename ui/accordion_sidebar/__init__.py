@@ -24,7 +24,7 @@ import logging
 from typing import Optional, Dict
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
                                QScrollArea, QSizePolicy)
-from PySide6.QtCore import Signal, Qt
+from PySide6.QtCore import Signal, Qt, QTimer
 from reference_db import ReferenceDB
 
 from .section_widgets import AccordionSection
@@ -59,6 +59,8 @@ class AccordionSidebar(QWidget):
     selectTag    = Signal(str)     # tag name
     selectPerson = Signal(str)     # person branch_key
     selectVideo  = Signal(str)     # video filter type
+    personMerged = Signal(str, str)  # source_branch, target_branch
+    personDeleted = Signal(str)      # branch_key
 
     # Section expansion signal
     sectionExpanding = Signal(str)  # section_id
@@ -400,7 +402,8 @@ class AccordionSidebar(QWidget):
             # Reload people section to reflect changes
             people = self.section_logic.get("people")
             if people:
-                self._trigger_section_load("people")
+                # Delay reload until drag/drop events fully unwind to avoid stale widget crashes
+                QTimer.singleShot(0, lambda: self._trigger_section_load("people"))
 
             # Build comprehensive merge notification following Google Photos pattern
             msg_lines = [f"✓ '{source_name}' merged successfully", ""]
@@ -429,6 +432,9 @@ class AccordionSidebar(QWidget):
                 "Merged",
                 "\n".join(msg_lines)
             )
+
+            # Notify listeners (e.g., Google layout) so active person filters stay in sync
+            self.personMerged.emit(source_branch, target_branch)
 
             logger.info(f"[AccordionSidebar] Merge successful: {result}")
 
@@ -564,6 +570,9 @@ class AccordionSidebar(QWidget):
 
                 # Reload people section
                 self._trigger_section_load("people")
+
+                # Notify parent layouts so active filters can be cleared if necessary
+                self.personDeleted.emit(branch_key)
 
                 QMessageBox.information(
                     None,
