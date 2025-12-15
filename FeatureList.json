@@ -1,0 +1,176 @@
+{
+  "project": "MemoryMate-PhotoFlow-Refactored",
+  "description": "Photo management application with AI-powered face detection and organization",
+  "features": [
+    {
+      "id": "accordion-sidebar-people-context-menu",
+      "name": "People Section: Context Menu Support",
+      "description": "Right-click context menu on person cards with rename/merge/delete/details actions",
+      "status": "passing",
+      "priority": "high",
+      "dependencies": [],
+      "tests": [
+        "Right-click on person card shows context menu",
+        "Rename action updates person name in database",
+        "Delete action removes person and reloads section",
+        "Details action shows person information dialog"
+      ]
+    },
+    {
+      "id": "accordion-sidebar-people-drag-merge",
+      "name": "People Section: Drag-and-Drop Face Merging",
+      "description": "Drag one person card onto another to merge face clusters",
+      "status": "passing",
+      "priority": "high",
+      "dependencies": ["accordion-sidebar-people-context-menu"],
+      "tests": [
+        "Drag person card starts drag operation",
+        "Drop on another person card triggers merge",
+        "Merge combines face clusters using ReferenceDB.merge_face_clusters",
+        "Merge shows comprehensive feedback (duplicates, unique moved, faces reassigned)",
+        "Section reloads after successful merge"
+      ]
+    },
+    {
+      "id": "accordion-sidebar-people-circular-thumbnails",
+      "name": "People Section: Circular Face Thumbnails",
+      "description": "Display face thumbnails in circular format like Google Photos",
+      "status": "passing",
+      "priority": "medium",
+      "dependencies": [],
+      "tests": [
+        "Face thumbnails are displayed as circles",
+        "Thumbnails load from BLOB or file path",
+        "Fallback to emoji icon if no thumbnail available"
+      ]
+    },
+    {
+      "id": "accordion-sidebar-people-multi-row-grid",
+      "name": "People Section: Multi-Row Grid Layout",
+      "description": "Flow layout that wraps person cards across multiple rows",
+      "status": "passing",
+      "priority": "medium",
+      "dependencies": [],
+      "tests": [
+        "Person cards wrap to new rows when container width is exceeded",
+        "Grid adjusts dynamically to window resize",
+        "Scrolling works smoothly with many people"
+      ]
+    },
+    {
+      "id": "accordion-sidebar-people-selection",
+      "name": "People Section: Person Selection for Filtering",
+      "description": "Click person card to filter main grid by that person",
+      "status": "passing",
+      "priority": "high",
+      "dependencies": [],
+      "tests": [
+        "Clicking person card emits personSelected signal",
+        "Main photo grid filters to show only photos of selected person",
+        "Selection state is maintained during session"
+      ]
+    },
+    {
+      "id": "accordion-sidebar-modular-architecture",
+      "name": "Modular Accordion Sidebar Architecture",
+      "description": "Refactored accordion sidebar into separate section modules",
+      "status": "passing",
+      "priority": "high",
+      "dependencies": [],
+      "tests": [
+        "AccordionSidebar orchestrates section modules",
+        "Each section (People, Dates, Folders, etc.) is in separate file",
+        "Signals propagate correctly from sections to sidebar to layout",
+        "Section loading is thread-safe with generation tracking"
+      ]
+    },
+    {
+      "id": "face-detection-scanning",
+      "name": "Face Detection and Scanning",
+      "description": "Background face detection on imported photos",
+      "status": "passing",
+      "priority": "high",
+      "dependencies": [],
+      "tests": [
+        "Face detection runs automatically on photo import",
+        "Face clusters are stored in face_branch_reps table",
+        "Representative face thumbnails are saved as BLOB"
+      ]
+    },
+    {
+      "id": "photo-import-scanning",
+      "name": "Photo Import and Folder Scanning",
+      "description": "Import photos from folders and scan for metadata",
+      "status": "passing",
+      "priority": "critical",
+      "dependencies": [],
+      "tests": [
+        "User can select folder to import photos",
+        "Photos are added to database with metadata",
+        "Thumbnails are generated and cached",
+        "Progress is shown during import"
+      ]
+    },
+    {
+      "id": "photo-grid-display",
+      "name": "Main Photo Grid Display",
+      "description": "Display photos in grid layout with lazy loading",
+      "status": "passing",
+      "priority": "critical",
+      "dependencies": [],
+      "tests": [
+        "Photos displayed in grid with thumbnails",
+        "Lazy loading loads visible photos first",
+        "Grid scrolls smoothly with many photos",
+        "Selection and multi-select work correctly"
+      ]
+    },
+    {
+      "id": "date-filtering",
+      "name": "Date-Based Filtering",
+      "description": "Filter photos by year, month, or day from dates section",
+      "status": "passing",
+      "priority": "high",
+      "dependencies": [],
+      "tests": [
+        "Dates section shows hierarchical year > month > day tree",
+        "Clicking date filter updates main grid",
+        "Date counts are accurate",
+        "Clear filter returns to all photos"
+      ]
+    },
+    {
+      "id": "folder-filtering",
+      "name": "Folder-Based Filtering",
+      "description": "Filter photos by source folder from folders section",
+      "status": "passing",
+      "priority": "high",
+      "dependencies": [],
+      "tests": [
+        "Folders section shows folder hierarchy",
+        "Clicking folder filters main grid",
+        "Folder photo counts are accurate",
+        "Clear filter returns to all photos"
+      ]
+    },
+    {
+      "id": "video-section",
+      "name": "Videos Section",
+      "description": "Separate section for video files with filtering",
+      "status": "passing",
+      "priority": "medium",
+      "dependencies": [],
+      "tests": [
+        "Videos section shows video files separately",
+        "Video thumbnails display correctly",
+        "Video filtering works (all, short, long, HD, etc.)",
+        "Video playback works from grid"
+      ]
+    }
+  ],
+  "metadata": {
+    "created": "2025-12-15",
+    "last_updated": "2025-12-15",
+    "version": "1.0"
+  }
+}

@@ -36,6 +36,8 @@ class PeopleSection(BaseSection):
     """People section implementation showing detected face clusters."""
 
     personSelected = Signal(str)  # person_branch_key
+    contextMenuRequested = Signal(str, str)  # (branch_key, action)
+    dragMergeRequested = Signal(str, str)  # (source_branch, target_branch)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -126,6 +128,8 @@ class PeopleSection(BaseSection):
             pixmap = self._load_face_thumbnail(rep_path, rep_thumb)
             card = PersonCard(branch_key, display_name, member_count, pixmap)
             card.clicked.connect(self.personSelected.emit)
+            card.context_menu_requested.connect(self.contextMenuRequested.emit)
+            card.drag_merge_requested.connect(self.dragMergeRequested.emit)
             flow.addWidget(card)
 
         container.setLayout(flow)
@@ -267,6 +271,8 @@ class PersonCard(QWidget):
     """Compact face card with circular thumbnail and counts."""
 
     clicked = Signal(str)
+    context_menu_requested = Signal(str, str)  # (branch_key, action)
+    drag_merge_requested = Signal(str, str)  # (source_branch, target_branch)
 
     def __init__(self, branch_key: str, display_name: str, member_count: int, face_pixmap: Optional[QPixmap], parent=None):
         super().__init__(parent)
@@ -274,6 +280,9 @@ class PersonCard(QWidget):
         self.display_name = display_name
         self.setFixedSize(88, 112)
         self.setCursor(Qt.PointingHandCursor)
+
+        # Enable drag-and-drop for face merging
+        self.setAcceptDrops(True)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(6, 6, 6, 6)
@@ -312,6 +321,61 @@ class PersonCard(QWidget):
         if event.button() == Qt.LeftButton:
             self.clicked.emit(self.branch_key)
         super().mouseReleaseEvent(event)
+
+    def contextMenuEvent(self, event):
+        """Show context menu for rename/merge/delete actions."""
+        from PySide6.QtWidgets import QMenu
+        from PySide6.QtGui import QAction
+
+        menu = QMenu(self)
+
+        rename_action = QAction("✏️ Rename", self)
+        rename_action.triggered.connect(lambda: self.context_menu_requested.emit(self.branch_key, "rename"))
+        menu.addAction(rename_action)
+
+        merge_action = QAction("🔗 Merge (use drag-drop)", self)
+        merge_action.triggered.connect(lambda: self.context_menu_requested.emit(self.branch_key, "merge"))
+        menu.addAction(merge_action)
+
+        menu.addSeparator()
+
+        details_action = QAction("ℹ️ Details", self)
+        details_action.triggered.connect(lambda: self.context_menu_requested.emit(self.branch_key, "details"))
+        menu.addAction(details_action)
+
+        delete_action = QAction("🗑️ Delete", self)
+        delete_action.triggered.connect(lambda: self.context_menu_requested.emit(self.branch_key, "delete"))
+        menu.addAction(delete_action)
+
+        menu.exec_(event.globalPos())
+
+    def mousePressEvent(self, event):
+        """Start drag operation for face merging."""
+        if event.button() == Qt.LeftButton:
+            from PySide6.QtGui import QDrag
+            from PySide6.QtCore import QMimeData
+
+            drag = QDrag(self)
+            mime_data = QMimeData()
+            mime_data.setText(f"person:{self.branch_key}")
+            drag.setMimeData(mime_data)
+            drag.exec_(Qt.MoveAction)
+        super().mousePressEvent(event)
+
+    def dragEnterEvent(self, event):
+        """Accept drag events from other PersonCards."""
+        if event.mimeData().hasText() and event.mimeData().text().startswith("person:"):
+            event.acceptProposedAction()
+
+    def dropEvent(self, event):
+        """Handle drop event - merge source person into this person."""
+        if event.mimeData().hasText():
+            source_data = event.mimeData().text()
+            if source_data.startswith("person:"):
+                source_branch = source_data.split(":", 1)[1]
+                if source_branch != self.branch_key:
+                    self.drag_merge_requested.emit(source_branch, self.branch_key)
+                    event.acceptProposedAction()
 
     def _make_circular(self, pixmap: QPixmap, size: int) -> QPixmap:
         scaled = pixmap.scaled(size, size, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
