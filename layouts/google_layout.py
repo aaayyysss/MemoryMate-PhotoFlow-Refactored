@@ -8952,6 +8952,8 @@ class GooglePhotosLayout(BaseLayout):
         sidebar.selectTag.connect(self._on_accordion_tag_clicked)
         sidebar.selectVideo.connect(self._on_accordion_video_clicked)  # NEW: Video filtering
         sidebar.selectPerson.connect(self._on_accordion_person_clicked)
+        sidebar.personMerged.connect(self._on_accordion_person_merged)
+        sidebar.personDeleted.connect(self._on_accordion_person_deleted)
 
         # FIX: Connect section expansion signal to hide search suggestions popup
         sidebar.sectionExpanding.connect(self._on_accordion_section_expanding)
@@ -9729,6 +9731,47 @@ class GooglePhotosLayout(BaseLayout):
             filter_day=None,
             filter_folder=None,
             filter_person=person_branch_key,
+        )
+
+    def _on_accordion_person_merged(self, source_branch: str, target_branch: str):
+        """Keep active person filters in sync after a merge in the sidebar."""
+        active_person = getattr(self, "current_filter_person", None)
+        if active_person not in (source_branch, target_branch):
+            return
+
+        logger.info(
+            "[GooglePhotosLayout] Person merge detected (%s -> %s); refreshing grid",
+            source_branch,
+            target_branch,
+        )
+
+        # If we were filtered on the source, switch to the target; if already on target, refresh
+        new_person = target_branch if active_person == source_branch else active_person
+        self._load_photos(
+            thumb_size=self.current_thumb_size,
+            filter_year=self.current_filter_year,
+            filter_month=self.current_filter_month,
+            filter_day=self.current_filter_day,
+            filter_folder=self.current_filter_folder,
+            filter_person=new_person,
+        )
+
+    def _on_accordion_person_deleted(self, branch_key: str):
+        """Clear any active person filter when that person is removed."""
+        if getattr(self, "current_filter_person", None) != branch_key:
+            return
+
+        logger.info(
+            "[GooglePhotosLayout] Active person '%s' deleted; clearing filter", branch_key
+        )
+
+        self._load_photos(
+            thumb_size=self.current_thumb_size,
+            filter_year=self.current_filter_year,
+            filter_month=self.current_filter_month,
+            filter_day=self.current_filter_day,
+            filter_folder=self.current_filter_folder,
+            filter_person=None,
         )
 
     def _on_accordion_video_clicked(self, filter_spec: str):
