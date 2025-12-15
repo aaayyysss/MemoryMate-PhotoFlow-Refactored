@@ -24,7 +24,7 @@ import logging
 from typing import Optional, Dict
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
                                QScrollArea, QSizePolicy)
-from PySide6.QtCore import Signal, Qt
+from PySide6.QtCore import Signal, Qt, QTimer
 from reference_db import ReferenceDB
 
 from .section_widgets import AccordionSection
@@ -402,7 +402,8 @@ class AccordionSidebar(QWidget):
             # Reload people section to reflect changes
             people = self.section_logic.get("people")
             if people:
-                self._trigger_section_load("people")
+                # Delay reload until drag/drop events fully unwind to avoid stale widget crashes
+                QTimer.singleShot(0, lambda: self._trigger_section_load("people"))
 
             # Build comprehensive merge notification following Google Photos pattern
             msg_lines = [f"✓ '{source_name}' merged successfully", ""]
