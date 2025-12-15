@@ -9717,6 +9717,19 @@ class GooglePhotosLayout(BaseLayout):
         Args:
             person_branch_key: Identifier for the face cluster to filter by.
         """
+        # Empty string signals clearing the active person filter (toggle off)
+        if person_branch_key == "":
+            logger.info("[GooglePhotosLayout] Clearing person filter from accordion toggle")
+            self._load_photos(
+                thumb_size=self.current_thumb_size,
+                filter_year=self.current_filter_year,
+                filter_month=self.current_filter_month,
+                filter_day=self.current_filter_day,
+                filter_folder=self.current_filter_folder,
+                filter_person=None,
+            )
+            return
+
         if not person_branch_key:
             return
 

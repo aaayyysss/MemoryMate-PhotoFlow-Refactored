@@ -47,6 +47,9 @@ class PeopleSection(BaseSection):
         self.signals.loaded.connect(self._on_data_loaded)
         self.signals.error.connect(self._on_error)
 
+        # Keep a reference to rendered cards so selection state can be updated externally
+        self._cards: Dict[str, "PersonCard"] = {}
+
     def get_section_id(self) -> str:
         return "people"
 
@@ -120,6 +123,9 @@ class PeopleSection(BaseSection):
         container = QWidget()
         flow = FlowLayout(container, margin=6, spacing=8)
 
+        # Reset cache of rendered cards
+        self._cards.clear()
+
         for idx, row in enumerate(rows):
             branch_key = row.get("branch_key") or f"cluster_{idx}"
             display_name = row.get("display_name") or f"Person {idx + 1}"
@@ -134,6 +140,8 @@ class PeopleSection(BaseSection):
             card.drag_merge_requested.connect(self.dragMergeRequested.emit)
             flow.addWidget(card)
 
+            self._cards[branch_key] = card
+
         container.setLayout(flow)
         scroll.setWidget(container)
 
@@ -144,6 +152,18 @@ class PeopleSection(BaseSection):
 
         logger.info(f"[PeopleSection] Grid built with {flow.count()} people")
         return wrapper
+
+    # --- Selection helpers ---
+    def set_active_branch(self, branch_key: Optional[str]) -> None:
+        """Highlight the active person card for visual feedback in the sidebar."""
+        try:
+            for key, card in self._cards.items():
+                is_active = branch_key is not None and key == branch_key
+                card.setProperty("selected", is_active)
+                card.style().unpolish(card)
+                card.style().polish(card)
+        except Exception:
+            logger.debug("[PeopleSection] Failed to update active state", exc_info=True)
 
     def _load_face_thumbnail(self, rep_path: Optional[str], rep_thumb_png: Optional[bytes]) -> Optional[QPixmap]:
         """Load a face thumbnail from BLOB or file path."""
@@ -319,6 +339,7 @@ class PersonCard(QWidget):
             """
             PersonCard { background: transparent; border-radius: 8px; }
             PersonCard:hover { background: rgba(26,115,232,0.08); }
+            PersonCard[selected="true"] { background: rgba(26,115,232,0.12); border: 1px solid #1a73e8; }
             PersonCard[dragging="true"] { background: rgba(26,115,232,0.12); border: 1px dashed #1a73e8; }
             PersonCard[dragTarget="true"] { background: rgba(26,115,232,0.08); border: 1px dashed #1a73e8; }
             """

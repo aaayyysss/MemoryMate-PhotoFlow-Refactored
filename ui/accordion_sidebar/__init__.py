@@ -70,6 +70,7 @@ class AccordionSidebar(QWidget):
         self.project_id = project_id
         self.db = ReferenceDB()
         self.expanded_section_id: Optional[str] = None
+        self._active_person_branch: Optional[str] = None
 
         # Section instances (logic modules)
         self.section_logic: Dict[str, any] = {}
@@ -216,7 +217,7 @@ class AccordionSidebar(QWidget):
         # People section
         people = self.section_logic.get("people")
         if people and hasattr(people, 'personSelected'):
-            people.personSelected.connect(self.selectPerson.emit)
+            people.personSelected.connect(self._on_person_selected)
         if people and hasattr(people, 'contextMenuRequested'):
             people.contextMenuRequested.connect(self._on_person_context_menu)
         if people and hasattr(people, 'dragMergeRequested'):
@@ -235,6 +236,26 @@ class AccordionSidebar(QWidget):
     def _on_section_expand_requested(self, section_id: str):
         """Handle section expand request."""
         self._expand_section(section_id)
+
+    # --- People selection helpers ---
+    def _on_person_selected(self, branch_key: str):
+        """Track active person selection, support toggling, and emit filter signal."""
+        people_logic = self.section_logic.get("people")
+
+        # Toggle selection when clicking the same person again
+        if self._active_person_branch and branch_key == self._active_person_branch:
+            self._active_person_branch = None
+            if hasattr(people_logic, "set_active_branch"):
+                people_logic.set_active_branch(None)
+            self.selectPerson.emit("")
+            return
+
+        self._active_person_branch = branch_key
+
+        if hasattr(people_logic, "set_active_branch"):
+            people_logic.set_active_branch(branch_key)
+
+        self.selectPerson.emit(branch_key)
 
     def _expand_section(self, section_id: str):
         """Expand specified section and collapse others."""
@@ -436,6 +457,11 @@ class AccordionSidebar(QWidget):
             # Notify listeners (e.g., Google layout) so active person filters stay in sync
             self.personMerged.emit(source_branch, target_branch)
 
+            # Keep sidebar highlight aligned with the surviving target after reload
+            self._active_person_branch = target_branch
+            if hasattr(people, "set_active_branch"):
+                QTimer.singleShot(0, lambda: people.set_active_branch(target_branch))
+
             logger.info(f"[AccordionSidebar] Merge successful: {result}")
 
         except Exception as e:
@@ -570,6 +596,12 @@ class AccordionSidebar(QWidget):
 
                 # Reload people section
                 self._trigger_section_load("people")
+
+                if self._active_person_branch == branch_key:
+                    self._active_person_branch = None
+                    people_logic = self.section_logic.get("people")
+                    if hasattr(people_logic, "set_active_branch"):
+                        people_logic.set_active_branch(None)
 
                 # Notify parent layouts so active filters can be cleared if necessary
                 self.personDeleted.emit(branch_key)
