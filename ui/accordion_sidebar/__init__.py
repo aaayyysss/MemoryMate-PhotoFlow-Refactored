@@ -59,6 +59,8 @@ class AccordionSidebar(QWidget):
     selectTag    = Signal(str)     # tag name
     selectPerson = Signal(str)     # person branch_key
     selectVideo  = Signal(str)     # video filter type
+    personMerged = Signal(str, str)  # source_branch, target_branch
+    personDeleted = Signal(str)      # branch_key
 
     # Section expansion signal
     sectionExpanding = Signal(str)  # section_id
@@ -430,6 +432,9 @@ class AccordionSidebar(QWidget):
                 "\n".join(msg_lines)
             )
 
+            # Notify listeners (e.g., Google layout) so active person filters stay in sync
+            self.personMerged.emit(source_branch, target_branch)
+
             logger.info(f"[AccordionSidebar] Merge successful: {result}")
 
         except Exception as e:
@@ -564,6 +569,9 @@ class AccordionSidebar(QWidget):
 
                 # Reload people section
                 self._trigger_section_load("people")
+
+                # Notify parent layouts so active filters can be cleared if necessary
+                self.personDeleted.emit(branch_key)
 
                 QMessageBox.information(
                     None,
