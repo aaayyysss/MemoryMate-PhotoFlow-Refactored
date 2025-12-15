@@ -1,0 +1,74 @@
+# Claude Code Progress Log
+# MemoryMate-PhotoFlow-Refactored
+
+## Session 1 - 2025-12-15
+**Branch:** claude/fix-accordion-sidebar-XLAAz
+**Goal:** Fix accordion sidebar people section to include face merging features
+
+### Work Completed:
+1. ✅ Audited codebase structure:
+   - Found monolithic accordion_sidebar.py in root (has all features)
+   - Found modular ui/accordion_sidebar/ package (missing merge features)
+   - Confirmed google_layout.py uses modular version
+
+2. ✅ Identified missing features in modular people section:
+   - ❌ No context menu support (rename/merge/delete/details)
+   - ❌ No drag-and-drop merge support
+   - ❌ No face merge handlers
+
+3. ✅ Ported features from monolithic to modular:
+   - Added context_menu_requested signal to PersonCard
+   - Added drag_merge_requested signal to PersonCard
+   - Implemented contextMenuEvent in PersonCard
+   - Implemented drag-and-drop events (mousePressEvent, dragEnterEvent, dropEvent)
+   - Propagated signals through PeopleSection to AccordionSidebar
+   - Added merge handlers to AccordionSidebar:
+     * _on_person_context_menu
+     * _on_person_drag_merge
+     * _handle_rename_person
+     * _handle_merge_person
+     * _handle_person_details
+     * _handle_delete_person
+
+4. ✅ Created scaffolding files:
+   - FeatureList.json - Complete feature list with status tracking
+   - ClaudeProgress.txt - Session-by-session progress log (this file)
+   - init.sh - Coming next
+
+### Files Modified:
+- ui/accordion_sidebar/people_section.py:
+  * Added context menu and drag-drop support to PersonCard
+  * Added contextMenuRequested and dragMergeRequested signals to PeopleSection
+  * Connected card signals to section signals
+
+- ui/accordion_sidebar/__init__.py:
+  * Connected people section signals to accordion handlers
+  * Added complete merge implementation with proper error handling
+  * Uses ReferenceDB.merge_face_clusters for proper database operations
+  * Shows comprehensive merge feedback (duplicates, unique moved, faces reassigned)
+
+### Status:
+- People section now has feature parity with monolithic version
+- All face merging features implemented and ready for testing
+- Next: Create init.sh and run end-to-end tests
+
+### Notes:
+- Followed disciplined approach: one feature at a time
+- All changes are thread-safe and follow existing patterns
+- Database operations use proper ReferenceDB methods
+- UI feedback follows Google Photos pattern
+
+---
+
+## Instructions for Next Session:
+1. Run init.sh to start development server
+2. Test face merging features in browser:
+   - Right-click context menu on person cards
+   - Drag-and-drop merge between person cards
+   - Verify database updates and UI refresh
+3. Fix any bugs found during testing
+4. Mark features as passing in FeatureList.json
+5. Commit with clear message
+6. Update this progress log
+
+---
