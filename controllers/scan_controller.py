@@ -15,6 +15,8 @@ Version: 09.20.00.00
 """
 
 import logging
+from datetime import datetime
+from typing import List
 from PySide6.QtCore import QThread, Qt, QTimer, QThreadPool
 from PySide6.QtWidgets import (
     QProgressDialog, QMessageBox, QDialog, QVBoxLayout,
@@ -42,6 +44,7 @@ class ScanController:
         # Threshold of 20 shows dialog for medium/large scans
         self.PROGRESS_DIALOG_THRESHOLD = 20
         self._total_files_found = 0
+        self._progress_events: List[str] = []
 
         # PHASE 2 Task 2.2: Debounce reload operations
         # Track pending async operations to coordinate single refresh after ALL complete
@@ -60,6 +63,7 @@ class ScanController:
         self._scan_operations_pending = {"main_scan", "date_branches"}
         self._scan_refresh_scheduled = False
         self._scan_result_cached = None
+        self._progress_events = []
 
         # Progress dialog - REVERT TO OLD WORKING VERSION
         # Create and show dialog IMMEDIATELY (no threshold, no lazy creation)
@@ -209,6 +213,18 @@ class ScanController:
         except Exception:
             pass
 
+    def _log_progress_event(self, message: str) -> str:
+        """Track recent progress lines so the dialog can show contextual history."""
+        if not message:
+            return "\n".join(self._progress_events)
+
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        entry = f"[{timestamp}] {message}"
+        self._progress_events.append(entry)
+        # Keep the most recent handful to avoid bloating the dialog
+        self._progress_events = self._progress_events[-8:]
+        return "\n".join(self._progress_events)
+
     def _on_progress(self, pct: int, msg: str):
         """
         Handle progress updates from scan worker thread.
@@ -223,9 +239,11 @@ class ScanController:
 
         if msg:
             # Enhanced progress display with file details
-            label = f"{msg}\nCommitted: {self.main._committed_total} rows"
+            history = self._log_progress_event(msg)
+            label = f"{history}\nCommitted: {self.main._committed_total} rows"
         else:
-            label = f"Progress: {pct_i}%\nCommitted: {self.main._committed_total} rows"
+            history = self._log_progress_event("")
+            label = f"Progress: {pct_i}%\n{history}\nCommitted: {self.main._committed_total} rows"
 
         self.main._scan_progress.setLabelText(label)
         self.main._scan_progress.setWindowTitle(f"{tr('messages.scan_dialog_title')} ({pct_i}%)")
@@ -238,6 +256,27 @@ class ScanController:
     def _on_finished(self, folders, photos, videos=0):
         print(f"[ScanController] scan finished: {folders} folders, {photos} photos, {videos} videos")
         self.main._scan_result = (folders, photos, videos)
+        summary = (
+            f"Scan complete.\n"
+            f"Folders: {folders}\n"
+            f"Photos: {photos}\n"
+            f"Videos: {videos}\n"
+            f"Committed rows: {getattr(self.main, '_committed_total', 0)}"
+        )
+
+        try:
+            if self.main._scan_progress:
+                self.main._scan_progress.setValue(100)
+                self.main._scan_progress.setLabelText(summary)
+                self.main._scan_progress.setWindowTitle(f"{tr('messages.scan_dialog_title')} (100%)")
+        except Exception:
+            pass
+
+        try:
+            title = tr("messages.scan_complete") if callable(tr) else "Scan complete"
+            QMessageBox.information(self.main, title, summary)
+        except Exception:
+            pass
 
     def _on_error(self, err_text: str):
         try:

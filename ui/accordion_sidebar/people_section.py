@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QLayout,
     QGridLayout,
     QSizePolicy,
+    QToolButton,
 )
 from shiboken6 import isValid
 
@@ -57,6 +58,7 @@ class PeopleSection(BaseSection):
 
         # Keep a reference to rendered cards so selection state can be updated externally
         self._cards: Dict[str, "PersonCard"] = {}
+        self._header_widget: Optional[QWidget] = None
 
     def get_section_id(self) -> str:
         return "people"
@@ -66,6 +68,46 @@ class PeopleSection(BaseSection):
 
     def get_icon(self) -> str:
         return "👥"
+
+    def get_header_widget(self) -> Optional[QWidget]:
+        """Provide compact post-detection controls beside the section title."""
+        if self._header_widget:
+            return self._header_widget
+
+        container = QWidget()
+        layout = QHBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+
+        def build_btn(emoji: str, tooltip_key: str, fallback: str, callback):
+            btn = QToolButton()
+            btn.setText(emoji)
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
+            btn.setAutoRaise(True)
+            btn.setFixedSize(26, 26)
+            btn.setToolTip(tr(tooltip_key) if callable(tr) else fallback)
+            btn.clicked.connect(callback)
+            btn.setStyleSheet(
+                """
+                QToolButton {
+                    border: 1px solid #dadce0;
+                    border-radius: 6px;
+                    background: #fff;
+                }
+                QToolButton:hover { background: #f1f3f4; }
+                QToolButton:pressed { background: #e8f0fe; }
+                """
+            )
+            layout.addWidget(btn)
+
+        build_btn("🕑", "sidebar.people_actions.merge_history", "View Merge History", self.mergeHistoryRequested.emit)
+        build_btn("↩️", "sidebar.people_actions.undo_last_merge", "Undo Last Merge", self.undoMergeRequested.emit)
+        build_btn("↪️", "sidebar.people_actions.redo_last_undo", "Redo Last Undo", self.redoMergeRequested.emit)
+        build_btn("🧰", "sidebar.people_actions.people_tools", "Open People Tools", self.peopleToolsRequested.emit)
+
+        self._header_widget = container
+        return self._header_widget
 
     def load_section(self) -> None:
         """Load people section data in a background thread."""

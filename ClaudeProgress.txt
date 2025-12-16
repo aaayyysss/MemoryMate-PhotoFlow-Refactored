@@ -95,3 +95,7 @@
 - Init script ready for future sessions without CRLF issues.
 
 ---
+### Session 2025-12-17: Sidebar polish and progress UI
+- Added header-level people actions (history/undo/redo/tools) to keep controls visible beside the People title.
+- Wired People Tools to open the bulk review GUI before falling back to the workflow guide.
+- Enhanced scan progress dialog with timestamped history and completion summaries for better realtime insight.
