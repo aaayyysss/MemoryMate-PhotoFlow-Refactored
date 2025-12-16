@@ -157,6 +157,21 @@ class SectionHeader(QFrame):
         else:
             self.extra_container.setVisible(False)
 
+    def set_extra_widget(self, widget: QWidget):
+        """Mount a custom widget inside the header (to the right of the title)."""
+        # Remove any existing extra widget
+        while self.extra_layout.count():
+            item = self.extra_layout.takeAt(0)
+            if item.widget():
+                item.widget().setParent(None)
+
+        if widget:
+            widget.setParent(self)
+            self.extra_layout.addWidget(widget)
+            self.extra_container.setVisible(True)
+        else:
+            self.extra_container.setVisible(False)
+
     def mousePressEvent(self, event):
         """Handle mouse click on header."""
         if event.button() == Qt.LeftButton:
@@ -214,6 +229,10 @@ class AccordionSection(QWidget):
 
         # Set size policy
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+
+    def set_header_extra(self, widget: QWidget):
+        """Expose header slot for section-specific controls (e.g., people actions)."""
+        self.header.set_extra_widget(widget)
 
     def set_header_extra(self, widget: QWidget):
         """Expose header slot for section-specific controls (e.g., people actions)."""
@@ -296,6 +315,38 @@ class AccordionSection(QWidget):
             widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
             widget.setVisible(True)  # Ensure widget is visible
             self.content_layout.addWidget(widget, stretch=1)
+
+    def _ensure_content_layout(self, force_rebuild: bool = False) -> bool:
+        """
+        Ensure the content container/layout are still valid. A rapid flurry of
+        async reloads can result in Qt deleting the layout while signals are
+        still being processed; this guard rebuilds the structure as needed.
+        Returns True if the layout is usable.
+        """
+
+        if not isValid(self):
+            return False
+
+        if not isValid(self.scroll_area):
+            return False
+
+        rebuild_container = force_rebuild or not isValid(self.content_container)
+        rebuild_layout = force_rebuild or not isValid(self.content_layout)
+
+        if rebuild_container:
+            self.content_container = QWidget()
+            self.content_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+            rebuild_layout = True
+
+        if rebuild_layout:
+            self.content_layout = QVBoxLayout(self.content_container)
+            self.content_layout.setContentsMargins(8, 8, 8, 8)
+            self.content_layout.setSpacing(0)
+
+        if self.scroll_area.widget() is not self.content_container and isValid(self.scroll_area):
+            self.scroll_area.setWidget(self.content_container)
+
+        return isValid(self.content_layout)
 
     def _ensure_content_layout(self, force_rebuild: bool = False) -> bool:
         """

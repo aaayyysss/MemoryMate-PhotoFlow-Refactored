@@ -9820,6 +9820,161 @@ class GooglePhotosLayout(BaseLayout):
             if not device_root:
                 return
 
+            opened = False
+
+            # Windows MTP/namespace paths ("::{GUID}\\?\\usb#...") cannot be opened via
+            # QDesktopServices. Try native shell handling first when we detect them.
+            is_windows_namespace = os.name == "nt" and device_root.strip().startswith("::")
+
+            if is_windows_namespace:
+                opened = self._open_windows_device(device_root)
+            else:
+                # Regular file-system paths can use Qt's URL handling.
+                url = QUrl.fromUserInput(device_root)
+                if url.isValid():
+                    opened = QDesktopServices.openUrl(url)
+
+                if not opened and os.name == "nt":
+                    opened = self._open_windows_device(device_root)
+
+            if not opened:
+                raise RuntimeError(f"Could not open device path: {device_root}")
+        except Exception as e:
+            QMessageBox.information(
+                self.main_window if hasattr(self, "main_window") else None,
+                "Devices",
+                f"Unable to open device location:\n{device_root}\n\n{e}",
+            )
+
+    def _open_windows_device(self, device_root: str) -> bool:
+        """Best-effort attempts to open a Windows device/namespace path."""
+        try:
+            try:
+                os.startfile(device_root)  # type: ignore[attr-defined]
+                return True
+            except Exception:
+                pass
+
+            try:
+                subprocess.Popen(["explorer", device_root])
+                return True
+            except Exception:
+                return False
+        except Exception:
+            return False
+
+    def _open_people_tools(self):
+        """Open the post-face-detection tools reference for quick access."""
+        from PySide6.QtWidgets import QMessageBox
+
+        workflow_path = os.path.abspath("POST_FACE_DETECTION_WORKFLOW.md")
+
+        if not os.path.exists(workflow_path):
+            QMessageBox.information(
+                self.main_window if hasattr(self, "main_window") else None,
+                "People Tools",
+                "Workflow guide not found. Please make sure POST_FACE_DETECTION_WORKFLOW.md exists.",
+            )
+            return
+
+        try:
+            url = QUrl.fromLocalFile(workflow_path)
+            if not QDesktopServices.openUrl(url):
+                raise RuntimeError("Failed to open People Tools guide")
+        except Exception:
+            # Fallback: show a simple helper message with the path
+            QMessageBox.information(
+                self.main_window if hasattr(self, "main_window") else None,
+                "People Tools",
+                f"Open the post-face-detection toolkit at:\n{workflow_path}",
+            )
+
+    def _on_accordion_person_deleted(self, branch_key: str):
+        """Clear any active person filter when that person is removed."""
+        if getattr(self, "current_filter_person", None) != branch_key:
+            return
+
+        logger.info(
+            "[GooglePhotosLayout] Active person '%s' deleted; clearing filter", branch_key
+        )
+
+        self._load_photos(
+            thumb_size=self.current_thumb_size,
+            filter_year=self.current_filter_year,
+            filter_month=self.current_filter_month,
+            filter_day=self.current_filter_day,
+            filter_folder=self.current_filter_folder,
+            filter_person=None,
+        )
+
+    def _on_accordion_person_merged(self, source_branch: str, target_branch: str):
+        """Keep active person filters in sync after a merge in the sidebar."""
+        active_person = getattr(self, "current_filter_person", None)
+        if active_person not in (source_branch, target_branch):
+            return
+
+        logger.info(
+            "[GooglePhotosLayout] Person merge detected (%s -> %s); refreshing grid",
+            source_branch,
+            target_branch,
+        )
+
+        # If we were filtered on the source, switch to the target; if already on target, refresh
+        new_person = target_branch if active_person == source_branch else active_person
+        self._load_photos(
+            thumb_size=self.current_thumb_size,
+            filter_year=self.current_filter_year,
+            filter_month=self.current_filter_month,
+            filter_day=self.current_filter_day,
+            filter_folder=self.current_filter_folder,
+            filter_person=new_person,
+        )
+
+    # --- People tools surfaced from accordion ---
+    def _refresh_people_sidebar(self):
+        try:
+            if hasattr(self, "accordion_sidebar"):
+                self.accordion_sidebar.reload_people_section()
+        except Exception as e:
+            logger.debug("[GooglePhotosLayout] Failed to refresh people section after tool action: %s", e)
+
+    def _on_people_merge_history_requested(self):
+        try:
+            self._show_merge_history()
+            self._refresh_people_sidebar()
+        except Exception as e:
+            logger.debug("[GooglePhotosLayout] Merge history request failed: %s", e, exc_info=True)
+
+    def _on_people_undo_requested(self):
+        try:
+            self._undo_last_merge()
+            self._refresh_people_sidebar()
+        except Exception as e:
+            logger.debug("[GooglePhotosLayout] Undo merge request failed: %s", e, exc_info=True)
+
+    def _on_people_redo_requested(self):
+        try:
+            self._redo_last_undo()
+            self._refresh_people_sidebar()
+        except Exception as e:
+            logger.debug("[GooglePhotosLayout] Redo merge request failed: %s", e, exc_info=True)
+
+    def _on_people_tools_requested(self):
+        try:
+            # Prefer the interactive bulk review GUI; fall back to the workflow guide if unavailable
+            if hasattr(self, "_prompt_bulk_face_review"):
+                self._prompt_bulk_face_review()
+            else:
+                self._open_people_tools()
+        except Exception as e:
+            logger.debug("[GooglePhotosLayout] People tools request failed: %s", e, exc_info=True)
+
+    def _on_accordion_device_selected(self, device_root: str):
+        """Open the selected device in the system file browser for quick import."""
+        try:
+            if not device_root:
+                return
+
             # MTP/PTP devices surface shell namespace paths that aren't valid "file://" URLs.
             # Use fromUserInput first, then fall back to Explorer/StartFile on Windows.
             url = QUrl.fromUserInput(device_root)
