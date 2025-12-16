@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal, QPropertyAnimation, QEasingCurve, QSize, QThreadPool, QRect, QPoint, QMimeData
 from PySide6.QtGui import QFont, QIcon, QColor, QPixmap, QPainter, QPainterPath, QDrag, QImage
 from datetime import datetime
+from typing import Optional
 import threading
 import traceback
 import time
@@ -866,14 +867,14 @@ class AccordionSidebar(QWidget):
 
         # Define sections in priority order
         sections_config = [
-            ("people",   "👥 People",      "👥"),
+            ("people",   f"👥 {tr('sidebar.header_people')}",        "👥"),
 #            ("videos",   "🎬 Videos",      "🎬"),    # >>> FIX: keep only the NEW videos entry
-            ("dates",    "📅 By Date",     "📅"),
-            ("folders",  "📁 Folders",     "📁"),
-            ("videos",   "🎬 Videos",      "🎬"),  # NEW: Videos section
-            ("tags",     "🏷️  Tags",       "🏷️"),
-            ("branches", "🔀 Branches",    "🔀"),
-            ("quick",    "⚡ Quick Dates", "⚡"),
+            ("dates",    f"📅 {tr('sidebar.by_date')}",            "📅"),
+            ("folders",  f"📁 {tr('sidebar.folders')}",            "📁"),
+            ("videos",   f"🎬 {tr('sidebar.videos')}",             "🎬"),  # NEW: Videos section
+            ("tags",     f"🏷️  {tr('sidebar.tags')}",               "🏷️"),
+            ("branches", f"🔀 {tr('sidebar.branches')}",           "🔀"),
+            ("quick",    f"⚡ {tr('sidebar.quick_dates')}",        "⚡"),
         ]
 
         for section_id, title, icon in sections_config:
@@ -2297,7 +2298,7 @@ class AccordionSidebar(QWidget):
 
             if total_videos == 0:
                 # No videos - show message
-                no_videos_item = QTreeWidgetItem(["  (No videos yet)"])
+                no_videos_item = QTreeWidgetItem([f"  ({tr('sidebar.loading')})"])
                 no_videos_item.setForeground(0, QColor("#888888"))
                 tree.addTopLevelItem(no_videos_item)
                 section.set_content_widget(tree)
@@ -2305,7 +2306,7 @@ class AccordionSidebar(QWidget):
                 return
 
             # All Videos
-            all_item = QTreeWidgetItem([f"All Videos ({total_videos})"])
+            all_item = QTreeWidgetItem([f"{tr('sidebar.all_videos')} ({total_videos})"])
             all_item.setData(0, Qt.UserRole, {"type": "all_videos"})
             tree.addTopLevelItem(all_item)
 
@@ -2317,47 +2318,51 @@ class AccordionSidebar(QWidget):
 
             # BUG FIX: Count videos WITH duration metadata (not sum of categories)
             videos_with_duration = [v for v in videos if v.get("duration_seconds")]
-            duration_parent = QTreeWidgetItem([f"⏱️ By Duration ({len(videos_with_duration)})"])
+            duration_parent = QTreeWidgetItem([f"⏱️ {tr('sidebar.by_duration')} ({len(videos_with_duration)})"])
             duration_parent.setData(0, Qt.UserRole, {"type": "duration_header"})
             tree.addTopLevelItem(duration_parent)
 
-            short_item = QTreeWidgetItem([f"Short < 30s ({len(short_videos)})"])
+            short_item = QTreeWidgetItem([f"{tr('sidebar.duration_short')} ({len(short_videos)})"])
             short_item.setData(0, Qt.UserRole, {"type": "duration", "filter": "short"})
             duration_parent.addChild(short_item)
 
-            medium_item = QTreeWidgetItem([f"Medium 30s-5min ({len(medium_videos)})"])
+            medium_item = QTreeWidgetItem([f"{tr('sidebar.duration_medium')} ({len(medium_videos)})"])
             medium_item.setData(0, Qt.UserRole, {"type": "duration", "filter": "medium"})
             duration_parent.addChild(medium_item)
 
-            long_item = QTreeWidgetItem([f"Long > 5min ({len(long_videos)})"])
+            long_item = QTreeWidgetItem([f"{tr('sidebar.duration_long')} ({len(long_videos)})"])
             long_item.setData(0, Qt.UserRole, {"type": "duration", "filter": "long"})
             duration_parent.addChild(long_item)
 
             # By Resolution
-            sd_videos = [v for v in videos if v.get("height", 0) > 0 and v.get("height") < 720]
-            hd_videos = [v for v in videos if v.get("height", 0) >= 720 and v.get("height") < 1080]
-            fhd_videos = [v for v in videos if v.get("height", 0) >= 1080 and v.get("height") < 2160]
-            uhd_videos = [v for v in videos if v.get("height", 0) >= 2160]
+            def _height_value(video: dict) -> Optional[int]:
+                value = video.get("height")
+                return value if isinstance(value, (int, float)) else None
+
+            sd_videos = [v for v in videos if (h := _height_value(v)) and h > 0 and h < 720]
+            hd_videos = [v for v in videos if (h := _height_value(v)) and h >= 720 and h < 1080]
+            fhd_videos = [v for v in videos if (h := _height_value(v)) and h >= 1080 and h < 2160]
+            uhd_videos = [v for v in videos if (h := _height_value(v)) and h >= 2160]
 
             # BUG FIX: Count videos WITH resolution metadata (not sum of categories)
-            videos_with_resolution = [v for v in videos if v.get("height", 0) > 0]
-            resolution_parent = QTreeWidgetItem([f"📺 By Resolution ({len(videos_with_resolution)})"])
+            videos_with_resolution = [v for v in videos if (h := _height_value(v)) and h > 0]
+            resolution_parent = QTreeWidgetItem([f"📺 {tr('sidebar.by_resolution')} ({len(videos_with_resolution)})"])
             resolution_parent.setData(0, Qt.UserRole, {"type": "resolution_header"})
             tree.addTopLevelItem(resolution_parent)
 
-            sd_item = QTreeWidgetItem([f"SD < 720p ({len(sd_videos)})"])
+            sd_item = QTreeWidgetItem([f"{tr('sidebar.resolution_sd')} ({len(sd_videos)})"])
             sd_item.setData(0, Qt.UserRole, {"type": "resolution", "filter": "sd"})
             resolution_parent.addChild(sd_item)
 
-            hd_item = QTreeWidgetItem([f"HD 720p ({len(hd_videos)})"])
+            hd_item = QTreeWidgetItem([f"{tr('sidebar.resolution_hd')} ({len(hd_videos)})"])
             hd_item.setData(0, Qt.UserRole, {"type": "resolution", "filter": "hd"})
             resolution_parent.addChild(hd_item)
 
-            fhd_item = QTreeWidgetItem([f"Full HD 1080p ({len(fhd_videos)})"])
+            fhd_item = QTreeWidgetItem([f"{tr('sidebar.resolution_fhd')} ({len(fhd_videos)})"])
             fhd_item.setData(0, Qt.UserRole, {"type": "resolution", "filter": "fhd"})
             resolution_parent.addChild(fhd_item)
 
-            uhd_item = QTreeWidgetItem([f"4K 2160p+ ({len(uhd_videos)})"])
+            uhd_item = QTreeWidgetItem([f"{tr('sidebar.resolution_4k')} ({len(uhd_videos)})"])
             uhd_item.setData(0, Qt.UserRole, {"type": "resolution", "filter": "4k"})
             resolution_parent.addChild(uhd_item)
 
@@ -2370,27 +2375,27 @@ class AccordionSidebar(QWidget):
 
             # BUG FIX: Count videos WITH codec metadata (not sum of categories - might miss unknown codecs)
             videos_with_codec = [v for v in videos if v.get("codec")]
-            codec_parent = QTreeWidgetItem([f"🎞️ By Codec ({len(videos_with_codec)})"])
+            codec_parent = QTreeWidgetItem([f"🎞️ {tr('sidebar.by_codec')} ({len(videos_with_codec)})"])
             codec_parent.setData(0, Qt.UserRole, {"type": "codec_header"})
             tree.addTopLevelItem(codec_parent)
 
-            h264_item = QTreeWidgetItem([f"H.264 / AVC ({len(h264_videos)})"])
+            h264_item = QTreeWidgetItem([f"{tr('sidebar.codec_h264')} ({len(h264_videos)})"])
             h264_item.setData(0, Qt.UserRole, {"type": "codec", "filter": "h264"})
             codec_parent.addChild(h264_item)
 
-            hevc_item = QTreeWidgetItem([f"H.265 / HEVC ({len(hevc_videos)})"])
+            hevc_item = QTreeWidgetItem([f"{tr('sidebar.codec_h265')} ({len(hevc_videos)})"])
             hevc_item.setData(0, Qt.UserRole, {"type": "codec", "filter": "hevc"})
             codec_parent.addChild(hevc_item)
 
-            vp9_item = QTreeWidgetItem([f"VP9 ({len(vp9_videos)})"])
+            vp9_item = QTreeWidgetItem([f"{tr('sidebar.codec_vp9')} ({len(vp9_videos)})"])
             vp9_item.setData(0, Qt.UserRole, {"type": "codec", "filter": "vp9"})
             codec_parent.addChild(vp9_item)
 
-            av1_item = QTreeWidgetItem([f"AV1 ({len(av1_videos)})"])
+            av1_item = QTreeWidgetItem([f"{tr('sidebar.codec_av1')} ({len(av1_videos)})"])
             av1_item.setData(0, Qt.UserRole, {"type": "codec", "filter": "av1"})
             codec_parent.addChild(av1_item)
 
-            mpeg4_item = QTreeWidgetItem([f"MPEG-4 ({len(mpeg4_videos)})"])
+            mpeg4_item = QTreeWidgetItem([f"{tr('sidebar.codec_mpeg4')} ({len(mpeg4_videos)})"])
             mpeg4_item.setData(0, Qt.UserRole, {"type": "codec", "filter": "mpeg4"})
             codec_parent.addChild(mpeg4_item)
 
@@ -2402,23 +2407,23 @@ class AccordionSidebar(QWidget):
 
             # BUG FIX: Count videos WITH size metadata (not sum of categories)
             videos_with_size = [v for v in videos if v.get("size_kb")]
-            size_parent = QTreeWidgetItem([f"📦 By File Size ({len(videos_with_size)})"])
+            size_parent = QTreeWidgetItem([f"📦 {tr('sidebar.by_size')} ({len(videos_with_size)})"])
             size_parent.setData(0, Qt.UserRole, {"type": "size_header"})
             tree.addTopLevelItem(size_parent)
 
-            small_item = QTreeWidgetItem([f"Small (< 100MB) ({len(small_videos)})"])
+            small_item = QTreeWidgetItem([f"{tr('sidebar.size_small')} ({len(small_videos)})"])
             small_item.setData(0, Qt.UserRole, {"type": "size", "filter": "small"})
             size_parent.addChild(small_item)
 
-            medium_item = QTreeWidgetItem([f"Medium (100MB - 1GB) ({len(medium_size_videos)})"])
+            medium_item = QTreeWidgetItem([f"{tr('sidebar.size_medium')} ({len(medium_size_videos)})"])
             medium_item.setData(0, Qt.UserRole, {"type": "size", "filter": "medium"})
             size_parent.addChild(medium_item)
 
-            large_item = QTreeWidgetItem([f"Large (1GB - 5GB) ({len(large_videos)})"])
+            large_item = QTreeWidgetItem([f"{tr('sidebar.size_large')} ({len(large_videos)})"])
             large_item.setData(0, Qt.UserRole, {"type": "size", "filter": "large"})
             size_parent.addChild(large_item)
 
-            xlarge_item = QTreeWidgetItem([f"XLarge (> 5GB) ({len(xlarge_videos)})"])
+            xlarge_item = QTreeWidgetItem([f"{tr('sidebar.size_xlarge')} ({len(xlarge_videos)})"])
             xlarge_item.setData(0, Qt.UserRole, {"type": "size", "filter": "xlarge"})
             size_parent.addChild(xlarge_item)
 
