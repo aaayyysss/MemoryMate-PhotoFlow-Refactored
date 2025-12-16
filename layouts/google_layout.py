@@ -13,7 +13,7 @@ from PySide6.QtCore import (
     QPropertyAnimation, QEasingCurve, QRect, QPoint
 )
 from PySide6.QtGui import (
-    QPixmap, QIcon, QKeyEvent, QImage, QColor, QAction, QPainter, QPen, QPainterPath
+    QPixmap, QIcon, QKeyEvent, QImage, QColor, QAction, QPainter, QPen, QPainterPath, QDesktopServices
 )
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PySide6.QtMultimediaWidgets import QVideoWidget
@@ -8952,6 +8952,13 @@ class GooglePhotosLayout(BaseLayout):
         sidebar.selectTag.connect(self._on_accordion_tag_clicked)
         sidebar.selectVideo.connect(self._on_accordion_video_clicked)  # NEW: Video filtering
         sidebar.selectPerson.connect(self._on_accordion_person_clicked)
+        sidebar.selectDevice.connect(self._on_accordion_device_selected)
+        sidebar.personMerged.connect(self._on_accordion_person_merged)
+        sidebar.personDeleted.connect(self._on_accordion_person_deleted)
+        sidebar.mergeHistoryRequested.connect(self._on_people_merge_history_requested)
+        sidebar.undoLastMergeRequested.connect(self._on_people_undo_requested)
+        sidebar.redoLastUndoRequested.connect(self._on_people_redo_requested)
+        sidebar.peopleToolsRequested.connect(self._on_people_tools_requested)
 
         # FIX: Connect section expansion signal to hide search suggestions popup
         sidebar.sectionExpanding.connect(self._on_accordion_section_expanding)
@@ -9715,6 +9722,19 @@ class GooglePhotosLayout(BaseLayout):
         Args:
             person_branch_key: Identifier for the face cluster to filter by.
         """
+        # Empty string signals clearing the active person filter (toggle off)
+        if person_branch_key == "":
+            logger.info("[GooglePhotosLayout] Clearing person filter from accordion toggle")
+            self._load_photos(
+                thumb_size=self.current_thumb_size,
+                filter_year=self.current_filter_year,
+                filter_month=self.current_filter_month,
+                filter_day=self.current_filter_day,
+                filter_folder=self.current_filter_folder,
+                filter_person=None,
+            )
+            return
+
         if not person_branch_key:
             return
 
@@ -9729,6 +9749,124 @@ class GooglePhotosLayout(BaseLayout):
             filter_day=None,
             filter_folder=None,
             filter_person=person_branch_key,
+        )
+
+    def _on_accordion_person_merged(self, source_branch: str, target_branch: str):
+        """Keep active person filters in sync after a merge in the sidebar."""
+        active_person = getattr(self, "current_filter_person", None)
+        if active_person not in (source_branch, target_branch):
+            return
+
+        logger.info(
+            "[GooglePhotosLayout] Person merge detected (%s -> %s); refreshing grid",
+            source_branch,
+            target_branch,
+        )
+
+        # If we were filtered on the source, switch to the target; if already on target, refresh
+        new_person = target_branch if active_person == source_branch else active_person
+        self._load_photos(
+            thumb_size=self.current_thumb_size,
+            filter_year=self.current_filter_year,
+            filter_month=self.current_filter_month,
+            filter_day=self.current_filter_day,
+            filter_folder=self.current_filter_folder,
+            filter_person=new_person,
+        )
+
+    # --- People tools surfaced from accordion ---
+    def _refresh_people_sidebar(self):
+        try:
+            if hasattr(self, "accordion_sidebar"):
+                self.accordion_sidebar.reload_people_section()
+        except Exception as e:
+            logger.debug("[GooglePhotosLayout] Failed to refresh people section after tool action: %s", e)
+
+    def _on_people_merge_history_requested(self):
+        try:
+            self._show_merge_history()
+            self._refresh_people_sidebar()
+        except Exception as e:
+            logger.debug("[GooglePhotosLayout] Merge history request failed: %s", e, exc_info=True)
+
+    def _on_people_undo_requested(self):
+        try:
+            self._undo_last_merge()
+            self._refresh_people_sidebar()
+        except Exception as e:
+            logger.debug("[GooglePhotosLayout] Undo merge request failed: %s", e, exc_info=True)
+
+    def _on_people_redo_requested(self):
+        try:
+            self._redo_last_undo()
+            self._refresh_people_sidebar()
+        except Exception as e:
+            logger.debug("[GooglePhotosLayout] Redo merge request failed: %s", e, exc_info=True)
+
+    def _on_people_tools_requested(self):
+        try:
+            self._open_people_tools()
+        except Exception as e:
+            logger.debug("[GooglePhotosLayout] People tools request failed: %s", e, exc_info=True)
+
+    def _on_accordion_device_selected(self, device_root: str):
+        """Open the selected device in the system file browser for quick import."""
+        try:
+            if not device_root:
+                return
+
+            url = QUrl.fromLocalFile(device_root)
+            if not QDesktopServices.openUrl(url):
+                raise RuntimeError(f"Could not open device path: {device_root}")
+        except Exception as e:
+            QMessageBox.information(
+                self.main_window if hasattr(self, "main_window") else None,
+                "Devices",
+                f"Unable to open device location:\n{device_root}\n\n{e}",
+            )
+
+    def _open_people_tools(self):
+        """Open the post-face-detection tools reference for quick access."""
+        from PySide6.QtWidgets import QMessageBox
+
+        workflow_path = os.path.abspath("POST_FACE_DETECTION_WORKFLOW.md")
+
+        if not os.path.exists(workflow_path):
+            QMessageBox.information(
+                self.main_window if hasattr(self, "main_window") else None,
+                "People Tools",
+                "Workflow guide not found. Please make sure POST_FACE_DETECTION_WORKFLOW.md exists.",
+            )
+            return
+
+        try:
+            url = QUrl.fromLocalFile(workflow_path)
+            if not QDesktopServices.openUrl(url):
+                raise RuntimeError("Failed to open People Tools guide")
+        except Exception:
+            # Fallback: show a simple helper message with the path
+            QMessageBox.information(
+                self.main_window if hasattr(self, "main_window") else None,
+                "People Tools",
+                f"Open the post-face-detection toolkit at:\n{workflow_path}",
+            )
+
+    def _on_accordion_person_deleted(self, branch_key: str):
+        """Clear any active person filter when that person is removed."""
+        if getattr(self, "current_filter_person", None) != branch_key:
+            return
+
+        logger.info(
+            "[GooglePhotosLayout] Active person '%s' deleted; clearing filter", branch_key
+        )
+
+        self._load_photos(
+            thumb_size=self.current_thumb_size,
+            filter_year=self.current_filter_year,
+            filter_month=self.current_filter_month,
+            filter_day=self.current_filter_day,
+            filter_folder=self.current_filter_folder,
+            filter_person=None,
         )
 
     def _on_accordion_video_clicked(self, filter_spec: str):
