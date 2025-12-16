@@ -74,26 +74,48 @@ class ClusterFaceSelector(QDialog):
         with db._connect() as conn:
             cur = conn.cursor()
 
-            # Get all face crops for this cluster with quality scores
-            cur.execute("""
-                SELECT
-                    fc.id,
-                    fc.crop_path,
-                    fc.quality_score,
-                    fc.is_representative,
-                    pm.date_taken,
-                    pm.width,
-                    pm.height
-                FROM face_crops fc
-                LEFT JOIN photo_metadata pm ON fc.image_path = pm.path
-                WHERE fc.project_id = ? AND fc.branch_key = ?
-                ORDER BY fc.quality_score DESC, fc.id DESC
-            """, (self.project_id, self.branch_key))
+            # Check if quality_score column exists
+            cur.execute("PRAGMA table_info(face_crops)")
+            columns = {row[1] for row in cur.fetchall()}
+            has_quality_score = 'quality_score' in columns
+
+            # Get all face crops for this cluster with quality scores if available
+            if has_quality_score:
+                cur.execute("""
+                    SELECT
+                        fc.id,
+                        fc.crop_path,
+                        fc.quality_score,
+                        fc.is_representative,
+                        pm.date_taken,
+                        pm.width,
+                        pm.height
+                    FROM face_crops fc
+                    LEFT JOIN photo_metadata pm ON fc.image_path = pm.path
+                    WHERE fc.project_id = ? AND fc.branch_key = ?
+                    ORDER BY fc.quality_score DESC, fc.id DESC
+                """, (self.project_id, self.branch_key))
+            else:
+                # Fallback: sort by is_representative and id
+                cur.execute("""
+                    SELECT
+                        fc.id,
+                        fc.crop_path,
+                        0.0 as quality_score,
+                        fc.is_representative,
+                        pm.date_taken,
+                        pm.width,
+                        pm.height
+                    FROM face_crops fc
+                    LEFT JOIN photo_metadata pm ON fc.image_path = pm.path
+                    WHERE fc.project_id = ? AND fc.branch_key = ?
+                    ORDER BY fc.is_representative DESC, fc.id DESC
+                """, (self.project_id, self.branch_key))
 
             rows = cur.fetchall()
 
-            # If quality scores are missing, calculate them
-            if rows and all(row[2] is None or row[2] == 0.0 for row in rows):
+            # If quality scores are missing and column exists, calculate them
+            if has_quality_score and rows and all(row[2] is None or row[2] == 0.0 for row in rows):
                 self._calculate_missing_quality_scores()
                 # Reload after calculation
                 cur.execute("""
