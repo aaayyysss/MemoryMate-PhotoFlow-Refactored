@@ -227,6 +227,15 @@ class ReferenceDB:
         if has_old and not has_new:
             c.execute("ALTER TABLE face_crop RENAME TO face_crops")
 
+        # --- MIGRATION: Add quality_score column if missing (for representative face selection) ---
+        c.execute("PRAGMA table_info(face_crops)")
+        existing_cols_fc = {row[1] for row in c.fetchall()}
+        if 'quality_score' not in existing_cols_fc:
+            try:
+                c.execute("ALTER TABLE face_crops ADD COLUMN quality_score REAL DEFAULT 0.0")
+            except Exception:
+                pass  # Ignore if fails (column might already exist due to race condition)
+
 
         # --- Face crops (per-branch thumbnails; DB is the source of truth) ---
 

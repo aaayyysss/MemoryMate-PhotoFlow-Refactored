@@ -189,6 +189,85 @@
         "Photo grid filters correctly when quick date selected",
         "Button styling matches Google Photos design"
       ]
+    },
+    {
+      "id": "people-tools-representative-face-selection",
+      "name": "People Tools: Representative Face Selection",
+      "description": "Allow users to choose which face crop represents each person cluster in the sidebar, with quality-based sorting and metrics",
+      "status": "passing",
+      "priority": "high",
+      "dependencies": ["accordion-sidebar-people-multi-row-grid"],
+      "tests": [
+        "Bulk review shows 'Choose Face' button on each cluster card",
+        "Choose Face button opens ClusterFaceSelector dialog",
+        "Dialog shows all faces in cluster sorted by quality score",
+        "Quality scores calculated using sharpness, size, brightness, frontality, recency",
+        "Current representative face is highlighted in dialog",
+        "User can select new representative face with radio buttons",
+        "Saving updates face_crops.is_representative flag in database",
+        "Saving updates face_branch_reps.rep_path and rep_thumb_png",
+        "Bulk review grid refreshes to show new representative after selection",
+        "Quality score stored in face_crops.quality_score column",
+        "Missing quality scores calculated automatically on first view",
+        "FaceQualityScorer weights sum to 1.0",
+        "Quality badges show ✅ (high ≥75%), ⚠️ (medium ≥50%), ❓ (low <50%)"
+      ]
+    },
+    {
+      "id": "people-tools-name-autocomplete",
+      "name": "People Tools: Name Autocomplete",
+      "description": "Autocomplete suggestions for existing person names when naming unnamed clusters in bulk review",
+      "status": "passing",
+      "priority": "medium",
+      "dependencies": ["people-tools-representative-face-selection"],
+      "tests": [
+        "Name input fields have QCompleter attached",
+        "Completer loads existing person names from database",
+        "Completer is case insensitive (Qt.CaseInsensitive)",
+        "Completer uses MatchContains filter mode for partial matching",
+        "Completer uses PopupCompletion mode for dropdown suggestions",
+        "Typing in name field shows matching suggestions",
+        "Empty name list doesn't break autocomplete",
+        "Autocomplete works correctly with multiple name inputs in grid"
+      ]
+    },
+    {
+      "id": "people-tools-multiple-face-preview",
+      "name": "People Tools: Multiple Face Preview",
+      "description": "Show 3-4 face thumbnails per cluster in bulk review instead of single representative, sorted by quality",
+      "status": "passing",
+      "priority": "medium",
+      "dependencies": ["people-tools-representative-face-selection"],
+      "tests": [
+        "Bulk review shows up to 4 faces per cluster",
+        "Faces sorted by quality_score DESC",
+        "Single face shows large (200x200) thumbnail",
+        "Multiple faces show small (48x48) thumbnails in horizontal row",
+        "Fallback to representative face if quality scores missing",
+        "Thumbnails have border styling",
+        "Error handling falls back to original single preview",
+        "Users can see variety in cluster before naming"
+      ]
+    },
+    {
+      "id": "people-tools-merge-suggestions",
+      "name": "People Tools: Smart Merge Suggestions",
+      "description": "After naming clusters, suggest similar unnamed clusters for automatic merging based on centroid similarity",
+      "status": "passing",
+      "priority": "high",
+      "dependencies": ["people-tools-representative-face-selection"],
+      "tests": [
+        "After naming, calculate similarity between named and unnamed clusters",
+        "Uses cosine similarity on face embedding centroids",
+        "Default similarity threshold ≥75% (configurable)",
+        "Shows merge suggestions dialog with top 5 matches per person",
+        "Dialog displays thumbnails and similarity percentages",
+        "Checkboxes pre-selected for high-similarity matches",
+        "User can select/deselect clusters to merge",
+        "Merge updates face_branch_reps and branches tables",
+        "People tree refreshes after merge",
+        "Skip button allows dismissing suggestions"
+      ]
     }
   ],
   "metadata": {
