@@ -223,14 +223,20 @@ class PeopleSection(BaseSection):
         container.attach_viewport(scroll.viewport())
         scroll.setWidget(container)
 
-        wrapper = QWidget()
-        wrapper_layout = QVBoxLayout(wrapper)
-        wrapper_layout.setContentsMargins(0, 0, 0, 0)
-        wrapper_layout.addWidget(actions)
-        wrapper_layout.addWidget(scroll)
-
         logger.info(f"[PeopleSection] Grid built with {len(cards)} people")
-        return wrapper
+        return scroll
+
+    # --- Selection helpers ---
+    def set_active_branch(self, branch_key: Optional[str]) -> None:
+        """Highlight the active person card for visual feedback in the sidebar."""
+        try:
+            for key, card in self._cards.items():
+                is_active = branch_key is not None and key == branch_key
+                card.setProperty("selected", is_active)
+                card.style().unpolish(card)
+                card.style().polish(card)
+        except Exception:
+            logger.debug("[PeopleSection] Failed to update active state", exc_info=True)
 
     # --- Selection helpers ---
     def set_active_branch(self, branch_key: Optional[str]) -> None:
