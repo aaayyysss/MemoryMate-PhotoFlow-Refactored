@@ -8,7 +8,7 @@ import threading
 import traceback
 from typing import Optional, List, Dict
 
-from PySide6.QtCore import Signal, Qt, QObject, QSize, QRect, QPoint
+from PySide6.QtCore import Signal, Qt, QObject, QSize, QRect, QPoint, QEvent
 from PySide6.QtGui import QPixmap, QImage
 from PySide6.QtWidgets import (
     QApplication,
@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QLayout,
     QGridLayout,
+    QSizePolicy,
 )
 from shiboken6 import isValid
 
@@ -143,6 +144,7 @@ class PeopleSection(BaseSection):
             self._cards[branch_key] = card
 
         container = PeopleGrid(cards)
+        container.attach_viewport(scroll.viewport())
         scroll.setWidget(container)
 
         wrapper = QWidget()
@@ -297,19 +299,35 @@ class PeopleGrid(QWidget):
         self.cards = cards
         self._card_width = cards[0].sizeHint().width() if cards else 96
         self._columns = 0
+        self._viewport = None
         self._layout = QGridLayout(self)
         self._layout.setContentsMargins(6, 6, 6, 6)
         self._layout.setHorizontalSpacing(10)
         self._layout.setVerticalSpacing(10)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self._relayout(force=True)
+
+    def attach_viewport(self, viewport: QWidget) -> None:
+        """Track the scroll viewport so column count follows sidebar width."""
+        if not viewport:
+            return
+        self._viewport = viewport
+        viewport.installEventFilter(self)
         self._relayout(force=True)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self._relayout()
 
+    def eventFilter(self, obj, event):
+        if obj is self._viewport and event.type() == QEvent.Resize:
+            self._relayout(force=True)
+        return super().eventFilter(obj, event)
+
     def _relayout(self, force: bool = False):
         margins = self._layout.contentsMargins()
-        available_width = max(self.width() - margins.left() - margins.right(), 0)
+        base_width = self._viewport.width() if self._viewport else self.width()
+        available_width = max(base_width - margins.left() - margins.right(), 0)
         spacing = self._layout.horizontalSpacing() or 0
         columns = max(1, int(available_width / (self._card_width + spacing)) if (self._card_width + spacing) > 0 else 1)
 
