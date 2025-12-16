@@ -11102,6 +11102,12 @@ class GooglePhotosLayout(BaseLayout):
                         conn.commit()
                     if hasattr(self, '_build_people_tree'):
                         self._build_people_tree()
+
+                    # Phase 4: Suggest similar unnamed clusters for merge
+                    merge_suggestions = self._suggest_cluster_merges(updates)
+                    if merge_suggestions:
+                        self._show_merge_suggestions_dialog(merge_suggestions, dlg)
+
                     QMessageBox.information(dlg, "Saved", f"Named {len(updates)} people.")
                     dlg.accept()
                 except Exception as e:
@@ -11129,6 +11135,216 @@ class GooglePhotosLayout(BaseLayout):
             dlg.exec()
         except Exception as e:
             print(f"[GooglePhotosLayout] Bulk review dialog failed: {e}")
+
+    def _suggest_cluster_merges(self, named_clusters, similarity_threshold=0.75):
+        """
+        Suggest unnamed clusters similar to newly named ones for potential merging.
+
+        Args:
+            named_clusters: List of (branch_key, person_name) tuples
+            similarity_threshold: Minimum cosine similarity (0.0-1.0)
+
+        Returns:
+            Dict mapping person_name to list of similar unnamed clusters
+        """
+        try:
+            import numpy as np
+            from reference_db import ReferenceDB
+
+            suggestions = {}
+            db = ReferenceDB()
+
+            with db._connect() as conn:
+                cur = conn.cursor()
+
+                for branch_key, person_name in named_clusters:
+                    # Get centroid for newly named person
+                    cur.execute("""
+                        SELECT centroid FROM face_branch_reps
+                        WHERE project_id = ? AND branch_key = ?
+                    """, (self.project_id, branch_key))
+
+                    row = cur.fetchone()
+                    if not row or not row[0]:
+                        continue
+
+                    named_centroid = np.frombuffer(row[0], dtype=np.float32)
+
+                    # Find similar unnamed clusters
+                    cur.execute("""
+                        SELECT branch_key, centroid, count, rep_thumb_png
+                        FROM face_branch_reps
+                        WHERE project_id = ? AND (label IS NULL OR TRIM(label) = '')
+                    """, (self.project_id,))
+
+                    similar_clusters = []
+                    for urow in cur.fetchall():
+                        if not urow[1]:
+                            continue
+
+                        cluster_centroid = np.frombuffer(urow[1], dtype=np.float32)
+
+                        # Calculate cosine similarity
+                        denom = np.linalg.norm(named_centroid) * np.linalg.norm(cluster_centroid)
+                        if denom > 0:
+                            similarity = float(np.dot(named_centroid, cluster_centroid) / denom)
+
+                            if similarity >= similarity_threshold:
+                                similar_clusters.append({
+                                    'branch_key': urow[0],
+                                    'similarity': similarity,
+                                    'count': urow[2],
+                                    'thumb': urow[3]
+                                })
+
+                    # Sort by similarity (highest first) and take top 5
+                    similar_clusters.sort(key=lambda x: x['similarity'], reverse=True)
+                    if similar_clusters[:5]:
+                        suggestions[person_name] = similar_clusters[:5]
+
+            return suggestions
+
+        except Exception as e:
+            print(f"[GooglePhotosLayout] Merge suggestion calculation failed: {e}")
+            return {}
+
+    def _show_merge_suggestions_dialog(self, suggestions, parent=None):
+        """
+        Show dialog with merge suggestions for review.
+
+        Args:
+            suggestions: Dict mapping person_name to list of similar clusters
+            parent: Parent widget
+        """
+        try:
+            from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel, QHBoxLayout, QPushButton, QCheckBox, QScrollArea, QWidget
+            from PySide6.QtGui import QPixmap
+            from PySide6.QtCore import Qt
+            import base64
+
+            dlg = QDialog(parent)
+            dlg.setWindowTitle("Merge Suggestions")
+            dlg.resize(600, 500)
+
+            layout = QVBoxLayout(dlg)
+            layout.setContentsMargins(20, 20, 20, 20)
+
+            # Header
+            header = QLabel("Similar unnamed clusters found! Would you like to merge them?")
+            header.setWordWrap(True)
+            header.setStyleSheet("font-size: 12pt; font-weight: bold;")
+            layout.addWidget(header)
+
+            # Scroll area for suggestions
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            container = QWidget()
+            scroll_layout = QVBoxLayout(container)
+
+            checkboxes = {}  # {(person_name, branch_key): QCheckBox}
+
+            for person_name, clusters in suggestions.items():
+                # Section for each person
+                section_label = QLabel(f"Merge into \"{person_name}\":")
+                section_label.setStyleSheet("font-weight: bold; margin-top: 10px;")
+                scroll_layout.addWidget(section_label)
+
+                for cluster in clusters:
+                    row_layout = QHBoxLayout()
+
+                    # Thumbnail
+                    thumb_label = QLabel()
+                    thumb_label.setFixedSize(48, 48)
+                    if cluster['thumb']:
+                        try:
+                            data = base64.b64decode(cluster['thumb']) if isinstance(cluster['thumb'], str) else cluster['thumb']
+                            pix = QPixmap()
+                            pix.loadFromData(data)
+                            if not pix.isNull():
+                                thumb_label.setPixmap(pix.scaled(48, 48, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+                        except Exception:
+                            pass
+                    row_layout.addWidget(thumb_label)
+
+                    # Checkbox with similarity info
+                    cb = QCheckBox(f"{int(cluster['similarity']*100)}% similar • {cluster['count']} photos")
+                    cb.setChecked(True)  # Pre-select high-similarity matches
+                    checkboxes[(person_name, cluster['branch_key'])] = cb
+                    row_layout.addWidget(cb, 1)
+
+                    scroll_layout.addLayout(row_layout)
+
+            scroll.setWidget(container)
+            layout.addWidget(scroll, 1)
+
+            # Buttons
+            btn_layout = QHBoxLayout()
+            btn_layout.addStretch()
+
+            skip_btn = QPushButton("Skip")
+            skip_btn.clicked.connect(dlg.reject)
+            btn_layout.addWidget(skip_btn)
+
+            merge_btn = QPushButton("Merge Selected")
+            merge_btn.setDefault(True)
+            merge_btn.setStyleSheet("""
+                QPushButton {
+                    background: #1a73e8;
+                    color: white;
+                    padding: 8px 16px;
+                    border-radius: 4px;
+                    font-weight: bold;
+                }
+                QPushButton:hover {
+                    background: #1557b0;
+                }
+            """)
+
+            def do_merge():
+                from reference_db import ReferenceDB
+                db = ReferenceDB()
+                merged_count = 0
+
+                try:
+                    with db._connect() as conn:
+                        cur = conn.cursor()
+
+                        for (person_name, branch_key), cb in checkboxes.items():
+                            if cb.isChecked():
+                                cur.execute("""
+                                    UPDATE face_branch_reps
+                                    SET label = ?
+                                    WHERE project_id = ? AND branch_key = ?
+                                """, (person_name, self.project_id, branch_key))
+
+                                cur.execute("""
+                                    UPDATE branches
+                                    SET display_name = ?
+                                    WHERE project_id = ? AND branch_key = ?
+                                """, (person_name, self.project_id, branch_key))
+
+                                merged_count += 1
+
+                        conn.commit()
+
+                    if hasattr(self, '_build_people_tree'):
+                        self._build_people_tree()
+
+                    QMessageBox.information(dlg, "Success", f"Merged {merged_count} clusters.")
+                    dlg.accept()
+
+                except Exception as e:
+                    QMessageBox.critical(dlg, "Error", f"Merge failed: {e}")
+
+            merge_btn.clicked.connect(do_merge)
+            btn_layout.addWidget(merge_btn)
+
+            layout.addLayout(btn_layout)
+
+            dlg.exec()
+
+        except Exception as e:
+            print(f"[GooglePhotosLayout] Merge suggestions dialog failed: {e}")
     def _on_person_context_menu(self, branch_key: str, action: str):
         """Handle context menu action on person card."""
         print(f"[GooglePhotosLayout] Context menu action '{action}' for {branch_key}")

@@ -248,6 +248,26 @@
         "Error handling falls back to original single preview",
         "Users can see variety in cluster before naming"
       ]
+    },
+    {
+      "id": "people-tools-merge-suggestions",
+      "name": "People Tools: Smart Merge Suggestions",
+      "description": "After naming clusters, suggest similar unnamed clusters for automatic merging based on centroid similarity",
+      "status": "passing",
+      "priority": "high",
+      "dependencies": ["people-tools-representative-face-selection"],
+      "tests": [
+        "After naming, calculate similarity between named and unnamed clusters",
+        "Uses cosine similarity on face embedding centroids",
+        "Default similarity threshold ≥75% (configurable)",
+        "Shows merge suggestions dialog with top 5 matches per person",
+        "Dialog displays thumbnails and similarity percentages",
+        "Checkboxes pre-selected for high-similarity matches",
+        "User can select/deselect clusters to merge",
+        "Merge updates face_branch_reps and branches tables",
+        "People tree refreshes after merge",
+        "Skip button allows dismissing suggestions"
+      ]
     }
   ],
   "metadata": {
