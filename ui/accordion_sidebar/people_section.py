@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QHBoxLayout,
     QLabel,
+    QPushButton,
     QScrollArea,
     QWidget,
     QVBoxLayout,
@@ -163,6 +164,34 @@ class PeopleSection(BaseSection):
             placeholder.setAlignment(Qt.AlignCenter)
             placeholder.setStyleSheet("padding: 16px; color: #666;")
             return placeholder
+
+        # Quick action bar for post-detection tools
+        actions = QWidget()
+        actions_layout = FlowLayout(actions, margin=8, spacing=6)
+
+        def _make_action(text_key: str, fallback: str, callback):
+            btn = QPushButton(fallback if not callable(tr) else f"{fallback.split(' ', 1)[0]} {tr(text_key)}")
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.setStyleSheet(
+                """
+                QPushButton {
+                    padding: 6px 10px;
+                    border: 1px solid #dadce0;
+                    border-radius: 6px;
+                    background: #f8f9fa;
+                }
+                QPushButton:hover { background: #eef3fd; }
+                QPushButton:pressed { background: #e8f0fe; }
+                """
+            )
+            btn.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
+            btn.clicked.connect(callback)
+            actions_layout.addWidget(btn)
+
+        _make_action('sidebar.people_actions.merge_history', '🕑 View Merge History', self.mergeHistoryRequested.emit)
+        _make_action('sidebar.people_actions.undo_last_merge', '↩️ Undo Last Merge', self.undoMergeRequested.emit)
+        _make_action('sidebar.people_actions.redo_last_undo', '↪️ Redo Last Undo', self.redoMergeRequested.emit)
+        _make_action('sidebar.people_actions.people_tools', '🧰 Open People Tools', self.peopleToolsRequested.emit)
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
