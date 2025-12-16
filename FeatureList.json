@@ -230,6 +230,24 @@
         "Empty name list doesn't break autocomplete",
         "Autocomplete works correctly with multiple name inputs in grid"
       ]
+    },
+    {
+      "id": "people-tools-multiple-face-preview",
+      "name": "People Tools: Multiple Face Preview",
+      "description": "Show 3-4 face thumbnails per cluster in bulk review instead of single representative, sorted by quality",
+      "status": "passing",
+      "priority": "medium",
+      "dependencies": ["people-tools-representative-face-selection"],
+      "tests": [
+        "Bulk review shows up to 4 faces per cluster",
+        "Faces sorted by quality_score DESC",
+        "Single face shows large (200x200) thumbnail",
+        "Multiple faces show small (48x48) thumbnails in horizontal row",
+        "Fallback to representative face if quality scores missing",
+        "Thumbnails have border styling",
+        "Error handling falls back to original single preview",
+        "Users can see variety in cluster before naming"
+      ]
     }
   ],
   "metadata": {

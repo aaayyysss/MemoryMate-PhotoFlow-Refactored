@@ -10926,22 +10926,79 @@ class GooglePhotosLayout(BaseLayout):
                     v.setContentsMargins(8, 8, 8, 8)
                     v.setSpacing(6)
 
-                    # Face preview
-                    face = QLabel()
-                    face.setFixedSize(200, 200)
-                    pix = None
+                    # Face preview - show top 4 faces by quality
+                    faces_layout = QHBoxLayout()
+                    faces_layout.setSpacing(4)
+                    faces_layout.setContentsMargins(0, 0, 0, 0)
+
+                    # Query top 4 faces by quality score for this cluster
                     try:
-                        if rep_thumb:
-                            data = base64.b64decode(rep_thumb) if isinstance(rep_thumb, str) else rep_thumb
-                            pix = QPixmap()
-                            pix.loadFromData(data)
-                        if (pix is None or pix.isNull()) and rep_path and os.path.exists(rep_path):
-                            pix = QPixmap(rep_path)
-                        if pix and not pix.isNull():
-                            face.setPixmap(pix.scaled(200, 200, Qt.KeepAspectRatio, Qt.SmoothTransformation))
-                    except Exception:
-                        pass
-                    v.addWidget(face)
+                        db_faces = ReferenceDB()
+                        with db_faces._connect() as conn_faces:
+                            cur_faces = conn_faces.cursor()
+                            cur_faces.execute("""
+                                SELECT crop_path
+                                FROM face_crops
+                                WHERE project_id = ? AND branch_key = ?
+                                ORDER BY quality_score DESC, id DESC
+                                LIMIT 4
+                            """, (self.project_id, branch_key))
+                            face_paths = [r[0] for r in cur_faces.fetchall()]
+
+                        # If no quality scores yet, fall back to representative
+                        if not face_paths and rep_path:
+                            face_paths = [rep_path]
+
+                        # Create thumbnails (48x48 each, or 200x200 if only 1)
+                        if len(face_paths) == 1:
+                            # Single large thumbnail (original behavior)
+                            face_label = QLabel()
+                            face_label.setFixedSize(200, 200)
+                            if os.path.exists(face_paths[0]):
+                                pix = QPixmap(face_paths[0])
+                                if not pix.isNull():
+                                    face_label.setPixmap(pix.scaled(200, 200, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+                            faces_layout.addWidget(face_label)
+                        else:
+                            # Multiple small thumbnails (48x48 each)
+                            for face_path in face_paths[:4]:
+                                face_thumb = QLabel()
+                                face_thumb.setFixedSize(48, 48)
+                                face_thumb.setStyleSheet("""
+                                    QLabel {
+                                        border: 1px solid #dadce0;
+                                        border-radius: 4px;
+                                        background: #f8f9fa;
+                                    }
+                                """)
+                                if os.path.exists(face_path):
+                                    pix = QPixmap(face_path)
+                                    if not pix.isNull():
+                                        face_thumb.setPixmap(pix.scaled(48, 48, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+                                faces_layout.addWidget(face_thumb)
+
+                            # Add stretch to left-align thumbnails
+                            faces_layout.addStretch()
+
+                    except Exception as e:
+                        # Fallback to original single preview on error
+                        face = QLabel()
+                        face.setFixedSize(200, 200)
+                        pix = None
+                        try:
+                            if rep_thumb:
+                                data = base64.b64decode(rep_thumb) if isinstance(rep_thumb, str) else rep_thumb
+                                pix = QPixmap()
+                                pix.loadFromData(data)
+                            if (pix is None or pix.isNull()) and rep_path and os.path.exists(rep_path):
+                                pix = QPixmap(rep_path)
+                            if pix and not pix.isNull():
+                                face.setPixmap(pix.scaled(200, 200, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+                        except Exception:
+                            pass
+                        faces_layout.addWidget(face)
+
+                    v.addLayout(faces_layout)
 
                     # Confidence hint based on compactness (mean similarity to centroid)
                     try:
