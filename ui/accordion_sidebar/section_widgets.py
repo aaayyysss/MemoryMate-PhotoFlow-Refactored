@@ -1,7 +1,15 @@
 # ui/accordion_sidebar/section_widgets.py
 # Shared widgets for accordion sections (SectionHeader and AccordionSection)
 
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QScrollArea, QSizePolicy
+from PySide6.QtWidgets import (
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QLabel,
+    QFrame,
+    QScrollArea,
+    QSizePolicy,
+)
 from PySide6.QtCore import Signal, Qt, QSize
 
 
@@ -58,7 +66,16 @@ class SectionHeader(QFrame):
 
         layout.addWidget(self.icon_label)
         layout.addWidget(self.title_label)
+
+        # Optional extra controls (e.g., people actions)
+        self.extra_container = QWidget()
+        self.extra_container.setVisible(False)
+        self.extra_layout = QHBoxLayout(self.extra_container)
+        self.extra_layout.setContentsMargins(0, 0, 0, 0)
+        self.extra_layout.setSpacing(4)
+
         layout.addStretch()
+        layout.addWidget(self.extra_container)
         layout.addWidget(self.count_label)
         layout.addWidget(self.chevron_label)
 
@@ -108,6 +125,21 @@ class SectionHeader(QFrame):
             self.count_label.setVisible(True)
         else:
             self.count_label.setVisible(False)
+
+    def set_extra_widget(self, widget: QWidget):
+        """Mount a custom widget inside the header (to the right of the title)."""
+        # Remove any existing extra widget
+        while self.extra_layout.count():
+            item = self.extra_layout.takeAt(0)
+            if item.widget():
+                item.widget().setParent(None)
+
+        if widget:
+            widget.setParent(self)
+            self.extra_layout.addWidget(widget)
+            self.extra_container.setVisible(True)
+        else:
+            self.extra_container.setVisible(False)
 
     def mousePressEvent(self, event):
         """Handle mouse click on header."""
@@ -166,6 +198,10 @@ class AccordionSection(QWidget):
 
         # Set size policy
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+
+    def set_header_extra(self, widget: QWidget):
+        """Expose header slot for section-specific controls (e.g., people actions)."""
+        self.header.set_extra_widget(widget)
 
     def _on_header_clicked(self):
         """Handle header click - request expansion."""
