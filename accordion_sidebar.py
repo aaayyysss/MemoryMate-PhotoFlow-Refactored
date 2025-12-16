@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal, QPropertyAnimation, QEasingCurve, QSize, QThreadPool, QRect, QPoint, QMimeData
 from PySide6.QtGui import QFont, QIcon, QColor, QPixmap, QPainter, QPainterPath, QDrag, QImage
 from datetime import datetime
+from typing import Optional
 import threading
 import traceback
 import time
@@ -2334,13 +2335,17 @@ class AccordionSidebar(QWidget):
             duration_parent.addChild(long_item)
 
             # By Resolution
-            sd_videos = [v for v in videos if v.get("height", 0) > 0 and v.get("height") < 720]
-            hd_videos = [v for v in videos if v.get("height", 0) >= 720 and v.get("height") < 1080]
-            fhd_videos = [v for v in videos if v.get("height", 0) >= 1080 and v.get("height") < 2160]
-            uhd_videos = [v for v in videos if v.get("height", 0) >= 2160]
+            def _height_value(video: dict) -> Optional[int]:
+                value = video.get("height")
+                return value if isinstance(value, (int, float)) else None
+
+            sd_videos = [v for v in videos if (h := _height_value(v)) and h > 0 and h < 720]
+            hd_videos = [v for v in videos if (h := _height_value(v)) and h >= 720 and h < 1080]
+            fhd_videos = [v for v in videos if (h := _height_value(v)) and h >= 1080 and h < 2160]
+            uhd_videos = [v for v in videos if (h := _height_value(v)) and h >= 2160]
 
             # BUG FIX: Count videos WITH resolution metadata (not sum of categories)
-            videos_with_resolution = [v for v in videos if v.get("height", 0) > 0]
+            videos_with_resolution = [v for v in videos if (h := _height_value(v)) and h > 0]
             resolution_parent = QTreeWidgetItem([f"📺 By Resolution ({len(videos_with_resolution)})"])
             resolution_parent.setData(0, Qt.UserRole, {"type": "resolution_header"})
             tree.addTopLevelItem(resolution_parent)

@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
     QLayout,
+    QGridLayout,
 )
 from shiboken6 import isValid
 
@@ -120,8 +121,10 @@ class PeopleSection(BaseSection):
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         scroll.setFrameShape(QScrollArea.NoFrame)
 
-        container = QWidget()
-        flow = FlowLayout(container, margin=6, spacing=8)
+        # Reset cache of rendered cards
+        self._cards.clear()
+
+        cards: List[PersonCard] = []
 
         # Reset cache of rendered cards
         self._cards.clear()
@@ -138,11 +141,11 @@ class PeopleSection(BaseSection):
             card.clicked.connect(self.personSelected.emit)
             card.context_menu_requested.connect(self.contextMenuRequested.emit)
             card.drag_merge_requested.connect(self.dragMergeRequested.emit)
-            flow.addWidget(card)
 
+            cards.append(card)
             self._cards[branch_key] = card
 
-        container.setLayout(flow)
+        container = PeopleGrid(cards)
         scroll.setWidget(container)
 
         wrapper = QWidget()
@@ -150,7 +153,7 @@ class PeopleSection(BaseSection):
         wrapper_layout.setContentsMargins(0, 0, 0, 0)
         wrapper_layout.addWidget(scroll)
 
-        logger.info(f"[PeopleSection] Grid built with {flow.count()} people")
+        logger.info(f"[PeopleSection] Grid built with {len(cards)} people")
         return wrapper
 
     # --- Selection helpers ---
@@ -287,6 +290,45 @@ class FlowLayout(QLayout):
             line_height = max(line_height, item.sizeHint().height())
 
         return y + line_height - rect.y()
+
+
+class PeopleGrid(QWidget):
+    """Grid that automatically recalculates columns based on available width."""
+
+    def __init__(self, cards: List["PersonCard"], parent: Optional[QWidget] = None):
+        super().__init__(parent)
+        self.cards = cards
+        self._card_width = cards[0].sizeHint().width() if cards else 96
+        self._columns = 0
+        self._layout = QGridLayout(self)
+        self._layout.setContentsMargins(6, 6, 6, 6)
+        self._layout.setHorizontalSpacing(10)
+        self._layout.setVerticalSpacing(10)
+        self._relayout(force=True)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._relayout()
+
+    def _relayout(self, force: bool = False):
+        margins = self._layout.contentsMargins()
+        available_width = max(self.width() - margins.left() - margins.right(), 0)
+        spacing = self._layout.horizontalSpacing() or 0
+        columns = max(1, int(available_width / (self._card_width + spacing)) if (self._card_width + spacing) > 0 else 1)
+
+        if not force and columns == self._columns:
+            return
+
+        self._columns = columns
+
+        # Clear existing layout positions without deleting widgets
+        while self._layout.count():
+            self._layout.takeAt(0)
+
+        for idx, card in enumerate(self.cards):
+            row = idx // columns
+            col = idx % columns
+            self._layout.addWidget(card, row, col)
 
 
 class PersonCard(QWidget):
