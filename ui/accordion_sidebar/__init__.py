@@ -32,6 +32,7 @@ from .folders_section import FoldersSection
 from .dates_section import DatesSection
 from .videos_section import VideosSection
 from .people_section import PeopleSection
+from .devices_section import DevicesSection
 from .quick_section import QuickSection
 
 logger = logging.getLogger(__name__)
@@ -59,6 +60,7 @@ class AccordionSidebar(QWidget):
     selectTag    = Signal(str)     # tag name
     selectPerson = Signal(str)     # person branch_key
     selectVideo  = Signal(str)     # video filter type
+    selectDevice = Signal(str)     # device root path
     personMerged = Signal(str, str)  # source_branch, target_branch
     personDeleted = Signal(str)      # branch_key
     mergeHistoryRequested = Signal()
@@ -151,6 +153,7 @@ class AccordionSidebar(QWidget):
             "dates": DatesSection(self),
             "videos": VideosSection(self),
             "people": PeopleSection(self),
+            "devices": DevicesSection(self),
             "quick": QuickSection(self)
         }
 
@@ -240,6 +243,11 @@ class AccordionSidebar(QWidget):
         if videos and hasattr(videos, 'videoFilterSelected'):
             videos.videoFilterSelected.connect(self.selectVideo.emit)
 
+        # Devices section
+        devices = self.section_logic.get("devices")
+        if devices and hasattr(devices, 'deviceSelected'):
+            devices.deviceSelected.connect(self.selectDevice.emit)
+
         # Quick section
         quick = self.section_logic.get("quick")
         if quick and hasattr(quick, 'quickDateSelected'):
@@ -248,6 +256,26 @@ class AccordionSidebar(QWidget):
     def _on_section_expand_requested(self, section_id: str):
         """Handle section expand request."""
         self._expand_section(section_id)
+
+    # --- People selection helpers ---
+    def _on_person_selected(self, branch_key: str):
+        """Track active person selection, support toggling, and emit filter signal."""
+        people_logic = self.section_logic.get("people")
+
+        # Toggle selection when clicking the same person again
+        if self._active_person_branch and branch_key == self._active_person_branch:
+            self._active_person_branch = None
+            if hasattr(people_logic, "set_active_branch"):
+                people_logic.set_active_branch(None)
+            self.selectPerson.emit("")
+            return
+
+        self._active_person_branch = branch_key
+
+        if hasattr(people_logic, "set_active_branch"):
+            people_logic.set_active_branch(branch_key)
+
+        self.selectPerson.emit(branch_key)
 
     # --- People selection helpers ---
     def _on_person_selected(self, branch_key: str):
@@ -461,6 +489,10 @@ class AccordionSidebar(QWidget):
 
         for section_id, section in self.section_logic.items():
             self._trigger_section_load(section_id)
+
+    def reload_people_section(self):
+        """Public helper to refresh the people section content."""
+        self._trigger_section_load("people")
 
     def reload_people_section(self):
         """Public helper to refresh the people section content."""

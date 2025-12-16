@@ -186,6 +186,7 @@
     "month_nov": "Nov",
     "month_dec": "Dez",
     "header_people": "Personen",
+    "header_devices": "Geräte",
     "people_actions": {
       "rename": "Rename",
       "merge_hint": "Merge (use drag-drop)",
@@ -196,6 +197,13 @@
       "undo_last_merge": "Undo Last Merge",
       "redo_last_undo": "Redo Last Undo",
       "people_tools": "Open People Tools"
+    },
+    "devices": {
+      "refresh": "Geräte aktualisieren",
+      "help": "Verbinden Sie Ihr Telefon, Ihre Kamera oder SD-Karte, um Fotos zu importieren",
+      "empty": "Keine externen Geräte erkannt.",
+      "folder_count": "{0} Elemente erkannt",
+      "open": "Öffnen"
     }
   },
   "preferences": {

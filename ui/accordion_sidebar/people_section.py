@@ -125,39 +125,31 @@ class PeopleSection(BaseSection):
 
         # Quick action bar for post-detection tools
         actions = QWidget()
-        actions_layout = QHBoxLayout(actions)
-        actions_layout.setContentsMargins(8, 4, 8, 4)
-        actions_layout.setSpacing(6)
+        actions_layout = FlowLayout(actions, margin=8, spacing=6)
 
-        history_btn = QPushButton(
-            f"🕑 {tr('sidebar.people_actions.merge_history') if callable(tr) else 'View Merge History'}"
-        )
-        history_btn.setCursor(Qt.PointingHandCursor)
-        history_btn.clicked.connect(self.mergeHistoryRequested.emit)
-        actions_layout.addWidget(history_btn)
+        def _make_action(text_key: str, fallback: str, callback):
+            btn = QPushButton(fallback if not callable(tr) else f"{fallback.split(' ', 1)[0]} {tr(text_key)}")
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.setStyleSheet(
+                """
+                QPushButton {
+                    padding: 6px 10px;
+                    border: 1px solid #dadce0;
+                    border-radius: 6px;
+                    background: #f8f9fa;
+                }
+                QPushButton:hover { background: #eef3fd; }
+                QPushButton:pressed { background: #e8f0fe; }
+                """
+            )
+            btn.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
+            btn.clicked.connect(callback)
+            actions_layout.addWidget(btn)
 
-        undo_btn = QPushButton(
-            f"↩️ {tr('sidebar.people_actions.undo_last_merge') if callable(tr) else 'Undo Last Merge'}"
-        )
-        undo_btn.setCursor(Qt.PointingHandCursor)
-        undo_btn.clicked.connect(self.undoMergeRequested.emit)
-        actions_layout.addWidget(undo_btn)
-
-        redo_btn = QPushButton(
-            f"↪️ {tr('sidebar.people_actions.redo_last_undo') if callable(tr) else 'Redo Last Undo'}"
-        )
-        redo_btn.setCursor(Qt.PointingHandCursor)
-        redo_btn.clicked.connect(self.redoMergeRequested.emit)
-        actions_layout.addWidget(redo_btn)
-
-        tools_btn = QPushButton(
-            f"🧰 {tr('sidebar.people_actions.people_tools') if callable(tr) else 'Open People Tools'}"
-        )
-        tools_btn.setCursor(Qt.PointingHandCursor)
-        tools_btn.clicked.connect(self.peopleToolsRequested.emit)
-        actions_layout.addWidget(tools_btn)
-
-        actions_layout.addStretch()
+        _make_action('sidebar.people_actions.merge_history', '🕑 View Merge History', self.mergeHistoryRequested.emit)
+        _make_action('sidebar.people_actions.undo_last_merge', '↩️ Undo Last Merge', self.undoMergeRequested.emit)
+        _make_action('sidebar.people_actions.redo_last_undo', '↪️ Redo Last Undo', self.redoMergeRequested.emit)
+        _make_action('sidebar.people_actions.people_tools', '🧰 Open People Tools', self.peopleToolsRequested.emit)
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)

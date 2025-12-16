@@ -194,6 +194,7 @@
     "month_nov": "نوفمبر",
     "month_dec": "ديسمبر",
     "header_people": "الأشخاص",
+    "header_devices": "الأجهزة",
     "people_actions": {
       "rename": "Rename",
       "merge_hint": "Merge (use drag-drop)",
@@ -204,6 +205,13 @@
       "undo_last_merge": "Undo Last Merge",
       "redo_last_undo": "Redo Last Undo",
       "people_tools": "Open People Tools"
+    },
+    "devices": {
+      "refresh": "تحديث الأجهزة",
+      "help": "قم بتوصيل هاتفك أو الكاميرا أو بطاقة SD لاستيراد الصور",
+      "empty": "لا توجد أجهزة خارجية حالياً.",
+      "folder_count": "{0} عناصر مكتشفة",
+      "open": "فتح"
     }
   },
   "preferences": {
