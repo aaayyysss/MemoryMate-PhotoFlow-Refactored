@@ -11,12 +11,15 @@ from typing import Optional, List, Dict
 from PySide6.QtCore import Signal, Qt, QObject, QSize, QRect, QPoint
 from PySide6.QtGui import QPixmap, QImage
 from PySide6.QtWidgets import (
+    QApplication,
     QLabel,
     QScrollArea,
     QWidget,
     QVBoxLayout,
     QLayout,
+    QGridLayout,
 )
+from shiboken6 import isValid
 
 from reference_db import ReferenceDB
 from translation_manager import tr
@@ -44,6 +47,9 @@ class PeopleSection(BaseSection):
         self.signals = PeopleSectionSignals()
         self.signals.loaded.connect(self._on_data_loaded)
         self.signals.error.connect(self._on_error)
+
+        # Keep a reference to rendered cards so selection state can be updated externally
+        self._cards: Dict[str, "PersonCard"] = {}
 
     def get_section_id(self) -> str:
         return "people"
@@ -115,8 +121,10 @@ class PeopleSection(BaseSection):
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         scroll.setFrameShape(QScrollArea.NoFrame)
 
-        container = QWidget()
-        flow = FlowLayout(container, margin=6, spacing=8)
+        # Reset cache of rendered cards
+        self._cards.clear()
+
+        cards: List[PersonCard] = []
 
         for idx, row in enumerate(rows):
             branch_key = row.get("branch_key") or f"cluster_{idx}"
@@ -130,9 +138,11 @@ class PeopleSection(BaseSection):
             card.clicked.connect(self.personSelected.emit)
             card.context_menu_requested.connect(self.contextMenuRequested.emit)
             card.drag_merge_requested.connect(self.dragMergeRequested.emit)
-            flow.addWidget(card)
 
-        container.setLayout(flow)
+            cards.append(card)
+            self._cards[branch_key] = card
+
+        container = PeopleGrid(cards)
         scroll.setWidget(container)
 
         wrapper = QWidget()
@@ -140,8 +150,20 @@ class PeopleSection(BaseSection):
         wrapper_layout.setContentsMargins(0, 0, 0, 0)
         wrapper_layout.addWidget(scroll)
 
-        logger.info(f"[PeopleSection] Grid built with {flow.count()} people")
+        logger.info(f"[PeopleSection] Grid built with {len(cards)} people")
         return wrapper
+
+    # --- Selection helpers ---
+    def set_active_branch(self, branch_key: Optional[str]) -> None:
+        """Highlight the active person card for visual feedback in the sidebar."""
+        try:
+            for key, card in self._cards.items():
+                is_active = branch_key is not None and key == branch_key
+                card.setProperty("selected", is_active)
+                card.style().unpolish(card)
+                card.style().polish(card)
+        except Exception:
+            logger.debug("[PeopleSection] Failed to update active state", exc_info=True)
 
     def _load_face_thumbnail(self, rep_path: Optional[str], rep_thumb_png: Optional[bytes]) -> Optional[QPixmap]:
         """Load a face thumbnail from BLOB or file path."""
@@ -267,6 +289,45 @@ class FlowLayout(QLayout):
         return y + line_height - rect.y()
 
 
+class PeopleGrid(QWidget):
+    """Grid that automatically recalculates columns based on available width."""
+
+    def __init__(self, cards: List["PersonCard"], parent: Optional[QWidget] = None):
+        super().__init__(parent)
+        self.cards = cards
+        self._card_width = cards[0].sizeHint().width() if cards else 96
+        self._columns = 0
+        self._layout = QGridLayout(self)
+        self._layout.setContentsMargins(6, 6, 6, 6)
+        self._layout.setHorizontalSpacing(10)
+        self._layout.setVerticalSpacing(10)
+        self._relayout(force=True)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._relayout()
+
+    def _relayout(self, force: bool = False):
+        margins = self._layout.contentsMargins()
+        available_width = max(self.width() - margins.left() - margins.right(), 0)
+        spacing = self._layout.horizontalSpacing() or 0
+        columns = max(1, int(available_width / (self._card_width + spacing)) if (self._card_width + spacing) > 0 else 1)
+
+        if not force and columns == self._columns:
+            return
+
+        self._columns = columns
+
+        # Clear existing layout positions without deleting widgets
+        while self._layout.count():
+            self._layout.takeAt(0)
+
+        for idx, card in enumerate(self.cards):
+            row = idx // columns
+            col = idx % columns
+            self._layout.addWidget(card, row, col)
+
+
 class PersonCard(QWidget):
     """Compact face card with circular thumbnail and counts."""
 
@@ -280,6 +341,9 @@ class PersonCard(QWidget):
         self.display_name = display_name
         self.setFixedSize(88, 112)
         self.setCursor(Qt.PointingHandCursor)
+
+        self._press_pos: Optional[QPoint] = None
+        self._drag_active = False
 
         # Enable drag-and-drop for face merging
         self.setAcceptDrops(True)
@@ -314,12 +378,31 @@ class PersonCard(QWidget):
             """
             PersonCard { background: transparent; border-radius: 8px; }
             PersonCard:hover { background: rgba(26,115,232,0.08); }
+            PersonCard[selected="true"] { background: rgba(26,115,232,0.12); border: 1px solid #1a73e8; }
+            PersonCard[dragging="true"] { background: rgba(26,115,232,0.12); border: 1px dashed #1a73e8; }
+            PersonCard[dragTarget="true"] { background: rgba(26,115,232,0.08); border: 1px dashed #1a73e8; }
             """
         )
 
-    def mouseReleaseEvent(self, event):
+    def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
+            self._press_pos = event.position().toPoint()
+            self._drag_active = False
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if event.buttons() & Qt.LeftButton and self._press_pos:
+            distance = (event.position().toPoint() - self._press_pos).manhattanLength()
+            if distance >= QApplication.startDragDistance():
+                self._begin_drag()
+                return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.LeftButton and not self._drag_active:
             self.clicked.emit(self.branch_key)
+        self._press_pos = None
+        self._drag_active = False
         super().mouseReleaseEvent(event)
 
     def contextMenuEvent(self, event):
@@ -349,22 +432,10 @@ class PersonCard(QWidget):
 
         menu.exec_(event.globalPos())
 
-    def mousePressEvent(self, event):
-        """Start drag operation for face merging."""
-        if event.button() == Qt.LeftButton:
-            from PySide6.QtGui import QDrag
-            from PySide6.QtCore import QMimeData
-
-            drag = QDrag(self)
-            mime_data = QMimeData()
-            mime_data.setText(f"person:{self.branch_key}")
-            drag.setMimeData(mime_data)
-            drag.exec_(Qt.MoveAction)
-        super().mousePressEvent(event)
-
     def dragEnterEvent(self, event):
         """Accept drag events from other PersonCards."""
         if event.mimeData().hasText() and event.mimeData().text().startswith("person:"):
+            self._set_drag_target_highlight(True)
             event.acceptProposedAction()
 
     def dropEvent(self, event):
@@ -376,6 +447,12 @@ class PersonCard(QWidget):
                 if source_branch != self.branch_key:
                     self.drag_merge_requested.emit(source_branch, self.branch_key)
                     event.acceptProposedAction()
+        if isValid(self):
+            self._set_drag_target_highlight(False)
+
+    def dragLeaveEvent(self, event):
+        self._set_drag_target_highlight(False)
+        super().dragLeaveEvent(event)
 
     def _make_circular(self, pixmap: QPixmap, size: int) -> QPixmap:
         scaled = pixmap.scaled(size, size, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
@@ -391,4 +468,44 @@ class PersonCard(QWidget):
         painter.drawPixmap(0, 0, scaled)
         painter.end()
         return mask
+
+    # === Drag helpers ===
+    def _begin_drag(self):
+        """Start a drag with a visual pixmap and safe state handling."""
+        from PySide6.QtGui import QDrag
+        from PySide6.QtCore import QMimeData
+
+        self._drag_active = True
+        self.setProperty("dragging", True)
+        self.style().unpolish(self)
+        self.style().polish(self)
+
+        drag = QDrag(self)
+        mime_data = QMimeData()
+        mime_data.setText(f"person:{self.branch_key}")
+        drag.setMimeData(mime_data)
+
+        drag_pixmap = self.grab()
+        if not drag_pixmap.isNull():
+            drag.setPixmap(drag_pixmap)
+            drag.setHotSpot(drag_pixmap.rect().center())
+
+        drag.exec_(Qt.MoveAction)
+
+        self._drag_active = False
+        self._press_pos = None
+
+        if isValid(self):
+            # Restore visual state only if the widget still exists
+            self.setProperty("dragging", False)
+            self.style().unpolish(self)
+            self.style().polish(self)
+
+    def _set_drag_target_highlight(self, enabled: bool):
+        if not isValid(self):
+            return
+
+        self.setProperty("dragTarget", enabled)
+        self.style().unpolish(self)
+        self.style().polish(self)
 
