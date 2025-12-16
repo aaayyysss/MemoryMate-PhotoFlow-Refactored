@@ -18,7 +18,21 @@ from PySide6.QtWidgets import (
     QScrollArea, QFrame, QSizePolicy, QTreeWidget, QTreeWidgetItem,
     QTableWidget, QTableWidgetItem, QHeaderView, QGridLayout, QLayout, QMenu, QMessageBox, QInputDialog
 )
-from PySide6.QtCore import Qt, Signal, QPropertyAnimation, QEasingCurve, QSize, QThreadPool, QRect, QPoint, QMimeData
+from PySide6.QtCore import (
+    Qt,
+    Signal,
+    QPropertyAnimation,
+    QEasingCurve,
+    QSize,
+    QThreadPool,
+    QRect,
+    QPoint,
+    QMimeData,
+    QObject,
+    QRunnable,
+    Slot,
+    QTimer,
+)
 from PySide6.QtGui import QFont, QIcon, QColor, QPixmap, QPainter, QPainterPath, QDrag, QImage
 from datetime import datetime
 from typing import Optional
@@ -453,6 +467,15 @@ class PeopleGridView(QWidget):
         main_layout.addWidget(self.grid_container)
         main_layout.addWidget(self.empty_label)
 
+        # Status/progress label (used when long-running tasks are active)
+        self.status_label = QLabel()
+        self.status_label.setAlignment(Qt.AlignCenter)
+        self.status_label.setStyleSheet(
+            "color: #5f6368; font-size: 9pt; padding: 6px;"
+        )
+        self.status_label.hide()
+        main_layout.addWidget(self.status_label)
+
     def add_person(self, branch_key, display_name, face_pixmap, photo_count):
         """
         Add person to grid.
@@ -489,6 +512,20 @@ class PeopleGridView(QWidget):
             if item.widget():
                 item.widget().deleteLater()
         self.empty_label.show()
+
+    def set_busy_state(self, busy: bool, message: str = ""):
+        """Enable/disable interactions and show optional status text."""
+        self.grid_container.setEnabled(not busy)
+        for idx in range(self.flow_layout.count()):
+            item = self.flow_layout.itemAt(idx)
+            if item and item.widget():
+                item.widget().setEnabled(not busy)
+
+        if busy and message:
+            self.status_label.setText(message)
+            self.status_label.show()
+        else:
+            self.status_label.hide()
 
     def count(self):
         """Return number of people in grid."""
@@ -788,6 +825,9 @@ class AccordionSidebar(QWidget):
         self.expanded_section_id = None
         self.db = ReferenceDB()
         self.nav_buttons = {}  # section_id -> QPushButton
+        self.thread_pool = QThreadPool.globalInstance()
+        self._people_grid = None
+        self._active_workers = []
 
         # PHASE 1 Task 1.2: Generation tokens to prevent overlapping reloads
         # Track reload version for each section to discard stale data
@@ -800,17 +840,6 @@ class AccordionSidebar(QWidget):
             "quick": 0,
             "videos": 0
         }
-
-        # Section load state tracking to prevent redundant reloads
-        self._section_load_state = {
-            section_id: {
-                "loaded_once": False,
-                "last_loaded": 0.0,
-                "inflight": False,
-            }
-            for section_id in self._reload_generations.keys()
-        }
-        self._section_cache_ttl = 30.0  # seconds
 
         self._dbg("AccordionSidebar __init__ started")
 
@@ -1022,56 +1051,9 @@ class AccordionSidebar(QWidget):
 
         # NO stretch spacer at the end - let collapsed sections sit at bottom naturally
 
-    def _mark_section_loaded(self, section_id: str, loaded: bool = True):
-        """Mark a section load as completed and update cache metadata."""
-        state = self._section_load_state.get(section_id)
-        if not state:
-            return
-
-        state["inflight"] = False
-        if loaded:
-            state["loaded_once"] = True
-            state["last_loaded"] = time.time()
-
-    def _reset_section_cache(self, section_id: str):
-        """Reset cache flags for a section so it reloads on next request."""
-        state = self._section_load_state.get(section_id)
-        if not state:
-            return
-        state.update({"loaded_once": False, "last_loaded": 0.0})
-
-    def _should_load_section(self, section_id: str, force_reload: bool) -> bool:
-        state = self._section_load_state.get(section_id)
-        if not state:
-            return True
-
-        if state["inflight"]:
-            self._dbg(f"⏳ Section '{section_id}' load already in-flight; skipping new worker")
-            return False
-
-        if force_reload:
-            return True
-
-        if state["loaded_once"] and (time.time() - state["last_loaded"] < self._section_cache_ttl):
-            self._dbg(f"Using cached content for section '{section_id}' (fresh load)")
-            return False
-
-        return True
-
-    def _load_section_content(self, section_id: str, force_reload: bool = False):
+    def _load_section_content(self, section_id: str):
         """Load content for the specified section."""
         self._dbg(f"Loading content for section: {section_id}")
-
-        if section_id not in self.sections:
-            self._dbg(f"⚠️ Section not found: {section_id}")
-            return
-
-        if not self._should_load_section(section_id, force_reload):
-            return
-
-        state = self._section_load_state.get(section_id)
-        if state:
-            state["inflight"] = True
 
         if section_id == "people":
             self._load_people_section()
@@ -1096,7 +1078,6 @@ class AccordionSidebar(QWidget):
             placeholder.setAlignment(Qt.AlignCenter)
             placeholder.setStyleSheet("padding: 20px; color: #666;")
             section.set_content_widget(placeholder)
-            self._mark_section_loaded(section_id)
 
     def reload_section(self, section_id: str):
         """
@@ -1113,8 +1094,7 @@ class AccordionSidebar(QWidget):
         """
         self._dbg(f"Reloading section: {section_id}")
         if section_id in self.sections:
-            self._reset_section_cache(section_id)
-            self._load_section_content(section_id, force_reload=True)
+            self._load_section_content(section_id)
         else:
             self._dbg(f"⚠️ Section '{section_id}' not found")
 
@@ -1127,17 +1107,7 @@ class AccordionSidebar(QWidget):
         """
         self._dbg("Reloading all sections...")
         for section_id in self.sections.keys():
-            self._reset_section_cache(section_id)
-            self._load_section_content(section_id, force_reload=True)
-
-    def invalidate_section(self, section_id: str):
-        """Public API to clear cached content so next expand forces a reload."""
-        if section_id not in self.sections:
-            self._dbg(f"⚠️ Cannot invalidate unknown section '{section_id}'")
-            return
-
-        self._dbg(f"Invalidating section cache: {section_id}")
-        self._reset_section_cache(section_id)
+            self._load_section_content(section_id)
 
     def _load_people_section(self):
         """Load People/Face Clusters section content asynchronously (thread-safe)."""
@@ -1145,7 +1115,6 @@ class AccordionSidebar(QWidget):
 
         section = self.sections.get("people")
         if not section or not self.project_id:
-            self._mark_section_loaded("people", loaded=False)
             return
 
         # PHASE 1 Task 1.2: Increment generation to track this reload
@@ -1194,13 +1163,12 @@ class AccordionSidebar(QWidget):
         """Build people grid from loaded data (runs on main thread via signal)."""
         section = self.sections.get("people")
         if not section:
-            self._mark_section_loaded("people", loaded=False)
             return
 
-        success = False
         try:
             # Create PeopleGridView
             people_grid = PeopleGridView()
+            self._people_grid = people_grid
 
             # Connect signals
             people_grid.person_clicked.connect(self._on_person_clicked)
@@ -1211,7 +1179,6 @@ class AccordionSidebar(QWidget):
                 # Empty state is handled by PeopleGridView
                 section.set_content_widget(people_grid)
                 section.set_count(0)
-                success = True
                 return
 
             # Add each person to the grid
@@ -1234,7 +1201,6 @@ class AccordionSidebar(QWidget):
 
             # Set as content widget
             section.set_content_widget(people_grid)
-            success = True
 
             self._dbg(f"✓ People section loaded with {len(rows)} clusters")
 
@@ -1248,8 +1214,6 @@ class AccordionSidebar(QWidget):
             error_label.setAlignment(Qt.AlignCenter)
             error_label.setStyleSheet("padding: 20px; color: #ff0000;")
             section.set_content_widget(error_label)
-        finally:
-            self._mark_section_loaded("people", loaded=success)
 
     def _load_face_thumbnail(self, rep_path: str, rep_thumb_png: bytes) -> QPixmap:
         """
@@ -1320,14 +1284,13 @@ class AccordionSidebar(QWidget):
         elif action == "delete":
             self._handle_delete_person(branch_key)
 
+
     def _on_person_drag_merge(self, source_branch: str, target_branch: str):
         """Handle drag-and-drop merge from People grid."""
-        try:
-            # Get source and target names for confirmation feedback
-            with self.db._connect() as conn:
+        def task(db: ReferenceDB):
+            with db._connect() as conn:
                 cur = conn.cursor()
-                
-                # Get source name
+
                 cur.execute(
                     "SELECT label, count FROM face_branch_reps WHERE project_id = ? AND branch_key = ?",
                     (self.project_id, source_branch)
@@ -1335,8 +1298,7 @@ class AccordionSidebar(QWidget):
                 source_row = cur.fetchone()
                 source_name = source_row[0] if source_row and source_row[0] else source_branch
                 source_count = source_row[1] if source_row else 0
-                
-                # Get target name
+
                 cur.execute(
                     "SELECT label, count FROM face_branch_reps WHERE project_id = ? AND branch_key = ?",
                     (self.project_id, target_branch)
@@ -1345,22 +1307,28 @@ class AccordionSidebar(QWidget):
                 target_name = target_row[0] if target_row and target_row[0] else target_branch
                 target_count = target_row[1] if target_row else 0
 
-            self._dbg(f"Drag-drop merge: '{source_name}' ({source_count} photos) -> '{target_name}' ({target_count} photos)")
+            self._dbg(
+                f"Drag-drop merge: '{source_name}' ({source_count} photos) -> '{target_name}' ({target_count} photos)"
+            )
 
-            # CRITICAL FIX: Use ReferenceDB.merge_face_clusters (the proper method)
-            # Previous bug: Tried to use non-existent 'face_instances' table
-            # Correct tables: face_crops, face_branch_reps, project_images, branches
-            result = self.db.merge_face_clusters(
+            result = db.merge_face_clusters(
                 project_id=self.project_id,
                 target_branch=target_branch,
                 source_branches=[source_branch],
                 log_undo=True
             )
 
-            # Reload people section to reflect changes
-            self._load_people_section()
+            return {
+                "result": result,
+                "source_name": source_name,
+                "target_name": target_name,
+            }
 
-            # Build comprehensive merge notification following Google Photos pattern
+        def on_success(payload: dict):
+            result = payload.get("result", {})
+            source_name = payload.get("source_name", source_branch)
+            target_name = payload.get("target_name", target_branch)
+
             msg_lines = [f"✓ '{source_name}' merged successfully", ""]
 
             duplicates = result.get('duplicates_found', 0)
@@ -1376,30 +1344,22 @@ class AccordionSidebar(QWidget):
             if unique_moved > 0:
                 msg_lines.append(f"• Moved {unique_moved} unique photo{'s' if unique_moved != 1 else ''}")
             elif duplicates > 0:
-                msg_lines.append(f"• No unique photos to move (all were duplicates)")
+                msg_lines.append("• No unique photos to move (all were duplicates)")
 
             msg_lines.append(f"• Reassigned {moved_faces} face crop{'s' if moved_faces != 1 else ''}")
             msg_lines.append("")
             msg_lines.append(f"Total: {total_photos} photo{'s' if total_photos != 1 else ''}")
 
-            QMessageBox.information(
-                None,
-                "Merged",
-                "\n".join(msg_lines)
-            )
-            
+            QMessageBox.information(None, "Merged", "\n".join(msg_lines))
             self._dbg(f"Merge successful: {result}")
 
-        except Exception as e:
-            self._dbg(f"Drag-drop merge failed: {e}")
-            import traceback
-            traceback.print_exc()
-            QMessageBox.critical(
-                None, 
-                "Merge Failed", 
-                f"❌ Error merging face clusters:\n\n{str(e)}\n\n"
-                f"Please check the logs for details."
-            )
+        self._start_people_db_task(
+            description=tr("sidebar.merging_people") if callable(tr) else "Merging people...",
+            task_fn=task,
+            on_success=on_success,
+            failure_title="Merge Failed",
+        )
+
 
     def _handle_rename_person(self, branch_key: str):
         """Handle rename person action."""
@@ -1422,29 +1382,29 @@ class AccordionSidebar(QWidget):
         )
 
         if ok and new_name and new_name != current_name:
-            try:
-                # Update in database
-                with self.db._connect() as conn:
+            def task(db: ReferenceDB):
+                with db._connect() as conn:
                     conn.execute(
                         "UPDATE face_branch_reps SET label = ? WHERE project_id = ? AND branch_key = ?",
                         (new_name, self.project_id, branch_key)
                     )
                     conn.commit()
-
                 self._dbg(f"Renamed {current_name} to {new_name}")
+                return None
 
-                # Reload people section
-                self._load_people_section()
-
+            def on_success(_):
                 QMessageBox.information(
                     None,
                     "Rename Successful",
                     f"✅ Renamed '{current_name}' to '{new_name}'"
                 )
 
-            except Exception as e:
-                self._dbg(f"Rename failed: {e}")
-                QMessageBox.critical(None, "Rename Failed", f"Error: {e}")
+            self._start_people_db_task(
+                description=tr("sidebar.renaming_person") if callable(tr) else "Renaming person...",
+                task_fn=task,
+                on_success=on_success,
+                failure_title="Rename Failed",
+            )
 
     def _handle_merge_person(self, branch_key: str):
         """Handle merge person action."""
@@ -1480,6 +1440,7 @@ class AccordionSidebar(QWidget):
                 f"Representative Path: {rep_path}"
             )
 
+
     def _handle_delete_person(self, branch_key: str):
         """Handle delete person action."""
         # Get person name
@@ -1496,36 +1457,36 @@ class AccordionSidebar(QWidget):
         reply = QMessageBox.question(
             None,
             "Confirm Delete",
-            f"🗑️ Delete '{person_name}'?\n\n"
+            f"🗑️ Delete '{person_name}'?\n\n",
             f"This will remove this person and all associated face data.",
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No
         )
 
         if reply == QMessageBox.Yes:
-            try:
-                # Delete from database
-                with self.db._connect() as conn:
+            def task(db: ReferenceDB):
+                with db._connect() as conn:
                     conn.execute(
                         "DELETE FROM face_branch_reps WHERE project_id = ? AND branch_key = ?",
                         (self.project_id, branch_key)
                     )
                     conn.commit()
-
                 self._dbg(f"Deleted person: {person_name}")
+                return None
 
-                # Reload people section
-                self._load_people_section()
-
+            def on_success(_):
                 QMessageBox.information(
                     None,
                     "Delete Successful",
                     f"✅ Deleted '{person_name}'"
                 )
 
-            except Exception as e:
-                self._dbg(f"Delete failed: {e}")
-                QMessageBox.critical(None, "Delete Failed", f"Error: {e}")
+            self._start_people_db_task(
+                description=tr("sidebar.deleting_person") if callable(tr) else "Deleting person...",
+                task_fn=task,
+                on_success=on_success,
+                failure_title="Delete Failed",
+            )
 
     def _make_circular_pixmap(self, pixmap: QPixmap, size: int) -> QPixmap:
         """Create a circular pixmap from a square one."""
@@ -1555,13 +1516,68 @@ class AccordionSidebar(QWidget):
         # Emit branch selection signal for grid filtering
         self.selectBranch.emit(f"branch:{branch_key}")
 
+    def _set_people_busy(self, busy: bool, message: str = ""):
+        if self._people_grid:
+            self._people_grid.set_busy_state(busy, message)
+
+    def _queue_people_reload(self):
+        QTimer.singleShot(0, self._load_people_section)
+
+    def _start_people_db_task(self, description: str, task_fn, on_success, failure_title: str):
+        """Run a people operation in a background thread with UI safety."""
+
+        class DbTaskSignals(QObject):
+            finished = Signal(object)
+            error = Signal(str)
+
+        class DbTask(QRunnable):
+            def __init__(self, fn):
+                super().__init__()
+                self.fn = fn
+                self.signals = DbTaskSignals()
+
+            @Slot()
+            def run(self):
+                db = ReferenceDB()
+                try:
+                    result = self.fn(db)
+                    self.signals.finished.emit(result)
+                except Exception as e:
+                    traceback.print_exc()
+                    self.signals.error.emit(str(e))
+
+        worker = DbTask(task_fn)
+        self._active_workers.append(worker)
+        self._set_people_busy(True, description)
+
+        def cleanup():
+            try:
+                self._active_workers.remove(worker)
+            except ValueError:
+                pass
+
+        def handle_success(result):
+            self._set_people_busy(False)
+            on_success(result)
+            self._queue_people_reload()
+            cleanup()
+
+        def handle_error(error_msg: str):
+            self._set_people_busy(False)
+            self._dbg(f"Background people task failed: {error_msg}")
+            QMessageBox.critical(None, failure_title, f"❌ {error_msg}")
+            cleanup()
+
+        worker.signals.finished.connect(handle_success, Qt.QueuedConnection)
+        worker.signals.error.connect(handle_error, Qt.QueuedConnection)
+        self.thread_pool.start(worker)
+
     def _load_dates_section(self):
         """Load By Date section with hierarchical tree (Year > Month > Day)."""
         self._dbg("Loading Dates section...")
 
         section = self.sections.get("dates")
         if not section or not self.project_id:
-            self._mark_section_loaded("dates", loaded=False)
             return
 
         # PHASE 1 Task 1.2: Increment generation to track this reload
@@ -1617,10 +1633,8 @@ class AccordionSidebar(QWidget):
         """Build dates tree widget from hierarchy data."""
         section = self.sections.get("dates")
         if not section:
-            self._mark_section_loaded("dates", loaded=False)
             return
 
-        success = False
         hier = result.get("hierarchy", {})
         year_counts = result.get("year_counts", {})
 
@@ -1629,7 +1643,6 @@ class AccordionSidebar(QWidget):
             placeholder.setAlignment(Qt.AlignCenter)
             placeholder.setStyleSheet("padding: 20px; color: #666;")
             section.set_content_widget(placeholder)
-            self._mark_section_loaded("dates", loaded=True)
             return
 
         # Create tree widget: Years → Months → Days
@@ -1738,17 +1751,12 @@ class AccordionSidebar(QWidget):
 
         self._dbg(f"✓ Dates section loaded with {len(hier)} years")
 
-        success = True
-
-        self._mark_section_loaded("dates", loaded=success)
-
     def _load_folders_section(self):
         """Load Folders section with hierarchical tree structure."""
         self._dbg("Loading Folders section...")
 
         section = self.sections.get("folders")
         if not section or not self.project_id:
-            self._mark_section_loaded("folders", loaded=False)
             return
 
         # PHASE 1 Task 1.2: Increment generation to track this reload
@@ -1795,72 +1803,64 @@ class AccordionSidebar(QWidget):
         """Build folders tree widget from database data."""
         section = self.sections.get("folders")
         if not section:
-            self._mark_section_loaded("folders", loaded=False)
             return
 
-        success = False
+        # Create tree widget
+        tree = QTreeWidget()
+        tree.setHeaderLabels([tr('sidebar.header_folder'), "Photos | Videos"])
+        tree.setColumnCount(2)
+        tree.setSelectionMode(QTreeWidget.SingleSelection)
+        tree.setEditTriggers(QTreeWidget.NoEditTriggers)
+        tree.setAlternatingRowColors(True)
+        tree.setMinimumHeight(200)  # CRITICAL: Ensure tree is visible
+        tree.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        tree.header().setStretchLastSection(False)
+        tree.header().setSectionResizeMode(0, QHeaderView.Stretch)
+        tree.header().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        tree.setStyleSheet("""
+            QTreeWidget {
+                border: none;
+                background: transparent;
+            }
+            QTreeWidget::item {
+                padding: 4px;
+            }
+            QTreeWidget::item:hover {
+                background: #f1f3f4;
+            }
+            QTreeWidget::item:selected {
+                background: #e8f0fe;
+                color: #1a73e8;
+            }
+        """)
+
+        # Build tree structure recursively
         try:
-            # Create tree widget
-            tree = QTreeWidget()
-            tree.setHeaderLabels([tr('sidebar.header_folder'), "Photos | Videos"])
-            tree.setColumnCount(2)
-            tree.setSelectionMode(QTreeWidget.SingleSelection)
-            tree.setEditTriggers(QTreeWidget.NoEditTriggers)
-            tree.setAlternatingRowColors(True)
-            tree.setMinimumHeight(200)  # CRITICAL: Ensure tree is visible
-            tree.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-            tree.header().setStretchLastSection(False)
-            tree.header().setSectionResizeMode(0, QHeaderView.Stretch)
-            tree.header().setSectionResizeMode(1, QHeaderView.ResizeToContents)
-            tree.setStyleSheet("""
-                QTreeWidget {
-                    border: none;
-                    background: transparent;
-                }
-                QTreeWidget::item {
-                    padding: 4px;
-                }
-                QTreeWidget::item:hover {
-                    background: #f1f3f4;
-                }
-                QTreeWidget::item:selected {
-                    background: #e8f0fe;
-                    color: #1a73e8;
-                }
-            """)
+            self._add_folder_tree_items(tree, None)
+        except Exception as e:
+            self._dbg(f"⚠️ Error building folders tree: {e}")
+            traceback.print_exc()
 
-            # Build tree structure recursively
-            try:
-                self._add_folder_tree_items(tree, None)
-            except Exception as e:
-                self._dbg(f"⚠️ Error building folders tree: {e}")
-                traceback.print_exc()
+        if tree.topLevelItemCount() == 0:
+            placeholder = QLabel("No folders found")
+            placeholder.setAlignment(Qt.AlignCenter)
+            placeholder.setStyleSheet("padding: 20px; color: #666;")
+            section.set_content_widget(placeholder)
+            return
 
-            if tree.topLevelItemCount() == 0:
-                placeholder = QLabel("No folders found")
-                placeholder.setAlignment(Qt.AlignCenter)
-                placeholder.setStyleSheet("padding: 20px; color: #666;")
-                section.set_content_widget(placeholder)
-                self._mark_section_loaded("folders", loaded=True)
-                return
+        # Connect double-click to emit folder selection
+        tree.itemDoubleClicked.connect(
+            lambda item, col: self.selectFolder.emit(item.data(0, Qt.UserRole)) if item.data(0, Qt.UserRole) else None
+        )
 
-            # Connect double-click to emit folder selection
-            tree.itemDoubleClicked.connect(
-                lambda item, col: self.selectFolder.emit(item.data(0, Qt.UserRole)) if item.data(0, Qt.UserRole) else None
-            )
+        # Update count badge
+        folder_count = self._count_tree_folders(tree)
+        section.set_count(folder_count)
 
-            # Update count badge
-            folder_count = self._count_tree_folders(tree)
-            section.set_count(folder_count)
+        # Set as content widget
+        section.set_content_widget(tree)
 
-            # Set as content widget
-            section.set_content_widget(tree)
-
-            self._dbg(f"✓ Folders section loaded with {folder_count} folders")
-
-            success = True
-        finally:
-            self._mark_section_loaded("folders", loaded=success)
+        self._dbg(f"✓ Folders section loaded with {folder_count} folders")
 
     def _add_folder_tree_items(self, parent_widget_or_item, parent_id=None):
         """Recursively add folder items to QTreeWidget."""
@@ -1935,7 +1935,6 @@ class AccordionSidebar(QWidget):
 
         section = self.sections.get("tags")
         if not section or not self.project_id:
-            self._mark_section_loaded("tags", loaded=False)
             return
 
         def work():
@@ -1965,94 +1964,85 @@ class AccordionSidebar(QWidget):
         """Build tags table widget from database data."""
         section = self.sections.get("tags")
         if not section:
-            self._mark_section_loaded("tags", loaded=False)
             return
 
-        success = False
-
-        try:
-            # Process rows which can be: tuples (tag, count), dicts, or strings
-            tag_items = []
-            for r in (rows or []):
-                if isinstance(r, tuple) and len(r) == 2:
-                    tag_name, count = r
+        # Process rows which can be: tuples (tag, count), dicts, or strings
+        tag_items = []
+        for r in (rows or []):
+            if isinstance(r, tuple) and len(r) == 2:
+                tag_name, count = r
+                tag_items.append((tag_name, count))
+            elif isinstance(r, dict):
+                tag_name = r.get("tag") or r.get("name") or r.get("label")
+                count = r.get("count", 0)
+                if tag_name:
                     tag_items.append((tag_name, count))
-                elif isinstance(r, dict):
-                    tag_name = r.get("tag") or r.get("name") or r.get("label")
-                    count = r.get("count", 0)
-                    if tag_name:
-                        tag_items.append((tag_name, count))
-                else:
-                    tag_name = str(r)
-                    if tag_name:
-                        tag_items.append((tag_name, 0))
+            else:
+                tag_name = str(r)
+                if tag_name:
+                    tag_items.append((tag_name, 0))
 
-            if not tag_items:
-                placeholder = QLabel("No tags found")
-                placeholder.setAlignment(Qt.AlignCenter)
-                placeholder.setStyleSheet("padding: 20px; color: #666;")
-                section.set_content_widget(placeholder)
-                self._mark_section_loaded("tags", loaded=True)
-                return
+        if not tag_items:
+            placeholder = QLabel("No tags found")
+            placeholder.setAlignment(Qt.AlignCenter)
+            placeholder.setStyleSheet("padding: 20px; color: #666;")
+            section.set_content_widget(placeholder)
+            return
 
-            # Create 2-column table: Tag | Photos
-            table = QTableWidget()
-            table.setColumnCount(2)
-            table.setHorizontalHeaderLabels([tr('sidebar.tag'), tr('sidebar.header_photos')])
-            table.setRowCount(len(tag_items))
-            table.setSelectionBehavior(QTableWidget.SelectRows)
-            table.setSelectionMode(QTableWidget.SingleSelection)
-            table.setEditTriggers(QTableWidget.NoEditTriggers)
-            table.setMinimumHeight(200)  # CRITICAL: Ensure table is visible
-            table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-            table.verticalHeader().setVisible(False)
-            table.horizontalHeader().setStretchLastSection(False)
-            table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
-            table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
-            table.setStyleSheet("""
-                QTableWidget {
-                    border: none;
-                    background: transparent;
-                }
-                QTableWidget::item {
-                    padding: 4px;
-                }
-                QTableWidget::item:hover {
-                    background: #f1f3f4;
-                }
-                QTableWidget::item:selected {
-                    background: #e8f0fe;
-                    color: #1a73e8;
-                }
-            """)
+        # Create 2-column table: Tag | Photos
+        table = QTableWidget()
+        table.setColumnCount(2)
+        table.setHorizontalHeaderLabels([tr('sidebar.tag'), tr('sidebar.header_photos')])
+        table.setRowCount(len(tag_items))
+        table.setSelectionBehavior(QTableWidget.SelectRows)
+        table.setSelectionMode(QTableWidget.SingleSelection)
+        table.setEditTriggers(QTableWidget.NoEditTriggers)
+        table.setMinimumHeight(200)  # CRITICAL: Ensure table is visible
+        table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        table.verticalHeader().setVisible(False)
+        table.horizontalHeader().setStretchLastSection(False)
+        table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        table.setStyleSheet("""
+            QTableWidget {
+                border: none;
+                background: transparent;
+            }
+            QTableWidget::item {
+                padding: 4px;
+            }
+            QTableWidget::item:hover {
+                background: #f1f3f4;
+            }
+            QTableWidget::item:selected {
+                background: #e8f0fe;
+                color: #1a73e8;
+            }
+        """)
 
-            for row, (tag_name, count) in enumerate(tag_items):
-                # Column 0: Tag name
-                item_name = QTableWidgetItem(tag_name)
-                item_name.setData(Qt.UserRole, tag_name)
-                table.setItem(row, 0, item_name)
+        for row, (tag_name, count) in enumerate(tag_items):
+            # Column 0: Tag name
+            item_name = QTableWidgetItem(tag_name)
+            item_name.setData(Qt.UserRole, tag_name)
+            table.setItem(row, 0, item_name)
 
-                # Column 1: Count badge (right-aligned)
-                count_str = str(count) if count else ""
-                badge = QLabel(count_str)
-                badge.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-                badge.setStyleSheet("QLabel { background-color: #E8F4FD; color: #245; border: 1px solid #B3D9F2; border-radius: 10px; padding: 2px 6px; min-width: 24px; }")
-                table.setCellWidget(row, 1, badge)
+            # Column 1: Count badge (right-aligned)
+            count_str = str(count) if count else ""
+            badge = QLabel(count_str)
+            badge.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            badge.setStyleSheet("QLabel { background-color: #E8F4FD; color: #245; border: 1px solid #B3D9F2; border-radius: 10px; padding: 2px 6px; min-width: 24px; }")
+            table.setCellWidget(row, 1, badge)
 
-            # Connect double-click to emit tag selection
-            table.cellDoubleClicked.connect(lambda row, col: self.selectTag.emit(table.item(row, 0).data(Qt.UserRole)))
+        # Connect double-click to emit tag selection
+        table.cellDoubleClicked.connect(lambda row, col: self.selectTag.emit(table.item(row, 0).data(Qt.UserRole)))
 
-            # Update count badge
-            section.set_count(len(tag_items))
+        # Update count badge
+        section.set_count(len(tag_items))
 
-            # Set as content widget
-            section.set_content_widget(table)
+        # Set as content widget
+        section.set_content_widget(table)
 
-            self._dbg(f"✓ Tags section loaded with {len(tag_items)} tags")
-
-            success = True
-        finally:
-            self._mark_section_loaded("tags", loaded=success)
+        self._dbg(f"✓ Tags section loaded with {len(tag_items)} tags")
 
     def _load_branches_section(self):
         """Load Branches section with branch list and member counts."""
@@ -2060,7 +2050,6 @@ class AccordionSidebar(QWidget):
 
         section = self.sections.get("branches")
         if not section or not self.project_id:
-            self._mark_section_loaded("branches", loaded=False)
             return
 
         # PHASE 1 Task 1.2: Increment generation to track this reload
@@ -2106,10 +2095,7 @@ class AccordionSidebar(QWidget):
         """Build branches table widget from database data."""
         section = self.sections.get("branches")
         if not section:
-            self._mark_section_loaded("branches", loaded=False)
             return
-
-        success = False
 
         # Normalize to [(key, name, count)]
         norm = []
@@ -2133,68 +2119,62 @@ class AccordionSidebar(QWidget):
             placeholder.setAlignment(Qt.AlignCenter)
             placeholder.setStyleSheet("padding: 20px; color: #666;")
             section.set_content_widget(placeholder)
-            self._mark_section_loaded("branches", loaded=True)
             return
 
-        try:
-            # Create 2-column table: Branch/Folder | Photos
-            table = QTableWidget()
-            table.setColumnCount(2)
-            table.setHorizontalHeaderLabels(["Branch/Folder", "Photos"])
-            table.setRowCount(len(norm))
-            table.setSelectionBehavior(QTableWidget.SelectRows)
-            table.setSelectionMode(QTableWidget.SingleSelection)
-            table.setEditTriggers(QTableWidget.NoEditTriggers)
-            table.setMinimumHeight(200)  # CRITICAL: Ensure table is visible
-            table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-            table.verticalHeader().setVisible(False)
-            table.horizontalHeader().setStretchLastSection(False)
-            table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
-            table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
-            table.setStyleSheet("""
-                QTableWidget {
-                    border: none;
-                    background: transparent;
-                }
-                QTableWidget::item {
-                    padding: 4px;
-                }
-                QTableWidget::item:hover {
-                    background: #f1f3f4;
-                }
-                QTableWidget::item:selected {
-                    background: #e8f0fe;
-                    color: #1a73e8;
-                }
-            """)
+        # Create 2-column table: Branch/Folder | Photos
+        table = QTableWidget()
+        table.setColumnCount(2)
+        table.setHorizontalHeaderLabels(["Branch/Folder", "Photos"])
+        table.setRowCount(len(norm))
+        table.setSelectionBehavior(QTableWidget.SelectRows)
+        table.setSelectionMode(QTableWidget.SingleSelection)
+        table.setEditTriggers(QTableWidget.NoEditTriggers)
+        table.setMinimumHeight(200)  # CRITICAL: Ensure table is visible
+        table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        table.verticalHeader().setVisible(False)
+        table.horizontalHeader().setStretchLastSection(False)
+        table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        table.setStyleSheet("""
+            QTableWidget {
+                border: none;
+                background: transparent;
+            }
+            QTableWidget::item {
+                padding: 4px;
+            }
+            QTableWidget::item:hover {
+                background: #f1f3f4;
+            }
+            QTableWidget::item:selected {
+                background: #e8f0fe;
+                color: #1a73e8;
+            }
+        """)
 
-            for row, (key, name, count) in enumerate(norm):
-                # Column 0: Branch name
-                item_name = QTableWidgetItem(name)
-                item_name.setData(Qt.UserRole, key)
-                table.setItem(row, 0, item_name)
+        for row, (key, name, count) in enumerate(norm):
+            # Column 0: Branch name
+            item_name = QTableWidgetItem(name)
+            item_name.setData(Qt.UserRole, key)
+            table.setItem(row, 0, item_name)
 
-                # Column 1: Count (right-aligned, light grey)
-                count_str = str(count) if count is not None else "0"
-                item_count = QTableWidgetItem(count_str)
-                item_count.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-                item_count.setForeground(QColor("#BBBBBB"))
-                table.setItem(row, 1, item_count)
+            # Column 1: Count (right-aligned, light grey)
+            count_str = str(count) if count is not None else "0"
+            item_count = QTableWidgetItem(count_str)
+            item_count.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            item_count.setForeground(QColor("#BBBBBB"))
+            table.setItem(row, 1, item_count)
 
-            # Connect double-click to emit branch selection
-            table.cellDoubleClicked.connect(lambda row, col: self.selectBranch.emit(table.item(row, 0).data(Qt.UserRole)))
+        # Connect double-click to emit branch selection
+        table.cellDoubleClicked.connect(lambda row, col: self.selectBranch.emit(table.item(row, 0).data(Qt.UserRole)))
 
-            # Update count badge
-            section.set_count(len(norm))
+        # Update count badge
+        section.set_count(len(norm))
 
-            # Set as content widget
-            section.set_content_widget(table)
+        # Set as content widget
+        section.set_content_widget(table)
 
-            self._dbg(f"✓ Branches section loaded with {len(norm)} branches")
-
-            success = True
-        finally:
-            self._mark_section_loaded("branches", loaded=success)
+        self._dbg(f"✓ Branches section loaded with {len(norm)} branches")
 
     def _load_quick_section(self):
         """Load Quick Dates section with quick date shortcuts."""
@@ -2202,7 +2182,6 @@ class AccordionSidebar(QWidget):
 
         section = self.sections.get("quick")
         if not section:
-            self._mark_section_loaded("quick", loaded=False)
             return
 
         # PHASE 1 Task 1.2: Increment generation to track this reload
@@ -2256,10 +2235,7 @@ class AccordionSidebar(QWidget):
         """Build quick dates table widget from database data."""
         section = self.sections.get("quick")
         if not section:
-            self._mark_section_loaded("quick", loaded=False)
             return
-
-        success = False
 
         # Normalize rows to (key, label, count)
         quick_items = []
@@ -2282,67 +2258,61 @@ class AccordionSidebar(QWidget):
             placeholder.setAlignment(Qt.AlignCenter)
             placeholder.setStyleSheet("padding: 20px; color: #666;")
             section.set_content_widget(placeholder)
-            self._mark_section_loaded("quick", loaded=True)
             return
 
-        try:
-            # Create 2-column table: Period | Photos
-            table = QTableWidget()
-            table.setColumnCount(2)
-            table.setHorizontalHeaderLabels(["Period", "Photos"])
-            table.setRowCount(len(quick_items))
-            table.setSelectionBehavior(QTableWidget.SelectRows)
-            table.setSelectionMode(QTableWidget.SingleSelection)
-            table.setEditTriggers(QTableWidget.NoEditTriggers)
-            table.setMinimumHeight(200)  # CRITICAL: Ensure table is visible
-            table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-            table.verticalHeader().setVisible(False)
-            table.horizontalHeader().setStretchLastSection(False)
-            table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
-            table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
-            table.setStyleSheet("""
-                QTableWidget {
-                    border: none;
-                    background: transparent;
-                }
-                QTableWidget::item {
-                    padding: 4px;
-                }
-                QTableWidget::item:hover {
-                    background: #f1f3f4;
-                }
-                QTableWidget::item:selected {
-                    background: #e8f0fe;
-                    color: #1a73e8;
-                }
-            """)
+        # Create 2-column table: Period | Photos
+        table = QTableWidget()
+        table.setColumnCount(2)
+        table.setHorizontalHeaderLabels(["Period", "Photos"])
+        table.setRowCount(len(quick_items))
+        table.setSelectionBehavior(QTableWidget.SelectRows)
+        table.setSelectionMode(QTableWidget.SingleSelection)
+        table.setEditTriggers(QTableWidget.NoEditTriggers)
+        table.setMinimumHeight(200)  # CRITICAL: Ensure table is visible
+        table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        table.verticalHeader().setVisible(False)
+        table.horizontalHeader().setStretchLastSection(False)
+        table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        table.setStyleSheet("""
+            QTableWidget {
+                border: none;
+                background: transparent;
+            }
+            QTableWidget::item {
+                padding: 4px;
+            }
+            QTableWidget::item:hover {
+                background: #f1f3f4;
+            }
+            QTableWidget::item:selected {
+                background: #e8f0fe;
+                color: #1a73e8;
+            }
+        """)
 
-            for row, (key, label, count) in enumerate(quick_items):
-                # Column 0: Period label
-                item_name = QTableWidgetItem(label)
-                item_name.setData(Qt.UserRole, key)
-                table.setItem(row, 0, item_name)
+        for row, (key, label, count) in enumerate(quick_items):
+            # Column 0: Period label
+            item_name = QTableWidgetItem(label)
+            item_name.setData(Qt.UserRole, key)
+            table.setItem(row, 0, item_name)
 
-                # Column 1: Count badge (right-aligned, light badge)
-                badge = QLabel(str(count))
-                badge.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-                badge.setStyleSheet("QLabel { background-color: #F0F6FF; color: #456; border: 1px solid #C7DAF7; border-radius: 10px; padding: 2px 6px; min-width: 24px; }")
-                table.setCellWidget(row, 1, badge)
+            # Column 1: Count badge (right-aligned, light badge)
+            badge = QLabel(str(count))
+            badge.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            badge.setStyleSheet("QLabel { background-color: #F0F6FF; color: #456; border: 1px solid #C7DAF7; border-radius: 10px; padding: 2px 6px; min-width: 24px; }")
+            table.setCellWidget(row, 1, badge)
 
-            # Connect double-click to emit date selection
-            table.cellDoubleClicked.connect(lambda row, col: self.selectDate.emit(table.item(row, 0).data(Qt.UserRole)))
+        # Connect double-click to emit date selection
+        table.cellDoubleClicked.connect(lambda row, col: self.selectDate.emit(table.item(row, 0).data(Qt.UserRole)))
 
-            # Update count badge
-            section.set_count(len(quick_items))
+        # Update count badge
+        section.set_count(len(quick_items))
 
-            # Set as content widget
-            section.set_content_widget(table)
+        # Set as content widget
+        section.set_content_widget(table)
 
-            self._dbg(f"✓ Quick dates section loaded with {len(quick_items)} items")
-
-            success = True
-        finally:
-            self._mark_section_loaded("quick", loaded=success)
+        self._dbg(f"✓ Quick dates section loaded with {len(quick_items)} items")
 
     def _load_videos_section(self):
         """Load Videos section content asynchronously (thread-safe)."""
@@ -2350,7 +2320,6 @@ class AccordionSidebar(QWidget):
 
         section = self.sections.get("videos")
         if not section or not self.project_id:
-            self._mark_section_loaded("videos", loaded=False)
             return
 
         # PHASE 1 Task 1.2: Increment generation to track this reload
@@ -2392,10 +2361,7 @@ class AccordionSidebar(QWidget):
         """Build videos tree from loaded data (runs on main thread via signal)."""
         section = self.sections.get("videos")
         if not section:
-            self._mark_section_loaded("videos", loaded=False)
             return
-
-        success = False
 
         try:
             # Create tree widget
@@ -2431,7 +2397,6 @@ class AccordionSidebar(QWidget):
                 tree.addTopLevelItem(no_videos_item)
                 section.set_content_widget(tree)
                 section.set_count(0)
-                self._mark_section_loaded("videos", loaded=True)
                 return
 
             # All Videos
@@ -2528,8 +2493,36 @@ class AccordionSidebar(QWidget):
             mpeg4_item.setData(0, Qt.UserRole, {"type": "codec", "filter": "mpeg4"})
             codec_parent.addChild(mpeg4_item)
 
-            # Connect double-click to emit video filter selection
-            tree.itemDoubleClicked.connect(self._on_video_filter_double_clicked)
+            # By File Size (NEW: Missing from AccordionSidebar)
+            small_videos = [v for v in videos if v.get("size_kb") and v["size_kb"] / 1024 < 100]
+            medium_size_videos = [v for v in videos if v.get("size_kb") and 100 <= v["size_kb"] / 1024 < 1024]
+            large_videos = [v for v in videos if v.get("size_kb") and 1024 <= v["size_kb"] / 1024 < 5120]
+            xlarge_videos = [v for v in videos if v.get("size_kb") and v["size_kb"] / 1024 >= 5120]
+
+            # BUG FIX: Count videos WITH size metadata (not sum of categories)
+            videos_with_size = [v for v in videos if v.get("size_kb")]
+            size_parent = QTreeWidgetItem([f"📦 {tr('sidebar.by_size')} ({len(videos_with_size)})"])
+            size_parent.setData(0, Qt.UserRole, {"type": "size_header"})
+            tree.addTopLevelItem(size_parent)
+
+            small_item = QTreeWidgetItem([f"{tr('sidebar.size_small')} ({len(small_videos)})"])
+            small_item.setData(0, Qt.UserRole, {"type": "size", "filter": "small"})
+            size_parent.addChild(small_item)
+
+            medium_item = QTreeWidgetItem([f"{tr('sidebar.size_medium')} ({len(medium_size_videos)})"])
+            medium_item.setData(0, Qt.UserRole, {"type": "size", "filter": "medium"})
+            size_parent.addChild(medium_item)
+
+            large_item = QTreeWidgetItem([f"{tr('sidebar.size_large')} ({len(large_videos)})"])
+            large_item.setData(0, Qt.UserRole, {"type": "size", "filter": "large"})
+            size_parent.addChild(large_item)
+
+            xlarge_item = QTreeWidgetItem([f"{tr('sidebar.size_xlarge')} ({len(xlarge_videos)})"])
+            xlarge_item.setData(0, Qt.UserRole, {"type": "size", "filter": "xlarge"})
+            size_parent.addChild(xlarge_item)
+
+            # Connect tree item click
+            tree.itemClicked.connect(self._on_video_item_clicked)
 
             # Update count badge
             section.set_count(total_videos)
@@ -2539,21 +2532,15 @@ class AccordionSidebar(QWidget):
 
             self._dbg(f"✓ Videos section loaded with {total_videos} videos")
 
-            success = True
-
         except Exception as e:
             self._dbg(f"⚠️ Error building videos tree: {e}")
             import traceback
             traceback.print_exc()
 
-            # Show error placeholder
             error_label = QLabel(f"Error loading videos:\n{str(e)}")
             error_label.setAlignment(Qt.AlignCenter)
             error_label.setStyleSheet("padding: 20px; color: #ff0000;")
             section.set_content_widget(error_label)
-        finally:
-            self._mark_section_loaded("videos", loaded=success)
-
 
     def _on_video_item_clicked(self, item: QTreeWidgetItem, column: int):
         """Handle video tree item click - emit selectVideo signal."""
