@@ -10966,6 +10966,39 @@ class GooglePhotosLayout(BaseLayout):
                     editors[branch_key] = name_edit
                     v.addWidget(name_edit)
 
+                    # Choose Face button
+                    choose_face_btn = QPushButton("Choose Face ▼")
+                    choose_face_btn.setStyleSheet("""
+                        QPushButton {
+                            background: #f1f3f4;
+                            border: 1px solid #dadce0;
+                            border-radius: 4px;
+                            padding: 4px 8px;
+                            font-size: 9pt;
+                        }
+                        QPushButton:hover {
+                            background: #e8eaed;
+                        }
+                    """)
+                    # Use closure to capture branch_key and rep_path
+                    def make_choose_face_handler(bk, rp, lbl):
+                        def handler():
+                            from ui.cluster_face_selector import ClusterFaceSelector
+                            selector = ClusterFaceSelector(
+                                project_id=self.project_id,
+                                branch_key=bk,
+                                cluster_name=lbl if lbl else f"Unnamed ({count} photos)",
+                                current_rep_path=rp,
+                                parent=dlg
+                            )
+                            if selector.exec():
+                                # Refresh the grid to show updated representative
+                                populate()
+                        return handler
+
+                    choose_face_btn.clicked.connect(make_choose_face_handler(branch_key, rep_path, label))
+                    v.addWidget(choose_face_btn)
+
                     row_i = i // 4
                     col_i = i % 4
                     grid.addWidget(card, row_i, col_i)
