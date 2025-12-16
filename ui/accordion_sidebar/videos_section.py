@@ -167,13 +167,13 @@ class VideosSection(BaseSection):
 
         if total_videos == 0:
             # No videos - show message
-            no_videos_item = QTreeWidgetItem(["  (No videos yet)"])
+            no_videos_item = QTreeWidgetItem([f"  ({tr('sidebar.loading')})"])
             no_videos_item.setForeground(0, QColor("#888888"))
             tree.addTopLevelItem(no_videos_item)
             return tree
 
         # All Videos
-        all_item = QTreeWidgetItem([f"All Videos ({total_videos})"])
+        all_item = QTreeWidgetItem([f"{tr('sidebar.all_videos')} ({total_videos})"])
         all_item.setData(0, Qt.UserRole, {"type": "all_videos"})
         tree.addTopLevelItem(all_item)
 
@@ -183,19 +183,19 @@ class VideosSection(BaseSection):
         long_videos = [v for v in videos if v.get("duration_seconds") and v["duration_seconds"] >= 300]
 
         videos_with_duration = [v for v in videos if v.get("duration_seconds")]
-        duration_parent = QTreeWidgetItem([f"⏱️ By Duration ({len(videos_with_duration)})"])
+        duration_parent = QTreeWidgetItem([f"⏱️ {tr('sidebar.by_duration')} ({len(videos_with_duration)})"])
         duration_parent.setData(0, Qt.UserRole, {"type": "duration_header"})
         tree.addTopLevelItem(duration_parent)
 
-        short_item = QTreeWidgetItem([f"Short (< 30s) ({len(short_videos)})"])
+        short_item = QTreeWidgetItem([f"{tr('sidebar.duration_short')} ({len(short_videos)})"])
         short_item.setData(0, Qt.UserRole, {"type": "duration", "filter": "short"})
         duration_parent.addChild(short_item)
 
-        medium_item = QTreeWidgetItem([f"Medium (30s - 5m) ({len(medium_videos)})"])
+        medium_item = QTreeWidgetItem([f"{tr('sidebar.duration_medium')} ({len(medium_videos)})"])
         medium_item.setData(0, Qt.UserRole, {"type": "duration", "filter": "medium"})
         duration_parent.addChild(medium_item)
 
-        long_item = QTreeWidgetItem([f"Long (> 5m) ({len(long_videos)})"])
+        long_item = QTreeWidgetItem([f"{tr('sidebar.duration_long')} ({len(long_videos)})"])
         long_item.setData(0, Qt.UserRole, {"type": "duration", "filter": "long"})
         duration_parent.addChild(long_item)
 
@@ -209,23 +209,23 @@ class VideosSection(BaseSection):
             if bucket in resolution_buckets:
                 resolution_buckets[bucket] += 1
 
-        resolution_parent = QTreeWidgetItem([f"📺 By Resolution ({len(videos_with_resolution)})"])
+        resolution_parent = QTreeWidgetItem([f"📺 {tr('sidebar.by_resolution')} ({len(videos_with_resolution)})"])
         resolution_parent.setData(0, Qt.UserRole, {"type": "resolution_header"})
         tree.addTopLevelItem(resolution_parent)
 
-        sd_item = QTreeWidgetItem([f"SD (< 720p) ({resolution_buckets['sd']})"])
+        sd_item = QTreeWidgetItem([f"{tr('sidebar.resolution_sd')} ({resolution_buckets['sd']})"])
         sd_item.setData(0, Qt.UserRole, {"type": "resolution", "filter": "sd"})
         resolution_parent.addChild(sd_item)
 
-        hd_item = QTreeWidgetItem([f"HD (720p) ({resolution_buckets['hd']})"])
+        hd_item = QTreeWidgetItem([f"{tr('sidebar.resolution_hd')} ({resolution_buckets['hd']})"])
         hd_item.setData(0, Qt.UserRole, {"type": "resolution", "filter": "hd"})
         resolution_parent.addChild(hd_item)
 
-        fhd_item = QTreeWidgetItem([f"Full HD (1080p) ({resolution_buckets['fhd']})"])
+        fhd_item = QTreeWidgetItem([f"{tr('sidebar.resolution_fhd')} ({resolution_buckets['fhd']})"])
         fhd_item.setData(0, Qt.UserRole, {"type": "resolution", "filter": "fhd"})
         resolution_parent.addChild(fhd_item)
 
-        uhd_item = QTreeWidgetItem([f"4K (2160p+) ({resolution_buckets['4k']})"])
+        uhd_item = QTreeWidgetItem([f"{tr('sidebar.resolution_4k')} ({resolution_buckets['4k']})"])
         uhd_item.setData(0, Qt.UserRole, {"type": "resolution", "filter": "4k"})
         resolution_parent.addChild(uhd_item)
 
@@ -287,23 +287,23 @@ class VideosSection(BaseSection):
             if bucket in size_counts:
                 size_counts[bucket] += 1
 
-        size_parent = QTreeWidgetItem([f"📦 By File Size ({len(videos_with_size)})"])
+        size_parent = QTreeWidgetItem([f"📦 {tr('sidebar.by_size')} ({len(videos_with_size)})"])
         size_parent.setData(0, Qt.UserRole, {"type": "size_header"})
         tree.addTopLevelItem(size_parent)
 
-        small_item = QTreeWidgetItem([f"Small (< 100MB) ({size_counts['small']})"])
+        small_item = QTreeWidgetItem([f"{tr('sidebar.size_small')} ({size_counts['small']})"])
         small_item.setData(0, Qt.UserRole, {"type": "size", "filter": "small"})
         size_parent.addChild(small_item)
 
-        medium_item = QTreeWidgetItem([f"Medium (100MB - 1GB) ({size_counts['medium']})"])
+        medium_item = QTreeWidgetItem([f"{tr('sidebar.size_medium')} ({size_counts['medium']})"])
         medium_item.setData(0, Qt.UserRole, {"type": "size", "filter": "medium"})
         size_parent.addChild(medium_item)
 
-        large_item = QTreeWidgetItem([f"Large (1GB - 5GB) ({size_counts['large']})"])
+        large_item = QTreeWidgetItem([f"{tr('sidebar.size_large')} ({size_counts['large']})"])
         large_item.setData(0, Qt.UserRole, {"type": "size", "filter": "large"})
         size_parent.addChild(large_item)
 
-        xlarge_item = QTreeWidgetItem([f"XLarge (> 5GB) ({size_counts['xlarge']})"])
+        xlarge_item = QTreeWidgetItem([f"{tr('sidebar.size_xlarge')} ({size_counts['xlarge']})"])
         xlarge_item.setData(0, Qt.UserRole, {"type": "size", "filter": "xlarge"})
         size_parent.addChild(xlarge_item)
 
@@ -315,7 +315,7 @@ class VideosSection(BaseSection):
                 year_counts[year] = year_counts.get(year, 0) + 1
 
         if year_counts:
-            date_parent = QTreeWidgetItem([tr("📅 By Date") + f" ({sum(year_counts.values())})"])
+            date_parent = QTreeWidgetItem([f"📅 {tr('sidebar.by_date')} ({sum(year_counts.values())})"])
             date_parent.setData(0, Qt.UserRole, {"type": "date_header"})
             tree.addTopLevelItem(date_parent)
 
@@ -325,7 +325,7 @@ class VideosSection(BaseSection):
                 date_parent.addChild(year_item)
 
         # Search shortcut
-        search_item = QTreeWidgetItem([tr("🔍 Search Videos...")])
+        search_item = QTreeWidgetItem([tr("sidebar.search_videos")])
         search_item.setData(0, Qt.UserRole, {"type": "search"})
         tree.addTopLevelItem(search_item)
 
