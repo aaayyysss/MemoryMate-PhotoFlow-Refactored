@@ -126,9 +126,6 @@ class PeopleSection(BaseSection):
 
         cards: List[PersonCard] = []
 
-        # Reset cache of rendered cards
-        self._cards.clear()
-
         for idx, row in enumerate(rows):
             branch_key = row.get("branch_key") or f"cluster_{idx}"
             display_name = row.get("display_name") or f"Person {idx + 1}"
@@ -450,7 +447,8 @@ class PersonCard(QWidget):
                 if source_branch != self.branch_key:
                     self.drag_merge_requested.emit(source_branch, self.branch_key)
                     event.acceptProposedAction()
-        self._set_drag_target_highlight(False)
+        if isValid(self):
+            self._set_drag_target_highlight(False)
 
     def dragLeaveEvent(self, event):
         self._set_drag_target_highlight(False)
@@ -504,6 +502,9 @@ class PersonCard(QWidget):
             self.style().polish(self)
 
     def _set_drag_target_highlight(self, enabled: bool):
+        if not isValid(self):
+            return
+
         self.setProperty("dragTarget", enabled)
         self.style().unpolish(self)
         self.style().polish(self)
