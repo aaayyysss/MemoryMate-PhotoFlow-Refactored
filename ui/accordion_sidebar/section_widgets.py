@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QSizePolicy,
 )
 from PySide6.QtCore import Signal, Qt, QSize
+from shiboken6 import isValid
 
 
 class SectionHeader(QFrame):
@@ -226,9 +227,17 @@ class AccordionSection(QWidget):
 
     def set_content_widget(self, widget: QWidget):
         """Set the content widget for this section."""
+        if not self._ensure_content_layout():
+            return
+
         # CRITICAL FIX: If the widget is already in the layout, don't delete it
         # This prevents RuntimeError when reusing PeopleListView across reloads
-        existing_widget = self.content_layout.itemAt(0).widget() if self.content_layout.count() > 0 else None
+        try:
+            existing_widget = self.content_layout.itemAt(0).widget() if self.content_layout.count() > 0 else None
+        except RuntimeError:
+            # Layout was deleted mid-flight; rebuild and bail to avoid crashes.
+            self._ensure_content_layout(force_rebuild=True)
+            return
 
         if existing_widget is widget:
             # Widget is already set - no need to remove/re-add
@@ -236,8 +245,14 @@ class AccordionSection(QWidget):
 
         # Clear existing content WITH SIGNAL CLEANUP
         while self.content_layout.count():
-            item = self.content_layout.takeAt(0)
-            if item.widget():
+            try:
+                item = self.content_layout.takeAt(0)
+            except RuntimeError:
+                # Layout vanished while iterating; rebuild safely.
+                self._ensure_content_layout(force_rebuild=True)
+                break
+
+            if item and item.widget():
                 w = item.widget()
 
                 # CRITICAL: Cleanup before deletion to prevent signal/slot leaks
@@ -262,6 +277,38 @@ class AccordionSection(QWidget):
             widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
             widget.setVisible(True)  # Ensure widget is visible
             self.content_layout.addWidget(widget, stretch=1)
+
+    def _ensure_content_layout(self, force_rebuild: bool = False) -> bool:
+        """
+        Ensure the content container/layout are still valid. A rapid flurry of
+        async reloads can result in Qt deleting the layout while signals are
+        still being processed; this guard rebuilds the structure as needed.
+        Returns True if the layout is usable.
+        """
+
+        if not isValid(self):
+            return False
+
+        if not isValid(self.scroll_area):
+            return False
+
+        rebuild_container = force_rebuild or not isValid(self.content_container)
+        rebuild_layout = force_rebuild or not isValid(self.content_layout)
+
+        if rebuild_container:
+            self.content_container = QWidget()
+            self.content_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+            rebuild_layout = True
+
+        if rebuild_layout:
+            self.content_layout = QVBoxLayout(self.content_container)
+            self.content_layout.setContentsMargins(8, 8, 8, 8)
+            self.content_layout.setSpacing(0)
+
+        if self.scroll_area.widget() is not self.content_container and isValid(self.scroll_area):
+            self.scroll_area.setWidget(self.content_container)
+
+        return isValid(self.content_layout)
 
     def set_count(self, count: int):
         """Update the count badge in header."""
