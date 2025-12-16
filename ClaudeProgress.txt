@@ -72,3 +72,26 @@
 6. Update this progress log
 
 ---
+
+## Session 2 - 2025-12-16
+**Branch:** work
+**Goal:** Keep Google layout accordion people filters aligned with merge/delete actions
+
+### Work Completed:
+1. ✅ Fixed init.sh line endings and made it executable so session bootstrap script runs cleanly.
+2. ✅ Added sidebar signals for person merges/deletions and propagated them to Google layout:
+   - AccordionSidebar now emits `personMerged` and `personDeleted` when face clusters merge or are removed.
+   - Google layout listens for these signals and refreshes/clears active person filters to keep the photo grid in sync.
+3. ✅ Ran init.sh to capture current repo and environment status (notes missing optional dependencies and main.py placeholder).
+
+### Files Modified:
+- init.sh: normalize line endings, restore executable bit.
+- ui/accordion_sidebar/__init__.py: emit merge/delete signals for people operations.
+- layouts/google_layout.py: refresh photo grid filters after merges or deletions in the people section.
+- FeatureList.json: update metadata timestamp.
+
+### Status:
+- Google layout accordion sidebar now mirrors multi-face behavior from current layout by keeping filters aligned after face merges/deletes.
+- Init script ready for future sessions without CRLF issues.
+
+---
