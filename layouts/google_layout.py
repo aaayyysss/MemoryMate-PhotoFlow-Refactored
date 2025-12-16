@@ -9959,15 +9959,6 @@ class GooglePhotosLayout(BaseLayout):
         except Exception as e:
             logger.debug("[GooglePhotosLayout] Redo merge request failed: %s", e, exc_info=True)
 
-    def _on_people_tools_requested(self):
-        try:
-            # Prefer the interactive bulk review GUI; fall back to the workflow guide if unavailable
-            if hasattr(self, "_prompt_bulk_face_review"):
-                self._prompt_bulk_face_review()
-            else:
-                self._open_people_tools()
-        except Exception as e:
-            logger.debug("[GooglePhotosLayout] People tools request failed: %s", e, exc_info=True)
 
     def _on_accordion_device_selected(self, device_root: str):
         """Open the selected device in the system file browser for quick import."""
@@ -10004,32 +9995,6 @@ class GooglePhotosLayout(BaseLayout):
                 f"Unable to open device location:\n{device_root}\n\n{e}",
             )
 
-    def _open_people_tools(self):
-        """Open the post-face-detection tools reference for quick access."""
-        from PySide6.QtWidgets import QMessageBox
-
-        workflow_path = os.path.abspath("POST_FACE_DETECTION_WORKFLOW.md")
-
-        if not os.path.exists(workflow_path):
-            QMessageBox.information(
-                self.main_window if hasattr(self, "main_window") else None,
-                "People Tools",
-                "Workflow guide not found. Please make sure POST_FACE_DETECTION_WORKFLOW.md exists.",
-            )
-            return
-
-        try:
-            url = QUrl.fromLocalFile(workflow_path)
-            if not QDesktopServices.openUrl(url):
-                raise RuntimeError("Failed to open People Tools guide")
-        except Exception:
-            # Fallback: show a simple helper message with the path
-            QMessageBox.information(
-                self.main_window if hasattr(self, "main_window") else None,
-                "People Tools",
-                f"Open the post-face-detection toolkit at:\n{workflow_path}",
-            )
-
     def _on_accordion_person_deleted(self, branch_key: str):
         """Clear any active person filter when that person is removed."""
         if getattr(self, "current_filter_person", None) != branch_key:
@@ -10100,15 +10065,6 @@ class GooglePhotosLayout(BaseLayout):
         except Exception as e:
             logger.debug("[GooglePhotosLayout] Redo merge request failed: %s", e, exc_info=True)
 
-    def _on_people_tools_requested(self):
-        try:
-            # Prefer the interactive bulk review GUI; fall back to the workflow guide if unavailable
-            if hasattr(self, "_prompt_bulk_face_review"):
-                self._prompt_bulk_face_review()
-            else:
-                self._open_people_tools()
-        except Exception as e:
-            logger.debug("[GooglePhotosLayout] People tools request failed: %s", e, exc_info=True)
 
     def _on_accordion_device_selected(self, device_root: str):
         """Open the selected device in the system file browser for quick import."""
@@ -10126,32 +10082,6 @@ class GooglePhotosLayout(BaseLayout):
                 f"Unable to open device location:\n{device_root}\n\n{e}",
             )
 
-    def _open_people_tools(self):
-        """Open the post-face-detection tools reference for quick access."""
-        from PySide6.QtWidgets import QMessageBox
-
-        workflow_path = os.path.abspath("POST_FACE_DETECTION_WORKFLOW.md")
-
-        if not os.path.exists(workflow_path):
-            QMessageBox.information(
-                self.main_window if hasattr(self, "main_window") else None,
-                "People Tools",
-                "Workflow guide not found. Please make sure POST_FACE_DETECTION_WORKFLOW.md exists.",
-            )
-            return
-
-        try:
-            url = QUrl.fromLocalFile(workflow_path)
-            if not QDesktopServices.openUrl(url):
-                raise RuntimeError("Failed to open People Tools guide")
-        except Exception:
-            # Fallback: show a simple helper message with the path
-            QMessageBox.information(
-                self.main_window if hasattr(self, "main_window") else None,
-                "People Tools",
-                f"Open the post-face-detection toolkit at:\n{workflow_path}",
-            )
-
     def _on_accordion_person_deleted(self, branch_key: str):
         """Clear any active person filter when that person is removed."""
         if getattr(self, "current_filter_person", None) != branch_key:
@@ -10222,15 +10152,6 @@ class GooglePhotosLayout(BaseLayout):
         except Exception as e:
             logger.debug("[GooglePhotosLayout] Redo merge request failed: %s", e, exc_info=True)
 
-    def _on_people_tools_requested(self):
-        try:
-            # Prefer the interactive bulk review GUI; fall back to the workflow guide if unavailable
-            if hasattr(self, "_prompt_bulk_face_review"):
-                self._prompt_bulk_face_review()
-            else:
-                self._open_people_tools()
-        except Exception as e:
-            logger.debug("[GooglePhotosLayout] People tools request failed: %s", e, exc_info=True)
 
     def _on_accordion_device_selected(self, device_root: str):
         """Open the selected device in the system file browser for quick import."""
@@ -10248,32 +10169,6 @@ class GooglePhotosLayout(BaseLayout):
                 f"Unable to open device location:\n{device_root}\n\n{e}",
             )
 
-    def _open_people_tools(self):
-        """Open the post-face-detection tools reference for quick access."""
-        from PySide6.QtWidgets import QMessageBox
-
-        workflow_path = os.path.abspath("POST_FACE_DETECTION_WORKFLOW.md")
-
-        if not os.path.exists(workflow_path):
-            QMessageBox.information(
-                self.main_window if hasattr(self, "main_window") else None,
-                "People Tools",
-                "Workflow guide not found. Please make sure POST_FACE_DETECTION_WORKFLOW.md exists.",
-            )
-            return
-
-        try:
-            url = QUrl.fromLocalFile(workflow_path)
-            if not QDesktopServices.openUrl(url):
-                raise RuntimeError("Failed to open People Tools guide")
-        except Exception:
-            # Fallback: show a simple helper message with the path
-            QMessageBox.information(
-                self.main_window if hasattr(self, "main_window") else None,
-                "People Tools",
-                f"Open the post-face-detection toolkit at:\n{workflow_path}",
-            )
-
     def _on_accordion_person_deleted(self, branch_key: str):
         """Clear any active person filter when that person is removed."""
         if getattr(self, "current_filter_person", None) != branch_key:
@@ -10344,11 +10239,6 @@ class GooglePhotosLayout(BaseLayout):
         except Exception as e:
             logger.debug("[GooglePhotosLayout] Redo merge request failed: %s", e, exc_info=True)
 
-    def _on_people_tools_requested(self):
-        try:
-            self._open_people_tools()
-        except Exception as e:
-            logger.debug("[GooglePhotosLayout] People tools request failed: %s", e, exc_info=True)
 
     def _on_accordion_device_selected(self, device_root: str):
         """Open the selected device in the system file browser for quick import."""
@@ -10366,32 +10256,6 @@ class GooglePhotosLayout(BaseLayout):
                 f"Unable to open device location:\n{device_root}\n\n{e}",
             )
 
-    def _open_people_tools(self):
-        """Open the post-face-detection tools reference for quick access."""
-        from PySide6.QtWidgets import QMessageBox
-
-        workflow_path = os.path.abspath("POST_FACE_DETECTION_WORKFLOW.md")
-
-        if not os.path.exists(workflow_path):
-            QMessageBox.information(
-                self.main_window if hasattr(self, "main_window") else None,
-                "People Tools",
-                "Workflow guide not found. Please make sure POST_FACE_DETECTION_WORKFLOW.md exists.",
-            )
-            return
-
-        try:
-            url = QUrl.fromLocalFile(workflow_path)
-            if not QDesktopServices.openUrl(url):
-                raise RuntimeError("Failed to open People Tools guide")
-        except Exception:
-            # Fallback: show a simple helper message with the path
-            QMessageBox.information(
-                self.main_window if hasattr(self, "main_window") else None,
-                "People Tools",
-                f"Open the post-face-detection toolkit at:\n{workflow_path}",
-            )
-
     def _on_accordion_person_deleted(self, branch_key: str):
         """Clear any active person filter when that person is removed."""
         if getattr(self, "current_filter_person", None) != branch_key:
@@ -10462,31 +10326,6 @@ class GooglePhotosLayout(BaseLayout):
         except Exception as e:
             logger.debug("[GooglePhotosLayout] Redo merge request failed: %s", e, exc_info=True)
 
-    def _on_people_tools_requested(self):
-        try:
-            self._open_people_tools()
-        except Exception as e:
-            logger.debug("[GooglePhotosLayout] People tools request failed: %s", e, exc_info=True)
-
-    def _open_people_tools(self):
-        """Open the post-face-detection tools reference for quick access."""
-        from PySide6.QtWidgets import QMessageBox
-
-        workflow_path = os.path.abspath("POST_FACE_DETECTION_WORKFLOW.md")
-
-        try:
-            from PySide6.QtGui import QDesktopServices
-
-            url = QUrl.fromLocalFile(workflow_path)
-            if not QDesktopServices.openUrl(url):
-                raise RuntimeError("Failed to open People Tools guide")
-        except Exception:
-            # Fallback: show a simple helper message with the path
-            QMessageBox.information(
-                self.main_window if hasattr(self, "main_window") else None,
-                "People Tools",
-                f"Open the post-face-detection toolkit at:\n{workflow_path}",
-            )
 
     def _on_accordion_person_deleted(self, branch_key: str):
         """Clear any active person filter when that person is removed."""
