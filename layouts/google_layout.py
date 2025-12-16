@@ -10826,9 +10826,10 @@ class GooglePhotosLayout(BaseLayout):
         """Bulk review grid for all unnamed clusters with simple filters."""
         try:
             from PySide6.QtWidgets import (
-                QDialog, QVBoxLayout, QHBoxLayout, QLabel, QGridLayout, QPushButton, QComboBox, QLineEdit, QWidget, QScrollArea, QMessageBox
+                QDialog, QVBoxLayout, QHBoxLayout, QLabel, QGridLayout, QPushButton, QComboBox, QLineEdit, QWidget, QScrollArea, QMessageBox, QCompleter
             )
             from PySide6.QtGui import QPixmap
+            from PySide6.QtCore import Qt
             import base64, os
             from reference_db import ReferenceDB
 
@@ -10845,6 +10846,18 @@ class GooglePhotosLayout(BaseLayout):
                     (self.project_id,)
                 )
                 rows = cur.fetchall() or []
+
+                # Get existing person names for autocomplete
+                cur.execute(
+                    """
+                    SELECT DISTINCT label
+                    FROM face_branch_reps
+                    WHERE project_id = ? AND label IS NOT NULL AND TRIM(label) != ''
+                    ORDER BY label
+                    """,
+                    (self.project_id,)
+                )
+                existing_names = [row[0] for row in cur.fetchall()]
 
             if not rows:
                 QMessageBox.information(self.main_window, "No Unnamed People", "All people are already named.")
@@ -10960,9 +10973,18 @@ class GooglePhotosLayout(BaseLayout):
                     hint.setStyleSheet("color: #5f6368;")
                     v.addWidget(hint)
 
-                    # Name editor
+                    # Name editor with autocomplete
                     name_edit = QLineEdit()
                     name_edit.setPlaceholderText(f"Unnamed ({count} photos)")
+
+                    # Add autocomplete for existing names
+                    if existing_names:
+                        completer = QCompleter(existing_names)
+                        completer.setCaseSensitivity(Qt.CaseInsensitive)
+                        completer.setFilterMode(Qt.MatchContains)
+                        completer.setCompletionMode(QCompleter.PopupCompletion)
+                        name_edit.setCompleter(completer)
+
                     editors[branch_key] = name_edit
                     v.addWidget(name_edit)
 
