@@ -61,6 +61,10 @@ class AccordionSidebar(QWidget):
     selectVideo  = Signal(str)     # video filter type
     personMerged = Signal(str, str)  # source_branch, target_branch
     personDeleted = Signal(str)      # branch_key
+    mergeHistoryRequested = Signal()
+    undoLastMergeRequested = Signal()
+    redoLastUndoRequested = Signal()
+    peopleToolsRequested = Signal()
 
     # Section expansion signal
     sectionExpanding = Signal(str)  # section_id
@@ -222,6 +226,14 @@ class AccordionSidebar(QWidget):
             people.contextMenuRequested.connect(self._on_person_context_menu)
         if people and hasattr(people, 'dragMergeRequested'):
             people.dragMergeRequested.connect(self._on_person_drag_merge)
+        if people and hasattr(people, 'mergeHistoryRequested'):
+            people.mergeHistoryRequested.connect(self.mergeHistoryRequested.emit)
+        if people and hasattr(people, 'undoMergeRequested'):
+            people.undoMergeRequested.connect(self.undoLastMergeRequested.emit)
+        if people and hasattr(people, 'redoMergeRequested'):
+            people.redoMergeRequested.connect(self.redoLastUndoRequested.emit)
+        if people and hasattr(people, 'peopleToolsRequested'):
+            people.peopleToolsRequested.connect(self.peopleToolsRequested.emit)
 
         # Videos section
         videos = self.section_logic.get("videos")
@@ -236,6 +248,26 @@ class AccordionSidebar(QWidget):
     def _on_section_expand_requested(self, section_id: str):
         """Handle section expand request."""
         self._expand_section(section_id)
+
+    # --- People selection helpers ---
+    def _on_person_selected(self, branch_key: str):
+        """Track active person selection, support toggling, and emit filter signal."""
+        people_logic = self.section_logic.get("people")
+
+        # Toggle selection when clicking the same person again
+        if self._active_person_branch and branch_key == self._active_person_branch:
+            self._active_person_branch = None
+            if hasattr(people_logic, "set_active_branch"):
+                people_logic.set_active_branch(None)
+            self.selectPerson.emit("")
+            return
+
+        self._active_person_branch = branch_key
+
+        if hasattr(people_logic, "set_active_branch"):
+            people_logic.set_active_branch(branch_key)
+
+        self.selectPerson.emit(branch_key)
 
     # --- People selection helpers ---
     def _on_person_selected(self, branch_key: str):
@@ -430,6 +462,10 @@ class AccordionSidebar(QWidget):
         for section_id, section in self.section_logic.items():
             self._trigger_section_load(section_id)
 
+    def reload_people_section(self):
+        """Public helper to refresh the people section content."""
+        self._trigger_section_load("people")
+
     def _on_person_context_menu(self, branch_key: str, action: str):
         """Handle person context menu actions."""
         logger.info(f"[AccordionSidebar] Context menu action: {action} for {branch_key}")
@@ -442,6 +478,14 @@ class AccordionSidebar(QWidget):
             self._handle_person_details(branch_key)
         elif action == "delete":
             self._handle_delete_person(branch_key)
+        elif action == "merge_history":
+            self.mergeHistoryRequested.emit()
+        elif action == "undo_merge":
+            self.undoLastMergeRequested.emit()
+        elif action == "redo_merge":
+            self.redoLastUndoRequested.emit()
+        elif action == "people_tools":
+            self.peopleToolsRequested.emit()
 
     def _on_person_drag_merge(self, source_branch: str, target_branch: str):
         """Handle drag-and-drop merge from People grid."""

@@ -8954,6 +8954,10 @@ class GooglePhotosLayout(BaseLayout):
         sidebar.selectPerson.connect(self._on_accordion_person_clicked)
         sidebar.personMerged.connect(self._on_accordion_person_merged)
         sidebar.personDeleted.connect(self._on_accordion_person_deleted)
+        sidebar.mergeHistoryRequested.connect(self._on_people_merge_history_requested)
+        sidebar.undoLastMergeRequested.connect(self._on_people_undo_requested)
+        sidebar.redoLastUndoRequested.connect(self._on_people_redo_requested)
+        sidebar.peopleToolsRequested.connect(self._on_people_tools_requested)
 
         # FIX: Connect section expansion signal to hide search suggestions popup
         sidebar.sectionExpanding.connect(self._on_accordion_section_expanding)
@@ -9768,6 +9772,61 @@ class GooglePhotosLayout(BaseLayout):
             filter_folder=self.current_filter_folder,
             filter_person=new_person,
         )
+
+    # --- People tools surfaced from accordion ---
+    def _refresh_people_sidebar(self):
+        try:
+            if hasattr(self, "accordion_sidebar"):
+                self.accordion_sidebar.reload_people_section()
+        except Exception as e:
+            logger.debug("[GooglePhotosLayout] Failed to refresh people section after tool action: %s", e)
+
+    def _on_people_merge_history_requested(self):
+        try:
+            self._show_merge_history()
+            self._refresh_people_sidebar()
+        except Exception as e:
+            logger.debug("[GooglePhotosLayout] Merge history request failed: %s", e, exc_info=True)
+
+    def _on_people_undo_requested(self):
+        try:
+            self._undo_last_merge()
+            self._refresh_people_sidebar()
+        except Exception as e:
+            logger.debug("[GooglePhotosLayout] Undo merge request failed: %s", e, exc_info=True)
+
+    def _on_people_redo_requested(self):
+        try:
+            self._redo_last_undo()
+            self._refresh_people_sidebar()
+        except Exception as e:
+            logger.debug("[GooglePhotosLayout] Redo merge request failed: %s", e, exc_info=True)
+
+    def _on_people_tools_requested(self):
+        try:
+            self._open_people_tools()
+        except Exception as e:
+            logger.debug("[GooglePhotosLayout] People tools request failed: %s", e, exc_info=True)
+
+    def _open_people_tools(self):
+        """Open the post-face-detection tools reference for quick access."""
+        from PySide6.QtWidgets import QMessageBox
+
+        workflow_path = os.path.abspath("POST_FACE_DETECTION_WORKFLOW.md")
+
+        try:
+            from PySide6.QtGui import QDesktopServices
+
+            url = QUrl.fromLocalFile(workflow_path)
+            if not QDesktopServices.openUrl(url):
+                raise RuntimeError("Failed to open People Tools guide")
+        except Exception:
+            # Fallback: show a simple helper message with the path
+            QMessageBox.information(
+                self.main_window if hasattr(self, "main_window") else None,
+                "People Tools",
+                f"Open the post-face-detection toolkit at:\n{workflow_path}",
+            )
 
     def _on_accordion_person_deleted(self, branch_key: str):
         """Clear any active person filter when that person is removed."""

@@ -12,7 +12,9 @@ from PySide6.QtCore import Signal, Qt, QObject, QSize, QRect, QPoint, QEvent
 from PySide6.QtGui import QPixmap, QImage
 from PySide6.QtWidgets import (
     QApplication,
+    QHBoxLayout,
     QLabel,
+    QPushButton,
     QScrollArea,
     QWidget,
     QVBoxLayout,
@@ -42,6 +44,10 @@ class PeopleSection(BaseSection):
     personSelected = Signal(str)  # person_branch_key
     contextMenuRequested = Signal(str, str)  # (branch_key, action)
     dragMergeRequested = Signal(str, str)  # (source_branch, target_branch)
+    mergeHistoryRequested = Signal()
+    undoMergeRequested = Signal()
+    redoMergeRequested = Signal()
+    peopleToolsRequested = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -117,6 +123,42 @@ class PeopleSection(BaseSection):
             placeholder.setStyleSheet("padding: 16px; color: #666;")
             return placeholder
 
+        # Quick action bar for post-detection tools
+        actions = QWidget()
+        actions_layout = QHBoxLayout(actions)
+        actions_layout.setContentsMargins(8, 4, 8, 4)
+        actions_layout.setSpacing(6)
+
+        history_btn = QPushButton(
+            f"🕑 {tr('sidebar.people_actions.merge_history') if callable(tr) else 'View Merge History'}"
+        )
+        history_btn.setCursor(Qt.PointingHandCursor)
+        history_btn.clicked.connect(self.mergeHistoryRequested.emit)
+        actions_layout.addWidget(history_btn)
+
+        undo_btn = QPushButton(
+            f"↩️ {tr('sidebar.people_actions.undo_last_merge') if callable(tr) else 'Undo Last Merge'}"
+        )
+        undo_btn.setCursor(Qt.PointingHandCursor)
+        undo_btn.clicked.connect(self.undoMergeRequested.emit)
+        actions_layout.addWidget(undo_btn)
+
+        redo_btn = QPushButton(
+            f"↪️ {tr('sidebar.people_actions.redo_last_undo') if callable(tr) else 'Redo Last Undo'}"
+        )
+        redo_btn.setCursor(Qt.PointingHandCursor)
+        redo_btn.clicked.connect(self.redoMergeRequested.emit)
+        actions_layout.addWidget(redo_btn)
+
+        tools_btn = QPushButton(
+            f"🧰 {tr('sidebar.people_actions.people_tools') if callable(tr) else 'Open People Tools'}"
+        )
+        tools_btn.setCursor(Qt.PointingHandCursor)
+        tools_btn.clicked.connect(self.peopleToolsRequested.emit)
+        actions_layout.addWidget(tools_btn)
+
+        actions_layout.addStretch()
+
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
@@ -150,6 +192,7 @@ class PeopleSection(BaseSection):
         wrapper = QWidget()
         wrapper_layout = QVBoxLayout(wrapper)
         wrapper_layout.setContentsMargins(0, 0, 0, 0)
+        wrapper_layout.addWidget(actions)
         wrapper_layout.addWidget(scroll)
 
         logger.info(f"[PeopleSection] Grid built with {len(cards)} people")
@@ -430,23 +473,53 @@ class PersonCard(QWidget):
 
         menu = QMenu(self)
 
-        rename_action = QAction("✏️ Rename", self)
+        rename_action = QAction("✏️ " + (tr("sidebar.people_actions.rename") if callable(tr) else "Rename"), self)
         rename_action.triggered.connect(lambda: self.context_menu_requested.emit(self.branch_key, "rename"))
         menu.addAction(rename_action)
 
-        merge_action = QAction("🔗 Merge (use drag-drop)", self)
+        merge_action = QAction(
+            "🔗 " + (tr("sidebar.people_actions.merge_hint") if callable(tr) else "Merge (use drag-drop)"), self
+        )
         merge_action.triggered.connect(lambda: self.context_menu_requested.emit(self.branch_key, "merge"))
         menu.addAction(merge_action)
 
         menu.addSeparator()
 
-        details_action = QAction("ℹ️ Details", self)
+        details_action = QAction("ℹ️ " + (tr("sidebar.people_actions.details") if callable(tr) else "Details"), self)
         details_action.triggered.connect(lambda: self.context_menu_requested.emit(self.branch_key, "details"))
         menu.addAction(details_action)
 
-        delete_action = QAction("🗑️ Delete", self)
+        delete_action = QAction("🗑️ " + (tr("sidebar.people_actions.delete") if callable(tr) else "Delete"), self)
         delete_action.triggered.connect(lambda: self.context_menu_requested.emit(self.branch_key, "delete"))
         menu.addAction(delete_action)
+
+        tools_menu = menu.addMenu(
+            "🧰 " + (tr("sidebar.people_actions.post_detection") if callable(tr) else "Post-Face Detection")
+        )
+
+        history_action = QAction(
+            "🕑 " + (tr("sidebar.people_actions.merge_history") if callable(tr) else "View Merge History"), self
+        )
+        history_action.triggered.connect(lambda: self.context_menu_requested.emit(self.branch_key, "merge_history"))
+        tools_menu.addAction(history_action)
+
+        undo_action = QAction(
+            "↩️ " + (tr("sidebar.people_actions.undo_last_merge") if callable(tr) else "Undo Last Merge"), self
+        )
+        undo_action.triggered.connect(lambda: self.context_menu_requested.emit(self.branch_key, "undo_merge"))
+        tools_menu.addAction(undo_action)
+
+        redo_action = QAction(
+            "↪️ " + (tr("sidebar.people_actions.redo_last_undo") if callable(tr) else "Redo Last Undo"), self
+        )
+        redo_action.triggered.connect(lambda: self.context_menu_requested.emit(self.branch_key, "redo_merge"))
+        tools_menu.addAction(redo_action)
+
+        people_tools_action = QAction(
+            "🧭 " + (tr("sidebar.people_actions.people_tools") if callable(tr) else "Open People Tools"), self
+        )
+        people_tools_action.triggered.connect(lambda: self.context_menu_requested.emit(self.branch_key, "people_tools"))
+        tools_menu.addAction(people_tools_action)
 
         menu.exec_(event.globalPos())
 

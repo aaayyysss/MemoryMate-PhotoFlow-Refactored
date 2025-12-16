@@ -189,7 +189,18 @@
     "month_oct": "Oct",
     "month_nov": "Nov",
     "month_dec": "Déc",
-    "header_people": "Personnes"
+    "header_people": "Personnes",
+    "people_actions": {
+      "rename": "Rename",
+      "merge_hint": "Merge (use drag-drop)",
+      "details": "Details",
+      "delete": "Delete",
+      "post_detection": "Post-Face Detection",
+      "merge_history": "View Merge History",
+      "undo_last_merge": "Undo Last Merge",
+      "redo_last_undo": "Redo Last Undo",
+      "people_tools": "Open People Tools"
+    }
   },
   "preferences": {
     "title": "Préférences de l'application",
