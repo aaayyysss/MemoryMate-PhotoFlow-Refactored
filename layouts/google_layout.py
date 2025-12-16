@@ -11073,6 +11073,8 @@ class GooglePhotosLayout(BaseLayout):
                             if selector.exec():
                                 # Refresh the grid to show updated representative
                                 populate()
+                                # Refresh accordion sidebar to show updated representative thumbnail
+                                self._refresh_people_sidebar()
                         return handler
 
                     choose_face_btn.clicked.connect(make_choose_face_handler(branch_key, rep_path, label))
