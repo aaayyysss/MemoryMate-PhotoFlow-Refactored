@@ -18,7 +18,21 @@ from PySide6.QtWidgets import (
     QScrollArea, QFrame, QSizePolicy, QTreeWidget, QTreeWidgetItem,
     QTableWidget, QTableWidgetItem, QHeaderView, QGridLayout, QLayout, QMenu, QMessageBox, QInputDialog
 )
-from PySide6.QtCore import Qt, Signal, QPropertyAnimation, QEasingCurve, QSize, QThreadPool, QRect, QPoint, QMimeData
+from PySide6.QtCore import (
+    Qt,
+    Signal,
+    QPropertyAnimation,
+    QEasingCurve,
+    QSize,
+    QThreadPool,
+    QRect,
+    QPoint,
+    QMimeData,
+    QObject,
+    QRunnable,
+    Slot,
+    QTimer,
+)
 from PySide6.QtGui import QFont, QIcon, QColor, QPixmap, QPainter, QPainterPath, QDrag, QImage
 from datetime import datetime
 from typing import Optional
@@ -453,6 +467,15 @@ class PeopleGridView(QWidget):
         main_layout.addWidget(self.grid_container)
         main_layout.addWidget(self.empty_label)
 
+        # Status/progress label (used when long-running tasks are active)
+        self.status_label = QLabel()
+        self.status_label.setAlignment(Qt.AlignCenter)
+        self.status_label.setStyleSheet(
+            "color: #5f6368; font-size: 9pt; padding: 6px;"
+        )
+        self.status_label.hide()
+        main_layout.addWidget(self.status_label)
+
     def add_person(self, branch_key, display_name, face_pixmap, photo_count):
         """
         Add person to grid.
@@ -489,6 +512,20 @@ class PeopleGridView(QWidget):
             if item.widget():
                 item.widget().deleteLater()
         self.empty_label.show()
+
+    def set_busy_state(self, busy: bool, message: str = ""):
+        """Enable/disable interactions and show optional status text."""
+        self.grid_container.setEnabled(not busy)
+        for idx in range(self.flow_layout.count()):
+            item = self.flow_layout.itemAt(idx)
+            if item and item.widget():
+                item.widget().setEnabled(not busy)
+
+        if busy and message:
+            self.status_label.setText(message)
+            self.status_label.show()
+        else:
+            self.status_label.hide()
 
     def count(self):
         """Return number of people in grid."""
@@ -788,6 +825,9 @@ class AccordionSidebar(QWidget):
         self.expanded_section_id = None
         self.db = ReferenceDB()
         self.nav_buttons = {}  # section_id -> QPushButton
+        self.thread_pool = QThreadPool.globalInstance()
+        self._people_grid = None
+        self._active_workers = []
 
         # PHASE 1 Task 1.2: Generation tokens to prevent overlapping reloads
         # Track reload version for each section to discard stale data
@@ -1128,6 +1168,7 @@ class AccordionSidebar(QWidget):
         try:
             # Create PeopleGridView
             people_grid = PeopleGridView()
+            self._people_grid = people_grid
 
             # Connect signals
             people_grid.person_clicked.connect(self._on_person_clicked)
@@ -1243,14 +1284,13 @@ class AccordionSidebar(QWidget):
         elif action == "delete":
             self._handle_delete_person(branch_key)
 
+
     def _on_person_drag_merge(self, source_branch: str, target_branch: str):
         """Handle drag-and-drop merge from People grid."""
-        try:
-            # Get source and target names for confirmation feedback
-            with self.db._connect() as conn:
+        def task(db: ReferenceDB):
+            with db._connect() as conn:
                 cur = conn.cursor()
-                
-                # Get source name
+
                 cur.execute(
                     "SELECT label, count FROM face_branch_reps WHERE project_id = ? AND branch_key = ?",
                     (self.project_id, source_branch)
@@ -1258,8 +1298,7 @@ class AccordionSidebar(QWidget):
                 source_row = cur.fetchone()
                 source_name = source_row[0] if source_row and source_row[0] else source_branch
                 source_count = source_row[1] if source_row else 0
-                
-                # Get target name
+
                 cur.execute(
                     "SELECT label, count FROM face_branch_reps WHERE project_id = ? AND branch_key = ?",
                     (self.project_id, target_branch)
@@ -1268,22 +1307,28 @@ class AccordionSidebar(QWidget):
                 target_name = target_row[0] if target_row and target_row[0] else target_branch
                 target_count = target_row[1] if target_row else 0
 
-            self._dbg(f"Drag-drop merge: '{source_name}' ({source_count} photos) -> '{target_name}' ({target_count} photos)")
+            self._dbg(
+                f"Drag-drop merge: '{source_name}' ({source_count} photos) -> '{target_name}' ({target_count} photos)"
+            )
 
-            # CRITICAL FIX: Use ReferenceDB.merge_face_clusters (the proper method)
-            # Previous bug: Tried to use non-existent 'face_instances' table
-            # Correct tables: face_crops, face_branch_reps, project_images, branches
-            result = self.db.merge_face_clusters(
+            result = db.merge_face_clusters(
                 project_id=self.project_id,
                 target_branch=target_branch,
                 source_branches=[source_branch],
                 log_undo=True
             )
 
-            # Reload people section to reflect changes
-            self._load_people_section()
+            return {
+                "result": result,
+                "source_name": source_name,
+                "target_name": target_name,
+            }
 
-            # Build comprehensive merge notification following Google Photos pattern
+        def on_success(payload: dict):
+            result = payload.get("result", {})
+            source_name = payload.get("source_name", source_branch)
+            target_name = payload.get("target_name", target_branch)
+
             msg_lines = [f"✓ '{source_name}' merged successfully", ""]
 
             duplicates = result.get('duplicates_found', 0)
@@ -1299,30 +1344,22 @@ class AccordionSidebar(QWidget):
             if unique_moved > 0:
                 msg_lines.append(f"• Moved {unique_moved} unique photo{'s' if unique_moved != 1 else ''}")
             elif duplicates > 0:
-                msg_lines.append(f"• No unique photos to move (all were duplicates)")
+                msg_lines.append("• No unique photos to move (all were duplicates)")
 
             msg_lines.append(f"• Reassigned {moved_faces} face crop{'s' if moved_faces != 1 else ''}")
             msg_lines.append("")
             msg_lines.append(f"Total: {total_photos} photo{'s' if total_photos != 1 else ''}")
 
-            QMessageBox.information(
-                None,
-                "Merged",
-                "\n".join(msg_lines)
-            )
-            
+            QMessageBox.information(None, "Merged", "\n".join(msg_lines))
             self._dbg(f"Merge successful: {result}")
 
-        except Exception as e:
-            self._dbg(f"Drag-drop merge failed: {e}")
-            import traceback
-            traceback.print_exc()
-            QMessageBox.critical(
-                None, 
-                "Merge Failed", 
-                f"❌ Error merging face clusters:\n\n{str(e)}\n\n"
-                f"Please check the logs for details."
-            )
+        self._start_people_db_task(
+            description=tr("sidebar.merging_people") if callable(tr) else "Merging people...",
+            task_fn=task,
+            on_success=on_success,
+            failure_title="Merge Failed",
+        )
+
 
     def _handle_rename_person(self, branch_key: str):
         """Handle rename person action."""
@@ -1345,29 +1382,29 @@ class AccordionSidebar(QWidget):
         )
 
         if ok and new_name and new_name != current_name:
-            try:
-                # Update in database
-                with self.db._connect() as conn:
+            def task(db: ReferenceDB):
+                with db._connect() as conn:
                     conn.execute(
                         "UPDATE face_branch_reps SET label = ? WHERE project_id = ? AND branch_key = ?",
                         (new_name, self.project_id, branch_key)
                     )
                     conn.commit()
-
                 self._dbg(f"Renamed {current_name} to {new_name}")
+                return None
 
-                # Reload people section
-                self._load_people_section()
-
+            def on_success(_):
                 QMessageBox.information(
                     None,
                     "Rename Successful",
                     f"✅ Renamed '{current_name}' to '{new_name}'"
                 )
 
-            except Exception as e:
-                self._dbg(f"Rename failed: {e}")
-                QMessageBox.critical(None, "Rename Failed", f"Error: {e}")
+            self._start_people_db_task(
+                description=tr("sidebar.renaming_person") if callable(tr) else "Renaming person...",
+                task_fn=task,
+                on_success=on_success,
+                failure_title="Rename Failed",
+            )
 
     def _handle_merge_person(self, branch_key: str):
         """Handle merge person action."""
@@ -1403,6 +1440,7 @@ class AccordionSidebar(QWidget):
                 f"Representative Path: {rep_path}"
             )
 
+
     def _handle_delete_person(self, branch_key: str):
         """Handle delete person action."""
         # Get person name
@@ -1419,36 +1457,36 @@ class AccordionSidebar(QWidget):
         reply = QMessageBox.question(
             None,
             "Confirm Delete",
-            f"🗑️ Delete '{person_name}'?\n\n"
+            f"🗑️ Delete '{person_name}'?\n\n",
             f"This will remove this person and all associated face data.",
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No
         )
 
         if reply == QMessageBox.Yes:
-            try:
-                # Delete from database
-                with self.db._connect() as conn:
+            def task(db: ReferenceDB):
+                with db._connect() as conn:
                     conn.execute(
                         "DELETE FROM face_branch_reps WHERE project_id = ? AND branch_key = ?",
                         (self.project_id, branch_key)
                     )
                     conn.commit()
-
                 self._dbg(f"Deleted person: {person_name}")
+                return None
 
-                # Reload people section
-                self._load_people_section()
-
+            def on_success(_):
                 QMessageBox.information(
                     None,
                     "Delete Successful",
                     f"✅ Deleted '{person_name}'"
                 )
 
-            except Exception as e:
-                self._dbg(f"Delete failed: {e}")
-                QMessageBox.critical(None, "Delete Failed", f"Error: {e}")
+            self._start_people_db_task(
+                description=tr("sidebar.deleting_person") if callable(tr) else "Deleting person...",
+                task_fn=task,
+                on_success=on_success,
+                failure_title="Delete Failed",
+            )
 
     def _make_circular_pixmap(self, pixmap: QPixmap, size: int) -> QPixmap:
         """Create a circular pixmap from a square one."""
@@ -1477,6 +1515,62 @@ class AccordionSidebar(QWidget):
         self._dbg(f"Person activated: {branch_key}")
         # Emit branch selection signal for grid filtering
         self.selectBranch.emit(f"branch:{branch_key}")
+
+    def _set_people_busy(self, busy: bool, message: str = ""):
+        if self._people_grid:
+            self._people_grid.set_busy_state(busy, message)
+
+    def _queue_people_reload(self):
+        QTimer.singleShot(0, self._load_people_section)
+
+    def _start_people_db_task(self, description: str, task_fn, on_success, failure_title: str):
+        """Run a people operation in a background thread with UI safety."""
+
+        class DbTaskSignals(QObject):
+            finished = Signal(object)
+            error = Signal(str)
+
+        class DbTask(QRunnable):
+            def __init__(self, fn):
+                super().__init__()
+                self.fn = fn
+                self.signals = DbTaskSignals()
+
+            @Slot()
+            def run(self):
+                db = ReferenceDB()
+                try:
+                    result = self.fn(db)
+                    self.signals.finished.emit(result)
+                except Exception as e:
+                    traceback.print_exc()
+                    self.signals.error.emit(str(e))
+
+        worker = DbTask(task_fn)
+        self._active_workers.append(worker)
+        self._set_people_busy(True, description)
+
+        def cleanup():
+            try:
+                self._active_workers.remove(worker)
+            except ValueError:
+                pass
+
+        def handle_success(result):
+            self._set_people_busy(False)
+            on_success(result)
+            self._queue_people_reload()
+            cleanup()
+
+        def handle_error(error_msg: str):
+            self._set_people_busy(False)
+            self._dbg(f"Background people task failed: {error_msg}")
+            QMessageBox.critical(None, failure_title, f"❌ {error_msg}")
+            cleanup()
+
+        worker.signals.finished.connect(handle_success, Qt.QueuedConnection)
+        worker.signals.error.connect(handle_error, Qt.QueuedConnection)
+        self.thread_pool.start(worker)
 
     def _load_dates_section(self):
         """Load By Date section with hierarchical tree (Year > Month > Day)."""
