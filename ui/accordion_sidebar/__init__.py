@@ -257,6 +257,66 @@ class AccordionSidebar(QWidget):
 
         self.selectPerson.emit(branch_key)
 
+    # --- People selection helpers ---
+    def _on_person_selected(self, branch_key: str):
+        """Track active person selection, support toggling, and emit filter signal."""
+        people_logic = self.section_logic.get("people")
+
+        # Toggle selection when clicking the same person again
+        if self._active_person_branch and branch_key == self._active_person_branch:
+            self._active_person_branch = None
+            if hasattr(people_logic, "set_active_branch"):
+                people_logic.set_active_branch(None)
+            self.selectPerson.emit("")
+            return
+
+        self._active_person_branch = branch_key
+
+        if hasattr(people_logic, "set_active_branch"):
+            people_logic.set_active_branch(branch_key)
+
+        self.selectPerson.emit(branch_key)
+
+    # --- People selection helpers ---
+    def _on_person_selected(self, branch_key: str):
+        """Track active person selection, support toggling, and emit filter signal."""
+        people_logic = self.section_logic.get("people")
+
+        # Toggle selection when clicking the same person again
+        if self._active_person_branch and branch_key == self._active_person_branch:
+            self._active_person_branch = None
+            if hasattr(people_logic, "set_active_branch"):
+                people_logic.set_active_branch(None)
+            self.selectPerson.emit("")
+            return
+
+        self._active_person_branch = branch_key
+
+        if hasattr(people_logic, "set_active_branch"):
+            people_logic.set_active_branch(branch_key)
+
+        self.selectPerson.emit(branch_key)
+
+    # --- People selection helpers ---
+    def _on_person_selected(self, branch_key: str):
+        """Track active person selection, support toggling, and emit filter signal."""
+        people_logic = self.section_logic.get("people")
+
+        # Toggle selection when clicking the same person again
+        if self._active_person_branch and branch_key == self._active_person_branch:
+            self._active_person_branch = None
+            if hasattr(people_logic, "set_active_branch"):
+                people_logic.set_active_branch(None)
+            self.selectPerson.emit("")
+            return
+
+        self._active_person_branch = branch_key
+
+        if hasattr(people_logic, "set_active_branch"):
+            people_logic.set_active_branch(branch_key)
+
+        self.selectPerson.emit(branch_key)
+
     def _expand_section(self, section_id: str):
         """Expand specified section and collapse others."""
         if section_id not in self.section_widgets:
