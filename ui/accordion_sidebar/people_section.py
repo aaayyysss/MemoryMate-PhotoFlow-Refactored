@@ -126,6 +126,9 @@ class PeopleSection(BaseSection):
 
         cards: List[PersonCard] = []
 
+        # Reset cache of rendered cards
+        self._cards.clear()
+
         for idx, row in enumerate(rows):
             branch_key = row.get("branch_key") or f"cluster_{idx}"
             display_name = row.get("display_name") or f"Person {idx + 1}"
