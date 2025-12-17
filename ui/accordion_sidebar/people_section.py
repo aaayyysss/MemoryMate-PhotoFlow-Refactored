@@ -210,37 +210,7 @@ class PeopleSection(BaseSection):
 
         main_layout.addWidget(search_container)
 
-        # Quick action bar for post-detection tools
-        actions = QWidget()
-        actions_layout = FlowLayout(actions, margin=0, spacing=6)
-
-        def _make_action(text_key: str, fallback: str, callback):
-            btn = QPushButton(fallback if not callable(tr) else f"{fallback.split(' ', 1)[0]} {tr(text_key)}")
-            btn.setCursor(Qt.PointingHandCursor)
-            btn.setStyleSheet(
-                """
-                QPushButton {
-                    padding: 6px 10px;
-                    border: 1px solid #dadce0;
-                    border-radius: 6px;
-                    background: #f8f9fa;
-                }
-                QPushButton:hover { background: #eef3fd; }
-                QPushButton:pressed { background: #e8f0fe; }
-                """
-            )
-            btn.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
-            btn.clicked.connect(callback)
-            actions_layout.addWidget(btn)
-
-        _make_action('sidebar.people_actions.merge_history', '🕑 Merge History', self.mergeHistoryRequested.emit)
-        _make_action('sidebar.people_actions.undo_last_merge', '↩️ Undo', self.undoMergeRequested.emit)
-        _make_action('sidebar.people_actions.redo_last_undo', '↪️ Redo', self.redoMergeRequested.emit)
-        _make_action('sidebar.people_actions.people_tools', '🧰 Tools', self.peopleToolsRequested.emit)
-
-        main_layout.addWidget(actions)
-
-        # Scroll area for people grid
+        # Scroll area for people grid (action buttons are in header widget)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)

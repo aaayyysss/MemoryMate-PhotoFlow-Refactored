@@ -9867,6 +9867,7 @@ class GooglePhotosLayout(BaseLayout):
         """Show dialog to select a photo for manual face cropping."""
         try:
             from PySide6.QtWidgets import QInputDialog
+            from reference_db import ReferenceDB
 
             # Get list of photos
             db = ReferenceDB()
