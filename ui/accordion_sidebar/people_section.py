@@ -221,6 +221,7 @@ class PeopleSection(BaseSection):
 
         cards: List[PersonCard] = []
 
+        logger.debug(f"[PeopleSection] Creating {len(rows)} person cards...")
         for idx, row in enumerate(rows):
             try:
                 branch_key = row.get("branch_key") or f"cluster_{idx}"
@@ -229,21 +230,34 @@ class PeopleSection(BaseSection):
                 rep_path = row.get("rep_path")
                 rep_thumb = row.get("rep_thumb_png")
 
+                logger.debug(f"[PeopleSection] Creating card {idx+1}/{len(rows)}: {branch_key} ({display_name})")
+
+                # CRITICAL: Load thumbnail with robust error handling
                 pixmap = self._load_face_thumbnail(rep_path, rep_thumb)
+
+                logger.debug(f"[PeopleSection] Creating PersonCard widget for {branch_key}")
                 card = PersonCard(branch_key, display_name, member_count, pixmap)
+
+                logger.debug(f"[PeopleSection] Connecting signals for {branch_key}")
                 card.clicked.connect(self.personSelected.emit)
                 card.context_menu_requested.connect(self.contextMenuRequested.emit)
                 card.drag_merge_requested.connect(self.dragMergeRequested.emit)
 
                 cards.append(card)
                 self._cards[branch_key] = card
+                logger.debug(f"[PeopleSection] ✓ Card {idx+1}/{len(rows)} created successfully: {branch_key}")
             except Exception as card_err:
-                logger.error(f"[PeopleSection] Failed to create card for person {idx} (branch_key={row.get('branch_key')}): {card_err}", exc_info=True)
+                logger.error(f"[PeopleSection] Failed to create card for person {idx+1}/{len(rows)} (branch_key={row.get('branch_key')}): {card_err}", exc_info=True)
                 # Skip this person and continue with others to prevent app crash
+                logger.warning(f"[PeopleSection] Skipping card {idx+1}/{len(rows)} - continuing with remaining {len(rows)-idx-1} cards")
 
+        logger.debug(f"[PeopleSection] All cards created ({len(cards)}/{len(rows)} successful). Creating PeopleGrid...")
         container = PeopleGrid(cards)
+        logger.debug(f"[PeopleSection] PeopleGrid created. Attaching viewport...")
         container.attach_viewport(scroll.viewport())
+        logger.debug(f"[PeopleSection] Viewport attached. Setting scroll widget...")
         scroll.setWidget(container)
+        logger.debug(f"[PeopleSection] Scroll widget set successfully.")
 
         main_layout.addWidget(scroll, 1)
 
@@ -290,42 +304,100 @@ class PeopleSection(BaseSection):
             logger.debug("[PeopleSection] Failed to update active state", exc_info=True)
 
     def _load_face_thumbnail(self, rep_path: Optional[str], rep_thumb_png: Optional[bytes]) -> Optional[QPixmap]:
-        """Load a face thumbnail from BLOB or file path."""
+        """Load a face thumbnail from BLOB or file path with robust error handling."""
         try:
             FACE_ICON_SIZE = 48
 
+            # Try BLOB first (faster)
             if rep_thumb_png:
                 try:
+                    logger.debug(f"[PeopleSection] Loading thumbnail from BLOB ({len(rep_thumb_png)} bytes)")
                     image_data = io.BytesIO(rep_thumb_png)
                     from PIL import Image
 
                     with Image.open(image_data) as img:
+                        # CRITICAL: Ensure RGB mode before Qt conversion (prevents crashes)
                         img_rgb = img.convert("RGB")
+
+                        # Validate image dimensions
+                        if img_rgb.width <= 0 or img_rgb.height <= 0:
+                            logger.warning(f"[PeopleSection] Invalid BLOB image dimensions: {img_rgb.width}x{img_rgb.height}")
+                            raise ValueError("Invalid image dimensions")
+
+                        # Convert to bytes
                         data = img_rgb.tobytes("raw", "RGB")
-                        qimg = QImage(data, img.width, img.height, QImage.Format_RGB888)
-                        return QPixmap.fromImage(qimg).scaled(
+
+                        # DEFENSIVE: Create QImage with explicit format
+                        qimg = QImage(data, img_rgb.width, img_rgb.height, img_rgb.width * 3, QImage.Format_RGB888)
+
+                        if qimg.isNull():
+                            logger.warning(f"[PeopleSection] QImage.isNull() == True for BLOB thumbnail")
+                            raise ValueError("QImage is null")
+
+                        # Create QPixmap and scale
+                        pixmap = QPixmap.fromImage(qimg)
+                        if pixmap.isNull():
+                            logger.warning(f"[PeopleSection] QPixmap.isNull() == True for BLOB thumbnail")
+                            raise ValueError("QPixmap is null")
+
+                        return pixmap.scaled(
                             FACE_ICON_SIZE, FACE_ICON_SIZE, Qt.KeepAspectRatio, Qt.SmoothTransformation
                         )
                 except Exception as blob_error:
-                    logger.debug(f"[PeopleSection] Failed to load thumbnail from BLOB: {blob_error}")
+                    logger.warning(f"[PeopleSection] Failed to load thumbnail from BLOB: {blob_error}", exc_info=True)
 
+            # Try file path
             if rep_path and os.path.exists(rep_path):
                 try:
+                    logger.debug(f"[PeopleSection] Loading thumbnail from file: {os.path.basename(rep_path)}")
                     from PIL import Image
 
                     with Image.open(rep_path) as img:
+                        # CRITICAL: Ensure RGB mode before Qt conversion (prevents crashes from DNG/RAW files)
                         img_rgb = img.convert("RGB")
+
+                        # Validate image dimensions
+                        if img_rgb.width <= 0 or img_rgb.height <= 0:
+                            logger.warning(f"[PeopleSection] Invalid file image dimensions: {img_rgb.width}x{img_rgb.height} for {rep_path}")
+                            raise ValueError("Invalid image dimensions")
+
+                        # DEFENSIVE: Validate image size isn't too large (prevent memory issues)
+                        max_pixels = 10000 * 10000  # 10k x 10k max
+                        if img_rgb.width * img_rgb.height > max_pixels:
+                            logger.warning(f"[PeopleSection] Image too large: {img_rgb.width}x{img_rgb.height} for {rep_path}")
+                            # Resize before converting to bytes
+                            img_rgb.thumbnail((2000, 2000), Image.Resampling.LANCZOS)
+
+                        # Convert to bytes
                         data = img_rgb.tobytes("raw", "RGB")
-                        qimg = QImage(data, img.width, img.height, QImage.Format_RGB888)
-                        return QPixmap.fromImage(qimg).scaled(
+
+                        # DEFENSIVE: Create QImage with explicit stride
+                        stride = img_rgb.width * 3
+                        qimg = QImage(data, img_rgb.width, img_rgb.height, stride, QImage.Format_RGB888)
+
+                        if qimg.isNull():
+                            logger.warning(f"[PeopleSection] QImage.isNull() == True for {rep_path}")
+                            raise ValueError("QImage is null")
+
+                        # Create QPixmap and scale
+                        pixmap = QPixmap.fromImage(qimg)
+                        if pixmap.isNull():
+                            logger.warning(f"[PeopleSection] QPixmap.isNull() == True for {rep_path}")
+                            raise ValueError("QPixmap is null")
+
+                        logger.debug(f"[PeopleSection] ✓ Successfully loaded thumbnail from {os.path.basename(rep_path)}")
+                        return pixmap.scaled(
                             FACE_ICON_SIZE, FACE_ICON_SIZE, Qt.KeepAspectRatio, Qt.SmoothTransformation
                         )
                 except Exception as file_error:
-                    logger.debug(f"[PeopleSection] Failed to load thumbnail from {rep_path}: {file_error}")
+                    logger.error(f"[PeopleSection] Failed to load thumbnail from {rep_path}: {file_error}", exc_info=True)
 
+            # Fallback: No thumbnail available
+            logger.debug(f"[PeopleSection] No thumbnail available (rep_path={rep_path}, has_blob={bool(rep_thumb_png)})")
             return None
+
         except Exception as e:
-            logger.debug(f"[PeopleSection] Error in _load_face_thumbnail: {e}")
+            logger.error(f"[PeopleSection] Unexpected error in _load_face_thumbnail: {e}", exc_info=True)
             return None
 
     def _on_error(self, generation: int, message: str):
