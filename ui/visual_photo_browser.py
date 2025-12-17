@@ -45,6 +45,10 @@ class PhotoBrowserDialog(QDialog):
 
     photoSelected = Signal(str)  # photo_path
 
+    # Configuration constants
+    INITIAL_PHOTO_LIMIT = 200  # Load first 200 photos for performance
+    PHOTOS_PER_PAGE = 100  # Load 100 more photos when "Load More" clicked
+
     def __init__(self, project_id: int, parent=None):
         """
         Initialize photo browser.
@@ -58,25 +62,41 @@ class PhotoBrowserDialog(QDialog):
         self.project_id = project_id
         self.all_photos = []
         self.filtered_photos = []
+        self._photos_loaded = 0  # Track how many photos loaded
+        self._has_more_photos = False  # Whether more photos available
 
         self.setWindowTitle("Select Photo to Edit")
         self.setModal(True)
         self.resize(1000, 700)
 
-        self._load_photos()
+        self._load_photos(limit=self.INITIAL_PHOTO_LIMIT)
         self._create_ui()
         self._apply_filter()
 
-    def _load_photos(self):
-        """Load all photos from database with metadata."""
+    def _load_photos(self, limit: Optional[int] = None, offset: int = 0):
+        """
+        Load photos from database with metadata (paginated for performance).
+
+        Args:
+            limit: Maximum number of photos to load (None = all)
+            offset: Skip this many photos from beginning
+        """
         db = ReferenceDB()
 
         try:
             with db._connect() as conn:
                 cur = conn.cursor()
 
-                # Get photos with face count and metadata
+                # First, check total photo count
                 cur.execute("""
+                    SELECT COUNT(DISTINCT pm.path)
+                    FROM photo_metadata pm
+                    WHERE pm.project_id = ?
+                """, (self.project_id,))
+                total_photos = cur.fetchone()[0] or 0
+
+                # Get photos with face count and metadata (paginated)
+                query = """
                     SELECT
                         pm.path,
                         pm.date_taken,
@@ -88,10 +108,15 @@ class PhotoBrowserDialog(QDialog):
                     WHERE pm.project_id = ?
                     GROUP BY pm.path
                     ORDER BY pm.date_taken DESC
-                """, (self.project_id,))
+                """
 
+                if limit:
+                    query += f" LIMIT {limit} OFFSET {offset}"
+
+                cur.execute(query, (self.project_id,))
                 rows = cur.fetchall()
-                self.all_photos = [
+
+                new_photos = [
                     {
                         'path': row[0],
                         'date': row[1] or 'Unknown',
@@ -102,7 +127,16 @@ class PhotoBrowserDialog(QDialog):
                     for row in rows
                 ]
 
-                logger.info(f"[PhotoBrowser] Loaded {len(self.all_photos)} photos")
+                # Append to existing photos if loading more
+                if offset > 0:
+                    self.all_photos.extend(new_photos)
+                else:
+                    self.all_photos = new_photos
+
+                self._photos_loaded = len(self.all_photos)
+                self._has_more_photos = self._photos_loaded < total_photos
+
+                logger.info(f"[PhotoBrowser] Loaded {len(new_photos)} photos ({self._photos_loaded}/{total_photos} total)")
 
         except Exception as e:
             logger.error(f"[PhotoBrowser] Failed to load photos: {e}")
@@ -170,8 +204,31 @@ class PhotoBrowserDialog(QDialog):
         scroll.setWidget(self.grid_container)
         layout.addWidget(scroll, 1)
 
-        # Close button
+        # Buttons
         button_layout = QHBoxLayout()
+
+        # Load More button (shown when more photos available)
+        self.load_more_btn = QPushButton("📥 Load More Photos")
+        self.load_more_btn.clicked.connect(self._load_more_photos)
+        self.load_more_btn.setStyleSheet("""
+            QPushButton {
+                background: #1a73e8;
+                color: white;
+                padding: 8px 16px;
+                border-radius: 4px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background: #1557b0;
+            }
+            QPushButton:disabled {
+                background: #dadce0;
+                color: #5f6368;
+            }
+        """)
+        self.load_more_btn.setVisible(self._has_more_photos)
+        button_layout.addWidget(self.load_more_btn)
+
         button_layout.addStretch()
 
         close_btn = QPushButton("Cancel")
@@ -236,6 +293,27 @@ class PhotoBrowserDialog(QDialog):
         """Handle photo selection."""
         self.photoSelected.emit(photo_path)
         self.accept()
+
+    def _load_more_photos(self):
+        """Load next batch of photos."""
+        logger.info(f"[PhotoBrowser] Loading more photos (offset={self._photos_loaded})")
+
+        # Disable button while loading
+        self.load_more_btn.setEnabled(False)
+        self.load_more_btn.setText("Loading...")
+
+        # Load next batch
+        self._load_photos(limit=self.PHOTOS_PER_PAGE, offset=self._photos_loaded)
+
+        # Update UI
+        self._apply_filter()
+
+        # Re-enable or hide button
+        if self._has_more_photos:
+            self.load_more_btn.setEnabled(True)
+            self.load_more_btn.setText("📥 Load More Photos")
+        else:
+            self.load_more_btn.setVisible(False)
 
 
 class PhotoCard(QFrame):

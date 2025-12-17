@@ -18,6 +18,8 @@ Date: December 17, 2025
 import logging
 import os
 import io
+import uuid
+from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 from PIL import Image
 
@@ -276,7 +278,7 @@ class FaceCropEditor(QDialog):
 
     def _create_face_crop(self, x: int, y: int, w: int, h: int) -> Optional[str]:
         """
-        Crop face from original image and save to disk.
+        Crop face from original image and save to centralized directory.
 
         Args:
             x, y, w, h: Bounding box coordinates
@@ -290,24 +292,25 @@ class FaceCropEditor(QDialog):
                 # Crop face region
                 face_crop = img.crop((x, y, x + w, y + h))
 
-                # Generate crop filename
+                # Use centralized face_crops directory (not cluttering photo directories)
+                # Create .memorymate/face_crops/ in user's home or project directory
+                home_dir = Path.home()
+                crop_dir = home_dir / ".memorymate" / "face_crops"
+                crop_dir.mkdir(parents=True, exist_ok=True)
+
+                # Generate unique crop filename using uuid
                 photo_name = os.path.splitext(os.path.basename(self.photo_path))[0]
-                crop_dir = os.path.join(os.path.dirname(self.photo_path), "face_crops")
-                os.makedirs(crop_dir, exist_ok=True)
+                unique_id = uuid.uuid4().hex[:8]
+                crop_filename = f"{photo_name}_manual_{unique_id}.jpg"
+                crop_path = crop_dir / crop_filename
 
-                # Find next available filename
-                crop_index = 0
-                while True:
-                    crop_filename = f"{photo_name}_face_{crop_index}.jpg"
-                    crop_path = os.path.join(crop_dir, crop_filename)
-                    if not os.path.exists(crop_path):
-                        break
-                    crop_index += 1
+                # Save crop (convert to RGB if needed)
+                if face_crop.mode != 'RGB':
+                    face_crop = face_crop.convert('RGB')
+                face_crop.save(str(crop_path), "JPEG", quality=95)
 
-                # Save crop
-                face_crop.save(crop_path, "JPEG", quality=95)
                 logger.info(f"[FaceCropEditor] Saved face crop: {crop_path}")
-                return crop_path
+                return str(crop_path)
 
         except Exception as e:
             logger.error(f"[FaceCropEditor] Failed to create face crop: {e}")
@@ -320,11 +323,15 @@ class FaceCropEditor(QDialog):
         Args:
             crop_path: Path to saved face crop
             bbox: Bounding box (x, y, w, h)
+
+        Note:
+            quality_score is set to 0.5 (medium quality) by default for manual crops.
+            This indicates human verification but acknowledges potential quality issues
+            that prompted manual addition.
         """
         try:
             # Generate a new branch_key for this face
             # It will be clustered later and potentially merged with existing people
-            import uuid
             branch_key = f"manual_{uuid.uuid4().hex[:8]}"
 
             # Add to database using direct DB operations
@@ -335,6 +342,8 @@ class FaceCropEditor(QDialog):
                 # Insert face crop
                 bbox_str = f"{bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]}"
 
+                # Default quality_score = 0.5 for manual crops
+                # (medium quality, human-verified but may have issues)
                 cur.execute("""
                     INSERT INTO face_crops
                     (project_id, image_path, crop_path, bbox, branch_key, is_representative, quality_score)
@@ -365,6 +374,10 @@ class FacePhotoViewer(QWidget):
 
     manualFaceAdded = Signal(tuple)  # (x, y, w, h)
 
+    # Safety limits to prevent memory issues
+    MAX_PHOTO_SIZE_MB = 50  # Maximum photo file size (50MB)
+    MAX_DIMENSION = 12000  # Maximum width or height (12000 pixels)
+
     def __init__(self, photo_path: str, detected_faces: List[Dict], manual_faces: List[Dict], parent=None):
         super().__init__(parent)
 
@@ -380,12 +393,58 @@ class FacePhotoViewer(QWidget):
         self._load_photo()
 
     def _load_photo(self):
-        """Load and display the photo."""
+        """
+        Load and display the photo with safety checks.
+
+        Validates:
+        - File size (< 50MB)
+        - Image dimensions (< 12000×12000 pixels)
+        """
         try:
+            # Check file size first (before loading into memory)
+            if not os.path.exists(self.photo_path):
+                logger.error(f"[FacePhotoViewer] Photo not found: {self.photo_path}")
+                self.pixmap = None
+                return
+
+            file_size_mb = os.path.getsize(self.photo_path) / (1024 * 1024)
+            if file_size_mb > self.MAX_PHOTO_SIZE_MB:
+                logger.warning(f"[FacePhotoViewer] Photo too large: {file_size_mb:.1f}MB (max {self.MAX_PHOTO_SIZE_MB}MB)")
+                from PySide6.QtWidgets import QMessageBox
+                QMessageBox.warning(
+                    self,
+                    "Photo Too Large",
+                    f"This photo is too large to display safely ({file_size_mb:.1f}MB).\n\n"
+                    f"Maximum size: {self.MAX_PHOTO_SIZE_MB}MB\n\n"
+                    "Please use a smaller photo or compress the image first."
+                )
+                self.pixmap = None
+                return
+
+            # Load and check dimensions
             self.pixmap = QPixmap(self.photo_path)
+
             if self.pixmap.isNull():
                 logger.error(f"[FacePhotoViewer] Failed to load photo: {self.photo_path}")
                 self.pixmap = None
+                return
+
+            # Check dimensions
+            if self.pixmap.width() > self.MAX_DIMENSION or self.pixmap.height() > self.MAX_DIMENSION:
+                logger.warning(f"[FacePhotoViewer] Photo dimensions too large: {self.pixmap.width()}×{self.pixmap.height()}")
+                from PySide6.QtWidgets import QMessageBox
+                QMessageBox.warning(
+                    self,
+                    "Photo Dimensions Too Large",
+                    f"This photo's dimensions are too large ({self.pixmap.width()}×{self.pixmap.height()}).\n\n"
+                    f"Maximum dimension: {self.MAX_DIMENSION}×{self.MAX_DIMENSION} pixels\n\n"
+                    "Please resize the image first."
+                )
+                self.pixmap = None
+                return
+
+            logger.info(f"[FacePhotoViewer] Loaded photo: {self.pixmap.width()}×{self.pixmap.height()}, {file_size_mb:.1f}MB")
+
         except Exception as e:
             logger.error(f"[FacePhotoViewer] Error loading photo: {e}")
             self.pixmap = None
