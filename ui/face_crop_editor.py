@@ -26,7 +26,7 @@ from PIL import Image, ImageOps
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QScrollArea, QWidget, QMessageBox, QCheckBox, QSpinBox,
-    QGroupBox, QTextEdit
+    QGroupBox, QTextEdit, QFrame
 )
 from PySide6.QtGui import QPixmap, QImage, QPainter, QPen, QColor, QFont
 from PySide6.QtCore import Qt, QRect, QPoint, Signal
