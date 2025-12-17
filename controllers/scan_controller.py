@@ -547,6 +547,13 @@ class ScanController:
                                                                 # Refresh People grid with newly clustered faces
                                                                 current_layout._build_people_tree()
                                                                 self.logger.info("✓ People grid refreshed with detected faces")
+
+                                                                # CRITICAL FIX: Also refresh People section in accordion sidebar
+                                                                # Without this, sidebar doesn't update until user toggles layouts
+                                                                if hasattr(current_layout, 'accordion_sidebar'):
+                                                                    self.logger.info("Refreshing People section in sidebar...")
+                                                                    current_layout.accordion_sidebar.reload_people_section()
+                                                                    self.logger.info("✓ People section in sidebar refreshed")
                                                 except Exception as refresh_err:
                                                     self.logger.error(f"Failed to refresh People grid: {refresh_err}", exc_info=True)
 
