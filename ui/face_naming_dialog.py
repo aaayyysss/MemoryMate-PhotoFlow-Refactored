@@ -240,12 +240,12 @@ class FaceNamingDialog(QDialog):
 
                 # Get distinct person names, excluding Unknown and manual_* entries
                 cur.execute("""
-                    SELECT DISTINCT person_name
+                    SELECT DISTINCT label
                     FROM face_branch_reps
-                    WHERE person_name IS NOT NULL
-                    AND person_name != 'Unknown'
-                    AND person_name NOT LIKE 'manual_%'
-                    ORDER BY person_name
+                    WHERE label IS NOT NULL
+                    AND label != 'Unknown'
+                    AND label NOT LIKE 'manual_%'
+                    ORDER BY label
                 """)
                 names = [row[0] for row in cur.fetchall()]
 
@@ -274,13 +274,13 @@ class FaceNamingDialog(QDialog):
                 name = self.name_inputs[i].text().strip()
 
                 if name:
-                    # Update person_name in face_branch_reps table
+                    # Update label (person name) in face_branch_reps table
                     with db._connect() as conn:
                         cur = conn.cursor()
 
                         cur.execute("""
                             UPDATE face_branch_reps
-                            SET person_name = ?
+                            SET label = ?
                             WHERE branch_key = ?
                             AND project_id = ?
                         """, (name, face['branch_key'], self.project_id))
