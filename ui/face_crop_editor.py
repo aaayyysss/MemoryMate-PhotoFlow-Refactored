@@ -365,10 +365,27 @@ class FaceCropEditor(QDialog):
         # Load thumbnail from crop_path
         if os.path.exists(face['crop_path']):
             try:
-                pixmap = QPixmap(face['crop_path'])
-                if not pixmap.isNull():
-                    thumb_label.setPixmap(pixmap.scaled(90, 90, Qt.KeepAspectRatio, Qt.SmoothTransformation))
-            except:
+                # Load with PIL to apply EXIF rotation and ensure correct color mode
+                with Image.open(face['crop_path']) as img:
+                    # Apply EXIF auto-rotation
+                    img = ImageOps.exif_transpose(img)
+
+                    # Convert to RGB if needed (fixes grey/wrong color issues)
+                    if img.mode != 'RGB':
+                        img = img.convert('RGB')
+
+                    # Convert PIL image to QPixmap
+                    data = img.tobytes("raw", "RGB")
+                    qimg = QImage(data, img.width, img.height, QImage.Format_RGB888)
+                    pixmap = QPixmap.fromImage(qimg)
+
+                    if not pixmap.isNull():
+                        # Scale with aspect ratio preserved (fixes stretching)
+                        thumb_label.setPixmap(pixmap.scaled(90, 90, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+                    else:
+                        thumb_label.setText("👤")
+            except Exception as e:
+                logger.debug(f"[FaceCropEditor] Failed to load thumbnail: {e}")
                 thumb_label.setText("👤")
         else:
             thumb_label.setText("👤")
@@ -438,14 +455,25 @@ class FaceCropEditor(QDialog):
                     saved_count += 1
 
             if saved_count > 0:
-                self.faceCropsUpdated.emit()
+                # Emit signal to refresh UI
+                try:
+                    self.faceCropsUpdated.emit()
+                except Exception as signal_err:
+                    logger.warning(f"[FaceCropEditor] Failed to emit signal: {signal_err}")
+
                 QMessageBox.information(
                     self,
                     "Saved",
                     f"Successfully saved {saved_count} manually cropped face(s).\n\n"
-                    "These faces will be clustered and appear in the People section."
+                    "These faces will be clustered and appear in the People section.\n\n"
+                    "💡 Tip: Drag-and-drop faces in the People section to merge them."
                 )
-                self.accept()
+
+                # Close dialog safely
+                try:
+                    self.accept()
+                except RuntimeError as e:
+                    logger.debug(f"[FaceCropEditor] Dialog already closed: {e}")
             else:
                 QMessageBox.warning(
                     self,
@@ -454,7 +482,7 @@ class FaceCropEditor(QDialog):
                 )
 
         except Exception as e:
-            logger.error(f"[FaceCropEditor] Failed to save changes: {e}")
+            logger.error(f"[FaceCropEditor] Failed to save changes: {e}", exc_info=True)
             QMessageBox.critical(
                 self,
                 "Error",
@@ -474,6 +502,10 @@ class FaceCropEditor(QDialog):
         try:
             # Load original image
             with Image.open(self.photo_path) as img:
+                # CRITICAL: Apply EXIF rotation before cropping
+                # Without this, crops from rotated photos appear sideways
+                img = ImageOps.exif_transpose(img)
+
                 # Crop face region
                 face_crop = img.crop((x, y, x + w, y + h))
 
@@ -653,8 +685,21 @@ class FacePhotoViewer(QWidget):
             # Load photo with PIL for EXIF auto-rotation
             pil_image = Image.open(self.photo_path)
 
+            # Store original dimensions BEFORE EXIF rotation
+            original_width, original_height = pil_image.size
+
             # Auto-rotate based on EXIF orientation (FIX #1)
             pil_image = ImageOps.exif_transpose(pil_image)
+
+            # Get dimensions AFTER EXIF rotation
+            rotated_width, rotated_height = pil_image.size
+
+            # CRITICAL FIX: Transform existing face bbox coordinates if EXIF rotation occurred
+            # Bbox coordinates were stored based on original (pre-rotation) dimensions
+            # but we're displaying the rotated image, so coordinates need to be transformed
+            if (original_width, original_height) != (rotated_width, rotated_height):
+                logger.info(f"[FacePhotoViewer] EXIF rotation detected: {original_width}×{original_height} → {rotated_width}×{rotated_height}")
+                self._transform_bbox_coordinates(original_width, original_height, rotated_width, rotated_height)
 
             # Check dimensions
             if pil_image.width > self.MAX_DIMENSION or pil_image.height > self.MAX_DIMENSION:
@@ -688,6 +733,68 @@ class FacePhotoViewer(QWidget):
         except Exception as e:
             logger.error(f"[FacePhotoViewer] Error loading photo: {e}")
             self.pixmap = None
+
+    def _transform_bbox_coordinates(self, orig_w: int, orig_h: int, rot_w: int, rot_h: int):
+        """
+        Transform bbox coordinates from original (pre-EXIF-rotation) to rotated coordinate system.
+
+        When EXIF rotation is applied, the coordinate system changes:
+        - 90° CW rotation: width↔height swap, x and y transform
+        - 90° CCW rotation: width↔height swap, different x/y transform
+        - 180° rotation: no dimension swap, but x/y flip
+
+        Args:
+            orig_w, orig_h: Original image dimensions (before EXIF rotation)
+            rot_w, rot_h: Rotated image dimensions (after EXIF rotation)
+        """
+        try:
+            # Determine rotation type based on dimension changes
+            if orig_w == rot_h and orig_h == rot_w:
+                # Dimensions swapped: 90° or 270° rotation
+                if orig_w < orig_h:
+                    # Portrait → Landscape: 90° CW rotation
+                    rotation_type = "90cw"
+                else:
+                    # Landscape → Portrait: 90° CCW (or 270° CW)
+                    rotation_type = "90ccw"
+            elif orig_w == rot_w and orig_h == rot_h:
+                # Dimensions unchanged: 180° or no rotation
+                # This shouldn't happen since we check if dimensions differ
+                return
+            else:
+                logger.warning(f"[FacePhotoViewer] Unexpected dimension change: {orig_w}×{orig_h} → {rot_w}×{rot_h}")
+                return
+
+            logger.info(f"[FacePhotoViewer] Applying {rotation_type} bbox coordinate transformation")
+
+            # Transform each detected face's bbox
+            for face in self.detected_faces:
+                if not face.get('bbox'):
+                    continue
+
+                x, y, w, h = face['bbox']
+
+                if rotation_type == "90cw":
+                    # 90° clockwise: (x, y) in orig → (orig_h - y - h, x) in rotated
+                    new_x = orig_h - y - h
+                    new_y = x
+                    new_w = h
+                    new_h = w
+                elif rotation_type == "90ccw":
+                    # 90° counter-clockwise: (x, y) in orig → (y, orig_w - x - w) in rotated
+                    new_x = y
+                    new_y = orig_w - x - w
+                    new_w = h
+                    new_h = w
+                else:
+                    continue
+
+                # Update bbox with transformed coordinates
+                face['bbox'] = (new_x, new_y, new_w, new_h)
+                logger.debug(f"[FacePhotoViewer] Transformed bbox: ({x}, {y}, {w}, {h}) → ({new_x}, {new_y}, {new_w}, {new_h})")
+
+        except Exception as e:
+            logger.error(f"[FacePhotoViewer] Failed to transform bbox coordinates: {e}")
 
     def enable_drawing_mode(self):
         """Enable drawing mode for manual face rectangle."""
