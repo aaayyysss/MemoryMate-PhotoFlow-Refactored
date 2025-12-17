@@ -541,12 +541,17 @@ class FaceCropEditor(QDialog):
                 bbox = manual_face['bbox']
                 x, y, w, h = bbox
 
-                # Crop face from original image
-                crop_path = self._create_face_crop(x, y, w, h)
+                # ENHANCEMENT: Refine manual bbox using face detection (Best Practice)
+                # User's rectangle defines search region, detection refines for consistent padding
+                refined_x, refined_y, refined_w, refined_h = self._refine_manual_bbox_with_detection(x, y, w, h)
+
+                # Crop face from original image (using refined coordinates)
+                crop_path = self._create_face_crop(refined_x, refined_y, refined_w, refined_h)
 
                 if crop_path:
-                    # Add to database
-                    branch_key = self._add_face_to_database(crop_path, bbox)
+                    # Add to database (with refined bbox, not original manual bbox)
+                    refined_bbox = (refined_x, refined_y, refined_w, refined_h)
+                    branch_key = self._add_face_to_database(crop_path, refined_bbox)
 
                     # Store for naming dialog
                     saved_crop_paths.append({
@@ -694,6 +699,107 @@ class FaceCropEditor(QDialog):
 
         dialog.exec()
 
+    def _refine_manual_bbox_with_detection(self, x: int, y: int, w: int, h: int) -> Tuple[int, int, int, int]:
+        """
+        ENHANCEMENT: Refine manually drawn bbox using face detection (Best Practice).
+
+        Strategy:
+        1. User's manual rectangle defines the SEARCH REGION (they know where the face is)
+        2. Expand by 20% to ensure full face is captured
+        3. Run face detection on that region
+        4. If exactly 1 face detected: Use refined coordinates (consistent padding like auto-detected faces)
+        5. If 0 or multiple faces: Keep original manual bbox (user knows better - profile faces, unusual angles, etc.)
+
+        Benefits:
+        - Consistent padding/margins like auto-detected faces
+        - Automatic face alignment
+        - Ensures crop actually contains a detectable face
+        - Falls back gracefully if detection fails
+
+        Args:
+            x, y, w, h: User's manual bounding box
+
+        Returns:
+            (x, y, w, h): Refined bbox or original if detection fails
+        """
+        try:
+            logger.debug(f"[FaceCropEditor] Refining manual bbox: ({x}, {y}, {w}, {h})")
+
+            # Load original image
+            with Image.open(self.photo_path) as img:
+                # Apply EXIF rotation
+                img = ImageOps.exif_transpose(img)
+                img_width, img_height = img.size
+
+                # Expand bbox by 20% to ensure full face is in frame
+                padding_pct = 0.20
+                pad_x = int(w * padding_pct)
+                pad_y = int(h * padding_pct)
+
+                search_x = max(0, x - pad_x)
+                search_y = max(0, y - pad_y)
+                search_w = min(img_width - search_x, w + 2 * pad_x)
+                search_h = min(img_height - search_y, h + 2 * pad_y)
+
+                # Crop search region
+                search_region = img.crop((search_x, search_y, search_x + search_w, search_y + search_h))
+
+                # Save search region temporarily
+                import tempfile
+                with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as tmp:
+                    if search_region.mode != 'RGB':
+                        search_region = search_region.convert('RGB')
+                    search_region.save(tmp.name, "JPEG", quality=95)
+                    temp_path = tmp.name
+
+                # Run face detection on search region
+                from services.face_detection_service import FaceDetectionService
+                detector = FaceDetectionService()
+                detected_faces = detector.detect_faces(temp_path, project_id=self.project_id)
+
+                # Clean up temp file
+                try:
+                    os.unlink(temp_path)
+                except:
+                    pass
+
+                # If exactly 1 face detected, use refined coordinates
+                if len(detected_faces) == 1:
+                    face = detected_faces[0]
+
+                    # Get bbox from detection (relative to search region)
+                    det_x = face['bbox_x']
+                    det_y = face['bbox_y']
+                    det_w = face['bbox_w']
+                    det_h = face['bbox_h']
+
+                    # Convert to original image coordinates
+                    refined_x = search_x + det_x
+                    refined_y = search_y + det_y
+                    refined_w = det_w
+                    refined_h = det_h
+
+                    # Ensure within image bounds
+                    refined_x = max(0, min(refined_x, img_width - 1))
+                    refined_y = max(0, min(refined_y, img_height - 1))
+                    refined_w = max(1, min(refined_w, img_width - refined_x))
+                    refined_h = max(1, min(refined_h, img_height - refined_y))
+
+                    logger.info(f"[FaceCropEditor] ✅ Refined manual bbox: ({x},{y},{w},{h}) → ({refined_x},{refined_y},{refined_w},{refined_h}) (confidence: {face.get('confidence', 0):.2f})")
+                    return (refined_x, refined_y, refined_w, refined_h)
+
+                elif len(detected_faces) == 0:
+                    logger.info(f"[FaceCropEditor] ⚠️ No face detected in manual region - keeping original bbox (may be profile/unusual angle)")
+                    return (x, y, w, h)
+
+                else:
+                    logger.info(f"[FaceCropEditor] ⚠️ Multiple faces ({len(detected_faces)}) detected in manual region - keeping original bbox")
+                    return (x, y, w, h)
+
+        except Exception as e:
+            logger.warning(f"[FaceCropEditor] Face detection refinement failed: {e} - keeping original bbox")
+            return (x, y, w, h)
+
     def _create_face_crop(self, x: int, y: int, w: int, h: int) -> Optional[str]:
         """
         Crop face from original image and save to centralized directory.
@@ -815,11 +921,11 @@ class FaceCropEditor(QDialog):
                     # Fallback: No bbox columns (very old schema or corrupted database)
                     raise ValueError("Database schema is missing bbox columns (both TEXT and separate columns)")
 
-                # Create face_branch_reps entry
+                # Create face_branch_reps entry with count=1 (one unique photo)
                 cur.execute("""
                     INSERT OR REPLACE INTO face_branch_reps
-                    (project_id, branch_key, label, rep_path, rep_thumb_png)
-                    VALUES (?, ?, ?, ?, NULL)
+                    (project_id, branch_key, label, count, rep_path, rep_thumb_png)
+                    VALUES (?, ?, ?, 1, ?, NULL)
                 """, (self.project_id, branch_key, None, crop_path))
 
                 conn.commit()
