@@ -77,26 +77,29 @@ class FaceCropEditor(QDialog):
             with db._connect() as conn:
                 cur = conn.cursor()
 
-                # Check which bbox columns exist in face_crops table
+                # Check which columns exist in face_crops table
                 cur.execute("PRAGMA table_info(face_crops)")
                 columns = {row[1] for row in cur.fetchall()}
 
                 # Support both schema versions:
                 # - Old schema: bbox_x, bbox_y, bbox_w, bbox_h (4 separate INTEGER columns)
                 # - New schema: bbox (single TEXT column with comma-separated values)
+                # - quality_score may or may not exist
                 has_bbox_text = 'bbox' in columns
                 has_bbox_separate = all(col in columns for col in ['bbox_x', 'bbox_y', 'bbox_w', 'bbox_h'])
+                has_quality_score = 'quality_score' in columns
 
                 # Build query based on available columns
                 if has_bbox_text:
                     # New schema: single bbox TEXT column
-                    query = """
+                    quality_select = "fc.quality_score" if has_quality_score else "0.0 as quality_score"
+                    query = f"""
                         SELECT
                             fc.id,
                             fc.branch_key,
                             fc.crop_path,
                             fc.bbox,
-                            fc.quality_score,
+                            {quality_select},
                             fbr.label as person_name,
                             'text' as bbox_format
                         FROM face_crops fc
@@ -106,7 +109,8 @@ class FaceCropEditor(QDialog):
                     """
                 elif has_bbox_separate:
                     # Old schema: 4 separate bbox columns
-                    query = """
+                    quality_select = "fc.quality_score" if has_quality_score else "0.0 as quality_score"
+                    query = f"""
                         SELECT
                             fc.id,
                             fc.branch_key,
@@ -115,7 +119,7 @@ class FaceCropEditor(QDialog):
                              CAST(fc.bbox_y AS TEXT) || ',' ||
                              CAST(fc.bbox_w AS TEXT) || ',' ||
                              CAST(fc.bbox_h AS TEXT)) as bbox,
-                            fc.quality_score,
+                            {quality_select},
                             fbr.label as person_name,
                             'separate' as bbox_format
                         FROM face_crops fc
@@ -126,13 +130,14 @@ class FaceCropEditor(QDialog):
                     """
                 else:
                     # No bbox columns: fallback mode
-                    query = """
+                    quality_select = "fc.quality_score" if has_quality_score else "0.0 as quality_score"
+                    query = f"""
                         SELECT
                             fc.id,
                             fc.branch_key,
                             fc.crop_path,
                             NULL as bbox,
-                            fc.quality_score,
+                            {quality_select},
                             fbr.label as person_name,
                             'none' as bbox_format
                         FROM face_crops fc
