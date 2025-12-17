@@ -194,6 +194,9 @@
     "month_dec": "Dec",
     "header_people": "People",
     "header_devices": "Devices",
+    "people": {
+      "empty": "No people detected yet. Add photos with faces to see them here."
+    },
     "people_actions": {
       "rename": "Rename",
       "merge_hint": "Merge (use drag-drop)",
