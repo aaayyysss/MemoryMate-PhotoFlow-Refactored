@@ -9906,11 +9906,20 @@ class GooglePhotosLayout(BaseLayout):
                 parent=self.main_window if hasattr(self, 'main_window') else None
             )
 
-            # Connect signal to refresh people section when faces are updated
-            editor.faceCropsUpdated.connect(self._refresh_people_sidebar)
+            # CRITICAL FIX: Don't use signal connection - check flag after dialog closes
+            # Signal connection causes "Signal source has been deleted" error because
+            # dialog is deleted before QTimer fires in the old implementation
+            # editor.faceCropsUpdated.connect(self._refresh_people_sidebar)  # REMOVED
 
             editor.exec()
             logger.info(f"[GooglePhotosLayout] Opened Face Crop Editor for: {photo_path}")
+
+            # Check if faces were saved and refresh UI if needed
+            # This happens after dialog is fully closed and deleted, avoiding threading issues
+            if hasattr(editor, 'faces_were_saved') and editor.faces_were_saved:
+                logger.info(f"[GooglePhotosLayout] Manual faces were saved, refreshing People section...")
+                self._refresh_people_sidebar()
+                logger.info(f"[GooglePhotosLayout] ✓ People section refreshed after manual face save")
 
         except Exception as e:
             logger.error(f"[GooglePhotosLayout] Failed to open Face Crop Editor: {e}")

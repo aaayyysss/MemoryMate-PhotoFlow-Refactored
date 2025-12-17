@@ -60,6 +60,7 @@ class FaceCropEditor(QDialog):
         self.project_id = project_id
         self.detected_faces = []  # Existing face detections
         self.manual_faces = []  # Manually added faces
+        self.faces_were_saved = False  # Flag to indicate if manual faces were successfully saved
 
         photo_name = os.path.basename(photo_path)
         self.setWindowTitle(f"Face Crop Editor - {photo_name}")
@@ -455,6 +456,10 @@ class FaceCropEditor(QDialog):
                     saved_count += 1
 
             if saved_count > 0:
+                # Set flag to indicate faces were saved
+                # Caller can check this flag after exec() returns to refresh UI
+                self.faces_were_saved = True
+
                 QMessageBox.information(
                     self,
                     "Saved",
@@ -463,25 +468,15 @@ class FaceCropEditor(QDialog):
                     "💡 Tip: Drag-and-drop faces in the People section to merge them."
                 )
 
-                # CRITICAL FIX: Close dialog FIRST, then emit signal
-                # Emitting signal before closing causes crash because:
-                # 1. Signal triggers reload_people_section() in background thread
-                # 2. Dialog tries to close while background thread is still running
-                # 3. Background thread tries to update UI with destroyed dialog widgets
-                # 4. App crashes with threading/widget lifecycle issues
+                # CRITICAL FIX: Don't emit signal - let caller check faces_were_saved flag
+                # Emitting signal causes threading issues when dialog is being destroyed
+                # Caller will refresh UI after dialog closes by checking the flag
                 try:
                     self.accept()
                 except RuntimeError as e:
                     logger.debug(f"[FaceCropEditor] Dialog already closed: {e}")
 
-                # CRITICAL: Emit signal AFTER dialog closes using QTimer
-                # This ensures dialog widgets are fully destroyed before signal processing
-                from PySide6.QtCore import QTimer
-                try:
-                    QTimer.singleShot(100, self.faceCropsUpdated.emit)
-                    logger.info(f"[FaceCropEditor] Scheduled signal emission after dialog close")
-                except Exception as signal_err:
-                    logger.warning(f"[FaceCropEditor] Failed to schedule signal: {signal_err}")
+                logger.info(f"[FaceCropEditor] Saved {saved_count} manual face(s), set faces_were_saved=True")
             else:
                 QMessageBox.warning(
                     self,
