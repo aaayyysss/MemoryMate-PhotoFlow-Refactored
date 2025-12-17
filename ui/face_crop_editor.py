@@ -70,33 +70,83 @@ class FaceCropEditor(QDialog):
         self._create_ui()
 
     def _load_existing_faces(self):
-        """Load existing face detections with bounding boxes for this photo."""
+        """Load existing face detections with bounding boxes for this photo (supports both old and new schema)."""
         db = ReferenceDB()
 
         try:
             with db._connect() as conn:
                 cur = conn.cursor()
 
-                # Load existing face crops WITH bounding boxes
-                cur.execute("""
-                    SELECT
-                        fc.id,
-                        fc.branch_key,
-                        fc.crop_path,
-                        fc.bbox,
-                        fc.quality_score,
-                        fbr.label as person_name
-                    FROM face_crops fc
-                    LEFT JOIN face_branch_reps fbr ON fc.branch_key = fbr.branch_key
-                        AND fc.project_id = fbr.project_id
-                    WHERE fc.image_path = ? AND fc.project_id = ?
-                """, (self.photo_path, self.project_id))
+                # Check which bbox columns exist in face_crops table
+                cur.execute("PRAGMA table_info(face_crops)")
+                columns = {row[1] for row in cur.fetchall()}
 
+                # Support both schema versions:
+                # - Old schema: bbox_x, bbox_y, bbox_w, bbox_h (4 separate INTEGER columns)
+                # - New schema: bbox (single TEXT column with comma-separated values)
+                has_bbox_text = 'bbox' in columns
+                has_bbox_separate = all(col in columns for col in ['bbox_x', 'bbox_y', 'bbox_w', 'bbox_h'])
+
+                # Build query based on available columns
+                if has_bbox_text:
+                    # New schema: single bbox TEXT column
+                    query = """
+                        SELECT
+                            fc.id,
+                            fc.branch_key,
+                            fc.crop_path,
+                            fc.bbox,
+                            fc.quality_score,
+                            fbr.label as person_name,
+                            'text' as bbox_format
+                        FROM face_crops fc
+                        LEFT JOIN face_branch_reps fbr ON fc.branch_key = fbr.branch_key
+                            AND fc.project_id = fbr.project_id
+                        WHERE fc.image_path = ? AND fc.project_id = ?
+                    """
+                elif has_bbox_separate:
+                    # Old schema: 4 separate bbox columns
+                    query = """
+                        SELECT
+                            fc.id,
+                            fc.branch_key,
+                            fc.crop_path,
+                            (CAST(fc.bbox_x AS TEXT) || ',' ||
+                             CAST(fc.bbox_y AS TEXT) || ',' ||
+                             CAST(fc.bbox_w AS TEXT) || ',' ||
+                             CAST(fc.bbox_h AS TEXT)) as bbox,
+                            fc.quality_score,
+                            fbr.label as person_name,
+                            'separate' as bbox_format
+                        FROM face_crops fc
+                        LEFT JOIN face_branch_reps fbr ON fc.branch_key = fbr.branch_key
+                            AND fc.project_id = fbr.project_id
+                        WHERE fc.image_path = ? AND fc.project_id = ?
+                            AND fc.bbox_x IS NOT NULL
+                    """
+                else:
+                    # No bbox columns: fallback mode
+                    query = """
+                        SELECT
+                            fc.id,
+                            fc.branch_key,
+                            fc.crop_path,
+                            NULL as bbox,
+                            fc.quality_score,
+                            fbr.label as person_name,
+                            'none' as bbox_format
+                        FROM face_crops fc
+                        LEFT JOIN face_branch_reps fbr ON fc.branch_key = fbr.branch_key
+                            AND fc.project_id = fbr.project_id
+                        WHERE fc.image_path = ? AND fc.project_id = ?
+                    """
+
+                cur.execute(query, (self.photo_path, self.project_id))
                 rows = cur.fetchall()
                 self.detected_faces = []
 
                 for row in rows:
-                    face_id, branch_key, crop_path, bbox_str, quality_score, person_name = row
+                    face_id, branch_key, crop_path, bbox_str, quality_score, person_name, bbox_format = row
 
                     # Parse bounding box if available
                     bbox = None
@@ -119,7 +169,11 @@ class FaceCropEditor(QDialog):
                     })
 
                 faces_with_bbox = sum(1 for f in self.detected_faces if f['bbox'])
-                logger.info(f"[FaceCropEditor] Found {len(self.detected_faces)} existing face(s), {faces_with_bbox} with bounding boxes")
+
+                if faces_with_bbox > 0:
+                    logger.info(f"[FaceCropEditor] Found {len(self.detected_faces)} existing face(s), {faces_with_bbox} with bounding boxes (schema: {bbox_format})")
+                else:
+                    logger.warning(f"[FaceCropEditor] Found {len(self.detected_faces)} existing face(s), but no bbox data available (green rectangles will not be shown)")
 
         except Exception as e:
             logger.error(f"[FaceCropEditor] Failed to load existing faces: {e}")
@@ -144,14 +198,30 @@ class FaceCropEditor(QDialog):
         # Instructions
         instructions = QGroupBox("ℹ️ Instructions")
         instructions_layout = QVBoxLayout()
-        instructions_text = QLabel(
-            "• GREEN rectangles = Auto-detected faces\n"
-            "• RED rectangles = Manually added faces\n"
-            "• Click 'Add Manual Face' to draw new rectangles\n"
-            "• Drag on the photo to draw a rectangle\n"
-            "• Review detected faces in gallery below\n"
-            "• Save when done to update the database"
-        )
+
+        # Check if we can show detected face rectangles
+        has_bboxes = any(f.get('bbox') for f in self.detected_faces)
+
+        if has_bboxes:
+            instruction_text = (
+                "• GREEN rectangles = Auto-detected faces\n"
+                "• RED rectangles = Manually added faces\n"
+                "• Click 'Add Manual Face' to draw new rectangles\n"
+                "• Drag on the photo to draw a rectangle\n"
+                "• Review detected faces in gallery below\n"
+                "• Save when done to update the database"
+            )
+        else:
+            instruction_text = (
+                "• RED rectangles = Manually added faces\n"
+                "• Click 'Add Manual Face' to draw new rectangles\n"
+                "• Drag on the photo to draw a rectangle\n"
+                "• Review detected faces in gallery below\n"
+                "• Save when done to update the database\n"
+                "ℹ️ Note: Green rectangles not available (bbox data missing)"
+            )
+
+        instructions_text = QLabel(instruction_text)
         instructions_text.setStyleSheet("color: #5f6368; font-size: 9pt;")
         instructions_layout.addWidget(instructions_text)
         instructions.setLayout(instructions_layout)
