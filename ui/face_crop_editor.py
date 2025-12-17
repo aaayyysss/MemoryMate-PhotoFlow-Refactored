@@ -596,11 +596,50 @@ class FaceCropEditor(QDialog):
                     refined_bbox = (refined_x, refined_y, refined_w, refined_h)
                     branch_key = self._add_face_to_database(crop_path, refined_bbox)
 
-                    # Store for naming dialog
-                    saved_crop_paths.append({
-                        'crop_path': crop_path,
-                        'branch_key': branch_key
-                    })
+                    # ENHANCEMENT #5: Auto-Clustering
+                    # Check if this face looks similar to existing faces
+                    merged_with_existing = False
+
+                    # Extract embedding for similarity comparison
+                    logger.debug(f"[FaceCropEditor] Extracting embedding for similarity check...")
+                    embedding = self._extract_embedding(crop_path)
+
+                    if embedding is not None:
+                        # Find similar existing faces
+                        similar_faces = self._find_similar_faces(embedding, threshold=0.6)
+
+                        if similar_faces:
+                            logger.info(f"[FaceCropEditor] Found {len(similar_faces)} similar faces - showing merge suggestion")
+
+                            # Show merge suggestion dialog
+                            target_branch_key = self._show_merge_suggestion_dialog(crop_path, similar_faces)
+
+                            if target_branch_key:
+                                # User chose to merge with existing person
+                                merge_success = self._merge_face_with_existing(branch_key, target_branch_key)
+
+                                if merge_success:
+                                    merged_with_existing = True
+                                    logger.info(f"[FaceCropEditor] ✅ Face merged with existing person: {target_branch_key}")
+
+                                    # Note: Don't add to saved_crop_paths since it's already merged
+                                    # The naming dialog won't be shown for this face
+                                else:
+                                    logger.warning(f"[FaceCropEditor] Merge failed - will show naming dialog instead")
+                            else:
+                                logger.info(f"[FaceCropEditor] User chose to keep as new person")
+                        else:
+                            logger.debug(f"[FaceCropEditor] No similar faces found - keeping as new person")
+                    else:
+                        logger.warning(f"[FaceCropEditor] Failed to extract embedding - skipping similarity check")
+
+                    # Only add to saved_crop_paths if NOT merged (will show naming dialog)
+                    if not merged_with_existing:
+                        saved_crop_paths.append({
+                            'crop_path': crop_path,
+                            'branch_key': branch_key
+                        })
+
                     saved_count += 1
 
             progress.setLabelText("Finalizing...")
@@ -1520,6 +1559,451 @@ class FaceCropEditor(QDialog):
             # No face_data available when exception occurs
             return (x, y, w, h), None
 
+    def _extract_embedding(self, crop_path: str) -> Optional[np.ndarray]:
+        """
+        Extract face embedding from saved crop for similarity comparison.
+
+        Args:
+            crop_path: Path to saved face crop
+
+        Returns:
+            512-dimensional embedding vector, or None if extraction fails
+        """
+        try:
+            from services.face_detection_service import FaceDetectionService
+
+            detector = FaceDetectionService()
+            faces = detector.detect_faces(crop_path, project_id=self.project_id)
+
+            if len(faces) == 1:
+                embedding = faces[0].get('embedding')
+                if embedding is not None:
+                    logger.debug(f"[FaceCropEditor] Extracted embedding from crop: {crop_path}")
+                    return np.array(embedding)
+                else:
+                    logger.warning(f"[FaceCropEditor] No embedding in detection result")
+                    return None
+            elif len(faces) == 0:
+                logger.warning(f"[FaceCropEditor] No face detected in crop for embedding extraction")
+                return None
+            else:
+                logger.warning(f"[FaceCropEditor] Multiple faces ({len(faces)}) detected in crop - using first")
+                embedding = faces[0].get('embedding')
+                return np.array(embedding) if embedding is not None else None
+
+        except Exception as e:
+            logger.error(f"[FaceCropEditor] Failed to extract embedding: {e}")
+            return None
+
+    def _find_similar_faces(self, embedding: np.ndarray, threshold: float = 0.6) -> List[dict]:
+        """
+        ENHANCEMENT #5: Find existing faces similar to the new face.
+
+        Uses cosine similarity to compare embeddings.
+        Similarity > threshold suggests same person.
+
+        Args:
+            embedding: 512-dimensional embedding of new face
+            threshold: Similarity threshold (0-1), default 0.6
+                      0.6 = possible match (suggest merge)
+                      0.7 = likely match
+                      0.8+ = very likely same person
+
+        Returns:
+            List of similar faces sorted by similarity (highest first):
+            [
+                {
+                    'branch_key': str,
+                    'label': str,
+                    'similarity': float (0-1),
+                    'count': int,
+                    'rep_path': str
+                },
+                ...
+            ]
+        """
+        try:
+            from repository.reference_db import ReferenceDB
+
+            similar_faces = []
+
+            # Query all existing face branch representatives
+            db = ReferenceDB()
+            with db._connect() as conn:
+                cur = conn.cursor()
+
+                # Get all branch reps with centroids (embeddings)
+                cur.execute("""
+                    SELECT branch_key, label, centroid, count, rep_path
+                    FROM face_branch_reps
+                    WHERE project_id = ?
+                    AND centroid IS NOT NULL
+                """, (self.project_id,))
+
+                rows = cur.fetchall()
+                logger.debug(f"[FaceCropEditor] Comparing with {len(rows)} existing face clusters")
+
+                for row in rows:
+                    branch_key, label, centroid_blob, count, rep_path = row
+
+                    # Deserialize centroid embedding
+                    try:
+                        import pickle
+                        centroid = pickle.loads(centroid_blob)
+
+                        # Calculate cosine similarity
+                        # Cosine similarity = dot(A, B) / (||A|| * ||B||)
+                        # Range: -1 to 1, where 1 = identical, 0 = orthogonal
+                        similarity = np.dot(embedding, centroid) / (
+                            np.linalg.norm(embedding) * np.linalg.norm(centroid)
+                        )
+
+                        # Only include if above threshold
+                        if similarity >= threshold:
+                            similar_faces.append({
+                                'branch_key': branch_key,
+                                'label': label or 'Unknown',
+                                'similarity': float(similarity),
+                                'count': count or 0,
+                                'rep_path': rep_path
+                            })
+                            logger.debug(f"[FaceCropEditor] Similar: {label or branch_key} (similarity: {similarity:.3f})")
+
+                    except Exception as deserialize_err:
+                        logger.warning(f"[FaceCropEditor] Failed to deserialize centroid for {branch_key}: {deserialize_err}")
+                        continue
+
+            # Sort by similarity (highest first)
+            similar_faces.sort(key=lambda x: x['similarity'], reverse=True)
+
+            if similar_faces:
+                logger.info(f"[FaceCropEditor] Found {len(similar_faces)} similar faces (threshold: {threshold})")
+            else:
+                logger.debug(f"[FaceCropEditor] No similar faces found (threshold: {threshold})")
+
+            return similar_faces
+
+        except Exception as e:
+            logger.error(f"[FaceCropEditor] Failed to find similar faces: {e}", exc_info=True)
+            return []
+
+    def _show_merge_suggestion_dialog(self, new_crop_path: str, similar_faces: List[dict]) -> Optional[str]:
+        """
+        ENHANCEMENT #5: Show dialog suggesting merge with similar existing faces.
+
+        Args:
+            new_crop_path: Path to newly created face crop
+            similar_faces: List of similar existing faces (from _find_similar_faces)
+
+        Returns:
+            branch_key to merge with, or None if user wants to keep as new person
+        """
+        try:
+            dialog = QDialog(self)
+            dialog.setWindowTitle("Similar Face Detected")
+            dialog.setModal(True)
+            dialog.setMinimumWidth(600)
+
+            layout = QVBoxLayout(dialog)
+
+            # Header
+            header = QLabel("🔍 We found faces that might be the same person")
+            header.setStyleSheet("font-size: 14px; font-weight: bold; padding: 10px;")
+            layout.addWidget(header)
+
+            info = QLabel(
+                "The face you just added looks similar to existing faces in your library.\n"
+                "Would you like to merge them together?"
+            )
+            info.setWordWrap(True)
+            info.setStyleSheet("color: #666; padding: 5px 10px;")
+            layout.addWidget(info)
+
+            # Scroll area for face previews
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            scroll.setMaximumHeight(400)
+
+            scroll_widget = QWidget()
+            scroll_layout = QVBoxLayout(scroll_widget)
+
+            # Show new face at top
+            new_face_group = QGroupBox("New Face (Just Added)")
+            new_face_layout = QHBoxLayout()
+
+            try:
+                pixmap = QPixmap(new_crop_path)
+                if not pixmap.isNull():
+                    preview_label = QLabel()
+                    preview_label.setPixmap(pixmap.scaled(150, 150, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+                    preview_label.setFixedSize(150, 150)
+                    preview_label.setStyleSheet("border: 2px solid #2196F3; background: white;")
+                    new_face_layout.addWidget(preview_label)
+            except Exception as e:
+                logger.warning(f"[FaceCropEditor] Failed to load new face preview: {e}")
+
+            new_face_group.setLayout(new_face_layout)
+            scroll_layout.addWidget(new_face_group)
+
+            # Show similar existing faces (top 5)
+            similar_group = QGroupBox("Similar Existing Faces")
+            similar_layout = QVBoxLayout()
+
+            # Store radio buttons for selection
+            radio_buttons = []
+            selected_branch_key = [None]  # Use list to allow modification in closure
+
+            for idx, face in enumerate(similar_faces[:5]):  # Show top 5 matches
+                face_row = QHBoxLayout()
+
+                # Radio button for selection
+                radio = QRadioButton()
+                radio.branch_key = face['branch_key']  # Store branch_key on radio button
+                radio_buttons.append(radio)
+                face_row.addWidget(radio)
+
+                # Face preview
+                try:
+                    if face.get('rep_path') and os.path.exists(face['rep_path']):
+                        pixmap = QPixmap(face['rep_path'])
+                        if not pixmap.isNull():
+                            preview_label = QLabel()
+                            preview_label.setPixmap(pixmap.scaled(100, 100, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+                            preview_label.setFixedSize(100, 100)
+                            preview_label.setStyleSheet("border: 1px solid #ccc; background: white;")
+                            face_row.addWidget(preview_label)
+                except Exception as e:
+                    logger.warning(f"[FaceCropEditor] Failed to load similar face preview: {e}")
+
+                # Face info
+                info_layout = QVBoxLayout()
+
+                # Label (name)
+                label = face.get('label', 'Unknown')
+                label_widget = QLabel(f"<b>{label}</b>")
+                info_layout.addWidget(label_widget)
+
+                # Similarity score
+                similarity = face.get('similarity', 0.0)
+                confidence_text = "Very Likely Match" if similarity >= 0.8 else "Likely Match" if similarity >= 0.7 else "Possible Match"
+                similarity_widget = QLabel(f"Similarity: {similarity:.1%} ({confidence_text})")
+                similarity_widget.setStyleSheet("color: #4CAF50;" if similarity >= 0.7 else "color: #FF9800;")
+                info_layout.addWidget(similarity_widget)
+
+                # Photo count
+                count = face.get('count', 0)
+                count_widget = QLabel(f"Photos: {count}")
+                count_widget.setStyleSheet("color: #666; font-size: 11px;")
+                info_layout.addWidget(count_widget)
+
+                face_row.addLayout(info_layout)
+                face_row.addStretch()
+
+                similar_layout.addLayout(face_row)
+
+            similar_group.setLayout(similar_layout)
+            scroll_layout.addWidget(similar_group)
+
+            scroll_layout.addStretch()
+            scroll.setWidget(scroll_widget)
+            layout.addWidget(scroll)
+
+            # Buttons
+            button_layout = QHBoxLayout()
+
+            # "Keep as New Person" button
+            keep_new_btn = QPushButton("Keep as New Person")
+            keep_new_btn.setStyleSheet("padding: 8px 16px; background: #f5f5f5;")
+            keep_new_btn.clicked.connect(lambda: [
+                selected_branch_key.__setitem__(0, None),
+                dialog.accept()
+            ])
+            button_layout.addWidget(keep_new_btn)
+
+            button_layout.addStretch()
+
+            # "Merge with Selected" button
+            merge_btn = QPushButton("Merge with Selected Person")
+            merge_btn.setStyleSheet("padding: 8px 16px; background: #2196F3; color: white; font-weight: bold;")
+            merge_btn.setEnabled(False)  # Disabled until selection made
+
+            def on_radio_changed():
+                # Enable merge button when any radio is selected
+                for radio in radio_buttons:
+                    if radio.isChecked():
+                        merge_btn.setEnabled(True)
+                        selected_branch_key[0] = radio.branch_key
+                        return
+                merge_btn.setEnabled(False)
+                selected_branch_key[0] = None
+
+            # Connect all radio buttons
+            for radio in radio_buttons:
+                radio.toggled.connect(on_radio_changed)
+
+            merge_btn.clicked.connect(dialog.accept)
+            button_layout.addWidget(merge_btn)
+
+            layout.addLayout(button_layout)
+
+            # Show dialog
+            result = dialog.exec()
+
+            if result == QDialog.Accepted:
+                if selected_branch_key[0]:
+                    logger.info(f"[FaceCropEditor] User chose to merge with: {selected_branch_key[0]}")
+                    return selected_branch_key[0]
+                else:
+                    logger.info(f"[FaceCropEditor] User chose to keep as new person")
+                    return None
+            else:
+                # Dialog cancelled - keep as new
+                logger.debug(f"[FaceCropEditor] Merge dialog cancelled - keeping as new")
+                return None
+
+        except Exception as e:
+            logger.error(f"[FaceCropEditor] Failed to show merge suggestion dialog: {e}", exc_info=True)
+            return None  # On error, keep as new person
+
+    def _merge_face_with_existing(self, new_branch_key: str, target_branch_key: str) -> bool:
+        """
+        Merge newly created face with existing person.
+
+        Updates the new face's branch_key to match the target,
+        effectively adding it to that person's cluster.
+
+        Args:
+            new_branch_key: Branch key of newly created face
+            target_branch_key: Branch key of existing person to merge with
+
+        Returns:
+            True if merge successful, False otherwise
+        """
+        try:
+            from repository.reference_db import ReferenceDB
+
+            db = ReferenceDB()
+            with db._connect() as conn:
+                cur = conn.cursor()
+
+                # Update face_crops: Change branch_key to target
+                cur.execute("""
+                    UPDATE face_crops
+                    SET branch_key = ?
+                    WHERE project_id = ?
+                    AND branch_key = ?
+                """, (target_branch_key, self.project_id, new_branch_key))
+
+                rows_updated = cur.rowcount
+                logger.info(f"[FaceCropEditor] Updated {rows_updated} face_crops rows: {new_branch_key} → {target_branch_key}")
+
+                # Delete the temporary branch rep (new_branch_key)
+                cur.execute("""
+                    DELETE FROM face_branch_reps
+                    WHERE project_id = ?
+                    AND branch_key = ?
+                """, (self.project_id, new_branch_key))
+
+                # Increment count for target branch
+                cur.execute("""
+                    UPDATE face_branch_reps
+                    SET count = count + 1
+                    WHERE project_id = ?
+                    AND branch_key = ?
+                """, (self.project_id, target_branch_key))
+
+                conn.commit()
+
+                logger.info(f"[FaceCropEditor] ✅ Successfully merged {new_branch_key} into {target_branch_key}")
+                return True
+
+        except Exception as e:
+            logger.error(f"[FaceCropEditor] Failed to merge faces: {e}", exc_info=True)
+            return False
+
+    def _apply_post_processing(self, face_crop: Image.Image) -> Image.Image:
+        """
+        ENHANCEMENT #6: Apply subtle post-processing to improve face crop appearance.
+
+        Applies:
+        - Auto-brightness adjustment (if too dark or too bright)
+        - Auto-contrast enhancement (if low contrast)
+        - Subtle sharpening (improves clarity without over-sharpening)
+
+        Args:
+            face_crop: PIL Image of the face crop
+
+        Returns:
+            Enhanced PIL Image
+        """
+        try:
+            from PIL import ImageEnhance, ImageFilter
+
+            # Convert to RGB if needed
+            if face_crop.mode != 'RGB':
+                face_crop = face_crop.convert('RGB')
+
+            # Convert to numpy for analysis
+            crop_array = np.array(face_crop)
+            gray = cv2.cvtColor(crop_array, cv2.COLOR_RGB2GRAY)
+
+            # METRIC #1: Analyze brightness (mean pixel value)
+            brightness = np.mean(gray)
+            logger.debug(f"[FaceCropEditor] Post-processing - brightness: {brightness:.1f}/255")
+
+            # METRIC #2: Analyze contrast (standard deviation)
+            contrast = gray.std()
+            logger.debug(f"[FaceCropEditor] Post-processing - contrast: {contrast:.1f}")
+
+            enhancements_applied = []
+
+            # AUTO-BRIGHTNESS: Adjust if too dark or too bright
+            # Target brightness: 100-160 (comfortable viewing range)
+            if brightness < 80:
+                # Too dark - brighten
+                factor = 1.3 + ((80 - brightness) / 100)  # Adaptive brightening
+                factor = min(factor, 1.8)  # Cap at 1.8x
+                enhancer = ImageEnhance.Brightness(face_crop)
+                face_crop = enhancer.enhance(factor)
+                enhancements_applied.append(f"brighten {factor:.2f}x")
+                logger.info(f"[FaceCropEditor] Applied brightness enhancement: {factor:.2f}x (was {brightness:.0f}/255)")
+            elif brightness > 180:
+                # Too bright - darken slightly
+                factor = 0.85
+                enhancer = ImageEnhance.Brightness(face_crop)
+                face_crop = enhancer.enhance(factor)
+                enhancements_applied.append(f"darken {factor:.2f}x")
+                logger.info(f"[FaceCropEditor] Applied brightness reduction: {factor:.2f}x (was {brightness:.0f}/255)")
+
+            # AUTO-CONTRAST: Enhance if low contrast
+            # Target contrast: > 30 (good definition)
+            if contrast < 30:
+                # Low contrast - enhance
+                factor = 1.2 + ((30 - contrast) / 40)  # Adaptive enhancement
+                factor = min(factor, 1.6)  # Cap at 1.6x
+                enhancer = ImageEnhance.Contrast(face_crop)
+                face_crop = enhancer.enhance(factor)
+                enhancements_applied.append(f"contrast {factor:.2f}x")
+                logger.info(f"[FaceCropEditor] Applied contrast enhancement: {factor:.2f}x (was {contrast:.0f})")
+
+            # SHARPENING: Always apply subtle sharpening for clarity
+            # Use SHARPEN filter (gentle) or UnsharpMask (more control)
+            # SHARPEN is simpler and safer - just enhances edges slightly
+            face_crop = face_crop.filter(ImageFilter.SHARPEN)
+            enhancements_applied.append("sharpen")
+            logger.debug(f"[FaceCropEditor] Applied sharpening filter")
+
+            if enhancements_applied:
+                logger.info(f"[FaceCropEditor] ✅ Post-processing applied: {', '.join(enhancements_applied)}")
+            else:
+                logger.debug(f"[FaceCropEditor] No post-processing needed (already optimal)")
+
+            return face_crop
+
+        except Exception as e:
+            logger.warning(f"[FaceCropEditor] Post-processing failed: {e} - using original crop")
+            return face_crop  # Return original if enhancement fails
+
     def _create_face_crop(self, x: int, y: int, w: int, h: int) -> Optional[str]:
         """
         Crop face from original image and save to centralized directory.
@@ -1563,6 +2047,10 @@ class FaceCropEditor(QDialog):
 
                 # Crop face region with smart padding
                 face_crop = img.crop((crop_x1, crop_y1, crop_x2, crop_y2))
+
+                # ENHANCEMENT #6: Post-Processing (Better Thumbnails)
+                # Apply subtle enhancements: brightness, contrast, sharpening
+                face_crop = self._apply_post_processing(face_crop)
 
                 # Use centralized face_crops directory (not cluttering photo directories)
                 # Create .memorymate/face_crops/ in user's home or project directory
