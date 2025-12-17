@@ -2239,13 +2239,17 @@ class FacePhotoViewer(QWidget):
         - Auto-rotates based on EXIF orientation data
         """
         try:
+            logger.info(f"[FacePhotoViewer] Step 1: Checking file existence...")
             # Check file size first (before loading into memory)
             if not os.path.exists(self.photo_path):
                 logger.error(f"[FacePhotoViewer] Photo not found: {self.photo_path}")
                 self.pixmap = None
                 return
 
+            logger.info(f"[FacePhotoViewer] Step 2: File exists, getting file size...")
             file_size_mb = os.path.getsize(self.photo_path) / (1024 * 1024)
+            logger.info(f"[FacePhotoViewer] File size: {file_size_mb:.2f}MB")
+
             if file_size_mb > self.MAX_PHOTO_SIZE_MB:
                 logger.warning(f"[FacePhotoViewer] Photo too large: {file_size_mb:.1f}MB (max {self.MAX_PHOTO_SIZE_MB}MB)")
                 from PySide6.QtWidgets import QMessageBox
@@ -2259,25 +2263,36 @@ class FacePhotoViewer(QWidget):
                 self.pixmap = None
                 return
 
+            logger.info(f"[FacePhotoViewer] Step 3: Opening image with PIL...")
             # Load photo with PIL for EXIF auto-rotation
             pil_image = Image.open(self.photo_path)
+            logger.info(f"[FacePhotoViewer] ✓ PIL image opened successfully")
 
+            logger.info(f"[FacePhotoViewer] Step 4: Getting original dimensions...")
             # Store original dimensions BEFORE EXIF rotation
             original_width, original_height = pil_image.size
+            logger.info(f"[FacePhotoViewer] Original dimensions: {original_width}×{original_height}")
 
+            logger.info(f"[FacePhotoViewer] Step 5: Applying EXIF auto-rotation...")
             # Auto-rotate based on EXIF orientation (FIX #1)
             pil_image = ImageOps.exif_transpose(pil_image)
+            logger.info(f"[FacePhotoViewer] ✓ EXIF rotation applied")
 
+            logger.info(f"[FacePhotoViewer] Step 6: Getting rotated dimensions...")
             # Get dimensions AFTER EXIF rotation
             rotated_width, rotated_height = pil_image.size
+            logger.info(f"[FacePhotoViewer] Rotated dimensions: {rotated_width}×{rotated_height}")
 
             # CRITICAL FIX: Transform existing face bbox coordinates if EXIF rotation occurred
             # Bbox coordinates were stored based on original (pre-rotation) dimensions
             # but we're displaying the rotated image, so coordinates need to be transformed
             if (original_width, original_height) != (rotated_width, rotated_height):
                 logger.info(f"[FacePhotoViewer] EXIF rotation detected: {original_width}×{original_height} → {rotated_width}×{rotated_height}")
+                logger.info(f"[FacePhotoViewer] Step 7: Transforming bbox coordinates...")
                 self._transform_bbox_coordinates(original_width, original_height, rotated_width, rotated_height)
+                logger.info(f"[FacePhotoViewer] ✓ Bbox coordinates transformed")
 
+            logger.info(f"[FacePhotoViewer] Step 8: Checking dimensions...")
             # Check dimensions
             if pil_image.width > self.MAX_DIMENSION or pil_image.height > self.MAX_DIMENSION:
                 logger.warning(f"[FacePhotoViewer] Photo dimensions too large: {pil_image.width}×{pil_image.height}")
@@ -2292,24 +2307,36 @@ class FacePhotoViewer(QWidget):
                 self.pixmap = None
                 return
 
+            logger.info(f"[FacePhotoViewer] Step 9: Converting to RGB mode...")
             # Convert PIL image to QPixmap
             if pil_image.mode != 'RGB':
                 pil_image = pil_image.convert('RGB')
+            logger.info(f"[FacePhotoViewer] ✓ Image in RGB mode")
 
+            logger.info(f"[FacePhotoViewer] Step 10: Converting to QImage...")
             data = pil_image.tobytes("raw", "RGB")
+            logger.info(f"[FacePhotoViewer] ✓ Got image bytes ({len(data)} bytes)")
+
             qimg = QImage(data, pil_image.width, pil_image.height, QImage.Format_RGB888)
+            logger.info(f"[FacePhotoViewer] ✓ QImage created")
+
+            logger.info(f"[FacePhotoViewer] Step 11: Converting to QPixmap...")
             self.pixmap = QPixmap.fromImage(qimg)
+            logger.info(f"[FacePhotoViewer] ✓ QPixmap created")
 
             if self.pixmap.isNull():
                 logger.error(f"[FacePhotoViewer] Failed to convert photo to QPixmap")
                 self.pixmap = None
                 return
 
-            logger.info(f"[FacePhotoViewer] Loaded photo: {pil_image.width}×{pil_image.height}, {file_size_mb:.1f}MB (EXIF auto-rotated)")
+            logger.info(f"[FacePhotoViewer] ✓ Photo loaded successfully: {pil_image.width}×{pil_image.height}, {file_size_mb:.2f}MB")
 
         except Exception as e:
-            logger.error(f"[FacePhotoViewer] Error loading photo: {e}")
+            logger.error(f"[FacePhotoViewer] CRITICAL ERROR loading photo: {e}", exc_info=True)
+            import traceback
+            traceback.print_exc()
             self.pixmap = None
+            raise  # Re-raise to prevent partial initialization
 
     def _transform_bbox_coordinates(self, orig_w: int, orig_h: int, rot_w: int, rot_h: int):
         """
