@@ -9805,14 +9805,147 @@ class GooglePhotosLayout(BaseLayout):
             logger.debug("[GooglePhotosLayout] Redo merge request failed: %s", e, exc_info=True)
 
     def _on_people_tools_requested(self):
+        """Show People Tools menu with advanced face detection options."""
         try:
-            # Prefer the interactive bulk review GUI; fall back to the workflow guide if unavailable
-            if hasattr(self, "_prompt_bulk_face_review"):
-                self._prompt_bulk_face_review()
-            else:
-                self._open_people_tools()
+            from PySide6.QtWidgets import QMenu
+            from PySide6.QtGui import QAction, QCursor
+
+            # Create menu with tools
+            menu = QMenu()
+
+            # Bulk Review action
+            bulk_review_action = QAction("🧰 Bulk Face Review & Naming", menu)
+            bulk_review_action.setToolTip("Review all detected people and assign names")
+            bulk_review_action.triggered.connect(self._prompt_bulk_face_review if hasattr(self, "_prompt_bulk_face_review") else self._open_people_tools)
+            menu.addAction(bulk_review_action)
+
+            # Quality Dashboard action
+            quality_dashboard_action = QAction("📊 Face Quality Dashboard", menu)
+            quality_dashboard_action.setToolTip("View face detection statistics and quality metrics")
+            quality_dashboard_action.triggered.connect(self._open_face_quality_dashboard)
+            menu.addAction(quality_dashboard_action)
+
+            menu.addSeparator()
+
+            # Manual Face Crop action
+            manual_crop_action = QAction("✏️ Manual Face Crop Editor", menu)
+            manual_crop_action.setToolTip("Review and manually correct face detections")
+            manual_crop_action.triggered.connect(self._open_manual_face_crop_selector)
+            menu.addAction(manual_crop_action)
+
+            # Show menu at cursor
+            menu.exec(QCursor.pos())
+
         except Exception as e:
             logger.debug("[GooglePhotosLayout] People tools request failed: %s", e, exc_info=True)
+
+    def _open_face_quality_dashboard(self):
+        """Open Face Quality Dashboard showing statistics and review tools."""
+        try:
+            from ui.face_quality_dashboard import FaceQualityDashboard
+
+            dashboard = FaceQualityDashboard(
+                project_id=self.project_id,
+                parent=self.main_window if hasattr(self, 'main_window') else None
+            )
+
+            # Connect signals to handle manual crop requests
+            dashboard.manualCropRequested.connect(self._open_manual_face_crop_editor)
+
+            dashboard.show()
+            logger.info("[GooglePhotosLayout] Opened Face Quality Dashboard")
+
+        except Exception as e:
+            logger.error(f"[GooglePhotosLayout] Failed to open Face Quality Dashboard: {e}")
+            QMessageBox.critical(
+                self.main_window if hasattr(self, 'main_window') else None,
+                "Error",
+                f"Failed to open Face Quality Dashboard:\n{e}"
+            )
+
+    def _open_manual_face_crop_selector(self):
+        """Show dialog to select a photo for manual face cropping."""
+        try:
+            from PySide6.QtWidgets import QInputDialog
+
+            # Get list of photos
+            db = ReferenceDB()
+            with db._connect() as conn:
+                cur = conn.cursor()
+                cur.execute("""
+                    SELECT DISTINCT path
+                    FROM photo_metadata
+                    WHERE project_id = ?
+                    ORDER BY date_taken DESC
+                    LIMIT 100
+                """, (self.project_id,))
+
+                photos = [row[0] for row in cur.fetchall()]
+
+            if not photos:
+                QMessageBox.information(
+                    self.main_window if hasattr(self, 'main_window') else None,
+                    "No Photos",
+                    "No photos found in this project."
+                )
+                return
+
+            # Show selection dialog
+            photo_names = [os.path.basename(p) for p in photos]
+            selected_name, ok = QInputDialog.getItem(
+                self.main_window if hasattr(self, 'main_window') else None,
+                "Select Photo",
+                "Choose a photo to review face detections:",
+                photo_names,
+                0,
+                False
+            )
+
+            if ok and selected_name:
+                selected_index = photo_names.index(selected_name)
+                selected_path = photos[selected_index]
+                self._open_manual_face_crop_editor(selected_path)
+
+        except Exception as e:
+            logger.error(f"[GooglePhotosLayout] Failed to open photo selector: {e}")
+            QMessageBox.critical(
+                self.main_window if hasattr(self, 'main_window') else None,
+                "Error",
+                f"Failed to open photo selector:\n{e}"
+            )
+
+    def _open_manual_face_crop_editor(self, photo_path: str):
+        """Open Manual Face Crop Editor for the specified photo."""
+        try:
+            from ui.face_crop_editor import FaceCropEditor
+
+            if not os.path.exists(photo_path):
+                QMessageBox.warning(
+                    self.main_window if hasattr(self, 'main_window') else None,
+                    "Photo Not Found",
+                    f"Photo not found:\n{photo_path}"
+                )
+                return
+
+            editor = FaceCropEditor(
+                photo_path=photo_path,
+                project_id=self.project_id,
+                parent=self.main_window if hasattr(self, 'main_window') else None
+            )
+
+            # Connect signal to refresh people section when faces are updated
+            editor.faceCropsUpdated.connect(self._refresh_people_sidebar)
+
+            editor.exec()
+            logger.info(f"[GooglePhotosLayout] Opened Face Crop Editor for: {photo_path}")
+
+        except Exception as e:
+            logger.error(f"[GooglePhotosLayout] Failed to open Face Crop Editor: {e}")
+            QMessageBox.critical(
+                self.main_window if hasattr(self, 'main_window') else None,
+                "Error",
+                f"Failed to open Face Crop Editor:\n{e}"
+            )
 
     def _on_accordion_device_selected(self, device_root: str):
         """Open the selected device in the system file browser for quick import."""

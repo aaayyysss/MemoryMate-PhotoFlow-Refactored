@@ -1,0 +1,560 @@
+#!/usr/bin/env python3
+"""
+Face Crop Editor - Manual face detection review and correction tool.
+
+Allows users to:
+- View original photos with detected face rectangles overlaid
+- See which faces were automatically detected
+- Manually draw rectangles around missed faces
+- Correct or delete incorrect face detections
+- Save new face crops to database
+
+Best practice: Allow users to review and correct automated detections.
+
+Author: Claude Code
+Date: December 17, 2025
+"""
+
+import logging
+import os
+import io
+from typing import List, Dict, Optional, Tuple
+from PIL import Image
+
+from PySide6.QtWidgets import (
+    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
+    QScrollArea, QWidget, QMessageBox, QCheckBox, QSpinBox,
+    QGroupBox, QTextEdit
+)
+from PySide6.QtGui import QPixmap, QImage, QPainter, QPen, QColor, QFont
+from PySide6.QtCore import Qt, QRect, QPoint, Signal
+
+from reference_db import ReferenceDB
+
+logger = logging.getLogger(__name__)
+
+
+class FaceCropEditor(QDialog):
+    """
+    Dialog for reviewing and manually correcting face detections.
+
+    Shows original photo with face rectangles and allows manual additions/corrections.
+    """
+
+    faceCropsUpdated = Signal()  # Emitted when face crops are modified
+
+    def __init__(self, photo_path: str, project_id: int, parent=None):
+        """
+        Initialize face crop editor.
+
+        Args:
+            photo_path: Path to the photo to review
+            project_id: Current project ID
+            parent: Parent widget
+        """
+        super().__init__(parent)
+
+        self.photo_path = photo_path
+        self.project_id = project_id
+        self.detected_faces = []  # Existing face detections
+        self.manual_faces = []  # Manually added faces
+
+        photo_name = os.path.basename(photo_path)
+        self.setWindowTitle(f"Face Crop Editor - {photo_name}")
+        self.setModal(True)
+        self.resize(1200, 800)
+
+        self._load_existing_faces()
+        self._create_ui()
+
+    def _load_existing_faces(self):
+        """Load existing face detections for this photo."""
+        db = ReferenceDB()
+
+        try:
+            with db._connect() as conn:
+                cur = conn.cursor()
+
+                # Get existing face crops
+                cur.execute("""
+                    SELECT
+                        fc.id,
+                        fc.bbox,
+                        fc.branch_key,
+                        fc.quality_score,
+                        fbr.label as person_name
+                    FROM face_crops fc
+                    LEFT JOIN face_branch_reps fbr ON fc.branch_key = fbr.branch_key
+                        AND fc.project_id = fbr.project_id
+                    WHERE fc.image_path = ? AND fc.project_id = ?
+                """, (self.photo_path, self.project_id))
+
+                rows = cur.fetchall()
+                self.detected_faces = []
+
+                for row in rows:
+                    face_id, bbox, branch_key, quality, person_name = row
+
+                    if bbox:
+                        try:
+                            parts = bbox.split(',')
+                            if len(parts) == 4:
+                                x, y, w, h = map(float, parts)
+                                self.detected_faces.append({
+                                    'id': face_id,
+                                    'bbox': (int(x), int(y), int(w), int(h)),
+                                    'branch_key': branch_key,
+                                    'quality': quality or 0.0,
+                                    'person_name': person_name or "Unnamed",
+                                    'is_existing': True
+                                })
+                        except Exception as e:
+                            logger.warning(f"[FaceCropEditor] Failed to parse bbox '{bbox}': {e}")
+
+                logger.info(f"[FaceCropEditor] Loaded {len(self.detected_faces)} existing face(s)")
+
+        except Exception as e:
+            logger.error(f"[FaceCropEditor] Failed to load existing faces: {e}")
+
+    def _create_ui(self):
+        """Create the editor UI."""
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(15)
+
+        # Header
+        header = QLabel(f"Face Detection Review - {os.path.basename(self.photo_path)}")
+        header_font = QFont()
+        header_font.setPointSize(12)
+        header_font.setBold(True)
+        header.setFont(header_font)
+        layout.addWidget(header)
+
+        # Info panel
+        info_layout = QHBoxLayout()
+
+        # Instructions
+        instructions = QGroupBox("ℹ️ Instructions")
+        instructions_layout = QVBoxLayout()
+        instructions_text = QLabel(
+            "• Green rectangles show detected faces\n"
+            "• Red rectangles show manual additions\n"
+            "• Click 'Add Manual Face' to draw a new rectangle\n"
+            "• Use the photo viewer to verify detections\n"
+            "• Save when done to update the database"
+        )
+        instructions_text.setStyleSheet("color: #5f6368; font-size: 9pt;")
+        instructions_layout.addWidget(instructions_text)
+        instructions.setLayout(instructions_layout)
+        info_layout.addWidget(instructions)
+
+        # Statistics
+        stats_group = QGroupBox("📊 Detection Stats")
+        stats_layout = QVBoxLayout()
+
+        detected_count = len(self.detected_faces)
+        stats_layout.addWidget(QLabel(f"Detected Faces: {detected_count}"))
+
+        if self.detected_faces:
+            avg_quality = sum(f['quality'] for f in self.detected_faces) / len(self.detected_faces)
+            stats_layout.addWidget(QLabel(f"Avg Quality: {avg_quality*100:.1f}%"))
+
+        self.manual_count_label = QLabel(f"Manual Faces: 0")
+        stats_layout.addWidget(self.manual_count_label)
+
+        stats_group.setLayout(stats_layout)
+        info_layout.addWidget(stats_group)
+
+        layout.addLayout(info_layout)
+
+        # Photo viewer with face rectangles
+        self.photo_viewer = FacePhotoViewer(
+            self.photo_path,
+            self.detected_faces,
+            self.manual_faces
+        )
+        self.photo_viewer.manualFaceAdded.connect(self._on_manual_face_added)
+        layout.addWidget(self.photo_viewer, 1)
+
+        # Action buttons
+        button_layout = QHBoxLayout()
+
+        add_manual_btn = QPushButton("➕ Add Manual Face")
+        add_manual_btn.setToolTip("Click to enable drawing mode, then drag on the photo to draw a face rectangle")
+        add_manual_btn.setStyleSheet("""
+            QPushButton {
+                background: #34a853;
+                color: white;
+                padding: 8px 16px;
+                border-radius: 4px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background: #2d8b47;
+            }
+        """)
+        add_manual_btn.clicked.connect(self.photo_viewer.enable_drawing_mode)
+        button_layout.addWidget(add_manual_btn)
+
+        button_layout.addStretch()
+
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.clicked.connect(self.reject)
+        button_layout.addWidget(cancel_btn)
+
+        save_btn = QPushButton("💾 Save Changes")
+        save_btn.setDefault(True)
+        save_btn.setStyleSheet("""
+            QPushButton {
+                background: #1a73e8;
+                color: white;
+                padding: 8px 16px;
+                border-radius: 4px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background: #1557b0;
+            }
+        """)
+        save_btn.clicked.connect(self._save_changes)
+        button_layout.addWidget(save_btn)
+
+        layout.addLayout(button_layout)
+
+    def _on_manual_face_added(self, bbox: Tuple[int, int, int, int]):
+        """Handle a manually added face rectangle."""
+        self.manual_faces.append({
+            'bbox': bbox,
+            'is_existing': False
+        })
+
+        self.manual_count_label.setText(f"Manual Faces: {len(self.manual_faces)}")
+        logger.info(f"[FaceCropEditor] Added manual face: {bbox}")
+
+    def _save_changes(self):
+        """Save manually added face crops to database."""
+        if not self.manual_faces:
+            QMessageBox.information(
+                self,
+                "No Changes",
+                "No manual face rectangles were added.\n\nClick 'Add Manual Face' to draw rectangles around missed faces."
+            )
+            return
+
+        try:
+            # Create face crops from manual rectangles
+            saved_count = 0
+
+            for manual_face in self.manual_faces:
+                bbox = manual_face['bbox']
+                x, y, w, h = bbox
+
+                # Crop face from original image
+                crop_path = self._create_face_crop(x, y, w, h)
+
+                if crop_path:
+                    # Add to database
+                    self._add_face_to_database(crop_path, bbox)
+                    saved_count += 1
+
+            if saved_count > 0:
+                self.faceCropsUpdated.emit()
+                QMessageBox.information(
+                    self,
+                    "Saved",
+                    f"Successfully saved {saved_count} manually cropped face(s).\n\n"
+                    "These faces will be clustered and appear in the People section."
+                )
+                self.accept()
+            else:
+                QMessageBox.warning(
+                    self,
+                    "Save Failed",
+                    "Failed to save face crops. Please try again."
+                )
+
+        except Exception as e:
+            logger.error(f"[FaceCropEditor] Failed to save changes: {e}")
+            QMessageBox.critical(
+                self,
+                "Error",
+                f"Failed to save face crops:\n{e}"
+            )
+
+    def _create_face_crop(self, x: int, y: int, w: int, h: int) -> Optional[str]:
+        """
+        Crop face from original image and save to disk.
+
+        Args:
+            x, y, w, h: Bounding box coordinates
+
+        Returns:
+            Path to saved crop, or None if failed
+        """
+        try:
+            # Load original image
+            with Image.open(self.photo_path) as img:
+                # Crop face region
+                face_crop = img.crop((x, y, x + w, y + h))
+
+                # Generate crop filename
+                photo_name = os.path.splitext(os.path.basename(self.photo_path))[0]
+                crop_dir = os.path.join(os.path.dirname(self.photo_path), "face_crops")
+                os.makedirs(crop_dir, exist_ok=True)
+
+                # Find next available filename
+                crop_index = 0
+                while True:
+                    crop_filename = f"{photo_name}_face_{crop_index}.jpg"
+                    crop_path = os.path.join(crop_dir, crop_filename)
+                    if not os.path.exists(crop_path):
+                        break
+                    crop_index += 1
+
+                # Save crop
+                face_crop.save(crop_path, "JPEG", quality=95)
+                logger.info(f"[FaceCropEditor] Saved face crop: {crop_path}")
+                return crop_path
+
+        except Exception as e:
+            logger.error(f"[FaceCropEditor] Failed to create face crop: {e}")
+            return None
+
+    def _add_face_to_database(self, crop_path: str, bbox: Tuple[int, int, int, int]):
+        """
+        Add manually cropped face to database.
+
+        Args:
+            crop_path: Path to saved face crop
+            bbox: Bounding box (x, y, w, h)
+        """
+        from services.face_service import FaceService
+
+        try:
+            # Use FaceService to add the face crop
+            face_service = FaceService()
+
+            # Generate a new branch_key for this face
+            # It will be clustered later and potentially merged with existing people
+            import uuid
+            branch_key = f"manual_{uuid.uuid4().hex[:8]}"
+
+            # Add to database
+            db = ReferenceDB()
+            with db._connect() as conn:
+                cur = conn.cursor()
+
+                # Insert face crop
+                bbox_str = f"{bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]}"
+
+                cur.execute("""
+                    INSERT INTO face_crops
+                    (project_id, image_path, crop_path, bbox, branch_key, is_representative, quality_score)
+                    VALUES (?, ?, ?, ?, ?, 1, 0.5)
+                """, (self.project_id, self.photo_path, crop_path, bbox_str, branch_key))
+
+                # Create face_branch_reps entry
+                cur.execute("""
+                    INSERT OR REPLACE INTO face_branch_reps
+                    (project_id, branch_key, label, rep_path, rep_thumb_png)
+                    VALUES (?, ?, ?, ?, NULL)
+                """, (self.project_id, branch_key, None, crop_path))
+
+                conn.commit()
+
+                logger.info(f"[FaceCropEditor] Added manual face to database: {branch_key}")
+
+        except Exception as e:
+            logger.error(f"[FaceCropEditor] Failed to add face to database: {e}")
+            raise
+
+
+class FacePhotoViewer(QWidget):
+    """
+    Widget for viewing photo with face rectangles overlay.
+    Allows drawing new rectangles for manual face additions.
+    """
+
+    manualFaceAdded = Signal(tuple)  # (x, y, w, h)
+
+    def __init__(self, photo_path: str, detected_faces: List[Dict], manual_faces: List[Dict], parent=None):
+        super().__init__(parent)
+
+        self.photo_path = photo_path
+        self.detected_faces = detected_faces
+        self.manual_faces = manual_faces
+
+        self.drawing_mode = False
+        self.draw_start = None
+        self.draw_end = None
+
+        self.setMinimumHeight(400)
+        self._load_photo()
+
+    def _load_photo(self):
+        """Load and display the photo."""
+        try:
+            self.pixmap = QPixmap(self.photo_path)
+            if self.pixmap.isNull():
+                logger.error(f"[FacePhotoViewer] Failed to load photo: {self.photo_path}")
+                self.pixmap = None
+        except Exception as e:
+            logger.error(f"[FacePhotoViewer] Error loading photo: {e}")
+            self.pixmap = None
+
+    def enable_drawing_mode(self):
+        """Enable drawing mode for manual face rectangle."""
+        self.drawing_mode = True
+        self.setCursor(Qt.CrossCursor)
+        self.update()
+
+        logger.info("[FacePhotoViewer] Drawing mode enabled - drag to draw face rectangle")
+
+    def mousePressEvent(self, event):
+        """Handle mouse press to start drawing."""
+        if self.drawing_mode and event.button() == Qt.LeftButton:
+            self.draw_start = event.position().toPoint()
+            self.draw_end = None
+
+    def mouseMoveEvent(self, event):
+        """Handle mouse move while drawing."""
+        if self.drawing_mode and self.draw_start:
+            self.draw_end = event.position().toPoint()
+            self.update()
+
+    def mouseReleaseEvent(self, event):
+        """Handle mouse release to finish drawing."""
+        if self.drawing_mode and event.button() == Qt.LeftButton and self.draw_start:
+            self.draw_end = event.position().toPoint()
+
+            # Calculate rectangle
+            rect = QRect(self.draw_start, self.draw_end).normalized()
+
+            if rect.width() > 20 and rect.height() > 20:
+                # Convert from widget coordinates to image coordinates
+                if self.pixmap:
+                    # Get scale factor
+                    widget_rect = self.rect()
+                    pixmap_rect = self.pixmap.rect()
+
+                    scale_x = pixmap_rect.width() / widget_rect.width()
+                    scale_y = pixmap_rect.height() / widget_rect.height()
+                    scale = max(scale_x, scale_y)
+
+                    # Scale coordinates
+                    x = int(rect.x() * scale)
+                    y = int(rect.y() * scale)
+                    w = int(rect.width() * scale)
+                    h = int(rect.height() * scale)
+
+                    # Ensure within image bounds
+                    x = max(0, min(x, pixmap_rect.width() - w))
+                    y = max(0, min(y, pixmap_rect.height() - h))
+
+                    # Emit signal
+                    self.manualFaceAdded.emit((x, y, w, h))
+
+                    logger.info(f"[FacePhotoViewer] Manual face drawn: {(x, y, w, h)}")
+
+            # Reset drawing state
+            self.drawing_mode = False
+            self.draw_start = None
+            self.draw_end = None
+            self.setCursor(Qt.ArrowCursor)
+            self.update()
+
+    def paintEvent(self, event):
+        """Paint the photo with face rectangles overlay."""
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+
+        if not self.pixmap:
+            painter.drawText(self.rect(), Qt.AlignCenter, "Failed to load photo")
+            return
+
+        # Draw photo scaled to fit
+        scaled_pixmap = self.pixmap.scaled(
+            self.size(),
+            Qt.KeepAspectRatio,
+            Qt.SmoothTransformation
+        )
+
+        # Center the pixmap
+        x_offset = (self.width() - scaled_pixmap.width()) // 2
+        y_offset = (self.height() - scaled_pixmap.height()) // 2
+
+        painter.drawPixmap(x_offset, y_offset, scaled_pixmap)
+
+        # Calculate scale factor for rectangles
+        scale = scaled_pixmap.width() / self.pixmap.width()
+
+        # Draw detected face rectangles (green)
+        pen = QPen(QColor(52, 168, 83), 3)  # Green
+        painter.setPen(pen)
+
+        for face in self.detected_faces:
+            bbox = face['bbox']
+            x, y, w, h = bbox
+
+            # Scale to widget coordinates
+            rect = QRect(
+                int(x * scale) + x_offset,
+                int(y * scale) + y_offset,
+                int(w * scale),
+                int(h * scale)
+            )
+            painter.drawRect(rect)
+
+            # Draw person name if available
+            if face['person_name']:
+                painter.setFont(QFont("Arial", 10, QFont.Bold))
+                painter.drawText(rect.x(), rect.y() - 5, face['person_name'])
+
+        # Draw manual face rectangles (red)
+        pen = QPen(QColor(234, 67, 53), 3)  # Red
+        painter.setPen(pen)
+
+        for face in self.manual_faces:
+            bbox = face['bbox']
+            x, y, w, h = bbox
+
+            rect = QRect(
+                int(x * scale) + x_offset,
+                int(y * scale) + y_offset,
+                int(w * scale),
+                int(h * scale)
+            )
+            painter.drawRect(rect)
+
+            # Draw "Manual" label
+            painter.setFont(QFont("Arial", 10, QFont.Bold))
+            painter.drawText(rect.x(), rect.y() - 5, "Manual")
+
+        # Draw current drawing rectangle
+        if self.drawing_mode and self.draw_start and self.draw_end:
+            pen = QPen(QColor(26, 115, 232), 2, Qt.DashLine)  # Blue dashed
+            painter.setPen(pen)
+            rect = QRect(self.draw_start, self.draw_end).normalized()
+            painter.drawRect(rect)
+
+
+if __name__ == '__main__':
+    # Test dialog
+    import sys
+    from PySide6.QtWidgets import QApplication
+
+    app = QApplication(sys.argv)
+
+    # Example usage (requires valid photo path)
+    dialog = FaceCropEditor(
+        photo_path="/path/to/photo.jpg",
+        project_id=1
+    )
+    dialog.faceCropsUpdated.connect(lambda: print("Face crops updated!"))
+
+    if dialog.exec():
+        print("✅ Changes saved")
+    else:
+        print("❌ Cancelled")
+
+    sys.exit(0)
