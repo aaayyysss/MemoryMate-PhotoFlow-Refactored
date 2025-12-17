@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QSizePolicy,
     QToolButton,
+    QLineEdit,
 )
 from shiboken6 import isValid
 
@@ -59,6 +60,11 @@ class PeopleSection(BaseSection):
         # Keep a reference to rendered cards so selection state can be updated externally
         self._cards: Dict[str, "PersonCard"] = {}
         self._header_widget: Optional[QWidget] = None
+
+        # Search/filter state
+        self._all_data: List[Dict] = []  # Full list of people data
+        self._search_text: str = ""
+        self._count_label: Optional[QLabel] = None
 
     def get_section_id(self) -> str:
         return "people"
@@ -157,17 +163,56 @@ class PeopleSection(BaseSection):
         threading.Thread(target=on_complete, daemon=True).start()
 
     def create_content_widget(self, data):
-        """Create a flow-wrapped grid of faces (multi-row people view)."""
+        """Create a flow-wrapped grid of faces (multi-row people view) with search."""
         rows: List[Dict] = data or []
+        self._all_data = rows  # Store full data for filtering
+
         if not rows:
             placeholder = QLabel(tr("sidebar.people.empty") if callable(tr) else "No people detected yet")
             placeholder.setAlignment(Qt.AlignCenter)
             placeholder.setStyleSheet("padding: 16px; color: #666;")
             return placeholder
 
+        # Main container with search and grid
+        main_container = QWidget()
+        main_layout = QVBoxLayout(main_container)
+        main_layout.setContentsMargins(8, 8, 8, 8)
+        main_layout.setSpacing(8)
+
+        # Search bar with count
+        search_container = QWidget()
+        search_layout = QHBoxLayout(search_container)
+        search_layout.setContentsMargins(0, 0, 0, 0)
+        search_layout.setSpacing(8)
+
+        search_input = QLineEdit()
+        search_input.setPlaceholderText("🔍 Search people...")
+        search_input.setClearButtonEnabled(True)
+        search_input.setStyleSheet("""
+            QLineEdit {
+                padding: 6px 10px;
+                border: 1px solid #dadce0;
+                border-radius: 6px;
+                background: #fff;
+                font-size: 10pt;
+            }
+            QLineEdit:focus {
+                border: 1px solid #1a73e8;
+            }
+        """)
+        search_input.textChanged.connect(self._on_search_changed)
+        search_layout.addWidget(search_input, 1)
+
+        # Count label
+        self._count_label = QLabel(f"{len(rows)} people")
+        self._count_label.setStyleSheet("color: #5f6368; font-size: 9pt; padding: 4px;")
+        search_layout.addWidget(self._count_label)
+
+        main_layout.addWidget(search_container)
+
         # Quick action bar for post-detection tools
         actions = QWidget()
-        actions_layout = FlowLayout(actions, margin=8, spacing=6)
+        actions_layout = FlowLayout(actions, margin=0, spacing=6)
 
         def _make_action(text_key: str, fallback: str, callback):
             btn = QPushButton(fallback if not callable(tr) else f"{fallback.split(' ', 1)[0]} {tr(text_key)}")
@@ -188,11 +233,14 @@ class PeopleSection(BaseSection):
             btn.clicked.connect(callback)
             actions_layout.addWidget(btn)
 
-        _make_action('sidebar.people_actions.merge_history', '🕑 View Merge History', self.mergeHistoryRequested.emit)
-        _make_action('sidebar.people_actions.undo_last_merge', '↩️ Undo Last Merge', self.undoMergeRequested.emit)
-        _make_action('sidebar.people_actions.redo_last_undo', '↪️ Redo Last Undo', self.redoMergeRequested.emit)
-        _make_action('sidebar.people_actions.people_tools', '🧰 Open People Tools', self.peopleToolsRequested.emit)
+        _make_action('sidebar.people_actions.merge_history', '🕑 Merge History', self.mergeHistoryRequested.emit)
+        _make_action('sidebar.people_actions.undo_last_merge', '↩️ Undo', self.undoMergeRequested.emit)
+        _make_action('sidebar.people_actions.redo_last_undo', '↪️ Redo', self.redoMergeRequested.emit)
+        _make_action('sidebar.people_actions.people_tools', '🧰 Tools', self.peopleToolsRequested.emit)
 
+        main_layout.addWidget(actions)
+
+        # Scroll area for people grid
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
@@ -223,8 +271,37 @@ class PeopleSection(BaseSection):
         container.attach_viewport(scroll.viewport())
         scroll.setWidget(container)
 
-        logger.info(f"[PeopleSection] Grid built with {len(cards)} people")
-        return scroll
+        main_layout.addWidget(scroll, 1)
+
+        logger.info(f"[PeopleSection] Grid built with {len(cards)} people (search enabled)")
+        return main_container
+
+    # --- Search/Filter helpers ---
+    def _on_search_changed(self, text: str):
+        """Filter people cards based on search text."""
+        self._search_text = text.strip().lower()
+        visible_count = 0
+
+        # Filter cards by display name
+        for branch_key, card in self._cards.items():
+            display_name = card.display_name.lower()
+            is_match = self._search_text in display_name if self._search_text else True
+
+            # Show/hide card based on match
+            if isValid(card):
+                card.setVisible(is_match)
+                if is_match:
+                    visible_count += 1
+
+        # Update count label
+        if self._count_label and isValid(self._count_label):
+            total_count = len(self._cards)
+            if self._search_text:
+                self._count_label.setText(f"{visible_count} of {total_count} people")
+            else:
+                self._count_label.setText(f"{total_count} people")
+
+        logger.debug(f"[PeopleSection] Search: '{text}' → {visible_count}/{len(self._cards)} visible")
 
     # --- Selection helpers ---
     def set_active_branch(self, branch_key: Optional[str]) -> None:
