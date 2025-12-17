@@ -21,7 +21,7 @@ import io
 import uuid
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
-from PIL import Image
+from PIL import Image, ImageOps
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
@@ -70,22 +70,21 @@ class FaceCropEditor(QDialog):
         self._create_ui()
 
     def _load_existing_faces(self):
-        """Load count of existing face detections for this photo."""
+        """Load existing face detections with bounding boxes for this photo."""
         db = ReferenceDB()
 
         try:
             with db._connect() as conn:
                 cur = conn.cursor()
 
-                # Count existing face crops for this photo
-                # Note: bbox column doesn't exist in face_crops table,
-                # so we can't show existing face rectangles.
-                # We just count how many faces were detected.
+                # Load existing face crops WITH bounding boxes
                 cur.execute("""
                     SELECT
                         fc.id,
                         fc.branch_key,
                         fc.crop_path,
+                        fc.bbox,
+                        fc.quality_score,
                         fbr.label as person_name
                     FROM face_crops fc
                     LEFT JOIN face_branch_reps fbr ON fc.branch_key = fbr.branch_key
@@ -97,16 +96,30 @@ class FaceCropEditor(QDialog):
                 self.detected_faces = []
 
                 for row in rows:
-                    face_id, branch_key, crop_path, person_name = row
+                    face_id, branch_key, crop_path, bbox_str, quality_score, person_name = row
+
+                    # Parse bounding box if available
+                    bbox = None
+                    if bbox_str:
+                        try:
+                            parts = bbox_str.split(',')
+                            if len(parts) == 4:
+                                bbox = tuple(map(float, parts))  # (x, y, w, h)
+                        except Exception as e:
+                            logger.debug(f"[FaceCropEditor] Failed to parse bbox '{bbox_str}': {e}")
+
                     self.detected_faces.append({
                         'id': face_id,
                         'branch_key': branch_key,
                         'crop_path': crop_path,
+                        'bbox': bbox,
+                        'quality_score': quality_score or 0.0,
                         'person_name': person_name or "Unnamed",
                         'is_existing': True
                     })
 
-                logger.info(f"[FaceCropEditor] Found {len(self.detected_faces)} existing face(s) (bboxes not available)")
+                faces_with_bbox = sum(1 for f in self.detected_faces if f['bbox'])
+                logger.info(f"[FaceCropEditor] Found {len(self.detected_faces)} existing face(s), {faces_with_bbox} with bounding boxes")
 
         except Exception as e:
             logger.error(f"[FaceCropEditor] Failed to load existing faces: {e}")
@@ -132,10 +145,11 @@ class FaceCropEditor(QDialog):
         instructions = QGroupBox("ℹ️ Instructions")
         instructions_layout = QVBoxLayout()
         instructions_text = QLabel(
-            "• This photo has faces already detected (see stats)\n"
-            "• Draw red rectangles to add missed faces\n"
-            "• Click 'Add Manual Face' to start drawing\n"
+            "• GREEN rectangles = Auto-detected faces\n"
+            "• RED rectangles = Manually added faces\n"
+            "• Click 'Add Manual Face' to draw new rectangles\n"
             "• Drag on the photo to draw a rectangle\n"
+            "• Review detected faces in gallery below\n"
             "• Save when done to update the database"
         )
         instructions_text.setStyleSheet("color: #5f6368; font-size: 9pt;")
@@ -170,6 +184,37 @@ class FaceCropEditor(QDialog):
         )
         self.photo_viewer.manualFaceAdded.connect(self._on_manual_face_added)
         layout.addWidget(self.photo_viewer, 1)
+
+        # Face gallery - show all detected faces below the photo
+        if self.detected_faces:
+            gallery_group = QGroupBox(f"📸 Detected Faces ({len(self.detected_faces)})")
+            gallery_layout = QVBoxLayout()
+
+            # Scrollable area for face thumbnails
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            scroll.setFixedHeight(140)
+            scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
+            scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            scroll.setFrameShape(QScrollArea.NoFrame)
+
+            # Container for face cards in horizontal layout
+            gallery_container = QWidget()
+            gallery_h_layout = QHBoxLayout(gallery_container)
+            gallery_h_layout.setContentsMargins(5, 5, 5, 5)
+            gallery_h_layout.setSpacing(10)
+
+            # Create face card for each detected face
+            for face in self.detected_faces:
+                face_card = self._create_face_card(face)
+                gallery_h_layout.addWidget(face_card)
+
+            gallery_h_layout.addStretch()
+            scroll.setWidget(gallery_container)
+            gallery_layout.addWidget(scroll)
+
+            gallery_group.setLayout(gallery_layout)
+            layout.addWidget(gallery_group)
 
         # Action buttons
         button_layout = QHBoxLayout()
@@ -215,6 +260,71 @@ class FaceCropEditor(QDialog):
         button_layout.addWidget(save_btn)
 
         layout.addLayout(button_layout)
+
+    def _create_face_card(self, face: Dict) -> QWidget:
+        """Create a thumbnail card for a detected face."""
+        card = QFrame()
+        card.setFixedSize(100, 120)
+        card.setFrameShape(QFrame.StyledPanel)
+        card.setStyleSheet("""
+            QFrame {
+                background: white;
+                border: 1px solid #dadce0;
+                border-radius: 4px;
+            }
+            QFrame:hover {
+                border: 2px solid #1a73e8;
+            }
+        """)
+
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(5, 5, 5, 5)
+        layout.setSpacing(3)
+
+        # Face thumbnail
+        thumb_label = QLabel()
+        thumb_label.setFixedSize(90, 90)
+        thumb_label.setAlignment(Qt.AlignCenter)
+        thumb_label.setStyleSheet("background: #f8f9fa; border-radius: 3px;")
+
+        # Load thumbnail from crop_path
+        if os.path.exists(face['crop_path']):
+            try:
+                pixmap = QPixmap(face['crop_path'])
+                if not pixmap.isNull():
+                    thumb_label.setPixmap(pixmap.scaled(90, 90, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            except:
+                thumb_label.setText("👤")
+        else:
+            thumb_label.setText("👤")
+
+        layout.addWidget(thumb_label)
+
+        # Person name
+        name = face['person_name']
+        if len(name) > 12:
+            name = name[:9] + "..."
+        name_label = QLabel(name)
+        name_label.setAlignment(Qt.AlignCenter)
+        name_label.setStyleSheet("font-size: 9pt; font-weight: 600; color: #202124;")
+        layout.addWidget(name_label)
+
+        # Quality score badge
+        quality = face.get('quality_score', 0.0)
+        if quality >= 0.75:
+            quality_badge = QLabel(f"✅ {int(quality*100)}%")
+            quality_badge.setStyleSheet("color: #34a853; font-size: 8pt;")
+        elif quality >= 0.5:
+            quality_badge = QLabel(f"⚠️ {int(quality*100)}%")
+            quality_badge.setStyleSheet("color: #fbbc04; font-size: 8pt;")
+        else:
+            quality_badge = QLabel(f"❓ {int(quality*100)}%")
+            quality_badge.setStyleSheet("color: #ea4335; font-size: 8pt;")
+
+        quality_badge.setAlignment(Qt.AlignCenter)
+        layout.addWidget(quality_badge)
+
+        return card
 
     def _on_manual_face_added(self, bbox: Tuple[int, int, int, int]):
         """Handle a manually added face rectangle."""
@@ -394,11 +504,12 @@ class FacePhotoViewer(QWidget):
 
     def _load_photo(self):
         """
-        Load and display the photo with safety checks.
+        Load and display the photo with safety checks and EXIF auto-rotation.
 
         Validates:
         - File size (< 50MB)
         - Image dimensions (< 12000×12000 pixels)
+        - Auto-rotates based on EXIF orientation data
         """
         try:
             # Check file size first (before loading into memory)
@@ -421,29 +532,40 @@ class FacePhotoViewer(QWidget):
                 self.pixmap = None
                 return
 
-            # Load and check dimensions
-            self.pixmap = QPixmap(self.photo_path)
+            # Load photo with PIL for EXIF auto-rotation
+            pil_image = Image.open(self.photo_path)
 
-            if self.pixmap.isNull():
-                logger.error(f"[FacePhotoViewer] Failed to load photo: {self.photo_path}")
-                self.pixmap = None
-                return
+            # Auto-rotate based on EXIF orientation (FIX #1)
+            pil_image = ImageOps.exif_transpose(pil_image)
 
             # Check dimensions
-            if self.pixmap.width() > self.MAX_DIMENSION or self.pixmap.height() > self.MAX_DIMENSION:
-                logger.warning(f"[FacePhotoViewer] Photo dimensions too large: {self.pixmap.width()}×{self.pixmap.height()}")
+            if pil_image.width > self.MAX_DIMENSION or pil_image.height > self.MAX_DIMENSION:
+                logger.warning(f"[FacePhotoViewer] Photo dimensions too large: {pil_image.width}×{pil_image.height}")
                 from PySide6.QtWidgets import QMessageBox
                 QMessageBox.warning(
                     self,
                     "Photo Dimensions Too Large",
-                    f"This photo's dimensions are too large ({self.pixmap.width()}×{self.pixmap.height()}).\n\n"
+                    f"This photo's dimensions are too large ({pil_image.width}×{pil_image.height}).\n\n"
                     f"Maximum dimension: {self.MAX_DIMENSION}×{self.MAX_DIMENSION} pixels\n\n"
                     "Please resize the image first."
                 )
                 self.pixmap = None
                 return
 
-            logger.info(f"[FacePhotoViewer] Loaded photo: {self.pixmap.width()}×{self.pixmap.height()}, {file_size_mb:.1f}MB")
+            # Convert PIL image to QPixmap
+            if pil_image.mode != 'RGB':
+                pil_image = pil_image.convert('RGB')
+
+            data = pil_image.tobytes("raw", "RGB")
+            qimg = QImage(data, pil_image.width, pil_image.height, QImage.Format_RGB888)
+            self.pixmap = QPixmap.fromImage(qimg)
+
+            if self.pixmap.isNull():
+                logger.error(f"[FacePhotoViewer] Failed to convert photo to QPixmap")
+                self.pixmap = None
+                return
+
+            logger.info(f"[FacePhotoViewer] Loaded photo: {pil_image.width}×{pil_image.height}, {file_size_mb:.1f}MB (EXIF auto-rotated)")
 
         except Exception as e:
             logger.error(f"[FacePhotoViewer] Error loading photo: {e}")
@@ -535,10 +657,35 @@ class FacePhotoViewer(QWidget):
         # Calculate scale factor for rectangles
         scale = scaled_pixmap.width() / self.pixmap.width()
 
-        # Note: Cannot draw detected face rectangles because bbox data
-        # is not stored in face_crops table. We only show manual rectangles.
+        # Draw detected face rectangles (GREEN) - FIX #2
+        pen = QPen(QColor(52, 168, 83), 3)  # Green
+        painter.setPen(pen)
 
-        # Draw manual face rectangles (red)
+        for face in self.detected_faces:
+            bbox = face.get('bbox')
+            if bbox:
+                x, y, w, h = bbox
+
+                rect = QRect(
+                    int(x * scale) + x_offset,
+                    int(y * scale) + y_offset,
+                    int(w * scale),
+                    int(h * scale)
+                )
+                painter.drawRect(rect)
+
+                # Draw person name label
+                painter.setFont(QFont("Arial", 10, QFont.Bold))
+                painter.fillRect(
+                    rect.x(), rect.y() - 20,
+                    len(face['person_name']) * 7, 18,
+                    QColor(52, 168, 83, 200)
+                )
+                painter.setPen(QColor(255, 255, 255))  # White text
+                painter.drawText(rect.x() + 3, rect.y() - 6, face['person_name'])
+                painter.setPen(QColor(52, 168, 83))  # Back to green
+
+        # Draw manual face rectangles (RED)
         pen = QPen(QColor(234, 67, 53), 3)  # Red
         painter.setPen(pen)
 
@@ -556,9 +703,11 @@ class FacePhotoViewer(QWidget):
 
             # Draw "Manual" label
             painter.setFont(QFont("Arial", 10, QFont.Bold))
-            painter.drawText(rect.x(), rect.y() - 5, "Manual")
+            painter.fillRect(rect.x(), rect.y() - 20, 55, 18, QColor(234, 67, 53, 200))
+            painter.setPen(QColor(255, 255, 255))  # White text
+            painter.drawText(rect.x() + 3, rect.y() - 6, "Manual")
 
-        # Draw current drawing rectangle
+        # Draw current drawing rectangle (BLUE dashed)
         if self.drawing_mode and self.draw_start and self.draw_end:
             pen = QPen(QColor(26, 115, 232), 2, Qt.DashLine)  # Blue dashed
             painter.setPen(pen)
