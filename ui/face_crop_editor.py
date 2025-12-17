@@ -545,6 +545,21 @@ class FaceCropEditor(QDialog):
                 # User's rectangle defines search region, detection refines for consistent padding
                 refined_x, refined_y, refined_w, refined_h = self._refine_manual_bbox_with_detection(x, y, w, h)
 
+                # Check if refinement actually changed the bbox
+                was_refined = (x, y, w, h) != (refined_x, refined_y, refined_w, refined_h)
+
+                # ENHANCEMENT #4: Show before/after preview for user feedback
+                user_accepts = self._show_refinement_preview(
+                    original_bbox=(x, y, w, h),
+                    refined_bbox=(refined_x, refined_y, refined_w, refined_h),
+                    was_refined=was_refined
+                )
+
+                # Skip this face if user rejected the preview
+                if not user_accepts:
+                    logger.info(f"[FaceCropEditor] User skipped face {i+1}/{len(self.manual_faces)}")
+                    continue
+
                 # Crop face from original image (using refined coordinates)
                 crop_path = self._create_face_crop(refined_x, refined_y, refined_w, refined_h)
 
@@ -699,6 +714,219 @@ class FaceCropEditor(QDialog):
 
         dialog.exec()
 
+    def _show_refinement_preview(self, original_bbox: Tuple[int, int, int, int],
+                                  refined_bbox: Tuple[int, int, int, int],
+                                  was_refined: bool) -> bool:
+        """
+        ENHANCEMENT #4: Show before/after preview of face refinement.
+
+        Displays visual comparison to educate user and build confidence in AI refinement.
+
+        Args:
+            original_bbox: User's manually drawn rectangle (x, y, w, h)
+            refined_bbox: AI-refined bbox (x, y, w, h)
+            was_refined: Whether refinement actually changed the bbox
+
+        Returns:
+            True if user accepts, False to skip this face
+        """
+        from PySide6.QtWidgets import QDialog, QLabel, QVBoxLayout, QHBoxLayout, QPushButton
+        from PySide6.QtCore import Qt
+        from PySide6.QtGui import QPixmap, QImage
+
+        try:
+            # Load image
+            with Image.open(self.photo_path) as img:
+                img = ImageOps.exif_transpose(img)
+
+                # Create dialog
+                dialog = QDialog(self)
+                dialog.setWindowTitle("Face Crop Preview")
+                dialog.setModal(True)
+                dialog.setMinimumWidth(600)
+
+                layout = QVBoxLayout(dialog)
+                layout.setSpacing(16)
+                layout.setContentsMargins(20, 20, 20, 20)
+
+                # Header
+                if was_refined:
+                    header = QLabel("✨ AI refined your selection for better recognition")
+                    header.setStyleSheet("font-size: 12pt; font-weight: bold; color: #1a73e8; padding: 8px;")
+                else:
+                    header = QLabel("ℹ️ Preview of your face selection")
+                    header.setStyleSheet("font-size: 12pt; font-weight: bold; color: #5f6368; padding: 8px;")
+                header.setAlignment(Qt.AlignCenter)
+                layout.addWidget(header)
+
+                # Before/After containers
+                comparison_layout = QHBoxLayout()
+                comparison_layout.setSpacing(20)
+
+                # BEFORE (original rectangle)
+                before_container = QWidget()
+                before_layout = QVBoxLayout(before_container)
+                before_layout.setSpacing(8)
+
+                before_label = QLabel("Your Rectangle:")
+                before_label.setStyleSheet("font-size: 10pt; font-weight: bold; color: #5f6368;")
+                before_label.setAlignment(Qt.AlignCenter)
+                before_layout.addWidget(before_label)
+
+                x1, y1, w1, h1 = original_bbox
+                before_crop = img.crop((x1, y1, x1 + w1, y1 + h1))
+                before_pixmap = self._pil_to_qpixmap(before_crop)
+                before_img = QLabel()
+                before_img.setPixmap(before_pixmap.scaled(250, 250, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+                before_img.setAlignment(Qt.AlignCenter)
+                before_img.setStyleSheet("border: 2px solid #dadce0; background: #f8f9fa; padding: 8px;")
+                before_layout.addWidget(before_img)
+
+                before_size = QLabel(f"{w1} × {h1} pixels")
+                before_size.setStyleSheet("font-size: 9pt; color: #5f6368;")
+                before_size.setAlignment(Qt.AlignCenter)
+                before_layout.addWidget(before_size)
+
+                comparison_layout.addWidget(before_container)
+
+                # Arrow
+                if was_refined:
+                    arrow = QLabel("→")
+                    arrow.setStyleSheet("font-size: 24pt; color: #1a73e8; font-weight: bold;")
+                    arrow.setAlignment(Qt.AlignCenter)
+                    comparison_layout.addWidget(arrow)
+
+                # AFTER (refined with smart padding)
+                after_container = QWidget()
+                after_layout = QVBoxLayout(after_container)
+                after_layout.setSpacing(8)
+
+                if was_refined:
+                    after_label = QLabel("AI Refined + Smart Padding:")
+                    after_label.setStyleSheet("font-size: 10pt; font-weight: bold; color: #1a73e8;")
+                else:
+                    after_label = QLabel("With Smart Padding:")
+                    after_label.setStyleSheet("font-size: 10pt; font-weight: bold; color: #5f6368;")
+                after_label.setAlignment(Qt.AlignCenter)
+                after_layout.addWidget(after_label)
+
+                # Apply smart padding to refined bbox for preview
+                x2, y2, w2, h2 = refined_bbox
+                pad_w = int(w2 * 0.30)
+                pad_h = int(h2 * 0.30)
+                crop_x1 = max(0, x2 - pad_w)
+                crop_y1 = max(0, y2 - pad_h)
+                crop_x2 = min(img.width, x2 + w2 + pad_w)
+                crop_y2 = min(img.height, y2 + h2 + int(pad_h * 1.5))
+
+                after_crop = img.crop((crop_x1, crop_y1, crop_x2, crop_y2))
+                after_pixmap = self._pil_to_qpixmap(after_crop)
+                after_img = QLabel()
+                after_img.setPixmap(after_pixmap.scaled(250, 250, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+                after_img.setAlignment(Qt.AlignCenter)
+
+                if was_refined:
+                    after_img.setStyleSheet("border: 2px solid #1a73e8; background: #e8f0fe; padding: 8px;")
+                else:
+                    after_img.setStyleSheet("border: 2px solid #dadce0; background: #f8f9fa; padding: 8px;")
+                after_layout.addWidget(after_img)
+
+                after_size = QLabel(f"{crop_x2-crop_x1} × {crop_y2-crop_y1} pixels (+30% padding)")
+                after_size.setStyleSheet("font-size: 9pt; color: #5f6368;")
+                after_size.setAlignment(Qt.AlignCenter)
+                after_layout.addWidget(after_size)
+
+                comparison_layout.addWidget(after_container)
+
+                layout.addLayout(comparison_layout)
+
+                # Info message
+                info_text = QLabel()
+                if was_refined:
+                    info_text.setText(
+                        "💡 AI detected the face and adjusted the crop for:\n"
+                        "   • Better face alignment\n"
+                        "   • Consistent padding (includes shoulders)\n"
+                        "   • Improved recognition accuracy"
+                    )
+                    info_text.setStyleSheet("background: #e8f0fe; padding: 12px; border-radius: 6px; color: #1967d2; font-size: 9pt;")
+                else:
+                    info_text.setText(
+                        "💡 Smart padding added (industry standard):\n"
+                        "   • 30% padding around face\n"
+                        "   • Extra space below for shoulders\n"
+                        "   • More professional appearance"
+                    )
+                    info_text.setStyleSheet("background: #f8f9fa; padding: 12px; border-radius: 6px; color: #5f6368; font-size: 9pt;")
+                layout.addWidget(info_text)
+
+                # Buttons
+                button_layout = QHBoxLayout()
+                button_layout.addStretch()
+
+                accept_btn = QPushButton("✓ Looks Good")
+                accept_btn.setStyleSheet("""
+                    QPushButton {
+                        background: #1a73e8;
+                        color: white;
+                        border: none;
+                        padding: 10px 24px;
+                        border-radius: 6px;
+                        font-size: 10pt;
+                        font-weight: bold;
+                    }
+                    QPushButton:hover {
+                        background: #1557b0;
+                    }
+                """)
+                accept_btn.setDefault(True)
+                accept_btn.clicked.connect(dialog.accept)
+                button_layout.addWidget(accept_btn)
+
+                skip_btn = QPushButton("Skip This Face")
+                skip_btn.setStyleSheet("""
+                    QPushButton {
+                        background: #f1f3f4;
+                        color: #5f6368;
+                        border: 1px solid #dadce0;
+                        padding: 10px 24px;
+                        border-radius: 6px;
+                        font-size: 10pt;
+                    }
+                    QPushButton:hover {
+                        background: #e8eaed;
+                    }
+                """)
+                skip_btn.clicked.connect(dialog.reject)
+                button_layout.addWidget(skip_btn)
+
+                button_layout.addStretch()
+                layout.addLayout(button_layout)
+
+                # Show dialog
+                result = dialog.exec()
+                return result == QDialog.Accepted
+
+        except Exception as e:
+            logger.error(f"[FaceCropEditor] Error showing refinement preview: {e}", exc_info=True)
+            # If preview fails, accept by default (don't block the save)
+            return True
+
+    def _pil_to_qpixmap(self, pil_image: Image.Image) -> QPixmap:
+        """Convert PIL Image to QPixmap for Qt display."""
+        from PySide6.QtGui import QPixmap, QImage
+
+        # Convert to RGB if needed
+        if pil_image.mode != 'RGB':
+            pil_image = pil_image.convert('RGB')
+
+        # Convert PIL to QImage
+        data = pil_image.tobytes("raw", "RGB")
+        qimg = QImage(data, pil_image.width, pil_image.height, pil_image.width * 3, QImage.Format_RGB888)
+
+        # Convert QImage to QPixmap
+        return QPixmap.fromImage(qimg)
+
     def _refine_manual_bbox_with_detection(self, x: int, y: int, w: int, h: int) -> Tuple[int, int, int, int]:
         """
         ENHANCEMENT: Refine manually drawn bbox using face detection (Best Practice).
@@ -817,8 +1045,32 @@ class FaceCropEditor(QDialog):
                 # Without this, crops from rotated photos appear sideways
                 img = ImageOps.exif_transpose(img)
 
-                # Crop face region
-                face_crop = img.crop((x, y, x + w, y + h))
+                # ENHANCEMENT #2: Smart Padding (Industry Standard)
+                # Add 30% padding around face for professional appearance
+                # Asymmetric: more padding below to include shoulders (Google Photos style)
+                padding_factor = 0.30  # 30% padding (industry standard)
+                pad_w = int(w * padding_factor)
+                pad_h = int(h * padding_factor)
+
+                # Asymmetric padding: 50% more below for shoulders
+                pad_top = pad_h
+                pad_bottom = int(pad_h * 1.5)  # Include shoulders
+                pad_left = pad_w
+                pad_right = pad_w
+
+                # Calculate crop coordinates with smart padding
+                crop_x1 = max(0, x - pad_left)
+                crop_y1 = max(0, y - pad_top)
+                crop_x2 = min(img.width, x + w + pad_right)
+                crop_y2 = min(img.height, y + h + pad_bottom)
+
+                # Log padding details
+                original_size = f"{w}x{h}"
+                padded_size = f"{crop_x2-crop_x1}x{crop_y2-crop_y1}"
+                logger.info(f"[FaceCropEditor] Smart padding applied: {original_size} → {padded_size} (+30% with shoulders)")
+
+                # Crop face region with smart padding
+                face_crop = img.crop((crop_x1, crop_y1, crop_x2, crop_y2))
 
                 # Use centralized face_crops directory (not cluttering photo directories)
                 # Create .memorymate/face_crops/ in user's home or project directory
