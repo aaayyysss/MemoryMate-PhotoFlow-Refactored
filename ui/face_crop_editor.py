@@ -28,10 +28,10 @@ import cv2
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QScrollArea, QWidget, QMessageBox, QCheckBox, QSpinBox,
-    QGroupBox, QTextEdit, QFrame, QRadioButton, QProgressDialog
+    QGroupBox, QTextEdit, QFrame, QRadioButton, QProgressDialog, QApplication
 )
 from PySide6.QtGui import QPixmap, QImage, QPainter, QPen, QColor, QFont
-from PySide6.QtCore import Qt, QRect, QPoint, Signal, QApplication
+from PySide6.QtCore import Qt, QRect, QPoint, Signal
 
 from reference_db import ReferenceDB
 
@@ -2545,3 +2545,4 @@ if __name__ == '__main__':
         print("❌ Cancelled")
 
     sys.exit(0)
+
