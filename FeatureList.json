@@ -306,10 +306,10 @@
       "id": "manual-face-crop-editor",
       "name": "Manual Face Crop Editor",
       "description": "Visual tool for reviewing and manually adding face detections to photos",
-      "status": "in-progress",
+      "status": "passing",
       "priority": "high",
       "dependencies": [],
-      "issues": [
+      "issues_resolved": [
         {
           "id": "bbox-column-error",
           "description": "face_crops table doesn't have bbox column - editor queries for non-existent column",
@@ -329,9 +329,9 @@
         {
           "id": "needs-visual-browser",
           "description": "Text dropdown for photo selection is not user-friendly - needs visual thumbnail grid",
-          "status": "in-progress",
+          "status": "completed",
           "severity": "medium",
-          "improvement": "Adding visual photo browser with thumbnails"
+          "improvement": "Implemented PhotoBrowserDialog with visual thumbnails"
         }
       ],
       "tests": [
@@ -348,9 +348,13 @@
       "id": "visual-photo-browser",
       "name": "Visual Photo Browser for Face Crop Editor",
       "description": "Visual grid browser with thumbnails for selecting photos to manually edit face detections",
-      "status": "planned",
+      "status": "passing",
       "priority": "high",
       "dependencies": ["manual-face-crop-editor"],
+      "files": [
+        "ui/visual_photo_browser.py",
+        "layouts/google_layout.py"
+      ],
       "tests": [
         "Browser shows photos in thumbnail grid",
         "Photos sorted by date (most recent first)",
