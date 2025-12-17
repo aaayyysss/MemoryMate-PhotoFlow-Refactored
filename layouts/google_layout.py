@@ -9890,9 +9890,13 @@ class GooglePhotosLayout(BaseLayout):
     def _open_manual_face_crop_editor(self, photo_path: str):
         """Open Manual Face Crop Editor for the specified photo."""
         try:
+            logger.info(f"[GooglePhotosLayout] Preparing to open Face Crop Editor for: {photo_path}")
+
             from ui.face_crop_editor import FaceCropEditor
+            logger.info(f"[GooglePhotosLayout] ✓ FaceCropEditor imported")
 
             if not os.path.exists(photo_path):
+                logger.warning(f"[GooglePhotosLayout] Photo not found: {photo_path}")
                 QMessageBox.warning(
                     self.main_window if hasattr(self, 'main_window') else None,
                     "Photo Not Found",
@@ -9900,18 +9904,25 @@ class GooglePhotosLayout(BaseLayout):
                 )
                 return
 
+            logger.info(f"[GooglePhotosLayout] Creating FaceCropEditor instance...")
+            logger.info(f"[GooglePhotosLayout]   - photo_path: {photo_path}")
+            logger.info(f"[GooglePhotosLayout]   - project_id: {self.project_id}")
+            logger.info(f"[GooglePhotosLayout]   - parent: {self.main_window if hasattr(self, 'main_window') else None}")
+
             editor = FaceCropEditor(
                 photo_path=photo_path,
                 project_id=self.project_id,
                 parent=self.main_window if hasattr(self, 'main_window') else None
             )
 
+            logger.info(f"[GooglePhotosLayout] ✓ FaceCropEditor instance created successfully")
+
             # CRITICAL FIX: Don't use signal connection - check flag after dialog closes
             # Signal connection causes "Signal source has been deleted" error because
             # dialog is deleted before QTimer fires in the old implementation
             # editor.faceCropsUpdated.connect(self._refresh_people_sidebar)  # REMOVED
 
-            logger.info(f"[GooglePhotosLayout] Opening Face Crop Editor for: {photo_path}")
+            logger.info(f"[GooglePhotosLayout] Showing Face Crop Editor dialog...")
 
             # CRITICAL FIX 2: Capture flag value BEFORE dialog closes
             # Accessing editor.faces_were_saved after exec() can cause Qt object deletion crashes

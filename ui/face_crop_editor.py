@@ -28,7 +28,8 @@ import cv2
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QScrollArea, QWidget, QMessageBox, QCheckBox, QSpinBox,
-    QGroupBox, QTextEdit, QFrame, QRadioButton, QProgressDialog, QApplication
+    QGroupBox, QTextEdit, QFrame, QRadioButton, QProgressDialog,
+    QApplication
 )
 from PySide6.QtGui import QPixmap, QImage, QPainter, QPen, QColor, QFont
 from PySide6.QtCore import Qt, QRect, QPoint, Signal
@@ -56,21 +57,38 @@ class FaceCropEditor(QDialog):
             project_id: Current project ID
             parent: Parent widget
         """
-        super().__init__(parent)
+        try:
+            logger.info(f"[FaceCropEditor] Initializing Face Crop Editor for: {photo_path}")
+            super().__init__(parent)
+            logger.info(f"[FaceCropEditor] ✓ QDialog parent class initialized")
 
-        self.photo_path = photo_path
-        self.project_id = project_id
-        self.detected_faces = []  # Existing face detections
-        self.manual_faces = []  # Manually added faces
-        self.faces_were_saved = False  # Flag to indicate if manual faces were successfully saved
+            self.photo_path = photo_path
+            self.project_id = project_id
+            self.detected_faces = []  # Existing face detections
+            self.manual_faces = []  # Manually added faces
+            self.faces_were_saved = False  # Flag to indicate if manual faces were successfully saved
 
-        photo_name = os.path.basename(photo_path)
-        self.setWindowTitle(f"Face Crop Editor - {photo_name}")
-        self.setModal(True)
-        self.resize(1200, 800)
+            photo_name = os.path.basename(photo_path)
+            self.setWindowTitle(f"Face Crop Editor - {photo_name}")
+            self.setModal(True)
+            self.resize(1200, 800)
+            logger.info(f"[FaceCropEditor] ✓ Dialog properties set")
 
-        self._load_existing_faces()
-        self._create_ui()
+            logger.info(f"[FaceCropEditor] Loading existing faces from database...")
+            self._load_existing_faces()
+            logger.info(f"[FaceCropEditor] ✓ Existing faces loaded ({len(self.detected_faces)} faces)")
+
+            logger.info(f"[FaceCropEditor] Creating UI...")
+            self._create_ui()
+            logger.info(f"[FaceCropEditor] ✓ UI created successfully")
+
+            logger.info(f"[FaceCropEditor] ✓ Face Crop Editor initialized successfully")
+
+        except Exception as e:
+            logger.error(f"[FaceCropEditor] CRITICAL ERROR during initialization: {e}", exc_info=True)
+            import traceback
+            traceback.print_exc()
+            raise  # Re-raise to prevent partial initialization
 
     def _load_existing_faces(self):
         """Load existing face detections with bounding boxes for this photo (supports both old and new schema)."""
@@ -2187,19 +2205,29 @@ class FacePhotoViewer(QWidget):
     MAX_DIMENSION = 12000  # Maximum width or height (12000 pixels)
 
     def __init__(self, photo_path: str, detected_faces: List[Dict], manual_faces: List[Dict], parent=None):
-        super().__init__(parent)
+        try:
+            logger.info(f"[FacePhotoViewer] Initializing photo viewer for: {photo_path}")
+            super().__init__(parent)
 
-        self.photo_path = photo_path
-        self.detected_faces = detected_faces
-        self.manual_faces = manual_faces
+            self.photo_path = photo_path
+            self.detected_faces = detected_faces
+            self.manual_faces = manual_faces
 
-        self.drawing_mode = False
-        self.keep_drawing_mode = False  # NEW: Flag to keep drawing mode enabled after each draw
-        self.draw_start = None
-        self.draw_end = None
+            self.drawing_mode = False
+            self.keep_drawing_mode = False  # NEW: Flag to keep drawing mode enabled after each draw
+            self.draw_start = None
+            self.draw_end = None
 
-        self.setMinimumHeight(400)
-        self._load_photo()
+            self.setMinimumHeight(400)
+            logger.info(f"[FacePhotoViewer] Loading photo from disk...")
+            self._load_photo()
+            logger.info(f"[FacePhotoViewer] ✓ Photo viewer initialized successfully")
+
+        except Exception as e:
+            logger.error(f"[FacePhotoViewer] CRITICAL ERROR during initialization: {e}", exc_info=True)
+            import traceback
+            traceback.print_exc()
+            raise  # Re-raise to prevent partial initialization
 
     def _load_photo(self):
         """
