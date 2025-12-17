@@ -9864,48 +9864,20 @@ class GooglePhotosLayout(BaseLayout):
             )
 
     def _open_manual_face_crop_selector(self):
-        """Show dialog to select a photo for manual face cropping."""
+        """Show visual photo browser to select a photo for manual face cropping."""
         try:
-            from PySide6.QtWidgets import QInputDialog
-            from reference_db import ReferenceDB
+            from ui.visual_photo_browser import PhotoBrowserDialog
 
-            # Get list of photos
-            db = ReferenceDB()
-            with db._connect() as conn:
-                cur = conn.cursor()
-                cur.execute("""
-                    SELECT DISTINCT path
-                    FROM photo_metadata
-                    WHERE project_id = ?
-                    ORDER BY date_taken DESC
-                    LIMIT 100
-                """, (self.project_id,))
-
-                photos = [row[0] for row in cur.fetchall()]
-
-            if not photos:
-                QMessageBox.information(
-                    self.main_window if hasattr(self, 'main_window') else None,
-                    "No Photos",
-                    "No photos found in this project."
-                )
-                return
-
-            # Show selection dialog
-            photo_names = [os.path.basename(p) for p in photos]
-            selected_name, ok = QInputDialog.getItem(
-                self.main_window if hasattr(self, 'main_window') else None,
-                "Select Photo",
-                "Choose a photo to review face detections:",
-                photo_names,
-                0,
-                False
+            # Show visual photo browser
+            browser = PhotoBrowserDialog(
+                project_id=self.project_id,
+                parent=self.main_window if hasattr(self, 'main_window') else None
             )
 
-            if ok and selected_name:
-                selected_index = photo_names.index(selected_name)
-                selected_path = photos[selected_index]
-                self._open_manual_face_crop_editor(selected_path)
+            # Connect signal to open editor when photo is selected
+            browser.photoSelected.connect(self._open_manual_face_crop_editor)
+
+            browser.exec()
 
         except Exception as e:
             logger.error(f"[GooglePhotosLayout] Failed to open photo selector: {e}")

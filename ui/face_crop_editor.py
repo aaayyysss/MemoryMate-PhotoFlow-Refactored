@@ -68,20 +68,22 @@ class FaceCropEditor(QDialog):
         self._create_ui()
 
     def _load_existing_faces(self):
-        """Load existing face detections for this photo."""
+        """Load count of existing face detections for this photo."""
         db = ReferenceDB()
 
         try:
             with db._connect() as conn:
                 cur = conn.cursor()
 
-                # Get existing face crops
+                # Count existing face crops for this photo
+                # Note: bbox column doesn't exist in face_crops table,
+                # so we can't show existing face rectangles.
+                # We just count how many faces were detected.
                 cur.execute("""
                     SELECT
                         fc.id,
-                        fc.bbox,
                         fc.branch_key,
-                        fc.quality_score,
+                        fc.crop_path,
                         fbr.label as person_name
                     FROM face_crops fc
                     LEFT JOIN face_branch_reps fbr ON fc.branch_key = fbr.branch_key
@@ -93,25 +95,16 @@ class FaceCropEditor(QDialog):
                 self.detected_faces = []
 
                 for row in rows:
-                    face_id, bbox, branch_key, quality, person_name = row
+                    face_id, branch_key, crop_path, person_name = row
+                    self.detected_faces.append({
+                        'id': face_id,
+                        'branch_key': branch_key,
+                        'crop_path': crop_path,
+                        'person_name': person_name or "Unnamed",
+                        'is_existing': True
+                    })
 
-                    if bbox:
-                        try:
-                            parts = bbox.split(',')
-                            if len(parts) == 4:
-                                x, y, w, h = map(float, parts)
-                                self.detected_faces.append({
-                                    'id': face_id,
-                                    'bbox': (int(x), int(y), int(w), int(h)),
-                                    'branch_key': branch_key,
-                                    'quality': quality or 0.0,
-                                    'person_name': person_name or "Unnamed",
-                                    'is_existing': True
-                                })
-                        except Exception as e:
-                            logger.warning(f"[FaceCropEditor] Failed to parse bbox '{bbox}': {e}")
-
-                logger.info(f"[FaceCropEditor] Loaded {len(self.detected_faces)} existing face(s)")
+                logger.info(f"[FaceCropEditor] Found {len(self.detected_faces)} existing face(s) (bboxes not available)")
 
         except Exception as e:
             logger.error(f"[FaceCropEditor] Failed to load existing faces: {e}")
@@ -137,10 +130,10 @@ class FaceCropEditor(QDialog):
         instructions = QGroupBox("ℹ️ Instructions")
         instructions_layout = QVBoxLayout()
         instructions_text = QLabel(
-            "• Green rectangles show detected faces\n"
-            "• Red rectangles show manual additions\n"
-            "• Click 'Add Manual Face' to draw a new rectangle\n"
-            "• Use the photo viewer to verify detections\n"
+            "• This photo has faces already detected (see stats)\n"
+            "• Draw red rectangles to add missed faces\n"
+            "• Click 'Add Manual Face' to start drawing\n"
+            "• Drag on the photo to draw a rectangle\n"
             "• Save when done to update the database"
         )
         instructions_text.setStyleSheet("color: #5f6368; font-size: 9pt;")
@@ -153,13 +146,13 @@ class FaceCropEditor(QDialog):
         stats_layout = QVBoxLayout()
 
         detected_count = len(self.detected_faces)
-        stats_layout.addWidget(QLabel(f"Detected Faces: {detected_count}"))
+        stats_layout.addWidget(QLabel(f"Already Detected: {detected_count} face(s)"))
 
         if self.detected_faces:
-            avg_quality = sum(f['quality'] for f in self.detected_faces) / len(self.detected_faces)
-            stats_layout.addWidget(QLabel(f"Avg Quality: {avg_quality*100:.1f}%"))
+            people_list = set(f['person_name'] for f in self.detected_faces)
+            stats_layout.addWidget(QLabel(f"People: {', '.join(list(people_list)[:3])}..."))
 
-        self.manual_count_label = QLabel(f"Manual Faces: 0")
+        self.manual_count_label = QLabel(f"Manual Additions: 0")
         stats_layout.addWidget(self.manual_count_label)
 
         stats_group.setLayout(stats_layout)
@@ -328,18 +321,13 @@ class FaceCropEditor(QDialog):
             crop_path: Path to saved face crop
             bbox: Bounding box (x, y, w, h)
         """
-        from services.face_service import FaceService
-
         try:
-            # Use FaceService to add the face crop
-            face_service = FaceService()
-
             # Generate a new branch_key for this face
             # It will be clustered later and potentially merged with existing people
             import uuid
             branch_key = f"manual_{uuid.uuid4().hex[:8]}"
 
-            # Add to database
+            # Add to database using direct DB operations
             db = ReferenceDB()
             with db._connect() as conn:
                 cur = conn.cursor()
@@ -488,27 +476,8 @@ class FacePhotoViewer(QWidget):
         # Calculate scale factor for rectangles
         scale = scaled_pixmap.width() / self.pixmap.width()
 
-        # Draw detected face rectangles (green)
-        pen = QPen(QColor(52, 168, 83), 3)  # Green
-        painter.setPen(pen)
-
-        for face in self.detected_faces:
-            bbox = face['bbox']
-            x, y, w, h = bbox
-
-            # Scale to widget coordinates
-            rect = QRect(
-                int(x * scale) + x_offset,
-                int(y * scale) + y_offset,
-                int(w * scale),
-                int(h * scale)
-            )
-            painter.drawRect(rect)
-
-            # Draw person name if available
-            if face['person_name']:
-                painter.setFont(QFont("Arial", 10, QFont.Bold))
-                painter.drawText(rect.x(), rect.y() - 5, face['person_name'])
+        # Note: Cannot draw detected face rectangles because bbox data
+        # is not stored in face_crops table. We only show manual rectangles.
 
         # Draw manual face rectangles (red)
         pen = QPen(QColor(234, 67, 53), 3)  # Red

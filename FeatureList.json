@@ -268,11 +268,113 @@
         "People tree refreshes after merge",
         "Skip button allows dismissing suggestions"
       ]
+    },
+    {
+      "id": "people-section-search-filter",
+      "name": "People Section: Search/Filter",
+      "description": "Real-time search and filtering in People section with count display (X of Y people)",
+      "status": "passing",
+      "priority": "high",
+      "dependencies": [],
+      "tests": [
+        "Search input widget appears at top of People section",
+        "Search is case-insensitive and supports partial matching",
+        "People cards filter in real-time as user types",
+        "Count label shows 'X of Y people' when filtering",
+        "Clear button resets search and shows all people",
+        "Search state persists during section visibility"
+      ]
+    },
+    {
+      "id": "face-quality-dashboard",
+      "name": "Face Quality Dashboard",
+      "description": "Analytics dashboard showing face detection coverage, quality distribution, and review tools",
+      "status": "passing",
+      "priority": "high",
+      "dependencies": [],
+      "tests": [
+        "Dashboard accessible from People Tools menu",
+        "Overview tab shows total photos, coverage %, quality distribution",
+        "Quality Review tab lists low-quality faces (<40%)",
+        "Missing Faces tab lists photos with no faces detected",
+        "Action buttons open Manual Face Crop Editor for specific photos",
+        "Works with or without quality_score column (backward compatible)",
+        "Statistics are accurate and update when database changes"
+      ]
+    },
+    {
+      "id": "manual-face-crop-editor",
+      "name": "Manual Face Crop Editor",
+      "description": "Visual tool for reviewing and manually adding face detections to photos",
+      "status": "passing",
+      "priority": "high",
+      "dependencies": [],
+      "issues_resolved": [
+        {
+          "id": "bbox-column-error",
+          "description": "face_crops table doesn't have bbox column - editor queries for non-existent column",
+          "status": "fixed",
+          "severity": "high",
+          "error": "no such column: fc.bbox",
+          "resolution": "Removed bbox dependency - editor now only shows count of detected faces and allows drawing manual rectangles"
+        },
+        {
+          "id": "missing-face-service",
+          "description": "services.face_service module doesn't exist - import fails when saving",
+          "status": "fixed",
+          "severity": "high",
+          "error": "No module named 'services.face_service'",
+          "resolution": "Removed unused import - using direct DB operations with ReferenceDB instead"
+        },
+        {
+          "id": "needs-visual-browser",
+          "description": "Text dropdown for photo selection is not user-friendly - needs visual thumbnail grid",
+          "status": "completed",
+          "severity": "medium",
+          "improvement": "Implemented PhotoBrowserDialog with visual thumbnails"
+        }
+      ],
+      "tests": [
+        "Editor accessible from People Tools menu",
+        "Editor shows photo with detected face rectangles (green)",
+        "User can draw new rectangles for manual faces (red)",
+        "Manual faces save to database and create new clusters",
+        "People section refreshes after manual face addition",
+        "Drawing mode works with mouse drag",
+        "Coordinates scale correctly to image dimensions"
+      ]
+    },
+    {
+      "id": "visual-photo-browser",
+      "name": "Visual Photo Browser for Face Crop Editor",
+      "description": "Visual grid browser with thumbnails for selecting photos to manually edit face detections",
+      "status": "passing",
+      "priority": "high",
+      "dependencies": ["manual-face-crop-editor"],
+      "files": [
+        "ui/visual_photo_browser.py",
+        "layouts/google_layout.py"
+      ],
+      "tests": [
+        "Browser shows photos in thumbnail grid",
+        "Photos sorted by date (most recent first)",
+        "Clicking photo opens Face Crop Editor for that photo",
+        "Shows photo metadata (date, existing face count)",
+        "Filter options: all photos, photos without faces, photos with low-quality faces",
+        "Keyboard navigation (arrow keys, Enter to select)",
+        "Search/filter by photo name or date",
+        "Pagination or infinite scroll for large libraries"
+      ]
     }
   ],
   "metadata": {
     "created": "2025-12-15",
-    "last_updated": "2025-12-16",
-    "version": "1.0"
+    "last_updated": "2025-12-17",
+    "version": "1.1",
+    "current_session": {
+      "branch": "claude/audit-accordion-sidebar-BXWgy",
+      "focus": "Fix face crop editor errors + add visual photo browser",
+      "issues_fixing": ["bbox-column-error", "missing-face-service", "needs-visual-browser"]
+    }
   }
 }
