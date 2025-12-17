@@ -524,16 +524,59 @@ class FaceCropEditor(QDialog):
             with db._connect() as conn:
                 cur = conn.cursor()
 
-                # Insert face crop
-                bbox_str = f"{bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]}"
+                # CRITICAL: Detect database schema to support both old and new versions
+                # Check which columns exist in face_crops table
+                cur.execute("PRAGMA table_info(face_crops)")
+                columns = {row[1] for row in cur.fetchall()}
 
-                # Default quality_score = 0.5 for manual crops
-                # (medium quality, human-verified but may have issues)
-                cur.execute("""
-                    INSERT INTO face_crops
-                    (project_id, image_path, crop_path, bbox, branch_key, is_representative, quality_score)
-                    VALUES (?, ?, ?, ?, ?, 1, 0.5)
-                """, (self.project_id, self.photo_path, crop_path, bbox_str, branch_key))
+                has_bbox_text = 'bbox' in columns
+                has_bbox_separate = all(col in columns for col in ['bbox_x', 'bbox_y', 'bbox_w', 'bbox_h'])
+                has_quality_score = 'quality_score' in columns
+
+                # Prepare INSERT based on schema
+                if has_bbox_text:
+                    # New schema: single bbox TEXT column
+                    bbox_str = f"{bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]}"
+
+                    if has_quality_score:
+                        # New schema with quality_score
+                        cur.execute("""
+                            INSERT INTO face_crops
+                            (project_id, image_path, crop_path, bbox, branch_key, is_representative, quality_score)
+                            VALUES (?, ?, ?, ?, ?, 1, 0.5)
+                        """, (self.project_id, self.photo_path, crop_path, bbox_str, branch_key))
+                    else:
+                        # New schema without quality_score
+                        cur.execute("""
+                            INSERT INTO face_crops
+                            (project_id, image_path, crop_path, bbox, branch_key, is_representative)
+                            VALUES (?, ?, ?, ?, ?, 1)
+                        """, (self.project_id, self.photo_path, crop_path, bbox_str, branch_key))
+
+                elif has_bbox_separate:
+                    # Old schema: separate bbox_x, bbox_y, bbox_w, bbox_h columns
+                    x, y, w, h = bbox
+
+                    if has_quality_score:
+                        # Old schema with quality_score
+                        cur.execute("""
+                            INSERT INTO face_crops
+                            (project_id, image_path, crop_path, bbox_x, bbox_y, bbox_w, bbox_h,
+                             branch_key, is_representative, quality_score)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 0.5)
+                        """, (self.project_id, self.photo_path, crop_path, x, y, w, h, branch_key))
+                    else:
+                        # Old schema without quality_score
+                        cur.execute("""
+                            INSERT INTO face_crops
+                            (project_id, image_path, crop_path, bbox_x, bbox_y, bbox_w, bbox_h,
+                             branch_key, is_representative)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
+                        """, (self.project_id, self.photo_path, crop_path, x, y, w, h, branch_key))
+
+                else:
+                    # Fallback: No bbox columns (very old schema or corrupted database)
+                    raise ValueError("Database schema is missing bbox columns (both TEXT and separate columns)")
 
                 # Create face_branch_reps entry
                 cur.execute("""
@@ -544,7 +587,7 @@ class FaceCropEditor(QDialog):
 
                 conn.commit()
 
-                logger.info(f"[FaceCropEditor] Added manual face to database: {branch_key}")
+                logger.info(f"[FaceCropEditor] Added manual face to database: {branch_key} (schema: {'bbox_text' if has_bbox_text else 'bbox_separate'})")
 
         except Exception as e:
             logger.error(f"[FaceCropEditor] Failed to add face to database: {e}")
