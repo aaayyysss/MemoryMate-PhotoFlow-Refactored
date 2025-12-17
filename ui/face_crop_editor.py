@@ -543,7 +543,8 @@ class FaceCropEditor(QDialog):
 
                 # ENHANCEMENT: Refine manual bbox using face detection (Best Practice)
                 # User's rectangle defines search region, detection refines for consistent padding
-                refined_x, refined_y, refined_w, refined_h = self._refine_manual_bbox_with_detection(x, y, w, h)
+                refined_result = self._refine_manual_bbox_with_detection(x, y, w, h)
+                (refined_x, refined_y, refined_w, refined_h), face_data = refined_result
 
                 # Check if refinement actually changed the bbox
                 was_refined = (x, y, w, h) != (refined_x, refined_y, refined_w, refined_h)
@@ -564,6 +565,33 @@ class FaceCropEditor(QDialog):
                 crop_path = self._create_face_crop(refined_x, refined_y, refined_w, refined_h)
 
                 if crop_path:
+                    # ENHANCEMENT #3: Quality Assessment
+                    # Only assess quality if we have face detection data
+                    if face_data:
+                        logger.debug(f"[FaceCropEditor] Assessing quality for face {i+1}/{len(self.manual_faces)}")
+                        quality_report = self._assess_face_quality(crop_path, face_data)
+
+                        # Show warning if quality is low
+                        if not quality_report['is_acceptable']:
+                            logger.warning(f"[FaceCropEditor] Low quality detected (score: {quality_report['overall_score']:.0f}/100)")
+                            user_accepts_quality = self._show_quality_warning(quality_report, crop_path)
+
+                            if not user_accepts_quality:
+                                logger.info(f"[FaceCropEditor] User skipped low-quality face {i+1}/{len(self.manual_faces)}")
+                                # Delete the crop file
+                                try:
+                                    os.unlink(crop_path)
+                                    logger.debug(f"[FaceCropEditor] Deleted rejected crop: {crop_path}")
+                                except Exception as del_err:
+                                    logger.warning(f"[FaceCropEditor] Failed to delete crop: {del_err}")
+                                continue  # Skip to next face
+                            else:
+                                logger.info(f"[FaceCropEditor] User accepted low-quality face (score: {quality_report['overall_score']:.0f}/100)")
+                        else:
+                            logger.info(f"[FaceCropEditor] Quality check passed (score: {quality_report['overall_score']:.0f}/100)")
+                    else:
+                        logger.debug(f"[FaceCropEditor] Skipping quality assessment (no face detection data)")
+
                     # Add to database (with refined bbox, not original manual bbox)
                     refined_bbox = (refined_x, refined_y, refined_w, refined_h)
                     branch_key = self._add_face_to_database(crop_path, refined_bbox)
@@ -927,6 +955,440 @@ class FaceCropEditor(QDialog):
         # Convert QImage to QPixmap
         return QPixmap.fromImage(qimg)
 
+    def _align_face_with_landmarks(self, img: Image.Image, face_data: dict, search_x: int, search_y: int) -> Tuple[int, int, int, int]:
+        """
+        ENHANCEMENT #1: Align face using facial landmarks (eye positions).
+
+        Rotates image to make eyes horizontal for better recognition accuracy.
+        This is industry standard used by Google Photos, Apple Photos, etc.
+
+        Args:
+            img: PIL Image (already EXIF-rotated)
+            face_data: Detection result with 'kps' (keypoints/landmarks)
+            search_x, search_y: Offset of search region in original image
+
+        Returns:
+            (x, y, w, h): Aligned face bbox in original image coordinates
+        """
+        import numpy as np
+        import cv2
+
+        try:
+            kps = face_data.get('kps')
+            if not kps or len(kps) < 2:
+                logger.debug("[FaceCropEditor] No landmarks available - skipping alignment")
+                # Fall back to bbox-only (no alignment)
+                return (
+                    search_x + face_data['bbox_x'],
+                    search_y + face_data['bbox_y'],
+                    face_data['bbox_w'],
+                    face_data['bbox_h']
+                )
+
+            # Extract eye positions (landmarks 0 and 1)
+            left_eye = np.array(kps[0])   # [x, y]
+            right_eye = np.array(kps[1])  # [x, y]
+
+            # Convert to original image coordinates
+            left_eye_abs = left_eye + np.array([search_x, search_y])
+            right_eye_abs = right_eye + np.array([search_x, search_y])
+
+            # Calculate angle between eyes
+            dx = right_eye_abs[0] - left_eye_abs[0]
+            dy = right_eye_abs[1] - left_eye_abs[1]
+            angle = np.degrees(np.arctan2(dy, dx))
+
+            logger.debug(f"[FaceCropEditor] Eye angle: {angle:.2f}° (0° = perfectly horizontal)")
+
+            # If angle is within ±3°, no rotation needed
+            if abs(angle) < 3.0:
+                logger.info(f"[FaceCropEditor] Face already aligned ({angle:.2f}°) - skipping rotation")
+                return (
+                    search_x + face_data['bbox_x'],
+                    search_y + face_data['bbox_y'],
+                    face_data['bbox_w'],
+                    face_data['bbox_h']
+                )
+
+            # Calculate center point between eyes for rotation
+            center_x = (left_eye_abs[0] + right_eye_abs[0]) / 2
+            center_y = (left_eye_abs[1] + right_eye_abs[1]) / 2
+
+            # Convert PIL to CV2 for rotation
+            img_array = np.array(img)
+            img_cv = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
+
+            # Create rotation matrix
+            M = cv2.getRotationMatrix2D((center_x, center_y), angle, 1.0)
+
+            # Calculate new image bounds to avoid cropping
+            cos = np.abs(M[0, 0])
+            sin = np.abs(M[0, 1])
+            new_w = int((img.height * sin) + (img.width * cos))
+            new_h = int((img.height * cos) + (img.width * sin))
+
+            # Adjust rotation matrix for new bounds
+            M[0, 2] += (new_w / 2) - center_x
+            M[1, 2] += (new_h / 2) - center_y
+
+            # Rotate image
+            rotated = cv2.warpAffine(img_cv, M, (new_w, new_h), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=(255, 255, 255))
+
+            # Convert back to PIL
+            rotated_rgb = cv2.cvtColor(rotated, cv2.COLOR_BGR2RGB)
+            rotated_pil = Image.fromarray(rotated_rgb)
+
+            # Save rotated image temporarily for detection
+            import tempfile
+            with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as tmp:
+                rotated_pil.save(tmp.name, "JPEG", quality=95)
+                temp_path = tmp.name
+
+            # Re-run detection on rotated image to get aligned bbox
+            from services.face_detection_service import FaceDetectionService
+            detector = FaceDetectionService()
+            detected_faces = detector.detect_faces(temp_path, project_id=self.project_id)
+
+            # Clean up temp file
+            try:
+                os.unlink(temp_path)
+            except:
+                pass
+
+            if len(detected_faces) == 1:
+                # Get bbox from aligned detection
+                aligned_face = detected_faces[0]
+                aligned_x = aligned_face['bbox_x']
+                aligned_y = aligned_face['bbox_y']
+                aligned_w = aligned_face['bbox_w']
+                aligned_h = aligned_face['bbox_h']
+
+                # Transform back to original image coordinates
+                # We need to reverse the rotation transformation
+                # For simplicity, we'll use the bbox from the rotated image
+                # and map it back to the original image space
+
+                # Calculate the corners of the aligned bbox
+                corners = np.array([
+                    [aligned_x, aligned_y],
+                    [aligned_x + aligned_w, aligned_y],
+                    [aligned_x, aligned_y + aligned_h],
+                    [aligned_x + aligned_w, aligned_y + aligned_h]
+                ], dtype=np.float32)
+
+                # Reverse rotation matrix
+                M_inv = cv2.invertAffineTransform(M)
+
+                # Transform corners back to original space
+                corners_homogeneous = np.hstack([corners, np.ones((4, 1))])
+                original_corners = corners_homogeneous @ M_inv.T
+
+                # Get bounding box of transformed corners
+                min_x = int(np.min(original_corners[:, 0]))
+                min_y = int(np.min(original_corners[:, 1]))
+                max_x = int(np.max(original_corners[:, 0]))
+                max_y = int(np.max(original_corners[:, 1]))
+
+                # Ensure within image bounds
+                min_x = max(0, min(min_x, img.width - 1))
+                min_y = max(0, min(min_y, img.height - 1))
+                max_x = max(0, min(max_x, img.width))
+                max_y = max(0, min(max_y, img.height))
+
+                final_w = max_x - min_x
+                final_h = max_y - min_y
+
+                logger.info(f"[FaceCropEditor] ✅ Face aligned: rotated {angle:.2f}° for horizontal eyes")
+                logger.debug(f"[FaceCropEditor] Aligned bbox: ({min_x}, {min_y}, {final_w}, {final_h})")
+
+                return (min_x, min_y, final_w, final_h)
+            else:
+                logger.warning(f"[FaceCropEditor] Re-detection after rotation found {len(detected_faces)} faces - using original bbox")
+                return (
+                    search_x + face_data['bbox_x'],
+                    search_y + face_data['bbox_y'],
+                    face_data['bbox_w'],
+                    face_data['bbox_h']
+                )
+
+        except Exception as e:
+            logger.error(f"[FaceCropEditor] Face alignment failed: {e}", exc_info=True)
+            # Fall back to original bbox
+            return (
+                search_x + face_data['bbox_x'],
+                search_y + face_data['bbox_y'],
+                face_data['bbox_w'],
+                face_data['bbox_h']
+            )
+
+    def _assess_face_quality(self, face_crop_path: str, face_data: dict) -> dict:
+        """
+        ENHANCEMENT #3: Assess face crop quality and detect issues.
+
+        Analyzes blur, brightness, contrast, and size to prevent low-quality crops
+        that hurt recognition accuracy.
+
+        Args:
+            face_crop_path: Path to saved face crop image
+            face_data: Detection data with confidence score
+
+        Returns:
+            dict with 'overall_score' (0-100), 'issues' (list), 'is_acceptable' (bool)
+        """
+        import cv2
+        import numpy as np
+
+        quality_report = {
+            'overall_score': 50.0,  # Start at 50
+            'issues': [],
+            'confidence': face_data.get('confidence', 0.0),
+            'is_acceptable': True,
+            'metrics': {}
+        }
+
+        try:
+            # Load crop
+            img = cv2.imread(face_crop_path)
+            if img is None:
+                quality_report['issues'].append("Could not load image")
+                quality_report['is_acceptable'] = False
+                return quality_report
+
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+            # METRIC #1: Blur detection (Laplacian variance)
+            laplacian_var = cv2.Laplacian(gray, cv2.CV_64F).var()
+            quality_report['metrics']['blur_score'] = laplacian_var
+
+            if laplacian_var < 50:
+                quality_report['issues'].append(f"⚠️ Very blurry (sharpness: {laplacian_var:.0f})")
+                quality_report['overall_score'] -= 35
+            elif laplacian_var < 100:
+                quality_report['issues'].append(f"⚠️ Slightly blurry (sharpness: {laplacian_var:.0f})")
+                quality_report['overall_score'] -= 15
+            else:
+                quality_report['overall_score'] += 10  # Bonus for sharp image
+
+            # METRIC #2: Brightness (too dark/bright)
+            brightness = np.mean(gray)
+            quality_report['metrics']['brightness'] = brightness
+
+            if brightness < 40:
+                quality_report['issues'].append(f"⚠️ Too dark (brightness: {brightness:.0f}/255)")
+                quality_report['overall_score'] -= 25
+            elif brightness < 60:
+                quality_report['issues'].append(f"⚠️ Quite dark (brightness: {brightness:.0f}/255)")
+                quality_report['overall_score'] -= 10
+            elif brightness > 220:
+                quality_report['issues'].append(f"⚠️ Too bright (brightness: {brightness:.0f}/255)")
+                quality_report['overall_score'] -= 20
+            elif brightness > 200:
+                quality_report['issues'].append(f"⚠️ Quite bright (brightness: {brightness:.0f}/255)")
+                quality_report['overall_score'] -= 10
+            else:
+                quality_report['overall_score'] += 5  # Bonus for good brightness
+
+            # METRIC #3: Contrast
+            contrast = gray.std()
+            quality_report['metrics']['contrast'] = contrast
+
+            if contrast < 15:
+                quality_report['issues'].append(f"⚠️ Very low contrast ({contrast:.0f})")
+                quality_report['overall_score'] -= 20
+            elif contrast < 25:
+                quality_report['issues'].append(f"⚠️ Low contrast ({contrast:.0f})")
+                quality_report['overall_score'] -= 10
+            else:
+                quality_report['overall_score'] += 5  # Bonus for good contrast
+
+            # METRIC #4: Detection confidence
+            conf_score = face_data.get('confidence', 0.0) * 100
+            quality_report['metrics']['detection_confidence'] = conf_score
+
+            if conf_score < 50:
+                quality_report['issues'].append(f"⚠️ Low detection confidence ({conf_score:.0f}%)")
+                quality_report['overall_score'] -= 15
+            else:
+                quality_report['overall_score'] += conf_score * 0.2  # Up to 20 points bonus
+
+            # METRIC #5: Size (faces too small are low quality)
+            face_pixels = face_data.get('bbox_w', 0) * face_data.get('bbox_h', 0)
+            quality_report['metrics']['face_size_pixels'] = face_pixels
+
+            if face_pixels < 40 * 40:  # Smaller than 40x40
+                quality_report['issues'].append(f"⚠️ Face too small ({face_data.get('bbox_w', 0)}x{face_data.get('bbox_h', 0)})")
+                quality_report['overall_score'] -= 30
+            elif face_pixels < 60 * 60:  # Smaller than 60x60
+                quality_report['issues'].append(f"⚠️ Face quite small ({face_data.get('bbox_w', 0)}x{face_data.get('bbox_h', 0)})")
+                quality_report['overall_score'] -= 15
+
+            # Clamp score 0-100
+            quality_report['overall_score'] = max(0, min(100, quality_report['overall_score']))
+
+            # Mark as unacceptable if score < 35 (very poor quality)
+            if quality_report['overall_score'] < 35:
+                quality_report['is_acceptable'] = False
+
+            logger.debug(f"[FaceCropEditor] Quality assessment: score={quality_report['overall_score']:.0f}, issues={len(quality_report['issues'])}")
+
+        except Exception as e:
+            logger.error(f"[FaceCropEditor] Quality assessment failed: {e}", exc_info=True)
+            # If assessment fails, accept by default (don't block)
+            quality_report['issues'].append("Quality check failed")
+
+        return quality_report
+
+    def _show_quality_warning(self, quality_report: dict, face_crop_path: str) -> bool:
+        """Show warning dialog for low-quality face crops."""
+        from PySide6.QtWidgets import QDialog, QLabel, QVBoxLayout, QHBoxLayout, QPushButton, QTextEdit
+        from PySide6.QtCore import Qt
+        from PySide6.QtGui import QPixmap
+
+        try:
+            dialog = QDialog(self)
+            dialog.setWindowTitle("⚠️ Low Quality Face Detected")
+            dialog.setModal(True)
+            dialog.setMinimumWidth(500)
+
+            layout = QVBoxLayout(dialog)
+            layout.setSpacing(16)
+            layout.setContentsMargins(20, 20, 20, 20)
+
+            # Score header
+            score = quality_report['overall_score']
+            if score < 20:
+                score_color = "#d93025"  # Red
+                score_emoji = "❌"
+            elif score < 35:
+                score_color = "#ea8600"  # Orange
+                score_emoji = "⚠️"
+            else:
+                score_color = "#f9ab00"  # Yellow
+                score_emoji = "⚠️"
+
+            header = QLabel(f"{score_emoji} Quality Score: {score:.0f}/100")
+            header.setStyleSheet(f"font-size: 14pt; font-weight: bold; color: {score_color}; padding: 8px;")
+            header.setAlignment(Qt.AlignCenter)
+            layout.addWidget(header)
+
+            # Preview image
+            preview_container = QWidget()
+            preview_layout = QHBoxLayout(preview_container)
+            preview_layout.addStretch()
+
+            if os.path.exists(face_crop_path):
+                preview_label = QLabel()
+                pixmap = QPixmap(face_crop_path)
+                preview_label.setPixmap(pixmap.scaled(200, 200, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+                preview_label.setStyleSheet("border: 2px solid #ea8600; background: #fef7e0; padding: 8px;")
+                preview_layout.addWidget(preview_label)
+
+            preview_layout.addStretch()
+            layout.addWidget(preview_container)
+
+            # Issues list
+            if quality_report['issues']:
+                issues_label = QLabel("Quality Issues Detected:")
+                issues_label.setStyleSheet("font-weight: bold; margin-top: 8px;")
+                layout.addWidget(issues_label)
+
+                issues_text = "\n".join([f"  {issue}" for issue in quality_report['issues']])
+                issues_display = QTextEdit()
+                issues_display.setPlainText(issues_text)
+                issues_display.setReadOnly(True)
+                issues_display.setMaximumHeight(100)
+                issues_display.setStyleSheet("""
+                    QTextEdit {
+                        background: #fef7e0;
+                        border: 1px solid #ea8600;
+                        border-radius: 4px;
+                        padding: 8px;
+                        font-size: 9pt;
+                        color: #5f6368;
+                    }
+                """)
+                layout.addWidget(issues_display)
+
+            # Recommendations
+            recommendations = QLabel(
+                "💡 Recommendations for better quality:\n"
+                "   • Use a clearer, sharper photo\n"
+                "   • Ensure good lighting (not too dark or bright)\n"
+                "   • Draw a larger rectangle around the face\n"
+                "   • Avoid blurry or out-of-focus images"
+            )
+            recommendations.setStyleSheet("""
+                QLabel {
+                    background: #e8f0fe;
+                    padding: 12px;
+                    border-radius: 6px;
+                    color: #1967d2;
+                    font-size: 9pt;
+                }
+            """)
+            layout.addWidget(recommendations)
+
+            # Warning message
+            warning = QLabel(
+                "⚠️ Face recognition may not work well with this crop.\n"
+                "You can still save it, but consider using a better photo."
+            )
+            warning.setStyleSheet("color: #ea8600; font-size: 9pt; padding: 8px;")
+            warning.setWordWrap(True)
+            layout.addWidget(warning)
+
+            # Buttons
+            button_layout = QHBoxLayout()
+            button_layout.addStretch()
+
+            accept_btn = QPushButton("Save Anyway")
+            accept_btn.setStyleSheet("""
+                QPushButton {
+                    background: #ea8600;
+                    color: white;
+                    border: none;
+                    padding: 10px 24px;
+                    border-radius: 6px;
+                    font-size: 10pt;
+                    font-weight: bold;
+                }
+                QPushButton:hover {
+                    background: #c77400;
+                }
+            """)
+            accept_btn.clicked.connect(dialog.accept)
+            button_layout.addWidget(accept_btn)
+
+            skip_btn = QPushButton("Skip This Face")
+            skip_btn.setStyleSheet("""
+                QPushButton {
+                    background: #f1f3f4;
+                    color: #5f6368;
+                    border: 1px solid #dadce0;
+                    padding: 10px 24px;
+                    border-radius: 6px;
+                    font-size: 10pt;
+                }
+                QPushButton:hover {
+                    background: #e8eaed;
+                }
+            """)
+            skip_btn.setDefault(True)
+            skip_btn.clicked.connect(dialog.reject)
+            button_layout.addWidget(skip_btn)
+
+            button_layout.addStretch()
+            layout.addLayout(button_layout)
+
+            # Show dialog
+            result = dialog.exec()
+            return result == QDialog.Accepted
+
+        except Exception as e:
+            logger.error(f"[FaceCropEditor] Error showing quality warning: {e}", exc_info=True)
+            # If warning fails, accept by default (don't block)
+            return True
+
     def _refine_manual_bbox_with_detection(self, x: int, y: int, w: int, h: int) -> Tuple[int, int, int, int]:
         """
         ENHANCEMENT: Refine manually drawn bbox using face detection (Best Practice).
@@ -948,7 +1410,10 @@ class FaceCropEditor(QDialog):
             x, y, w, h: User's manual bounding box
 
         Returns:
-            (x, y, w, h): Refined bbox or original if detection fails
+            tuple: ((x, y, w, h), face_data) where:
+                - (x, y, w, h): Refined bbox or original if detection fails
+                - face_data: Dict with 'confidence', 'bbox_w', 'bbox_h' for quality assessment
+                            (None if detection failed)
         """
         try:
             logger.debug(f"[FaceCropEditor] Refining manual bbox: ({x}, {y}, {w}, {h})")
@@ -995,6 +1460,24 @@ class FaceCropEditor(QDialog):
                 if len(detected_faces) == 1:
                     face = detected_faces[0]
 
+                    # ENHANCEMENT #1: Try face alignment if landmarks available
+                    if face.get('kps') and len(face.get('kps', [])) >= 2:
+                        logger.info("[FaceCropEditor] Landmarks detected - attempting face alignment")
+                        aligned_bbox = self._align_face_with_landmarks(img, face, search_x, search_y)
+                        if aligned_bbox:
+                            refined_x, refined_y, refined_w, refined_h = aligned_bbox
+                            logger.info(f"[FaceCropEditor] ✅ Refined manual bbox with alignment: ({x},{y},{w},{h}) → ({refined_x},{refined_y},{refined_w},{refined_h})")
+                            # Return bbox and face_data for quality assessment
+                            face_data = {
+                                'confidence': face.get('confidence', 0.0),
+                                'bbox_w': refined_w,
+                                'bbox_h': refined_h
+                            }
+                            return (refined_x, refined_y, refined_w, refined_h), face_data
+
+                    # Fallback: No landmarks or alignment failed - use bbox only
+                    logger.debug("[FaceCropEditor] Using bbox-only refinement (no alignment)")
+
                     # Get bbox from detection (relative to search region)
                     det_x = face['bbox_x']
                     det_y = face['bbox_y']
@@ -1014,19 +1497,28 @@ class FaceCropEditor(QDialog):
                     refined_h = max(1, min(refined_h, img_height - refined_y))
 
                     logger.info(f"[FaceCropEditor] ✅ Refined manual bbox: ({x},{y},{w},{h}) → ({refined_x},{refined_y},{refined_w},{refined_h}) (confidence: {face.get('confidence', 0):.2f})")
-                    return (refined_x, refined_y, refined_w, refined_h)
+                    # Return bbox and face_data for quality assessment
+                    face_data = {
+                        'confidence': face.get('confidence', 0.0),
+                        'bbox_w': refined_w,
+                        'bbox_h': refined_h
+                    }
+                    return (refined_x, refined_y, refined_w, refined_h), face_data
 
                 elif len(detected_faces) == 0:
                     logger.info(f"[FaceCropEditor] ⚠️ No face detected in manual region - keeping original bbox (may be profile/unusual angle)")
-                    return (x, y, w, h)
+                    # No face_data available when detection fails
+                    return (x, y, w, h), None
 
                 else:
                     logger.info(f"[FaceCropEditor] ⚠️ Multiple faces ({len(detected_faces)}) detected in manual region - keeping original bbox")
-                    return (x, y, w, h)
+                    # No face_data available when multiple faces detected
+                    return (x, y, w, h), None
 
         except Exception as e:
             logger.warning(f"[FaceCropEditor] Face detection refinement failed: {e} - keeping original bbox")
-            return (x, y, w, h)
+            # No face_data available when exception occurs
+            return (x, y, w, h), None
 
     def _create_face_crop(self, x: int, y: int, w: int, h: int) -> Optional[str]:
         """

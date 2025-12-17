@@ -925,6 +925,13 @@ class FaceDetectionService:
                 # Get embedding (512-dimensional ArcFace embedding)
                 embedding = face.normed_embedding  # Already normalized to unit length
 
+                # ENHANCEMENT #1: Extract facial landmarks (kps) for face alignment
+                # InsightFace provides 5 landmarks: left_eye, right_eye, nose, left_mouth, right_mouth
+                kps = None
+                if hasattr(face, 'kps') and face.kps is not None:
+                    kps = face.kps.astype(float).tolist()  # Convert to list for JSON serialization
+                    logger.debug(f"[FaceDetection] Extracted {len(kps)} facial landmarks")
+
                 faces.append({
                     'bbox': bbox.tolist(),
                     'bbox_x': bbox_x,
@@ -932,7 +939,8 @@ class FaceDetectionService:
                     'bbox_w': bbox_w,
                     'bbox_h': bbox_h,
                     'embedding': embedding,
-                    'confidence': confidence
+                    'confidence': confidence,
+                    'kps': kps  # NEW: Facial landmarks for alignment
                 })
 
             # OPTIMIZATION: Calculate quality scores for all faces
