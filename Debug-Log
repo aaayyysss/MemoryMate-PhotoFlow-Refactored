@@ -1,5 +1,1136 @@
+C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_47.01.01-Photo-App\MemoryMate-PhotoFlow-Refactored-main-09>cd C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_47.01.01-Photo-App\MemoryMate-PhotoFlow-Refactored-main-10
+
+C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_47.01.01-Photo-App\MemoryMate-PhotoFlow-Refactored-main-10>python main_qt.py
+[Startup] pillow_heif available — HEIC/HEIF support enabled.
+🔇 Decoder warnings suppressed per settings.
+🔇 Decoder warnings suppressed (Qt, Pillow, ICC).
+✅ Loaded en translations from C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_47.01.01-Photo-App\MemoryMate-PhotoFlow-Refactored-main-10\locales\en.json
+🌍 Language initialized: en
+2025-12-18 00:24:25,621 [INFO] ================================================================================
+2025-12-18 00:24:25,621 [INFO] MemoryMate-PhotoFlow logging initialized (level=INFO)
+2025-12-18 00:24:25,621 [INFO] Log file: C:\Users\ASUS\OneDrive\Documents\Python\Zip\09_47.01.01-Photo-App\MemoryMate-PhotoFlow-Refactored-main-10\app_log.txt
+2025-12-18 00:24:25,621 [INFO] ================================================================================
+============================================================
+SCREEN INFORMATION (DPI-Aware)
+============================================================
+Resolution:      1920x1080
+Available:       1920x1032
+Category:        FHD
+DPI Scale:       1.0x (100%)
+High-DPI:        No
+Taskbar Height:  48px
+Adaptive Margin: 60px
+Adaptive Icons:  24px
+============================================================
+2025-12-18 00:24:25,673 [INFO] Installed Qt message handler to suppress TIFF warnings
+2025-12-18 00:24:25,673 [INFO] Qt message handler installed to suppress TIFF warnings
+[Main] Starting Qt event loop...
+[Startup] Database schema initialized successfully
+[Cache] {'entries': 0, 'size_mb': 0.0, 'path': 'C:\\Users\\ASUS\\OneDrive\\Documents\\Python\\Zip\\09_47.01.01-Photo-App\\MemoryMate-PhotoFlow-Refactored-main-10\\thumbnails_cache.db', 'last_updated': '2025-12-18 00:24'}
+2025-12-18 00:24:26,261 [INFO] SearchService initialized
+[Startup] SearchService initialized
+2025-12-18 00:24:26,261 [INFO] LRUCache initialized with capacity=200, max_memory=100.0MB
+2025-12-18 00:24:26,261 [INFO] ThumbnailService initialized (L1 capacity=200, max_memory=100.0MB, timeout=5.0s)
+2025-12-18 00:24:26,261 [INFO] Global ThumbnailService created with Phase 1B memory limits
+[Startup] ThumbnailService initialized
+🌍 Language switched to: en
+[MainWindow] Language loaded from settings: en
+[LayoutManager] Registered layout: Current Layout (id=current)
+[LayoutManager] Registered layout: Google Photos Style (id=google)
+[LayoutManager] Registered layout: Apple Photos Style (id=apple)
+[LayoutManager] Registered layout: Lightroom Style (id=lightroom)
+[MainWindow] Layout manager initialized
+[MainWindow] Screen: 1920x1032 (DPI scale: 1.0x)
+[MainWindow] Window size: 1800x912 with 60px margins
+🔇 Qt/Pillow decoder warnings silenced (per user settings).
+2025-12-18 00:24:26,293 [INFO] SearchService initialized
+[Sidebar] Device auto-detection disabled (manual refresh only)
+[00:24:26.309] [Tabs] __init__ started
+[00:24:26.309] [Tabs] _build_tabs → building tab widgets
+[00:24:26.309] [Tabs] _on_tab_changed(idx=0)
+[00:24:26.309] [Tabs] _start_timeout idx=0 type=branches
+[00:24:26.309] [Tabs] _populate_tab(branches, idx=0, force=False)
+[00:24:26.309] [Tabs]   populated=False, loading=False
+[00:24:26.309] [Tabs]   Starting load for branches
+[00:24:26.309] [Tabs] _show_loading idx=0 label='Loading Branches…'
+[00:24:26.309] [Tabs] _clear_tab idx=0
+[00:24:26.309] [Tabs] _on_tab_changed → tab_type=branches
+[00:24:26.309] [Tabs] _build_tabs → added 6 tabs
+[00:24:26.309] [Tabs] __init__ completed
+[00:24:26.356] [AccordionSidebar] AccordionSidebar __init__ started
+[00:24:26.356] [AccordionSidebar] Building accordion sections...
+[00:24:26.356] [AccordionSidebar] Created 7 sections with nav buttons
+[00:24:26.356] [AccordionSidebar] Expanding section: people
+[00:24:26.356] [AccordionSidebar] Loading content for section: people
+[00:24:26.372] [AccordionSidebar] Loading People section...
+[00:24:26.372] [AccordionSidebar] ✓ Section expanded: people
+[00:24:26.372] [AccordionSidebar] AccordionSidebar __init__ completed
+[SidebarQt] _build_tree_model() called with project_id=None
+[Sidebar] Detaching old model from tree view
+[Sidebar] Pending events processed (skipped explicit processEvents)
+[Sidebar] Creating fresh model (avoiding Qt segfault)
+[Sidebar] Attaching fresh model to tree view
+[SidebarQt] list_branches() returned 0 branches
+[Sidebar] Loading videos for project_id=None
+[Sidebar] Found 0 videos in project None
+
+[Sidebar] ===== Initiating mobile device scan from sidebar =====
+[Sidebar] Database: <reference_db.ReferenceDB object at 0x000001B2F02C3BB0>
+[Sidebar] Register devices: True
+
+[DeviceScanner] ===== Starting device scan  =====
+[DeviceScanner] Platform: Windows
+[DeviceScanner] Database registration: enabled
+[DeviceScanner] Scanning Windows drives...
+[DeviceScanner]   Checking drive letters D:-Z:...
+[DeviceScanner]     Drive D: exists, checking...
+[DeviceScanner]           Checking path: D:\
+[DeviceScanner]           Directories found: ['$RECYCLE.BIN', 'Architect Books', 'Architecture', 'Arshiif', 'B2 Prüfung', 'CORONA', 'CORONA 1', 'CORONA 2024', 'En', 'From Ammar', 'IPhone', 'MirrorTo transfer', 'MirrorTo video', 'My Phone', 'My Work', 'New folder (2)', 'Python', 'Recovery', 'REVIT', 'Revit Advance', 'REVIT NEW', 'Samer Matar V-Ray', 'SnapPea', 'System Volume Information', 'To write', 'training 2020', 'Workshop- Corona', 'المشروع الألماني', 'انكليزي', 'تصويؤي', 'تلغرام', 'روايات', 'صور للإرسال', 'طيران مدني', 'عزفي', 'فيديو', 'كورس الفرنسي- هيئة التخطيط والتعاون الدولي', 'للطباعة', 'ملفاتي']
+[DeviceScanner]           Has DCIM folder: False
+[DeviceScanner]           No alternate structure found
+[DeviceScanner]           Checking subdirectories for DCIM (MTP mounts)...
+[DeviceScanner]             Checking subdirectory: IPhone
+[DeviceScanner]               Checking nested: IPhone/202202__
+[DeviceScanner]               Checking nested: IPhone/242CLOUD
+[DeviceScanner]               Checking nested: IPhone/Family
+[DeviceScanner]               Checking nested: IPhone/French Video
+[DeviceScanner]               Checking nested: IPhone/To draw
+[DeviceScanner]               Checking nested: IPhone/To learn Deutsch
+[DeviceScanner]               Checking nested: IPhone/خواطر
+[DeviceScanner]               Checking nested: IPhone/عن الموت
+[DeviceScanner]               Checking nested: IPhone/منزل عمار وسوزي
+[DeviceScanner]             Checking subdirectory: My Phone
+[DeviceScanner]               Checking nested: My Phone/Android
+[DeviceScanner]               Checking nested: My Phone/DCM
+[DeviceScanner]               Checking nested: My Phone/Document Scanner
+[DeviceScanner]               Checking nested: My Phone/Final
+[DeviceScanner]               ✓ Found DCIM in: My Phone/Final/DCIM
+[DeviceScanner]           Has DCIM in subdirectory: True
+[DeviceScanner]           Device type: android
+[DeviceScanner]           Device label: 🤖 Mobile Device
+[DeviceScanner]           Scanning for media folders...
+[DeviceScanner]           Found 0 media folder(s)
+[DeviceScanner]           REJECTED: No media folders with photos/videos
+[DeviceScanner]       ✗ No device on drive D:
+[DeviceScanner]   Checking portable devices (MTP/PTP)...
+[DeviceScanner]     Attempting Shell COM enumeration...
+[DeviceScanner]     COM initialized for current thread
+[DeviceScanner]     Found 3 items under 'This PC'
+[DeviceScanner]       → Item: 'Manage my phone' | IsFolder=False | IsFileSystem=False
+[DeviceScanner]       → Item: 'Local Disk (C:)' | IsFolder=True | IsFileSystem=True
+[DeviceScanner]       → Item: 'DATA (D:)' | IsFolder=True | IsFileSystem=True
+[DeviceScanner]     COM uninitialized
+[DeviceScanner] ===== Scan complete: 0 device(s) found =====
+[DeviceScanner] Results cached for 5.0s
+
+[Sidebar] ===== Scan complete: 0 mobile device(s) found =====
+[Sidebar]   ✗ No devices found
+[Sidebar] ===== End device scan =====
+
+[Sidebar] No mobile devices detected - added help message
+[SidebarQt] switch_display_mode(list) - canceling old workers
+[SidebarQt] Hiding tabs controller and accordion
+[00:24:26.546] [Tabs] hide_tabs() called - canceling pending workers
+[SidebarQt] Canceled tab/accordion workers via hide
+[SidebarQt] Clearing tree view selection before rebuild
+[SidebarQt] Showing tree view
+[SidebarQt] Calling _build_tree_model()
+[SidebarQt] _build_tree_model() called with project_id=None
+[Sidebar] Detaching old model from tree view
+[Sidebar] Pending events processed (skipped explicit processEvents)
+[Sidebar] Creating fresh model (avoiding Qt segfault)
+[Sidebar] Attaching fresh model to tree view
+[SidebarQt] list_branches() returned 0 branches
+[Sidebar] Loading videos for project_id=None
+[Sidebar] Found 0 videos in project None
+
+[Sidebar] ===== Initiating mobile device scan from sidebar =====
+[Sidebar] Database: <reference_db.ReferenceDB object at 0x000001B2F02C3BB0>
+[Sidebar] Register devices: True
+
+[DeviceScanner] ===== Using cached scan results =====
+[DeviceScanner] Cache age: 0.02s (TTL: 5.0s)
+[DeviceScanner] Cached devices: 0
+[DeviceScanner] ===== Scan complete (cached): 0 device(s) =====
+
+[Sidebar] ===== Scan complete: 0 mobile device(s) found =====
+[Sidebar]   ✗ No devices found
+[Sidebar] ===== End device scan =====
+
+[Sidebar] No mobile devices detected - added help message
+[SidebarQt] _build_tree_model() completed
+[GRID] P2-26: Created dedicated thumbnail thread pool with 4 workers
+[LayoutManager] Initializing default layout: google
+[LayoutManager] Switching layout: current → google
+[LayoutManager] 💾 Took ownership of original central widget: QWidget
+[GooglePhotosLayout] ⚠️ WARNING: No projects found! Please create a project first.
+[GooglePhotosLayout] Project selector populated with 0 projects (+ New Project option)
+2025-12-18 00:24:26,838 [INFO] [AccordionSidebar] Initializing with project_id=None
+2025-12-18 00:24:26,854 [INFO] [AccordionSidebar] Created 6 sections
+2025-12-18 00:24:26,854 [INFO] [AccordionSidebar] Expanding section: folders
+2025-12-18 00:24:26,854 [WARNING] [FoldersSection] No project_id set
+2025-12-18 00:24:26,905 [INFO] [AccordionSidebar] Section folders loaded and displayed
+[GooglePhotosLayout] ✅ Scroll-triggered lazy loading enabled
+[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px)...
+[GooglePhotosLayout] 🔄 Clearing existing timeline and thumbnail cache...
+[GooglePhotosLayout] 🔍 Starting async photo load (generation 1)...
+[GooglePhotosLayout] ⚠️ No project selected
+[LayoutManager] Setting new central widget: QWidget
+[GooglePhotosLayout] 📍 Layout activated
+[GooglePhotosLayout] ✓ Stored Scan Repository handler
+[GooglePhotosLayout] ✓ Stored Detect Faces handler
+[LayoutManager] ✓ Switched to: Google Photos Style
+[Startup] Layout system initialized successfully
+[Startup] Database schema initialized successfully
+[00:24:26.947] [Tabs] _finish_branches (stale gen=1) — ignoring
+[00:24:26.948] [Tabs] _on_tab_changed(idx=0)
+[00:24:26.948] [Tabs] _start_timeout idx=0 type=branches
+[00:24:26.948] [Tabs] _populate_tab(branches, idx=0, force=False)
+[00:24:26.948] [Tabs]   populated=False, loading=False
+[00:24:26.948] [Tabs]   Starting load for branches
+[00:24:26.948] [Tabs] _show_loading idx=0 label='Loading Branches…'
+[00:24:26.948] [Tabs] _clear_tab idx=0
+[00:24:26.952] [Tabs] _on_tab_changed → tab_type=branches
+
+[Breadcrumb] _update_breadcrumb() CALLED
+[Breadcrumb] Grid state: navigation_mode=None, project_id=None
+[Breadcrumb] Added project segment: My Photos
+[Breadcrumb] Added fallback segment: All Photos
+[Breadcrumb] Calling set_path() with 2 segments
+[BreadcrumbNav] set_path() called with 2 segments
+[BreadcrumbNav] Clearing 0 existing widgets
+[BreadcrumbNav] Cleared all existing widgets
+[BreadcrumbNav] Added segment 0: My Photos
+[BreadcrumbNav] Added segment 1: All Photos
+[BreadcrumbNav] set_path() completed - 2 segments added
+[Breadcrumb] set_path() completed successfully
+[Breadcrumb] _update_breadcrumb() COMPLETED
+
+[00:24:26.960] [Tabs] _clear_tab idx=0
+✅ FFmpeg and FFprobe detected (custom path: C:\ffmpeg\bin)
+✅ InsightFace detected with buffalo_l models
+   Location: C:\Users\ASUS\.insightface\models\buffalo_l
+[GooglePhotosLayout] ➕ New Project option selected
+[GooglePhotosLayout] 🆕🆕🆕 CREATE PROJECT BUTTON CLICKED! 🆕🆕🆕
+[GooglePhotosLayout] ✓ Calling breadcrumb_nav._create_new_project()...
+[Breadcrumb] _switch_project(1) called
+
+[MainWindow] ========== _on_project_changed_by_id(1) STARTED ==========
+[MainWindow] Current project_id: None
+[MainWindow] Step 1: Updating grid.project_id...
+[MainWindow] Step 1: ✓ Set grid.project_id = 1
+[MainWindow] Step 2: Updating sidebar...
+[SidebarQt] set_project(1) called
+[00:24:36.540] [Tabs] refresh_all(force=True) called
+[00:24:36.544] [Tabs] refresh_all: key=branches, idx=0, force=True
+[00:24:36.544] [Tabs] _populate_tab(branches, idx=0, force=True)
+[00:24:36.544] [Tabs]   populated=True, loading=False
+[00:24:36.544] [Tabs]   Force refresh: removing branches from populated set
+[00:24:36.544] [Tabs]   Starting load for branches
+[00:24:36.544] [Tabs] _show_loading idx=0 label='Loading Branches…'
+[00:24:36.544] [Tabs] _clear_tab idx=0
+[00:24:36.544] [Tabs] refresh_all: key=folders, idx=1, force=True
+[00:24:36.544] [Tabs] _populate_tab(folders, idx=1, force=True)
+[00:24:36.544] [Tabs]   populated=False, loading=False
+[00:24:36.544] [Tabs]   Starting load for folders
+[00:24:36.544] [Tabs] _show_loading idx=1 label='Loading Folders…'
+[00:24:36.544] [Tabs] _clear_tab idx=1
+[00:24:36.544] [Tabs] refresh_all: key=dates, idx=2, force=True
+[00:24:36.544] [Tabs] _populate_tab(dates, idx=2, force=True)
+[00:24:36.544] [Tabs]   populated=False, loading=False
+[00:24:36.544] [Tabs]   Starting load for dates
+[00:24:36.544] [Tabs] _show_loading idx=2 label='Loading Dates…'
+[00:24:36.544] [Tabs] _clear_tab idx=2
+[00:24:36.544] [Tabs] refresh_all: key=tags, idx=3, force=True
+[00:24:36.544] [Tabs] _populate_tab(tags, idx=3, force=True)
+[00:24:36.544] [Tabs]   populated=False, loading=False
+[00:24:36.544] [Tabs]   Starting load for tags
+[00:24:36.544] [Tabs] _show_loading idx=3 label='Loading Tags…'
+[00:24:36.544] [Tabs] _clear_tab idx=3
+[00:24:36.544] [Tabs] refresh_all: key=quick, idx=5, force=True
+[00:24:36.544] [Tabs] _populate_tab(quick, idx=5, force=True)
+[00:24:36.544] [Tabs]   populated=False, loading=False
+[00:24:36.544] [Tabs]   Starting load for quick
+[00:24:36.544] [Tabs] _show_loading idx=5 label='Loading Quick Dates…'
+[00:24:36.554] [Tabs] _clear_tab idx=5
+[00:24:36.554] [Tabs] _load_folders → got 0 rows for project_id=1
+[00:24:36.555] [Tabs] refresh_all(force=True) completed
+[00:24:36.555] [Tabs] _load_tags → got 0 rows for project_id=1
+[00:24:36.555] [Tabs] _load_quick → got 6 rows
+[00:24:36.555] [Tabs] _load_dates → got hierarchy data for project_id=1
+[00:24:36.555] [AccordionSidebar] Setting project: 1
+[00:24:36.555] [AccordionSidebar] Refreshing all sections (force=True)
+[00:24:36.555] [AccordionSidebar] Loading content for section: people
+[00:24:36.555] [AccordionSidebar] Loading People section...
+[00:24:36.555] [AccordionSidebar] People reload generation: 1
+[00:24:36.555] [AccordionSidebar] Loading content for section: dates
+[00:24:36.564] [AccordionSidebar] Loading Dates section...
+[00:24:36.564] [AccordionSidebar] Dates reload generation: 1
+[00:24:36.564] [AccordionSidebar] Loading content for section: folders
+[00:24:36.564] [AccordionSidebar] Loading Folders section...
+[00:24:36.564] [AccordionSidebar] Loaded 0 face clusters (gen 1)
+[00:24:36.564] [AccordionSidebar] Folders reload generation: 1
+[00:24:36.564] [AccordionSidebar] Loading content for section: videos
+[00:24:36.564] [AccordionSidebar] Loading Videos section...
+[00:24:36.564] [AccordionSidebar] Videos reload generation: 1
+[00:24:36.564] [AccordionSidebar] Loaded 0 years of date data (gen 1)
+[00:24:36.564] [AccordionSidebar] Loading content for section: tags
+[00:24:36.564] [AccordionSidebar] Loaded 0 folders (gen 1)
+[00:24:36.564] [AccordionSidebar] Loading Tags section...
+[00:24:36.564] [AccordionSidebar] Loaded 0 videos (gen 1)
+[00:24:36.564] [AccordionSidebar] Loading content for section: branches
+[00:24:36.564] [AccordionSidebar] Loading Branches section...
+[00:24:36.564] [AccordionSidebar] Branches reload generation: 1
+[00:24:36.564] [AccordionSidebar] Loading content for section: quick
+[00:24:36.564] [AccordionSidebar] Loaded 0 tags
+[00:24:36.564] [AccordionSidebar] Loading Quick Dates section...
+[00:24:36.564] [AccordionSidebar] Quick dates reload generation: 1
+[SidebarQt] Calling reload() after setting project_id
+[00:24:36.571] [AccordionSidebar] Loaded 1 branches (gen 1)
+[SidebarQt] reload() blocked - widget not visible (likely being deleted)
+[MainWindow] Step 2: ✓ Sidebar.set_project(1) completed
+[MainWindow] Step 3: Reloading grid to 'all' branch...
+[00:24:36.571] [AccordionSidebar] Loaded 6 quick date items (gen 1)
+
+[GRID] >>>>>> set_branch('all') CALLED
+[GRID]   Current state: project_id=1, load_mode=None
+[GRID]   State updated, calling reload()...
+
+[GRID] ====== reload() CALLED ======
+[GRID] project_id=1, load_mode=branch
+[GRID] Step 1: Setting _reloading=True
+[GRID] Fetched tags for 0 paths, got 0 entries
+[00:24:36.576] [Tabs] _clear_tab idx=0
+[00:24:36.576] [Tabs] _clear_tab idx=1
+[00:24:36.576] [Tabs] _finish_tags called: idx=3, gen=2, rows_count=0
+[00:24:36.576] [Tabs] _clear_tab idx=3
+[00:24:36.576] [Tabs] _clear_tab idx=5
+[00:24:36.583] [Tabs] _clear_tab idx=2
+[00:24:36.724] [AccordionSidebar] ✓ Branches section loaded with 1 branches
+[00:24:36.759] [AccordionSidebar] ✓ Quick dates section loaded with 6 items
+[GRID] Loaded 0 thumbnails.
+[GRID] Reloaded 0 thumbnails in None-mode (base=0)
+[GRID] Step 5: Emitting gridReloaded signal...
+
+[Breadcrumb] _update_breadcrumb() CALLED
+[Breadcrumb] Grid state: navigation_mode=branch, project_id=1
+[Breadcrumb] Added project segment: My Photos
+[Breadcrumb] Added branch segment: All Photos
+[Breadcrumb] Calling set_path() with 2 segments
+[BreadcrumbNav] set_path() called with 2 segments
+[BreadcrumbNav] Clearing 3 existing widgets
+[BreadcrumbNav] Cleared all existing widgets
+[BreadcrumbNav] Added segment 0: My Photos
+[BreadcrumbNav] Added segment 1: All Photos
+[BreadcrumbNav] set_path() completed - 2 segments added
+[Breadcrumb] set_path() completed successfully
+[Breadcrumb] _update_breadcrumb() COMPLETED
+
+[GRID] Step 5: ✓ gridReloaded signal emitted
+[GRID] ====== reload() COMPLETED SUCCESSFULLY ======
+
+[GRID] Finally block: Setting _reloading=False
+[GRID] <<<<<< set_branch('all') COMPLETED
+
+[MainWindow] Step 3: ✓ Grid.set_branch('all') completed
+[MainWindow] Step 4: Breadcrumb will auto-update via gridReloaded signal
+[MainWindow] Step 5: ✓✓✓ Switched to project ID: 1
+[MainWindow] ========== _on_project_changed_by_id(1) COMPLETED ==========
+
+[Breadcrumb] Switched to project ID: 1
+[MainWindow] Refreshed project list: 1 projects
+[GooglePhotosLayout] ✓ Project creation dialog completed
+[GooglePhotosLayout] Updated project_id: 1
+[GooglePhotosLayout] Project selector populated with 1 projects (+ New Project option)
+[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px)...
+[GooglePhotosLayout] 🔄 Clearing existing timeline and thumbnail cache...
+[GooglePhotosLayout] 🔍 Starting async photo load (generation 2)...
+[GooglePhotosLayout] ✅ Photo load worker started (generation 2)
+[GooglePhotosLayout] ✓ Layout refreshed after project creation
+2025-12-18 00:24:36,786 [INFO] Photo query complete: generation=2, current=2, rows=0
+[GooglePhotosLayout] No photos found in project 1
+[Schema] Database schema initialized successfully
+[ScanController] Creating ScanWorker for folder: C:/Users/ASUS/OneDrive/Documents/Python/Test-Photos/photos/refs
+[ScanController] ScanWorker imported successfully
+[ScanController] Creating QThread...
+[ScanController] QThread created successfully
+[ScanController] Creating ScanWorker instance...
+2025-12-18 00:24:52,142 [INFO] DBWriter timer started in worker thread
+[ScanController] ✓ ScanWorker instance created with project_id=1
+[ScanController] Moving worker to thread...
+[ScanController] ✓ Worker moved to thread
+[ScanController] Connecting signals...
+[ScanController] ✓ Signals connected
+[ScanController] Starting scan thread...
+[ScanController] ✓ thread.start() called successfully
+[ScanWorkerAdapter] run() method called!
+[ScanWorkerAdapter] folder=C:/Users/ASUS/OneDrive/Documents/Python/Test-Photos/photos/refs, incremental=True
+2025-12-18 00:24:52,142 [INFO] ScanWorkerAdapter starting scan of C:/Users/ASUS/OneDrive/Documents/Python/Test-Photos/photos/refs
+[ScanController] QThread STARTED!
+[ScanWorkerAdapter] Starting scan...
+2025-12-18 00:24:52,157 [INFO] Starting scan: C:/Users/ASUS/OneDrive/Documents/Python/Test-Photos/photos/refs (incremental=True)
+2025-12-18 00:24:52,157 [INFO] Discovered 22 candidate image files and 14 video files
+2025-12-18 00:24:52,157 [INFO] Loading existing metadata for incremental scan...
+2025-12-18 00:24:52,157 [INFO] ✓ Loaded 0 existing file records
+[SCAN] Created single executor for scan (22 files)
+[SCAN] Starting file 1/22: EWKJ3802.JPG
+2025-12-18 00:24:52,157 [INFO] [Scan] File 1/22: EWKJ3802.JPG
+[SCAN] _process_file started for: EWKJ3802.JPG
+[SCAN] Getting file stats...
+[SCAN] File stats retrieved successfully
+2025-12-18 00:24:52,157 [INFO] 📷 Processing: EWKJ3802.JPG (101.0 KB)
+[SCAN] Processing: EWKJ3802.JPG
+[SCAN] ✓ Metadata extracted: EWKJ3802.JPG [w=1080, h=1080, date=None]
+2025-12-18 00:24:52,173 [INFO] [Scan] Metadata extracted successfully: EWKJ3802.JPG [w=1080, h=1080, date=None]
+[SCAN] Creating folder hierarchy for: EWKJ3802.JPG
+[SCAN] ✓ Folder hierarchy created: folder_id=2
+[SCAN] ✓ File processed successfully: EWKJ3802.JPG
+[SCAN] Added to batch: EWKJ3802.JPG [batch size: 1/200]
+[SCAN] Starting file 2/22: IHOC0868.JPG
+2025-12-18 00:24:52,189 [INFO] [Scan] File 2/22: IHOC0868.JPG
+[SCAN] _process_file started for: IHOC0868.JPG
+[SCAN] Getting file stats...
+[SCAN] File stats retrieved successfully
+2025-12-18 00:24:52,189 [INFO] 📷 Processing: IHOC0868.JPG (57.3 KB)
+[SCAN] Processing: IHOC0868.JPG
+[SCAN] ✓ Metadata extracted: IHOC0868.JPG [w=1024, h=473, date=None]
+2025-12-18 00:24:52,189 [INFO] [Scan] Metadata extracted successfully: IHOC0868.JPG [w=1024, h=473, date=None]
+[SCAN] Creating folder hierarchy for: IHOC0868.JPG
+[SCAN] ✓ Folder hierarchy created: folder_id=2
+[SCAN] ✓ File processed successfully: IHOC0868.JPG
+[SCAN] Added to batch: IHOC0868.JPG [batch size: 2/200]
+[SCAN] Starting file 3/22: IMG_1550.DNG
+2025-12-18 00:24:52,205 [INFO] [Scan] File 3/22: IMG_1550.DNG
+[SCAN] _process_file started for: IMG_1550.DNG
+[SCAN] Getting file stats...
+[SCAN] File stats retrieved successfully
+2025-12-18 00:24:52,205 [INFO] 📷 Processing: IMG_1550.DNG (17800.9 KB)
+[SCAN] Processing: IMG_1550.DNG
+[SCAN] ✓ Metadata extracted: IMG_1550.DNG [w=2316, h=3088, date=2024-11-26 08:45:11]
+2025-12-18 00:24:52,269 [INFO] [Scan] Metadata extracted successfully: IMG_1550.DNG [w=2316, h=3088, date=2024-11-26 08:45:11]
+[SCAN] Creating folder hierarchy for: IMG_1550.DNG
+[SCAN] ✓ Folder hierarchy created: folder_id=2
+[SCAN] ✓ File processed successfully: IMG_1550.DNG
+[SCAN] Added to batch: IMG_1550.DNG [batch size: 3/200]
+[SCAN] Starting file 4/22: IMG_3307.JPG
+2025-12-18 00:24:52,300 [INFO] [Scan] File 4/22: IMG_3307.JPG
+[SCAN] _process_file started for: IMG_3307.JPG
+[SCAN] Getting file stats...
+[SCAN] File stats retrieved successfully
+2025-12-18 00:24:52,300 [INFO] 📷 Processing: IMG_3307.JPG (4122.2 KB)
+[SCAN] Processing: IMG_3307.JPG
+[SCAN] ✓ Metadata extracted: IMG_3307.JPG [w=4032, h=3024, date=2023-10-19 17:22:33]
+2025-12-18 00:24:52,300 [INFO] [Scan] Metadata extracted successfully: IMG_3307.JPG [w=4032, h=3024, date=2023-10-19 17:22:33]
+[SCAN] Creating folder hierarchy for: IMG_3307.JPG
+[SCAN] ✓ Folder hierarchy created: folder_id=2
+[SCAN] ✓ File processed successfully: IMG_3307.JPG
+[SCAN] Added to batch: IMG_3307.JPG [batch size: 4/200]
+[SCAN] Starting file 5/22: IMG_9570.JPG
+2025-12-18 00:24:52,318 [INFO] [Scan] File 5/22: IMG_9570.JPG
+[SCAN] _process_file started for: IMG_9570.JPG
+[SCAN] Getting file stats...
+[SCAN] File stats retrieved successfully
+2025-12-18 00:24:52,318 [INFO] 📷 Processing: IMG_9570.JPG (1879.8 KB)
+[SCAN] Processing: IMG_9570.JPG
+[SCAN] ✓ Metadata extracted: IMG_9570.JPG [w=3088, h=2316, date=2024-11-16 11:31:58]
+2025-12-18 00:24:52,318 [INFO] [Scan] Metadata extracted successfully: IMG_9570.JPG [w=3088, h=2316, date=2024-11-16 11:31:58]
+[SCAN] Creating folder hierarchy for: IMG_9570.JPG
+[SCAN] ✓ Folder hierarchy created: folder_id=2
+[SCAN] ✓ File processed successfully: IMG_9570.JPG
+[SCAN] Added to batch: IMG_9570.JPG [batch size: 5/200]
+[SCAN] Starting file 6/22: IMG_E3122.JPG
+2025-12-18 00:24:52,332 [INFO] [Scan] File 6/22: IMG_E3122.JPG
+[SCAN] _process_file started for: IMG_E3122.JPG
+[SCAN] Getting file stats...
+[SCAN] File stats retrieved successfully
+2025-12-18 00:24:52,332 [INFO] 📷 Processing: IMG_E3122.JPG (3374.7 KB)
+[SCAN] Processing: IMG_E3122.JPG
+[SCAN] ✓ Metadata extracted: IMG_E3122.JPG [w=3024, h=4032, date=2022-08-18 21:19:34]
+2025-12-18 00:24:52,332 [INFO] [Scan] Metadata extracted successfully: IMG_E3122.JPG [w=3024, h=4032, date=2022-08-18 21:19:34]
+[SCAN] Creating folder hierarchy for: IMG_E3122.JPG
+[SCAN] ✓ Folder hierarchy created: folder_id=2
+[SCAN] ✓ File processed successfully: IMG_E3122.JPG
+[SCAN] Added to batch: IMG_E3122.JPG [batch size: 6/200]
+[SCAN] Starting file 7/22: IMG_E7413.JPG
+2025-12-18 00:24:52,348 [INFO] [Scan] File 7/22: IMG_E7413.JPG
+[SCAN] _process_file started for: IMG_E7413.JPG
+[SCAN] Getting file stats...
+[SCAN] File stats retrieved successfully
+2025-12-18 00:24:52,348 [INFO] 📷 Processing: IMG_E7413.JPG (1715.4 KB)
+[SCAN] Processing: IMG_E7413.JPG
+[SCAN] ✓ Metadata extracted: IMG_E7413.JPG [w=2316, h=3088, date=2024-11-07 21:01:50]
+2025-12-18 00:24:52,348 [INFO] [Scan] Metadata extracted successfully: IMG_E7413.JPG [w=2316, h=3088, date=2024-11-07 21:01:50]
+[SCAN] Creating folder hierarchy for: IMG_E7413.JPG
+[SCAN] ✓ Folder hierarchy created: folder_id=2
+[SCAN] ✓ File processed successfully: IMG_E7413.JPG
+[SCAN] Added to batch: IMG_E7413.JPG [batch size: 7/200]
+[SCAN] Starting file 8/22: IMG_E9569.JPG
+2025-12-18 00:24:52,366 [INFO] [Scan] File 8/22: IMG_E9569.JPG
+[SCAN] _process_file started for: IMG_E9569.JPG
+[SCAN] Getting file stats...
+[SCAN] File stats retrieved successfully
+2025-12-18 00:24:52,366 [INFO] 📷 Processing: IMG_E9569.JPG (1925.4 KB)
+[SCAN] Processing: IMG_E9569.JPG
+[SCAN] ✓ Metadata extracted: IMG_E9569.JPG [w=2316, h=3088, date=2024-11-16 11:31:07]
+2025-12-18 00:24:52,366 [INFO] [Scan] Metadata extracted successfully: IMG_E9569.JPG [w=2316, h=3088, date=2024-11-16 11:31:07]
+[SCAN] Creating folder hierarchy for: IMG_E9569.JPG
+[SCAN] ✓ Folder hierarchy created: folder_id=2
+[SCAN] ✓ File processed successfully: IMG_E9569.JPG
+[SCAN] Added to batch: IMG_E9569.JPG [batch size: 8/200]
+[SCAN] Starting file 9/22: IMG_E9574.JPG
+2025-12-18 00:24:52,380 [INFO] [Scan] File 9/22: IMG_E9574.JPG
+[SCAN] _process_file started for: IMG_E9574.JPG
+[SCAN] Getting file stats...
+[SCAN] File stats retrieved successfully
+2025-12-18 00:24:52,380 [INFO] 📷 Processing: IMG_E9574.JPG (2077.4 KB)
+[SCAN] Processing: IMG_E9574.JPG
+[SCAN] ✓ Metadata extracted: IMG_E9574.JPG [w=2316, h=3088, date=2024-11-16 11:51:22]
+2025-12-18 00:24:52,380 [INFO] [Scan] Metadata extracted successfully: IMG_E9574.JPG [w=2316, h=3088, date=2024-11-16 11:51:22]
+[SCAN] Creating folder hierarchy for: IMG_E9574.JPG
+[SCAN] ✓ Folder hierarchy created: folder_id=2
+[SCAN] ✓ File processed successfully: IMG_E9574.JPG
+[SCAN] Added to batch: IMG_E9574.JPG [batch size: 9/200]
+[SCAN] Starting file 10/22: img_e3122_face_0.jpg
+2025-12-18 00:24:52,395 [INFO] [Scan] File 10/22: img_e3122_face_0.jpg
+[SCAN] _process_file started for: img_e3122_face_0.jpg
+[SCAN] Getting file stats...
+[SCAN] File stats retrieved successfully
+2025-12-18 00:24:52,395 [INFO] 📷 Processing: img_e3122_face_0.jpg (254.7 KB)
+[SCAN] Processing: img_e3122_face_0.jpg
+[SCAN] ✓ Metadata extracted: img_e3122_face_0.jpg [w=967, h=974, date=None]
+2025-12-18 00:24:52,395 [INFO] [Scan] Metadata extracted successfully: img_e3122_face_0.jpg [w=967, h=974, date=None]
+[SCAN] Creating folder hierarchy for: img_e3122_face_0.jpg
+[SCAN] ✓ Folder hierarchy created: folder_id=21
+[SCAN] ✓ File processed successfully: img_e3122_face_0.jpg
+[SCAN] Added to batch: img_e3122_face_0.jpg [batch size: 10/200]
+[SCAN] Starting file 11/22: 244008930_565686944637059_4279754871252118785_n.jpg
+2025-12-18 00:24:52,427 [INFO] [Scan] File 11/22: 244008930_565686944637059_4279754871252118785_n.jpg
+[SCAN] _process_file started for: 244008930_565686944637059_4279754871252118785_n.jpg
+[SCAN] Getting file stats...
+[SCAN] File stats retrieved successfully
+2025-12-18 00:24:52,427 [INFO] 📷 Processing: 244008930_565686944637059_4279754871252118785_n.jpg (163.1 KB)
+[SCAN] Processing: 244008930_565686944637059_4279754871252118785_n.jpg
+[SCAN] ✓ Metadata extracted: 244008930_565686944637059_4279754871252118785_n.jpg [w=900, h=1600, date=None]
+2025-12-18 00:24:52,427 [INFO] [Scan] Metadata extracted successfully: 244008930_565686944637059_4279754871252118785_n.jpg [w=900, h=1600, date=None]
+[SCAN] Creating folder hierarchy for: 244008930_565686944637059_4279754871252118785_n.jpg
+[SCAN] ✓ Folder hierarchy created: folder_id=23
+[SCAN] ✓ File processed successfully: 244008930_565686944637059_4279754871252118785_n.jpg
+[SCAN] Added to batch: 244008930_565686944637059_4279754871252118785_n.jpg [batch size: 11/200]
+[SCAN] Starting file 12/22: 7f5e15df-e9c6-4914-90fb-c5cf06fd51f5.jfif
+2025-12-18 00:24:52,443 [INFO] [Scan] File 12/22: 7f5e15df-e9c6-4914-90fb-c5cf06fd51f5.jfif
+[SCAN] _process_file started for: 7f5e15df-e9c6-4914-90fb-c5cf06fd51f5.jfif
+[SCAN] Getting file stats...
+[SCAN] File stats retrieved successfully
+2025-12-18 00:24:52,443 [INFO] 📷 Processing: 7f5e15df-e9c6-4914-90fb-c5cf06fd51f5.jfif (448.6 KB)
+[SCAN] Processing: 7f5e15df-e9c6-4914-90fb-c5cf06fd51f5.jfif
+[SCAN] ✓ Metadata extracted: 7f5e15df-e9c6-4914-90fb-c5cf06fd51f5.jfif [w=1153, h=2048, date=None]
+2025-12-18 00:24:52,443 [INFO] [Scan] Metadata extracted successfully: 7f5e15df-e9c6-4914-90fb-c5cf06fd51f5.jfif [w=1153, h=2048, date=None]
+[SCAN] Creating folder hierarchy for: 7f5e15df-e9c6-4914-90fb-c5cf06fd51f5.jfif
+[SCAN] ✓ Folder hierarchy created: folder_id=23
+[SCAN] ✓ File processed successfully: 7f5e15df-e9c6-4914-90fb-c5cf06fd51f5.jfif
+[SCAN] Added to batch: 7f5e15df-e9c6-4914-90fb-c5cf06fd51f5.jfif [batch size: 12/200]
+[SCAN] Starting file 13/22: GPIC6664.JPG
+2025-12-18 00:24:52,458 [INFO] [Scan] File 13/22: GPIC6664.JPG
+[SCAN] _process_file started for: GPIC6664.JPG
+[SCAN] Getting file stats...
+[SCAN] File stats retrieved successfully
+2025-12-18 00:24:52,458 [INFO] 📷 Processing: GPIC6664.JPG (234.7 KB)
+[SCAN] Processing: GPIC6664.JPG
+[SCAN] ✓ Metadata extracted: GPIC6664.JPG [w=1153, h=2048, date=None]
+2025-12-18 00:24:52,458 [INFO] [Scan] Metadata extracted successfully: GPIC6664.JPG [w=1153, h=2048, date=None]
+[SCAN] Creating folder hierarchy for: GPIC6664.JPG
+[SCAN] ✓ Folder hierarchy created: folder_id=23
+[SCAN] ✓ File processed successfully: GPIC6664.JPG
+[SCAN] Added to batch: GPIC6664.JPG [batch size: 13/200]
+[SCAN] Starting file 14/22: IMG_8920.PNG
+2025-12-18 00:24:52,474 [INFO] [Scan] File 14/22: IMG_8920.PNG
+[SCAN] _process_file started for: IMG_8920.PNG
+[SCAN] Getting file stats...
+[SCAN] File stats retrieved successfully
+2025-12-18 00:24:52,474 [INFO] 📷 Processing: IMG_8920.PNG (3606.7 KB)
+[SCAN] Processing: IMG_8920.PNG
+[SCAN] ✓ Metadata extracted: IMG_8920.PNG [w=1284, h=2778, date=None]
+2025-12-18 00:24:52,474 [INFO] [Scan] Metadata extracted successfully: IMG_8920.PNG [w=1284, h=2778, date=None]
+[SCAN] Creating folder hierarchy for: IMG_8920.PNG
+[SCAN] ✓ Folder hierarchy created: folder_id=23
+[SCAN] ✓ File processed successfully: IMG_8920.PNG
+[SCAN] Added to batch: IMG_8920.PNG [batch size: 14/200]
+[SCAN] Starting file 15/22: JKHC8378.JPG
+2025-12-18 00:24:52,490 [INFO] [Scan] File 15/22: JKHC8378.JPG
+[SCAN] _process_file started for: JKHC8378.JPG
+[SCAN] Getting file stats...
+[SCAN] File stats retrieved successfully
+2025-12-18 00:24:52,490 [INFO] 📷 Processing: JKHC8378.JPG (241.8 KB)
+[SCAN] Processing: JKHC8378.JPG
+[SCAN] ✓ Metadata extracted: JKHC8378.JPG [w=1153, h=2048, date=None]
+2025-12-18 00:24:52,490 [INFO] [Scan] Metadata extracted successfully: JKHC8378.JPG [w=1153, h=2048, date=None]
+[SCAN] Creating folder hierarchy for: JKHC8378.JPG
+[SCAN] ✓ Folder hierarchy created: folder_id=23
+[SCAN] ✓ File processed successfully: JKHC8378.JPG
+[SCAN] Added to batch: JKHC8378.JPG [batch size: 15/200]
+[SCAN] Starting file 16/22: NTXK2933.JPG
+2025-12-18 00:24:52,506 [INFO] [Scan] File 16/22: NTXK2933.JPG
+[SCAN] _process_file started for: NTXK2933.JPG
+[SCAN] Getting file stats...
+[SCAN] File stats retrieved successfully
+2025-12-18 00:24:52,506 [INFO] 📷 Processing: NTXK2933.JPG (235.8 KB)
+[SCAN] Processing: NTXK2933.JPG
+[SCAN] ✓ Metadata extracted: NTXK2933.JPG [w=1153, h=2048, date=None]
+2025-12-18 00:24:52,506 [INFO] [Scan] Metadata extracted successfully: NTXK2933.JPG [w=1153, h=2048, date=None]
+[SCAN] Creating folder hierarchy for: NTXK2933.JPG
+[SCAN] ✓ Folder hierarchy created: folder_id=23
+[SCAN] ✓ File processed successfully: NTXK2933.JPG
+[SCAN] Added to batch: NTXK2933.JPG [batch size: 16/200]
+[SCAN] Starting file 17/22: IMG_8152.JPEG
+2025-12-18 00:24:52,522 [INFO] [Scan] File 17/22: IMG_8152.JPEG
+[SCAN] _process_file started for: IMG_8152.JPEG
+[SCAN] Getting file stats...
+[SCAN] File stats retrieved successfully
+2025-12-18 00:24:52,522 [INFO] 📷 Processing: IMG_8152.JPEG (466.1 KB)
+[SCAN] Processing: IMG_8152.JPEG
+[SCAN] ✓ Metadata extracted: IMG_8152.JPEG [w=1536, h=2048, date=2025-03-13 22:18:27]
+2025-12-18 00:24:52,522 [INFO] [Scan] Metadata extracted successfully: IMG_8152.JPEG [w=1536, h=2048, date=2025-03-13 22:18:27]
+[SCAN] Creating folder hierarchy for: IMG_8152.JPEG
+[SCAN] ✓ Folder hierarchy created: folder_id=35
+[SCAN] ✓ File processed successfully: IMG_8152.JPEG
+[SCAN] Added to batch: IMG_8152.JPEG [batch size: 17/200]
+[SCAN] Starting file 18/22: IMG_8158.JPEG
+2025-12-18 00:24:52,538 [INFO] [Scan] File 18/22: IMG_8158.JPEG
+[SCAN] _process_file started for: IMG_8158.JPEG
+[SCAN] Getting file stats...
+[SCAN] File stats retrieved successfully
+2025-12-18 00:24:52,538 [INFO] 📷 Processing: IMG_8158.JPEG (563.9 KB)
+[SCAN] Processing: IMG_8158.JPEG
+[SCAN] ✓ Metadata extracted: IMG_8158.JPEG [w=1536, h=2048, date=2025-03-13 22:18:58]
+2025-12-18 00:24:52,538 [INFO] [Scan] Metadata extracted successfully: IMG_8158.JPEG [w=1536, h=2048, date=2025-03-13 22:18:58]
+[SCAN] Creating folder hierarchy for: IMG_8158.JPEG
+[SCAN] ✓ Folder hierarchy created: folder_id=35
+[SCAN] ✓ File processed successfully: IMG_8158.JPEG
+[SCAN] Added to batch: IMG_8158.JPEG [batch size: 18/200]
+[SCAN] Starting file 19/22: IMG_1779.JPEG
+2025-12-18 00:24:52,554 [INFO] [Scan] File 19/22: IMG_1779.JPEG
+[SCAN] _process_file started for: IMG_1779.JPEG
+[SCAN] Getting file stats...
+[SCAN] File stats retrieved successfully
+2025-12-18 00:24:52,554 [INFO] 📷 Processing: IMG_1779.JPEG (2384.7 KB)
+[SCAN] Processing: IMG_1779.JPEG
+[SCAN] ✓ Metadata extracted: IMG_1779.JPEG [w=3024, h=4032, date=2022-01-15 10:14:36]
+2025-12-18 00:24:52,554 [INFO] [Scan] Metadata extracted successfully: IMG_1779.JPEG [w=3024, h=4032, date=2022-01-15 10:14:36]
+[SCAN] Creating folder hierarchy for: IMG_1779.JPEG
+[SCAN] ✓ Folder hierarchy created: folder_id=39
+[SCAN] ✓ File processed successfully: IMG_1779.JPEG
+[SCAN] Added to batch: IMG_1779.JPEG [batch size: 19/200]
+[SCAN] Starting file 20/22: IMG_E3091.JPG
+2025-12-18 00:24:52,572 [INFO] [Scan] File 20/22: IMG_E3091.JPG
+[SCAN] _process_file started for: IMG_E3091.JPG
+[SCAN] Getting file stats...
+[SCAN] File stats retrieved successfully
+2025-12-18 00:24:52,572 [INFO] 📷 Processing: IMG_E3091.JPG (4800.5 KB)
+[SCAN] Processing: IMG_E3091.JPG
+[SCAN] ✓ Metadata extracted: IMG_E3091.JPG [w=3024, h=4032, date=2022-08-18 20:26:59]
+2025-12-18 00:24:52,572 [INFO] [Scan] Metadata extracted successfully: IMG_E3091.JPG [w=3024, h=4032, date=2022-08-18 20:26:59]
+[SCAN] Creating folder hierarchy for: IMG_E3091.JPG
+[SCAN] ✓ Folder hierarchy created: folder_id=41
+[SCAN] ✓ File processed successfully: IMG_E3091.JPG
+[SCAN] Added to batch: IMG_E3091.JPG [batch size: 20/200]
+[SCAN] Starting file 21/22: IMG_E3092.JPG
+2025-12-18 00:24:52,587 [INFO] [Scan] File 21/22: IMG_E3092.JPG
+[SCAN] _process_file started for: IMG_E3092.JPG
+[SCAN] Getting file stats...
+[SCAN] File stats retrieved successfully
+2025-12-18 00:24:52,587 [INFO] 📷 Processing: IMG_E3092.JPG (4652.5 KB)
+[SCAN] Processing: IMG_E3092.JPG
+[SCAN] ✓ Metadata extracted: IMG_E3092.JPG [w=3024, h=4032, date=2022-08-18 20:27:00]
+2025-12-18 00:24:52,587 [INFO] [Scan] Metadata extracted successfully: IMG_E3092.JPG [w=3024, h=4032, date=2022-08-18 20:27:00]
+[SCAN] Creating folder hierarchy for: IMG_E3092.JPG
+[SCAN] ✓ Folder hierarchy created: folder_id=41
+[SCAN] ✓ File processed successfully: IMG_E3092.JPG
+[SCAN] Added to batch: IMG_E3092.JPG [batch size: 21/200]
+[SCAN] Starting file 22/22: IMG_E3093.JPG
+2025-12-18 00:24:52,601 [INFO] [Scan] File 22/22: IMG_E3093.JPG
+[SCAN] _process_file started for: IMG_E3093.JPG
+[SCAN] Getting file stats...
+[SCAN] File stats retrieved successfully
+2025-12-18 00:24:52,601 [INFO] 📷 Processing: IMG_E3093.JPG (4602.6 KB)
+[SCAN] Processing: IMG_E3093.JPG
+[SCAN] ✓ Metadata extracted: IMG_E3093.JPG [w=3024, h=4032, date=2022-08-18 20:27:02]
+2025-12-18 00:24:52,601 [INFO] [Scan] Metadata extracted successfully: IMG_E3093.JPG [w=3024, h=4032, date=2022-08-18 20:27:02]
+[SCAN] Creating folder hierarchy for: IMG_E3093.JPG
+[SCAN] ✓ Folder hierarchy created: folder_id=41
+[SCAN] ✓ File processed successfully: IMG_E3093.JPG
+[SCAN] Added to batch: IMG_E3093.JPG [batch size: 22/200]
+[SCAN] ⚡ Writing final batch to database: 22 photos
+2025-12-18 00:24:52,617 [INFO] Writing final batch of 22 photos to database
+[SCAN] 💾 Starting bulk_upsert for 22 photos...
+2025-12-18 00:24:52,617 [INFO] [DB] Starting bulk_upsert for 22 photos
+2025-12-18 00:24:52,627 [INFO] Bulk upserted 22 photos for project 1
+[SCAN] ✓ Bulk_upsert completed: 22 photos written
+2025-12-18 00:24:52,627 [INFO] [DB] Bulk_upsert completed: 22 photos written
+[SCAN] ✓ Final batch write complete
+[SCAN] Shutting down executor
+2025-12-18 00:24:52,627 [INFO] Executor shutdown complete
+
+[SCAN] === STEP 4: VIDEO PROCESSING ===
+[SCAN] total_videos=14
+[SCAN] self._cancelled=False
+[SCAN] Condition check: 14 > 0 and not False = True
+[SCAN] Condition TRUE - calling _process_videos()
+2025-12-18 00:24:52,627 [INFO] Processing 14 videos...
+[VIDEO_INDEX] Attempting to index: بابار_كونان_ريمي_ماوكلي_هزيم الرعد  طارق العربي طرقان و أبناؤه l برنامج صاحبة السعادة(360P)_1.mp4
+[VIDEO_INDEX]   project_id=1, folder_id=47
+[VIDEO_INDEX]   size_kb=31038.212890625, modified=2020-12-15 21:52:08
+[VIDEO_INDEX]   created_ts=1575154800, created_date=2019-12-01, created_year=2019
+2025-12-18 00:24:52,721 [INFO] Indexed video C:\Users\ASUS\OneDrive\Documents\Python\Test-Photos\photos\refs\أغاني كرتون قديم\بابار_كونان_ريمي_ماوكلي_هزيم الرعد  طارق العربي طرقان و أبناؤه l برنامج صاحبة السعادة(360P)_1.mp4 (id=1, status=pending)
+[VIDEO_INDEX] SUCCESS: video_id=1
+[VIDEO_INDEX] Attempting to index: سنان(360p).mp4
+[VIDEO_INDEX]   project_id=1, folder_id=47
+[VIDEO_INDEX]   size_kb=3625.857421875, modified=2021-03-10 21:45:28
+[VIDEO_INDEX]   created_ts=1615330800, created_date=2021-03-10, created_year=2021
+2025-12-18 00:24:52,797 [INFO] Indexed video C:\Users\ASUS\OneDrive\Documents\Python\Test-Photos\photos\refs\أغاني كرتون قديم\سنان(360p).mp4 (id=2, status=pending)
+[VIDEO_INDEX] SUCCESS: video_id=2
+[VIDEO_INDEX] Attempting to index: عدنان ولينا(360p).mp4
+[VIDEO_INDEX]   project_id=1, folder_id=47
+[VIDEO_INDEX]   size_kb=5436.6162109375, modified=2021-03-10 21:47:29
+[VIDEO_INDEX]   created_ts=1615330800, created_date=2021-03-10, created_year=2021
+2025-12-18 00:24:52,909 [INFO] Indexed video C:\Users\ASUS\OneDrive\Documents\Python\Test-Photos\photos\refs\أغاني كرتون قديم\عدنان ولينا(360p).mp4 (id=3, status=pending)
+[VIDEO_INDEX] SUCCESS: video_id=3
+[VIDEO_INDEX] Attempting to index: غريندايزر(360p).mp4
+[VIDEO_INDEX]   project_id=1, folder_id=47
+[VIDEO_INDEX]   size_kb=4873.3798828125, modified=2021-03-10 21:44:05
+[VIDEO_INDEX]   created_ts=1615330800, created_date=2021-03-10, created_year=2021
+2025-12-18 00:24:53,020 [INFO] Indexed video C:\Users\ASUS\OneDrive\Documents\Python\Test-Photos\photos\refs\أغاني كرتون قديم\غريندايزر(360p).mp4 (id=4, status=pending)
+[VIDEO_INDEX] SUCCESS: video_id=4
+[VIDEO_INDEX] Attempting to index: فلونة(360p).mp4
+[VIDEO_INDEX]   project_id=1, folder_id=47
+[VIDEO_INDEX]   size_kb=4239.64453125, modified=2021-03-10 23:46:02
+[VIDEO_INDEX]   created_ts=1615330800, created_date=2021-03-10, created_year=2021
+2025-12-18 00:24:53,164 [INFO] Indexed video C:\Users\ASUS\OneDrive\Documents\Python\Test-Photos\photos\refs\أغاني كرتون قديم\فلونة(360p).mp4 (id=5, status=pending)
+[VIDEO_INDEX] SUCCESS: video_id=5
+[VIDEO_INDEX] Attempting to index: في قصص الشعوب(360p).mp4
+[VIDEO_INDEX]   project_id=1, folder_id=47
+[VIDEO_INDEX]   size_kb=5634.505859375, modified=2021-03-10 21:48:22
+[VIDEO_INDEX]   created_ts=1615330800, created_date=2021-03-10, created_year=2021
+2025-12-18 00:24:53,275 [INFO] Indexed video C:\Users\ASUS\OneDrive\Documents\Python\Test-Photos\photos\refs\أغاني كرتون قديم\في قصص الشعوب(360p).mp4 (id=6, status=pending)
+[VIDEO_INDEX] SUCCESS: video_id=6
+[VIDEO_INDEX] Attempting to index: وداعاً إلى اللقاء- ساندي بل(360p).mp4
+[VIDEO_INDEX]   project_id=1, folder_id=47
+[VIDEO_INDEX]   size_kb=3465.5078125, modified=2021-03-10 23:42:45
+[VIDEO_INDEX]   created_ts=1615330800, created_date=2021-03-10, created_year=2021
+2025-12-18 00:24:53,354 [INFO] Indexed video C:\Users\ASUS\OneDrive\Documents\Python\Test-Photos\photos\refs\أغاني كرتون قديم\وداعاً إلى اللقاء- ساندي بل(360p).mp4 (id=7, status=pending)
+[VIDEO_INDEX] SUCCESS: video_id=7
+[VIDEO_INDEX] Attempting to index: افتح يا سمسم(360p).mp4
+[VIDEO_INDEX]   project_id=1, folder_id=62
+[VIDEO_INDEX]   size_kb=2283.76953125, modified=2021-03-10 21:40:05
+[VIDEO_INDEX]   created_ts=1615330800, created_date=2021-03-10, created_year=2021
+2025-12-18 00:24:53,472 [INFO] Indexed video C:\Users\ASUS\OneDrive\Documents\Python\Test-Photos\photos\refs\أغاني كرتون قديم\Gardinia Band\افتح يا سمسم(360p).mp4 (id=8, status=pending)
+[VIDEO_INDEX] SUCCESS: video_id=8
+[VIDEO_INDEX] Attempting to index: بيل وسيباستيان(360p).mp4
+[VIDEO_INDEX]   project_id=1, folder_id=62
+[VIDEO_INDEX]   size_kb=2952.728515625, modified=2021-03-10 21:46:36
+[VIDEO_INDEX]   created_ts=1615330800, created_date=2021-03-10, created_year=2021
+2025-12-18 00:24:53,583 [INFO] Indexed video C:\Users\ASUS\OneDrive\Documents\Python\Test-Photos\photos\refs\أغاني كرتون قديم\Gardinia Band\بيل وسيباستيان(360p).mp4 (id=9, status=pending)
+[VIDEO_INDEX] SUCCESS: video_id=9
+[VIDEO_INDEX] Attempting to index: توم سوير(360p).mp4
+[VIDEO_INDEX]   project_id=1, folder_id=62
+[VIDEO_INDEX]   size_kb=6029.173828125, modified=2021-03-10 21:46:49
+[VIDEO_INDEX]   created_ts=1615330800, created_date=2021-03-10, created_year=2021
+2025-12-18 00:24:53,673 [INFO] Indexed video C:\Users\ASUS\OneDrive\Documents\Python\Test-Photos\photos\refs\أغاني كرتون قديم\Gardinia Band\توم سوير(360p).mp4 (id=10, status=pending)
+[VIDEO_INDEX] SUCCESS: video_id=10
+[VIDEO_INDEX] Attempting to index: جزيرة الكنز(360p).mp4
+[VIDEO_INDEX]   project_id=1, folder_id=62
+[VIDEO_INDEX]   size_kb=7763.2548828125, modified=2021-03-10 21:43:44
+[VIDEO_INDEX]   created_ts=1615330800, created_date=2021-03-10, created_year=2021
+2025-12-18 00:24:53,792 [INFO] Indexed video C:\Users\ASUS\OneDrive\Documents\Python\Test-Photos\photos\refs\أغاني كرتون قديم\Gardinia Band\جزيرة الكنز(360p).mp4 (id=11, status=pending)
+[VIDEO_INDEX] SUCCESS: video_id=11
+[VIDEO_INDEX] Attempting to index: جزيرة الكنز- كورال غاردينيا- حفل شارات مسلسلات الكرتون 2016(480P).mp4
+[VIDEO_INDEX]   project_id=1, folder_id=62
+[VIDEO_INDEX]   size_kb=18556.58984375, modified=2021-03-09 21:52:48
+[VIDEO_INDEX]   created_ts=1615244400, created_date=2021-03-09, created_year=2021
+2025-12-18 00:24:53,902 [INFO] Indexed video C:\Users\ASUS\OneDrive\Documents\Python\Test-Photos\photos\refs\أغاني كرتون قديم\Gardinia Band\جزيرة الكنز- كورال غاردينيا- حفل شارات مسلسلات الكرتون 2016(480P).mp4 (id=12, status=pending)
+[VIDEO_INDEX] SUCCESS: video_id=12
+[VIDEO_INDEX] Attempting to index: ريمي الصبي(360p).mp4
+[VIDEO_INDEX]   project_id=1, folder_id=62
+[VIDEO_INDEX]   size_kb=4534.5927734375, modified=2021-03-10 21:45:07
+[VIDEO_INDEX]   created_ts=1615330800, created_date=2021-03-10, created_year=2021
+2025-12-18 00:24:54,082 [INFO] Indexed video C:\Users\ASUS\OneDrive\Documents\Python\Test-Photos\photos\refs\أغاني كرتون قديم\Gardinia Band\ريمي الصبي(360p).mp4 (id=13, status=pending)
+[VIDEO_INDEX] SUCCESS: video_id=13
+[VIDEO_INDEX] Attempting to index: ساندي بل(360p).mp4
+[VIDEO_INDEX]   project_id=1, folder_id=62
+[VIDEO_INDEX]   size_kb=4852.3251953125, modified=2021-03-10 21:47:59
+[VIDEO_INDEX]   created_ts=1615330800, created_date=2021-03-10, created_year=2021
+2025-12-18 00:24:54,161 [INFO] Indexed video C:\Users\ASUS\OneDrive\Documents\Python\Test-Photos\photos\refs\أغاني كرتون قديم\Gardinia Band\ساندي بل(360p).mp4 (id=14, status=pending)
+[VIDEO_INDEX] SUCCESS: video_id=14
+2025-12-18 00:24:54,161 [INFO] Indexed 14 videos (metadata extraction pending)
+2025-12-18 00:24:54,235 [INFO] Launching background workers for 14 videos...
+2025-12-18 00:24:54,235 [INFO] Using ffprobe from settings: C:\ffmpeg\bin\ffprobe.exe
+2025-12-18 00:24:54,304 [INFO] ffprobe detected at 'C:\ffmpeg\bin\ffprobe.exe' - video metadata extraction enabled
+2025-12-18 00:24:54,304 [INFO] Connected metadata finished callback for sidebar refresh
+2025-12-18 00:24:54,304 [INFO] ✓ Video metadata extraction worker started
+2025-12-18 00:24:54,304 [INFO] [VideoMetadataWorker] Starting for project_id=1
+2025-12-18 00:24:54,304 [INFO] Using ffmpeg from same directory as ffprobe: C:\ffmpeg\bin\ffmpeg.exe
+2025-12-18 00:24:54,304 [INFO] [VideoMetadataWorker] Found 14 videos to process
+2025-12-18 00:24:54,304 [INFO] [VideoMetadataWorker] Processing with 8 parallel workers
+2025-12-18 00:24:54,403 [INFO] [VideoMetadataWorker] ✓ c:\users\asus\onedrive\documents\python\test-photos\photos\refs\أغاني كرتون قديم\gardinia band\ساندي بل(360p).mp4
+2025-12-18 00:24:54,421 [INFO] [VideoMetadataWorker] ✓ c:\users\asus\onedrive\documents\python\test-photos\photos\refs\أغاني كرتون قديم\gardinia band\بيل وسيباستيان(360p).mp4
+2025-12-18 00:24:54,435 [INFO] [VideoMetadataWorker] ✓ c:\users\asus\onedrive\documents\python\test-photos\photos\refs\أغاني كرتون قديم\gardinia band\افتح يا سمسم(360p).mp4
+2025-12-18 00:24:54,458 [INFO] [VideoMetadataWorker] ✓ c:\users\asus\onedrive\documents\python\test-photos\photos\refs\أغاني كرتون قديم\gardinia band\جزيرة الكنز- كورال غاردينيا- حفل شارات مسلسلات الكرتون 2016(480p).mp4
+2025-12-18 00:24:54,473 [INFO] [VideoMetadataWorker] ✓ c:\users\asus\onedrive\documents\python\test-photos\photos\refs\أغاني كرتون قديم\gardinia band\ريمي الصبي(360p).mp4
+2025-12-18 00:24:54,491 [INFO] [VideoMetadataWorker] ✓ c:\users\asus\onedrive\documents\python\test-photos\photos\refs\أغاني كرتون قديم\gardinia band\توم سوير(360p).mp4
+2025-12-18 00:24:54,513 [INFO] [VideoMetadataWorker] ✓ c:\users\asus\onedrive\documents\python\test-photos\photos\refs\أغاني كرتون قديم\غريندايزر(360p).mp4
+2025-12-18 00:24:54,548 [INFO] [VideoMetadataWorker] ✓ c:\users\asus\onedrive\documents\python\test-photos\photos\refs\أغاني كرتون قديم\سنان(360p).mp4
+2025-12-18 00:24:54,561 [INFO] [VideoMetadataWorker] ✓ c:\users\asus\onedrive\documents\python\test-photos\photos\refs\أغاني كرتون قديم\بابار_كونان_ريمي_ماوكلي_هزيم الرعد  طارق العربي طرقان و أبناؤه l برنامج صاحبة السعادة(360p)_1.mp4
+2025-12-18 00:24:54,561 [INFO] [VideoMetadataWorker] ✓ c:\users\asus\onedrive\documents\python\test-photos\photos\refs\أغاني كرتون قديم\عدنان ولينا(360p).mp4
+2025-12-18 00:24:54,581 [INFO] [VideoMetadataWorker] ✓ c:\users\asus\onedrive\documents\python\test-photos\photos\refs\أغاني كرتون قديم\gardinia band\جزيرة الكنز(360p).mp4
+2025-12-18 00:24:54,589 [INFO] [VideoMetadataWorker] ✓ c:\users\asus\onedrive\documents\python\test-photos\photos\refs\أغاني كرتون قديم\وداعاً إلى اللقاء- ساندي بل(360p).mp4
+2025-12-18 00:24:54,596 [INFO] [VideoMetadataWorker] ✓ c:\users\asus\onedrive\documents\python\test-photos\photos\refs\أغاني كرتون قديم\في قصص الشعوب(360p).mp4
+2025-12-18 00:24:54,618 [INFO] [VideoMetadataWorker] ✓ c:\users\asus\onedrive\documents\python\test-photos\photos\refs\أغاني كرتون قديم\فلونة(360p).mp4
+2025-12-18 00:24:54,618 [INFO] [VideoMetadataWorker] Finished: 14 success, 0 failed
+2025-12-18 00:24:54,618 [INFO] ffmpeg detected at 'C:\ffmpeg\bin\ffmpeg.exe' - video thumbnail generation enabled
+2025-12-18 00:24:54,618 [INFO] ✓ Video thumbnail generation worker started
+2025-12-18 00:24:54,618 [INFO] [VideoThumbnailWorker] Starting for project_id=1
+2025-12-18 00:24:54,624 [INFO] 🎬 Processing 14 videos in background (check logs for progress)
+2025-12-18 00:24:54,624 [INFO] Scan complete: 22 photos indexed, 14 videos indexed, 0 skipped, 0 failed in 2.5s
+2025-12-18 00:24:54,624 [INFO] [VideoThumbnailWorker] Found 14 videos to process
+2025-12-18 00:24:54,624 [INFO] Scan completed: 22 photos, 14 videos, 8 folders in 2.5s
+2025-12-18 00:24:54,624 [INFO] [VideoThumbnailWorker] Processing with 8 parallel workers
+[ScanController] cleanup after scan
+2025-12-18 00:24:54,738 [INFO] Building date branches...
+2025-12-18 00:24:54,740 [INFO] Building date branches for project_id=1
+[build_date_branches] Using project_id=1
+[build_date_branches] Populating 'all' branch with 22 photos for project 1
+[build_date_branches] Inserted 22/22 photos into 'all' branch
+[build_date_branches] Found 7 unique dates for project 1
+[build_date_branches] Date 2022-01-15: found 1 photos for project 1
+[build_date_branches] Sample path: c:/users/asus/onedrive/documents/python/test-photos/photos/refs/4/img_1779.jpeg
+[build_date_branches] Date 2022-01-15: inserted 1/1 into project_images (new)
+[build_date_branches] Date 2022-08-18: found 4 photos for project 1
+[build_date_branches] Sample path: c:/users/asus/onedrive/documents/python/test-photos/photos/refs/1/img_e3122.jpg
+[build_date_branches] Date 2022-08-18: inserted 4/4 into project_images (new)
+[build_date_branches] Date 2023-10-19: found 1 photos for project 1
+[build_date_branches] Sample path: c:/users/asus/onedrive/documents/python/test-photos/photos/refs/1/img_3307.jpg
+[build_date_branches] Date 2023-10-19: inserted 1/1 into project_images (new)
+[build_date_branches] Date 2024-11-07: found 1 photos for project 1
+[build_date_branches] Sample path: c:/users/asus/onedrive/documents/python/test-photos/photos/refs/1/img_e7413.jpg
+[build_date_branches] Date 2024-11-07: inserted 1/1 into project_images (new)
+[build_date_branches] Date 2024-11-16: found 3 photos for project 1
+[build_date_branches] Sample path: c:/users/asus/onedrive/documents/python/test-photos/photos/refs/1/img_9570.jpg
+[build_date_branches] Date 2024-11-16: inserted 3/3 into project_images (new)
+[build_date_branches] Date 2024-11-26: found 1 photos for project 1
+[build_date_branches] Sample path: c:/users/asus/onedrive/documents/python/test-photos/photos/refs/1/img_1550.dng
+[build_date_branches] Date 2024-11-26: inserted 1/1 into project_images (new)
+[build_date_branches] Date 2025-03-13: found 2 photos for project 1
+[build_date_branches] Sample path: c:/users/asus/onedrive/documents/python/test-photos/photos/refs/3/img_8152.jpeg
+[build_date_branches] Date 2025-03-13: inserted 2/2 into project_images (new)
+[build_date_branches] Total entries processed: 13
+[build_date_branches] project_images table has 35 rows for project 1
+2025-12-18 00:24:54,766 [INFO] Created 13 photo date branch entries for project 1
+2025-12-18 00:24:54,770 [INFO] Building video date branches for project_id=1
+[build_video_date_branches] Using project_id=1
+[build_video_date_branches] Found 14 videos with dates for project 1
+[build_video_date_branches] Inserted 14/14 videos into 'all' branch
+[build_video_date_branches] Found 3 unique video dates
+[build_video_date_branches] Date 2021-03-10: inserted 12/12 (new)
+[build_video_date_branches] Date 2021-03-09: inserted 1/1 (new)
+[build_video_date_branches] Date 2019-12-01: inserted 1/1 (new)
+[build_video_date_branches] Total entries processed: 14
+[build_video_date_branches] project_videos table has 28 rows for project 1
+2025-12-18 00:24:54,791 [INFO] Created 14 video date branch entries for project 1
+2025-12-18 00:24:54,793 [INFO] Backfilling created_date fields for photos...
+2025-12-18 00:24:54,808 [INFO] Backfilled 9 photo rows with created_date
+2025-12-18 00:24:54,808 [INFO] Backfilling created_date fields for videos...
+[FaceConfig] Loaded from C:\Users\ASUS\.memorymate\face_detection_config.json
+2025-12-18 00:24:54,812 [INFO] Main scan operations complete. Remaining: set()
+2025-12-18 00:24:54,812 [INFO] ✓ All scan operations complete. Triggering final refresh...
+2025-12-18 00:24:54,915 [INFO] 🔄 Starting final coordinated refresh...
+2025-12-18 00:24:54,920 [INFO] Reloading sidebar after date branches built...
+2025-12-18 00:24:54,922 [INFO] [AccordionSidebar] Reloading all sections
+2025-12-18 00:24:54,922 [WARNING] [FoldersSection] No project_id set
+2025-12-18 00:24:54,928 [INFO] Generated thumbnail for c:\users\asus\onedrive\documents\python\test-photos\photos\refs\أغاني كرتون قديم\بابار_كونان_ريمي_ماوكلي_هزيم الرعد  طارق العربي طرقان و أبناؤه l برنامج صاحبة السعادة(360p)_1.mp4 at .thumb_cache\بابار_كونان_ريمي_ماوكلي_هزيم الرعد  طارق العربي طرقان و أبناؤه l برنامج صاحبة السعادة(360p)_1_mp4_thumb.jpg
+2025-12-18 00:24:54,928 [INFO] [FoldersSection] Tree built with 1 top-level folders
+2025-12-18 00:24:54,987 [INFO] [VideoThumbnailWorker] ✓ c:\users\asus\onedrive\documents\python\test-photos\photos\refs\أغاني كرتون قديم\بابار_كونان_ريمي_ماوكلي_هزيم الرعد  طارق العربي طرقان و أبناؤه l برنامج صاحبة السعادة(360p)_1.mp4
+2025-12-18 00:24:54,994 [INFO] [AccordionSidebar] Section folders loaded and displayed
+2025-12-18 00:24:54,995 [WARNING] [DatesSection] No project_id set
+2025-12-18 00:24:55,044 [INFO] [AccordionSidebar] Section dates loaded and displayed
+2025-12-18 00:24:55,046 [WARNING] [VideosSection] No project_id set
+2025-12-18 00:24:55,094 [INFO] Generated thumbnail for c:\users\asus\onedrive\documents\python\test-photos\photos\refs\أغاني كرتون قديم\gardinia band\جزيرة الكنز(360p).mp4 at .thumb_cache\جزيرة الكنز(360p)_mp4_thumb.jpg
+2025-12-18 00:24:55,110 [INFO] [AccordionSidebar] Section videos loaded and displayed
+2025-12-18 00:24:55,112 [WARNING] [PeopleSection] No project_id set
+⚠️ Missing translation key: sidebar.people.empty
+2025-12-18 00:24:55,158 [INFO] [VideoThumbnailWorker] ✓ c:\users\asus\onedrive\documents\python\test-photos\photos\refs\أغاني كرتون قديم\gardinia band\جزيرة الكنز(360p).mp4
+2025-12-18 00:24:55,171 [INFO] [AccordionSidebar] Section people loaded and displayed
+[DeviceMonitor] Initialized for platform: Windows
+[WindowsDeviceWindow] Native window created (hidden)
+[DeviceMonitor] Windows device monitoring started
+[DeviceMonitor] Listening for WM_DEVICECHANGE messages
+2025-12-18 00:24:55,190 [INFO] [DevicesSection] Scanning devices (generation 2)…
+2025-12-18 00:24:55,190 [INFO] Generated thumbnail for c:\users\asus\onedrive\documents\python\test-photos\photos\refs\أغاني كرتون قديم\gardinia band\ساندي بل(360p).mp4 at .thumb_cache\ساندي بل(360p)_mp4_thumb.jpg
+
+[DeviceScanner] ===== Starting device scan (FORCED) =====2025-12-18 00:24:55,192 [INFO] [QuickSection] Loading quick dates
+
+[DeviceScanner] Platform: Windows
+[DeviceScanner] Database registration: disabled
+[DeviceScanner] Scanning Windows drives...
+[DeviceScanner]   Checking drive letters D:-Z:...
+[DeviceScanner]     Drive D: exists, checking...
+[DeviceScanner]           Checking path: D:\
+2025-12-18 00:24:55,242 [INFO] Generated thumbnail for c:\users\asus\onedrive\documents\python\test-photos\photos\refs\أغاني كرتون قديم\gardinia band\جزيرة الكنز- كورال غاردينيا- حفل شارات مسلسلات الكرتون 2016(480p).mp4 at .thumb_cache\جزيرة الكنز- كورال غاردينيا- حفل شارات مسلسلات الكرتون 2016(480p)_mp4_thumb.jpg
+2025-12-18 00:24:55,245 [INFO] Generated thumbnail for c:\users\asus\onedrive\documents\python\test-photos\photos\refs\أغاني كرتون قديم\gardinia band\توم سوير(360p).mp4 at .thumb_cache\توم سوير(360p)_mp4_thumb.jpg
+[DeviceScanner]           Directories found: ['$RECYCLE.BIN', 'Architect Books', 'Architecture', 'Arshiif', 'B2 Prüfung', 'CORONA', 'CORONA 1', 'CORONA 2024', 'En', 'From Ammar', 'IPhone', 'MirrorTo transfer', 'MirrorTo video', 'My Phone', 'My Work', 'New folder (2)', 'Python', 'Recovery', 'REVIT', 'Revit Advance', 'REVIT NEW', 'Samer Matar V-Ray', 'SnapPea', 'System Volume Information', 'To write', 'training 2020', 'Workshop- Corona', 'المشروع الألماني', 'انكليزي', 'تصويؤي', 'تلغرام', 'روايات', 'صور للإرسال', 'طيران مدني', 'عزفي', 'فيديو', 'كورس الفرنسي- هيئة التخطيط والتعاون الدولي', 'للطباعة', 'ملفاتي']
+[DeviceScanner]           Has DCIM folder: False
+[DeviceScanner]           No alternate structure found
+[DeviceScanner]           Checking subdirectories for DCIM (MTP mounts)...
+2025-12-18 00:24:55,257 [INFO] [AccordionSidebar] Section quick loaded and displayed
+2025-12-18 00:24:55,262 [INFO] [VideoThumbnailWorker] ✓ c:\users\asus\onedrive\documents\python\test-photos\photos\refs\أغاني كرتون قديم\gardinia band\ساندي بل(360p).mp4
+
+[GRID] ====== reload() CALLED ======[DeviceScanner]             Checking subdirectory: IPhone
+
+2025-12-18 00:24:55,262 [INFO] Generated thumbnail for c:\users\asus\onedrive\documents\python\test-photos\photos\refs\أغاني كرتون قديم\gardinia band\ريمي الصبي(360p).mp4 at .thumb_cache\ريمي الصبي(360p)_mp4_thumb.jpg
+[GRID] project_id=1, load_mode=branch
+[GRID] Step 1: Setting _reloading=True
+[DeviceScanner]               Checking nested: IPhone/202202__
+2025-12-18 00:24:55,276 [INFO] [VideoThumbnailWorker] ✓ c:\users\asus\onedrive\documents\python\test-photos\photos\refs\أغاني كرتون قديم\gardinia band\جزيرة الكنز- كورال غاردينيا- حفل شارات مسلسلات الكرتون 2016(480p).mp4
+[GRID] Fetched tags for 0 paths, got 0 entries
+[DeviceScanner]               Checking nested: IPhone/242CLOUD
+[DeviceScanner]               Checking nested: IPhone/Family
+[DeviceScanner]               Checking nested: IPhone/French Video
+[DeviceScanner]               Checking nested: IPhone/To draw
+2025-12-18 00:24:55,285 [INFO] [VideoThumbnailWorker] ✓ c:\users\asus\onedrive\documents\python\test-photos\photos\refs\أغاني كرتون قديم\gardinia band\توم سوير(360p).mp4
+[DeviceScanner]               Checking nested: IPhone/To learn Deutsch
+[DeviceScanner]               Checking nested: IPhone/خواطر
+[DeviceScanner]               Checking nested: IPhone/عن الموت
+[DeviceScanner]               Checking nested: IPhone/منزل عمار وسوزي
+[DeviceScanner]             Checking subdirectory: My Phone
+[DeviceScanner]               Checking nested: My Phone/Android
+[DeviceScanner]               Checking nested: My Phone/DCM
+2025-12-18 00:24:55,306 [INFO] [VideoThumbnailWorker] ✓ c:\users\asus\onedrive\documents\python\test-photos\photos\refs\أغاني كرتون قديم\gardinia band\ريمي الصبي(360p).mp4
+[DeviceScanner]               Checking nested: My Phone/Document Scanner
+[GRID] Loaded 0 thumbnails.
+[DeviceScanner]               Checking nested: My Phone/Final
+[GRID] Reloaded 0 thumbnails in None-mode (base=0)
+[GRID] Step 5: Emitting gridReloaded signal...
+[DeviceScanner]               ✓ Found DCIM in: My Phone/Final/DCIM
+
+[Breadcrumb] _update_breadcrumb() CALLED[DeviceScanner]           Has DCIM in subdirectory: True
+
+[Breadcrumb] Grid state: navigation_mode=branch, project_id=1
+[Breadcrumb] Looking for CURRENT project_id=1 in 1 projects
+[Breadcrumb] Found CURRENT project name: P01
+[Breadcrumb] Added project segment: P01
+[Breadcrumb] Added branch segment: All Photos
+[Breadcrumb] Calling set_path() with 2 segments
+[BreadcrumbNav] set_path() called with 2 segments
+[BreadcrumbNav] Clearing 3 existing widgets
+[DeviceScanner]           Device type: android
+[BreadcrumbNav] Cleared all existing widgets
+[DeviceScanner]           Device label: 🤖 Mobile Device
+[BreadcrumbNav] Added segment 0: P01
+[DeviceScanner]           Scanning for media folders...
+[BreadcrumbNav] Added segment 1: All Photos
+[BreadcrumbNav] set_path() completed - 2 segments added
+[Breadcrumb] set_path() completed successfully
+[DeviceScanner]           Found 0 media folder(s)
+[Breadcrumb] _update_breadcrumb() COMPLETED
+[DeviceScanner]           REJECTED: No media folders with photos/videos
+
+[DeviceScanner]       ✗ No device on drive D:
+[GRID] Step 5: ✓ gridReloaded signal emitted
+[GRID] ====== reload() COMPLETED SUCCESSFULLY ======
+
+[GRID] Finally block: Setting _reloading=False
+[DeviceScanner]   Checking portable devices (MTP/PTP)...
+[DeviceScanner]     Attempting Shell COM enumeration...
+[DeviceScanner]     COM initialized for current thread
+2025-12-18 00:24:55,347 [INFO] Refreshing Google Photos layout after scan...
+[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px)...
+[GooglePhotosLayout] 🔄 Clearing existing timeline and thumbnail cache...
+[GooglePhotosLayout] 🔍 Starting async photo load (generation 3)...
+[GooglePhotosLayout] ✅ Photo load worker started (generation 3)
+2025-12-18 00:24:55,350 [INFO] ✓ Google Photos layout refreshed
+2025-12-18 00:24:55,368 [INFO] ✅ Final refresh complete: 0 photos, 0 videos
+2025-12-18 00:24:55,384 [INFO] Photo query complete: generation=3, current=3, rows=36
+[GooglePhotosLayout] 📅 Grouping 36 photos by date...
+[GooglePhotosLayout] ✅ Grouped into 19 date groups
+[GooglePhotosLayout] Tracking 36 paths for multi-selection
+[GooglePhotosLayout] 🚀 Setting up virtual scrolling for 19 date groups...
+[GooglePhotosLayout] 📐 Responsive grid: 7 columns (viewport: 1517px, thumb: 200px)
+2025-12-18 00:24:55,410 [INFO] Generated thumbnail for c:\users\asus\onedrive\documents\python\test-photos\photos\refs\أغاني كرتون قديم\gardinia band\بيل وسيباستيان(360p).mp4 at .thumb_cache\بيل وسيباستيان(360p)_mp4_thumb.jpg
+2025-12-18 00:24:55,418 [INFO] Generated thumbnail for c:\users\asus\onedrive\documents\python\test-photos\photos\refs\أغاني كرتون قديم\gardinia band\افتح يا سمسم(360p).mp4 at .thumb_cache\افتح يا سمسم(360p)_mp4_thumb.jpg
+2025-12-18 00:24:55,464 [INFO] [VideoThumbnailWorker] ✓ c:\users\asus\onedrive\documents\python\test-photos\photos\refs\أغاني كرتون قديم\gardinia band\بيل وسيباستيان(360p).mp4
+[DeviceScanner]     Found 3 items under 'This PC'
+[DeviceScanner]       → Item: 'Manage my phone' | IsFolder=False | IsFileSystem=False
+[DeviceScanner]       → Item: 'Local Disk (C:)' | IsFolder=True | IsFileSystem=True
+[DeviceScanner]       → Item: 'DATA (D:)' | IsFolder=True | IsFileSystem=True
+2025-12-18 00:24:55,500 [INFO] [VideoThumbnailWorker] ✓ c:\users\asus\onedrive\documents\python\test-photos\photos\refs\أغاني كرتون قديم\gardinia band\افتح يا سمسم(360p).mp4
+[GooglePhotosLayout] ✅ Virtual scrolling enabled: 19 total date groups
+[GooglePhotosLayout] 📊 Rendered: 5 groups | Placeholders: 14 groups
+[DeviceScanner]     COM uninitialized
+[GooglePhotosLayout] 🖼️ Queued 6 thumbnails for loading (initial limit: 50)
+[GooglePhotosLayout] ✅ Photo loading complete! Thumbnails will load progressively.
+[DeviceScanner] ===== Scan complete: 0 device(s) found =====
+[DeviceScanner] Results cached for 5.0s
+
+2025-12-18 00:24:55,604 [INFO] [AccordionSidebar] Section devices loaded and displayed
+2025-12-18 00:24:55,682 [INFO] Generated thumbnail for c:\users\asus\onedrive\documents\python\test-photos\photos\refs\أغاني كرتون قديم\سنان(360p).mp4 at .thumb_cache\سنان(360p)_mp4_thumb.jpg
+2025-12-18 00:24:55,710 [INFO] [VideoThumbnailWorker] ✓ c:\users\asus\onedrive\documents\python\test-photos\photos\refs\أغاني كرتون قديم\سنان(360p).mp4
+2025-12-18 00:24:55,713 [INFO] Generated thumbnail for c:\users\asus\onedrive\documents\python\test-photos\photos\refs\أغاني كرتون قديم\عدنان ولينا(360p).mp4 at .thumb_cache\عدنان ولينا(360p)_mp4_thumb.jpg
+2025-12-18 00:24:55,725 [INFO] [VideoThumbnailWorker] ✓ c:\users\asus\onedrive\documents\python\test-photos\photos\refs\أغاني كرتون قديم\عدنان ولينا(360p).mp4
+2025-12-18 00:24:55,734 [INFO] Generated thumbnail for c:\users\asus\onedrive\documents\python\test-photos\photos\refs\أغاني كرتون قديم\غريندايزر(360p).mp4 at .thumb_cache\غريندايزر(360p)_mp4_thumb.jpg
+2025-12-18 00:24:55,752 [INFO] [VideoThumbnailWorker] ✓ c:\users\asus\onedrive\documents\python\test-photos\photos\refs\أغاني كرتون قديم\غريندايزر(360p).mp4
+2025-12-18 00:24:55,760 [INFO] Generated thumbnail for c:\users\asus\onedrive\documents\python\test-photos\photos\refs\أغاني كرتون قديم\فلونة(360p).mp4 at .thumb_cache\فلونة(360p)_mp4_thumb.jpg
+2025-12-18 00:24:55,771 [INFO] [VideoThumbnailWorker] ✓ c:\users\asus\onedrive\documents\python\test-photos\photos\refs\أغاني كرتون قديم\فلونة(360p).mp4
+2025-12-18 00:24:55,806 [INFO] Generated thumbnail for c:\users\asus\onedrive\documents\python\test-photos\photos\refs\أغاني كرتون قديم\وداعاً إلى اللقاء- ساندي بل(360p).mp4 at .thumb_cache\وداعاً إلى اللقاء- ساندي بل(360p)_mp4_thumb.jpg
+2025-12-18 00:24:55,818 [INFO] [VideoThumbnailWorker] ✓ c:\users\asus\onedrive\documents\python\test-photos\photos\refs\أغاني كرتون قديم\وداعاً إلى اللقاء- ساندي بل(360p).mp4
+2025-12-18 00:24:55,826 [INFO] Generated thumbnail for c:\users\asus\onedrive\documents\python\test-photos\photos\refs\أغاني كرتون قديم\في قصص الشعوب(360p).mp4 at .thumb_cache\في قصص الشعوب(360p)_mp4_thumb.jpg
+2025-12-18 00:24:55,828 [INFO] [VideoThumbnailWorker] ✓ c:\users\asus\onedrive\documents\python\test-photos\photos\refs\أغاني كرتون قديم\في قصص الشعوب(360p).mp4
+2025-12-18 00:24:55,838 [INFO] [VideoThumbnailWorker] Finished: 14 success, 0 failed
+2025-12-18 00:25:02,196 [INFO] ✓ HEIC/HEIF support enabled for face detection (pillow_heif v1.1.1)
+[MainWindow] Launching automatic face grouping pipeline for project 1
+2025-12-18 00:25:04,518 [INFO] [FaceDetectionWorker] Starting face detection for project 1
+2025-12-18 00:25:04,518 [INFO] 💻 Using CPU for face detection (CUDA not available)
+2025-12-18 00:25:04,518 [INFO] 🏠 Using user home models: C:\Users\ASUS/.insightface\models\buffalo_l
+2025-12-18 00:25:04,518 [WARNING] ⚠️ Detected nested buffalo_l directory: C:\Users\ASUS/.insightface\models\buffalo_l\models\buffalo_l
+2025-12-18 00:25:04,529 [WARNING] ⚠️ This may cause model loading issues. Expected structure:
+2025-12-18 00:25:04,529 [WARNING]    buffalo_l/det_10g.onnx
+2025-12-18 00:25:04,529 [WARNING]    NOT buffalo_l/models/buffalo_l/det_10g.onnx
+2025-12-18 00:25:04,529 [WARNING]    Please check your model directory structure.
+2025-12-18 00:25:04,529 [INFO] ✓ Initializing InsightFace with buffalo_l directory: C:\Users\ASUS/.insightface\models\buffalo_l
+2025-12-18 00:25:04,534 [INFO] 📦 InsightFace version: 0.7.3
+2025-12-18 00:25:04,534 [INFO] ✓ Using ctx_id approach (older InsightFace v0.7.3, proof of concept compatible)
+2025-12-18 00:25:04,534 [INFO] ✓ Version detection: API signature check confirmed no providers parameter (older API)
+Applied providers: ['CPUExecutionProvider'], with options: {'CPUExecutionProvider': {}}
+find model: C:\Users\ASUS/.insightface\models\buffalo_l\models\buffalo_l\1k3d68.onnx landmark_3d_68 ['None', 3, 192, 192] 0.0 1.0
+Applied providers: ['CPUExecutionProvider'], with options: {'CPUExecutionProvider': {}}
+find model: C:\Users\ASUS/.insightface\models\buffalo_l\models\buffalo_l\2d106det.onnx landmark_2d_106 ['None', 3, 192, 192] 0.0 1.0
+Applied providers: ['CPUExecutionProvider'], with options: {'CPUExecutionProvider': {}}
+find model: C:\Users\ASUS/.insightface\models\buffalo_l\models\buffalo_l\det_10g.onnx detection [1, 3, '?', '?'] 127.5 128.0
+Applied providers: ['CPUExecutionProvider'], with options: {'CPUExecutionProvider': {}}
+find model: C:\Users\ASUS/.insightface\models\buffalo_l\models\buffalo_l\genderage.onnx genderage ['None', 3, 96, 96] 0.0 1.0
+Applied providers: ['CPUExecutionProvider'], with options: {'CPUExecutionProvider': {}}
+find model: C:\Users\ASUS/.insightface\models\buffalo_l\models\buffalo_l\w600k_r50.onnx recognition ['None', 3, 112, 112] 127.5 127.5
+2025-12-18 00:25:05,974 [INFO] ✓ Using CPU acceleration (ctx_id=-1)
+set det-size: (640, 640)
+2025-12-18 00:25:07,143 [INFO] ✅ InsightFace (buffalo_l) loaded successfully with CPU acceleration (det_size=640x640)
+2025-12-18 00:25:07,143 [INFO] [FaceDetection] Initialized InsightFace with model=buffalo_l
+2025-12-18 00:25:07,143 [INFO] [FaceDetectionWorker] Processing 22 photos
+[FaceDetection] [1/22] [1/22] (4%) Detecting faces: ewkj3802.jpg | Found: 0 faces so far
+2025-12-18 00:25:08,177 [INFO] [FaceDetection] Found 5 faces in ewkj3802.jpg
+2025-12-18 00:25:08,262 [INFO] [FaceDetectionWorker] ✓ c:/users/asus/onedrive/documents/python/test-photos/photos/refs/1/ewkj3802.jpg: 5 faces
+[FaceDetection] [1/22] [1/22] (4%) ewkj3802.jpg: Found 5 face(s) | Total: 5 faces
+[FaceDetection] [2/22] [2/22] (9%) Detecting faces: img_e3122_face_0.jpg | Found: 5 faces so far
+[FaceDetection] [2/22] [2/22] (9%) img_e3122_face_0.jpg: No faces found | Total: 5 faces
+[FaceDetection] [3/22] [3/22] (13%) Detecting faces: ihoc0868.jpg | Found: 5 faces so far
+2025-12-18 00:25:09,389 [INFO] [FaceDetection] Found 5 faces in ihoc0868.jpg
+2025-12-18 00:25:09,441 [INFO] [FaceDetectionWorker] ✓ c:/users/asus/onedrive/documents/python/test-photos/photos/refs/1/ihoc0868.jpg: 5 faces
+[FaceDetection] [3/22] [3/22] (13%) ihoc0868.jpg: Found 5 face(s) | Total: 10 faces
+[FaceDetection] [4/22] [4/22] (18%) Detecting faces: img_1550.dng | Found: 10 faces so far
+2025-12-18 00:25:09,831 [INFO] [FaceDetection] Found 1 faces in img_1550.dng
+2025-12-18 00:25:09,908 [INFO] [FaceDetectionWorker] ✓ c:/users/asus/onedrive/documents/python/test-photos/photos/refs/1/img_1550.dng: 1 faces
+[FaceDetection] [4/22] [4/22] (18%) img_1550.dng: Found 1 face(s) | Total: 11 faces
+[FaceDetection] [5/22] [5/22] (22%) Detecting faces: img_3307.jpg | Found: 11 faces so far
+2025-12-18 00:25:10,754 [INFO] [FaceDetection] Found 3 faces in img_3307.jpg
+2025-12-18 00:25:11,005 [INFO] [FaceDetectionWorker] ✓ c:/users/asus/onedrive/documents/python/test-photos/photos/refs/1/img_3307.jpg: 3 faces
+[FaceDetection] [5/22] [5/22] (22%) img_3307.jpg: Found 3 face(s) | Total: 14 faces
+[FaceDetection] [6/22] [6/22] (27%) Detecting faces: img_9570.jpg | Found: 14 faces so far
+2025-12-18 00:25:11,553 [INFO] [FaceDetection] Found 2 faces in img_9570.jpg
+2025-12-18 00:25:11,642 [INFO] [FaceDetectionWorker] ✓ c:/users/asus/onedrive/documents/python/test-photos/photos/refs/1/img_9570.jpg: 2 faces
+[FaceDetection] [6/22] [6/22] (27%) img_9570.jpg: Found 2 face(s) | Total: 16 faces
+[FaceDetection] [7/22] [7/22] (31%) Detecting faces: img_e3122.jpg | Found: 16 faces so far
+2025-12-18 00:25:12,067 [INFO] [FaceDetection] Found 1 faces in img_e3122.jpg
+2025-12-18 00:25:12,156 [INFO] [FaceDetectionWorker] ✓ c:/users/asus/onedrive/documents/python/test-photos/photos/refs/1/img_e3122.jpg: 1 faces
+[FaceDetection] [7/22] [7/22] (31%) img_e3122.jpg: Found 1 face(s) | Total: 17 faces
+[FaceDetection] [8/22] [8/22] (36%) Detecting faces: img_e7413.jpg | Found: 17 faces so far
+2025-12-18 00:25:12,543 [INFO] [FaceDetection] Found 1 faces in img_e7413.jpg
+2025-12-18 00:25:12,599 [INFO] [FaceDetectionWorker] ✓ c:/users/asus/onedrive/documents/python/test-photos/photos/refs/1/img_e7413.jpg: 1 faces
+[FaceDetection] [8/22] [8/22] (36%) img_e7413.jpg: Found 1 face(s) | Total: 18 faces
+[FaceDetection] [9/22] [9/22] (40%) Detecting faces: img_e9569.jpg | Found: 18 faces so far
+2025-12-18 00:25:12,973 [INFO] [FaceDetection] Found 1 faces in img_e9569.jpg
+2025-12-18 00:25:13,037 [INFO] [FaceDetectionWorker] ✓ c:/users/asus/onedrive/documents/python/test-photos/photos/refs/1/img_e9569.jpg: 1 faces
+[FaceDetection] [9/22] [9/22] (40%) img_e9569.jpg: Found 1 face(s) | Total: 19 faces
+[FaceDetection] [10/22] [10/22] (45%) Detecting faces: img_e9574.jpg | Found: 19 faces so far
+2025-12-18 00:25:13,405 [INFO] [FaceDetection] Found 1 faces in img_e9574.jpg
+2025-12-18 00:25:13,473 [INFO] [FaceDetectionWorker] ✓ c:/users/asus/onedrive/documents/python/test-photos/photos/refs/1/img_e9574.jpg: 1 faces
+[FaceDetection] [10/22] [10/22] (45%) img_e9574.jpg: Found 1 face(s) | Total: 20 faces
+[FaceDetection] [11/22] [11/22] (50%) Detecting faces: 244008930_565686944637059_4279754871252118785_n.jpg | Found: 20 faces so far
+2025-12-18 00:25:13,776 [INFO] [FaceDetection] Found 1 faces in 244008930_565686944637059_4279754871252118785_n.jpg
+2025-12-18 00:25:13,798 [INFO] [FaceDetectionWorker] ✓ c:/users/asus/onedrive/documents/python/test-photos/photos/refs/2/244008930_565686944637059_4279754871252118785_n.jpg: 1 faces
+[FaceDetection] [11/22] [11/22] (50%) 244008930_565686944637059_4279754871252118785_n.jpg: Found 1 face(s) | Total: 21 faces
+[FaceDetection] [12/22] [12/22] (54%) Detecting faces: 7f5e15df-e9c6-4914-90fb-c5cf06fd51f5.jfif | Found: 21 faces so far
+2025-12-18 00:25:14,129 [INFO] [FaceDetection] Found 1 faces in 7f5e15df-e9c6-4914-90fb-c5cf06fd51f5.jfif
+2025-12-18 00:25:14,171 [INFO] [FaceDetectionWorker] ✓ c:/users/asus/onedrive/documents/python/test-photos/photos/refs/2/7f5e15df-e9c6-4914-90fb-c5cf06fd51f5.jfif: 1 faces
+[FaceDetection] [12/22] [12/22] (54%) 7f5e15df-e9c6-4914-90fb-c5cf06fd51f5.jfif: Found 1 face(s) | Total: 22 faces
+[FaceDetection] [13/22] [13/22] (59%) Detecting faces: gpic6664.jpg | Found: 22 faces so far
+2025-12-18 00:25:14,508 [INFO] [FaceDetection] Found 1 faces in gpic6664.jpg
+2025-12-18 00:25:14,543 [INFO] [FaceDetectionWorker] ✓ c:/users/asus/onedrive/documents/python/test-photos/photos/refs/2/gpic6664.jpg: 1 faces
+[FaceDetection] [13/22] [13/22] (59%) gpic6664.jpg: Found 1 face(s) | Total: 23 faces
+[FaceDetection] [14/22] [14/22] (63%) Detecting faces: img_8920.png | Found: 23 faces so far
+2025-12-18 00:25:15,128 [INFO] [FaceDetection] Found 2 faces in img_8920.png
+2025-12-18 00:25:15,235 [INFO] [FaceDetectionWorker] ✓ c:/users/asus/onedrive/documents/python/test-photos/photos/refs/2/img_8920.png: 2 faces
+[FaceDetection] [14/22] [14/22] (63%) img_8920.png: Found 2 face(s) | Total: 25 faces
+[FaceDetection] [15/22] [15/22] (68%) Detecting faces: jkhc8378.jpg | Found: 25 faces so far
+2025-12-18 00:25:15,555 [INFO] [FaceDetection] Found 1 faces in jkhc8378.jpg
+2025-12-18 00:25:15,587 [INFO] [FaceDetectionWorker] ✓ c:/users/asus/onedrive/documents/python/test-photos/photos/refs/2/jkhc8378.jpg: 1 faces
+[FaceDetection] [15/22] [15/22] (68%) jkhc8378.jpg: Found 1 face(s) | Total: 26 faces
+[FaceDetection] [16/22] [16/22] (72%) Detecting faces: ntxk2933.jpg | Found: 26 faces so far
+2025-12-18 00:25:15,871 [INFO] [FaceDetection] Found 1 faces in ntxk2933.jpg
+2025-12-18 00:25:15,903 [INFO] [FaceDetectionWorker] ✓ c:/users/asus/onedrive/documents/python/test-photos/photos/refs/2/ntxk2933.jpg: 1 faces
+[FaceDetection] [16/22] [16/22] (72%) ntxk2933.jpg: Found 1 face(s) | Total: 27 faces
+[FaceDetection] [17/22] [17/22] (77%) Detecting faces: img_8152.jpeg | Found: 27 faces so far
+2025-12-18 00:25:16,208 [INFO] [FaceDetection] Found 1 faces in img_8152.jpeg
+2025-12-18 00:25:16,249 [INFO] [FaceDetectionWorker] ✓ c:/users/asus/onedrive/documents/python/test-photos/photos/refs/3/img_8152.jpeg: 1 faces
+[FaceDetection] [17/22] [17/22] (77%) img_8152.jpeg: Found 1 face(s) | Total: 28 faces
+[FaceDetection] [18/22] [18/22] (81%) Detecting faces: img_8158.jpeg | Found: 28 faces so far
+2025-12-18 00:25:16,566 [INFO] [FaceDetection] Found 1 faces in img_8158.jpeg
+2025-12-18 00:25:16,611 [INFO] [FaceDetectionWorker] ✓ c:/users/asus/onedrive/documents/python/test-photos/photos/refs/3/img_8158.jpeg: 1 faces
+[FaceDetection] [18/22] [18/22] (81%) img_8158.jpeg: Found 1 face(s) | Total: 29 faces
+[FaceDetection] [19/22] [19/22] (86%) Detecting faces: img_1779.jpeg | Found: 29 faces so far
+2025-12-18 00:25:17,039 [INFO] [FaceDetection] Found 1 faces in img_1779.jpeg
+2025-12-18 00:25:17,112 [INFO] [FaceDetectionWorker] ✓ c:/users/asus/onedrive/documents/python/test-photos/photos/refs/4/img_1779.jpeg: 1 faces
+[FaceDetection] [19/22] [19/22] (86%) img_1779.jpeg: Found 1 face(s) | Total: 30 faces
+[FaceDetection] [20/22] [20/22] (90%) Detecting faces: img_e3091.jpg | Found: 30 faces so far
+2025-12-18 00:25:17,555 [INFO] [FaceDetection] Found 1 faces in img_e3091.jpg
+2025-12-18 00:25:17,646 [INFO] [FaceDetectionWorker] ✓ c:/users/asus/onedrive/documents/python/test-photos/photos/refs/5/img_e3091.jpg: 1 faces
+[FaceDetection] [20/22] [20/22] (90%) img_e3091.jpg: Found 1 face(s) | Total: 31 faces
+[FaceDetection] [21/22] [21/22] (95%) Detecting faces: img_e3092.jpg | Found: 31 faces so far
+2025-12-18 00:25:18,078 [INFO] [FaceDetection] Found 1 faces in img_e3092.jpg
+2025-12-18 00:25:18,175 [INFO] [FaceDetectionWorker] ✓ c:/users/asus/onedrive/documents/python/test-photos/photos/refs/5/img_e3092.jpg: 1 faces
+[FaceDetection] [21/22] [21/22] (95%) img_e3092.jpg: Found 1 face(s) | Total: 32 faces
+[FaceDetection] [22/22] [22/22] (100%) Detecting faces: img_e3093.jpg | Found: 32 faces so far
+2025-12-18 00:25:18,626 [INFO] [FaceDetection] Found 1 faces in img_e3093.jpg
+2025-12-18 00:25:18,725 [INFO] [FaceDetectionWorker] ✓ c:/users/asus/onedrive/documents/python/test-photos/photos/refs/5/img_e3093.jpg: 1 faces
+[FaceDetection] [22/22] [22/22] (100%) img_e3093.jpg: Found 1 face(s) | Total: 33 faces
+2025-12-18 00:25:18,725 [INFO] [FaceDetectionWorker] Complete in 14.2s: 22 processed (21 with faces), 0 skipped, 33 faces detected, 0 failed
+[FaceDetection] Complete: 22 photos, 33 faces detected
+2025-12-18 00:25:18,725 [INFO] [FaceClusterWorker] Starting face clustering for project 1
+[FaceCluster] Loading face embeddings...
+2025-12-18 00:25:18,725 [INFO] [FaceClusterWorker] Loaded 49 face embeddings
+[FaceCluster] Clustering 49 faces...
+2025-12-18 00:25:18,725 [INFO] [FaceClusterWorker] Found 12 clusters
+[FaceCluster] Found 12 person groups...
+2025-12-18 00:25:18,736 [INFO] [FaceClusterWorker] Cluster 0 → 8 faces
+[FaceCluster] Saving cluster 1/12: Person 1 (8 faces)
+2025-12-18 00:25:18,736 [INFO] [FaceClusterWorker] Cluster 1 → 2 faces
+[FaceCluster] Saving cluster 2/12: Person 2 (2 faces)
+2025-12-18 00:25:18,736 [INFO] [FaceClusterWorker] Cluster 2 → 3 faces
+[FaceCluster] Saving cluster 3/12: Person 3 (3 faces)
+2025-12-18 00:25:18,736 [INFO] [FaceClusterWorker] Cluster 3 → 1 faces
+[FaceCluster] Saving cluster 4/12: Person 4 (1 faces)
+2025-12-18 00:25:18,736 [INFO] [FaceClusterWorker] Cluster 4 → 3 faces
+[FaceCluster] Saving cluster 5/12: Person 5 (3 faces)
+2025-12-18 00:25:18,736 [INFO] [FaceClusterWorker] Cluster 5 → 1 faces
+[FaceCluster] Saving cluster 6/12: Person 6 (1 faces)
+2025-12-18 00:25:18,736 [INFO] [FaceClusterWorker] Cluster 6 → 7 faces
+[FaceCluster] Saving cluster 7/12: Person 7 (7 faces)
+2025-12-18 00:25:18,736 [INFO] [FaceClusterWorker] Cluster 7 → 1 faces
+[FaceCluster] Saving cluster 8/12: Person 8 (1 faces)
+2025-12-18 00:25:18,736 [INFO] [FaceClusterWorker] Cluster 8 → 1 faces
+[FaceCluster] Saving cluster 9/12: Person 9 (1 faces)
+2025-12-18 00:25:18,736 [INFO] [FaceClusterWorker] Cluster 9 → 2 faces
+[FaceCluster] Saving cluster 10/12: Person 10 (2 faces)
+2025-12-18 00:25:18,736 [INFO] [FaceClusterWorker] Cluster 10 → 1 faces
+[FaceCluster] Saving cluster 11/12: Person 11 (1 faces)
+2025-12-18 00:25:18,736 [INFO] [FaceClusterWorker] Cluster 11 → 3 faces
 [FaceCluster] Saving cluster 12/12: Person 12 (3 faces)
-2025-12-17 21:34:26,917 [INFO] [FaceClusterWorker] Complete in 0.0s: 12 person clusters + 0 unidentified faces
+2025-12-18 00:25:18,752 [INFO] [FaceClusterWorker] Complete in 0.0s: 12 person clusters + 0 unidentified faces
 [FaceCluster] Clustering complete: 12 branches created
 [FaceCluster] Complete: 12 person groups created
 [SidebarQt] reload() blocked - widget not visible (likely being deleted)
@@ -40,7 +1171,7 @@
 [Sidebar] Added 🎬 Videos section with 14 videos and filters.
 
 [Sidebar] ===== Initiating mobile device scan from sidebar =====
-[Sidebar] Database: <reference_db.ReferenceDB object at 0x000002C25D90FBB0>
+[Sidebar] Database: <reference_db.ReferenceDB object at 0x000001B2F02C3BB0>
 [Sidebar] Register devices: True
 
 [DeviceScanner] ===== Starting device scan  =====
@@ -133,12 +1264,12 @@
 [LayoutManager] 💾 Took ownership of original central widget: QWidget
 [GooglePhotosLayout] Using default project: 1
 [GooglePhotosLayout] Project selector populated with 1 projects (+ New Project option)
-2025-12-17 21:34:42,377 [INFO] [AccordionSidebar] Initializing with project_id=1
-2025-12-17 21:34:42,393 [INFO] [AccordionSidebar] Created 6 sections
-2025-12-17 21:34:42,393 [INFO] [AccordionSidebar] Expanding section: folders
-2025-12-17 21:34:42,393 [INFO] [FoldersSection] Loading folders (generation 2)...
+2025-12-18 00:25:27,377 [INFO] [AccordionSidebar] Initializing with project_id=1
+2025-12-18 00:25:27,399 [INFO] [AccordionSidebar] Created 6 sections
+2025-12-18 00:25:27,399 [INFO] [AccordionSidebar] Expanding section: folders
+2025-12-18 00:25:27,399 [INFO] [FoldersSection] Loading folders (generation 2)...
 [GooglePhotosLayout] ✅ Scroll-triggered lazy loading enabled
-2025-12-17 21:34:42,408 [INFO] [FoldersSection] Loaded 9 folders (gen 2)
+2025-12-18 00:25:27,409 [INFO] [FoldersSection] Loaded 9 folders (gen 2)
 [GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px)...
 [GooglePhotosLayout] 🔄 Clearing existing timeline and thumbnail cache...
 [GooglePhotosLayout] 🔍 Starting async photo load (generation 1)...
@@ -149,11 +1280,11 @@
 [GooglePhotosLayout] ✓ Stored Detect Faces handler
 [LayoutManager] ✓ Switched to: Google Photos Style
 [MainWindow] ✓ Switched to layout: google
-2025-12-17 21:34:42,424 [INFO] [FoldersSection] Tree built with 1 top-level folders
-2025-12-17 21:34:42,424 [INFO] [FoldersSection] Data loaded successfully (gen 2)
-2025-12-17 21:34:42,435 [INFO] [FoldersSection] Tree built with 1 top-level folders
-2025-12-17 21:34:42,456 [INFO] [AccordionSidebar] Section folders loaded and displayed
-2025-12-17 21:34:42,466 [INFO] Photo query complete: generation=1, current=1, rows=36
+2025-12-18 00:25:27,435 [INFO] [FoldersSection] Tree built with 1 top-level folders
+2025-12-18 00:25:27,435 [INFO] [FoldersSection] Data loaded successfully (gen 2)
+2025-12-18 00:25:27,435 [INFO] [FoldersSection] Tree built with 1 top-level folders
+2025-12-18 00:25:27,457 [INFO] [AccordionSidebar] Section folders loaded and displayed
+2025-12-18 00:25:27,457 [INFO] Photo query complete: generation=1, current=1, rows=36
 [GooglePhotosLayout] 📅 Grouping 36 photos by date...
 [GooglePhotosLayout] ✅ Grouped into 19 date groups
 [GooglePhotosLayout] Tracking 36 paths for multi-selection
@@ -163,434 +1294,9 @@
 [GooglePhotosLayout] 📊 Rendered: 5 groups | Placeholders: 14 groups
 [GooglePhotosLayout] 🖼️ Queued 6 thumbnails for loading (initial limit: 50)
 [GooglePhotosLayout] ✅ Photo loading complete! Thumbnails will load progressively.
-2025-12-17 21:35:00,099 [INFO] [AccordionSidebar] Expanding section: people
-2025-12-17 21:35:00,112 [INFO] [PeopleSection] Loading face clusters (generation 2)…
-2025-12-17 21:35:00,112 [INFO] [PeopleSection] Loaded 12 clusters (gen 2)
-2025-12-17 21:35:00,144 [INFO] [PeopleSection] Grid built with 12 people (search enabled)
-2025-12-17 21:35:00,176 [INFO] [PeopleSection] Grid built with 12 people (search enabled)
-2025-12-17 21:35:00,204 [INFO] [AccordionSidebar] Section people loaded and displayed
-2025-12-17 21:35:04,492 [INFO] [PhotoBrowser] Loaded 22 photos (22/22 total)
-2025-12-17 21:35:07,630 [INFO] [FaceCropEditor] Found 1 existing face(s), 1 with bounding boxes (schema: separate)
-2025-12-17 21:35:07,694 [INFO] [FacePhotoViewer] Loaded photo: 2316×3088, 1.9MB (EXIF auto-rotated)
-2025-12-17 21:35:07,694 [INFO] [GooglePhotosLayout] Opening Face Crop Editor for: c:/users/asus/onedrive/documents/python/test-photos/photos/refs/1/img_e9569.jpg
-2025-12-17 21:35:09,891 [INFO] [FacePhotoViewer] Drawing mode enabled (keep_enabled=False)
-2025-12-17 21:35:17,645 [INFO] [FaceCropEditor] Added manual face: (285, 347, 1304, 1752)
-2025-12-17 21:35:17,645 [INFO] [FacePhotoViewer] Manual face drawn: (285, 347, 1304, 1752) (offsets: 430, 0, scale: 7.72)
-2025-12-17 21:35:21,889 [INFO] [FaceDetection] Initialized InsightFace with model=buffalo_l
-2025-12-17 21:35:22,228 [INFO] [FaceDetection] Found 1 faces in tmpqpr7f2lh.jpg
-2025-12-17 21:35:22,230 [INFO] [FaceCropEditor] ✅ Refined manual bbox: (285,347,1304,1752) → (458,557,1003,1514) (confidence: 0.87)
-2025-12-17 21:35:22,234 [INFO] [FaceDetection] Cleaning up resources...
-2025-12-17 21:35:22,234 [INFO] [FaceDetection] ✓ Cleanup complete
-2025-12-17 21:35:22,285 [INFO] [FaceCropEditor] Saved face crop: C:\Users\ASUS\.memorymate\face_crops\img_e9569_manual_102294d3.jpg
-2025-12-17 21:35:22,296 [INFO] [FaceCropEditor] Added manual face to database: manual_ece298a6 (schema: bbox_separate)
-2025-12-17 21:35:27,682 [INFO] [FaceCropEditor] Saved 1 manual face(s), set faces_were_saved=True
-2025-12-17 21:35:27,698 [INFO] [GooglePhotosLayout] Face Crop Editor closed (result=1, faces_saved=True)
-2025-12-17 21:35:27,698 [INFO] [GooglePhotosLayout] Manual faces were saved, scheduling People section refresh...
-2025-12-17 21:35:27,698 [INFO] [GooglePhotosLayout] ✓ People section refresh scheduled (delayed 100ms)
-2025-12-17 21:35:27,808 [INFO] [GooglePhotosLayout] Executing delayed People section refresh...
-2025-12-17 21:35:27,809 [INFO] [PeopleSection] Loading face clusters (generation 3)…
-2025-12-17 21:35:27,812 [INFO] [GooglePhotosLayout] ✓ People section refreshed successfully after manual face save
-2025-12-17 21:35:27,817 [INFO] [PeopleSection] Loaded 13 clusters (gen 3)
-2025-12-17 21:35:27,875 [INFO] [PeopleSection] Grid built with 13 people (search enabled)
-2025-12-17 21:35:27,913 [INFO] [PeopleSection] Grid built with 13 people (search enabled)
-2025-12-17 21:35:27,961 [INFO] [AccordionSidebar] Section people loaded and displayed
-2025-12-17 21:35:32,654 [INFO] [GooglePhotosLayout] Accordion person clicked: manual_ece298a6
-[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px) [person=manual_ece298a6]...
-[GooglePhotosLayout] 🔄 Clearing existing timeline and thumbnail cache...
-[GooglePhotosLayout] 🔍 Starting async photo load (generation 2)...
-[GooglePhotosLayout] ✅ Photo load worker started (generation 2)
-2025-12-17 21:35:32,654 [INFO] Photo query complete: generation=2, current=2, rows=1
-[GooglePhotosLayout] 📅 Grouping 1 photos by date...
-[GooglePhotosLayout] ✅ Grouped into 1 date groups
-[GooglePhotosLayout] Tracking 1 paths for multi-selection
-[GooglePhotosLayout] 🚀 Setting up virtual scrolling for 1 date groups...
-[GooglePhotosLayout] ✅ Virtual scrolling enabled: 1 total date groups
-[GooglePhotosLayout] 📊 Rendered: 1 groups | Placeholders: 0 groups
-[GooglePhotosLayout] 🖼️ Queued 1 thumbnails for loading (initial limit: 50)
-[GooglePhotosLayout] ✅ Photo loading complete! Thumbnails will load progressively.
-2025-12-17 21:37:15,693 [INFO] [GooglePhotosLayout] Accordion person clicked: face_010
-[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px) [person=face_010]...
-[GooglePhotosLayout] 🔄 Clearing existing timeline and thumbnail cache...
-[GooglePhotosLayout] 🔍 Starting async photo load (generation 3)...
-[GooglePhotosLayout] ✅ Photo load worker started (generation 3)
-2025-12-17 21:37:15,695 [INFO] Photo query complete: generation=3, current=3, rows=1
-[GooglePhotosLayout] 📅 Grouping 1 photos by date...
-[GooglePhotosLayout] ✅ Grouped into 1 date groups
-[GooglePhotosLayout] Tracking 1 paths for multi-selection
-[GooglePhotosLayout] 🚀 Setting up virtual scrolling for 1 date groups...
-[GooglePhotosLayout] ✅ Virtual scrolling enabled: 1 total date groups
-[GooglePhotosLayout] 📊 Rendered: 1 groups | Placeholders: 0 groups
-[GooglePhotosLayout] 🖼️ Queued 1 thumbnails for loading (initial limit: 50)
-[GooglePhotosLayout] ✅ Photo loading complete! Thumbnails will load progressively.
-2025-12-17 21:37:17,538 [INFO] [GooglePhotosLayout] Accordion person clicked: face_008
-[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px) [person=face_008]...
-[GooglePhotosLayout] 🔄 Clearing existing timeline and thumbnail cache...
-[GooglePhotosLayout] 🔍 Starting async photo load (generation 4)...
-[GooglePhotosLayout] ✅ Photo load worker started (generation 4)
-2025-12-17 21:37:17,538 [INFO] Photo query complete: generation=4, current=4, rows=1
-[GooglePhotosLayout] 📅 Grouping 1 photos by date...
-[GooglePhotosLayout] ✅ Grouped into 1 date groups
-[GooglePhotosLayout] Tracking 1 paths for multi-selection
-[GooglePhotosLayout] 🚀 Setting up virtual scrolling for 1 date groups...
-[GooglePhotosLayout] ✅ Virtual scrolling enabled: 1 total date groups
-[GooglePhotosLayout] 📊 Rendered: 1 groups | Placeholders: 0 groups
-[GooglePhotosLayout] 🖼️ Queued 1 thumbnails for loading (initial limit: 50)
-[GooglePhotosLayout] ✅ Photo loading complete! Thumbnails will load progressively.
-2025-12-17 21:37:30,032 [INFO] [AccordionSidebar] Drag-drop merge: 'manual_ece298a6' (1 photos) -> 'face_001' (2 photos)
-[merge_face_clusters] project_id=1, target='face_001', sources=['manual_ece298a6']
-[merge_face_clusters] Found 1 branches. Row type: <class 'sqlite3.Row'>
-[merge_face_clusters] Found 2 face_branch_reps rows
-[merge_face_clusters] Deleted 0 TRUE duplicate project_images entries (photos already in target)
-[merge_face_clusters] Moved 0 unique project_images entries from source to target
-[merge_face_clusters] ⚠️ WARNING: 1 face_crops for face_001 have no project_images link!
-[merge_face_clusters] ⚠️ This will cause count mismatch in grid. Auto-fixing...
-[merge_face_clusters] ✓ Auto-fixed 1 missing project_images entries
-[merge_face_clusters] Updated count for target 'face_001' to reflect unique photos (rowcount=1)
-[merge_face_clusters] Refreshing ALL face cluster counts for project 1...
-[merge_face_clusters] ✓ Refreshed counts for 12 face clusters
-[merge_face_clusters] SUCCESS: Moved 1 faces, 0 duplicates, 0 unique photos
-[merge_face_clusters] Final result: 3 unique photos in 'face_001'
-2025-12-17 21:37:30,084 [INFO] [PeopleSection] Loading face clusters (generation 4)…
-2025-12-17 21:37:30,092 [INFO] [PeopleSection] Loaded 12 clusters (gen 4)
-2025-12-17 21:37:30,139 [INFO] [PeopleSection] Grid built with 12 people (search enabled)
-2025-12-17 21:37:30,171 [INFO] [PeopleSection] Grid built with 12 people (search enabled)
-2025-12-17 21:37:30,214 [INFO] [AccordionSidebar] Section people loaded and displayed
-2025-12-17 21:37:34,073 [INFO] [AccordionSidebar] Merge successful: {'moved_faces': 1, 'duplicates_found': 0, 'unique_moved': 0, 'total_photos': 3, 'moved_images': 0, 'deleted_reps': 1, 'sources': ['manual_ece298a6'], 'target': 'face_001'}
-2025-12-17 21:37:38,913 [INFO] [AccordionSidebar] Drag-drop merge: 'face_001' (3 photos) -> 'face_006' (7 photos)
-[merge_face_clusters] project_id=1, target='face_006', sources=['face_001']
-[merge_face_clusters] Found 2 branches. Row type: <class 'sqlite3.Row'>
-[merge_face_clusters] Found 2 face_branch_reps rows
-[merge_face_clusters] Deleted 1 TRUE duplicate project_images entries (photos already in target)
-[merge_face_clusters] Moved 2 unique project_images entries from source to target
-[merge_face_clusters] Updated count for target 'face_006' to reflect unique photos (rowcount=1)
-[merge_face_clusters] Refreshing ALL face cluster counts for project 1...
-[merge_face_clusters] ✓ Refreshed counts for 11 face clusters
-[merge_face_clusters] ⚠️ DUPLICATE DETECTION: Found 1 photos already in target
-[merge_face_clusters] SUCCESS: Moved 3 faces, 1 duplicates, 2 unique photos
-[merge_face_clusters] Final result: 9 unique photos in 'face_006'
-2025-12-17 21:37:38,942 [INFO] [PeopleSection] Loading face clusters (generation 5)…
-2025-12-17 21:37:38,957 [INFO] [PeopleSection] Loaded 11 clusters (gen 5)
-2025-12-17 21:37:39,005 [INFO] [PeopleSection] Grid built with 11 people (search enabled)
-2025-12-17 21:37:39,040 [INFO] [PeopleSection] Grid built with 11 people (search enabled)
-2025-12-17 21:37:39,078 [INFO] [AccordionSidebar] Section people loaded and displayed
-2025-12-17 21:37:43,114 [INFO] [AccordionSidebar] Merge successful: {'moved_faces': 3, 'duplicates_found': 1, 'unique_moved': 2, 'total_photos': 9, 'moved_images': 3, 'deleted_reps': 1, 'sources': ['face_001'], 'target': 'face_006'}
-2025-12-17 21:37:45,106 [INFO] [GooglePhotosLayout] Clearing person filter from accordion toggle
-[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px)...
-[GooglePhotosLayout] 🔄 Clearing existing timeline and thumbnail cache...
-[GooglePhotosLayout] 🔍 Starting async photo load (generation 5)...
-[GooglePhotosLayout] ✅ Photo load worker started (generation 5)
-2025-12-17 21:37:45,106 [INFO] Photo query complete: generation=5, current=5, rows=36
-[GooglePhotosLayout] 📅 Grouping 36 photos by date...
-[GooglePhotosLayout] ✅ Grouped into 19 date groups
-[GooglePhotosLayout] Tracking 36 paths for multi-selection
-[GooglePhotosLayout] 🚀 Setting up virtual scrolling for 19 date groups...
-[GooglePhotosLayout] 📐 Responsive grid: 6 columns (viewport: 1297px, thumb: 200px)
-[GooglePhotosLayout] ✅ Virtual scrolling enabled: 19 total date groups
-[GooglePhotosLayout] 📊 Rendered: 5 groups | Placeholders: 14 groups
-[GooglePhotosLayout] 🖼️ Queued 6 thumbnails for loading (initial limit: 50)
-[GooglePhotosLayout] ✅ Photo loading complete! Thumbnails will load progressively.
-2025-12-17 21:37:47,021 [INFO] [GooglePhotosLayout] Accordion person clicked: face_006
-[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px) [person=face_006]...
-[GooglePhotosLayout] 🔄 Clearing existing timeline and thumbnail cache...
-[GooglePhotosLayout] 🔍 Starting async photo load (generation 6)...
-[GooglePhotosLayout] ✅ Photo load worker started (generation 6)
-2025-12-17 21:37:47,030 [INFO] Photo query complete: generation=6, current=6, rows=9
-[GooglePhotosLayout] 📅 Grouping 9 photos by date...
-[GooglePhotosLayout] ✅ Grouped into 7 date groups
-[GooglePhotosLayout] Tracking 9 paths for multi-selection
-[GooglePhotosLayout] 🚀 Setting up virtual scrolling for 7 date groups...
-[GooglePhotosLayout] ✅ Virtual scrolling enabled: 7 total date groups
-[GooglePhotosLayout] 📊 Rendered: 5 groups | Placeholders: 2 groups
-[GooglePhotosLayout] 🖼️ Queued 7 thumbnails for loading (initial limit: 50)
-[GooglePhotosLayout] ✅ Photo loading complete! Thumbnails will load progressively.
-[GooglePhotosLayout] 🎨 Rendering 1 date groups that entered viewport...
-[GooglePhotosLayout] ✓ Now 6/7 groups rendered
-[GooglePhotosLayout] 🎨 Rendering 1 date groups that entered viewport...
-[GooglePhotosLayout] ✓ Now 7/7 groups rendered
-2025-12-17 21:46:15,466 [INFO] [GooglePhotosLayout] Accordion person clicked: face_004
-[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px) [person=face_004]...
-[GooglePhotosLayout] 🔄 Clearing existing timeline and thumbnail cache...
-[GooglePhotosLayout] 🔍 Starting async photo load (generation 7)...
-[GooglePhotosLayout] ✅ Photo load worker started (generation 7)
-2025-12-17 21:46:15,466 [INFO] Photo query complete: generation=7, current=7, rows=3
-[GooglePhotosLayout] 📅 Grouping 3 photos by date...
-[GooglePhotosLayout] ✅ Grouped into 3 date groups
-[GooglePhotosLayout] Tracking 3 paths for multi-selection
-[GooglePhotosLayout] 🚀 Setting up virtual scrolling for 3 date groups...
-[GooglePhotosLayout] ✅ Virtual scrolling enabled: 3 total date groups
-[GooglePhotosLayout] 📊 Rendered: 3 groups | Placeholders: 0 groups
-[GooglePhotosLayout] 🖼️ Queued 3 thumbnails for loading (initial limit: 50)
-[GooglePhotosLayout] ✅ Photo loading complete! Thumbnails will load progressively.
-2025-12-17 21:46:43,640 [INFO] [PeopleSection] Loading face clusters (generation 6)…
-2025-12-17 21:46:43,640 [INFO] [PeopleSection] Loaded 11 clusters (gen 6)
-2025-12-17 21:46:43,704 [INFO] [PeopleSection] Grid built with 11 people (search enabled)
-2025-12-17 21:46:43,752 [INFO] [PeopleSection] Grid built with 11 people (search enabled)
-2025-12-17 21:46:43,797 [INFO] [AccordionSidebar] Section people loaded and displayed
-2025-12-17 21:47:22,870 [INFO] [PeopleSection] Loading face clusters (generation 7)…
-2025-12-17 21:47:22,870 [INFO] [PeopleSection] Loaded 11 clusters (gen 7)
-2025-12-17 21:47:22,933 [INFO] [PeopleSection] Grid built with 11 people (search enabled)
-2025-12-17 21:47:22,981 [INFO] [PeopleSection] Grid built with 11 people (search enabled)
-2025-12-17 21:47:23,013 [INFO] [AccordionSidebar] Section people loaded and displayed
-2025-12-17 21:47:32,748 [INFO] [PeopleSection] Loading face clusters (generation 8)…
-2025-12-17 21:47:32,748 [INFO] [PeopleSection] Loaded 11 clusters (gen 8)
-2025-12-17 21:47:32,822 [INFO] [PeopleSection] Grid built with 11 people (search enabled)
-2025-12-17 21:47:32,859 [INFO] [PeopleSection] Grid built with 11 people (search enabled)
-2025-12-17 21:47:32,906 [INFO] [AccordionSidebar] Section people loaded and displayed
-2025-12-17 21:47:50,848 [INFO] [GooglePhotosLayout] Accordion person clicked: face_000
-[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px) [person=face_000]...
-[GooglePhotosLayout] 🔄 Clearing existing timeline and thumbnail cache...
-[GooglePhotosLayout] 🔍 Starting async photo load (generation 8)...
-[GooglePhotosLayout] ✅ Photo load worker started (generation 8)
-2025-12-17 21:47:50,848 [INFO] Photo query complete: generation=8, current=8, rows=8
-[GooglePhotosLayout] 📅 Grouping 8 photos by date...
-[GooglePhotosLayout] ✅ Grouped into 8 date groups
-[GooglePhotosLayout] Tracking 8 paths for multi-selection
-[GooglePhotosLayout] 🚀 Setting up virtual scrolling for 8 date groups...
-[GooglePhotosLayout] ✅ Virtual scrolling enabled: 8 total date groups
-[GooglePhotosLayout] 📊 Rendered: 5 groups | Placeholders: 3 groups
-[GooglePhotosLayout] 🖼️ Queued 5 thumbnails for loading (initial limit: 50)
-[GooglePhotosLayout] ✅ Photo loading complete! Thumbnails will load progressively.
-2025-12-17 21:47:52,202 [INFO] [GooglePhotosLayout] Accordion person clicked: face_006
-[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px) [person=face_006]...
-[GooglePhotosLayout] 🔄 Clearing existing timeline and thumbnail cache...
-[GooglePhotosLayout] 🔍 Starting async photo load (generation 9)...
-[GooglePhotosLayout] ✅ Photo load worker started (generation 9)
-2025-12-17 21:47:52,216 [INFO] Photo query complete: generation=9, current=9, rows=9
-[GooglePhotosLayout] 📅 Grouping 9 photos by date...
-[GooglePhotosLayout] ✅ Grouped into 7 date groups
-[GooglePhotosLayout] Tracking 9 paths for multi-selection
-[GooglePhotosLayout] 🚀 Setting up virtual scrolling for 7 date groups...
-[GooglePhotosLayout] ✅ Virtual scrolling enabled: 7 total date groups
-[GooglePhotosLayout] 📊 Rendered: 5 groups | Placeholders: 2 groups
-[GooglePhotosLayout] 🖼️ Queued 7 thumbnails for loading (initial limit: 50)
-[GooglePhotosLayout] ✅ Photo loading complete! Thumbnails will load progressively.
-2025-12-17 21:47:56,837 [INFO] [GooglePhotosLayout] Accordion person clicked: face_011
-[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px) [person=face_011]...
-[GooglePhotosLayout] 🔄 Clearing existing timeline and thumbnail cache...
-[GooglePhotosLayout] 🔍 Starting async photo load (generation 10)...
-[GooglePhotosLayout] ✅ Photo load worker started (generation 10)
-2025-12-17 21:47:56,847 [INFO] Photo query complete: generation=10, current=10, rows=3
-[GooglePhotosLayout] 📅 Grouping 3 photos by date...
-[GooglePhotosLayout] ✅ Grouped into 1 date groups
-[GooglePhotosLayout] Tracking 3 paths for multi-selection
-[GooglePhotosLayout] 🚀 Setting up virtual scrolling for 1 date groups...
-[GooglePhotosLayout] ✅ Virtual scrolling enabled: 1 total date groups
-[GooglePhotosLayout] 📊 Rendered: 1 groups | Placeholders: 0 groups
-[GooglePhotosLayout] 🖼️ Queued 3 thumbnails for loading (initial limit: 50)
-[GooglePhotosLayout] ✅ Photo loading complete! Thumbnails will load progressively.
-2025-12-17 21:47:58,851 [INFO] [GooglePhotosLayout] Accordion person clicked: face_007
-[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px) [person=face_007]...
-[GooglePhotosLayout] 🔄 Clearing existing timeline and thumbnail cache...
-[GooglePhotosLayout] 🔍 Starting async photo load (generation 11)...
-[GooglePhotosLayout] ✅ Photo load worker started (generation 11)
-2025-12-17 21:47:58,854 [INFO] Photo query complete: generation=11, current=11, rows=1
-[GooglePhotosLayout] 📅 Grouping 1 photos by date...
-[GooglePhotosLayout] ✅ Grouped into 1 date groups
-[GooglePhotosLayout] Tracking 1 paths for multi-selection
-[GooglePhotosLayout] 🚀 Setting up virtual scrolling for 1 date groups...
-[GooglePhotosLayout] ✅ Virtual scrolling enabled: 1 total date groups
-[GooglePhotosLayout] 📊 Rendered: 1 groups | Placeholders: 0 groups
-[GooglePhotosLayout] 🖼️ Queued 1 thumbnails for loading (initial limit: 50)
-[GooglePhotosLayout] ✅ Photo loading complete! Thumbnails will load progressively.
-2025-12-17 21:47:59,968 [INFO] [GooglePhotosLayout] Accordion person clicked: face_008
-[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px) [person=face_008]...
-[GooglePhotosLayout] 🔄 Clearing existing timeline and thumbnail cache...
-[GooglePhotosLayout] 🔍 Starting async photo load (generation 12)...
-[GooglePhotosLayout] ✅ Photo load worker started (generation 12)
-2025-12-17 21:47:59,968 [INFO] Photo query complete: generation=12, current=12, rows=1
-[GooglePhotosLayout] 📅 Grouping 1 photos by date...
-[GooglePhotosLayout] ✅ Grouped into 1 date groups
-[GooglePhotosLayout] Tracking 1 paths for multi-selection
-[GooglePhotosLayout] 🚀 Setting up virtual scrolling for 1 date groups...
-[GooglePhotosLayout] ✅ Virtual scrolling enabled: 1 total date groups
-[GooglePhotosLayout] 📊 Rendered: 1 groups | Placeholders: 0 groups
-[GooglePhotosLayout] 🖼️ Queued 1 thumbnails for loading (initial limit: 50)
-[GooglePhotosLayout] ✅ Photo loading complete! Thumbnails will load progressively.
-2025-12-17 21:48:02,395 [INFO] [GooglePhotosLayout] Accordion person clicked: face_010
-[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px) [person=face_010]...
-[GooglePhotosLayout] 🔄 Clearing existing timeline and thumbnail cache...
-[GooglePhotosLayout] 🔍 Starting async photo load (generation 13)...
-[GooglePhotosLayout] ✅ Photo load worker started (generation 13)
-2025-12-17 21:48:02,395 [INFO] Photo query complete: generation=13, current=13, rows=1
-[GooglePhotosLayout] 📅 Grouping 1 photos by date...
-[GooglePhotosLayout] ✅ Grouped into 1 date groups
-[GooglePhotosLayout] Tracking 1 paths for multi-selection
-[GooglePhotosLayout] 🚀 Setting up virtual scrolling for 1 date groups...
-[GooglePhotosLayout] ✅ Virtual scrolling enabled: 1 total date groups
-[GooglePhotosLayout] 📊 Rendered: 1 groups | Placeholders: 0 groups
-[GooglePhotosLayout] 🖼️ Queued 1 thumbnails for loading (initial limit: 50)
-[GooglePhotosLayout] ✅ Photo loading complete! Thumbnails will load progressively.
-2025-12-17 21:48:03,731 [INFO] [GooglePhotosLayout] Accordion person clicked: face_008
-[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px) [person=face_008]...
-[GooglePhotosLayout] 🔄 Clearing existing timeline and thumbnail cache...
-[GooglePhotosLayout] 🔍 Starting async photo load (generation 14)...
-[GooglePhotosLayout] ✅ Photo load worker started (generation 14)
-2025-12-17 21:48:03,731 [INFO] Photo query complete: generation=14, current=14, rows=1
-[GooglePhotosLayout] 📅 Grouping 1 photos by date...
-[GooglePhotosLayout] ✅ Grouped into 1 date groups
-[GooglePhotosLayout] Tracking 1 paths for multi-selection
-[GooglePhotosLayout] 🚀 Setting up virtual scrolling for 1 date groups...
-[GooglePhotosLayout] ✅ Virtual scrolling enabled: 1 total date groups
-[GooglePhotosLayout] 📊 Rendered: 1 groups | Placeholders: 0 groups
-[GooglePhotosLayout] 🖼️ Queued 1 thumbnails for loading (initial limit: 50)
-[GooglePhotosLayout] ✅ Photo loading complete! Thumbnails will load progressively.
-2025-12-17 21:48:07,275 [INFO] [PhotoBrowser] Loaded 22 photos (22/22 total)
-2025-12-17 21:48:13,137 [INFO] [FaceCropEditor] Found 1 existing face(s), 1 with bounding boxes (schema: separate)
-2025-12-17 21:48:13,232 [INFO] [FacePhotoViewer] Loaded photo: 3024×4032, 2.3MB (EXIF auto-rotated)
-2025-12-17 21:48:13,248 [INFO] [GooglePhotosLayout] Opening Face Crop Editor for: c:/users/asus/onedrive/documents/python/test-photos/photos/refs/4/img_1779.jpeg
-2025-12-17 21:48:16,851 [INFO] [FacePhotoViewer] Drawing mode enabled (keep_enabled=False)
-2025-12-17 21:48:24,220 [INFO] [FacePhotoViewer] Drawing mode enabled (keep_enabled=False)
-2025-12-17 21:48:35,965 [INFO] [FaceCropEditor] Added manual face: (1219, 493, 1632, 2268)
-2025-12-17 21:48:35,965 [INFO] [FacePhotoViewer] Manual face drawn: (1219, 493, 1632, 2268) (offsets: 430, 0, scale: 10.08)
-2025-12-17 21:48:38,626 [INFO] [FaceDetection] Initialized InsightFace with model=buffalo_l
-2025-12-17 21:48:39,031 [INFO] [FaceDetection] Found 1 faces in tmp6xpmfgiy.jpg
-2025-12-17 21:48:39,037 [INFO] [FaceCropEditor] ✅ Refined manual bbox: (1219,493,1632,2268) → (1175,403,937,1286) (confidence: 0.78)
-2025-12-17 21:48:39,042 [INFO] [FaceDetection] Cleaning up resources...
-2025-12-17 21:48:39,042 [INFO] [FaceDetection] ✓ Cleanup complete
-2025-12-17 21:48:39,121 [INFO] [FaceCropEditor] Saved face crop: C:\Users\ASUS\.memorymate\face_crops\img_1779_manual_6c063f39.jpg
-2025-12-17 21:48:39,137 [INFO] [FaceCropEditor] Added manual face to database: manual_14b2ff1f (schema: bbox_separate)
-2025-12-17 21:48:41,550 [INFO] [FaceCropEditor] Saved 1 manual face(s), set faces_were_saved=True
-2025-12-17 21:48:41,552 [INFO] [GooglePhotosLayout] Face Crop Editor closed (result=1, faces_saved=True)
-2025-12-17 21:48:41,552 [INFO] [GooglePhotosLayout] Manual faces were saved, scheduling People section refresh...
-2025-12-17 21:48:41,554 [INFO] [GooglePhotosLayout] ✓ People section refresh scheduled (delayed 100ms)
-2025-12-17 21:48:41,664 [INFO] [GooglePhotosLayout] Executing delayed People section refresh...
-2025-12-17 21:48:41,664 [INFO] [PeopleSection] Loading face clusters (generation 9)…
-2025-12-17 21:48:41,664 [INFO] [GooglePhotosLayout] ✓ People section refreshed successfully after manual face save
-2025-12-17 21:48:41,664 [INFO] [PeopleSection] Loaded 12 clusters (gen 9)
-2025-12-17 21:48:41,727 [INFO] [PeopleSection] Grid built with 12 people (search enabled)
-2025-12-17 21:48:41,803 [INFO] [PeopleSection] Grid built with 12 people (search enabled)
-2025-12-17 21:48:41,843 [INFO] [AccordionSidebar] Section people loaded and displayed
-2025-12-17 21:48:46,370 [INFO] [GooglePhotosLayout] Accordion person clicked: manual_14b2ff1f
-[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px) [person=manual_14b2ff1f]...
-[GooglePhotosLayout] 🔄 Clearing existing timeline and thumbnail cache...
-[GooglePhotosLayout] 🔍 Starting async photo load (generation 15)...
-[GooglePhotosLayout] ✅ Photo load worker started (generation 15)
-2025-12-17 21:48:46,370 [INFO] Photo query complete: generation=15, current=15, rows=1
-[GooglePhotosLayout] 📅 Grouping 1 photos by date...
-[GooglePhotosLayout] ✅ Grouped into 1 date groups
-[GooglePhotosLayout] Tracking 1 paths for multi-selection
-[GooglePhotosLayout] 🚀 Setting up virtual scrolling for 1 date groups...
-[GooglePhotosLayout] ✅ Virtual scrolling enabled: 1 total date groups
-[GooglePhotosLayout] 📊 Rendered: 1 groups | Placeholders: 0 groups
-[GooglePhotosLayout] 🖼️ Queued 1 thumbnails for loading (initial limit: 50)
-[GooglePhotosLayout] ✅ Photo loading complete! Thumbnails will load progressively.
-2025-12-17 21:48:48,330 [INFO] [GooglePhotosLayout] Accordion person clicked: face_010
-[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px) [person=face_010]...
-[GooglePhotosLayout] 🔄 Clearing existing timeline and thumbnail cache...
-[GooglePhotosLayout] 🔍 Starting async photo load (generation 16)...
-[GooglePhotosLayout] ✅ Photo load worker started (generation 16)
-2025-12-17 21:48:48,330 [INFO] Photo query complete: generation=16, current=16, rows=1
-[GooglePhotosLayout] 📅 Grouping 1 photos by date...
-[GooglePhotosLayout] ✅ Grouped into 1 date groups
-[GooglePhotosLayout] Tracking 1 paths for multi-selection
-[GooglePhotosLayout] 🚀 Setting up virtual scrolling for 1 date groups...
-[GooglePhotosLayout] ✅ Virtual scrolling enabled: 1 total date groups
-[GooglePhotosLayout] 📊 Rendered: 1 groups | Placeholders: 0 groups
-[GooglePhotosLayout] 🖼️ Queued 1 thumbnails for loading (initial limit: 50)
-[GooglePhotosLayout] ✅ Photo loading complete! Thumbnails will load progressively.
-2025-12-17 21:48:49,283 [INFO] [GooglePhotosLayout] Accordion person clicked: manual_14b2ff1f
-[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px) [person=manual_14b2ff1f]...
-[GooglePhotosLayout] 🔄 Clearing existing timeline and thumbnail cache...
-[GooglePhotosLayout] 🔍 Starting async photo load (generation 17)...
-[GooglePhotosLayout] ✅ Photo load worker started (generation 17)
-2025-12-17 21:48:49,283 [INFO] Photo query complete: generation=17, current=17, rows=1
-[GooglePhotosLayout] 📅 Grouping 1 photos by date...
-[GooglePhotosLayout] ✅ Grouped into 1 date groups
-[GooglePhotosLayout] Tracking 1 paths for multi-selection
-[GooglePhotosLayout] 🚀 Setting up virtual scrolling for 1 date groups...
-[GooglePhotosLayout] ✅ Virtual scrolling enabled: 1 total date groups
-[GooglePhotosLayout] 📊 Rendered: 1 groups | Placeholders: 0 groups
-[GooglePhotosLayout] 🖼️ Queued 1 thumbnails for loading (initial limit: 50)
-[GooglePhotosLayout] ✅ Photo loading complete! Thumbnails will load progressively.
-2025-12-17 21:48:49,747 [INFO] [GooglePhotosLayout] Accordion person clicked: face_010
-[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px) [person=face_010]...
-[GooglePhotosLayout] 🔄 Clearing existing timeline and thumbnail cache...
-[GooglePhotosLayout] 🔍 Starting async photo load (generation 18)...
-[GooglePhotosLayout] ✅ Photo load worker started (generation 18)
-2025-12-17 21:48:49,747 [INFO] Photo query complete: generation=18, current=18, rows=1
-[GooglePhotosLayout] 📅 Grouping 1 photos by date...
-[GooglePhotosLayout] ✅ Grouped into 1 date groups
-[GooglePhotosLayout] Tracking 1 paths for multi-selection
-[GooglePhotosLayout] 🚀 Setting up virtual scrolling for 1 date groups...
-[GooglePhotosLayout] ✅ Virtual scrolling enabled: 1 total date groups
-[GooglePhotosLayout] 📊 Rendered: 1 groups | Placeholders: 0 groups
-[GooglePhotosLayout] 🖼️ Queued 1 thumbnails for loading (initial limit: 50)
-[GooglePhotosLayout] ✅ Photo loading complete! Thumbnails will load progressively.
-2025-12-17 21:48:53,217 [INFO] [AccordionSidebar] Drag-drop merge: 'face_010' (1 photos) -> 'manual_14b2ff1f' (1 photos)
-[merge_face_clusters] project_id=1, target='manual_14b2ff1f', sources=['face_010']
-[merge_face_clusters] Found 1 branches. Row type: <class 'sqlite3.Row'>
-[merge_face_clusters] Found 2 face_branch_reps rows
-[merge_face_clusters] Deleted 0 TRUE duplicate project_images entries (photos already in target)
-[merge_face_clusters] Moved 1 unique project_images entries from source to target
-[merge_face_clusters] Updated count for target 'manual_14b2ff1f' to reflect unique photos (rowcount=1)
-[merge_face_clusters] Refreshing ALL face cluster counts for project 1...
-[merge_face_clusters] ✓ Refreshed counts for 11 face clusters
-[merge_face_clusters] SUCCESS: Moved 1 faces, 0 duplicates, 1 unique photos
-[merge_face_clusters] Final result: 1 unique photos in 'manual_14b2ff1f'
-2025-12-17 21:48:53,253 [INFO] [PeopleSection] Loading face clusters (generation 10)…
-2025-12-17 21:48:53,264 [INFO] [PeopleSection] Loaded 11 clusters (gen 10)
-2025-12-17 21:48:53,334 [INFO] [PeopleSection] Grid built with 11 people (search enabled)
-2025-12-17 21:48:53,390 [INFO] [PeopleSection] Grid built with 11 people (search enabled)
-2025-12-17 21:48:53,430 [INFO] [AccordionSidebar] Section people loaded and displayed
-2025-12-17 21:48:55,100 [INFO] [GooglePhotosLayout] Person merge detected (face_010 -> manual_14b2ff1f); refreshing grid
-[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px) [person=manual_14b2ff1f]...
-[GooglePhotosLayout] 🔄 Clearing existing timeline and thumbnail cache...
-[GooglePhotosLayout] 🔍 Starting async photo load (generation 19)...
-[GooglePhotosLayout] ✅ Photo load worker started (generation 19)
-2025-12-17 21:48:55,116 [INFO] [AccordionSidebar] Merge successful: {'moved_faces': 1, 'duplicates_found': 0, 'unique_moved': 1, 'total_photos': 1, 'moved_images': 1, 'deleted_reps': 1, 'sources': ['face_010'], 'target': 'manual_14b2ff1f'}
-2025-12-17 21:48:55,116 [INFO] Photo query complete: generation=19, current=19, rows=1
-[GooglePhotosLayout] 📅 Grouping 1 photos by date...
-[GooglePhotosLayout] ✅ Grouped into 1 date groups
-[GooglePhotosLayout] Tracking 1 paths for multi-selection
-[GooglePhotosLayout] 🚀 Setting up virtual scrolling for 1 date groups...
-[GooglePhotosLayout] ✅ Virtual scrolling enabled: 1 total date groups
-[GooglePhotosLayout] 📊 Rendered: 1 groups | Placeholders: 0 groups
-[GooglePhotosLayout] 🖼️ Queued 1 thumbnails for loading (initial limit: 50)
-[GooglePhotosLayout] ✅ Photo loading complete! Thumbnails will load progressively.
-2025-12-17 21:48:56,714 [INFO] [GooglePhotosLayout] Clearing person filter from accordion toggle
-[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px)...
-[GooglePhotosLayout] 🔄 Clearing existing timeline and thumbnail cache...
-[GooglePhotosLayout] 🔍 Starting async photo load (generation 20)...
-[GooglePhotosLayout] ✅ Photo load worker started (generation 20)
-2025-12-17 21:48:56,726 [INFO] Photo query complete: generation=20, current=20, rows=36
-[GooglePhotosLayout] 📅 Grouping 36 photos by date...
-[GooglePhotosLayout] ✅ Grouped into 19 date groups
-[GooglePhotosLayout] Tracking 36 paths for multi-selection
-[GooglePhotosLayout] 🚀 Setting up virtual scrolling for 19 date groups...
-[GooglePhotosLayout] ✅ Virtual scrolling enabled: 19 total date groups
-[GooglePhotosLayout] 📊 Rendered: 5 groups | Placeholders: 14 groups
-[GooglePhotosLayout] 🖼️ Queued 6 thumbnails for loading (initial limit: 50)
-[GooglePhotosLayout] ✅ Photo loading complete! Thumbnails will load progressively.
-2025-12-17 21:48:57,812 [INFO] [GooglePhotosLayout] Accordion person clicked: manual_14b2ff1f
-[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px) [person=manual_14b2ff1f]...
-[GooglePhotosLayout] 🔄 Clearing existing timeline and thumbnail cache...
-[GooglePhotosLayout] 🔍 Starting async photo load (generation 21)...
-[GooglePhotosLayout] ✅ Photo load worker started (generation 21)
-2025-12-17 21:48:57,817 [INFO] Photo query complete: generation=21, current=21, rows=1
-[GooglePhotosLayout] 📅 Grouping 1 photos by date...
-[GooglePhotosLayout] ✅ Grouped into 1 date groups
-[GooglePhotosLayout] Tracking 1 paths for multi-selection
-[GooglePhotosLayout] 🚀 Setting up virtual scrolling for 1 date groups...
-[GooglePhotosLayout] ✅ Virtual scrolling enabled: 1 total date groups
-[GooglePhotosLayout] 📊 Rendered: 1 groups | Placeholders: 0 groups
-[GooglePhotosLayout] 🖼️ Queued 1 thumbnails for loading (initial limit: 50)
-[GooglePhotosLayout] ✅ Photo loading complete! Thumbnails will load progressively.
-[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px)...
-[GooglePhotosLayout] 🔄 Clearing existing timeline and thumbnail cache...
-[GooglePhotosLayout] 🔍 Starting async photo load (generation 22)...
-[GooglePhotosLayout] ✅ Photo load worker started (generation 22)
-2025-12-17 21:50:01,136 [INFO] Photo query complete: generation=22, current=22, rows=36
-[GooglePhotosLayout] 📅 Grouping 36 photos by date...
-[GooglePhotosLayout] ✅ Grouped into 19 date groups
-[GooglePhotosLayout] Tracking 36 paths for multi-selection
-[GooglePhotosLayout] 🚀 Setting up virtual scrolling for 19 date groups...
-[GooglePhotosLayout] ✅ Virtual scrolling enabled: 19 total date groups
-[GooglePhotosLayout] 📊 Rendered: 5 groups | Placeholders: 14 groups
-[GooglePhotosLayout] 🖼️ Queued 6 thumbnails for loading (initial limit: 50)
-[GooglePhotosLayout] ✅ Photo loading complete! Thumbnails will load progressively.
-[Shutdown] Grid threads shut down.
-[ThumbnailManager] Thread pool shut down.
-[Shutdown] ThumbnailManager threads shut down.
-[Shutdown] Thumbnail cache cleared.
-[Main] Qt event loop exited with code: 0
-[ThumbCacheDB] Closing cache gracefully...
+2025-12-18 00:25:29,628 [INFO] [AccordionSidebar] Expanding section: people
+2025-12-18 00:25:29,638 [INFO] [PeopleSection] Loading face clusters (generation 2)…
+2025-12-18 00:25:29,638 [INFO] [PeopleSection] Loaded 12 clusters (gen 2)
+2025-12-18 00:25:29,670 [INFO] [PeopleSection] Grid built with 12 people (search enabled)
+2025-12-18 00:25:29,702 [INFO] [PeopleSection] Grid built with 12 people (search enabled)
+2025-12-18 00:25:29,734 [INFO] [AccordionSidebar] Section people loaded and displayed
