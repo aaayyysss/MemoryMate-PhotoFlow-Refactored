@@ -40,6 +40,8 @@ from splash_qt import SplashScreen, StartupWorker
 
 # ✅ Global exception hook to catch unhandled exceptions
 import traceback
+import datetime
+import atexit
 
 def exception_hook(exctype, value, tb):
     """Global exception handler to catch and log unhandled exceptions"""
@@ -49,23 +51,49 @@ def exception_hook(exctype, value, tb):
     traceback.print_exception(exctype, value, tb)
     logger.error("Unhandled exception", exc_info=(exctype, value, tb))
     print("=" * 80)
-    
+
     # DIAGNOSTIC: Log stack trace to file for post-mortem analysis
     try:
         with open("crash_log.txt", "a", encoding="utf-8") as f:
-            import datetime
             f.write(f"\n{'='*80}\n")
             f.write(f"CRASH at {datetime.datetime.now()}\n")
+            f.write(f"Exception Type: {exctype.__name__}\n")
+            f.write(f"Exception Value: {value}\n")
             f.write(f"{'='*80}\n")
             traceback.print_exception(exctype, value, tb, file=f)
             f.write(f"{'='*80}\n\n")
     except:
         pass
-    
+
     sys.__excepthook__(exctype, value, tb)
+
+def log_shutdown():
+    """Log when app shuts down normally (helps identify crashes vs normal exits)"""
+    try:
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
+        with open('app_log.txt', 'a', encoding='utf-8') as f:
+            f.write(f"\n[{timestamp}] [SHUTDOWN] Normal exit with code 0\n")
+        with open('crash_log.txt', 'a', encoding='utf-8') as f:
+            f.write(f"\n[{timestamp}] Normal exit with code 0\n\n")
+    except:
+        pass
+
+def log_startup():
+    """Log app startup"""
+    try:
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
+        with open('app_log.txt', 'a', encoding='utf-8') as f:
+            f.write(f"\n{'='*80}\n")
+            f.write(f"[{timestamp}] [STARTUP] MemoryMate-PhotoFlow starting...\n")
+            f.write(f"{'='*80}\n")
+    except:
+        pass
 
 # Install exception hook immediately
 sys.excepthook = exception_hook
+
+# Register shutdown handler to detect crashes vs normal exits
+atexit.register(log_shutdown)
 
 
 if __name__ == "__main__":
@@ -77,7 +105,10 @@ if __name__ == "__main__":
     # Qt app
     app = QApplication(sys.argv)
     app.setApplicationName("Memory Mate - Photo Flow")
-    
+
+    # Log startup (helps distinguish crashes from normal exits)
+    log_startup()
+
     # Print DPI/resolution information for debugging
     try:
         from utils.dpi_helper import DPIHelper

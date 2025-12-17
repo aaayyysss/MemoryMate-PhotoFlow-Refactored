@@ -9911,23 +9911,62 @@ class GooglePhotosLayout(BaseLayout):
             # dialog is deleted before QTimer fires in the old implementation
             # editor.faceCropsUpdated.connect(self._refresh_people_sidebar)  # REMOVED
 
-            editor.exec()
-            logger.info(f"[GooglePhotosLayout] Opened Face Crop Editor for: {photo_path}")
+            logger.info(f"[GooglePhotosLayout] Opening Face Crop Editor for: {photo_path}")
 
-            # Check if faces were saved and refresh UI if needed
-            # This happens after dialog is fully closed and deleted, avoiding threading issues
-            if hasattr(editor, 'faces_were_saved') and editor.faces_were_saved:
-                logger.info(f"[GooglePhotosLayout] Manual faces were saved, refreshing People section...")
-                self._refresh_people_sidebar()
-                logger.info(f"[GooglePhotosLayout] ✓ People section refreshed after manual face save")
+            # CRITICAL FIX 2: Capture flag value BEFORE dialog closes
+            # Accessing editor.faces_were_saved after exec() can cause Qt object deletion crashes
+            # Store the flag in a local variable before the dialog is destroyed
+            result = editor.exec()
+
+            # IMMEDIATELY capture the flag before Qt deletes the dialog object
+            faces_were_saved = False
+            try:
+                faces_were_saved = getattr(editor, 'faces_were_saved', False)
+                logger.info(f"[GooglePhotosLayout] Face Crop Editor closed (result={result}, faces_saved={faces_were_saved})")
+            except RuntimeError as e:
+                # Dialog object already deleted - this is the crash we're trying to avoid!
+                logger.warning(f"[GooglePhotosLayout] Could not access editor.faces_were_saved: {e}")
+                logger.warning(f"[GooglePhotosLayout] Dialog was deleted too quickly - assuming no faces saved")
+
+            # Now use the LOCALLY STORED flag to decide if we should refresh
+            # This happens AFTER editor object is safely deleted
+            if faces_were_saved:
+                logger.info(f"[GooglePhotosLayout] Manual faces were saved, scheduling People section refresh...")
+
+                # CRITICAL FIX 3: Use QTimer to delay refresh until after dialog is fully destroyed
+                # This prevents "Signal source deleted" crashes
+                QTimer.singleShot(100, self._refresh_people_sidebar_after_face_save)
+                logger.info(f"[GooglePhotosLayout] ✓ People section refresh scheduled (delayed 100ms)")
 
         except Exception as e:
-            logger.error(f"[GooglePhotosLayout] Failed to open Face Crop Editor: {e}")
+            logger.error(f"[GooglePhotosLayout] Failed to open Face Crop Editor: {e}", exc_info=True)
             QMessageBox.critical(
                 self.main_window if hasattr(self, 'main_window') else None,
                 "Error",
                 f"Failed to open Face Crop Editor:\n{e}"
             )
+
+    def _refresh_people_sidebar_after_face_save(self):
+        """
+        Delayed refresh of People section after Face Crop Editor closes.
+
+        CRITICAL: This method is called via QTimer.singleShot() to ensure
+        the Face Crop Editor dialog is fully destroyed before we refresh.
+        This prevents "Signal source has been deleted" Qt crashes.
+        """
+        try:
+            logger.info("[GooglePhotosLayout] Executing delayed People section refresh...")
+            if hasattr(self, "accordion_sidebar"):
+                self.accordion_sidebar.reload_people_section()
+                logger.info("[GooglePhotosLayout] ✓ People section refreshed successfully after manual face save")
+            else:
+                logger.warning("[GooglePhotosLayout] No accordion_sidebar found - cannot refresh People section")
+        except RuntimeError as e:
+            # Qt object might still be deleted - log but don't crash
+            logger.error(f"[GooglePhotosLayout] Qt object deleted during People refresh: {e}", exc_info=True)
+            logger.error(f"[GooglePhotosLayout] This indicates a Qt lifecycle bug - please report")
+        except Exception as e:
+            logger.error(f"[GooglePhotosLayout] Failed to refresh People section: {e}", exc_info=True)
 
     def _on_accordion_device_selected(self, device_root: str):
         """Open the selected device in the system file browser for quick import."""
