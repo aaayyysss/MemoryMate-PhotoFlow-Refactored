@@ -720,28 +720,38 @@ class FacePhotoViewer(QWidget):
             if rect.width() > 20 and rect.height() > 20:
                 # Convert from widget coordinates to image coordinates
                 if self.pixmap:
-                    # Get scale factor
-                    widget_rect = self.rect()
-                    pixmap_rect = self.pixmap.rect()
+                    # CRITICAL FIX: Calculate scaled pixmap and offsets
+                    # (same calculation as paintEvent to ensure coordinate consistency)
+                    scaled_pixmap = self.pixmap.scaled(
+                        self.size(),
+                        Qt.KeepAspectRatio,
+                        Qt.SmoothTransformation
+                    )
 
-                    scale_x = pixmap_rect.width() / widget_rect.width()
-                    scale_y = pixmap_rect.height() / widget_rect.height()
-                    scale = max(scale_x, scale_y)
+                    # Calculate centering offsets
+                    x_offset = (self.width() - scaled_pixmap.width()) // 2
+                    y_offset = (self.height() - scaled_pixmap.height()) // 2
 
-                    # Scale coordinates
-                    x = int(rect.x() * scale)
-                    y = int(rect.y() * scale)
+                    # Calculate scale factor (image pixels per display pixel)
+                    scale = self.pixmap.width() / scaled_pixmap.width()
+
+                    # Convert widget coords to image coords
+                    # CRITICAL: Subtract offsets BEFORE scaling!
+                    x = int((rect.x() - x_offset) * scale)
+                    y = int((rect.y() - y_offset) * scale)
                     w = int(rect.width() * scale)
                     h = int(rect.height() * scale)
 
-                    # Ensure within image bounds
-                    x = max(0, min(x, pixmap_rect.width() - w))
-                    y = max(0, min(y, pixmap_rect.height() - h))
+                    # Clamp to image bounds
+                    x = max(0, min(x, self.pixmap.width() - w))
+                    y = max(0, min(y, self.pixmap.height() - h))
+                    w = min(w, self.pixmap.width() - x)
+                    h = min(h, self.pixmap.height() - y)
 
                     # Emit signal
                     self.manualFaceAdded.emit((x, y, w, h))
 
-                    logger.info(f"[FacePhotoViewer] Manual face drawn: {(x, y, w, h)}")
+                    logger.info(f"[FacePhotoViewer] Manual face drawn: {(x, y, w, h)} (offsets: {x_offset}, {y_offset}, scale: {scale:.2f})")
 
             # Reset drawing state
             self.drawing_mode = False
