@@ -455,12 +455,6 @@ class FaceCropEditor(QDialog):
                     saved_count += 1
 
             if saved_count > 0:
-                # Emit signal to refresh UI
-                try:
-                    self.faceCropsUpdated.emit()
-                except Exception as signal_err:
-                    logger.warning(f"[FaceCropEditor] Failed to emit signal: {signal_err}")
-
                 QMessageBox.information(
                     self,
                     "Saved",
@@ -469,11 +463,25 @@ class FaceCropEditor(QDialog):
                     "💡 Tip: Drag-and-drop faces in the People section to merge them."
                 )
 
-                # Close dialog safely
+                # CRITICAL FIX: Close dialog FIRST, then emit signal
+                # Emitting signal before closing causes crash because:
+                # 1. Signal triggers reload_people_section() in background thread
+                # 2. Dialog tries to close while background thread is still running
+                # 3. Background thread tries to update UI with destroyed dialog widgets
+                # 4. App crashes with threading/widget lifecycle issues
                 try:
                     self.accept()
                 except RuntimeError as e:
                     logger.debug(f"[FaceCropEditor] Dialog already closed: {e}")
+
+                # CRITICAL: Emit signal AFTER dialog closes using QTimer
+                # This ensures dialog widgets are fully destroyed before signal processing
+                from PySide6.QtCore import QTimer
+                try:
+                    QTimer.singleShot(100, self.faceCropsUpdated.emit)
+                    logger.info(f"[FaceCropEditor] Scheduled signal emission after dialog close")
+                except Exception as signal_err:
+                    logger.warning(f"[FaceCropEditor] Failed to schedule signal: {signal_err}")
             else:
                 QMessageBox.warning(
                     self,

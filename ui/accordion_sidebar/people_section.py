@@ -222,20 +222,24 @@ class PeopleSection(BaseSection):
         cards: List[PersonCard] = []
 
         for idx, row in enumerate(rows):
-            branch_key = row.get("branch_key") or f"cluster_{idx}"
-            display_name = row.get("display_name") or f"Person {idx + 1}"
-            member_count = int(row.get("member_count") or 0)
-            rep_path = row.get("rep_path")
-            rep_thumb = row.get("rep_thumb_png")
+            try:
+                branch_key = row.get("branch_key") or f"cluster_{idx}"
+                display_name = row.get("display_name") or f"Person {idx + 1}"
+                member_count = int(row.get("member_count") or 0)
+                rep_path = row.get("rep_path")
+                rep_thumb = row.get("rep_thumb_png")
 
-            pixmap = self._load_face_thumbnail(rep_path, rep_thumb)
-            card = PersonCard(branch_key, display_name, member_count, pixmap)
-            card.clicked.connect(self.personSelected.emit)
-            card.context_menu_requested.connect(self.contextMenuRequested.emit)
-            card.drag_merge_requested.connect(self.dragMergeRequested.emit)
+                pixmap = self._load_face_thumbnail(rep_path, rep_thumb)
+                card = PersonCard(branch_key, display_name, member_count, pixmap)
+                card.clicked.connect(self.personSelected.emit)
+                card.context_menu_requested.connect(self.contextMenuRequested.emit)
+                card.drag_merge_requested.connect(self.dragMergeRequested.emit)
 
-            cards.append(card)
-            self._cards[branch_key] = card
+                cards.append(card)
+                self._cards[branch_key] = card
+            except Exception as card_err:
+                logger.error(f"[PeopleSection] Failed to create card for person {idx} (branch_key={row.get('branch_key')}): {card_err}", exc_info=True)
+                # Skip this person and continue with others to prevent app crash
 
         container = PeopleGrid(cards)
         container.attach_viewport(scroll.viewport())
