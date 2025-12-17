@@ -295,8 +295,9 @@ class FaceCropEditor(QDialog):
         # Action buttons
         button_layout = QHBoxLayout()
 
-        add_manual_btn = QPushButton("➕ Add Manual Face")
-        add_manual_btn.setToolTip("Click to enable drawing mode, then drag on the photo to draw a face rectangle")
+        # Drawing mode buttons
+        add_manual_btn = QPushButton("➕ Start Drawing")
+        add_manual_btn.setToolTip("Click to enable drawing mode, then drag on the photo to draw face rectangles")
         add_manual_btn.setStyleSheet("""
             QPushButton {
                 background: #34a853;
@@ -311,6 +312,48 @@ class FaceCropEditor(QDialog):
         """)
         add_manual_btn.clicked.connect(self.photo_viewer.enable_drawing_mode)
         button_layout.addWidget(add_manual_btn)
+
+        # ENHANCEMENT #1: Done Drawing button (hidden until drawing mode enabled)
+        self.done_drawing_btn = QPushButton("✓ Done Drawing")
+        self.done_drawing_btn.setToolTip("Exit drawing mode")
+        self.done_drawing_btn.setStyleSheet("""
+            QPushButton {
+                background: #5f6368;
+                color: white;
+                padding: 8px 16px;
+                border-radius: 4px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background: #3c4043;
+            }
+        """)
+        self.done_drawing_btn.clicked.connect(self.photo_viewer.disable_drawing_mode)
+        self.done_drawing_btn.setVisible(False)  # Hidden initially
+        button_layout.addWidget(self.done_drawing_btn)
+
+        # ENHANCEMENT #5: Undo button
+        self.undo_btn = QPushButton("↶ Undo")
+        self.undo_btn.setToolTip("Remove last manual face rectangle")
+        self.undo_btn.setStyleSheet("""
+            QPushButton {
+                background: #fbbc04;
+                color: white;
+                padding: 8px 16px;
+                border-radius: 4px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background: #f9ab00;
+            }
+            QPushButton:disabled {
+                background: #dadce0;
+                color: #80868b;
+            }
+        """)
+        self.undo_btn.clicked.connect(self._undo_last_face)
+        self.undo_btn.setEnabled(False)  # Disabled until faces drawn
+        button_layout.addWidget(self.undo_btn)
 
         button_layout.addStretch()
 
@@ -336,6 +379,9 @@ class FaceCropEditor(QDialog):
         button_layout.addWidget(save_btn)
 
         layout.addLayout(button_layout)
+
+        # Connect drawing mode signal to update button visibility
+        self.photo_viewer.drawingModeChanged.connect(self._on_drawing_mode_changed)
 
     def _create_face_card(self, face: Dict) -> QWidget:
         """Create a thumbnail card for a detected face."""
@@ -427,7 +473,35 @@ class FaceCropEditor(QDialog):
         })
 
         self.manual_count_label.setText(f"Manual Faces: {len(self.manual_faces)}")
+
+        # ENHANCEMENT #5: Enable undo button when faces are added
+        self.undo_btn.setEnabled(True)
+
         logger.info(f"[FaceCropEditor] Added manual face: {bbox}")
+
+    def _on_drawing_mode_changed(self, enabled: bool):
+        """Handle drawing mode state changes."""
+        # ENHANCEMENT #1: Show/hide Done Drawing button based on drawing mode
+        self.done_drawing_btn.setVisible(enabled)
+        logger.debug(f"[FaceCropEditor] Drawing mode changed: {enabled}")
+
+    def _undo_last_face(self):
+        """ENHANCEMENT #5: Remove the last manually added face."""
+        if self.manual_faces:
+            removed_face = self.manual_faces.pop()
+            self.manual_count_label.setText(f"Manual Faces: {len(self.manual_faces)}")
+
+            # Disable undo button if no more manual faces
+            if not self.manual_faces:
+                self.undo_btn.setEnabled(False)
+
+            # Refresh the photo viewer to remove the rectangle overlay
+            self.photo_viewer.manual_faces = self.manual_faces
+            self.photo_viewer.update()
+
+            logger.info(f"[FaceCropEditor] Undid manual face: {removed_face['bbox']}")
+        else:
+            logger.debug("[FaceCropEditor] No manual faces to undo")
 
     def _save_changes(self):
         """Save manually added face crops to database."""
@@ -435,15 +509,35 @@ class FaceCropEditor(QDialog):
             QMessageBox.information(
                 self,
                 "No Changes",
-                "No manual face rectangles were added.\n\nClick 'Add Manual Face' to draw rectangles around missed faces."
+                "No manual face rectangles were added.\n\nClick '➕ Start Drawing' to draw rectangles around missed faces."
             )
             return
+
+        # ENHANCEMENT #2: Show progress dialog
+        from PySide6.QtWidgets import QProgressDialog, QApplication
+
+        progress = QProgressDialog(
+            "Preparing to save faces...",
+            None,  # No cancel button
+            0,
+            len(self.manual_faces) + 1,  # +1 for completion step
+            self
+        )
+        progress.setWindowTitle("Saving Faces")
+        progress.setWindowModality(Qt.WindowModal)
+        progress.setMinimumDuration(0)  # Show immediately
+        progress.setValue(0)
 
         try:
             # Create face crops from manual rectangles
             saved_count = 0
+            saved_crop_paths = []  # Store for later display
 
-            for manual_face in self.manual_faces:
+            for i, manual_face in enumerate(self.manual_faces):
+                progress.setLabelText(f"Saving face {i+1}/{len(self.manual_faces)}...")
+                progress.setValue(i)
+                QApplication.processEvents()  # Update UI
+
                 bbox = manual_face['bbox']
                 x, y, w, h = bbox
 
@@ -452,21 +546,42 @@ class FaceCropEditor(QDialog):
 
                 if crop_path:
                     # Add to database
-                    self._add_face_to_database(crop_path, bbox)
+                    branch_key = self._add_face_to_database(crop_path, bbox)
+
+                    # Store for naming dialog
+                    saved_crop_paths.append({
+                        'crop_path': crop_path,
+                        'branch_key': branch_key
+                    })
                     saved_count += 1
+
+            progress.setLabelText("Finalizing...")
+            progress.setValue(len(self.manual_faces))
+            QApplication.processEvents()
+
+            progress.close()
 
             if saved_count > 0:
                 # Set flag to indicate faces were saved
                 # Caller can check this flag after exec() returns to refresh UI
                 self.faces_were_saved = True
 
-                QMessageBox.information(
-                    self,
-                    "Saved",
-                    f"Successfully saved {saved_count} manually cropped face(s).\n\n"
-                    "These faces will be clustered and appear in the People section.\n\n"
-                    "💡 Tip: Drag-and-drop faces in the People section to merge them."
-                )
+                # ENHANCEMENT #4: Enhanced success dialog with thumbnails
+                # Extract just the crop paths for display
+                crop_paths_only = [item['crop_path'] for item in saved_crop_paths]
+                self._show_success_dialog(saved_count, crop_paths_only)
+
+                # ENHANCEMENT #3: Show naming dialog after success
+                # saved_crop_paths now contains dicts with 'crop_path' and 'branch_key'
+                if saved_crop_paths:
+                    from ui.face_naming_dialog import FaceNamingDialog
+
+                    naming_dialog = FaceNamingDialog(
+                        face_data=saved_crop_paths,  # Already has the right format
+                        project_id=self.project_id,
+                        parent=self.parent()
+                    )
+                    naming_dialog.exec()
 
                 # CRITICAL FIX: Don't emit signal - let caller check faces_were_saved flag
                 # Emitting signal causes threading issues when dialog is being destroyed
@@ -491,6 +606,93 @@ class FaceCropEditor(QDialog):
                 "Error",
                 f"Failed to save face crops:\n{e}"
             )
+
+    def _show_success_dialog(self, saved_count: int, crop_paths: List[str]):
+        """
+        ENHANCEMENT #4: Show enhanced success dialog with face thumbnails.
+
+        Args:
+            saved_count: Number of faces saved
+            crop_paths: Paths to saved face crop images
+        """
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Faces Saved Successfully")
+        dialog.setModal(True)
+        dialog.setMinimumWidth(500)
+
+        layout = QVBoxLayout(dialog)
+
+        # Success header
+        header = QLabel(f"✅ Successfully saved {saved_count} face(s)!")
+        header.setStyleSheet("font-size: 14pt; font-weight: bold; color: #34a853; padding: 10px;")
+        header.setAlignment(Qt.AlignCenter)
+        layout.addWidget(header)
+
+        # Show thumbnails (max 5)
+        if crop_paths:
+            thumbs_container = QWidget()
+            thumbs_layout = QHBoxLayout(thumbs_container)
+            thumbs_layout.setSpacing(10)
+
+            for crop_path in crop_paths[:5]:  # Show max 5 thumbnails
+                if os.path.exists(crop_path):
+                    try:
+                        thumb_label = QLabel()
+                        thumb_label.setFixedSize(80, 80)
+                        thumb_label.setStyleSheet("""
+                            QLabel {
+                                background: #f8f9fa;
+                                border: 2px solid #dadce0;
+                                border-radius: 4px;
+                            }
+                        """)
+
+                        pixmap = QPixmap(crop_path)
+                        if not pixmap.isNull():
+                            thumb_label.setPixmap(pixmap.scaled(80, 80, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+                            thumb_label.setAlignment(Qt.AlignCenter)
+                            thumbs_layout.addWidget(thumb_label)
+                    except Exception as e:
+                        logger.debug(f"Failed to load thumbnail: {e}")
+
+            thumbs_layout.addStretch()
+            layout.addWidget(thumbs_container)
+
+        # Info message
+        info_text = (
+            "These faces will appear in the People section.\n\n"
+            "💡 Tip: Drag and drop faces in the People section to merge them into one person."
+        )
+        info_label = QLabel(info_text)
+        info_label.setStyleSheet("color: #5f6368; padding: 10px;")
+        info_label.setWordWrap(True)
+        info_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(info_label)
+
+        # Buttons
+        button_layout = QHBoxLayout()
+        button_layout.addStretch()
+
+        ok_btn = QPushButton("OK")
+        ok_btn.setStyleSheet("""
+            QPushButton {
+                background: #1a73e8;
+                color: white;
+                padding: 8px 24px;
+                border-radius: 4px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background: #1557b0;
+            }
+        """)
+        ok_btn.clicked.connect(dialog.accept)
+        ok_btn.setDefault(True)
+        button_layout.addWidget(ok_btn)
+
+        layout.addLayout(button_layout)
+
+        dialog.exec()
 
     def _create_face_crop(self, x: int, y: int, w: int, h: int) -> Optional[str]:
         """
@@ -624,6 +826,8 @@ class FaceCropEditor(QDialog):
 
                 logger.info(f"[FaceCropEditor] Added manual face to database: {branch_key} (schema: {'bbox_text' if has_bbox_text else 'bbox_separate'})")
 
+                return branch_key
+
         except Exception as e:
             logger.error(f"[FaceCropEditor] Failed to add face to database: {e}")
             raise
@@ -636,6 +840,7 @@ class FacePhotoViewer(QWidget):
     """
 
     manualFaceAdded = Signal(tuple)  # (x, y, w, h)
+    drawingModeChanged = Signal(bool)  # True when drawing mode enabled, False when disabled
 
     # Safety limits to prevent memory issues
     MAX_PHOTO_SIZE_MB = 50  # Maximum photo file size (50MB)
@@ -649,6 +854,7 @@ class FacePhotoViewer(QWidget):
         self.manual_faces = manual_faces
 
         self.drawing_mode = False
+        self.keep_drawing_mode = False  # NEW: Flag to keep drawing mode enabled after each draw
         self.draw_start = None
         self.draw_end = None
 
@@ -799,13 +1005,33 @@ class FacePhotoViewer(QWidget):
         except Exception as e:
             logger.error(f"[FacePhotoViewer] Failed to transform bbox coordinates: {e}")
 
-    def enable_drawing_mode(self):
-        """Enable drawing mode for manual face rectangle."""
+    def enable_drawing_mode(self, keep_enabled=True):
+        """
+        Enable drawing mode for manual face rectangle.
+
+        Args:
+            keep_enabled: If True, drawing mode stays enabled after each rectangle.
+                         If False, drawing mode disabled after each rectangle (old behavior).
+        """
         self.drawing_mode = True
+        self.keep_drawing_mode = keep_enabled
         self.setCursor(Qt.CrossCursor)
         self.update()
+        self.drawingModeChanged.emit(True)
 
-        logger.info("[FacePhotoViewer] Drawing mode enabled - drag to draw face rectangle")
+        logger.info(f"[FacePhotoViewer] Drawing mode enabled (keep_enabled={keep_enabled})")
+
+    def disable_drawing_mode(self):
+        """Disable drawing mode."""
+        self.drawing_mode = False
+        self.keep_drawing_mode = False
+        self.draw_start = None
+        self.draw_end = None
+        self.setCursor(Qt.ArrowCursor)
+        self.update()
+        self.drawingModeChanged.emit(False)
+
+        logger.info("[FacePhotoViewer] Drawing mode disabled")
 
     def mousePressEvent(self, event):
         """Handle mouse press to start drawing."""
@@ -863,11 +1089,17 @@ class FacePhotoViewer(QWidget):
 
                     logger.info(f"[FacePhotoViewer] Manual face drawn: {(x, y, w, h)} (offsets: {x_offset}, {y_offset}, scale: {scale:.2f})")
 
-            # Reset drawing state
-            self.drawing_mode = False
+            # ENHANCEMENT #1: Keep drawing mode enabled if flag is set
+            # This allows user to draw multiple faces without re-clicking "Add Manual Face"
+            if not self.keep_drawing_mode:
+                # Old behavior: disable after each draw
+                self.drawing_mode = False
+                self.setCursor(Qt.ArrowCursor)
+                self.drawingModeChanged.emit(False)
+
+            # Always reset drawing start/end for next rectangle
             self.draw_start = None
             self.draw_end = None
-            self.setCursor(Qt.ArrowCursor)
             self.update()
 
     def paintEvent(self, event):
