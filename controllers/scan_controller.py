@@ -120,8 +120,15 @@ class ScanController:
             from services.scan_worker_adapter import ScanWorkerAdapter as ScanWorker
             print(f"[ScanController] ScanWorker imported successfully")
 
-            self.thread = QThread(self.main)
-            print(f"[ScanController] QThread created")
+            try:
+                print(f"[ScanController] Creating QThread...")
+                self.thread = QThread(self.main)
+                print(f"[ScanController] QThread created successfully")
+            except Exception as qthread_err:
+                print(f"[ScanController] FAILED to create QThread: {qthread_err}")
+                import traceback
+                traceback.print_exc()
+                raise
 
             # CRITICAL: Define callback for video metadata extraction completion
             # PHASE 2 Task 2.2: This now marks operation complete instead of refreshing immediately
@@ -157,30 +164,57 @@ class ScanController:
                 self.logger.info(f"Video metadata operation complete. Remaining: {self._scan_operations_pending}")
                 self._check_and_trigger_final_refresh()
 
-            self.worker = ScanWorker(folder, current_project_id, incremental, self.main.settings,
-                                    db_writer=self.db_writer,
-                                    on_video_metadata_finished=on_video_metadata_finished)
-            print(f"[ScanController] ScanWorker instance created with project_id={current_project_id}")
+            try:
+                print(f"[ScanController] Creating ScanWorker instance...")
+                self.worker = ScanWorker(folder, current_project_id, incremental, self.main.settings,
+                                        db_writer=self.db_writer,
+                                        on_video_metadata_finished=on_video_metadata_finished)
+                print(f"[ScanController] ✓ ScanWorker instance created with project_id={current_project_id}")
+            except Exception as worker_err:
+                print(f"[ScanController] FAILED to create ScanWorker: {worker_err}")
+                import traceback
+                traceback.print_exc()
+                raise
 
-            self.worker.moveToThread(self.thread)
-            print(f"[ScanController] Worker moved to thread")
+            try:
+                print(f"[ScanController] Moving worker to thread...")
+                self.worker.moveToThread(self.thread)
+                print(f"[ScanController] ✓ Worker moved to thread")
+            except Exception as move_err:
+                print(f"[ScanController] FAILED to move worker: {move_err}")
+                import traceback
+                traceback.print_exc()
+                raise
 
-            # CRITICAL FIX: Use Qt.QueuedConnection explicitly to prevent deadlock
-            # When progress is emitted from worker thread via synchronous callback,
-            # we need to ensure the emit() returns immediately without blocking
-            self.worker.progress.connect(self._on_progress, Qt.QueuedConnection)
-            self.worker.finished.connect(self._on_finished, Qt.QueuedConnection)
-            self.worker.error.connect(self._on_error, Qt.QueuedConnection)
-            self.thread.started.connect(lambda: print("[ScanController] QThread STARTED!"))
-            self.thread.started.connect(self.worker.run)
-            self.worker.finished.connect(lambda f, p, v=0: self.thread.quit())
-            self.thread.finished.connect(self._cleanup)
-            print(f"[ScanController] Signals connected")
+            try:
+                print(f"[ScanController] Connecting signals...")
+                # CRITICAL FIX: Use Qt.QueuedConnection explicitly to prevent deadlock
+                # When progress is emitted from worker thread via synchronous callback,
+                # we need to ensure the emit() returns immediately without blocking
+                self.worker.progress.connect(self._on_progress, Qt.QueuedConnection)
+                self.worker.finished.connect(self._on_finished, Qt.QueuedConnection)
+                self.worker.error.connect(self._on_error, Qt.QueuedConnection)
+                self.thread.started.connect(lambda: print("[ScanController] QThread STARTED!"))
+                self.thread.started.connect(self.worker.run)
+                self.worker.finished.connect(lambda f, p, v=0: self.thread.quit())
+                self.thread.finished.connect(self._cleanup)
+                print(f"[ScanController] ✓ Signals connected")
+            except Exception as signal_err:
+                print(f"[ScanController] FAILED to connect signals: {signal_err}")
+                import traceback
+                traceback.print_exc()
+                raise
 
             # Start scan thread immediately - DBWriter is already running from line 178
-            print("[ScanController] Starting scan thread...")
-            self.thread.start()
-            print("[ScanController] thread.start() called")
+            try:
+                print("[ScanController] Starting scan thread...")
+                self.thread.start()
+                print("[ScanController] ✓ thread.start() called successfully")
+            except Exception as start_err:
+                print(f"[ScanController] FAILED to start thread: {start_err}")
+                import traceback
+                traceback.print_exc()
+                raise
 
             self.main.act_cancel_scan.setEnabled(True)
         except Exception as e:
