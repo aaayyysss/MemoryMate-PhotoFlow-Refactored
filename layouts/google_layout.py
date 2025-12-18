@@ -10780,10 +10780,19 @@ class GooglePhotosLayout(BaseLayout):
                     image_data = io.BytesIO(rep_thumb_png)
                     with Image.open(image_data) as img:
                         # Convert to QPixmap
+                        # CRITICAL FIX: Prevent crash from Qt memory management
+                        # Same issue as thumbnail corruption (see THUMBNAIL_CORRUPTION_FIX.md)
+                        # Must keep data reference and use deep copy to prevent GC issues
                         img_rgb = img.convert('RGB')
                         data = img_rgb.tobytes('raw', 'RGB')
-                        qimg = QImage(data, img.width, img.height, QImage.Format_RGB888)
-                        pixmap = QPixmap.fromImage(qimg)
+
+                        # Create QImage with explicit bytesPerLine
+                        bytes_per_line = img.width * 3  # RGB888 = 3 bytes per pixel
+                        qimg = QImage(data, img.width, img.height, bytes_per_line, QImage.Format_RGB888)
+
+                        # Create deep copy to prevent data from being freed during conversion
+                        qimg_copy = qimg.copy()
+                        pixmap = QPixmap.fromImage(qimg_copy)
 
                         # ENHANCEMENT: Create circular icon (Google Photos / iPhone style)
                         return self._make_circular_face_icon(pixmap, FACE_ICON_SIZE)
@@ -10795,10 +10804,19 @@ class GooglePhotosLayout(BaseLayout):
                 try:
                     with Image.open(rep_path) as img:
                         # Convert to QPixmap
+                        # CRITICAL FIX: Prevent crash from Qt memory management
+                        # Same issue as thumbnail corruption (see THUMBNAIL_CORRUPTION_FIX.md)
+                        # Must keep data reference and use deep copy to prevent GC issues
                         img_rgb = img.convert('RGB')
                         data = img_rgb.tobytes('raw', 'RGB')
-                        qimg = QImage(data, img.width, img.height, QImage.Format_RGB888)
-                        pixmap = QPixmap.fromImage(qimg)
+
+                        # Create QImage with explicit bytesPerLine
+                        bytes_per_line = img.width * 3  # RGB888 = 3 bytes per pixel
+                        qimg = QImage(data, img.width, img.height, bytes_per_line, QImage.Format_RGB888)
+
+                        # Create deep copy to prevent data from being freed during conversion
+                        qimg_copy = qimg.copy()
+                        pixmap = QPixmap.fromImage(qimg_copy)
 
                         # ENHANCEMENT: Create circular icon (Google Photos / iPhone style)
                         return self._make_circular_face_icon(pixmap, FACE_ICON_SIZE)
