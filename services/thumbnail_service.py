@@ -530,7 +530,35 @@ class ThumbnailService:
             if height > 0:
                 img = img.scaledToHeight(height, Qt.SmoothTransformation)
 
-            return QPixmap.fromImage(img)
+            # CRITICAL FIX: Prevent thumbnail corruption from Qt memory management
+            # Same issue as Face Crop Editor crash (see MANUAL_FACE_CROP_CRASH_FIX_SESSION_STATUS.md)
+            #
+            # Problem: QImage-to-QPixmap conversion can fail if Python's garbage collector
+            # deallocates image data while Qt still needs it, causing:
+            # - Horizontal colored line artifacts (RGB glitch effects)
+            # - Corrupted/garbled thumbnails
+            # - Visual corruption in photo grid
+            #
+            # Solution: Store image data in local variable to prevent premature GC,
+            # create deep copy of QImage, and use explicit bytesPerLine parameter
+
+            # Step 1: Store image data in variable (prevents garbage collection)
+            img_data = img.bits()
+
+            # Step 2: Create deep copy with explicit format and bytesPerLine
+            bytes_per_line = img.bytesPerLine()
+            img_copy = QImage(
+                img_data,
+                img.width(),
+                img.height(),
+                bytes_per_line,  # CRITICAL: Explicit stride parameter
+                img.format()
+            )
+
+            # Step 3: Convert deep copy to pixmap (safe from garbage collection)
+            pixmap = QPixmap.fromImage(img_copy)
+
+            return pixmap
 
         except Exception as e:
             logger.debug(f"QImageReader failed for {path}: {e}, trying PIL fallback")
