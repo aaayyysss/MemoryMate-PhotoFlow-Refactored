@@ -59,6 +59,22 @@ class FaceCropEditor(QDialog):
         """
         try:
             logger.info(f"[FaceCropEditor] Initializing Face Crop Editor for: {photo_path}")
+
+            # CRITICAL VALIDATION: Check if user is trying to open a face crop instead of original photo
+            # Face crops are stored in /face_crops/ directory and should not be manually cropped again
+            if '/face_crops/' in photo_path.replace('\\', '/'):
+                error_msg = (
+                    "Cannot open Face Crop Editor on a face crop image.\n\n"
+                    "The Manual Face Crop Editor is designed to work with original photos only.\n\n"
+                    "To manually crop faces:\n"
+                    "1. Go to the main photo timeline\n"
+                    "2. Right-click on an original photo\n"
+                    "3. Select 'Manual Face Crop'\n\n"
+                    f"Current path (face crop): {os.path.basename(photo_path)}"
+                )
+                logger.error(f"[FaceCropEditor] Attempted to open face crop image: {photo_path}")
+                raise ValueError(error_msg)
+
             super().__init__(parent)
             logger.info(f"[FaceCropEditor] ✓ QDialog parent class initialized")
 
