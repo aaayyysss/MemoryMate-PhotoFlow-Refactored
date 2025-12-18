@@ -2314,11 +2314,24 @@ class FacePhotoViewer(QWidget):
             logger.info(f"[FacePhotoViewer] ✓ Image in RGB mode")
 
             logger.info(f"[FacePhotoViewer] Step 10: Converting to QImage...")
-            data = pil_image.tobytes("raw", "RGB")
-            logger.info(f"[FacePhotoViewer] ✓ Got image bytes ({len(data)} bytes)")
+            # CRITICAL FIX: Store data as instance variable to prevent garbage collection
+            # QImage references the data but doesn't own it, so if Python GC collects it,
+            # QPixmap.fromImage() will crash with a segfault when trying to read deallocated memory
+            self._image_data = pil_image.tobytes("raw", "RGB")
+            logger.info(f"[FacePhotoViewer] ✓ Got image bytes ({len(self._image_data)} bytes)")
 
-            qimg = QImage(data, pil_image.width, pil_image.height, QImage.Format_RGB888)
+            # Calculate bytes per line explicitly (width × 3 bytes per RGB pixel)
+            bytes_per_line = pil_image.width * 3
+            logger.info(f"[FacePhotoViewer] Bytes per line: {bytes_per_line}")
+
+            # Create QImage with explicit stride to prevent alignment issues
+            qimg = QImage(self._image_data, pil_image.width, pil_image.height, bytes_per_line, QImage.Format_RGB888)
             logger.info(f"[FacePhotoViewer] ✓ QImage created")
+
+            # CRITICAL FIX: Make a deep copy so QImage owns its own data
+            # This prevents crashes if the original data gets modified or deallocated
+            qimg = qimg.copy()
+            logger.info(f"[FacePhotoViewer] ✓ QImage copied (owns its own data)")
 
             logger.info(f"[FacePhotoViewer] Step 11: Converting to QPixmap...")
             self.pixmap = QPixmap.fromImage(qimg)
