@@ -59,6 +59,22 @@ class FaceCropEditor(QDialog):
         """
         try:
             logger.info(f"[FaceCropEditor] Initializing Face Crop Editor for: {photo_path}")
+
+            # CRITICAL VALIDATION: Check if user is trying to open a face crop instead of original photo
+            # Face crops are stored in /face_crops/ directory and should not be manually cropped again
+            if '/face_crops/' in photo_path.replace('\\', '/'):
+                error_msg = (
+                    "Cannot open Face Crop Editor on a face crop image.\n\n"
+                    "The Manual Face Crop Editor is designed to work with original photos only.\n\n"
+                    "To manually crop faces:\n"
+                    "1. Go to the main photo timeline\n"
+                    "2. Right-click on an original photo\n"
+                    "3. Select 'Manual Face Crop'\n\n"
+                    f"Current path (face crop): {os.path.basename(photo_path)}"
+                )
+                logger.error(f"[FaceCropEditor] Attempted to open face crop image: {photo_path}")
+                raise ValueError(error_msg)
+
             super().__init__(parent)
             logger.info(f"[FaceCropEditor] ✓ QDialog parent class initialized")
 
@@ -2314,11 +2330,24 @@ class FacePhotoViewer(QWidget):
             logger.info(f"[FacePhotoViewer] ✓ Image in RGB mode")
 
             logger.info(f"[FacePhotoViewer] Step 10: Converting to QImage...")
-            data = pil_image.tobytes("raw", "RGB")
-            logger.info(f"[FacePhotoViewer] ✓ Got image bytes ({len(data)} bytes)")
+            # CRITICAL FIX: Store data as instance variable to prevent garbage collection
+            # QImage references the data but doesn't own it, so if Python GC collects it,
+            # QPixmap.fromImage() will crash with a segfault when trying to read deallocated memory
+            self._image_data = pil_image.tobytes("raw", "RGB")
+            logger.info(f"[FacePhotoViewer] ✓ Got image bytes ({len(self._image_data)} bytes)")
 
-            qimg = QImage(data, pil_image.width, pil_image.height, QImage.Format_RGB888)
+            # Calculate bytes per line explicitly (width × 3 bytes per RGB pixel)
+            bytes_per_line = pil_image.width * 3
+            logger.info(f"[FacePhotoViewer] Bytes per line: {bytes_per_line}")
+
+            # Create QImage with explicit stride to prevent alignment issues
+            qimg = QImage(self._image_data, pil_image.width, pil_image.height, bytes_per_line, QImage.Format_RGB888)
             logger.info(f"[FacePhotoViewer] ✓ QImage created")
+
+            # CRITICAL FIX: Make a deep copy so QImage owns its own data
+            # This prevents crashes if the original data gets modified or deallocated
+            qimg = qimg.copy()
+            logger.info(f"[FacePhotoViewer] ✓ QImage copied (owns its own data)")
 
             logger.info(f"[FacePhotoViewer] Step 11: Converting to QPixmap...")
             self.pixmap = QPixmap.fromImage(qimg)

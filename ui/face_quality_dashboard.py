@@ -379,9 +379,20 @@ class FaceQualityDashboard(QDialog):
                     table.setItem(row_idx, 3, QTableWidgetItem("—"))
 
                 # Action button
-                review_btn = QPushButton("Review")
-                review_btn.setProperty("photo_path", face['image_path'])
-                review_btn.clicked.connect(lambda checked, path=face['image_path']: self.manualCropRequested.emit(path))
+                # CRITICAL FIX: Check if image_path is a face crop (corrupted data)
+                # Face crops cannot be manually cropped - need original photo
+                is_face_crop = '/face_crops/' in face['image_path'].replace('\\', '/')
+
+                if is_face_crop:
+                    # Disable button for face crops (data issue)
+                    review_btn = QPushButton("⚠️ Invalid")
+                    review_btn.setEnabled(False)
+                    review_btn.setToolTip("Cannot review: image_path points to face crop instead of original photo.\nThis is a data corruption issue.")
+                    logger.warning(f"[FaceQualityDashboard] Face {face['id']} has corrupted image_path (points to face crop): {face['image_path']}")
+                else:
+                    review_btn = QPushButton("Review")
+                    review_btn.setProperty("photo_path", face['image_path'])
+                    review_btn.clicked.connect(lambda checked, path=face['image_path']: self.manualCropRequested.emit(path))
                 review_btn.setStyleSheet("""
                     QPushButton {
                         background: #1a73e8;
@@ -462,9 +473,19 @@ class FaceQualityDashboard(QDialog):
                 table.setItem(row_idx, 2, QTableWidgetItem(f"{w}×{h}px"))
 
                 # Action button
-                review_btn = QPushButton("Manual Crop")
-                review_btn.setProperty("photo_path", photo['path'])
-                review_btn.clicked.connect(lambda checked, path=photo['path']: self.manualCropRequested.emit(path))
+                # CRITICAL FIX: Check if path is a face crop (should never happen, but defensive)
+                is_face_crop = '/face_crops/' in photo['path'].replace('\\', '/')
+
+                if is_face_crop:
+                    # Disable button for face crops (data issue)
+                    review_btn = QPushButton("⚠️ Invalid")
+                    review_btn.setEnabled(False)
+                    review_btn.setToolTip("Cannot crop: photo path points to face crop instead of original photo.\nThis is a data corruption issue.")
+                    logger.warning(f"[FaceQualityDashboard] Photo has corrupted path (points to face crop): {photo['path']}")
+                else:
+                    review_btn = QPushButton("Manual Crop")
+                    review_btn.setProperty("photo_path", photo['path'])
+                    review_btn.clicked.connect(lambda checked, path=photo['path']: self.manualCropRequested.emit(path))
                 review_btn.setStyleSheet("""
                     QPushButton {
                         background: #1a73e8;
