@@ -666,17 +666,51 @@ class FaceCropEditor(QDialog):
                                 logger.info(f"[FaceCropEditor] User chose to keep as new person")
                         else:
                             logger.debug(f"[FaceCropEditor] No similar faces found - keeping as new person")
+
+                        # Only add to saved_crop_paths if NOT merged (will show naming dialog)
+                        if not merged_with_existing:
+                            saved_crop_paths.append({
+                                'crop_path': crop_path,
+                                'branch_key': branch_key
+                            })
+
+                        saved_count += 1
+
                     else:
-                        logger.warning(f"[FaceCropEditor] Failed to extract embedding - skipping similarity check")
+                        # CRITICAL FIX: If embedding extraction fails, DELETE the face crop
+                        # and show error to user. Do NOT save face without embedding!
+                        logger.error(f"[FaceCropEditor] ❌ Failed to extract embedding for {crop_path}")
+                        logger.error(f"[FaceCropEditor] ❌ Face crop quality too low or no face detected - discarding")
 
-                    # Only add to saved_crop_paths if NOT merged (will show naming dialog)
-                    if not merged_with_existing:
-                        saved_crop_paths.append({
-                            'crop_path': crop_path,
-                            'branch_key': branch_key
-                        })
+                        # Delete the corrupted face from database
+                        try:
+                            from reference_db import ReferenceDB
+                            db = ReferenceDB()
+                            db.delete_face_crop(branch_key)
+                            logger.info(f"[FaceCropEditor] ✓ Deleted corrupted face crop: {branch_key}")
 
-                    saved_count += 1
+                            # Delete the crop file
+                            if os.path.exists(crop_path):
+                                os.remove(crop_path)
+                                logger.info(f"[FaceCropEditor] ✓ Deleted crop file: {crop_path}")
+                        except Exception as cleanup_err:
+                            logger.error(f"[FaceCropEditor] Failed to clean up corrupted face: {cleanup_err}")
+
+                        # Show error to user
+                        from PySide6.QtWidgets import QMessageBox
+                        QMessageBox.warning(
+                            self,
+                            "Face Crop Failed",
+                            f"Failed to process face crop:\n\n"
+                            f"• No face detected in the cropped region\n"
+                            f"• The crop quality is too low\n"
+                            f"• Try drawing a tighter rectangle around the face\n\n"
+                            f"This face was NOT saved."
+                        )
+
+                        # Do NOT increment saved_count
+                        # Do NOT add to saved_crop_paths
+                        logger.warning(f"[FaceCropEditor] ⚠️ Skipped saving face without embedding")
 
             progress.setLabelText("Finalizing...")
             progress.setValue(len(self.manual_faces))
