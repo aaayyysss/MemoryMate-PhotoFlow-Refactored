@@ -164,12 +164,37 @@ if __name__ == "__main__":
         QApplication.processEvents()
 
         # Show window and close splash
+        print(f"[Startup] Showing main window...")
+        print(f"[Startup] Window geometry before show(): {win.geometry()}")
+        print(f"[Startup] Window visible before show(): {win.isVisible()}")
+
         win.show()
+
+        print(f"[Startup] Window visible after show(): {win.isVisible()}")
+        print(f"[Startup] Window geometry after show(): {win.geometry()}")
+        print(f"[Startup] Window position: x={win.x()}, y={win.y()}, w={win.width()}, h={win.height()}")
+        print(f"[Startup] Window on screen: {win.screen().name() if win.screen() else 'UNKNOWN'}")
+
+        # CRITICAL FIX: Ensure window is on visible screen
+        win.ensureOnScreen()
+
+        # Ensure window is raised and activated
+        win.raise_()
+        win.activateWindow()
+        print(f"[Startup] Window raised and activated")
+
         splash.update_progress(100, "Ready!")
         QApplication.processEvents()
 
         # Close splash after a brief delay
         QTimer.singleShot(300, splash.close)
+
+        print(f"[Startup] ✅ Main window should now be visible")
+        print(f"[Startup] If window is not visible, check:")
+        print(f"[Startup]   1. Window position: ({win.x()}, {win.y()})")
+        print(f"[Startup]   2. Window size: {win.width()}x{win.height()}")
+        print(f"[Startup]   3. Screen geometry: {win.screen().availableGeometry() if win.screen() else 'N/A'}")
+        print(f"[Startup]   4. Check if window is off-screen or on disconnected monitor")
 
         # Check FFmpeg availability and notify user if needed
         try:

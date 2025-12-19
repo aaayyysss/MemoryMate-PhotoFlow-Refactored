@@ -1659,7 +1659,7 @@ class FaceCropEditor(QDialog):
             ]
         """
         try:
-            from repository.reference_db import ReferenceDB
+            from reference_db import ReferenceDB
 
             similar_faces = []
 
@@ -1916,7 +1916,7 @@ class FaceCropEditor(QDialog):
             True if merge successful, False otherwise
         """
         try:
-            from repository.reference_db import ReferenceDB
+            from reference_db import ReferenceDB
 
             db = ReferenceDB()
             with db._connect() as conn:
