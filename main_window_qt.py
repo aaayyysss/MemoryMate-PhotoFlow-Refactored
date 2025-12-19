@@ -1099,6 +1099,11 @@ class MainWindow(QMainWindow):
             import traceback
             traceback.print_exc()
 
+        # DIAGNOSTIC: Confirm __init__() is completing
+        print("[MainWindow] ✅ ✅ ✅ __init__() COMPLETED - returning to main_qt.py")
+        print(f"[MainWindow] Window object: {self}")
+        print(f"[MainWindow] Window valid: {self.isValid() if hasattr(self, 'isValid') else 'N/A'}")
+
     def ensureOnScreen(self):
         """
         CRITICAL FIX: Ensure window is positioned on a visible screen.
