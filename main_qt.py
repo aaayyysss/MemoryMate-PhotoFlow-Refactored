@@ -157,11 +157,18 @@ if __name__ == "__main__":
         QApplication.processEvents()
 
         # Launch main window after worker completes
+        print("[Startup] ⚠️ CREATING MainWindow instance...")
         win = MainWindow()
+        print("[Startup] ✅ MainWindow instance created successfully")
+        print(f"[Startup] MainWindow type: {type(win)}")
+        print(f"[Startup] MainWindow is valid: {win is not None}")
 
         # Update progress while MainWindow initializes
+        print("[Startup] Updating splash progress to 95%...")
         splash.update_progress(95, "Finalizing…")
+        print("[Startup] Processing events...")
         QApplication.processEvents()
+        print("[Startup] Events processed, ready to show window")
 
         # Show window and close splash
         print(f"[Startup] Showing main window...")
