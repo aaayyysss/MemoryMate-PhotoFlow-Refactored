@@ -1684,8 +1684,9 @@ class FaceCropEditor(QDialog):
 
                     # Deserialize centroid embedding
                     try:
-                        import pickle
-                        centroid = pickle.loads(centroid_blob)
+                        # CRITICAL FIX: Centroids are stored as numpy tobytes(), NOT pickle
+                        # Must use frombuffer() to deserialize, not pickle.loads()
+                        centroid = np.frombuffer(centroid_blob, dtype=np.float32)
 
                         # Calculate cosine similarity
                         # Cosine similarity = dot(A, B) / (||A|| * ||B||)
