@@ -332,34 +332,62 @@ class MainWindow(QMainWindow):
 
         # ADAPTIVE WINDOW SIZING: Smart sizing based on screen resolution and DPI scale
         screen = QGuiApplication.primaryScreen()
-        screen_geometry = screen.availableGeometry()  # Exclude taskbar
-        screen_size = screen.size()  # Full screen size
-        dpi_scale = screen.devicePixelRatio()  # Windows scale setting (1.0, 1.25, 1.5, 2.0, etc.)
-        
-        # Calculate logical pixels (accounts for DPI scaling)
-        logical_width = screen_geometry.width()
-        logical_height = screen_geometry.height()
-        
-        # Adaptive margin based on screen size
-        # Larger screens = larger margins for better aesthetics
-        if logical_width >= 2560:  # 4K or ultra-wide
-            margin = 80
-        elif logical_width >= 1920:  # Full HD
-            margin = 60
-        elif logical_width >= 1366:  # HD/Laptop
-            margin = 40
-        else:  # Small screens (1280x720 or below)
-            margin = 20
-        
-        # Set window geometry with adaptive margins
-        self.setGeometry(screen_geometry.adjusted(margin, margin, -margin, -margin))
-        
-        # Center window on screen
-        self.move(screen_geometry.center() - self.rect().center())
-        
-        # Log sizing information for debugging
-        print(f"[MainWindow] Screen: {logical_width}x{logical_height} (DPI scale: {dpi_scale}x)")
-        print(f"[MainWindow] Window size: {self.width()}x{self.height()} with {margin}px margins")
+        if screen is None:
+            print("[MainWindow] ⚠️ WARNING: Could not detect primary screen, using defaults")
+            # Fallback to safe default size
+            self.resize(1200, 800)
+            print("[MainWindow] Using fallback size: 1200x800")
+        else:
+            screen_geometry = screen.availableGeometry()  # Exclude taskbar
+            screen_size = screen.size()  # Full screen size
+            dpi_scale = screen.devicePixelRatio()  # Windows scale setting
+
+            # Calculate logical pixels (accounts for DPI scaling)
+            logical_width = screen_geometry.width()
+            logical_height = screen_geometry.height()
+
+            print(f"[MainWindow] 🖥️ Screen detected: {logical_width}x{logical_height} (DPI: {dpi_scale}x)")
+            print(f"[MainWindow] Screen geometry: x={screen_geometry.x()}, y={screen_geometry.y()}, w={screen_geometry.width()}, h={screen_geometry.height()}")
+
+            # Adaptive margin based on screen size
+            # Larger screens = larger margins for better aesthetics
+            if logical_width >= 2560:  # 4K or ultra-wide
+                margin = 80
+            elif logical_width >= 1920:  # Full HD
+                margin = 60
+            elif logical_width >= 1366:  # HD/Laptop
+                margin = 40
+            else:  # Small screens (1280x720 or below)
+                margin = 20
+
+            # Calculate window size with margins
+            window_width = logical_width - (margin * 2)
+            window_height = logical_height - (margin * 2)
+
+            # CRITICAL FIX: Set window size FIRST (not position yet)
+            self.resize(window_width, window_height)
+
+            print(f"[MainWindow] 📐 Window size: {window_width}x{window_height} (margins: {margin}px)")
+
+            # CRITICAL FIX: Position window AFTER resize, ensuring it's on visible screen
+            # Calculate centered position
+            window_x = screen_geometry.x() + margin
+            window_y = screen_geometry.y() + margin
+
+            # Ensure position is within screen bounds
+            if window_x < screen_geometry.x() or window_x + window_width > screen_geometry.x() + screen_geometry.width():
+                window_x = screen_geometry.x() + margin
+                print(f"[MainWindow] ⚠️ X position corrected to: {window_x}")
+
+            if window_y < screen_geometry.y() or window_y + window_height > screen_geometry.y() + screen_geometry.height():
+                window_y = screen_geometry.y() + margin
+                print(f"[MainWindow] ⚠️ Y position corrected to: {window_y}")
+
+            # Move window to calculated position
+            self.move(window_x, window_y)
+
+            print(f"[MainWindow] 📍 Window position: x={window_x}, y={window_y}")
+            print(f"[MainWindow] ✓ Window geometry: {self.geometry()}")
 
         
         if not self.settings.get("show_decoder_warnings", False):
@@ -1070,6 +1098,46 @@ class MainWindow(QMainWindow):
             print(f"[Startup] ⚠️ Database initialization failed: {e}")
             import traceback
             traceback.print_exc()
+
+    def ensureOnScreen(self):
+        """
+        CRITICAL FIX: Ensure window is positioned on a visible screen.
+        Call this after show() if window doesn't appear.
+
+        This method checks if the window is off-screen and repositions it
+        to the center of the primary screen if needed.
+        """
+        screen = QGuiApplication.primaryScreen()
+        if screen is None:
+            print("[MainWindow] ⚠️ Cannot verify screen - no primary screen detected")
+            return
+
+        screen_geometry = screen.availableGeometry()
+        window_geometry = self.geometry()
+
+        # Check if window is completely off-screen
+        window_center_x = window_geometry.center().x()
+        window_center_y = window_geometry.center().y()
+
+        is_on_screen = (
+            screen_geometry.contains(window_geometry.center()) or
+            screen_geometry.intersects(window_geometry)
+        )
+
+        if not is_on_screen:
+            print(f"[MainWindow] ⚠️ WARNING: Window is OFF-SCREEN!")
+            print(f"[MainWindow] Window center: ({window_center_x}, {window_center_y})")
+            print(f"[MainWindow] Screen bounds: {screen_geometry}")
+            print(f"[MainWindow] 🔧 Moving window to center of primary screen...")
+
+            # Force window to center of primary screen
+            new_x = screen_geometry.x() + (screen_geometry.width() - self.width()) // 2
+            new_y = screen_geometry.y() + (screen_geometry.height() - self.height()) // 2
+
+            self.move(new_x, new_y)
+            print(f"[MainWindow] ✓ Window repositioned to: ({new_x}, {new_y})")
+        else:
+            print(f"[MainWindow] ✓ Window is on-screen (center at {window_center_x}, {window_center_y})")
 
 
 # =========================
