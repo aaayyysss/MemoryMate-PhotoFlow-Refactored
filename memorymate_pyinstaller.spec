@@ -152,8 +152,10 @@ hiddenimports = [
 	'layouts.base_layout',
 	'layouts.current_layout',
 	'layouts.google_layout',
-	'layout_manager',
 	'layouts.lightroom_layout',
+	'layouts.layout_manager',
+	'layouts.layout_protocol',  # Layout protocol interface
+	'layouts.video_editor_mixin',  # Video editing mixin for layouts
 	
     'repository',
     'repository.base_repository',
@@ -199,20 +201,37 @@ hiddenimports = [
     'ui',
     'ui.device_import_dialog',
     'ui.face_settings_dialog',
+    'ui.face_crop_editor',  # CRITICAL: Face crop editor (manual face cropping)
+    'ui.face_quality_dashboard',  # Face quality scoring dashboard
+    'ui.face_quality_scorer',  # Face quality scoring utility
+    'ui.cluster_face_selector',  # Face clustering selector
+    'ui.face_naming_dialog',  # Face naming dialog
     'ui.mtp_deep_scan_dialog',
     'ui.mtp_import_dialog',
     'ui.people_list_view',
     'ui.people_manager_dialog',
+    'ui.visual_photo_browser',  # Visual photo browser
 	'ui.ui_builder',
-	
+
 	'ui.panels',
 	'ui.panels.backfill_status_panel',
 	'ui.panels.details_panel',
-	
+
 	'ui.widgets',
 	'ui.widgets.backfill_indicator',
 	'ui.widgets.breadcrumb_navigation',
 	'ui.widgets.selection_toolbar',
+
+	# CRITICAL: Accordion sidebar package (Phase 2 sidebar refactor)
+	'ui.accordion_sidebar',
+	'ui.accordion_sidebar.base_section',
+	'ui.accordion_sidebar.dates_section',
+	'ui.accordion_sidebar.devices_section',
+	'ui.accordion_sidebar.folders_section',
+	'ui.accordion_sidebar.people_section',
+	'ui.accordion_sidebar.quick_section',
+	'ui.accordion_sidebar.section_widgets',
+	'ui.accordion_sidebar.videos_section',
 
     'utils',
 	'utils.diagnose_insightface',
@@ -233,6 +252,7 @@ hiddenimports = [
     # Root-level UI modules (CRITICAL - often missed in PyInstaller specs)
     'main_window_qt',
     'sidebar_qt',
+    'accordion_sidebar',  # CRITICAL: Root-level accordion sidebar controller
     'search_widget_qt',
     'thumbnail_grid_qt',
     'preview_panel_qt',
@@ -242,6 +262,7 @@ hiddenimports = [
     'video_backfill_dialog',
     'reference_db',
     'thumb_cache_db',
+    'db_writer',  # Database write operations
     'translation_manager',  # Root-level translation manager
 ]
 
