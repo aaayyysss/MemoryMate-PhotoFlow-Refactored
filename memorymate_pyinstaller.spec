@@ -260,8 +260,8 @@ hiddenimports = [
     'splash_qt',
     'preferences_dialog',
     'video_backfill_dialog',
-    'reference_db',
-    'thumb_cache_db',
+ #   'reference_db',
+ #   'thumb_cache_db',
     'db_writer',  # Database write operations
     'translation_manager',  # Root-level translation manager
 ]
@@ -307,8 +307,8 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     
-    name='MemoryMate-PhotoFlow-v3.0.2',  # Updated version with face detection fix
-    debug=False,
+    name='MemoryMate-PhotoFlow-v3.0.5',  # Updated version with face detection fix
+    debug=True,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,  # SECURITY: Compress executable to obfuscate structure
