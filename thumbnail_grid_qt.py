@@ -262,7 +262,7 @@ def is_video_file(path: str) -> bool:
     ext = os.path.splitext(path)[1].lower()
     video_exts = {'.mp4', '.m4v', '.mov', '.mpeg', '.mpg', '.mpe', '.wmv',
                   '.asf', '.avi', '.mkv', '.webm', '.flv', '.f4v', '.3gp',
-                  '.3g2', '.ogv', '.ts', '.mts', '.m2ts'}
+                  '.3g2', '.ogv'}
     return ext in video_exts
 
 

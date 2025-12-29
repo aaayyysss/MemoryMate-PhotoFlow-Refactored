@@ -69,8 +69,7 @@ VIDEO_EXT = {
     '.flv', '.f4v',
     # Mobile/Other
     '.3gp', '.3g2',  # Mobile phones
-    '.ogv',  # Ogg Video
-    '.ts', '.mts', '.m2ts'  # MPEG transport stream
+    '.ogv'  # Ogg Video
 }
 
 # Combined: all supported media files (photos + videos)
