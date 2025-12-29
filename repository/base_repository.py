@@ -84,8 +84,21 @@ class DatabaseConnection:
             else:
                 conn = sqlite3.connect(self._db_path, timeout=10.0, check_same_thread=False)
 
-            # Configure connection
+            # CRITICAL: Enable foreign key constraints (required for CASCADE deletes)
+            # SQLite does NOT enforce foreign keys by default!
             conn.execute("PRAGMA foreign_keys = ON")
+
+            # CRITICAL: Verify foreign keys are actually enabled
+            fk_check = conn.execute("PRAGMA foreign_keys").fetchone()
+            if not fk_check or fk_check[0] != 1:
+                raise RuntimeError(
+                    "CRITICAL: Failed to enable foreign key constraints! "
+                    "This will break CASCADE deletes and data integrity."
+                )
+
+            # Set busy timeout to avoid "database is locked" errors under concurrent access
+            # This gives SQLite up to 5 seconds to acquire a lock before failing
+            conn.execute("PRAGMA busy_timeout = 5000")
 
             # TEMPORARY: Disable WAL mode due to threading issues
             # Worker threads can't see schema created in main thread when WAL is enabled
