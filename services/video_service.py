@@ -469,7 +469,7 @@ class VideoService:
         """
         VIDEO_EXTENSIONS = {
             '.mp4', '.avi', '.mov', '.mkv', '.wmv', '.flv', '.webm',
-            '.m4v', '.mpg', '.mpeg', '.3gp', '.ogv', '.ts', '.mts'
+            '.m4v', '.mpg', '.mpeg', '.3gp', '.ogv'
         }
 
         ext = Path(path).suffix.lower()
