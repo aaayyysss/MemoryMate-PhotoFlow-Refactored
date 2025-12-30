@@ -193,75 +193,16 @@ class PhotoScanService:
         self._scan_root = None
         self._last_progress_emit = 0.0
 
-        # Tracking for richer progress feedback
-        self._total_photos = 0
-        self._total_videos = 0
-        self._total_media_files = 0
-        self._photos_processed = 0
-        self._videos_processed = 0
-        self._scan_start_time = time.time()
-        self._scan_root = None
-        self._last_progress_emit = 0.0
-
-        # Tracking for richer progress feedback
-        self._total_photos = 0
-        self._total_videos = 0
-        self._total_media_files = 0
-        self._photos_processed = 0
-        self._videos_processed = 0
-        self._scan_start_time = time.time()
-        self._scan_root = None
-        self._last_progress_emit = 0.0
-
-        # Tracking for richer progress feedback
-        self._total_photos = 0
-        self._total_videos = 0
-        self._total_media_files = 0
-        self._photos_processed = 0
-        self._videos_processed = 0
-        self._scan_start_time = time.time()
-        self._scan_root = None
-        self._last_progress_emit = 0.0
-
-        # Tracking for richer progress feedback
-        self._total_photos = 0
-        self._total_videos = 0
-        self._total_media_files = 0
-        self._photos_processed = 0
-        self._videos_processed = 0
-        self._scan_start_time = time.time()
-        self._scan_root = None
-        self._last_progress_emit = 0.0
-
-        # Tracking for richer progress feedback
-        self._total_photos = 0
-        self._total_videos = 0
-        self._total_media_files = 0
-        self._photos_processed = 0
-        self._videos_processed = 0
-        self._scan_start_time = time.time()
-        self._scan_root = None
-        self._last_progress_emit = 0.0
-
-        # Tracking for richer progress feedback
-        self._total_photos = 0
-        self._total_videos = 0
-        self._total_media_files = 0
-        self._photos_processed = 0
-        self._videos_processed = 0
-        self._scan_start_time = time.time()
-        self._scan_root = None
-        self._last_progress_emit = 0.0
-
-        # Tracking for richer progress feedback
-        self._total_photos = 0
-        self._total_videos = 0
-        self._total_media_files = 0
-        self._photos_processed = 0
-        self._videos_processed = 0
-        self._scan_start_time = time.time()
-        self._scan_root = None
-        self._last_progress_emit = 0.0
+        # Track detailed file processing status for progress dialog
+        self._last_file_details = {
+            'filename': '',
+            'size_kb': 0,
+            'width': None,
+            'height': None,
+            'date_taken': None,
+            'folder_id': None,
+            'status': ''  # 'starting', 'extracting', 'complete', 'failed'
+        }
 
         # Video workers (initialized when videos are processed)
         self.video_metadata_worker = None
@@ -395,6 +336,13 @@ class PhotoScanService:
                     print(f"[SCAN] Starting file {i}/{total_files}: {file_path.name}")
                     logger.info(f"[Scan] File {i}/{total_files}: {file_path.name}")
 
+                    # Update progress details for UI - mark as starting
+                    self._last_file_details['filename'] = file_path.name
+                    self._last_file_details['status'] = 'starting'
+                    self._last_file_details['width'] = None
+                    self._last_file_details['height'] = None
+                    self._last_file_details['date_taken'] = None
+
                     try:
                         # Process file
                         row = self._process_file(
@@ -451,7 +399,7 @@ class PhotoScanService:
                                 logger.info("Scan cancelled during progress reporting")
                                 break
 
-                            # Enhanced progress message with file details
+                            # Enhanced progress message with detailed file processing info
                             file_name = file_path.name
 
                             # CRITICAL FIX: Get file size safely without blocking
@@ -466,8 +414,27 @@ class PhotoScanService:
                             processed_media = self._photos_processed + self._videos_processed
                             percentage = int((processed_media / max(1, self._total_media_files)) * 100)
 
+                            # Build detailed progress message using captured processing details
+                            details = self._last_file_details
+                            if details['status'] == 'complete' and details['filename']:
+                                # File was just processed - show detailed status
+                                meta_info = f"[w={details['width']}, h={details['height']}, date={details['date_taken']}]"
+                                status_line = f"✓ Processed: {details['filename']} ({details['size_kb']:.1f} KB) {meta_info}"
+                            elif details['status'] == 'extracting' and details['filename']:
+                                # Currently extracting metadata
+                                status_line = f"📷 Extracting metadata: {details['filename']} ({details['size_kb']:.1f} KB)"
+                            elif details['status'] == 'starting' and details['filename']:
+                                # Just started processing this file
+                                status_line = f"Starting file {i}/{total_files}: {details['filename']}"
+                            elif details['status'] == 'failed' and details['filename']:
+                                # Processing failed
+                                status_line = f"✗ Failed: {details['filename']}"
+                            else:
+                                # Fallback to generic message
+                                status_line = f"📷 {file_name} ({file_size_kb} KB)"
+
                             progress_msg = self._build_progress_message(
-                                status_line=f"📷 {file_name} ({file_size_kb} KB)",
+                                status_line=status_line,
                                 current_path=file_path,
                                 processed_count=processed_media,
                                 total_count=self._total_media_files
@@ -866,8 +833,18 @@ class PhotoScanService:
                 print(f"[SCAN] Processing: {os.path.basename(path_str)}")
                 sys.stdout.flush()
 
+                # Update progress details for UI
+                self._last_file_details['filename'] = os.path.basename(path_str)
+                self._last_file_details['size_kb'] = size_kb
+                self._last_file_details['status'] = 'extracting'
+
                 future = executor.submit(self.metadata_service.extract_basic_metadata, str(file_path))
                 width, height, date_taken = future.result(timeout=metadata_timeout)
+
+                # Store extracted metadata for progress updates
+                self._last_file_details['width'] = width
+                self._last_file_details['height'] = height
+                self._last_file_details['date_taken'] = date_taken
 
                 print(f"[SCAN] ✓ Metadata extracted: {os.path.basename(path_str)} [w={width}, h={height}, date={date_taken}]")
                 sys.stdout.flush()
@@ -915,15 +892,21 @@ class PhotoScanService:
             print(f"[SCAN] Creating folder hierarchy for: {os.path.basename(path_str)}")
             sys.stdout.flush()
             folder_id = self._ensure_folder_hierarchy(file_path.parent, root_path, project_id)
+
+            # Store folder_id for progress updates
+            self._last_file_details['folder_id'] = folder_id
+
             print(f"[SCAN] ✓ Folder hierarchy created: folder_id={folder_id}")
             sys.stdout.flush()
         except Exception as e:
             logger.error(f"Failed to create folder hierarchy for {path_str}: {e}")
             self._stats['photos_failed'] += 1
+            self._last_file_details['status'] = 'failed'
             return None
 
         # Success
         self._stats['photos_indexed'] += 1
+        self._last_file_details['status'] = 'complete'
         print(f"[SCAN] ✓ File processed successfully: {os.path.basename(path_str)}")
         sys.stdout.flush()
 
