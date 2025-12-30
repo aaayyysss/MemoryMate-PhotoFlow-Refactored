@@ -2,7 +2,7 @@
 # Version 01.00.00.00 dated 20251102
 # Qt adapter for PhotoScanService - bridges service layer with MainWindow
 
-from PySide6.QtCore import QObject, Signal, QMetaObject, Qt, Q_ARG
+from PySide6.QtCore import QObject, Signal, QTimer
 from typing import Optional, Dict, Any
 
 from .photo_scan_service import PhotoScanService, ScanResult, ScanProgress
@@ -100,22 +100,17 @@ class ScanWorkerAdapter(QObject):
                 try:
                     print(f"[ScanWorkerAdapter] 🔍 Progress update: percent={prog.percent}, message='{prog.message[:100]}...'")
 
-                    # CRITICAL FIX: Use QMetaObject.invokeMethod for reliable cross-thread calls
-                    # QueuedConnection was failing to deliver signals - this bypasses broken signal/slot
+                    # CRITICAL FIX: Use QTimer.singleShot for reliable cross-thread calls
+                    # This schedules the call in the receiver's thread (main thread) event loop
+                    # Much simpler and more reliable than QMetaObject.invokeMethod
                     if self.progress_receiver:
-                        # Thread-safe invocation - queued in main thread's event loop
-                        # IMPORTANT: Method name must be bytes in PySide6!
-                        success = QMetaObject.invokeMethod(
-                            self.progress_receiver,
-                            b"update_progress_safe",  # bytes, not str!
-                            Qt.QueuedConnection,
-                            Q_ARG(int, prog.percent),
-                            Q_ARG(str, prog.message)
-                        )
-                        if success:
-                            print(f"[ScanWorkerAdapter] ✓ invokeMethod SUCCESS")
-                        else:
-                            print(f"[ScanWorkerAdapter] ❌ invokeMethod FAILED (returned False)")
+                        # Capture values in closure to avoid reference issues
+                        pct = prog.percent
+                        msg = prog.message
+
+                        # Schedule call in main thread's event loop (0ms delay = next iteration)
+                        QTimer.singleShot(0, lambda: self.progress_receiver.update_progress_safe(pct, msg))
+                        print(f"[ScanWorkerAdapter] ✓ QTimer.singleShot scheduled")
                     else:
                         # Fallback: Try signal emission (for backwards compatibility)
                         self.progress.emit(prog.percent, prog.message)
