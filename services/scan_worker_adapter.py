@@ -100,17 +100,12 @@ class ScanWorkerAdapter(QObject):
                 try:
                     print(f"[ScanWorkerAdapter] 🔍 Progress update: percent={prog.percent}, message='{prog.message[:100]}...'")
 
-                    # CRITICAL FIX: Use QTimer.singleShot for reliable cross-thread calls
-                    # This schedules the call in the receiver's thread (main thread) event loop
-                    # Much simpler and more reliable than QMetaObject.invokeMethod
+                    # CRITICAL FIX: Call update_progress_safe directly from worker thread
+                    # The method itself will handle thread marshaling if needed
                     if self.progress_receiver:
-                        # Capture values in closure to avoid reference issues
-                        pct = prog.percent
-                        msg = prog.message
-
-                        # Schedule call in main thread's event loop (0ms delay = next iteration)
-                        QTimer.singleShot(0, lambda: self.progress_receiver.update_progress_safe(pct, msg))
-                        print(f"[ScanWorkerAdapter] ✓ QTimer.singleShot scheduled")
+                        # Call directly - the receiver will handle thread safety
+                        self.progress_receiver.update_progress_safe(prog.percent, prog.message)
+                        print(f"[ScanWorkerAdapter] ✓ Called update_progress_safe")
                     else:
                         # Fallback: Try signal emission (for backwards compatibility)
                         self.progress.emit(prog.percent, prog.message)
