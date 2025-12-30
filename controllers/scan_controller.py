@@ -60,13 +60,27 @@ class ScanController:
     @Slot(int, str)
     def update_progress_safe(self, pct: int, msg: str):
         """
-        Thread-safe progress update method called via QMetaObject.invokeMethod.
+        Thread-safe progress update method.
 
-        This method is invoked from the worker thread using Qt's meta-object system,
-        which guarantees it runs in the main thread's event loop.
+        Can be called from any thread - automatically marshals to main thread if needed.
         """
-        print(f"[ScanController] ✅ update_progress_safe CALLED: pct={pct}, msg='{msg[:50] if msg else '(empty)'}...'")
-        # Forward to the actual progress handler
+        from PySide6.QtWidgets import QApplication
+
+        # Check if we're in the main thread
+        if self.thread() != QApplication.instance().thread():
+            # Called from worker thread - marshal to main thread
+            print(f"[ScanController] ⚡ update_progress_safe called from WORKER thread - marshaling to main")
+            # Use QTimer.singleShot to run in main thread
+            # CRITICAL: Pass self as receiver so timer runs in main thread!
+            QTimer.singleShot(0, lambda p=pct, m=msg: self._on_progress_main_thread(p, m))
+        else:
+            # Already in main thread
+            print(f"[ScanController] ✅ update_progress_safe called from MAIN thread")
+            self._on_progress(pct, msg)
+
+    def _on_progress_main_thread(self, pct: int, msg: str):
+        """Helper to ensure we're in main thread when calling _on_progress."""
+        print(f"[ScanController] 🎯 _on_progress_main_thread: pct={pct}, msg='{msg[:50] if msg else '(empty)'}...'")
         self._on_progress(pct, msg)
 
     def start_scan(self, folder, incremental: bool):
