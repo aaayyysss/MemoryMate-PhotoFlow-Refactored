@@ -16,11 +16,18 @@ from pathlib import Path
 # For maximum protection, consider using PyArmor or Nuitka separately
 
 # Get the InsightFace models directory
-insightface_models_dir = os.path.expanduser('~/.insightface/models/buffalo_l')
+
+
+# PyInstaller executes spec via exec(); __file__ may be undefined.
+# SPECPATH is provided by PyInstaller and points to the spec directory.
+project_root = Path(SPECPATH).resolve()
+insightface_models_dir = project_root / 'models' / 'buffalo_l'
 
 # Collect all model files
 model_datas = []
-if os.path.exists(insightface_models_dir):
+#if os.path.exists(insightface_models_dir):
+#if os.path.exists(str(insightface_models_dir)):
+if insightface_models_dir.exists():
     for root, dirs, files in os.walk(insightface_models_dir):
         for file in files:
             src = os.path.join(root, file)
@@ -279,6 +286,26 @@ a = Analysis(
         'tkinter',     # Exclude if not needed (not used by app)
         'pytest',      # Test framework not needed in production
         'tests',       # Test files not needed
+		
+
+        # ------------------------------------------------------------------
+        # CRITICAL: Prevent PyInstaller from collecting multiple Qt bindings.
+        # Your environment has PySide6 (needed) AND PyQt5 (extraneous).
+        # PyInstaller aborts when both are detected.
+        # ------------------------------------------------------------------
+        'PyQt5',
+        'PyQt5.QtCore',
+        'PyQt5.QtGui',
+        'PyQt5.QtWidgets',
+        'PyQt5.sip',
+        'sip',
+        'PyQt6',
+        'PyQt6.QtCore',
+        'PyQt6.QtGui',
+        'PyQt6.QtWidgets',
+        'PySide2',
+		
+		
         'utils.test_insightface_models',
         'utils.diagnose_insightface',
         'utils.insightface_check',
@@ -302,10 +329,15 @@ pyz = PYZ(
 exe = EXE(
     pyz,
     a.scripts,
-    # SECURITY: ONE-FILE MODE - Everything packed in single encrypted .exe
-    a.binaries,
-    a.zipfiles,
-    a.datas,
+#    # SECURITY: ONE-FILE MODE - Everything packed in single encrypted .exe
+#    a.binaries,
+#    a.zipfiles,
+#    a.datas,
+
+    # NOTE: Use ONEDIR for ML apps (faster startup, fewer temp-extract issues,
+    # better with large models + native deps like onnxruntime/cv2).
+    [],
+    exclude_binaries=True,
     
     name='MemoryMate-PhotoFlow-v3.0.5',  # Updated version with face detection fix
     debug=True,
@@ -334,3 +366,14 @@ exe = EXE(
 #     upx_exclude=[],
 #     name='MemoryMate-PhotoFlow'
 # )
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+    strip=False,
+    upx=True,  # Optional: if runtime issues, set upx=False first
+    upx_exclude=[],
+    name='MemoryMate-PhotoFlow-v3.0.5'
+)
