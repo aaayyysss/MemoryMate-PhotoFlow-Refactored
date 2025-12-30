@@ -40,7 +40,21 @@ def _column_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:
         bool: True if column exists, False otherwise
     """
     cursor = conn.execute(f"PRAGMA table_info({table})")
-    columns = [row[1] for row in cursor.fetchall()]
+    rows = cursor.fetchall()
+
+    # Handle different row factory types
+    columns = []
+    for row in rows:
+        if isinstance(row, dict):
+            # Dict row factory - PRAGMA table_info returns 'name' column
+            columns.append(row.get('name', ''))
+        elif isinstance(row, sqlite3.Row):
+            # sqlite3.Row - can access by index (column name is at index 1)
+            columns.append(row[1])
+        else:
+            # Regular tuple - column name is at index 1
+            columns.append(row[1])
+
     return column in columns
 
 
@@ -91,18 +105,46 @@ def _ensure_foreign_keys_enabled(conn: sqlite3.Connection):
     Args:
         conn: SQLite connection
     """
+    # Check current state (handle both tuple and dict row factories)
     result = conn.execute("PRAGMA foreign_keys").fetchone()
-    if result and result[0] == 1:
-        logger.debug("Foreign keys already enabled")
-        return
+    if result:
+        # Handle dict row factory (common in repositories)
+        if isinstance(result, dict):
+            fk_value = result.get('foreign_keys', 0)
+        else:
+            # Handle tuple row factory
+            fk_value = result[0]
+
+        if fk_value == 1:
+            logger.debug("Foreign keys already enabled")
+            return
 
     conn.execute("PRAGMA foreign_keys = ON")
     logger.info("✓ Enabled foreign key constraints")
 
-    # Verify
+    # Verify (handle both row factory types)
     result = conn.execute("PRAGMA foreign_keys").fetchone()
-    if not result or result[0] != 1:
+    if not result:
         raise RuntimeError("CRITICAL: Failed to enable foreign key constraints!")
+
+    # Debug: log what we got
+    logger.debug(f"PRAGMA foreign_keys result type: {type(result)}")
+    logger.debug(f"PRAGMA foreign_keys result: {result}")
+
+    # Handle different row factory types
+    if isinstance(result, dict):
+        fk_value = result.get('foreign_keys', 0)
+    elif isinstance(result, sqlite3.Row):
+        # sqlite3.Row supports index access
+        fk_value = result[0]
+    else:
+        # Regular tuple
+        fk_value = result[0]
+
+    logger.debug(f"Extracted FK value: {fk_value}")
+
+    if fk_value != 1:
+        raise RuntimeError(f"CRITICAL: Failed to enable foreign key constraints! Got value: {fk_value}")
 
 
 def _recover_zombie_jobs(conn: sqlite3.Connection):
@@ -124,7 +166,16 @@ def _recover_zombie_jobs(conn: sqlite3.Connection):
         return
 
     # Find zombie jobs (running but lease expired)
-    current_ts = conn.execute("SELECT datetime('now')").fetchone()[0]
+    result = conn.execute("SELECT datetime('now')").fetchone()
+
+    # Handle different row factory types
+    if isinstance(result, dict):
+        # Get first column (name depends on SELECT alias, use values()[0])
+        current_ts = list(result.values())[0]
+    elif isinstance(result, sqlite3.Row):
+        current_ts = result[0]
+    else:
+        current_ts = result[0]
 
     zombie_count = conn.execute("""
         UPDATE ml_job
@@ -284,7 +335,17 @@ def verify_migration(conn: sqlite3.Connection) -> Tuple[bool, List[str]]:
     cursor = conn.execute(
         "SELECT name FROM sqlite_master WHERE type='table'"
     )
-    existing_tables = set(row[0] for row in cursor.fetchall())
+    rows = cursor.fetchall()
+
+    # Handle different row factory types
+    existing_tables = set()
+    for row in rows:
+        if isinstance(row, dict):
+            existing_tables.add(row.get('name', ''))
+        elif isinstance(row, sqlite3.Row):
+            existing_tables.add(row[0])
+        else:
+            existing_tables.add(row[0])
 
     for table in expected_tables:
         if table not in existing_tables:
@@ -298,8 +359,19 @@ def verify_migration(conn: sqlite3.Connection) -> Tuple[bool, List[str]]:
 
     # Check foreign keys are enabled
     result = conn.execute("PRAGMA foreign_keys").fetchone()
-    if not result or result[0] != 1:
+    if not result:
         errors.append("Foreign keys are NOT enabled (CRITICAL)")
+    else:
+        # Handle different row factory types
+        if isinstance(result, dict):
+            fk_value = list(result.values())[0]
+        elif isinstance(result, sqlite3.Row):
+            fk_value = result[0]
+        else:
+            fk_value = result[0]
+
+        if fk_value != 1:
+            errors.append("Foreign keys are NOT enabled (CRITICAL)")
 
     # Check schema version
     cursor = conn.execute(
@@ -323,6 +395,10 @@ def test_migration():
     """Test migration on an in-memory database."""
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
+
+    # CRITICAL: Enable foreign keys BEFORE any other operations
+    # PRAGMA foreign_keys can only be changed when no transactions are active
+    conn.execute("PRAGMA foreign_keys = ON")
 
     # Create minimal schema (projects, photo_metadata, tags)
     conn.executescript("""
