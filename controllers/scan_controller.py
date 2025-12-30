@@ -191,14 +191,26 @@ class ScanController:
                 # CRITICAL FIX: Use Qt.QueuedConnection explicitly to prevent deadlock
                 # When progress is emitted from worker thread via synchronous callback,
                 # we need to ensure the emit() returns immediately without blocking
+
+                # DEBUG: Test if signal connection works at all
+                def test_progress_connection(pct, msg):
+                    print(f"[ScanController] 🔥 TEST CONNECTION RECEIVED: pct={pct}, msg='{msg[:50] if msg else '(empty)'}...'")
+
+                # Try connecting a test lambda first
+                self.worker.progress.connect(test_progress_connection, Qt.QueuedConnection)
+                print(f"[ScanController] ✓ Test progress connection added")
+
+                # Connect actual handler
                 self.worker.progress.connect(self._on_progress, Qt.QueuedConnection)
+                print(f"[ScanController] ✓ _on_progress connected")
+
                 self.worker.finished.connect(self._on_finished, Qt.QueuedConnection)
                 self.worker.error.connect(self._on_error, Qt.QueuedConnection)
                 self.thread.started.connect(lambda: print("[ScanController] QThread STARTED!"))
                 self.thread.started.connect(self.worker.run)
                 self.worker.finished.connect(lambda f, p, v=0: self.thread.quit())
                 self.thread.finished.connect(self._cleanup)
-                print(f"[ScanController] ✓ Signals connected")
+                print(f"[ScanController] ✓ All signals connected")
             except Exception as signal_err:
                 print(f"[ScanController] FAILED to connect signals: {signal_err}")
                 import traceback
