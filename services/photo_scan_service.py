@@ -444,6 +444,10 @@ class PhotoScanService:
                                 current_file=str(file_path)
                             )
 
+                            # DEBUG: Verify message content
+                            print(f"[SCAN] 🔍 Emitting progress: percent={percentage}, message='{status_line}'")
+                            sys.stdout.flush()
+
                             try:
                                 progress_callback(progress)
                                 self._last_progress_emit = now

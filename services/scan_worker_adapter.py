@@ -95,6 +95,8 @@ class ScanWorkerAdapter(QObject):
             def on_progress(prog: ScanProgress):
                 """Forward progress to Qt signal."""
                 try:
+                    # DEBUG: Verify signal emission
+                    print(f"[ScanWorkerAdapter] 🔍 Emitting Qt signal: percent={prog.percent}, message='{prog.message[:100]}...'")
                     self.progress.emit(prog.percent, prog.message)
                     self._photos_indexed = prog.current
                 except Exception as e:
