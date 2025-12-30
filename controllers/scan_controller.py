@@ -52,6 +52,11 @@ class ScanController:
         self._scan_refresh_scheduled = False
         self._scan_result_cached = None  # Cache scan results for final refresh
 
+    def _test_progress_slot(self, pct: int, msg: str):
+        """Test slot to verify Qt signal delivery is working."""
+        print(f"[ScanController] 🔥 TEST SLOT RECEIVED: pct={pct}, msg='{msg[:50] if msg else '(empty)'}...'")
+        print(f"[ScanController] 🔥 Signal delivery IS WORKING!")
+
     def start_scan(self, folder, incremental: bool):
         """Entry point called from MainWindow toolbar action."""
         self.cancel_requested = False
@@ -192,13 +197,10 @@ class ScanController:
                 # When progress is emitted from worker thread via synchronous callback,
                 # we need to ensure the emit() returns immediately without blocking
 
-                # DEBUG: Test if signal connection works at all
-                def test_progress_connection(pct, msg):
-                    print(f"[ScanController] 🔥 TEST CONNECTION RECEIVED: pct={pct}, msg='{msg[:50] if msg else '(empty)'}...'")
-
-                # Try connecting a test lambda first
-                self.worker.progress.connect(test_progress_connection, Qt.QueuedConnection)
-                print(f"[ScanController] ✓ Test progress connection added")
+                # DEBUG: Connect test slot FIRST to verify Qt signal delivery
+                # Using proper class method (not local function) to avoid GC issues
+                self.worker.progress.connect(self._test_progress_slot, Qt.QueuedConnection)
+                print(f"[ScanController] ✓ Test progress slot connected (class method)")
 
                 # Connect actual handler
                 self.worker.progress.connect(self._on_progress, Qt.QueuedConnection)
