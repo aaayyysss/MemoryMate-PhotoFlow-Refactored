@@ -104,14 +104,18 @@ class ScanWorkerAdapter(QObject):
                     # QueuedConnection was failing to deliver signals - this bypasses broken signal/slot
                     if self.progress_receiver:
                         # Thread-safe invocation - queued in main thread's event loop
-                        QMetaObject.invokeMethod(
+                        # IMPORTANT: Method name must be bytes in PySide6!
+                        success = QMetaObject.invokeMethod(
                             self.progress_receiver,
-                            "update_progress_safe",
+                            b"update_progress_safe",  # bytes, not str!
                             Qt.QueuedConnection,
                             Q_ARG(int, prog.percent),
                             Q_ARG(str, prog.message)
                         )
-                        print(f"[ScanWorkerAdapter] ✓ invokeMethod called successfully")
+                        if success:
+                            print(f"[ScanWorkerAdapter] ✓ invokeMethod SUCCESS")
+                        else:
+                            print(f"[ScanWorkerAdapter] ❌ invokeMethod FAILED (returned False)")
                     else:
                         # Fallback: Try signal emission (for backwards compatibility)
                         self.progress.emit(prog.percent, prog.message)
@@ -120,6 +124,8 @@ class ScanWorkerAdapter(QObject):
                     self._photos_indexed = prog.current
                 except Exception as e:
                     logger.warning(f"Failed to send progress update: {e}")
+                    import traceback
+                    traceback.print_exc()
 
             # Run the scan
             result: ScanResult = self.service.scan_repository(
