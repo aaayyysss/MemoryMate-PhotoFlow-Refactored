@@ -1,13 +1,13 @@
-C:\Users\suleimaa\Downloads\Photo-Sorter\09.49.01.01-Photo-App\MemoryMate-PhotoFlow-Refactored-main-04>python main_qt.py
+:\Users\suleimaa\Downloads\Photo-Sorter\09.49.01.01-Photo-App\MemoryMate-PhotoFlow-Refactored-main-05>python main_qt.py
 [Startup] pillow_heif available — HEIC/HEIF support enabled.
 🔇 Decoder warnings suppressed per settings.
 🔇 Decoder warnings suppressed (Qt, Pillow, ICC).
-✅ Loaded en translations from C:\Users\suleimaa\Downloads\Photo-Sorter\09.49.01.01-Photo-App\MemoryMate-PhotoFlow-Refactored-main-04\locales\en.json
+✅ Loaded en translations from C:\Users\suleimaa\Downloads\Photo-Sorter\09.49.01.01-Photo-App\MemoryMate-PhotoFlow-Refactored-main-05\locales\en.json
 🌍 Language initialized: en
-2025-12-30 02:49:27,793 [INFO] ================================================================================
-2025-12-30 02:49:27,793 [INFO] MemoryMate-PhotoFlow logging initialized (level=INFO)
-2025-12-30 02:49:27,793 [INFO] Log file: C:\Users\suleimaa\Downloads\Photo-Sorter\09.49.01.01-Photo-App\MemoryMate-PhotoFlow-Refactored-main-04\app_log.txt
-2025-12-30 02:49:27,793 [INFO] ================================================================================
+2025-12-30 03:03:50,698 [INFO] ================================================================================
+2025-12-30 03:03:50,698 [INFO] MemoryMate-PhotoFlow logging initialized (level=INFO)
+2025-12-30 03:03:50,698 [INFO] Log file: C:\Users\suleimaa\Downloads\Photo-Sorter\09.49.01.01-Photo-App\MemoryMate-PhotoFlow-Refactored-main-05\app_log.txt
+2025-12-30 03:03:50,713 [INFO] ================================================================================
 ============================================================
 SCREEN INFORMATION (DPI-Aware)
 ============================================================
@@ -20,16 +20,16 @@ Taskbar Height:  48px
 Adaptive Margin: 60px
 Adaptive Icons:  24px
 ============================================================
-2025-12-30 02:49:27,840 [INFO] Installed Qt message handler to suppress TIFF warnings
-2025-12-30 02:49:27,840 [INFO] Qt message handler installed to suppress TIFF warnings
+2025-12-30 03:03:50,745 [INFO] Installed Qt message handler to suppress TIFF warnings
+2025-12-30 03:03:50,745 [INFO] Qt message handler installed to suppress TIFF warnings
 [Main] Starting Qt event loop...
 [Startup] Database schema initialized successfully
-[Cache] {'entries': 0, 'size_mb': 0.0, 'path': 'C:\\Users\\suleimaa\\Downloads\\Photo-Sorter\\09.49.01.01-Photo-App\\MemoryMate-PhotoFlow-Refactored-main-04\\thumbnails_cache.db', 'last_updated': '2025-12-30 02:49'}
-2025-12-30 02:49:28,428 [INFO] SearchService initialized
+[Cache] {'entries': 0, 'size_mb': 0.0, 'path': 'C:\\Users\\suleimaa\\Downloads\\Photo-Sorter\\09.49.01.01-Photo-App\\MemoryMate-PhotoFlow-Refactored-main-05\\thumbnails_cache.db', 'last_updated': '2025-12-30 03:03'}
+2025-12-30 03:03:51,576 [INFO] SearchService initialized
 [Startup] SearchService initialized
-2025-12-30 02:49:28,444 [INFO] LRUCache initialized with capacity=200, max_memory=100.0MB
-2025-12-30 02:49:28,444 [INFO] ThumbnailService initialized (L1 capacity=200, max_memory=100.0MB, timeout=5.0s)
-2025-12-30 02:49:28,444 [INFO] Global ThumbnailService created with Phase 1B memory limits
+2025-12-30 03:03:51,586 [INFO] LRUCache initialized with capacity=200, max_memory=100.0MB
+2025-12-30 03:03:51,586 [INFO] ThumbnailService initialized (L1 capacity=200, max_memory=100.0MB, timeout=5.0s)
+2025-12-30 03:03:51,586 [INFO] Global ThumbnailService created with Phase 1B memory limits
 [Startup] ThumbnailService initialized
 [Startup] ⚠️ CREATING MainWindow instance...
 🌍 Language switched to: en
@@ -46,28 +46,28 @@ Adaptive Icons:  24px
 [MainWindow] ✓ Window geometry: PySide6.QtCore.QRect(60, 60, 1800, 1032)
 🔇 Qt/Pillow decoder warnings silenced (per user settings).
 ⚠️ Missing translation key: sidebar.people
-2025-12-30 02:49:28,462 [INFO] SearchService initialized
+2025-12-30 03:03:51,617 [INFO] SearchService initialized
 [Sidebar] Device auto-detection disabled (manual refresh only)
-[02:49:28.482] [Tabs] __init__ started
-[02:49:28.482] [Tabs] _build_tabs → building tab widgets
-[02:49:28.482] [Tabs] _on_tab_changed(idx=0)
-[02:49:28.482] [Tabs] _start_timeout idx=0 type=branches
-[02:49:28.482] [Tabs] _populate_tab(branches, idx=0, force=False)
-[02:49:28.482] [Tabs]   populated=False, loading=False
-[02:49:28.482] [Tabs]   Starting load for branches
-[02:49:28.482] [Tabs] _show_loading idx=0 label='Loading Branches…'
-[02:49:28.482] [Tabs] _clear_tab idx=0
-[02:49:28.482] [Tabs] _on_tab_changed → tab_type=branches
-[02:49:28.482] [Tabs] _build_tabs → added 6 tabs
-[02:49:28.482] [Tabs] __init__ completed
-[02:49:28.493] [AccordionSidebar] AccordionSidebar __init__ started
-[02:49:28.493] [AccordionSidebar] Building accordion sections...
-[02:49:28.508] [AccordionSidebar] Created 7 sections with nav buttons
-[02:49:28.508] [AccordionSidebar] Expanding section: people
-[02:49:28.508] [AccordionSidebar] Loading content for section: people
-[02:49:28.508] [AccordionSidebar] Loading People section...
-[02:49:28.508] [AccordionSidebar] ✓ Section expanded: people
-[02:49:28.508] [AccordionSidebar] AccordionSidebar __init__ completed
+[03:03:51.629] [Tabs] __init__ started
+[03:03:51.629] [Tabs] _build_tabs → building tab widgets
+[03:03:51.629] [Tabs] _on_tab_changed(idx=0)
+[03:03:51.629] [Tabs] _start_timeout idx=0 type=branches
+[03:03:51.629] [Tabs] _populate_tab(branches, idx=0, force=False)
+[03:03:51.629] [Tabs]   populated=False, loading=False
+[03:03:51.629] [Tabs]   Starting load for branches
+[03:03:51.629] [Tabs] _show_loading idx=0 label='Loading Branches…'
+[03:03:51.629] [Tabs] _clear_tab idx=0
+[03:03:51.629] [Tabs] _on_tab_changed → tab_type=branches
+[03:03:51.629] [Tabs] _build_tabs → added 6 tabs
+[03:03:51.633] [Tabs] __init__ completed
+[03:03:51.633] [AccordionSidebar] AccordionSidebar __init__ started
+[03:03:51.649] [AccordionSidebar] Building accordion sections...
+[03:03:51.649] [AccordionSidebar] Created 7 sections with nav buttons
+[03:03:51.649] [AccordionSidebar] Expanding section: people
+[03:03:51.649] [AccordionSidebar] Loading content for section: people
+[03:03:51.649] [AccordionSidebar] Loading People section...
+[03:03:51.649] [AccordionSidebar] ✓ Section expanded: people
+[03:03:51.649] [AccordionSidebar] AccordionSidebar __init__ completed
 [SidebarQt] _build_tree_model() called with project_id=None
 [Sidebar] Detaching old model from tree view
 [Sidebar] Pending events processed (skipped explicit processEvents)
@@ -78,7 +78,7 @@ Adaptive Icons:  24px
 [Sidebar] Found 0 videos in project None
 
 [Sidebar] ===== Initiating mobile device scan from sidebar =====
-[Sidebar] Database: <reference_db.ReferenceDB object at 0x000001D50D04EC50>
+[Sidebar] Database: <reference_db.ReferenceDB object at 0x00000259FB59EC50>
 [Sidebar] Register devices: True
 
 [DeviceScanner] ===== Starting device scan  =====
@@ -104,7 +104,7 @@ Adaptive Icons:  24px
 [Sidebar] No mobile devices detected - added help message
 [SidebarQt] switch_display_mode(list) - canceling old workers
 [SidebarQt] Hiding tabs controller and accordion
-[02:49:28.653] [Tabs] hide_tabs() called - canceling pending workers
+[03:03:51.792] [Tabs] hide_tabs() called - canceling pending workers
 [SidebarQt] Canceled tab/accordion workers via hide
 [SidebarQt] Clearing tree view selection before rebuild
 [SidebarQt] Showing tree view
@@ -119,11 +119,11 @@ Adaptive Icons:  24px
 [Sidebar] Found 0 videos in project None
 
 [Sidebar] ===== Initiating mobile device scan from sidebar =====
-[Sidebar] Database: <reference_db.ReferenceDB object at 0x000001D50D04EC50>
+[Sidebar] Database: <reference_db.ReferenceDB object at 0x00000259FB59EC50>
 [Sidebar] Register devices: True
 
 [DeviceScanner] ===== Using cached scan results =====
-[DeviceScanner] Cache age: 0.02s (TTL: 5.0s)
+[DeviceScanner] Cache age: 0.01s (TTL: 5.0s)
 [DeviceScanner] Cached devices: 0
 [DeviceScanner] ===== Scan complete (cached): 0 device(s) =====
 
@@ -139,11 +139,11 @@ Adaptive Icons:  24px
 [LayoutManager] 💾 Took ownership of original central widget: QWidget
 [GooglePhotosLayout] ⚠️ WARNING: No projects found! Please create a project first.
 [GooglePhotosLayout] Project selector populated with 0 projects (+ New Project option)
-2025-12-30 02:49:29,194 [INFO] [AccordionSidebar] Initializing with project_id=None
-2025-12-30 02:49:29,209 [INFO] [AccordionSidebar] Created 6 sections
-2025-12-30 02:49:29,209 [INFO] [AccordionSidebar] Expanding section: folders
-2025-12-30 02:49:29,209 [WARNING] [FoldersSection] No project_id set
-2025-12-30 02:49:29,320 [INFO] [AccordionSidebar] Section folders loaded and displayed
+2025-12-30 03:03:52,343 [INFO] [AccordionSidebar] Initializing with project_id=None
+2025-12-30 03:03:52,359 [INFO] [AccordionSidebar] Created 6 sections
+2025-12-30 03:03:52,359 [INFO] [AccordionSidebar] Expanding section: folders
+2025-12-30 03:03:52,359 [WARNING] [FoldersSection] No project_id set
+2025-12-30 03:03:52,481 [INFO] [AccordionSidebar] Section folders loaded and displayed
 [GooglePhotosLayout] ✅ Scroll-triggered lazy loading enabled
 [GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px)...
 [GooglePhotosLayout] 🔄 Clearing existing timeline and thumbnail cache...
@@ -157,21 +157,21 @@ Adaptive Icons:  24px
 [Startup] Layout system initialized successfully
 [Startup] Database schema initialized successfully
 [MainWindow] ✅ ✅ ✅ __init__() COMPLETED - returning to main_qt.py
-[MainWindow] Window object: <main_window_qt.MainWindow(0x1d50e059240) at 0x000001D510713DC0>
+[MainWindow] Window object: <main_window_qt.MainWindow(0x259fc40ea00) at 0x00000259FD579F80>
 [MainWindow] Window valid: N/A
 [Startup] ✅ MainWindow instance created successfully
 [Startup] MainWindow type: <class 'main_window_qt.MainWindow'>
 [Startup] MainWindow is valid: True
 [Startup] Updating splash progress to 95%...
-[02:49:29.351] [Tabs] _finish_branches (stale gen=1) — ignoring
-[02:49:29.351] [Tabs] _on_tab_changed(idx=0)
-[02:49:29.351] [Tabs] _start_timeout idx=0 type=branches
-[02:49:29.351] [Tabs] _populate_tab(branches, idx=0, force=False)
-[02:49:29.351] [Tabs]   populated=False, loading=False
-[02:49:29.351] [Tabs]   Starting load for branches
-[02:49:29.351] [Tabs] _show_loading idx=0 label='Loading Branches…'
-[02:49:29.351] [Tabs] _clear_tab idx=0
-[02:49:29.351] [Tabs] _on_tab_changed → tab_type=branches
+[03:03:52.505] [Tabs] _finish_branches (stale gen=1) — ignoring
+[03:03:52.505] [Tabs] _on_tab_changed(idx=0)
+[03:03:52.505] [Tabs] _start_timeout idx=0 type=branches
+[03:03:52.505] [Tabs] _populate_tab(branches, idx=0, force=False)
+[03:03:52.505] [Tabs]   populated=False, loading=False
+[03:03:52.505] [Tabs]   Starting load for branches
+[03:03:52.505] [Tabs] _show_loading idx=0 label='Loading Branches…'
+[03:03:52.505] [Tabs] _clear_tab idx=0
+[03:03:52.505] [Tabs] _on_tab_changed → tab_type=branches
 
 [Breadcrumb] _update_breadcrumb() CALLED
 [Breadcrumb] Grid state: navigation_mode=None, project_id=None
@@ -188,7 +188,7 @@ Adaptive Icons:  24px
 [Breadcrumb] _update_breadcrumb() COMPLETED
 
 [Startup] Processing events...
-[02:49:29.351] [Tabs] _clear_tab idx=0
+[03:03:52.505] [Tabs] _clear_tab idx=0
 [Startup] Events processed, ready to show window
 [Startup] Showing main window...
 [Startup] Window geometry before show(): PySide6.QtCore.QRect(60, 60, 1800, 1032)
@@ -248,71 +248,71 @@ After download:
 [MainWindow] Step 1: ✓ Set grid.project_id = 1
 [MainWindow] Step 2: Updating sidebar...
 [SidebarQt] set_project(1) called
-[02:49:46.617] [Tabs] refresh_all(force=True) called
-[02:49:46.621] [Tabs] refresh_all: key=branches, idx=0, force=True
-[02:49:46.621] [Tabs] _populate_tab(branches, idx=0, force=True)
-[02:49:46.621] [Tabs]   populated=True, loading=False
-[02:49:46.621] [Tabs]   Force refresh: removing branches from populated set
-[02:49:46.621] [Tabs]   Starting load for branches
-[02:49:46.621] [Tabs] _show_loading idx=0 label='Loading Branches…'
-[02:49:46.621] [Tabs] _clear_tab idx=0
-[02:49:46.621] [Tabs] refresh_all: key=folders, idx=1, force=True
-[02:49:46.621] [Tabs] _populate_tab(folders, idx=1, force=True)
-[02:49:46.621] [Tabs]   populated=False, loading=False
-[02:49:46.621] [Tabs]   Starting load for folders
-[02:49:46.621] [Tabs] _show_loading idx=1 label='Loading Folders…'
-[02:49:46.621] [Tabs] _clear_tab idx=1
-[02:49:46.627] [Tabs] refresh_all: key=dates, idx=2, force=True
-[02:49:46.627] [Tabs] _load_folders → got 0 rows for project_id=1
-[02:49:46.627] [Tabs] _populate_tab(dates, idx=2, force=True)
-[02:49:46.627] [Tabs]   populated=False, loading=False
-[02:49:46.627] [Tabs]   Starting load for dates
-[02:49:46.627] [Tabs] _show_loading idx=2 label='Loading Dates…'
-[02:49:46.627] [Tabs] _clear_tab idx=2
-[02:49:46.627] [Tabs] refresh_all: key=tags, idx=3, force=True
-[02:49:46.627] [Tabs] _populate_tab(tags, idx=3, force=True)
-[02:49:46.627] [Tabs]   populated=False, loading=False
-[02:49:46.627] [Tabs]   Starting load for tags
-[02:49:46.627] [Tabs] _show_loading idx=3 label='Loading Tags…'
-[02:49:46.627] [Tabs] _clear_tab idx=3
-[02:49:46.632] [Tabs] _load_dates → got hierarchy data for project_id=1
-[02:49:46.632] [Tabs] refresh_all: key=quick, idx=5, force=True
-[02:49:46.632] [Tabs] _populate_tab(quick, idx=5, force=True)
-[02:49:46.632] [Tabs]   populated=False, loading=False
-[02:49:46.632] [Tabs]   Starting load for quick
-[02:49:46.632] [Tabs] _show_loading idx=5 label='Loading Quick Dates…'
-[02:49:46.632] [Tabs] _clear_tab idx=5
-[02:49:46.633] [Tabs] _load_tags → got 0 rows for project_id=1
-[02:49:46.633] [Tabs] refresh_all(force=True) completed
-[02:49:46.633] [AccordionSidebar] Setting project: 1
-[02:49:46.633] [AccordionSidebar] Refreshing all sections (force=True)
-[02:49:46.633] [AccordionSidebar] Loading content for section: people
-[02:49:46.633] [AccordionSidebar] Loading People section...
-[02:49:46.633] [AccordionSidebar] People reload generation: 1
-[02:49:46.633] [Tabs] _load_quick → got 6 rows
-[02:49:46.633] [AccordionSidebar] Loading content for section: dates
-[02:49:46.633] [AccordionSidebar] Loading Dates section...
-[02:49:46.633] [AccordionSidebar] Dates reload generation: 1
-[02:49:46.633] [AccordionSidebar] Loading content for section: folders
-[02:49:46.633] [AccordionSidebar] Loading Folders section...
-[02:49:46.633] [AccordionSidebar] Loaded 0 face clusters (gen 1)
-[02:49:46.633] [AccordionSidebar] Folders reload generation: 1
-[02:49:46.633] [AccordionSidebar] Loaded 0 years of date data (gen 1)
-[02:49:46.633] [AccordionSidebar] Loading content for section: videos
-[02:49:46.633] [AccordionSidebar] Loaded 0 folders (gen 1)
-[02:49:46.633] [AccordionSidebar] Loading Videos section...
-[02:49:46.633] [AccordionSidebar] Videos reload generation: 1
-[02:49:46.633] [AccordionSidebar] Loading content for section: tags
-[02:49:46.633] [AccordionSidebar] Loaded 0 videos (gen 1)
-[02:49:46.633] [AccordionSidebar] Loading Tags section...
-[02:49:46.633] [AccordionSidebar] Loading content for section: branches
-[02:49:46.641] [AccordionSidebar] Loading Branches section...
-[02:49:46.641] [AccordionSidebar] Branches reload generation: 1
-[02:49:46.641] [AccordionSidebar] Loaded 0 tags
-[02:49:46.641] [AccordionSidebar] Loading content for section: quick
-[02:49:46.641] [AccordionSidebar] Loading Quick Dates section...
-[02:49:46.641] [AccordionSidebar] Quick dates reload generation: 1
-[02:49:46.641] [AccordionSidebar] Loaded 1 branches (gen 1)
+[03:04:10.986] [Tabs] refresh_all(force=True) called
+[03:04:10.986] [Tabs] refresh_all: key=branches, idx=0, force=True
+[03:04:10.986] [Tabs] _populate_tab(branches, idx=0, force=True)
+[03:04:10.986] [Tabs]   populated=True, loading=False
+[03:04:10.986] [Tabs]   Force refresh: removing branches from populated set
+[03:04:10.986] [Tabs]   Starting load for branches
+[03:04:10.986] [Tabs] _show_loading idx=0 label='Loading Branches…'
+[03:04:10.986] [Tabs] _clear_tab idx=0
+[03:04:10.986] [Tabs] refresh_all: key=folders, idx=1, force=True
+[03:04:10.986] [Tabs] _populate_tab(folders, idx=1, force=True)
+[03:04:10.986] [Tabs]   populated=False, loading=False
+[03:04:10.986] [Tabs]   Starting load for folders
+[03:04:10.986] [Tabs] _show_loading idx=1 label='Loading Folders…'
+[03:04:10.986] [Tabs] _clear_tab idx=1
+[03:04:10.991] [Tabs] refresh_all: key=dates, idx=2, force=True
+[03:04:10.991] [Tabs] _populate_tab(dates, idx=2, force=True)
+[03:04:10.991] [Tabs]   populated=False, loading=False
+[03:04:10.991] [Tabs]   Starting load for dates
+[03:04:10.991] [Tabs] _load_folders → got 0 rows for project_id=1
+[03:04:10.991] [Tabs] _show_loading idx=2 label='Loading Dates…'
+[03:04:10.991] [Tabs] _clear_tab idx=2
+[03:04:10.991] [Tabs] refresh_all: key=tags, idx=3, force=True
+[03:04:10.994] [Tabs] _populate_tab(tags, idx=3, force=True)
+[03:04:10.994] [Tabs]   populated=False, loading=False
+[03:04:10.994] [Tabs]   Starting load for tags
+[03:04:10.994] [Tabs] _show_loading idx=3 label='Loading Tags…'
+[03:04:10.994] [Tabs] _clear_tab idx=3
+[03:04:10.994] [Tabs] _load_dates → got hierarchy data for project_id=1
+[03:04:10.996] [Tabs] refresh_all: key=quick, idx=5, force=True
+[03:04:10.996] [Tabs] _populate_tab(quick, idx=5, force=True)
+[03:04:10.996] [Tabs]   populated=False, loading=False
+[03:04:10.996] [Tabs]   Starting load for quick
+[03:04:10.996] [Tabs] _show_loading idx=5 label='Loading Quick Dates…'
+[03:04:10.996] [Tabs] _clear_tab idx=5
+[03:04:10.996] [Tabs] _load_tags → got 0 rows for project_id=1
+[03:04:10.996] [Tabs] refresh_all(force=True) completed
+[03:04:10.996] [AccordionSidebar] Setting project: 1
+[03:04:10.996] [AccordionSidebar] Refreshing all sections (force=True)
+[03:04:10.996] [AccordionSidebar] Loading content for section: people
+[03:04:10.996] [AccordionSidebar] Loading People section...
+[03:04:10.996] [AccordionSidebar] People reload generation: 1
+[03:04:10.996] [AccordionSidebar] Loading content for section: dates
+[03:04:10.996] [AccordionSidebar] Loading Dates section...
+[03:04:10.996] [AccordionSidebar] Dates reload generation: 1
+[03:04:10.996] [Tabs] _load_quick → got 6 rows
+[03:04:10.996] [AccordionSidebar] Loaded 0 face clusters (gen 1)
+[03:04:10.996] [AccordionSidebar] Loading content for section: folders
+[03:04:11.001] [AccordionSidebar] Loaded 0 years of date data (gen 1)
+[03:04:11.001] [AccordionSidebar] Loading Folders section...
+[03:04:11.001] [AccordionSidebar] Folders reload generation: 1
+[03:04:11.001] [AccordionSidebar] Loading content for section: videos
+[03:04:11.001] [AccordionSidebar] Loading Videos section...
+[03:04:11.001] [AccordionSidebar] Videos reload generation: 1
+[03:04:11.001] [AccordionSidebar] Loading content for section: tags
+[03:04:11.001] [AccordionSidebar] Loaded 0 folders (gen 1)
+[03:04:11.001] [AccordionSidebar] Loading Tags section...
+[03:04:11.001] [AccordionSidebar] Loading content for section: branches
+[03:04:11.001] [AccordionSidebar] Loaded 0 videos (gen 1)
+[03:04:11.001] [AccordionSidebar] Loading Branches section...
+[03:04:11.001] [AccordionSidebar] Branches reload generation: 1
+[03:04:11.001] [AccordionSidebar] Loaded 0 tags
+[03:04:11.001] [AccordionSidebar] Loading content for section: quick
+[03:04:11.006] [AccordionSidebar] Loaded 1 branches (gen 1)
+[03:04:11.006] [AccordionSidebar] Loading Quick Dates section...
+[03:04:11.006] [AccordionSidebar] Quick dates reload generation: 1
 [SidebarQt] Calling reload() after setting project_id
 [SidebarQt] reload() blocked - widget not visible (likely being deleted)
 [MainWindow] Step 2: ✓ Sidebar.set_project(1) completed
@@ -324,17 +324,16 @@ After download:
 
 [GRID] ====== reload() CALLED ======
 [GRID] project_id=1, load_mode=branch
-[02:49:46.641] [AccordionSidebar] Loaded 6 quick date items (gen 1)
 [GRID] Step 1: Setting _reloading=True
 [GRID] Fetched tags for 0 paths, got 0 entries
-[02:49:46.641] [Tabs] _clear_tab idx=0
-[02:49:46.649] [Tabs] _clear_tab idx=1
-[02:49:46.649] [Tabs] _clear_tab idx=2
-[02:49:46.649] [Tabs] _finish_tags called: idx=3, gen=2, rows_count=0
-[02:49:46.649] [Tabs] _clear_tab idx=3
-[02:49:46.651] [Tabs] _clear_tab idx=5
-[02:49:46.855] [AccordionSidebar] ✓ Branches section loaded with 1 branches
-[02:49:46.896] [AccordionSidebar] ✓ Quick dates section loaded with 6 items
+[03:04:11.007] [Tabs] _clear_tab idx=0
+[03:04:11.007] [AccordionSidebar] Loaded 6 quick date items (gen 1)
+[03:04:11.015] [Tabs] _clear_tab idx=1
+[03:04:11.016] [Tabs] _clear_tab idx=2
+[03:04:11.016] [Tabs] _finish_tags called: idx=3, gen=2, rows_count=0
+[03:04:11.016] [Tabs] _clear_tab idx=3
+[03:04:11.016] [Tabs] _clear_tab idx=5
+[03:04:11.226] [AccordionSidebar] ✓ Branches section loaded with 1 branches
 [GRID] Loaded 0 thumbnails.
 [GRID] Reloaded 0 thumbnails in None-mode (base=0)
 [GRID] Step 5: Emitting gridReloaded signal...
@@ -374,7 +373,8 @@ After download:
 [GooglePhotosLayout] 🔍 Starting async photo load (generation 2)...
 [GooglePhotosLayout] ✅ Photo load worker started (generation 2)
 [GooglePhotosLayout] ✓ Layout refreshed after project creation
-2025-12-30 02:49:46,916 [INFO] Photo query complete: generation=2, current=2, rows=0
+[03:04:11.381] [AccordionSidebar] ✓ Quick dates section loaded with 6 items
+2025-12-30 03:04:11,386 [INFO] Photo query complete: generation=2, current=2, rows=0
 [GooglePhotosLayout] No photos found in project 1
 [Schema] Database schema initialized successfully
 [ScanController] Creating ScanWorker for folder: C:/Users/suleimaa/Downloads/Photo-Sorter/Images
@@ -386,32 +386,34 @@ After download:
 [ScanController] Moving worker to thread...
 [ScanController] ✓ Worker moved to thread
 [ScanController] Connecting signals...
-[ScanController] ✓ Signals connected
+[ScanController] ✓ Test progress connection added
+[ScanController] ✓ _on_progress connected
+[ScanController] ✓ All signals connected
 [ScanController] Starting scan thread...
+2025-12-30 03:04:34,644 [INFO] DBWriter timer started in worker thread
 [ScanController] ✓ thread.start() called successfully
-2025-12-30 02:50:29,208 [INFO] DBWriter timer started in worker thread
 [ScanWorkerAdapter] run() method called!
 [ScanWorkerAdapter] folder=C:/Users/suleimaa/Downloads/Photo-Sorter/Images, incremental=True
-2025-12-30 02:50:29,208 [INFO] ScanWorkerAdapter starting scan of C:/Users/suleimaa/Downloads/Photo-Sorter/Images
+2025-12-30 03:04:34,644 [INFO] ScanWorkerAdapter starting scan of C:/Users/suleimaa/Downloads/Photo-Sorter/Images
 [ScanWorkerAdapter] Starting scan...
+2025-12-30 03:04:34,648 [INFO] Starting scan: C:/Users/suleimaa/Downloads/Photo-Sorter/Images (incremental=True)
 [ScanController] QThread STARTED!
-2025-12-30 02:50:29,208 [INFO] Starting scan: C:/Users/suleimaa/Downloads/Photo-Sorter/Images (incremental=True)
-2025-12-30 02:50:29,208 [INFO] Discovered 15 candidate image files and 0 video files
+2025-12-30 03:04:34,649 [INFO] Discovered 15 candidate image files and 0 video files
 [ScanWorkerAdapter] 🔍 Emitting Qt signal: percent=0, message='📂 C:\Users\suleimaa\Downloads\Photo-Sorter\Images
 Discovered: 15 photos • 0 videos (total 15)
 Prepar...'
-2025-12-30 02:50:29,208 [INFO] Loading existing metadata for incremental scan...
-2025-12-30 02:50:29,208 [INFO] ✓ Loaded 0 existing file records
+2025-12-30 03:04:34,650 [INFO] Loading existing metadata for incremental scan...
+2025-12-30 03:04:34,651 [INFO] ✓ Loaded 0 existing file records
 [SCAN] Created single executor for scan (15 files)
 [SCAN] Starting file 1/15: Alya1_2_2_2.jpeg
-2025-12-30 02:50:29,208 [INFO] [Scan] File 1/15: Alya1_2_2_2.jpeg
+2025-12-30 03:04:34,651 [INFO] [Scan] File 1/15: Alya1_2_2_2.jpeg
 [SCAN] _process_file started for: Alya1_2_2_2.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-30 02:50:29,208 [INFO] 📷 Processing: Alya1_2_2_2.jpeg (345.2 KB)
+2025-12-30 03:04:34,654 [INFO] 📷 Processing: Alya1_2_2_2.jpeg (345.2 KB)
 [SCAN] Processing: Alya1_2_2_2.jpeg
 [SCAN] ✓ Metadata extracted: Alya1_2_2_2.jpeg [w=1440, h=2560, date=2024-11-29 17:04:13]
-2025-12-30 02:50:29,224 [INFO] [Scan] Metadata extracted successfully: Alya1_2_2_2.jpeg [w=1440, h=2560, date=2024-11-29 17:04:13]
+2025-12-30 03:04:34,696 [INFO] [Scan] Metadata extracted successfully: Alya1_2_2_2.jpeg [w=1440, h=2560, date=2024-11-29 17:04:13]
 [SCAN] Creating folder hierarchy for: Alya1_2_2_2.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=2
 [SCAN] ✓ File processed successfully: Alya1_2_2_2.jpeg
@@ -419,14 +421,14 @@ Prepar...'
 [SCAN] 🔍 Emitting progress: percent=6, message='✓ Processed: Alya1_2_2_2.jpeg (345.2 KB) [w=1440, h=2560, date=2024-11-29 17:04:13]'
 [ScanWorkerAdapter] 🔍 Emitting Qt signal: percent=6, message='✓ Processed: Alya1_2_2_2.jpeg (345.2 KB) [w=1440, h=2560, date=2024-11-29 17:04:13]...'
 [SCAN] Starting file 2/15: Alya1_3_2.jpeg
-2025-12-30 02:50:29,248 [INFO] [Scan] File 2/15: Alya1_3_2.jpeg
+2025-12-30 03:04:34,775 [INFO] [Scan] File 2/15: Alya1_3_2.jpeg
 [SCAN] _process_file started for: Alya1_3_2.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-30 02:50:29,248 [INFO] 📷 Processing: Alya1_3_2.jpeg (345.2 KB)
+2025-12-30 03:04:34,775 [INFO] 📷 Processing: Alya1_3_2.jpeg (345.2 KB)
 [SCAN] Processing: Alya1_3_2.jpeg
 [SCAN] ✓ Metadata extracted: Alya1_3_2.jpeg [w=1440, h=2560, date=2024-11-29 17:04:13]
-2025-12-30 02:50:29,248 [INFO] [Scan] Metadata extracted successfully: Alya1_3_2.jpeg [w=1440, h=2560, date=2024-11-29 17:04:13]
+2025-12-30 03:04:34,783 [INFO] [Scan] Metadata extracted successfully: Alya1_3_2.jpeg [w=1440, h=2560, date=2024-11-29 17:04:13]
 [SCAN] Creating folder hierarchy for: Alya1_3_2.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=2
 [SCAN] ✓ File processed successfully: Alya1_3_2.jpeg
@@ -434,14 +436,14 @@ Prepar...'
 [SCAN] 🔍 Emitting progress: percent=13, message='✓ Processed: Alya1_3_2.jpeg (345.2 KB) [w=1440, h=2560, date=2024-11-29 17:04:13]'
 [ScanWorkerAdapter] 🔍 Emitting Qt signal: percent=13, message='✓ Processed: Alya1_3_2.jpeg (345.2 KB) [w=1440, h=2560, date=2024-11-29 17:04:13]...'
 [SCAN] Starting file 3/15: Alya2_2_2_2_2.jpeg
-2025-12-30 02:50:29,255 [INFO] [Scan] File 3/15: Alya2_2_2_2_2.jpeg
+2025-12-30 03:04:34,795 [INFO] [Scan] File 3/15: Alya2_2_2_2_2.jpeg
 [SCAN] _process_file started for: Alya2_2_2_2_2.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-30 02:50:29,255 [INFO] 📷 Processing: Alya2_2_2_2_2.jpeg (107.1 KB)
+2025-12-30 03:04:34,795 [INFO] 📷 Processing: Alya2_2_2_2_2.jpeg (107.1 KB)
 [SCAN] Processing: Alya2_2_2_2_2.jpeg
 [SCAN] ✓ Metadata extracted: Alya2_2_2_2_2.jpeg [w=611, h=1081, date=2024-12-02 17:24:41]
-2025-12-30 02:50:29,255 [INFO] [Scan] Metadata extracted successfully: Alya2_2_2_2_2.jpeg [w=611, h=1081, date=2024-12-02 17:24:41]
+2025-12-30 03:04:34,797 [INFO] [Scan] Metadata extracted successfully: Alya2_2_2_2_2.jpeg [w=611, h=1081, date=2024-12-02 17:24:41]
 [SCAN] Creating folder hierarchy for: Alya2_2_2_2_2.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=2
 [SCAN] ✓ File processed successfully: Alya2_2_2_2_2.jpeg
@@ -449,14 +451,14 @@ Prepar...'
 [SCAN] 🔍 Emitting progress: percent=20, message='✓ Processed: Alya2_2_2_2_2.jpeg (107.1 KB) [w=611, h=1081, date=2024-12-02 17:24:41]'
 [ScanWorkerAdapter] 🔍 Emitting Qt signal: percent=20, message='✓ Processed: Alya2_2_2_2_2.jpeg (107.1 KB) [w=611, h=1081, date=2024-12-02 17:24:41]...'
 [SCAN] Starting file 4/15: Alya3_2_2_2_2.jpeg
-2025-12-30 02:50:29,271 [INFO] [Scan] File 4/15: Alya3_2_2_2_2.jpeg
+2025-12-30 03:04:34,807 [INFO] [Scan] File 4/15: Alya3_2_2_2_2.jpeg
 [SCAN] _process_file started for: Alya3_2_2_2_2.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-30 02:50:29,271 [INFO] 📷 Processing: Alya3_2_2_2_2.jpeg (97.2 KB)
+2025-12-30 03:04:34,807 [INFO] 📷 Processing: Alya3_2_2_2_2.jpeg (97.2 KB)
 [SCAN] Processing: Alya3_2_2_2_2.jpeg
 [SCAN] ✓ Metadata extracted: Alya3_2_2_2_2.jpeg [w=1080, h=810, date=None]
-2025-12-30 02:50:29,271 [INFO] [Scan] Metadata extracted successfully: Alya3_2_2_2_2.jpeg [w=1080, h=810, date=None]
+2025-12-30 03:04:34,808 [INFO] [Scan] Metadata extracted successfully: Alya3_2_2_2_2.jpeg [w=1080, h=810, date=None]
 [SCAN] Creating folder hierarchy for: Alya3_2_2_2_2.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=2
 [SCAN] ✓ File processed successfully: Alya3_2_2_2_2.jpeg
@@ -464,14 +466,14 @@ Prepar...'
 [SCAN] 🔍 Emitting progress: percent=26, message='✓ Processed: Alya3_2_2_2_2.jpeg (97.2 KB) [w=1080, h=810, date=None]'
 [ScanWorkerAdapter] 🔍 Emitting Qt signal: percent=26, message='✓ Processed: Alya3_2_2_2_2.jpeg (97.2 KB) [w=1080, h=810, date=None]...'
 [SCAN] Starting file 5/15: Alya_2_2.jpeg
-2025-12-30 02:50:29,282 [INFO] [Scan] File 5/15: Alya_2_2.jpeg
+2025-12-30 03:04:34,819 [INFO] [Scan] File 5/15: Alya_2_2.jpeg
 [SCAN] _process_file started for: Alya_2_2.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-30 02:50:29,282 [INFO] 📷 Processing: Alya_2_2.jpeg (181.4 KB)
+2025-12-30 03:04:34,819 [INFO] 📷 Processing: Alya_2_2.jpeg (181.4 KB)
 [SCAN] Processing: Alya_2_2.jpeg
 [SCAN] ✓ Metadata extracted: Alya_2_2.jpeg [w=965, h=1240, date=None]
-2025-12-30 02:50:29,282 [INFO] [Scan] Metadata extracted successfully: Alya_2_2.jpeg [w=965, h=1240, date=None]
+2025-12-30 03:04:34,819 [INFO] [Scan] Metadata extracted successfully: Alya_2_2.jpeg [w=965, h=1240, date=None]
 [SCAN] Creating folder hierarchy for: Alya_2_2.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=2
 [SCAN] ✓ File processed successfully: Alya_2_2.jpeg
@@ -479,131 +481,131 @@ Prepar...'
 [SCAN] 🔍 Emitting progress: percent=33, message='✓ Processed: Alya_2_2.jpeg (181.4 KB) [w=965, h=1240, date=None]'
 [ScanWorkerAdapter] 🔍 Emitting Qt signal: percent=33, message='✓ Processed: Alya_2_2.jpeg (181.4 KB) [w=965, h=1240, date=None]...'
 [SCAN] Starting file 6/15: Alya_2_2_2_2.jpeg
-2025-12-30 02:50:29,287 [INFO] [Scan] File 6/15: Alya_2_2_2_2.jpeg
+2025-12-30 03:04:34,828 [INFO] [Scan] File 6/15: Alya_2_2_2_2.jpeg
 [SCAN] _process_file started for: Alya_2_2_2_2.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-30 02:50:29,287 [INFO] 📷 Processing: Alya_2_2_2_2.jpeg (181.4 KB)
+2025-12-30 03:04:34,828 [INFO] 📷 Processing: Alya_2_2_2_2.jpeg (181.4 KB)
 [SCAN] Processing: Alya_2_2_2_2.jpeg
 [SCAN] ✓ Metadata extracted: Alya_2_2_2_2.jpeg [w=965, h=1240, date=None]
-2025-12-30 02:50:29,287 [INFO] [Scan] Metadata extracted successfully: Alya_2_2_2_2.jpeg [w=965, h=1240, date=None]
+2025-12-30 03:04:34,828 [INFO] [Scan] Metadata extracted successfully: Alya_2_2_2_2.jpeg [w=965, h=1240, date=None]
 [SCAN] Creating folder hierarchy for: Alya_2_2_2_2.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=2
 [SCAN] ✓ File processed successfully: Alya_2_2_2_2.jpeg
 [SCAN] Added to batch: Alya_2_2_2_2.jpeg [batch size: 6/200]
 [SCAN] Starting file 7/15: Ammar-Ref(1)_2_2.png
-2025-12-30 02:50:29,303 [INFO] [Scan] File 7/15: Ammar-Ref(1)_2_2.png
+2025-12-30 03:04:34,842 [INFO] [Scan] File 7/15: Ammar-Ref(1)_2_2.png
 [SCAN] _process_file started for: Ammar-Ref(1)_2_2.png
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-30 02:50:29,303 [INFO] 📷 Processing: Ammar-Ref(1)_2_2.png (800.9 KB)
+2025-12-30 03:04:34,842 [INFO] 📷 Processing: Ammar-Ref(1)_2_2.png (800.9 KB)
 [SCAN] Processing: Ammar-Ref(1)_2_2.png
 [SCAN] ✓ Metadata extracted: Ammar-Ref(1)_2_2.png [w=1140, h=791, date=None]
-2025-12-30 02:50:29,303 [INFO] [Scan] Metadata extracted successfully: Ammar-Ref(1)_2_2.png [w=1140, h=791, date=None]
+2025-12-30 03:04:34,854 [INFO] [Scan] Metadata extracted successfully: Ammar-Ref(1)_2_2.png [w=1140, h=791, date=None]
 [SCAN] Creating folder hierarchy for: Ammar-Ref(1)_2_2.png
 [SCAN] ✓ Folder hierarchy created: folder_id=2
 [SCAN] ✓ File processed successfully: Ammar-Ref(1)_2_2.png
 [SCAN] Added to batch: Ammar-Ref(1)_2_2.png [batch size: 7/200]
 [SCAN] Starting file 8/15: Ammar-Ref_2_2_2.png
-2025-12-30 02:50:29,319 [INFO] [Scan] File 8/15: Ammar-Ref_2_2_2.png
+2025-12-30 03:04:34,866 [INFO] [Scan] File 8/15: Ammar-Ref_2_2_2.png
 [SCAN] _process_file started for: Ammar-Ref_2_2_2.png
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-30 02:50:29,319 [INFO] 📷 Processing: Ammar-Ref_2_2_2.png (800.9 KB)
+2025-12-30 03:04:34,866 [INFO] 📷 Processing: Ammar-Ref_2_2_2.png (800.9 KB)
 [SCAN] Processing: Ammar-Ref_2_2_2.png
 [SCAN] ✓ Metadata extracted: Ammar-Ref_2_2_2.png [w=1140, h=791, date=None]
-2025-12-30 02:50:29,334 [INFO] [Scan] Metadata extracted successfully: Ammar-Ref_2_2_2.png [w=1140, h=791, date=None]
+2025-12-30 03:04:34,870 [INFO] [Scan] Metadata extracted successfully: Ammar-Ref_2_2_2.png [w=1140, h=791, date=None]
 [SCAN] Creating folder hierarchy for: Ammar-Ref_2_2_2.png
 [SCAN] ✓ Folder hierarchy created: folder_id=2
 [SCAN] ✓ File processed successfully: Ammar-Ref_2_2_2.png
 [SCAN] Added to batch: Ammar-Ref_2_2_2.png [batch size: 8/200]
 [SCAN] Starting file 9/15: Ammar-Ref_3_2.png
-2025-12-30 02:50:29,334 [INFO] [Scan] File 9/15: Ammar-Ref_3_2.png
+2025-12-30 03:04:34,886 [INFO] [Scan] File 9/15: Ammar-Ref_3_2.png
 [SCAN] _process_file started for: Ammar-Ref_3_2.png
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-30 02:50:29,334 [INFO] 📷 Processing: Ammar-Ref_3_2.png (800.9 KB)
+2025-12-30 03:04:34,886 [INFO] 📷 Processing: Ammar-Ref_3_2.png (800.9 KB)
 [SCAN] Processing: Ammar-Ref_3_2.png
 [SCAN] ✓ Metadata extracted: Ammar-Ref_3_2.png [w=1140, h=791, date=None]
-2025-12-30 02:50:29,350 [INFO] [Scan] Metadata extracted successfully: Ammar-Ref_3_2.png [w=1140, h=791, date=None]
+2025-12-30 03:04:34,898 [INFO] [Scan] Metadata extracted successfully: Ammar-Ref_3_2.png [w=1140, h=791, date=None]
 [SCAN] Creating folder hierarchy for: Ammar-Ref_3_2.png
 [SCAN] ✓ Folder hierarchy created: folder_id=2
 [SCAN] ✓ File processed successfully: Ammar-Ref_3_2.png
 [SCAN] Added to batch: Ammar-Ref_3_2.png [batch size: 9/200]
 [SCAN] Starting file 10/15: Ammar1_2_2_2.jpeg
-2025-12-30 02:50:29,366 [INFO] [Scan] File 10/15: Ammar1_2_2_2.jpeg
+2025-12-30 03:04:34,902 [INFO] [Scan] File 10/15: Ammar1_2_2_2.jpeg
 [SCAN] _process_file started for: Ammar1_2_2_2.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-30 02:50:29,366 [INFO] 📷 Processing: Ammar1_2_2_2.jpeg (4364.7 KB)
+2025-12-30 03:04:34,902 [INFO] 📷 Processing: Ammar1_2_2_2.jpeg (4364.7 KB)
 [SCAN] Processing: Ammar1_2_2_2.jpeg
 [SCAN] ✓ Metadata extracted: Ammar1_2_2_2.jpeg [w=4032, h=3024, date=2024-08-11 19:40:38]
-2025-12-30 02:50:29,366 [INFO] [Scan] Metadata extracted successfully: Ammar1_2_2_2.jpeg [w=4032, h=3024, date=2024-08-11 19:40:38]
+2025-12-30 03:04:34,914 [INFO] [Scan] Metadata extracted successfully: Ammar1_2_2_2.jpeg [w=4032, h=3024, date=2024-08-11 19:40:38]
 [SCAN] Creating folder hierarchy for: Ammar1_2_2_2.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=2
 [SCAN] ✓ File processed successfully: Ammar1_2_2_2.jpeg
 [SCAN] Added to batch: Ammar1_2_2_2.jpeg [batch size: 10/200]
 [SCAN] Starting file 11/15: Ammar2_2_2_2.jpeg
-2025-12-30 02:50:29,366 [INFO] [Scan] File 11/15: Ammar2_2_2_2.jpeg
+2025-12-30 03:04:34,918 [INFO] [Scan] File 11/15: Ammar2_2_2_2.jpeg
 [SCAN] _process_file started for: Ammar2_2_2_2.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-30 02:50:29,366 [INFO] 📷 Processing: Ammar2_2_2_2.jpeg (2338.2 KB)
+2025-12-30 03:04:34,918 [INFO] 📷 Processing: Ammar2_2_2_2.jpeg (2338.2 KB)
 [SCAN] Processing: Ammar2_2_2_2.jpeg
 [SCAN] ✓ Metadata extracted: Ammar2_2_2_2.jpeg [w=3664, h=2062, date=2024-11-18 14:17:43]
-2025-12-30 02:50:29,366 [INFO] [Scan] Metadata extracted successfully: Ammar2_2_2_2.jpeg [w=3664, h=2062, date=2024-11-18 14:17:43]
+2025-12-30 03:04:34,918 [INFO] [Scan] Metadata extracted successfully: Ammar2_2_2_2.jpeg [w=3664, h=2062, date=2024-11-18 14:17:43]
 [SCAN] Creating folder hierarchy for: Ammar2_2_2_2.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=2
 [SCAN] ✓ File processed successfully: Ammar2_2_2_2.jpeg
 [SCAN] Added to batch: Ammar2_2_2_2.jpeg [batch size: 11/200]
 [SCAN] Starting file 12/15: Ammar3_2_2_2_2.jpeg
-2025-12-30 02:50:29,382 [INFO] [Scan] File 12/15: Ammar3_2_2_2_2.jpeg
+2025-12-30 03:04:34,934 [INFO] [Scan] File 12/15: Ammar3_2_2_2_2.jpeg
 [SCAN] _process_file started for: Ammar3_2_2_2_2.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-30 02:50:29,382 [INFO] 📷 Processing: Ammar3_2_2_2_2.jpeg (171.0 KB)
+2025-12-30 03:04:34,934 [INFO] 📷 Processing: Ammar3_2_2_2_2.jpeg (171.0 KB)
 [SCAN] Processing: Ammar3_2_2_2_2.jpeg
 [SCAN] ✓ Metadata extracted: Ammar3_2_2_2_2.jpeg [w=1284, h=2778, date=None]
-2025-12-30 02:50:29,382 [INFO] [Scan] Metadata extracted successfully: Ammar3_2_2_2_2.jpeg [w=1284, h=2778, date=None]
+2025-12-30 03:04:34,934 [INFO] [Scan] Metadata extracted successfully: Ammar3_2_2_2_2.jpeg [w=1284, h=2778, date=None]
 [SCAN] Creating folder hierarchy for: Ammar3_2_2_2_2.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=2
 [SCAN] ✓ File processed successfully: Ammar3_2_2_2_2.jpeg
 [SCAN] Added to batch: Ammar3_2_2_2_2.jpeg [batch size: 12/200]
 [SCAN] Starting file 13/15: IMG_6850_2_2_2.jpeg
-2025-12-30 02:50:29,398 [INFO] [Scan] File 13/15: IMG_6850_2_2_2.jpeg
+2025-12-30 03:04:34,934 [INFO] [Scan] File 13/15: IMG_6850_2_2_2.jpeg
 [SCAN] _process_file started for: IMG_6850_2_2_2.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-30 02:50:29,398 [INFO] 📷 Processing: IMG_6850_2_2_2.jpeg (3027.8 KB)
+2025-12-30 03:04:34,934 [INFO] 📷 Processing: IMG_6850_2_2_2.jpeg (3027.8 KB)
 [SCAN] Processing: IMG_6850_2_2_2.jpeg
 [SCAN] ✓ Metadata extracted: IMG_6850_2_2_2.jpeg [w=4032, h=3024, date=2025-07-30 23:19:46]
-2025-12-30 02:50:29,398 [INFO] [Scan] Metadata extracted successfully: IMG_6850_2_2_2.jpeg [w=4032, h=3024, date=2025-07-30 23:19:46]
+2025-12-30 03:04:34,934 [INFO] [Scan] Metadata extracted successfully: IMG_6850_2_2_2.jpeg [w=4032, h=3024, date=2025-07-30 23:19:46]
 [SCAN] Creating folder hierarchy for: IMG_6850_2_2_2.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=2
 [SCAN] ✓ File processed successfully: IMG_6850_2_2_2.jpeg
 [SCAN] Added to batch: IMG_6850_2_2_2.jpeg [batch size: 13/200]
 [SCAN] Starting file 14/15: IMG_6995_2_2_2.jpeg
-2025-12-30 02:50:29,398 [INFO] [Scan] File 14/15: IMG_6995_2_2_2.jpeg
+2025-12-30 03:04:34,949 [INFO] [Scan] File 14/15: IMG_6995_2_2_2.jpeg
 [SCAN] _process_file started for: IMG_6995_2_2_2.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-30 02:50:29,398 [INFO] 📷 Processing: IMG_6995_2_2_2.jpeg (4005.3 KB)
+2025-12-30 03:04:34,949 [INFO] 📷 Processing: IMG_6995_2_2_2.jpeg (4005.3 KB)
 [SCAN] Processing: IMG_6995_2_2_2.jpeg
 [SCAN] ✓ Metadata extracted: IMG_6995_2_2_2.jpeg [w=4032, h=3024, date=2025-08-09 13:06:18]
-2025-12-30 02:50:29,413 [INFO] [Scan] Metadata extracted successfully: IMG_6995_2_2_2.jpeg [w=4032, h=3024, date=2025-08-09 13:06:18]
+2025-12-30 03:04:34,957 [INFO] [Scan] Metadata extracted successfully: IMG_6995_2_2_2.jpeg [w=4032, h=3024, date=2025-08-09 13:06:18]
 [SCAN] Creating folder hierarchy for: IMG_6995_2_2_2.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=2
 [SCAN] ✓ File processed successfully: IMG_6995_2_2_2.jpeg
 [SCAN] Added to batch: IMG_6995_2_2_2.jpeg [batch size: 14/200]
 [SCAN] Starting file 15/15: عليا_2_2_2.jpeg
-2025-12-30 02:50:29,413 [INFO] [Scan] File 15/15: عليا_2_2_2.jpeg
+2025-12-30 03:04:34,966 [INFO] [Scan] File 15/15: عليا_2_2_2.jpeg
 [SCAN] _process_file started for: عليا_2_2_2.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-30 02:50:29,413 [INFO] 📷 Processing: عليا_2_2_2.jpeg (345.2 KB)
+2025-12-30 03:04:34,968 [INFO] 📷 Processing: عليا_2_2_2.jpeg (345.2 KB)
 [SCAN] Processing: عليا_2_2_2.jpeg
 [SCAN] ✓ Metadata extracted: عليا_2_2_2.jpeg [w=1440, h=2560, date=2024-11-29 17:04:13]
-2025-12-30 02:50:29,413 [INFO] [Scan] Metadata extracted successfully: عليا_2_2_2.jpeg [w=1440, h=2560, date=2024-11-29 17:04:13]
+2025-12-30 03:04:34,968 [INFO] [Scan] Metadata extracted successfully: عليا_2_2_2.jpeg [w=1440, h=2560, date=2024-11-29 17:04:13]
 [SCAN] Creating folder hierarchy for: عليا_2_2_2.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=2
 [SCAN] ✓ File processed successfully: عليا_2_2_2.jpeg
@@ -611,15 +613,15 @@ Prepar...'
 [SCAN] 🔍 Emitting progress: percent=100, message='✓ Processed: عليا_2_2_2.jpeg (345.2 KB) [w=1440, h=2560, date=2024-11-29 17:04:13]'
 [ScanWorkerAdapter] 🔍 Emitting Qt signal: percent=100, message='✓ Processed: عليا_2_2_2.jpeg (345.2 KB) [w=1440, h=2560, date=2024-11-29 17:04:13]...'
 [SCAN] ⚡ Writing final batch to database: 15 photos
-2025-12-30 02:50:29,429 [INFO] Writing final batch of 15 photos to database
+2025-12-30 03:04:34,970 [INFO] Writing final batch of 15 photos to database
 [SCAN] 💾 Starting bulk_upsert for 15 photos...
-2025-12-30 02:50:29,429 [INFO] [DB] Starting bulk_upsert for 15 photos
-2025-12-30 02:50:29,429 [INFO] Bulk upserted 15 photos for project 1
+2025-12-30 03:04:34,970 [INFO] [DB] Starting bulk_upsert for 15 photos
+2025-12-30 03:04:34,983 [INFO] Bulk upserted 15 photos for project 1
 [SCAN] ✓ Bulk_upsert completed: 15 photos written
-2025-12-30 02:50:29,429 [INFO] [DB] Bulk_upsert completed: 15 photos written
+2025-12-30 03:04:34,983 [INFO] [DB] Bulk_upsert completed: 15 photos written
 [SCAN] ✓ Final batch write complete
 [SCAN] Shutting down executor
-2025-12-30 02:50:29,429 [INFO] Executor shutdown complete
+2025-12-30 03:04:34,983 [INFO] Executor shutdown complete
 
 [SCAN] === STEP 4: VIDEO PROCESSING ===
 [SCAN] total_videos=0
@@ -627,11 +629,11 @@ Prepar...'
 [SCAN] Condition check: 0 > 0 and not False = False
 [SCAN] Condition FALSE - skipping video processing!
 [SCAN]   Reason: No videos found (total_videos=0)
-2025-12-30 02:50:29,445 [INFO] Scan complete: 15 photos indexed, 0 videos indexed, 0 skipped, 0 failed in 0.2s
-2025-12-30 02:50:29,445 [INFO] Scan completed: 15 photos, 0 videos, 1 folders in 0.2s
+2025-12-30 03:04:34,992 [INFO] Scan complete: 15 photos indexed, 0 videos indexed, 0 skipped, 0 failed in 0.3s
+2025-12-30 03:04:34,992 [INFO] Scan completed: 15 photos, 0 videos, 1 folders in 0.3s
 [ScanController] cleanup after scan
-2025-12-30 02:50:29,588 [INFO] Building date branches...
-2025-12-30 02:50:29,588 [INFO] Building date branches for project_id=1
+2025-12-30 03:04:35,167 [INFO] Building date branches...
+2025-12-30 03:04:35,169 [INFO] Building date branches for project_id=1
 [build_date_branches] Using project_id=1
 [build_date_branches] Populating 'all' branch with 15 photos for project 1
 [build_date_branches] Inserted 15/15 photos into 'all' branch
@@ -656,46 +658,43 @@ Prepar...'
 [build_date_branches] Date 2025-08-09: inserted 1/1 into project_images (new)
 [build_date_branches] Total entries processed: 8
 [build_date_branches] project_images table has 23 rows for project 1
-2025-12-30 02:50:29,604 [INFO] Created 8 photo date branch entries for project 1
-2025-12-30 02:50:29,604 [INFO] Building video date branches for project_id=1
+2025-12-30 03:04:35,177 [INFO] Created 8 photo date branch entries for project 1
+2025-12-30 03:04:35,177 [INFO] Building video date branches for project_id=1
 [build_video_date_branches] Using project_id=1
 [build_video_date_branches] Found 0 videos with dates for project 1
 [build_video_date_branches] No videos with dates found, skipping branch creation
-2025-12-30 02:50:29,604 [INFO] Created 0 video date branch entries for project 1
-2025-12-30 02:50:29,604 [INFO] Backfilling created_date fields for photos...
-2025-12-30 02:50:29,604 [INFO] Backfilled 7 photo rows with created_date
-2025-12-30 02:50:29,604 [INFO] Backfilling created_date fields for videos...
+2025-12-30 03:04:35,181 [INFO] Created 0 video date branch entries for project 1
+2025-12-30 03:04:35,183 [INFO] Backfilling created_date fields for photos...
+2025-12-30 03:04:35,188 [INFO] Backfilled 7 photo rows with created_date
+2025-12-30 03:04:35,189 [INFO] Backfilling created_date fields for videos...
 [FaceConfig] Loaded from C:\Users\suleimaa\.memorymate\face_detection_config.json
-2025-12-30 02:50:29,604 [INFO] Main scan operations complete. Remaining: set()
-2025-12-30 02:50:29,604 [INFO] ✓ All scan operations complete. Triggering final refresh...
-2025-12-30 02:50:29,715 [INFO] 🔄 Starting final coordinated refresh...
-2025-12-30 02:50:29,715 [INFO] Reloading sidebar after date branches built...
-2025-12-30 02:50:29,715 [INFO] [AccordionSidebar] Reloading all sections
-2025-12-30 02:50:29,715 [WARNING] [FoldersSection] No project_id set
-2025-12-30 02:50:29,715 [INFO] [FoldersSection] Tree built with 1 top-level folders
-2025-12-30 02:50:29,749 [INFO] [AccordionSidebar] Section folders loaded and displayed
-2025-12-30 02:50:29,749 [WARNING] [DatesSection] No project_id set
-2025-12-30 02:50:29,794 [INFO] [AccordionSidebar] Section dates loaded and displayed
-2025-12-30 02:50:29,794 [WARNING] [VideosSection] No project_id set
-2025-12-30 02:50:29,825 [INFO] [AccordionSidebar] Section videos loaded and displayed
-2025-12-30 02:50:29,825 [WARNING] [PeopleSection] No project_id set
-2025-12-30 02:50:29,881 [INFO] [AccordionSidebar] Section people loaded and displayed
+2025-12-30 03:04:35,190 [INFO] Main scan operations complete. Remaining: set()
+2025-12-30 03:04:35,190 [INFO] ✓ All scan operations complete. Triggering final refresh...
+2025-12-30 03:04:35,294 [INFO] 🔄 Starting final coordinated refresh...
+2025-12-30 03:04:35,294 [INFO] Reloading sidebar after date branches built...
+2025-12-30 03:04:35,300 [INFO] [AccordionSidebar] Reloading all sections
+2025-12-30 03:04:35,300 [WARNING] [FoldersSection] No project_id set
+2025-12-30 03:04:35,301 [INFO] [FoldersSection] Tree built with 1 top-level folders
+2025-12-30 03:04:35,356 [INFO] [AccordionSidebar] Section folders loaded and displayed
+2025-12-30 03:04:35,357 [WARNING] [DatesSection] No project_id set
+2025-12-30 03:04:35,396 [INFO] [AccordionSidebar] Section dates loaded and displayed
+2025-12-30 03:04:35,396 [WARNING] [VideosSection] No project_id set
+2025-12-30 03:04:35,436 [INFO] [AccordionSidebar] Section videos loaded and displayed
+2025-12-30 03:04:35,475 [WARNING] [PeopleSection] No project_id set
+2025-12-30 03:04:35,558 [INFO] [AccordionSidebar] Section people loaded and displayed
 [DeviceMonitor] Initialized for platform: Windows
 [WindowsDeviceWindow] Native window created (hidden)
 [DeviceMonitor] Windows device monitoring started
 [DeviceMonitor] Listening for WM_DEVICECHANGE messages
-2025-12-30 02:50:29,998 [INFO] [DevicesSection] Scanning devices (generation 2)…
+2025-12-30 03:04:35,576 [INFO] [DevicesSection] Scanning devices (generation 2)…
 
-[DeviceScanner] ===== Starting device scan (FORCED) =====2025-12-30 02:50:30,001 [INFO] [QuickSection] Loading quick dates
-
+[DeviceScanner] ===== Starting device scan (FORCED) =====
+2025-12-30 03:04:35,576 [INFO] [QuickSection] Loading quick dates
 [DeviceScanner] Platform: Windows
 [DeviceScanner] Database registration: disabled
 [DeviceScanner] Scanning Windows drives...
 [DeviceScanner]   Checking drive letters D:-Z:...
-[DeviceScanner]   Checking portable devices (MTP/PTP)...
-[DeviceScanner]     Attempting Shell COM enumeration...
-[DeviceScanner]     COM initialized for current thread
-2025-12-30 02:50:30,030 [INFO] [AccordionSidebar] Section quick loaded and displayed
+2025-12-30 03:04:35,624 [INFO] [AccordionSidebar] Section quick loaded and displayed
 
 [GRID] ====== reload() CALLED ======
 [GRID] project_id=1, load_mode=branch
@@ -725,14 +724,17 @@ Prepar...'
 [GRID] ====== reload() COMPLETED SUCCESSFULLY ======
 
 [GRID] Finally block: Setting _reloading=False
-2025-12-30 02:50:30,062 [INFO] Refreshing Google Photos layout after scan...
+[DeviceScanner]   Checking portable devices (MTP/PTP)...
+[DeviceScanner]     Attempting Shell COM enumeration...
+[DeviceScanner]     COM initialized for current thread
+2025-12-30 03:04:35,642 [INFO] Refreshing Google Photos layout after scan...
 [GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px)...
 [GooglePhotosLayout] 🔄 Clearing existing timeline and thumbnail cache...
 [GooglePhotosLayout] 🔍 Starting async photo load (generation 3)...
 [GooglePhotosLayout] ✅ Photo load worker started (generation 3)
-2025-12-30 02:50:30,062 [INFO] ✓ Google Photos layout refreshed
-2025-12-30 02:50:30,084 [INFO] ✅ Final refresh complete: 0 photos, 0 videos
-2025-12-30 02:50:30,102 [INFO] Photo query complete: generation=3, current=3, rows=15
+2025-12-30 03:04:35,643 [INFO] ✓ Google Photos layout refreshed
+2025-12-30 03:04:35,649 [INFO] ✅ Final refresh complete: 0 photos, 0 videos
+2025-12-30 03:04:35,682 [INFO] Photo query complete: generation=3, current=3, rows=15
 [GooglePhotosLayout] 📅 Grouping 15 photos by date...
 [GooglePhotosLayout] ✅ Grouped into 9 date groups
 [GooglePhotosLayout] Tracking 15 paths for multi-selection
@@ -743,11 +745,19 @@ Prepar...'
 [DeviceScanner]       → Item: '(H:) SULEIMAA (\\ACCOUNTS.INTERN\SHARES\HOME)' | IsFolder=True | IsFileSystem=True
 [DeviceScanner]       → Item: '(P:) SHARES (\\ACCOUNTS.INTERN)' | IsFolder=True | IsFileSystem=True
 [DeviceScanner]     COM uninitialized
-[DeviceScanner] ===== Scan complete: 0 device(s) found =====
-[DeviceScanner] Results cached for 5.0s
-
 [GooglePhotosLayout] ✅ Virtual scrolling enabled: 9 total date groups
 [GooglePhotosLayout] 📊 Rendered: 5 groups | Placeholders: 4 groups
 [GooglePhotosLayout] 🖼️ Queued 9 thumbnails for loading (initial limit: 50)
 [GooglePhotosLayout] ✅ Photo loading complete! Thumbnails will load progressively.
-2025-12-30 02:50:30,441 [INFO] [AccordionSidebar] Section devices loaded and displayed
+[DeviceScanner] ===== Scan complete: 0 device(s) found =====
+[DeviceScanner] Results cached for 5.0s
+
+2025-12-30 03:04:35,915 [INFO] [AccordionSidebar] Section devices loaded and displayed
+[Shutdown] Grid threads shut down.
+[ThumbnailManager] Thread pool shut down.
+[Shutdown] ThumbnailManager threads shut down.
+[Shutdown] Thumbnail cache cleared.
+[Main] Qt event loop exited with code: 0
+[ThumbCacheDB] Closing cache gracefully...
+
+C:\Users\suleimaa\Downloads\Photo-Sorter\09.49.01.01-Photo-App\MemoryMate-PhotoFlow-Refactored-main-05>
