@@ -265,7 +265,11 @@ class ScanController:
 
         REVERT TO OLD WORKING VERSION - Simple and reliable.
         """
+        # DEBUG: Verify message reception
+        print(f"[ScanController] 🔍 _on_progress called: pct={pct}, msg='{msg[:100] if msg else '(empty)'}...'")
+
         if not self.main._scan_progress:
+            print(f"[ScanController] ⚠️ No progress dialog exists!")
             return
 
         pct_i = max(0, min(100, int(pct or 0)))
@@ -275,9 +279,11 @@ class ScanController:
             # Enhanced progress display with file details
             history = self._log_progress_event(msg)
             label = f"{history}\nCommitted: {self.main._committed_total} rows"
+            print(f"[ScanController] 🔍 Setting label text (with msg):\n{label[:200]}...")
         else:
             history = self._log_progress_event("")
             label = f"Progress: {pct_i}%\n{history}\nCommitted: {self.main._committed_total} rows"
+            print(f"[ScanController] 🔍 Setting label text (no msg):\n{label[:200]}...")
 
         self.main._scan_progress.setLabelText(label)
         self.main._scan_progress.setWindowTitle(f"{tr('messages.scan_dialog_title')} ({pct_i}%)")
