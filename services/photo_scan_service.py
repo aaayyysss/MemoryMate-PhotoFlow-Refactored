@@ -433,18 +433,14 @@ class PhotoScanService:
                                 # Fallback to generic message
                                 status_line = f"📷 {file_name} ({file_size_kb} KB)"
 
-                            progress_msg = self._build_progress_message(
-                                status_line=status_line,
-                                current_path=file_path,
-                                processed_count=processed_media,
-                                total_count=self._total_media_files
-                            )
-
+                            # CRITICAL: Pass ONLY the status_line as the message
+                            # scan_controller._log_progress_event expects short individual messages
+                            # to build a history, NOT a large multi-line block
                             progress = ScanProgress(
                                 current=processed_media,
                                 total=self._total_media_files,
                                 percent=percentage,
-                                message=progress_msg,
+                                message=status_line,  # Just the status line, not the full multi-line message
                                 current_file=str(file_path)
                             )
 
