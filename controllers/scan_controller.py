@@ -17,7 +17,7 @@ Version: 09.20.00.00
 import logging
 from datetime import datetime
 from typing import List
-from PySide6.QtCore import QThread, Qt, QTimer, QThreadPool
+from PySide6.QtCore import QThread, Qt, QTimer, QThreadPool, Slot
 from PySide6.QtWidgets import (
     QProgressDialog, QMessageBox, QDialog, QVBoxLayout,
     QLabel, QProgressBar, QApplication
@@ -56,6 +56,18 @@ class ScanController:
         """Test slot to verify Qt signal delivery is working."""
         print(f"[ScanController] 🔥 TEST SLOT RECEIVED: pct={pct}, msg='{msg[:50] if msg else '(empty)'}...'")
         print(f"[ScanController] 🔥 Signal delivery IS WORKING!")
+
+    @Slot(int, str)
+    def update_progress_safe(self, pct: int, msg: str):
+        """
+        Thread-safe progress update method called via QMetaObject.invokeMethod.
+
+        This method is invoked from the worker thread using Qt's meta-object system,
+        which guarantees it runs in the main thread's event loop.
+        """
+        print(f"[ScanController] ✅ update_progress_safe CALLED: pct={pct}, msg='{msg[:50] if msg else '(empty)'}...'")
+        # Forward to the actual progress handler
+        self._on_progress(pct, msg)
 
     def start_scan(self, folder, incremental: bool):
         """Entry point called from MainWindow toolbar action."""
@@ -173,7 +185,8 @@ class ScanController:
                 print(f"[ScanController] Creating ScanWorker instance...")
                 self.worker = ScanWorker(folder, current_project_id, incremental, self.main.settings,
                                         db_writer=self.db_writer,
-                                        on_video_metadata_finished=on_video_metadata_finished)
+                                        on_video_metadata_finished=on_video_metadata_finished,
+                                        progress_receiver=self)  # CRITICAL: Pass self for thread-safe progress updates
                 print(f"[ScanController] ✓ ScanWorker instance created with project_id={current_project_id}")
             except Exception as worker_err:
                 print(f"[ScanController] FAILED to create ScanWorker: {worker_err}")
