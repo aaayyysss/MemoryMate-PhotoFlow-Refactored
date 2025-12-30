@@ -2,7 +2,7 @@
 # Version 01.00.00.00 dated 20251102
 # Qt adapter for PhotoScanService - bridges service layer with MainWindow
 
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject, Signal, QMetaObject, Qt, Q_ARG
 from typing import Optional, Dict, Any
 
 from .photo_scan_service import PhotoScanService, ScanResult, ScanProgress
@@ -34,7 +34,8 @@ class ScanWorkerAdapter(QObject):
                  incremental: bool,
                  settings: Dict[str, Any],
                  db_writer: Optional[Any] = None,
-                 on_video_metadata_finished: Optional[Any] = None):
+                 on_video_metadata_finished: Optional[Any] = None,
+                 progress_receiver: Optional[QObject] = None):
         """
         Initialize adapter.
 
@@ -45,6 +46,7 @@ class ScanWorkerAdapter(QObject):
             settings: Application settings dict
             db_writer: Optional DBWriter (not used - kept for API compatibility)
             on_video_metadata_finished: Optional callback for when video metadata extraction finishes
+            progress_receiver: QObject in main thread that has update_progress_safe() method
         """
         super().__init__()
 
@@ -54,6 +56,7 @@ class ScanWorkerAdapter(QObject):
         self.settings = settings
         self.db_writer = db_writer  # Kept for compatibility, but not used
         self.on_video_metadata_finished = on_video_metadata_finished
+        self.progress_receiver = progress_receiver  # NEW: Direct reference to main thread receiver
 
         # Create service instance
         self.service = PhotoScanService(
@@ -93,14 +96,30 @@ class ScanWorkerAdapter(QObject):
 
             # Define progress callback
             def on_progress(prog: ScanProgress):
-                """Forward progress to Qt signal."""
+                """Forward progress to main thread using thread-safe invocation."""
                 try:
-                    # DEBUG: Verify signal emission
-                    print(f"[ScanWorkerAdapter] 🔍 Emitting Qt signal: percent={prog.percent}, message='{prog.message[:100]}...'")
-                    self.progress.emit(prog.percent, prog.message)
+                    print(f"[ScanWorkerAdapter] 🔍 Progress update: percent={prog.percent}, message='{prog.message[:100]}...'")
+
+                    # CRITICAL FIX: Use QMetaObject.invokeMethod for reliable cross-thread calls
+                    # QueuedConnection was failing to deliver signals - this bypasses broken signal/slot
+                    if self.progress_receiver:
+                        # Thread-safe invocation - queued in main thread's event loop
+                        QMetaObject.invokeMethod(
+                            self.progress_receiver,
+                            "update_progress_safe",
+                            Qt.QueuedConnection,
+                            Q_ARG(int, prog.percent),
+                            Q_ARG(str, prog.message)
+                        )
+                        print(f"[ScanWorkerAdapter] ✓ invokeMethod called successfully")
+                    else:
+                        # Fallback: Try signal emission (for backwards compatibility)
+                        self.progress.emit(prog.percent, prog.message)
+                        print(f"[ScanWorkerAdapter] ⚠️ No progress_receiver, using signal fallback")
+
                     self._photos_indexed = prog.current
                 except Exception as e:
-                    logger.warning(f"Failed to emit progress: {e}")
+                    logger.warning(f"Failed to send progress update: {e}")
 
             # Run the scan
             result: ScanResult = self.service.scan_repository(
