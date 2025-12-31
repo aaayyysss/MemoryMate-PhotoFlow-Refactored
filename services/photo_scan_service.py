@@ -208,6 +208,68 @@ class PhotoScanService:
         self.video_metadata_worker = None
         self.video_thumbnail_worker = None
 
+    def _emit_progress_event(self,
+                             progress_callback: Callable[[ScanProgress], None],
+                             file_path: Path,
+                             file_index: int,
+                             total_files: int,
+                             row: Optional[Tuple],
+                             now: Optional[float] = None,
+                             update_last_emit: bool = True) -> None:
+        """Emit a formatted progress event using the latest file details."""
+        file_name = file_path.name
+
+        # CRITICAL FIX: Get file size safely without blocking
+        # BUG: file_path.stat() can HANG on slow/network drives or permission issues
+        # SOLUTION: Use size from already-processed row, or skip size if unavailable
+        file_size_kb = 0
+        if row is not None and len(row) > 2:
+            # Row format: (path, folder_id, size_kb, ...)
+            file_size_kb = round(row[2], 1) if row[2] else 0
+
+        processed_media = self._photos_processed + self._videos_processed
+        percentage = int((processed_media / max(1, self._total_media_files)) * 100)
+
+        # Build detailed progress message using captured processing details
+        details = self._last_file_details
+        if details['status'] == 'complete' and details['filename']:
+            # File was just processed - show detailed status
+            meta_info = f"[w={details['width']}, h={details['height']}, date={details['date_taken']}]"
+            status_line = f"✓ Processed: {details['filename']} ({details['size_kb']:.1f} KB) {meta_info}"
+        elif details['status'] == 'extracting' and details['filename']:
+            # Currently extracting metadata
+            status_line = f"📷 Extracting metadata: {details['filename']} ({details['size_kb']:.1f} KB)"
+        elif details['status'] == 'starting' and details['filename']:
+            # Just started processing this file
+            status_line = f"Starting file {file_index}/{total_files}: {details['filename']}"
+        elif details['status'] == 'failed' and details['filename']:
+            # Processing failed
+            status_line = f"✗ Failed: {details['filename']}"
+        else:
+            # Fallback to generic message
+            status_line = f"📷 {file_name} ({file_size_kb} KB)"
+
+        progress = ScanProgress(
+            current=processed_media,
+            total=self._total_media_files,
+            percent=percentage,
+            message=status_line,
+            current_file=str(file_path)
+        )
+
+        # DEBUG: Verify message content
+        print(f"[SCAN] 🔍 Emitting progress: percent={percentage}, message='{status_line}'")
+        sys.stdout.flush()
+
+        try:
+            progress_callback(progress)
+            if update_last_emit:
+                self._last_progress_emit = now if now is not None else time.time()
+        except Exception as e:
+            logger.error(f"Progress callback error: {e}", exc_info=True)
+            print(f"[SCAN] ⚠️ Progress callback failed: {e}")
+            sys.stdout.flush()
+
     def scan_repository(self,
                        root_folder: str,
                        project_id: int,
@@ -343,6 +405,17 @@ class PhotoScanService:
                     self._last_file_details['height'] = None
                     self._last_file_details['date_taken'] = None
 
+                    # Emit immediate progress update so dialog shows starting message before processing
+                    if progress_callback:
+                        self._emit_progress_event(
+                            progress_callback=progress_callback,
+                            file_path=file_path,
+                            file_index=i,
+                            total_files=total_files,
+                            row=None,
+                            update_last_emit=False
+                        )
+
                     try:
                         # Process file
                         row = self._process_file(
@@ -399,62 +472,14 @@ class PhotoScanService:
                                 logger.info("Scan cancelled during progress reporting")
                                 break
 
-                            # Enhanced progress message with detailed file processing info
-                            file_name = file_path.name
-
-                            # CRITICAL FIX: Get file size safely without blocking
-                            # BUG: file_path.stat() can HANG on slow/network drives or permission issues
-                            # This caused freeze at file 10, 20, 30 (every progress_callback % 10 == 0)
-                            # SOLUTION: Use size from already-processed row, or skip size if unavailable
-                            file_size_kb = 0
-                            if row is not None and len(row) > 2:
-                                # Row format: (path, folder_id, size_kb, ...)
-                                file_size_kb = round(row[2], 1) if row[2] else 0
-
-                            processed_media = self._photos_processed + self._videos_processed
-                            percentage = int((processed_media / max(1, self._total_media_files)) * 100)
-
-                            # Build detailed progress message using captured processing details
-                            details = self._last_file_details
-                            if details['status'] == 'complete' and details['filename']:
-                                # File was just processed - show detailed status
-                                meta_info = f"[w={details['width']}, h={details['height']}, date={details['date_taken']}]"
-                                status_line = f"✓ Processed: {details['filename']} ({details['size_kb']:.1f} KB) {meta_info}"
-                            elif details['status'] == 'extracting' and details['filename']:
-                                # Currently extracting metadata
-                                status_line = f"📷 Extracting metadata: {details['filename']} ({details['size_kb']:.1f} KB)"
-                            elif details['status'] == 'starting' and details['filename']:
-                                # Just started processing this file
-                                status_line = f"Starting file {i}/{total_files}: {details['filename']}"
-                            elif details['status'] == 'failed' and details['filename']:
-                                # Processing failed
-                                status_line = f"✗ Failed: {details['filename']}"
-                            else:
-                                # Fallback to generic message
-                                status_line = f"📷 {file_name} ({file_size_kb} KB)"
-
-                            # CRITICAL: Pass ONLY the status_line as the message
-                            # scan_controller._log_progress_event expects short individual messages
-                            # to build a history, NOT a large multi-line block
-                            progress = ScanProgress(
-                                current=processed_media,
-                                total=self._total_media_files,
-                                percent=percentage,
-                                message=status_line,  # Just the status line, not the full multi-line message
-                                current_file=str(file_path)
+                            self._emit_progress_event(
+                                progress_callback=progress_callback,
+                                file_path=file_path,
+                                file_index=i,
+                                total_files=total_files,
+                                row=row,
+                                now=now
                             )
-
-                            # DEBUG: Verify message content
-                            print(f"[SCAN] 🔍 Emitting progress: percent={percentage}, message='{status_line}'")
-                            sys.stdout.flush()
-
-                            try:
-                                progress_callback(progress)
-                                self._last_progress_emit = now
-                            except Exception as e:
-                                logger.error(f"Progress callback error: {e}", exc_info=True)
-                                print(f"[SCAN] ⚠️ Progress callback failed: {e}")
-                                sys.stdout.flush()
 
                 # Final batch flush
                 if batch_rows and not self._cancelled:
