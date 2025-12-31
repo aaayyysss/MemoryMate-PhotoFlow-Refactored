@@ -64,7 +64,7 @@ class ScanController:
 
         Can be called from any thread - automatically marshals to main thread if needed.
         """
-        from PySide6.QtCore import QThread
+        from PySide6.QtCore import QThread, QMetaObject, Qt
         from PySide6.QtWidgets import QApplication
 
         # Check if we're in the main thread
@@ -76,13 +76,21 @@ class ScanController:
             # Called from worker thread - marshal to main thread
             print(f"[ScanController] ⚡ Called from WORKER thread - marshaling to main")
             print(f"[ScanController]    Current: {current_thread}, Main: {main_thread}")
-            # Use QTimer.singleShot to run in main thread
-            QTimer.singleShot(0, lambda p=pct, m=msg: self._on_progress_main_thread(p, m))
+            # Use QMetaObject.invokeMethod to explicitly queue in main thread
+            # CRITICAL: Qt.QueuedConnection ensures execution in receiver's (main) thread
+            QMetaObject.invokeMethod(
+                self,
+                "_on_progress_main_thread",
+                Qt.ConnectionType.QueuedConnection,
+                pct,
+                msg
+            )
         else:
             # Already in main thread
             print(f"[ScanController] ✅ Called from MAIN thread - direct call")
             self._on_progress(pct, msg)
 
+    @Slot(int, str)
     def _on_progress_main_thread(self, pct: int, msg: str):
         """Helper to ensure we're in main thread when calling _on_progress."""
         print(f"[ScanController] 🎯 _on_progress_main_thread: pct={pct}, msg='{msg[:50] if msg else '(empty)'}...'")
