@@ -1,13 +1,13 @@
-C:\Users\suleimaa\Downloads\Photo-Sorter\09.49.01.01-Photo-App\MemoryMate-PhotoFlow-Refactored-main-07>python main_qt.py
+C:\Users\suleimaa\Downloads\Photo-Sorter\09.49.01.01-Photo-App\MemoryMate-PhotoFlow-Refactored-main-12>python main_qt.py
 [Startup] pillow_heif available — HEIC/HEIF support enabled.
 🔇 Decoder warnings suppressed per settings.
 🔇 Decoder warnings suppressed (Qt, Pillow, ICC).
-✅ Loaded en translations from C:\Users\suleimaa\Downloads\Photo-Sorter\09.49.01.01-Photo-App\MemoryMate-PhotoFlow-Refactored-main-07\locales\en.json
+✅ Loaded en translations from C:\Users\suleimaa\Downloads\Photo-Sorter\09.49.01.01-Photo-App\MemoryMate-PhotoFlow-Refactored-main-12\locales\en.json
 🌍 Language initialized: en
-2025-12-30 23:42:22,919 [INFO] ================================================================================
-2025-12-30 23:42:22,919 [INFO] MemoryMate-PhotoFlow logging initialized (level=INFO)
-2025-12-30 23:42:22,919 [INFO] Log file: C:\Users\suleimaa\Downloads\Photo-Sorter\09.49.01.01-Photo-App\MemoryMate-PhotoFlow-Refactored-main-07\app_log.txt
-2025-12-30 23:42:22,919 [INFO] ================================================================================
+2025-12-31 16:13:02,519 [INFO] ================================================================================
+2025-12-31 16:13:02,521 [INFO] MemoryMate-PhotoFlow logging initialized (level=INFO)
+2025-12-31 16:13:02,521 [INFO] Log file: C:\Users\suleimaa\Downloads\Photo-Sorter\09.49.01.01-Photo-App\MemoryMate-PhotoFlow-Refactored-main-12\app_log.txt
+2025-12-31 16:13:02,521 [INFO] ================================================================================
 ============================================================
 SCREEN INFORMATION (DPI-Aware)
 ============================================================
@@ -20,16 +20,16 @@ Taskbar Height:  48px
 Adaptive Margin: 60px
 Adaptive Icons:  24px
 ============================================================
-2025-12-30 23:42:23,030 [INFO] Installed Qt message handler to suppress TIFF warnings
-2025-12-30 23:42:23,030 [INFO] Qt message handler installed to suppress TIFF warnings
+2025-12-31 16:13:02,580 [INFO] Installed Qt message handler to suppress TIFF warnings
+2025-12-31 16:13:02,580 [INFO] Qt message handler installed to suppress TIFF warnings
 [Main] Starting Qt event loop...
 [Startup] Database schema initialized successfully
-[Cache] {'entries': 0, 'size_mb': 0.0, 'path': 'C:\\Users\\suleimaa\\Downloads\\Photo-Sorter\\09.49.01.01-Photo-App\\MemoryMate-PhotoFlow-Refactored-main-07\\thumbnails_cache.db', 'last_updated': '2025-12-30 23:42'}
-2025-12-30 23:42:26,282 [INFO] SearchService initialized
+[Cache] {'entries': 0, 'size_mb': 0.0, 'path': 'C:\\Users\\suleimaa\\Downloads\\Photo-Sorter\\09.49.01.01-Photo-App\\MemoryMate-PhotoFlow-Refactored-main-12\\thumbnails_cache.db', 'last_updated': '2025-12-31 16:13'}
+2025-12-31 16:13:03,123 [INFO] SearchService initialized
 [Startup] SearchService initialized
-2025-12-30 23:42:26,282 [INFO] LRUCache initialized with capacity=200, max_memory=100.0MB
-2025-12-30 23:42:26,298 [INFO] ThumbnailService initialized (L1 capacity=200, max_memory=100.0MB, timeout=5.0s)
-2025-12-30 23:42:26,298 [INFO] Global ThumbnailService created with Phase 1B memory limits
+2025-12-31 16:13:03,133 [INFO] LRUCache initialized with capacity=200, max_memory=100.0MB
+2025-12-31 16:13:03,133 [INFO] ThumbnailService initialized (L1 capacity=200, max_memory=100.0MB, timeout=5.0s)
+2025-12-31 16:13:03,137 [INFO] Global ThumbnailService created with Phase 1B memory limits
 [Startup] ThumbnailService initialized
 [Startup] ⚠️ CREATING MainWindow instance...
 🌍 Language switched to: en
@@ -46,28 +46,28 @@ Adaptive Icons:  24px
 [MainWindow] ✓ Window geometry: PySide6.QtCore.QRect(60, 60, 1800, 1032)
 🔇 Qt/Pillow decoder warnings silenced (per user settings).
 ⚠️ Missing translation key: sidebar.people
-2025-12-30 23:42:26,329 [INFO] SearchService initialized
+2025-12-31 16:13:03,169 [INFO] SearchService initialized
 [Sidebar] Device auto-detection disabled (manual refresh only)
-[23:42:26.345] [Tabs] __init__ started
-[23:42:26.345] [Tabs] _build_tabs → building tab widgets
-[23:42:26.345] [Tabs] _on_tab_changed(idx=0)
-[23:42:26.345] [Tabs] _start_timeout idx=0 type=branches
-[23:42:26.345] [Tabs] _populate_tab(branches, idx=0, force=False)
-[23:42:26.345] [Tabs]   populated=False, loading=False
-[23:42:26.345] [Tabs]   Starting load for branches
-[23:42:26.345] [Tabs] _show_loading idx=0 label='Loading Branches…'
-[23:42:26.345] [Tabs] _clear_tab idx=0
-[23:42:26.345] [Tabs] _on_tab_changed → tab_type=branches
-[23:42:26.345] [Tabs] _build_tabs → added 6 tabs
-[23:42:26.345] [Tabs] __init__ completed
-[23:42:26.361] [AccordionSidebar] AccordionSidebar __init__ started
-[23:42:26.361] [AccordionSidebar] Building accordion sections...
-[23:42:26.376] [AccordionSidebar] Created 7 sections with nav buttons
-[23:42:26.376] [AccordionSidebar] Expanding section: people
-[23:42:26.376] [AccordionSidebar] Loading content for section: people
-[23:42:26.376] [AccordionSidebar] Loading People section...
-[23:42:26.376] [AccordionSidebar] ✓ Section expanded: people
-[23:42:26.376] [AccordionSidebar] AccordionSidebar __init__ completed
+[16:13:03.181] [Tabs] __init__ started
+[16:13:03.181] [Tabs] _build_tabs → building tab widgets
+[16:13:03.181] [Tabs] _on_tab_changed(idx=0)
+[16:13:03.181] [Tabs] _start_timeout idx=0 type=branches
+[16:13:03.181] [Tabs] _populate_tab(branches, idx=0, force=False)
+[16:13:03.181] [Tabs]   populated=False, loading=False
+[16:13:03.181] [Tabs]   Starting load for branches
+[16:13:03.181] [Tabs] _show_loading idx=0 label='Loading Branches…'
+[16:13:03.181] [Tabs] _clear_tab idx=0
+[16:13:03.233] [Tabs] _on_tab_changed → tab_type=branches
+[16:13:03.263] [Tabs] _build_tabs → added 6 tabs
+[16:13:03.279] [Tabs] __init__ completed
+[16:13:03.295] [AccordionSidebar] AccordionSidebar __init__ started
+[16:13:03.295] [AccordionSidebar] Building accordion sections...
+[16:13:03.310] [AccordionSidebar] Created 7 sections with nav buttons
+[16:13:03.310] [AccordionSidebar] Expanding section: people
+[16:13:03.313] [AccordionSidebar] Loading content for section: people
+[16:13:03.357] [AccordionSidebar] Loading People section...
+[16:13:03.357] [AccordionSidebar] ✓ Section expanded: people
+[16:13:03.357] [AccordionSidebar] AccordionSidebar __init__ completed
 [SidebarQt] _build_tree_model() called with project_id=None
 [Sidebar] Detaching old model from tree view
 [Sidebar] Pending events processed (skipped explicit processEvents)
@@ -78,7 +78,7 @@ Adaptive Icons:  24px
 [Sidebar] Found 0 videos in project None
 
 [Sidebar] ===== Initiating mobile device scan from sidebar =====
-[Sidebar] Database: <reference_db.ReferenceDB object at 0x0000028FA2D8ECD0>
+[Sidebar] Database: <reference_db.ReferenceDB object at 0x00000224E9CDD410>
 [Sidebar] Register devices: True
 
 [DeviceScanner] ===== Starting device scan  =====
@@ -104,7 +104,7 @@ Adaptive Icons:  24px
 [Sidebar] No mobile devices detected - added help message
 [SidebarQt] switch_display_mode(list) - canceling old workers
 [SidebarQt] Hiding tabs controller and accordion
-[23:42:26.566] [Tabs] hide_tabs() called - canceling pending workers
+[16:13:03.518] [Tabs] hide_tabs() called - canceling pending workers
 [SidebarQt] Canceled tab/accordion workers via hide
 [SidebarQt] Clearing tree view selection before rebuild
 [SidebarQt] Showing tree view
@@ -119,11 +119,11 @@ Adaptive Icons:  24px
 [Sidebar] Found 0 videos in project None
 
 [Sidebar] ===== Initiating mobile device scan from sidebar =====
-[Sidebar] Database: <reference_db.ReferenceDB object at 0x0000028FA2D8ECD0>
+[Sidebar] Database: <reference_db.ReferenceDB object at 0x00000224E9CDD410>
 [Sidebar] Register devices: True
 
 [DeviceScanner] ===== Using cached scan results =====
-[DeviceScanner] Cache age: 0.02s (TTL: 5.0s)
+[DeviceScanner] Cache age: 0.00s (TTL: 5.0s)
 [DeviceScanner] Cached devices: 0
 [DeviceScanner] ===== Scan complete (cached): 0 device(s) =====
 
@@ -139,11 +139,11 @@ Adaptive Icons:  24px
 [LayoutManager] 💾 Took ownership of original central widget: QWidget
 [GooglePhotosLayout] ⚠️ WARNING: No projects found! Please create a project first.
 [GooglePhotosLayout] Project selector populated with 0 projects (+ New Project option)
-2025-12-30 23:42:27,150 [INFO] [AccordionSidebar] Initializing with project_id=None
-2025-12-30 23:42:27,166 [INFO] [AccordionSidebar] Created 6 sections
-2025-12-30 23:42:27,166 [INFO] [AccordionSidebar] Expanding section: folders
-2025-12-30 23:42:27,166 [WARNING] [FoldersSection] No project_id set
-2025-12-30 23:42:27,339 [INFO] [AccordionSidebar] Section folders loaded and displayed
+2025-12-31 16:13:04,043 [INFO] [AccordionSidebar] Initializing with project_id=None
+2025-12-31 16:13:04,055 [INFO] [AccordionSidebar] Created 6 sections
+2025-12-31 16:13:04,055 [INFO] [AccordionSidebar] Expanding section: folders
+2025-12-31 16:13:04,055 [WARNING] [FoldersSection] No project_id set
+2025-12-31 16:13:04,224 [INFO] [AccordionSidebar] Section folders loaded and displayed
 [GooglePhotosLayout] ✅ Scroll-triggered lazy loading enabled
 [GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px)...
 [GooglePhotosLayout] 🔄 Clearing existing timeline and thumbnail cache...
@@ -157,21 +157,21 @@ Adaptive Icons:  24px
 [Startup] Layout system initialized successfully
 [Startup] Database schema initialized successfully
 [MainWindow] ✅ ✅ ✅ __init__() COMPLETED - returning to main_qt.py
-[MainWindow] Window object: <main_window_qt.MainWindow(0x28fa3d248d0) at 0x0000028FA64EA2C0>
+[MainWindow] Window object: <main_window_qt.MainWindow(0x224eb060f90) at 0x00000224FE665BC0>
 [MainWindow] Window valid: N/A
 [Startup] ✅ MainWindow instance created successfully
 [Startup] MainWindow type: <class 'main_window_qt.MainWindow'>
 [Startup] MainWindow is valid: True
 [Startup] Updating splash progress to 95%...
-[23:42:27.370] [Tabs] _finish_branches (stale gen=1) — ignoring
-[23:42:27.370] [Tabs] _on_tab_changed(idx=0)
-[23:42:27.370] [Tabs] _start_timeout idx=0 type=branches
-[23:42:27.370] [Tabs] _populate_tab(branches, idx=0, force=False)
-[23:42:27.370] [Tabs]   populated=False, loading=False
-[23:42:27.370] [Tabs]   Starting load for branches
-[23:42:27.370] [Tabs] _show_loading idx=0 label='Loading Branches…'
-[23:42:27.370] [Tabs] _clear_tab idx=0
-[23:42:27.370] [Tabs] _on_tab_changed → tab_type=branches
+[16:13:04.245] [Tabs] _finish_branches (stale gen=1) — ignoring
+[16:13:04.245] [Tabs] _on_tab_changed(idx=0)
+[16:13:04.245] [Tabs] _start_timeout idx=0 type=branches
+[16:13:04.245] [Tabs] _populate_tab(branches, idx=0, force=False)
+[16:13:04.245] [Tabs]   populated=False, loading=False
+[16:13:04.245] [Tabs]   Starting load for branches
+[16:13:04.245] [Tabs] _show_loading idx=0 label='Loading Branches…'
+[16:13:04.245] [Tabs] _clear_tab idx=0
+[16:13:04.256] [Tabs] _on_tab_changed → tab_type=branches
 
 [Breadcrumb] _update_breadcrumb() CALLED
 [Breadcrumb] Grid state: navigation_mode=None, project_id=None
@@ -188,7 +188,7 @@ Adaptive Icons:  24px
 [Breadcrumb] _update_breadcrumb() COMPLETED
 
 [Startup] Processing events...
-[23:42:27.370] [Tabs] _clear_tab idx=0
+[16:13:04.355] [Tabs] _clear_tab idx=0
 [Startup] Events processed, ready to show window
 [Startup] Showing main window...
 [Startup] Window geometry before show(): PySide6.QtCore.QRect(60, 60, 1800, 1032)
@@ -207,7 +207,7 @@ Adaptive Icons:  24px
 [Startup]   4. Check if window is off-screen or on disconnected monitor
 ✅ FFmpeg and FFprobe detected (custom path: C:\ffmpeg\bin)
 ✅ InsightFace detected with buffalo_l models
-   Location: C:\Users\suleimaa\Downloads\Photo-Sorter\09.49.01.01-Photo-App\MemoryMate-PhotoFlow-Refactored-main-07\models\buffalo_l
+   Location: C:\Users\suleimaa\Downloads\Photo-Sorter\09.49.01.01-Photo-App\MemoryMate-PhotoFlow-Refactored-main-12\models\buffalo_l
 [GooglePhotosLayout] ➕ New Project option selected
 [GooglePhotosLayout] 🆕🆕🆕 CREATE PROJECT BUTTON CLICKED! 🆕🆕🆕
 [GooglePhotosLayout] ✓ Calling breadcrumb_nav._create_new_project()...
@@ -219,92 +219,93 @@ Adaptive Icons:  24px
 [MainWindow] Step 1: ✓ Set grid.project_id = 1
 [MainWindow] Step 2: Updating sidebar...
 [SidebarQt] set_project(1) called
-[23:42:37.695] [Tabs] refresh_all(force=True) called
-[23:42:37.695] [Tabs] refresh_all: key=branches, idx=0, force=True
-[23:42:37.695] [Tabs] _populate_tab(branches, idx=0, force=True)
-[23:42:37.695] [Tabs]   populated=True, loading=False
-[23:42:37.695] [Tabs]   Force refresh: removing branches from populated set
-[23:42:37.695] [Tabs]   Starting load for branches
-[23:42:37.698] [Tabs] _show_loading idx=0 label='Loading Branches…'
-[23:42:37.698] [Tabs] _clear_tab idx=0
-[23:42:37.698] [Tabs] refresh_all: key=folders, idx=1, force=True
-[23:42:37.698] [Tabs] _populate_tab(folders, idx=1, force=True)
-[23:42:37.698] [Tabs]   populated=False, loading=False
-[23:42:37.698] [Tabs]   Starting load for folders
-[23:42:37.698] [Tabs] _show_loading idx=1 label='Loading Folders…'
-[23:42:37.698] [Tabs] _clear_tab idx=1
-[23:42:37.698] [Tabs] refresh_all: key=dates, idx=2, force=True
-[23:42:37.698] [Tabs] _populate_tab(dates, idx=2, force=True)
-[23:42:37.698] [Tabs]   populated=False, loading=False
-[23:42:37.698] [Tabs]   Starting load for dates
-[23:42:37.698] [Tabs] _show_loading idx=2 label='Loading Dates…'
-[23:42:37.698] [Tabs] _clear_tab idx=2
-[23:42:37.698] [Tabs] _load_folders → got 0 rows for project_id=1
-[23:42:37.698] [Tabs] refresh_all: key=tags, idx=3, force=True
-[23:42:37.698] [Tabs] _populate_tab(tags, idx=3, force=True)
-[23:42:37.698] [Tabs]   populated=False, loading=False
-[23:42:37.698] [Tabs]   Starting load for tags
-[23:42:37.698] [Tabs] _show_loading idx=3 label='Loading Tags…'
-[23:42:37.698] [Tabs] _clear_tab idx=3
-[23:42:37.698] [Tabs] refresh_all: key=quick, idx=5, force=True
-[23:42:37.705] [Tabs] _populate_tab(quick, idx=5, force=True)
-[23:42:37.705] [Tabs]   populated=False, loading=False
-[23:42:37.705] [Tabs]   Starting load for quick
-[23:42:37.705] [Tabs] _show_loading idx=5 label='Loading Quick Dates…'
-[23:42:37.698] [Tabs] _load_dates → got hierarchy data for project_id=1
-[23:42:37.705] [Tabs] _clear_tab idx=5
-[23:42:37.705] [Tabs] _load_tags → got 0 rows for project_id=1
-[23:42:37.705] [Tabs] refresh_all(force=True) completed
-[23:42:37.705] [AccordionSidebar] Setting project: 1
-[23:42:37.705] [AccordionSidebar] Refreshing all sections (force=True)
-[23:42:37.705] [AccordionSidebar] Loading content for section: people
-[23:42:37.705] [AccordionSidebar] Loading People section...
-[23:42:37.705] [AccordionSidebar] People reload generation: 1
-[23:42:37.708] [AccordionSidebar] Loading content for section: dates
-[23:42:37.708] [Tabs] _load_quick → got 6 rows
-[23:42:37.708] [AccordionSidebar] Loading Dates section...
-[23:42:37.708] [AccordionSidebar] Dates reload generation: 1
-[23:42:37.708] [AccordionSidebar] Loaded 0 face clusters (gen 1)
-[23:42:37.708] [AccordionSidebar] Loading content for section: folders
-[23:42:37.708] [AccordionSidebar] Loading Folders section...
-[23:42:37.708] [AccordionSidebar] Loaded 0 years of date data (gen 1)
-[23:42:37.708] [AccordionSidebar] Folders reload generation: 1
-[23:42:37.708] [AccordionSidebar] Loading content for section: videos
-[23:42:37.708] [AccordionSidebar] Loading Videos section...
-[23:42:37.708] [AccordionSidebar] Videos reload generation: 1
-[23:42:37.711] [AccordionSidebar] Loaded 0 folders (gen 1)
-[23:42:37.711] [AccordionSidebar] Loading content for section: tags
-[23:42:37.711] [AccordionSidebar] Loading Tags section...
-[23:42:37.711] [AccordionSidebar] Loading content for section: branches
-[23:42:37.711] [AccordionSidebar] Loading Branches section...
-[23:42:37.711] [AccordionSidebar] Branches reload generation: 1
-[23:42:37.711] [AccordionSidebar] Loaded 0 videos (gen 1)
-[23:42:37.711] [AccordionSidebar] Loading content for section: quick
-[23:42:37.711] [AccordionSidebar] Loading Quick Dates section...
-[23:42:37.711] [AccordionSidebar] Quick dates reload generation: 1
+[16:13:18.556] [Tabs] refresh_all(force=True) called
+[16:13:18.556] [Tabs] refresh_all: key=branches, idx=0, force=True
+[16:13:18.556] [Tabs] _populate_tab(branches, idx=0, force=True)
+[16:13:18.556] [Tabs]   populated=True, loading=False
+[16:13:18.556] [Tabs]   Force refresh: removing branches from populated set
+[16:13:18.556] [Tabs]   Starting load for branches
+[16:13:18.556] [Tabs] _show_loading idx=0 label='Loading Branches…'
+[16:13:18.556] [Tabs] _clear_tab idx=0
+[16:13:18.556] [Tabs] refresh_all: key=folders, idx=1, force=True
+[16:13:18.556] [Tabs] _populate_tab(folders, idx=1, force=True)
+[16:13:18.556] [Tabs]   populated=False, loading=False
+[16:13:18.556] [Tabs]   Starting load for folders
+[16:13:18.556] [Tabs] _show_loading idx=1 label='Loading Folders…'
+[16:13:18.556] [Tabs] _clear_tab idx=1
+[16:13:18.571] [Tabs] refresh_all: key=dates, idx=2, force=True
+[16:13:18.571] [Tabs] _populate_tab(dates, idx=2, force=True)
+[16:13:18.571] [Tabs]   populated=False, loading=False
+[16:13:18.571] [Tabs]   Starting load for dates
+[16:13:18.571] [Tabs] _show_loading idx=2 label='Loading Dates…'
+[16:13:18.571] [Tabs] _clear_tab idx=2
+[16:13:18.571] [Tabs] _load_folders → got 0 rows for project_id=1
+[16:13:18.571] [Tabs] refresh_all: key=tags, idx=3, force=True
+[16:13:18.571] [Tabs] _populate_tab(tags, idx=3, force=True)
+[16:13:18.571] [Tabs]   populated=False, loading=False
+[16:13:18.571] [Tabs]   Starting load for tags
+[16:13:18.571] [Tabs] _show_loading idx=3 label='Loading Tags…'
+[16:13:18.571] [Tabs] _clear_tab idx=3
+[16:13:18.571] [Tabs] _load_dates → got hierarchy data for project_id=1
+[16:13:18.571] [Tabs] refresh_all: key=quick, idx=5, force=True
+[16:13:18.571] [Tabs] _populate_tab(quick, idx=5, force=True)
+[16:13:18.571] [Tabs]   populated=False, loading=False
+[16:13:18.571] [Tabs]   Starting load for quick
+[16:13:18.571] [Tabs] _show_loading idx=5 label='Loading Quick Dates…'
+[16:13:18.571] [Tabs] _load_tags → got 0 rows for project_id=1
+[16:13:18.571] [Tabs] _clear_tab idx=5
+[16:13:18.571] [Tabs] refresh_all(force=True) completed
+[16:13:18.571] [AccordionSidebar] Setting project: 1
+[16:13:18.571] [AccordionSidebar] Refreshing all sections (force=True)
+[16:13:18.571] [AccordionSidebar] Loading content for section: people
+[16:13:18.571] [AccordionSidebar] Loading People section...
+[16:13:18.571] [AccordionSidebar] People reload generation: 1
+[16:13:18.581] [AccordionSidebar] Loading content for section: dates
+[16:13:18.581] [AccordionSidebar] Loading Dates section...
+[16:13:18.581] [AccordionSidebar] Dates reload generation: 1
+[16:13:18.581] [Tabs] _load_quick → got 6 rows
+[16:13:18.581] [AccordionSidebar] Loaded 0 face clusters (gen 1)
+[16:13:18.581] [AccordionSidebar] Loading content for section: folders
+[16:13:18.581] [AccordionSidebar] Loading Folders section...
+[16:13:18.581] [AccordionSidebar] Folders reload generation: 1
+[16:13:18.581] [AccordionSidebar] Loaded 0 years of date data (gen 1)
+[16:13:18.581] [AccordionSidebar] Loading content for section: videos
+[16:13:18.581] [AccordionSidebar] Loading Videos section...
+[16:13:18.581] [AccordionSidebar] Videos reload generation: 1
+[16:13:18.581] [AccordionSidebar] Loaded 0 folders (gen 1)
+[16:13:18.581] [AccordionSidebar] Loading content for section: tags
+[16:13:18.581] [AccordionSidebar] Loading Tags section...
+[16:13:18.581] [AccordionSidebar] Loading content for section: branches
+[16:13:18.581] [AccordionSidebar] Loading Branches section...
+[16:13:18.581] [AccordionSidebar] Branches reload generation: 1
+[16:13:18.581] [AccordionSidebar] Loaded 0 videos (gen 1)
+[16:13:18.581] [AccordionSidebar] Loading content for section: quick
+[16:13:18.581] [AccordionSidebar] Loading Quick Dates section...
+[16:13:18.581] [AccordionSidebar] Quick dates reload generation: 1
+[16:13:18.581] [AccordionSidebar] Loaded 0 tags
 [SidebarQt] Calling reload() after setting project_id
 [SidebarQt] reload() blocked - widget not visible (likely being deleted)
-[23:42:37.711] [AccordionSidebar] Loaded 0 tags
 [MainWindow] Step 2: ✓ Sidebar.set_project(1) completed
 [MainWindow] Step 3: Reloading grid to 'all' branch...
+[16:13:18.581] [AccordionSidebar] Loaded 1 branches (gen 1)
 
 [GRID] >>>>>> set_branch('all') CALLED
 [GRID]   Current state: project_id=1, load_mode=None
-[23:42:37.711] [AccordionSidebar] Loaded 1 branches (gen 1)
 [GRID]   State updated, calling reload()...
 
 [GRID] ====== reload() CALLED ======
 [GRID] project_id=1, load_mode=branch
+[16:13:18.587] [AccordionSidebar] Loaded 6 quick date items (gen 1)
 [GRID] Step 1: Setting _reloading=True
 [GRID] Fetched tags for 0 paths, got 0 entries
-[23:42:37.711] [AccordionSidebar] Loaded 6 quick date items (gen 1)
-[23:42:37.711] [Tabs] _clear_tab idx=0
-[23:42:37.711] [Tabs] _clear_tab idx=1
-[23:42:37.718] [Tabs] _clear_tab idx=2
-[23:42:37.718] [Tabs] _finish_tags called: idx=3, gen=2, rows_count=0
-[23:42:37.718] [Tabs] _clear_tab idx=3
-[23:42:37.718] [Tabs] _clear_tab idx=5
-[23:42:37.956] [AccordionSidebar] ✓ Branches section loaded with 1 branches
+[16:13:18.587] [Tabs] _clear_tab idx=0
+[16:13:18.587] [Tabs] _clear_tab idx=1
+[16:13:18.587] [Tabs] _clear_tab idx=2
+[16:13:18.587] [Tabs] _finish_tags called: idx=3, gen=2, rows_count=0
+[16:13:18.587] [Tabs] _clear_tab idx=3
+[16:13:18.587] [Tabs] _clear_tab idx=5
+[16:13:18.825] [AccordionSidebar] ✓ Branches section loaded with 1 branches
+[16:13:18.865] [AccordionSidebar] ✓ Quick dates section loaded with 6 items
 [GRID] Loaded 0 thumbnails.
 [GRID] Reloaded 0 thumbnails in None-mode (base=0)
 [GRID] Step 5: Emitting gridReloaded signal...
@@ -344,11 +345,11 @@ Adaptive Icons:  24px
 [GooglePhotosLayout] 🔍 Starting async photo load (generation 2)...
 [GooglePhotosLayout] ✅ Photo load worker started (generation 2)
 [GooglePhotosLayout] ✓ Layout refreshed after project creation
-[23:42:38.087] [AccordionSidebar] ✓ Quick dates section loaded with 6 items
-2025-12-30 23:42:38,098 [INFO] Photo query complete: generation=2, current=2, rows=0
+2025-12-31 16:13:18,897 [INFO] Photo query complete: generation=2, current=2, rows=0
 [GooglePhotosLayout] No photos found in project 1
 [Schema] Database schema initialized successfully
 [ScanController] Creating ScanWorker for folder: C:/Users/suleimaa/Downloads/Photo-Sorter/Images
+2025-12-31 16:13:34,886 [INFO] DBWriter timer started in worker thread
 [ScanController] ScanWorker imported successfully
 [ScanController] Creating QThread...
 [ScanController] QThread created successfully
@@ -359,317 +360,335 @@ Adaptive Icons:  24px
 [ScanController] Connecting signals...
 [ScanController] ✓ Test progress slot connected (class method)
 [ScanController] ✓ _on_progress connected
-2025-12-30 23:42:54,695 [INFO] DBWriter timer started in worker thread
 [ScanController] ✓ All signals connected
 [ScanController] Starting scan thread...
 [ScanController] ✓ thread.start() called successfully
 [ScanWorkerAdapter] run() method called!
 [ScanWorkerAdapter] folder=C:/Users/suleimaa/Downloads/Photo-Sorter/Images, incremental=True
-2025-12-30 23:42:54,705 [INFO] ScanWorkerAdapter starting scan of C:/Users/suleimaa/Downloads/Photo-Sorter/Images
-[ScanWorkerAdapter] Starting scan...
-2025-12-30 23:42:54,705 [INFO] Starting scan: C:/Users/suleimaa/Downloads/Photo-Sorter/Images (incremental=True)
+2025-12-31 16:13:34,898 [INFO] ScanWorkerAdapter starting scan of C:/Users/suleimaa/Downloads/Photo-Sorter/Images
 [ScanController] QThread STARTED!
-2025-12-30 23:42:54,705 [INFO] Discovered 15 candidate image files and 0 video files
+[ScanWorkerAdapter] Starting scan...
+2025-12-31 16:13:34,898 [INFO] Starting scan: C:/Users/suleimaa/Downloads/Photo-Sorter/Images (incremental=True)
+2025-12-31 16:13:34,898 [INFO] Discovered 15 candidate image files and 0 video files
 [ScanWorkerAdapter] 🔍 Progress update: percent=0, message='📂 C:\Users\suleimaa\Downloads\Photo-Sorter\Images
 Discovered: 15 photos • 0 videos (total 15)
 Prepar...'
-2025-12-30 23:42:54,868 [WARNING] Failed to send progress update: 'PySide6.QtCore.QMetaObject.invokeMethod' called with wrong argument types:
-  PySide6.QtCore.QMetaObject.invokeMethod(ScanController, str, ConnectionType, QGenericArgumentHolder, QGenericArgumentHolder)
-Supported signatures:
-  PySide6.QtCore.QMetaObject.invokeMethod(obj: PySide6.QtCore.QObject, member: bytes | bytearray | memoryview, ret: PySide6.QtCore.QGenericReturnArgument, /, val0: PySide6.QtCore.QGenericArgument = ..., val1: PySide6.QtCore.QGenericArgument = ..., val2: PySide6.QtCore.QGenericArgument = ..., val3: PySide6.QtCore.QGenericArgument = ..., val4: PySide6.QtCore.QGenericArgument = ..., val5: PySide6.QtCore.QGenericArgument = ..., val6: PySide6.QtCore.QGenericArgument = ..., val7: PySide6.QtCore.QGenericArgument = ..., val8: PySide6.QtCore.QGenericArgument = ..., val9: PySide6.QtCore.QGenericArgument = ...)
-  PySide6.QtCore.QMetaObject.invokeMethod(obj: PySide6.QtCore.QObject, member: bytes | bytearray | memoryview, arg__3: PySide6.QtCore.Qt.ConnectionType, ret: PySide6.QtCore.QGenericReturnArgument, /, val0: PySide6.QtCore.QGenericArgument = ..., val1: PySide6.QtCore.QGenericArgument = ..., val2: PySide6.QtCore.QGenericArgument = ..., val3: PySide6.QtCore.QGenericArgument = ..., val4: PySide6.QtCore.QGenericArgument = ..., val5: PySide6.QtCore.QGenericArgument = ..., val6: PySide6.QtCore.QGenericArgument = ..., val7: PySide6.QtCore.QGenericArgument = ..., val8: PySide6.QtCore.QGenericArgument = ..., val9: PySide6.QtCore.QGenericArgument = ...)
-  PySide6.QtCore.QMetaObject.invokeMethod(obj: PySide6.QtCore.QObject, member: bytes | bytearray | memoryview, type: PySide6.QtCore.Qt.ConnectionType, val0: PySide6.QtCore.QGenericArgument, /, val1: PySide6.QtCore.QGenericArgument = ..., val2: PySide6.QtCore.QGenericArgument = ..., val3: PySide6.QtCore.QGenericArgument = ..., val4: PySide6.QtCore.QGenericArgument = ..., val5: PySide6.QtCore.QGenericArgument = ..., val6: PySide6.QtCore.QGenericArgument = ..., val7: PySide6.QtCore.QGenericArgument = ..., val8: PySide6.QtCore.QGenericArgument = ..., val9: PySide6.QtCore.QGenericArgument = ...)
-  PySide6.QtCore.QMetaObject.invokeMethod(object: PySide6.QtCore.QObject, member: bytes | bytearray | memoryview, type: PySide6.QtCore.Qt.ConnectionType, /, val0: PySide6.QtCore.QGenericArgumentHolder = {}, val1: PySide6.QtCore.QGenericArgumentHolder = {}, val2: PySide6.QtCore.QGenericArgumentHolder = {}, val3: PySide6.QtCore.QGenericArgumentHolder = {}, val4: PySide6.QtCore.QGenericArgumentHolder = {}, val5: PySide6.QtCore.QGenericArgumentHolder = {}, val6: PySide6.QtCore.QGenericArgumentHolder = {}, val7: PySide6.QtCore.QGenericArgumentHolder = {}, val8: PySide6.QtCore.QGenericArgumentHolder = {}, val9: PySide6.QtCore.QGenericArgumentHolder = {})
-  PySide6.QtCore.QMetaObject.invokeMethod(object: PySide6.QtCore.QObject, member: bytes | bytearray | memoryview, type: PySide6.QtCore.Qt.ConnectionType, ret: PySide6.QtCore.QGenericReturnArgumentHolder, /, val0: PySide6.QtCore.QGenericArgumentHolder = {}, val1: PySide6.QtCore.QGenericArgumentHolder = {}, val2: PySide6.QtCore.QGenericArgumentHolder = {}, val3: PySide6.QtCore.QGenericArgumentHolder = {}, val4: PySide6.QtCore.QGenericArgumentHolder = {}, val5: PySide6.QtCore.QGenericArgumentHolder = {}, val6: PySide6.QtCore.QGenericArgumentHolder = {}, val7: PySide6.QtCore.QGenericArgumentHolder = {}, val8: PySide6.QtCore.QGenericArgumentHolder = {}, val9: PySide6.QtCore.QGenericArgumentHolder = {})
-  PySide6.QtCore.QMetaObject.invokeMethod(obj: PySide6.QtCore.QObject, member: bytes | bytearray | memoryview, val0: PySide6.QtCore.QGenericArgument, /, val1: PySide6.QtCore.QGenericArgument = ..., val2: PySide6.QtCore.QGenericArgument = ..., val3: PySide6.QtCore.QGenericArgument = ..., val4: PySide6.QtCore.QGenericArgument = ..., val5: PySide6.QtCore.QGenericArgument = ..., val6: PySide6.QtCore.QGenericArgument = ..., val7: PySide6.QtCore.QGenericArgument = ..., val8: PySide6.QtCore.QGenericArgument = ..., val9: PySide6.QtCore.QGenericArgument = ...)
-  PySide6.QtCore.QMetaObject.invokeMethod(object: PySide6.QtCore.QObject, member: bytes | bytearray | memoryview, /, val0: PySide6.QtCore.QGenericArgumentHolder = {}, val1: PySide6.QtCore.QGenericArgumentHolder = {}, val2: PySide6.QtCore.QGenericArgumentHolder = {}, val3: PySide6.QtCore.QGenericArgumentHolder = {}, val4: PySide6.QtCore.QGenericArgumentHolder = {}, val5: PySide6.QtCore.QGenericArgumentHolder = {}, val6: PySide6.QtCore.QGenericArgumentHolder = {}, val7: PySide6.QtCore.QGenericArgumentHolder = {}, val8: PySide6.QtCore.QGenericArgumentHolder = {}, val9: PySide6.QtCore.QGenericArgumentHolder = {})
-  PySide6.QtCore.QMetaObject.invokeMethod(object: PySide6.QtCore.QObject, member: bytes | bytearray | memoryview, ret: PySide6.QtCore.QGenericReturnArgumentHolder, /, val0: PySide6.QtCore.QGenericArgumentHolder = {}, val1: PySide6.QtCore.QGenericArgumentHolder = {}, val2: PySide6.QtCore.QGenericArgumentHolder = {}, val3: PySide6.QtCore.QGenericArgumentHolder = {}, val4: PySide6.QtCore.QGenericArgumentHolder = {}, val5: PySide6.QtCore.QGenericArgumentHolder = {}, val6: PySide6.QtCore.QGenericArgumentHolder = {}, val7: PySide6.QtCore.QGenericArgumentHolder = {}, val8: PySide6.QtCore.QGenericArgumentHolder = {}, val9: PySide6.QtCore.QGenericArgumentHolder = {})
-2025-12-30 23:42:54,868 [INFO] Loading existing metadata for incremental scan...
-2025-12-30 23:42:54,868 [INFO] ✓ Loaded 0 existing file records
+[ScanController] ⚡ Called from WORKER thread - marshaling to main
+[ScanController]    Current: <PySide6.QtCore.QThread(0x224bb7ccaa0) at 0x00000224A8CCFE00>, Main: <PySide6.QtCore.QThread(0x224e8080990, name = "Qt mainThread") at 0x00000224BB0CE140>
+[ScanWorkerAdapter] ✓ Called update_progress_safe
+2025-12-31 16:13:34,907 [INFO] Loading existing metadata for incremental scan...
+2025-12-31 16:13:34,909 [INFO] ✓ Loaded 0 existing file records
 [SCAN] Created single executor for scan (15 files)
 [SCAN] Starting file 1/15: Alya1_2_2_2.jpeg
-2025-12-30 23:42:54,868 [INFO] [Scan] File 1/15: Alya1_2_2_2.jpeg
+2025-12-31 16:13:34,909 [INFO] [Scan] File 1/15: Alya1_2_2_2.jpeg
+[SCAN] 🔍 Emitting progress: percent=0, message='Starting file 1/15: Alya1_2_2_2.jpeg'
+[ScanWorkerAdapter] 🔍 Progress update: percent=0, message='Starting file 1/15: Alya1_2_2_2.jpeg...'
+[ScanController] ⚡ Called from WORKER thread - marshaling to main
+[ScanController]    Current: <PySide6.QtCore.QThread(0x224bb7ccaa0) at 0x00000224A8CCFE00>, Main: <PySide6.QtCore.QThread(0x224e8080990, name = "Qt mainThread") at 0x00000224BB0CE140>
+[ScanWorkerAdapter] ✓ Called update_progress_safe
 [SCAN] _process_file started for: Alya1_2_2_2.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-30 23:42:54,868 [INFO] 📷 Processing: Alya1_2_2_2.jpeg (345.2 KB)
+2025-12-31 16:13:34,911 [INFO] 📷 Processing: Alya1_2_2_2.jpeg (345.2 KB)
 [SCAN] Processing: Alya1_2_2_2.jpeg
 [SCAN] ✓ Metadata extracted: Alya1_2_2_2.jpeg [w=1440, h=2560, date=2024-11-29 17:04:13]
-2025-12-30 23:42:54,915 [INFO] [Scan] Metadata extracted successfully: Alya1_2_2_2.jpeg [w=1440, h=2560, date=2024-11-29 17:04:13]
+2025-12-31 16:13:34,964 [INFO] [Scan] Metadata extracted successfully: Alya1_2_2_2.jpeg [w=1440, h=2560, date=2024-11-29 17:04:13]
 [SCAN] Creating folder hierarchy for: Alya1_2_2_2.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=2
 [SCAN] ✓ File processed successfully: Alya1_2_2_2.jpeg
 [SCAN] Added to batch: Alya1_2_2_2.jpeg [batch size: 1/200]
 [SCAN] 🔍 Emitting progress: percent=6, message='✓ Processed: Alya1_2_2_2.jpeg (345.2 KB) [w=1440, h=2560, date=2024-11-29 17:04:13]'
 [ScanWorkerAdapter] 🔍 Progress update: percent=6, message='✓ Processed: Alya1_2_2_2.jpeg (345.2 KB) [w=1440, h=2560, date=2024-11-29 17:04:13]...'
-2025-12-30 23:42:54,986 [WARNING] Failed to send progress update: 'PySide6.QtCore.QMetaObject.invokeMethod' called with wrong argument types:
-  PySide6.QtCore.QMetaObject.invokeMethod(ScanController, str, ConnectionType, QGenericArgumentHolder, QGenericArgumentHolder)
-Supported signatures:
-  PySide6.QtCore.QMetaObject.invokeMethod(obj: PySide6.QtCore.QObject, member: bytes | bytearray | memoryview, ret: PySide6.QtCore.QGenericReturnArgument, /, val0: PySide6.QtCore.QGenericArgument = ..., val1: PySide6.QtCore.QGenericArgument = ..., val2: PySide6.QtCore.QGenericArgument = ..., val3: PySide6.QtCore.QGenericArgument = ..., val4: PySide6.QtCore.QGenericArgument = ..., val5: PySide6.QtCore.QGenericArgument = ..., val6: PySide6.QtCore.QGenericArgument = ..., val7: PySide6.QtCore.QGenericArgument = ..., val8: PySide6.QtCore.QGenericArgument = ..., val9: PySide6.QtCore.QGenericArgument = ...)
-  PySide6.QtCore.QMetaObject.invokeMethod(obj: PySide6.QtCore.QObject, member: bytes | bytearray | memoryview, arg__3: PySide6.QtCore.Qt.ConnectionType, ret: PySide6.QtCore.QGenericReturnArgument, /, val0: PySide6.QtCore.QGenericArgument = ..., val1: PySide6.QtCore.QGenericArgument = ..., val2: PySide6.QtCore.QGenericArgument = ..., val3: PySide6.QtCore.QGenericArgument = ..., val4: PySide6.QtCore.QGenericArgument = ..., val5: PySide6.QtCore.QGenericArgument = ..., val6: PySide6.QtCore.QGenericArgument = ..., val7: PySide6.QtCore.QGenericArgument = ..., val8: PySide6.QtCore.QGenericArgument = ..., val9: PySide6.QtCore.QGenericArgument = ...)
-  PySide6.QtCore.QMetaObject.invokeMethod(obj: PySide6.QtCore.QObject, member: bytes | bytearray | memoryview, type: PySide6.QtCore.Qt.ConnectionType, val0: PySide6.QtCore.QGenericArgument, /, val1: PySide6.QtCore.QGenericArgument = ..., val2: PySide6.QtCore.QGenericArgument = ..., val3: PySide6.QtCore.QGenericArgument = ..., val4: PySide6.QtCore.QGenericArgument = ..., val5: PySide6.QtCore.QGenericArgument = ..., val6: PySide6.QtCore.QGenericArgument = ..., val7: PySide6.QtCore.QGenericArgument = ..., val8: PySide6.QtCore.QGenericArgument = ..., val9: PySide6.QtCore.QGenericArgument = ...)
-  PySide6.QtCore.QMetaObject.invokeMethod(object: PySide6.QtCore.QObject, member: bytes | bytearray | memoryview, type: PySide6.QtCore.Qt.ConnectionType, /, val0: PySide6.QtCore.QGenericArgumentHolder = {}, val1: PySide6.QtCore.QGenericArgumentHolder = {}, val2: PySide6.QtCore.QGenericArgumentHolder = {}, val3: PySide6.QtCore.QGenericArgumentHolder = {}, val4: PySide6.QtCore.QGenericArgumentHolder = {}, val5: PySide6.QtCore.QGenericArgumentHolder = {}, val6: PySide6.QtCore.QGenericArgumentHolder = {}, val7: PySide6.QtCore.QGenericArgumentHolder = {}, val8: PySide6.QtCore.QGenericArgumentHolder = {}, val9: PySide6.QtCore.QGenericArgumentHolder = {})
-  PySide6.QtCore.QMetaObject.invokeMethod(object: PySide6.QtCore.QObject, member: bytes | bytearray | memoryview, type: PySide6.QtCore.Qt.ConnectionType, ret: PySide6.QtCore.QGenericReturnArgumentHolder, /, val0: PySide6.QtCore.QGenericArgumentHolder = {}, val1: PySide6.QtCore.QGenericArgumentHolder = {}, val2: PySide6.QtCore.QGenericArgumentHolder = {}, val3: PySide6.QtCore.QGenericArgumentHolder = {}, val4: PySide6.QtCore.QGenericArgumentHolder = {}, val5: PySide6.QtCore.QGenericArgumentHolder = {}, val6: PySide6.QtCore.QGenericArgumentHolder = {}, val7: PySide6.QtCore.QGenericArgumentHolder = {}, val8: PySide6.QtCore.QGenericArgumentHolder = {}, val9: PySide6.QtCore.QGenericArgumentHolder = {})
-  PySide6.QtCore.QMetaObject.invokeMethod(obj: PySide6.QtCore.QObject, member: bytes | bytearray | memoryview, val0: PySide6.QtCore.QGenericArgument, /, val1: PySide6.QtCore.QGenericArgument = ..., val2: PySide6.QtCore.QGenericArgument = ..., val3: PySide6.QtCore.QGenericArgument = ..., val4: PySide6.QtCore.QGenericArgument = ..., val5: PySide6.QtCore.QGenericArgument = ..., val6: PySide6.QtCore.QGenericArgument = ..., val7: PySide6.QtCore.QGenericArgument = ..., val8: PySide6.QtCore.QGenericArgument = ..., val9: PySide6.QtCore.QGenericArgument = ...)
-  PySide6.QtCore.QMetaObject.invokeMethod(object: PySide6.QtCore.QObject, member: bytes | bytearray | memoryview, /, val0: PySide6.QtCore.QGenericArgumentHolder = {}, val1: PySide6.QtCore.QGenericArgumentHolder = {}, val2: PySide6.QtCore.QGenericArgumentHolder = {}, val3: PySide6.QtCore.QGenericArgumentHolder = {}, val4: PySide6.QtCore.QGenericArgumentHolder = {}, val5: PySide6.QtCore.QGenericArgumentHolder = {}, val6: PySide6.QtCore.QGenericArgumentHolder = {}, val7: PySide6.QtCore.QGenericArgumentHolder = {}, val8: PySide6.QtCore.QGenericArgumentHolder = {}, val9: PySide6.QtCore.QGenericArgumentHolder = {})
-  PySide6.QtCore.QMetaObject.invokeMethod(object: PySide6.QtCore.QObject, member: bytes | bytearray | memoryview, ret: PySide6.QtCore.QGenericReturnArgumentHolder, /, val0: PySide6.QtCore.QGenericArgumentHolder = {}, val1: PySide6.QtCore.QGenericArgumentHolder = {}, val2: PySide6.QtCore.QGenericArgumentHolder = {}, val3: PySide6.QtCore.QGenericArgumentHolder = {}, val4: PySide6.QtCore.QGenericArgumentHolder = {}, val5: PySide6.QtCore.QGenericArgumentHolder = {}, val6: PySide6.QtCore.QGenericArgumentHolder = {}, val7: PySide6.QtCore.QGenericArgumentHolder = {}, val8: PySide6.QtCore.QGenericArgumentHolder = {}, val9: PySide6.QtCore.QGenericArgumentHolder = {})
+[ScanController] ⚡ Called from WORKER thread - marshaling to main
+[ScanController]    Current: <PySide6.QtCore.QThread(0x224bb7ccaa0) at 0x00000224A8CCFE00>, Main: <PySide6.QtCore.QThread(0x224e8080990, name = "Qt mainThread") at 0x00000224BB0CE140>
+[ScanWorkerAdapter] ✓ Called update_progress_safe
 [SCAN] Starting file 2/15: Alya1_3_2.jpeg
-2025-12-30 23:42:54,986 [INFO] [Scan] File 2/15: Alya1_3_2.jpeg
+2025-12-31 16:13:34,982 [INFO] [Scan] File 2/15: Alya1_3_2.jpeg
+[SCAN] 🔍 Emitting progress: percent=6, message='Starting file 2/15: Alya1_3_2.jpeg'
+[ScanWorkerAdapter] 🔍 Progress update: percent=6, message='Starting file 2/15: Alya1_3_2.jpeg...'
+[ScanController] ⚡ Called from WORKER thread - marshaling to main
+[ScanController]    Current: <PySide6.QtCore.QThread(0x224bb7ccaa0) at 0x00000224A8CCFE00>, Main: <PySide6.QtCore.QThread(0x224e8080990, name = "Qt mainThread") at 0x00000224BB0CE140>
+[ScanWorkerAdapter] ✓ Called update_progress_safe
 [SCAN] _process_file started for: Alya1_3_2.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-30 23:42:54,993 [INFO] 📷 Processing: Alya1_3_2.jpeg (345.2 KB)
+2025-12-31 16:13:34,982 [INFO] 📷 Processing: Alya1_3_2.jpeg (345.2 KB)
 [SCAN] Processing: Alya1_3_2.jpeg
 [SCAN] ✓ Metadata extracted: Alya1_3_2.jpeg [w=1440, h=2560, date=2024-11-29 17:04:13]
-2025-12-30 23:42:54,993 [INFO] [Scan] Metadata extracted successfully: Alya1_3_2.jpeg [w=1440, h=2560, date=2024-11-29 17:04:13]
+2025-12-31 16:13:34,982 [INFO] [Scan] Metadata extracted successfully: Alya1_3_2.jpeg [w=1440, h=2560, date=2024-11-29 17:04:13]
 [SCAN] Creating folder hierarchy for: Alya1_3_2.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=2
 [SCAN] ✓ File processed successfully: Alya1_3_2.jpeg
 [SCAN] Added to batch: Alya1_3_2.jpeg [batch size: 2/200]
 [SCAN] 🔍 Emitting progress: percent=13, message='✓ Processed: Alya1_3_2.jpeg (345.2 KB) [w=1440, h=2560, date=2024-11-29 17:04:13]'
 [ScanWorkerAdapter] 🔍 Progress update: percent=13, message='✓ Processed: Alya1_3_2.jpeg (345.2 KB) [w=1440, h=2560, date=2024-11-29 17:04:13]...'
-2025-12-30 23:42:55,003 [WARNING] Failed to send progress update: 'PySide6.QtCore.QMetaObject.invokeMethod' called with wrong argument types:
-  PySide6.QtCore.QMetaObject.invokeMethod(ScanController, str, ConnectionType, QGenericArgumentHolder, QGenericArgumentHolder)
-Supported signatures:
-  PySide6.QtCore.QMetaObject.invokeMethod(obj: PySide6.QtCore.QObject, member: bytes | bytearray | memoryview, ret: PySide6.QtCore.QGenericReturnArgument, /, val0: PySide6.QtCore.QGenericArgument = ..., val1: PySide6.QtCore.QGenericArgument = ..., val2: PySide6.QtCore.QGenericArgument = ..., val3: PySide6.QtCore.QGenericArgument = ..., val4: PySide6.QtCore.QGenericArgument = ..., val5: PySide6.QtCore.QGenericArgument = ..., val6: PySide6.QtCore.QGenericArgument = ..., val7: PySide6.QtCore.QGenericArgument = ..., val8: PySide6.QtCore.QGenericArgument = ..., val9: PySide6.QtCore.QGenericArgument = ...)
-  PySide6.QtCore.QMetaObject.invokeMethod(obj: PySide6.QtCore.QObject, member: bytes | bytearray | memoryview, arg__3: PySide6.QtCore.Qt.ConnectionType, ret: PySide6.QtCore.QGenericReturnArgument, /, val0: PySide6.QtCore.QGenericArgument = ..., val1: PySide6.QtCore.QGenericArgument = ..., val2: PySide6.QtCore.QGenericArgument = ..., val3: PySide6.QtCore.QGenericArgument = ..., val4: PySide6.QtCore.QGenericArgument = ..., val5: PySide6.QtCore.QGenericArgument = ..., val6: PySide6.QtCore.QGenericArgument = ..., val7: PySide6.QtCore.QGenericArgument = ..., val8: PySide6.QtCore.QGenericArgument = ..., val9: PySide6.QtCore.QGenericArgument = ...)
-  PySide6.QtCore.QMetaObject.invokeMethod(obj: PySide6.QtCore.QObject, member: bytes | bytearray | memoryview, type: PySide6.QtCore.Qt.ConnectionType, val0: PySide6.QtCore.QGenericArgument, /, val1: PySide6.QtCore.QGenericArgument = ..., val2: PySide6.QtCore.QGenericArgument = ..., val3: PySide6.QtCore.QGenericArgument = ..., val4: PySide6.QtCore.QGenericArgument = ..., val5: PySide6.QtCore.QGenericArgument = ..., val6: PySide6.QtCore.QGenericArgument = ..., val7: PySide6.QtCore.QGenericArgument = ..., val8: PySide6.QtCore.QGenericArgument = ..., val9: PySide6.QtCore.QGenericArgument = ...)
-  PySide6.QtCore.QMetaObject.invokeMethod(object: PySide6.QtCore.QObject, member: bytes | bytearray | memoryview, type: PySide6.QtCore.Qt.ConnectionType, /, val0: PySide6.QtCore.QGenericArgumentHolder = {}, val1: PySide6.QtCore.QGenericArgumentHolder = {}, val2: PySide6.QtCore.QGenericArgumentHolder = {}, val3: PySide6.QtCore.QGenericArgumentHolder = {}, val4: PySide6.QtCore.QGenericArgumentHolder = {}, val5: PySide6.QtCore.QGenericArgumentHolder = {}, val6: PySide6.QtCore.QGenericArgumentHolder = {}, val7: PySide6.QtCore.QGenericArgumentHolder = {}, val8: PySide6.QtCore.QGenericArgumentHolder = {}, val9: PySide6.QtCore.QGenericArgumentHolder = {})
-  PySide6.QtCore.QMetaObject.invokeMethod(object: PySide6.QtCore.QObject, member: bytes | bytearray | memoryview, type: PySide6.QtCore.Qt.ConnectionType, ret: PySide6.QtCore.QGenericReturnArgumentHolder, /, val0: PySide6.QtCore.QGenericArgumentHolder = {}, val1: PySide6.QtCore.QGenericArgumentHolder = {}, val2: PySide6.QtCore.QGenericArgumentHolder = {}, val3: PySide6.QtCore.QGenericArgumentHolder = {}, val4: PySide6.QtCore.QGenericArgumentHolder = {}, val5: PySide6.QtCore.QGenericArgumentHolder = {}, val6: PySide6.QtCore.QGenericArgumentHolder = {}, val7: PySide6.QtCore.QGenericArgumentHolder = {}, val8: PySide6.QtCore.QGenericArgumentHolder = {}, val9: PySide6.QtCore.QGenericArgumentHolder = {})
-  PySide6.QtCore.QMetaObject.invokeMethod(obj: PySide6.QtCore.QObject, member: bytes | bytearray | memoryview, val0: PySide6.QtCore.QGenericArgument, /, val1: PySide6.QtCore.QGenericArgument = ..., val2: PySide6.QtCore.QGenericArgument = ..., val3: PySide6.QtCore.QGenericArgument = ..., val4: PySide6.QtCore.QGenericArgument = ..., val5: PySide6.QtCore.QGenericArgument = ..., val6: PySide6.QtCore.QGenericArgument = ..., val7: PySide6.QtCore.QGenericArgument = ..., val8: PySide6.QtCore.QGenericArgument = ..., val9: PySide6.QtCore.QGenericArgument = ...)
-  PySide6.QtCore.QMetaObject.invokeMethod(object: PySide6.QtCore.QObject, member: bytes | bytearray | memoryview, /, val0: PySide6.QtCore.QGenericArgumentHolder = {}, val1: PySide6.QtCore.QGenericArgumentHolder = {}, val2: PySide6.QtCore.QGenericArgumentHolder = {}, val3: PySide6.QtCore.QGenericArgumentHolder = {}, val4: PySide6.QtCore.QGenericArgumentHolder = {}, val5: PySide6.QtCore.QGenericArgumentHolder = {}, val6: PySide6.QtCore.QGenericArgumentHolder = {}, val7: PySide6.QtCore.QGenericArgumentHolder = {}, val8: PySide6.QtCore.QGenericArgumentHolder = {}, val9: PySide6.QtCore.QGenericArgumentHolder = {})
-  PySide6.QtCore.QMetaObject.invokeMethod(object: PySide6.QtCore.QObject, member: bytes | bytearray | memoryview, ret: PySide6.QtCore.QGenericReturnArgumentHolder, /, val0: PySide6.QtCore.QGenericArgumentHolder = {}, val1: PySide6.QtCore.QGenericArgumentHolder = {}, val2: PySide6.QtCore.QGenericArgumentHolder = {}, val3: PySide6.QtCore.QGenericArgumentHolder = {}, val4: PySide6.QtCore.QGenericArgumentHolder = {}, val5: PySide6.QtCore.QGenericArgumentHolder = {}, val6: PySide6.QtCore.QGenericArgumentHolder = {}, val7: PySide6.QtCore.QGenericArgumentHolder = {}, val8: PySide6.QtCore.QGenericArgumentHolder = {}, val9: PySide6.QtCore.QGenericArgumentHolder = {})
+[ScanController] ⚡ Called from WORKER thread - marshaling to main
+[ScanController]    Current: <PySide6.QtCore.QThread(0x224bb7ccaa0) at 0x00000224A8CCFE00>, Main: <PySide6.QtCore.QThread(0x224e8080990, name = "Qt mainThread") at 0x00000224BB0CE140>
+[ScanWorkerAdapter] ✓ Called update_progress_safe
 [SCAN] Starting file 3/15: Alya2_2_2_2_2.jpeg
-2025-12-30 23:42:55,003 [INFO] [Scan] File 3/15: Alya2_2_2_2_2.jpeg
+2025-12-31 16:13:34,993 [INFO] [Scan] File 3/15: Alya2_2_2_2_2.jpeg
+[SCAN] 🔍 Emitting progress: percent=13, message='Starting file 3/15: Alya2_2_2_2_2.jpeg'
+[ScanWorkerAdapter] 🔍 Progress update: percent=13, message='Starting file 3/15: Alya2_2_2_2_2.jpeg...'
+[ScanController] ⚡ Called from WORKER thread - marshaling to main
+[ScanController]    Current: <PySide6.QtCore.QThread(0x224bb7ccaa0) at 0x00000224A8CCFE00>, Main: <PySide6.QtCore.QThread(0x224e8080990, name = "Qt mainThread") at 0x00000224BB0CE140>
+[ScanWorkerAdapter] ✓ Called update_progress_safe
 [SCAN] _process_file started for: Alya2_2_2_2_2.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-30 23:42:55,003 [INFO] 📷 Processing: Alya2_2_2_2_2.jpeg (107.1 KB)
+2025-12-31 16:13:34,993 [INFO] 📷 Processing: Alya2_2_2_2_2.jpeg (107.1 KB)
 [SCAN] Processing: Alya2_2_2_2_2.jpeg
 [SCAN] ✓ Metadata extracted: Alya2_2_2_2_2.jpeg [w=611, h=1081, date=2024-12-02 17:24:41]
-2025-12-30 23:42:55,010 [INFO] [Scan] Metadata extracted successfully: Alya2_2_2_2_2.jpeg [w=611, h=1081, date=2024-12-02 17:24:41]
+2025-12-31 16:13:34,993 [INFO] [Scan] Metadata extracted successfully: Alya2_2_2_2_2.jpeg [w=611, h=1081, date=2024-12-02 17:24:41]
 [SCAN] Creating folder hierarchy for: Alya2_2_2_2_2.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=2
 [SCAN] ✓ File processed successfully: Alya2_2_2_2_2.jpeg
 [SCAN] Added to batch: Alya2_2_2_2_2.jpeg [batch size: 3/200]
 [SCAN] 🔍 Emitting progress: percent=20, message='✓ Processed: Alya2_2_2_2_2.jpeg (107.1 KB) [w=611, h=1081, date=2024-12-02 17:24:41]'
 [ScanWorkerAdapter] 🔍 Progress update: percent=20, message='✓ Processed: Alya2_2_2_2_2.jpeg (107.1 KB) [w=611, h=1081, date=2024-12-02 17:24:41]...'
-2025-12-30 23:42:55,010 [WARNING] Failed to send progress update: 'PySide6.QtCore.QMetaObject.invokeMethod' called with wrong argument types:
-  PySide6.QtCore.QMetaObject.invokeMethod(ScanController, str, ConnectionType, QGenericArgumentHolder, QGenericArgumentHolder)
-Supported signatures:
-  PySide6.QtCore.QMetaObject.invokeMethod(obj: PySide6.QtCore.QObject, member: bytes | bytearray | memoryview, ret: PySide6.QtCore.QGenericReturnArgument, /, val0: PySide6.QtCore.QGenericArgument = ..., val1: PySide6.QtCore.QGenericArgument = ..., val2: PySide6.QtCore.QGenericArgument = ..., val3: PySide6.QtCore.QGenericArgument = ..., val4: PySide6.QtCore.QGenericArgument = ..., val5: PySide6.QtCore.QGenericArgument = ..., val6: PySide6.QtCore.QGenericArgument = ..., val7: PySide6.QtCore.QGenericArgument = ..., val8: PySide6.QtCore.QGenericArgument = ..., val9: PySide6.QtCore.QGenericArgument = ...)
-  PySide6.QtCore.QMetaObject.invokeMethod(obj: PySide6.QtCore.QObject, member: bytes | bytearray | memoryview, arg__3: PySide6.QtCore.Qt.ConnectionType, ret: PySide6.QtCore.QGenericReturnArgument, /, val0: PySide6.QtCore.QGenericArgument = ..., val1: PySide6.QtCore.QGenericArgument = ..., val2: PySide6.QtCore.QGenericArgument = ..., val3: PySide6.QtCore.QGenericArgument = ..., val4: PySide6.QtCore.QGenericArgument = ..., val5: PySide6.QtCore.QGenericArgument = ..., val6: PySide6.QtCore.QGenericArgument = ..., val7: PySide6.QtCore.QGenericArgument = ..., val8: PySide6.QtCore.QGenericArgument = ..., val9: PySide6.QtCore.QGenericArgument = ...)
-  PySide6.QtCore.QMetaObject.invokeMethod(obj: PySide6.QtCore.QObject, member: bytes | bytearray | memoryview, type: PySide6.QtCore.Qt.ConnectionType, val0: PySide6.QtCore.QGenericArgument, /, val1: PySide6.QtCore.QGenericArgument = ..., val2: PySide6.QtCore.QGenericArgument = ..., val3: PySide6.QtCore.QGenericArgument = ..., val4: PySide6.QtCore.QGenericArgument = ..., val5: PySide6.QtCore.QGenericArgument = ..., val6: PySide6.QtCore.QGenericArgument = ..., val7: PySide6.QtCore.QGenericArgument = ..., val8: PySide6.QtCore.QGenericArgument = ..., val9: PySide6.QtCore.QGenericArgument = ...)
-  PySide6.QtCore.QMetaObject.invokeMethod(object: PySide6.QtCore.QObject, member: bytes | bytearray | memoryview, type: PySide6.QtCore.Qt.ConnectionType, /, val0: PySide6.QtCore.QGenericArgumentHolder = {}, val1: PySide6.QtCore.QGenericArgumentHolder = {}, val2: PySide6.QtCore.QGenericArgumentHolder = {}, val3: PySide6.QtCore.QGenericArgumentHolder = {}, val4: PySide6.QtCore.QGenericArgumentHolder = {}, val5: PySide6.QtCore.QGenericArgumentHolder = {}, val6: PySide6.QtCore.QGenericArgumentHolder = {}, val7: PySide6.QtCore.QGenericArgumentHolder = {}, val8: PySide6.QtCore.QGenericArgumentHolder = {}, val9: PySide6.QtCore.QGenericArgumentHolder = {})
-  PySide6.QtCore.QMetaObject.invokeMethod(object: PySide6.QtCore.QObject, member: bytes | bytearray | memoryview, type: PySide6.QtCore.Qt.ConnectionType, ret: PySide6.QtCore.QGenericReturnArgumentHolder, /, val0: PySide6.QtCore.QGenericArgumentHolder = {}, val1: PySide6.QtCore.QGenericArgumentHolder = {}, val2: PySide6.QtCore.QGenericArgumentHolder = {}, val3: PySide6.QtCore.QGenericArgumentHolder = {}, val4: PySide6.QtCore.QGenericArgumentHolder = {}, val5: PySide6.QtCore.QGenericArgumentHolder = {}, val6: PySide6.QtCore.QGenericArgumentHolder = {}, val7: PySide6.QtCore.QGenericArgumentHolder = {}, val8: PySide6.QtCore.QGenericArgumentHolder = {}, val9: PySide6.QtCore.QGenericArgumentHolder = {})
-  PySide6.QtCore.QMetaObject.invokeMethod(obj: PySide6.QtCore.QObject, member: bytes | bytearray | memoryview, val0: PySide6.QtCore.QGenericArgument, /, val1: PySide6.QtCore.QGenericArgument = ..., val2: PySide6.QtCore.QGenericArgument = ..., val3: PySide6.QtCore.QGenericArgument = ..., val4: PySide6.QtCore.QGenericArgument = ..., val5: PySide6.QtCore.QGenericArgument = ..., val6: PySide6.QtCore.QGenericArgument = ..., val7: PySide6.QtCore.QGenericArgument = ..., val8: PySide6.QtCore.QGenericArgument = ..., val9: PySide6.QtCore.QGenericArgument = ...)
-  PySide6.QtCore.QMetaObject.invokeMethod(object: PySide6.QtCore.QObject, member: bytes | bytearray | memoryview, /, val0: PySide6.QtCore.QGenericArgumentHolder = {}, val1: PySide6.QtCore.QGenericArgumentHolder = {}, val2: PySide6.QtCore.QGenericArgumentHolder = {}, val3: PySide6.QtCore.QGenericArgumentHolder = {}, val4: PySide6.QtCore.QGenericArgumentHolder = {}, val5: PySide6.QtCore.QGenericArgumentHolder = {}, val6: PySide6.QtCore.QGenericArgumentHolder = {}, val7: PySide6.QtCore.QGenericArgumentHolder = {}, val8: PySide6.QtCore.QGenericArgumentHolder = {}, val9: PySide6.QtCore.QGenericArgumentHolder = {})
-  PySide6.QtCore.QMetaObject.invokeMethod(object: PySide6.QtCore.QObject, member: bytes | bytearray | memoryview, ret: PySide6.QtCore.QGenericReturnArgumentHolder, /, val0: PySide6.QtCore.QGenericArgumentHolder = {}, val1: PySide6.QtCore.QGenericArgumentHolder = {}, val2: PySide6.QtCore.QGenericArgumentHolder = {}, val3: PySide6.QtCore.QGenericArgumentHolder = {}, val4: PySide6.QtCore.QGenericArgumentHolder = {}, val5: PySide6.QtCore.QGenericArgumentHolder = {}, val6: PySide6.QtCore.QGenericArgumentHolder = {}, val7: PySide6.QtCore.QGenericArgumentHolder = {}, val8: PySide6.QtCore.QGenericArgumentHolder = {}, val9: PySide6.QtCore.QGenericArgumentHolder = {})
+[ScanController] ⚡ Called from WORKER thread - marshaling to main
+[ScanController]    Current: <PySide6.QtCore.QThread(0x224bb7ccaa0) at 0x00000224A8CCFE00>, Main: <PySide6.QtCore.QThread(0x224e8080990, name = "Qt mainThread") at 0x00000224BB0CE140>
+[ScanWorkerAdapter] ✓ Called update_progress_safe
 [SCAN] Starting file 4/15: Alya3_2_2_2_2.jpeg
-2025-12-30 23:42:55,010 [INFO] [Scan] File 4/15: Alya3_2_2_2_2.jpeg
+2025-12-31 16:13:35,008 [INFO] [Scan] File 4/15: Alya3_2_2_2_2.jpeg
+[SCAN] 🔍 Emitting progress: percent=20, message='Starting file 4/15: Alya3_2_2_2_2.jpeg'
+[ScanWorkerAdapter] 🔍 Progress update: percent=20, message='Starting file 4/15: Alya3_2_2_2_2.jpeg...'
+[ScanController] ⚡ Called from WORKER thread - marshaling to main
+[ScanController]    Current: <PySide6.QtCore.QThread(0x224bb7ccaa0) at 0x00000224A8CCFE00>, Main: <PySide6.QtCore.QThread(0x224e8080990, name = "Qt mainThread") at 0x00000224BB0CE140>
+[ScanWorkerAdapter] ✓ Called update_progress_safe
 [SCAN] _process_file started for: Alya3_2_2_2_2.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-30 23:42:55,010 [INFO] 📷 Processing: Alya3_2_2_2_2.jpeg (97.2 KB)
+2025-12-31 16:13:35,008 [INFO] 📷 Processing: Alya3_2_2_2_2.jpeg (97.2 KB)
 [SCAN] Processing: Alya3_2_2_2_2.jpeg
 [SCAN] ✓ Metadata extracted: Alya3_2_2_2_2.jpeg [w=1080, h=810, date=None]
-2025-12-30 23:42:55,010 [INFO] [Scan] Metadata extracted successfully: Alya3_2_2_2_2.jpeg [w=1080, h=810, date=None]
+2025-12-31 16:13:35,008 [INFO] [Scan] Metadata extracted successfully: Alya3_2_2_2_2.jpeg [w=1080, h=810, date=None]
 [SCAN] Creating folder hierarchy for: Alya3_2_2_2_2.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=2
 [SCAN] ✓ File processed successfully: Alya3_2_2_2_2.jpeg
 [SCAN] Added to batch: Alya3_2_2_2_2.jpeg [batch size: 4/200]
 [SCAN] 🔍 Emitting progress: percent=26, message='✓ Processed: Alya3_2_2_2_2.jpeg (97.2 KB) [w=1080, h=810, date=None]'
 [ScanWorkerAdapter] 🔍 Progress update: percent=26, message='✓ Processed: Alya3_2_2_2_2.jpeg (97.2 KB) [w=1080, h=810, date=None]...'
-2025-12-30 23:42:55,025 [WARNING] Failed to send progress update: 'PySide6.QtCore.QMetaObject.invokeMethod' called with wrong argument types:
-  PySide6.QtCore.QMetaObject.invokeMethod(ScanController, str, ConnectionType, QGenericArgumentHolder, QGenericArgumentHolder)
-Supported signatures:
-  PySide6.QtCore.QMetaObject.invokeMethod(obj: PySide6.QtCore.QObject, member: bytes | bytearray | memoryview, ret: PySide6.QtCore.QGenericReturnArgument, /, val0: PySide6.QtCore.QGenericArgument = ..., val1: PySide6.QtCore.QGenericArgument = ..., val2: PySide6.QtCore.QGenericArgument = ..., val3: PySide6.QtCore.QGenericArgument = ..., val4: PySide6.QtCore.QGenericArgument = ..., val5: PySide6.QtCore.QGenericArgument = ..., val6: PySide6.QtCore.QGenericArgument = ..., val7: PySide6.QtCore.QGenericArgument = ..., val8: PySide6.QtCore.QGenericArgument = ..., val9: PySide6.QtCore.QGenericArgument = ...)
-  PySide6.QtCore.QMetaObject.invokeMethod(obj: PySide6.QtCore.QObject, member: bytes | bytearray | memoryview, arg__3: PySide6.QtCore.Qt.ConnectionType, ret: PySide6.QtCore.QGenericReturnArgument, /, val0: PySide6.QtCore.QGenericArgument = ..., val1: PySide6.QtCore.QGenericArgument = ..., val2: PySide6.QtCore.QGenericArgument = ..., val3: PySide6.QtCore.QGenericArgument = ..., val4: PySide6.QtCore.QGenericArgument = ..., val5: PySide6.QtCore.QGenericArgument = ..., val6: PySide6.QtCore.QGenericArgument = ..., val7: PySide6.QtCore.QGenericArgument = ..., val8: PySide6.QtCore.QGenericArgument = ..., val9: PySide6.QtCore.QGenericArgument = ...)
-  PySide6.QtCore.QMetaObject.invokeMethod(obj: PySide6.QtCore.QObject, member: bytes | bytearray | memoryview, type: PySide6.QtCore.Qt.ConnectionType, val0: PySide6.QtCore.QGenericArgument, /, val1: PySide6.QtCore.QGenericArgument = ..., val2: PySide6.QtCore.QGenericArgument = ..., val3: PySide6.QtCore.QGenericArgument = ..., val4: PySide6.QtCore.QGenericArgument = ..., val5: PySide6.QtCore.QGenericArgument = ..., val6: PySide6.QtCore.QGenericArgument = ..., val7: PySide6.QtCore.QGenericArgument = ..., val8: PySide6.QtCore.QGenericArgument = ..., val9: PySide6.QtCore.QGenericArgument = ...)
-  PySide6.QtCore.QMetaObject.invokeMethod(object: PySide6.QtCore.QObject, member: bytes | bytearray | memoryview, type: PySide6.QtCore.Qt.ConnectionType, /, val0: PySide6.QtCore.QGenericArgumentHolder = {}, val1: PySide6.QtCore.QGenericArgumentHolder = {}, val2: PySide6.QtCore.QGenericArgumentHolder = {}, val3: PySide6.QtCore.QGenericArgumentHolder = {}, val4: PySide6.QtCore.QGenericArgumentHolder = {}, val5: PySide6.QtCore.QGenericArgumentHolder = {}, val6: PySide6.QtCore.QGenericArgumentHolder = {}, val7: PySide6.QtCore.QGenericArgumentHolder = {}, val8: PySide6.QtCore.QGenericArgumentHolder = {}, val9: PySide6.QtCore.QGenericArgumentHolder = {})
-  PySide6.QtCore.QMetaObject.invokeMethod(object: PySide6.QtCore.QObject, member: bytes | bytearray | memoryview, type: PySide6.QtCore.Qt.ConnectionType, ret: PySide6.QtCore.QGenericReturnArgumentHolder, /, val0: PySide6.QtCore.QGenericArgumentHolder = {}, val1: PySide6.QtCore.QGenericArgumentHolder = {}, val2: PySide6.QtCore.QGenericArgumentHolder = {}, val3: PySide6.QtCore.QGenericArgumentHolder = {}, val4: PySide6.QtCore.QGenericArgumentHolder = {}, val5: PySide6.QtCore.QGenericArgumentHolder = {}, val6: PySide6.QtCore.QGenericArgumentHolder = {}, val7: PySide6.QtCore.QGenericArgumentHolder = {}, val8: PySide6.QtCore.QGenericArgumentHolder = {}, val9: PySide6.QtCore.QGenericArgumentHolder = {})
-  PySide6.QtCore.QMetaObject.invokeMethod(obj: PySide6.QtCore.QObject, member: bytes | bytearray | memoryview, val0: PySide6.QtCore.QGenericArgument, /, val1: PySide6.QtCore.QGenericArgument = ..., val2: PySide6.QtCore.QGenericArgument = ..., val3: PySide6.QtCore.QGenericArgument = ..., val4: PySide6.QtCore.QGenericArgument = ..., val5: PySide6.QtCore.QGenericArgument = ..., val6: PySide6.QtCore.QGenericArgument = ..., val7: PySide6.QtCore.QGenericArgument = ..., val8: PySide6.QtCore.QGenericArgument = ..., val9: PySide6.QtCore.QGenericArgument = ...)
-  PySide6.QtCore.QMetaObject.invokeMethod(object: PySide6.QtCore.QObject, member: bytes | bytearray | memoryview, /, val0: PySide6.QtCore.QGenericArgumentHolder = {}, val1: PySide6.QtCore.QGenericArgumentHolder = {}, val2: PySide6.QtCore.QGenericArgumentHolder = {}, val3: PySide6.QtCore.QGenericArgumentHolder = {}, val4: PySide6.QtCore.QGenericArgumentHolder = {}, val5: PySide6.QtCore.QGenericArgumentHolder = {}, val6: PySide6.QtCore.QGenericArgumentHolder = {}, val7: PySide6.QtCore.QGenericArgumentHolder = {}, val8: PySide6.QtCore.QGenericArgumentHolder = {}, val9: PySide6.QtCore.QGenericArgumentHolder = {})
-  PySide6.QtCore.QMetaObject.invokeMethod(object: PySide6.QtCore.QObject, member: bytes | bytearray | memoryview, ret: PySide6.QtCore.QGenericReturnArgumentHolder, /, val0: PySide6.QtCore.QGenericArgumentHolder = {}, val1: PySide6.QtCore.QGenericArgumentHolder = {}, val2: PySide6.QtCore.QGenericArgumentHolder = {}, val3: PySide6.QtCore.QGenericArgumentHolder = {}, val4: PySide6.QtCore.QGenericArgumentHolder = {}, val5: PySide6.QtCore.QGenericArgumentHolder = {}, val6: PySide6.QtCore.QGenericArgumentHolder = {}, val7: PySide6.QtCore.QGenericArgumentHolder = {}, val8: PySide6.QtCore.QGenericArgumentHolder = {}, val9: PySide6.QtCore.QGenericArgumentHolder = {})
+[ScanController] ⚡ Called from WORKER thread - marshaling to main
+[ScanController]    Current: <PySide6.QtCore.QThread(0x224bb7ccaa0) at 0x00000224A8CCFE00>, Main: <PySide6.QtCore.QThread(0x224e8080990, name = "Qt mainThread") at 0x00000224BB0CE140>
+[ScanWorkerAdapter] ✓ Called update_progress_safe
 [SCAN] Starting file 5/15: Alya_2_2.jpeg
-2025-12-30 23:42:55,025 [INFO] [Scan] File 5/15: Alya_2_2.jpeg
+2025-12-31 16:13:35,019 [INFO] [Scan] File 5/15: Alya_2_2.jpeg
+[SCAN] 🔍 Emitting progress: percent=26, message='Starting file 5/15: Alya_2_2.jpeg'
+[ScanWorkerAdapter] 🔍 Progress update: percent=26, message='Starting file 5/15: Alya_2_2.jpeg...'
+[ScanController] ⚡ Called from WORKER thread - marshaling to main
+[ScanController]    Current: <PySide6.QtCore.QThread(0x224bb7ccaa0) at 0x00000224A8CCFE00>, Main: <PySide6.QtCore.QThread(0x224e8080990, name = "Qt mainThread") at 0x00000224BB0CE140>
+[ScanWorkerAdapter] ✓ Called update_progress_safe
 [SCAN] _process_file started for: Alya_2_2.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-30 23:42:55,025 [INFO] 📷 Processing: Alya_2_2.jpeg (181.4 KB)
+2025-12-31 16:13:35,019 [INFO] 📷 Processing: Alya_2_2.jpeg (181.4 KB)
 [SCAN] Processing: Alya_2_2.jpeg
 [SCAN] ✓ Metadata extracted: Alya_2_2.jpeg [w=965, h=1240, date=None]
-2025-12-30 23:42:55,025 [INFO] [Scan] Metadata extracted successfully: Alya_2_2.jpeg [w=965, h=1240, date=None]
+2025-12-31 16:13:35,019 [INFO] [Scan] Metadata extracted successfully: Alya_2_2.jpeg [w=965, h=1240, date=None]
 [SCAN] Creating folder hierarchy for: Alya_2_2.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=2
 [SCAN] ✓ File processed successfully: Alya_2_2.jpeg
 [SCAN] Added to batch: Alya_2_2.jpeg [batch size: 5/200]
 [SCAN] 🔍 Emitting progress: percent=33, message='✓ Processed: Alya_2_2.jpeg (181.4 KB) [w=965, h=1240, date=None]'
 [ScanWorkerAdapter] 🔍 Progress update: percent=33, message='✓ Processed: Alya_2_2.jpeg (181.4 KB) [w=965, h=1240, date=None]...'
-2025-12-30 23:42:55,041 [WARNING] Failed to send progress update: 'PySide6.QtCore.QMetaObject.invokeMethod' called with wrong argument types:
-  PySide6.QtCore.QMetaObject.invokeMethod(ScanController, str, ConnectionType, QGenericArgumentHolder, QGenericArgumentHolder)
-Supported signatures:
-  PySide6.QtCore.QMetaObject.invokeMethod(obj: PySide6.QtCore.QObject, member: bytes | bytearray | memoryview, ret: PySide6.QtCore.QGenericReturnArgument, /, val0: PySide6.QtCore.QGenericArgument = ..., val1: PySide6.QtCore.QGenericArgument = ..., val2: PySide6.QtCore.QGenericArgument = ..., val3: PySide6.QtCore.QGenericArgument = ..., val4: PySide6.QtCore.QGenericArgument = ..., val5: PySide6.QtCore.QGenericArgument = ..., val6: PySide6.QtCore.QGenericArgument = ..., val7: PySide6.QtCore.QGenericArgument = ..., val8: PySide6.QtCore.QGenericArgument = ..., val9: PySide6.QtCore.QGenericArgument = ...)
-  PySide6.QtCore.QMetaObject.invokeMethod(obj: PySide6.QtCore.QObject, member: bytes | bytearray | memoryview, arg__3: PySide6.QtCore.Qt.ConnectionType, ret: PySide6.QtCore.QGenericReturnArgument, /, val0: PySide6.QtCore.QGenericArgument = ..., val1: PySide6.QtCore.QGenericArgument = ..., val2: PySide6.QtCore.QGenericArgument = ..., val3: PySide6.QtCore.QGenericArgument = ..., val4: PySide6.QtCore.QGenericArgument = ..., val5: PySide6.QtCore.QGenericArgument = ..., val6: PySide6.QtCore.QGenericArgument = ..., val7: PySide6.QtCore.QGenericArgument = ..., val8: PySide6.QtCore.QGenericArgument = ..., val9: PySide6.QtCore.QGenericArgument = ...)
-  PySide6.QtCore.QMetaObject.invokeMethod(obj: PySide6.QtCore.QObject, member: bytes | bytearray | memoryview, type: PySide6.QtCore.Qt.ConnectionType, val0: PySide6.QtCore.QGenericArgument, /, val1: PySide6.QtCore.QGenericArgument = ..., val2: PySide6.QtCore.QGenericArgument = ..., val3: PySide6.QtCore.QGenericArgument = ..., val4: PySide6.QtCore.QGenericArgument = ..., val5: PySide6.QtCore.QGenericArgument = ..., val6: PySide6.QtCore.QGenericArgument = ..., val7: PySide6.QtCore.QGenericArgument = ..., val8: PySide6.QtCore.QGenericArgument = ..., val9: PySide6.QtCore.QGenericArgument = ...)
-  PySide6.QtCore.QMetaObject.invokeMethod(object: PySide6.QtCore.QObject, member: bytes | bytearray | memoryview, type: PySide6.QtCore.Qt.ConnectionType, /, val0: PySide6.QtCore.QGenericArgumentHolder = {}, val1: PySide6.QtCore.QGenericArgumentHolder = {}, val2: PySide6.QtCore.QGenericArgumentHolder = {}, val3: PySide6.QtCore.QGenericArgumentHolder = {}, val4: PySide6.QtCore.QGenericArgumentHolder = {}, val5: PySide6.QtCore.QGenericArgumentHolder = {}, val6: PySide6.QtCore.QGenericArgumentHolder = {}, val7: PySide6.QtCore.QGenericArgumentHolder = {}, val8: PySide6.QtCore.QGenericArgumentHolder = {}, val9: PySide6.QtCore.QGenericArgumentHolder = {})
-  PySide6.QtCore.QMetaObject.invokeMethod(object: PySide6.QtCore.QObject, member: bytes | bytearray | memoryview, type: PySide6.QtCore.Qt.ConnectionType, ret: PySide6.QtCore.QGenericReturnArgumentHolder, /, val0: PySide6.QtCore.QGenericArgumentHolder = {}, val1: PySide6.QtCore.QGenericArgumentHolder = {}, val2: PySide6.QtCore.QGenericArgumentHolder = {}, val3: PySide6.QtCore.QGenericArgumentHolder = {}, val4: PySide6.QtCore.QGenericArgumentHolder = {}, val5: PySide6.QtCore.QGenericArgumentHolder = {}, val6: PySide6.QtCore.QGenericArgumentHolder = {}, val7: PySide6.QtCore.QGenericArgumentHolder = {}, val8: PySide6.QtCore.QGenericArgumentHolder = {}, val9: PySide6.QtCore.QGenericArgumentHolder = {})
-  PySide6.QtCore.QMetaObject.invokeMethod(obj: PySide6.QtCore.QObject, member: bytes | bytearray | memoryview, val0: PySide6.QtCore.QGenericArgument, /, val1: PySide6.QtCore.QGenericArgument = ..., val2: PySide6.QtCore.QGenericArgument = ..., val3: PySide6.QtCore.QGenericArgument = ..., val4: PySide6.QtCore.QGenericArgument = ..., val5: PySide6.QtCore.QGenericArgument = ..., val6: PySide6.QtCore.QGenericArgument = ..., val7: PySide6.QtCore.QGenericArgument = ..., val8: PySide6.QtCore.QGenericArgument = ..., val9: PySide6.QtCore.QGenericArgument = ...)
-  PySide6.QtCore.QMetaObject.invokeMethod(object: PySide6.QtCore.QObject, member: bytes | bytearray | memoryview, /, val0: PySide6.QtCore.QGenericArgumentHolder = {}, val1: PySide6.QtCore.QGenericArgumentHolder = {}, val2: PySide6.QtCore.QGenericArgumentHolder = {}, val3: PySide6.QtCore.QGenericArgumentHolder = {}, val4: PySide6.QtCore.QGenericArgumentHolder = {}, val5: PySide6.QtCore.QGenericArgumentHolder = {}, val6: PySide6.QtCore.QGenericArgumentHolder = {}, val7: PySide6.QtCore.QGenericArgumentHolder = {}, val8: PySide6.QtCore.QGenericArgumentHolder = {}, val9: PySide6.QtCore.QGenericArgumentHolder = {})
-  PySide6.QtCore.QMetaObject.invokeMethod(object: PySide6.QtCore.QObject, member: bytes | bytearray | memoryview, ret: PySide6.QtCore.QGenericReturnArgumentHolder, /, val0: PySide6.QtCore.QGenericArgumentHolder = {}, val1: PySide6.QtCore.QGenericArgumentHolder = {}, val2: PySide6.QtCore.QGenericArgumentHolder = {}, val3: PySide6.QtCore.QGenericArgumentHolder = {}, val4: PySide6.QtCore.QGenericArgumentHolder = {}, val5: PySide6.QtCore.QGenericArgumentHolder = {}, val6: PySide6.QtCore.QGenericArgumentHolder = {}, val7: PySide6.QtCore.QGenericArgumentHolder = {}, val8: PySide6.QtCore.QGenericArgumentHolder = {}, val9: PySide6.QtCore.QGenericArgumentHolder = {})
+[ScanController] ⚡ Called from WORKER thread - marshaling to main
+[ScanController]    Current: <PySide6.QtCore.QThread(0x224bb7ccaa0) at 0x00000224A8CCFE00>, Main: <PySide6.QtCore.QThread(0x224e8080990, name = "Qt mainThread") at 0x00000224BB0CE140>
+[ScanWorkerAdapter] ✓ Called update_progress_safe
 [SCAN] Starting file 6/15: Alya_2_2_2_2.jpeg
-2025-12-30 23:42:55,041 [INFO] [Scan] File 6/15: Alya_2_2_2_2.jpeg
+2025-12-31 16:13:35,024 [INFO] [Scan] File 6/15: Alya_2_2_2_2.jpeg
+[SCAN] 🔍 Emitting progress: percent=33, message='Starting file 6/15: Alya_2_2_2_2.jpeg'
+[ScanWorkerAdapter] 🔍 Progress update: percent=33, message='Starting file 6/15: Alya_2_2_2_2.jpeg...'
+[ScanController] ⚡ Called from WORKER thread - marshaling to main
+[ScanController]    Current: <PySide6.QtCore.QThread(0x224bb7ccaa0) at 0x00000224A8CCFE00>, Main: <PySide6.QtCore.QThread(0x224e8080990, name = "Qt mainThread") at 0x00000224BB0CE140>
+[ScanWorkerAdapter] ✓ Called update_progress_safe
 [SCAN] _process_file started for: Alya_2_2_2_2.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-30 23:42:55,041 [INFO] 📷 Processing: Alya_2_2_2_2.jpeg (181.4 KB)
+2025-12-31 16:13:35,031 [INFO] 📷 Processing: Alya_2_2_2_2.jpeg (181.4 KB)
 [SCAN] Processing: Alya_2_2_2_2.jpeg
 [SCAN] ✓ Metadata extracted: Alya_2_2_2_2.jpeg [w=965, h=1240, date=None]
-2025-12-30 23:42:55,041 [INFO] [Scan] Metadata extracted successfully: Alya_2_2_2_2.jpeg [w=965, h=1240, date=None]
+2025-12-31 16:13:35,031 [INFO] [Scan] Metadata extracted successfully: Alya_2_2_2_2.jpeg [w=965, h=1240, date=None]
 [SCAN] Creating folder hierarchy for: Alya_2_2_2_2.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=2
 [SCAN] ✓ File processed successfully: Alya_2_2_2_2.jpeg
 [SCAN] Added to batch: Alya_2_2_2_2.jpeg [batch size: 6/200]
 [SCAN] Starting file 7/15: Ammar-Ref(1)_2_2.png
-2025-12-30 23:42:55,041 [INFO] [Scan] File 7/15: Ammar-Ref(1)_2_2.png
+2025-12-31 16:13:35,040 [INFO] [Scan] File 7/15: Ammar-Ref(1)_2_2.png
+[SCAN] 🔍 Emitting progress: percent=40, message='Starting file 7/15: Ammar-Ref(1)_2_2.png'
+[ScanWorkerAdapter] 🔍 Progress update: percent=40, message='Starting file 7/15: Ammar-Ref(1)_2_2.png...'
+[ScanController] ⚡ Called from WORKER thread - marshaling to main
+[ScanController]    Current: <PySide6.QtCore.QThread(0x224bb7ccaa0) at 0x00000224A8CCFE00>, Main: <PySide6.QtCore.QThread(0x224e8080990, name = "Qt mainThread") at 0x00000224BB0CE140>
+[ScanWorkerAdapter] ✓ Called update_progress_safe
 [SCAN] _process_file started for: Ammar-Ref(1)_2_2.png
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-30 23:42:55,041 [INFO] 📷 Processing: Ammar-Ref(1)_2_2.png (800.9 KB)
+2025-12-31 16:13:35,040 [INFO] 📷 Processing: Ammar-Ref(1)_2_2.png (800.9 KB)
 [SCAN] Processing: Ammar-Ref(1)_2_2.png
 [SCAN] ✓ Metadata extracted: Ammar-Ref(1)_2_2.png [w=1140, h=791, date=None]
-2025-12-30 23:42:55,056 [INFO] [Scan] Metadata extracted successfully: Ammar-Ref(1)_2_2.png [w=1140, h=791, date=None]
+2025-12-31 16:13:35,056 [INFO] [Scan] Metadata extracted successfully: Ammar-Ref(1)_2_2.png [w=1140, h=791, date=None]
 [SCAN] Creating folder hierarchy for: Ammar-Ref(1)_2_2.png
 [SCAN] ✓ Folder hierarchy created: folder_id=2
 [SCAN] ✓ File processed successfully: Ammar-Ref(1)_2_2.png
 [SCAN] Added to batch: Ammar-Ref(1)_2_2.png [batch size: 7/200]
 [SCAN] Starting file 8/15: Ammar-Ref_2_2_2.png
-2025-12-30 23:42:55,072 [INFO] [Scan] File 8/15: Ammar-Ref_2_2_2.png
+2025-12-31 16:13:35,065 [INFO] [Scan] File 8/15: Ammar-Ref_2_2_2.png
+[SCAN] 🔍 Emitting progress: percent=46, message='Starting file 8/15: Ammar-Ref_2_2_2.png'
+[ScanWorkerAdapter] 🔍 Progress update: percent=46, message='Starting file 8/15: Ammar-Ref_2_2_2.png...'
+[ScanController] ⚡ Called from WORKER thread - marshaling to main
+[ScanController]    Current: <PySide6.QtCore.QThread(0x224bb7ccaa0) at 0x00000224A8CCFE00>, Main: <PySide6.QtCore.QThread(0x224e8080990, name = "Qt mainThread") at 0x00000224BB0CE140>
+[ScanWorkerAdapter] ✓ Called update_progress_safe
 [SCAN] _process_file started for: Ammar-Ref_2_2_2.png
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-30 23:42:55,072 [INFO] 📷 Processing: Ammar-Ref_2_2_2.png (800.9 KB)
+2025-12-31 16:13:35,065 [INFO] 📷 Processing: Ammar-Ref_2_2_2.png (800.9 KB)
 [SCAN] Processing: Ammar-Ref_2_2_2.png
 [SCAN] ✓ Metadata extracted: Ammar-Ref_2_2_2.png [w=1140, h=791, date=None]
-2025-12-30 23:42:55,089 [INFO] [Scan] Metadata extracted successfully: Ammar-Ref_2_2_2.png [w=1140, h=791, date=None]
+2025-12-31 16:13:35,072 [INFO] [Scan] Metadata extracted successfully: Ammar-Ref_2_2_2.png [w=1140, h=791, date=None]
 [SCAN] Creating folder hierarchy for: Ammar-Ref_2_2_2.png
 [SCAN] ✓ Folder hierarchy created: folder_id=2
 [SCAN] ✓ File processed successfully: Ammar-Ref_2_2_2.png
 [SCAN] Added to batch: Ammar-Ref_2_2_2.png [batch size: 8/200]
 [SCAN] Starting file 9/15: Ammar-Ref_3_2.png
-2025-12-30 23:42:55,089 [INFO] [Scan] File 9/15: Ammar-Ref_3_2.png
+2025-12-31 16:13:35,087 [INFO] [Scan] File 9/15: Ammar-Ref_3_2.png
+[SCAN] 🔍 Emitting progress: percent=53, message='Starting file 9/15: Ammar-Ref_3_2.png'
+[ScanWorkerAdapter] 🔍 Progress update: percent=53, message='Starting file 9/15: Ammar-Ref_3_2.png...'
+[ScanController] ⚡ Called from WORKER thread - marshaling to main
+[ScanController]    Current: <PySide6.QtCore.QThread(0x224bb7ccaa0) at 0x00000224A8CCFE00>, Main: <PySide6.QtCore.QThread(0x224e8080990, name = "Qt mainThread") at 0x00000224BB0CE140>
+[ScanWorkerAdapter] ✓ Called update_progress_safe
 [SCAN] _process_file started for: Ammar-Ref_3_2.png
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-30 23:42:55,099 [INFO] 📷 Processing: Ammar-Ref_3_2.png (800.9 KB)
+2025-12-31 16:13:35,087 [INFO] 📷 Processing: Ammar-Ref_3_2.png (800.9 KB)
 [SCAN] Processing: Ammar-Ref_3_2.png
 [SCAN] ✓ Metadata extracted: Ammar-Ref_3_2.png [w=1140, h=791, date=None]
-2025-12-30 23:42:55,104 [INFO] [Scan] Metadata extracted successfully: Ammar-Ref_3_2.png [w=1140, h=791, date=None]
+2025-12-31 16:13:35,098 [INFO] [Scan] Metadata extracted successfully: Ammar-Ref_3_2.png [w=1140, h=791, date=None]
 [SCAN] Creating folder hierarchy for: Ammar-Ref_3_2.png
 [SCAN] ✓ Folder hierarchy created: folder_id=2
 [SCAN] ✓ File processed successfully: Ammar-Ref_3_2.png
 [SCAN] Added to batch: Ammar-Ref_3_2.png [batch size: 9/200]
 [SCAN] Starting file 10/15: Ammar1_2_2_2.jpeg
-2025-12-30 23:42:55,104 [INFO] [Scan] File 10/15: Ammar1_2_2_2.jpeg
+2025-12-31 16:13:35,104 [INFO] [Scan] File 10/15: Ammar1_2_2_2.jpeg
+[SCAN] 🔍 Emitting progress: percent=60, message='Starting file 10/15: Ammar1_2_2_2.jpeg'
+[ScanWorkerAdapter] 🔍 Progress update: percent=60, message='Starting file 10/15: Ammar1_2_2_2.jpeg...'
+[ScanController] ⚡ Called from WORKER thread - marshaling to main
+[ScanController]    Current: <PySide6.QtCore.QThread(0x224bb7ccaa0) at 0x00000224A8CCFE00>, Main: <PySide6.QtCore.QThread(0x224e8080990, name = "Qt mainThread") at 0x00000224BB0CE140>
+[ScanWorkerAdapter] ✓ Called update_progress_safe
 [SCAN] _process_file started for: Ammar1_2_2_2.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-30 23:42:55,104 [INFO] 📷 Processing: Ammar1_2_2_2.jpeg (4364.7 KB)
+2025-12-31 16:13:35,104 [INFO] 📷 Processing: Ammar1_2_2_2.jpeg (4364.7 KB)
 [SCAN] Processing: Ammar1_2_2_2.jpeg
 [SCAN] ✓ Metadata extracted: Ammar1_2_2_2.jpeg [w=4032, h=3024, date=2024-08-11 19:40:38]
-2025-12-30 23:42:55,120 [INFO] [Scan] Metadata extracted successfully: Ammar1_2_2_2.jpeg [w=4032, h=3024, date=2024-08-11 19:40:38]
+2025-12-31 16:13:35,126 [INFO] [Scan] Metadata extracted successfully: Ammar1_2_2_2.jpeg [w=4032, h=3024, date=2024-08-11 19:40:38]
 [SCAN] Creating folder hierarchy for: Ammar1_2_2_2.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=2
 [SCAN] ✓ File processed successfully: Ammar1_2_2_2.jpeg
 [SCAN] Added to batch: Ammar1_2_2_2.jpeg [batch size: 10/200]
 [SCAN] Starting file 11/15: Ammar2_2_2_2.jpeg
-2025-12-30 23:42:55,139 [INFO] [Scan] File 11/15: Ammar2_2_2_2.jpeg
+2025-12-31 16:13:35,139 [INFO] [Scan] File 11/15: Ammar2_2_2_2.jpeg
+[SCAN] 🔍 Emitting progress: percent=66, message='Starting file 11/15: Ammar2_2_2_2.jpeg'
+[ScanWorkerAdapter] 🔍 Progress update: percent=66, message='Starting file 11/15: Ammar2_2_2_2.jpeg...'
+[ScanController] ⚡ Called from WORKER thread - marshaling to main
+[ScanController]    Current: <PySide6.QtCore.QThread(0x224bb7ccaa0) at 0x00000224A8CCFE00>, Main: <PySide6.QtCore.QThread(0x224e8080990, name = "Qt mainThread") at 0x00000224BB0CE140>
+[ScanWorkerAdapter] ✓ Called update_progress_safe
 [SCAN] _process_file started for: Ammar2_2_2_2.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-30 23:42:55,139 [INFO] 📷 Processing: Ammar2_2_2_2.jpeg (2338.2 KB)
+2025-12-31 16:13:35,139 [INFO] 📷 Processing: Ammar2_2_2_2.jpeg (2338.2 KB)
 [SCAN] Processing: Ammar2_2_2_2.jpeg
 [SCAN] ✓ Metadata extracted: Ammar2_2_2_2.jpeg [w=3664, h=2062, date=2024-11-18 14:17:43]
-2025-12-30 23:42:55,139 [INFO] [Scan] Metadata extracted successfully: Ammar2_2_2_2.jpeg [w=3664, h=2062, date=2024-11-18 14:17:43]
+2025-12-31 16:13:35,141 [INFO] [Scan] Metadata extracted successfully: Ammar2_2_2_2.jpeg [w=3664, h=2062, date=2024-11-18 14:17:43]
 [SCAN] Creating folder hierarchy for: Ammar2_2_2_2.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=2
 [SCAN] ✓ File processed successfully: Ammar2_2_2_2.jpeg
 [SCAN] Added to batch: Ammar2_2_2_2.jpeg [batch size: 11/200]
 [SCAN] Starting file 12/15: Ammar3_2_2_2_2.jpeg
-2025-12-30 23:42:55,151 [INFO] [Scan] File 12/15: Ammar3_2_2_2_2.jpeg
+2025-12-31 16:13:35,142 [INFO] [Scan] File 12/15: Ammar3_2_2_2_2.jpeg
+[SCAN] 🔍 Emitting progress: percent=73, message='Starting file 12/15: Ammar3_2_2_2_2.jpeg'
+[ScanWorkerAdapter] 🔍 Progress update: percent=73, message='Starting file 12/15: Ammar3_2_2_2_2.jpeg...'
+[ScanController] ⚡ Called from WORKER thread - marshaling to main
+[ScanController]    Current: <PySide6.QtCore.QThread(0x224bb7ccaa0) at 0x00000224A8CCFE00>, Main: <PySide6.QtCore.QThread(0x224e8080990, name = "Qt mainThread") at 0x00000224BB0CE140>
+[ScanWorkerAdapter] ✓ Called update_progress_safe
 [SCAN] _process_file started for: Ammar3_2_2_2_2.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-30 23:42:55,151 [INFO] 📷 Processing: Ammar3_2_2_2_2.jpeg (171.0 KB)
+2025-12-31 16:13:35,151 [INFO] 📷 Processing: Ammar3_2_2_2_2.jpeg (171.0 KB)
 [SCAN] Processing: Ammar3_2_2_2_2.jpeg
 [SCAN] ✓ Metadata extracted: Ammar3_2_2_2_2.jpeg [w=1284, h=2778, date=None]
-2025-12-30 23:42:55,151 [INFO] [Scan] Metadata extracted successfully: Ammar3_2_2_2_2.jpeg [w=1284, h=2778, date=None]
+2025-12-31 16:13:35,151 [INFO] [Scan] Metadata extracted successfully: Ammar3_2_2_2_2.jpeg [w=1284, h=2778, date=None]
 [SCAN] Creating folder hierarchy for: Ammar3_2_2_2_2.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=2
 [SCAN] ✓ File processed successfully: Ammar3_2_2_2_2.jpeg
 [SCAN] Added to batch: Ammar3_2_2_2_2.jpeg [batch size: 12/200]
 [SCAN] Starting file 13/15: IMG_6850_2_2_2.jpeg
-2025-12-30 23:42:55,151 [INFO] [Scan] File 13/15: IMG_6850_2_2_2.jpeg
+2025-12-31 16:13:35,159 [INFO] [Scan] File 13/15: IMG_6850_2_2_2.jpeg
+[SCAN] 🔍 Emitting progress: percent=80, message='Starting file 13/15: IMG_6850_2_2_2.jpeg'
+[ScanWorkerAdapter] 🔍 Progress update: percent=80, message='Starting file 13/15: IMG_6850_2_2_2.jpeg...'
+[ScanController] ⚡ Called from WORKER thread - marshaling to main
+[ScanController]    Current: <PySide6.QtCore.QThread(0x224bb7ccaa0) at 0x00000224A8CCFE00>, Main: <PySide6.QtCore.QThread(0x224e8080990, name = "Qt mainThread") at 0x00000224BB0CE140>
+[ScanWorkerAdapter] ✓ Called update_progress_safe
 [SCAN] _process_file started for: IMG_6850_2_2_2.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-30 23:42:55,167 [INFO] 📷 Processing: IMG_6850_2_2_2.jpeg (3027.8 KB)
+2025-12-31 16:13:35,159 [INFO] 📷 Processing: IMG_6850_2_2_2.jpeg (3027.8 KB)
 [SCAN] Processing: IMG_6850_2_2_2.jpeg
 [SCAN] ✓ Metadata extracted: IMG_6850_2_2_2.jpeg [w=4032, h=3024, date=2025-07-30 23:19:46]
-2025-12-30 23:42:55,167 [INFO] [Scan] Metadata extracted successfully: IMG_6850_2_2_2.jpeg [w=4032, h=3024, date=2025-07-30 23:19:46]
+2025-12-31 16:13:35,159 [INFO] [Scan] Metadata extracted successfully: IMG_6850_2_2_2.jpeg [w=4032, h=3024, date=2025-07-30 23:19:46]
 [SCAN] Creating folder hierarchy for: IMG_6850_2_2_2.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=2
 [SCAN] ✓ File processed successfully: IMG_6850_2_2_2.jpeg
 [SCAN] Added to batch: IMG_6850_2_2_2.jpeg [batch size: 13/200]
 [SCAN] Starting file 14/15: IMG_6995_2_2_2.jpeg
-2025-12-30 23:42:55,167 [INFO] [Scan] File 14/15: IMG_6995_2_2_2.jpeg
+2025-12-31 16:13:35,170 [INFO] [Scan] File 14/15: IMG_6995_2_2_2.jpeg
+[SCAN] 🔍 Emitting progress: percent=86, message='Starting file 14/15: IMG_6995_2_2_2.jpeg'
+[ScanWorkerAdapter] 🔍 Progress update: percent=86, message='Starting file 14/15: IMG_6995_2_2_2.jpeg...'
+[ScanController] ⚡ Called from WORKER thread - marshaling to main
+[ScanController]    Current: <PySide6.QtCore.QThread(0x224bb7ccaa0) at 0x00000224A8CCFE00>, Main: <PySide6.QtCore.QThread(0x224e8080990, name = "Qt mainThread") at 0x00000224BB0CE140>
+[ScanWorkerAdapter] ✓ Called update_progress_safe
 [SCAN] _process_file started for: IMG_6995_2_2_2.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-30 23:42:55,167 [INFO] 📷 Processing: IMG_6995_2_2_2.jpeg (4005.3 KB)
+2025-12-31 16:13:35,170 [INFO] 📷 Processing: IMG_6995_2_2_2.jpeg (4005.3 KB)
 [SCAN] Processing: IMG_6995_2_2_2.jpeg
 [SCAN] ✓ Metadata extracted: IMG_6995_2_2_2.jpeg [w=4032, h=3024, date=2025-08-09 13:06:18]
-2025-12-30 23:42:55,167 [INFO] [Scan] Metadata extracted successfully: IMG_6995_2_2_2.jpeg [w=4032, h=3024, date=2025-08-09 13:06:18]
+2025-12-31 16:13:35,170 [INFO] [Scan] Metadata extracted successfully: IMG_6995_2_2_2.jpeg [w=4032, h=3024, date=2025-08-09 13:06:18]
 [SCAN] Creating folder hierarchy for: IMG_6995_2_2_2.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=2
 [SCAN] ✓ File processed successfully: IMG_6995_2_2_2.jpeg
 [SCAN] Added to batch: IMG_6995_2_2_2.jpeg [batch size: 14/200]
 [SCAN] Starting file 15/15: عليا_2_2_2.jpeg
-2025-12-30 23:42:55,187 [INFO] [Scan] File 15/15: عليا_2_2_2.jpeg
+2025-12-31 16:13:35,183 [INFO] [Scan] File 15/15: عليا_2_2_2.jpeg
+[SCAN] 🔍 Emitting progress: percent=93, message='Starting file 15/15: عليا_2_2_2.jpeg'
+[ScanWorkerAdapter] 🔍 Progress update: percent=93, message='Starting file 15/15: عليا_2_2_2.jpeg...'
+[ScanController] ⚡ Called from WORKER thread - marshaling to main
+[ScanController]    Current: <PySide6.QtCore.QThread(0x224bb7ccaa0) at 0x00000224A8CCFE00>, Main: <PySide6.QtCore.QThread(0x224e8080990, name = "Qt mainThread") at 0x00000224BB0CE140>
+[ScanWorkerAdapter] ✓ Called update_progress_safe
 [SCAN] _process_file started for: عليا_2_2_2.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2025-12-30 23:42:55,187 [INFO] 📷 Processing: عليا_2_2_2.jpeg (345.2 KB)
+2025-12-31 16:13:35,183 [INFO] 📷 Processing: عليا_2_2_2.jpeg (345.2 KB)
 [SCAN] Processing: عليا_2_2_2.jpeg
 [SCAN] ✓ Metadata extracted: عليا_2_2_2.jpeg [w=1440, h=2560, date=2024-11-29 17:04:13]
-2025-12-30 23:42:55,187 [INFO] [Scan] Metadata extracted successfully: عليا_2_2_2.jpeg [w=1440, h=2560, date=2024-11-29 17:04:13]
+2025-12-31 16:13:35,183 [INFO] [Scan] Metadata extracted successfully: عليا_2_2_2.jpeg [w=1440, h=2560, date=2024-11-29 17:04:13]
 [SCAN] Creating folder hierarchy for: عليا_2_2_2.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=2
 [SCAN] ✓ File processed successfully: عليا_2_2_2.jpeg
 [SCAN] Added to batch: عليا_2_2_2.jpeg [batch size: 15/200]
 [SCAN] 🔍 Emitting progress: percent=100, message='✓ Processed: عليا_2_2_2.jpeg (345.2 KB) [w=1440, h=2560, date=2024-11-29 17:04:13]'
 [ScanWorkerAdapter] 🔍 Progress update: percent=100, message='✓ Processed: عليا_2_2_2.jpeg (345.2 KB) [w=1440, h=2560, date=2024-11-29 17:04:13]...'
-2025-12-30 23:42:55,230 [WARNING] Failed to send progress update: 'PySide6.QtCore.QMetaObject.invokeMethod' called with wrong argument types:
-  PySide6.QtCore.QMetaObject.invokeMethod(ScanController, str, ConnectionType, QGenericArgumentHolder, QGenericArgumentHolder)
-Supported signatures:
-  PySide6.QtCore.QMetaObject.invokeMethod(obj: PySide6.QtCore.QObject, member: bytes | bytearray | memoryview, ret: PySide6.QtCore.QGenericReturnArgument, /, val0: PySide6.QtCore.QGenericArgument = ..., val1: PySide6.QtCore.QGenericArgument = ..., val2: PySide6.QtCore.QGenericArgument = ..., val3: PySide6.QtCore.QGenericArgument = ..., val4: PySide6.QtCore.QGenericArgument = ..., val5: PySide6.QtCore.QGenericArgument = ..., val6: PySide6.QtCore.QGenericArgument = ..., val7: PySide6.QtCore.QGenericArgument = ..., val8: PySide6.QtCore.QGenericArgument = ..., val9: PySide6.QtCore.QGenericArgument = ...)
-  PySide6.QtCore.QMetaObject.invokeMethod(obj: PySide6.QtCore.QObject, member: bytes | bytearray | memoryview, arg__3: PySide6.QtCore.Qt.ConnectionType, ret: PySide6.QtCore.QGenericReturnArgument, /, val0: PySide6.QtCore.QGenericArgument = ..., val1: PySide6.QtCore.QGenericArgument = ..., val2: PySide6.QtCore.QGenericArgument = ..., val3: PySide6.QtCore.QGenericArgument = ..., val4: PySide6.QtCore.QGenericArgument = ..., val5: PySide6.QtCore.QGenericArgument = ..., val6: PySide6.QtCore.QGenericArgument = ..., val7: PySide6.QtCore.QGenericArgument = ..., val8: PySide6.QtCore.QGenericArgument = ..., val9: PySide6.QtCore.QGenericArgument = ...)
-  PySide6.QtCore.QMetaObject.invokeMethod(obj: PySide6.QtCore.QObject, member: bytes | bytearray | memoryview, type: PySide6.QtCore.Qt.ConnectionType, val0: PySide6.QtCore.QGenericArgument, /, val1: PySide6.QtCore.QGenericArgument = ..., val2: PySide6.QtCore.QGenericArgument = ..., val3: PySide6.QtCore.QGenericArgument = ..., val4: PySide6.QtCore.QGenericArgument = ..., val5: PySide6.QtCore.QGenericArgument = ..., val6: PySide6.QtCore.QGenericArgument = ..., val7: PySide6.QtCore.QGenericArgument = ..., val8: PySide6.QtCore.QGenericArgument = ..., val9: PySide6.QtCore.QGenericArgument = ...)
-  PySide6.QtCore.QMetaObject.invokeMethod(object: PySide6.QtCore.QObject, member: bytes | bytearray | memoryview, type: PySide6.QtCore.Qt.ConnectionType, /, val0: PySide6.QtCore.QGenericArgumentHolder = {}, val1: PySide6.QtCore.QGenericArgumentHolder = {}, val2: PySide6.QtCore.QGenericArgumentHolder = {}, val3: PySide6.QtCore.QGenericArgumentHolder = {}, val4: PySide6.QtCore.QGenericArgumentHolder = {}, val5: PySide6.QtCore.QGenericArgumentHolder = {}, val6: PySide6.QtCore.QGenericArgumentHolder = {}, val7: PySide6.QtCore.QGenericArgumentHolder = {}, val8: PySide6.QtCore.QGenericArgumentHolder = {}, val9: PySide6.QtCore.QGenericArgumentHolder = {})
-  PySide6.QtCore.QMetaObject.invokeMethod(object: PySide6.QtCore.QObject, member: bytes | bytearray | memoryview, type: PySide6.QtCore.Qt.ConnectionType, ret: PySide6.QtCore.QGenericReturnArgumentHolder, /, val0: PySide6.QtCore.QGenericArgumentHolder = {}, val1: PySide6.QtCore.QGenericArgumentHolder = {}, val2: PySide6.QtCore.QGenericArgumentHolder = {}, val3: PySide6.QtCore.QGenericArgumentHolder = {}, val4: PySide6.QtCore.QGenericArgumentHolder = {}, val5: PySide6.QtCore.QGenericArgumentHolder = {}, val6: PySide6.QtCore.QGenericArgumentHolder = {}, val7: PySide6.QtCore.QGenericArgumentHolder = {}, val8: PySide6.QtCore.QGenericArgumentHolder = {}, val9: PySide6.QtCore.QGenericArgumentHolder = {})
-  PySide6.QtCore.QMetaObject.invokeMethod(obj: PySide6.QtCore.QObject, member: bytes | bytearray | memoryview, val0: PySide6.QtCore.QGenericArgument, /, val1: PySide6.QtCore.QGenericArgument = ..., val2: PySide6.QtCore.QGenericArgument = ..., val3: PySide6.QtCore.QGenericArgument = ..., val4: PySide6.QtCore.QGenericArgument = ..., val5: PySide6.QtCore.QGenericArgument = ..., val6: PySide6.QtCore.QGenericArgument = ..., val7: PySide6.QtCore.QGenericArgument = ..., val8: PySide6.QtCore.QGenericArgument = ..., val9: PySide6.QtCore.QGenericArgument = ...)
-  PySide6.QtCore.QMetaObject.invokeMethod(object: PySide6.QtCore.QObject, member: bytes | bytearray | memoryview, /, val0: PySide6.QtCore.QGenericArgumentHolder = {}, val1: PySide6.QtCore.QGenericArgumentHolder = {}, val2: PySide6.QtCore.QGenericArgumentHolder = {}, val3: PySide6.QtCore.QGenericArgumentHolder = {}, val4: PySide6.QtCore.QGenericArgumentHolder = {}, val5: PySide6.QtCore.QGenericArgumentHolder = {}, val6: PySide6.QtCore.QGenericArgumentHolder = {}, val7: PySide6.QtCore.QGenericArgumentHolder = {}, val8: PySide6.QtCore.QGenericArgumentHolder = {}, val9: PySide6.QtCore.QGenericArgumentHolder = {})
-  PySide6.QtCore.QMetaObject.invokeMethod(object: PySide6.QtCore.QObject, member: bytes | bytearray | memoryview, ret: PySide6.QtCore.QGenericReturnArgumentHolder, /, val0: PySide6.QtCore.QGenericArgumentHolder = {}, val1: PySide6.QtCore.QGenericArgumentHolder = {}, val2: PySide6.QtCore.QGenericArgumentHolder = {}, val3: PySide6.QtCore.QGenericArgumentHolder = {}, val4: PySide6.QtCore.QGenericArgumentHolder = {}, val5: PySide6.QtCore.QGenericArgumentHolder = {}, val6: PySide6.QtCore.QGenericArgumentHolder = {}, val7: PySide6.QtCore.QGenericArgumentHolder = {}, val8: PySide6.QtCore.QGenericArgumentHolder = {}, val9: PySide6.QtCore.QGenericArgumentHolder = {})
+[ScanController] ⚡ Called from WORKER thread - marshaling to main
+[ScanController]    Current: <PySide6.QtCore.QThread(0x224bb7ccaa0) at 0x00000224A8CCFE00>, Main: <PySide6.QtCore.QThread(0x224e8080990, name = "Qt mainThread") at 0x00000224BB0CE140>
+[ScanWorkerAdapter] ✓ Called update_progress_safe
 [SCAN] ⚡ Writing final batch to database: 15 photos
-2025-12-30 23:42:55,230 [INFO] Writing final batch of 15 photos to database
+2025-12-31 16:13:35,193 [INFO] Writing final batch of 15 photos to database
 [SCAN] 💾 Starting bulk_upsert for 15 photos...
-2025-12-30 23:42:55,230 [INFO] [DB] Starting bulk_upsert for 15 photos
-2025-12-30 23:42:55,230 [INFO] Bulk upserted 15 photos for project 1
+2025-12-31 16:13:35,193 [INFO] [DB] Starting bulk_upsert for 15 photos
+2025-12-31 16:13:35,199 [INFO] Bulk upserted 15 photos for project 1
 [SCAN] ✓ Bulk_upsert completed: 15 photos written
-2025-12-30 23:42:55,230 [INFO] [DB] Bulk_upsert completed: 15 photos written
+2025-12-31 16:13:35,199 [INFO] [DB] Bulk_upsert completed: 15 photos written
 [SCAN] ✓ Final batch write complete
 [SCAN] Shutting down executor
-2025-12-30 23:42:55,230 [INFO] Executor shutdown complete
+2025-12-31 16:13:35,199 [INFO] Executor shutdown complete
 
 [SCAN] === STEP 4: VIDEO PROCESSING ===
 [SCAN] total_videos=0
@@ -677,11 +696,11 @@ Supported signatures:
 [SCAN] Condition check: 0 > 0 and not False = False
 [SCAN] Condition FALSE - skipping video processing!
 [SCAN]   Reason: No videos found (total_videos=0)
-2025-12-30 23:42:55,246 [INFO] Scan complete: 15 photos indexed, 0 videos indexed, 0 skipped, 0 failed in 0.5s
-2025-12-30 23:42:55,246 [INFO] Scan completed: 15 photos, 0 videos, 1 folders in 0.5s
+2025-12-31 16:13:35,199 [INFO] Scan complete: 15 photos indexed, 0 videos indexed, 0 skipped, 0 failed in 0.3s
+2025-12-31 16:13:35,199 [INFO] Scan completed: 15 photos, 0 videos, 1 folders in 0.3s
 [ScanController] cleanup after scan
-2025-12-30 23:42:55,419 [INFO] Building date branches...
-2025-12-30 23:42:55,419 [INFO] Building date branches for project_id=1
+2025-12-31 16:13:35,399 [INFO] Building date branches...
+2025-12-31 16:13:35,399 [INFO] Building date branches for project_id=1
 [build_date_branches] Using project_id=1
 [build_date_branches] Populating 'all' branch with 15 photos for project 1
 [build_date_branches] Inserted 15/15 photos into 'all' branch
@@ -706,46 +725,46 @@ Supported signatures:
 [build_date_branches] Date 2025-08-09: inserted 1/1 into project_images (new)
 [build_date_branches] Total entries processed: 8
 [build_date_branches] project_images table has 23 rows for project 1
-2025-12-30 23:42:55,419 [INFO] Created 8 photo date branch entries for project 1
-2025-12-30 23:42:55,419 [INFO] Building video date branches for project_id=1
+2025-12-31 16:13:35,414 [INFO] Created 8 photo date branch entries for project 1
+2025-12-31 16:13:35,414 [INFO] Building video date branches for project_id=1
 [build_video_date_branches] Using project_id=1
 [build_video_date_branches] Found 0 videos with dates for project 1
 [build_video_date_branches] No videos with dates found, skipping branch creation
-2025-12-30 23:42:55,419 [INFO] Created 0 video date branch entries for project 1
-2025-12-30 23:42:55,435 [INFO] Backfilling created_date fields for photos...
-2025-12-30 23:42:55,435 [INFO] Backfilled 7 photo rows with created_date
-2025-12-30 23:42:55,435 [INFO] Backfilling created_date fields for videos...
+2025-12-31 16:13:35,414 [INFO] Created 0 video date branch entries for project 1
+2025-12-31 16:13:35,414 [INFO] Backfilling created_date fields for photos...
+2025-12-31 16:13:35,421 [INFO] Backfilled 7 photo rows with created_date
+2025-12-31 16:13:35,421 [INFO] Backfilling created_date fields for videos...
 [FaceConfig] Loaded from C:\Users\suleimaa\.memorymate\face_detection_config.json
-2025-12-30 23:42:55,450 [INFO] Main scan operations complete. Remaining: set()
-2025-12-30 23:42:55,450 [INFO] ✓ All scan operations complete. Triggering final refresh...
-2025-12-30 23:42:55,560 [INFO] 🔄 Starting final coordinated refresh...
-2025-12-30 23:42:55,560 [INFO] Reloading sidebar after date branches built...
-2025-12-30 23:42:55,560 [INFO] [AccordionSidebar] Reloading all sections
-2025-12-30 23:42:55,560 [WARNING] [FoldersSection] No project_id set
-2025-12-30 23:42:55,560 [INFO] [FoldersSection] Tree built with 1 top-level folders
-2025-12-30 23:42:55,607 [INFO] [AccordionSidebar] Section folders loaded and displayed
-2025-12-30 23:42:55,607 [WARNING] [DatesSection] No project_id set
-2025-12-30 23:42:55,655 [INFO] [AccordionSidebar] Section dates loaded and displayed
-2025-12-30 23:42:55,655 [WARNING] [VideosSection] No project_id set
-2025-12-30 23:42:55,697 [INFO] [AccordionSidebar] Section videos loaded and displayed
-2025-12-30 23:42:55,697 [WARNING] [PeopleSection] No project_id set
-2025-12-30 23:42:55,749 [INFO] [AccordionSidebar] Section people loaded and displayed
+2025-12-31 16:13:35,443 [INFO] Main scan operations complete. Remaining: set()
+2025-12-31 16:13:35,443 [INFO] ✓ All scan operations complete. Triggering final refresh...
+2025-12-31 16:13:35,544 [INFO] 🔄 Starting final coordinated refresh...
+2025-12-31 16:13:35,544 [INFO] Reloading sidebar after date branches built...
+2025-12-31 16:13:35,544 [INFO] [AccordionSidebar] Reloading all sections
+2025-12-31 16:13:35,544 [WARNING] [FoldersSection] No project_id set
+2025-12-31 16:13:35,549 [INFO] [FoldersSection] Tree built with 1 top-level folders
+2025-12-31 16:13:35,587 [INFO] [AccordionSidebar] Section folders loaded and displayed
+2025-12-31 16:13:35,587 [WARNING] [DatesSection] No project_id set
+2025-12-31 16:13:35,627 [INFO] [AccordionSidebar] Section dates loaded and displayed
+2025-12-31 16:13:35,660 [WARNING] [VideosSection] No project_id set
+2025-12-31 16:13:35,737 [INFO] [AccordionSidebar] Section videos loaded and displayed
+2025-12-31 16:13:35,737 [WARNING] [PeopleSection] No project_id set
+2025-12-31 16:13:35,772 [INFO] [AccordionSidebar] Section people loaded and displayed
 [DeviceMonitor] Initialized for platform: Windows
 [WindowsDeviceWindow] Native window created (hidden)
 [DeviceMonitor] Windows device monitoring started
 [DeviceMonitor] Listening for WM_DEVICECHANGE messages
-2025-12-30 23:42:55,890 [INFO] [DevicesSection] Scanning devices (generation 2)…
+2025-12-31 16:13:35,871 [INFO] [DevicesSection] Scanning devices (generation 2)…
 
 [DeviceScanner] ===== Starting device scan (FORCED) =====
+2025-12-31 16:13:35,872 [INFO] [QuickSection] Loading quick dates
 [DeviceScanner] Platform: Windows
 [DeviceScanner] Database registration: disabled
-2025-12-30 23:42:55,891 [INFO] [QuickSection] Loading quick dates
 [DeviceScanner] Scanning Windows drives...
 [DeviceScanner]   Checking drive letters D:-Z:...
 [DeviceScanner]   Checking portable devices (MTP/PTP)...
 [DeviceScanner]     Attempting Shell COM enumeration...
 [DeviceScanner]     COM initialized for current thread
-2025-12-30 23:42:55,939 [INFO] [AccordionSidebar] Section quick loaded and displayed
+2025-12-31 16:13:35,922 [INFO] [AccordionSidebar] Section quick loaded and displayed
 
 [GRID] ====== reload() CALLED ======
 [GRID] project_id=1, load_mode=branch
@@ -775,29 +794,37 @@ Supported signatures:
 [GRID] ====== reload() COMPLETED SUCCESSFULLY ======
 
 [GRID] Finally block: Setting _reloading=False
-2025-12-30 23:42:55,970 [INFO] Refreshing Google Photos layout after scan...
-[DeviceScanner]     Found 3 items under 'This PC'
+2025-12-31 16:13:35,940 [INFO] Refreshing Google Photos layout after scan...
 [GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px)...
 [GooglePhotosLayout] 🔄 Clearing existing timeline and thumbnail cache...
 [GooglePhotosLayout] 🔍 Starting async photo load (generation 3)...
 [GooglePhotosLayout] ✅ Photo load worker started (generation 3)
-2025-12-30 23:42:56,065 [INFO] ✓ Google Photos layout refreshed
-[DeviceScanner]       → Item: '(C:) Lokaler Datenträger' | IsFolder=True | IsFileSystem=True
-2025-12-30 23:42:56,065 [INFO] ✅ Final refresh complete: 0 photos, 0 videos
-[DeviceScanner]       → Item: '(H:) SULEIMAA (\\ACCOUNTS.INTERN\SHARES\HOME)' | IsFolder=True | IsFileSystem=True
-[DeviceScanner]       → Item: '(P:) SHARES (\\ACCOUNTS.INTERN)' | IsFolder=True | IsFileSystem=True
-2025-12-30 23:42:56,081 [INFO] Photo query complete: generation=3, current=3, rows=15
-[DeviceScanner]     COM uninitialized
+2025-12-31 16:13:35,942 [INFO] ✓ Google Photos layout refreshed
+2025-12-31 16:13:35,949 [INFO] ✅ Final refresh complete: 0 photos, 0 videos
+2025-12-31 16:13:35,951 [INFO] Photo query complete: generation=3, current=3, rows=15
 [GooglePhotosLayout] 📅 Grouping 15 photos by date...
 [GooglePhotosLayout] ✅ Grouped into 9 date groups
 [GooglePhotosLayout] Tracking 15 paths for multi-selection
 [GooglePhotosLayout] 🚀 Setting up virtual scrolling for 9 date groups...
-[DeviceScanner] ===== Scan complete: 0 device(s) found =====
-[DeviceScanner] Results cached for 5.0s
-
 [GooglePhotosLayout] 📐 Responsive grid: 7 columns (viewport: 1517px, thumb: 200px)
 [GooglePhotosLayout] ✅ Virtual scrolling enabled: 9 total date groups
 [GooglePhotosLayout] 📊 Rendered: 5 groups | Placeholders: 4 groups
 [GooglePhotosLayout] 🖼️ Queued 9 thumbnails for loading (initial limit: 50)
 [GooglePhotosLayout] ✅ Photo loading complete! Thumbnails will load progressively.
-2025-12-30 23:42:56,183 [INFO] [AccordionSidebar] Section devices loaded and displayed
+[DeviceScanner]     Found 3 items under 'This PC'
+[DeviceScanner]       → Item: '(C:) Lokaler Datenträger' | IsFolder=True | IsFileSystem=True
+[DeviceScanner]       → Item: '(H:) SULEIMAA (\\ACCOUNTS.INTERN\SHARES\HOME)' | IsFolder=True | IsFileSystem=True
+[DeviceScanner]       → Item: '(P:) SHARES (\\ACCOUNTS.INTERN)' | IsFolder=True | IsFileSystem=True
+[DeviceScanner]     COM uninitialized
+[DeviceScanner] ===== Scan complete: 0 device(s) found =====
+[DeviceScanner] Results cached for 5.0s
+
+2025-12-31 16:13:36,166 [INFO] [AccordionSidebar] Section devices loaded and displayed
+[Shutdown] Grid threads shut down.
+[ThumbnailManager] Thread pool shut down.
+[Shutdown] ThumbnailManager threads shut down.
+[Shutdown] Thumbnail cache cleared.
+[Main] Qt event loop exited with code: 0
+[ThumbCacheDB] Closing cache gracefully...
+
+C:\Users\suleimaa\Downloads\Photo-Sorter\09.49.01.01-Photo-App\MemoryMate-PhotoFlow-Refactored-main-12>
