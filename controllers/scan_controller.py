@@ -17,7 +17,7 @@ Version: 09.20.00.00
 import logging
 from datetime import datetime
 from typing import List
-from PySide6.QtCore import QThread, Qt, QTimer, QThreadPool, Slot
+from PySide6.QtCore import QThread, Qt, QTimer, QThreadPool, Slot, QObject, Signal
 from PySide6.QtWidgets import (
     QProgressDialog, QMessageBox, QDialog, QVBoxLayout,
     QLabel, QProgressBar, QApplication
@@ -26,13 +26,20 @@ from PySide6.QtWidgets import (
 from translation_manager import tr
 
 
-class ScanController:
+class ScanController(QObject):
     """
     Wraps scan orchestration: start, cancel, cleanup, progress wiring.
     Keeps MainWindow slimmer.
     """
+    # Signal for cross-thread progress updates
+    progress_update_signal = Signal(int, str)
+
     def __init__(self, main):
+        super().__init__()  # CRITICAL: Initialize QObject
         self.main = main
+
+        # Connect signal to handler with QueuedConnection for thread safety
+        self.progress_update_signal.connect(self._on_progress, Qt.ConnectionType.QueuedConnection)
         self.thread = None
         self.worker = None
         self.db_writer = None
@@ -73,20 +80,14 @@ class ScanController:
         main_thread = QApplication.instance().thread()
 
         if current_thread != main_thread:
-            # Called from worker thread - marshal to main thread
-            print(f"[ScanController] ⚡ Called from WORKER thread - marshaling to main")
+            # Called from worker thread - marshal to main thread via signal
+            print(f"[ScanController] ⚡ Called from WORKER thread - emitting signal")
             print(f"[ScanController]    Current: {current_thread}, Main: {main_thread}")
-            # Use QMetaObject.invokeMethod to explicitly queue in main thread
-            # CRITICAL: Qt.QueuedConnection ensures execution in receiver's (main) thread
-            QMetaObject.invokeMethod(
-                self,
-                "_on_progress_main_thread",
-                Qt.ConnectionType.QueuedConnection,
-                pct,
-                msg
-            )
+            # Emit signal - QueuedConnection ensures it runs in main thread
+            self.progress_update_signal.emit(pct, msg)
+            print(f"[ScanController] ✅ Signal emitted")
         else:
-            # Already in main thread
+            # Already in main thread - direct call
             print(f"[ScanController] ✅ Called from MAIN thread - direct call")
             self._on_progress(pct, msg)
 
