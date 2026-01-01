@@ -27,6 +27,10 @@ ssl._create_default_https_context = ssl._create_unverified_context
 MODEL_NAME = "openai/clip-vit-base-patch32"
 BASE_URL = "https://huggingface.co/openai/clip-vit-base-patch32/resolve/main/"
 
+# Known commit hash for this model (from HuggingFace)
+# This is the latest stable version as of 2026-01-01
+COMMIT_HASH = "e6a30b603a447e251fdaca1c3056b2a16cdfebeb"
+
 FILES_TO_DOWNLOAD = [
     "config.json",
     "preprocessor_config.json",
@@ -39,15 +43,23 @@ FILES_TO_DOWNLOAD = [
 ]
 
 def get_cache_dir():
-    """Get the HuggingFace cache directory."""
+    """Get the HuggingFace cache directory with correct structure."""
     if os.name == 'nt':  # Windows
-        cache_dir = Path(os.environ.get('USERPROFILE', 'C:\\')) / '.cache' / 'huggingface' / 'hub'
+        cache_base = Path(os.environ.get('USERPROFILE', 'C:\\')) / '.cache' / 'huggingface' / 'hub'
     else:  # Linux/Mac
-        cache_dir = Path(os.environ.get('HOME', '/tmp')) / '.cache' / 'huggingface' / 'hub'
+        cache_base = Path(os.environ.get('HOME', '/tmp')) / '.cache' / 'huggingface' / 'hub'
 
-    # Model-specific directory
-    model_dir = cache_dir / 'models--openai--clip-vit-base-patch32' / 'snapshots' / 'main'
-    return model_dir
+    # Model-specific directory with CORRECT structure using commit hash
+    model_dir = cache_base / 'models--openai--clip-vit-base-patch32'
+    snapshot_dir = model_dir / 'snapshots' / COMMIT_HASH
+    refs_dir = model_dir / 'refs'
+
+    return {
+        'model_dir': model_dir,
+        'snapshot_dir': snapshot_dir,
+        'refs_dir': refs_dir,
+        'cache_base': cache_base
+    }
 
 def download_file(url, dest_path, filename):
     """Download a file with SSL verification disabled."""
@@ -80,23 +92,39 @@ def main():
     print("CLIP Model Offline Downloader (SSL Verification Disabled)")
     print("=" * 70)
 
-    # Get cache directory
-    cache_dir = get_cache_dir()
-    print(f"\n📁 Cache directory: {cache_dir}")
+    # Get cache directories
+    cache_dirs = get_cache_dir()
+    snapshot_dir = cache_dirs['snapshot_dir']
+    refs_dir = cache_dirs['refs_dir']
+    model_dir = cache_dirs['model_dir']
 
-    # Create directory if it doesn't exist
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    print(f"✅ Cache directory created/verified")
+    print(f"\n📁 Model directory: {model_dir}")
+    print(f"📁 Snapshot directory: {snapshot_dir}")
+    print(f"📁 Refs directory: {refs_dir}")
+
+    # Create directories
+    snapshot_dir.mkdir(parents=True, exist_ok=True)
+    refs_dir.mkdir(parents=True, exist_ok=True)
+    print(f"✅ Cache directories created/verified")
+
+    # Create refs/main file pointing to commit hash
+    refs_main_file = refs_dir / 'main'
+    if not refs_main_file.exists():
+        print(f"\n📝 Creating refs/main file with commit hash: {COMMIT_HASH}")
+        refs_main_file.write_text(COMMIT_HASH)
+        print("✅ refs/main created")
+    else:
+        print(f"\n⏭️  refs/main already exists")
 
     # Download each file
-    print(f"\n📦 Downloading {len(FILES_TO_DOWNLOAD)} files...")
+    print(f"\n📦 Downloading {len(FILES_TO_DOWNLOAD)} files to snapshot directory...")
 
     success_count = 0
     failed_files = []
 
     for filename in FILES_TO_DOWNLOAD:
         url = BASE_URL + filename
-        dest_path = cache_dir / filename
+        dest_path = snapshot_dir / filename
 
         # Skip if already exists
         if dest_path.exists():
