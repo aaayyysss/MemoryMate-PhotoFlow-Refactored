@@ -398,7 +398,7 @@ class EmbeddingService:
         with self.db.get_connection() as conn:
             # Get photo hash for freshness tracking
             cursor = conn.execute(
-                "SELECT path FROM photo_metadata WHERE photo_id = ?",
+                "SELECT path FROM photo_metadata WHERE id = ?",
                 (photo_id,)
             )
             row = cursor.fetchone()
@@ -411,15 +411,16 @@ class EmbeddingService:
             # Upsert embedding
             conn.execute("""
                 INSERT OR REPLACE INTO photo_embedding (
-                    photo_id, model_id, embedding_type,
+                    photo_id, model_id, embedding_type, dim,
                     embedding, source_photo_hash, artifact_version,
                     created_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+                VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
             """, (
                 photo_id,
                 model_id,
                 'visual_semantic',
+                len(embedding),  # dimension
                 embedding_blob,
                 source_photo_hash,
                 '1.0'
