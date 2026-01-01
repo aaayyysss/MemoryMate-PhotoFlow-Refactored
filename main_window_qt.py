@@ -596,6 +596,19 @@ class MainWindow(QMainWindow):
         act_meta_auto.setChecked(self.settings.get("auto_run_backfill_after_scan", False))
         act_meta_auto.setToolTip("Automatically backfill metadata for both photos and videos after scanning")
 
+        menu_tools.addSeparator()
+
+        # AI / Embeddings submenu
+        menu_ai = menu_tools.addMenu("🤖 AI & Semantic Search")
+
+        act_extract_embeddings = menu_ai.addAction("Extract Embeddings...")
+        act_extract_embeddings.setToolTip("Extract AI embeddings for semantic search (one-time setup)")
+
+        menu_ai.addSeparator()
+
+        act_ai_status = menu_ai.addAction("Show Embedding Status")
+        act_ai_status.setToolTip("Check how many photos have embeddings extracted")
+
         act_clear_cache = QAction(tr("menu.tools_clear_cache"), self)
         menu_tools.addAction(act_clear_cache)
         act_clear_cache.triggered.connect(self._on_clear_thumbnail_cache)
@@ -670,6 +683,9 @@ class MainWindow(QMainWindow):
         act_meta_single.triggered.connect(lambda: self.backfill_panel._on_run_foreground())
         act_video_backfill.triggered.connect(self._on_video_backfill)
         act_meta_auto.toggled.connect(lambda v: self.settings.set("auto_run_backfill_after_scan", bool(v)))
+
+        act_extract_embeddings.triggered.connect(self._on_extract_embeddings)
+        act_ai_status.triggered.connect(self._on_show_embedding_status)
 
         act_db_fresh.triggered.connect(self._db_fresh_start)
         act_db_check.triggered.connect(self._db_self_check)
@@ -1376,6 +1392,152 @@ class MainWindow(QMainWindow):
                 f"Failed to open video backfill dialog:\n{str(e)}"
             )
             print(f"✗ Video backfill error: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def _on_extract_embeddings(self):
+        """Launch the embedding extraction worker for semantic search."""
+        try:
+            # Get project_id
+            project_id = None
+            if hasattr(self, 'grid') and hasattr(self.grid, 'project_id'):
+                project_id = self.grid.project_id
+            elif hasattr(self, 'sidebar') and hasattr(self.sidebar, 'project_id'):
+                project_id = self.sidebar.project_id
+
+            if project_id is None:
+                from app_services import get_default_project_id
+                project_id = get_default_project_id()
+
+            if project_id is None:
+                QMessageBox.warning(
+                    self,
+                    "No Project",
+                    "No project is currently active.\n"
+                    "Please create a project or scan a folder first."
+                )
+                return
+
+            # Get all photos in the project
+            from repositories.repository import PhotoRepository
+            photo_repo = PhotoRepository()
+            all_photos = photo_repo.get_all_photos(project_id)
+
+            if not all_photos:
+                QMessageBox.information(
+                    self,
+                    "No Photos",
+                    "No photos found in the current project.\n"
+                    "Please scan a folder first."
+                )
+                return
+
+            photo_ids = [p.id for p in all_photos]
+
+            # Show confirmation dialog
+            result = QMessageBox.question(
+                self,
+                "Extract Embeddings",
+                f"This will extract AI embeddings for {len(photo_ids)} photos.\n\n"
+                f"First run will download the CLIP model (~500MB).\n"
+                f"Processing may take a while depending on your hardware.\n\n"
+                f"Continue?",
+                QMessageBox.Yes | QMessageBox.No
+            )
+
+            if result != QMessageBox.Yes:
+                return
+
+            # Launch the embedding worker
+            from workers.embedding_worker import launch_embedding_worker
+            job_id = launch_embedding_worker(
+                photo_ids=photo_ids,
+                model_variant='openai/clip-vit-base-patch32',
+                device='auto'
+            )
+
+            QMessageBox.information(
+                self,
+                "Embedding Extraction Started",
+                f"Job #{job_id} started in background.\n\n"
+                f"You can continue working while embeddings are extracted.\n"
+                f"Check Tools → AI & Semantic Search → Show Embedding Status for progress."
+            )
+
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Embedding Extraction Error",
+                f"Failed to start embedding extraction:\n{str(e)}"
+            )
+            print(f"✗ Embedding extraction error: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def _on_show_embedding_status(self):
+        """Show embedding extraction status."""
+        try:
+            # Get project_id
+            project_id = None
+            if hasattr(self, 'grid') and hasattr(self.grid, 'project_id'):
+                project_id = self.grid.project_id
+            elif hasattr(self, 'sidebar') and hasattr(self.sidebar, 'project_id'):
+                project_id = self.sidebar.project_id
+
+            if project_id is None:
+                from app_services import get_default_project_id
+                project_id = get_default_project_id()
+
+            if project_id is None:
+                QMessageBox.warning(self, "No Project", "No project is currently active.")
+                return
+
+            # Query database for stats
+            from database.reference_db import ReferenceDB
+            db = ReferenceDB()
+
+            with db.get_connection() as conn:
+                cur = conn.cursor()
+
+                # Total photos
+                cur.execute("""
+                    SELECT COUNT(*) FROM photos WHERE project_id = ?
+                """, (project_id,))
+                total_photos = cur.fetchone()[0]
+
+                # Photos with embeddings
+                cur.execute("""
+                    SELECT COUNT(DISTINCT pe.photo_id)
+                    FROM photo_embedding pe
+                    JOIN photos p ON pe.photo_id = p.id
+                    WHERE p.project_id = ?
+                """, (project_id,))
+                photos_with_embeddings = cur.fetchone()[0]
+
+                # Active/pending jobs
+                cur.execute("""
+                    SELECT COUNT(*) FROM ml_job
+                    WHERE status IN ('pending', 'running')
+                """)
+                active_jobs = cur.fetchone()[0]
+
+            percent = (photos_with_embeddings / total_photos * 100) if total_photos > 0 else 0
+
+            QMessageBox.information(
+                self,
+                "Embedding Status",
+                f"Photos with embeddings: {photos_with_embeddings:,} / {total_photos:,} ({percent:.1f}%)\n"
+                f"Active/pending jobs: {active_jobs}\n\n"
+                f"{'✓ Ready for semantic search!' if photos_with_embeddings > 0 else 'Run Extract Embeddings to enable semantic search.'}"
+            )
+
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Status Error",
+                f"Failed to get embedding status:\n{str(e)}"
+            )
+            print(f"✗ Embedding status error: {e}")
             import traceback
             traceback.print_exc()
 
