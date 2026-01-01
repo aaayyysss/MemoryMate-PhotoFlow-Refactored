@@ -1421,7 +1421,7 @@ class MainWindow(QMainWindow):
             # Get all photos in the project
             from repository.photo_repository import PhotoRepository
             photo_repo = PhotoRepository()
-            all_photos = photo_repo.get_all_photos(project_id)
+            all_photos = photo_repo.find_all(where_clause="project_id = ?", params=(project_id,))
 
             if not all_photos:
                 QMessageBox.information(
@@ -1432,7 +1432,7 @@ class MainWindow(QMainWindow):
                 )
                 return
 
-            photo_ids = [p.id for p in all_photos]
+            photo_ids = [p['id'] for p in all_photos]
 
             # Show confirmation dialog
             result = QMessageBox.question(
