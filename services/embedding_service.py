@@ -406,7 +406,8 @@ class EmbeddingService:
                 raise ValueError(f"Photo {photo_id} not found")
 
             # TODO: Compute actual file hash (for now use path as placeholder)
-            source_photo_hash = str(hash(row[0]))
+            photo_path = row['path'] if isinstance(row, dict) else row[0]
+            source_photo_hash = str(hash(photo_path))
 
             # Upsert embedding
             conn.execute("""
