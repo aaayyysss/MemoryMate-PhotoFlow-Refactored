@@ -1501,7 +1501,7 @@ class MainWindow(QMainWindow):
 
                 # Total photos
                 cur.execute("""
-                    SELECT COUNT(*) FROM photos WHERE project_id = ?
+                    SELECT COUNT(*) FROM photo_metadata WHERE project_id = ?
                 """, (project_id,))
                 total_photos = cur.fetchone()[0]
 
@@ -1509,7 +1509,7 @@ class MainWindow(QMainWindow):
                 cur.execute("""
                     SELECT COUNT(DISTINCT pe.photo_id)
                     FROM photo_embedding pe
-                    JOIN photos p ON pe.photo_id = p.id
+                    JOIN photo_metadata p ON pe.photo_id = p.id
                     WHERE p.project_id = ?
                 """, (project_id,))
                 photos_with_embeddings = cur.fetchone()[0]
