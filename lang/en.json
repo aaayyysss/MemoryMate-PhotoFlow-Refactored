@@ -23,6 +23,16 @@
     "cancel": "Cancel",
     "apply": "Apply",
     "reset": "Reset to Defaults",
+    "nav": {
+      "general": "General",
+      "appearance": "Appearance",
+      "scanning": "Scanning",
+      "gps_location": "GPS & Location",
+      "face_detection": "Face Detection",
+      "visual_embeddings": "Visual Embeddings",
+      "video": "Video",
+      "advanced": "Advanced"
+    },
     "sections": {
       "general": "General",
       "face_detection": "Face Detection",

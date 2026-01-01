@@ -192,6 +192,7 @@ class PreferencesDialog(QDialog):
             ("preferences.nav.scanning", "📁"),
             ("preferences.nav.gps_location", "🗺️"),
             ("preferences.nav.face_detection", "👤"),
+            ("preferences.nav.visual_embeddings", "🔍"),
             ("preferences.nav.video", "🎬"),
             ("preferences.nav.advanced", "🔧")
         ]
@@ -236,6 +237,7 @@ class PreferencesDialog(QDialog):
         self.content_stack.addWidget(self._create_scanning_panel())
         self.content_stack.addWidget(self._create_gps_location_panel())
         self.content_stack.addWidget(self._create_face_detection_panel())
+        self.content_stack.addWidget(self._create_visual_embeddings_panel())
         self.content_stack.addWidget(self._create_video_panel())
         self.content_stack.addWidget(self._create_advanced_panel())
 
@@ -746,6 +748,164 @@ class PreferencesDialog(QDialog):
 
         return self._create_scrollable_panel(widget)
 
+    def _create_visual_embeddings_panel(self) -> QWidget:
+        """Create Visual Embeddings / CLIP Model panel."""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setAlignment(Qt.AlignTop)
+        layout.setSpacing(15)
+
+        # Title
+        title = QLabel("🔍 Visual Embeddings")
+        title.setStyleSheet("font-size: 18pt; font-weight: bold;")
+        layout.addWidget(title)
+
+        # Description
+        desc = QLabel(
+            "Visual embeddings enable semantic image search using AI vision models. "
+            "Search photos by describing what you're looking for (e.g., 'sunset at beach', 'cat on sofa')."
+        )
+        desc.setWordWrap(True)
+        desc.setStyleSheet("color: #666; font-size: 10pt; padding: 4px;")
+        layout.addWidget(desc)
+
+        # CLIP Model Installation
+        model_group = QGroupBox("CLIP Model Installation")
+        model_layout = QVBoxLayout(model_group)
+        model_layout.setSpacing(8)
+
+        # Model location row
+        location_row = QWidget()
+        location_layout = QHBoxLayout(location_row)
+        location_layout.setContentsMargins(0, 0, 0, 0)
+
+        location_label = QLabel("Model Location:")
+        location_label.setToolTip(
+            "Path to CLIP model directory.\n"
+            "Default: ./models/clip-vit-base-patch32/\n\n"
+            "This is where CLIP model files are stored (~600MB)."
+        )
+
+        self.txt_clip_model_path = QLineEdit()
+        self.txt_clip_model_path.setPlaceholderText("Default: ./models/clip-vit-base-patch32/")
+        self.txt_clip_model_path.setReadOnly(True)  # Set by system
+
+        btn_browse_clip = QPushButton("Browse...")
+        btn_browse_clip.setMaximumWidth(80)
+        btn_browse_clip.clicked.connect(self._browse_clip_models)
+
+        btn_open_folder = QPushButton("Open Folder")
+        btn_open_folder.setMaximumWidth(100)
+        btn_open_folder.clicked.connect(self._open_clip_model_folder)
+
+        location_layout.addWidget(location_label)
+        location_layout.addWidget(self.txt_clip_model_path, 1)
+        location_layout.addWidget(btn_browse_clip)
+        location_layout.addWidget(btn_open_folder)
+
+        model_layout.addWidget(location_row)
+
+        # Model status display
+        self.lbl_clip_status = QLabel("Checking CLIP model status...")
+        self.lbl_clip_status.setWordWrap(True)
+        self.lbl_clip_status.setStyleSheet("QLabel { padding: 8px; background-color: #f0f0f0; border-radius: 4px; }")
+        model_layout.addWidget(self.lbl_clip_status)
+
+        # Model management buttons
+        btn_row = QWidget()
+        btn_layout = QHBoxLayout(btn_row)
+        btn_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.btn_download_clip = QPushButton("📥 Download CLIP Model")
+        self.btn_download_clip.setToolTip("Run download script to get CLIP model files (~600MB)")
+        self.btn_download_clip.setMaximumWidth(180)
+        self.btn_download_clip.clicked.connect(self._download_clip_model)
+
+        self.btn_check_clip = QPushButton("🔍 Check Status")
+        self.btn_check_clip.setToolTip("Check if CLIP model is properly installed")
+        self.btn_check_clip.setMaximumWidth(120)
+        self.btn_check_clip.clicked.connect(self._check_clip_status)
+
+        btn_layout.addWidget(self.btn_download_clip)
+        btn_layout.addWidget(self.btn_check_clip)
+        btn_layout.addStretch()
+
+        model_layout.addWidget(btn_row)
+
+        # Help text
+        help_label = QLabel(
+            "💡 <b>Getting Started:</b><br>"
+            "1. Click 'Download CLIP Model' to download OpenAI CLIP ViT-B/32 (~600MB)<br>"
+            "2. Files will be saved to <code>./models/clip-vit-base-patch32/</code> (next to face detection models)<br>"
+            "3. After download, restart the app or retry embedding extraction<br>"
+            "4. Use 'Extract Embeddings' in the main window to process your photos"
+        )
+        help_label.setWordWrap(True)
+        help_label.setStyleSheet("QLabel { font-size: 10pt; color: #666; padding: 6px; background-color: #f9f9f9; border-radius: 4px; }")
+        model_layout.addWidget(help_label)
+
+        layout.addWidget(model_group)
+
+        # Model Configuration
+        config_group = QGroupBox("Model Configuration")
+        config_layout = QFormLayout(config_group)
+        config_layout.setSpacing(10)
+
+        self.cmb_clip_variant = QComboBox()
+        self.cmb_clip_variant.addItem("CLIP ViT-B/32 (512-D, Fast, Recommended)", "openai/clip-vit-base-patch32")
+        self.cmb_clip_variant.addItem("CLIP ViT-B/16 (512-D, Better Quality)", "openai/clip-vit-base-patch16")
+        self.cmb_clip_variant.addItem("CLIP ViT-L/14 (768-D, Best Quality)", "openai/clip-vit-large-patch14")
+        self.cmb_clip_variant.setToolTip(
+            "Choose CLIP model variant:\n"
+            "• ViT-B/32: Fastest, balanced quality (recommended)\n"
+            "• ViT-B/16: Slower, better image understanding\n"
+            "• ViT-L/14: Slowest, best quality (requires more memory)"
+        )
+        self.cmb_clip_variant.setEnabled(False)  # Only ViT-B/32 supported for now
+        config_layout.addRow("Model Variant:", self.cmb_clip_variant)
+
+        self.cmb_clip_device = QComboBox()
+        self.cmb_clip_device.addItem("Auto (Use GPU if available)", "auto")
+        self.cmb_clip_device.addItem("CPU Only", "cpu")
+        self.cmb_clip_device.addItem("CUDA GPU", "cuda")
+        self.cmb_clip_device.addItem("Apple Metal (MPS)", "mps")
+        self.cmb_clip_device.setToolTip(
+            "Select compute device:\n"
+            "• Auto: Automatically use GPU if available, else CPU\n"
+            "• CPU: Always use CPU (slower but works everywhere)\n"
+            "• CUDA: Use NVIDIA GPU (requires CUDA toolkit)\n"
+            "• MPS: Use Apple Silicon GPU (M1/M2 Macs)"
+        )
+        config_layout.addRow("Compute Device:", self.cmb_clip_device)
+
+        layout.addWidget(config_group)
+
+        # Extraction Settings
+        extraction_group = QGroupBox("Extraction Settings")
+        extraction_layout = QFormLayout(extraction_group)
+        extraction_layout.setSpacing(10)
+
+        self.chk_auto_extract = QCheckBox("Automatically extract embeddings after photo scan")
+        self.chk_auto_extract.setToolTip("Auto-extract visual embeddings when new photos are imported")
+        extraction_layout.addRow("", self.chk_auto_extract)
+
+        self.spin_extraction_batch = QSpinBox()
+        self.spin_extraction_batch.setRange(10, 500)
+        self.spin_extraction_batch.setValue(50)
+        self.spin_extraction_batch.setSuffix(" photos")
+        self.spin_extraction_batch.setToolTip("Number of photos to process in each batch")
+        extraction_layout.addRow("Batch Size:", self.spin_extraction_batch)
+
+        layout.addWidget(extraction_group)
+
+        layout.addStretch()
+
+        # Check CLIP status after UI is ready
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(100, self._check_clip_status)
+
+        return self._create_scrollable_panel(widget)
+
     def _create_video_panel(self) -> QWidget:
         """Create Video Settings panel."""
         widget = QWidget()
@@ -970,6 +1130,21 @@ class PreferencesDialog(QDialog):
         # InsightFace model path
         self.txt_model_path.setText(self.settings.get("insightface_model_path", ""))
 
+        # CLIP / Visual Embeddings
+        clip_variant = self.settings.get("clip_model_variant", "openai/clip-vit-base-patch32")
+        clip_index = self.cmb_clip_variant.findData(clip_variant)
+        if clip_index >= 0:
+            self.cmb_clip_variant.setCurrentIndex(clip_index)
+
+        clip_device = self.settings.get("clip_device", "auto")
+        device_index = self.cmb_clip_device.findData(clip_device)
+        if device_index >= 0:
+            self.cmb_clip_device.setCurrentIndex(device_index)
+
+        self.chk_auto_extract.setChecked(self.settings.get("clip_auto_extract", False))
+        self.spin_extraction_batch.setValue(self.settings.get("clip_batch_size", 50))
+        self.txt_clip_model_path.setText(self.settings.get("clip_model_path", ""))
+
         # Badge overlay settings
         self.chk_badge_overlays.setChecked(self.settings.get("badge_overlays_enabled", True))
         self.spin_badge_size.setValue(int(self.settings.get("badge_size_px", 22)))
@@ -1124,6 +1299,15 @@ class PreferencesDialog(QDialog):
                     print(f"⚠️ Failed to clear InsightFace check flag: {e}")
 
             print(f"🧑 InsightFace model path configured: {model_path or '(using default locations)'}")
+
+        # CLIP / Visual Embeddings
+        self.settings.set("clip_model_variant", self.cmb_clip_variant.currentData())
+        self.settings.set("clip_device", self.cmb_clip_device.currentData())
+        self.settings.set("clip_auto_extract", self.chk_auto_extract.isChecked())
+        self.settings.set("clip_batch_size", self.spin_extraction_batch.value())
+        clip_path = self.txt_clip_model_path.text().strip()
+        self.settings.set("clip_model_path", clip_path)
+        print(f"🔍 CLIP settings saved: variant={self.cmb_clip_variant.currentData()}, device={self.cmb_clip_device.currentData()}")
 
         # Badge overlays
         self.settings.set("badge_overlays_enabled", self.chk_badge_overlays.isChecked())
@@ -1494,6 +1678,167 @@ class PreferencesDialog(QDialog):
         download_thread.finished_signal.connect(on_finished)
         download_thread.start()
         progress_dlg.exec()
+
+    def _check_clip_status(self):
+        """Check and display CLIP model status."""
+        try:
+            from utils.clip_check import get_clip_download_status
+            status = get_clip_download_status()
+
+            # Update model path display
+            app_root = Path(__file__).parent.absolute()
+            default_path = app_root / 'models' / 'clip-vit-base-patch32'
+            self.txt_clip_model_path.setText(str(default_path))
+
+            if status['models_available']:
+                size_mb = status.get('total_size_mb', 0)
+                self.lbl_clip_status.setText(
+                    f"✅ CLIP model installed and ready ({size_mb} MB)\n"
+                    f"Location: {status['model_path']}"
+                )
+                self.lbl_clip_status.setStyleSheet(
+                    "QLabel { padding: 8px; background-color: #e0ffe0; border-radius: 4px; color: #060; }"
+                )
+                self.btn_download_clip.setEnabled(False)
+            elif status['missing_files']:
+                missing_count = len(status['missing_files'])
+                self.lbl_clip_status.setText(
+                    f"⚠️ CLIP model partially installed ({missing_count} files missing)\n"
+                    f"Click 'Download CLIP Model' to complete installation"
+                )
+                self.lbl_clip_status.setStyleSheet(
+                    "QLabel { padding: 8px; background-color: #fff4e0; border-radius: 4px; color: #840; }"
+                )
+                self.btn_download_clip.setEnabled(True)
+            else:
+                self.lbl_clip_status.setText(
+                    "⚠️ CLIP model not installed\n"
+                    "Click 'Download CLIP Model' to install OpenAI CLIP ViT-B/32 (~600MB)"
+                )
+                self.lbl_clip_status.setStyleSheet(
+                    "QLabel { padding: 8px; background-color: #fff4e0; border-radius: 4px; color: #840; }"
+                )
+                self.btn_download_clip.setEnabled(True)
+        except Exception as e:
+            self.lbl_clip_status.setText(f"⚠️ Error checking CLIP status: {str(e)}")
+            self.lbl_clip_status.setStyleSheet(
+                "QLabel { padding: 8px; background-color: #fff4e0; border-radius: 4px; color: #840; }"
+            )
+
+    def _download_clip_model(self):
+        """Download CLIP model with progress dialog."""
+        from PySide6.QtWidgets import QProgressDialog
+        from PySide6.QtCore import QThread, Signal
+        import subprocess
+
+        class CLIPDownloadThread(QThread):
+            progress = Signal(str)
+            finished_signal = Signal(bool, str)
+
+            def run(self):
+                try:
+                    self.progress.emit("Initializing CLIP model download...")
+
+                    # Run download_clip_model_offline.py script
+                    script_path = Path("download_clip_model_offline.py")
+                    if not script_path.exists():
+                        self.finished_signal.emit(False, "download_clip_model_offline.py not found")
+                        return
+
+                    self.progress.emit("Downloading CLIP ViT-B/32 model (~600MB)...")
+                    result = subprocess.run(
+                        [sys.executable, str(script_path)],
+                        capture_output=True,
+                        text=True,
+                        timeout=1800  # 30 minute timeout (large download)
+                    )
+
+                    if result.returncode == 0:
+                        self.finished_signal.emit(True, "CLIP model downloaded successfully!")
+                    else:
+                        error_msg = result.stderr or result.stdout or "Unknown error"
+                        self.finished_signal.emit(False, f"Download failed:\n{error_msg}")
+
+                except subprocess.TimeoutExpired:
+                    self.finished_signal.emit(False, "Download timed out (>30 minutes)")
+                except Exception as e:
+                    self.finished_signal.emit(False, f"Error: {str(e)}")
+
+        progress_dlg = QProgressDialog("Downloading CLIP model...", "Cancel", 0, 0, self)
+        progress_dlg.setWindowTitle("CLIP Model Download")
+        progress_dlg.setWindowModality(Qt.WindowModal)
+        progress_dlg.setCancelButton(None)  # Disable cancel during download
+        progress_dlg.setMinimumDuration(0)
+
+        download_thread = CLIPDownloadThread()
+
+        def on_progress(msg):
+            progress_dlg.setLabelText(msg)
+
+        def on_finished(success, message):
+            progress_dlg.close()
+            if success:
+                QMessageBox.information(
+                    self,
+                    "Download Complete",
+                    f"✅ {message}\n\n"
+                    "CLIP model files are now installed in ./models/clip-vit-base-patch32/\n"
+                    "You can now use visual embedding extraction."
+                )
+                self._check_clip_status()  # Update status display
+            else:
+                QMessageBox.critical(
+                    self,
+                    "Download Failed",
+                    f"❌ {message}\n\n"
+                    "You can try manually running:\n"
+                    "python download_clip_model_offline.py"
+                )
+
+        download_thread.progress.connect(on_progress)
+        download_thread.finished_signal.connect(on_finished)
+        download_thread.start()
+        progress_dlg.exec()
+
+    def _browse_clip_models(self):
+        """Browse for custom CLIP model directory."""
+        folder = QFileDialog.getExistingDirectory(
+            self,
+            "Select CLIP Model Directory",
+            str(Path.home()),
+            QFileDialog.ShowDirsOnly
+        )
+        if folder:
+            self.txt_clip_model_path.setText(folder)
+            self.settings["clip_model_path"] = folder
+            self._check_clip_status()
+
+    def _open_clip_model_folder(self):
+        """Open CLIP model folder in file explorer."""
+        try:
+            app_root = Path(__file__).parent.absolute()
+            model_folder = app_root / 'models' / 'clip-vit-base-patch32'
+
+            if not model_folder.exists():
+                model_folder.mkdir(parents=True, exist_ok=True)
+
+            # Open folder in system file explorer
+            import platform
+            system = platform.system()
+
+            if system == 'Windows':
+                os.startfile(str(model_folder))
+            elif system == 'Darwin':  # macOS
+                subprocess.run(['open', str(model_folder)])
+            else:  # Linux and others
+                subprocess.run(['xdg-open', str(model_folder)])
+
+        except Exception as e:
+            QMessageBox.warning(
+                self,
+                "Open Folder Failed",
+                f"Could not open model folder:\n{str(e)}"
+            )
 
     def _show_cache_stats(self):
         """Show thumbnail cache statistics."""

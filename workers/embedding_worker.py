@@ -56,8 +56,8 @@ class EmbeddingWorkerSignals(QObject):
 
     Qt signals must be defined in a QObject, not QRunnable.
     """
-    # Progress: (current, total, message)
-    progress = Signal(int, int, str)
+    # Progress: (current, total, photo_path, message)
+    progress = Signal(int, int, str, str)
 
     # Finished: (success_count, failed_count)
     finished = Signal(int, int)
@@ -115,6 +115,9 @@ class EmbeddingWorker(QRunnable):
         # Stats
         self.success_count = 0
         self.failed_count = 0
+
+        # Cancellation flag
+        self._is_cancelled = False
 
     def run(self):
         """
@@ -174,7 +177,20 @@ class EmbeddingWorker(QRunnable):
             last_heartbeat = time.time()
 
             for i, photo_id in enumerate(self.photo_ids, 1):
+                # Check for cancellation
+                if self._is_cancelled:
+                    logger.info(f"[EmbeddingWorker] Cancelled by user at {i}/{total}")
+                    self.job_service.complete_job(self.job_id, success=False, error="Cancelled by user")
+                    self.signals.finished.emit(self.success_count, self.failed_count)
+                    return
+
                 try:
+                    # Get photo path for progress display
+                    photo_path = self._get_photo_path(photo_id)
+
+                    # Emit progress signal before processing
+                    self.signals.progress.emit(i, total, photo_path, "Processing")
+
                     # Extract and store embedding
                     self._process_photo(photo_id, model_id)
                     self.success_count += 1
@@ -183,12 +199,10 @@ class EmbeddingWorker(QRunnable):
                     progress_pct = i / total
                     self.job_service.heartbeat(self.job_id, progress=progress_pct)
 
-                    # Emit progress signal every 10 photos or every 30 seconds
+                    # Log progress every 10 photos or every 30 seconds
                     now = time.time()
                     if i % 10 == 0 or (now - last_heartbeat) >= 30:
-                        message = f"Processed {i}/{total} photos"
-                        self.signals.progress.emit(i, total, message)
-                        logger.info(f"[EmbeddingWorker] {message}")
+                        logger.info(f"[EmbeddingWorker] Processed {i}/{total} photos")
                         last_heartbeat = now
 
                 except Exception as e:
@@ -211,6 +225,28 @@ class EmbeddingWorker(QRunnable):
             self.job_service.complete_job(self.job_id, success=False, error=error_msg)
             self.signals.error.emit(error_msg)
 
+    def _get_photo_path(self, photo_id: int) -> str:
+        """
+        Get photo path from database.
+
+        Args:
+            photo_id: Photo ID
+
+        Returns:
+            str: Photo file path
+        """
+        with self.photo_repo.connection() as conn:
+            cursor = conn.execute(
+                "SELECT path FROM photo_metadata WHERE id = ?",
+                (photo_id,)
+            )
+            row = cursor.fetchone()
+
+            if not row:
+                return "Unknown"
+
+            return row['path'] if isinstance(row, dict) else row[0]
+
     def _process_photo(self, photo_id: int, model_id: int):
         """
         Extract and store embedding for a single photo.
@@ -223,17 +259,10 @@ class EmbeddingWorker(QRunnable):
             Exception: If extraction or storage fails
         """
         # Get photo path
-        with self.photo_repo.connection() as conn:
-            cursor = conn.execute(
-                "SELECT path FROM photo_metadata WHERE photo_id = ?",
-                (photo_id,)
-            )
-            row = cursor.fetchone()
+        photo_path = self._get_photo_path(photo_id)
 
-            if not row:
-                raise ValueError(f"Photo {photo_id} not found")
-
-            photo_path = row[0]
+        if photo_path == "Unknown":
+            raise ValueError(f"Photo {photo_id} not found")
 
         # Check file exists
         if not Path(photo_path).exists():
@@ -246,6 +275,11 @@ class EmbeddingWorker(QRunnable):
         self.embedding_service.store_embedding(photo_id, embedding, model_id)
 
         logger.debug(f"[EmbeddingWorker] ✓ Processed photo {photo_id}: {Path(photo_path).name}")
+
+    def cancel(self):
+        """Cancel the worker gracefully."""
+        logger.info(f"[EmbeddingWorker] Cancel requested for job {self.job_id}")
+        self._is_cancelled = True
 
 
 def launch_embedding_worker(photo_ids: List[int],
@@ -294,7 +328,9 @@ def launch_embedding_worker(photo_ids: List[int],
 
     # Connect signals (optional - caller can also connect)
     worker.signals.progress.connect(
-        lambda curr, total, msg: logger.info(f"[EmbeddingWorker] Progress: {curr}/{total} - {msg}")
+        lambda curr, total, path, msg: logger.info(
+            f"[EmbeddingWorker] Progress: {curr}/{total} - {msg} - {Path(path).name}"
+        )
     )
     worker.signals.finished.connect(
         lambda success, failed: logger.info(
