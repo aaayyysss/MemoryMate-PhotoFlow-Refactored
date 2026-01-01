@@ -175,8 +175,8 @@ class EmbeddingService:
             logger.info(f"[EmbeddingService] CLIP model already loaded (ID: {self._clip_model_id})")
             return self._clip_model_id
 
-        # Check if model files exist locally
-        from utils.clip_check import check_clip_availability
+        # Check if model files exist locally and get the actual path
+        from utils.clip_check import check_clip_availability, get_clip_download_status
         available, message = check_clip_availability()
 
         if not available:
@@ -187,26 +187,27 @@ class EmbeddingService:
                 "This will download the model files (~600MB) to ./models/clip-vit-base-patch32/"
             )
 
-        logger.info(f"[EmbeddingService] Loading CLIP model from local cache: {variant}")
+        # Get the actual model directory path
+        status = get_clip_download_status()
+        model_path = status.get('model_path')
+
+        if not model_path:
+            raise RuntimeError("CLIP model path not found")
+
+        logger.info(f"[EmbeddingService] Loading CLIP model from local path: {model_path}")
         logger.info(message)
 
         try:
-            # Get model directory (app root)
-            app_root = Path(__file__).parent.parent.absolute()
-            model_cache_dir = app_root / 'models'
-
-            # Set transformers to use local cache only
+            # Set transformers to use local files only
             os.environ['TRANSFORMERS_OFFLINE'] = '1'
 
-            # Load model and processor from local cache
+            # Load model and processor directly from the snapshot directory
             self._clip_processor = self._CLIPProcessor.from_pretrained(
-                variant,
-                cache_dir=str(model_cache_dir),
+                model_path,
                 local_files_only=True
             )
             self._clip_model = self._CLIPModel.from_pretrained(
-                variant,
-                cache_dir=str(model_cache_dir),
+                model_path,
                 local_files_only=True
             )
             self._clip_model.to(self.device)
