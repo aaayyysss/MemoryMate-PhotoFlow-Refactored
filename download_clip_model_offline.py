@@ -1,4 +1,4 @@
-"""
+r"""
 Offline CLIP Model Downloader
 ===============================
 
@@ -9,7 +9,8 @@ Usage:
     python download_clip_model_offline.py
 
 The model will be downloaded to the HuggingFace cache directory:
-Windows: C:\Users\<username>\.cache\huggingface\hub\models--openai--clip-vit-base-patch32\
+Windows: C:/Users/<username>/.cache/huggingface/hub/models--openai--clip-vit-base-patch32/
+Linux:   ~/.cache/huggingface/hub/models--openai--clip-vit-base-patch32/
 """
 
 import os
