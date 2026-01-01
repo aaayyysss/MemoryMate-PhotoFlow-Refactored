@@ -43,22 +43,23 @@ FILES_TO_DOWNLOAD = [
 ]
 
 def get_cache_dir():
-    """Get the HuggingFace cache directory with correct structure."""
-    if os.name == 'nt':  # Windows
-        cache_base = Path(os.environ.get('USERPROFILE', 'C:\\')) / '.cache' / 'huggingface' / 'hub'
-    else:  # Linux/Mac
-        cache_base = Path(os.environ.get('HOME', '/tmp')) / '.cache' / 'huggingface' / 'hub'
+    """Get the CLIP model directory in app root (next to face detection models)."""
+    # Get app root directory (where this script is located)
+    app_root = Path(__file__).parent.absolute()
 
-    # Model-specific directory with CORRECT structure using commit hash
-    model_dir = cache_base / 'models--openai--clip-vit-base-patch32'
-    snapshot_dir = model_dir / 'snapshots' / COMMIT_HASH
-    refs_dir = model_dir / 'refs'
+    # Store CLIP model next to face detection models
+    # Structure: ./models/clip-vit-base-patch32/
+    model_base_dir = app_root / 'models' / 'clip-vit-base-patch32'
+
+    # For HuggingFace compatibility, create proper structure
+    snapshot_dir = model_base_dir / 'snapshots' / COMMIT_HASH
+    refs_dir = model_base_dir / 'refs'
 
     return {
-        'model_dir': model_dir,
+        'model_dir': model_base_dir,
         'snapshot_dir': snapshot_dir,
         'refs_dir': refs_dir,
-        'cache_base': cache_base
+        'app_root': app_root
     }
 
 def download_file(url, dest_path, filename):

@@ -27,9 +27,11 @@ python download_clip_model_offline.py
 The script will:
 - ✅ Disable SSL verification
 - ✅ Download all required model files (~600MB total)
-- ✅ Place files in the correct cache directory
+- ✅ Place files in **app root directory** (next to face detection models)
 - ✅ Show download progress
 - ✅ Skip already downloaded files
+
+**Model Location:** `./models/clip-vit-base-patch32/` (same directory as buffalo_l face detection models)
 
 ### Step 2: Restart the Application
 
@@ -55,42 +57,47 @@ Download these files:
 - ✅ `special_tokens_map.json`
 - ✅ `pytorch_model.bin` (⚠️ Large file: ~600MB)
 
-### 2. Create Cache Directory
+### 2. Create Directory in App Root
 
-Create this directory structure:
+Create this directory structure **in the application directory** (next to the face detection models):
 
-**Windows:**
 ```
-C:\Users\<YourUsername>\.cache\huggingface\hub\models--openai--clip-vit-base-patch32\snapshots\main\
-```
-
-**Linux/Mac:**
-```
-~/.cache/huggingface/hub/models--openai--clip-vit-base-patch32/snapshots/main/
+./models/clip-vit-base-patch32/snapshots/e6a30b603a447e251fdaca1c3056b2a16cdfebeb/
+./models/clip-vit-base-patch32/refs/
 ```
 
-Replace `<YourUsername>` with your actual Windows username.
+The commit hash `e6a30b603a447e251fdaca1c3056b2a16cdfebeb` is the stable version of CLIP ViT-B/32.
 
 ### 3. Copy Files
 
-Copy all downloaded files to the `main` directory created in step 2.
+Copy all downloaded files to the `snapshots/e6a30b603a447e251fdaca1c3056b2a16cdfebeb/` directory.
+
+Create a file `refs/main` containing just the commit hash:
+```
+e6a30b603a447e251fdaca1c3056b2a16cdfebeb
+```
 
 ### 4. Verify
 
 The directory structure should look like:
 
 ```
-models--openai--clip-vit-base-patch32/
-└── snapshots/
-    └── main/
-        ├── config.json
-        ├── preprocessor_config.json
-        ├── tokenizer_config.json
-        ├── vocab.json
-        ├── merges.txt
-        ├── tokenizer.json
-        ├── special_tokens_map.json
-        └── pytorch_model.bin
+./models/
+├── buffalo_l/                    (face detection models)
+│   └── ...
+└── clip-vit-base-patch32/        (CLIP embedding models)
+    ├── refs/
+    │   └── main                  (contains commit hash)
+    └── snapshots/
+        └── e6a30b603a447e251fdaca1c3056b2a16cdfebeb/
+            ├── config.json
+            ├── preprocessor_config.json
+            ├── tokenizer_config.json
+            ├── vocab.json
+            ├── merges.txt
+            ├── tokenizer.json
+            ├── special_tokens_map.json
+            └── pytorch_model.bin (~600MB)
 ```
 
 ---

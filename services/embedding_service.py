@@ -149,7 +149,7 @@ class EmbeddingService:
 
     def load_clip_model(self, variant: str = 'openai/clip-vit-base-patch32') -> int:
         """
-        Load CLIP model.
+        Load CLIP model from local cache.
 
         Args:
             variant: Model variant (default: 'openai/clip-vit-base-patch32')
@@ -162,7 +162,7 @@ class EmbeddingService:
             int: Model ID from ml_model table
 
         Raises:
-            RuntimeError: If dependencies not available
+            RuntimeError: If dependencies not available or model files not found
         """
         if not self.available:
             raise RuntimeError(
@@ -175,23 +175,40 @@ class EmbeddingService:
             logger.info(f"[EmbeddingService] CLIP model already loaded (ID: {self._clip_model_id})")
             return self._clip_model_id
 
-        logger.info(f"[EmbeddingService] Loading CLIP model: {variant}")
+        # Check if model files exist locally
+        from utils.clip_check import check_clip_availability
+        available, message = check_clip_availability()
+
+        if not available:
+            logger.error(f"[EmbeddingService] CLIP model not available: {message}")
+            raise RuntimeError(
+                "CLIP model files not found.\n\n"
+                "Please run: python download_clip_model_offline.py\n\n"
+                "This will download the model files (~600MB) to ./models/clip-vit-base-patch32/"
+            )
+
+        logger.info(f"[EmbeddingService] Loading CLIP model from local cache: {variant}")
+        logger.info(message)
 
         try:
-            # WORKAROUND: Disable SSL verification for portable Python environments
-            # This fixes certificate verification errors on Windows without admin rights
-            import ssl
-            import urllib3
-            try:
-                ssl._create_default_https_context = ssl._create_unverified_context
-                urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-                logger.warning("[EmbeddingService] SSL verification disabled for model download (portable Python workaround)")
-            except Exception as e:
-                logger.warning(f"[EmbeddingService] Could not disable SSL verification: {e}")
+            # Get model directory (app root)
+            app_root = Path(__file__).parent.parent.absolute()
+            model_cache_dir = app_root / 'models'
 
-            # Load model and processor
-            self._clip_processor = self._CLIPProcessor.from_pretrained(variant)
-            self._clip_model = self._CLIPModel.from_pretrained(variant)
+            # Set transformers to use local cache only
+            os.environ['TRANSFORMERS_OFFLINE'] = '1'
+
+            # Load model and processor from local cache
+            self._clip_processor = self._CLIPProcessor.from_pretrained(
+                variant,
+                cache_dir=str(model_cache_dir),
+                local_files_only=True
+            )
+            self._clip_model = self._CLIPModel.from_pretrained(
+                variant,
+                cache_dir=str(model_cache_dir),
+                local_files_only=True
+            )
             self._clip_model.to(self.device)
             self._clip_model.eval()  # Set to evaluation mode
 
@@ -199,7 +216,7 @@ class EmbeddingService:
             dimension = self._clip_model.config.projection_dim
 
             logger.info(
-                f"[EmbeddingService] ✓ CLIP loaded: {variant} "
+                f"[EmbeddingService] ✓ CLIP loaded from local cache: {variant} "
                 f"({dimension}-D, device={self.device})"
             )
 
