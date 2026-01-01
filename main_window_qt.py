@@ -1448,21 +1448,47 @@ class MainWindow(QMainWindow):
             if result != QMessageBox.Yes:
                 return
 
-            # Launch the embedding worker
-            from workers.embedding_worker import launch_embedding_worker
-            job_id = launch_embedding_worker(
+            # Launch the embedding worker with progress dialog
+            from workers.embedding_worker import EmbeddingWorker
+            from services.job_service import get_job_service
+            from ui.embedding_progress_dialog import EmbeddingProgressDialog
+            from PySide6.QtCore import QThreadPool
+
+            # Create progress dialog
+            progress_dialog = EmbeddingProgressDialog(len(photo_ids), self)
+
+            # Enqueue job
+            job_service = get_job_service()
+            job_id = job_service.enqueue_job(
+                kind='embed',
+                payload={
+                    'photo_ids': photo_ids,
+                    'model_variant': 'openai/clip-vit-base-patch32'
+                },
+                backend='auto'
+            )
+
+            # Create worker
+            worker = EmbeddingWorker(
+                job_id=job_id,
                 photo_ids=photo_ids,
                 model_variant='openai/clip-vit-base-patch32',
                 device='auto'
             )
 
-            QMessageBox.information(
-                self,
-                "Embedding Extraction Started",
-                f"Job #{job_id} started in background.\n\n"
-                f"You can continue working while embeddings are extracted.\n"
-                f"Check Tools → AI & Semantic Search → Show Embedding Status for progress."
-            )
+            # Connect worker signals to progress dialog
+            worker.signals.progress.connect(progress_dialog.update_progress)
+            worker.signals.finished.connect(progress_dialog.on_finished)
+            worker.signals.error.connect(progress_dialog.on_error)
+
+            # Connect dialog cancel to worker cancel
+            progress_dialog.cancelled.connect(worker.cancel)
+
+            # Start worker
+            QThreadPool.globalInstance().start(worker)
+
+            # Show progress dialog
+            progress_dialog.exec()
 
         except Exception as e:
             QMessageBox.critical(

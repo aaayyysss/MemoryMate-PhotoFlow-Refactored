@@ -42,10 +42,26 @@ def check_clip_availability() -> Tuple[bool, str]:
     model_path = None
 
     for location in model_locations:
-        clip_path = os.path.join(location, 'models', 'clip-vit-base-patch32', 'snapshots', COMMIT_HASH)
-        if os.path.exists(clip_path) and _verify_model_files(clip_path):
-            models_found = True
-            model_path = clip_path
+        # First, check if there's a models/clip-vit-base-patch32 directory
+        base_dir = Path(location) / 'models' / 'clip-vit-base-patch32'
+        if not base_dir.exists():
+            continue
+
+        # Check for snapshots directory
+        snapshots_dir = base_dir / 'snapshots'
+        if not snapshots_dir.exists():
+            continue
+
+        # Look for ANY commit hash directory in snapshots/
+        for commit_dir in snapshots_dir.iterdir():
+            if commit_dir.is_dir():
+                # Check if this directory has all required files
+                if _verify_model_files(str(commit_dir)):
+                    models_found = True
+                    model_path = str(commit_dir)
+                    break
+
+        if models_found:
             break
 
     if models_found:
@@ -118,21 +134,10 @@ def _verify_model_files(snapshot_path: str) -> bool:
             logger.debug(f"Missing CLIP model file: {filename}")
             return False
 
-    # Also check refs/main file in parent directory
+    # Also check refs/main file exists (but don't validate hash - accept any version)
     refs_main = snapshot_path.parent.parent / 'refs' / 'main'
     if not refs_main.exists():
         logger.debug("Missing refs/main file")
-        return False
-
-    # Verify refs/main contains correct commit hash
-    try:
-        with open(refs_main, 'r') as f:
-            ref_hash = f.read().strip()
-            if ref_hash != COMMIT_HASH:
-                logger.warning(f"refs/main contains wrong hash: {ref_hash} != {COMMIT_HASH}")
-                return False
-    except Exception as e:
-        logger.warning(f"Could not read refs/main: {e}")
         return False
 
     return True
@@ -161,15 +166,25 @@ def get_clip_download_status() -> Dict[str, any]:
     # Check models
     model_locations = _get_model_search_paths()
     for location in model_locations:
-        clip_path = Path(location) / 'models' / 'clip-vit-base-patch32' / 'snapshots' / COMMIT_HASH
+        base_dir = Path(location) / 'models' / 'clip-vit-base-patch32'
+        if not base_dir.exists():
+            continue
 
-        if clip_path.exists():
+        snapshots_dir = base_dir / 'snapshots'
+        if not snapshots_dir.exists():
+            continue
+
+        # Look for ANY commit hash directory
+        for commit_dir in snapshots_dir.iterdir():
+            if not commit_dir.is_dir():
+                continue
+
             # Check which files are missing
             missing = []
             total_size = 0
 
             for filename in REQUIRED_FILES:
-                file_path = clip_path / filename
+                file_path = commit_dir / filename
                 if file_path.exists():
                     total_size += file_path.stat().st_size
                 else:
@@ -178,14 +193,14 @@ def get_clip_download_status() -> Dict[str, any]:
             if not missing:
                 # All files present
                 status['models_available'] = True
-                status['model_path'] = str(clip_path)
+                status['model_path'] = str(commit_dir)
                 status['total_size_mb'] = round(total_size / (1024 * 1024), 1)
                 status['message'] = f"✅ CLIP model installed ({status['total_size_mb']} MB)"
                 return status
-            else:
-                # Some files missing
+            elif len(missing) < len(REQUIRED_FILES):
+                # Some files present
                 status['missing_files'] = missing
-                status['model_path'] = str(clip_path)
+                status['model_path'] = str(commit_dir)
                 status['message'] = f"⚠️ Incomplete installation - {len(missing)} files missing"
                 return status
 
