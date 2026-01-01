@@ -9027,3 +9027,79 @@ Traceback (most recent call last):
 File "C:\Users\suleimaa\Downloads\Photo-Sorter\09.49.01.01-Photo-App\MemoryMate-PhotoFlow-Refactored-main-18\main_window_qt.py", line 1496, in _on_show_embedding_status
 from database.reference_db import ReferenceDB
 ModuleNotFoundError: No module named 'database'
+
+## SSL Certificate Issue & Offline Solution (2026-01-01)
+
+### Problem
+Portable Python environments on Windows without admin rights cannot download the CLIP model from HuggingFace due to SSL certificate verification errors:
+```
+[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate
+```
+
+### Root Cause
+- Portable Python lacks updated SSL certificates
+- `transformers` library enforces SSL verification at multiple levels
+- SSL workaround using `ssl._create_unverified_context` was insufficient
+- The `huggingface_hub` library still validates certificates
+
+### Solution: Offline Model Download
+
+Created two solutions:
+
+1. **Automated Script**: `download_clip_model_offline.py`
+   - Downloads model with SSL verification disabled
+   - Places files in correct HuggingFace cache directory
+   - Shows progress and handles interruptions
+   - Can be re-run safely (skips existing files)
+
+2. **Manual Setup Guide**: `OFFLINE_MODEL_SETUP.md`
+   - Step-by-step instructions for manual download
+   - Cache directory structure documentation
+   - Troubleshooting guide
+   - Alternative for when script fails
+
+### Files Created
+- `download_clip_model_offline.py` - Automated offline downloader
+- `OFFLINE_MODEL_SETUP.md` - Complete setup documentation
+
+### Usage
+```bash
+python download_clip_model_offline.py
+```
+
+### Model Files Required (8 files, ~600MB total)
+1. config.json
+2. preprocessor_config.json
+3. tokenizer_config.json
+4. vocab.json
+5. merges.txt
+6. tokenizer.json
+7. special_tokens_map.json
+8. pytorch_model.bin (~600MB)
+
+### Cache Location
+**Windows:** `C:\Users\<username>\.cache\huggingface\hub\models--openai--clip-vit-base-patch32\snapshots\main\`
+**Linux:** `~/.cache/huggingface/hub/models--openai--clip-vit-base-patch32/snapshots/main/`
+
+### Testing
+After running the download script, restart the application and try embedding extraction.
+Expected log output:
+```
+[EmbeddingService] Loading CLIP model: openai/clip-vit-base-patch32
+[EmbeddingService] ✓ CLIP loaded: openai/clip-vit-base-patch32 (512-D, device=cpu)
+```
+
+### Code Fixes Also Applied
+1. Fixed `ReferenceDB.get_connection()` → `ReferenceDB._connect()` in main_window_qt.py:1499
+2. Fixed `photo_repo.get_all_photos()` → `photo_repo.find_all()` in main_window_qt.py:1424
+3. Fixed dictionary access `p.id` → `p['id']` in main_window_qt.py:1435
+
+### Security Note
+⚠️ SSL verification is disabled ONLY for model downloads from trusted HuggingFace repository.
+This is safe for local development but not recommended for production environments.
+
+### Next Steps
+1. User runs: `python download_clip_model_offline.py`
+2. Script downloads all model files to cache
+3. User restarts application
+4. Embedding extraction should work offline
