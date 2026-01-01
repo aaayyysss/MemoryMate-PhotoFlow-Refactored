@@ -178,6 +178,17 @@ class EmbeddingService:
         logger.info(f"[EmbeddingService] Loading CLIP model: {variant}")
 
         try:
+            # WORKAROUND: Disable SSL verification for portable Python environments
+            # This fixes certificate verification errors on Windows without admin rights
+            import ssl
+            import urllib3
+            try:
+                ssl._create_default_https_context = ssl._create_unverified_context
+                urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+                logger.warning("[EmbeddingService] SSL verification disabled for model download (portable Python workaround)")
+            except Exception as e:
+                logger.warning(f"[EmbeddingService] Could not disable SSL verification: {e}")
+
             # Load model and processor
             self._clip_processor = self._CLIPProcessor.from_pretrained(variant)
             self._clip_model = self._CLIPModel.from_pretrained(variant)

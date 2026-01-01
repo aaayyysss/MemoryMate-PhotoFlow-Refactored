@@ -1496,7 +1496,7 @@ class MainWindow(QMainWindow):
             from reference_db import ReferenceDB
             db = ReferenceDB()
 
-            with db.get_connection() as conn:
+            with db._connect() as conn:
                 cur = conn.cursor()
 
                 # Total photos
