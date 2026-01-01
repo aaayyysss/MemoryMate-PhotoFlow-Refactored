@@ -1419,7 +1419,7 @@ class MainWindow(QMainWindow):
                 return
 
             # Get all photos in the project
-            from repositories.repository import PhotoRepository
+            from repository.photo_repository import PhotoRepository
             photo_repo = PhotoRepository()
             all_photos = photo_repo.get_all_photos(project_id)
 
@@ -1493,7 +1493,7 @@ class MainWindow(QMainWindow):
                 return
 
             # Query database for stats
-            from database.reference_db import ReferenceDB
+            from reference_db import ReferenceDB
             db = ReferenceDB()
 
             with db.get_connection() as conn:
