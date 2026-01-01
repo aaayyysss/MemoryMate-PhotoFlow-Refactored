@@ -16088,7 +16088,7 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
 
                 # CATEGORY 1: People matching text
                 people_query = """
-                    SELECT branch_key, display_name, COUNT(DISTINCT fc.image_path) as photo_count
+                    SELECT b.branch_key, b.display_name, COUNT(DISTINCT fc.image_path) as photo_count
                     FROM branches b
                     LEFT JOIN face_crops fc ON b.project_id = fc.project_id AND b.branch_key = fc.branch_key
                     WHERE b.project_id = ?
