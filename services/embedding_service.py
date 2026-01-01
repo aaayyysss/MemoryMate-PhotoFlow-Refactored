@@ -265,12 +265,11 @@ class EmbeddingService:
             cursor = conn.execute("""
                 INSERT INTO ml_model (
                     name, variant, version, task, runtime,
-                    created_at, config_json
+                    created_at
                 )
-                VALUES (?, ?, ?, ?, ?, datetime('now'), ?)
+                VALUES (?, ?, ?, ?, ?, datetime('now'))
             """, (
-                name, variant, version, task, runtime,
-                f'{{"dimension": {dimension}}}'
+                name, variant, version, task, runtime
             ))
 
             model_id = cursor.lastrowid
