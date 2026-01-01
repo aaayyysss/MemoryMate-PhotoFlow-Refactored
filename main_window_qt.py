@@ -753,6 +753,14 @@ class MainWindow(QMainWindow):
         tb.addWidget(self.search_bar)
         ui.separator()
 
+        # ✨ Semantic Search (AI-powered)
+        from ui.semantic_search_widget import SemanticSearchWidget
+        self.semantic_search = SemanticSearchWidget(self)
+        self.semantic_search.searchTriggered.connect(self._on_semantic_search)
+        self.semantic_search.searchCleared.connect(self._on_semantic_search_cleared)
+        tb.addWidget(self.semantic_search)
+        ui.separator()
+
         # 🔽 Sorting and filtering controls
         self.sort_combo = ui.combo_sort(tr('toolbar.sort'), ["Filename", "Date", "Size"], self._apply_sort_filter)
         self.sort_order_combo = QSortComboBox()
@@ -1269,6 +1277,60 @@ class MainWindow(QMainWindow):
                     QMessageBox.information(self, tr('search.error_title'), tr('search.no_results_criteria'))
         except Exception as e:
             logging.getLogger(__name__).error(f"Advanced search failed: {e}")
+
+    def _on_semantic_search(self, photo_ids: list, query: str):
+        """Handle semantic search results."""
+        try:
+            from repository.photo_repository import PhotoRepository
+
+            logger = logging.getLogger(__name__)
+            logger.info(f"[SEMANTIC_SEARCH] Got {len(photo_ids)} results for '{query}'")
+
+            # Convert photo IDs to paths
+            photo_repo = PhotoRepository()
+            paths = []
+
+            with photo_repo.connection() as conn:
+                placeholders = ','.join('?' * len(photo_ids))
+                cursor = conn.execute(
+                    f"SELECT path FROM photo_metadata WHERE photo_id IN ({placeholders})",
+                    photo_ids
+                )
+                paths = [row[0] for row in cursor.fetchall()]
+
+            # Display results in grid
+            if paths:
+                self.grid.load_paths(paths)
+                self.statusBar().showMessage(
+                    f"✨ Semantic search found {len(paths)} photos matching '{query}'"
+                )
+                logger.info(f"[SEMANTIC_SEARCH] Displayed {len(paths)} results")
+            else:
+                self.statusBar().showMessage(f"✨ No photos found for '{query}'")
+                logger.warning(f"[SEMANTIC_SEARCH] No paths found for {len(photo_ids)} photo IDs")
+
+        except Exception as e:
+            logger = logging.getLogger(__name__)
+            logger.error(f"[SEMANTIC_SEARCH] Failed to display results: {e}", exc_info=True)
+            QMessageBox.critical(
+                self,
+                "Display Error",
+                f"Failed to display search results:\n{e}"
+            )
+
+    def _on_semantic_search_cleared(self):
+        """Handle semantic search cleared - reload all photos."""
+        try:
+            logger = logging.getLogger(__name__)
+            logger.info("[SEMANTIC_SEARCH] Search cleared, reloading all photos")
+
+            # Reload the current view (all photos)
+            self.grid.reload()
+            self.statusBar().showMessage("Showing all photos")
+
+        except Exception as e:
+            logger = logging.getLogger(__name__)
+            logger.error(f"[SEMANTIC_SEARCH] Failed to clear search: {e}", exc_info=True)
             QMessageBox.critical(self, tr('search.error_title'), tr('search.error_message').format(error=e))
 
 
