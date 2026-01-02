@@ -395,6 +395,14 @@ class EmbeddingService:
         # Convert to blob
         embedding_blob = embedding.astype(np.float32).tobytes()
 
+        logger.debug(
+            f"[EmbeddingService] Storing embedding - "
+            f"photo_id={photo_id} (type={type(photo_id)}), "
+            f"model_id={model_id}, "
+            f"dim={len(embedding)}, "
+            f"blob_size={len(embedding_blob)} bytes"
+        )
+
         with self.db.get_connection() as conn:
             # Get photo hash for freshness tracking
             cursor = conn.execute(
@@ -428,6 +436,27 @@ class EmbeddingService:
             ))
 
             conn.commit()
+
+            # Verify what was stored
+            verify_cursor = conn.execute(
+                "SELECT photo_id, dim, length(embedding) FROM photo_embedding WHERE photo_id = ? AND model_id = ?",
+                (photo_id, model_id)
+            )
+            verify_row = verify_cursor.fetchone()
+            if verify_row:
+                stored_id, stored_dim, stored_size = verify_row[0], verify_row[1], verify_row[2]
+                logger.debug(
+                    f"[EmbeddingService] ✓ Verified storage - "
+                    f"stored_photo_id={stored_id}, stored_dim={stored_dim}, stored_blob_size={stored_size} bytes"
+                )
+
+                if stored_size != len(embedding_blob):
+                    logger.error(
+                        f"[EmbeddingService] ❌ STORAGE CORRUPTION DETECTED! "
+                        f"Expected {len(embedding_blob)} bytes but stored {stored_size} bytes!"
+                    )
+            else:
+                logger.error(f"[EmbeddingService] ❌ Embedding not found after insert!")
 
             logger.debug(f"[EmbeddingService] Stored embedding for photo {photo_id}")
 
