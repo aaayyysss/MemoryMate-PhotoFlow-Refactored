@@ -235,17 +235,36 @@ class EmbeddingWorker(QRunnable):
         Returns:
             str: Photo file path
         """
-        with self.photo_repo.connection() as conn:
-            cursor = conn.execute(
-                "SELECT path FROM photo_metadata WHERE id = ?",
-                (photo_id,)
-            )
-            row = cursor.fetchone()
+        try:
+            with self.photo_repo.connection() as conn:
+                cursor = conn.execute(
+                    "SELECT path FROM photo_metadata WHERE id = ?",
+                    (photo_id,)
+                )
+                row = cursor.fetchone()
 
-            if not row:
-                return "Unknown"
+                if not row:
+                    logger.warning(f"[EmbeddingWorker] Photo {photo_id} not found in database")
+                    return "Unknown"
 
-            return row['path'] if isinstance(row, dict) else row[0]
+                # Handle both dict and tuple row formats
+                if isinstance(row, dict):
+                    if 'path' in row:
+                        return row['path']
+                    else:
+                        logger.error(f"[EmbeddingWorker] Row is dict but has no 'path' key. Keys: {list(row.keys())}")
+                        return "Unknown"
+                else:
+                    # Tuple/list format
+                    if len(row) > 0:
+                        return row[0]
+                    else:
+                        logger.error(f"[EmbeddingWorker] Row is empty tuple/list")
+                        return "Unknown"
+
+        except Exception as e:
+            logger.error(f"[EmbeddingWorker] Error getting path for photo {photo_id}: {e}", exc_info=True)
+            return "Unknown"
 
     def _process_photo(self, photo_id: int, model_id: int):
         """
