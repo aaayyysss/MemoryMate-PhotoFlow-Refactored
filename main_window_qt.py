@@ -775,6 +775,7 @@ class MainWindow(QMainWindow):
         self.semantic_search.searchTriggered.connect(self._on_semantic_search)
         self.semantic_search.searchCleared.connect(self._on_semantic_search_cleared)
         tb.addWidget(self.semantic_search)
+        logger.info(f"[MainWindow] ✨ Semantic search widget added to toolbar - visible: {self.semantic_search.isVisible()}, size: {self.semantic_search.size()}")
         ui.separator()
 
         # 🔽 Sorting and filtering controls
@@ -1294,33 +1295,62 @@ class MainWindow(QMainWindow):
         except Exception as e:
             logging.getLogger(__name__).error(f"Advanced search failed: {e}")
 
-    def _on_semantic_search(self, photo_ids: list, query: str):
-        """Handle semantic search results."""
+    def _on_semantic_search(self, photo_ids: list, query: str, scores: list):
+        """
+        Handle semantic search results.
+
+        Args:
+            photo_ids: List of photo IDs
+            query: Search query text
+            scores: List of (photo_id, similarity_score) tuples
+        """
         try:
             from repository.photo_repository import PhotoRepository
 
             logger = logging.getLogger(__name__)
             logger.info(f"[SEMANTIC_SEARCH] Got {len(photo_ids)} results for '{query}'")
 
-            # Convert photo IDs to paths
+            # Create score lookup dictionary
+            score_map = {photo_id: score for photo_id, score in scores}
+
+            # Convert photo IDs to paths with scores
             photo_repo = PhotoRepository()
-            paths = []
+            paths_with_scores = []
 
             with photo_repo.connection() as conn:
                 placeholders = ','.join('?' * len(photo_ids))
                 cursor = conn.execute(
-                    f"SELECT path FROM photo_metadata WHERE photo_id IN ({placeholders})",
+                    f"SELECT id, path FROM photo_metadata WHERE id IN ({placeholders})",
                     photo_ids
                 )
-                paths = [row[0] for row in cursor.fetchall()]
+                for row in cursor.fetchall():
+                    photo_id = row[0]
+                    path = row[1]
+                    score = score_map.get(photo_id, 0.0)
+                    paths_with_scores.append((path, score))
 
             # Display results in grid
-            if paths:
+            if paths_with_scores:
+                # Extract just paths for now (grid doesn't support scores yet)
+                paths = [path for path, score in paths_with_scores]
                 self.grid.load_paths(paths)
+
+                # Store scores for later use (e.g., overlay display)
+                self.grid._semantic_search_scores = score_map
+
+                # Show summary with score range
+                min_score = min(score for _, score in paths_with_scores)
+                max_score = max(score for _, score in paths_with_scores)
+                avg_score = sum(score for _, score in paths_with_scores) / len(paths_with_scores)
+
                 self.statusBar().showMessage(
-                    f"✨ Semantic search found {len(paths)} photos matching '{query}'"
+                    f"✨ Semantic search: {len(paths)} photos matching '{query}' "
+                    f"(scores: {min_score:.1%} - {max_score:.1%}, avg: {avg_score:.1%})"
                 )
-                logger.info(f"[SEMANTIC_SEARCH] Displayed {len(paths)} results")
+                logger.info(
+                    f"[SEMANTIC_SEARCH] Displayed {len(paths)} results - "
+                    f"score range: {min_score:.3f} to {max_score:.3f}"
+                )
             else:
                 self.statusBar().showMessage(f"✨ No photos found for '{query}'")
                 logger.warning(f"[SEMANTIC_SEARCH] No paths found for {len(photo_ids)} photo IDs")
