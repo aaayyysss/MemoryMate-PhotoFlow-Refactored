@@ -479,7 +479,16 @@ class EmbeddingService:
             query_norm = query_embedding / np.linalg.norm(query_embedding)
 
             for photo_id, embedding_blob in rows:
-                # Deserialize embedding
+                # Deserialize embedding - handle both bytes and string (hex) formats
+                if isinstance(embedding_blob, str):
+                    # SQLite returned as string (hex representation)
+                    # Convert hex string to bytes
+                    try:
+                        embedding_blob = bytes.fromhex(embedding_blob)
+                    except ValueError:
+                        # If not hex, try direct encoding
+                        embedding_blob = embedding_blob.encode('latin1')
+
                 embedding = np.frombuffer(embedding_blob, dtype=np.float32)
                 embedding_norm = embedding / np.linalg.norm(embedding)
 

@@ -88,8 +88,17 @@ class RerankingService:
                     logger.warning(f"[Reranking] No embedding found for photo {photo_id}")
                     return None
 
-                # Deserialize
-                embedding = np.frombuffer(row[0], dtype=np.float32)
+                # Deserialize - handle both bytes and string (hex) formats
+                embedding_blob = row[0]
+                if isinstance(embedding_blob, str):
+                    # SQLite returned as string (hex representation)
+                    try:
+                        embedding_blob = bytes.fromhex(embedding_blob)
+                    except ValueError:
+                        # If not hex, try direct encoding
+                        embedding_blob = embedding_blob.encode('latin1')
+
+                embedding = np.frombuffer(embedding_blob, dtype=np.float32)
                 return embedding
 
         except Exception as e:
