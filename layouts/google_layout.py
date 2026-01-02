@@ -8454,6 +8454,15 @@ class GooglePhotosLayout(BaseLayout):
 
         toolbar.addSeparator()
 
+        # ✨ Semantic Search (AI-powered)
+        from ui.semantic_search_widget import SemanticSearchWidget
+        self.semantic_search = SemanticSearchWidget(self)
+        self.semantic_search.searchTriggered.connect(self._on_semantic_search)
+        self.semantic_search.searchCleared.connect(self._on_semantic_search_cleared)
+        toolbar.addWidget(self.semantic_search)
+
+        toolbar.addSeparator()
+
         # Clear Filter button (initially hidden, Google Photos style)
         self.btn_clear_filter = QPushButton("✕ Clear Filter")
         self.btn_clear_filter.setToolTip("Show all photos (remove date/folder filters)")
@@ -16327,7 +16336,101 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
             print(f"[GooglePhotosLayout] ⚠️ Search error: {e}")
             import traceback
             traceback.print_exc()
-    
+
+    def _on_semantic_search(self, photo_ids: list, query: str, scores: list):
+        """
+        Handle semantic search results for Google Photos layout.
+
+        Args:
+            photo_ids: List of photo IDs from semantic search
+            query: Search query text
+            scores: List of (photo_id, similarity_score) tuples
+        """
+        try:
+            from repository.photo_repository import PhotoRepository
+
+            logger.info(f"[GooglePhotosLayout] 🔍✨ Semantic search: {len(photo_ids)} results for '{query}'")
+
+            # Create score lookup
+            score_map = {photo_id: score for photo_id, score in scores}
+
+            # Get photo paths and metadata
+            photo_repo = PhotoRepository()
+            photo_data = []
+
+            with photo_repo.connection() as conn:
+                placeholders = ','.join('?' * len(photo_ids))
+                cursor = conn.execute(f"""
+                    SELECT id, path, date_taken, width, height
+                    FROM photo_metadata
+                    WHERE id IN ({placeholders})
+                    AND date_taken IS NOT NULL
+                    ORDER BY date_taken DESC
+                """, photo_ids)
+
+                for row in cursor.fetchall():
+                    photo_id = row[0]
+                    path = row[1]
+                    date_taken = row[2]
+                    width = row[3]
+                    height = row[4]
+                    score = score_map.get(photo_id, 0.0)
+
+                    photo_data.append({
+                        'path': path,
+                        'date_taken': date_taken,
+                        'width': width,
+                        'height': height,
+                        'score': score
+                    })
+
+            if photo_data:
+                # Convert to row format expected by _rebuild_timeline_with_results
+                rows = [(d['path'], d['date_taken'], d['width'], d['height']) for d in photo_data]
+
+                # Rebuild timeline with results
+                self._rebuild_timeline_with_results(rows, f"✨ {query}")
+
+                # Calculate and show score stats
+                min_score = min(d['score'] for d in photo_data)
+                max_score = max(d['score'] for d in photo_data)
+                avg_score = sum(d['score'] for d in photo_data) / len(photo_data)
+
+                # Add search header with score info
+                QTimer.singleShot(100, lambda: self._add_search_header(
+                    f"✨ Semantic search: {len(photo_data)} photos matching '{query}' "
+                    f"(similarity: {min_score:.1%} - {max_score:.1%}, avg: {avg_score:.1%})"
+                ))
+
+                logger.info(
+                    f"[GooglePhotosLayout] Semantic search displayed {len(photo_data)} results - "
+                    f"score range: {min_score:.3f} to {max_score:.3f}"
+                )
+            else:
+                # No results - reload all photos
+                self._load_photos()
+                QTimer.singleShot(100, lambda: self._add_search_header(
+                    f"✨ No photos found for '{query}'"
+                ))
+
+        except Exception as e:
+            logger.error(f"[GooglePhotosLayout] Semantic search failed: {e}", exc_info=True)
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.critical(
+                self,
+                "Semantic Search Error",
+                f"Failed to display semantic search results:\n{e}"
+            )
+
+    def _on_semantic_search_cleared(self):
+        """Handle semantic search cleared - reload all photos."""
+        try:
+            logger.info("[GooglePhotosLayout] Semantic search cleared, reloading photos")
+            self._load_photos()
+
+        except Exception as e:
+            logger.error(f"[GooglePhotosLayout] Failed to clear semantic search: {e}", exc_info=True)
+
     def _filter_people_by_count(self, operator: str, threshold: int):
         """Filter people grid by photo count."""
         try:

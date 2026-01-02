@@ -28,6 +28,7 @@ from PySide6.QtGui import QIcon, QPixmap
 
 from typing import Optional, List, Tuple
 import numpy as np
+import time
 from pathlib import Path
 
 from services.embedding_service import get_embedding_service
