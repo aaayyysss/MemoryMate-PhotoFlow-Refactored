@@ -8456,7 +8456,7 @@ class GooglePhotosLayout(BaseLayout):
 
         # ✨ Semantic Search (AI-powered)
         from ui.semantic_search_widget import SemanticSearchWidget
-        self.semantic_search = SemanticSearchWidget(self)
+        self.semantic_search = SemanticSearchWidget(parent=None)  # GooglePhotosLayout is not a QWidget
         self.semantic_search.searchTriggered.connect(self._on_semantic_search)
         self.semantic_search.searchCleared.connect(self._on_semantic_search_cleared)
         toolbar.addWidget(self.semantic_search)
