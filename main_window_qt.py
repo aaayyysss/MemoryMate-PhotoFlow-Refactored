@@ -775,7 +775,7 @@ class MainWindow(QMainWindow):
         self.semantic_search.searchTriggered.connect(self._on_semantic_search)
         self.semantic_search.searchCleared.connect(self._on_semantic_search_cleared)
         tb.addWidget(self.semantic_search)
-        logger.info(f"[MainWindow] ✨ Semantic search widget added to toolbar - visible: {self.semantic_search.isVisible()}, size: {self.semantic_search.size()}")
+        logging.getLogger(__name__).info(f"[MainWindow] ✨ Semantic search widget added to toolbar - visible: {self.semantic_search.isVisible()}, size: {self.semantic_search.size()}")
         ui.separator()
 
         # 🔽 Sorting and filtering controls
