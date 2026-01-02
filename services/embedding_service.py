@@ -474,6 +474,18 @@ class EmbeddingService:
                 logger.warning("[EmbeddingService] No embeddings found for search")
                 return []
 
+            # Debug: Check first row to diagnose data issue
+            if rows:
+                first_row = rows[0]
+                logger.debug(
+                    f"[EmbeddingService] First row debug - "
+                    f"type: {type(first_row)}, "
+                    f"length: {len(first_row) if hasattr(first_row, '__len__') else 'N/A'}, "
+                    f"values: {first_row if len(str(first_row)) < 200 else str(first_row)[:200]+'...'}"
+                )
+                if hasattr(first_row, 'keys'):
+                    logger.debug(f"[EmbeddingService] Row keys: {list(first_row.keys())}")
+
             # Compute cosine similarities
             results = []
             query_norm = query_embedding / np.linalg.norm(query_embedding)
@@ -520,10 +532,18 @@ class EmbeddingService:
             # Return top K
             top_results = results[:top_k]
 
-            logger.info(
-                f"[EmbeddingService] Search complete: "
-                f"{len(rows)} candidates, top score={top_results[0][1]:.3f}"
-            )
+            if top_results:
+                logger.info(
+                    f"[EmbeddingService] Search complete: "
+                    f"{len(rows)} candidates, {len(top_results)} valid results, "
+                    f"top score={top_results[0][1]:.3f}"
+                )
+            else:
+                logger.warning(
+                    f"[EmbeddingService] Search complete but NO valid embeddings found! "
+                    f"Retrieved {len(rows)} rows from database, but all were invalid/corrupted. "
+                    f"This suggests embeddings were stored incorrectly."
+                )
 
             return top_results
 
