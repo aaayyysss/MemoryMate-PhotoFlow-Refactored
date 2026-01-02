@@ -277,23 +277,38 @@ class EmbeddingWorker(QRunnable):
         Raises:
             Exception: If extraction or storage fails
         """
-        # Get photo path
-        photo_path = self._get_photo_path(photo_id)
+        try:
+            # Get photo path
+            logger.debug(f"[EmbeddingWorker] Step 1: Getting path for photo {photo_id}")
+            photo_path = self._get_photo_path(photo_id)
+            logger.debug(f"[EmbeddingWorker] Step 1 result: photo_path = {photo_path}")
 
-        if photo_path == "Unknown":
-            raise ValueError(f"Photo {photo_id} not found")
+            if photo_path == "Unknown":
+                raise ValueError(f"Photo {photo_id} not found in database")
 
-        # Check file exists
-        if not Path(photo_path).exists():
-            raise FileNotFoundError(f"Photo file not found: {photo_path}")
+            # Check file exists
+            logger.debug(f"[EmbeddingWorker] Step 2: Checking if file exists: {photo_path}")
+            if not Path(photo_path).exists():
+                raise FileNotFoundError(f"Photo file not found: {photo_path}")
 
-        # Extract embedding
-        embedding = self.embedding_service.extract_image_embedding(photo_path, model_id)
+            # Extract embedding
+            logger.debug(f"[EmbeddingWorker] Step 3: Extracting embedding for {photo_path}")
+            embedding = self.embedding_service.extract_image_embedding(photo_path, model_id)
+            logger.debug(f"[EmbeddingWorker] Step 3 result: embedding shape = {embedding.shape}")
 
-        # Store in database
-        self.embedding_service.store_embedding(photo_id, embedding, model_id)
+            # Store in database
+            logger.debug(f"[EmbeddingWorker] Step 4: Storing embedding for photo {photo_id}")
+            self.embedding_service.store_embedding(photo_id, embedding, model_id)
 
-        logger.debug(f"[EmbeddingWorker] ✓ Processed photo {photo_id}: {Path(photo_path).name}")
+            logger.debug(f"[EmbeddingWorker] ✓ Processed photo {photo_id}: {Path(photo_path).name}")
+
+        except Exception as e:
+            logger.error(
+                f"[EmbeddingWorker] Exception in _process_photo for photo {photo_id}: "
+                f"type={type(e).__name__}, message='{e}'",
+                exc_info=True
+            )
+            raise
 
     def cancel(self):
         """Cancel the worker gracefully."""
