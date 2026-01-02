@@ -479,22 +479,40 @@ class EmbeddingService:
             query_norm = query_embedding / np.linalg.norm(query_embedding)
 
             for photo_id, embedding_blob in rows:
-                # Deserialize embedding - handle both bytes and string (hex) formats
-                if isinstance(embedding_blob, str):
-                    # SQLite returned as string (hex representation)
-                    # Convert hex string to bytes
-                    try:
-                        embedding_blob = bytes.fromhex(embedding_blob)
-                    except ValueError:
-                        # If not hex, try direct encoding
-                        embedding_blob = embedding_blob.encode('latin1')
+                try:
+                    # Deserialize embedding - handle both bytes and string formats
+                    if isinstance(embedding_blob, str):
+                        # SQLite returned as string - try multiple conversion methods
+                        # Method 1: Try hex decoding
+                        try:
+                            embedding_blob = bytes.fromhex(embedding_blob)
+                        except (ValueError, TypeError):
+                            # Method 2: Raw binary string - encode to bytes
+                            # Use latin1 which preserves byte values 0-255
+                            embedding_blob = embedding_blob.encode('latin1')
 
-                embedding = np.frombuffer(embedding_blob, dtype=np.float32)
-                embedding_norm = embedding / np.linalg.norm(embedding)
+                    # Validate buffer size
+                    expected_size = 512 * 4  # 512 dimensions * 4 bytes per float32
+                    if len(embedding_blob) != expected_size:
+                        logger.warning(
+                            f"[EmbeddingService] Photo {photo_id}: Invalid embedding size "
+                            f"{len(embedding_blob)} bytes, expected {expected_size} bytes. Skipping."
+                        )
+                        continue
 
-                # Cosine similarity
-                similarity = float(np.dot(query_norm, embedding_norm))
-                results.append((photo_id, similarity))
+                    embedding = np.frombuffer(embedding_blob, dtype=np.float32)
+                    embedding_norm = embedding / np.linalg.norm(embedding)
+
+                    # Cosine similarity
+                    similarity = float(np.dot(query_norm, embedding_norm))
+                    results.append((photo_id, similarity))
+
+                except Exception as e:
+                    logger.warning(
+                        f"[EmbeddingService] Failed to deserialize embedding for photo {photo_id}: {e}. "
+                        f"Blob type: {type(embedding_blob)}, size: {len(embedding_blob) if hasattr(embedding_blob, '__len__') else 'N/A'}"
+                    )
+                    continue
 
             # Sort by similarity descending
             results.sort(key=lambda x: x[1], reverse=True)

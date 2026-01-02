@@ -88,15 +88,24 @@ class RerankingService:
                     logger.warning(f"[Reranking] No embedding found for photo {photo_id}")
                     return None
 
-                # Deserialize - handle both bytes and string (hex) formats
+                # Deserialize - handle both bytes and string formats
                 embedding_blob = row[0]
                 if isinstance(embedding_blob, str):
-                    # SQLite returned as string (hex representation)
+                    # SQLite returned as string - try multiple conversion methods
                     try:
                         embedding_blob = bytes.fromhex(embedding_blob)
-                    except ValueError:
-                        # If not hex, try direct encoding
+                    except (ValueError, TypeError):
+                        # Raw binary string - encode to bytes using latin1
                         embedding_blob = embedding_blob.encode('latin1')
+
+                # Validate buffer size
+                expected_size = 512 * 4  # 512 dimensions * 4 bytes per float32
+                if len(embedding_blob) != expected_size:
+                    logger.error(
+                        f"[Reranking] Photo {photo_id}: Invalid embedding size "
+                        f"{len(embedding_blob)} bytes, expected {expected_size} bytes"
+                    )
+                    return None
 
                 embedding = np.frombuffer(embedding_blob, dtype=np.float32)
                 return embedding
