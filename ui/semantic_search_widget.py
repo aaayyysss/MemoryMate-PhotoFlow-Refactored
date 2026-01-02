@@ -21,13 +21,17 @@ Usage:
 
 from PySide6.QtWidgets import (
     QWidget, QLineEdit, QPushButton, QHBoxLayout, QLabel,
-    QMessageBox, QProgressDialog
+    QMessageBox, QProgressDialog, QFileDialog, QSlider, QVBoxLayout
 )
 from PySide6.QtCore import Qt, Signal, QTimer
-from PySide6.QtGui import QIcon
+from PySide6.QtGui import QIcon, QPixmap
 
 from typing import Optional, List, Tuple
+import numpy as np
+from pathlib import Path
+
 from services.embedding_service import get_embedding_service
+from services.search_history_service import get_search_history_service
 from repository.photo_repository import PhotoRepository
 from logging_config import get_logger
 from translation_manager import tr
@@ -42,8 +46,9 @@ class SemanticSearchWidget(QWidget):
     Emits signals when search is triggered with results.
     """
 
-    # Signal: (photo_ids, query_text)
-    searchTriggered = Signal(list, str)
+    # Signal: (photo_ids, query_text, scores)
+    # scores is a list of (photo_id, similarity_score) tuples
+    searchTriggered = Signal(list, str, list)
 
     # Signal: () - emitted when search is cleared
     searchCleared = Signal()
@@ -55,7 +60,11 @@ class SemanticSearchWidget(QWidget):
         super().__init__(parent)
         self.embedding_service = None
         self.photo_repo = PhotoRepository()
+        self.search_history_service = get_search_history_service()
         self._last_query = ""
+        self._query_image_path = None  # Path to uploaded query image
+        self._query_image_embedding = None  # Cached image embedding
+        self._search_start_time = None  # For timing searches
         self._setup_ui()
 
     def _setup_ui(self):
@@ -79,11 +88,23 @@ class SemanticSearchWidget(QWidget):
         self.search_input.textChanged.connect(self._on_text_changed)
         layout.addWidget(self.search_input, 1)
 
+        # Image query button (multi-modal search)
+        self.image_btn = QPushButton("📷 +Image")
+        self.image_btn.setToolTip("Add an image to your search query (multi-modal search)")
+        self.image_btn.clicked.connect(self._on_upload_image)
+        layout.addWidget(self.image_btn)
+
         # Search button
         self.search_btn = QPushButton("Semantic Search")
         self.search_btn.setToolTip("Search photos by description using AI")
         self.search_btn.clicked.connect(self._on_search)
         layout.addWidget(self.search_btn)
+
+        # History button
+        self.history_btn = QPushButton("📜 History")
+        self.history_btn.setToolTip("View recent searches")
+        self.history_btn.clicked.connect(self._on_show_history)
+        layout.addWidget(self.history_btn)
 
         # Clear button
         self.clear_btn = QPushButton("Clear")
@@ -109,20 +130,123 @@ class SemanticSearchWidget(QWidget):
         # User must press Enter or click Search button
         pass
 
-    def _on_search(self):
-        """Trigger semantic search."""
-        query = self.search_input.text().strip()
+    def _on_upload_image(self):
+        """Handle image upload for multi-modal search."""
+        # Open file dialog
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select Query Image",
+            "",
+            "Images (*.jpg *.jpeg *.png *.heic *.bmp);;All Files (*)"
+        )
 
-        if not query:
+        if not file_path:
+            return
+
+        try:
+            logger.info(f"[SemanticSearch] Loading query image: {file_path}")
+
+            # Check if embedding service is available
+            if self.embedding_service is None:
+                self.embedding_service = get_embedding_service()
+
+            if not self.embedding_service.available:
+                QMessageBox.warning(
+                    self,
+                    "Feature Unavailable",
+                    "Multi-modal search requires PyTorch and Transformers.\n\n"
+                    "Install dependencies:\n"
+                    "pip install torch transformers pillow"
+                )
+                return
+
+            # Load model if needed
+            if self.embedding_service._clip_model is None:
+                progress = QProgressDialog(
+                    "Loading CLIP model...",
+                    None,
+                    0, 0,
+                    self
+                )
+                progress.setWindowTitle("Loading AI Model")
+                progress.setWindowModality(Qt.WindowModal)
+                progress.show()
+
+                try:
+                    self.embedding_service.load_clip_model()
+                    progress.close()
+                except Exception as e:
+                    progress.close()
+                    QMessageBox.critical(
+                        self,
+                        "Model Loading Failed",
+                        f"Failed to load CLIP model:\n{e}"
+                    )
+                    return
+
+            # Extract embedding from image
+            self._query_image_embedding = self.embedding_service.extract_image_embedding(
+                file_path
+            )
+            self._query_image_path = file_path
+
+            # Update UI to show image is loaded
+            image_name = Path(file_path).name
+            self.image_btn.setText(f"📷 {image_name[:15]}...")
+            self.image_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #4CAF50;
+                    color: white;
+                }
+            """)
+
+            logger.info(f"[SemanticSearch] Query image loaded: {image_name}")
+
+            # Show info
+            QMessageBox.information(
+                self,
+                "Image Loaded",
+                f"Query image loaded: {image_name}\n\n"
+                "You can now:\n"
+                "• Search with just the image (leave text empty)\n"
+                "• Combine image + text for multi-modal search\n"
+                "• Click 'Clear' to remove the image"
+            )
+
+        except Exception as e:
+            logger.error(f"[SemanticSearch] Failed to load query image: {e}", exc_info=True)
+            QMessageBox.critical(
+                self,
+                "Image Load Failed",
+                f"Failed to load query image:\n{e}"
+            )
+
+    def _on_search(self):
+        """Trigger semantic search (supports multi-modal: text + image)."""
+        query = self.search_input.text().strip()
+        has_text = bool(query)
+        has_image = self._query_image_embedding is not None
+
+        # Must have at least one query type
+        if not has_text and not has_image:
             self._on_clear()
             return
 
-        if query == self._last_query:
+        # Skip if same text query and no image
+        if has_text and query == self._last_query and not has_image:
             logger.info(f"[SemanticSearch] Same query, skipping: {query}")
             return
 
-        logger.info(f"[SemanticSearch] Searching for: '{query}'")
+        query_desc = []
+        if has_text:
+            query_desc.append(f"text: '{query}'")
+        if has_image:
+            query_desc.append(f"image: {Path(self._query_image_path).name}")
+        logger.info(f"[SemanticSearch] Searching for: {', '.join(query_desc)}")
         self._last_query = query
+
+        # Start timing
+        self._search_start_time = time.time()
 
         try:
             # Check if embedding service is available
@@ -167,9 +291,39 @@ class SemanticSearchWidget(QWidget):
                     self.errorOccurred.emit(str(e))
                     return
 
-            # Extract query embedding
-            logger.info("[SemanticSearch] Extracting query embedding...")
-            query_embedding = self.embedding_service.extract_text_embedding(query)
+            # Extract query embedding (multi-modal support)
+            query_embedding = None
+
+            if has_text and has_image:
+                # Multi-modal: combine text + image embeddings
+                logger.info("[SemanticSearch] Extracting multi-modal query embedding (text + image)...")
+                text_embedding = self.embedding_service.extract_text_embedding(query)
+                image_embedding = self._query_image_embedding
+
+                # Weighted average (50/50 by default)
+                # Can be adjusted: 0.7 text + 0.3 image, etc.
+                text_weight = 0.5
+                image_weight = 0.5
+
+                query_embedding = (text_weight * text_embedding + image_weight * image_embedding)
+
+                # Normalize the combined embedding
+                query_embedding = query_embedding / np.linalg.norm(query_embedding)
+
+                logger.info(f"[SemanticSearch] Combined embeddings: {text_weight}*text + {image_weight}*image")
+
+            elif has_text:
+                # Text-only search
+                logger.info("[SemanticSearch] Extracting text query embedding...")
+                query_embedding = self.embedding_service.extract_text_embedding(query)
+
+            elif has_image:
+                # Image-only search
+                logger.info("[SemanticSearch] Using image query embedding...")
+                query_embedding = self._query_image_embedding
+
+            else:
+                raise ValueError("No query provided (neither text nor image)")
 
             # Search for similar images
             logger.info("[SemanticSearch] Searching database...")
@@ -207,8 +361,27 @@ class SemanticSearchWidget(QWidget):
             )
             self.status_label.setVisible(True)
 
-            # Emit signal with results
-            self.searchTriggered.emit(photo_ids, query)
+            # Calculate execution time
+            execution_time_ms = (time.time() - self._search_start_time) * 1000
+
+            # Record search in history
+            query_type = 'semantic_text' if (has_text and not has_image) else \
+                        'semantic_image' if (has_image and not has_text) else \
+                        'semantic_multi'
+
+            self.search_history_service.record_search(
+                query_type=query_type,
+                query_text=query if has_text else None,
+                query_image_path=self._query_image_path if has_image else None,
+                result_count=len(results),
+                top_photo_ids=photo_ids[:10],  # Store top 10
+                execution_time_ms=execution_time_ms,
+                model_id=self.embedding_service._clip_model_id
+            )
+
+            # Emit signal with results and scores
+            # results is already a list of (photo_id, score) tuples
+            self.searchTriggered.emit(photo_ids, query, results)
 
         except Exception as e:
             logger.error(f"[SemanticSearch] Search failed: {e}", exc_info=True)
@@ -224,6 +397,13 @@ class SemanticSearchWidget(QWidget):
         """Clear search and show all photos."""
         self.search_input.clear()
         self._last_query = ""
+        self._query_image_path = None
+        self._query_image_embedding = None
+
+        # Reset image button
+        self.image_btn.setText("📷 +Image")
+        self.image_btn.setStyleSheet("")
+
         self.clear_btn.setVisible(False)
         self.status_label.setVisible(False)
         self.searchCleared.emit()
@@ -237,3 +417,86 @@ class SemanticSearchWidget(QWidget):
         """Enable/disable the search widget."""
         self.search_input.setEnabled(enabled)
         self.search_btn.setEnabled(enabled)
+
+    def _on_show_history(self):
+        """Show search history dialog."""
+        from PySide6.QtWidgets import QDialog, QListWidget, QListWidgetItem, QVBoxLayout, QDialogButtonBox
+
+        # Create dialog
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Search History")
+        dialog.setMinimumWidth(600)
+        dialog.setMinimumHeight(400)
+
+        layout = QVBoxLayout(dialog)
+
+        # Info label
+        info = QLabel("Click on a search to re-run it")
+        info.setStyleSheet("color: #666; font-style: italic;")
+        layout.addWidget(info)
+
+        # List widget
+        list_widget = QListWidget()
+        list_widget.setAlternatingRowColors(True)
+
+        # Load recent searches
+        recent_searches = self.search_history_service.get_recent_searches(limit=50)
+
+        if not recent_searches:
+            no_results = QLabel("No search history yet.\n\nYour searches will appear here.")
+            no_results.setAlignment(Qt.AlignCenter)
+            no_results.setStyleSheet("color: #999; padding: 40px;")
+            layout.addWidget(no_results)
+        else:
+            for search in recent_searches:
+                # Format display text
+                if search.query_type == 'semantic_text':
+                    text = f"🔍 Text: \"{search.query_text}\""
+                elif search.query_type == 'semantic_image':
+                    image_name = Path(search.query_image_path).name if search.query_image_path else "Unknown"
+                    text = f"📷 Image: {image_name}"
+                elif search.query_type == 'semantic_multi':
+                    image_name = Path(search.query_image_path).name if search.query_image_path else "Unknown"
+                    text = f"✨ Multi: \"{search.query_text}\" + {image_name}"
+                else:
+                    text = f"❓ {search.query_type}"
+
+                # Add metadata
+                from datetime import datetime
+                try:
+                    dt = datetime.fromisoformat(search.created_at)
+                    time_str = dt.strftime("%Y-%m-%d %H:%M")
+                except:
+                    time_str = search.created_at
+
+                text += f"\n   {time_str} • {search.result_count} results • {search.execution_time_ms:.0f}ms"
+
+                # Create item
+                item = QListWidgetItem(text)
+                item.setData(Qt.UserRole, search)  # Store search record
+                list_widget.addItem(item)
+
+            # Handle item click
+            def on_item_clicked(item):
+                search = item.data(Qt.UserRole)
+
+                # Restore search state
+                if search.query_text:
+                    self.search_input.setText(search.query_text)
+
+                # TODO: Handle image query restoration
+                # Would need to check if image still exists
+
+                # Re-run search
+                dialog.accept()
+                self._on_search()
+
+            list_widget.itemClicked.connect(on_item_clicked)
+            layout.addWidget(list_widget)
+
+        # Buttons
+        button_box = QDialogButtonBox(QDialogButtonBox.Close)
+        button_box.rejected.connect(dialog.reject)
+        layout.addWidget(button_box)
+
+        dialog.exec()
