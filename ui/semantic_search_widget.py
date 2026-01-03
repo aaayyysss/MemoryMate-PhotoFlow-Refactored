@@ -66,6 +66,7 @@ class SemanticSearchWidget(QWidget):
         self._query_image_path = None  # Path to uploaded query image
         self._query_image_embedding = None  # Cached image embedding
         self._search_start_time = None  # For timing searches
+        self._min_similarity = 0.25  # Default similarity threshold (configurable via slider)
         self._setup_ui()
 
     def _setup_ui(self):
@@ -107,6 +108,33 @@ class SemanticSearchWidget(QWidget):
         self.history_btn.clicked.connect(self._on_show_history)
         layout.addWidget(self.history_btn)
 
+        # Similarity threshold slider
+        threshold_layout = QVBoxLayout()
+        threshold_layout.setSpacing(2)
+
+        self.threshold_label = QLabel(f"Min: {int(self._min_similarity * 100)}%")
+        self.threshold_label.setToolTip("Minimum similarity threshold - higher = stricter matching")
+        self.threshold_label.setStyleSheet("font-size: 9pt; color: #666;")
+        threshold_layout.addWidget(self.threshold_label)
+
+        self.threshold_slider = QSlider(Qt.Horizontal)
+        self.threshold_slider.setMinimum(10)  # 10% = 0.10
+        self.threshold_slider.setMaximum(50)  # 50% = 0.50
+        self.threshold_slider.setValue(int(self._min_similarity * 100))  # Default 25%
+        self.threshold_slider.setTickPosition(QSlider.TicksBelow)
+        self.threshold_slider.setTickInterval(10)
+        self.threshold_slider.setMaximumWidth(120)
+        self.threshold_slider.setToolTip(
+            "Adjust similarity threshold:\n"
+            "• 10-20%: Very permissive (may include unrelated photos)\n"
+            "• 25-30%: Balanced (recommended)\n"
+            "• 35-50%: Strict (only close matches)"
+        )
+        self.threshold_slider.valueChanged.connect(self._on_threshold_changed)
+        threshold_layout.addWidget(self.threshold_slider)
+
+        layout.addLayout(threshold_layout)
+
         # Clear button
         self.clear_btn = QPushButton("Clear")
         self.clear_btn.setToolTip("Show all photos")
@@ -130,6 +158,12 @@ class SemanticSearchWidget(QWidget):
         # Disable live search for now (too expensive with embeddings)
         # User must press Enter or click Search button
         pass
+
+    def _on_threshold_changed(self, value: int):
+        """Handle similarity threshold slider change."""
+        self._min_similarity = value / 100.0
+        self.threshold_label.setText(f"Min: {value}%")
+        logger.debug(f"[SemanticSearch] Similarity threshold changed to {self._min_similarity:.2f}")
 
     def _on_upload_image(self):
         """Handle image upload for multi-modal search."""
@@ -327,22 +361,26 @@ class SemanticSearchWidget(QWidget):
                 raise ValueError("No query provided (neither text nor image)")
 
             # Search for similar images
-            logger.info("[SemanticSearch] Searching database...")
+            logger.info(f"[SemanticSearch] Searching database (min_similarity={self._min_similarity:.2f})...")
             results = self.embedding_service.search_similar(
                 query_embedding,
                 top_k=100,  # Get top 100 results
-                model_id=self.embedding_service._clip_model_id
+                model_id=self.embedding_service._clip_model_id,
+                min_similarity=self._min_similarity
             )
 
             if not results:
                 QMessageBox.information(
                     self,
                     "No Results",
-                    "No photos found matching your description.\n\n"
-                    "Make sure embeddings have been extracted for your photos.\n"
-                    "(Scan → Extract Embeddings)"
+                    f"No photos found matching your description (similarity ≥ {self._min_similarity:.0%}).\n\n"
+                    "Try:\n"
+                    "• Using different search terms\n"
+                    "• Lowering the similarity threshold slider\n"
+                    "• Making sure embeddings have been extracted\n"
+                    "  (Scan → Extract Embeddings)"
                 )
-                self.status_label.setText("No results found")
+                self.status_label.setText(f"No results ≥{self._min_similarity:.0%}")
                 self.status_label.setVisible(True)
                 return
 
@@ -357,8 +395,8 @@ class SemanticSearchWidget(QWidget):
             # Update UI state
             self.clear_btn.setVisible(True)
             self.status_label.setText(
-                f"Found {len(results)} matches "
-                f"(top similarity: {results[0][1]:.1%})"
+                f"Found {len(results)} matches ≥{self._min_similarity:.0%} "
+                f"(top: {results[0][1]:.1%})"
             )
             self.status_label.setVisible(True)
 

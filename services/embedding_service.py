@@ -464,7 +464,8 @@ class EmbeddingService:
                       query_embedding: np.ndarray,
                       top_k: int = 10,
                       model_id: Optional[int] = None,
-                      photo_ids: Optional[List[int]] = None) -> List[Tuple[int, float]]:
+                      photo_ids: Optional[List[int]] = None,
+                      min_similarity: float = 0.20) -> List[Tuple[int, float]]:
         """
         Search for similar images using cosine similarity.
 
@@ -473,6 +474,12 @@ class EmbeddingService:
             top_k: Number of results to return
             model_id: Model ID to filter by (uses current model if None)
             photo_ids: Optional list of photo IDs to search within
+            min_similarity: Minimum similarity threshold (default: 0.20)
+                          Only results above this threshold will be returned.
+                          Typical values:
+                          - 0.15-0.20: Very permissive (may include unrelated images)
+                          - 0.25-0.30: Moderate (good balance)
+                          - 0.35-0.40: Strict (only close matches)
 
         Returns:
             List of (photo_id, similarity_score) tuples, sorted by score descending
@@ -549,7 +556,10 @@ class EmbeddingService:
 
                     # Cosine similarity
                     similarity = float(np.dot(query_norm, embedding_norm))
-                    results.append((photo_id, similarity))
+
+                    # Apply similarity threshold filter
+                    if similarity >= min_similarity:
+                        results.append((photo_id, similarity))
 
                 except Exception as e:
                     logger.warning(
@@ -565,17 +575,28 @@ class EmbeddingService:
             top_results = results[:top_k]
 
             if top_results:
+                filtered_count = len(rows) - len(results)
                 logger.info(
                     f"[EmbeddingService] Search complete: "
-                    f"{len(rows)} candidates, {len(top_results)} valid results, "
+                    f"{len(rows)} candidates, {len(results)} above threshold (≥{min_similarity:.2f}), "
+                    f"{filtered_count} filtered out, "
+                    f"returning top {len(top_results)} results, "
                     f"top score={top_results[0][1]:.3f}"
                 )
             else:
-                logger.warning(
-                    f"[EmbeddingService] Search complete but NO valid embeddings found! "
-                    f"Retrieved {len(rows)} rows from database, but all were invalid/corrupted. "
-                    f"This suggests embeddings were stored incorrectly."
-                )
+                # No results - could be due to threshold or corrupted data
+                if len(results) == 0 and len(rows) > 0:
+                    logger.warning(
+                        f"[EmbeddingService] Search complete but NO results above similarity threshold! "
+                        f"{len(rows)} candidates found, but all scores below {min_similarity:.2f}. "
+                        f"Try lowering min_similarity or using different search terms."
+                    )
+                else:
+                    logger.warning(
+                        f"[EmbeddingService] Search complete but NO valid embeddings found! "
+                        f"Retrieved {len(rows)} rows from database, but all were invalid/corrupted. "
+                        f"This suggests embeddings were stored incorrectly."
+                    )
 
             return top_results
 
