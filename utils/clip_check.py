@@ -2,6 +2,7 @@
 CLIP model availability checker with user-friendly notifications.
 
 Provides clear guidance when CLIP embedding models are not installed.
+Supports multiple CLIP variants: base-patch32, base-patch16, large-patch14
 """
 
 import os
@@ -11,8 +12,27 @@ from typing import Tuple, Dict
 
 logger = logging.getLogger(__name__)
 
-# Known commit hash for CLIP ViT-B/32 model
-COMMIT_HASH = "e6a30b603a447e251fdaca1c3056b2a16cdfebeb"
+# Model variant configurations
+MODEL_CONFIGS = {
+    'openai/clip-vit-base-patch32': {
+        'dir_name': 'clip-vit-base-patch32',
+        'dimension': 512,
+        'description': 'Base model, fastest (512-D)',
+        'size_mb': 600
+    },
+    'openai/clip-vit-base-patch16': {
+        'dir_name': 'clip-vit-base-patch16',
+        'dimension': 512,
+        'description': 'Base model, better quality (512-D)',
+        'size_mb': 600
+    },
+    'openai/clip-vit-large-patch14': {
+        'dir_name': 'clip-vit-large-patch14',
+        'dimension': 768,
+        'description': 'Large model, best quality (768-D)',
+        'size_mb': 1700
+    }
+}
 
 # Required CLIP model files
 REQUIRED_FILES = [
@@ -23,27 +43,36 @@ REQUIRED_FILES = [
     "merges.txt",
     "tokenizer.json",
     "special_tokens_map.json",
-    "pytorch_model.bin"  # ~600MB
+    "pytorch_model.bin"  # Main model weights
 ]
 
 
-def check_clip_availability() -> Tuple[bool, str]:
+def check_clip_availability(variant: str = 'openai/clip-vit-base-patch32') -> Tuple[bool, str]:
     """
-    Check if CLIP model files are available.
+    Check if CLIP model files are available for a specific variant.
+
+    Args:
+        variant: Model variant (e.g., 'openai/clip-vit-base-patch32')
 
     Returns:
         Tuple[bool, str]: (available, message)
             - available: True if CLIP model files are ready
             - message: Status message for user display
     """
+    if variant not in MODEL_CONFIGS:
+        return False, f"❌ Unknown model variant: {variant}"
+
+    config = MODEL_CONFIGS[variant]
+    dir_name = config['dir_name']
+
     # Check if models exist in any of the standard locations
     model_locations = _get_model_search_paths()
     models_found = False
     model_path = None
 
     for location in model_locations:
-        # First, check if there's a models/clip-vit-base-patch32 directory
-        base_dir = Path(location) / 'models' / 'clip-vit-base-patch32'
+        # Check for models/<variant> directory
+        base_dir = Path(location) / 'models' / dir_name
         if not base_dir.exists():
             continue
 
@@ -68,7 +97,7 @@ def check_clip_availability() -> Tuple[bool, str]:
         message = f"✅ CLIP model detected\n   Location: {model_path}"
         return True, message
     else:
-        message = _get_install_message()
+        message = _get_install_message(variant)
         return False, message
 
 
@@ -143,9 +172,12 @@ def _verify_model_files(snapshot_path: str) -> bool:
     return True
 
 
-def get_clip_download_status() -> Dict[str, any]:
+def get_clip_download_status(variant: str = 'openai/clip-vit-base-patch32') -> Dict[str, any]:
     """
-    Get detailed status of CLIP model installation.
+    Get detailed status of CLIP model installation for a specific variant.
+
+    Args:
+        variant: Model variant to check
 
     Returns:
         Dictionary with:
@@ -154,19 +186,28 @@ def get_clip_download_status() -> Dict[str, any]:
             - 'missing_files': list of missing file names
             - 'total_size_mb': float (approximate)
             - 'message': str
+            - 'variant': str
     """
     status = {
         'models_available': False,
         'model_path': None,
         'missing_files': [],
         'total_size_mb': 0.0,
-        'message': ''
+        'message': '',
+        'variant': variant
     }
+
+    if variant not in MODEL_CONFIGS:
+        status['message'] = f"❌ Unknown variant: {variant}"
+        return status
+
+    config = MODEL_CONFIGS[variant]
+    dir_name = config['dir_name']
 
     # Check models
     model_locations = _get_model_search_paths()
     for location in model_locations:
-        base_dir = Path(location) / 'models' / 'clip-vit-base-patch32'
+        base_dir = Path(location) / 'models' / dir_name
         if not base_dir.exists():
             continue
 
@@ -195,7 +236,7 @@ def get_clip_download_status() -> Dict[str, any]:
                 status['models_available'] = True
                 status['model_path'] = str(commit_dir)
                 status['total_size_mb'] = round(total_size / (1024 * 1024), 1)
-                status['message'] = f"✅ CLIP model installed ({status['total_size_mb']} MB)"
+                status['message'] = f"✅ {config['description']} installed ({status['total_size_mb']} MB)"
                 return status
             elif len(missing) < len(REQUIRED_FILES):
                 # Some files present
@@ -205,19 +246,27 @@ def get_clip_download_status() -> Dict[str, any]:
                 return status
 
     # No installation found
-    status['message'] = "❌ CLIP model not installed"
+    status['message'] = f"❌ {config['description']} not installed"
     status['missing_files'] = REQUIRED_FILES.copy()
     return status
 
 
-def _get_install_message() -> str:
+def _get_install_message(variant: str = 'openai/clip-vit-base-patch32') -> str:
     """
-    Get user-friendly installation message.
+    Get user-friendly installation message for a specific model variant.
+
+    Args:
+        variant: Model variant
 
     Returns:
         Formatted message with installation instructions
     """
-    return """
+    if variant not in MODEL_CONFIGS:
+        return f"❌ Unknown model variant: {variant}"
+
+    config = MODEL_CONFIGS[variant]
+
+    return f"""
 ═══════════════════════════════════════════════════════════════════
 ⚠️  CLIP Model Files Not Found
 ═══════════════════════════════════════════════════════════════════
@@ -232,7 +281,7 @@ Visual embedding extraction requires CLIP model files.
 
 📥 Download Models:
   Option 1: Run the download script
-    python download_clip_model_offline.py
+    python download_clip_model_offline.py --variant {variant}
 
   Option 2: Use the application preferences
     1. Go to Preferences (Ctrl+,)
@@ -240,10 +289,12 @@ Visual embedding extraction requires CLIP model files.
     3. Click "Download CLIP Model"
 
 💡 Model Details:
-   - Model: OpenAI CLIP ViT-B/32
-   - Size: ~600MB
-   - Location: ./models/clip-vit-base-patch32/
-   - Files: 8 files total
+   - Model: {variant}
+   - Description: {config['description']}
+   - Size: ~{config['size_mb']}MB
+   - Dimension: {config['dimension']}-D embeddings
+   - Location: ./models/{config['dir_name']}/
+   - Files: {len(REQUIRED_FILES)} files total
 
 After download:
   1. Restart the application (or retry extraction)
@@ -254,14 +305,61 @@ After download:
 """
 
 
-if __name__ == '__main__':
-    # Test the checker
-    available, message = check_clip_availability()
-    print(message)
-    print()
+def get_available_variants() -> Dict[str, bool]:
+    """
+    Check which CLIP model variants are currently installed.
 
-    # Show detailed status
-    status = get_clip_download_status()
-    print("Detailed Status:")
-    for key, value in status.items():
-        print(f"  {key}: {value}")
+    Returns:
+        Dictionary mapping variant names to availability status
+    """
+    variants_status = {}
+    for variant in MODEL_CONFIGS.keys():
+        available, _ = check_clip_availability(variant)
+        variants_status[variant] = available
+    return variants_status
+
+
+def get_recommended_variant() -> str:
+    """
+    Get the recommended CLIP variant based on what's installed.
+
+    Priority:
+    1. clip-vit-large-patch14 (best quality if available)
+    2. clip-vit-base-patch16 (good balance)
+    3. clip-vit-base-patch32 (fallback, most common)
+
+    Returns:
+        Variant name (e.g., 'openai/clip-vit-large-patch14')
+    """
+    variants_status = get_available_variants()
+
+    # Priority order: large > base-16 > base-32
+    priority_order = [
+        'openai/clip-vit-large-patch14',
+        'openai/clip-vit-base-patch16',
+        'openai/clip-vit-base-patch32'
+    ]
+
+    for variant in priority_order:
+        if variants_status.get(variant, False):
+            return variant
+
+    # No models installed, return default
+    return 'openai/clip-vit-base-patch32'
+
+
+if __name__ == '__main__':
+    # Test the checker for all variants
+    print("Checking all CLIP variants...\n")
+
+    variants_status = get_available_variants()
+    for variant, available in variants_status.items():
+        config = MODEL_CONFIGS[variant]
+        status = "✅ Installed" if available else "❌ Not installed"
+        print(f"{status}: {variant}")
+        print(f"  {config['description']}")
+        print(f"  Size: {config['size_mb']}MB, Dimension: {config['dimension']}-D")
+        print()
+
+    recommended = get_recommended_variant()
+    print(f"Recommended variant: {recommended}")

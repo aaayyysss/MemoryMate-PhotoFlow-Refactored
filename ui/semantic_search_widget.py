@@ -385,8 +385,13 @@ class SemanticSearchWidget(QWidget):
 
             # Load model if needed
             if self.embedding_service._clip_model is None:
+                # Auto-select best available CLIP model variant
+                from utils.clip_check import get_recommended_variant, MODEL_CONFIGS
+                variant = get_recommended_variant()
+                config = MODEL_CONFIGS.get(variant, {})
+
                 progress = QProgressDialog(
-                    "Loading CLIP model...",
+                    f"Loading {config.get('description', 'CLIP model')}...",
                     None,
                     0, 0,
                     self
@@ -396,14 +401,14 @@ class SemanticSearchWidget(QWidget):
                 progress.show()
 
                 try:
-                    self.embedding_service.load_clip_model()
+                    self.embedding_service.load_clip_model(variant)
                     progress.close()
                 except Exception as e:
                     progress.close()
                     QMessageBox.critical(
                         self,
                         "Model Loading Failed",
-                        f"Failed to load CLIP model:\n{e}"
+                        f"Failed to load CLIP model ({variant}):\n{e}"
                     )
                     return
 
@@ -489,9 +494,20 @@ class SemanticSearchWidget(QWidget):
 
             # Check if model is loaded
             if self.embedding_service._clip_model is None:
+                # Auto-select best available CLIP model variant
+                from utils.clip_check import get_recommended_variant, MODEL_CONFIGS
+                variant = get_recommended_variant()
+                config = MODEL_CONFIGS.get(variant, {})
+
+                logger.info(
+                    f"[SemanticSearch] Auto-selected CLIP variant: {variant} "
+                    f"({config.get('description', 'unknown')})"
+                )
+
                 # Show loading dialog
                 progress = QProgressDialog(
-                    "Loading CLIP model for first-time search...",
+                    f"Loading {config.get('description', 'CLIP model')} for first-time search...\n"
+                    f"({config.get('dimension', '???')}-D embeddings, {config.get('size_mb', '???')}MB)",
                     None,  # No cancel button
                     0, 0,  # Indeterminate
                     self
@@ -501,14 +517,14 @@ class SemanticSearchWidget(QWidget):
                 progress.show()
 
                 try:
-                    self.embedding_service.load_clip_model()
+                    self.embedding_service.load_clip_model(variant)
                     progress.close()
                 except Exception as e:
                     progress.close()
                     QMessageBox.critical(
                         self,
                         "Model Loading Failed",
-                        f"Failed to load CLIP model:\n{e}\n\n"
+                        f"Failed to load CLIP model ({variant}):\n{e}\n\n"
                         "Check console for details."
                     )
                     self.errorOccurred.emit(str(e))
