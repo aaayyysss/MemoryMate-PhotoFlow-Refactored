@@ -144,7 +144,7 @@ class SemanticSearchWidget(QWidget):
         self._query_image_path = None  # Path to uploaded query image
         self._query_image_embedding = None  # Cached image embedding
         self._search_start_time = None  # For timing searches
-        self._min_similarity = 0.25  # Default similarity threshold (configurable via slider)
+        self._min_similarity = 0.30  # Default similarity threshold (raised from 0.25 for better quality)
         self._slider_debounce_timer = None  # Timer for debouncing slider changes
         self._setup_ui()
 
@@ -218,39 +218,39 @@ class SemanticSearchWidget(QWidget):
         self.threshold_slider = QSlider(Qt.Horizontal)
         self.threshold_slider.setMinimum(10)  # 10% = 0.10
         self.threshold_slider.setMaximum(50)  # 50% = 0.50
-        self.threshold_slider.setValue(int(self._min_similarity * 100))  # Default 25%
+        self.threshold_slider.setValue(int(self._min_similarity * 100))  # Default 30%
         self.threshold_slider.setTickPosition(QSlider.TicksBelow)
         self.threshold_slider.setTickInterval(10)
         self.threshold_slider.setMaximumWidth(100)
         self.threshold_slider.setToolTip(
             "Adjust similarity threshold:\n"
-            "• 10-20%: Very permissive (may include unrelated photos)\n"
-            "• 25-30%: Balanced (recommended)\n"
-            "• 35-50%: Strict (only close matches)"
+            "• 10-25%: Very permissive (may include unrelated photos)\n"
+            "• 30-35%: Balanced (recommended for base CLIP models)\n"
+            "• 40-50%: Strict (only close matches)"
         )
         self.threshold_slider.valueChanged.connect(self._on_threshold_changed)
         threshold_slider_layout.addWidget(self.threshold_slider)
 
         row2_layout.addLayout(threshold_slider_layout)
 
-        # Preset buttons for quick threshold selection
+        # Preset buttons for quick threshold selection (optimized for base CLIP models)
         self.lenient_btn = QPushButton("Lenient")
-        self.lenient_btn.setToolTip("Show more results (15% threshold)")
+        self.lenient_btn.setToolTip("Show more results (25% threshold)")
         self.lenient_btn.setMaximumWidth(65)
-        self.lenient_btn.clicked.connect(lambda: self._set_preset_threshold(15))
+        self.lenient_btn.clicked.connect(lambda: self._set_preset_threshold(25))
         row2_layout.addWidget(self.lenient_btn)
 
         self.balanced_btn = QPushButton("Balanced")
-        self.balanced_btn.setToolTip("Recommended setting (25% threshold)")
+        self.balanced_btn.setToolTip("Recommended setting (30% threshold)")
         self.balanced_btn.setMaximumWidth(70)
         self.balanced_btn.setStyleSheet("font-weight: bold;")  # Default preset
-        self.balanced_btn.clicked.connect(lambda: self._set_preset_threshold(25))
+        self.balanced_btn.clicked.connect(lambda: self._set_preset_threshold(30))
         row2_layout.addWidget(self.balanced_btn)
 
         self.strict_btn = QPushButton("Strict")
-        self.strict_btn.setToolTip("Only close matches (35% threshold)")
+        self.strict_btn.setToolTip("Only close matches (40% threshold)")
         self.strict_btn.setMaximumWidth(60)
-        self.strict_btn.clicked.connect(lambda: self._set_preset_threshold(35))
+        self.strict_btn.clicked.connect(lambda: self._set_preset_threshold(40))
         row2_layout.addWidget(self.strict_btn)
 
         # Spacer
@@ -271,6 +271,11 @@ class SemanticSearchWidget(QWidget):
 
         main_layout.addLayout(row2_layout)
 
+        # Set size policy to ensure widget gets enough vertical space for 2 rows
+        from PySide6.QtWidgets import QSizePolicy
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.setMinimumHeight(80)  # Ensure enough height for 2 rows
+
         # Debounce timer for live search (optional)
         self.search_timer = QTimer()
         self.search_timer.setSingleShot(True)
@@ -281,8 +286,8 @@ class SemanticSearchWidget(QWidget):
         self._slider_debounce_timer.setSingleShot(True)
         self._slider_debounce_timer.setInterval(500)  # 500ms delay
 
-        # Initialize preset button highlighting (Balanced is default)
-        self._update_preset_buttons(25)
+        # Initialize preset button highlighting (Balanced is default at 30%)
+        self._update_preset_buttons(30)
 
     def _on_text_changed(self, text: str):
         """Handle text change - can enable live search if desired."""
@@ -309,7 +314,7 @@ class SemanticSearchWidget(QWidget):
         self._slider_debounce_timer.start()
 
     def _set_preset_threshold(self, value: int):
-        """Set threshold to preset value (Lenient=15%, Balanced=25%, Strict=35%)."""
+        """Set threshold to preset value (Lenient=25%, Balanced=30%, Strict=40%)."""
         self.threshold_slider.setValue(value)
         logger.info(f"[SemanticSearch] Preset threshold applied: {value}%")
 
@@ -321,11 +326,11 @@ class SemanticSearchWidget(QWidget):
         self.strict_btn.setStyleSheet("")
 
         # Highlight the active preset (with tolerance of ±2%)
-        if abs(value - 15) <= 2:
+        if abs(value - 25) <= 2:
             self.lenient_btn.setStyleSheet("font-weight: bold; background-color: #4CAF50; color: white;")
-        elif abs(value - 25) <= 2:
+        elif abs(value - 30) <= 2:
             self.balanced_btn.setStyleSheet("font-weight: bold; background-color: #2196F3; color: white;")
-        elif abs(value - 35) <= 2:
+        elif abs(value - 40) <= 2:
             self.strict_btn.setStyleSheet("font-weight: bold; background-color: #FF9800; color: white;")
 
     def _suggest_threshold(self, scores: List[float]) -> Optional[str]:
