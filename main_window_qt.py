@@ -1324,8 +1324,8 @@ class MainWindow(QMainWindow):
                     photo_ids
                 )
                 for row in cursor.fetchall():
-                    photo_id = row[0]
-                    path = row[1]
+                    photo_id = row["id"]
+                    path = row["path"]
                     score = score_map.get(photo_id, 0.0)
                     paths_with_scores.append((path, score))
 
