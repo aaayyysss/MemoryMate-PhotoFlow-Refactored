@@ -16369,11 +16369,11 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
                 """, photo_ids)
 
                 for row in cursor.fetchall():
-                    photo_id = row[0]
-                    path = row[1]
-                    date_taken = row[2]
-                    width = row[3]
-                    height = row[4]
+                    photo_id = row["id"]
+                    path = row["path"]
+                    date_taken = row["date_taken"]
+                    width = row["width"]
+                    height = row["height"]
                     score = score_map.get(photo_id, 0.0)
 
                     photo_data.append({
@@ -16417,7 +16417,7 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
             logger.error(f"[GooglePhotosLayout] Semantic search failed: {e}", exc_info=True)
             from PySide6.QtWidgets import QMessageBox
             QMessageBox.critical(
-                self,
+                self.main_window,
                 "Semantic Search Error",
                 f"Failed to display semantic search results:\n{e}"
             )
