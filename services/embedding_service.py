@@ -259,7 +259,7 @@ class EmbeddingService:
 
             row = cursor.fetchone()
             if row:
-                return row[0]
+                return row["model_id"]
 
             # Register new model
             cursor = conn.execute("""
@@ -444,7 +444,7 @@ class EmbeddingService:
             )
             verify_row = verify_cursor.fetchone()
             if verify_row:
-                stored_id, stored_dim, stored_size = verify_row[0], verify_row[1], verify_row[2]
+                stored_id, stored_dim, stored_size = verify_row["photo_id"], verify_row["dim"], verify_row["length(embedding)"]
                 logger.debug(
                     f"[EmbeddingService] ✓ Verified storage - "
                     f"stored_photo_id={stored_id}, stored_dim={stored_dim}, stored_blob_size={stored_size} bytes"
@@ -587,7 +587,7 @@ class EmbeddingService:
             else:
                 cursor = conn.execute("SELECT COUNT(*) FROM photo_embedding")
 
-            return cursor.fetchone()[0]
+            return cursor.fetchone()["COUNT(*)"]
 
     def clear_embeddings(self, model_id: Optional[int] = None) -> int:
         """
