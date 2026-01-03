@@ -299,6 +299,60 @@ class SemanticSearchWidget(QWidget):
         elif abs(value - 35) <= 2:
             self.strict_btn.setStyleSheet("font-weight: bold; background-color: #FF9800; color: white;")
 
+    def _suggest_threshold(self, scores: List[float]) -> Optional[str]:
+        """
+        Analyze score distribution and suggest optimal threshold.
+
+        Args:
+            scores: List of similarity scores from search results
+
+        Returns:
+            Suggestion message or None if current threshold is optimal
+        """
+        if not scores:
+            return None
+
+        top_score = scores[0]
+        avg_score = sum(scores) / len(scores)
+        current_threshold = self._min_similarity
+
+        # Case 1: Very low scores (< 0.25) - might need query expansion or different search terms
+        if top_score < 0.25:
+            return (
+                f"💡 Suggestion: Low match scores detected (top: {top_score:.1%}). "
+                "Try more descriptive search terms or check if embeddings are extracted."
+            )
+
+        # Case 2: Top score is good but current threshold too strict
+        if top_score > 0.35 and current_threshold > 0.30 and len(scores) < 5:
+            return (
+                f"💡 Suggestion: Good matches found (top: {top_score:.1%}), but only {len(scores)} results. "
+                f"Try lowering threshold to ~{int(avg_score * 100 - 5)}% to see more relevant photos."
+            )
+
+        # Case 3: Many results with low average - threshold too lenient
+        if len(scores) > 50 and avg_score < current_threshold + 0.05:
+            return (
+                f"💡 Suggestion: Many results ({len(scores)}) with low average similarity ({avg_score:.1%}). "
+                f"Try raising threshold to ~{int(avg_score * 100 + 10)}% for better quality."
+            )
+
+        # Case 4: Perfect range - no suggestion needed
+        if 10 <= len(scores) <= 30 and avg_score > current_threshold + 0.05:
+            return None  # Good results, no suggestion
+
+        return None
+
+    def _show_suggestion_toast(self, message: str):
+        """Show threshold suggestion as a non-blocking message."""
+        # Use status label for now (could be upgraded to toast notification)
+        original_text = self.status_label.text()
+        self.status_label.setText(f"{original_text} | {message}")
+        self.status_label.setStyleSheet("color: #FF9800; font-style: italic; font-weight: bold;")
+
+        # Reset style after 5 seconds
+        QTimer.singleShot(5000, lambda: self.status_label.setStyleSheet("color: #666; font-style: italic;"))
+
     def _on_upload_image(self):
         """Handle image upload for multi-modal search."""
         # Open file dialog
@@ -509,35 +563,102 @@ class SemanticSearchWidget(QWidget):
             )
 
             if not results:
+                # Build context-aware no-results message
+                suggestions = []
+
+                # Check if query was expanded
+                if expanded_query != query:
+                    suggestions.append(
+                        f"✓ Query expanded: '{query}' → '{expanded_query}'\n"
+                        "  (Still no matches - try different terms)"
+                    )
+
+                # Check threshold
+                if self._min_similarity >= 0.30:
+                    suggestions.append(
+                        f"• Lower threshold: Currently {self._min_similarity:.0%} (Strict)\n"
+                        "  Try clicking 'Balanced' (25%) or 'Lenient' (15%)"
+                    )
+                else:
+                    suggestions.append(
+                        f"• Try different search terms\n"
+                        "  Current threshold ({self._min_similarity:.0%}) is already lenient"
+                    )
+
+                # Check embedding count
+                try:
+                    embedding_count = self.embedding_service.get_embedding_count()
+                    if embedding_count == 0:
+                        suggestions.append(
+                            "⚠ No embeddings found in database!\n"
+                            "  Run: Scan → Extract Embeddings first"
+                        )
+                    else:
+                        suggestions.append(
+                            f"✓ {embedding_count} embeddings in database\n"
+                            "  Try more descriptive queries (e.g., 'sunset beach' instead of 'sunset')"
+                        )
+                except Exception:
+                    suggestions.append(
+                        "• Make sure embeddings have been extracted\n"
+                        "  (Scan → Extract Embeddings)"
+                    )
+
                 QMessageBox.information(
                     self,
-                    "No Results",
-                    f"No photos found matching your description (similarity ≥ {self._min_similarity:.0%}).\n\n"
-                    "Try:\n"
-                    "• Using different search terms\n"
-                    "• Lowering the similarity threshold slider\n"
-                    "• Making sure embeddings have been extracted\n"
-                    "  (Scan → Extract Embeddings)"
+                    "No Search Results",
+                    f"No photos found matching '{query}' (similarity ≥ {self._min_similarity:.0%}).\n\n"
+                    + "\n".join(suggestions)
                 )
                 self.status_label.setText(f"No results ≥{self._min_similarity:.0%}")
                 self.status_label.setVisible(True)
                 return
 
-            # Extract photo IDs
+            # Extract photo IDs and analyze score distribution
             photo_ids = [photo_id for photo_id, score in results]
+            scores = [score for _, score in results]
+
+            # Calculate score statistics for smart suggestions
+            top_score = scores[0]
+            avg_score = sum(scores) / len(scores)
+            min_score = scores[-1]
 
             logger.info(
                 f"[SemanticSearch] Found {len(results)} results, "
-                f"top score: {results[0][1]:.3f}"
+                f"top score: {top_score:.3f}, avg: {avg_score:.3f}, min: {min_score:.3f}"
             )
 
-            # Update UI state
+            # Smart threshold suggestion based on score distribution
+            threshold_suggestion = self._suggest_threshold(scores)
+            if threshold_suggestion:
+                logger.info(f"[SemanticSearch] {threshold_suggestion}")
+
+            # Update UI state with score distribution
             self.clear_btn.setVisible(True)
-            self.status_label.setText(
-                f"Found {len(results)} matches ≥{self._min_similarity:.0%} "
-                f"(top: {results[0][1]:.1%})"
-            )
+
+            # Create detailed status message with score distribution
+            status_parts = [
+                f"Found {len(results)} matches ≥{self._min_similarity:.0%}",
+                f"Top: {top_score:.1%}",
+                f"Avg: {avg_score:.1%}"
+            ]
+
+            # Add quality indicator
+            if top_score >= 0.40:
+                status_parts.append("🟢 Excellent")
+            elif top_score >= 0.30:
+                status_parts.append("🟡 Good")
+            elif top_score >= 0.20:
+                status_parts.append("🟠 Fair")
+            else:
+                status_parts.append("🔴 Weak")
+
+            self.status_label.setText(" | ".join(status_parts))
             self.status_label.setVisible(True)
+
+            # Show suggestion if available
+            if threshold_suggestion:
+                QTimer.singleShot(1000, lambda: self._show_suggestion_toast(threshold_suggestion))
 
             # Calculate execution time
             execution_time_ms = (time.time() - self._search_start_time) * 1000
