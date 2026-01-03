@@ -72,39 +72,49 @@ def expand_query(query: str) -> str:
 
 
 # Query expansion mapping for common terms
+# CLIP works best with natural language descriptions, like image captions
 QUERY_EXPANSIONS = {
     # Body parts - expand to contextualized descriptions
-    r'\b(eye|eyes)\b': 'close-up photo of person\'s eyes',
-    r'\b(mouth|lips)\b': 'close-up photo of person\'s mouth',
-    r'\b(nose)\b': 'close-up photo of person\'s nose',
-    r'\b(face|faces)\b': 'portrait photo of person\'s face',
-    r'\b(hand|hands)\b': 'photo of person\'s hands',
-    r'\b(finger|fingers)\b': 'photo of person\'s fingers',
-    r'\b(head|heads)\b': 'photo of person\'s head',
-    r'\b(hair)\b': 'photo showing person\'s hair',
-    r'\b(ear|ears)\b': 'photo of person\'s ears',
+    r'\b(eye|eyes)\b': 'close-up of eyes',
+    r'\b(mouth|lips)\b': 'close-up of mouth and lips',
+    r'\b(nose)\b': 'close-up of nose',
+    r'\b(face|faces)\b': 'portrait of face',
+    r'\b(hand|hands)\b': 'hands in view',
+    r'\b(finger|fingers)\b': 'fingers visible',
+    r'\b(head|heads)\b': 'person head visible',
+    r'\b(hair)\b': 'hair visible',
+    r'\b(ear|ears)\b': 'ears visible',
 
-    # Colors - add context
-    r'\b(blue)\b': 'photo with blue color',
-    r'\b(red)\b': 'photo with red color',
-    r'\b(green)\b': 'photo with green color',
-    r'\b(yellow)\b': 'photo with yellow color',
-    r'\b(black)\b': 'photo with black color',
-    r'\b(white)\b': 'photo with white color',
+    # Color + clothing combos (most specific)
+    r'\b(blue|red|green|yellow|black|white|pink|purple|orange|brown)\s+(shirt|t-shirt|tshirt)\b': r'person wearing \1 shirt',
+    r'\b(blue|red|green|yellow|black|white|pink|purple|orange|brown)\s+(pants|jeans|trousers)\b': r'person wearing \1 pants',
+    r'\b(blue|red|green|yellow|black|white|pink|purple|orange|brown)\s+(dress|skirt)\b': r'person wearing \1 dress',
+    r'\b(blue|red|green|yellow|black|white|pink|purple|orange|brown)\s+(jacket|coat)\b': r'person wearing \1 jacket',
+
+    # Colors alone - keep simple
+    r'\b(blue)\b': 'blue colored',
+    r'\b(red)\b': 'red colored',
+    r'\b(green)\b': 'green colored',
+    r'\b(yellow)\b': 'yellow colored',
+    r'\b(black)\b': 'black colored',
+    r'\b(white)\b': 'white colored',
 
     # Common objects
-    r'\b(window|windows)\b': 'photo of building with windows',
-    r'\b(door|doors)\b': 'photo of door or entrance',
-    r'\b(car|cars)\b': 'photo of car or vehicle',
-    r'\b(tree|trees)\b': 'photo of trees in nature',
-    r'\b(sky)\b': 'photo with visible sky',
-    r'\b(cloud|clouds)\b': 'photo of clouds in the sky',
+    r'\b(window|windows)\b': 'building with windows',
+    r'\b(door|doors)\b': 'door entrance',
+    r'\b(car|cars)\b': 'car vehicle',
+    r'\b(tree|trees)\b': 'trees nature',
+    r'\b(sky)\b': 'sky visible',
+    r'\b(cloud|clouds)\b': 'clouds in sky',
+    r'\b(building|buildings)\b': 'building architecture',
 
-    # Activities
-    r'\b(smile|smiling)\b': 'photo of person smiling',
-    r'\b(laugh|laughing)\b': 'photo of person laughing',
-    r'\b(walk|walking)\b': 'photo of person walking',
-    r'\b(run|running)\b': 'photo of person running',
+    # Activities - keep natural
+    r'\b(smile|smiling)\b': 'person smiling',
+    r'\b(laugh|laughing)\b': 'person laughing',
+    r'\b(walk|walking)\b': 'person walking',
+    r'\b(run|running)\b': 'person running',
+    r'\b(sitting)\b': 'person sitting',
+    r'\b(standing)\b': 'person standing',
 }
 
 
@@ -139,14 +149,20 @@ class SemanticSearchWidget(QWidget):
         self._setup_ui()
 
     def _setup_ui(self):
-        """Setup the semantic search UI."""
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
+        """Setup the semantic search UI with 2-row layout for better organization."""
+        # Main vertical layout to stack two rows
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(4)
+
+        # ROW 1: Search input and primary actions
+        row1_layout = QHBoxLayout()
+        row1_layout.setSpacing(4)
 
         # Semantic search icon/label
-        search_label = QLabel("🔍✨")  # Magic search icon
+        search_label = QLabel("🔍✨")
         search_label.setToolTip("Semantic Search - Describe what you're looking for")
-        layout.addWidget(search_label)
+        row1_layout.addWidget(search_label)
 
         # Search input
         self.search_input = QLineEdit()
@@ -157,34 +173,47 @@ class SemanticSearchWidget(QWidget):
         self.search_input.setMinimumWidth(300)
         self.search_input.returnPressed.connect(self._on_search)
         self.search_input.textChanged.connect(self._on_text_changed)
-        layout.addWidget(self.search_input, 1)
+        row1_layout.addWidget(self.search_input, 1)
+
+        # Search button
+        self.search_btn = QPushButton("Search")
+        self.search_btn.setToolTip("Search photos by description using AI")
+        self.search_btn.clicked.connect(self._on_search)
+        row1_layout.addWidget(self.search_btn)
 
         # Image query button (multi-modal search)
         self.image_btn = QPushButton("📷 +Image")
         self.image_btn.setToolTip("Add an image to your search query (multi-modal search)")
         self.image_btn.clicked.connect(self._on_upload_image)
-        layout.addWidget(self.image_btn)
+        row1_layout.addWidget(self.image_btn)
 
-        # Search button
-        self.search_btn = QPushButton("Semantic Search")
-        self.search_btn.setToolTip("Search photos by description using AI")
-        self.search_btn.clicked.connect(self._on_search)
-        layout.addWidget(self.search_btn)
+        # Clear button
+        self.clear_btn = QPushButton("Clear")
+        self.clear_btn.setToolTip("Show all photos")
+        self.clear_btn.clicked.connect(self._on_clear)
+        self.clear_btn.setVisible(False)  # Hidden until search is active
+        row1_layout.addWidget(self.clear_btn)
 
-        # History button
-        self.history_btn = QPushButton("📜 History")
-        self.history_btn.setToolTip("View recent searches")
-        self.history_btn.clicked.connect(self._on_show_history)
-        layout.addWidget(self.history_btn)
+        main_layout.addLayout(row1_layout)
+
+        # ROW 2: Threshold controls and status
+        row2_layout = QHBoxLayout()
+        row2_layout.setSpacing(8)
+
+        # Threshold label
+        threshold_label_static = QLabel("Similarity:")
+        threshold_label_static.setStyleSheet("font-size: 9pt; color: #666;")
+        row2_layout.addWidget(threshold_label_static)
 
         # Similarity threshold slider
-        threshold_layout = QVBoxLayout()
-        threshold_layout.setSpacing(2)
+        threshold_slider_layout = QVBoxLayout()
+        threshold_slider_layout.setSpacing(0)
 
-        self.threshold_label = QLabel(f"Min: {int(self._min_similarity * 100)}%")
+        self.threshold_label = QLabel(f"{int(self._min_similarity * 100)}%")
         self.threshold_label.setToolTip("Minimum similarity threshold - higher = stricter matching")
-        self.threshold_label.setStyleSheet("font-size: 9pt; color: #666;")
-        threshold_layout.addWidget(self.threshold_label)
+        self.threshold_label.setStyleSheet("font-size: 9pt; color: #666; font-weight: bold;")
+        self.threshold_label.setAlignment(Qt.AlignCenter)
+        threshold_slider_layout.addWidget(self.threshold_label)
 
         self.threshold_slider = QSlider(Qt.Horizontal)
         self.threshold_slider.setMinimum(10)  # 10% = 0.10
@@ -192,7 +221,7 @@ class SemanticSearchWidget(QWidget):
         self.threshold_slider.setValue(int(self._min_similarity * 100))  # Default 25%
         self.threshold_slider.setTickPosition(QSlider.TicksBelow)
         self.threshold_slider.setTickInterval(10)
-        self.threshold_slider.setMaximumWidth(120)
+        self.threshold_slider.setMaximumWidth(100)
         self.threshold_slider.setToolTip(
             "Adjust similarity threshold:\n"
             "• 10-20%: Very permissive (may include unrelated photos)\n"
@@ -200,47 +229,47 @@ class SemanticSearchWidget(QWidget):
             "• 35-50%: Strict (only close matches)"
         )
         self.threshold_slider.valueChanged.connect(self._on_threshold_changed)
-        threshold_layout.addWidget(self.threshold_slider)
+        threshold_slider_layout.addWidget(self.threshold_slider)
 
-        layout.addLayout(threshold_layout)
+        row2_layout.addLayout(threshold_slider_layout)
 
         # Preset buttons for quick threshold selection
-        preset_layout = QHBoxLayout()
-        preset_layout.setSpacing(4)
-
         self.lenient_btn = QPushButton("Lenient")
         self.lenient_btn.setToolTip("Show more results (15% threshold)")
-        self.lenient_btn.setMaximumWidth(70)
+        self.lenient_btn.setMaximumWidth(65)
         self.lenient_btn.clicked.connect(lambda: self._set_preset_threshold(15))
-        preset_layout.addWidget(self.lenient_btn)
+        row2_layout.addWidget(self.lenient_btn)
 
         self.balanced_btn = QPushButton("Balanced")
         self.balanced_btn.setToolTip("Recommended setting (25% threshold)")
-        self.balanced_btn.setMaximumWidth(75)
+        self.balanced_btn.setMaximumWidth(70)
         self.balanced_btn.setStyleSheet("font-weight: bold;")  # Default preset
         self.balanced_btn.clicked.connect(lambda: self._set_preset_threshold(25))
-        preset_layout.addWidget(self.balanced_btn)
+        row2_layout.addWidget(self.balanced_btn)
 
         self.strict_btn = QPushButton("Strict")
         self.strict_btn.setToolTip("Only close matches (35% threshold)")
-        self.strict_btn.setMaximumWidth(70)
+        self.strict_btn.setMaximumWidth(60)
         self.strict_btn.clicked.connect(lambda: self._set_preset_threshold(35))
-        preset_layout.addWidget(self.strict_btn)
+        row2_layout.addWidget(self.strict_btn)
 
-        layout.addLayout(preset_layout)
+        # Spacer
+        row2_layout.addSpacing(10)
 
-        # Clear button
-        self.clear_btn = QPushButton("Clear")
-        self.clear_btn.setToolTip("Show all photos")
-        self.clear_btn.clicked.connect(self._on_clear)
-        self.clear_btn.setVisible(False)  # Hidden until search is active
-        layout.addWidget(self.clear_btn)
+        # History button
+        self.history_btn = QPushButton("📜")
+        self.history_btn.setToolTip("View recent searches")
+        self.history_btn.setMaximumWidth(35)
+        self.history_btn.clicked.connect(self._on_show_history)
+        row2_layout.addWidget(self.history_btn)
 
         # Status label (shows result count)
         self.status_label = QLabel()
-        self.status_label.setStyleSheet("color: #666; font-style: italic;")
+        self.status_label.setStyleSheet("color: #666; font-style: italic; font-size: 9pt;")
         self.status_label.setVisible(False)
-        layout.addWidget(self.status_label)
+        row2_layout.addWidget(self.status_label, 1)
+
+        main_layout.addLayout(row2_layout)
 
         # Debounce timer for live search (optional)
         self.search_timer = QTimer()
