@@ -148,6 +148,57 @@ class SemanticSearchWidget(QWidget):
         self._slider_debounce_timer = None  # Timer for debouncing slider changes
         self._setup_ui()
 
+        # Proactively check for available CLIP models at startup
+        self._check_available_models()
+
+    def _check_available_models(self):
+        """
+        Check which CLIP models are available in models/ directory.
+        Logs findings and warns if better models are available.
+        """
+        try:
+            from utils.clip_check import get_available_variants, get_recommended_variant, MODEL_CONFIGS
+
+            # Get all available models
+            available = get_available_variants()
+
+            # Get recommended model
+            recommended = get_recommended_variant()
+            recommended_config = MODEL_CONFIGS.get(recommended, {})
+
+            # Log findings
+            available_list = [name for name, is_available in available.items() if is_available]
+
+            if available_list:
+                logger.info(f"[SemanticSearch] 🔍 Available CLIP models found: {len(available_list)}")
+                for variant in available_list:
+                    config = MODEL_CONFIGS.get(variant, {})
+                    is_recommended = "← WILL BE USED" if variant == recommended else ""
+                    logger.info(
+                        f"  ✓ {variant}: {config.get('description', 'unknown')} "
+                        f"({config.get('dimension', '???')}-D, {config.get('size_mb', '???')}MB) {is_recommended}"
+                    )
+
+                logger.info(
+                    f"[SemanticSearch] 🎯 Will use: {recommended} - {recommended_config.get('description', 'unknown')}"
+                )
+
+                # Warn if using base-patch32 but large is available
+                if recommended == 'openai/clip-vit-base-patch32' and available.get('openai/clip-vit-large-patch14', False):
+                    logger.warning(
+                        "[SemanticSearch] ⚠️  Better model available but not being used!\n"
+                        "  clip-vit-large-patch14 is installed but has embeddings from base-patch32.\n"
+                        "  To use the large model: Tools → Extract Embeddings (will auto-use large model)"
+                    )
+            else:
+                logger.warning(
+                    "[SemanticSearch] ⚠️  No CLIP models found in models/ directory!\n"
+                    "  Semantic search will not work until models are downloaded.\n"
+                    "  Run: python download_clip_large.py"
+                )
+        except Exception as e:
+            logger.warning(f"[SemanticSearch] Could not check available models: {e}")
+
     def _setup_ui(self):
         """Setup the semantic search UI with 2-row layout for better organization."""
         # Main vertical layout to stack two rows
@@ -568,6 +619,10 @@ class SemanticSearchWidget(QWidget):
                     )
                     self.errorOccurred.emit(str(e))
                     return
+            else:
+                # Model already loaded - log which one is in use
+                model_variant = getattr(self.embedding_service, '_clip_variant', 'unknown')
+                logger.info(f"[SemanticSearch] Using cached CLIP model: {model_variant}")
 
             # Apply query expansion for better CLIP matching
             expanded_query = query
