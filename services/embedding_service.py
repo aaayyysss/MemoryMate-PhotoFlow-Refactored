@@ -519,7 +519,10 @@ class EmbeddingService:
             results = []
             query_norm = query_embedding / np.linalg.norm(query_embedding)
 
-            for photo_id, embedding_blob in rows:
+            for row in rows:
+                # Access row by column name (dict-like sqlite3.Row objects)
+                photo_id = row["photo_id"]
+                embedding_blob = row["embedding"]
                 try:
                     # Deserialize embedding - handle both bytes and string formats
                     if isinstance(embedding_blob, str):
