@@ -85,11 +85,11 @@ QUERY_EXPANSIONS = {
     r'\b(hair)\b': 'hair visible',
     r'\b(ear|ears)\b': 'ears visible',
 
-    # Color + clothing combos (most specific)
-    r'\b(blue|red|green|yellow|black|white|pink|purple|orange|brown)\s+(shirt|t-shirt|tshirt)\b': r'person wearing \1 shirt',
+    # Color + clothing combos (most specific) - handle both singular and plural
+    r'\b(blue|red|green|yellow|black|white|pink|purple|orange|brown)\s+(shirts?|t-shirts?|tshirts?)\b': r'person wearing \1 shirt',
     r'\b(blue|red|green|yellow|black|white|pink|purple|orange|brown)\s+(pants|jeans|trousers)\b': r'person wearing \1 pants',
-    r'\b(blue|red|green|yellow|black|white|pink|purple|orange|brown)\s+(dress|skirt)\b': r'person wearing \1 dress',
-    r'\b(blue|red|green|yellow|black|white|pink|purple|orange|brown)\s+(jacket|coat)\b': r'person wearing \1 jacket',
+    r'\b(blue|red|green|yellow|black|white|pink|purple|orange|brown)\s+(dresses?|skirts?)\b': r'person wearing \1 dress',
+    r'\b(blue|red|green|yellow|black|white|pink|purple|orange|brown)\s+(jackets?|coats?)\b': r'person wearing \1 jacket',
 
     # Colors alone - keep simple
     r'\b(blue)\b': 'blue colored',
@@ -271,10 +271,9 @@ class SemanticSearchWidget(QWidget):
 
         main_layout.addLayout(row2_layout)
 
-        # Set size policy to ensure widget gets enough vertical space for 2 rows
+        # Set size policy - don't force height as it can cause toolbar hiding issues
         from PySide6.QtWidgets import QSizePolicy
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.setMinimumHeight(80)  # Ensure enough height for 2 rows
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
 
         # Debounce timer for live search (optional)
         self.search_timer = QTimer()
@@ -288,6 +287,12 @@ class SemanticSearchWidget(QWidget):
 
         # Initialize preset button highlighting (Balanced is default at 30%)
         self._update_preset_buttons(30)
+
+    def sizeHint(self):
+        """Override sizeHint to suggest proper size for 2-row layout without forcing it."""
+        from PySide6.QtCore import QSize
+        # Suggest a comfortable size for 2 rows, but allow Qt to adjust if needed
+        return QSize(600, 90)  # width, height
 
     def _on_text_changed(self, text: str):
         """Handle text change - can enable live search if desired."""
