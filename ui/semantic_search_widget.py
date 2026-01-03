@@ -30,6 +30,7 @@ from typing import Optional, List, Tuple
 import numpy as np
 import time
 from pathlib import Path
+import re
 
 from services.embedding_service import get_embedding_service
 from services.search_history_service import get_search_history_service
@@ -38,6 +39,73 @@ from logging_config import get_logger
 from translation_manager import tr
 
 logger = get_logger(__name__)
+
+
+def expand_query(query: str) -> str:
+    """
+    Expand simple queries into more descriptive phrases for better CLIP matching.
+
+    CLIP models are trained on image captions, so 'eyes' → 'close-up photo of
+    person's eyes' produces much better results.
+
+    Args:
+        query: Original user query
+
+    Returns:
+        Expanded query if pattern matches, otherwise original query
+    """
+    query_lower = query.lower().strip()
+
+    # Skip expansion if query is already descriptive (3+ words)
+    if len(query_lower.split()) >= 3:
+        return query
+
+    # Try to match and expand single-word or 2-word queries
+    for pattern, expansion in QUERY_EXPANSIONS.items():
+        if re.search(pattern, query_lower, re.IGNORECASE):
+            expanded = re.sub(pattern, expansion, query_lower, count=1, flags=re.IGNORECASE)
+            logger.info(f"[SemanticSearch] Query expansion: '{query}' → '{expanded}'")
+            return expanded
+
+    # No expansion matched, return original
+    return query
+
+
+# Query expansion mapping for common terms
+QUERY_EXPANSIONS = {
+    # Body parts - expand to contextualized descriptions
+    r'\b(eye|eyes)\b': 'close-up photo of person\'s eyes',
+    r'\b(mouth|lips)\b': 'close-up photo of person\'s mouth',
+    r'\b(nose)\b': 'close-up photo of person\'s nose',
+    r'\b(face|faces)\b': 'portrait photo of person\'s face',
+    r'\b(hand|hands)\b': 'photo of person\'s hands',
+    r'\b(finger|fingers)\b': 'photo of person\'s fingers',
+    r'\b(head|heads)\b': 'photo of person\'s head',
+    r'\b(hair)\b': 'photo showing person\'s hair',
+    r'\b(ear|ears)\b': 'photo of person\'s ears',
+
+    # Colors - add context
+    r'\b(blue)\b': 'photo with blue color',
+    r'\b(red)\b': 'photo with red color',
+    r'\b(green)\b': 'photo with green color',
+    r'\b(yellow)\b': 'photo with yellow color',
+    r'\b(black)\b': 'photo with black color',
+    r'\b(white)\b': 'photo with white color',
+
+    # Common objects
+    r'\b(window|windows)\b': 'photo of building with windows',
+    r'\b(door|doors)\b': 'photo of door or entrance',
+    r'\b(car|cars)\b': 'photo of car or vehicle',
+    r'\b(tree|trees)\b': 'photo of trees in nature',
+    r'\b(sky)\b': 'photo with visible sky',
+    r'\b(cloud|clouds)\b': 'photo of clouds in the sky',
+
+    # Activities
+    r'\b(smile|smiling)\b': 'photo of person smiling',
+    r'\b(laugh|laughing)\b': 'photo of person laughing',
+    r'\b(walk|walking)\b': 'photo of person walking',
+    r'\b(run|running)\b': 'photo of person running',
+}
 
 
 class SemanticSearchWidget(QWidget):
@@ -67,6 +135,7 @@ class SemanticSearchWidget(QWidget):
         self._query_image_embedding = None  # Cached image embedding
         self._search_start_time = None  # For timing searches
         self._min_similarity = 0.25  # Default similarity threshold (configurable via slider)
+        self._slider_debounce_timer = None  # Timer for debouncing slider changes
         self._setup_ui()
 
     def _setup_ui(self):
@@ -135,6 +204,31 @@ class SemanticSearchWidget(QWidget):
 
         layout.addLayout(threshold_layout)
 
+        # Preset buttons for quick threshold selection
+        preset_layout = QHBoxLayout()
+        preset_layout.setSpacing(4)
+
+        self.lenient_btn = QPushButton("Lenient")
+        self.lenient_btn.setToolTip("Show more results (15% threshold)")
+        self.lenient_btn.setMaximumWidth(70)
+        self.lenient_btn.clicked.connect(lambda: self._set_preset_threshold(15))
+        preset_layout.addWidget(self.lenient_btn)
+
+        self.balanced_btn = QPushButton("Balanced")
+        self.balanced_btn.setToolTip("Recommended setting (25% threshold)")
+        self.balanced_btn.setMaximumWidth(75)
+        self.balanced_btn.setStyleSheet("font-weight: bold;")  # Default preset
+        self.balanced_btn.clicked.connect(lambda: self._set_preset_threshold(25))
+        preset_layout.addWidget(self.balanced_btn)
+
+        self.strict_btn = QPushButton("Strict")
+        self.strict_btn.setToolTip("Only close matches (35% threshold)")
+        self.strict_btn.setMaximumWidth(70)
+        self.strict_btn.clicked.connect(lambda: self._set_preset_threshold(35))
+        preset_layout.addWidget(self.strict_btn)
+
+        layout.addLayout(preset_layout)
+
         # Clear button
         self.clear_btn = QPushButton("Clear")
         self.clear_btn.setToolTip("Show all photos")
@@ -153,6 +247,14 @@ class SemanticSearchWidget(QWidget):
         self.search_timer.setSingleShot(True)
         self.search_timer.timeout.connect(self._on_search)
 
+        # Debounce timer for slider changes
+        self._slider_debounce_timer = QTimer()
+        self._slider_debounce_timer.setSingleShot(True)
+        self._slider_debounce_timer.setInterval(500)  # 500ms delay
+
+        # Initialize preset button highlighting (Balanced is default)
+        self._update_preset_buttons(25)
+
     def _on_text_changed(self, text: str):
         """Handle text change - can enable live search if desired."""
         # Disable live search for now (too expensive with embeddings)
@@ -160,10 +262,42 @@ class SemanticSearchWidget(QWidget):
         pass
 
     def _on_threshold_changed(self, value: int):
-        """Handle similarity threshold slider change."""
+        """Handle similarity threshold slider change with debouncing."""
         self._min_similarity = value / 100.0
         self.threshold_label.setText(f"Min: {value}%")
-        logger.debug(f"[SemanticSearch] Similarity threshold changed to {self._min_similarity:.2f}")
+
+        # Update preset button highlighting
+        self._update_preset_buttons(value)
+
+        # Debounce: only log after user stops dragging for 500ms
+        if self._slider_debounce_timer.isActive():
+            self._slider_debounce_timer.stop()
+
+        self._slider_debounce_timer.timeout.disconnect()
+        self._slider_debounce_timer.timeout.connect(
+            lambda: logger.info(f"[SemanticSearch] Threshold set to {self._min_similarity:.0%}")
+        )
+        self._slider_debounce_timer.start()
+
+    def _set_preset_threshold(self, value: int):
+        """Set threshold to preset value (Lenient=15%, Balanced=25%, Strict=35%)."""
+        self.threshold_slider.setValue(value)
+        logger.info(f"[SemanticSearch] Preset threshold applied: {value}%")
+
+    def _update_preset_buttons(self, value: int):
+        """Update visual highlighting of preset buttons based on current threshold."""
+        # Clear all button highlighting
+        self.lenient_btn.setStyleSheet("")
+        self.balanced_btn.setStyleSheet("")
+        self.strict_btn.setStyleSheet("")
+
+        # Highlight the active preset (with tolerance of ±2%)
+        if abs(value - 15) <= 2:
+            self.lenient_btn.setStyleSheet("font-weight: bold; background-color: #4CAF50; color: white;")
+        elif abs(value - 25) <= 2:
+            self.balanced_btn.setStyleSheet("font-weight: bold; background-color: #2196F3; color: white;")
+        elif abs(value - 35) <= 2:
+            self.strict_btn.setStyleSheet("font-weight: bold; background-color: #FF9800; color: white;")
 
     def _on_upload_image(self):
         """Handle image upload for multi-modal search."""
@@ -326,13 +460,18 @@ class SemanticSearchWidget(QWidget):
                     self.errorOccurred.emit(str(e))
                     return
 
+            # Apply query expansion for better CLIP matching
+            expanded_query = query
+            if has_text:
+                expanded_query = expand_query(query)
+
             # Extract query embedding (multi-modal support)
             query_embedding = None
 
             if has_text and has_image:
                 # Multi-modal: combine text + image embeddings
                 logger.info("[SemanticSearch] Extracting multi-modal query embedding (text + image)...")
-                text_embedding = self.embedding_service.extract_text_embedding(query)
+                text_embedding = self.embedding_service.extract_text_embedding(expanded_query)
                 image_embedding = self._query_image_embedding
 
                 # Weighted average (50/50 by default)
@@ -350,7 +489,7 @@ class SemanticSearchWidget(QWidget):
             elif has_text:
                 # Text-only search
                 logger.info("[SemanticSearch] Extracting text query embedding...")
-                query_embedding = self.embedding_service.extract_text_embedding(query)
+                query_embedding = self.embedding_service.extract_text_embedding(expanded_query)
 
             elif has_image:
                 # Image-only search
