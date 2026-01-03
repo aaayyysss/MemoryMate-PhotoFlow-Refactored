@@ -271,6 +271,11 @@ class SemanticSearchWidget(QWidget):
 
         main_layout.addLayout(row2_layout)
 
+        # Set size policy to ensure widget gets enough vertical space for 2 rows
+        from PySide6.QtWidgets import QSizePolicy
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.setMinimumHeight(80)  # Ensure enough height for 2 rows
+
         # Debounce timer for live search (optional)
         self.search_timer = QTimer()
         self.search_timer.setSingleShot(True)

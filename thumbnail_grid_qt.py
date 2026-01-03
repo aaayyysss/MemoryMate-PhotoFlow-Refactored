@@ -2343,7 +2343,7 @@ class ThumbnailGridQt(QWidget):
             print(f"[GRID] Warning: Could not fetch tags: {e}")
 
         # Load thumbnails
-        for i, p in enumerate(sorted_paths):
+        for i, p in enumerate(self._paths):
             item = QStandardItem()
             item.setData(p, Qt.UserRole)  # normalized path
             item.setData(p, Qt.UserRole + 6)  # real path
