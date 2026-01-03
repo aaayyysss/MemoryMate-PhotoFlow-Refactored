@@ -176,19 +176,21 @@ class EmbeddingService:
             return self._clip_model_id
 
         # Check if model files exist locally and get the actual path
-        from utils.clip_check import check_clip_availability, get_clip_download_status
-        available, message = check_clip_availability()
+        from utils.clip_check import check_clip_availability, get_clip_download_status, MODEL_CONFIGS
+        available, message = check_clip_availability(variant)
 
         if not available:
             logger.error(f"[EmbeddingService] CLIP model not available: {message}")
+            config = MODEL_CONFIGS.get(variant, {})
             raise RuntimeError(
-                "CLIP model files not found.\n\n"
-                "Please run: python download_clip_model_offline.py\n\n"
-                "This will download the model files (~600MB) to ./models/clip-vit-base-patch32/"
+                f"CLIP model files not found for {variant}.\n\n"
+                f"Please run: python download_clip_model_offline.py --variant {variant}\n\n"
+                f"This will download the model files (~{config.get('size_mb', '???')}MB) "
+                f"to ./models/{config.get('dir_name', '???')}/"
             )
 
         # Get the actual model directory path
-        status = get_clip_download_status()
+        status = get_clip_download_status(variant)
         model_path = status.get('model_path')
 
         if not model_path:
