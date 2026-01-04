@@ -226,6 +226,8 @@
       "scanning": "Scanning",
       "face_detection": "Face Detection",
       "video": "Video",
+      "gps_location": "GPS & Location",
+      "visual_embeddings": "Visual Embeddings",
       "advanced": "Advanced"
     },
     "general": {
@@ -343,6 +345,22 @@
       "geocoding_timeout_hint": "Maximum wait time for location name requests",
       "cache_locations": "Cache location names (reduces API calls)",
       "cache_locations_hint": "Store location names locally to avoid repeated API requests"
+    },
+    "visual_embeddings": {
+      "title": "Visual Embeddings & AI Search",
+      "clip_model": "CLIP Model",
+      "clip_model_path": "Model Cache Path",
+      "clip_model_path_hint": "Directory where CLIP models are stored offline",
+      "download_models": "Download Models",
+      "model_status": "Model Status",
+      "extract_embeddings": "Extract Embeddings",
+      "embedding_device": "Processing Device",
+      "device_auto": "Auto (detect GPU/CPU)",
+      "device_cpu": "CPU only",
+      "device_gpu": "GPU (CUDA/Metal)",
+      "search_quality": "Search Quality",
+      "min_similarity": "Minimum Similarity Threshold",
+      "min_similarity_hint": "Higher values = stricter matches (0.15-0.40)"
     }
   },
   "face_detection": {
