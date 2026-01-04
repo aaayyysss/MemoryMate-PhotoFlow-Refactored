@@ -31,6 +31,15 @@ import numpy as np
 import time
 from pathlib import Path
 import re
+from hashlib import md5
+
+# Caching support
+try:
+    from cachetools import TTLCache
+    CACHING_AVAILABLE = True
+except ImportError:
+    CACHING_AVAILABLE = False
+    logger = None  # Will be set below
 
 from services.embedding_service import get_embedding_service
 from services.search_history_service import get_search_history_service
@@ -39,6 +48,12 @@ from logging_config import get_logger
 from translation_manager import tr
 
 logger = get_logger(__name__)
+
+# Log caching availability
+if CACHING_AVAILABLE:
+    logger.info("[SemanticSearch] Result caching ENABLED (cachetools available)")
+else:
+    logger.warning("[SemanticSearch] Result caching DISABLED (install cachetools: pip install cachetools)")
 
 
 def expand_query(query: str) -> str:
@@ -146,6 +161,18 @@ class SemanticSearchWidget(QWidget):
         self._search_start_time = None  # For timing searches
         self._min_similarity = 0.30  # Default similarity threshold (raised from 0.25 for better quality)
         self._slider_debounce_timer = None  # Timer for debouncing slider changes
+
+        # Result caching (Phase 1 improvement)
+        if CACHING_AVAILABLE:
+            self._result_cache = TTLCache(maxsize=100, ttl=300)  # 100 queries, 5 min TTL
+            self._cache_hits = 0
+            self._cache_misses = 0
+            logger.info("[SemanticSearch] Result cache initialized (100 entries, 5min TTL)")
+        else:
+            self._result_cache = None
+            self._cache_hits = 0
+            self._cache_misses = 0
+
         self._setup_ui()
 
         # Proactively check for available CLIP models at startup
@@ -663,14 +690,124 @@ class SemanticSearchWidget(QWidget):
             else:
                 raise ValueError("No query provided (neither text nor image)")
 
-            # Search for similar images
-            logger.info(f"[SemanticSearch] Searching database (min_similarity={self._min_similarity:.2f})...")
-            results = self.embedding_service.search_similar(
-                query_embedding,
-                top_k=100,  # Get top 100 results
-                model_id=self.embedding_service._clip_model_id,
-                min_similarity=self._min_similarity
-            )
+            # Search for similar images (with caching and progress reporting)
+            model_id = self.embedding_service._clip_model_id
+
+            # Get embedding count for progress dialog decision
+            total_embeddings = self.embedding_service.get_embedding_count(model_id)
+
+            # Generate cache key
+            cache_key = None
+            if self._result_cache is not None:
+                cache_key = self._get_cache_key(
+                    expanded_query,
+                    self._min_similarity,
+                    model_id,
+                    has_image=has_image
+                )
+
+                # Check cache
+                if cache_key in self._result_cache:
+                    results = self._result_cache[cache_key]
+                    self._cache_hits += 1
+                    logger.info(
+                        f"[SemanticSearch] ✓ Cache HIT for '{expanded_query}' "
+                        f"(hits={self._cache_hits}, misses={self._cache_misses}, "
+                        f"hit_rate={self._cache_hits/(self._cache_hits+self._cache_misses):.1%})"
+                    )
+                else:
+                    # Cache miss - perform search with progress reporting
+                    logger.info(f"[SemanticSearch] Cache MISS - searching database (min_similarity={self._min_similarity:.2f})...")
+
+                    # Show progress dialog for large collections
+                    if total_embeddings > 5000:
+                        progress_dialog = QProgressDialog(
+                            "Searching...",
+                            "Cancel",
+                            0, total_embeddings,
+                            self
+                        )
+                        progress_dialog.setWindowTitle("Semantic Search")
+                        progress_dialog.setWindowModality(Qt.WindowModal)
+                        progress_dialog.show()
+
+                        def on_progress(current, total, message):
+                            progress_dialog.setValue(current)
+                            progress_dialog.setLabelText(message)
+                            # Process events to keep UI responsive
+                            from PySide6.QtWidgets import QApplication
+                            QApplication.processEvents()
+
+                        results = self.embedding_service.search_similar(
+                            query_embedding,
+                            top_k=100,  # Get top 100 results
+                            model_id=model_id,
+                            min_similarity=self._min_similarity,
+                            progress_callback=on_progress,
+                            query_text=expanded_query  # For metrics logging
+                        )
+
+                        progress_dialog.close()
+                    else:
+                        # Small collection - no progress dialog needed
+                        results = self.embedding_service.search_similar(
+                            query_embedding,
+                            top_k=100,  # Get top 100 results
+                            model_id=model_id,
+                            min_similarity=self._min_similarity,
+                            query_text=expanded_query  # For metrics logging
+                        )
+
+                    # Store in cache
+                    self._result_cache[cache_key] = results
+                    self._cache_misses += 1
+                    logger.info(
+                        f"[SemanticSearch] Result cached "
+                        f"(hits={self._cache_hits}, misses={self._cache_misses}, "
+                        f"hit_rate={self._cache_hits/(self._cache_hits+self._cache_misses):.1%})"
+                    )
+            else:
+                # Caching disabled - perform search directly with progress reporting
+                logger.info(f"[SemanticSearch] Searching database (min_similarity={self._min_similarity:.2f})...")
+
+                # Show progress dialog for large collections
+                if total_embeddings > 5000:
+                    progress_dialog = QProgressDialog(
+                        "Searching...",
+                        "Cancel",
+                        0, total_embeddings,
+                        self
+                    )
+                    progress_dialog.setWindowTitle("Semantic Search")
+                    progress_dialog.setWindowModality(Qt.WindowModal)
+                    progress_dialog.show()
+
+                    def on_progress(current, total, message):
+                        progress_dialog.setValue(current)
+                        progress_dialog.setLabelText(message)
+                        # Process events to keep UI responsive
+                        from PySide6.QtWidgets import QApplication
+                        QApplication.processEvents()
+
+                    results = self.embedding_service.search_similar(
+                        query_embedding,
+                        top_k=100,  # Get top 100 results
+                        model_id=model_id,
+                        min_similarity=self._min_similarity,
+                        progress_callback=on_progress,
+                        query_text=expanded_query  # For metrics logging
+                    )
+
+                    progress_dialog.close()
+                else:
+                    # Small collection - no progress dialog needed
+                    results = self.embedding_service.search_similar(
+                        query_embedding,
+                        top_k=100,  # Get top 100 results
+                        model_id=model_id,
+                        min_similarity=self._min_similarity,
+                        query_text=expanded_query  # For metrics logging
+                    )
 
             if not results:
                 # Build context-aware no-results message
@@ -826,6 +963,55 @@ class SemanticSearchWidget(QWidget):
         """Enable/disable the search widget."""
         self.search_input.setEnabled(enabled)
         self.search_btn.setEnabled(enabled)
+
+    def _get_cache_key(self, query: str, threshold: float, model_id: int, has_image: bool = False) -> str:
+        """
+        Generate cache key from search parameters.
+
+        Args:
+            query: Query text (expanded)
+            threshold: Similarity threshold
+            model_id: CLIP model ID
+            has_image: Whether image query is included
+
+        Returns:
+            MD5 hash of cache key string
+        """
+        # Include image flag to differentiate text-only from multi-modal searches
+        cache_str = f"{query}|{threshold:.3f}|{model_id}|{has_image}"
+        return md5(cache_str.encode()).hexdigest()
+
+    def clear_cache(self):
+        """
+        Clear result cache.
+
+        Call this when embeddings are re-extracted to invalidate stale results.
+        """
+        if self._result_cache is not None:
+            self._result_cache.clear()
+            logger.info("[SemanticSearch] Result cache cleared")
+        else:
+            logger.debug("[SemanticSearch] No cache to clear (caching disabled)")
+
+    def get_cache_statistics(self) -> dict:
+        """
+        Get cache performance statistics.
+
+        Returns:
+            Dictionary with cache stats (hits, misses, hit rate, size)
+        """
+        total = self._cache_hits + self._cache_misses
+        hit_rate = self._cache_hits / total if total > 0 else 0.0
+
+        return {
+            'enabled': self._result_cache is not None,
+            'hits': self._cache_hits,
+            'misses': self._cache_misses,
+            'total_searches': total,
+            'hit_rate': hit_rate,
+            'cache_size': len(self._result_cache) if self._result_cache else 0,
+            'max_size': 100 if self._result_cache else 0,
+        }
 
     def _on_show_history(self):
         """Show search history dialog."""
