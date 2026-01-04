@@ -791,13 +791,16 @@ class ScanController(QObject):
                         current_layout = self.main.layout_manager._current_layout
                         if current_layout and hasattr(current_layout, 'accordion_sidebar'):
                             self.logger.debug("Reloading AccordionSidebar for Google Layout...")
-                            # CRITICAL FIX: Ensure project_id is set before reloading sections
-                            # This prevents "No project_id set" warnings in sidebar sections
+                            # CRITICAL FIX: Call set_project() to propagate project_id to ALL sections
+                            # Simply setting accordion_sidebar.project_id is not enough - must call
+                            # set_project() which updates all individual section modules
+                            # This ensures that when sections are expanded later, they have valid project_id
                             if hasattr(self.main.grid, 'project_id') and self.main.grid.project_id is not None:
-                                current_layout.accordion_sidebar.project_id = self.main.grid.project_id
-                                self.logger.debug(f"Set accordion_sidebar project_id to {self.main.grid.project_id}")
-                            current_layout.accordion_sidebar.reload_all_sections()
-                            self.logger.debug("AccordionSidebar reload completed")
+                                self.logger.debug(f"Setting accordion_sidebar project_id to {self.main.grid.project_id}")
+                                current_layout.accordion_sidebar.set_project(self.main.grid.project_id)
+                                self.logger.debug("AccordionSidebar project_id propagated to all sections")
+                            else:
+                                self.logger.warning("Cannot set accordion_sidebar project_id - grid.project_id is None")
                     elif hasattr(self.main.sidebar, "reload"):
                         # Current Layout uses old SidebarQt
                         self.main.sidebar.reload()
