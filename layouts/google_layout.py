@@ -42,6 +42,7 @@ from collections import defaultdict
 from datetime import datetime
 import os
 import subprocess
+from translation_manager import tr as t
 
 
 class GooglePhotosLayout(BaseLayout):
