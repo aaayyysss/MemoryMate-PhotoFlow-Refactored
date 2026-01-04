@@ -404,6 +404,7 @@
     "scanning_repository": "📸 Scanning repository: {folder} (incremental={incremental})"
   },
   "messages": {
+    "scan_complete": "Scan Complete",
     "scan_error": "Scan Error",
     "scan_error_worker": "Failed to create scan worker:\n\n{error}",
     "scan_error_failed": "Failed to create scan worker:\n\n{error}",

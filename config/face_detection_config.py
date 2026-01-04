@@ -185,7 +185,9 @@ class FaceDetectionConfig:
             config_path: Path to configuration file. If None, uses default location.
         """
         if config_path is None:
-            config_dir = Path.home() / ".memorymate"
+            # Store config in app root directory (where main.py is located)
+            # This keeps all project-related files together instead of in user home
+            config_dir = Path(__file__).parent.parent / "config_data"
             config_dir.mkdir(exist_ok=True)
             config_path = config_dir / "face_detection_config.json"
 
