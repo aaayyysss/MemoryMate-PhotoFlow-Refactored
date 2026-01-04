@@ -525,21 +525,19 @@ class EmbeddingService:
                 logger.warning("[EmbeddingService] No embeddings found for search")
                 return []
 
-            # Debug: Check first row to diagnose data issue
-            if rows:
-                first_row = rows[0]
-                logger.debug(
-                    f"[EmbeddingService] First row debug - "
-                    f"type: {type(first_row)}, "
-                    f"length: {len(first_row) if hasattr(first_row, '__len__') else 'N/A'}, "
-                    f"values: {first_row if len(str(first_row)) < 200 else str(first_row)[:200]+'...'}"
-                )
-                if hasattr(first_row, 'keys'):
-                    logger.debug(f"[EmbeddingService] Row keys: {list(first_row.keys())}")
+            # Log search details for debugging
+            query_dim = len(query_embedding)
+            expected_bytes = query_dim * 4
+            logger.info(
+                f"[EmbeddingService] Search starting: {len(rows)} embeddings to check, "
+                f"query dimension: {query_dim}-D ({expected_bytes} bytes expected)"
+            )
 
             # Compute cosine similarities
             results = []
             query_norm = query_embedding / np.linalg.norm(query_embedding)
+            skipped_dim_mismatch = 0
+            skipped_errors = 0
 
             for row in rows:
                 # Access row by column name (dict-like sqlite3.Row objects)
@@ -560,11 +558,16 @@ class EmbeddingService:
                     # Validate buffer size - use query embedding dimension (dynamic for different models)
                     expected_size = len(query_embedding) * 4  # query dimensions * 4 bytes per float32
                     if len(embedding_blob) != expected_size:
-                        logger.warning(
-                            f"[EmbeddingService] Photo {photo_id}: Invalid embedding size "
-                            f"{len(embedding_blob)} bytes, expected {expected_size} bytes "
-                            f"(query is {len(query_embedding)}-D). Skipping."
-                        )
+                        # Dimension mismatch - embedding extracted with different model
+                        actual_dim = len(embedding_blob) // 4
+                        if skipped_dim_mismatch == 0:  # Log first occurrence with details
+                            logger.warning(
+                                f"[EmbeddingService] Dimension mismatch detected! "
+                                f"Photo {photo_id}: embedding is {actual_dim}-D ({len(embedding_blob)} bytes), "
+                                f"but query is {len(query_embedding)}-D ({expected_size} bytes). "
+                                f"This embedding was likely extracted with a different CLIP model. Skipping."
+                            )
+                        skipped_dim_mismatch += 1
                         continue
 
                     embedding = np.frombuffer(embedding_blob, dtype=np.float32)
@@ -578,10 +581,12 @@ class EmbeddingService:
                         results.append((photo_id, similarity))
 
                 except Exception as e:
-                    logger.warning(
-                        f"[EmbeddingService] Failed to deserialize embedding for photo {photo_id}: {e}. "
-                        f"Blob type: {type(embedding_blob)}, size: {len(embedding_blob) if hasattr(embedding_blob, '__len__') else 'N/A'}"
-                    )
+                    if skipped_errors == 0:  # Log first error with details
+                        logger.warning(
+                            f"[EmbeddingService] Failed to deserialize embedding for photo {photo_id}: {e}. "
+                            f"Blob type: {type(embedding_blob)}, size: {len(embedding_blob) if hasattr(embedding_blob, '__len__') else 'N/A'}"
+                        )
+                    skipped_errors += 1
                     continue
 
             # Sort by similarity descending
@@ -590,28 +595,51 @@ class EmbeddingService:
             # Return top K
             top_results = results[:top_k]
 
+            # Calculate statistics
+            processed_count = len(rows) - skipped_dim_mismatch - skipped_errors
+
+            # Build detailed log message
             if top_results:
-                filtered_count = len(rows) - len(results)
-                logger.info(
+                filtered_count = processed_count - len(results)
+                log_msg = (
                     f"[EmbeddingService] Search complete: "
-                    f"{len(rows)} candidates, {len(results)} above threshold (≥{min_similarity:.2f}), "
-                    f"{filtered_count} filtered out, "
+                    f"{len(rows)} total embeddings, {processed_count} processed "
+                    f"({skipped_dim_mismatch} dimension mismatches, {skipped_errors} errors), "
+                    f"{len(results)} above threshold (≥{min_similarity:.2f}), "
+                    f"{filtered_count} below threshold, "
                     f"returning top {len(top_results)} results, "
                     f"top score={top_results[0][1]:.3f}"
                 )
+                logger.info(log_msg)
+
+                # Warn about dimension mismatches if significant
+                if skipped_dim_mismatch > 0:
+                    logger.warning(
+                        f"[EmbeddingService] ⚠️ {skipped_dim_mismatch} embeddings skipped due to dimension mismatch! "
+                        f"These were likely extracted with a different CLIP model. "
+                        f"Consider re-extracting embeddings with Tools → Extract Embeddings to fix this."
+                    )
             else:
-                # No results - could be due to threshold or corrupted data
-                if len(results) == 0 and len(rows) > 0:
+                # No results - provide detailed diagnosis
+                if skipped_dim_mismatch > 0:
+                    logger.warning(
+                        f"[EmbeddingService] Search found NO results! "
+                        f"{len(rows)} total embeddings: {skipped_dim_mismatch} dimension mismatches, "
+                        f"{skipped_errors} errors, {processed_count} processed. "
+                        f"❌ All dimension-matched embeddings scored below {min_similarity:.2f}. "
+                        f"💡 FIX: Re-extract embeddings with current model (Tools → Extract Embeddings)"
+                    )
+                elif len(results) == 0 and processed_count > 0:
                     logger.warning(
                         f"[EmbeddingService] Search complete but NO results above similarity threshold! "
-                        f"{len(rows)} candidates found, but all scores below {min_similarity:.2f}. "
+                        f"{processed_count} embeddings checked, but all scores below {min_similarity:.2f}. "
                         f"Try lowering min_similarity or using different search terms."
                     )
                 else:
                     logger.warning(
                         f"[EmbeddingService] Search complete but NO valid embeddings found! "
-                        f"Retrieved {len(rows)} rows from database, but all were invalid/corrupted. "
-                        f"This suggests embeddings were stored incorrectly."
+                        f"Retrieved {len(rows)} rows from database: {skipped_dim_mismatch} dimension mismatches, "
+                        f"{skipped_errors} errors. This suggests embeddings were stored incorrectly."
                     )
 
             return top_results
