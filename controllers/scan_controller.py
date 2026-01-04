@@ -791,6 +791,11 @@ class ScanController(QObject):
                         current_layout = self.main.layout_manager._current_layout
                         if current_layout and hasattr(current_layout, 'accordion_sidebar'):
                             self.logger.debug("Reloading AccordionSidebar for Google Layout...")
+                            # CRITICAL FIX: Ensure project_id is set before reloading sections
+                            # This prevents "No project_id set" warnings in sidebar sections
+                            if hasattr(self.main.grid, 'project_id') and self.main.grid.project_id is not None:
+                                current_layout.accordion_sidebar.project_id = self.main.grid.project_id
+                                self.logger.debug(f"Set accordion_sidebar project_id to {self.main.grid.project_id}")
                             current_layout.accordion_sidebar.reload_all_sections()
                             self.logger.debug("AccordionSidebar reload completed")
                     elif hasattr(self.main.sidebar, "reload"):
