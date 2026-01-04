@@ -92,6 +92,7 @@ class EmbeddingService:
         self._clip_model = None
         self._clip_processor = None
         self._clip_model_id = None
+        self._clip_variant = None  # Store which variant is loaded
 
         # Try to import dependencies
         self._torch_available = False
@@ -232,6 +233,11 @@ class EmbeddingService:
                 runtime=self.device,
                 dimension=dimension
             )
+
+            # Store variant name for later reference
+            self._clip_variant = variant
+
+            logger.info(f"[EmbeddingService] Registered model {self._clip_model_id}: clip/{variant}")
 
             return self._clip_model_id
 
