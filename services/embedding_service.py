@@ -37,9 +37,10 @@ import os
 import numpy as np
 from pathlib import Path
 from typing import Optional, List, Tuple, Dict, Any, Union
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from PIL import Image
 import logging
+import time
 
 from repository.base_repository import DatabaseConnection
 from logging_config import get_logger
@@ -56,6 +57,39 @@ class EmbeddingModel:
     version: str
     dimension: int
     runtime: str  # 'cpu', 'gpu_local', 'gpu_remote'
+
+
+@dataclass
+class SearchMetrics:
+    """Metrics for a semantic search operation (Phase 1 improvement)."""
+    query_text: str
+    start_time: float
+    end_time: float
+    duration_ms: float
+    embedding_count: int
+    result_count: int
+    top_score: float
+    avg_score: float
+    min_similarity_threshold: float
+    cache_hit: bool = False
+    batch_count: int = 0
+    skipped_embeddings: int = 0
+    model_id: int = 0
+
+    def to_dict(self) -> Dict:
+        """Convert to dictionary for logging/storage."""
+        return {
+            'query': self.query_text,
+            'duration_ms': self.duration_ms,
+            'embeddings_searched': self.embedding_count,
+            'results_found': self.result_count,
+            'top_score': self.top_score,
+            'avg_score': self.avg_score,
+            'threshold': self.min_similarity_threshold,
+            'cache_hit': self.cache_hit,
+            'batches': self.batch_count,
+            'skipped': self.skipped_embeddings,
+        }
 
 
 class EmbeddingService:
@@ -93,6 +127,9 @@ class EmbeddingService:
         self._clip_processor = None
         self._clip_model_id = None
         self._clip_variant = None  # Store which variant is loaded
+
+        # Performance metrics (Phase 1 improvement)
+        self._search_metrics: List[SearchMetrics] = []
 
         # Try to import dependencies
         self._torch_available = False
@@ -480,9 +517,12 @@ class EmbeddingService:
                       top_k: int = 10,
                       model_id: Optional[int] = None,
                       photo_ids: Optional[List[int]] = None,
-                      min_similarity: float = 0.20) -> List[Tuple[int, float]]:
+                      min_similarity: float = 0.20,
+                      batch_size: int = 1000,
+                      progress_callback: Optional[callable] = None,
+                      query_text: str = "") -> List[Tuple[int, float]]:
         """
-        Search for similar images using cosine similarity.
+        Search for similar images using cosine similarity with batch processing.
 
         Args:
             query_embedding: Query embedding vector
@@ -495,17 +535,48 @@ class EmbeddingService:
                           - 0.15-0.20: Very permissive (may include unrelated images)
                           - 0.25-0.30: Moderate (good balance)
                           - 0.35-0.40: Strict (only close matches)
+            batch_size: Number of embeddings to process per batch (default: 1000)
+                       Larger batches = faster but more memory
+                       Recommended: 500-1000 for desktop, 100-500 for mobile
+            progress_callback: Optional callback(current, total, message) for progress updates
+            query_text: Optional query text for metrics logging (Phase 1 improvement)
 
         Returns:
             List of (photo_id, similarity_score) tuples, sorted by score descending
         """
+        # Start timing (Phase 1 improvement)
+        start_time = time.time()
+
         if model_id is None:
             model_id = self._clip_model_id
             if model_id is None:
                 raise ValueError("No model loaded")
 
         with self.db.get_connection() as conn:
-            # Fetch all embeddings for this model
+            # Get total count first for batch processing
+            count_query = """
+                SELECT COUNT(*) as count
+                FROM photo_embedding
+                WHERE model_id = ? AND embedding_type = 'visual_semantic'
+            """
+            count_params = [model_id]
+
+            if photo_ids:
+                placeholders = ','.join('?' * len(photo_ids))
+                count_query += f" AND photo_id IN ({placeholders})"
+                count_params.extend(photo_ids)
+
+            total_count = conn.execute(count_query, count_params).fetchone()["count"]
+
+            if total_count == 0:
+                logger.warning("[EmbeddingService] No embeddings found for search")
+                return []
+
+            logger.info(
+                f"[EmbeddingService] Searching {total_count} embeddings with batch_size={batch_size}"
+            )
+
+            # Build query for batch processing
             query = """
                 SELECT photo_id, embedding
                 FROM photo_embedding
@@ -518,95 +589,98 @@ class EmbeddingService:
                 query += f" AND photo_id IN ({placeholders})"
                 params.extend(photo_ids)
 
-            cursor = conn.execute(query, params)
-            rows = cursor.fetchall()
+            query += " LIMIT ? OFFSET ?"
 
-            if not rows:
-                logger.warning("[EmbeddingService] No embeddings found for search")
-                return []
-
-            # Log search details for debugging
-            query_dim = len(query_embedding)
-            expected_bytes = query_dim * 4
-            logger.info(
-                f"[EmbeddingService] Search starting: {len(rows)} embeddings to check, "
-                f"query dimension: {query_dim}-D ({expected_bytes} bytes expected)"
-            )
-
-            # Compute cosine similarities
-            results = []
+            # Process in batches
+            all_results = []
             query_norm = query_embedding / np.linalg.norm(query_embedding)
+            offset = 0
+            batch_num = 1
+            total_batches = (total_count + batch_size - 1) // batch_size
             skipped_dim_mismatch = 0
             skipped_errors = 0
+            last_progress_time = time.time()
 
-            for row in rows:
-                # Access row by column name (dict-like sqlite3.Row objects)
-                photo_id = row["photo_id"]
-                embedding_blob = row["embedding"]
-                try:
-                    # Deserialize embedding - handle both bytes and string formats
-                    if isinstance(embedding_blob, str):
-                        # SQLite returned as string - try multiple conversion methods
-                        # Method 1: Try hex decoding
-                        try:
-                            embedding_blob = bytes.fromhex(embedding_blob)
-                        except (ValueError, TypeError):
-                            # Method 2: Raw binary string - encode to bytes
-                            # Use latin1 which preserves byte values 0-255
-                            embedding_blob = embedding_blob.encode('latin1')
+            while offset < total_count:
+                # Fetch batch
+                cursor = conn.execute(query, params + [batch_size, offset])
+                rows = cursor.fetchall()
 
-                    # Validate buffer size - use query embedding dimension (dynamic for different models)
-                    expected_size = len(query_embedding) * 4  # query dimensions * 4 bytes per float32
-                    if len(embedding_blob) != expected_size:
-                        # Dimension mismatch - embedding extracted with different model
-                        actual_dim = len(embedding_blob) // 4
-                        if skipped_dim_mismatch == 0:  # Log first occurrence with details
-                            logger.warning(
-                                f"[EmbeddingService] Dimension mismatch detected! "
-                                f"Photo {photo_id}: embedding is {actual_dim}-D ({len(embedding_blob)} bytes), "
-                                f"but query is {len(query_embedding)}-D ({expected_size} bytes). "
-                                f"This embedding was likely extracted with a different CLIP model. Skipping."
-                            )
-                        skipped_dim_mismatch += 1
-                        continue
+                if not rows:
+                    break
 
-                    embedding = np.frombuffer(embedding_blob, dtype=np.float32)
-                    embedding_norm = embedding / np.linalg.norm(embedding)
+                # Process batch
+                batch_results, batch_skipped_dim, batch_skipped_err = self._process_batch(
+                    rows, query_norm, min_similarity
+                )
+                all_results.extend(batch_results)
+                skipped_dim_mismatch += batch_skipped_dim
+                skipped_errors += batch_skipped_err
 
-                    # Cosine similarity
-                    similarity = float(np.dot(query_norm, embedding_norm))
+                # Progress callback with throttling (every 1000 items or 0.5 seconds)
+                now = time.time()
+                if progress_callback and (offset % 1000 == 0 or (now - last_progress_time) > 0.5):
+                    progress_callback(
+                        offset + len(rows),
+                        total_count,
+                        f"Searching... {offset + len(rows)}/{total_count} embeddings"
+                    )
+                    last_progress_time = now
 
-                    # Apply similarity threshold filter
-                    if similarity >= min_similarity:
-                        results.append((photo_id, similarity))
+                # Log progress
+                logger.debug(
+                    f"[EmbeddingService] Batch {batch_num}/{total_batches}: "
+                    f"processed {len(rows)} embeddings, found {len(batch_results)} above threshold"
+                )
 
-                except Exception as e:
-                    if skipped_errors == 0:  # Log first error with details
-                        logger.warning(
-                            f"[EmbeddingService] Failed to deserialize embedding for photo {photo_id}: {e}. "
-                            f"Blob type: {type(embedding_blob)}, size: {len(embedding_blob) if hasattr(embedding_blob, '__len__') else 'N/A'}"
-                        )
-                    skipped_errors += 1
-                    continue
+                offset += batch_size
+                batch_num += 1
 
-            # Sort by similarity descending
-            results.sort(key=lambda x: x[1], reverse=True)
+            # Sort all results by similarity descending
+            all_results.sort(key=lambda x: x[1], reverse=True)
 
             # Return top K
-            top_results = results[:top_k]
+            top_results = all_results[:top_k]
 
             # Calculate statistics
-            processed_count = len(rows) - skipped_dim_mismatch - skipped_errors
+            processed_count = total_count - skipped_dim_mismatch - skipped_errors
+
+            # Compute metrics (Phase 1 improvement)
+            end_time = time.time()
+            duration_ms = (end_time - start_time) * 1000
+
+            metrics = SearchMetrics(
+                query_text=query_text,
+                start_time=start_time,
+                end_time=end_time,
+                duration_ms=duration_ms,
+                embedding_count=total_count,
+                result_count=len(all_results),
+                top_score=top_results[0][1] if top_results else 0.0,
+                avg_score=sum(s for _, s in all_results) / len(all_results) if all_results else 0.0,
+                min_similarity_threshold=min_similarity,
+                cache_hit=False,  # Set by caller if cached
+                batch_count=batch_num - 1,
+                skipped_embeddings=skipped_dim_mismatch + skipped_errors,
+                model_id=model_id
+            )
+
+            # Log metrics
+            self._log_search_metrics(metrics)
+
+            # Store metrics (keep last 100 searches)
+            self._search_metrics.append(metrics)
+            if len(self._search_metrics) > 100:
+                self._search_metrics.pop(0)
 
             # Build detailed log message
             if top_results:
-                filtered_count = processed_count - len(results)
+                filtered_count = len(all_results) - len(top_results)
                 log_msg = (
                     f"[EmbeddingService] Search complete: "
-                    f"{len(rows)} total embeddings, {processed_count} processed "
+                    f"{total_count} total embeddings, {processed_count} processed "
                     f"({skipped_dim_mismatch} dimension mismatches, {skipped_errors} errors), "
-                    f"{len(results)} above threshold (≥{min_similarity:.2f}), "
-                    f"{filtered_count} below threshold, "
+                    f"{len(all_results)} above threshold (≥{min_similarity:.2f}), "
                     f"returning top {len(top_results)} results, "
                     f"top score={top_results[0][1]:.3f}"
                 )
@@ -624,12 +698,12 @@ class EmbeddingService:
                 if skipped_dim_mismatch > 0:
                     logger.warning(
                         f"[EmbeddingService] Search found NO results! "
-                        f"{len(rows)} total embeddings: {skipped_dim_mismatch} dimension mismatches, "
+                        f"{total_count} total embeddings: {skipped_dim_mismatch} dimension mismatches, "
                         f"{skipped_errors} errors, {processed_count} processed. "
                         f"❌ All dimension-matched embeddings scored below {min_similarity:.2f}. "
                         f"💡 FIX: Re-extract embeddings with current model (Tools → Extract Embeddings)"
                     )
-                elif len(results) == 0 and processed_count > 0:
+                elif len(all_results) == 0 and processed_count > 0:
                     logger.warning(
                         f"[EmbeddingService] Search complete but NO results above similarity threshold! "
                         f"{processed_count} embeddings checked, but all scores below {min_similarity:.2f}. "
@@ -638,11 +712,131 @@ class EmbeddingService:
                 else:
                     logger.warning(
                         f"[EmbeddingService] Search complete but NO valid embeddings found! "
-                        f"Retrieved {len(rows)} rows from database: {skipped_dim_mismatch} dimension mismatches, "
+                        f"Retrieved {total_count} rows from database: {skipped_dim_mismatch} dimension mismatches, "
                         f"{skipped_errors} errors. This suggests embeddings were stored incorrectly."
                     )
 
             return top_results
+
+    def _process_batch(self,
+                      rows: List,
+                      query_norm: np.ndarray,
+                      min_similarity: float) -> Tuple[List[Tuple[int, float]], int, int]:
+        """
+        Process a batch of embeddings and compute similarities.
+
+        Args:
+            rows: List of (photo_id, embedding_blob) tuples
+            query_norm: Normalized query embedding
+            min_similarity: Minimum similarity threshold
+
+        Returns:
+            Tuple of (batch_results, skipped_dim_mismatch, skipped_errors)
+            where batch_results is list of (photo_id, similarity) tuples above threshold
+        """
+        batch_results = []
+        skipped_dim_mismatch = 0
+        skipped_errors = 0
+
+        for row in rows:
+            photo_id = row["photo_id"]
+            embedding_blob = row["embedding"]
+
+            try:
+                # Deserialize embedding - handle both bytes and string formats
+                if isinstance(embedding_blob, str):
+                    # SQLite returned as string - try multiple conversion methods
+                    try:
+                        embedding_blob = bytes.fromhex(embedding_blob)
+                    except (ValueError, TypeError):
+                        # Raw binary string - encode to bytes
+                        embedding_blob = embedding_blob.encode('latin1')
+
+                # Validate buffer size
+                expected_size = len(query_norm) * 4  # query dimensions * 4 bytes per float32
+                if len(embedding_blob) != expected_size:
+                    # Dimension mismatch
+                    actual_dim = len(embedding_blob) // 4
+                    if skipped_dim_mismatch == 0:  # Log first occurrence
+                        logger.warning(
+                            f"[EmbeddingService] Dimension mismatch detected! "
+                            f"Photo {photo_id}: embedding is {actual_dim}-D ({len(embedding_blob)} bytes), "
+                            f"but query is {len(query_norm)}-D ({expected_size} bytes). "
+                            f"This embedding was likely extracted with a different CLIP model. Skipping."
+                        )
+                    skipped_dim_mismatch += 1
+                    continue
+
+                # Compute similarity
+                embedding = np.frombuffer(embedding_blob, dtype=np.float32)
+                embedding_norm = embedding / np.linalg.norm(embedding)
+                similarity = float(np.dot(query_norm, embedding_norm))
+
+                # Filter by threshold
+                if similarity >= min_similarity:
+                    batch_results.append((photo_id, similarity))
+
+            except Exception as e:
+                if skipped_errors == 0:  # Log first error
+                    logger.warning(
+                        f"[EmbeddingService] Failed to process photo {photo_id}: {e}. "
+                        f"Blob type: {type(embedding_blob)}, "
+                        f"size: {len(embedding_blob) if hasattr(embedding_blob, '__len__') else 'N/A'}"
+                    )
+                skipped_errors += 1
+                continue
+
+        return batch_results, skipped_dim_mismatch, skipped_errors
+
+    def _log_search_metrics(self, metrics: SearchMetrics):
+        """
+        Log search performance metrics (Phase 1 improvement).
+
+        Args:
+            metrics: SearchMetrics object with performance data
+        """
+        # Always log duration
+        logger.info(
+            f"[EmbeddingService] Search completed in {metrics.duration_ms:.0f}ms: "
+            f"'{metrics.query_text}' - {metrics.result_count} results, "
+            f"top score={metrics.top_score:.3f}"
+        )
+
+        # Warn about slow searches (>1 second)
+        if metrics.duration_ms > 1000:
+            logger.warning(
+                f"[EmbeddingService] SLOW SEARCH detected: {metrics.duration_ms:.0f}ms for "
+                f"{metrics.embedding_count} embeddings. Consider batch_size tuning."
+            )
+
+        # Warn about low match quality
+        if metrics.result_count > 0 and metrics.top_score < 0.25:
+            logger.warning(
+                f"[EmbeddingService] LOW QUALITY results: top score={metrics.top_score:.3f}. "
+                f"Consider refining query or checking embeddings."
+            )
+
+        # Log detailed metrics at debug level
+        logger.debug(f"[EmbeddingService] Search metrics: {metrics.to_dict()}")
+
+    def get_search_statistics(self) -> Dict:
+        """
+        Get aggregate search statistics (Phase 1 improvement).
+
+        Returns:
+            Dictionary with aggregate stats over last 100 searches
+        """
+        if not self._search_metrics:
+            return {}
+
+        return {
+            'total_searches': len(self._search_metrics),
+            'avg_duration_ms': sum(m.duration_ms for m in self._search_metrics) / len(self._search_metrics),
+            'max_duration_ms': max(m.duration_ms for m in self._search_metrics),
+            'slow_searches': sum(1 for m in self._search_metrics if m.duration_ms > 1000),
+            'avg_results': sum(m.result_count for m in self._search_metrics) / len(self._search_metrics),
+            'cache_hit_rate': sum(1 for m in self._search_metrics if m.cache_hit) / len(self._search_metrics),
+        }
 
     def get_embedding_count(self, model_id: Optional[int] = None) -> int:
         """Get count of stored embeddings."""
