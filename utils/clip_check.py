@@ -42,8 +42,13 @@ REQUIRED_FILES = [
     "vocab.json",
     "merges.txt",
     "tokenizer.json",
-    "special_tokens_map.json",
-    "pytorch_model.bin"  # Main model weights
+    "special_tokens_map.json"
+]
+
+# Model weights file (either format is acceptable)
+MODEL_WEIGHTS_FILES = [
+    "pytorch_model.bin",  # PyTorch format (older, larger)
+    "model.safetensors"   # Safetensors format (newer, faster)
 ]
 
 
@@ -163,6 +168,17 @@ def _verify_model_files(snapshot_path: str) -> bool:
             logger.debug(f"Missing CLIP model file: {filename}")
             return False
 
+    # Check for model weights file (at least one format must exist)
+    has_weights = False
+    for weights_file in MODEL_WEIGHTS_FILES:
+        if (snapshot_path / weights_file).exists():
+            has_weights = True
+            break
+
+    if not has_weights:
+        logger.debug(f"Missing model weights file (need one of: {MODEL_WEIGHTS_FILES})")
+        return False
+
     # Also check refs/main file exists (but don't validate hash - accept any version)
     refs_main = snapshot_path.parent.parent / 'refs' / 'main'
     if not refs_main.exists():
@@ -230,6 +246,18 @@ def get_clip_download_status(variant: str = 'openai/clip-vit-base-patch32') -> D
                     total_size += file_path.stat().st_size
                 else:
                     missing.append(filename)
+
+            # Check for model weights (at least one format)
+            has_weights = False
+            for weights_file in MODEL_WEIGHTS_FILES:
+                weights_path = commit_dir / weights_file
+                if weights_path.exists():
+                    has_weights = True
+                    total_size += weights_path.stat().st_size
+                    break
+
+            if not has_weights:
+                missing.append("pytorch_model.bin or model.safetensors")
 
             if not missing:
                 # All files present
