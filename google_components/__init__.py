@@ -10,10 +10,10 @@ Phase 3C: Media Lightbox
 - PreloadImageSignals, PreloadImageWorker
 - ProgressiveImageSignals, ProgressiveImageWorker
 
-Future phases will extract:
-- Timeline view component
-- People/face management component
-- Sidebar manager component
+Phase 3D: Photo Workers & Helpers
+- PhotoButton, ThumbnailSignals, ThumbnailLoader
+- PhotoLoadSignals, PhotoLoadWorker
+- GooglePhotosEventFilter, AutocompleteEventFilter
 """
 
 from google_components.widgets import (
@@ -32,6 +32,16 @@ from google_components.media_lightbox import (
     ProgressiveImageWorker
 )
 
+from google_components.photo_helpers import (
+    PhotoButton,
+    ThumbnailSignals,
+    ThumbnailLoader,
+    PhotoLoadSignals,
+    PhotoLoadWorker,
+    GooglePhotosEventFilter,
+    AutocompleteEventFilter
+)
+
 __all__ = [
     # Phase 3A: UI Widgets
     'FlowLayout',
@@ -46,4 +56,13 @@ __all__ = [
     'PreloadImageWorker',
     'ProgressiveImageSignals',
     'ProgressiveImageWorker',
+
+    # Phase 3D: Photo Workers & Helpers
+    'PhotoButton',
+    'ThumbnailSignals',
+    'ThumbnailLoader',
+    'PhotoLoadSignals',
+    'PhotoLoadWorker',
+    'GooglePhotosEventFilter',
+    'AutocompleteEventFilter',
 ]
