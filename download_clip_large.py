@@ -125,7 +125,8 @@ def download_clip_large():
         print("  ✓ Processor saved")
 
         print("  Saving model...")
-        model.save_pretrained(target_dir)
+        # Force PyTorch format (not safetensors) for compatibility
+        model.save_pretrained(target_dir, safe_serialization=False)
         print("  ✓ Model saved")
 
         # Create Hugging Face cache structure (snapshots/ and refs/)
@@ -192,8 +193,7 @@ def download_clip_large():
             "vocab.json",
             "merges.txt",
             "tokenizer.json",
-            "special_tokens_map.json",
-            "pytorch_model.bin"
+            "special_tokens_map.json"
         ]
 
         missing = []
@@ -201,12 +201,19 @@ def download_clip_large():
             if not (snapshot_path / filename).exists():
                 missing.append(filename)
 
+        # Check for model weights file (either format)
+        model_weights_files = ["pytorch_model.bin", "model.safetensors"]
+        has_weights = any((snapshot_path / f).exists() for f in model_weights_files)
+
+        if not has_weights:
+            missing.append("pytorch_model.bin or model.safetensors")
+
         if missing:
             print(f"  ⚠️  Warning: {len(missing)} files missing:")
             for f in missing:
                 print(f"      - {f}")
         else:
-            print(f"  ✓ All {len(required_files)} required files present")
+            print(f"  ✓ All required files present (config + tokenizer + model weights)")
 
         # Get total size
         total_size = sum(f.stat().st_size for f in snapshot_path.rglob('*') if f.is_file())
