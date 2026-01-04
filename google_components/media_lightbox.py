@@ -25,6 +25,7 @@ from PySide6.QtGui import (
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from layouts.video_editor_mixin import VideoEditorMixin
+from translation_manager import tr as t
 from typing import List, Optional
 import os
 
