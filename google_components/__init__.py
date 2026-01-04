@@ -14,6 +14,9 @@ Phase 3D: Photo Workers & Helpers
 - PhotoButton, ThumbnailSignals, ThumbnailLoader
 - PhotoLoadSignals, PhotoLoadWorker
 - GooglePhotosEventFilter, AutocompleteEventFilter
+
+Phase 3E: Dialog Classes
+- PersonPickerDialog
 """
 
 from google_components.widgets import (
@@ -42,6 +45,10 @@ from google_components.photo_helpers import (
     AutocompleteEventFilter
 )
 
+from google_components.dialogs import (
+    PersonPickerDialog
+)
+
 __all__ = [
     # Phase 3A: UI Widgets
     'FlowLayout',
@@ -65,4 +72,7 @@ __all__ = [
     'PhotoLoadWorker',
     'GooglePhotosEventFilter',
     'AutocompleteEventFilter',
+
+    # Phase 3E: Dialog Classes
+    'PersonPickerDialog',
 ]

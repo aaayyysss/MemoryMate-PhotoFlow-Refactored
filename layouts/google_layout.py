@@ -34,7 +34,9 @@ from google_components import (
     # Phase 3D: Photo Workers & Helpers
     PhotoButton, ThumbnailSignals, ThumbnailLoader,
     PhotoLoadSignals, PhotoLoadWorker,
-    GooglePhotosEventFilter, AutocompleteEventFilter
+    GooglePhotosEventFilter, AutocompleteEventFilter,
+    # Phase 3E: Dialog Classes
+    PersonPickerDialog
 )
 
 from typing import Dict, List, Tuple, Optional
@@ -42,6 +44,7 @@ from collections import defaultdict
 from datetime import datetime
 import os
 import subprocess
+from translation_manager import tr as t
 
 
 class GooglePhotosLayout(BaseLayout):
@@ -3968,9 +3971,9 @@ class GooglePhotosLayout(BaseLayout):
                 source_branch = branch_key
                 
                 # Show visual person picker dialog
-                picker_dlg = self._create_person_picker_dialog(exclude_branch=source_branch)
+                picker_dlg = PersonPickerDialog(self.project_id, parent=self.main_window, exclude_branch=source_branch)
                 if picker_dlg.exec() == QDialog.Accepted:
-                    selected_target = getattr(picker_dlg, 'selected_branch', None)
+                    selected_target = picker_dlg.selected_branch
                     if not selected_target:
                         return
                     
@@ -4016,315 +4019,6 @@ class GooglePhotosLayout(BaseLayout):
             dlg.exec()
         except Exception as e:
             print(f"[GooglePhotosLayout] Person detail failed: {e}")
-
-    def _create_person_picker_dialog(self, exclude_branch=None):
-        """Create a visual person picker dialog with face previews."""
-        from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel, QScrollArea, QWidget, QGridLayout, QPushButton, QHBoxLayout, QLineEdit
-        from PySide6.QtGui import QPixmap, QPainter, QPainterPath
-        from PySide6.QtCore import Qt
-        import base64, os
-        from reference_db import ReferenceDB
-        
-        dlg = QDialog(self.main_window)
-        dlg.setWindowTitle("Select Merge Target")
-        dlg.resize(700, 600)
-        dlg.selected_branch = None
-        
-        outer = QVBoxLayout(dlg)
-        outer.setContentsMargins(16, 16, 16, 16)
-        outer.setSpacing(12)
-        
-        # Header
-        header = QLabel("<b>Select a person to merge into:</b>")
-        header.setStyleSheet("font-size: 12pt;")
-        outer.addWidget(header)
-        
-        # Search box
-        search_box = QLineEdit()
-        search_box.setPlaceholderText("🔍 Search people...")
-        search_box.setClearButtonEnabled(True)
-        search_box.setStyleSheet("""
-            QLineEdit {
-                padding: 8px 12px;
-                border: 1px solid #dadce0;
-                border-radius: 20px;
-                background: #f8f9fa;
-                font-size: 10pt;
-            }
-            QLineEdit:focus {
-                border: 2px solid #1a73e8;
-                background: white;
-            }
-        """)
-        outer.addWidget(search_box)
-        
-        # Fetch all people with multiple face samples
-        db = ReferenceDB()
-        people = []
-        with db._connect() as conn:
-            cur = conn.cursor()
-            query = "SELECT branch_key, label, count, rep_path, rep_thumb_png FROM face_branch_reps WHERE project_id = ?"
-            params = [self.project_id]
-            if exclude_branch:
-                query += " AND branch_key != ?"
-                params.append(exclude_branch)
-            query += " ORDER BY count DESC"
-            cur.execute(query, params)
-            people = cur.fetchall() or []
-            
-            # Fetch additional face samples for preview grid (top 3 per person)
-            face_samples = {}
-            for branch_key, _, _, _, _ in people:
-                cur.execute(
-                    "SELECT crop_path FROM face_crops WHERE project_id = ? AND branch_key = ? LIMIT 3",
-                    (self.project_id, branch_key)
-                )
-                face_samples[branch_key] = [r[0] for r in cur.fetchall()]
-        
-        # Scrollable grid
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setStyleSheet("QScrollArea { border: none; background: white; }")
-        container = QWidget()
-        grid = QGridLayout(container)
-        grid.setContentsMargins(8, 8, 8, 8)
-        grid.setSpacing(12)
-        
-        person_cards = []
-        
-        def create_person_card(branch_key, label, count, rep_path, rep_thumb):
-            card = QPushButton()
-            card.setFixedSize(140, 180)  # Larger to fit multiple faces
-            card.setCursor(Qt.PointingHandCursor)
-            card.setStyleSheet("""
-                QPushButton {
-                    background: white;
-                    border: 2px solid #dadce0;
-                    border-radius: 8px;
-                    text-align: center;
-                }
-                QPushButton:hover {
-                    border: 2px solid #1a73e8;
-                    background: #f8f9fa;
-                }
-                QPushButton:pressed {
-                    background: #e8eaed;
-                }
-                QPushButton:focus {
-                    border: 3px solid #1a73e8;
-                    outline: none;
-                }
-            """)
-            
-            # Build card content
-            card_layout = QVBoxLayout(card)
-            card_layout.setContentsMargins(8, 8, 8, 8)
-            card_layout.setSpacing(4)
-            
-            # Multiple face previews (grid of 2-3 faces)
-            samples = face_samples.get(branch_key, [])
-            if len(samples) > 1:
-                # Show 2-3 faces in a grid
-                faces_container = QWidget()
-                faces_layout = QHBoxLayout(faces_container)
-                faces_layout.setContentsMargins(0, 0, 0, 0)
-                faces_layout.setSpacing(4)
-                
-                for idx, sample_path in enumerate(samples[:3]):
-                    mini_face = QLabel()
-                    size = 38 if len(samples) >= 3 else 50  # Smaller if showing 3
-                    mini_face.setFixedSize(size, size)
-                    mini_face.setAlignment(Qt.AlignCenter)
-                    try:
-                        pix = QPixmap(sample_path) if sample_path and os.path.exists(sample_path) else None
-                        if pix and not pix.isNull():
-                            scaled = pix.scaled(size, size, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
-                            if scaled.width() > size or scaled.height() > size:
-                                x = (scaled.width() - size) // 2
-                                y = (scaled.height() - size) // 2
-                                scaled = scaled.copy(x, y, size, size)
-                            output = QPixmap(size, size)
-                            output.fill(Qt.transparent)
-                            painter = QPainter(output)
-                            painter.setRenderHint(QPainter.Antialiasing)
-                            path = QPainterPath()
-                            path.addEllipse(0, 0, size, size)
-                            painter.setClipPath(path)
-                            painter.drawPixmap(0, 0, scaled)
-                            painter.end()
-                            mini_face.setPixmap(output)
-                        else:
-                            mini_face.setStyleSheet(f"background: #e8eaed; border-radius: {size//2}px; font-size: {size//2}pt;")
-                            mini_face.setText("👤")
-                    except Exception:
-                        mini_face.setStyleSheet(f"background: #e8eaed; border-radius: {size//2}px; font-size: {size//2}pt;")
-                        mini_face.setText("👤")
-                    faces_layout.addWidget(mini_face)
-                
-                card_layout.addWidget(faces_container, 0, Qt.AlignCenter)
-            else:
-                # Single face preview (80x80 circular)
-                face_label = QLabel()
-                face_label.setFixedSize(80, 80)
-                face_label.setAlignment(Qt.AlignCenter)
-                try:
-                    pix = None
-                    if rep_thumb:
-                        data = base64.b64decode(rep_thumb) if isinstance(rep_thumb, str) else rep_thumb
-                        pix = QPixmap()
-                        pix.loadFromData(data)
-                    if (pix is None or pix.isNull()) and rep_path and os.path.exists(rep_path):
-                        pix = QPixmap(rep_path)
-                    if pix and not pix.isNull():
-                        # Make circular
-                        scaled = pix.scaled(80, 80, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
-                        if scaled.width() > 80 or scaled.height() > 80:
-                            x = (scaled.width() - 80) // 2
-                            y = (scaled.height() - 80) // 2
-                            scaled = scaled.copy(x, y, 80, 80)
-                        output = QPixmap(80, 80)
-                        output.fill(Qt.transparent)
-                        painter = QPainter(output)
-                        painter.setRenderHint(QPainter.Antialiasing)
-                        path = QPainterPath()
-                        path.addEllipse(0, 0, 80, 80)
-                        painter.setClipPath(path)
-                        painter.drawPixmap(0, 0, scaled)
-                        painter.end()
-                        face_label.setPixmap(output)
-                    else:
-                        face_label.setStyleSheet("background: #e8eaed; border-radius: 40px; font-size: 24pt;")
-                        face_label.setText("👤")
-                except Exception:
-                    face_label.setStyleSheet("background: #e8eaed; border-radius: 40px; font-size: 24pt;")
-                    face_label.setText("👤")
-                card_layout.addWidget(face_label, 0, Qt.AlignCenter)
-            
-            # Name
-            name_label = QLabel(label or "Unnamed")
-            name_label.setAlignment(Qt.AlignCenter)
-            name_label.setWordWrap(True)
-            name_label.setStyleSheet("font-size: 10pt; font-weight: bold; color: #202124;")
-            card_layout.addWidget(name_label)
-            
-            # Count with confidence badge
-            conf_badge = "✅" if count >= 10 else ("⚠️" if count >= 5 else "❓")
-            count_label = QLabel(f"{conf_badge} {count} photos")
-            count_label.setAlignment(Qt.AlignCenter)
-            count_label.setStyleSheet("font-size: 8pt; color: #5f6368;")
-            card_layout.addWidget(count_label)
-            
-            # Store data
-            card.branch_key = branch_key
-            card.display_name = label or "Unnamed"
-            card.setFocusPolicy(Qt.StrongFocus)  # Enable keyboard focus
-            
-            # Click handler
-            def on_click():
-                dlg.selected_branch = branch_key
-                dlg.accept()
-            card.clicked.connect(on_click)
-            
-            return card
-        
-        # Populate grid
-        for i, (branch_key, label, count, rep_path, rep_thumb) in enumerate(people):
-            card = create_person_card(branch_key, label, count, rep_path, rep_thumb)
-            person_cards.append(card)
-            row = i // 4
-            col = i % 4
-            grid.addWidget(card, row, col)
-        
-        scroll.setWidget(container)
-        outer.addWidget(scroll, 1)
-        
-        # Keyboard navigation support
-        dlg.current_focus_index = 0
-        
-        def navigate_cards(direction):
-            """Navigate through person cards with arrow keys."""
-            visible_cards = [c for c in person_cards if c.isVisible()]
-            if not visible_cards:
-                return
-            
-            cols = 4
-            current_idx = dlg.current_focus_index
-            
-            if direction == "right" and current_idx < len(visible_cards) - 1:
-                current_idx += 1
-            elif direction == "left" and current_idx > 0:
-                current_idx -= 1
-            elif direction == "down":
-                next_idx = current_idx + cols
-                if next_idx < len(visible_cards):
-                    current_idx = next_idx
-            elif direction == "up":
-                prev_idx = current_idx - cols
-                if prev_idx >= 0:
-                    current_idx = prev_idx
-            
-            dlg.current_focus_index = current_idx
-            visible_cards[current_idx].setFocus()
-            # Ensure card is visible in scroll area
-            scroll.ensureWidgetVisible(visible_cards[current_idx])
-        
-        def select_focused_card():
-            """Select the currently focused card with Enter/Return."""
-            visible_cards = [c for c in person_cards if c.isVisible()]
-            if visible_cards and 0 <= dlg.current_focus_index < len(visible_cards):
-                focused_card = visible_cards[dlg.current_focus_index]
-                dlg.selected_branch = focused_card.branch_key
-                dlg.accept()
-        
-        # Install event filter for keyboard navigation
-        from PySide6.QtCore import QEvent
-        class KeyNavFilter(QObject):
-            def eventFilter(self, obj, event):
-                if event.type() == QEvent.KeyPress:
-                    key = event.key()
-                    if key == Qt.Key_Right:
-                        navigate_cards("right")
-                        return True
-                    elif key == Qt.Key_Left:
-                        navigate_cards("left")
-                        return True
-                    elif key == Qt.Key_Down:
-                        navigate_cards("down")
-                        return True
-                    elif key == Qt.Key_Up:
-                        navigate_cards("up")
-                        return True
-                    elif key in (Qt.Key_Return, Qt.Key_Enter):
-                        select_focused_card()
-                        return True
-                return False
-        
-        key_filter = KeyNavFilter()
-        dlg.installEventFilter(key_filter)
-        
-        # Set initial focus
-        if person_cards:
-            person_cards[0].setFocus()
-        
-        # Search filter
-        def filter_cards(text):
-            query = text.lower().strip()
-            for card in person_cards:
-                if not query or query in card.display_name.lower():
-                    card.setVisible(True)
-                else:
-                    card.setVisible(False)
-        search_box.textChanged.connect(filter_cards)
-        
-        # Actions
-        actions = QHBoxLayout()
-        actions.addStretch()
-        cancel_btn = QPushButton("Cancel")
-        cancel_btn.clicked.connect(dlg.reject)
-        actions.addWidget(cancel_btn)
-        outer.addLayout(actions)
-        
-        return dlg
 
     def _delete_person(self, branch_key: str, person_name: str):
         """Delete a person/face cluster."""
