@@ -184,13 +184,15 @@ def test_integration():
         aspect_ratio=1.1,
         confidence=0.85,
         overall_quality=72.5,
-        is_good_quality=True
+        is_good_quality=True,
+        quality_label="Good"
     )
 
     metrics_dict = metrics.to_dict()
     assert isinstance(metrics_dict, dict)
     assert metrics_dict['blur_score'] == 150.0
     assert metrics_dict['overall_quality'] == 72.5
+    assert metrics_dict['quality_label'] == "Good"
     print("✅ FaceQualityMetrics serialization works")
 
     # Test 2: ClusterQualityMetrics to_dict() serialization

@@ -42,6 +42,7 @@ class FaceQualityMetrics:
         confidence: Detection confidence from face detector (0-1)
         overall_quality: Weighted combination of all metrics (0-100)
         is_good_quality: Boolean flag for quick filtering
+        quality_label: Human-readable quality assessment (Excellent, Good, Fair, Poor)
     """
     blur_score: float
     lighting_score: float
@@ -50,6 +51,7 @@ class FaceQualityMetrics:
     confidence: float
     overall_quality: float
     is_good_quality: bool
+    quality_label: str
 
     def to_dict(self) -> Dict:
         """Convert to dictionary for storage/logging."""
@@ -60,7 +62,8 @@ class FaceQualityMetrics:
             'aspect_ratio': self.aspect_ratio,
             'confidence': self.confidence,
             'overall_quality': self.overall_quality,
-            'is_good_quality': self.is_good_quality
+            'is_good_quality': self.is_good_quality,
+            'quality_label': self.quality_label
         }
 
 
@@ -166,6 +169,9 @@ class FaceQualityAnalyzer:
                 blur_score, lighting_score, size_score, aspect_ratio, confidence, overall_quality
             )
 
+            # Get quality label
+            quality_label = self.get_quality_label(overall_quality)
+
             return FaceQualityMetrics(
                 blur_score=blur_score,
                 lighting_score=lighting_score,
@@ -173,7 +179,8 @@ class FaceQualityAnalyzer:
                 aspect_ratio=aspect_ratio,
                 confidence=confidence,
                 overall_quality=overall_quality,
-                is_good_quality=is_good_quality
+                is_good_quality=is_good_quality,
+                quality_label=quality_label
             )
 
         except Exception as e:
@@ -416,7 +423,8 @@ class FaceQualityAnalyzer:
             aspect_ratio=0.0,
             confidence=confidence,
             overall_quality=0.0,
-            is_good_quality=False
+            is_good_quality=False,
+            quality_label="Poor"
         )
 
     @staticmethod
