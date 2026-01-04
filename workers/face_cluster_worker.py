@@ -10,11 +10,13 @@ import time
 import sqlite3
 import numpy as np
 import logging
+from typing import Optional
 from sklearn.cluster import DBSCAN
 from PySide6.QtCore import QRunnable, QObject, Signal, Slot
 from reference_db import ReferenceDB
 from workers.progress_writer import write_status
 from config.face_detection_config import get_face_config
+from services.performance_monitor import PerformanceMonitor
 
 logger = logging.getLogger(__name__)
 
@@ -58,33 +60,88 @@ class FaceClusterWorker(QRunnable):
         - Emits progress signals for UI updates
     """
 
-    def __init__(self, project_id: int, eps: float = 0.35, min_samples: int = 2):
+    def __init__(self, project_id: int, eps: Optional[float] = None,
+                 min_samples: Optional[int] = None, auto_tune: bool = True):
         """
-        Initialize face clustering worker.
+        Initialize face clustering worker with adaptive parameter selection.
 
         Args:
             project_id: Project ID to cluster faces for
-            eps: DBSCAN epsilon parameter (max distance between faces in same cluster)
+            eps: Optional DBSCAN epsilon parameter (manual override)
+                 If None and auto_tune=True, will be auto-selected based on dataset size
+                 Range: 0.20-0.50 (validated)
                  Lower = stricter grouping (more clusters, fewer false positives)
                  Higher = looser grouping (fewer clusters, more false positives)
-                 Range: 0.30-0.40, optimal: 0.35 for InsightFace
-                 Recommended values:
-                   • 0.30: Very strict (best for preventing false matches)
-                   • 0.35: Balanced (recommended, minimizes false clustering)
-                   • 0.40: Looser (may group different people)
-                 Updated from 0.42 (was grouping different people together)
-            min_samples: Minimum number of faces to form a cluster
-                        Higher = larger clusters only (fewer clusters total)
-                        Lower = allows smaller clusters (people with 2+ photos)
-                        Range: 2-5, optimal: 2 (allows people with 2+ appearances)
-                        Updated from 3 (was missing people with only 2 photos)
+            min_samples: Optional minimum faces to form a cluster (manual override)
+                        If None and auto_tune=True, will be auto-selected based on dataset size
+                        Range: 1-10 (validated)
+            auto_tune: If True, automatically select optimal parameters based on dataset size
+                      If False, use provided eps/min_samples or config defaults
+                      Recommended: True for best results
+
+        Parameter Selection:
+            When auto_tune=True (recommended):
+              - Tiny dataset (< 50 faces): eps=0.42, min_samples=2 (prevent fragmentation)
+              - Small dataset (50-200): eps=0.38, min_samples=2
+              - Medium dataset (200-1000): eps=0.35, min_samples=2 (current default)
+              - Large dataset (1000-5000): eps=0.32, min_samples=3 (prevent false merges)
+              - XLarge dataset (> 5000): eps=0.30, min_samples=3 (very strict)
         """
         super().__init__()
         self.project_id = project_id
-        self.eps = eps
-        self.min_samples = min_samples
+        self.auto_tune = auto_tune
+        self.tuning_rationale = ""
+        self.tuning_category = ""
+
+        # Determine parameters with adaptive selection
+        if eps is not None and min_samples is not None:
+            # Manual parameters provided - use them
+            self.eps = eps
+            self.min_samples = min_samples
+            self.tuning_rationale = "Manual parameters"
+            self.tuning_category = "manual"
+        elif auto_tune:
+            # Auto-tune based on dataset size
+            face_count = self._get_face_count()
+            config = get_face_config()
+            optimal = config.get_optimal_clustering_params(face_count, project_id)
+
+            self.eps = optimal["eps"]
+            self.min_samples = optimal["min_samples"]
+            self.tuning_rationale = optimal["rationale"]
+            self.tuning_category = optimal["category"]
+
+            logger.info(f"[FaceClusterWorker] Auto-tuned for {face_count} faces")
+            logger.info(f"[FaceClusterWorker] Parameters: eps={self.eps}, min_samples={self.min_samples}")
+            logger.info(f"[FaceClusterWorker] Rationale: {self.tuning_rationale}")
+        else:
+            # Use config defaults
+            config = get_face_config()
+            params = config.get_clustering_params(project_id)
+            self.eps = params["eps"]
+            self.min_samples = params["min_samples"]
+            self.tuning_rationale = "Config defaults"
+            self.tuning_category = "default"
+
         self.signals = FaceClusterSignals()
         self.cancelled = False
+
+    def _get_face_count(self) -> int:
+        """
+        Get total number of faces for this project.
+
+        Returns:
+            Number of faces in face_crops table for this project
+        """
+        db = ReferenceDB()
+        with db._connect() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT COUNT(*) FROM face_crops WHERE project_id = ?",
+                (self.project_id,)
+            )
+            count = cur.fetchone()[0]
+            return count
 
     def cancel(self):
         """Cancel the clustering process."""
@@ -97,12 +154,18 @@ class FaceClusterWorker(QRunnable):
         logger.info(f"[FaceClusterWorker] Starting face clustering for project {self.project_id}")
         start_time = time.time()
 
+        # Initialize performance monitoring
+        monitor = PerformanceMonitor(f"face_clustering_project_{self.project_id}")
+
         try:
             db = ReferenceDB()
             with db._connect() as conn:
                 cur = conn.cursor()
 
                 # Step 1: Load embeddings from face_crops table
+                metric_load = monitor.record_operation("load_embeddings", {
+                    "project_id": self.project_id
+                })
                 # CRITICAL FIX (2025-12-05): Only load faces for photos that exist in
                 # photo_metadata AND project_images. This ensures counts match grid displays.
                 # Previous bug: Loaded all face_crops, including orphaned entries for deleted photos
@@ -162,8 +225,15 @@ class FaceClusterWorker(QRunnable):
                 X = np.vstack(vecs)
                 total_faces = len(X)
                 logger.info(f"[FaceClusterWorker] Loaded {total_faces} face embeddings")
+                metric_load.finish()
 
                 # Step 2: Run DBSCAN clustering
+                metric_cluster = monitor.record_operation("dbscan_clustering", {
+                    "face_count": total_faces,
+                    "eps": self.eps,
+                    "min_samples": self.min_samples,
+                    "tuning_category": self.tuning_category
+                })
                 self.signals.progress.emit(10, 100, f"Clustering {total_faces} faces...")
 
                 try:
@@ -200,14 +270,20 @@ class FaceClusterWorker(QRunnable):
                 if noise_count > 0:
                     logger.info(f"[FaceClusterWorker] Found {noise_count} unclustered faces (will create 'Unidentified' branch)")
 
+                metric_cluster.finish()
                 self.signals.progress.emit(40, 100, f"Found {cluster_count} person groups...")
 
                 # Step 3: Clear previous cluster data
+                metric_clear = monitor.record_operation("clear_previous_clusters")
                 cur.execute("DELETE FROM face_branch_reps WHERE project_id=? AND branch_key LIKE 'face_%'", (self.project_id,))
                 cur.execute("DELETE FROM branches WHERE project_id=? AND branch_key LIKE 'face_%'", (self.project_id,))
                 cur.execute("DELETE FROM project_images WHERE project_id=? AND branch_key LIKE 'face_%'", (self.project_id,))
+                metric_clear.finish()
 
                 # Step 4: Write new cluster results
+                metric_save = monitor.record_operation("save_cluster_results", {
+                    "cluster_count": cluster_count
+                })
                 for idx, cid in enumerate(unique_labels):
                     if self.cancelled:
                         logger.info("[FaceClusterWorker] Cancelled by user")
@@ -302,8 +378,13 @@ class FaceClusterWorker(QRunnable):
 
                     logger.info(f"[FaceClusterWorker] Cluster {cid} → {member_count} faces")
 
+                metric_save.finish()
+
                 # Step 5: Handle unclustered faces (noise from DBSCAN, label == -1)
                 if noise_count > 0:
+                    metric_noise = monitor.record_operation("handle_unclustered_faces", {
+                        "noise_count": int(noise_count)
+                    })
                     self.signals.progress.emit(95, 100, f"Processing {noise_count} unidentified faces...")
 
                     # Get unclustered face data
@@ -352,12 +433,22 @@ class FaceClusterWorker(QRunnable):
                         """, (self.project_id, branch_key, photo_path))
 
                     logger.info(f"[FaceClusterWorker] Created 'Unidentified' branch with {noise_count} faces from {len(unique_noise_photos)} photos")
+                    metric_noise.finish()
 
+                # Commit all changes
+                metric_commit = monitor.record_operation("database_commit")
                 conn.commit()
+                metric_commit.finish()
 
+            # Finish monitoring and print summary
+            monitor.finish_monitoring()
             duration = time.time() - start_time
             total_branches = cluster_count + (1 if noise_count > 0 else 0)
             logger.info(f"[FaceClusterWorker] Complete in {duration:.1f}s: {cluster_count} person clusters + {noise_count} unidentified faces")
+
+            # Print performance summary
+            print("\n")
+            monitor.print_summary()
 
             self.signals.progress.emit(100, 100, f"Clustering complete: {total_branches} branches created")
             self.signals.finished.emit(cluster_count, total_faces)

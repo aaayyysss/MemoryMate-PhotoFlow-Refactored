@@ -14,6 +14,7 @@ import logging
 from reference_db import ReferenceDB
 from services.face_detection_service import get_face_detection_service
 from config.face_detection_config import get_face_config
+from services.performance_monitor import PerformanceMonitor
 
 logger = logging.getLogger(__name__)
 
@@ -102,15 +103,23 @@ class FaceDetectionWorker(QRunnable):
         logger.info(f"[FaceDetectionWorker] Starting face detection for project {self.project_id}")
         start_time = time.time()
 
+        # Initialize performance monitoring
+        monitor = PerformanceMonitor(f"face_detection_project_{self.project_id}")
+
         try:
             # Initialize services
             db = ReferenceDB()
 
             # CRITICAL FIX: Wrap face service initialization in try/except to prevent app crash
             # If InsightFace fails to load, we should fail gracefully instead of crashing
+            metric_init = monitor.record_operation("initialize_face_service", {
+                "model": self.model
+            })
             try:
                 face_service = get_face_detection_service(model=self.model)
+                metric_init.finish()
             except Exception as init_error:
+                metric_init.finish(success=False, error=str(init_error))
                 logger.error(f"❌ Failed to initialize face detection service: {init_error}")
                 logger.error("Face detection cannot proceed. Please check:")
                 logger.error("  1. InsightFace model files are present and valid")
@@ -120,7 +129,9 @@ class FaceDetectionWorker(QRunnable):
                 return
 
             # Get all photos for this project
+            metric_get_photos = monitor.record_operation("get_photos_to_process")
             photos = self._get_photos_to_process(db)
+            metric_get_photos.finish()
             total_photos = len(photos)
 
             if total_photos == 0:
@@ -135,6 +146,10 @@ class FaceDetectionWorker(QRunnable):
             os.makedirs(face_crops_dir, exist_ok=True)
 
             # Process each photo
+            metric_process = monitor.record_operation("process_all_photos", {
+                "total_photos": total_photos,
+                "skip_processed": self.skip_processed
+            })
             for idx, photo in enumerate(photos, 1):
                 if self.cancelled:
                     logger.info("[FaceDetectionWorker] Cancelled by user")
@@ -209,7 +224,10 @@ class FaceDetectionWorker(QRunnable):
                         f"[{idx}/{total_photos}] ({percentage}%) {photo_filename}: ERROR - {error_msg[:50]}..."
                     )
 
+            metric_process.finish()
+
             # Finalize
+            monitor.finish_monitoring()
             duration = time.time() - start_time
             logger.info(
                 f"[FaceDetectionWorker] Complete in {duration:.1f}s: "
@@ -226,6 +244,10 @@ class FaceDetectionWorker(QRunnable):
                     f"[FaceDetectionWorker] Note: {self._stats['videos_excluded']} video files were excluded "
                     f"(face detection only scans photos)"
                 )
+
+            # Print performance summary
+            print("\n")
+            monitor.print_summary()
 
             self.signals.finished.emit(
                 self._stats['photos_processed'],
