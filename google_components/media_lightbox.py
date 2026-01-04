@@ -13,14 +13,17 @@ Phase 3C extraction - MediaLightbox and related components
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QDialog, QSlider, QFrame, QGraphicsOpacityEffect, QSizePolicy
+    QDialog, QSlider, QFrame, QGraphicsOpacityEffect, QSizePolicy,
+    QScrollArea, QGridLayout, QStackedWidget, QMessageBox, QSpinBox,
+    QTextEdit, QRadioButton, QButtonGroup
 )
 from PySide6.QtCore import (
     Qt, Signal, QSize, QEvent, QRunnable, QThreadPool, QObject, QTimer,
     QPropertyAnimation, QEasingCurve, QRect, QPoint
 )
 from PySide6.QtGui import (
-    QPixmap, QIcon, QKeyEvent, QImage, QColor, QPainter, QPen, QPainterPath
+    QPixmap, QIcon, QKeyEvent, QImage, QColor, QPainter, QPen, QPainterPath,
+    QTransform, QFont, QBrush, QCursor
 )
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PySide6.QtMultimediaWidgets import QVideoWidget
@@ -1738,7 +1741,8 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             
             import json
             import hashlib
-            
+            from datetime import datetime
+
             # Create unique filename based on image path hash
             path_hash = hashlib.md5(self.media_path.encode()).hexdigest()
             state_file = os.path.join(self.edit_states_dir, f"{path_hash}.json")
