@@ -17,6 +17,8 @@ from reference_db import ReferenceDB
 from workers.progress_writer import write_status
 from config.face_detection_config import get_face_config
 from services.performance_monitor import PerformanceMonitor
+from services.face_quality_analyzer import FaceQualityAnalyzer
+from services.clustering_quality_analyzer import ClusteringQualityAnalyzer
 
 logger = logging.getLogger(__name__)
 
@@ -199,6 +201,7 @@ class FaceClusterWorker(QRunnable):
                 # Parse embeddings
                 ids, paths, image_paths, vecs = [], [], [], []
                 qualities = []  # Store (confidence, face_ratio, aspect_ratio) for quality filtering
+                bboxes = []  # Store bbox info for comprehensive quality analysis
                 for rid, path, img_path, blob, conf, bx, by, bw, bh, img_w, img_h in rows:
                     try:
                         vec = np.frombuffer(blob, dtype=np.float32)
@@ -207,13 +210,20 @@ class FaceClusterWorker(QRunnable):
                             paths.append(path)
                             image_paths.append(img_path)
                             vecs.append(vec)
-                            
-                            # Compute quality metrics for later filtering
+
+                            # Compute basic quality metrics for backward compatibility
                             face_area = (bw or 0) * (bh or 0)
                             img_area = (img_w or 0) * (img_h or 0)
                             face_ratio = (face_area / img_area) if (face_area > 0 and img_area > 0) else 0.0
                             aspect_ratio = (bw / bh) if (bw and bh) else 0.0
                             qualities.append((conf or 0.0, face_ratio, aspect_ratio))
+
+                            # Store bbox and image info for comprehensive quality analysis
+                            bboxes.append({
+                                'bbox': (bx or 0, by or 0, bw or 0, bh or 0),
+                                'image_path': img_path,
+                                'confidence': conf or 0.0
+                            })
                     except Exception as e:
                         logger.warning(f"[FaceClusterWorker] Failed to parse embedding: {e}")
 
@@ -271,6 +281,39 @@ class FaceClusterWorker(QRunnable):
                     logger.info(f"[FaceClusterWorker] Found {noise_count} unclustered faces (will create 'Unidentified' branch)")
 
                 metric_cluster.finish()
+
+                # Phase 2A: Analyze clustering quality
+                metric_quality = monitor.record_operation("analyze_clustering_quality", {
+                    "cluster_count": cluster_count,
+                    "noise_count": noise_count
+                })
+                try:
+                    quality_analyzer = ClusteringQualityAnalyzer()
+                    clustering_metrics = quality_analyzer.analyze_clustering(X, labels, metric='cosine')
+
+                    logger.info(
+                        f"[FaceClusterWorker] Clustering Quality Analysis:\n"
+                        f"  - Overall Quality: {clustering_metrics.overall_quality:.1f}/100 ({clustering_metrics.quality_label})\n"
+                        f"  - Silhouette Score: {clustering_metrics.silhouette_score:.3f} "
+                        f"({'Excellent' if clustering_metrics.silhouette_score >= 0.7 else 'Good' if clustering_metrics.silhouette_score >= 0.5 else 'Fair' if clustering_metrics.silhouette_score >= 0.25 else 'Poor'})\n"
+                        f"  - Davies-Bouldin Index: {clustering_metrics.davies_bouldin_index:.3f} "
+                        f"({'Excellent' if clustering_metrics.davies_bouldin_index < 0.5 else 'Good' if clustering_metrics.davies_bouldin_index < 1.0 else 'Fair' if clustering_metrics.davies_bouldin_index < 1.5 else 'Poor'})\n"
+                        f"  - Noise Ratio: {clustering_metrics.noise_ratio:.1%}\n"
+                        f"  - Avg Cluster Compactness: {clustering_metrics.avg_cluster_compactness:.3f}\n"
+                        f"  - Avg Cluster Separation: {clustering_metrics.avg_cluster_separation:.3f}"
+                    )
+
+                    # Get tuning suggestions
+                    suggestions = quality_analyzer.get_tuning_suggestions(clustering_metrics)
+                    if suggestions:
+                        logger.info(f"[FaceClusterWorker] Parameter Tuning Suggestions:")
+                        for i, suggestion in enumerate(suggestions, 1):
+                            logger.info(f"  {i}. {suggestion}")
+
+                except Exception as quality_error:
+                    logger.warning(f"[FaceClusterWorker] Clustering quality analysis failed: {quality_error}")
+
+                metric_quality.finish()
                 self.signals.progress.emit(40, 100, f"Found {cluster_count} person groups...")
 
                 # Step 3: Clear previous cluster data
@@ -296,40 +339,109 @@ class FaceClusterWorker(QRunnable):
                     cluster_image_paths = np.array(image_paths)[mask].tolist()
                     cluster_ids = np.array(ids)[mask].tolist()
                     cluster_quals = np.array(qualities)[mask]
+                    cluster_bboxes = [bboxes[i] for i, m in enumerate(mask) if m]
 
                     centroid_vec = np.mean(cluster_vecs, axis=0).astype(np.float32)
-                    
-                    # QUALITY FILTER: Choose high-quality representative (Google Photos style)
-                    # Criteria:
-                    # - confidence >= 0.6 (reliable detection)
-                    # - face_ratio >= 0.02 (face must be at least 2% of image area)
-                    # - aspect_ratio 0.5-1.6 (reasonable head shape, not extreme boxes)
-                    conf = cluster_quals[:, 0]
-                    face_ratio = cluster_quals[:, 1]
-                    aspect_ratio = cluster_quals[:, 2]
-                    
-                    good_mask = (
-                        (conf >= 0.6) &
-                        (face_ratio >= 0.02) &
-                        (aspect_ratio >= 0.5) & (aspect_ratio <= 1.6)
-                    )
-                    
-                    if np.any(good_mask):
-                        # Among good faces, pick one closest to centroid
-                        good_vecs = cluster_vecs[good_mask]
-                        good_paths = np.array(cluster_paths)[good_mask].tolist()
-                        dists_good = np.linalg.norm(good_vecs - centroid_vec, axis=1)
-                        rep_idx_local = int(np.argmin(dists_good))
-                        rep_path = good_paths[rep_idx_local]
-                        logger.debug(f"[FaceClusterWorker] Cluster {cid}: Selected high-quality rep from {np.sum(good_mask)}/{len(cluster_paths)} candidates")
-                    else:
-                        # Fallback: No faces pass quality filter, use centroid-based selection
-                        try:
+
+                    # Phase 2A: ENHANCED QUALITY-BASED REPRESENTATIVE SELECTION
+                    # Uses comprehensive face quality analysis (blur, lighting, size, aspect ratio, confidence)
+                    # Strategy:
+                    # 1. Calculate comprehensive quality for each face in cluster
+                    # 2. Filter faces by overall quality threshold (>= 60/100)
+                    # 3. Among high-quality faces, select one with:
+                    #    - Highest overall quality score (primary)
+                    #    - Closest to centroid (secondary, for tie-breaking)
+                    # 4. Fallback: If no high-quality faces, use centroid-based selection
+                    try:
+                        face_quality_analyzer = FaceQualityAnalyzer()
+                        face_qualities = []
+
+                        # Calculate comprehensive quality for each face
+                        for i, bbox_info in enumerate(cluster_bboxes):
+                            try:
+                                quality_metrics = face_quality_analyzer.analyze_face_crop(
+                                    image_path=bbox_info['image_path'],
+                                    bbox=bbox_info['bbox'],
+                                    confidence=bbox_info['confidence']
+                                )
+                                face_qualities.append(quality_metrics)
+                            except Exception as e:
+                                logger.debug(f"[FaceClusterWorker] Quality analysis failed for face {i}: {e}")
+                                # Use default metrics as fallback
+                                face_qualities.append(face_quality_analyzer._default_metrics(bbox_info['confidence']))
+
+                        # Filter high-quality faces (overall_quality >= 60)
+                        quality_threshold = 60.0
+                        high_quality_indices = [
+                            i for i, q in enumerate(face_qualities)
+                            if q.overall_quality >= quality_threshold
+                        ]
+
+                        if high_quality_indices:
+                            # Among high-quality faces, select best combination of quality + centroid proximity
+                            # Calculate weighted score: 70% quality + 30% centroid proximity
+                            best_idx = None
+                            best_score = -1.0
+
+                            # Normalize centroid distances to 0-100 scale
+                            high_quality_vecs = cluster_vecs[high_quality_indices]
+                            centroid_dists = np.linalg.norm(high_quality_vecs - centroid_vec, axis=1)
+                            max_dist = np.max(centroid_dists) if len(centroid_dists) > 1 else 1.0
+                            if max_dist == 0:
+                                max_dist = 1.0
+
+                            for local_idx, global_idx in enumerate(high_quality_indices):
+                                quality_score = face_qualities[global_idx].overall_quality  # 0-100
+                                # Invert distance: closer to centroid = higher score
+                                proximity_score = 100.0 * (1.0 - centroid_dists[local_idx] / max_dist)  # 0-100
+
+                                # Weighted combination: prioritize quality over proximity
+                                combined_score = 0.70 * quality_score + 0.30 * proximity_score
+
+                                if combined_score > best_score:
+                                    best_score = combined_score
+                                    best_idx = global_idx
+
+                            rep_path = cluster_paths[best_idx]
+                            best_quality = face_qualities[best_idx]
+                            logger.debug(
+                                f"[FaceClusterWorker] Cluster {cid}: Selected representative with "
+                                f"quality={best_quality.overall_quality:.1f}/100 ({best_quality.quality_label}), "
+                                f"blur={best_quality.blur_score:.1f}, lighting={best_quality.lighting_score:.1f}, "
+                                f"from {len(high_quality_indices)}/{len(cluster_paths)} high-quality candidates"
+                            )
+                        else:
+                            # Fallback: No high-quality faces, use centroid-based selection
+                            logger.debug(
+                                f"[FaceClusterWorker] Cluster {cid}: No faces meet quality threshold "
+                                f"(>={quality_threshold}), using centroid fallback"
+                            )
                             dists = np.linalg.norm(cluster_vecs - centroid_vec, axis=1)
                             rep_idx = int(np.argmin(dists))
                             rep_path = cluster_paths[rep_idx]
-                            logger.debug(f"[FaceClusterWorker] Cluster {cid}: No high-quality faces, using centroid fallback")
-                        except Exception:
+
+                    except Exception as quality_selection_error:
+                        # Ultimate fallback: Use basic quality filter or first face
+                        logger.warning(
+                            f"[FaceClusterWorker] Cluster {cid}: Enhanced quality selection failed: "
+                            f"{quality_selection_error}, using basic fallback"
+                        )
+                        # Basic quality filter (legacy)
+                        conf = cluster_quals[:, 0]
+                        face_ratio = cluster_quals[:, 1]
+                        aspect_ratio = cluster_quals[:, 2]
+                        good_mask = (
+                            (conf >= 0.6) &
+                            (face_ratio >= 0.02) &
+                            (aspect_ratio >= 0.5) & (aspect_ratio <= 1.6)
+                        )
+                        if np.any(good_mask):
+                            good_vecs = cluster_vecs[good_mask]
+                            good_paths = np.array(cluster_paths)[good_mask].tolist()
+                            dists_good = np.linalg.norm(good_vecs - centroid_vec, axis=1)
+                            rep_idx_local = int(np.argmin(dists_good))
+                            rep_path = good_paths[rep_idx_local]
+                        else:
                             rep_path = cluster_paths[0]
                     centroid = centroid_vec.tobytes()
                     branch_key = f"face_{cid:03d}"
