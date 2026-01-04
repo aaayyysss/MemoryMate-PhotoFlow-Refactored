@@ -1464,12 +1464,40 @@ class MainWindow(QMainWindow):
 
             photo_ids = [p['id'] for p in all_photos]
 
+            # Check for large model and prompt user if not available
+            from utils.model_selection_helper import check_and_select_model, open_model_download_preferences
+
+            model_variant, should_continue = check_and_select_model(self)
+
+            if not should_continue:
+                # User cancelled
+                return
+
+            if model_variant == 'OPEN_DOWNLOAD_DIALOG':
+                # User wants to download the large model
+                open_model_download_preferences(self)
+                QMessageBox.information(
+                    self,
+                    "Download Required",
+                    "Please download the large CLIP model from the preferences dialog.\n\n"
+                    "After download completes, run 'Extract Embeddings' again."
+                )
+                return
+
+            # Get model info for confirmation dialog
+            model_info = {
+                'openai/clip-vit-base-patch32': 'base model (~600MB, fast, 19-26% quality)',
+                'openai/clip-vit-base-patch16': 'base-16 model (~600MB, better, 30-40% quality)',
+                'openai/clip-vit-large-patch14': 'large model (~1.7GB, best, 40-60% quality)',
+            }
+            model_desc = model_info.get(model_variant, model_variant)
+
             # Show confirmation dialog
             result = QMessageBox.question(
                 self,
                 "Extract Embeddings",
                 f"This will extract AI embeddings for {len(photo_ids)} photos.\n\n"
-                f"First run will download the CLIP model (~500MB).\n"
+                f"Using: {model_desc}\n"
                 f"Processing may take a while depending on your hardware.\n\n"
                 f"Continue?",
                 QMessageBox.Yes | QMessageBox.No
@@ -1493,7 +1521,7 @@ class MainWindow(QMainWindow):
                 kind='embed',
                 payload={
                     'photo_ids': photo_ids,
-                    'model_variant': 'openai/clip-vit-base-patch32'
+                    'model_variant': model_variant
                 },
                 backend='auto'
             )
@@ -1502,7 +1530,7 @@ class MainWindow(QMainWindow):
             worker = EmbeddingWorker(
                 job_id=job_id,
                 photo_ids=photo_ids,
-                model_variant='openai/clip-vit-base-patch32',
+                model_variant=model_variant,
                 device='auto'
             )
 

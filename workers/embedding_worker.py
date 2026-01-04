@@ -87,7 +87,7 @@ class EmbeddingWorker(QRunnable):
     def __init__(self,
                  job_id: int,
                  photo_ids: Optional[List[int]] = None,
-                 model_variant: str = 'openai/clip-vit-base-patch32',
+                 model_variant: Optional[str] = None,
                  device: str = 'auto'):
         """
         Initialize embedding worker.
@@ -95,12 +95,19 @@ class EmbeddingWorker(QRunnable):
         Args:
             job_id: Job ID from ml_job table
             photo_ids: Optional list of photo IDs (loaded from job if None)
-            model_variant: CLIP model variant
+            model_variant: CLIP model variant (None = auto-select best available)
             device: Compute device ('auto', 'cpu', 'cuda', 'mps')
         """
         super().__init__()
         self.job_id = job_id
         self.photo_ids = photo_ids
+
+        # Auto-select best model if not specified
+        if model_variant is None:
+            from utils.clip_check import get_recommended_variant
+            model_variant = get_recommended_variant()
+            logger.info(f"[EmbeddingWorker] Auto-selected model variant: {model_variant}")
+
         self.model_variant = model_variant
         self.device = device
 
