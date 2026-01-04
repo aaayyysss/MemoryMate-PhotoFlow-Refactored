@@ -98,16 +98,25 @@ class RerankingService:
                         # Raw binary string - encode to bytes using latin1
                         embedding_blob = embedding_blob.encode('latin1')
 
-                # Validate buffer size
-                expected_size = 512 * 4  # 512 dimensions * 4 bytes per float32
-                if len(embedding_blob) != expected_size:
+                # Validate buffer size - must be multiple of 4 (float32)
+                # Support different model dimensions (512-D or 768-D)
+                if len(embedding_blob) % 4 != 0:
                     logger.error(
                         f"[Reranking] Photo {photo_id}: Invalid embedding size "
-                        f"{len(embedding_blob)} bytes, expected {expected_size} bytes"
+                        f"{len(embedding_blob)} bytes (not a multiple of 4, cannot be float32 array)"
                     )
                     return None
 
                 embedding = np.frombuffer(embedding_blob, dtype=np.float32)
+
+                # Log dimension for debugging
+                dimension = len(embedding)
+                if dimension not in [512, 768]:
+                    logger.warning(
+                        f"[Reranking] Photo {photo_id}: Unusual embedding dimension {dimension} "
+                        f"(expected 512 or 768)"
+                    )
+
                 return embedding
 
         except Exception as e:

@@ -557,12 +557,13 @@ class EmbeddingService:
                             # Use latin1 which preserves byte values 0-255
                             embedding_blob = embedding_blob.encode('latin1')
 
-                    # Validate buffer size
-                    expected_size = 512 * 4  # 512 dimensions * 4 bytes per float32
+                    # Validate buffer size - use query embedding dimension (dynamic for different models)
+                    expected_size = len(query_embedding) * 4  # query dimensions * 4 bytes per float32
                     if len(embedding_blob) != expected_size:
                         logger.warning(
                             f"[EmbeddingService] Photo {photo_id}: Invalid embedding size "
-                            f"{len(embedding_blob)} bytes, expected {expected_size} bytes. Skipping."
+                            f"{len(embedding_blob)} bytes, expected {expected_size} bytes "
+                            f"(query is {len(query_embedding)}-D). Skipping."
                         )
                         continue
 
