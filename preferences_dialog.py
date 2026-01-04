@@ -1810,7 +1810,7 @@ class PreferencesDialog(QDialog):
         )
         if folder:
             self.txt_clip_model_path.setText(folder)
-            self.settings["clip_model_path"] = folder
+            self.settings.set("clip_model_path", folder)
             self._check_clip_status()
 
     def _open_clip_model_folder(self):

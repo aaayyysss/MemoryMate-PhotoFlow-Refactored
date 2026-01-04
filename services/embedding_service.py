@@ -148,16 +148,17 @@ class EmbeddingService:
         logger.info("[EmbeddingService] Using CPU")
         return 'cpu'
 
-    def load_clip_model(self, variant: str = 'openai/clip-vit-base-patch32') -> int:
+    def load_clip_model(self, variant: Optional[str] = None) -> int:
         """
         Load CLIP model from local cache.
 
         Args:
-            variant: Model variant (default: 'openai/clip-vit-base-patch32')
+            variant: Model variant (default: auto-select best available)
                     Options:
                     - 'openai/clip-vit-base-patch32' (512-D, fast)
                     - 'openai/clip-vit-base-patch16' (512-D, better quality)
                     - 'openai/clip-vit-large-patch14' (768-D, best quality)
+                    - None (auto-select: large-patch14 > base-patch16 > base-patch32)
 
         Returns:
             int: Model ID from ml_model table
@@ -176,8 +177,14 @@ class EmbeddingService:
             logger.info(f"[EmbeddingService] CLIP model already loaded (ID: {self._clip_model_id})")
             return self._clip_model_id
 
+        # Auto-select best available model if variant not specified
+        from utils.clip_check import check_clip_availability, get_clip_download_status, MODEL_CONFIGS, get_recommended_variant
+
+        if variant is None:
+            variant = get_recommended_variant()
+            logger.info(f"[EmbeddingService] Auto-selected CLIP variant: {variant}")
+
         # Check if model files exist locally and get the actual path
-        from utils.clip_check import check_clip_availability, get_clip_download_status, MODEL_CONFIGS
         available, message = check_clip_availability(variant)
 
         if not available:
