@@ -1,6 +1,7 @@
 # services/face_detection_controller.py
 # Centralized Face Detection & Clustering Controller
 # Phase 2B: Face Detection Controller & UI
+# Phase 2C: Integrated Performance Tracking
 # Orchestrates face detection workflow with state management and resume capability
 
 """
@@ -39,6 +40,14 @@ from datetime import datetime
 from PySide6.QtCore import QObject, Signal, QThreadPool
 
 logger = logging.getLogger(__name__)
+
+# Phase 2C: Import performance tracking
+try:
+    from services.performance_tracking_db import PerformanceTrackingDB
+    PERFORMANCE_TRACKING_AVAILABLE = True
+except ImportError:
+    logger.warning("[FaceDetectionController] Performance tracking not available")
+    PERFORMANCE_TRACKING_AVAILABLE = False
 
 
 class WorkflowState(Enum):
@@ -209,6 +218,10 @@ class FaceDetectionController:
         self._completion_callback: Optional[Callable] = None
         self._error_callback: Optional[Callable] = None
 
+        # Phase 2C: Performance tracking
+        self._perf_db = PerformanceTrackingDB() if PERFORMANCE_TRACKING_AVAILABLE else None
+        self._current_run_id: Optional[int] = None
+
         logger.info(f"[FaceDetectionController] Initialized for project {project_id}")
 
     @property
@@ -283,6 +296,21 @@ class FaceDetectionController:
             estimated_remaining=0.0,
             error_message=""
         )
+
+        # Phase 2C: Start performance tracking run
+        if self._perf_db:
+            try:
+                from config.face_detection_config import get_face_config
+                config_snapshot = get_face_config().to_dict()
+                workflow_type = 'full' if auto_cluster else 'detection_only'
+                self._current_run_id = self._perf_db.start_run(
+                    project_id=self.project_id,
+                    workflow_type=workflow_type,
+                    config_snapshot=config_snapshot
+                )
+                logger.debug(f"[FaceDetectionController] Started performance tracking run {self._current_run_id}")
+            except Exception as e:
+                logger.warning(f"[FaceDetectionController] Failed to start performance tracking: {e}")
 
         # Transition to detecting state
         self._transition_state(WorkflowState.DETECTING)
@@ -568,6 +596,25 @@ class FaceDetectionController:
         """Complete workflow successfully."""
         logger.info(f"[FaceDetectionController] Workflow completed successfully")
 
+        # Phase 2C: Complete performance tracking run
+        if self._perf_db and self._current_run_id:
+            try:
+                self._perf_db.complete_run(
+                    run_id=self._current_run_id,
+                    workflow_state='completed',
+                    photos_total=self._progress.photos_total,
+                    photos_processed=self._progress.photos_processed,
+                    faces_detected=self._progress.faces_detected,
+                    clusters_found=self._progress.clusters_found,
+                    overall_quality_score=self._progress.quality_score,
+                    silhouette_score=self._progress.silhouette_score,
+                    davies_bouldin_index=0.0,  # TODO: Extract from clustering worker
+                    noise_ratio=self._progress.noise_ratio
+                )
+                logger.debug(f"[FaceDetectionController] Completed performance tracking run {self._current_run_id}")
+            except Exception as e:
+                logger.warning(f"[FaceDetectionController] Failed to complete performance tracking: {e}")
+
         self._transition_state(WorkflowState.COMPLETED)
 
         # Clean up checkpoint
@@ -583,6 +630,22 @@ class FaceDetectionController:
     def _fail_workflow(self, error_message: str):
         """Fail workflow with error."""
         logger.error(f"[FaceDetectionController] Workflow failed: {error_message}")
+
+        # Phase 2C: Complete performance tracking run with failure
+        if self._perf_db and self._current_run_id:
+            try:
+                self._perf_db.complete_run(
+                    run_id=self._current_run_id,
+                    workflow_state='failed',
+                    photos_total=self._progress.photos_total,
+                    photos_processed=self._progress.photos_processed,
+                    faces_detected=self._progress.faces_detected,
+                    clusters_found=self._progress.clusters_found,
+                    error_message=error_message
+                )
+                logger.debug(f"[FaceDetectionController] Logged failed run {self._current_run_id}")
+            except Exception as e:
+                logger.warning(f"[FaceDetectionController] Failed to log error to performance tracking: {e}")
 
         self._progress.error_message = error_message
         self._transition_state(WorkflowState.FAILED)
