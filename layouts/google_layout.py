@@ -592,8 +592,10 @@ class GooglePhotosLayout(BaseLayout):
         self.semantic_search.searchCleared.connect(self._on_semantic_search_cleared)
         toolbar.addWidget(self.semantic_search)
 
-        # Add some spacing to make it visually distinct
-        toolbar.addStretch()
+        # Add spacer widget to push content left
+        spacer = QWidget()
+        spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        toolbar.addWidget(spacer)
 
         return toolbar
 
