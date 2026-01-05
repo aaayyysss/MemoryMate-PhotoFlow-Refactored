@@ -195,6 +195,10 @@ class GooglePhotosLayout(BaseLayout):
         toolbar = self._create_toolbar()
         main_layout.addWidget(toolbar)
 
+        # Create second toolbar row for semantic search (user requested to avoid making main toolbar too long)
+        semantic_search_toolbar = self._create_semantic_search_toolbar()
+        main_layout.addWidget(semantic_search_toolbar)
+
         # Phase 3: Main view tabs (Photos, People, Folders, Videos, Favorites)
         self.view_tabs = QTabBar()
         self.view_tabs.addTab("📸 Photos")
@@ -352,15 +356,6 @@ class GooglePhotosLayout(BaseLayout):
 
         # PHASE 2 #3: Create search suggestions dropdown
         self._create_search_suggestions()
-
-        toolbar.addSeparator()
-
-        # ✨ Semantic Search (AI-powered)
-        from ui.semantic_search_widget import SemanticSearchWidget
-        self.semantic_search = SemanticSearchWidget(parent=None)  # GooglePhotosLayout is not a QWidget
-        self.semantic_search.searchTriggered.connect(self._on_semantic_search)
-        self.semantic_search.searchCleared.connect(self._on_semantic_search_cleared)
-        toolbar.addWidget(self.semantic_search)
 
         toolbar.addSeparator()
 
@@ -563,6 +558,42 @@ class GooglePhotosLayout(BaseLayout):
 
         # Store toolbar reference
         self._toolbar = toolbar
+
+        return toolbar
+
+    def _create_semantic_search_toolbar(self) -> QToolBar:
+        """
+        Create second toolbar row for semantic search.
+        User requested: "make it as a second line toolbar underneath the existing toolbar to avoid make it too long"
+        """
+        toolbar = QToolBar()
+        toolbar.setMovable(False)
+        toolbar.setIconSize(QSize(20, 20))
+        toolbar.setStyleSheet("""
+            QToolBar {
+                background: #f1f3f4;
+                border-bottom: 1px solid #dadce0;
+                padding: 6px;
+                spacing: 8px;
+            }
+        """)
+
+        # Label for semantic search section
+        from PySide6.QtWidgets import QLabel
+        lbl_semantic = QLabel("🔍 AI Search:")
+        lbl_semantic.setStyleSheet("font-size: 10pt; font-weight: bold; color: #5f6368; padding: 0 8px;")
+        lbl_semantic.setToolTip("Search photos by content using AI (CLIP embeddings)")
+        toolbar.addWidget(lbl_semantic)
+
+        # ✨ Semantic Search Widget (moved from main toolbar)
+        from ui.semantic_search_widget import SemanticSearchWidget
+        self.semantic_search = SemanticSearchWidget(parent=None)  # GooglePhotosLayout is not a QWidget
+        self.semantic_search.searchTriggered.connect(self._on_semantic_search)
+        self.semantic_search.searchCleared.connect(self._on_semantic_search_cleared)
+        toolbar.addWidget(self.semantic_search)
+
+        # Add some spacing to make it visually distinct
+        toolbar.addStretch()
 
         return toolbar
 
