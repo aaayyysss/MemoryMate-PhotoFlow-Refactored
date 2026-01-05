@@ -412,16 +412,26 @@ class MigrationManager:
                         return "0.0.0"
 
                 # Get latest version from schema_version table
+                # Note: We can't rely on applied_at DESC because multiple migrations
+                # might be applied in the same second. Instead, get all versions
+                # and find the highest one using semantic versioning.
                 cur.execute("""
                     SELECT version FROM schema_version
-                    ORDER BY applied_at DESC
-                    LIMIT 1
                 """)
 
-                result = cur.fetchone()
+                results = cur.fetchall()
 
-                version = result['version'] if result else "0.0.0"
-                return version
+                if not results:
+                    return "0.0.0"
+
+                # Find the highest version using semantic version comparison
+                versions = [row['version'] for row in results]
+                highest_version = "0.0.0"
+                for v in versions:
+                    if self._compare_versions(v, highest_version) > 0:
+                        highest_version = v
+
+                return highest_version
 
         except Exception as e:
             self.logger.error(f"Error getting current version: {e}", exc_info=True)
