@@ -142,11 +142,11 @@ class JobService:
         Recover jobs left in 'running' state after a crash.
 
         Called automatically on service initialization.
+        Note: If ml_job table doesn't exist, migrations will create it automatically.
         """
-        # Defensive check: skip if ml_job table doesn't exist
+        # Defensive check: skip silently if table doesn't exist (migration system will create it)
         if not self._check_ml_job_table_exists():
-            logger.warning("⚠️  ml_job table not found - skipping zombie job recovery")
-            logger.warning("   Run 'python3 fix_database.py' to apply missing database migrations")
+            logger.debug("ml_job table not yet created - will be created by auto-migration")
             return
 
         try:
@@ -204,16 +204,6 @@ class JobService:
                 backend='cpu'
             )
         """
-        # Defensive check: fail fast with clear message if table doesn't exist
-        if not self._check_ml_job_table_exists():
-            error_msg = (
-                "Database is missing the 'ml_job' table. "
-                "Please run 'python3 fix_database.py' to apply missing migrations. "
-                "See TROUBLESHOOTING_ML_JOB_ERROR.md for detailed instructions."
-            )
-            logger.error(f"⚠️  {error_msg}")
-            raise RuntimeError(error_msg)
-
         try:
             with self.db.get_connection() as conn:
                 payload_json = json.dumps(payload)

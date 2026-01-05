@@ -299,12 +299,44 @@ VALUES ('4.0.0', 'Added file_hash column for duplicate detection during device i
 )
 
 
+# Migration to v6.0.0 (ML infrastructure: ml_job, embeddings, captions, etc.)
+MIGRATION_6_0_0 = Migration(
+    version="6.0.0",
+    description="ML infrastructure: ml_job, ml_model, photo_embedding, captions, detections, events",
+    sql="""
+-- Migration v6.0.0 handled by migration_v6_visual_semantics.py
+-- This placeholder ensures version tracking works with MigrationManager
+
+INSERT OR REPLACE INTO schema_version (version, description, applied_at)
+VALUES ('6.0.0', 'ML infrastructure: ml_job, ml_model, photo_embedding, captions, detections, events', CURRENT_TIMESTAMP);
+""",
+    rollback_sql=""
+)
+
+
+# Migration to v7.0.0 (Semantic embeddings separation)
+MIGRATION_7_0_0 = Migration(
+    version="7.0.0",
+    description="Semantic embeddings separation: semantic_embeddings, semantic_index_meta",
+    sql="""
+-- Migration v7.0.0 handled by migration_v7_semantic_separation.sql
+-- This placeholder ensures version tracking works with MigrationManager
+
+INSERT OR REPLACE INTO schema_version (version, description, applied_at)
+VALUES ('7.0.0', 'Semantic embeddings separation: semantic_embeddings, semantic_index_meta', CURRENT_TIMESTAMP);
+""",
+    rollback_sql=""
+)
+
+
 # Ordered list of all migrations
 ALL_MIGRATIONS = [
     MIGRATION_1_5_0,
     MIGRATION_2_0_0,
     MIGRATION_3_0_0,
     MIGRATION_4_0_0,
+    MIGRATION_6_0_0,
+    MIGRATION_7_0_0,
 ]
 
 
@@ -459,8 +491,14 @@ class MigrationManager:
                     self._add_project_id_columns_if_missing(conn)
                 elif migration.version == "4.0.0":
                     self._add_file_hash_column_if_missing(conn)
+                elif migration.version == "6.0.0":
+                    # Apply migration v6 using migration_v6_visual_semantics.py
+                    self._apply_migration_v6(conn)
+                elif migration.version == "7.0.0":
+                    # Apply migration v7 using migration_v7_semantic_separation.sql
+                    self._apply_migration_v7(conn)
 
-                # Execute migration SQL
+                # Execute migration SQL (version tracking)
                 conn.executescript(migration.sql)
                 conn.commit()
 
@@ -694,6 +732,60 @@ class MigrationManager:
 
         conn.commit()
         self.logger.info("✓ File hash column added successfully")
+
+    def _apply_migration_v6(self, conn: sqlite3.Connection):
+        """
+        Apply migration v6.0.0 using migration_v6_visual_semantics.py module.
+
+        Args:
+            conn: Database connection
+        """
+        self.logger.info("Applying migration v6.0.0 tables...")
+
+        try:
+            from migrations import migration_v6_visual_semantics
+
+            # Apply the migration (this handles all table creation, column additions, etc.)
+            migration_v6_visual_semantics.migrate_up(conn)
+
+            self.logger.info("✓ Migration v6.0.0 tables created successfully")
+
+        except Exception as e:
+            self.logger.error(f"Failed to apply migration v6.0.0: {e}")
+            raise
+
+    def _apply_migration_v7(self, conn: sqlite3.Connection):
+        """
+        Apply migration v7.0.0 using migration_v7_semantic_separation.sql file.
+
+        Args:
+            conn: Database connection
+        """
+        self.logger.info("Applying migration v7.0.0 tables...")
+
+        try:
+            import os
+            from pathlib import Path
+
+            # Find migration SQL file
+            migrations_dir = Path(__file__).parent.parent / "migrations"
+            sql_file = migrations_dir / "migration_v7_semantic_separation.sql"
+
+            if not sql_file.exists():
+                raise FileNotFoundError(f"Migration file not found: {sql_file}")
+
+            # Read and execute SQL
+            with open(sql_file, 'r') as f:
+                migration_sql = f.read()
+
+            conn.executescript(migration_sql)
+            conn.commit()
+
+            self.logger.info("✓ Migration v7.0.0 tables created successfully")
+
+        except Exception as e:
+            self.logger.error(f"Failed to apply migration v7.0.0: {e}")
+            raise
 
 
 def get_migration_status(db_connection) -> Dict[str, Any]:
