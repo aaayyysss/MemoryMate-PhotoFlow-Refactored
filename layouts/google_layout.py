@@ -8294,6 +8294,10 @@ class GooglePhotosLayout(BaseLayout):
         toolbar = self._create_toolbar()
         main_layout.addWidget(toolbar)
 
+        # Create second toolbar row for embedding/semantic search
+        self.embedding_search_toolbar = self._create_embedding_search_toolbar()
+        main_layout.addWidget(self.embedding_search_toolbar)
+
         # Phase 3: Main view tabs (Photos, People, Folders, Videos, Favorites)
         self.view_tabs = QTabBar()
         self.view_tabs.addTab("📸 Photos")
@@ -8656,6 +8660,189 @@ class GooglePhotosLayout(BaseLayout):
 
         return toolbar
 
+    def _create_embedding_search_toolbar(self) -> QToolBar:
+        """
+        Create second toolbar row for embedding/semantic search.
+        User requested: "make it as a second line toolbar underneath the existing toolbar"
+        """
+        from PySide6.QtCore import QTimer
+
+        toolbar = QToolBar()
+        toolbar.setMovable(False)
+        toolbar.setIconSize(QSize(20, 20))
+        toolbar.setStyleSheet("""
+            QToolBar {
+                background: #f1f3f4;
+                border-bottom: 1px solid #dadce0;
+                padding: 6px;
+                spacing: 8px;
+            }
+            QPushButton {
+                background: white;
+                border: 1px solid #dadce0;
+                border-radius: 4px;
+                padding: 6px 12px;
+                font-size: 10pt;
+            }
+            QPushButton:hover {
+                background: #e8eaed;
+                border-color: #bdc1c6;
+            }
+            QPushButton:pressed {
+                background: #d2d3d4;
+            }
+            QPushButton:checked {
+                background: #e8f0fe;
+                border-color: #1a73e8;
+                color: #1967d2;
+            }
+        """)
+
+        # Label for this toolbar section
+        from PySide6.QtWidgets import QLabel
+        lbl_semantic = QLabel("🔍 Semantic Search:")
+        lbl_semantic.setStyleSheet("font-size: 10pt; font-weight: bold; color: #5f6368; padding: 0 8px;")
+        toolbar.addWidget(lbl_semantic)
+
+        # Search query input
+        self.semantic_search_input = QLineEdit()
+        self.semantic_search_input.setPlaceholderText("Search by content (e.g., 'eyes', 'blue shirt', 'sunset')...")
+        self.semantic_search_input.setMinimumWidth(350)
+        self.semantic_search_input.setToolTip("Search photos by content using AI (CLIP embeddings)")
+        self.semantic_search_input.setStyleSheet("""
+            QLineEdit {
+                background: white;
+                border: 1px solid #dadce0;
+                border-radius: 4px;
+                padding: 6px 12px;
+                font-size: 10pt;
+            }
+            QLineEdit:focus {
+                border-color: #1a73e8;
+                border-width: 2px;
+            }
+        """)
+        self.semantic_search_input.returnPressed.connect(self._perform_semantic_search)
+        toolbar.addWidget(self.semantic_search_input)
+
+        # Search button
+        self.btn_semantic_search = QPushButton("Search")
+        self.btn_semantic_search.setToolTip("Perform semantic search")
+        self.btn_semantic_search.clicked.connect(self._perform_semantic_search)
+        toolbar.addWidget(self.btn_semantic_search)
+
+        toolbar.addSeparator()
+
+        # Threshold preset buttons
+        lbl_threshold = QLabel("Similarity:")
+        lbl_threshold.setStyleSheet("font-size: 10pt; color: #5f6368; padding: 0 4px;")
+        toolbar.addWidget(lbl_threshold)
+
+        self.btn_strict = QPushButton("Strict (0.40)")
+        self.btn_strict.setToolTip("Top 10% matches - High similarity required")
+        self.btn_strict.setCheckable(True)
+        self.btn_strict.clicked.connect(lambda: self._set_threshold_preset(0.40))
+        toolbar.addWidget(self.btn_strict)
+
+        self.btn_balanced = QPushButton("Balanced (0.25)")
+        self.btn_balanced.setToolTip("Top 30% matches - Recommended (default)")
+        self.btn_balanced.setCheckable(True)
+        self.btn_balanced.setChecked(True)  # Default
+        self.btn_balanced.clicked.connect(lambda: self._set_threshold_preset(0.25))
+        toolbar.addWidget(self.btn_balanced)
+
+        self.btn_lenient = QPushButton("Lenient (0.15)")
+        self.btn_lenient.setToolTip("Top 50% matches - More results")
+        self.btn_lenient.setCheckable(True)
+        self.btn_lenient.clicked.connect(lambda: self._set_threshold_preset(0.15))
+        toolbar.addWidget(self.btn_lenient)
+
+        # Group preset buttons for mutual exclusivity
+        from PySide6.QtWidgets import QButtonGroup
+        self.threshold_preset_group = QButtonGroup()
+        self.threshold_preset_group.addButton(self.btn_strict)
+        self.threshold_preset_group.addButton(self.btn_balanced)
+        self.threshold_preset_group.addButton(self.btn_lenient)
+
+        toolbar.addSeparator()
+
+        # Threshold slider (fine control)
+        lbl_custom = QLabel("Custom:")
+        lbl_custom.setStyleSheet("font-size: 10pt; color: #5f6368; padding: 0 4px;")
+        toolbar.addWidget(lbl_custom)
+
+        self.threshold_slider = QSlider(Qt.Horizontal)
+        self.threshold_slider.setMinimum(0)
+        self.threshold_slider.setMaximum(100)
+        self.threshold_slider.setValue(25)  # Default 0.25
+        self.threshold_slider.setFixedWidth(150)
+        self.threshold_slider.setToolTip("Fine-tune similarity threshold (0.00 - 1.00)")
+        self.threshold_slider.setTracking(False)  # Only emit on release (debounced)
+        self.threshold_slider.valueChanged.connect(self._on_threshold_slider_changed)
+        toolbar.addWidget(self.threshold_slider)
+
+        # Threshold value label
+        self.threshold_value_label = QLabel("0.25")
+        self.threshold_value_label.setFixedWidth(35)
+        self.threshold_value_label.setStyleSheet("padding: 0 4px; font-size: 9pt; color: #5f6368;")
+        self.threshold_value_label.setToolTip("Current threshold value")
+        toolbar.addWidget(self.threshold_value_label)
+
+        toolbar.addSeparator()
+
+        # Model selector
+        lbl_model = QLabel("Model:")
+        lbl_model.setStyleSheet("font-size: 10pt; color: #5f6368; padding: 0 4px;")
+        toolbar.addWidget(lbl_model)
+
+        from PySide6.QtWidgets import QComboBox
+        self.model_selector = QComboBox()
+        self.model_selector.addItem("CLIP Large (High Quality)", "large")
+        self.model_selector.addItem("CLIP Base (Fast)", "base")
+        self.model_selector.setCurrentIndex(0)  # Default to Large
+        self.model_selector.setToolTip("Select CLIP model:\n• Large: 768-D, better quality (recommended)\n• Base: 512-D, faster but lower quality")
+        self.model_selector.setStyleSheet("""
+            QComboBox {
+                background: white;
+                border: 1px solid #dadce0;
+                border-radius: 4px;
+                padding: 4px 8px;
+                font-size: 10pt;
+            }
+        """)
+        toolbar.addWidget(self.model_selector)
+
+        toolbar.addSeparator()
+
+        # Extract embeddings button
+        self.btn_extract_embeddings = QPushButton("⚡ Extract Embeddings")
+        self.btn_extract_embeddings.setToolTip("Extract CLIP embeddings for all photos (required before search)")
+        self.btn_extract_embeddings.clicked.connect(self._start_embedding_extraction)
+        toolbar.addWidget(self.btn_extract_embeddings)
+
+        # Results count label
+        self.semantic_results_label = QLabel("")
+        self.semantic_results_label.setStyleSheet("font-size: 10pt; color: #5f6368; padding: 0 8px;")
+        toolbar.addWidget(self.semantic_results_label)
+
+        # Clear semantic search button (initially hidden)
+        self.btn_clear_semantic = QPushButton("✕ Clear")
+        self.btn_clear_semantic.setToolTip("Clear semantic search and show all photos")
+        self.btn_clear_semantic.clicked.connect(self._clear_semantic_search)
+        self.btn_clear_semantic.setVisible(False)
+        toolbar.addWidget(self.btn_clear_semantic)
+
+        # Debounce timer for slider (prevent duplicate searches while dragging)
+        self.threshold_debounce_timer = QTimer(self.main_window)
+        self.threshold_debounce_timer.setSingleShot(True)
+        self.threshold_debounce_timer.timeout.connect(self._on_threshold_debounced)
+
+        # Store current search state
+        self._current_semantic_query = None
+        self._current_semantic_threshold = 0.25
+
+        return toolbar
+
     def _show_settings_menu(self):
         """Show Settings menu (Google Photos pattern) - Phase 2."""
         from PySide6.QtWidgets import QMenu, QMessageBox
@@ -8782,6 +8969,262 @@ class GooglePhotosLayout(BaseLayout):
 
         # Show menu below the Settings button
         menu.exec(self.btn_settings.mapToGlobal(self.btn_settings.rect().bottomLeft()))
+
+    # ============================================================
+    # Semantic Search Handlers
+    # ============================================================
+
+    def _set_threshold_preset(self, threshold: float):
+        """Set similarity threshold from preset button."""
+        self._current_semantic_threshold = threshold
+        self.threshold_slider.setValue(int(threshold * 100))
+        self.threshold_value_label.setText(f"{threshold:.2f}")
+
+        # If there's an active search, re-run it with new threshold
+        if self._current_semantic_query:
+            logger.info(f"[SemanticSearch] Threshold changed to {threshold:.2f}, re-running search")
+            self._perform_semantic_search()
+
+    def _on_threshold_slider_changed(self, value: int):
+        """Handle threshold slider value change (debounced)."""
+        threshold = value / 100.0
+        self.threshold_value_label.setText(f"{threshold:.2f}")
+        self._current_semantic_threshold = threshold
+
+        # Uncheck all preset buttons since user is using custom value
+        self.btn_strict.setChecked(False)
+        self.btn_balanced.setChecked(False)
+        self.btn_lenient.setChecked(False)
+
+        # Debounce: Start timer, will re-run search when timer expires
+        if self._current_semantic_query:
+            self.threshold_debounce_timer.start(500)  # 500ms debounce
+
+    def _on_threshold_debounced(self):
+        """Called after debounce timer expires - re-run search with new threshold."""
+        logger.info(f"[SemanticSearch] Debounced threshold: {self._current_semantic_threshold:.2f}")
+        self._perform_semantic_search()
+
+    def _perform_semantic_search(self):
+        """Perform semantic search with current query and threshold."""
+        from PySide6.QtWidgets import QMessageBox
+        from services.semantic_search_service import SemanticSearchService
+
+        query = self.semantic_search_input.text().strip()
+        if not query:
+            QMessageBox.warning(
+                self.main_window,
+                "No Query",
+                "Please enter a search query (e.g., 'eyes', 'blue shirt', 'sunset')"
+            )
+            return
+
+        self._current_semantic_query = query
+        threshold = self._current_semantic_threshold
+
+        try:
+            # Get selected model
+            model_name = self.model_selector.currentData() or "large"
+
+            # Initialize search service (lazy-loads CLIP model)
+            logger.info(f"[SemanticSearch] Initializing search with model: {model_name}")
+            search_service = SemanticSearchService(model_name=model_name)
+
+            # Get current project filter
+            project_id = self.photo_repo.active_project_id if hasattr(self, 'photo_repo') else None
+
+            # Perform search
+            logger.info(f"[SemanticSearch] Searching for '{query}' with threshold {threshold:.2f}")
+            results = search_service.search(
+                query=query,
+                threshold=threshold,
+                limit=1000,
+                project_id=project_id
+            )
+
+            if not results:
+                # Show helpful "no results" dialog
+                distribution = search_service.get_score_distribution(query, project_id)
+                suggested_threshold = search_service.suggest_threshold(query, project_id)
+
+                if distribution:
+                    dist_text = "\n".join([
+                        f"• {key.replace('_', ' ').title()}: {count} photos"
+                        for key, count in distribution.items() if count > 0
+                    ])
+                    message = (
+                        f"No results found for '{query}' with threshold {threshold:.2f}\n\n"
+                        f"Score Distribution:\n{dist_text}\n\n"
+                        f"💡 Try threshold: {suggested_threshold:.2f}"
+                    )
+                else:
+                    message = (
+                        f"No results found for '{query}'\n\n"
+                        "Possible reasons:\n"
+                        "• No photos have embeddings extracted yet (click '⚡ Extract Embeddings')\n"
+                        "• Threshold is too high (try lowering it)\n"
+                        "• Query doesn't match photo content"
+                    )
+
+                QMessageBox.information(self.main_window, "No Results", message)
+                self.semantic_results_label.setText("No results")
+                return
+
+            # Extract photo paths from results
+            photo_paths = [r.path for r in results]
+
+            # Display results in grid
+            if hasattr(self, 'timeline') and hasattr(self.timeline, 'load_paths'):
+                self.timeline.load_paths(photo_paths)
+            else:
+                logger.warning("[SemanticSearch] Timeline widget doesn't have load_paths method")
+
+            # Update UI
+            top_score = results[0].similarity
+            lowest_score = results[-1].similarity
+            self.semantic_results_label.setText(
+                f"✅ {len(results)} results (scores: {top_score:.3f} - {lowest_score:.3f})"
+            )
+            self.btn_clear_semantic.setVisible(True)
+
+            logger.info(f"[SemanticSearch] Displayed {len(results)} results")
+
+        except Exception as e:
+            logger.error(f"[SemanticSearch] Search failed: {e}")
+            import traceback
+            traceback.print_exc()
+            QMessageBox.critical(
+                self.main_window,
+                "Search Failed",
+                f"Semantic search failed:\n\n{str(e)}\n\n"
+                "Make sure:\n"
+                "• PyTorch and transformers are installed (pip install torch transformers)\n"
+                "• Photos have embeddings extracted (click '⚡ Extract Embeddings')"
+            )
+
+    def _clear_semantic_search(self):
+        """Clear semantic search and show all photos."""
+        self._current_semantic_query = None
+        self.semantic_search_input.clear()
+        self.semantic_results_label.setText("")
+        self.btn_clear_semantic.setVisible(False)
+
+        # Reload all photos
+        self._load_photos()
+
+        logger.info("[SemanticSearch] Search cleared, showing all photos")
+
+    def _start_embedding_extraction(self):
+        """Start background worker to extract CLIP embeddings for all photos."""
+        from PySide6.QtWidgets import QMessageBox, QProgressDialog
+        from PySide6.QtCore import Qt
+
+        # Confirm with user
+        reply = QMessageBox.question(
+            self.main_window,
+            "Extract Embeddings",
+            "This will extract CLIP embeddings for all photos.\n\n"
+            "• Process may take several minutes\n"
+            "• Requires ~1GB disk space per 1000 photos\n"
+            "• Embeddings will be stored in database\n\n"
+            "Continue?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+
+        if reply != QMessageBox.Yes:
+            return
+
+        try:
+            from workers.embedding_extraction_worker import EmbeddingExtractionWorker
+
+            # Get selected model
+            model_name = self.model_selector.currentData() or "large"
+
+            # Create progress dialog
+            self.embedding_progress = QProgressDialog(
+                "Extracting CLIP embeddings...",
+                "Cancel",
+                0,
+                100,
+                self.main_window
+            )
+            self.embedding_progress.setWindowModality(Qt.WindowModal)
+            self.embedding_progress.setMinimumDuration(0)
+            self.embedding_progress.setWindowTitle("Embedding Extraction")
+
+            # Create and start worker
+            self.embedding_worker = EmbeddingExtractionWorker(model_name=model_name)
+            self.embedding_worker.progress.connect(self._on_embedding_progress)
+            self.embedding_worker.finished.connect(self._on_embedding_finished)
+            self.embedding_worker.error.connect(self._on_embedding_error)
+
+            # Connect cancel button
+            self.embedding_progress.canceled.connect(self.embedding_worker.stop)
+
+            self.embedding_worker.start()
+
+            logger.info(f"[EmbeddingExtraction] Started with model: {model_name}")
+
+        except ImportError:
+            QMessageBox.critical(
+                self.main_window,
+                "Worker Not Found",
+                "Embedding extraction worker not implemented yet.\n\n"
+                "This feature requires creating:\n"
+                "workers/embedding_extraction_worker.py"
+            )
+        except Exception as e:
+            logger.error(f"[EmbeddingExtraction] Failed to start: {e}")
+            QMessageBox.critical(
+                self.main_window,
+                "Extraction Failed",
+                f"Failed to start embedding extraction:\n\n{str(e)}"
+            )
+
+    def _on_embedding_progress(self, current: int, total: int, message: str):
+        """Update progress dialog during embedding extraction."""
+        if hasattr(self, 'embedding_progress'):
+            self.embedding_progress.setMaximum(total)
+            self.embedding_progress.setValue(current)
+            self.embedding_progress.setLabelText(message)
+
+    def _on_embedding_finished(self, success: bool, total_processed: int):
+        """Handle embedding extraction completion."""
+        from PySide6.QtWidgets import QMessageBox
+
+        if hasattr(self, 'embedding_progress'):
+            self.embedding_progress.close()
+
+        if success:
+            QMessageBox.information(
+                self.main_window,
+                "Extraction Complete",
+                f"✅ Successfully extracted embeddings for {total_processed} photos!\n\n"
+                "You can now use semantic search."
+            )
+            logger.info(f"[EmbeddingExtraction] Completed successfully: {total_processed} photos")
+        else:
+            QMessageBox.warning(
+                self.main_window,
+                "Extraction Incomplete",
+                f"Extraction stopped.\n\n"
+                f"Processed {total_processed} photos before stopping."
+            )
+
+    def _on_embedding_error(self, error_message: str):
+        """Handle embedding extraction error."""
+        from PySide6.QtWidgets import QMessageBox
+
+        if hasattr(self, 'embedding_progress'):
+            self.embedding_progress.close()
+
+        QMessageBox.critical(
+            self.main_window,
+            "Extraction Error",
+            f"Embedding extraction failed:\n\n{error_message}"
+        )
+        logger.error(f"[EmbeddingExtraction] Error: {error_message}")
 
     def _create_floating_toolbar(self, parent: QWidget) -> QWidget:
         """
