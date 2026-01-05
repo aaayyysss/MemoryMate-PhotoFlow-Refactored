@@ -19,7 +19,7 @@ Schema Version: 2.0.0
 - Adds schema_version tracking table
 """
 
-SCHEMA_VERSION = "5.0.0"
+SCHEMA_VERSION = "7.0.0"
 
 # Complete schema SQL - executed as a script for new databases
 SCHEMA_SQL = """
