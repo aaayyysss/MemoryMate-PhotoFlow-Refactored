@@ -1548,6 +1548,30 @@ class MainWindow(QMainWindow):
             # Show progress dialog
             progress_dialog.exec()
 
+        except RuntimeError as e:
+            # Specific handling for missing ml_job table
+            if "ml_job" in str(e):
+                QMessageBox.critical(
+                    self,
+                    "Database Migration Required",
+                    "Your database is missing required tables for ML features.\n\n"
+                    "To fix this issue:\n"
+                    "1. Close this application\n"
+                    "2. Run this command in your terminal:\n"
+                    "   python3 fix_database.py\n\n"
+                    "3. Restart the application\n\n"
+                    "See TROUBLESHOOTING_ML_JOB_ERROR.md for detailed instructions."
+                )
+            else:
+                QMessageBox.critical(
+                    self,
+                    "Embedding Extraction Error",
+                    f"Failed to start embedding extraction:\n{str(e)}"
+                )
+            print(f"✗ Embedding extraction error: {e}")
+            import traceback
+            traceback.print_exc()
+
         except Exception as e:
             QMessageBox.critical(
                 self,
