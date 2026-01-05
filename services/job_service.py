@@ -104,11 +104,38 @@ class JobService:
 
         self.db = DatabaseConnection()
         self._initialized = True
+        self._table_exists = None  # Cache for table existence check
 
-        # Recover zombie jobs on startup
+        # Recover zombie jobs on startup (with defensive check)
         self._recover_zombie_jobs_on_startup()
 
         logger.info("JobService initialized")
+
+    def _check_ml_job_table_exists(self) -> bool:
+        """
+        Check if ml_job table exists in database.
+
+        Returns:
+            bool: True if table exists, False otherwise
+
+        Note: Result is cached after first check.
+        """
+        if self._table_exists is not None:
+            return self._table_exists
+
+        try:
+            with self.db.get_connection() as conn:
+                cursor = conn.execute("""
+                    SELECT name FROM sqlite_master
+                    WHERE type='table' AND name='ml_job'
+                """)
+                self._table_exists = cursor.fetchone() is not None
+                return self._table_exists
+
+        except Exception as e:
+            logger.error(f"Failed to check ml_job table existence: {e}")
+            self._table_exists = False
+            return False
 
     def _recover_zombie_jobs_on_startup(self):
         """
@@ -116,6 +143,12 @@ class JobService:
 
         Called automatically on service initialization.
         """
+        # Defensive check: skip if ml_job table doesn't exist
+        if not self._check_ml_job_table_exists():
+            logger.warning("⚠️  ml_job table not found - skipping zombie job recovery")
+            logger.warning("   Run 'python3 fix_database.py' to apply missing database migrations")
+            return
+
         try:
             with self.db.get_connection() as conn:
                 current_ts = datetime.now().isoformat()
@@ -161,6 +194,9 @@ class JobService:
         Returns:
             int: Job ID of created job
 
+        Raises:
+            RuntimeError: If ml_job table doesn't exist (database needs migration)
+
         Example:
             job_id = job_service.enqueue_job(
                 kind='embed',
@@ -168,6 +204,16 @@ class JobService:
                 backend='cpu'
             )
         """
+        # Defensive check: fail fast with clear message if table doesn't exist
+        if not self._check_ml_job_table_exists():
+            error_msg = (
+                "Database is missing the 'ml_job' table. "
+                "Please run 'python3 fix_database.py' to apply missing migrations. "
+                "See TROUBLESHOOTING_ML_JOB_ERROR.md for detailed instructions."
+            )
+            logger.error(f"⚠️  {error_msg}")
+            raise RuntimeError(error_msg)
+
         try:
             with self.db.get_connection() as conn:
                 payload_json = json.dumps(payload)
