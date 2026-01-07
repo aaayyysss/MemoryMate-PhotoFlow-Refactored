@@ -169,6 +169,41 @@ class FaceSettingsDialog(QDialog):
         self.confidence_spin.setToolTip("Minimum confidence threshold (0.0-1.0)")
         detection_layout.addRow("Confidence threshold:", self.confidence_spin)
 
+        # Quality filtering (ENHANCEMENT 2026-01-07)
+        self.quality_spin = QSpinBox()
+        self.quality_spin.setRange(0, 100)
+        self.quality_spin.setValue(0)
+        self.quality_spin.setSuffix("/100")
+        self.quality_spin.setToolTip(
+            "Minimum quality score for faces (0 = disabled)\n"
+            "0 = All faces (default)\n"
+            "40 = Fair quality and above\n"
+            "60 = Good quality (recommended for cleaner clusters)\n"
+            "80 = Excellent quality only"
+        )
+        detection_layout.addRow("Min quality score:", self.quality_spin)
+
+        # Quality slider (more user-friendly)
+        quality_slider = QSlider(Qt.Horizontal)
+        quality_slider.setRange(0, 100)
+        quality_slider.setValue(0)
+        quality_slider.valueChanged.connect(self.quality_spin.setValue)
+        self.quality_spin.valueChanged.connect(quality_slider.setValue)
+        detection_layout.addRow("", quality_slider)
+
+        # Quality help text
+        quality_help = QLabel(
+            "<b>Quality Filtering:</b> Filters out blurry, poorly lit, or low-resolution faces.<br>"
+            "• <b>0 (Disabled):</b> Keep all faces (default, backward compatible)<br>"
+            "• <b>40-60:</b> Remove very poor quality faces (20-30% reduction)<br>"
+            "• <b>60-80:</b> Keep only good quality faces (recommended)<br>"
+            "• <b>80-100:</b> Keep only excellent quality faces (strict)<br>"
+            "<i>Quality based on: blur, lighting, size, aspect ratio, confidence</i>"
+        )
+        quality_help.setWordWrap(True)
+        quality_help.setStyleSheet("QLabel { background-color: #f0f0f0; padding: 8px; border-radius: 5px; }")
+        detection_layout.addRow(quality_help)
+
         layout.addWidget(detection_group)
 
         layout.addStretch()
@@ -250,6 +285,33 @@ class FaceSettingsDialog(QDialog):
         self.skip_detected_check = QCheckBox("Skip images with existing detections")
         perf_layout.addRow("", self.skip_detected_check)
 
+        # GPU Batch Processing (ENHANCEMENT 2026-01-07)
+        self.enable_gpu_batch_check = QCheckBox("Enable GPU batch processing")
+        self.enable_gpu_batch_check.setToolTip(
+            "Process multiple images in parallel on GPU for 2-5x speedup\n"
+            "Only effective on systems with CUDA GPU"
+        )
+        perf_layout.addRow("", self.enable_gpu_batch_check)
+
+        self.gpu_batch_size_spin = QSpinBox()
+        self.gpu_batch_size_spin.setRange(1, 16)
+        self.gpu_batch_size_spin.setValue(4)
+        self.gpu_batch_size_spin.setToolTip(
+            "Number of images to process in single GPU call\n"
+            "4 is optimal for most consumer GPUs (6-8GB VRAM)\n"
+            "Higher = better GPU utilization but more VRAM usage"
+        )
+        perf_layout.addRow("GPU batch size:", self.gpu_batch_size_spin)
+
+        self.gpu_batch_min_photos_spin = QSpinBox()
+        self.gpu_batch_min_photos_spin.setRange(1, 100)
+        self.gpu_batch_min_photos_spin.setValue(10)
+        self.gpu_batch_min_photos_spin.setToolTip(
+            "Minimum photos to enable batch processing\n"
+            "Batch overhead not worth it for small jobs"
+        )
+        perf_layout.addRow("GPU batch threshold:", self.gpu_batch_min_photos_spin)
+
         layout.addWidget(perf_group)
 
         # UI settings
@@ -295,6 +357,7 @@ class FaceSettingsDialog(QDialog):
         self.if_model_combo.setCurrentText(self.config.get("insightface_model", "buffalo_l"))
         self.min_face_spin.setValue(self.config.get("min_face_size", 20))
         self.confidence_spin.setValue(self.config.get("confidence_threshold", 0.6))
+        self.quality_spin.setValue(int(self.config.get("min_quality_score", 0.0)))
 
         # Clustering
         self.clustering_enabled_check.setChecked(self.config.get("clustering_enabled", True))
@@ -305,6 +368,9 @@ class FaceSettingsDialog(QDialog):
         self.batch_size_spin.setValue(self.config.get("batch_size", 50))
         self.max_workers_spin.setValue(self.config.get("max_workers", 4))
         self.skip_detected_check.setChecked(self.config.get("skip_detected", True))
+        self.enable_gpu_batch_check.setChecked(self.config.get("enable_gpu_batch", True))
+        self.gpu_batch_size_spin.setValue(self.config.get("gpu_batch_size", 4))
+        self.gpu_batch_min_photos_spin.setValue(self.config.get("gpu_batch_min_photos", 10))
         self.show_boxes_check.setChecked(self.config.get("show_face_boxes", True))
         self.show_confidence_check.setChecked(self.config.get("show_confidence", False))
         self.show_low_confidence_check.setChecked(self.config.get("show_low_confidence", False))
@@ -328,6 +394,7 @@ class FaceSettingsDialog(QDialog):
         self.config.set("insightface_model", self.if_model_combo.currentText())
         self.config.set("min_face_size", self.min_face_spin.value())
         self.config.set("confidence_threshold", self.confidence_spin.value())
+        self.config.set("min_quality_score", float(self.quality_spin.value()))
 
         # Clustering
         self.config.set("clustering_enabled", self.clustering_enabled_check.isChecked())
@@ -338,6 +405,9 @@ class FaceSettingsDialog(QDialog):
         self.config.set("batch_size", self.batch_size_spin.value())
         self.config.set("max_workers", self.max_workers_spin.value())
         self.config.set("skip_detected", self.skip_detected_check.isChecked())
+        self.config.set("enable_gpu_batch", self.enable_gpu_batch_check.isChecked())
+        self.config.set("gpu_batch_size", self.gpu_batch_size_spin.value())
+        self.config.set("gpu_batch_min_photos", self.gpu_batch_min_photos_spin.value())
         self.config.set("show_face_boxes", self.show_boxes_check.isChecked())
         self.config.set("show_confidence", self.show_confidence_check.isChecked())
         self.config.set("show_low_confidence", self.show_low_confidence_check.isChecked())
