@@ -81,6 +81,12 @@ class FaceDetectionConfig:
             "type": int,
             "description": "Minimum face size in pixels"
         },
+        "min_quality_score": {
+            "min": 0.0,
+            "max": 100.0,
+            "type": float,
+            "description": "Minimum quality score for face filtering (0-100, 0=disabled)"
+        },
         "upsample_times": {
             "min": 0,
             "max": 3,
@@ -148,6 +154,15 @@ class FaceDetectionConfig:
                                         # Higher = fewer false positives, fewer missed faces
                                         # Lower = more faces detected, more false positives
                                         # Default 0.65 balances accuracy and recall
+
+        # Quality Filtering (ENHANCEMENT 2026-01-07)
+        "min_quality_score": 0.0,  # Minimum quality score for faces (0-100 scale, 0 = disabled)
+                                   # 0 = All faces (default, backward compatible)
+                                   # 40 = Fair quality and above (filters very blurry/poor faces)
+                                   # 60 = Good quality and above (recommended for cleaner clusters)
+                                   # 80 = Excellent quality only (very strict, may miss valid faces)
+                                   # Quality based on: blur, lighting, size, aspect ratio, confidence
+                                   # Expected reduction: 20-30% of faces at threshold 60
 
         # InsightFace specific
         "insightface_model": "buffalo_l",  # Model: buffalo_s, buffalo_l, antelopev2
