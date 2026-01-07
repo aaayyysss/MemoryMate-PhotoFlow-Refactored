@@ -661,6 +661,20 @@ class PreferencesDialog(QDialog):
         self.spin_confidence.setToolTip("Minimum confidence threshold (higher = fewer false positives)")
         detection_layout.addRow("Confidence:", self.spin_confidence)
 
+        # Quality Filtering (ENHANCEMENT 2026-01-07)
+        self.spin_min_quality = QSpinBox()
+        self.spin_min_quality.setRange(0, 100)
+        self.spin_min_quality.setSuffix(" /100")
+        self.spin_min_quality.setToolTip(
+            "Minimum quality score for faces (0 = disabled)\n"
+            "0 = All faces (default)\n"
+            "40 = Fair quality and above\n"
+            "60 = Good quality (recommended for cleaner clusters)\n"
+            "80 = Excellent quality only\n\n"
+            "Quality based on: blur, lighting, size, aspect ratio, confidence"
+        )
+        detection_layout.addRow("Min Quality:", self.spin_min_quality)
+
         layout.addWidget(detection_group)
 
         # Clustering Settings
@@ -741,6 +755,21 @@ class PreferencesDialog(QDialog):
         self.spin_batch_size.setRange(10, 200)
         self.spin_batch_size.setToolTip("Number of images to process before saving to database")
         perf_layout.addRow("Batch Size:", self.spin_batch_size)
+
+        # GPU Batch Processing (ENHANCEMENT 2026-01-07)
+        self.chk_gpu_batch = QCheckBox("Enable GPU batch processing (2-5x speedup)")
+        self.chk_gpu_batch.setToolTip("Process multiple images in parallel on GPU (requires CUDA)")
+        perf_layout.addRow("", self.chk_gpu_batch)
+
+        self.spin_gpu_batch_size = QSpinBox()
+        self.spin_gpu_batch_size.setRange(1, 16)
+        self.spin_gpu_batch_size.setToolTip("Number of images to process in single GPU call (4 optimal for 6-8GB VRAM)")
+        perf_layout.addRow("GPU Batch Size:", self.spin_gpu_batch_size)
+
+        self.spin_gpu_batch_min = QSpinBox()
+        self.spin_gpu_batch_min.setRange(1, 100)
+        self.spin_gpu_batch_min.setToolTip("Minimum photos to enable batch processing (overhead not worth it for small jobs)")
+        perf_layout.addRow("GPU Batch Threshold:", self.spin_gpu_batch_min)
 
         layout.addWidget(perf_group)
 
@@ -1113,11 +1142,15 @@ class PreferencesDialog(QDialog):
 
         self.spin_min_face_size.setValue(self.face_config.get("min_face_size", 20))
         self.spin_confidence.setValue(int(self.face_config.get("confidence_threshold", 0.6) * 100))
+        self.spin_min_quality.setValue(int(self.face_config.get("min_quality_score", 0.0)))
         self.spin_cluster_eps.setValue(int(self.face_config.get("clustering_eps", 0.35) * 100))
         self.spin_min_samples.setValue(self.face_config.get("clustering_min_samples", 2))
         self.chk_auto_cluster.setChecked(self.face_config.get("auto_cluster_after_scan", True))
         self.spin_max_workers.setValue(self.face_config.get("max_workers", 4))
         self.spin_batch_size.setValue(self.face_config.get("batch_size", 50))
+        self.chk_gpu_batch.setChecked(self.face_config.get("enable_gpu_batch", True))
+        self.spin_gpu_batch_size.setValue(self.face_config.get("gpu_batch_size", 4))
+        self.spin_gpu_batch_min.setValue(self.face_config.get("gpu_batch_min_photos", 10))
         po = self.face_config.get("project_overrides", {})
         ov = po.get(str(self.current_project_id), {})
         self.chk_project_overrides.setChecked(bool(ov))
@@ -1193,6 +1226,10 @@ class PreferencesDialog(QDialog):
             "auto_cluster_after_scan": self.face_config.get("auto_cluster_after_scan", True),
             "face_max_workers": self.face_config.get("max_workers", 4),
             "face_batch_size": self.face_config.get("batch_size", 50),
+            "min_quality_score": self.face_config.get("min_quality_score", 0.0),
+            "enable_gpu_batch": self.face_config.get("enable_gpu_batch", True),
+            "gpu_batch_size": self.face_config.get("gpu_batch_size", 4),
+            "gpu_batch_min_photos": self.face_config.get("gpu_batch_min_photos", 10),
             "insightface_model_path": self.settings.get("insightface_model_path", ""),
             "ffprobe_path": self.settings.get("ffprobe_path", ""),
             "show_decoder_warnings": self.settings.get("show_decoder_warnings", False),
@@ -1265,6 +1302,10 @@ class PreferencesDialog(QDialog):
         self.face_config.set("auto_cluster_after_scan", self.chk_auto_cluster.isChecked())
         self.face_config.set("max_workers", self.spin_max_workers.value())
         self.face_config.set("batch_size", self.spin_batch_size.value())
+        self.face_config.set("min_quality_score", float(self.spin_min_quality.value()))
+        self.face_config.set("enable_gpu_batch", self.chk_gpu_batch.isChecked())
+        self.face_config.set("gpu_batch_size", self.spin_gpu_batch_size.value())
+        self.face_config.set("gpu_batch_min_photos", self.spin_gpu_batch_min.value())
         # Per-project overrides
         if self.chk_project_overrides.isChecked():
             self.face_config.set_project_overrides(self.current_project_id, {
