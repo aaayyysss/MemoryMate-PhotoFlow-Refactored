@@ -971,6 +971,22 @@ class FaceDetectionService:
             else:
                 faces = [f for f in faces if f['confidence'] >= conf_th and min(f['bbox_w'], f['bbox_h']) >= min_face_size]
 
+            # ENHANCEMENT (2026-01-07): Quality threshold filtering
+            # Filter out low-quality faces to reduce clutter in person clusters
+            min_quality = float(params.get('min_quality_score', 0.0))  # 0-100 scale (0 = disabled)
+            if min_quality > 0:
+                original_count = len(faces)
+                # Convert 0-100 config value to 0-1 internal scale
+                min_quality_normalized = min_quality / 100.0
+                faces = [f for f in faces if f.get('quality', 0) >= min_quality_normalized]
+                filtered_count = original_count - len(faces)
+
+                if filtered_count > 0:
+                    logger.info(
+                        f"[FaceDetection] Filtered {filtered_count}/{original_count} low-quality faces "
+                        f"(threshold: {min_quality:.0f}/100) from {os.path.basename(image_path)}"
+                    )
+
             # OPTIMIZATION: Sort by quality (best quality first)
             # This helps clustering: best quality faces become cluster representatives
             faces = sorted(faces, key=lambda f: f['quality'], reverse=True)
@@ -1207,6 +1223,22 @@ class FaceDetectionService:
                         faces = [f for f in faces if min(f['bbox_w'], f['bbox_h']) >= min_face_size]
                     else:
                         faces = [f for f in faces if f['confidence'] >= conf_th and min(f['bbox_w'], f['bbox_h']) >= min_face_size]
+
+                    # ENHANCEMENT (2026-01-07): Quality threshold filtering
+                    # Filter out low-quality faces to reduce clutter in person clusters
+                    min_quality = float(params.get('min_quality_score', 0.0))  # 0-100 scale (0 = disabled)
+                    if min_quality > 0:
+                        original_count = len(faces)
+                        # Convert 0-100 config value to 0-1 internal scale
+                        min_quality_normalized = min_quality / 100.0
+                        faces = [f for f in faces if f.get('quality', 0) >= min_quality_normalized]
+                        filtered_count = original_count - len(faces)
+
+                        if filtered_count > 0:
+                            logger.debug(
+                                f"[BatchDetection] Filtered {filtered_count}/{original_count} low-quality faces "
+                                f"(threshold: {min_quality:.0f}/100) from {os.path.basename(path)}"
+                            )
 
                     # Sort by quality
                     faces = sorted(faces, key=lambda f: f['quality'], reverse=True)
