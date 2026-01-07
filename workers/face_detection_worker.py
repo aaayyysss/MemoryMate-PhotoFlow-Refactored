@@ -15,6 +15,7 @@ from reference_db import ReferenceDB
 from services.face_detection_service import get_face_detection_service
 from config.face_detection_config import get_face_config
 from services.performance_monitor import PerformanceMonitor
+from utils.face_detection_logger import FaceDetectionLogger
 
 logger = logging.getLogger(__name__)
 
@@ -106,6 +107,9 @@ class FaceDetectionWorker(QRunnable):
         # Initialize performance monitoring
         monitor = PerformanceMonitor(f"face_detection_project_{self.project_id}")
 
+        # ENHANCEMENT (2026-01-07): Initialize structured logging
+        structured_logger = FaceDetectionLogger(self.project_id)
+
         try:
             # Initialize services
             db = ReferenceDB()
@@ -145,6 +149,17 @@ class FaceDetectionWorker(QRunnable):
             face_crops_dir = os.path.join(os.getcwd(), ".memorymate", "faces")
             os.makedirs(face_crops_dir, exist_ok=True)
 
+            # ENHANCEMENT (2026-01-07): Log detection start with parameters
+            cfg = get_face_config()
+            structured_logger.log_detection_start({
+                "model": self.model,
+                "skip_processed": self.skip_processed,
+                "max_faces_per_photo": self.max_faces_per_photo,
+                "total_photos": total_photos,
+                "confidence_threshold": cfg.get('confidence_threshold', 0.65),
+                "min_face_size": cfg.get('min_face_size', 20)
+            })
+
             # Process each photo
             metric_process = monitor.record_operation("process_all_photos", {
                 "total_photos": total_photos,
@@ -171,11 +186,15 @@ class FaceDetectionWorker(QRunnable):
                 self.signals.progress.emit(idx, total_photos, progress_msg)
 
                 # Detect faces
+                photo_start_time = time.time()
                 try:
                     faces = face_service.detect_faces(photo_path, project_id=self.project_id)
+                    photo_duration_ms = (time.time() - photo_start_time) * 1000
 
                     if not faces:
                         self._stats['photos_processed'] += 1
+                        # ENHANCEMENT (2026-01-07): Log photo with no faces
+                        structured_logger.log_photo_processed(photo_path, 0, photo_duration_ms, success=True)
                         # Emit updated progress with "0 faces in this photo" info
                         self.signals.progress.emit(
                             idx, total_photos,
@@ -203,7 +222,10 @@ class FaceDetectionWorker(QRunnable):
 
                     # Emit face detected signal
                     self.signals.face_detected.emit(photo_path, len(faces))
-                    
+
+                    # ENHANCEMENT (2026-01-07): Log successful photo processing
+                    structured_logger.log_photo_processed(photo_path, len(faces), photo_duration_ms, success=True)
+
                     # Emit updated progress with faces found info
                     self.signals.progress.emit(
                         idx, total_photos,
@@ -215,9 +237,21 @@ class FaceDetectionWorker(QRunnable):
                 except Exception as e:
                     self._stats['photos_failed'] += 1
                     error_msg = str(e)
+                    photo_duration_ms = (time.time() - photo_start_time) * 1000
+
+                    # ENHANCEMENT (2026-01-07): Log error with full context
+                    import traceback
+                    traceback_str = traceback.format_exc()
+                    structured_logger.log_error(
+                        photo_path,
+                        type(e).__name__,
+                        error_msg,
+                        traceback_str
+                    )
+
                     logger.error(f"[FaceDetectionWorker] ✗ {photo_path}: {error_msg}")
                     self.signals.error.emit(photo_path, error_msg)
-                    
+
                     # Emit progress with error info
                     self.signals.progress.emit(
                         idx, total_photos,
@@ -248,6 +282,10 @@ class FaceDetectionWorker(QRunnable):
             # Print performance summary
             print("\n")
             monitor.print_summary()
+
+            # ENHANCEMENT (2026-01-07): Log detection completion
+            structured_logger.log_detection_complete(self._stats)
+            logger.info(f"[FaceDetectionWorker] Session log saved: {structured_logger.get_log_file_path()}")
 
             self.signals.finished.emit(
                 self._stats['photos_processed'],
@@ -306,6 +344,18 @@ class FaceDetectionWorker(QRunnable):
             videos_excluded = total_items - total_count
             if videos_excluded > 0:
                 self._stats['videos_excluded'] = videos_excluded
+
+                # ENHANCEMENT (2026-01-07): User-visible notification
+                # Inform users why videos are excluded from face detection
+                notification_msg = (
+                    f"ℹ️  Note: {videos_excluded} video file(s) excluded from face detection. "
+                    f"Face detection currently supports photos only. Processing {total_count} photo(s)..."
+                )
+
+                # Emit progress signal for UI notification
+                self.signals.progress.emit(0, max(1, total_count), notification_msg)
+
+                # Also log for debugging
                 logger.info(
                     f"[FaceDetectionWorker] Excluding {videos_excluded} video files from face detection "
                     f"(processing {total_count} photos only)"
@@ -356,7 +406,11 @@ class FaceDetectionWorker(QRunnable):
     def _save_face(self, db: ReferenceDB, image_path: str, face: dict,
                    face_idx: int, face_crops_dir: str):
         """
-        Save detected face to database and disk.
+        Save detected face to database and disk using transactional approach.
+
+        CRITICAL ENHANCEMENT (2026-01-07):
+        Uses atomic transaction to prevent orphaned face crops.
+        If database save fails, crop file is rolled back (deleted).
 
         Args:
             db: Database instance
@@ -364,7 +418,11 @@ class FaceDetectionWorker(QRunnable):
             face: Face dictionary with bbox and embedding
             face_idx: Face index in photo (for naming)
             face_crops_dir: Directory to save face crops
+
+        Returns:
+            bool: True if saved successfully, False otherwise
         """
+        crop_path = None
         try:
             # CRITICAL FIX: Validate embedding exists before saving
             # In detection-only mode (PyInstaller fallback), embeddings may be None
@@ -377,49 +435,79 @@ class FaceDetectionWorker(QRunnable):
                 )
                 # Cannot save to database without embedding
                 # Face clustering requires embeddings for grouping
-                return
+                return False
 
             # Generate crop filename
             image_basename = os.path.splitext(os.path.basename(image_path))[0]
             crop_filename = f"{image_basename}_face{face_idx}.jpg"
             crop_path = os.path.join(face_crops_dir, crop_filename)
 
-            # Save face crop to disk
+            # STEP 1: Save face crop to disk
             face_service = get_face_detection_service()
             if get_face_config().get('save_face_crops', True):
                 if not face_service.save_face_crop(image_path, face, crop_path):
                     logger.warning(f"Failed to save face crop: {crop_path}")
-                    return
+                    return False
             else:
                 os.makedirs(os.path.dirname(crop_path), exist_ok=True)
 
-            # Convert embedding to bytes for storage
+            # STEP 2: Convert embedding to bytes for storage
             # At this point, we've validated that embedding is not None
             embedding_bytes = face['embedding'].astype(np.float32).tobytes()
 
-            # Insert into database
-            with db._connect() as conn:
-                cur = conn.cursor()
-                cur.execute("""
-                    INSERT OR REPLACE INTO face_crops (
-                        project_id, image_path, crop_path, embedding,
-                        bbox_x, bbox_y, bbox_w, bbox_h, confidence
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    self.project_id,
-                    image_path,
-                    crop_path,
-                    embedding_bytes,
-                    face['bbox_x'],
-                    face['bbox_y'],
-                    face['bbox_w'],
-                    face['bbox_h'],
-                    face['confidence']
-                ))
-                conn.commit()
+            # STEP 3: Save to database with transactional rollback
+            try:
+                with db._connect() as conn:
+                    cur = conn.cursor()
+                    # Begin explicit transaction
+                    cur.execute("BEGIN TRANSACTION")
+                    try:
+                        cur.execute("""
+                            INSERT OR REPLACE INTO face_crops (
+                                project_id, image_path, crop_path, embedding,
+                                bbox_x, bbox_y, bbox_w, bbox_h, confidence
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """, (
+                            self.project_id,
+                            image_path,
+                            crop_path,
+                            embedding_bytes,
+                            face['bbox_x'],
+                            face['bbox_y'],
+                            face['bbox_w'],
+                            face['bbox_h'],
+                            face['confidence']
+                        ))
+                        conn.commit()
+                        return True
+                    except Exception as db_error:
+                        # Rollback database transaction
+                        conn.rollback()
+                        logger.error(f"Database save failed, rolling back: {db_error}")
+
+                        # CRITICAL: Delete orphaned crop file
+                        if crop_path and os.path.exists(crop_path):
+                            try:
+                                os.remove(crop_path)
+                                logger.info(f"✓ Rolled back face crop: {crop_path}")
+                            except Exception as cleanup_error:
+                                logger.error(f"Failed to cleanup orphaned crop: {cleanup_error}")
+
+                        raise db_error
+            except Exception as transaction_error:
+                logger.error(f"Transaction failed: {transaction_error}")
+                return False
 
         except Exception as e:
             logger.error(f"Failed to save face: {e}")
+            # Final safety cleanup: remove crop if it exists
+            if crop_path and os.path.exists(crop_path):
+                try:
+                    os.remove(crop_path)
+                    logger.debug(f"Cleanup: Removed orphaned crop {crop_path}")
+                except:
+                    pass
+            return False
 
 
 # Standalone script support
