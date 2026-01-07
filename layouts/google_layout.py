@@ -92,6 +92,9 @@ class GooglePhotosLayout(BaseLayout):
         """
         Create Google Photos-style layout.
         """
+        # Face merge undo/redo stacks (CRITICAL FIX 2026-01-07)
+        self.redo_stack = []  # Stack for redo operations after undo
+
         # Phase 2: Selection tracking
         self.selected_photos = set()  # Set of selected photo paths
         self.selection_mode = False  # Whether selection mode is active
