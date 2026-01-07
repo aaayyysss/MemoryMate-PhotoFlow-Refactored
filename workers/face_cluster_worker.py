@@ -327,6 +327,15 @@ class FaceClusterWorker(QRunnable):
                 metric_save = monitor.record_operation("save_cluster_results", {
                     "cluster_count": cluster_count
                 })
+
+                # PERFORMANCE OPTIMIZATION (2026-01-07): Create quality analyzer ONCE for all clusters
+                # Previously created new instance for each cluster (wasteful initialization)
+                face_quality_analyzer = FaceQualityAnalyzer()
+
+                # Track granular timing within cluster loop
+                total_quality_analysis_time = 0.0
+                total_db_operations_time = 0.0
+
                 for idx, cid in enumerate(unique_labels):
                     if self.cancelled:
                         logger.info("[FaceClusterWorker] Cancelled by user")
@@ -352,8 +361,9 @@ class FaceClusterWorker(QRunnable):
                     #    - Highest overall quality score (primary)
                     #    - Closest to centroid (secondary, for tie-breaking)
                     # 4. Fallback: If no high-quality faces, use centroid-based selection
+                    quality_start = time.time()
                     try:
-                        face_quality_analyzer = FaceQualityAnalyzer()
+                        # Use shared face_quality_analyzer instance (created outside loop)
                         face_qualities = []
 
                         # Calculate comprehensive quality for each face
@@ -447,10 +457,17 @@ class FaceClusterWorker(QRunnable):
                     branch_key = f"face_{cid:03d}"
                     display_name = f"Person {cid+1}"
 
+                    # Track quality analysis time
+                    quality_elapsed = time.time() - quality_start
+                    total_quality_analysis_time += quality_elapsed
+
                     # CRITICAL FIX: Count should be unique PHOTOS, not face crops
                     # A person can appear multiple times in one photo (e.g., mirror selfie)
                     unique_photos = set(cluster_image_paths)
                     member_count = len(unique_photos)
+
+                    # Time database operations
+                    db_start = time.time()
 
                     # Insert into face_branch_reps
                     cur.execute("""
@@ -485,6 +502,10 @@ class FaceClusterWorker(QRunnable):
                     else:
                         logger.debug(f"[FaceClusterWorker] No photos to link for {branch_key}")
 
+                    # Track database operations time
+                    db_elapsed = time.time() - db_start
+                    total_db_operations_time += db_elapsed
+
                     # Emit progress
                     progress_pct = int(40 + (idx / cluster_count) * 60)
                     self.signals.progress.emit(
@@ -496,8 +517,16 @@ class FaceClusterWorker(QRunnable):
 
                 metric_save.finish()
 
-                # PERFORMANCE LOG (2026-01-07): Report batch INSERT optimization impact
-                logger.info(f"[FaceClusterWorker] ✅ Batch INSERT optimization: Saved {cluster_count} clusters using executemany() instead of individual INSERTs (50-70% speedup expected)")
+                # PERFORMANCE LOG (2026-01-07): Report granular timing breakdown
+                total_loop_time = total_quality_analysis_time + total_db_operations_time
+                quality_pct = (total_quality_analysis_time / total_loop_time * 100) if total_loop_time > 0 else 0
+                db_pct = (total_db_operations_time / total_loop_time * 100) if total_loop_time > 0 else 0
+
+                logger.info(f"[FaceClusterWorker] 📊 Cluster Loop Performance Breakdown:")
+                logger.info(f"  - Quality Analysis: {total_quality_analysis_time:.2f}s ({quality_pct:.1f}%)")
+                logger.info(f"  - Database Operations: {total_db_operations_time:.2f}s ({db_pct:.1f}%)")
+                logger.info(f"  - Total Measured: {total_loop_time:.2f}s")
+                logger.info(f"[FaceClusterWorker] ✅ Optimizations: Reused FaceQualityAnalyzer instance + batch INSERT with executemany()")
 
                 # Step 5: Handle unclustered faces (noise from DBSCAN, label == -1)
                 if noise_count > 0:
