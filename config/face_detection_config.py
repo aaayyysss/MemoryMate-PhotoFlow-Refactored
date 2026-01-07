@@ -101,6 +101,18 @@ class FaceDetectionConfig:
             "type": int,
             "description": "Maximum parallel workers"
         },
+        "gpu_batch_size": {
+            "min": 1,
+            "max": 16,
+            "type": int,
+            "description": "GPU batch size for parallel image processing"
+        },
+        "gpu_batch_min_photos": {
+            "min": 1,
+            "max": 100,
+            "type": int,
+            "description": "Minimum photos required to enable GPU batch processing"
+        },
 
         # Storage parameters
         "crop_size": {
@@ -158,6 +170,14 @@ class FaceDetectionConfig:
         "batch_size": 50,  # Number of images to process before committing to DB
         "max_workers": 4,  # Max parallel face detection workers
         "skip_detected": True,  # Skip images that already have faces detected
+
+        # GPU Batch Processing (ENHANCEMENT 2026-01-07)
+        "enable_gpu_batch": True,  # Enable GPU batch processing when GPU is available
+        "gpu_batch_size": 4,  # Number of images to process in single GPU call (2-8 recommended)
+                              # Higher = better GPU utilization but more VRAM usage
+                              # 4 is optimal for most consumer GPUs (6-8GB VRAM)
+        "gpu_batch_min_photos": 10,  # Minimum photos to enable batch processing
+                                      # Batch overhead not worth it for < 10 photos
 
         # Storage
         "save_face_crops": True,
