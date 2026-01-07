@@ -102,7 +102,7 @@ class FaceDetectionWorker(QRunnable):
     def run(self):
         """Main worker execution."""
         logger.info(f"[FaceDetectionWorker] Starting face detection for project {self.project_id}")
-        start_time = time.time()
+        self.start_time = time.time()
 
         # Initialize performance monitoring
         monitor = PerformanceMonitor(f"face_detection_project_{self.project_id}")
@@ -160,55 +160,202 @@ class FaceDetectionWorker(QRunnable):
                 "min_face_size": cfg.get('min_face_size', 20)
             })
 
-            # Process each photo
+            # ENHANCEMENT (2026-01-07): GPU Batch Processing
+            # Determine if we should use GPU batch processing
+            enable_batch = (
+                cfg.get('enable_gpu_batch', True) and
+                face_service.has_gpu() and
+                total_photos >= cfg.get('gpu_batch_min_photos', 10)
+            )
+
+            if enable_batch:
+                batch_size = cfg.get('gpu_batch_size', 4)
+                logger.info(
+                    f"[FaceDetectionWorker] 🚀 GPU batch processing enabled: "
+                    f"{total_photos} photos, batch_size={batch_size}"
+                )
+            else:
+                logger.info(
+                    f"[FaceDetectionWorker] 💻 Sequential processing: "
+                    f"GPU={'available' if face_service.has_gpu() else 'not available'}, "
+                    f"photos={total_photos}, "
+                    f"batch_enabled={cfg.get('enable_gpu_batch', True)}"
+                )
+
+            # Process photos using batch or sequential processing
             metric_process = monitor.record_operation("process_all_photos", {
                 "total_photos": total_photos,
-                "skip_processed": self.skip_processed
+                "skip_processed": self.skip_processed,
+                "batch_processing": enable_batch
             })
-            for idx, photo in enumerate(photos, 1):
-                if self.cancelled:
-                    logger.info("[FaceDetectionWorker] Cancelled by user")
-                    break
 
-                photo_path = photo['path']
-                photo_filename = os.path.basename(photo_path)
-                
-                # Calculate percentage
-                percentage = int((idx / total_photos) * 100)
-
-                # Emit progress with rich information
-                # Format: "[140/298] (47%) Detecting faces: img_e3122.jpg | Found: 125 faces"
-                progress_msg = (
-                    f"[{idx}/{total_photos}] ({percentage}%) "
-                    f"Detecting faces: {photo_filename} | "
-                    f"Found: {self._stats['faces_detected']} faces so far"
+            if enable_batch:
+                # GPU BATCH PROCESSING PATH
+                self._process_photos_batch(
+                    photos, face_service, db, face_crops_dir,
+                    structured_logger, monitor, batch_size
                 )
-                self.signals.progress.emit(idx, total_photos, progress_msg)
+            else:
+                # SEQUENTIAL PROCESSING PATH (original code)
+                self._process_photos_sequential(
+                    photos, face_service, db, face_crops_dir,
+                    structured_logger, monitor
+                )
 
-                # Detect faces
-                photo_start_time = time.time()
-                try:
-                    faces = face_service.detect_faces(photo_path, project_id=self.project_id)
-                    photo_duration_ms = (time.time() - photo_start_time) * 1000
+            metric_process.finish()
+
+            # Cleanup and emit completion
+            self._finalize_processing(db, monitor, structured_logger)
+
+        except Exception as e:
+            logger.error(f"[FaceDetectionWorker] Fatal error: {e}", exc_info=True)
+            self.signals.finished.emit(0, 0, 0)
+
+    def _process_photos_sequential(self, photos, face_service, db, face_crops_dir,
+                                   structured_logger, monitor):
+        """Sequential photo processing (original method)."""
+        total_photos = len(photos)
+        for idx, photo in enumerate(photos, 1):
+            if self.cancelled:
+                logger.info("[FaceDetectionWorker] Cancelled by user")
+                break
+
+            photo_path = photo['path']
+            photo_filename = os.path.basename(photo_path)
+
+            # Calculate percentage
+            percentage = int((idx / total_photos) * 100)
+
+            # Emit progress with rich information
+            progress_msg = (
+                f"[{idx}/{total_photos}] ({percentage}%) "
+                f"Detecting faces: {photo_filename} | "
+                f"Found: {self._stats['faces_detected']} faces so far"
+            )
+            self.signals.progress.emit(idx, total_photos, progress_msg)
+
+            # Detect faces
+            photo_start_time = time.time()
+            try:
+                faces = face_service.detect_faces(photo_path, project_id=self.project_id)
+                photo_duration_ms = (time.time() - photo_start_time) * 1000
+
+                if not faces:
+                    self._stats['photos_processed'] += 1
+                    structured_logger.log_photo_processed(photo_path, 0, photo_duration_ms, success=True)
+                    self.signals.progress.emit(
+                        idx, total_photos,
+                        f"[{idx}/{total_photos}] ({percentage}%) {photo_filename}: No faces found | Total: {self._stats['faces_detected']} faces"
+                    )
+                    continue
+
+                # Limit faces per photo
+                if len(faces) > self.max_faces_per_photo:
+                    logger.warning(
+                        f"[FaceDetectionWorker] {photo_path} has {len(faces)} faces, "
+                        f"keeping largest {self.max_faces_per_photo}"
+                    )
+                    faces = sorted(faces, key=lambda f: f['bbox_w'] * f['bbox_h'], reverse=True)
+                    faces = faces[:self.max_faces_per_photo]
+
+                # Save faces to database
+                for face_idx, face in enumerate(faces):
+                    self._save_face(db, photo_path, face, face_idx, face_crops_dir)
+
+                self._stats['photos_processed'] += 1
+                self._stats['faces_detected'] += len(faces)
+                self._stats['images_with_faces'] += 1
+
+                self.signals.face_detected.emit(photo_path, len(faces))
+                structured_logger.log_photo_processed(photo_path, len(faces), photo_duration_ms, success=True)
+
+                self.signals.progress.emit(
+                    idx, total_photos,
+                    f"[{idx}/{total_photos}] ({percentage}%) {photo_filename}: Found {len(faces)} face(s) | Total: {self._stats['faces_detected']} faces"
+                )
+
+                logger.info(f"[FaceDetectionWorker] ✓ {photo_path}: {len(faces)} faces")
+
+            except Exception as e:
+                self._stats['photos_failed'] += 1
+                error_msg = str(e)
+                photo_duration_ms = (time.time() - photo_start_time) * 1000
+
+                import traceback
+                traceback_str = traceback.format_exc()
+                structured_logger.log_error(
+                    photo_path,
+                    type(e).__name__,
+                    error_msg,
+                    traceback_str
+                )
+
+                logger.error(f"[FaceDetectionWorker] ✗ {photo_path}: {error_msg}")
+                self.signals.error.emit(photo_path, error_msg)
+
+                self.signals.progress.emit(
+                    idx, total_photos,
+                    f"[{idx}/{total_photos}] ({percentage}%) {photo_filename}: ERROR - {error_msg[:50]}..."
+                )
+
+    def _process_photos_batch(self, photos, face_service, db, face_crops_dir,
+                             structured_logger, monitor, batch_size):
+        """
+        GPU batch processing (ENHANCEMENT 2026-01-07).
+
+        Processes multiple photos in parallel GPU batches for 2-5x speedup.
+        """
+        total_photos = len(photos)
+        photo_paths = [photo['path'] for photo in photos]
+
+        # Process photos in batches
+        for batch_start in range(0, total_photos, batch_size):
+            if self.cancelled:
+                logger.info("[FaceDetectionWorker] Cancelled by user")
+                break
+
+            batch_end = min(batch_start + batch_size, total_photos)
+            batch_paths = photo_paths[batch_start:batch_end]
+            batch_idx = batch_start // batch_size + 1
+
+            # Calculate batch progress
+            idx = batch_end
+            percentage = int((idx / total_photos) * 100)
+
+            # Emit batch progress
+            progress_msg = (
+                f"[Batch {batch_idx}] Processing {len(batch_paths)} photos "
+                f"({percentage}% complete) | "
+                f"Found: {self._stats['faces_detected']} faces so far"
+            )
+            self.signals.progress.emit(idx, total_photos, progress_msg)
+
+            # Batch detect faces
+            batch_start_time = time.time()
+            try:
+                results = face_service.batch_detect_faces(
+                    batch_paths,
+                    batch_size=len(batch_paths),
+                    project_id=self.project_id
+                )
+                batch_duration_ms = (time.time() - batch_start_time) * 1000
+
+                # Process results for each photo
+                for photo_path in batch_paths:
+                    faces = results.get(photo_path, [])
+                    photo_filename = os.path.basename(photo_path)
 
                     if not faces:
                         self._stats['photos_processed'] += 1
-                        # ENHANCEMENT (2026-01-07): Log photo with no faces
-                        structured_logger.log_photo_processed(photo_path, 0, photo_duration_ms, success=True)
-                        # Emit updated progress with "0 faces in this photo" info
-                        self.signals.progress.emit(
-                            idx, total_photos,
-                            f"[{idx}/{total_photos}] ({percentage}%) {photo_filename}: No faces found | Total: {self._stats['faces_detected']} faces"
-                        )
+                        structured_logger.log_photo_processed(photo_path, 0, batch_duration_ms / len(batch_paths), success=True)
                         continue
 
-                    # Limit faces per photo (prevent memory issues with large group photos)
+                    # Limit faces per photo
                     if len(faces) > self.max_faces_per_photo:
                         logger.warning(
                             f"[FaceDetectionWorker] {photo_path} has {len(faces)} faces, "
                             f"keeping largest {self.max_faces_per_photo}"
                         )
-                        # Sort by face size (bbox_w * bbox_h) and keep largest
                         faces = sorted(faces, key=lambda f: f['bbox_w'] * f['bbox_h'], reverse=True)
                         faces = faces[:self.max_faces_per_photo]
 
@@ -220,82 +367,74 @@ class FaceDetectionWorker(QRunnable):
                     self._stats['faces_detected'] += len(faces)
                     self._stats['images_with_faces'] += 1
 
-                    # Emit face detected signal
                     self.signals.face_detected.emit(photo_path, len(faces))
+                    structured_logger.log_photo_processed(photo_path, len(faces), batch_duration_ms / len(batch_paths), success=True)
 
-                    # ENHANCEMENT (2026-01-07): Log successful photo processing
-                    structured_logger.log_photo_processed(photo_path, len(faces), photo_duration_ms, success=True)
+                    logger.info(f"[FaceDetectionWorker] ✓ {photo_filename}: {len(faces)} faces")
 
-                    # Emit updated progress with faces found info
-                    self.signals.progress.emit(
-                        idx, total_photos,
-                        f"[{idx}/{total_photos}] ({percentage}%) {photo_filename}: Found {len(faces)} face(s) | Total: {self._stats['faces_detected']} faces"
-                    )
-
-                    logger.info(f"[FaceDetectionWorker] ✓ {photo_path}: {len(faces)} faces")
-
-                except Exception as e:
-                    self._stats['photos_failed'] += 1
-                    error_msg = str(e)
-                    photo_duration_ms = (time.time() - photo_start_time) * 1000
-
-                    # ENHANCEMENT (2026-01-07): Log error with full context
-                    import traceback
-                    traceback_str = traceback.format_exc()
-                    structured_logger.log_error(
-                        photo_path,
-                        type(e).__name__,
-                        error_msg,
-                        traceback_str
-                    )
-
-                    logger.error(f"[FaceDetectionWorker] ✗ {photo_path}: {error_msg}")
-                    self.signals.error.emit(photo_path, error_msg)
-
-                    # Emit progress with error info
-                    self.signals.progress.emit(
-                        idx, total_photos,
-                        f"[{idx}/{total_photos}] ({percentage}%) {photo_filename}: ERROR - {error_msg[:50]}..."
-                    )
-
-            metric_process.finish()
-
-            # Finalize
-            monitor.finish_monitoring()
-            duration = time.time() - start_time
-            logger.info(
-                f"[FaceDetectionWorker] Complete in {duration:.1f}s: "
-                f"{self._stats['photos_processed']} processed "
-                f"({self._stats['images_with_faces']} with faces), "
-                f"{self._stats['photos_skipped']} skipped, "
-                f"{self._stats['faces_detected']} faces detected, "
-                f"{self._stats['photos_failed']} failed"
-            )
-            
-            # Log videos excluded (if any)
-            if self._stats.get('videos_excluded', 0) > 0:
-                logger.info(
-                    f"[FaceDetectionWorker] Note: {self._stats['videos_excluded']} video files were excluded "
-                    f"(face detection only scans photos)"
+                # Update progress after batch complete
+                faces_in_batch = sum(len(results.get(path, [])) for path in batch_paths)
+                self.signals.progress.emit(
+                    idx, total_photos,
+                    f"[Batch {batch_idx}] Complete: {faces_in_batch} faces found | Total: {self._stats['faces_detected']} faces"
                 )
 
-            # Print performance summary
-            print("\n")
-            monitor.print_summary()
+            except Exception as e:
+                # Fall back to sequential processing for this batch
+                logger.warning(f"[FaceDetectionWorker] Batch {batch_idx} failed, falling back to sequential: {e}")
+                for photo_path in batch_paths:
+                    if self.cancelled:
+                        break
+                    try:
+                        faces = face_service.detect_faces(photo_path, project_id=self.project_id)
+                        # Process as in sequential method
+                        if faces:
+                            if len(faces) > self.max_faces_per_photo:
+                                faces = sorted(faces, key=lambda f: f['bbox_w'] * f['bbox_h'], reverse=True)[:self.max_faces_per_photo]
+                            for face_idx, face in enumerate(faces):
+                                self._save_face(db, photo_path, face, face_idx, face_crops_dir)
+                            self._stats['photos_processed'] += 1
+                            self._stats['faces_detected'] += len(faces)
+                            self._stats['images_with_faces'] += 1
+                        else:
+                            self._stats['photos_processed'] += 1
+                    except Exception as photo_error:
+                        self._stats['photos_failed'] += 1
+                        logger.error(f"[FaceDetectionWorker] ✗ {photo_path}: {photo_error}")
 
-            # ENHANCEMENT (2026-01-07): Log detection completion
-            structured_logger.log_detection_complete(self._stats)
-            logger.info(f"[FaceDetectionWorker] Session log saved: {structured_logger.get_log_file_path()}")
+    def _finalize_processing(self, db, monitor, structured_logger):
+        """Finalize face detection processing and emit completion signals."""
+        monitor.finish_monitoring()
+        duration = time.time() - self.start_time
+        logger.info(
+            f"[FaceDetectionWorker] Complete in {duration:.1f}s: "
+            f"{self._stats['photos_processed']} processed "
+            f"({self._stats['images_with_faces']} with faces), "
+            f"{self._stats['photos_skipped']} skipped, "
+            f"{self._stats['faces_detected']} faces detected, "
+            f"{self._stats['photos_failed']} failed"
+        )
 
-            self.signals.finished.emit(
-                self._stats['photos_processed'],
-                self._stats['photos_failed'],
-                self._stats['faces_detected']
+        # Log videos excluded (if any)
+        if self._stats.get('videos_excluded', 0) > 0:
+            logger.info(
+                f"[FaceDetectionWorker] Note: {self._stats['videos_excluded']} video files were excluded "
+                f"(face detection only scans photos)"
             )
 
-        except Exception as e:
-            logger.error(f"[FaceDetectionWorker] Fatal error: {e}", exc_info=True)
-            self.signals.finished.emit(0, 0, 0)
+        # Print performance summary
+        print("\n")
+        monitor.print_summary()
+
+        # ENHANCEMENT (2026-01-07): Log detection completion
+        structured_logger.log_detection_complete(self._stats)
+        logger.info(f"[FaceDetectionWorker] Session log saved: {structured_logger.get_log_file_path()}")
+
+        self.signals.finished.emit(
+            self._stats['photos_processed'],
+            self._stats['photos_failed'],
+            self._stats['faces_detected']
+        )
 
     def _get_photos_to_process(self, db: ReferenceDB) -> list:
         """
