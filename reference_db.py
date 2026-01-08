@@ -3491,25 +3491,74 @@ class ReferenceDB:
     
     def get_location_clusters(self, project_id: int | None = None) -> list[dict]:
         """Get location cluster summaries for sidebar display.
-        
+
         Returns:
             list of {name, count, lat, lon, paths}
         """
+        import logging
+        logger = logging.getLogger(__name__)
+
         from settings_manager_qt import SettingsManager
         sm = SettingsManager()
         radius_km = float(sm.get("gps_clustering_radius_km", 5.0))
-        
+
+        # DIAGNOSTIC: Check if GPS columns exist and have data
+        with self._connect() as conn:
+            cur = conn.cursor()
+
+            # Check for GPS columns
+            existing_cols = [r[1] for r in cur.execute("PRAGMA table_info(photo_metadata)")]
+            has_gps_cols = 'gps_latitude' in existing_cols and 'gps_longitude' in existing_cols
+
+            logger.info(f"[get_location_clusters] GPS columns exist: {has_gps_cols}")
+
+            if has_gps_cols:
+                # Count photos with GPS data
+                if project_id:
+                    cur.execute("""
+                        SELECT COUNT(*) FROM photo_metadata p
+                        JOIN photo_folders f ON f.id = p.folder_id
+                        WHERE p.gps_latitude IS NOT NULL
+                          AND p.gps_longitude IS NOT NULL
+                          AND f.path LIKE (SELECT folder || '%' FROM projects WHERE id = ?)
+                    """, (project_id,))
+                else:
+                    cur.execute("""
+                        SELECT COUNT(*) FROM photo_metadata
+                        WHERE gps_latitude IS NOT NULL AND gps_longitude IS NOT NULL
+                    """)
+
+                gps_photo_count = cur.fetchone()[0]
+                logger.info(f"[get_location_clusters] Found {gps_photo_count} photos with GPS data (project_id={project_id})")
+
+                if gps_photo_count == 0:
+                    # Check total photos in project
+                    if project_id:
+                        cur.execute("""
+                            SELECT COUNT(*) FROM photo_metadata p
+                            JOIN photo_folders f ON f.id = p.folder_id
+                            WHERE f.path LIKE (SELECT folder || '%' FROM projects WHERE id = ?)
+                        """, (project_id,))
+                        total_photos = cur.fetchone()[0]
+                        logger.warning(f"[get_location_clusters] No GPS data found. Total photos in project: {total_photos}")
+                    else:
+                        cur.execute("SELECT COUNT(*) FROM photo_metadata")
+                        total_photos = cur.fetchone()[0]
+                        logger.warning(f"[get_location_clusters] No GPS data found. Total photos in DB: {total_photos}")
+
         locations = self.get_photos_by_location(project_id, radius_km=radius_km)
+        logger.info(f"[get_location_clusters] get_photos_by_location returned {len(locations)} location groups")
+
         clusters = []
-        
+
         for loc_key, photos in locations.items():
             # Calculate center point (average)
             avg_lat = sum(p['lat'] for p in photos) / len(photos)
             avg_lon = sum(p['lon'] for p in photos) / len(photos)
-            
+
             # Use most common location name
             name = photos[0]['location_name']
-            
+
             clusters.append({
                 'name': name,
                 'count': len(photos),
@@ -3517,9 +3566,10 @@ class ReferenceDB:
                 'lon': avg_lon,
                 'paths': [p['path'] for p in photos]
             })
-        
+
         # Sort by photo count (descending)
         clusters.sort(key=lambda x: x['count'], reverse=True)
+        logger.info(f"[get_location_clusters] Returning {len(clusters)} location clusters")
         return clusters
 
     def create_location_branch(self, project_id: int, lat: float, lon: float, location_name: str = None) -> str:
