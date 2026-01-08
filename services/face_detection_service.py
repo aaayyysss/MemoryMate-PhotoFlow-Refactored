@@ -733,7 +733,8 @@ class FaceDetectionService:
             # OPTIMIZATION: Downscale very large images to improve speed/memory
             # Must check img.shape AFTER verifying img is not None
             original_img = img  # Keep original for quality calculation in case resize fails
-            
+            scale_factor = 1.0  # CRITICAL FIX (2026-01-08): Track scale factor for bbox coordinate correction
+
             # CRITICAL VALIDATION: Ensure img is valid before ANY operations
             if img is None:
                 logger.error(f"CRITICAL: img became None after PIL/cv2 loading for {os.path.basename(image_path)}")
@@ -761,6 +762,7 @@ class FaceDetectionService:
                     # CRITICAL: Check if resize succeeded before replacing img
                     if resized_img is not None and hasattr(resized_img, 'shape') and resized_img.size > 0:
                         img = resized_img
+                        scale_factor = scale  # CRITICAL FIX (2026-01-08): Record scale factor for bbox correction
                         logger.debug(f"Downscaled image for detection: scale={scale:.3f}")
                     else:
                         logger.warning(f"Image resize failed for {image_path}, using original size")
@@ -929,6 +931,16 @@ class FaceDetectionService:
                 bbox = face.bbox.astype(int)
                 x1, y1, x2, y2 = bbox
 
+                # CRITICAL FIX (2026-01-08): Scale bbox coordinates back to original image dimensions
+                # If image was downscaled for detection, bbox coordinates are in scaled space
+                # Must scale them back to match original image for correct cropping
+                if scale_factor != 1.0:
+                    x1 = int(x1 / scale_factor)
+                    y1 = int(y1 / scale_factor)
+                    x2 = int(x2 / scale_factor)
+                    y2 = int(y2 / scale_factor)
+                    logger.debug(f"Scaled bbox back to original: scale_factor={scale_factor:.3f}")
+
                 # Calculate dimensions
                 bbox_x = int(x1)
                 bbox_y = int(y1)
@@ -946,7 +958,13 @@ class FaceDetectionService:
                 kps = None
                 if hasattr(face, 'kps') and face.kps is not None:
                     kps = face.kps.astype(float).tolist()  # Convert to list for JSON serialization
-                    logger.debug(f"[FaceDetection] Extracted {len(kps)} facial landmarks")
+
+                    # CRITICAL FIX (2026-01-08): Scale landmarks back to original dimensions
+                    if scale_factor != 1.0:
+                        kps = [[x / scale_factor, y / scale_factor] for x, y in kps]
+                        logger.debug(f"[FaceDetection] Scaled {len(kps)} facial landmarks to original dimensions")
+                    else:
+                        logger.debug(f"[FaceDetection] Extracted {len(kps)} facial landmarks")
 
                 faces.append({
                     'bbox': bbox.tolist(),
