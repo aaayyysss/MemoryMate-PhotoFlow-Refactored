@@ -6223,6 +6223,11 @@ class GooglePhotosLayout(BaseLayout):
             copy_action.triggered.connect(lambda: self._copy_path_to_clipboard(path))
             menu.addAction(copy_action)
 
+            # Edit Location action (manual GPS editing)
+            edit_location_action = QAction("📍 Edit Location...", parent=menu)
+            edit_location_action.triggered.connect(lambda: self._edit_photo_location(path))
+            menu.addAction(edit_location_action)
+
             menu.addSeparator()
 
             # Properties action
@@ -6314,6 +6319,51 @@ class GooglePhotosLayout(BaseLayout):
         clipboard = QApplication.clipboard()
         clipboard.setText(path)
         print(f"[GooglePhotosLayout] 📋 Copied to clipboard: {path}")
+
+    def _edit_photo_location(self, path: str):
+        """Edit GPS location for a photo (manual location editing)."""
+        from PySide6.QtWidgets import QMessageBox
+
+        print(f"[GooglePhotosLayout] 📍 Opening location editor for: {path}")
+
+        try:
+            from ui.location_editor_integration import edit_photo_location
+
+            # Show location editor dialog
+            location_changed = edit_photo_location(path, parent=self.main_window)
+
+            # If location was changed, refresh the Locations section
+            if location_changed:
+                print(f"[GooglePhotosLayout] ✓ Location updated for {os.path.basename(path)}")
+
+                # Reload Locations section in accordion sidebar
+                try:
+                    if hasattr(self, 'accordion_sidebar'):
+                        print("[GooglePhotosLayout] Reloading Locations section...")
+                        self.accordion_sidebar.reload_section("locations")
+                    else:
+                        print("[GooglePhotosLayout] Warning: No accordion_sidebar reference")
+                except Exception as e:
+                    print(f"[GooglePhotosLayout] Warning: Failed to reload Locations section: {e}")
+
+                # Also refresh photo properties if properties panel is open
+                # (so GPS info updates immediately)
+
+        except ImportError as e:
+            QMessageBox.critical(
+                self.main_window,
+                "Import Error",
+                f"Failed to load location editor:\n{e}\n\nPlease ensure ui/location_editor_integration.py exists."
+            )
+        except Exception as e:
+            print(f"[GooglePhotosLayout] Error opening location editor: {e}")
+            import traceback
+            traceback.print_exc()
+            QMessageBox.critical(
+                self.main_window,
+                "Error",
+                f"Failed to open location editor:\n{e}"
+            )
 
     def _show_photo_properties(self, path: str):
         """Show photo properties dialog with EXIF data."""
