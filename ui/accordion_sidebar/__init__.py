@@ -35,6 +35,7 @@ from .videos_section import VideosSection
 from .people_section import PeopleSection
 from .devices_section import DevicesSection
 from .quick_section import QuickSection
+from .locations_section import LocationsSection
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +63,7 @@ class AccordionSidebar(QWidget):
     selectPerson = Signal(str)     # person branch_key
     selectVideo  = Signal(str)     # video filter type
     selectDevice = Signal(str)     # device root path
+    selectLocation = Signal(object)  # location data dict {name, lat, lon, count, paths}
     personMerged = Signal(str, str)  # source_branch, target_branch
     personDeleted = Signal(str)      # branch_key
     mergeHistoryRequested = Signal()
@@ -155,6 +157,7 @@ class AccordionSidebar(QWidget):
             "videos": VideosSection(self),
             "people": PeopleSection(self),
             "devices": DevicesSection(self),
+            "locations": LocationsSection(self),
             "quick": QuickSection(self)
         }
 
@@ -255,6 +258,11 @@ class AccordionSidebar(QWidget):
         devices = self.section_logic.get("devices")
         if devices and hasattr(devices, 'deviceSelected'):
             devices.deviceSelected.connect(self.selectDevice.emit)
+
+        # Locations section
+        locations = self.section_logic.get("locations")
+        if locations and hasattr(locations, 'locationSelected'):
+            locations.locationSelected.connect(self.selectLocation.emit)
 
         # Quick section
         quick = self.section_logic.get("quick")
