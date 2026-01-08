@@ -126,24 +126,33 @@ class MetadataService:
 
         return metadata
 
-    def extract_basic_metadata(self, file_path: str) -> Tuple[Optional[int], Optional[int], Optional[str]]:
+    def extract_basic_metadata(self, file_path: str) -> Tuple[Optional[int], Optional[int], Optional[str], Optional[float], Optional[float]]:
         """
-        Fast extraction of just dimensions and date (for scanning).
+        Fast extraction of dimensions, date, and GPS coordinates (for scanning).
+
+        This method is optimized for photo scanning performance while extracting
+        essential metadata including GPS location data.
 
         Args:
             file_path: Path to image file
 
         Returns:
-            Tuple of (width, height, date_taken) or (None, None, None) on failure
+            Tuple of (width, height, date_taken, gps_latitude, gps_longitude)
+            Returns (None, None, None, None, None) on failure
         """
         try:
             with Image.open(file_path) as img:
                 width, height = img.size
                 date_taken = self._get_exif_date(img)
-                return (int(width), int(height), date_taken)
+
+                # Extract GPS coordinates (LONG-TERM FIX: 2026-01-08)
+                # Automatically extract GPS during photo scanning for Locations section
+                gps_lat, gps_lon = self._get_exif_gps(img)
+
+                return (int(width), int(height), date_taken, gps_lat, gps_lon)
         except Exception as e:
             logger.debug(f"Failed basic metadata extraction for {file_path}: {e}")
-            return (None, None, None)
+            return (None, None, None, None, None)
 
     def _extract_file_metadata(self, file_path: str, metadata: ImageMetadata):
         """Extract file system metadata (size, modified time)."""
@@ -310,6 +319,95 @@ class MetadataService:
             return result.strip()
 
         except Exception:
+            return None
+
+    def _get_exif_gps(self, img: Image.Image) -> Tuple[Optional[float], Optional[float]]:
+        """
+        Fast GPS extraction from EXIF data (used by extract_basic_metadata).
+
+        Extracts latitude and longitude coordinates from photo EXIF GPS tags.
+        This enables automatic population of the Locations section during photo scanning.
+
+        Args:
+            img: PIL Image object
+
+        Returns:
+            Tuple of (latitude, longitude) in decimal degrees
+            Returns (None, None) if GPS data not available
+        """
+        try:
+            from PIL.ExifTags import GPSTAGS
+
+            # Get EXIF data
+            exif = img.getexif()
+            if not exif:
+                return (None, None)
+
+            # Find GPS IFD tag (0x8825)
+            gps_ifd = None
+            for tag_id, value in exif.items():
+                tag_name = ExifTags.TAGS.get(tag_id, tag_id)
+                if tag_name == 'GPSInfo':
+                    gps_ifd = value
+                    break
+
+            if not gps_ifd:
+                return (None, None)
+
+            # Convert GPS IFD to readable dictionary
+            gps_data = {}
+            for tag_id in gps_ifd:
+                tag_name = GPSTAGS.get(tag_id, tag_id)
+                gps_data[tag_name] = gps_ifd[tag_id]
+
+            # Extract and convert coordinates
+            if 'GPSLatitude' in gps_data and 'GPSLongitude' in gps_data:
+                lat = self._convert_gps_to_decimal(
+                    gps_data['GPSLatitude'],
+                    gps_data.get('GPSLatitudeRef', 'N')
+                )
+                lon = self._convert_gps_to_decimal(
+                    gps_data['GPSLongitude'],
+                    gps_data.get('GPSLongitudeRef', 'E')
+                )
+
+                # Validate coordinates
+                if lat is not None and lon is not None:
+                    if -90 <= lat <= 90 and -180 <= lon <= 180:
+                        return (lat, lon)
+
+            return (None, None)
+
+        except Exception as e:
+            logger.debug(f"GPS extraction failed: {e}")
+            return (None, None)
+
+    def _convert_gps_to_decimal(self, gps_coord, ref) -> Optional[float]:
+        """
+        Convert GPS coordinates from degrees/minutes/seconds to decimal degrees.
+
+        Args:
+            gps_coord: GPS coordinate in DMS format (degrees, minutes, seconds)
+            ref: Reference direction ('N', 'S', 'E', 'W')
+
+        Returns:
+            Decimal degrees or None if conversion fails
+        """
+        try:
+            degrees = float(gps_coord[0])
+            minutes = float(gps_coord[1])
+            seconds = float(gps_coord[2])
+
+            decimal = degrees + (minutes / 60.0) + (seconds / 3600.0)
+
+            # Apply hemisphere reference
+            if ref in ['S', 'W']:
+                decimal = -decimal
+
+            return decimal
+
+        except (IndexError, TypeError, ValueError) as e:
+            logger.debug(f"GPS coordinate conversion failed: {e}")
             return None
 
     def _compute_created_fields(self, metadata: ImageMetadata):
