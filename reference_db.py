@@ -3521,7 +3521,77 @@ class ReferenceDB:
         # Sort by photo count (descending)
         clusters.sort(key=lambda x: x['count'], reverse=True)
         return clusters
-    
+
+    def create_location_branch(self, project_id: int, lat: float, lon: float, location_name: str = None) -> str:
+        """Create or update a location branch and link photos to it.
+
+        Args:
+            project_id: Project ID
+            lat: Latitude of location center
+            lon: Longitude of location center
+            location_name: Optional location name
+
+        Returns:
+            branch_key: The created/updated branch key (e.g., "location_37.7749_-122.4194")
+        """
+        from settings_manager_qt import SettingsManager
+        sm = SettingsManager()
+        radius_km = float(sm.get("gps_clustering_radius_km", 5.0))
+
+        # Create branch key from coordinates
+        branch_key = f"location_{lat:.4f}_{lon:.4f}"
+
+        with self._connect() as conn:
+            cur = conn.cursor()
+
+            # Check if GPS columns exist
+            existing_cols = [r[1] for r in cur.execute("PRAGMA table_info(photo_metadata)")]
+            if 'gps_latitude' not in existing_cols or 'gps_longitude' not in existing_cols:
+                return branch_key
+
+            # Find all photos within radius of this location
+            cur.execute("""
+                SELECT p.path, p.gps_latitude, p.gps_longitude
+                FROM photo_metadata p
+                JOIN photo_folders f ON f.id = p.folder_id
+                WHERE p.gps_latitude IS NOT NULL
+                  AND p.gps_longitude IS NOT NULL
+                  AND f.path LIKE (SELECT folder || '%' FROM projects WHERE id = ?)
+            """, (project_id,))
+
+            rows = cur.fetchall()
+
+            # Filter photos by distance
+            location_photos = []
+            for row in rows:
+                photo_path = row[0]
+                photo_lat = row[1]
+                photo_lon = row[2]
+
+                dist = self._haversine_distance(lat, lon, photo_lat, photo_lon)
+                if dist <= radius_km:
+                    location_photos.append(photo_path)
+
+            # Link photos to branch (create branch entries in project_images)
+            if location_photos:
+                # Clear existing photos for this branch
+                cur.execute("""
+                    DELETE FROM project_images
+                    WHERE project_id = ? AND branch_key = ?
+                """, (project_id, branch_key))
+
+                # Insert photos for this location
+                photo_data = [(project_id, branch_key, photo_path)
+                             for photo_path in location_photos]
+                cur.executemany("""
+                    INSERT INTO project_images (project_id, branch_key, image_path)
+                    VALUES (?, ?, ?)
+                """, photo_data)
+
+                conn.commit()
+
+            return branch_key
+
     def cache_location_name(self, latitude: float, longitude: float, location_name: str):
         """Cache a reverse-geocoded location name to reduce API calls."""
         with self._connect() as conn:
