@@ -38,8 +38,8 @@ def get_photo_location(photo_path: str) -> tuple[Optional[float], Optional[float
         with db._connect() as conn:
             cur = conn.cursor()
 
-            # Check if GPS columns exist
-            existing_cols = [r[1] for r in cur.execute("PRAGMA table_info(photo_metadata)")]
+            # Check if GPS columns exist (Row objects use dict-like access)
+            existing_cols = [r['name'] for r in cur.execute("PRAGMA table_info(photo_metadata)")]
             if 'gps_latitude' not in existing_cols or 'gps_longitude' not in existing_cols:
                 return (None, None, None)
 
@@ -52,7 +52,7 @@ def get_photo_location(photo_path: str) -> tuple[Optional[float], Optional[float
 
             row = cur.fetchone()
             if row:
-                return (row[0], row[1], row[2])
+                return (row['gps_latitude'], row['gps_longitude'], row['location_name'])
 
             return (None, None, None)
 

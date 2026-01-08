@@ -163,7 +163,8 @@ class PhotoRepository(BaseRepository):
         # Ensure GPS columns exist (creates columns automatically if needed)
         with self.connection() as conn:
             cur = conn.cursor()
-            existing_cols = [r[1] for r in cur.execute("PRAGMA table_info(photo_metadata)")]
+            # PRAGMA table_info returns Row objects, use column name access
+            existing_cols = [r['name'] for r in cur.execute("PRAGMA table_info(photo_metadata)")]
             if 'gps_latitude' not in existing_cols:
                 cur.execute("ALTER TABLE photo_metadata ADD COLUMN gps_latitude REAL")
             if 'gps_longitude' not in existing_cols:
@@ -230,7 +231,8 @@ class PhotoRepository(BaseRepository):
         # Ensure GPS columns exist before bulk insert (creates columns automatically if needed)
         with self.connection() as conn:
             cur = conn.cursor()
-            existing_cols = [r[1] for r in cur.execute("PRAGMA table_info(photo_metadata)")]
+            # PRAGMA table_info returns Row objects, use column name access
+            existing_cols = [r['name'] for r in cur.execute("PRAGMA table_info(photo_metadata)")]
             if 'gps_latitude' not in existing_cols:
                 cur.execute("ALTER TABLE photo_metadata ADD COLUMN gps_latitude REAL")
             if 'gps_longitude' not in existing_cols:
