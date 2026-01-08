@@ -1274,6 +1274,13 @@ class FaceDetectionService:
         try:
             # BUG-C2 FIX: Use context manager to prevent resource leak
             with Image.open(image_path) as img:
+                # CRITICAL FIX (2026-01-08): Apply EXIF auto-rotation BEFORE cropping
+                # Without this, face crops from rotated photos (portrait mode, etc.) appear sideways
+                # Note: detect_faces() already applies exif_transpose when reading for detection,
+                # so bbox coordinates are relative to the ROTATED image. We must apply the same
+                # rotation here before cropping, otherwise bbox coordinates will be misaligned.
+                img = ImageOps.exif_transpose(img)
+
                 # Extract bounding box
                 bbox_x = face['bbox_x']
                 bbox_y = face['bbox_y']
@@ -1326,12 +1333,13 @@ class FaceDetectionService:
 
                 file_ext = os.path.splitext(output_path)[1].lower()
                 if file_ext in ['.jpg', '.jpeg']:
-                    face_img.save(output_path, format='JPEG', quality=crop_quality)
+                    # Save without EXIF to prevent double-rotation (we already applied rotation above)
+                    face_img.save(output_path, format='JPEG', quality=crop_quality, exif=b'')
                 elif file_ext == '.png':
                     face_img.save(output_path, format='PNG')
                 else:
-                    # Default to JPEG
-                    face_img.save(output_path, format='JPEG', quality=crop_quality)
+                    # Default to JPEG without EXIF
+                    face_img.save(output_path, format='JPEG', quality=crop_quality, exif=b'')
 
                 logger.debug(f"Saved face crop to {output_path}")
                 return True

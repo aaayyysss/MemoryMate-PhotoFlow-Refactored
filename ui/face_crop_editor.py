@@ -2138,7 +2138,9 @@ class FaceCropEditor(QDialog):
                 # Save crop (convert to RGB if needed)
                 if face_crop.mode != 'RGB':
                     face_crop = face_crop.convert('RGB')
-                face_crop.save(str(crop_path), "JPEG", quality=95)
+                # CRITICAL FIX (2026-01-08): Save without EXIF to prevent double-rotation
+                # We already applied exif_transpose above, so saved image should have no rotation tag
+                face_crop.save(str(crop_path), "JPEG", quality=95, exif=b'')
 
                 logger.info(f"[FaceCropEditor] Saved face crop: {crop_path}")
                 return str(crop_path)
