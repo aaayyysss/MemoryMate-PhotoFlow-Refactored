@@ -29,7 +29,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtGui import QPixmap, QFont, QImage, QPainter, Qt as QtNamespace
 from PySide6.QtCore import Qt, Signal, QSize
-from PIL import Image
+from PIL import Image, ImageOps
 
 from reference_db import ReferenceDB
 
@@ -430,26 +430,41 @@ class PhotoCard(QFrame):
         layout.addLayout(meta_layout)
 
     def _load_thumbnail(self) -> Optional[QPixmap]:
-        """Load thumbnail for photo."""
+        """Load thumbnail for photo with proper EXIF orientation handling."""
         try:
             if not os.path.exists(self.photo_path):
                 return None
 
             # Load and resize image
             with Image.open(self.photo_path) as img:
+                # CRITICAL FIX (2026-01-08): Apply EXIF auto-rotation BEFORE thumbnailing
+                # Without this, portrait mode photos and rotated images display sideways
+                img = ImageOps.exif_transpose(img)
+
                 # Convert to RGB if needed
                 if img.mode != 'RGB':
                     img = img.convert('RGB')
 
-                # Create thumbnail
+                # Create thumbnail (modifies img in-place to fit within 150×150)
                 img.thumbnail((150, 150), Image.Resampling.LANCZOS)
+
+                # CRITICAL FIX (2026-01-08): Calculate bytes_per_line explicitly
+                # Without this, QImage may calculate stride incorrectly causing display corruption
+                bytes_per_line = img.width * 3  # 3 bytes per RGB pixel
 
                 # Convert to QPixmap
                 data = img.tobytes("raw", "RGB")
-                qimg = QImage(data, img.width, img.height, QImage.Format_RGB888)
+                qimg = QImage(data, img.width, img.height, bytes_per_line, QImage.Format_RGB888)
+
+                # CRITICAL FIX (2026-01-08): Deep copy QImage to ensure Qt owns the data
+                # Without this, Python GC may deallocate data while QPixmap still references it
+                qimg = qimg.copy()
+
                 pixmap = QPixmap.fromImage(qimg)
 
-                return pixmap.scaled(150, 150, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                # Note: No need for additional scaling - thumbnail() already resized to fit 150×150
+                # with aspect ratio preserved. QPixmap will display at actual size.
+                return pixmap
 
         except Exception as e:
             logger.debug(f"[PhotoCard] Failed to load thumbnail for {self.photo_path}: {e}")
