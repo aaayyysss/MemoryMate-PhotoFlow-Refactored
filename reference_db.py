@@ -3620,12 +3620,12 @@ class ReferenceDB:
             cur = conn.cursor()
             # Check if cache table exists
             cur.execute("""
-                SELECT name FROM sqlite_master 
+                SELECT name FROM sqlite_master
                 WHERE type='table' AND name='gps_location_cache'
             """)
             if not cur.fetchone():
                 return None
-            
+
             # Find nearest cached location within tolerance
             cur.execute("""
                 SELECT location_name FROM gps_location_cache
@@ -3635,6 +3635,233 @@ class ReferenceDB:
             """, (latitude, tolerance, longitude, tolerance, latitude, longitude))
             row = cur.fetchone()
             return row[0] if row else None
+
+    def geocode_photos_missing_location_names(self, project_id: int | None = None,
+                                             max_requests: int = 100,
+                                             progress_callback=None) -> dict:
+        """
+        Automatically geocode photos that have GPS data but no location name.
+
+        Args:
+            project_id: Optional project ID to limit scope
+            max_requests: Maximum API requests to make (default: 100)
+            progress_callback: Optional callback(current, total, photo_path, location_name)
+
+        Returns:
+            dict with 'processed', 'geocoded', 'cached', 'failed' counts
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+
+        logger.info(f"[ReferenceDB] Starting geocoding for project {project_id}...")
+
+        with self._connect() as conn:
+            cur = conn.cursor()
+
+            # Check if GPS columns exist
+            existing_cols = [r[1] for r in cur.execute("PRAGMA table_info(photo_metadata)")]
+            if 'gps_latitude' not in existing_cols or 'gps_longitude' not in existing_cols:
+                logger.warning("[ReferenceDB] GPS columns not found in photo_metadata")
+                return {'processed': 0, 'geocoded': 0, 'cached': 0, 'failed': 0}
+
+            # Find photos with GPS but no location name
+            if project_id:
+                cur.execute("""
+                    SELECT p.path, p.gps_latitude, p.gps_longitude
+                    FROM photo_metadata p
+                    JOIN photo_folders f ON f.id = p.folder_id
+                    WHERE p.gps_latitude IS NOT NULL
+                      AND p.gps_longitude IS NOT NULL
+                      AND (p.location_name IS NULL OR p.location_name = '' OR p.location_name = 'Unknown Location')
+                      AND f.path LIKE (SELECT folder || '%' FROM projects WHERE id = ?)
+                    LIMIT ?
+                """, (project_id, max_requests))
+            else:
+                cur.execute("""
+                    SELECT path, gps_latitude, gps_longitude
+                    FROM photo_metadata
+                    WHERE gps_latitude IS NOT NULL
+                      AND gps_longitude IS NOT NULL
+                      AND (location_name IS NULL OR location_name = '' OR location_name = 'Unknown Location')
+                    LIMIT ?
+                """, (max_requests,))
+
+            photos = cur.fetchall()
+
+        if not photos:
+            logger.info("[ReferenceDB] No photos need geocoding")
+            return {'processed': 0, 'geocoded': 0, 'cached': 0, 'failed': 0}
+
+        logger.info(f"[ReferenceDB] Found {len(photos)} photos to geocode")
+
+        # Import geocoding service
+        try:
+            from services.geocoding_service import get_geocoding_service
+            geocoding_service = get_geocoding_service()
+        except ImportError as e:
+            logger.error(f"[ReferenceDB] Failed to import geocoding service: {e}")
+            return {'processed': 0, 'geocoded': 0, 'cached': 0, 'failed': 0}
+
+        # Process photos
+        stats = {'processed': 0, 'geocoded': 0, 'cached': 0, 'failed': 0}
+
+        for i, (photo_path, lat, lon) in enumerate(photos, 1):
+            try:
+                # Check cache first
+                cached_name = self.get_cached_location_name(lat, lon, tolerance=0.01)
+
+                if cached_name:
+                    location_name = cached_name
+                    stats['cached'] += 1
+                    logger.debug(f"[ReferenceDB] Cache hit: {photo_path} → {location_name}")
+                else:
+                    # Make API request
+                    location_name = geocoding_service.reverse_geocode(lat, lon)
+                    if location_name:
+                        stats['geocoded'] += 1
+                        logger.info(f"[ReferenceDB] Geocoded: {photo_path} → {location_name}")
+                    else:
+                        location_name = "Unknown Location"
+                        stats['failed'] += 1
+                        logger.warning(f"[ReferenceDB] Geocoding failed: {photo_path}")
+
+                # Update photo metadata
+                self.update_photo_gps(photo_path, lat, lon, location_name)
+                stats['processed'] += 1
+
+                # Progress callback
+                if progress_callback:
+                    progress_callback(i, len(photos), photo_path, location_name)
+
+            except Exception as e:
+                logger.error(f"[ReferenceDB] Error geocoding {photo_path}: {e}")
+                stats['failed'] += 1
+
+        logger.info(f"[ReferenceDB] Geocoding complete: {stats}")
+        return stats
+
+    def batch_geocode_unique_coordinates(self, project_id: int | None = None,
+                                        max_locations: int = 50,
+                                        progress_callback=None) -> dict:
+        """
+        Geocode unique GPS coordinates efficiently (batch mode).
+
+        This method finds all unique GPS coordinates in the project,
+        geocodes them once, then updates all photos with those coordinates.
+        Much more efficient than geocoding each photo individually.
+
+        Args:
+            project_id: Optional project ID to limit scope
+            max_locations: Maximum unique locations to geocode (default: 50)
+            progress_callback: Optional callback(current, total, location)
+
+        Returns:
+            dict with 'locations_geocoded', 'photos_updated', 'cached', 'failed' counts
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+
+        logger.info(f"[ReferenceDB] Starting batch geocoding for project {project_id}...")
+
+        with self._connect() as conn:
+            cur = conn.cursor()
+
+            # Check if GPS columns exist
+            existing_cols = [r[1] for r in cur.execute("PRAGMA table_info(photo_metadata)")]
+            if 'gps_latitude' not in existing_cols or 'gps_longitude' not in existing_cols:
+                logger.warning("[ReferenceDB] GPS columns not found in photo_metadata")
+                return {'locations_geocoded': 0, 'photos_updated': 0, 'cached': 0, 'failed': 0}
+
+            # Find unique GPS coordinates that need geocoding
+            if project_id:
+                cur.execute("""
+                    SELECT DISTINCT p.gps_latitude, p.gps_longitude, COUNT(*) as photo_count
+                    FROM photo_metadata p
+                    JOIN photo_folders f ON f.id = p.folder_id
+                    WHERE p.gps_latitude IS NOT NULL
+                      AND p.gps_longitude IS NOT NULL
+                      AND (p.location_name IS NULL OR p.location_name = '' OR p.location_name = 'Unknown Location')
+                      AND f.path LIKE (SELECT folder || '%' FROM projects WHERE id = ?)
+                    GROUP BY p.gps_latitude, p.gps_longitude
+                    ORDER BY photo_count DESC
+                    LIMIT ?
+                """, (project_id, max_locations))
+            else:
+                cur.execute("""
+                    SELECT DISTINCT gps_latitude, gps_longitude, COUNT(*) as photo_count
+                    FROM photo_metadata
+                    WHERE gps_latitude IS NOT NULL
+                      AND gps_longitude IS NOT NULL
+                      AND (location_name IS NULL OR location_name = '' OR location_name = 'Unknown Location')
+                    GROUP BY gps_latitude, gps_longitude
+                    ORDER BY photo_count DESC
+                    LIMIT ?
+                """, (max_locations,))
+
+            unique_coords = cur.fetchall()
+
+        if not unique_coords:
+            logger.info("[ReferenceDB] No unique coordinates need geocoding")
+            return {'locations_geocoded': 0, 'photos_updated': 0, 'cached': 0, 'failed': 0}
+
+        logger.info(f"[ReferenceDB] Found {len(unique_coords)} unique locations affecting "
+                   f"{sum(c[2] for c in unique_coords)} photos")
+
+        # Import geocoding service
+        try:
+            from services.geocoding_service import get_geocoding_service
+            geocoding_service = get_geocoding_service()
+        except ImportError as e:
+            logger.error(f"[ReferenceDB] Failed to import geocoding service: {e}")
+            return {'locations_geocoded': 0, 'photos_updated': 0, 'cached': 0, 'failed': 0}
+
+        # Process unique coordinates
+        stats = {'locations_geocoded': 0, 'photos_updated': 0, 'cached': 0, 'failed': 0}
+
+        for i, (lat, lon, photo_count) in enumerate(unique_coords, 1):
+            try:
+                # Check cache first
+                cached_name = self.get_cached_location_name(lat, lon, tolerance=0.01)
+
+                if cached_name:
+                    location_name = cached_name
+                    stats['cached'] += 1
+                    logger.debug(f"[ReferenceDB] Cache hit: ({lat:.4f}, {lon:.4f}) → {location_name}")
+                else:
+                    # Make API request
+                    location_name = geocoding_service.reverse_geocode(lat, lon)
+                    if location_name:
+                        stats['locations_geocoded'] += 1
+                        logger.info(f"[ReferenceDB] Geocoded: ({lat:.4f}, {lon:.4f}) → {location_name} ({photo_count} photos)")
+                    else:
+                        location_name = "Unknown Location"
+                        stats['failed'] += 1
+                        logger.warning(f"[ReferenceDB] Geocoding failed: ({lat:.4f}, {lon:.4f})")
+
+                # Update all photos with these coordinates
+                with self._connect() as conn:
+                    cur = conn.cursor()
+                    cur.execute("""
+                        UPDATE photo_metadata
+                        SET location_name = ?
+                        WHERE gps_latitude = ? AND gps_longitude = ?
+                    """, (location_name, lat, lon))
+                    updated_count = cur.rowcount
+                    conn.commit()
+
+                stats['photos_updated'] += updated_count
+                logger.info(f"[ReferenceDB] Updated {updated_count} photos with location: {location_name}")
+
+                # Progress callback
+                if progress_callback:
+                    progress_callback(i, len(unique_coords), (lat, lon, location_name))
+
+            except Exception as e:
+                logger.error(f"[ReferenceDB] Error geocoding ({lat:.4f}, {lon:.4f}): {e}")
+                stats['failed'] += 1
+
+        logger.info(f"[ReferenceDB] Batch geocoding complete: {stats}")
+        return stats
 
     # --- End GPS & Location methods ---
 
