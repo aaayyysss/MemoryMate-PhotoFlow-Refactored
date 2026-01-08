@@ -346,7 +346,7 @@ class ReferenceDB:
         c.execute("CREATE INDEX IF NOT EXISTS idx_photo_tags_tag ON photo_tags(tag_id)")
 
         # --- Add missing columns dynamically if upgrading from older schema ---
-        existing_cols = [r[1] for r in c.execute("PRAGMA table_info(photo_metadata)")]
+        existing_cols = [r['name'] for r in c.execute("PRAGMA table_info(photo_metadata)")]
         wanted_cols = {
             "size_kb": "REAL",
             "modified": "TEXT",
@@ -3404,7 +3404,7 @@ class ReferenceDB:
         with self._connect() as conn:
             cur = conn.cursor()
             # Add GPS columns if they don't exist yet
-            existing_cols = [r[1] for r in cur.execute("PRAGMA table_info(photo_metadata)")]
+            existing_cols = [r['name'] for r in cur.execute("PRAGMA table_info(photo_metadata)")]
             if 'gps_latitude' not in existing_cols:
                 cur.execute("ALTER TABLE photo_metadata ADD COLUMN gps_latitude REAL")
             if 'gps_longitude' not in existing_cols:
@@ -3434,7 +3434,7 @@ class ReferenceDB:
         with self._connect() as conn:
             cur = conn.cursor()
             # First check if GPS columns exist
-            existing_cols = [r[1] for r in cur.execute("PRAGMA table_info(photo_metadata)")]
+            existing_cols = [r['name'] for r in cur.execute("PRAGMA table_info(photo_metadata)")]
             if 'gps_latitude' not in existing_cols or 'gps_longitude' not in existing_cols:
                 return {}
             
@@ -3530,7 +3530,7 @@ class ReferenceDB:
             cur = conn.cursor()
 
             # Check for GPS columns
-            existing_cols = [r[1] for r in cur.execute("PRAGMA table_info(photo_metadata)")]
+            existing_cols = [r['name'] for r in cur.execute("PRAGMA table_info(photo_metadata)")]
             has_gps_cols = 'gps_latitude' in existing_cols and 'gps_longitude' in existing_cols
 
             logger.info(f"[get_location_clusters] GPS columns exist: {has_gps_cols}")
@@ -3618,7 +3618,7 @@ class ReferenceDB:
             cur = conn.cursor()
 
             # Check if GPS columns exist
-            existing_cols = [r[1] for r in cur.execute("PRAGMA table_info(photo_metadata)")]
+            existing_cols = [r['name'] for r in cur.execute("PRAGMA table_info(photo_metadata)")]
             if 'gps_latitude' not in existing_cols or 'gps_longitude' not in existing_cols:
                 return branch_key
 
@@ -3732,7 +3732,7 @@ class ReferenceDB:
             cur = conn.cursor()
 
             # Check if GPS columns exist
-            existing_cols = [r[1] for r in cur.execute("PRAGMA table_info(photo_metadata)")]
+            existing_cols = [r['name'] for r in cur.execute("PRAGMA table_info(photo_metadata)")]
             if 'gps_latitude' not in existing_cols or 'gps_longitude' not in existing_cols:
                 logger.warning("[ReferenceDB] GPS columns not found in photo_metadata")
                 return {'processed': 0, 'geocoded': 0, 'cached': 0, 'failed': 0}
@@ -3840,7 +3840,7 @@ class ReferenceDB:
             cur = conn.cursor()
 
             # Check if GPS columns exist
-            existing_cols = [r[1] for r in cur.execute("PRAGMA table_info(photo_metadata)")]
+            existing_cols = [r['name'] for r in cur.execute("PRAGMA table_info(photo_metadata)")]
             if 'gps_latitude' not in existing_cols or 'gps_longitude' not in existing_cols:
                 logger.warning("[ReferenceDB] GPS columns not found in photo_metadata")
                 return {'locations_geocoded': 0, 'photos_updated': 0, 'cached': 0, 'failed': 0}

@@ -95,8 +95,8 @@ def extract_gps_data(project_id=None, geocode=False, max_geocode=50, progress_ca
             with db._connect() as conn:
                 cur = conn.cursor()
 
-                # Check if GPS columns exist
-                existing_cols = [r[1] for r in cur.execute("PRAGMA table_info(photo_metadata)")]
+                # Check if GPS columns exist (Row objects use dict-like access)
+                existing_cols = [r['name'] for r in cur.execute("PRAGMA table_info(photo_metadata)")]
                 has_gps_cols = 'gps_latitude' in existing_cols and 'gps_longitude' in existing_cols
 
                 if has_gps_cols:
@@ -106,7 +106,7 @@ def extract_gps_data(project_id=None, geocode=False, max_geocode=50, progress_ca
                         WHERE path = ?
                     """, (photo_path,))
                     row = cur.fetchone()
-                    if row and row[0] is not None and row[1] is not None:
+                    if row and row['gps_latitude'] is not None and row['gps_longitude'] is not None:
                         stats['already_had_gps'] += 1
                         continue  # Skip photos that already have GPS
 
