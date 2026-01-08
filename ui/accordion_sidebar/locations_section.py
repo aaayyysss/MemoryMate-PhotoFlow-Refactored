@@ -105,9 +105,16 @@ class LocationsSection(BaseSection):
         location_clusters = data or []
 
         if not location_clusters:
-            placeholder = QLabel("No locations found\n\nPhotos with GPS data will appear here")
+            placeholder = QLabel(
+                "📍 No Locations Found\n\n"
+                "Photos with GPS data will appear here.\n\n"
+                "To add locations:\n"
+                "• Use photos taken with location services enabled\n"
+                "• Add location manually via photo details (coming soon)"
+            )
             placeholder.setAlignment(Qt.AlignCenter)
-            placeholder.setStyleSheet("padding: 20px; color: #666;")
+            placeholder.setStyleSheet("padding: 20px; color: #666; line-height: 1.6;")
+            placeholder.setWordWrap(True)
             return placeholder
 
         # Create tree widget
