@@ -128,7 +128,9 @@ class PhotoRepository(BaseRepository):
                tags: Optional[str] = None,
                created_ts: Optional[int] = None,
                created_date: Optional[str] = None,
-               created_year: Optional[int] = None) -> int:
+               created_year: Optional[int] = None,
+               gps_latitude: Optional[float] = None,
+               gps_longitude: Optional[float] = None) -> int:
         """
         Insert or update photo metadata for a project.
 
@@ -145,6 +147,8 @@ class PhotoRepository(BaseRepository):
             created_ts: Unix timestamp for date hierarchy (BUG FIX #7)
             created_date: YYYY-MM-DD format for date queries (BUG FIX #7)
             created_year: Year for date grouping (BUG FIX #7)
+            gps_latitude: GPS latitude in decimal degrees (LONG-TERM FIX 2026-01-08)
+            gps_longitude: GPS longitude in decimal degrees (LONG-TERM FIX 2026-01-08)
 
         Returns:
             Photo ID (newly inserted or existing)
@@ -156,12 +160,25 @@ class PhotoRepository(BaseRepository):
 
         now = time.strftime("%Y-%m-%d %H:%M:%S")
 
+        # Ensure GPS columns exist (creates columns automatically if needed)
+        with self.connection() as conn:
+            cur = conn.cursor()
+            existing_cols = [r[1] for r in cur.execute("PRAGMA table_info(photo_metadata)")]
+            if 'gps_latitude' not in existing_cols:
+                cur.execute("ALTER TABLE photo_metadata ADD COLUMN gps_latitude REAL")
+            if 'gps_longitude' not in existing_cols:
+                cur.execute("ALTER TABLE photo_metadata ADD COLUMN gps_longitude REAL")
+            if 'location_name' not in existing_cols:
+                cur.execute("ALTER TABLE photo_metadata ADD COLUMN location_name TEXT")
+            conn.commit()
+
         # BUG FIX #7: Include created_ts, created_date, created_year for date hierarchy queries
+        # LONG-TERM FIX (2026-01-08): Include gps_latitude, gps_longitude for Locations section
         sql = """
             INSERT INTO photo_metadata
                 (path, folder_id, project_id, size_kb, modified, width, height, date_taken, tags, updated_at,
-                 created_ts, created_date, created_year)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 created_ts, created_date, created_year, gps_latitude, gps_longitude)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(path, project_id) DO UPDATE SET
                 folder_id = excluded.folder_id,
                 size_kb = excluded.size_kb,
@@ -173,13 +190,15 @@ class PhotoRepository(BaseRepository):
                 updated_at = excluded.updated_at,
                 created_ts = excluded.created_ts,
                 created_date = excluded.created_date,
-                created_year = excluded.created_year
+                created_year = excluded.created_year,
+                gps_latitude = excluded.gps_latitude,
+                gps_longitude = excluded.gps_longitude
         """
 
         with self.connection() as conn:
             cur = conn.cursor()
             cur.execute(sql, (normalized_path, folder_id, project_id, size_kb, modified, width, height,
-                            date_taken, tags, now, created_ts, created_date, created_year))
+                            date_taken, tags, now, created_ts, created_date, created_year, gps_latitude, gps_longitude))
             conn.commit()
 
             # Get the ID of the inserted/updated row
@@ -187,7 +206,7 @@ class PhotoRepository(BaseRepository):
             result = cur.fetchone()
             photo_id = result['id'] if result else None
 
-        self.logger.debug(f"Upserted photo: {normalized_path} (id={photo_id}, project={project_id})")
+        self.logger.debug(f"Upserted photo: {normalized_path} (id={photo_id}, project={project_id}, GPS=({gps_latitude}, {gps_longitude}))")
         return photo_id
 
     def bulk_upsert(self, rows: List[tuple], project_id: int) -> int:
@@ -196,7 +215,7 @@ class PhotoRepository(BaseRepository):
 
         Args:
             rows: List of tuples: (path, folder_id, size_kb, modified, width, height, date_taken, tags,
-                                   created_ts, created_date, created_year)
+                                   created_ts, created_date, created_year, gps_latitude, gps_longitude)
             project_id: Project ID
 
         Returns:
@@ -208,28 +227,41 @@ class PhotoRepository(BaseRepository):
         import time
         now = time.strftime("%Y-%m-%d %H:%M:%S")
 
+        # Ensure GPS columns exist before bulk insert (creates columns automatically if needed)
+        with self.connection() as conn:
+            cur = conn.cursor()
+            existing_cols = [r[1] for r in cur.execute("PRAGMA table_info(photo_metadata)")]
+            if 'gps_latitude' not in existing_cols:
+                cur.execute("ALTER TABLE photo_metadata ADD COLUMN gps_latitude REAL")
+            if 'gps_longitude' not in existing_cols:
+                cur.execute("ALTER TABLE photo_metadata ADD COLUMN gps_longitude REAL")
+            if 'location_name' not in existing_cols:
+                cur.execute("ALTER TABLE photo_metadata ADD COLUMN location_name TEXT")
+            conn.commit()
+
         # Normalize paths and add project_id + updated_at timestamp to each row
         rows_normalized = []
         for row in rows:
-            # BUG FIX #7: Unpack with created_* fields
+            # BUG FIX #7 + LONG-TERM FIX (2026-01-08): Unpack with created_* and GPS fields
             # (path, folder_id, size_kb, modified, width, height, date_taken, tags,
-            #  created_ts, created_date, created_year)
+            #  created_ts, created_date, created_year, gps_latitude, gps_longitude)
             path = row[0]
             normalized_path = self._normalize_path(path)
             # Rebuild tuple with normalized path and project_id
             # New order: (path, folder_id, project_id, size_kb, modified, width, height, date_taken, tags,
-            #             updated_at, created_ts, created_date, created_year)
+            #             updated_at, created_ts, created_date, created_year, gps_latitude, gps_longitude)
             normalized_row = (normalized_path, row[1], project_id) + row[2:8] + (now,) + row[8:]
             rows_normalized.append(normalized_row)
 
         rows_with_timestamp = rows_normalized
 
         # BUG FIX #7: Include created_ts, created_date, created_year in INSERT
+        # LONG-TERM FIX (2026-01-08): Include gps_latitude, gps_longitude for Locations section
         sql = """
             INSERT INTO photo_metadata
                 (path, folder_id, project_id, size_kb, modified, width, height, date_taken, tags, updated_at,
-                 created_ts, created_date, created_year)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 created_ts, created_date, created_year, gps_latitude, gps_longitude)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(path, project_id) DO UPDATE SET
                 folder_id = excluded.folder_id,
                 size_kb = excluded.size_kb,
@@ -241,7 +273,9 @@ class PhotoRepository(BaseRepository):
                 updated_at = excluded.updated_at,
                 created_ts = excluded.created_ts,
                 created_date = excluded.created_date,
-                created_year = excluded.created_year
+                created_year = excluded.created_year,
+                gps_latitude = excluded.gps_latitude,
+                gps_longitude = excluded.gps_longitude
         """
 
         with self.connection() as conn:

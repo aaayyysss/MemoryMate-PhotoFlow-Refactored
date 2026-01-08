@@ -842,11 +842,12 @@ class PhotoScanService:
         if self._cancelled:
             return None
 
-        # Step 4: Extract dimensions and EXIF date using MetadataService
+        # Step 4: Extract dimensions, EXIF date, and GPS using MetadataService
         # CRITICAL FIX: Wrap metadata extraction with timeout to prevent hangs
         # PIL/Pillow can hang on corrupted images, malformed TIFF/EXIF, or files with infinite loops
         # BUG FIX #8: Use fast extract_basic_metadata() to avoid hangs, compute created_* inline
-        width = height = date_taken = None
+        # LONG-TERM FIX (2026-01-08): Now also extracts GPS coordinates for Locations section
+        width = height = date_taken = gps_lat = gps_lon = None
         created_ts = created_date = created_year = None
         metadata_timeout = 5.0  # 5 seconds per image
 
@@ -864,12 +865,18 @@ class PhotoScanService:
                 self._last_file_details['status'] = 'extracting'
 
                 future = executor.submit(self.metadata_service.extract_basic_metadata, str(file_path))
-                width, height, date_taken = future.result(timeout=metadata_timeout)
+                width, height, date_taken, gps_lat, gps_lon = future.result(timeout=metadata_timeout)
 
                 # Store extracted metadata for progress updates
                 self._last_file_details['width'] = width
                 self._last_file_details['height'] = height
                 self._last_file_details['date_taken'] = date_taken
+
+                # Log GPS extraction if found
+                if gps_lat is not None and gps_lon is not None:
+                    logger.info(f"[Scan] ✓ GPS extracted: {os.path.basename(path_str)} ({gps_lat:.4f}, {gps_lon:.4f})")
+                    print(f"[SCAN] ✓ GPS: ({gps_lat:.4f}, {gps_lon:.4f})")
+                    sys.stdout.flush()
 
                 print(f"[SCAN] ✓ Metadata extracted: {os.path.basename(path_str)} [w={width}, h={height}, date={date_taken}]")
                 sys.stdout.flush()
@@ -888,7 +895,7 @@ class PhotoScanService:
             # Just get dimensions without EXIF (with timeout)
             try:
                 future = executor.submit(self.metadata_service.extract_basic_metadata, str(file_path))
-                width, height, _ = future.result(timeout=metadata_timeout)
+                width, height, _, gps_lat, gps_lon = future.result(timeout=metadata_timeout)
             except FuturesTimeoutError:
                 logger.warning(f"Dimension extraction timeout for {path_str} (5s limit)")
                 try:
@@ -937,10 +944,11 @@ class PhotoScanService:
 
         # Return row tuple for batch insert
         # BUG FIX #7: Include created_ts, created_date, created_year for date hierarchy
+        # LONG-TERM FIX (2026-01-08): Include gps_latitude, gps_longitude for Locations section
         # (path, folder_id, size_kb, modified, width, height, date_taken, tags,
-        #  created_ts, created_date, created_year)
+        #  created_ts, created_date, created_year, gps_latitude, gps_longitude)
         return (path_str, folder_id, size_kb, mtime, width, height, date_taken, None,
-                created_ts, created_date, created_year)
+                created_ts, created_date, created_year, gps_lat, gps_lon)
 
     def _ensure_folder_hierarchy(self, folder_path: Path, root_path: Path, project_id: int) -> int:
         """
@@ -1001,7 +1009,7 @@ class PhotoScanService:
 
         Args:
             rows: List of tuples (path, folder_id, size_kb, modified, width, height, date_taken, tags,
-                                   created_ts, created_date, created_year)
+                                   created_ts, created_date, created_year, gps_latitude, gps_longitude)
             project_id: Project ID for photo ownership
         """
         if not rows:
@@ -1026,10 +1034,11 @@ class PhotoScanService:
             for idx, row in enumerate(rows, 1):
                 try:
                     # BUG FIX #7: Unpack row with created_* fields
-                    path, folder_id, size_kb, modified, width, height, date_taken, tags, created_ts, created_date, created_year = row
+                    # LONG-TERM FIX (2026-01-08): Include GPS coordinates
+                    path, folder_id, size_kb, modified, width, height, date_taken, tags, created_ts, created_date, created_year, gps_lat, gps_lon = row
                     print(f"[SCAN] Writing individual photo {idx}/{len(rows)}: {os.path.basename(path)}")
                     self.photo_repo.upsert(path, folder_id, project_id, size_kb, modified, width, height,
-                                          date_taken, tags, created_ts, created_date, created_year)
+                                          date_taken, tags, created_ts, created_date, created_year, gps_lat, gps_lon)
                 except Exception as e2:
                     print(f"[SCAN] ⚠️ Failed to write photo {idx}/{len(rows)}: {e2}")
                     logger.error(f"Failed to write individual photo {row[0]}: {e2}")

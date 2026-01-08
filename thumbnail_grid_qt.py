@@ -1585,6 +1585,12 @@ class ThumbnailGridQt(QWidget):
         if not present_tags:
             act_clear_all.setEnabled(False)  # Disable if no tags present
 
+        # Edit Location - manual GPS editing
+        act_edit_location = m.addAction("📍 Edit Location...")
+        # Only enable for single photo selection
+        if len(paths) != 1:
+            act_edit_location.setEnabled(False)
+
         m.addSeparator()
         act_export = m.addAction(tr('context_menu.export'))
         act_delete = m.addAction(tr('context_menu.delete'))
@@ -1825,6 +1831,59 @@ class ThumbnailGridQt(QWidget):
             if active_tag and active_tag.lower() in [t.lower() for t in present_tags]:
                 print(f"[Tag] Reloading grid - cleared tags include active filter '{active_tag}'")
                 self.reload()
+
+        elif chosen is act_edit_location:
+            # Edit GPS location for single photo
+            if len(paths) != 1:
+                QMessageBox.warning(
+                    self,
+                    "Single Photo Required",
+                    "Please select exactly one photo to edit its location."
+                )
+                return
+
+            photo_path = paths[0]
+            print(f"[Location] Opening location editor for: {photo_path}")
+
+            try:
+                from ui.location_editor_integration import edit_photo_location
+
+                # Show location editor dialog
+                location_changed = edit_photo_location(photo_path, parent=self)
+
+                # If location was changed, refresh the Locations section
+                if location_changed:
+                    print(f"[Location] ✓ Location updated for {os.path.basename(photo_path)}")
+
+                    # Reload Locations section in sidebar
+                    try:
+                        mw = self.window()
+                        if hasattr(mw, "sidebar"):
+                            # Check if it's an accordion sidebar with reload_section method
+                            if hasattr(mw.sidebar, "reload_section"):
+                                print("[Location] Reloading Locations section...")
+                                mw.sidebar.reload_section("locations")
+                            elif hasattr(mw.sidebar, "reload"):
+                                print("[Location] Reloading sidebar...")
+                                mw.sidebar.reload()
+                    except Exception as e:
+                        print(f"[Location] Warning: Failed to reload sidebar: {e}")
+
+            except ImportError as e:
+                QMessageBox.critical(
+                    self,
+                    "Import Error",
+                    f"Failed to load location editor:\n{e}\n\nPlease ensure ui/location_editor_integration.py exists."
+                )
+            except Exception as e:
+                print(f"[Location] Error opening location editor: {e}")
+                import traceback
+                traceback.print_exc()
+                QMessageBox.critical(
+                    self,
+                    "Error",
+                    f"Failed to open location editor:\n{e}"
+                )
 
 
     def _refresh_tags_for_paths(self, paths: list[str]):
