@@ -7,7 +7,7 @@
 import os
 import numpy as np
 from typing import List, Tuple, Optional
-from PIL import Image
+from PIL import Image, ImageOps
 import logging
 import cv2
 import threading
