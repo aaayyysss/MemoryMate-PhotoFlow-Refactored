@@ -126,6 +126,190 @@ class GeocodingService:
             logger.error(f"[GeocodingService] Geocoding failed for ({latitude}, {longitude}): {e}")
             return None
 
+    def forward_geocode(self, location_name: str, limit: int = 5, language: str = None) -> list[dict]:
+        """
+        Search for locations by name (forward geocoding).
+
+        This is the opposite of reverse geocoding - it converts a place name
+        into coordinates and structured address information.
+
+        Args:
+            location_name: Place name to search (e.g., "Golden Gate Bridge", "San Francisco")
+            limit: Maximum number of results to return (default: 5)
+            language: Language code for results (e.g., 'en', 'ar') - auto-detected if None
+
+        Returns:
+            List of location dictionaries, each containing:
+            {
+                'name': 'Golden Gate Bridge, San Francisco, California, USA',
+                'display_name': 'Full formatted address',
+                'lat': 37.8199,
+                'lon': -122.4783,
+                'type': 'bridge',  # POI type (e.g., 'city', 'building', 'bridge')
+                'importance': 0.823  # Relevance score (0-1)
+            }
+
+        Example:
+            >>> service.forward_geocode("Golden Gate Bridge")
+            [
+                {
+                    'name': 'Golden Gate Bridge, SF, CA, USA',
+                    'lat': 37.8199,
+                    'lon': -122.4783,
+                    'type': 'bridge',
+                    'importance': 0.9
+                },
+                ...
+            ]
+        """
+        if not location_name or not location_name.strip():
+            logger.warning("[GeocodingService] Empty location name provided")
+            return []
+
+        # Auto-detect language from app settings if not specified
+        if language is None:
+            try:
+                from translation_manager import TranslationManager
+                tm = TranslationManager.get_instance()
+                language = tm.current_language
+                logger.debug(f"[GeocodingService] Auto-detected language: {language}")
+            except Exception as e:
+                logger.warning(f"[GeocodingService] Could not detect app language: {e}")
+                language = 'en'
+
+        # Rate limiting
+        self._wait_for_rate_limit()
+
+        # Build request URL for Nominatim search API
+        params = {
+            'q': location_name.strip(),
+            'format': 'json',
+            'limit': limit,
+            'addressdetails': '1',
+            'accept-language': language,
+        }
+        url = f"https://nominatim.openstreetmap.org/search?{urllib.parse.urlencode(params)}"
+
+        # Create request with proper User-Agent
+        request = urllib.request.Request(url)
+        request.add_header('User-Agent', self.USER_AGENT)
+
+        logger.debug(f"[GeocodingService] Forward geocoding: '{location_name}'")
+
+        try:
+            with urllib.request.urlopen(request, timeout=self.REQUEST_TIMEOUT) as response:
+                data = json.loads(response.read().decode('utf-8'))
+
+                if not data:
+                    logger.info(f"[GeocodingService] No results found for: '{location_name}'")
+                    return []
+
+                # Format results
+                results = []
+                for item in data:
+                    formatted_name = self._format_search_result(item)
+                    result = {
+                        'name': formatted_name,
+                        'display_name': item.get('display_name', ''),
+                        'lat': float(item.get('lat', 0)),
+                        'lon': float(item.get('lon', 0)),
+                        'type': item.get('type', 'unknown'),
+                        'importance': item.get('importance', 0.0)
+                    }
+                    results.append(result)
+
+                logger.info(f"[GeocodingService] Forward geocode: '{location_name}' → {len(results)} result(s)")
+                return results
+
+        except urllib.error.HTTPError as e:
+            logger.error(f"[GeocodingService] HTTP error {e.code}: {e.reason}")
+            return []
+        except urllib.error.URLError as e:
+            logger.error(f"[GeocodingService] URL error: {e.reason}")
+            return []
+        except json.JSONDecodeError as e:
+            logger.error(f"[GeocodingService] JSON decode error: {e}")
+            return []
+        except Exception as e:
+            logger.exception(f"[GeocodingService] Unexpected error during forward geocoding: {e}")
+            return []
+
+    def _format_search_result(self, item: dict) -> str:
+        """
+        Format search result into concise, readable location name.
+
+        Args:
+            item: Nominatim search result item
+
+        Returns:
+            Formatted location name (e.g., "Golden Gate Bridge, San Francisco, CA, USA")
+        """
+        address = item.get('address', {})
+        parts = []
+
+        # Point of interest name (if available)
+        poi_name = (item.get('name') or
+                   address.get('tourism') or
+                   address.get('attraction') or
+                   address.get('historic'))
+        if poi_name:
+            parts.append(poi_name)
+
+        # City/Town
+        city = (address.get('city') or
+                address.get('town') or
+                address.get('village') or
+                address.get('municipality'))
+        if city and city != poi_name:
+            parts.append(city)
+
+        # State/Region (abbreviated if possible)
+        state = address.get('state') or address.get('region')
+        if state and state != city:
+            # Try to abbreviate US states
+            state_abbrev = self._abbreviate_state(state)
+            parts.append(state_abbrev)
+
+        # Country
+        country = address.get('country')
+        if country:
+            parts.append(country)
+
+        # Fallback to display name if no structured parts
+        if not parts:
+            display_name = item.get('display_name', 'Unknown Location')
+            parts = display_name.split(', ')[:3]  # First 3 components
+
+        return ', '.join(parts) if parts else "Unknown Location"
+
+    @staticmethod
+    def _abbreviate_state(state: str) -> str:
+        """
+        Abbreviate US state names for conciseness.
+
+        Args:
+            state: Full state name
+
+        Returns:
+            Abbreviated state name (e.g., "California" → "CA")
+        """
+        state_abbrev = {
+            'Alabama': 'AL', 'Alaska': 'AK', 'Arizona': 'AZ', 'Arkansas': 'AR',
+            'California': 'CA', 'Colorado': 'CO', 'Connecticut': 'CT', 'Delaware': 'DE',
+            'Florida': 'FL', 'Georgia': 'GA', 'Hawaii': 'HI', 'Idaho': 'ID',
+            'Illinois': 'IL', 'Indiana': 'IN', 'Iowa': 'IA', 'Kansas': 'KS',
+            'Kentucky': 'KY', 'Louisiana': 'LA', 'Maine': 'ME', 'Maryland': 'MD',
+            'Massachusetts': 'MA', 'Michigan': 'MI', 'Minnesota': 'MN', 'Mississippi': 'MS',
+            'Missouri': 'MO', 'Montana': 'MT', 'Nebraska': 'NE', 'Nevada': 'NV',
+            'New Hampshire': 'NH', 'New Jersey': 'NJ', 'New Mexico': 'NM', 'New York': 'NY',
+            'North Carolina': 'NC', 'North Dakota': 'ND', 'Ohio': 'OH', 'Oklahoma': 'OK',
+            'Oregon': 'OR', 'Pennsylvania': 'PA', 'Rhode Island': 'RI', 'South Carolina': 'SC',
+            'South Dakota': 'SD', 'Tennessee': 'TN', 'Texas': 'TX', 'Utah': 'UT',
+            'Vermont': 'VT', 'Virginia': 'VA', 'Washington': 'WA', 'West Virginia': 'WV',
+            'Wisconsin': 'WI', 'Wyoming': 'WY'
+        }
+        return state_abbrev.get(state, state)
+
     def batch_reverse_geocode(self, coordinates: list[tuple[float, float]],
                              progress_callback=None) -> dict[tuple[float, float], str]:
         """
@@ -363,6 +547,28 @@ def reverse_geocode(latitude: float, longitude: float, language: str = None) -> 
     """
     service = get_geocoding_service()
     return service.reverse_geocode(latitude, longitude, language=language)
+
+
+def forward_geocode(location_name: str, limit: int = 5, language: str = None) -> list[dict]:
+    """
+    Convenience function for forward geocoding (location search by name).
+
+    Args:
+        location_name: Place name to search (e.g., "Golden Gate Bridge", "Paris")
+        limit: Maximum number of results to return (default: 5)
+        language: Language code (e.g., 'en', 'ar') - auto-detected if None
+
+    Returns:
+        List of location dictionaries with 'name', 'lat', 'lon', 'type', etc.
+
+    Example:
+        >>> results = forward_geocode("Eiffel Tower")
+        >>> for loc in results:
+        ...     print(f"{loc['name']}: ({loc['lat']}, {loc['lon']})")
+        Eiffel Tower, Paris, France: (48.8584, 2.2945)
+    """
+    service = get_geocoding_service()
+    return service.forward_geocode(location_name, limit=limit, language=language)
 
 
 if __name__ == '__main__':

@@ -1586,10 +1586,14 @@ class ThumbnailGridQt(QWidget):
             act_clear_all.setEnabled(False)  # Disable if no tags present
 
         # Edit Location - manual GPS editing
-        act_edit_location = m.addAction("📍 Edit Location...")
-        # Only enable for single photo selection
-        if len(paths) != 1:
-            act_edit_location.setEnabled(False)
+        # CRITICAL FIX: Add batch editing support (Google Photos pattern)
+        if len(paths) > 1:
+            # Show both batch and single edit options for clarity
+            act_edit_location_batch = m.addAction(f"📍 Edit Location ({len(paths)} selected photos)...")
+            act_edit_location_single = m.addAction(f"📍 Edit Location (this photo only)...")
+        else:
+            # Single photo mode
+            act_edit_location = m.addAction("📍 Edit Location...")
 
         m.addSeparator()
         act_export = m.addAction(tr('context_menu.export'))
@@ -1832,59 +1836,124 @@ class ThumbnailGridQt(QWidget):
                 print(f"[Tag] Reloading grid - cleared tags include active filter '{active_tag}'")
                 self.reload()
 
-        elif chosen is act_edit_location:
-            # Edit GPS location for single photo
-            if len(paths) != 1:
-                QMessageBox.warning(
-                    self,
-                    "Single Photo Required",
-                    "Please select exactly one photo to edit its location."
-                )
-                return
+        # CRITICAL FIX: Handle both single and batch location editing
+        elif (len(paths) == 1 and 'act_edit_location' in locals() and chosen is act_edit_location):
+            # Single photo mode
+            self._edit_photo_location(paths[0])
 
-            photo_path = paths[0]
-            print(f"[Location] Opening location editor for: {photo_path}")
+        elif (len(paths) > 1 and 'act_edit_location_batch' in locals() and chosen is act_edit_location_batch):
+            # Batch editing mode
+            self._edit_photos_location_batch(paths)
 
-            try:
-                from ui.location_editor_integration import edit_photo_location
+        elif (len(paths) > 1 and 'act_edit_location_single' in locals() and chosen is act_edit_location_single):
+            # Single photo from multi-selection (edit just the clicked photo)
+            self._edit_photo_location(paths[0])
 
-                # Show location editor dialog
-                location_changed = edit_photo_location(photo_path, parent=self)
 
-                # If location was changed, refresh the Locations section
-                if location_changed:
-                    print(f"[Location] ✓ Location updated for {os.path.basename(photo_path)}")
+    def _edit_photo_location(self, path: str):
+        """
+        Edit GPS location for a single photo (manual location editing).
 
-                    # Reload Locations section in sidebar
-                    try:
-                        mw = self.window()
-                        if hasattr(mw, "sidebar"):
-                            # Check if it's an accordion sidebar with reload_section method
-                            if hasattr(mw.sidebar, "reload_section"):
-                                print("[Location] Reloading Locations section...")
-                                mw.sidebar.reload_section("locations")
-                            elif hasattr(mw.sidebar, "reload"):
-                                print("[Location] Reloading sidebar...")
-                                mw.sidebar.reload()
-                    except Exception as e:
-                        print(f"[Location] Warning: Failed to reload sidebar: {e}")
+        Args:
+            path: Path to photo file
+        """
+        import os
+        from PySide6.QtWidgets import QMessageBox
 
-            except ImportError as e:
-                QMessageBox.critical(
-                    self,
-                    "Import Error",
-                    f"Failed to load location editor:\n{e}\n\nPlease ensure ui/location_editor_integration.py exists."
-                )
-            except Exception as e:
-                print(f"[Location] Error opening location editor: {e}")
-                import traceback
-                traceback.print_exc()
-                QMessageBox.critical(
-                    self,
-                    "Error",
-                    f"Failed to open location editor:\n{e}"
-                )
+        print(f"[Location] 📍 Opening location editor for: {path}")
 
+        try:
+            from ui.location_editor_integration import edit_photo_location
+
+            # Show location editor dialog
+            location_changed = edit_photo_location(path, parent=self)
+
+            # If location was changed, refresh the Locations section
+            if location_changed:
+                print(f"[Location] ✓ Location updated for {os.path.basename(path)}")
+
+                # Reload Locations section in sidebar
+                try:
+                    mw = self.window()
+                    if hasattr(mw, "sidebar"):
+                        # Check if it's an accordion sidebar with reload_section method
+                        if hasattr(mw.sidebar, "reload_section"):
+                            print("[Location] Reloading Locations section...")
+                            mw.sidebar.reload_section("locations")
+                        elif hasattr(mw.sidebar, "reload"):
+                            print("[Location] Reloading sidebar...")
+                            mw.sidebar.reload()
+                except Exception as e:
+                    print(f"[Location] Warning: Failed to reload sidebar: {e}")
+
+        except ImportError as e:
+            QMessageBox.critical(
+                self,
+                "Import Error",
+                f"Failed to load location editor:\n{e}\n\nPlease ensure ui/location_editor_integration.py exists."
+            )
+        except Exception as e:
+            print(f"[Location] Error opening location editor: {e}")
+            import traceback
+            traceback.print_exc()
+            QMessageBox.critical(
+                self,
+                "Error",
+                f"Failed to open location editor:\n{e}"
+            )
+
+    def _edit_photos_location_batch(self, paths: list[str]):
+        """
+        Edit GPS location for multiple photos (batch editing).
+
+        This applies the same location to all selected photos at once,
+        following the Google Photos pattern.
+
+        Args:
+            paths: List of photo file paths
+        """
+        from PySide6.QtWidgets import QMessageBox
+
+        print(f"[Location] 📍 Opening batch location editor for {len(paths)} photos")
+
+        try:
+            from ui.location_editor_integration import edit_photos_location_batch
+
+            # Show batch location editor dialog
+            location_changed = edit_photos_location_batch(paths, parent=self)
+
+            # If location was changed, refresh the Locations section
+            if location_changed:
+                print(f"[Location] ✓ Location updated for {len(paths)} photos")
+
+                # Reload Locations section in sidebar
+                try:
+                    mw = self.window()
+                    if hasattr(mw, "sidebar"):
+                        if hasattr(mw.sidebar, "reload_section"):
+                            print("[Location] Reloading Locations section...")
+                            mw.sidebar.reload_section("locations")
+                        elif hasattr(mw.sidebar, "reload"):
+                            print("[Location] Reloading sidebar...")
+                            mw.sidebar.reload()
+                except Exception as e:
+                    print(f"[Location] Warning: Failed to reload sidebar: {e}")
+
+        except ImportError as e:
+            QMessageBox.critical(
+                self,
+                "Import Error",
+                f"Failed to load location editor:\n{e}\n\nPlease ensure ui/location_editor_integration.py exists."
+            )
+        except Exception as e:
+            print(f"[Location] Error opening batch location editor: {e}")
+            import traceback
+            traceback.print_exc()
+            QMessageBox.critical(
+                self,
+                "Error",
+                f"Failed to open batch location editor:\n{e}"
+            )
 
     def _refresh_tags_for_paths(self, paths: list[str]):
         """
