@@ -963,56 +963,6 @@ P...
 2026-01-09 15:27:30,933 [INFO] Building date branches...
 2026-01-09 15:27:30,935 [INFO] Building date branches for project_id=1
 [build_date_branches] Using project_id=1
-[build_date_branches] Populating 'all' branch with 21 photos for project 1
-[build_date_branches] Inserted 0/21 photos into 'all' branch
-[build_date_branches] Found 15 unique dates for project 1
-[build_date_branches] Date 2021-10-02: found 1 photos for project 1
-[build_date_branches] Sample path: c:/users/asus/onedrive/documents/python/test-photos/photos/refs/2/244008930_565686944637059_4279754871252118785_n.jpg
-[build_date_branches] Date 2021-10-02: inserted 1/1 into project_images (new)
-[build_date_branches] Date 2022-01-02: found 1 photos for project 1
-[build_date_branches] Sample path: c:/users/asus/onedrive/documents/python/test-photos/photos/refs/1/ihoc0868.jpg
-[build_date_branches] Date 2022-01-02: inserted 1/1 into project_images (new)
-[build_date_branches] Date 2022-01-06: found 1 photos for project 1
-[build_date_branches] Sample path: c:/users/asus/onedrive/documents/python/test-photos/photos/refs/1/ewkj3802.jpg
-[build_date_branches] Date 2022-01-06: inserted 1/1 into project_images (new)
-[build_date_branches] Date 2022-01-15: found 1 photos for project 1
-[build_date_branches] Sample path: c:/users/asus/onedrive/documents/python/test-photos/photos/refs/4/img_1779.jpeg
-[build_date_branches] Date 2022-01-15: inserted 0/1 into project_images (already linked)
-[build_date_branches] Date 2022-08-18: found 4 photos for project 1
-[build_date_branches] Sample path: c:/users/asus/onedrive/documents/python/test-photos/photos/refs/1/img_e3122.jpg
-[build_date_branches] Date 2022-08-18: inserted 0/4 into project_images (already linked)
-[build_date_branches] Date 2023-10-19: found 1 photos for project 1
-[build_date_branches] Sample path: c:/users/asus/onedrive/documents/python/test-photos/photos/refs/1/img_3307.jpg
-[build_date_branches] Date 2023-10-19: inserted 0/1 into project_images (already linked)
-[build_date_branches] Date 2024-11-07: found 1 photos for project 1
-[build_date_branches] Sample path: c:/users/asus/onedrive/documents/python/test-photos/photos/refs/1/img_e7413.jpg
-[build_date_branches] Date 2024-11-07: inserted 0/1 into project_images (already linked)
-[build_date_branches] Date 2024-11-16: found 3 photos for project 1
-[build_date_branches] Sample path: c:/users/asus/onedrive/documents/python/test-photos/photos/refs/1/img_9570.jpg
-[build_date_branches] Date 2024-11-16: inserted 0/3 into project_images (already linked)
-[build_date_branches] Date 2024-11-26: found 1 photos for project 1
-[build_date_branches] Sample path: c:/users/asus/onedrive/documents/python/test-photos/photos/refs/1/img_1550.dng
-[build_date_branches] Date 2024-11-26: inserted 0/1 into project_images (already linked)
-[build_date_branches] Date 2025-02-06: found 1 photos for project 1
-[build_date_branches] Sample path: c:/users/asus/onedrive/documents/python/test-photos/photos/refs/2/gpic6664.jpg
-[build_date_branches] Date 2025-02-06: inserted 1/1 into project_images (new)
-[build_date_branches] Date 2025-02-07: found 1 photos for project 1
-[build_date_branches] Sample path: c:/users/asus/onedrive/documents/python/test-photos/photos/refs/2/jkhc8378.jpg
-[build_date_branches] Date 2025-02-07: inserted 1/1 into project_images (new)
-[build_date_branches] Date 2025-02-28: found 1 photos for project 1
-[build_date_branches] Sample path: c:/users/asus/onedrive/documents/python/test-photos/photos/refs/2/ntxk2933.jpg
-[build_date_branches] Date 2025-02-28: inserted 1/1 into project_images (new)
-[build_date_branches] Date 2025-03-13: found 2 photos for project 1
-[build_date_branches] Sample path: c:/users/asus/onedrive/documents/python/test-photos/photos/refs/3/img_8152.jpeg
-[build_date_branches] Date 2025-03-13: inserted 0/2 into project_images (already linked)
-[build_date_branches] Date 2025-03-21: found 1 photos for project 1
-[build_date_branches] Sample path: c:/users/asus/onedrive/documents/python/test-photos/photos/refs/2/img_8920.png
-[build_date_branches] Date 2025-03-21: inserted 1/1 into project_images (new)
-[build_date_branches] Date 2025-06-26: found 1 photos for project 1
-[build_date_branches] Sample path: c:/users/asus/onedrive/documents/python/test-photos/photos/refs/2/7f5e15df-e9c6-4914-90fb-c5cf06fd51f5.jfif
-[build_date_branches] Date 2025-06-26: inserted 1/1 into project_images (new)
-[build_date_branches] Total entries processed: 21
-[build_date_branches] project_images table has 72 rows for project 1
 2026-01-09 15:27:30,952 [INFO] Created 21 photo date branch entries for project 1
 2026-01-09 15:27:30,952 [INFO] Building video date branches for project_id=1
 [build_video_date_branches] Using project_id=1
