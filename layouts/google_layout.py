@@ -899,6 +899,7 @@ class GooglePhotosLayout(BaseLayout):
         sidebar.selectTag.connect(self._on_accordion_tag_clicked)
         sidebar.selectVideo.connect(self._on_accordion_video_clicked)  # NEW: Video filtering
         sidebar.selectPerson.connect(self._on_accordion_person_clicked)
+        sidebar.selectLocation.connect(self._on_accordion_location_clicked)  # GPS location filtering
         sidebar.selectDevice.connect(self._on_accordion_device_selected)
         sidebar.personMerged.connect(self._on_accordion_person_merged)
         sidebar.personDeleted.connect(self._on_accordion_person_deleted)
@@ -966,7 +967,7 @@ class GooglePhotosLayout(BaseLayout):
 
         return self.timeline_scroll
 
-    def _load_photos(self, thumb_size: int = 200, filter_year: int = None, filter_month: int = None, filter_day: int = None, filter_folder: str = None, filter_person: str = None):
+    def _load_photos(self, thumb_size: int = 200, filter_year: int = None, filter_month: int = None, filter_day: int = None, filter_folder: str = None, filter_person: str = None, filter_paths: list = None):
         """
         Load photos from database and populate timeline.
 
@@ -988,6 +989,7 @@ class GooglePhotosLayout(BaseLayout):
         self.current_filter_day = filter_day
         self.current_filter_folder = filter_folder
         self.current_filter_person = filter_person
+        self.current_filter_paths = filter_paths
 
         filter_desc = []
         if filter_year:
@@ -1000,12 +1002,14 @@ class GooglePhotosLayout(BaseLayout):
             filter_desc.append(f"folder={filter_folder}")
         if filter_person:
             filter_desc.append(f"person={filter_person}")
+        if filter_paths:
+            filter_desc.append(f"location={len(filter_paths)} photos")
 
         filter_str = f" [{', '.join(filter_desc)}]" if filter_desc else ""
         print(f"[GooglePhotosLayout] 📷 Loading photos from database (thumb size: {thumb_size}px){filter_str}...")
 
         # Show/hide Clear Filter button based on whether filters are active
-        has_filters = filter_year is not None or filter_month is not None or filter_day is not None or filter_folder is not None or filter_person is not None
+        has_filters = filter_year is not None or filter_month is not None or filter_day is not None or filter_folder is not None or filter_person is not None or filter_paths is not None
         self.btn_clear_filter.setVisible(has_filters)
 
         # === PROGRESS: Clearing existing timeline ===
@@ -1078,7 +1082,8 @@ class GooglePhotosLayout(BaseLayout):
             'month': filter_month,
             'day': filter_day,
             'folder': filter_folder,
-            'person': filter_person
+            'person': filter_person,
+            'paths': filter_paths
         }
 
         # PHASE 2 Task 2.1: Start async worker (non-blocking)
@@ -1639,6 +1644,40 @@ class GooglePhotosLayout(BaseLayout):
             filter_day=None,
             filter_folder=None,
             filter_person=person_branch_key,
+        )
+
+    def _on_accordion_location_clicked(self, location_data: dict):
+        """
+        Handle location selection from the accordion sidebar (GPS filtering).
+
+        When user clicks a location cluster, filters photos to show only
+        photos from that geographic location.
+
+        Args:
+            location_data: Dict with {name, lat, lon, count, paths}
+        """
+        logger.info(
+            "[GooglePhotosLayout] Accordion location clicked: %s (%d photos)",
+            location_data.get('name', 'Unknown'),
+            location_data.get('count', 0)
+        )
+
+        # Extract paths from location cluster
+        paths = location_data.get('paths', [])
+
+        if not paths:
+            logger.warning("[GooglePhotosLayout] Location has no photos")
+            return
+
+        # Load photos filtered by this location's paths
+        self._load_photos(
+            thumb_size=self.current_thumb_size,
+            filter_year=None,
+            filter_month=None,
+            filter_day=None,
+            filter_folder=None,
+            filter_person=None,
+            filter_paths=paths
         )
 
     def _on_accordion_person_merged(self, source_branch: str, target_branch: str):
@@ -6224,8 +6263,16 @@ class GooglePhotosLayout(BaseLayout):
             menu.addAction(copy_action)
 
             # Edit Location action (manual GPS editing)
-            edit_location_action = QAction("📍 Edit Location...", parent=menu)
-            edit_location_action.triggered.connect(lambda: self._edit_photo_location(path))
+            # Support batch editing when multiple photos are selected
+            selected_count = len(self.selected_photos)
+            if selected_count > 1 and path in self.selected_photos:
+                # Batch edit mode
+                edit_location_action = QAction(f"📍 Edit Location ({selected_count} photos)...", parent=menu)
+                edit_location_action.triggered.connect(lambda: self._edit_photos_location_batch(list(self.selected_photos)))
+            else:
+                # Single photo mode
+                edit_location_action = QAction("📍 Edit Location...", parent=menu)
+                edit_location_action.triggered.connect(lambda: self._edit_photo_location(path))
             menu.addAction(edit_location_action)
 
             menu.addSeparator()
@@ -6363,6 +6410,48 @@ class GooglePhotosLayout(BaseLayout):
                 self.main_window,
                 "Error",
                 f"Failed to open location editor:\n{e}"
+            )
+
+    def _edit_photos_location_batch(self, paths: list[str]):
+        """Edit GPS location for multiple photos (batch editing)."""
+        from PySide6.QtWidgets import QMessageBox
+
+        print(f"[GooglePhotosLayout] 📍 Opening batch location editor for {len(paths)} photos")
+
+        try:
+            from ui.location_editor_integration import edit_photos_location_batch
+
+            # Show batch location editor dialog
+            location_changed = edit_photos_location_batch(paths, parent=self.main_window)
+
+            # If location was changed, refresh the Locations section
+            if location_changed:
+                print(f"[GooglePhotosLayout] ✓ Location updated for {len(paths)} photos")
+
+                # Reload Locations section in accordion sidebar
+                try:
+                    if hasattr(self, 'accordion_sidebar'):
+                        print("[GooglePhotosLayout] Reloading Locations section...")
+                        self.accordion_sidebar.reload_section("locations")
+                    else:
+                        print("[GooglePhotosLayout] Warning: No accordion_sidebar reference")
+                except Exception as e:
+                    print(f"[GooglePhotosLayout] Warning: Failed to reload Locations section: {e}")
+
+        except ImportError as e:
+            QMessageBox.critical(
+                self.main_window,
+                "Import Error",
+                f"Failed to load location editor:\n{e}\n\nPlease ensure ui/location_editor_integration.py exists."
+            )
+        except Exception as e:
+            print(f"[GooglePhotosLayout] Error opening batch location editor: {e}")
+            import traceback
+            traceback.print_exc()
+            QMessageBox.critical(
+                self.main_window,
+                "Error",
+                f"Failed to open batch location editor:\n{e}"
             )
 
     def _show_photo_properties(self, path: str):

@@ -40,16 +40,19 @@ class LocationEditorDialog(QDialog):
     # Signal emitted when location is saved
     locationSaved = Signal(float, float, str)  # lat, lon, location_name
 
-    def __init__(self, photo_path=None, current_lat=None, current_lon=None, current_name=None, parent=None):
+    def __init__(self, photo_path=None, current_lat=None, current_lon=None, current_name=None,
+                 parent=None, batch_mode=False, batch_count=1):
         """
         Initialize location editor dialog.
 
         Args:
-            photo_path: Path to photo being edited
+            photo_path: Path to photo being edited (or count string for batch mode)
             current_lat: Current latitude (if any)
             current_lon: Current longitude (if any)
             current_name: Current location name (if any)
             parent: Parent widget
+            batch_mode: If True, editing multiple photos at once
+            batch_count: Number of photos being edited in batch mode
         """
         super().__init__(parent)
 
@@ -57,8 +60,14 @@ class LocationEditorDialog(QDialog):
         self.current_lat = current_lat
         self.current_lon = current_lon
         self.current_name = current_name
+        self.batch_mode = batch_mode
+        self.batch_count = batch_count
 
-        self.setWindowTitle("Edit Location")
+        if batch_mode:
+            self.setWindowTitle(f"Edit Location - {batch_count} Photos")
+        else:
+            self.setWindowTitle("Edit Location")
+
         self.setMinimumWidth(500)
         self.setMinimumHeight(400)
 
@@ -178,20 +187,42 @@ class LocationEditorDialog(QDialog):
 
     def _load_current_location(self):
         """Load and display current location data."""
-        if self.current_lat is not None and self.current_lon is not None:
-            # Display current location
-            name_str = f" - {self.current_name}" if self.current_name else ""
-            self.current_display.setText(
-                f"✓ Location set: ({self.current_lat:.6f}, {self.current_lon:.6f}){name_str}"
-            )
-
-            # Pre-fill inputs
-            self.lat_input.setText(str(self.current_lat))
-            self.lon_input.setText(str(self.current_lon))
-            if self.current_name:
-                self.name_input.setText(self.current_name)
+        if self.batch_mode:
+            # Batch mode display
+            if self.current_lat is not None and self.current_lon is not None:
+                # All photos have same location
+                name_str = f" - {self.current_name}" if self.current_name else ""
+                self.current_display.setText(
+                    f"✓ All {self.batch_count} photos have the same location:\n"
+                    f"({self.current_lat:.6f}, {self.current_lon:.6f}){name_str}"
+                )
+                # Pre-fill inputs
+                self.lat_input.setText(str(self.current_lat))
+                self.lon_input.setText(str(self.current_lon))
+                if self.current_name:
+                    self.name_input.setText(self.current_name)
+            else:
+                # Photos have different locations or no locations
+                self.current_display.setText(
+                    f"✏️ Editing location for {self.batch_count} photos.\n"
+                    f"Enter coordinates to apply the same location to all photos."
+                )
         else:
-            self.current_display.setText("⚠ No location data. Enter coordinates manually or paste from Google Maps.")
+            # Single photo mode display
+            if self.current_lat is not None and self.current_lon is not None:
+                # Display current location
+                name_str = f" - {self.current_name}" if self.current_name else ""
+                self.current_display.setText(
+                    f"✓ Location set: ({self.current_lat:.6f}, {self.current_lon:.6f}){name_str}"
+                )
+
+                # Pre-fill inputs
+                self.lat_input.setText(str(self.current_lat))
+                self.lon_input.setText(str(self.current_lon))
+                if self.current_name:
+                    self.name_input.setText(self.current_name)
+            else:
+                self.current_display.setText("⚠ No location data. Enter coordinates manually or paste from Google Maps.")
 
     def _preview_on_map(self):
         """Open location preview in browser (OpenStreetMap)."""

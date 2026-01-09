@@ -304,6 +304,23 @@ class PhotoLoadWorker(QRunnable):
                 photo_params.append(self.project_id)
                 photo_params.append(filter_person)
 
+            # Filter by specific paths (location filtering)
+            filter_paths = self.filter_params.get('paths')
+            if filter_paths is not None and len(filter_paths) > 0:
+                # Normalize paths for consistent matching
+                import platform
+                normalized_paths = []
+                for p in filter_paths:
+                    normalized = p.replace('\\', '/')
+                    if platform.system() == 'Windows':
+                        normalized = normalized.lower()
+                    normalized_paths.append(normalized)
+
+                # Create placeholders for SQL IN clause
+                placeholders = ','.join('?' * len(normalized_paths))
+                photo_query_parts.append(f"AND pm.path IN ({placeholders})")
+                photo_params.extend(normalized_paths)
+
             # Build video query (mirror photo query structure)
             video_query_parts = ["""
                 SELECT DISTINCT vm.path, vm.created_date as date_taken, vm.width, vm.height
