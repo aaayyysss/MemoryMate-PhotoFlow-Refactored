@@ -102,7 +102,7 @@ class SearchHistoryService:
                     SELECT name FROM sqlite_master
                     WHERE type='table' AND name IN ('search_history', 'saved_search')
                 """)
-                existing = {row[0] for row in cursor.fetchall()}
+                existing = {row['name'] for row in cursor.fetchall()}
 
                 if 'search_history' not in existing or 'saved_search' not in existing:
                     # Run migration

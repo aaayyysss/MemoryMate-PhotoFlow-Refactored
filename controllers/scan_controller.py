@@ -120,6 +120,21 @@ class ScanController(QObject):
         self.main._scan_progress.setAutoReset(False)
         self.main._scan_progress.setMinimumDuration(0)  # CRITICAL: Show immediately, no timer delay (prevents Qt timer thread errors)
         self.main._scan_progress.setMinimumWidth(520)
+
+        # CRITICAL FIX: Calculate maximum height based on available screen geometry
+        # This prevents Qt geometry warnings when dialog is too tall for screen
+        try:
+            from PySide6.QtWidgets import QApplication
+            screen = QApplication.primaryScreen()
+            screen_geometry = screen.availableGeometry()
+            # Use 80% of available height as maximum, with 50px margin for safety
+            max_height = int(screen_geometry.height() * 0.8 - 50)
+            if max_height > 0:
+                self.main._scan_progress.setMaximumHeight(max_height)
+                self.logger.debug(f"Progress dialog max height set to {max_height}px (screen: {screen_geometry.height()}px)")
+        except Exception as e:
+            self.logger.warning(f"Could not set progress dialog max height: {e}")
+
         self.main._scan_progress.show()
 
         # DB writer
@@ -404,6 +419,17 @@ class ScanController(QObject):
         progress.setWindowModality(Qt.WindowModal)
         progress.setAutoClose(True)
         progress.setValue(0)
+
+        # CRITICAL FIX: Calculate maximum height based on available screen geometry
+        try:
+            screen = QApplication.primaryScreen()
+            screen_geometry = screen.availableGeometry()
+            max_height = int(screen_geometry.height() * 0.8 - 50)
+            if max_height > 0:
+                progress.setMaximumHeight(max_height)
+        except Exception as e:
+            self.logger.warning(f"Could not set progress dialog max height: {e}")
+
         progress.show()
         QApplication.processEvents()
 
