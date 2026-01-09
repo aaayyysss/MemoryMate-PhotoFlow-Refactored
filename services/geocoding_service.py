@@ -69,7 +69,7 @@ class GeocodingService:
         logger.info("[GeocodingService] Initialized with cache=%s", use_cache)
 
     def reverse_geocode(self, latitude: float, longitude: float,
-                       cache_tolerance: float = 0.01) -> Optional[str]:
+                       cache_tolerance: float = 0.01, language: str = None) -> Optional[str]:
         """
         Convert GPS coordinates to human-readable location name.
 
@@ -77,18 +77,33 @@ class GeocodingService:
             latitude: Latitude in decimal degrees
             longitude: Longitude in decimal degrees
             cache_tolerance: Cache lookup tolerance in degrees (default: 0.01 ≈ 1km)
+            language: Language code for location names (e.g., 'en', 'ar', 'de')
+                     If None, uses app's current language from translation manager
 
         Returns:
-            Formatted location name or None if geocoding fails
+            Formatted location name in requested language or None if geocoding fails
 
         Example:
-            >>> service.reverse_geocode(37.7749, -122.4194)
+            >>> service.reverse_geocode(37.7749, -122.4194, language='en')
             "San Francisco, California, United States"
+            >>> service.reverse_geocode(37.7749, -122.4194, language='ar')
+            "سان فرانسيسكو، كاليفورنيا، الولايات المتحدة"
         """
         # Input validation
         if not self._validate_coordinates(latitude, longitude):
             logger.warning(f"[GeocodingService] Invalid coordinates: ({latitude}, {longitude})")
             return None
+
+        # Auto-detect language from app settings if not specified
+        if language is None:
+            try:
+                from translation_manager import TranslationManager
+                tm = TranslationManager.get_instance()
+                language = tm.current_language  # e.g., 'en', 'ar'
+                logger.debug(f"[GeocodingService] Auto-detected language: {language}")
+            except Exception as e:
+                logger.warning(f"[GeocodingService] Could not detect app language: {e}")
+                language = 'en'  # Fallback to English
 
         # Check cache first
         if self.use_cache:
@@ -99,7 +114,7 @@ class GeocodingService:
 
         # Make API request
         try:
-            location_name = self._fetch_from_api(latitude, longitude)
+            location_name = self._fetch_from_api(latitude, longitude, language)
 
             # Cache the result
             if location_name and self.use_cache:
@@ -142,27 +157,29 @@ class GeocodingService:
         logger.info(f"[GeocodingService] Batch complete: {len(results)} locations geocoded")
         return results
 
-    def _fetch_from_api(self, latitude: float, longitude: float) -> Optional[str]:
+    def _fetch_from_api(self, latitude: float, longitude: float, language: str = 'en') -> Optional[str]:
         """
         Fetch location name from Nominatim API with rate limiting.
 
         Args:
             latitude: Latitude in decimal degrees
             longitude: Longitude in decimal degrees
+            language: Language code for results (e.g., 'en', 'ar', 'de')
 
         Returns:
-            Formatted location name or None if request fails
+            Formatted location name in requested language or None if request fails
         """
         # Rate limiting
         self._wait_for_rate_limit()
 
-        # Build request URL
+        # Build request URL with language preference
         params = {
             'lat': f"{latitude:.6f}",
             'lon': f"{longitude:.6f}",
             'format': 'json',
             'addressdetails': '1',
             'zoom': '10',  # City-level detail
+            'accept-language': language,  # Request localized location names
         }
         url = f"{self.NOMINATIM_URL}?{urllib.parse.urlencode(params)}"
 
@@ -332,19 +349,20 @@ def get_geocoding_service() -> GeocodingService:
     return _geocoding_service
 
 
-def reverse_geocode(latitude: float, longitude: float) -> Optional[str]:
+def reverse_geocode(latitude: float, longitude: float, language: str = None) -> Optional[str]:
     """
     Convenience function for reverse geocoding.
 
     Args:
         latitude: Latitude in decimal degrees
         longitude: Longitude in decimal degrees
+        language: Language code (e.g., 'en', 'ar') - auto-detected if None
 
     Returns:
-        Location name or None
+        Location name in requested language or None
     """
     service = get_geocoding_service()
-    return service.reverse_geocode(latitude, longitude)
+    return service.reverse_geocode(latitude, longitude, language=language)
 
 
 if __name__ == '__main__':
