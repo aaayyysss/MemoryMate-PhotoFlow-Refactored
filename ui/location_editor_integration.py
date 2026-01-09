@@ -242,7 +242,8 @@ def edit_photos_location_batch(photo_paths: list[str], parent: Optional[QWidget]
             current_name=first_name if all_same else None,
             parent=parent,
             batch_mode=True,
-            batch_count=len(photo_paths)
+            batch_count=len(photo_paths),
+            photo_paths=photo_paths  # SPRINT 2: Pass paths for thumbnail preview
         )
 
         # Connect save signal
