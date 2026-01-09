@@ -353,8 +353,9 @@ class PhotoLoadWorker(QRunnable):
             photo_query = "\n".join(photo_query_parts)
             video_query = "\n".join(video_query_parts)
 
-            # Only include videos if NOT filtering by person
-            if filter_person is None:
+            # Only include videos if NOT filtering by person or location
+            # (videos don't have GPS data, so they shouldn't appear in location-filtered views)
+            if filter_person is None and filter_paths is None:
                 query = f"{photo_query}\nUNION ALL\n{video_query}\nORDER BY date_taken DESC"
                 params = photo_params + video_params
             else:
