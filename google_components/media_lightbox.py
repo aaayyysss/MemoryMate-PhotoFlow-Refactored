@@ -4366,7 +4366,7 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         return controls
 
     def _create_info_panel(self) -> QWidget:
-        """Create toggleable info panel with metadata (on right side)."""
+        """Create toggleable info panel with tabbed metadata (on right side)."""
         panel = QWidget()
         panel.setFixedWidth(350)
         panel.setStyleSheet("""
@@ -4385,22 +4385,66 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         header.setStyleSheet("color: white; font-size: 12pt; font-weight: bold; background: transparent;")
         panel_layout.addWidget(header)
 
-        # Metadata content (scrollable)
-        metadata_scroll = QScrollArea()
-        metadata_scroll.setFrameShape(QFrame.NoFrame)
-        metadata_scroll.setWidgetResizable(True)
-        metadata_scroll.setStyleSheet("background: transparent; border: none;")
+        # Create tabbed metadata view
+        from PySide6.QtWidgets import QTabWidget
+        self.metadata_tabs = QTabWidget()
+        self.metadata_tabs.setStyleSheet("""
+            QTabWidget::pane {
+                border: none;
+                background: transparent;
+            }
+            QTabBar::tab {
+                background: rgba(255, 255, 255, 0.08);
+                color: rgba(255, 255, 255, 0.7);
+                padding: 8px 12px;
+                border: none;
+                border-radius: 6px 6px 0 0;
+                margin-right: 2px;
+            }
+            QTabBar::tab:selected {
+                background: rgba(255, 255, 255, 0.15);
+                color: white;
+            }
+            QTabBar::tab:hover {
+                background: rgba(255, 255, 255, 0.12);
+            }
+        """)
 
-        self.metadata_content = QWidget()
-        self.metadata_layout = QVBoxLayout(self.metadata_content)
-        self.metadata_layout.setContentsMargins(0, 0, 0, 0)
-        self.metadata_layout.setSpacing(12)
-        self.metadata_layout.setAlignment(Qt.AlignTop)
+        # Create tabs with scrollable content
+        self.basic_tab_content = self._create_scrollable_tab()
+        self.camera_tab_content = self._create_scrollable_tab()
+        self.location_tab_content = self._create_scrollable_tab()
+        self.technical_tab_content = self._create_scrollable_tab()
 
-        metadata_scroll.setWidget(self.metadata_content)
-        panel_layout.addWidget(metadata_scroll)
+        self.metadata_tabs.addTab(self.basic_tab_content['scroll'], "📄 Basic")
+        self.metadata_tabs.addTab(self.camera_tab_content['scroll'], "📷 Camera")
+        self.metadata_tabs.addTab(self.location_tab_content['scroll'], "🌍 Location")
+        self.metadata_tabs.addTab(self.technical_tab_content['scroll'], "⚙️ Technical")
+
+        panel_layout.addWidget(self.metadata_tabs)
+
+        # For backward compatibility, keep reference to basic layout
+        self.metadata_layout = self.basic_tab_content['layout']
+        self.metadata_content = self.basic_tab_content['widget']
 
         return panel
+
+    def _create_scrollable_tab(self) -> dict:
+        """Create a scrollable tab content area."""
+        scroll = QScrollArea()
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setWidgetResizable(True)
+        scroll.setStyleSheet("background: transparent; border: none;")
+
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(12)
+        layout.setAlignment(Qt.AlignTop)
+
+        scroll.setWidget(widget)
+
+        return {'scroll': scroll, 'widget': widget, 'layout': layout}
 
     def _create_enhance_panel(self) -> QWidget:
         panel = QWidget()
@@ -5165,125 +5209,398 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             self.zoom_mode = "fit"
 
     def _load_metadata(self):
-        """Load and display photo metadata."""
-        # Clear existing metadata
-        while self.metadata_layout.count():
-            child = self.metadata_layout.takeAt(0)
-            if child.widget():
-                child.widget().deleteLater()
+        """Load and display comprehensive metadata in tabbed view."""
+        # Clear all tabs
+        self._clear_tab(self.basic_tab_content)
+        self._clear_tab(self.camera_tab_content)
+        self._clear_tab(self.location_tab_content)
+        self._clear_tab(self.technical_tab_content)
 
         try:
-            # Get file info
-            file_size = os.path.getsize(self.media_path)
-            file_size_mb = file_size / (1024 * 1024)
-            filename = os.path.basename(self.media_path)
+            is_video = self._is_video(self.media_path)
 
-            # Add filename
-            self._add_metadata_field("📄 Filename", filename)
-
-            # Add file size
-            self._add_metadata_field("💾 File Size", f"{file_size_mb:.2f} MB")
-
-            # Get image dimensions
-            pixmap = QPixmap(self.media_path)
-            if not pixmap.isNull():
-                self._add_metadata_field(
-                    "📐 Dimensions",
-                    f"{pixmap.width()} × {pixmap.height()} px"
-                )
-
-            # Get EXIF metadata
-            try:
-                from services.exif_parser import EXIFParser
-                exif_parser = EXIFParser()
-                metadata = exif_parser.parse_image_full(self.media_path)
-
-                # Date taken
-                if metadata.get('datetime_original'):
-                    date_str = metadata['datetime_original'].strftime("%B %d, %Y at %I:%M %p")
-                    self._add_metadata_field("📅 Date Taken", date_str)
-
-                # Camera info
-                if metadata.get('camera_make') or metadata.get('camera_model'):
-                    camera = f"{metadata.get('camera_make', '')} {metadata.get('camera_model', '')}".strip()
-                    self._add_metadata_field("📷 Camera", camera)
-
-                # GPS coordinates
-                if metadata.get('gps_latitude') and metadata.get('gps_longitude'):
-                    lat = metadata['gps_latitude']
-                    lon = metadata['gps_longitude']
-                    self._add_metadata_field(
-                        "🌍 Location",
-                        f"{lat:.6f}, {lon:.6f}"
-                    )
-                    # Map controls (Open in Google Maps)
-                    from PySide6.QtWidgets import QPushButton
-                    maps_btn = QPushButton("Open in Google Maps")
-                    maps_btn.setStyleSheet("background: rgba(255,255,255,0.15); color: white; border: none; border-radius: 6px; padding: 6px 10px;")
-                    def _open_maps():
-                        from PySide6.QtGui import QDesktopServices
-                        from PySide6.QtCore import QUrl
-                        url = QUrl(f"https://www.google.com/maps/search/?api=1&query={lat:.6f},{lon:.6f}")
-                        QDesktopServices.openUrl(url)
-                    maps_btn.clicked.connect(_open_maps)
-                    self.metadata_layout.addWidget(maps_btn)
-
-            except Exception as e:
-                print(f"[MediaLightbox] Error loading EXIF: {e}")
-                self._add_metadata_field("⚠️ EXIF Data", "Not available")
-
-            # Color palette extraction (Google Photos style)
-            try:
-                from PIL import Image
-                img = Image.open(self.media_path).convert('RGB')
-                img.thumbnail((200, 200))
-                palette = img.quantize(colors=5).getpalette()
-                colors = []
-                if palette:
-                    # Palette returns flat list [r,g,b,...]; take first 5
-                    for i in range(0, min(15, len(palette)), 3):
-                        colors.append((palette[i], palette[i+1], palette[i+2]))
-                if colors:
-                    from PySide6.QtWidgets import QWidget, QHBoxLayout
-                    row = QWidget()
-                    row_layout = QHBoxLayout(row)
-                    row_layout.setContentsMargins(0, 0, 0, 0)
-                    row_layout.setSpacing(6)
-                    label_widget = QLabel("🎨 Color Palette")
-                    label_widget.setStyleSheet("color: rgba(255,255,255,0.7); font-size: 9pt; font-weight: bold;")
-                    self.metadata_layout.addWidget(label_widget)
-                    for r,g,b in colors:
-                        swatch = QLabel()
-                        swatch.setFixedSize(24, 24)
-                        swatch.setStyleSheet(f"background: rgb({r},{g},{b}); border: 1px solid #444; border-radius: 4px;")
-                        row_layout.addWidget(swatch)
-                    self.metadata_layout.addWidget(row)
-            except Exception as e:
-                print(f"[MediaLightbox] Color palette error: {e}")
-
-            # PHASE C #1: Add exposure slider for RAW files
-            if self._is_raw(self.media_path) and self.raw_support_enabled:
-                self._add_exposure_slider()
-
-            # PHASE C #5: Add motion photo info
-            if self.is_motion_photo:
-                self._add_metadata_field("🎬 Motion Photo", "Video paired (long-press to play)")
-
-            # Add file path (at bottom)
-            self._add_metadata_field("📁 Path", self.media_path, word_wrap=True)
-
-            # People in this photo (placeholder)
-            self._add_metadata_field("👥 People", "Detected: n/a (feature coming)")
-
-            # Edit history / Versions (placeholder)
-            self._add_metadata_field("🕒 Edit History", "No versions recorded")
+            if is_video:
+                self._load_video_metadata()
+            else:
+                self._load_photo_metadata()
 
         except Exception as e:
             print(f"[MediaLightbox] Error loading metadata: {e}")
+            import traceback
+            traceback.print_exc()
             self._add_metadata_field("⚠️ Error", str(e))
 
-    def _add_metadata_field(self, label: str, value: str, word_wrap: bool = False):
-        """Add a metadata field to the panel."""
+    def _load_photo_metadata(self):
+        """Load comprehensive photo metadata into all tabs."""
+        from services.exif_parser import EXIFParser
+        from PySide6.QtWidgets import QPushButton, QCheckBox, QWidget, QHBoxLayout
+
+        exif_parser = EXIFParser()
+        data = exif_parser.parse_all_exif_fields(self.media_path)
+
+        basic = data['basic']
+        datetime_data = data['datetime']
+        camera = data['camera']
+        exposure = data['exposure']
+        image = data['image']
+        gps = data['gps']
+        technical = data['technical']
+
+        # === BASIC TAB ===
+        layout = self.basic_tab_content['layout']
+
+        # File info
+        if 'filename' in basic:
+            self._add_metadata_field("📄 Filename", basic['filename'], layout=layout)
+        if 'file_size' in basic:
+            size_mb = basic['file_size'] / (1024 * 1024)
+            self._add_metadata_field("💾 File Size", f"{size_mb:.2f} MB", layout=layout)
+        if 'format' in basic:
+            self._add_metadata_field("📝 Format", basic['format'], layout=layout)
+        if 'width' in basic and 'height' in basic:
+            self._add_metadata_field("📐 Dimensions", f"{basic['width']} × {basic['height']} px", layout=layout)
+        if 'mode' in basic:
+            self._add_metadata_field("🎨 Color Mode", basic['mode'], layout=layout)
+
+        # Dates
+        if 'taken' in datetime_data:
+            from datetime import datetime
+            try:
+                dt = datetime.strptime(datetime_data['taken'], "%Y:%m:%d %H:%M:%S")
+                date_str = dt.strftime("%B %d, %Y at %I:%M %p")
+                self._add_metadata_field("📅 Date Taken", date_str, layout=layout)
+            except:
+                self._add_metadata_field("📅 Date Taken", datetime_data['taken'], layout=layout)
+
+        # Color palette
+        try:
+            from PIL import Image
+            img = Image.open(self.media_path).convert('RGB')
+            img.thumbnail((200, 200))
+            palette = img.quantize(colors=5).getpalette()
+            colors = []
+            if palette:
+                for i in range(0, min(15, len(palette)), 3):
+                    colors.append((palette[i], palette[i+1], palette[i+2]))
+            if colors:
+                row = QWidget()
+                row_layout = QHBoxLayout(row)
+                row_layout.setContentsMargins(0, 0, 0, 0)
+                row_layout.setSpacing(6)
+                label_widget = QLabel("🎨 Color Palette")
+                label_widget.setStyleSheet("color: rgba(255,255,255,0.7); font-size: 9pt; font-weight: bold;")
+                layout.addWidget(label_widget)
+                for r,g,b in colors:
+                    swatch = QLabel()
+                    swatch.setFixedSize(24, 24)
+                    swatch.setStyleSheet(f"background: rgb({r},{g},{b}); border: 1px solid #444; border-radius: 4px;")
+                    row_layout.addWidget(swatch)
+                layout.addWidget(row)
+        except Exception as e:
+            print(f"[MediaLightbox] Color palette error: {e}")
+
+        # Motion photo indicator
+        if hasattr(self, 'is_motion_photo') and self.is_motion_photo:
+            self._add_metadata_field("🎬 Motion Photo", "Video paired (long-press to play)", layout=layout)
+
+        # === CAMERA TAB ===
+        layout = self.camera_tab_content['layout']
+
+        if camera.get('make') or camera.get('model'):
+            camera_str = f"{camera.get('make', '')} {camera.get('model', '')}".strip()
+            self._add_metadata_field("📷 Camera", camera_str, layout=layout)
+        if camera.get('body_serial'):
+            self._add_metadata_field("🔢 Serial Number", camera['body_serial'], layout=layout)
+        if camera.get('lens_make') or camera.get('lens_model'):
+            lens_str = f"{camera.get('lens_make', '')} {camera.get('lens_model', '')}".strip()
+            self._add_metadata_field("🔭 Lens", lens_str, layout=layout)
+        if camera.get('lens_serial'):
+            self._add_metadata_field("🔢 Lens Serial", camera['lens_serial'], layout=layout)
+
+        # Exposure settings
+        if exposure.get('iso'):
+            self._add_metadata_field("🌟 ISO", str(exposure['iso']), layout=layout)
+        if exposure.get('aperture'):
+            if isinstance(exposure['aperture'], tuple):
+                f_val = exposure['aperture'][0] / exposure['aperture'][1] if exposure['aperture'][1] != 0 else 0
+                self._add_metadata_field("⚫ Aperture", f"f/{f_val:.1f}", layout=layout)
+            else:
+                self._add_metadata_field("⚫ Aperture", f"f/{exposure['aperture']}", layout=layout)
+        if exposure.get('shutter_speed'):
+            if isinstance(exposure['shutter_speed'], tuple):
+                speed = exposure['shutter_speed'][0] / exposure['shutter_speed'][1] if exposure['shutter_speed'][1] != 0 else 0
+                if speed < 1:
+                    self._add_metadata_field("⏱️ Shutter Speed", f"1/{int(1/speed)}s", layout=layout)
+                else:
+                    self._add_metadata_field("⏱️ Shutter Speed", f"{speed}s", layout=layout)
+            else:
+                self._add_metadata_field("⏱️ Shutter Speed", str(exposure['shutter_speed']), layout=layout)
+        if exposure.get('focal_length'):
+            if isinstance(exposure['focal_length'], tuple):
+                fl = exposure['focal_length'][0] / exposure['focal_length'][1] if exposure['focal_length'][1] != 0 else 0
+                self._add_metadata_field("🔍 Focal Length", f"{fl:.0f}mm", layout=layout)
+            else:
+                self._add_metadata_field("🔍 Focal Length", f"{exposure['focal_length']}mm", layout=layout)
+        if exposure.get('focal_length_35mm'):
+            self._add_metadata_field("🔍 Focal Length (35mm)", f"{exposure['focal_length_35mm']}mm", layout=layout)
+        if exposure.get('exposure_compensation'):
+            if isinstance(exposure['exposure_compensation'], tuple):
+                ev = exposure['exposure_compensation'][0] / exposure['exposure_compensation'][1] if exposure['exposure_compensation'][1] != 0 else 0
+                self._add_metadata_field("📊 Exposure Comp.", f"{ev:+.1f} EV", layout=layout)
+            else:
+                self._add_metadata_field("📊 Exposure Comp.", str(exposure['exposure_compensation']), layout=layout)
+
+        # Metering/Flash/WB
+        if exposure.get('metering_mode'):
+            modes = {0: "Unknown", 1: "Average", 2: "Center-weighted", 3: "Spot", 4: "Multi-spot", 5: "Pattern", 6: "Partial"}
+            mode_str = modes.get(exposure['metering_mode'], str(exposure['metering_mode']))
+            self._add_metadata_field("📏 Metering Mode", mode_str, layout=layout)
+        if exposure.get('flash'):
+            flash_val = exposure['flash']
+            flash_str = "Fired" if (flash_val & 0x01) else "No Flash"
+            self._add_metadata_field("⚡ Flash", flash_str, layout=layout)
+        if exposure.get('white_balance'):
+            wb = {0: "Auto", 1: "Manual"}
+            self._add_metadata_field("⚪ White Balance", wb.get(exposure['white_balance'], str(exposure['white_balance'])), layout=layout)
+
+        # Scene settings
+        if exposure.get('exposure_program'):
+            programs = {0: "Not defined", 1: "Manual", 2: "Program AE", 3: "Aperture priority", 4: "Shutter priority", 5: "Creative", 6: "Action", 7: "Portrait", 8: "Landscape"}
+            self._add_metadata_field("📸 Exposure Program", programs.get(exposure['exposure_program'], str(exposure['exposure_program'])), layout=layout)
+        if exposure.get('scene_type'):
+            self._add_metadata_field("🎬 Scene Type", str(exposure['scene_type']), layout=layout)
+        if exposure.get('contrast'):
+            contrast_vals = {0: "Normal", 1: "Low", 2: "High"}
+            self._add_metadata_field("🔲 Contrast", contrast_vals.get(exposure['contrast'], str(exposure['contrast'])), layout=layout)
+        if exposure.get('saturation'):
+            sat_vals = {0: "Normal", 1: "Low", 2: "High"}
+            self._add_metadata_field("🌈 Saturation", sat_vals.get(exposure['saturation'], str(exposure['saturation'])), layout=layout)
+        if exposure.get('sharpness'):
+            sharp_vals = {0: "Normal", 1: "Soft", 2: "Hard"}
+            self._add_metadata_field("🔪 Sharpness", sharp_vals.get(exposure['sharpness'], str(exposure['sharpness'])), layout=layout)
+
+        # === LOCATION TAB ===
+        layout = self.location_tab_content['layout']
+
+        if gps.get('latitude') and gps.get('longitude'):
+            lat = gps['latitude']
+            lon = gps['longitude']
+
+            self._add_metadata_field("📍 Coordinates", f"{lat:.6f}, {lon:.6f}", layout=layout)
+
+            # Reverse geocoding toggle
+            geocode_checkbox = QCheckBox("Show Address")
+            geocode_checkbox.setStyleSheet("color: white; font-size: 10pt;")
+            geocode_address_label = QLabel("")
+            geocode_address_label.setStyleSheet("color: white; font-size: 10pt; padding-left: 8px;")
+            geocode_address_label.setWordWrap(True)
+            geocode_address_label.setVisible(False)
+
+            def toggle_geocoding(checked):
+                if checked:
+                    geocode_address_label.setText("Loading address...")
+                    geocode_address_label.setVisible(True)
+                    address = self._reverse_geocode(lat, lon)
+                    geocode_address_label.setText(address if address else "Address not found")
+                else:
+                    geocode_address_label.setVisible(False)
+
+            geocode_checkbox.stateChanged.connect(lambda state: toggle_geocoding(state == 2))
+            layout.addWidget(geocode_checkbox)
+            layout.addWidget(geocode_address_label)
+
+            # Open in maps button
+            maps_btn = QPushButton("🗺️ Open in Google Maps")
+            maps_btn.setStyleSheet("background: rgba(255,255,255,0.15); color: white; border: none; border-radius: 6px; padding: 6px 10px;")
+            def _open_maps():
+                from PySide6.QtGui import QDesktopServices
+                from PySide6.QtCore import QUrl
+                url = QUrl(f"https://www.google.com/maps/search/?api=1&query={lat:.6f},{lon:.6f}")
+                QDesktopServices.openUrl(url)
+            maps_btn.clicked.connect(_open_maps)
+            layout.addWidget(maps_btn)
+
+            # GPS Altitude
+            if gps.get('altitude'):
+                alt = gps['altitude']
+                alt_ref = gps.get('altitude_ref', 0)
+                alt_str = f"{alt:.1f}m {'below' if alt_ref == 1 else 'above'} sea level"
+                self._add_metadata_field("⛰️ Altitude", alt_str, layout=layout)
+
+            # GPS timestamp
+            if gps.get('datestamp') and gps.get('timestamp'):
+                self._add_metadata_field("🕐 GPS Time", f"{gps['datestamp']} {gps['timestamp']}", layout=layout)
+
+            # GPS direction/speed
+            if gps.get('image_direction'):
+                self._add_metadata_field("🧭 Direction", f"{gps['image_direction']}°", layout=layout)
+            if gps.get('speed'):
+                speed_ref = gps.get('speed_ref', 'K')
+                unit = {'K': 'km/h', 'M': 'mph', 'N': 'knots'}.get(speed_ref, speed_ref)
+                self._add_metadata_field("🚗 Speed", f"{gps['speed']} {unit}", layout=layout)
+
+            # GPS satellites
+            if gps.get('satellites'):
+                self._add_metadata_field("🛰️ Satellites", gps['satellites'], layout=layout)
+        else:
+            self._add_metadata_field("ℹ️ No GPS Data", "This photo has no location information", layout=layout)
+
+        # === TECHNICAL TAB ===
+        layout = self.technical_tab_content['layout']
+
+        # All datetime fields
+        if datetime_data.get('taken'):
+            self._add_metadata_field("📅 Date Taken", datetime_data['taken'], layout=layout)
+        if datetime_data.get('digitized'):
+            self._add_metadata_field("📅 Date Digitized", datetime_data['digitized'], layout=layout)
+        if datetime_data.get('modified'):
+            self._add_metadata_field("📅 Date Modified", datetime_data['modified'], layout=layout)
+
+        # Image properties
+        if image.get('orientation'):
+            orientations = {1: "Normal", 2: "Mirrored", 3: "Rotated 180°", 4: "Mirrored + Rotated 180°", 5: "Mirrored + Rotated 90° CCW", 6: "Rotated 90° CW", 7: "Mirrored + Rotated 90° CW", 8: "Rotated 90° CCW"}
+            self._add_metadata_field("🔄 Orientation", orientations.get(image['orientation'], str(image['orientation'])), layout=layout)
+        if image.get('color_space'):
+            color_spaces = {1: "sRGB", 65535: "Uncalibrated"}
+            self._add_metadata_field("🎨 Color Space", color_spaces.get(image['color_space'], str(image['color_space'])), layout=layout)
+        if image.get('x_resolution') and image.get('y_resolution'):
+            unit = {1: "None", 2: "inches", 3: "cm"}.get(image.get('resolution_unit', 2), "")
+            self._add_metadata_field("📏 Resolution", f"{image['x_resolution']} × {image['y_resolution']} dpi", layout=layout)
+        if image.get('compression'):
+            self._add_metadata_field("🗜️ Compression", str(image['compression']), layout=layout)
+
+        # Software/Attribution
+        if technical.get('software'):
+            self._add_metadata_field("💻 Software", technical['software'], layout=layout)
+        if technical.get('artist'):
+            self._add_metadata_field("👤 Artist", technical['artist'], layout=layout)
+        if technical.get('copyright'):
+            self._add_metadata_field("©️ Copyright", technical['copyright'], word_wrap=True, layout=layout)
+        if technical.get('description'):
+            self._add_metadata_field("📝 Description", technical['description'], word_wrap=True, layout=layout)
+        if technical.get('user_comment'):
+            self._add_metadata_field("💬 Comment", technical['user_comment'], word_wrap=True, layout=layout)
+
+        # File path
+        self._add_metadata_field("📁 File Path", self.media_path, word_wrap=True, layout=layout)
+
+        # RAW exposure slider
+        if self._is_raw(self.media_path) and hasattr(self, 'raw_support_enabled') and self.raw_support_enabled:
+            self._add_exposure_slider()
+
+    def _load_video_metadata(self):
+        """Load comprehensive video metadata into all tabs."""
+        from services.exif_parser import EXIFParser
+        from PySide6.QtWidgets import QPushButton
+
+        exif_parser = EXIFParser()
+        data = exif_parser.extract_video_metadata_full(self.media_path)
+
+        basic = data['basic']
+        video = data['video']
+        audio = data['audio']
+        technical = data['technical']
+
+        # === BASIC TAB ===
+        layout = self.basic_tab_content['layout']
+
+        if 'filename' in basic:
+            self._add_metadata_field("📄 Filename", basic['filename'], layout=layout)
+        if 'file_size' in basic:
+            size_mb = basic['file_size'] / (1024 * 1024)
+            self._add_metadata_field("💾 File Size", f"{size_mb:.2f} MB", layout=layout)
+        if 'format' in basic:
+            self._add_metadata_field("📦 Container", basic['format'], layout=layout)
+        if 'format_long' in basic:
+            self._add_metadata_field("📝 Format", basic['format_long'], layout=layout)
+
+        if video.get('duration'):
+            duration = video['duration']
+            mins, secs = divmod(int(duration), 60)
+            hrs, mins = divmod(mins, 60)
+            if hrs > 0:
+                dur_str = f"{hrs}:{mins:02d}:{secs:02d}"
+            else:
+                dur_str = f"{mins}:{secs:02d}"
+            self._add_metadata_field("⏱️ Duration", dur_str, layout=layout)
+
+        if video.get('width') and video.get('height'):
+            res_str = f"{video['width']} × {video['height']} px"
+            # Add quality label
+            height = video['height']
+            if height >= 2160:
+                res_str += " (4K UHD)"
+            elif height >= 1440:
+                res_str += " (2K QHD)"
+            elif height >= 1080:
+                res_str += " (Full HD)"
+            elif height >= 720:
+                res_str += " (HD)"
+            self._add_metadata_field("📐 Resolution", res_str, layout=layout)
+
+        if technical.get('creation_time'):
+            self._add_metadata_field("📅 Recorded", technical['creation_time'], layout=layout)
+
+        # === CAMERA TAB (Video settings) ===
+        layout = self.camera_tab_content['layout']
+
+        if video.get('codec'):
+            self._add_metadata_field("🎥 Video Codec", video['codec'], layout=layout)
+        if video.get('codec_long'):
+            self._add_metadata_field("📝 Codec Name", video['codec_long'], layout=layout)
+        if video.get('fps'):
+            self._add_metadata_field("🎬 Frame Rate", f"{video['fps']:.2f} fps", layout=layout)
+        if video.get('bitrate'):
+            bitrate_mbps = video['bitrate'] / 1000000
+            self._add_metadata_field("📊 Bitrate", f"{bitrate_mbps:.2f} Mbps", layout=layout)
+        if video.get('profile'):
+            self._add_metadata_field("🎯 Profile", video['profile'], layout=layout)
+        if video.get('pixel_format'):
+            self._add_metadata_field("🎨 Pixel Format", video['pixel_format'], layout=layout)
+        if video.get('color_space'):
+            self._add_metadata_field("🌈 Color Space", video['color_space'], layout=layout)
+        if video.get('rotation'):
+            self._add_metadata_field("🔄 Rotation", f"{video['rotation']}°", layout=layout)
+
+        # Audio info
+        if audio.get('codec'):
+            self._add_metadata_field("🔊 Audio Codec", audio['codec'], layout=layout)
+        if audio.get('sample_rate'):
+            sample_khz = int(audio['sample_rate']) / 1000
+            self._add_metadata_field("🎵 Sample Rate", f"{sample_khz:.1f} kHz", layout=layout)
+        if audio.get('channels'):
+            channel_str = f"{audio['channels']} ({'Stereo' if audio['channels'] == 2 else 'Mono' if audio['channels'] == 1 else 'Multichannel'})"
+            self._add_metadata_field("🔉 Channels", channel_str, layout=layout)
+        if audio.get('bitrate'):
+            audio_kbps = audio['bitrate'] / 1000
+            self._add_metadata_field("📊 Audio Bitrate", f"{audio_kbps:.0f} kbps", layout=layout)
+
+        # === LOCATION TAB ===
+        layout = self.location_tab_content['layout']
+        self._add_metadata_field("ℹ️ No GPS Data", "Videos don't typically contain GPS information", layout=layout)
+
+        # === TECHNICAL TAB ===
+        layout = self.technical_tab_content['layout']
+
+        if technical.get('encoder'):
+            self._add_metadata_field("⚙️ Encoder", technical['encoder'], layout=layout)
+        if technical.get('title'):
+            self._add_metadata_field("📌 Title", technical['title'], layout=layout)
+        if technical.get('artist'):
+            self._add_metadata_field("👤 Artist", technical['artist'], layout=layout)
+        if technical.get('copyright'):
+            self._add_metadata_field("©️ Copyright", technical['copyright'], word_wrap=True, layout=layout)
+        if technical.get('comment'):
+            self._add_metadata_field("💬 Comment", technical['comment'], word_wrap=True, layout=layout)
+
+        # File path
+        self._add_metadata_field("📁 File Path", self.media_path, word_wrap=True, layout=layout)
+
+    def _add_metadata_field(self, label: str, value: str, word_wrap: bool = False, layout=None):
+        """Add a metadata field to the specified layout (defaults to basic tab)."""
+        if layout is None:
+            layout = self.metadata_layout
+
         # Label
         label_widget = QLabel(label)
         label_widget.setStyleSheet("""
@@ -5291,7 +5608,7 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             font-size: 9pt;
             font-weight: bold;
         """)
-        self.metadata_layout.addWidget(label_widget)
+        layout.addWidget(label_widget)
 
         # Value
         value_widget = QLabel(value)
@@ -5302,7 +5619,51 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         """)
         if word_wrap:
             value_widget.setWordWrap(True)
-        self.metadata_layout.addWidget(value_widget)
+        layout.addWidget(value_widget)
+
+    def _clear_tab(self, tab_info: dict):
+        """Clear all widgets from a tab."""
+        layout = tab_info['layout']
+        while layout.count():
+            child = layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+
+    def _reverse_geocode(self, lat: float, lon: float) -> str:
+        """
+        Reverse geocode coordinates to address using Nominatim (OpenStreetMap).
+
+        Returns formatted address or empty string on failure.
+        """
+        try:
+            import urllib.request
+            import json
+            import urllib.parse
+
+            # Use Nominatim API (free, no API key required)
+            url = f"https://nominatim.openstreetmap.org/reverse?lat={lat}&lon={lon}&format=json&addressdetails=1"
+
+            req = urllib.request.Request(url, headers={
+                'User-Agent': 'MemoryMate-PhotoFlow/1.0'
+            })
+
+            with urllib.request.urlopen(req, timeout=3) as response:
+                data = json.loads(response.read().decode())
+
+                if 'display_name' in data:
+                    return data['display_name']
+                elif 'address' in data:
+                    addr = data['address']
+                    parts = []
+                    for key in ['city', 'town', 'village', 'state', 'country']:
+                        if key in addr:
+                            parts.append(addr[key])
+                    return ', '.join(parts) if parts else ''
+
+        except Exception as e:
+            print(f"[MediaLightbox] Reverse geocoding error: {e}")
+
+        return ""
 
     def _add_exposure_slider(self):
         """

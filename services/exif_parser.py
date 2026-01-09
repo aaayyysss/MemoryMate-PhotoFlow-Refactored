@@ -320,3 +320,346 @@ class EXIFParser:
             # BUG-H1 FIX: Log GPS conversion failures
             print(f"[EXIFParser] Failed to convert GPS coordinates: {e}")
             return None
+
+    def parse_all_exif_fields(self, file_path: str) -> Dict:
+        """
+        Extract ALL available EXIF metadata from image.
+
+        Returns comprehensive dict organized by category:
+        - basic: filename, size, dimensions, format
+        - datetime: all date/time fields
+        - camera: make, model, lens, serial number
+        - exposure: ISO, aperture, shutter, exposure compensation
+        - image: color space, resolution, compression
+        - gps: coordinates, altitude, timestamp, satellite info
+        - technical: software, copyright, artist, all other fields
+        """
+        result = {
+            'basic': {},
+            'datetime': {},
+            'camera': {},
+            'exposure': {},
+            'image': {},
+            'gps': {},
+            'technical': {},
+            'raw_exif': {}  # All unprocessed EXIF tags
+        }
+
+        try:
+            import os
+            from PIL import Image
+            from PIL.ExifTags import TAGS, GPSTAGS
+
+            # Basic file info
+            result['basic']['filename'] = os.path.basename(file_path)
+            result['basic']['file_size'] = os.path.getsize(file_path)
+            result['basic']['file_path'] = file_path
+
+            with Image.open(file_path) as img:
+                # Image format and dimensions
+                result['basic']['format'] = img.format
+                result['basic']['width'] = img.width
+                result['basic']['height'] = img.height
+                result['basic']['mode'] = img.mode
+
+                # Get EXIF data
+                exif_data = img.getexif()
+                if not exif_data:
+                    return result
+
+                # Process all EXIF tags
+                for tag_id, value in exif_data.items():
+                    tag_name = TAGS.get(tag_id, f"Unknown_{tag_id}")
+                    result['raw_exif'][tag_name] = str(value) if not isinstance(value, (str, int, float)) else value
+
+                    # Categorize known tags
+                    # DateTime fields
+                    if tag_name == 'DateTime':
+                        result['datetime']['modified'] = value
+                    elif tag_name == 'DateTimeOriginal':
+                        result['datetime']['taken'] = value
+                    elif tag_name == 'DateTimeDigitized':
+                        result['datetime']['digitized'] = value
+
+                    # Camera info
+                    elif tag_name == 'Make':
+                        result['camera']['make'] = value
+                    elif tag_name == 'Model':
+                        result['camera']['model'] = value
+                    elif tag_name == 'LensModel':
+                        result['camera']['lens_model'] = value
+                    elif tag_name == 'LensMake':
+                        result['camera']['lens_make'] = value
+                    elif tag_name == 'LensSerialNumber':
+                        result['camera']['lens_serial'] = value
+                    elif tag_name == 'SerialNumber' or tag_name == 'BodySerialNumber':
+                        result['camera']['body_serial'] = value
+
+                    # Exposure settings
+                    elif tag_name == 'ISOSpeedRatings' or tag_name == 'ISO':
+                        result['exposure']['iso'] = value
+                    elif tag_name == 'FNumber':
+                        result['exposure']['aperture'] = value
+                    elif tag_name == 'ExposureTime':
+                        result['exposure']['shutter_speed'] = value
+                    elif tag_name == 'FocalLength':
+                        result['exposure']['focal_length'] = value
+                    elif tag_name == 'FocalLengthIn35mmFilm':
+                        result['exposure']['focal_length_35mm'] = value
+                    elif tag_name == 'ExposureCompensation' or tag_name == 'ExposureBiasValue':
+                        result['exposure']['exposure_compensation'] = value
+                    elif tag_name == 'MeteringMode':
+                        result['exposure']['metering_mode'] = value
+                    elif tag_name == 'Flash':
+                        result['exposure']['flash'] = value
+                    elif tag_name == 'WhiteBalance':
+                        result['exposure']['white_balance'] = value
+                    elif tag_name == 'ExposureMode':
+                        result['exposure']['exposure_mode'] = value
+                    elif tag_name == 'ExposureProgram':
+                        result['exposure']['exposure_program'] = value
+                    elif tag_name == 'SceneCaptureType':
+                        result['exposure']['scene_type'] = value
+                    elif tag_name == 'GainControl':
+                        result['exposure']['gain_control'] = value
+                    elif tag_name == 'Contrast':
+                        result['exposure']['contrast'] = value
+                    elif tag_name == 'Saturation':
+                        result['exposure']['saturation'] = value
+                    elif tag_name == 'Sharpness':
+                        result['exposure']['sharpness'] = value
+
+                    # Image properties
+                    elif tag_name == 'Orientation':
+                        result['image']['orientation'] = value
+                    elif tag_name == 'ColorSpace':
+                        result['image']['color_space'] = value
+                    elif tag_name == 'Compression':
+                        result['image']['compression'] = value
+                    elif tag_name == 'XResolution':
+                        result['image']['x_resolution'] = value
+                    elif tag_name == 'YResolution':
+                        result['image']['y_resolution'] = value
+                    elif tag_name == 'ResolutionUnit':
+                        result['image']['resolution_unit'] = value
+                    elif tag_name == 'YCbCrPositioning':
+                        result['image']['ycbcr_positioning'] = value
+
+                    # Technical/Software
+                    elif tag_name == 'Software':
+                        result['technical']['software'] = value
+                    elif tag_name == 'Artist':
+                        result['technical']['artist'] = value
+                    elif tag_name == 'Copyright':
+                        result['technical']['copyright'] = value
+                    elif tag_name == 'ImageDescription':
+                        result['technical']['description'] = value
+                    elif tag_name == 'UserComment':
+                        result['technical']['user_comment'] = value
+
+                    # GPS Info
+                    elif tag_name == 'GPSInfo':
+                        gps_data = {}
+                        for gps_tag_id in value:
+                            gps_tag_name = GPSTAGS.get(gps_tag_id, gps_tag_id)
+                            gps_data[gps_tag_name] = value[gps_tag_id]
+
+                        # Store all GPS fields
+                        result['gps']['raw'] = gps_data
+
+                        # Convert coordinates to decimal
+                        if 'GPSLatitude' in gps_data and 'GPSLongitude' in gps_data:
+                            result['gps']['latitude'] = self._convert_gps_to_decimal(
+                                gps_data['GPSLatitude'],
+                                gps_data.get('GPSLatitudeRef', 'N')
+                            )
+                            result['gps']['longitude'] = self._convert_gps_to_decimal(
+                                gps_data['GPSLongitude'],
+                                gps_data.get('GPSLongitudeRef', 'E')
+                            )
+
+                        # GPS Altitude
+                        if 'GPSAltitude' in gps_data:
+                            altitude = gps_data['GPSAltitude']
+                            if isinstance(altitude, tuple):
+                                altitude = altitude[0] / altitude[1] if altitude[1] != 0 else altitude[0]
+                            result['gps']['altitude'] = altitude
+                            result['gps']['altitude_ref'] = gps_data.get('GPSAltitudeRef', 0)
+
+                        # GPS Timestamp
+                        if 'GPSTimeStamp' in gps_data:
+                            result['gps']['timestamp'] = gps_data['GPSTimeStamp']
+                        if 'GPSDateStamp' in gps_data:
+                            result['gps']['datestamp'] = gps_data['GPSDateStamp']
+
+                        # GPS Direction/Speed
+                        if 'GPSImgDirection' in gps_data:
+                            result['gps']['image_direction'] = gps_data['GPSImgDirection']
+                        if 'GPSSpeed' in gps_data:
+                            result['gps']['speed'] = gps_data['GPSSpeed']
+                        if 'GPSSpeedRef' in gps_data:
+                            result['gps']['speed_ref'] = gps_data['GPSSpeedRef']
+
+                        # GPS Satellites
+                        if 'GPSSatellites' in gps_data:
+                            result['gps']['satellites'] = gps_data['GPSSatellites']
+
+        except Exception as e:
+            print(f"[EXIFParser] Error extracting all EXIF fields: {e}")
+            import traceback
+            traceback.print_exc()
+
+        return result
+
+    def extract_video_metadata_full(self, file_path: str) -> Dict:
+        """
+        Extract comprehensive video metadata using ffprobe.
+
+        Returns dict organized by category:
+        - basic: filename, size, format
+        - video: codec, resolution, fps, bitrate, duration
+        - audio: codec, sample rate, channels, bitrate
+        - technical: container, creation time, rotation, all other fields
+        """
+        result = {
+            'basic': {},
+            'video': {},
+            'audio': {},
+            'technical': {},
+            'raw_metadata': {}
+        }
+
+        try:
+            import os
+            import json
+            import subprocess
+
+            # Basic file info
+            result['basic']['filename'] = os.path.basename(file_path)
+            result['basic']['file_size'] = os.path.getsize(file_path)
+            result['basic']['file_path'] = file_path
+
+            # Use ffprobe to extract metadata
+            cmd = [
+                'ffprobe',
+                '-v', 'quiet',
+                '-print_format', 'json',
+                '-show_format',
+                '-show_streams',
+                file_path
+            ]
+
+            output = subprocess.check_output(cmd, timeout=5.0, stderr=subprocess.DEVNULL)
+            data = json.loads(output)
+
+            # Store raw metadata
+            result['raw_metadata'] = data
+
+            # Process format info
+            if 'format' in data:
+                fmt = data['format']
+                result['basic']['format'] = fmt.get('format_name', 'Unknown')
+                result['basic']['format_long'] = fmt.get('format_long_name', 'Unknown')
+
+                # Duration
+                if 'duration' in fmt:
+                    result['video']['duration'] = float(fmt['duration'])
+
+                # Bitrate
+                if 'bit_rate' in fmt:
+                    result['video']['bitrate'] = int(fmt['bit_rate'])
+
+                # Creation time and other tags
+                if 'tags' in fmt:
+                    tags = fmt['tags']
+                    result['technical']['tags'] = tags
+
+                    # Creation time (various formats)
+                    for key in ['creation_time', 'date', 'com.apple.quicktime.creationdate']:
+                        if key in tags:
+                            result['technical']['creation_time'] = tags[key]
+                            break
+
+                    # Other useful tags
+                    if 'encoder' in tags:
+                        result['technical']['encoder'] = tags['encoder']
+                    if 'copyright' in tags:
+                        result['technical']['copyright'] = tags['copyright']
+                    if 'artist' in tags:
+                        result['technical']['artist'] = tags['artist']
+                    if 'title' in tags:
+                        result['technical']['title'] = tags['title']
+                    if 'comment' in tags:
+                        result['technical']['comment'] = tags['comment']
+
+            # Process streams
+            if 'streams' in data:
+                for stream in data['streams']:
+                    codec_type = stream.get('codec_type')
+
+                    if codec_type == 'video':
+                        # Video stream
+                        result['video']['codec'] = stream.get('codec_name', 'Unknown')
+                        result['video']['codec_long'] = stream.get('codec_long_name', 'Unknown')
+                        result['video']['width'] = stream.get('width')
+                        result['video']['height'] = stream.get('height')
+                        result['video']['profile'] = stream.get('profile')
+                        result['video']['level'] = stream.get('level')
+
+                        # FPS (frame rate)
+                        if 'r_frame_rate' in stream:
+                            fps_str = stream['r_frame_rate']
+                            if '/' in fps_str:
+                                num, den = fps_str.split('/')
+                                result['video']['fps'] = float(num) / float(den) if float(den) != 0 else 0
+                            else:
+                                result['video']['fps'] = float(fps_str)
+
+                        # Pixel format
+                        if 'pix_fmt' in stream:
+                            result['video']['pixel_format'] = stream['pix_fmt']
+
+                        # Color space
+                        if 'color_space' in stream:
+                            result['video']['color_space'] = stream['color_space']
+                        if 'color_range' in stream:
+                            result['video']['color_range'] = stream['color_range']
+
+                        # Rotation (from side data or tags)
+                        if 'tags' in stream:
+                            if 'rotate' in stream['tags']:
+                                result['video']['rotation'] = stream['tags']['rotate']
+                        if 'side_data_list' in stream:
+                            for side_data in stream['side_data_list']:
+                                if side_data.get('side_data_type') == 'Display Matrix':
+                                    if 'rotation' in side_data:
+                                        result['video']['rotation'] = side_data['rotation']
+
+                        # Bitrate (stream-specific)
+                        if 'bit_rate' in stream:
+                            result['video']['video_bitrate'] = int(stream['bit_rate'])
+
+                    elif codec_type == 'audio':
+                        # Audio stream
+                        result['audio']['codec'] = stream.get('codec_name', 'Unknown')
+                        result['audio']['codec_long'] = stream.get('codec_long_name', 'Unknown')
+                        result['audio']['sample_rate'] = stream.get('sample_rate')
+                        result['audio']['channels'] = stream.get('channels')
+                        result['audio']['channel_layout'] = stream.get('channel_layout')
+
+                        # Bitrate
+                        if 'bit_rate' in stream:
+                            result['audio']['bitrate'] = int(stream['bit_rate'])
+
+        except subprocess.TimeoutExpired:
+            print(f"[EXIFParser] ffprobe timeout for video: {file_path}")
+        except subprocess.CalledProcessError as e:
+            print(f"[EXIFParser] ffprobe error: {e}")
+        except FileNotFoundError:
+            print(f"[EXIFParser] ffprobe not found - install ffmpeg to enable video metadata")
+        except Exception as e:
+            print(f"[EXIFParser] Error extracting video metadata: {e}")
+            import traceback
+            traceback.print_exc()
+
+        return result
