@@ -9,6 +9,7 @@ Pillow>=10.0.0
 pillow-heif>=1.1.0     # HEIC/HEIF image support (for iPhone photos) - v1.1.0+ auto-registers
 opencv-python>=4.8.0   # cv2 - Image processing and video handling
 rawpy>=0.18.0          # RAW photo support (CR2, NEF, ARW, DNG, etc.)
+piexif>=1.1.3          # EXIF writing (for GPS location persistence)
 
 # Database
 # SQLite is built-in to Python

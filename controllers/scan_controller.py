@@ -137,6 +137,27 @@ class ScanController(QObject):
 
         self.main._scan_progress.show()
 
+        # CRITICAL FIX: Explicitly center progress dialog on main window
+        # Qt's automatic centering may fail in some cases (minimized window, multi-monitor, etc.)
+        try:
+            # Ensure dialog geometry is calculated
+            self.main._scan_progress.adjustSize()
+            QApplication.processEvents()
+
+            # Get geometries
+            parent_rect = self.main.geometry()
+            dialog_rect = self.main._scan_progress.geometry()
+
+            # Calculate center position
+            center_x = parent_rect.x() + (parent_rect.width() - dialog_rect.width()) // 2
+            center_y = parent_rect.y() + (parent_rect.height() - dialog_rect.height()) // 2
+
+            # Move dialog to center
+            self.main._scan_progress.move(center_x, center_y)
+            self.logger.debug(f"Progress dialog centered at ({center_x}, {center_y})")
+        except Exception as e:
+            self.logger.warning(f"Could not center progress dialog: {e}")
+
         # DB writer
         # NOTE: Schema creation handled automatically by repository layer
         from db_writer import DBWriter
@@ -431,6 +452,22 @@ class ScanController(QObject):
             self.logger.warning(f"Could not set progress dialog max height: {e}")
 
         progress.show()
+
+        # CRITICAL FIX: Explicitly center progress dialog on main window
+        try:
+            progress.adjustSize()
+            QApplication.processEvents()
+
+            parent_rect = self.main.geometry()
+            dialog_rect = progress.geometry()
+
+            center_x = parent_rect.x() + (parent_rect.width() - dialog_rect.width()) // 2
+            center_y = parent_rect.y() + (parent_rect.height() - dialog_rect.height()) // 2
+
+            progress.move(center_x, center_y)
+        except Exception as e:
+            self.logger.warning(f"Could not center progress dialog: {e}")
+
         QApplication.processEvents()
 
         # Build date branches after scan completes

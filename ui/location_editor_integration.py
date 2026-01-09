@@ -69,7 +69,11 @@ def get_photo_location(photo_path: str) -> tuple[Optional[float], Optional[float
 def save_photo_location(photo_path: str, latitude: Optional[float],
                        longitude: Optional[float], location_name: Optional[str]) -> bool:
     """
-    Save GPS location for a photo to database.
+    Save GPS location for a photo to both database AND photo file EXIF metadata.
+
+    CRITICAL FIX: This now writes GPS data to TWO places:
+    1. Application database (for quick queries, Locations section, etc.)
+    2. Photo file EXIF metadata (for persistence across database resets)
 
     Args:
         photo_path: Path to photo file
@@ -82,11 +86,27 @@ def save_photo_location(photo_path: str, latitude: Optional[float],
     """
     try:
         from reference_db import ReferenceDB
+        from services.exif_gps_writer import write_gps_to_exif
 
+        # Step 1: Update database (existing behavior)
         db = ReferenceDB()
         db.update_photo_gps(photo_path, latitude, longitude, location_name)
 
-        logger.info(f"[LocationEditor] Saved location for {Path(photo_path).name}: ({latitude}, {longitude}) - {location_name}")
+        # Step 2: Write GPS data to photo file EXIF metadata (NEW - CRITICAL FIX)
+        # This ensures GPS data persists with the photo file, not just in database
+        exif_success = write_gps_to_exif(photo_path, latitude, longitude)
+
+        if not exif_success:
+            logger.warning(
+                f"[LocationEditor] GPS written to database but FAILED to write to photo file EXIF. "
+                f"Location will be lost if database is cleared. Photo: {Path(photo_path).name}"
+            )
+
+        logger.info(
+            f"[LocationEditor] Saved location for {Path(photo_path).name}: "
+            f"({latitude}, {longitude}) - {location_name} "
+            f"(DB: ✓, EXIF: {'✓' if exif_success else '✗'})"
+        )
         return True
 
     except Exception as e:
