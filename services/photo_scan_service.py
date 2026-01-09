@@ -274,7 +274,7 @@ class PhotoScanService:
                        root_folder: str,
                        project_id: int,
                        incremental: bool = True,
-                       skip_unchanged: bool = True,
+                       skip_unchanged: Optional[bool] = None,
                        extract_exif_date: bool = True,
                        ignore_folders: Optional[Set[str]] = None,
                        progress_callback: Optional[Callable[[ScanProgress], None]] = None,
@@ -285,8 +285,8 @@ class PhotoScanService:
         Args:
             root_folder: Root folder to scan
             project_id: Project ID to associate scanned photos with
-            incremental: If True, skip files that haven't changed
-            skip_unchanged: Skip files with matching mtime
+            incremental: If True, skip files that haven't changed (default: True)
+            skip_unchanged: Skip files with matching mtime (default: None, uses incremental value)
             extract_exif_date: Extract EXIF DateTimeOriginal
             ignore_folders: Folders to skip (uses defaults if None)
             progress_callback: Optional callback for progress updates
@@ -306,12 +306,16 @@ class PhotoScanService:
         self._scan_start_time = start_time
         self._last_progress_emit = 0.0
 
+        # FIX: If skip_unchanged not specified, use incremental value
+        if skip_unchanged is None:
+            skip_unchanged = incremental
+
         root_path = Path(root_folder).resolve()
         self._scan_root = root_path
         if not root_path.exists():
             raise ValueError(f"Root folder does not exist: {root_folder}")
 
-        logger.info(f"Starting scan: {root_folder} (incremental={incremental})")
+        logger.info(f"Starting scan: {root_folder} (incremental={incremental}, skip_unchanged={skip_unchanged})")
 
         try:
             # Step 1: Discover all media files (photos + videos)

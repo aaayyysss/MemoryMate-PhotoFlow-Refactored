@@ -6265,15 +6265,20 @@ class GooglePhotosLayout(BaseLayout):
             # Edit Location action (manual GPS editing)
             # Support batch editing when multiple photos are selected
             selected_count = len(self.selected_photos)
-            if selected_count > 1 and path in self.selected_photos:
-                # Batch edit mode
-                edit_location_action = QAction(f"📍 Edit Location ({selected_count} photos)...", parent=menu)
-                edit_location_action.triggered.connect(lambda: self._edit_photos_location_batch(list(self.selected_photos)))
+            if selected_count > 1:
+                # Show both batch and single edit options for clarity
+                batch_action = QAction(f"📍 Edit Location ({selected_count} selected photos)...", parent=menu)
+                batch_action.triggered.connect(lambda: self._edit_photos_location_batch(list(self.selected_photos)))
+                menu.addAction(batch_action)
+
+                single_action = QAction(f"📍 Edit Location (this photo only)...", parent=menu)
+                single_action.triggered.connect(lambda: self._edit_photo_location(path))
+                menu.addAction(single_action)
             else:
                 # Single photo mode
                 edit_location_action = QAction("📍 Edit Location...", parent=menu)
                 edit_location_action.triggered.connect(lambda: self._edit_photo_location(path))
-            menu.addAction(edit_location_action)
+                menu.addAction(edit_location_action)
 
             menu.addSeparator()
 
