@@ -15,7 +15,7 @@ Features:
 
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QFormLayout,
                                QLabel, QLineEdit, QPushButton, QTextEdit,
-                               QMessageBox, QGroupBox, QListWidget, QListWidgetItem)
+                               QMessageBox, QGroupBox, QListWidget, QListWidgetItem, QComboBox)
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QDoubleValidator
 import logging
@@ -85,6 +85,50 @@ class LocationEditorDialog(QDialog):
             photo_label = QLabel(f"📷 {Path(self.photo_path).name}")
             photo_label.setStyleSheet("font-weight: bold; padding: 8px; background: #f0f0f0; border-radius: 4px;")
             layout.addWidget(photo_label)
+
+        # SPRINT 2 ENHANCEMENT: Recent Locations dropdown (quick reuse)
+        recent_group = QGroupBox("⏱️ Recent Locations")
+        recent_layout = QVBoxLayout()
+
+        # Recent locations dropdown
+        self.recent_combo = QComboBox()
+        self.recent_combo.setStyleSheet("""
+            QComboBox {
+                padding: 6px 12px;
+                border: 1px solid #dadce0;
+                border-radius: 4px;
+                background: white;
+                min-height: 24px;
+            }
+            QComboBox:hover {
+                border: 1px solid #1a73e8;
+            }
+            QComboBox::drop-down {
+                border: none;
+                width: 30px;
+            }
+            QComboBox::down-arrow {
+                image: none;
+                border-left: 5px solid transparent;
+                border-right: 5px solid transparent;
+                border-top: 5px solid #5f6368;
+                margin-right: 10px;
+            }
+        """)
+        self.recent_combo.currentIndexChanged.connect(self._on_recent_location_selected)
+
+        # Load recent locations
+        self._load_recent_locations()
+
+        recent_layout.addWidget(self.recent_combo)
+
+        # Help text
+        recent_help = QLabel("💡 Select a recently used location to auto-fill coordinates and name")
+        recent_help.setStyleSheet("font-size: 10pt; color: #666; font-style: italic;")
+        recent_layout.addWidget(recent_help)
+
+        recent_group.setLayout(recent_layout)
+        layout.addWidget(recent_group)
 
         # CRITICAL FIX: Location search by name (forward geocoding)
         search_group = QGroupBox("🔍 Search for Location")
@@ -410,6 +454,86 @@ class LocationEditorDialog(QDialog):
             f"Coordinates: ({result['lat']:.6f}, {result['lon']:.6f})\n\n"
             f"Click 'Save' to apply this location to your photo(s)."
         )
+
+    def _load_recent_locations(self):
+        """
+        Load recent locations from settings and populate dropdown.
+
+        Shows most recently used locations at the top for quick selection.
+        """
+        try:
+            from settings_manager_qt import SettingsManager
+
+            sm = SettingsManager()
+            recents = sm.get_recent_locations(limit=10)
+
+            # Clear existing items
+            self.recent_combo.clear()
+
+            # Add placeholder item
+            self.recent_combo.addItem("-- Select Recent Location --", None)
+
+            if not recents:
+                # No recent locations
+                self.recent_combo.addItem("(No recent locations yet)", None)
+                self.recent_combo.setEnabled(False)
+                return
+
+            # Add recent locations
+            for loc in recents:
+                name = loc.get('name', 'Unknown')
+                lat = loc.get('lat', 0)
+                lon = loc.get('lon', 0)
+                use_count = loc.get('use_count', 1)
+
+                # Format display text
+                if use_count > 1:
+                    display_text = f"{name} (used {use_count}x)"
+                else:
+                    display_text = name
+
+                # Store full location data
+                self.recent_combo.addItem(display_text, loc)
+
+            logger.info(f"[LocationEditor] Loaded {len(recents)} recent locations")
+
+        except Exception as e:
+            logger.error(f"[LocationEditor] Failed to load recent locations: {e}")
+            # Don't crash, just disable the dropdown
+            self.recent_combo.addItem("(Error loading recents)", None)
+            self.recent_combo.setEnabled(False)
+
+    def _on_recent_location_selected(self, index: int):
+        """
+        Handle selection of a recent location from dropdown.
+
+        Auto-fills coordinates and location name when user selects a recent location.
+        """
+        if index <= 0:  # Placeholder or "no recents" item
+            return
+
+        location_data = self.recent_combo.itemData(index)
+        if not location_data:
+            return
+
+        # Auto-fill coordinates
+        lat = location_data.get('lat')
+        lon = location_data.get('lon')
+        name = location_data.get('name', '')
+
+        if lat is not None and lon is not None:
+            self.lat_input.setText(str(lat))
+            self.lon_input.setText(str(lon))
+
+        if name:
+            self.name_input.setText(name)
+
+        logger.info(f"[LocationEditor] Selected recent location: {name} ({lat}, {lon})")
+
+        # Show brief confirmation (non-blocking)
+        # User can immediately click Save without dismissing dialog
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(0, lambda: None)  # Process events
 
     def _geocode_coordinates(self):
         """Geocode coordinates to get location name."""

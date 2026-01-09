@@ -107,6 +107,19 @@ def save_photo_location(photo_path: str, latitude: Optional[float],
             f"({latitude}, {longitude}) - {location_name} "
             f"(DB: ✓, EXIF: {'✓' if exif_success else '✗'})"
         )
+
+        # SPRINT 2 ENHANCEMENT: Add location to recent locations for quick reuse
+        # Only add if coordinates and name are provided (not clearing)
+        if latitude is not None and longitude is not None and location_name:
+            try:
+                from settings_manager_qt import SettingsManager
+                sm = SettingsManager()
+                sm.add_recent_location(location_name, latitude, longitude)
+                logger.debug(f"[LocationEditor] Added to recent locations: {location_name}")
+            except Exception as e:
+                logger.warning(f"[LocationEditor] Failed to add to recent locations: {e}")
+                # Don't fail the whole operation if recents update fails
+
         return True
 
     except Exception as e:
