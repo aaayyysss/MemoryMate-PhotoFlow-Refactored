@@ -164,6 +164,108 @@ def edit_photo_location(photo_path: str, parent: Optional[QWidget] = None) -> bo
         return False
 
 
+def edit_photos_location_batch(photo_paths: list[str], parent: Optional[QWidget] = None) -> bool:
+    """
+    Show location editor dialog for multiple photos (batch editing).
+
+    Follows Google Photos pattern:
+    - User selects multiple photos with same or different locations
+    - Opens single dialog to set location for all selected photos
+    - Applies the same location to all photos at once
+
+    Args:
+        photo_paths: List of photo file paths
+        parent: Parent widget for dialog
+
+    Returns:
+        True if location was changed for any photo, False if cancelled or error
+    """
+    if not photo_paths:
+        return False
+
+    try:
+        from ui.location_editor_dialog import LocationEditorDialog
+
+        # Check if all photos have the same location (common case)
+        first_lat, first_lon, first_name = get_photo_location(photo_paths[0])
+        all_same = True
+
+        for path in photo_paths[1:]:
+            lat, lon, name = get_photo_location(path)
+            if lat != first_lat or lon != first_lon or name != first_name:
+                all_same = False
+                break
+
+        # Show dialog with current location if all photos have same location
+        dialog = LocationEditorDialog(
+            photo_path=f"{len(photo_paths)} photos",  # Show count instead of single filename
+            current_lat=first_lat if all_same else None,
+            current_lon=first_lon if all_same else None,
+            current_name=first_name if all_same else None,
+            parent=parent,
+            batch_mode=True,
+            batch_count=len(photo_paths)
+        )
+
+        # Connect save signal
+        location_saved = [False]  # Use list for closure
+        success_count = [0]
+        failed_count = [0]
+
+        def on_location_saved(lat, lon, name):
+            """Apply location to all photos in batch."""
+            for photo_path in photo_paths:
+                try:
+                    success = save_photo_location(photo_path, lat, lon, name)
+                    if success:
+                        success_count[0] += 1
+                    else:
+                        failed_count[0] += 1
+                except Exception as e:
+                    logger.error(f"[LocationEditor] Batch save failed for {Path(photo_path).name}: {e}")
+                    failed_count[0] += 1
+
+            # Show summary
+            if success_count[0] > 0:
+                location_saved[0] = True
+
+                if lat is not None and lon is not None:
+                    msg = f"✓ Location updated for {success_count[0]} photo(s)!\n\n"
+                    msg += f"Coordinates: ({lat:.6f}, {lon:.6f})\n"
+                    msg += f"Location: {name if name else 'Not specified'}\n\n"
+                    msg += f"These photos will now appear in the Locations section."
+                else:
+                    msg = f"✓ Location data removed from {success_count[0]} photo(s)."
+
+                if failed_count[0] > 0:
+                    msg += f"\n\n⚠ {failed_count[0]} photo(s) failed to update."
+
+                QMessageBox.information(parent, "Batch Location Update", msg)
+            else:
+                QMessageBox.critical(
+                    parent,
+                    "Error",
+                    f"Failed to save location data for all {len(photo_paths)} photos.\n"
+                    f"Please check the logs for details."
+                )
+
+        dialog.locationSaved.connect(on_location_saved)
+
+        # Show dialog
+        result = dialog.exec()
+
+        return location_saved[0]
+
+    except Exception as e:
+        logger.error(f"[LocationEditor] Failed to show batch dialog: {e}")
+        QMessageBox.critical(
+            parent,
+            "Error",
+            f"Failed to open location editor:\n{e}"
+        )
+        return False
+
+
 # Example: Adding to photo context menu
 def create_location_menu_action(photo_path: str, parent: QWidget):
     """

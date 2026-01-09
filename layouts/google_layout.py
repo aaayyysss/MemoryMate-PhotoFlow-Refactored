@@ -6263,8 +6263,16 @@ class GooglePhotosLayout(BaseLayout):
             menu.addAction(copy_action)
 
             # Edit Location action (manual GPS editing)
-            edit_location_action = QAction("📍 Edit Location...", parent=menu)
-            edit_location_action.triggered.connect(lambda: self._edit_photo_location(path))
+            # Support batch editing when multiple photos are selected
+            selected_count = len(self.selected_photos)
+            if selected_count > 1 and path in self.selected_photos:
+                # Batch edit mode
+                edit_location_action = QAction(f"📍 Edit Location ({selected_count} photos)...", parent=menu)
+                edit_location_action.triggered.connect(lambda: self._edit_photos_location_batch(list(self.selected_photos)))
+            else:
+                # Single photo mode
+                edit_location_action = QAction("📍 Edit Location...", parent=menu)
+                edit_location_action.triggered.connect(lambda: self._edit_photo_location(path))
             menu.addAction(edit_location_action)
 
             menu.addSeparator()
@@ -6402,6 +6410,48 @@ class GooglePhotosLayout(BaseLayout):
                 self.main_window,
                 "Error",
                 f"Failed to open location editor:\n{e}"
+            )
+
+    def _edit_photos_location_batch(self, paths: list[str]):
+        """Edit GPS location for multiple photos (batch editing)."""
+        from PySide6.QtWidgets import QMessageBox
+
+        print(f"[GooglePhotosLayout] 📍 Opening batch location editor for {len(paths)} photos")
+
+        try:
+            from ui.location_editor_integration import edit_photos_location_batch
+
+            # Show batch location editor dialog
+            location_changed = edit_photos_location_batch(paths, parent=self.main_window)
+
+            # If location was changed, refresh the Locations section
+            if location_changed:
+                print(f"[GooglePhotosLayout] ✓ Location updated for {len(paths)} photos")
+
+                # Reload Locations section in accordion sidebar
+                try:
+                    if hasattr(self, 'accordion_sidebar'):
+                        print("[GooglePhotosLayout] Reloading Locations section...")
+                        self.accordion_sidebar.reload_section("locations")
+                    else:
+                        print("[GooglePhotosLayout] Warning: No accordion_sidebar reference")
+                except Exception as e:
+                    print(f"[GooglePhotosLayout] Warning: Failed to reload Locations section: {e}")
+
+        except ImportError as e:
+            QMessageBox.critical(
+                self.main_window,
+                "Import Error",
+                f"Failed to load location editor:\n{e}\n\nPlease ensure ui/location_editor_integration.py exists."
+            )
+        except Exception as e:
+            print(f"[GooglePhotosLayout] Error opening batch location editor: {e}")
+            import traceback
+            traceback.print_exc()
+            QMessageBox.critical(
+                self.main_window,
+                "Error",
+                f"Failed to open batch location editor:\n{e}"
             )
 
     def _show_photo_properties(self, path: str):
