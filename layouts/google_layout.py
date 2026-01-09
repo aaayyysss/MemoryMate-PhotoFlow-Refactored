@@ -812,6 +812,32 @@ class GooglePhotosLayout(BaseLayout):
         btn_select_all.clicked.connect(self._on_select_all)
         layout.addWidget(btn_select_all)
 
+        # CRITICAL FIX: Add batch Edit Location button (Sprint 2 enhancement)
+        # This makes batch GPS editing discoverable - users don't need to hunt in context menus
+        btn_edit_location = QPushButton("📍 Location")
+        btn_edit_location.setStyleSheet("""
+            QPushButton {
+                background: #1a73e8;
+                color: white;
+                border: none;
+                padding: 6px 16px;
+                border-radius: 4px;
+                font-size: 10pt;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background: #1557b0;
+            }
+            QPushButton:disabled {
+                background: #5f6368;
+                color: #9aa0a6;
+            }
+        """)
+        btn_edit_location.setToolTip("Edit GPS location for all selected photos")
+        btn_edit_location.setCursor(Qt.PointingHandCursor)
+        btn_edit_location.clicked.connect(self._on_batch_edit_location_clicked)
+        layout.addWidget(btn_edit_location)
+
         # Clear Selection button
         btn_clear = QPushButton("Clear")
         btn_clear.setStyleSheet("""
@@ -6900,6 +6926,28 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
 
         self.selected_photos.clear()
         self._update_selection_ui()
+
+    def _on_batch_edit_location_clicked(self):
+        """
+        Handle batch location edit button click from floating toolbar.
+
+        This provides a prominent, discoverable way to batch edit GPS locations
+        for selected photos without requiring context menu access.
+        """
+        from PySide6.QtWidgets import QMessageBox
+
+        if not self.selected_photos:
+            QMessageBox.information(
+                self.main_window,
+                "No Photos Selected",
+                "Please select one or more photos to edit their location.\n\n"
+                "Tip: Click photos to select them, then click the 📍 Location button."
+            )
+            return
+
+        # Call existing batch edit method (reuses Sprint 1 implementation)
+        print(f"[GooglePhotosLayout] 📍 Batch location edit triggered from toolbar for {len(self.selected_photos)} photos")
+        self._edit_photos_location_batch(list(self.selected_photos))
 
     def _on_delete_selected(self):
         """
