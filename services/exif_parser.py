@@ -460,9 +460,24 @@ class EXIFParser:
                     # GPS Info
                     elif tag_name == 'GPSInfo':
                         gps_data = {}
-                        for gps_tag_id in value:
-                            gps_tag_name = GPSTAGS.get(gps_tag_id, gps_tag_id)
-                            gps_data[gps_tag_name] = value[gps_tag_id]
+                        # CRITICAL FIX: Check if value is dict-like before iterating
+                        # Some GPS tags written by piexif may have unexpected structure
+                        if isinstance(value, dict):
+                            for gps_tag_id in value:
+                                gps_tag_name = GPSTAGS.get(gps_tag_id, gps_tag_id)
+                                gps_data[gps_tag_name] = value[gps_tag_id]
+                        elif hasattr(value, '__iter__') and not isinstance(value, (str, bytes)):
+                            # Value is iterable but not dict - try iterating
+                            try:
+                                for gps_tag_id in value:
+                                    gps_tag_name = GPSTAGS.get(gps_tag_id, gps_tag_id)
+                                    gps_data[gps_tag_name] = value[gps_tag_id]
+                            except (TypeError, KeyError) as e:
+                                self.logger.warning(f"Could not iterate GPS tags: {e}")
+                        else:
+                            # Value is not iterable (e.g., integer) - skip GPS parsing
+                            self.logger.warning(f"GPSInfo value is not iterable (type: {type(value)}), skipping GPS data extraction")
+                            continue
 
                         # Store all GPS fields
                         result['gps']['raw'] = gps_data
