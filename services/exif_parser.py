@@ -473,10 +473,10 @@ class EXIFParser:
                                     gps_tag_name = GPSTAGS.get(gps_tag_id, gps_tag_id)
                                     gps_data[gps_tag_name] = value[gps_tag_id]
                             except (TypeError, KeyError) as e:
-                                self.logger.warning(f"Could not iterate GPS tags: {e}")
+                                print(f"[EXIFParser] ⚠️ Could not iterate GPS tags: {e}")
                         else:
                             # Value is not iterable (e.g., integer) - skip GPS parsing
-                            self.logger.warning(f"GPSInfo value is not iterable (type: {type(value)}), skipping GPS data extraction")
+                            print(f"[EXIFParser] ⚠️ GPSInfo value is not iterable (type: {type(value)}), skipping GPS data extraction")
                             continue
 
                         # Store all GPS fields
