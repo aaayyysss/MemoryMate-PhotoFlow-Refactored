@@ -365,15 +365,18 @@ class PhotoScanService:
 
             # Step 2: Load existing metadata for incremental scan
             existing_metadata = {}
+            existing_video_metadata = {}
             if skip_unchanged:
                 try:
                     logger.info("Loading existing metadata for incremental scan...")
                     existing_metadata = self._load_existing_metadata()
-                    logger.info(f"✓ Loaded {len(existing_metadata)} existing file records")
+                    existing_video_metadata = self._load_existing_video_metadata()
+                    logger.info(f"✓ Loaded {len(existing_metadata)} existing photo records and {len(existing_video_metadata)} video records")
                 except Exception as e:
                     logger.warning(f"Failed to load existing metadata (continuing with full scan): {e}")
                     # Continue with full scan if metadata loading fails
                     existing_metadata = {}
+                    existing_video_metadata = {}
 
             # Step 3: Process files in batches
             batch_rows = []
@@ -514,7 +517,7 @@ class PhotoScanService:
                 print(f"[SCAN] Condition TRUE - calling _process_videos()")
                 sys.stdout.flush()
                 logger.info(f"Processing {total_videos} videos...")
-                self._process_videos(all_videos, root_path, project_id, folders_seen, progress_callback)
+                self._process_videos(all_videos, root_path, project_id, folders_seen, skip_unchanged, existing_video_metadata, progress_callback)
             else:
                 print(f"[SCAN] Condition FALSE - skipping video processing!")
                 if total_videos == 0:
@@ -671,6 +674,22 @@ class PhotoScanService:
                 return {row['path']: row['modified'] for row in cur.fetchall()}
         except Exception as e:
             logger.warning(f"Could not load existing metadata: {e}")
+            return {}
+
+    def _load_existing_video_metadata(self) -> Dict[str, str]:
+        """
+        Load existing video metadata for incremental scanning.
+
+        Returns:
+            Dictionary mapping path -> mtime string
+        """
+        try:
+            with self.photo_repo.connection(read_only=True) as conn:
+                cur = conn.cursor()
+                cur.execute("SELECT path, modified FROM video_metadata")
+                return {row['path']: row['modified'] for row in cur.fetchall()}
+        except Exception as e:
+            logger.warning(f"Could not load existing video metadata: {e}")
             return {}
 
     def _compute_created_fields(self, date_str: str = None, modified: str = None) -> tuple:
@@ -1085,7 +1104,8 @@ class PhotoScanService:
             logger.warning(f"Could not create default project: {e}")
 
     def _process_videos(self, video_files: List[Path], root_path: Path, project_id: int,
-                       folders_seen: Set[str], progress_callback: Optional[Callable] = None):
+                       folders_seen: Set[str], skip_unchanged: bool, existing_video_metadata: Dict[str, str],
+                       progress_callback: Optional[Callable] = None):
         """
         Process discovered video files and index them.
 
@@ -1094,6 +1114,8 @@ class PhotoScanService:
             root_path: Root directory of scan
             project_id: Project ID
             folders_seen: Set of folder paths already seen
+            skip_unchanged: Skip videos with matching mtime
+            existing_video_metadata: Dict mapping normalized path -> mtime
             progress_callback: Optional progress callback
         """
         try:
@@ -1117,6 +1139,14 @@ class PhotoScanService:
                     stat = os.stat(video_path)
                     size_kb = stat.st_size / 1024
                     modified = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(stat.st_mtime))
+
+                    # INCREMENTAL SCAN: Skip if unchanged (same logic as photos)
+                    path_str = str(video_path)
+                    normalized_path = self.photo_repo._normalize_path(path_str)
+                    if skip_unchanged and existing_video_metadata.get(normalized_path) == modified:
+                        self._stats['videos_skipped'] = self._stats.get('videos_skipped', 0) + 1
+                        logger.debug(f"Skipping unchanged video: {video_path.name}")
+                        continue
 
                     # CRITICAL FIX: Extract video creation date quickly during scan
                     # Try to get date_taken from video metadata (with timeout), fall back to modified
