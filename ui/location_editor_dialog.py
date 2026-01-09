@@ -15,7 +15,7 @@ Features:
 
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QFormLayout,
                                QLabel, QLineEdit, QPushButton, QTextEdit,
-                               QMessageBox, QGroupBox)
+                               QMessageBox, QGroupBox, QListWidget, QListWidgetItem)
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QDoubleValidator
 import logging
@@ -85,6 +85,57 @@ class LocationEditorDialog(QDialog):
             photo_label = QLabel(f"📷 {Path(self.photo_path).name}")
             photo_label.setStyleSheet("font-weight: bold; padding: 8px; background: #f0f0f0; border-radius: 4px;")
             layout.addWidget(photo_label)
+
+        # CRITICAL FIX: Location search by name (forward geocoding)
+        search_group = QGroupBox("🔍 Search for Location")
+        search_layout = QVBoxLayout()
+
+        # Search input row
+        search_input_layout = QHBoxLayout()
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("e.g., Golden Gate Bridge, San Francisco, Paris...")
+        self.search_input.returnPressed.connect(self._search_location)  # Search on Enter
+        search_input_layout.addWidget(self.search_input)
+
+        self.search_btn = QPushButton("🔍 Search")
+        self.search_btn.clicked.connect(self._search_location)
+        self.search_btn.setStyleSheet("background: #1a73e8; color: white; padding: 6px 16px; font-weight: bold;")
+        search_input_layout.addWidget(self.search_btn)
+
+        search_layout.addLayout(search_input_layout)
+
+        # Search results list
+        self.search_results = QListWidget()
+        self.search_results.setMaximumHeight(120)
+        self.search_results.setStyleSheet("""
+            QListWidget {
+                border: 1px solid #dadce0;
+                border-radius: 4px;
+                background: #f8f9fa;
+            }
+            QListWidget::item {
+                padding: 8px;
+                border-bottom: 1px solid #e8eaed;
+            }
+            QListWidget::item:hover {
+                background: #e8f0fe;
+            }
+            QListWidget::item:selected {
+                background: #1a73e8;
+                color: white;
+            }
+        """)
+        self.search_results.itemDoubleClicked.connect(self._on_search_result_selected)
+        self.search_results.hide()  # Hidden initially
+        search_layout.addWidget(self.search_results)
+
+        # Help text
+        search_help = QLabel("💡 Type a place name and click Search, or press Enter")
+        search_help.setStyleSheet("font-size: 10pt; color: #666; font-style: italic;")
+        search_layout.addWidget(search_help)
+
+        search_group.setLayout(search_layout)
+        layout.addWidget(search_group)
 
         # Current location display
         current_group = QGroupBox("Current Location")
@@ -257,6 +308,108 @@ class LocationEditorDialog(QDialog):
         except Exception as e:
             logger.error(f"[LocationEditor] Map preview failed: {e}")
             QMessageBox.critical(self, "Error", f"Failed to open map:\n{e}")
+
+    def _search_location(self):
+        """
+        Search for location by name (forward geocoding).
+
+        This allows users to type "San Francisco" instead of manually
+        entering coordinates.
+        """
+        search_text = self.search_input.text().strip()
+
+        if not search_text:
+            QMessageBox.warning(self, "Empty Search", "Please enter a location name to search.")
+            return
+
+        # Show progress
+        self.search_btn.setEnabled(False)
+        self.search_btn.setText("🔍 Searching...")
+        self.search_results.clear()
+
+        try:
+            # Import forward geocoding service
+            from services.geocoding_service import forward_geocode
+
+            # Search for locations
+            results = forward_geocode(search_text, limit=5)
+
+            if results:
+                # Show results in list
+                self.search_results.show()
+                for result in results:
+                    name = result['name']
+                    lat = result['lat']
+                    lon = result['lon']
+                    result_type = result.get('type', 'location')
+
+                    # Create list item with data
+                    item_text = f"{name}\n({lat:.6f}, {lon:.6f})"
+                    item = QListWidgetItem(item_text)
+                    item.setData(Qt.UserRole, result)  # Store full result data
+                    item.setToolTip(f"Type: {result_type}\nDouble-click to select")
+
+                    self.search_results.addItem(item)
+
+                logger.info(f"[LocationEditor] Search '{search_text}' → {len(results)} result(s)")
+            else:
+                # No results found
+                self.search_results.show()
+                no_results = QListWidgetItem("❌ No results found. Try a different search term.")
+                no_results.setFlags(Qt.NoItemFlags)  # Not selectable
+                no_results.setForeground(Qt.gray)
+                self.search_results.addItem(no_results)
+
+                logger.info(f"[LocationEditor] Search '{search_text}' → No results")
+
+        except ImportError as e:
+            QMessageBox.critical(self, "Import Error",
+                               f"Failed to import geocoding service:\n{e}\n\n"
+                               f"Please ensure services/geocoding_service.py is available.")
+            logger.error(f"[LocationEditor] Import error: {e}")
+        except Exception as e:
+            logger.error(f"[LocationEditor] Location search failed: {e}")
+            QMessageBox.critical(self, "Search Error",
+                               f"Failed to search for location:\n{e}\n\n"
+                               f"Please check your internet connection.")
+        finally:
+            self.search_btn.setEnabled(True)
+            self.search_btn.setText("🔍 Search")
+
+    def _on_search_result_selected(self, item: QListWidgetItem):
+        """
+        Handle selection of a search result.
+
+        Auto-fills coordinates and location name when user double-clicks a result.
+        """
+        result = item.data(Qt.UserRole)
+        if not result:
+            return
+
+        # Auto-fill coordinates
+        self.lat_input.setText(str(result['lat']))
+        self.lon_input.setText(str(result['lon']))
+
+        # Auto-fill location name
+        self.name_input.setText(result['name'])
+
+        # Hide search results
+        self.search_results.hide()
+
+        # Clear search input
+        self.search_input.clear()
+
+        logger.info(f"[LocationEditor] Selected: {result['name']} ({result['lat']}, {result['lon']})")
+
+        # Show confirmation
+        QMessageBox.information(
+            self,
+            "Location Selected",
+            f"✓ Coordinates and name auto-filled:\n\n"
+            f"Location: {result['name']}\n"
+            f"Coordinates: ({result['lat']:.6f}, {result['lon']:.6f})\n\n"
+            f"Click 'Save' to apply this location to your photo(s)."
+        )
 
     def _geocode_coordinates(self):
         """Geocode coordinates to get location name."""
