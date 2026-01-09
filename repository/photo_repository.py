@@ -192,8 +192,8 @@ class PhotoRepository(BaseRepository):
                 created_ts = excluded.created_ts,
                 created_date = excluded.created_date,
                 created_year = excluded.created_year,
-                gps_latitude = excluded.gps_latitude,
-                gps_longitude = excluded.gps_longitude
+                gps_latitude = COALESCE(excluded.gps_latitude, photo_metadata.gps_latitude),
+                gps_longitude = COALESCE(excluded.gps_longitude, photo_metadata.gps_longitude)
         """
 
         with self.connection() as conn:
@@ -276,8 +276,8 @@ class PhotoRepository(BaseRepository):
                 created_ts = excluded.created_ts,
                 created_date = excluded.created_date,
                 created_year = excluded.created_year,
-                gps_latitude = excluded.gps_latitude,
-                gps_longitude = excluded.gps_longitude
+                gps_latitude = COALESCE(excluded.gps_latitude, photo_metadata.gps_latitude),
+                gps_longitude = COALESCE(excluded.gps_longitude, photo_metadata.gps_longitude)
         """
 
         with self.connection() as conn:
