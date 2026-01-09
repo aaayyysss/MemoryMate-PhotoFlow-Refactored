@@ -838,7 +838,9 @@ class PhotoScanService:
             return None
 
         # Step 3: Skip if unchanged (incremental scan)
-        if skip_unchanged and existing_metadata.get(path_str) == mtime:
+        # CRITICAL FIX: Normalize path before lookup (database stores normalized paths)
+        normalized_path = self.photo_repo._normalize_path(path_str)
+        if skip_unchanged and existing_metadata.get(normalized_path) == mtime:
             self._stats['photos_skipped'] += 1
             return None
 
