@@ -3399,7 +3399,15 @@ class ReferenceDB:
             Passing None for both lat/lon will clear the location data.
         """
         import logging
+        import os
+        import platform
         logger = logging.getLogger(__name__)
+
+        # CRITICAL FIX: Normalize path before updating (database stores normalized paths)
+        # This ensures manual GPS edits actually update the correct row
+        normalized_path = os.path.normpath(path).replace('\\', '/')
+        if platform.system() == 'Windows':
+            normalized_path = normalized_path.lower()
 
         with self._connect() as conn:
             cur = conn.cursor()
@@ -3412,18 +3420,22 @@ class ReferenceDB:
             if 'location_name' not in existing_cols:
                 cur.execute("ALTER TABLE photo_metadata ADD COLUMN location_name TEXT")
 
-            # Update the photo record
+            # Update the photo record (using normalized path)
             cur.execute("""
                 UPDATE photo_metadata
                 SET gps_latitude = ?, gps_longitude = ?, location_name = ?
                 WHERE path = ?
-            """, (latitude, longitude, location_name, path))
+            """, (latitude, longitude, location_name, normalized_path))
+
+            rows_updated = cur.rowcount
             conn.commit()
 
-            if latitude is not None and longitude is not None:
-                logger.info(f"[ReferenceDB] Updated GPS for {path}: ({latitude:.6f}, {longitude:.6f}) - {location_name}")
+            if rows_updated == 0:
+                logger.warning(f"[ReferenceDB] No photo found with path: {normalized_path} (original: {path})")
+            elif latitude is not None and longitude is not None:
+                logger.info(f"[ReferenceDB] Updated GPS for {os.path.basename(path)}: ({latitude:.6f}, {longitude:.6f}) - {location_name}")
             else:
-                logger.info(f"[ReferenceDB] Cleared GPS for {path}")
+                logger.info(f"[ReferenceDB] Cleared GPS for {os.path.basename(path)}")
     
     def get_photos_by_location(self, project_id: int | None = None, radius_km: float = 5.0) -> dict[str, list[dict]]:
         """Group photos by location proximity.

@@ -32,8 +32,13 @@ def get_photo_location(photo_path: str) -> tuple[Optional[float], Optional[float
     """
     try:
         from reference_db import ReferenceDB
+        from repository.photo_repository import PhotoRepository
 
         db = ReferenceDB()
+
+        # CRITICAL FIX: Normalize path before querying (database stores normalized paths)
+        photo_repo = PhotoRepository()
+        normalized_path = photo_repo._normalize_path(photo_path)
 
         with db._connect() as conn:
             cur = conn.cursor()
@@ -43,12 +48,12 @@ def get_photo_location(photo_path: str) -> tuple[Optional[float], Optional[float
             if 'gps_latitude' not in existing_cols or 'gps_longitude' not in existing_cols:
                 return (None, None, None)
 
-            # Get GPS data for photo
+            # Get GPS data for photo (using normalized path)
             cur.execute("""
                 SELECT gps_latitude, gps_longitude, location_name
                 FROM photo_metadata
                 WHERE path = ?
-            """, (photo_path,))
+            """, (normalized_path,))
 
             row = cur.fetchone()
             if row:
