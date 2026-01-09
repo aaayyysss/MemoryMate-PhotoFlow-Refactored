@@ -107,6 +107,19 @@ def save_photo_location(photo_path: str, latitude: Optional[float],
             f"({latitude}, {longitude}) - {location_name} "
             f"(DB: ✓, EXIF: {'✓' if exif_success else '✗'})"
         )
+
+        # SPRINT 2 ENHANCEMENT: Add location to recent locations for quick reuse
+        # Only add if coordinates and name are provided (not clearing)
+        if latitude is not None and longitude is not None and location_name:
+            try:
+                from settings_manager_qt import SettingsManager
+                sm = SettingsManager()
+                sm.add_recent_location(location_name, latitude, longitude)
+                logger.debug(f"[LocationEditor] Added to recent locations: {location_name}")
+            except Exception as e:
+                logger.warning(f"[LocationEditor] Failed to add to recent locations: {e}")
+                # Don't fail the whole operation if recents update fails
+
         return True
 
     except Exception as e:
@@ -229,7 +242,8 @@ def edit_photos_location_batch(photo_paths: list[str], parent: Optional[QWidget]
             current_name=first_name if all_same else None,
             parent=parent,
             batch_mode=True,
-            batch_count=len(photo_paths)
+            batch_count=len(photo_paths),
+            photo_paths=photo_paths  # SPRINT 2: Pass paths for thumbnail preview
         )
 
         # Connect save signal
@@ -239,19 +253,82 @@ def edit_photos_location_batch(photo_paths: list[str], parent: Optional[QWidget]
 
         def on_location_saved(lat, lon, name):
             """Apply location to all photos in batch."""
-            for photo_path in photo_paths:
+            from PySide6.QtWidgets import QProgressDialog
+            from PySide6.QtCore import Qt
+
+            # SPRINT 2 ENHANCEMENT: Show progress dialog for batches > 10 photos
+            progress_dialog = None
+            show_progress = len(photo_paths) > 10
+
+            if show_progress:
+                progress_dialog = QProgressDialog(
+                    "Updating GPS location...",
+                    "Cancel",
+                    0,
+                    len(photo_paths),
+                    parent
+                )
+                progress_dialog.setWindowTitle("Batch Location Update")
+                progress_dialog.setWindowModality(Qt.WindowModal)
+                progress_dialog.setMinimumDuration(0)  # Show immediately
+                progress_dialog.setAutoClose(False)  # Manual close
+                progress_dialog.setAutoReset(False)
+                progress_dialog.setValue(0)
+
+            cancelled = [False]  # Track cancellation
+
+            for idx, photo_path in enumerate(photo_paths):
+                # Check for cancellation
+                if progress_dialog and progress_dialog.wasCanceled():
+                    cancelled[0] = True
+                    logger.info(f"[LocationEditor] Batch update cancelled after {idx} photos")
+                    break
+
                 try:
+                    # Update progress dialog
+                    if progress_dialog:
+                        photo_name = Path(photo_path).name
+                        progress_dialog.setLabelText(
+                            f"Updating GPS location...\n\n"
+                            f"Photo {idx + 1} of {len(photo_paths)}: {photo_name}\n\n"
+                            f"✓ Success: {success_count[0]}  ⚠ Failed: {failed_count[0]}"
+                        )
+                        progress_dialog.setValue(idx)
+
+                    # Save location
                     success = save_photo_location(photo_path, lat, lon, name)
                     if success:
                         success_count[0] += 1
                     else:
                         failed_count[0] += 1
+
                 except Exception as e:
                     logger.error(f"[LocationEditor] Batch save failed for {Path(photo_path).name}: {e}")
                     failed_count[0] += 1
 
+            # Close progress dialog
+            if progress_dialog:
+                progress_dialog.setValue(len(photo_paths))
+                progress_dialog.close()
+
             # Show summary
-            if success_count[0] > 0:
+            if cancelled[0]:
+                # User cancelled - show partial results
+                msg = f"⚠ Batch update cancelled\n\n"
+                msg += f"✓ {success_count[0]} photo(s) updated successfully\n"
+                if failed_count[0] > 0:
+                    msg += f"⚠ {failed_count[0]} photo(s) failed\n"
+                remaining = len(photo_paths) - success_count[0] - failed_count[0]
+                if remaining > 0:
+                    msg += f"• {remaining} photo(s) not processed"
+
+                QMessageBox.warning(parent, "Batch Update Cancelled", msg)
+
+                # Mark as saved if at least some photos succeeded
+                if success_count[0] > 0:
+                    location_saved[0] = True
+
+            elif success_count[0] > 0:
                 location_saved[0] = True
 
                 if lat is not None and lon is not None:

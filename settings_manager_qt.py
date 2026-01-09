@@ -111,3 +111,112 @@ class SettingsManager:
     def set_setting(self, key, value):
         """Alias for set() for compatibility."""
         self.set(key, value)
+
+    # ============================================================
+    # Recent Locations (Sprint 2 Enhancement)
+    # ============================================================
+
+    def get_recent_locations(self, limit: int = 15) -> list[dict]:
+        """
+        Get recently used GPS locations for quick reuse.
+
+        Returns list of recent locations in reverse chronological order
+        (most recent first). Each location is a dict with:
+        - name: Location name (str)
+        - lat: Latitude (float)
+        - lon: Longitude (float)
+        - timestamp: Unix timestamp when last used (float)
+        - use_count: Number of times this location was used (int)
+
+        Args:
+            limit: Maximum number of recent locations to return (default: 15)
+
+        Returns:
+            List of location dicts, empty if none saved
+
+        Example:
+            >>> sm = SettingsManager()
+            >>> recents = sm.get_recent_locations(limit=10)
+            >>> for loc in recents:
+            ...     print(f"{loc['name']}: ({loc['lat']}, {loc['lon']})")
+        """
+        import time
+
+        recents = self.get("recent_locations", [])
+
+        # Sort by timestamp (most recent first)
+        recents.sort(key=lambda x: x.get('timestamp', 0), reverse=True)
+
+        # Return only requested number
+        return recents[:limit]
+
+    def add_recent_location(self, name: str, lat: float, lon: float) -> None:
+        """
+        Add a location to recent locations list.
+
+        If location already exists (matching name and coordinates within tolerance),
+        updates its timestamp and increments use count instead of adding duplicate.
+
+        Auto-prunes list to keep only last 15 locations.
+
+        Args:
+            name: Location name (e.g., "San Francisco, CA, USA")
+            lat: Latitude in decimal degrees
+            lon: Longitude in decimal degrees
+
+        Example:
+            >>> sm = SettingsManager()
+            >>> sm.add_recent_location("Cancun Beach Resort, Mexico", 21.1619, -86.8515)
+        """
+        import time
+
+        if not name or lat is None or lon is None:
+            return
+
+        recents = self.get("recent_locations", [])
+
+        # Check if location already exists (within 0.001 degree tolerance ≈ 100m)
+        tolerance = 0.001
+        existing_index = None
+
+        for i, loc in enumerate(recents):
+            if (abs(loc.get('lat', 0) - lat) < tolerance and
+                abs(loc.get('lon', 0) - lon) < tolerance and
+                loc.get('name', '').lower() == name.lower()):
+                existing_index = i
+                break
+
+        if existing_index is not None:
+            # Update existing location: bump timestamp and increment count
+            recents[existing_index]['timestamp'] = time.time()
+            recents[existing_index]['use_count'] = recents[existing_index].get('use_count', 0) + 1
+        else:
+            # Add new location
+            recents.append({
+                'name': name,
+                'lat': lat,
+                'lon': lon,
+                'timestamp': time.time(),
+                'use_count': 1
+            })
+
+        # Sort by timestamp (most recent first)
+        recents.sort(key=lambda x: x.get('timestamp', 0), reverse=True)
+
+        # Keep only last 15 locations (auto-prune)
+        recents = recents[:15]
+
+        # Save updated list
+        self.set("recent_locations", recents)
+
+    def clear_recent_locations(self) -> None:
+        """
+        Clear all recent locations.
+
+        Useful for privacy or testing purposes.
+
+        Example:
+            >>> sm = SettingsManager()
+            >>> sm.clear_recent_locations()
+        """
+        self.set("recent_locations", [])

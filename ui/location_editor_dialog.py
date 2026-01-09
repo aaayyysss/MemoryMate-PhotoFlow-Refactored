@@ -15,9 +15,9 @@ Features:
 
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QFormLayout,
                                QLabel, QLineEdit, QPushButton, QTextEdit,
-                               QMessageBox, QGroupBox, QListWidget, QListWidgetItem)
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QDoubleValidator
+                               QMessageBox, QGroupBox, QListWidget, QListWidgetItem, QComboBox)
+from PySide6.QtCore import Qt, Signal, QTimer
+from PySide6.QtGui import QDoubleValidator, QPixmap
 import logging
 
 logger = logging.getLogger(__name__)
@@ -41,7 +41,7 @@ class LocationEditorDialog(QDialog):
     locationSaved = Signal(float, float, str)  # lat, lon, location_name
 
     def __init__(self, photo_path=None, current_lat=None, current_lon=None, current_name=None,
-                 parent=None, batch_mode=False, batch_count=1):
+                 parent=None, batch_mode=False, batch_count=1, photo_paths=None):
         """
         Initialize location editor dialog.
 
@@ -53,6 +53,7 @@ class LocationEditorDialog(QDialog):
             parent: Parent widget
             batch_mode: If True, editing multiple photos at once
             batch_count: Number of photos being edited in batch mode
+            photo_paths: Optional list of photo paths for batch mode (enables thumbnail preview)
         """
         super().__init__(parent)
 
@@ -62,6 +63,7 @@ class LocationEditorDialog(QDialog):
         self.current_name = current_name
         self.batch_mode = batch_mode
         self.batch_count = batch_count
+        self.photo_paths = photo_paths  # SPRINT 2: For batch thumbnail preview
 
         if batch_mode:
             self.setWindowTitle(f"Edit Location - {batch_count} Photos")
@@ -85,6 +87,53 @@ class LocationEditorDialog(QDialog):
             photo_label = QLabel(f"📷 {Path(self.photo_path).name}")
             photo_label.setStyleSheet("font-weight: bold; padding: 8px; background: #f0f0f0; border-radius: 4px;")
             layout.addWidget(photo_label)
+
+        # SPRINT 2 ENHANCEMENT: Photo Preview (150x150px thumbnails)
+        self._init_photo_preview(layout)
+
+        # SPRINT 2 ENHANCEMENT: Recent Locations dropdown (quick reuse)
+        recent_group = QGroupBox("⏱️ Recent Locations")
+        recent_layout = QVBoxLayout()
+
+        # Recent locations dropdown
+        self.recent_combo = QComboBox()
+        self.recent_combo.setStyleSheet("""
+            QComboBox {
+                padding: 6px 12px;
+                border: 1px solid #dadce0;
+                border-radius: 4px;
+                background: white;
+                min-height: 24px;
+            }
+            QComboBox:hover {
+                border: 1px solid #1a73e8;
+            }
+            QComboBox::drop-down {
+                border: none;
+                width: 30px;
+            }
+            QComboBox::down-arrow {
+                image: none;
+                border-left: 5px solid transparent;
+                border-right: 5px solid transparent;
+                border-top: 5px solid #5f6368;
+                margin-right: 10px;
+            }
+        """)
+        self.recent_combo.currentIndexChanged.connect(self._on_recent_location_selected)
+
+        # Load recent locations
+        self._load_recent_locations()
+
+        recent_layout.addWidget(self.recent_combo)
+
+        # Help text
+        recent_help = QLabel("💡 Select a recently used location to auto-fill coordinates and name")
+        recent_help.setStyleSheet("font-size: 10pt; color: #666; font-style: italic;")
+        recent_layout.addWidget(recent_help)
+
+        recent_group.setLayout(recent_layout)
+        layout.addWidget(recent_group)
 
         # CRITICAL FIX: Location search by name (forward geocoding)
         search_group = QGroupBox("🔍 Search for Location")
@@ -235,6 +284,164 @@ class LocationEditorDialog(QDialog):
         button_layout.addWidget(save_btn)
 
         layout.addLayout(button_layout)
+
+    def _init_photo_preview(self, layout: QVBoxLayout):
+        """
+        SPRINT 2 ENHANCEMENT: Initialize photo preview section.
+
+        Shows 150x150px thumbnails of photos being edited:
+        - Single mode: One thumbnail
+        - Batch mode: 3-5 thumbnails + "... and N more"
+
+        Loads asynchronously to avoid blocking the UI.
+        """
+        if not self.photo_path:
+            return
+
+        # Create preview group
+        preview_group = QGroupBox("📸 Photo Preview")
+        preview_layout = QHBoxLayout()
+        preview_layout.setSpacing(8)
+
+        # Storage for thumbnail labels
+        self.thumbnail_labels = []
+
+        if self.batch_mode:
+            # Batch mode: Show message that thumbnails will load
+            loading_label = QLabel("Loading thumbnails...")
+            loading_label.setStyleSheet("color: #666; font-style: italic; padding: 8px;")
+            loading_label.setAlignment(Qt.AlignCenter)
+            preview_layout.addWidget(loading_label)
+            self.thumbnail_labels.append(loading_label)
+        else:
+            # Single mode: Show one thumbnail placeholder
+            thumbnail_label = QLabel()
+            thumbnail_label.setFixedSize(150, 150)
+            thumbnail_label.setAlignment(Qt.AlignCenter)
+            thumbnail_label.setStyleSheet("""
+                QLabel {
+                    border: 2px solid #dadce0;
+                    border-radius: 8px;
+                    background: #f8f9fa;
+                    color: #666;
+                }
+            """)
+            thumbnail_label.setText("Loading...")
+            preview_layout.addWidget(thumbnail_label)
+            self.thumbnail_labels.append(thumbnail_label)
+
+        preview_layout.addStretch()
+        preview_group.setLayout(preview_layout)
+        layout.addWidget(preview_group)
+
+        # Load thumbnails asynchronously (non-blocking)
+        # Use QTimer.singleShot to defer loading until after dialog is shown
+        QTimer.singleShot(50, self._load_photo_thumbnails)
+
+    def _load_photo_thumbnails(self):
+        """
+        Load photo thumbnails asynchronously.
+
+        For single mode: Load one thumbnail
+        For batch mode: Load up to 5 thumbnails + count indicator
+        """
+        try:
+            from services.thumbnail_service import get_thumbnail_service
+            from pathlib import Path
+
+            thumb_service = get_thumbnail_service()
+
+            if self.batch_mode:
+                # Clear loading message
+                for label in self.thumbnail_labels:
+                    label.deleteLater()
+                self.thumbnail_labels.clear()
+
+                # Get the preview group layout
+                preview_group = self.findChild(QGroupBox, "")
+                if not preview_group:
+                    return
+
+                preview_layout = preview_group.layout()
+                if not preview_layout:
+                    return
+
+                # If we have photo_paths, show up to 5 thumbnails
+                if self.photo_paths and len(self.photo_paths) > 0:
+                    max_thumbnails = min(5, len(self.photo_paths))
+
+                    for i in range(max_thumbnails):
+                        photo_path = self.photo_paths[i]
+                        pixmap = thumb_service.get_thumbnail(photo_path, height=120)
+
+                        thumbnail_label = QLabel()
+                        thumbnail_label.setFixedSize(120, 120)
+                        thumbnail_label.setAlignment(Qt.AlignCenter)
+                        thumbnail_label.setStyleSheet("""
+                            QLabel {
+                                border: 2px solid #dadce0;
+                                border-radius: 8px;
+                                background: #f8f9fa;
+                            }
+                        """)
+
+                        if pixmap and not pixmap.isNull():
+                            scaled_pixmap = pixmap.scaled(
+                                120, 120,
+                                Qt.KeepAspectRatio,
+                                Qt.SmoothTransformation
+                            )
+                            thumbnail_label.setPixmap(scaled_pixmap)
+                        else:
+                            thumbnail_label.setText("⚠️")
+
+                        preview_layout.addWidget(thumbnail_label)
+
+                    # Show "... and N more" if there are more photos
+                    if len(self.photo_paths) > max_thumbnails:
+                        more_count = len(self.photo_paths) - max_thumbnails
+                        more_label = QLabel(f"... and\n{more_count} more")
+                        more_label.setStyleSheet("color: #666; font-weight: bold; padding: 8px;")
+                        more_label.setAlignment(Qt.AlignCenter)
+                        preview_layout.addWidget(more_label)
+                else:
+                    # No photo_paths provided - show fallback message
+                    msg_label = QLabel(f"📸 Editing {self.batch_count} photos")
+                    msg_label.setStyleSheet("color: #666; padding: 8px; font-weight: bold;")
+                    msg_label.setAlignment(Qt.AlignCenter)
+                    preview_layout.addWidget(msg_label)
+
+            else:
+                # Single mode: Load one thumbnail
+                pixmap = thumb_service.get_thumbnail(self.photo_path, height=150)
+
+                if pixmap and not pixmap.isNull():
+                    # Scale to fit 150x150 while preserving aspect ratio
+                    scaled_pixmap = pixmap.scaled(
+                        150, 150,
+                        Qt.KeepAspectRatio,
+                        Qt.SmoothTransformation
+                    )
+                    self.thumbnail_labels[0].setPixmap(scaled_pixmap)
+                    self.thumbnail_labels[0].setText("")  # Clear "Loading..."
+                else:
+                    # Failed to load
+                    self.thumbnail_labels[0].setText("⚠️\nPreview\nUnavailable")
+                    self.thumbnail_labels[0].setStyleSheet("""
+                        QLabel {
+                            border: 2px solid #dadce0;
+                            border-radius: 8px;
+                            background: #fff3cd;
+                            color: #856404;
+                            font-size: 9pt;
+                        }
+                    """)
+
+        except Exception as e:
+            logger.warning(f"[LocationEditor] Failed to load thumbnail: {e}")
+            # Show error in thumbnail placeholder
+            if self.thumbnail_labels:
+                self.thumbnail_labels[0].setText("⚠️\nPreview\nError")
 
     def _load_current_location(self):
         """Load and display current location data."""
@@ -410,6 +617,86 @@ class LocationEditorDialog(QDialog):
             f"Coordinates: ({result['lat']:.6f}, {result['lon']:.6f})\n\n"
             f"Click 'Save' to apply this location to your photo(s)."
         )
+
+    def _load_recent_locations(self):
+        """
+        Load recent locations from settings and populate dropdown.
+
+        Shows most recently used locations at the top for quick selection.
+        """
+        try:
+            from settings_manager_qt import SettingsManager
+
+            sm = SettingsManager()
+            recents = sm.get_recent_locations(limit=10)
+
+            # Clear existing items
+            self.recent_combo.clear()
+
+            # Add placeholder item
+            self.recent_combo.addItem("-- Select Recent Location --", None)
+
+            if not recents:
+                # No recent locations
+                self.recent_combo.addItem("(No recent locations yet)", None)
+                self.recent_combo.setEnabled(False)
+                return
+
+            # Add recent locations
+            for loc in recents:
+                name = loc.get('name', 'Unknown')
+                lat = loc.get('lat', 0)
+                lon = loc.get('lon', 0)
+                use_count = loc.get('use_count', 1)
+
+                # Format display text
+                if use_count > 1:
+                    display_text = f"{name} (used {use_count}x)"
+                else:
+                    display_text = name
+
+                # Store full location data
+                self.recent_combo.addItem(display_text, loc)
+
+            logger.info(f"[LocationEditor] Loaded {len(recents)} recent locations")
+
+        except Exception as e:
+            logger.error(f"[LocationEditor] Failed to load recent locations: {e}")
+            # Don't crash, just disable the dropdown
+            self.recent_combo.addItem("(Error loading recents)", None)
+            self.recent_combo.setEnabled(False)
+
+    def _on_recent_location_selected(self, index: int):
+        """
+        Handle selection of a recent location from dropdown.
+
+        Auto-fills coordinates and location name when user selects a recent location.
+        """
+        if index <= 0:  # Placeholder or "no recents" item
+            return
+
+        location_data = self.recent_combo.itemData(index)
+        if not location_data:
+            return
+
+        # Auto-fill coordinates
+        lat = location_data.get('lat')
+        lon = location_data.get('lon')
+        name = location_data.get('name', '')
+
+        if lat is not None and lon is not None:
+            self.lat_input.setText(str(lat))
+            self.lon_input.setText(str(lon))
+
+        if name:
+            self.name_input.setText(name)
+
+        logger.info(f"[LocationEditor] Selected recent location: {name} ({lat}, {lon})")
+
+        # Show brief confirmation (non-blocking)
+        # User can immediately click Save without dismissing dialog
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(0, lambda: None)  # Process events
 
     def _geocode_coordinates(self):
         """Geocode coordinates to get location name."""
