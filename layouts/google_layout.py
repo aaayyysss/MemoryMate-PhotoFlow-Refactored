@@ -589,8 +589,16 @@ class GooglePhotosLayout(BaseLayout):
         toolbar.addWidget(lbl_semantic)
 
         # ✨ Semantic Search Widget (moved from main toolbar)
-        from ui.semantic_search_widget import SemanticSearchWidget
-        self.semantic_search = SemanticSearchWidget(parent=None)  # GooglePhotosLayout is not a QWidget
+        # CRITICAL FIX: Reuse existing widget from main_window to avoid duplicate initialization
+        # This prevents duplicate CLIP model loading and excessive memory usage
+        if hasattr(self.main_window, 'semantic_search') and self.main_window.semantic_search:
+            # Reuse existing widget from main window
+            self.semantic_search = self.main_window.semantic_search
+        else:
+            # Fallback: Create new instance if main window doesn't have one
+            from ui.semantic_search_widget import SemanticSearchWidget
+            self.semantic_search = SemanticSearchWidget(parent=None)  # GooglePhotosLayout is not a QWidget
+
         self.semantic_search.searchTriggered.connect(self._on_semantic_search)
         self.semantic_search.searchCleared.connect(self._on_semantic_search_cleared)
         toolbar.addWidget(self.semantic_search)
