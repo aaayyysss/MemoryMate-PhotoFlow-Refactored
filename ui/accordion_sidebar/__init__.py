@@ -410,6 +410,27 @@ class AccordionSidebar(QWidget):
         """Public helper to refresh the people section content."""
         self._trigger_section_load("people")
 
+    def reload_section(self, section_id: str):
+        """
+        Public method to reload a specific section's content.
+
+        This is useful for refreshing the sidebar after:
+        - Photo scanning completes
+        - Face detection finishes
+        - Tags are added/modified
+        - GPS locations are updated
+        - Folders are reorganized
+
+        Args:
+            section_id: Section to reload ("people", "dates", "folders", "tags",
+                       "branches", "quick", "locations", "devices", "videos")
+        """
+        logger.info(f"[AccordionSidebar] Reloading section: {section_id}")
+        if section_id in self.section_logic:
+            self._trigger_section_load(section_id)
+        else:
+            logger.warning(f"[AccordionSidebar] Section '{section_id}' not found")
+
     def _on_person_context_menu(self, branch_key: str, action: str):
         """Handle person context menu actions."""
         logger.info(f"[AccordionSidebar] Context menu action: {action} for {branch_key}")
