@@ -591,13 +591,29 @@ class GooglePhotosLayout(BaseLayout):
         # ✨ Semantic Search Widget (moved from main toolbar)
         # CRITICAL FIX: Reuse existing widget from main_window to avoid duplicate initialization
         # This prevents duplicate CLIP model loading and excessive memory usage
+        # CRITICAL FIX 2: Check if Qt object is still valid before reusing
+        from shiboken6 import isValid
+
+        should_reuse = False
         if hasattr(self.main_window, 'semantic_search') and self.main_window.semantic_search:
+            # Check if the Qt object is still valid (not deleted during layout switch)
+            try:
+                if isValid(self.main_window.semantic_search):
+                    should_reuse = True
+                else:
+                    print("[GooglePhotosLayout] ⚠️ semantic_search widget was deleted, creating new instance")
+            except Exception as e:
+                print(f"[GooglePhotosLayout] ⚠️ Error checking semantic_search validity: {e}")
+
+        if should_reuse:
             # Reuse existing widget from main window
             self.semantic_search = self.main_window.semantic_search
+            print("[GooglePhotosLayout] ✓ Reusing existing semantic_search widget from main_window")
         else:
-            # Fallback: Create new instance if main window doesn't have one
+            # Create new instance if main window doesn't have one or it was deleted
             from ui.semantic_search_widget import SemanticSearchWidget
             self.semantic_search = SemanticSearchWidget(parent=None)  # GooglePhotosLayout is not a QWidget
+            print("[GooglePhotosLayout] ✓ Created new semantic_search widget")
 
         self.semantic_search.searchTriggered.connect(self._on_semantic_search)
         self.semantic_search.searchCleared.connect(self._on_semantic_search_cleared)
