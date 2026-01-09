@@ -83,11 +83,8 @@ class ScanWorkerAdapter(QObject):
             finished: On successful completion
             error: On failure
         """
-        print(f"[ScanWorkerAdapter] run() method called!")
-        print(f"[ScanWorkerAdapter] folder={self.folder}, incremental={self.incremental}")
         try:
             logger.info(f"ScanWorkerAdapter starting scan of {self.folder}")
-            print(f"[ScanWorkerAdapter] Starting scan...")
 
             # Extract settings
             skip_unchanged = self.settings.get("skip_unchanged_photos", True)
@@ -98,24 +95,18 @@ class ScanWorkerAdapter(QObject):
             def on_progress(prog: ScanProgress):
                 """Forward progress to main thread using thread-safe invocation."""
                 try:
-                    print(f"[ScanWorkerAdapter] 🔍 Progress update: percent={prog.percent}, message='{prog.message[:100]}...'")
-
                     # CRITICAL FIX: Call update_progress_safe directly from worker thread
                     # The method itself will handle thread marshaling if needed
                     if self.progress_receiver:
                         # Call directly - the receiver will handle thread safety
                         self.progress_receiver.update_progress_safe(prog.percent, prog.message)
-                        print(f"[ScanWorkerAdapter] ✓ Called update_progress_safe")
                     else:
                         # Fallback: Try signal emission (for backwards compatibility)
                         self.progress.emit(prog.percent, prog.message)
-                        print(f"[ScanWorkerAdapter] ⚠️ No progress_receiver, using signal fallback")
 
                     self._photos_indexed = prog.current
                 except Exception as e:
-                    logger.warning(f"Failed to send progress update: {e}")
-                    import traceback
-                    traceback.print_exc()
+                    logger.warning(f"Failed to send progress update: {e}", exc_info=True)
 
             # Run the scan
             result: ScanResult = self.service.scan_repository(

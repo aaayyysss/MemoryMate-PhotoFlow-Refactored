@@ -61,8 +61,8 @@ class ScanController(QObject):
 
     def _test_progress_slot(self, pct: int, msg: str):
         """Test slot to verify Qt signal delivery is working."""
-        print(f"[ScanController] 🔥 TEST SLOT RECEIVED: pct={pct}, msg='{msg[:50] if msg else '(empty)'}...'")
-        print(f"[ScanController] 🔥 Signal delivery IS WORKING!")
+        # Removed verbose debug logging - signal delivery confirmed working
+        pass
 
     @Slot(int, str)
     def update_progress_safe(self, pct: int, msg: str):
@@ -81,20 +81,15 @@ class ScanController(QObject):
 
         if current_thread != main_thread:
             # Called from worker thread - marshal to main thread via signal
-            print(f"[ScanController] ⚡ Called from WORKER thread - emitting signal")
-            print(f"[ScanController]    Current: {current_thread}, Main: {main_thread}")
             # Emit signal - QueuedConnection ensures it runs in main thread
             self.progress_update_signal.emit(pct, msg)
-            print(f"[ScanController] ✅ Signal emitted")
         else:
             # Already in main thread - direct call
-            print(f"[ScanController] ✅ Called from MAIN thread - direct call")
             self._on_progress(pct, msg)
 
     @Slot(int, str)
     def _on_progress_main_thread(self, pct: int, msg: str):
         """Helper to ensure we're in main thread when calling _on_progress."""
-        print(f"[ScanController] 🎯 _on_progress_main_thread: pct={pct}, msg='{msg[:50] if msg else '(empty)'}...'")
         self._on_progress(pct, msg)
 
     def start_scan(self, folder, incremental: bool):
@@ -131,7 +126,7 @@ class ScanController(QObject):
         # NOTE: Schema creation handled automatically by repository layer
         from db_writer import DBWriter
         self.db_writer = DBWriter(batch_size=200, poll_interval_ms=150)
-        self.db_writer.error.connect(lambda msg: print(f"[DBWriter] {msg}"))
+        self.db_writer.error.connect(lambda msg: self.logger.error(f"DBWriter error: {msg}"))
         self.db_writer.committed.connect(self._on_committed)
         self.db_writer.start()
 
@@ -140,11 +135,9 @@ class ScanController(QObject):
         try:
             from repository.base_repository import DatabaseConnection
             db_conn = DatabaseConnection("reference_data.db", auto_init=True)
-            print("[Schema] Database schema initialized successfully")
+            self.logger.info("Database schema initialized successfully")
         except Exception as e:
-            print(f"[Schema] ERROR: Failed to initialize database schema: {e}")
-            import traceback
-            traceback.print_exc()
+            self.logger.error(f"Failed to initialize database schema: {e}", exc_info=True)
             self.main.statusBar().showMessage(f"❌ Database initialization failed: {e}")
             return
 
@@ -157,22 +150,16 @@ class ScanController(QObject):
             if current_project_id is None:
                 # No projects exist - will be created during scan
                 current_project_id = 1  # Default to first project
-            print(f"[ScanController] Using project_id: {current_project_id}")
+            self.logger.debug(f"Using project_id: {current_project_id}")
 
         # Scan worker
         try:
-            print(f"[ScanController] Creating ScanWorker for folder: {folder}")
             from services.scan_worker_adapter import ScanWorkerAdapter as ScanWorker
-            print(f"[ScanController] ScanWorker imported successfully")
 
             try:
-                print(f"[ScanController] Creating QThread...")
                 self.thread = QThread(self.main)
-                print(f"[ScanController] QThread created successfully")
             except Exception as qthread_err:
-                print(f"[ScanController] FAILED to create QThread: {qthread_err}")
-                import traceback
-                traceback.print_exc()
+                self.logger.error(f"Failed to create QThread: {qthread_err}", exc_info=True)
                 raise
 
             # CRITICAL: Define callback for video metadata extraction completion
@@ -210,72 +197,52 @@ class ScanController(QObject):
                 self._check_and_trigger_final_refresh()
 
             try:
-                print(f"[ScanController] Creating ScanWorker instance...")
                 self.worker = ScanWorker(folder, current_project_id, incremental, self.main.settings,
                                         db_writer=self.db_writer,
                                         on_video_metadata_finished=on_video_metadata_finished,
                                         progress_receiver=self)  # CRITICAL: Pass self for thread-safe progress updates
-                print(f"[ScanController] ✓ ScanWorker instance created with project_id={current_project_id}")
             except Exception as worker_err:
-                print(f"[ScanController] FAILED to create ScanWorker: {worker_err}")
-                import traceback
-                traceback.print_exc()
+                self.logger.error(f"Failed to create ScanWorker: {worker_err}", exc_info=True)
                 raise
 
             try:
-                print(f"[ScanController] Moving worker to thread...")
                 self.worker.moveToThread(self.thread)
-                print(f"[ScanController] ✓ Worker moved to thread")
             except Exception as move_err:
-                print(f"[ScanController] FAILED to move worker: {move_err}")
-                import traceback
-                traceback.print_exc()
+                self.logger.error(f"Failed to move worker to thread: {move_err}", exc_info=True)
                 raise
 
             try:
-                print(f"[ScanController] Connecting signals...")
                 # CRITICAL FIX: Use Qt.QueuedConnection explicitly to prevent deadlock
                 # When progress is emitted from worker thread via synchronous callback,
                 # we need to ensure the emit() returns immediately without blocking
 
-                # DEBUG: Connect test slot FIRST to verify Qt signal delivery
-                # Using proper class method (not local function) to avoid GC issues
+                # Connect test slot to verify Qt signal delivery (using proper class method to avoid GC issues)
                 self.worker.progress.connect(self._test_progress_slot, Qt.QueuedConnection)
-                print(f"[ScanController] ✓ Test progress slot connected (class method)")
 
                 # Connect actual handler
                 self.worker.progress.connect(self._on_progress, Qt.QueuedConnection)
-                print(f"[ScanController] ✓ _on_progress connected")
 
                 self.worker.finished.connect(self._on_finished, Qt.QueuedConnection)
                 self.worker.error.connect(self._on_error, Qt.QueuedConnection)
-                self.thread.started.connect(lambda: print("[ScanController] QThread STARTED!"))
                 self.thread.started.connect(self.worker.run)
                 self.worker.finished.connect(lambda f, p, v=0: self.thread.quit())
                 self.thread.finished.connect(self._cleanup)
-                print(f"[ScanController] ✓ All signals connected")
             except Exception as signal_err:
-                print(f"[ScanController] FAILED to connect signals: {signal_err}")
+                self.logger.error(f"Failed to connect signals: {signal_err}", exc_info=True)
                 import traceback
                 traceback.print_exc()
                 raise
 
             # Start scan thread immediately - DBWriter is already running from line 178
             try:
-                print("[ScanController] Starting scan thread...")
                 self.thread.start()
-                print("[ScanController] ✓ thread.start() called successfully")
             except Exception as start_err:
-                print(f"[ScanController] FAILED to start thread: {start_err}")
-                import traceback
-                traceback.print_exc()
+                self.logger.error(f"Failed to start scan thread: {start_err}", exc_info=True)
                 raise
 
             self.main.act_cancel_scan.setEnabled(True)
         except Exception as e:
-            print(f"[ScanController] CRITICAL ERROR creating scan worker: {e}")
-            import traceback
-            traceback.print_exc()
+            self.logger.error(f"Critical error creating scan worker: {e}", exc_info=True)
             self.main.statusBar().showMessage(f"❌ Failed to create scan worker: {e}")
             from translations import tr
             QMessageBox.critical(self.main, tr("messages.scan_error"), tr("messages.scan_error_worker", error=str(e)))
@@ -320,11 +287,7 @@ class ScanController(QObject):
 
         REVERT TO OLD WORKING VERSION - Simple and reliable.
         """
-        # DEBUG: Verify message reception
-        print(f"[ScanController] 🔍 _on_progress called: pct={pct}, msg='{msg[:100] if msg else '(empty)'}...'")
-
         if not self.main._scan_progress:
-            print(f"[ScanController] ⚠️ No progress dialog exists!")
             return
 
         pct_i = max(0, min(100, int(pct or 0)))
@@ -334,11 +297,9 @@ class ScanController(QObject):
             # Enhanced progress display with file details
             history = self._log_progress_event(msg)
             label = f"{history}\nCommitted: {self.main._committed_total} rows"
-            print(f"[ScanController] 🔍 Setting label text (with msg):\n{label[:200]}...")
         else:
             history = self._log_progress_event("")
             label = f"Progress: {pct_i}%\n{history}\nCommitted: {self.main._committed_total} rows"
-            print(f"[ScanController] 🔍 Setting label text (no msg):\n{label[:200]}...")
 
         self.main._scan_progress.setLabelText(label)
         self.main._scan_progress.setWindowTitle(f"{tr('messages.scan_dialog_title')} ({pct_i}%)")
@@ -349,7 +310,7 @@ class ScanController(QObject):
             self.cancel()
 
     def _on_finished(self, folders, photos, videos=0):
-        print(f"[ScanController] scan finished: {folders} folders, {photos} photos, {videos} videos")
+        self.logger.info(f"Scan finished: {folders} folders, {photos} photos, {videos} videos")
         self.main._scan_result = (folders, photos, videos)
         summary = (
             f"Scan complete.\n"
@@ -374,11 +335,12 @@ class ScanController(QObject):
             pass
 
     def _on_error(self, err_text: str):
+        self.logger.error(f"Scan error: {err_text}")
         try:
             from translations import tr
             QMessageBox.critical(self.main, tr("messages.scan_error"), err_text)
         except Exception:
-            print(f"[ScanController] {err_text}")
+            QMessageBox.critical(self.main, "Scan Error", err_text)
         if self.thread and self.thread.isRunning():
             self.thread.quit()
 
@@ -387,7 +349,6 @@ class ScanController(QObject):
         Cleanup after scan completes.
         P1-7 FIX: Ensure cleanup runs in main thread to avoid Qt thread violations.
         """
-        print("[ScanController] cleanup after scan")
         # P1-7 FIX: Check if we're in the main thread
         from PySide6.QtCore import QTimer
         from PySide6.QtWidgets import QApplication
