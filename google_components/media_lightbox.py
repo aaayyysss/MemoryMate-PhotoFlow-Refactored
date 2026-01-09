@@ -5246,6 +5246,21 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         gps = data['gps']
         technical = data['technical']
 
+        # CRITICAL FIX: Check database for GPS (manual edits override EXIF)
+        try:
+            from ui.location_editor_integration import get_photo_location
+            db_lat, db_lon, db_location_name = get_photo_location(self.media_path)
+            if db_lat is not None and db_lon is not None:
+                # Database GPS exists (from manual edit or scan) - use it
+                gps['latitude'] = db_lat
+                gps['longitude'] = db_lon
+                if db_location_name:
+                    gps['location_name'] = db_location_name
+                print(f"[MediaLightbox] Using GPS from database: ({db_lat:.6f}, {db_lon:.6f})")
+        except Exception as e:
+            print(f"[MediaLightbox] Could not load GPS from database: {e}")
+            # Fall back to EXIF GPS data
+
         # === BASIC TAB ===
         layout = self.basic_tab_content['layout']
 
