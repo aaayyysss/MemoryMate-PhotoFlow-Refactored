@@ -1991,7 +1991,7 @@ class ThumbnailGridQt(QWidget):
         """
         import os
         from PySide6.QtWidgets import QMessageBox
-        from reference_db import ReferenceDatabase
+        from reference_db import ReferenceDB
 
         if not path:
             QMessageBox.warning(
@@ -2003,7 +2003,7 @@ class ThumbnailGridQt(QWidget):
 
         try:
             # Read GPS data from database
-            db = ReferenceDatabase()
+            db = ReferenceDB()
             with db._connect() as conn:
                 cur = conn.cursor()
                 cur.execute("""
