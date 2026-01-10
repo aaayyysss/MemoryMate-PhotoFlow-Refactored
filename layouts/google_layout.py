@@ -5664,7 +5664,16 @@ class GooglePhotosLayout(BaseLayout):
         # Container widget
         container = QWidget()
         container.setFixedSize(container_width, container_height)
+
+        # VISUAL SELECTION ENHANCEMENT: Blue border for selected photos
+        # This provides clear visual feedback before batch GPS operations
+        # Border is applied/removed dynamically based on selection state
         container.setStyleSheet("background: transparent;")
+
+        # Store container reference for border updates
+        if not hasattr(self, 'thumbnail_containers'):
+            self.thumbnail_containers = {}  # Map path -> container
+        self.thumbnail_containers[path] = container
 
         # Thumbnail button with placeholder
         thumb = PhotoButton(path, self.project_id, container)  # Use custom PhotoButton
@@ -5774,6 +5783,11 @@ class GooglePhotosLayout(BaseLayout):
         # PHASE 2 #1: Context menu on right-click
         thumb.setContextMenuPolicy(Qt.CustomContextMenu)
         thumb.customContextMenuRequested.connect(lambda pos: self._show_photo_context_menu(path, thumb.mapToGlobal(pos)))
+
+        # VISUAL SELECTION ENHANCEMENT: Set initial border based on selection state
+        # This ensures photos that are already selected show blue border immediately
+        is_selected = path in self.selected_photos
+        self._update_photo_border(path, is_selected)
 
         return container
 
@@ -5927,6 +5941,8 @@ class GooglePhotosLayout(BaseLayout):
                     if range_path not in self.selected_photos:
                         self.selected_photos.add(range_path)
                         self._update_checkbox_state(range_path, True)
+                        # VISUAL SELECTION ENHANCEMENT: Show blue border
+                        self._update_photo_border(range_path, True)
 
                 self._update_selection_ui()
                 print(f"[GooglePhotosLayout] ✓ Range selected: {end_idx - start_idx + 1} photos")
@@ -6068,9 +6084,13 @@ class GooglePhotosLayout(BaseLayout):
 
         if state == Qt.Checked:
             self.selected_photos.add(path)
+            # VISUAL SELECTION ENHANCEMENT: Show blue border
+            self._update_photo_border(path, True)
             print(f"[GooglePhotosLayout] ✓ Selected: {path}")
         else:
             self.selected_photos.discard(path)
+            # VISUAL SELECTION ENHANCEMENT: Remove blue border
+            self._update_photo_border(path, False)
             print(f"[GooglePhotosLayout] ✗ Deselected: {path}")
 
         # Update selection counter and action buttons
@@ -6135,6 +6155,47 @@ class GooglePhotosLayout(BaseLayout):
                 checkbox.blockSignals(True)
                 checkbox.setChecked(checked)
                 checkbox.blockSignals(False)
+
+    def _update_photo_border(self, path: str, selected: bool):
+        """
+        VISUAL SELECTION ENHANCEMENT: Update blue border for photo based on selection state.
+
+        This provides clear visual feedback showing which photos are selected,
+        especially important before batch GPS operations where users need to
+        verify their selection visually.
+
+        Args:
+            path: Photo path
+            selected: True to show blue border, False to remove border
+
+        Visual Design:
+            Selected: 3px solid blue border (#1a73e8- Google Blue)
+            Unselected: No border (transparent background)
+        """
+        if not hasattr(self, 'thumbnail_containers'):
+            return
+
+        container = self.thumbnail_containers.get(path)
+        if not container:
+            return
+
+        if selected:
+            # Apply prominent blue border (Google Photos pattern)
+            container.setStyleSheet("""
+                QWidget {
+                    background: transparent;
+                    border: 3px solid #1a73e8;
+                    border-radius: 6px;
+                }
+            """)
+        else:
+            # Remove border
+            container.setStyleSheet("""
+                QWidget {
+                    background: transparent;
+                    border: none;
+                }
+            """)
 
     def _update_selection_ui(self):
         """
@@ -6217,6 +6278,8 @@ class GooglePhotosLayout(BaseLayout):
             if path not in self.selected_photos:
                 self.selected_photos.add(path)
                 self._update_checkbox_state(path, True)
+                # VISUAL SELECTION ENHANCEMENT: Show blue border
+                self._update_photo_border(path, True)
 
         self._update_selection_ui()
         print(f"[GooglePhotosLayout] ✓ Selected all {len(self.selected_photos)} photos")
@@ -6228,6 +6291,8 @@ class GooglePhotosLayout(BaseLayout):
         # Deselect all photos
         for path in list(self.selected_photos):
             self._update_checkbox_state(path, False)
+            # VISUAL SELECTION ENHANCEMENT: Remove blue border
+            self._update_photo_border(path, False)
 
         self.selected_photos.clear()
         self._update_selection_ui()
