@@ -127,7 +127,9 @@ def write_gps_to_exif(photo_path: str, latitude: Optional[float], longitude: Opt
 
         # Check if file format supports EXIF
         file_ext = Path(photo_path).suffix.lower()
-        if file_ext not in ['.jpg', '.jpeg', '.tiff', '.tif']:
+        # CRITICAL FIX: JFIF is JPEG, JPE is JPEG variant - all support EXIF
+        supported_formats = ['.jpg', '.jpeg', '.jfif', '.jpe', '.tiff', '.tif']
+        if file_ext not in supported_formats:
             logger.warning(f"[GPS Writer] File format {file_ext} may not support EXIF - skipping GPS write")
             return False
 
