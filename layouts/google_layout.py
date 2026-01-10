@@ -6169,8 +6169,8 @@ class GooglePhotosLayout(BaseLayout):
             selected: True to show blue border, False to remove border
 
         Visual Design:
-            Selected: 3px solid blue border (#1a73e8- Google Blue)
-            Unselected: No border (transparent background)
+            Selected: 3px solid blue border (#1a73e8 - Google Blue)
+            Unselected: 2px solid gray border (#dadce0 - default)
         """
         if not hasattr(self, 'thumbnail_containers'):
             return
@@ -6179,21 +6179,44 @@ class GooglePhotosLayout(BaseLayout):
         if not container:
             return
 
+        # Get the PhotoButton from the container (stored as property)
+        thumb = container.property("thumbnail_button")
+        if not thumb:
+            return
+
         if selected:
             # Apply prominent blue border (Google Photos pattern)
-            container.setStyleSheet("""
-                QWidget {
-                    background: transparent;
+            # FIX: Apply to PhotoButton, not container, since PhotoButton covers container
+            thumb.setStyleSheet("""
+                QPushButton {
+                    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                        stop:0 #e8eaed, stop:0.5 #f1f3f4, stop:1 #e8eaed);
                     border: 3px solid #1a73e8;
-                    border-radius: 6px;
+                    border-radius: 4px;
+                    color: #5f6368;
+                    font-size: 9pt;
+                }
+                QPushButton:hover {
+                    background: #ffffff;
+                    border-color: #1a73e8;
+                    border-width: 3px;
                 }
             """)
         else:
-            # Remove border
-            container.setStyleSheet("""
-                QWidget {
-                    background: transparent;
-                    border: none;
+            # Restore default border (2px gray)
+            thumb.setStyleSheet("""
+                QPushButton {
+                    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                        stop:0 #e8eaed, stop:0.5 #f1f3f4, stop:1 #e8eaed);
+                    border: 2px solid #dadce0;
+                    border-radius: 4px;
+                    color: #5f6368;
+                    font-size: 9pt;
+                }
+                QPushButton:hover {
+                    background: #ffffff;
+                    border-color: #1a73e8;
+                    border-width: 2px;
                 }
             """)
 
