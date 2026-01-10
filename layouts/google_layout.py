@@ -6712,8 +6712,7 @@ class GooglePhotosLayout(BaseLayout):
                         photo_path=photo_path,
                         latitude=lat,
                         longitude=lon,
-                        location_name=location_name,
-                        project_id=self.project_id
+                        location_name=location_name
                     )
                     success_count += 1
                     print(f"[GooglePhotosLayout] ✓ Pasted location to: {os.path.basename(photo_path)}")
