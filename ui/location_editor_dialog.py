@@ -16,8 +16,19 @@ Features:
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QFormLayout,
                                QLabel, QLineEdit, QPushButton, QTextEdit,
                                QMessageBox, QGroupBox, QListWidget, QListWidgetItem, QComboBox)
-from PySide6.QtCore import Qt, Signal, QTimer
+from PySide6.QtCore import Qt, Signal, QTimer, QUrl
 from PySide6.QtGui import QDoubleValidator, QPixmap
+
+# SPRINT 3: Embedded Map View
+try:
+    from PySide6.QtWebEngineWidgets import QWebEngineView
+    from PySide6.QtWebChannel import QWebChannel
+    WEBENGINE_AVAILABLE = True
+except ImportError:
+    WEBENGINE_AVAILABLE = False
+    logger_module = __import__('logging')
+    logger_module.getLogger(__name__).warning("QWebEngineView not available - map view disabled")
+
 import logging
 
 logger = logging.getLogger(__name__)
@@ -208,6 +219,8 @@ class LocationEditorDialog(QDialog):
         lat_validator = QDoubleValidator(-90.0, 90.0, 6)
         lat_validator.setNotation(QDoubleValidator.StandardNotation)
         self.lat_input.setValidator(lat_validator)
+        # SPRINT 3: Connect to map marker updates
+        self.lat_input.textChanged.connect(self._on_coordinates_changed)
         coord_layout.addRow("Latitude (-90 to 90):", self.lat_input)
 
         # Longitude input
@@ -216,6 +229,8 @@ class LocationEditorDialog(QDialog):
         lon_validator = QDoubleValidator(-180.0, 180.0, 6)
         lon_validator.setNotation(QDoubleValidator.StandardNotation)
         self.lon_input.setValidator(lon_validator)
+        # SPRINT 3: Connect to map marker updates
+        self.lon_input.textChanged.connect(self._on_coordinates_changed)
         coord_layout.addRow("Longitude (-180 to 180):", self.lon_input)
 
         # Map preview button
@@ -228,6 +243,9 @@ class LocationEditorDialog(QDialog):
 
         coord_group.setLayout(coord_layout)
         layout.addWidget(coord_group)
+
+        # SPRINT 3: Embedded Map View (Optional - only if QWebEngineView available)
+        self._init_embedded_map(layout)
 
         # Location name input
         name_group = QGroupBox("Location Name")
@@ -813,6 +831,231 @@ class LocationEditorDialog(QDialog):
         except Exception as e:
             logger.error(f"[LocationEditor] Save failed: {e}")
             QMessageBox.critical(self, "Error", f"Failed to save location:\n{e}")
+
+    def _init_embedded_map(self, layout: QVBoxLayout):
+        """
+        SPRINT 3: Initialize embedded map view with Leaflet.js.
+
+        Adds an interactive map with draggable marker for visual GPS selection.
+        Falls back gracefully if QWebEngineView is not available.
+        """
+        if not WEBENGINE_AVAILABLE:
+            # QWebEngineView not available - skip map view
+            logger.info("[LocationEditor] Embedded map disabled (QWebEngineView not available)")
+            self.map_view = None
+            return
+
+        # Create map group
+        map_group = QGroupBox("🗺️ Interactive Map (Optional)")
+        map_layout = QVBoxLayout()
+
+        # Map info label
+        map_info = QLabel("Drag the marker to set GPS coordinates visually")
+        map_info.setStyleSheet("color: #666; font-size: 9pt; padding: 4px;")
+        map_layout.addWidget(map_info)
+
+        # Create QWebEngineView
+        try:
+            self.map_view = QWebEngineView()
+            self.map_view.setMinimumHeight(300)
+            self.map_view.setMaximumHeight(400)
+
+            # Generate Leaflet.js HTML
+            map_html = self._generate_leaflet_html()
+
+            # Load HTML
+            self.map_view.setHtml(map_html, QUrl("qrc:/"))
+
+            # Create web channel for JavaScript ↔ Python communication
+            self.channel = QWebChannel()
+            self.channel.registerObject("pyHandler", self)
+            self.map_view.page().setWebChannel(self.channel)
+
+            map_layout.addWidget(self.map_view)
+
+            logger.info("[LocationEditor] Embedded map initialized successfully")
+
+        except Exception as e:
+            logger.warning(f"[LocationEditor] Failed to initialize map: {e}")
+            error_label = QLabel(f"⚠️ Map view unavailable: {e}")
+            error_label.setStyleSheet("color: #d93025; padding: 8px;")
+            map_layout.addWidget(error_label)
+            self.map_view = None
+
+        map_group.setLayout(map_layout)
+        layout.addWidget(map_group)
+
+    def _generate_leaflet_html(self) -> str:
+        """
+        Generate Leaflet.js HTML for embedded map.
+
+        Returns:
+            HTML string with Leaflet.js map and draggable marker
+        """
+        # Get initial coordinates (default to San Francisco if not set)
+        init_lat = self.current_lat if self.current_lat else 37.7749
+        init_lon = self.current_lon if self.current_lon else -122.4194
+        init_zoom = 13 if self.current_lat else 10
+
+        html = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Location Map</title>
+
+    <!-- Leaflet.js CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+    <!-- QWebChannel for Python ↔ JS communication -->
+    <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+
+    <style>
+        body {{
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }}
+        #map {{
+            width: 100%;
+            height: 400px;
+        }}
+        .coord-display {{
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: white;
+            padding: 8px 12px;
+            border-radius: 4px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+            z-index: 1000;
+            font-size: 11px;
+            font-family: monospace;
+        }}
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <div class="coord-display" id="coordDisplay">
+        <b>📍 Marker:</b><br>
+        Lat: <span id="markerLat">{init_lat:.6f}</span><br>
+        Lon: <span id="markerLon">{init_lon:.6f}</span>
+    </div>
+
+    <!-- Leaflet.js JavaScript -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <script>
+        // Initialize map
+        var map = L.map('map').setView([{init_lat}, {init_lon}], {init_zoom});
+
+        // Add OpenStreetMap tiles
+        L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+            maxZoom: 19
+        }}).addTo(map);
+
+        // Add draggable marker
+        var marker = L.marker([{init_lat}, {init_lon}], {{
+            draggable: true,
+            title: "Drag me to set location"
+        }}).addTo(map);
+
+        // Popup
+        marker.bindPopup("<b>GPS Location</b><br>Drag marker to adjust").openPopup();
+
+        // Update coordinates display
+        function updateCoordDisplay(lat, lng) {{
+            document.getElementById('markerLat').textContent = lat.toFixed(6);
+            document.getElementById('markerLon').textContent = lng.toFixed(6);
+        }}
+
+        // Handle marker drag
+        marker.on('dragend', function(e) {{
+            var pos = marker.getLatLng();
+            updateCoordDisplay(pos.lat, pos.lng);
+
+            // Send coordinates to Python
+            if (window.pyHandler) {{
+                window.pyHandler.updateCoordinatesFromMap(pos.lat, pos.lng);
+            }}
+        }});
+
+        // Function to update marker from Python (when user types coordinates)
+        function updateMarkerPosition(lat, lng) {{
+            var newPos = L.latLng(lat, lng);
+            marker.setLatLng(newPos);
+            map.panTo(newPos);
+            updateCoordDisplay(lat, lng);
+        }}
+
+        // Set up QWebChannel for Python communication
+        new QWebChannel(qt.webChannelTransport, function(channel) {{
+            window.pyHandler = channel.objects.pyHandler;
+
+            // Expose function to Python
+            window.updateMarkerPosition = updateMarkerPosition;
+        }});
+    </script>
+</body>
+</html>
+"""
+        return html
+
+    def _on_coordinates_changed(self):
+        """
+        Handle coordinate input changes - update map marker.
+
+        Called when user types latitude or longitude in text fields.
+        Updates the map marker position accordingly.
+        """
+        if not hasattr(self, 'map_view') or not self.map_view:
+            return
+
+        try:
+            lat_text = self.lat_input.text().strip()
+            lon_text = self.lon_input.text().strip()
+
+            if not lat_text or not lon_text:
+                return
+
+            lat = float(lat_text)
+            lon = float(lon_text)
+
+            # Validate range
+            if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+                return
+
+            # Update map marker via JavaScript
+            js_code = f"if (typeof updateMarkerPosition === 'function') {{ updateMarkerPosition({lat}, {lon}); }}"
+            self.map_view.page().runJavaScript(js_code)
+
+        except (ValueError, AttributeError):
+            # Invalid input or map not ready - ignore
+            pass
+
+    def updateCoordinatesFromMap(self, lat: float, lon: float):
+        """
+        Update coordinate text fields from map marker drag (called from JavaScript).
+
+        Args:
+            lat: Latitude from dragged marker
+            lon: Longitude from dragged marker
+        """
+        # Temporarily disconnect signals to avoid feedback loop
+        self.lat_input.textChanged.disconnect(self._on_coordinates_changed)
+        self.lon_input.textChanged.disconnect(self._on_coordinates_changed)
+
+        # Update text fields
+        self.lat_input.setText(f"{lat:.6f}")
+        self.lon_input.setText(f"{lon:.6f}")
+
+        # Reconnect signals
+        self.lat_input.textChanged.connect(self._on_coordinates_changed)
+        self.lon_input.textChanged.connect(self._on_coordinates_changed)
+
+        logger.info(f"[LocationEditor] Coordinates updated from map: ({lat:.6f}, {lon:.6f})")
 
 
 # Standalone testing
