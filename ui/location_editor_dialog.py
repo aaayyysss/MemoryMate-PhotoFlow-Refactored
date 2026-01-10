@@ -102,8 +102,8 @@ class LocationEditorDialog(QDialog):
         else:
             self.setWindowTitle("Edit Location")
 
-        self.setMinimumWidth(600)
-        self.setMinimumHeight(500)
+        self.setMinimumWidth(800)
+        self.setMinimumHeight(700)
         self.setMaximumHeight(900)  # FIX: Prevent dialog from being taller than screen
 
         # SPRINT 3: Create map handler for JavaScript communication
@@ -1195,3 +1195,4 @@ if __name__ == '__main__':
 
     dialog.show()
     sys.exit(app.exec())
+
