@@ -853,6 +853,48 @@ class GooglePhotosLayout(BaseLayout):
         btn_edit_location.clicked.connect(self._on_batch_edit_location_clicked)
         layout.addWidget(btn_edit_location)
 
+        # GPS-FOCUSED WORKFLOW: Copy GPS button
+        # Copies GPS location from first selected photo for quick reuse
+        btn_copy_gps = QPushButton("📍 Copy")
+        btn_copy_gps.setStyleSheet("""
+            QPushButton {
+                background: transparent;
+                color: #8ab4f8;
+                border: none;
+                padding: 6px 10px;
+                font-size: 9pt;
+            }
+            QPushButton:hover {
+                background: #3c4043;
+                border-radius: 4px;
+            }
+        """)
+        btn_copy_gps.setToolTip("Copy GPS location from selected photo")
+        btn_copy_gps.setCursor(Qt.PointingHandCursor)
+        btn_copy_gps.clicked.connect(self._on_copy_gps_from_toolbar)
+        layout.addWidget(btn_copy_gps)
+
+        # DESELECTION WORKFLOW: Invert Selection button
+        # Useful for "select all except these" workflow
+        btn_invert = QPushButton("⇄ Invert")
+        btn_invert.setStyleSheet("""
+            QPushButton {
+                background: transparent;
+                color: #8ab4f8;
+                border: none;
+                padding: 6px 10px;
+                font-size: 9pt;
+            }
+            QPushButton:hover {
+                background: #3c4043;
+                border-radius: 4px;
+            }
+        """)
+        btn_invert.setToolTip("Invert selection (select unselected, deselect selected)")
+        btn_invert.setCursor(Qt.PointingHandCursor)
+        btn_invert.clicked.connect(self._on_invert_selection)
+        layout.addWidget(btn_invert)
+
         # Clear Selection button
         btn_clear = QPushButton("✕")
         btn_clear.setToolTip("Clear selection")
@@ -873,31 +915,10 @@ class GooglePhotosLayout(BaseLayout):
         btn_clear.clicked.connect(self._on_clear_selection)
         layout.addWidget(btn_clear)
 
-        # Delete button
-        btn_delete = QPushButton("🗑️")
-        btn_delete.setToolTip("Delete selected photos")
-        btn_delete.setStyleSheet("""
-            QPushButton {
-                background: #d32f2f;
-                color: white;
-                border: none;
-                padding: 6px 14px;
-                border-radius: 4px;
-                font-size: 11pt;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background: #b71c1c;
-            }
-        """)
-        btn_delete.setCursor(Qt.PointingHandCursor)
-        btn_delete.clicked.connect(self._on_delete_selected)
-        layout.addWidget(btn_delete)
-
         # Position toolbar at bottom center (will be repositioned on resize)
-        # FIX: Reduced height from 56 to 48 and width from 400 to 350 for compact design
+        # UPDATED: Width increased from 350 to 450 to accommodate 5 buttons (All, GPS, Copy, Invert, Clear)
         toolbar.setFixedHeight(48)
-        toolbar.setFixedWidth(350)
+        toolbar.setFixedWidth(450)
 
         return toolbar
 
@@ -6211,6 +6232,64 @@ class GooglePhotosLayout(BaseLayout):
         self.selected_photos.clear()
         self._update_selection_ui()
         print("[GooglePhotosLayout] ✗ Cleared all selections")
+
+    def _on_copy_gps_from_toolbar(self):
+        """
+        GPS-FOCUSED WORKFLOW: Copy GPS location from first selected photo.
+
+        This provides quick access to Copy Location feature from the floating toolbar,
+        making GPS workflow more discoverable and efficient.
+        """
+        from PySide6.QtWidgets import QMessageBox
+
+        if not self.selected_photos:
+            QMessageBox.information(
+                self.main_window,
+                "No Photos Selected",
+                "Please select a photo with GPS data to copy its location."
+            )
+            return
+
+        # Get first selected photo
+        first_photo = next(iter(self.selected_photos))
+
+        # Use existing _copy_location method
+        self._copy_location(first_photo)
+
+        print(f"[GooglePhotosLayout] 📍 Copied GPS from {os.path.basename(first_photo)} via toolbar")
+
+    def _on_invert_selection(self):
+        """
+        DESELECTION WORKFLOW: Invert current selection.
+
+        Selects all unselected photos and deselects all selected photos.
+        Useful for "select all except these" workflows.
+
+        Example:
+        - User clicks 3 photos they DON'T want
+        - User clicks "Invert" → All photos selected EXCEPT those 3
+        """
+        if not self.all_displayed_paths:
+            print("[GooglePhotosLayout] ⚠️ No photos to invert selection")
+            return
+
+        # Get set of all displayed photos
+        all_photos = set(self.all_displayed_paths)
+
+        # Calculate inverse: all photos EXCEPT currently selected
+        new_selection = all_photos - self.selected_photos
+
+        # Deselect currently selected
+        for path in list(self.selected_photos):
+            self._update_checkbox_state(path, False)
+
+        # Select the inverse
+        self.selected_photos = new_selection.copy()
+        for path in new_selection:
+            self._update_checkbox_state(path, True)
+
+        self._update_selection_ui()
+        print(f"[GooglePhotosLayout] ⇄ Inverted selection: {len(new_selection)} photos now selected")
 
     def _show_photo_context_menu(self, path: str, global_pos):
         """
