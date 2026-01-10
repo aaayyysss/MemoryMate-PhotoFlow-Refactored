@@ -206,6 +206,11 @@ class GooglePhotosLayout(BaseLayout):
         semantic_search_toolbar = self._create_semantic_search_toolbar()
         main_layout.addWidget(semantic_search_toolbar)
 
+        # CRITICAL FIX: Ensure toolbar is visible on initial load
+        # Without this, semantic search toolbar may be hidden when Google Layout loads first
+        semantic_search_toolbar.show()
+        print("[GooglePhotosLayout] ✓ Semantic search toolbar visibility ensured")
+
         # Phase 3: Main view tabs (Photos, People, Folders, Videos, Favorites)
         self.view_tabs = QTabBar()
         self.view_tabs.addTab("📸 Photos")
@@ -622,6 +627,11 @@ class GooglePhotosLayout(BaseLayout):
         self.semantic_search.searchTriggered.connect(self._on_semantic_search)
         self.semantic_search.searchCleared.connect(self._on_semantic_search_cleared)
         toolbar.addWidget(self.semantic_search)
+
+        # CRITICAL FIX: Ensure widget is visible after adding to toolbar
+        # Without this, widget may be hidden on initial load (especially when reused)
+        self.semantic_search.show()
+        print("[GooglePhotosLayout] ✓ Semantic search widget visibility ensured")
 
         # Add spacer widget to push content left
         spacer = QWidget()
