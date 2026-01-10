@@ -45,16 +45,16 @@ datas = [
     # Language files (both directories)
     ('lang', 'lang'),
     ('locales', 'locales'),
-    
+
     # Configuration files
     ('config', 'config'),
 
 	# Layout files
 	('layouts', 'layouts'),
-	
+
     # SQL migration files
     ('migrations', 'migrations'),
-    
+
     # Python package directories (required for imports)
 	('controllers', 'controllers'),
     ('repository', 'repository'),
@@ -62,7 +62,10 @@ datas = [
     ('workers', 'workers'),
     ('ui', 'ui'),
     ('utils', 'utils'),
-    
+
+    # CRITICAL: Google Photos components (PhotoButton, MediaLightbox, etc.)
+    ('google_components', 'google_components'),
+
     # Note: Databases are excluded as requested (reference_data.db, thumb_cache_db, etc.)
     # Users will create fresh databases on first run
 ]
@@ -125,6 +128,9 @@ hiddenimports = [
     'PySide6.QtWidgets',
     'PySide6.QtMultimedia',
     'PySide6.QtMultimediaWidgets',
+    'PySide6.QtWebEngineWidgets',  # CRITICAL: Embedded map view in GPS location editor
+    'PySide6.QtWebEngineCore',     # CRITICAL: WebEngine core for map rendering
+    'PySide6.QtWebChannel',        # CRITICAL: JavaScript ↔ Python communication for map
 
     # Windows COM support (pywin32)
     'win32com',
@@ -182,6 +188,7 @@ hiddenimports = [
     'services.exif_parser',
 	'services.face_detection_benchmark',
 	'services.face_detection_service',
+    'services.geocoding_service',  # CRITICAL: GPS location geocoding (forward/reverse)
     'services.metadata_service',
     'services.mtp_import_adapter',
     'services.photo_deletion_service',
@@ -206,19 +213,29 @@ hiddenimports = [
     'workers.video_thumbnail_worker',
 
     'ui',
+    'ui.advanced_filters_widget',  # Advanced search filters widget
+    'ui.cluster_face_selector',  # Face clustering selector
     'ui.device_import_dialog',
-    'ui.face_settings_dialog',
+    'ui.embedding_progress_dialog',  # Embedding generation progress dialog
     'ui.face_crop_editor',  # CRITICAL: Face crop editor (manual face cropping)
+    'ui.face_detection_config_dialog',  # Face detection configuration
+    'ui.face_detection_progress_dialog',  # Face detection progress tracking
+    'ui.face_naming_dialog',  # Face naming dialog
     'ui.face_quality_dashboard',  # Face quality scoring dashboard
     'ui.face_quality_scorer',  # Face quality scoring utility
-    'ui.cluster_face_selector',  # Face clustering selector
-    'ui.face_naming_dialog',  # Face naming dialog
+    'ui.face_settings_dialog',
+    'ui.location_editor_dialog',  # CRITICAL: GPS location editor with embedded map
+    'ui.location_editor_integration',  # CRITICAL: GPS location save integration layer
     'ui.mtp_deep_scan_dialog',
     'ui.mtp_import_dialog',
     'ui.people_list_view',
     'ui.people_manager_dialog',
+    'ui.performance_analytics_dialog',  # Performance analytics and metrics
+    'ui.semantic_search_dialog',  # Semantic search dialog
+    'ui.semantic_search_widget',  # CRITICAL: Semantic search widget (Google Layout)
+    'ui.similar_photos_dialog',  # Similar photos finder
+    'ui.ui_builder',
     'ui.visual_photo_browser',  # Visual photo browser
-	'ui.ui_builder',
 
 	'ui.panels',
 	'ui.panels.backfill_status_panel',
@@ -235,6 +252,7 @@ hiddenimports = [
 	'ui.accordion_sidebar.dates_section',
 	'ui.accordion_sidebar.devices_section',
 	'ui.accordion_sidebar.folders_section',
+	'ui.accordion_sidebar.locations_section',  # CRITICAL: GPS locations sidebar section
 	'ui.accordion_sidebar.people_section',
 	'ui.accordion_sidebar.quick_section',
 	'ui.accordion_sidebar.section_widgets',
@@ -248,13 +266,25 @@ hiddenimports = [
 	'utils.test_insightface_models',
     'utils.translation_manager',
 
+    # Google Photos components (PhotoButton, MediaLightbox, etc.)
+    'google_components',
+    'google_components.photo_helpers',  # CRITICAL: PhotoButton with tag badges
+    'google_components.widgets',  # Google Photos UI widgets
+    'google_components.dialogs',  # Google Photos dialogs
+    'google_components.media_lightbox',  # Media lightbox viewer
+
     # Core app modules
     'config.face_detection_config',
     'logging_config',
     'db_config',
+    'db_performance_optimizations',
     'db_writer',
     'settings_manager_qt',
     'app_services',
+
+    # Database modules (CRITICAL - required for photo management)
+    'reference_db',  # Main photo database
+    'thumb_cache_db',  # Thumbnail cache database
 
     # Root-level UI modules (CRITICAL - often missed in PyInstaller specs)
     'main_window_qt',
@@ -267,9 +297,6 @@ hiddenimports = [
     'splash_qt',
     'preferences_dialog',
     'video_backfill_dialog',
- #   'reference_db',
- #   'thumb_cache_db',
-    'db_writer',  # Database write operations
     'translation_manager',  # Root-level translation manager
 ]
 
@@ -339,7 +366,7 @@ exe = EXE(
     [],
     exclude_binaries=True,
     
-    name='MemoryMate-PhotoFlow-v3.0.5',  # Updated version with face detection fix
+    name='MemoryMate-PhotoFlow-v3.1.0',  # Updated: GPS location features + scrollable thumbnails
     debug=True,
     bootloader_ignore_signals=False,
     strip=False,
@@ -375,5 +402,5 @@ coll = COLLECT(
     strip=False,
     upx=True,  # Optional: if runtime issues, set upx=False first
     upx_exclude=[],
-    name='MemoryMate-PhotoFlow-v3.0.5'
+    name='MemoryMate-PhotoFlow-v3.1.0'
 )
