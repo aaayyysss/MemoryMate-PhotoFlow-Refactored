@@ -369,8 +369,30 @@ class LocationEditorDialog(QDialog):
 
         # Create preview group
         preview_group = QGroupBox("📸 Photo Preview")
-        preview_layout = QHBoxLayout()
+        preview_group_layout = QVBoxLayout()
+        preview_group_layout.setContentsMargins(4, 4, 4, 4)
+
+        # ENHANCEMENT: Scrollable thumbnail area with both horizontal and vertical scrollbars
+        # This allows users to browse ALL thumbnails during batch GPS editing
+        self.thumbnail_scroll_area = QScrollArea()
+        self.thumbnail_scroll_area.setWidgetResizable(True)
+        self.thumbnail_scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.thumbnail_scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.thumbnail_scroll_area.setMinimumHeight(140)  # Enough for 120px thumbnails + margins
+        self.thumbnail_scroll_area.setMaximumHeight(180)
+        self.thumbnail_scroll_area.setStyleSheet("""
+            QScrollArea {
+                border: 1px solid #dadce0;
+                border-radius: 4px;
+                background: #f8f9fa;
+            }
+        """)
+
+        # Container widget for thumbnails (will be placed inside scroll area)
+        self.thumbnail_container = QWidget()
+        preview_layout = QHBoxLayout(self.thumbnail_container)
         preview_layout.setSpacing(8)
+        preview_layout.setContentsMargins(8, 8, 8, 8)
 
         # Storage for thumbnail labels
         self.thumbnail_labels = []
@@ -400,7 +422,13 @@ class LocationEditorDialog(QDialog):
             self.thumbnail_labels.append(thumbnail_label)
 
         preview_layout.addStretch()
-        preview_group.setLayout(preview_layout)
+
+        # Set container as scroll area widget
+        self.thumbnail_scroll_area.setWidget(self.thumbnail_container)
+
+        # Add scroll area to preview group
+        preview_group_layout.addWidget(self.thumbnail_scroll_area)
+        preview_group.setLayout(preview_group_layout)
         layout.addWidget(preview_group)
 
         # Load thumbnails asynchronously (non-blocking)
@@ -426,21 +454,22 @@ class LocationEditorDialog(QDialog):
                     label.deleteLater()
                 self.thumbnail_labels.clear()
 
-                # Get the preview group layout
-                preview_group = self.findChild(QGroupBox, "")
-                if not preview_group:
-                    return
-
-                preview_layout = preview_group.layout()
+                # Get the preview layout from thumbnail container
+                preview_layout = self.thumbnail_container.layout()
                 if not preview_layout:
                     return
 
-                # If we have photo_paths, show up to 5 thumbnails
+                # ENHANCEMENT: Show ALL thumbnails (not just 5) with scrollbars
+                # Users can now browse all photos during batch GPS editing
                 if self.photo_paths and len(self.photo_paths) > 0:
-                    max_thumbnails = min(5, len(self.photo_paths))
+                    # Show count label first
+                    count_label = QLabel(f"📸 {len(self.photo_paths)} photos")
+                    count_label.setStyleSheet("color: #1a73e8; font-weight: bold; padding: 8px; font-size: 10pt;")
+                    count_label.setAlignment(Qt.AlignCenter)
+                    preview_layout.addWidget(count_label)
 
-                    for i in range(max_thumbnails):
-                        photo_path = self.photo_paths[i]
+                    # Show ALL thumbnails (user can scroll horizontally)
+                    for i, photo_path in enumerate(self.photo_paths):
                         pixmap = thumb_service.get_thumbnail(photo_path, height=120)
 
                         thumbnail_label = QLabel()
@@ -454,6 +483,10 @@ class LocationEditorDialog(QDialog):
                             }
                         """)
 
+                        # Add photo filename as tooltip
+                        from pathlib import Path
+                        thumbnail_label.setToolTip(Path(photo_path).name)
+
                         if pixmap and not pixmap.isNull():
                             scaled_pixmap = pixmap.scaled(
                                 120, 120,
@@ -465,14 +498,9 @@ class LocationEditorDialog(QDialog):
                             thumbnail_label.setText("⚠️")
 
                         preview_layout.addWidget(thumbnail_label)
+                        self.thumbnail_labels.append(thumbnail_label)
 
-                    # Show "... and N more" if there are more photos
-                    if len(self.photo_paths) > max_thumbnails:
-                        more_count = len(self.photo_paths) - max_thumbnails
-                        more_label = QLabel(f"... and\n{more_count} more")
-                        more_label.setStyleSheet("color: #666; font-weight: bold; padding: 8px;")
-                        more_label.setAlignment(Qt.AlignCenter)
-                        preview_layout.addWidget(more_label)
+                    logger.info(f"[LocationEditor] Loaded {len(self.photo_paths)} thumbnails with scrollbars")
                 else:
                     # No photo_paths provided - show fallback message
                     msg_label = QLabel(f"📸 Editing {self.batch_count} photos")
