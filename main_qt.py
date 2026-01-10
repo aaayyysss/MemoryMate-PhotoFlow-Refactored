@@ -3,6 +3,28 @@
 # Added centralized logging initialization
 
 import sys
+import os
+
+# ========================================================================
+# CRITICAL: Qt WebEngine D3D11 Fix
+# ========================================================================
+# Must be set BEFORE QApplication is created to prevent D3D11 errors:
+# "D3D11 smoke test: Failed to create vertex shader"
+#
+# This issue occurs on:
+# - Systems with older graphics drivers
+# - Virtual machines or remote desktop sessions
+# - Some Intel integrated graphics
+# - Systems with incompatible DirectX versions
+#
+# Solution: Force software rendering using ANGLE WARP backend
+# ========================================================================
+os.environ['QT_ANGLE_PLATFORM'] = 'warp'  # Use WARP (Windows Advanced Rasterization Platform)
+os.environ['QTWEBENGINE_CHROMIUM_FLAGS'] = '--disable-gpu --disable-software-rasterizer'
+
+# Additional Qt WebEngine environment variables for better compatibility
+os.environ['QTWEBENGINE_DISABLE_SANDBOX'] = '1'  # Disable Chromium sandboxing (can cause issues in packaged apps)
+
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import Qt, QTimer
 from main_window_qt import MainWindow
