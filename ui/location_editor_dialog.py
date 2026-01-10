@@ -15,8 +15,9 @@ Features:
 
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QFormLayout,
                                QLabel, QLineEdit, QPushButton, QTextEdit,
-                               QMessageBox, QGroupBox, QListWidget, QListWidgetItem, QComboBox)
-from PySide6.QtCore import Qt, Signal, QTimer, QUrl
+                               QMessageBox, QGroupBox, QListWidget, QListWidgetItem, QComboBox,
+                               QScrollArea, QWidget)
+from PySide6.QtCore import Qt, Signal, QTimer, QUrl, Slot, QObject
 from PySide6.QtGui import QDoubleValidator, QPixmap
 
 # SPRINT 3: Embedded Map View
@@ -32,6 +33,26 @@ except ImportError:
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+# SPRINT 3: Separate QObject for map communication (avoids Qt property warnings)
+class MapHandler(QObject):
+    """Handles JavaScript ↔ Python communication for embedded map."""
+
+    # Signal to notify dialog when coordinates change from map
+    coordinatesChanged = Signal(float, float)
+
+    @Slot(float, float)
+    def updateCoordinatesFromMap(self, lat: float, lon: float):
+        """
+        Called from JavaScript when marker is dragged.
+
+        Args:
+            lat: Latitude from dragged marker
+            lon: Longitude from dragged marker
+        """
+        logger.info(f"[MapHandler] Coordinates from map: ({lat:.6f}, {lon:.6f})")
+        self.coordinatesChanged.emit(lat, lon)
 
 
 class LocationEditorDialog(QDialog):
@@ -81,16 +102,57 @@ class LocationEditorDialog(QDialog):
         else:
             self.setWindowTitle("Edit Location")
 
-        self.setMinimumWidth(500)
-        self.setMinimumHeight(400)
+        self.setMinimumWidth(600)
+        self.setMinimumHeight(500)
+        self.setMaximumHeight(900)  # FIX: Prevent dialog from being taller than screen
+
+        # SPRINT 3: Create map handler for JavaScript communication
+        self.map_handler = MapHandler() if WEBENGINE_AVAILABLE else None
+        if self.map_handler:
+            self.map_handler.coordinatesChanged.connect(self._on_map_coordinates_changed)
 
         self._init_ui()
         self._load_current_location()
 
     def _init_ui(self):
         """Initialize user interface."""
-        layout = QVBoxLayout(self)
+        main_layout = QVBoxLayout(self)
+        main_layout.setSpacing(8)
+        main_layout.setContentsMargins(12, 12, 12, 12)
+
+        # FIX: Buttons at TOP (not bottom) so they're always visible
+        button_layout = QHBoxLayout()
+        button_layout.setSpacing(8)
+
+        clear_btn = QPushButton("Clear Location")
+        clear_btn.clicked.connect(self._clear_location)
+        button_layout.addWidget(clear_btn)
+
+        button_layout.addStretch()
+
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.clicked.connect(self.reject)
+        button_layout.addWidget(cancel_btn)
+
+        save_btn = QPushButton("Save")
+        save_btn.setDefault(True)
+        save_btn.clicked.connect(self._save_location)
+        save_btn.setStyleSheet("background: #1a73e8; color: white; padding: 8px 24px; font-weight: bold; border-radius: 4px;")
+        button_layout.addWidget(save_btn)
+
+        main_layout.addLayout(button_layout)
+
+        # FIX: Scrollable content area
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setFrameShape(QScrollArea.NoFrame)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+
+        # Content widget
+        content_widget = QWidget()
+        layout = QVBoxLayout(content_widget)
         layout.setSpacing(12)
+        layout.setContentsMargins(0, 0, 0, 0)
 
         # Photo info
         if self.photo_path:
@@ -282,26 +344,9 @@ class LocationEditorDialog(QDialog):
 
         layout.addStretch()
 
-        # Buttons
-        button_layout = QHBoxLayout()
-
-        clear_btn = QPushButton("Clear Location")
-        clear_btn.clicked.connect(self._clear_location)
-        button_layout.addWidget(clear_btn)
-
-        button_layout.addStretch()
-
-        cancel_btn = QPushButton("Cancel")
-        cancel_btn.clicked.connect(self.reject)
-        button_layout.addWidget(cancel_btn)
-
-        save_btn = QPushButton("Save")
-        save_btn.setDefault(True)
-        save_btn.clicked.connect(self._save_location)
-        save_btn.setStyleSheet("background: #1a73e8; color: white; padding: 6px 20px; font-weight: bold;")
-        button_layout.addWidget(save_btn)
-
-        layout.addLayout(button_layout)
+        # FIX: Set content widget and add to scroll area
+        scroll_area.setWidget(content_widget)
+        main_layout.addWidget(scroll_area)
 
     def _init_photo_preview(self, layout: QVBoxLayout):
         """
@@ -857,8 +902,8 @@ class LocationEditorDialog(QDialog):
         # Create QWebEngineView
         try:
             self.map_view = QWebEngineView()
-            self.map_view.setMinimumHeight(300)
-            self.map_view.setMaximumHeight(400)
+            self.map_view.setMinimumHeight(250)  # FIX: Reduced from 300
+            self.map_view.setMaximumHeight(300)  # FIX: Reduced from 400
 
             # Generate Leaflet.js HTML
             map_html = self._generate_leaflet_html()
@@ -866,9 +911,9 @@ class LocationEditorDialog(QDialog):
             # Load HTML
             self.map_view.setHtml(map_html, QUrl("qrc:/"))
 
-            # Create web channel for JavaScript ↔ Python communication
+            # FIX: Create web channel with dedicated MapHandler (avoids Qt property warnings)
             self.channel = QWebChannel()
-            self.channel.registerObject("pyHandler", self)
+            self.channel.registerObject("pyHandler", self.map_handler)  # FIX: Use map_handler
             self.map_view.page().setWebChannel(self.channel)
 
             map_layout.addWidget(self.map_view)
@@ -919,7 +964,7 @@ class LocationEditorDialog(QDialog):
         }}
         #map {{
             width: 100%;
-            height: 400px;
+            height: 250px;
         }}
         .coord-display {{
             position: absolute;
@@ -1035,9 +1080,9 @@ class LocationEditorDialog(QDialog):
             # Invalid input or map not ready - ignore
             pass
 
-    def updateCoordinatesFromMap(self, lat: float, lon: float):
+    def _on_map_coordinates_changed(self, lat: float, lon: float):
         """
-        Update coordinate text fields from map marker drag (called from JavaScript).
+        Handle coordinates changed from map marker drag (via MapHandler signal).
 
         Args:
             lat: Latitude from dragged marker
