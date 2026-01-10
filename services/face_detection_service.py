@@ -829,7 +829,7 @@ class FaceDetectionService:
             except AttributeError as attr_error:
                 # SPECIFIC FIX: InsightFace internal NoneType error during landmark detection
                 if "'NoneType' object has no attribute 'shape'" in str(attr_error):
-                    logger.error(f"[INSIGHTFACE] ❌ InsightFace landmark detection failed (internal NoneType) for {os.path.basename(image_path)}")
+                    logger.warning(f"[INSIGHTFACE] ⚠️ InsightFace landmark detection failed (internal NoneType) for {os.path.basename(image_path)} - using fallback")
                     
                     # WORKAROUND: Use cached detection + recognition fallback app
                     try:
