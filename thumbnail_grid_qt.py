@@ -845,6 +845,10 @@ class ThumbnailGridQt(QWidget):
         self.navigation_key = None         # id or key (folder_id, date_key, etc.) depending on mode
         self.active_tag_filter = None      # current tag string: 'favorite', 'face', etc. or None
 
+        # GPS Copy/Paste clipboard (stores copied location for quick reuse)
+        # Format: {'lat': float, 'lon': float, 'location_name': str} or None
+        self.copied_gps_location = None
+
         # legacy vars for backward compatibility
         self.load_mode = None
         self.current_folder_id = None
@@ -1596,6 +1600,17 @@ class ThumbnailGridQt(QWidget):
             # Single photo mode
             act_edit_location = m.addAction("📍 Edit Location...")
 
+        # Copy/Paste Location actions (inspired by Google Photos & iPhone Photos)
+        act_copy_location = m.addAction("📍 Copy Location")
+
+        # Show paste option only if we have copied GPS data
+        act_paste_location = None
+        if self.copied_gps_location:
+            paste_text = f"📍 Paste Location ({self.copied_gps_location.get('location_name', 'Location')})"
+            if len(paths) > 1:
+                paste_text = f"📍 Paste Location to {len(paths)} photos ({self.copied_gps_location.get('location_name', 'Location')})"
+            act_paste_location = m.addAction(paste_text)
+
         m.addSeparator()
         act_export = m.addAction(tr('context_menu.export'))
         act_delete = m.addAction(tr('context_menu.delete'))
@@ -1850,6 +1865,13 @@ class ThumbnailGridQt(QWidget):
             # Single photo from multi-selection (edit just the clicked photo)
             self._edit_photo_location(paths[0])
 
+        # Copy/Paste Location handlers
+        elif chosen is act_copy_location:
+            self._copy_location(paths[0] if paths else None)
+
+        elif act_paste_location and chosen is act_paste_location:
+            self._paste_location(paths)
+
 
     def _edit_photo_location(self, path: str):
         """
@@ -1954,6 +1976,206 @@ class ThumbnailGridQt(QWidget):
                 self,
                 "Error",
                 f"Failed to open batch location editor:\n{e}"
+            )
+
+    def _copy_location(self, path: str):
+        """
+        Copy GPS location from photo to internal clipboard.
+
+        Inspired by Google Photos and iPhone Photos copy/paste workflow.
+        This allows quick reuse of GPS data across multiple photos without
+        needing to search or type coordinates repeatedly.
+
+        Args:
+            path: Photo file path to copy GPS from
+        """
+        import os
+        from PySide6.QtWidgets import QMessageBox
+        from reference_db import ReferenceDatabase
+
+        if not path:
+            QMessageBox.warning(
+                self,
+                "No Photo Selected",
+                "Please select a photo to copy location from."
+            )
+            return
+
+        try:
+            # Read GPS data from database
+            db = ReferenceDatabase()
+            with db._connect() as conn:
+                cur = conn.cursor()
+                cur.execute("""
+                    SELECT gps_latitude, gps_longitude, location_name
+                    FROM photo_metadata
+                    WHERE path = ? AND project_id = ?
+                """, (path, self.project_id))
+
+                row = cur.fetchone()
+
+            if not row:
+                QMessageBox.warning(
+                    self,
+                    "No GPS Data",
+                    f"Photo '{os.path.basename(path)}' has no GPS location data.\n\n"
+                    "Use 'Edit Location...' to add GPS coordinates first."
+                )
+                return
+
+            lat, lon, location_name = row
+
+            if lat is None or lon is None:
+                QMessageBox.warning(
+                    self,
+                    "No GPS Data",
+                    f"Photo '{os.path.basename(path)}' has no GPS location data.\n\n"
+                    "Use 'Edit Location...' to add GPS coordinates first."
+                )
+                return
+
+            # Store in internal clipboard
+            self.copied_gps_location = {
+                'lat': lat,
+                'lon': lon,
+                'location_name': location_name or f"({lat:.4f}, {lon:.4f})"
+            }
+
+            # Show success message
+            location_display = location_name if location_name else f"({lat:.4f}, {lon:.4f})"
+            QMessageBox.information(
+                self,
+                "Location Copied",
+                f"✓ Copied GPS location:\n\n{location_display}\n\n"
+                f"Use 'Paste Location' to apply this location to other photos."
+            )
+
+            print(f"[Location] ✓ Copied GPS location: {location_display} ({lat:.6f}, {lon:.6f})")
+
+        except Exception as e:
+            print(f"[Location] Error copying location: {e}")
+            import traceback
+            traceback.print_exc()
+            QMessageBox.critical(
+                self,
+                "Error",
+                f"Failed to copy location:\n{e}"
+            )
+
+    def _paste_location(self, paths: list[str]):
+        """
+        Paste copied GPS location to photo(s).
+
+        Inspired by Google Photos and iPhone Photos copy/paste workflow.
+        Applies the copied GPS data to selected photo(s) in a single action.
+
+        Args:
+            paths: List of photo file paths to paste GPS to
+        """
+        import os
+        from PySide6.QtWidgets import QMessageBox
+
+        if not self.copied_gps_location:
+            QMessageBox.warning(
+                self,
+                "No Location Copied",
+                "No GPS location has been copied.\n\n"
+                "Use 'Copy Location' on a photo with GPS data first."
+            )
+            return
+
+        if not paths:
+            QMessageBox.warning(
+                self,
+                "No Photos Selected",
+                "Please select one or more photos to paste the location to."
+            )
+            return
+
+        try:
+            lat = self.copied_gps_location['lat']
+            lon = self.copied_gps_location['lon']
+            location_name = self.copied_gps_location['location_name']
+
+            # Confirm with user
+            photo_word = "photo" if len(paths) == 1 else f"{len(paths)} photos"
+            confirm = QMessageBox.question(
+                self,
+                "Paste Location",
+                f"Paste GPS location to {photo_word}?\n\n"
+                f"Location: {location_name}\n"
+                f"Coordinates: ({lat:.6f}, {lon:.6f})\n\n"
+                f"This will update GPS data in both the database and photo file EXIF.",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.Yes
+            )
+
+            if confirm != QMessageBox.Yes:
+                return
+
+            # Apply GPS to photo(s) using existing integration layer
+            from ui.location_editor_integration import save_photo_location
+
+            success_count = 0
+            fail_count = 0
+
+            for photo_path in paths:
+                try:
+                    # Save location using integration layer (handles both DB and EXIF)
+                    save_photo_location(
+                        photo_path=photo_path,
+                        latitude=lat,
+                        longitude=lon,
+                        location_name=location_name,
+                        project_id=self.project_id
+                    )
+                    success_count += 1
+                    print(f"[Location] ✓ Pasted location to: {os.path.basename(photo_path)}")
+
+                except Exception as e:
+                    fail_count += 1
+                    print(f"[Location] ✗ Failed to paste location to {os.path.basename(photo_path)}: {e}")
+
+            # Show results
+            if fail_count == 0:
+                QMessageBox.information(
+                    self,
+                    "Success",
+                    f"✓ GPS location pasted to {success_count} {photo_word}!\n\n"
+                    f"Location: {location_name}"
+                )
+            else:
+                QMessageBox.warning(
+                    self,
+                    "Partially Complete",
+                    f"GPS location pasted to {success_count} photo(s).\n"
+                    f"Failed: {fail_count} photo(s).\n\n"
+                    f"Check logs for details."
+                )
+
+            # Refresh Locations section in sidebar
+            try:
+                mw = self.window()
+                if hasattr(mw, "sidebar"):
+                    if hasattr(mw.sidebar, "reload_section"):
+                        print("[Location] Reloading Locations section...")
+                        mw.sidebar.reload_section("locations")
+                    elif hasattr(mw.sidebar, "reload"):
+                        print("[Location] Reloading sidebar...")
+                        mw.sidebar.reload()
+            except Exception as e:
+                print(f"[Location] Warning: Failed to reload sidebar: {e}")
+
+            print(f"[Location] ✓ Paste complete: {success_count} success, {fail_count} failures")
+
+        except Exception as e:
+            print(f"[Location] Error pasting location: {e}")
+            import traceback
+            traceback.print_exc()
+            QMessageBox.critical(
+                self,
+                "Error",
+                f"Failed to paste location:\n{e}"
             )
 
     def _refresh_tags_for_paths(self, paths: list[str]):
