@@ -291,8 +291,8 @@ class GooglePhotosLayout(BaseLayout):
                 background: white;
                 border: 1px solid #dadce0;
                 border-radius: 4px;
-                padding: 6px 12px;
-                font-size: 11pt;
+                padding: 6px 10px;
+                font-size: 10pt;
             }
             QPushButton:hover {
                 background: #f1f3f4;
@@ -313,8 +313,8 @@ class GooglePhotosLayout(BaseLayout):
                 background: white;
                 border: 1px solid #dadce0;
                 border-radius: 4px;
-                padding: 6px 12px;
-                font-size: 11pt;
+                padding: 6px 10px;
+                font-size: 10pt;
             }
             QComboBox:hover {
                 border-color: #bdc1c6;
@@ -334,15 +334,15 @@ class GooglePhotosLayout(BaseLayout):
         # Search box (enlarged - Google Photos hero element)
         self.search_box = QLineEdit()
         self.search_box.setPlaceholderText(t('google_layout.search_placeholder'))
-        self.search_box.setMinimumWidth(400)  # Enlarged from 300px to 400px minimum
+        self.search_box.setMinimumWidth(350)  # FIX: Reduced from 400px to 350px
         self.search_box.setToolTip(t('google_layout.search_tooltip'))
         self.search_box.setStyleSheet("""
             QLineEdit {
                 background: white;
                 border: 1px solid #dadce0;
                 border-radius: 20px;
-                padding: 8px 16px;
-                font-size: 11pt;
+                padding: 7px 14px;
+                font-size: 10pt;
             }
             QLineEdit:focus {
                 border-color: #1a73e8;
@@ -788,7 +788,7 @@ class GooglePhotosLayout(BaseLayout):
         self.selection_count_label.setStyleSheet("""
             QLabel {
                 color: white;
-                font-size: 11pt;
+                font-size: 10pt;
                 font-weight: bold;
             }
         """)
@@ -797,15 +797,16 @@ class GooglePhotosLayout(BaseLayout):
         layout.addStretch()
 
         # Action buttons
-        # Select All button
-        btn_select_all = QPushButton("Select All")
+        # Select All button (shortened caption)
+        btn_select_all = QPushButton("All")
+        btn_select_all.setToolTip("Select all photos")
         btn_select_all.setStyleSheet("""
             QPushButton {
                 background: transparent;
                 color: #8ab4f8;
                 border: none;
-                padding: 6px 12px;
-                font-size: 10pt;
+                padding: 6px 10px;
+                font-size: 9pt;
             }
             QPushButton:hover {
                 background: #3c4043;
@@ -818,15 +819,15 @@ class GooglePhotosLayout(BaseLayout):
 
         # CRITICAL FIX: Add batch Edit Location button (Sprint 2 enhancement)
         # This makes batch GPS editing discoverable - users don't need to hunt in context menus
-        btn_edit_location = QPushButton("📍 Location")
+        btn_edit_location = QPushButton("📍 GPS")
         btn_edit_location.setStyleSheet("""
             QPushButton {
                 background: #1a73e8;
                 color: white;
                 border: none;
-                padding: 6px 16px;
+                padding: 6px 14px;
                 border-radius: 4px;
-                font-size: 10pt;
+                font-size: 9pt;
                 font-weight: bold;
             }
             QPushButton:hover {
@@ -843,14 +844,15 @@ class GooglePhotosLayout(BaseLayout):
         layout.addWidget(btn_edit_location)
 
         # Clear Selection button
-        btn_clear = QPushButton("Clear")
+        btn_clear = QPushButton("✕")
+        btn_clear.setToolTip("Clear selection")
         btn_clear.setStyleSheet("""
             QPushButton {
                 background: transparent;
                 color: #8ab4f8;
                 border: none;
-                padding: 6px 12px;
-                font-size: 10pt;
+                padding: 6px 10px;
+                font-size: 11pt;
             }
             QPushButton:hover {
                 background: #3c4043;
@@ -862,15 +864,16 @@ class GooglePhotosLayout(BaseLayout):
         layout.addWidget(btn_clear)
 
         # Delete button
-        btn_delete = QPushButton("🗑️ Delete")
+        btn_delete = QPushButton("🗑️")
+        btn_delete.setToolTip("Delete selected photos")
         btn_delete.setStyleSheet("""
             QPushButton {
                 background: #d32f2f;
                 color: white;
                 border: none;
-                padding: 6px 16px;
+                padding: 6px 14px;
                 border-radius: 4px;
-                font-size: 10pt;
+                font-size: 11pt;
                 font-weight: bold;
             }
             QPushButton:hover {
@@ -882,8 +885,9 @@ class GooglePhotosLayout(BaseLayout):
         layout.addWidget(btn_delete)
 
         # Position toolbar at bottom center (will be repositioned on resize)
-        toolbar.setFixedHeight(56)
-        toolbar.setFixedWidth(400)
+        # FIX: Reduced height from 56 to 48 and width from 400 to 350 for compact design
+        toolbar.setFixedHeight(48)
+        toolbar.setFixedWidth(350)
 
         return toolbar
 
@@ -6486,10 +6490,45 @@ class GooglePhotosLayout(BaseLayout):
             )
 
     def _edit_photos_location_batch(self, paths: list[str]):
-        """Edit GPS location for multiple photos (batch editing)."""
+        """
+        Edit GPS location for multiple photos (batch editing).
+
+        Enhanced with better UX:
+        - Confirmation dialog before opening editor
+        - Shows photo count and filenames preview
+        - Success feedback with count
+        """
         from PySide6.QtWidgets import QMessageBox
 
+        if not paths:
+            QMessageBox.warning(
+                self.main_window,
+                "No Photos Selected",
+                "Please select one or more photos to edit location."
+            )
+            return
+
         print(f"[GooglePhotosLayout] 📍 Opening batch location editor for {len(paths)} photos")
+
+        # Show confirmation dialog with preview
+        photo_count = len(paths)
+        photo_names_preview = "\n".join([os.path.basename(p) for p in paths[:5]])
+        if photo_count > 5:
+            photo_names_preview += f"\n... and {photo_count - 5} more"
+
+        confirm = QMessageBox.question(
+            self.main_window,
+            "Batch Edit Location",
+            f"Edit GPS location for {photo_count} photo(s)?\n\n"
+            f"Photos:\n{photo_names_preview}\n\n"
+            f"The same location will be applied to all selected photos.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.Yes
+        )
+
+        if confirm != QMessageBox.Yes:
+            print("[GooglePhotosLayout] Batch location edit cancelled by user")
+            return
 
         try:
             from ui.location_editor_integration import edit_photos_location_batch
@@ -6500,6 +6539,14 @@ class GooglePhotosLayout(BaseLayout):
             # If location was changed, refresh the Locations section
             if location_changed:
                 print(f"[GooglePhotosLayout] ✓ Location updated for {len(paths)} photos")
+
+                # Show success message
+                QMessageBox.information(
+                    self.main_window,
+                    "Success",
+                    f"✓ GPS location updated for {photo_count} photo(s)!\n\n"
+                    f"Location data saved to both database and photo files."
+                )
 
                 # Reload Locations section in accordion sidebar
                 try:
@@ -6654,7 +6701,6 @@ class GooglePhotosLayout(BaseLayout):
 
             # Apply GPS to photo(s) using existing integration layer
             from ui.location_editor_integration import save_photo_location
-            from reference_db import ReferenceDatabase
 
             success_count = 0
             fail_count = 0
