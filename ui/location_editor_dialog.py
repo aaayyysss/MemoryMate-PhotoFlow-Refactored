@@ -111,6 +111,12 @@ class LocationEditorDialog(QDialog):
         if self.map_handler:
             self.map_handler.coordinatesChanged.connect(self._on_map_coordinates_changed)
 
+        # FIX: Auto-geocode timer (debounce geocoding requests)
+        self.geocode_timer = QTimer()
+        self.geocode_timer.setSingleShot(True)
+        self.geocode_timer.timeout.connect(self._auto_geocode_from_map)
+        self.pending_geocode_coords = None  # Store coords for delayed geocoding
+
         self._init_ui()
         self._load_current_location()
 
@@ -1101,6 +1107,43 @@ class LocationEditorDialog(QDialog):
         self.lon_input.textChanged.connect(self._on_coordinates_changed)
 
         logger.info(f"[LocationEditor] Coordinates updated from map: ({lat:.6f}, {lon:.6f})")
+
+        # FIX: Auto-geocode after 1 second of inactivity (debounce)
+        # This prevents spamming geocoding API while user is dragging
+        self.pending_geocode_coords = (lat, lon)
+        self.geocode_timer.stop()  # Cancel any pending geocode
+        self.geocode_timer.start(1000)  # Wait 1 second after last drag
+
+    def _auto_geocode_from_map(self):
+        """
+        Auto-geocode coordinates from map marker drag (debounced).
+
+        Called 1 second after user stops dragging marker.
+        Automatically populates location name field.
+        """
+        if not self.pending_geocode_coords:
+            return
+
+        lat, lon = self.pending_geocode_coords
+        logger.info(f"[LocationEditor] Auto-geocoding map coordinates: ({lat:.6f}, {lon:.6f})")
+
+        try:
+            # Import geocoding service
+            from services.geocoding_service import reverse_geocode
+
+            # Geocode coordinates to location name
+            location_name = reverse_geocode(lat, lon)
+
+            if location_name:
+                # Update location name field
+                self.name_input.setText(location_name)
+                logger.info(f"[LocationEditor] Auto-geocoded: ({lat:.6f}, {lon:.6f}) → {location_name}")
+            else:
+                logger.warning(f"[LocationEditor] Auto-geocode returned no result for ({lat:.6f}, {lon:.6f})")
+
+        except Exception as e:
+            logger.warning(f"[LocationEditor] Auto-geocode failed: {e}")
+            # Don't show error to user - they can manually geocode if needed
 
 
 # Standalone testing
