@@ -6539,11 +6539,11 @@ class GooglePhotosLayout(BaseLayout):
             path: Photo file path to copy GPS from
         """
         from PySide6.QtWidgets import QMessageBox
-        from reference_db import ReferenceDatabase
+        from reference_db import ReferenceDB
 
         try:
             # Read GPS data from database
-            db = ReferenceDatabase()
+            db = ReferenceDB()
             with db._connect() as conn:
                 cur = conn.cursor()
                 cur.execute("""
