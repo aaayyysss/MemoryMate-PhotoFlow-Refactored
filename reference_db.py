@@ -21,6 +21,7 @@ import traceback
 import warnings
 import threading
 from contextlib import contextmanager
+from typing import List, Dict, Any  # FEATURE #1: Type hints for face detection scope methods
 
 from datetime import datetime
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))

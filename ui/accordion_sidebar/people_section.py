@@ -138,7 +138,7 @@ class PeopleSection(BaseSection):
 
             # Refresh sidebar after dialog closes (in case faces were merged/renamed)
             logger.info("[PeopleSection] People manager closed, refreshing section")
-            self.load_data()
+            self.load_section()  # FIXED: Method is called load_section(), not load_data()
 
         except Exception as e:
             logger.error(f"[PeopleSection] Failed to open people manager: {e}")

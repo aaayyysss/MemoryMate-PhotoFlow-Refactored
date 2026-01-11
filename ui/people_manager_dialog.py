@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel,
     QPushButton, QLineEdit, QScrollArea, QWidget, QFrame,
     QMessageBox, QInputDialog, QMenu, QSizePolicy, QToolBar,
-    QComboBox, QSpinBox, QProgressDialog
+    QComboBox, QSpinBox, QProgressDialog, QApplication  # FEATURE #3: Added for keyboard modifiers
 )
 from PySide6.QtCore import Qt, Signal, QSize, QTimer, QThreadPool, Slot
 from PySide6.QtGui import QPixmap, QImage, QAction, QIcon
