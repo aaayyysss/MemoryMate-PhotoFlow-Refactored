@@ -166,22 +166,53 @@ class FaceClusterCard(QFrame):
         super().mouseDoubleClickEvent(event)
 
     def contextMenuEvent(self, event):
-        """Show context menu on right-click."""
+        """
+        FEATURE #3: Show context menu with multi-merge support.
+
+        If multiple faces are selected (via Shift+Click), shows multi-merge option.
+        """
         menu = QMenu(self)
 
-        rename_action = QAction("✏️ Rename", self)
-        rename_action.triggered.connect(self.rename_person)
-        menu.addAction(rename_action)
+        # Check if parent dialog has multiple selections
+        parent_dialog = self.parent()
+        has_multi_selection = (
+            hasattr(parent_dialog, 'selected_clusters') and
+            len(parent_dialog.selected_clusters) > 1
+        )
 
-        merge_action = QAction("🔗 Merge with...", self)
-        merge_action.triggered.connect(lambda: self.merge_requested.emit(self.branch_key))
-        menu.addAction(merge_action)
+        if has_multi_selection:
+            # FEATURE #3: Multi-merge menu
+            merge_count = len(parent_dialog.selected_clusters)
+            first_name = parent_dialog._get_cluster_name(parent_dialog.selected_clusters[0])
 
-        menu.addSeparator()
+            multi_merge_action = QAction(
+                f"🔗 Merge Selected People ({merge_count}) into '{first_name}'",
+                self
+            )
+            multi_merge_action.triggered.connect(parent_dialog._merge_selected_clusters)
+            menu.addAction(multi_merge_action)
 
-        delete_action = QAction("🗑️ Delete", self)
-        delete_action.triggered.connect(lambda: self.delete_requested.emit(self.branch_key))
-        menu.addAction(delete_action)
+            menu.addSeparator()
+
+            clear_action = QAction("✕ Clear Selection", self)
+            clear_action.triggered.connect(parent_dialog._clear_selection)
+            menu.addAction(clear_action)
+
+        else:
+            # Single-selection menu (existing functionality)
+            rename_action = QAction("✏️ Rename", self)
+            rename_action.triggered.connect(self.rename_person)
+            menu.addAction(rename_action)
+
+            merge_action = QAction("🔗 Merge with...", self)
+            merge_action.triggered.connect(lambda: self.merge_requested.emit(self.branch_key))
+            menu.addAction(merge_action)
+
+            menu.addSeparator()
+
+            delete_action = QAction("🗑️ Delete", self)
+            delete_action.triggered.connect(lambda: self.delete_requested.emit(self.branch_key))
+            menu.addAction(delete_action)
 
         menu.exec(event.globalPos())
 
@@ -212,6 +243,10 @@ class PeopleManagerDialog(QDialog):
         self.clusters: List[Dict[str, Any]] = []
         self.filtered_clusters: List[Dict[str, Any]] = []
         self.cards: Dict[str, FaceClusterCard] = {}
+
+        # FEATURE #3: Multi-selection state for batch merging
+        self.selected_clusters: List[str] = []  # Ordered list of selected branch_keys
+        self.selection_mode = False  # True when Shift is held
 
         # Face detection worker tracking
         self.face_detection_worker = None
@@ -408,32 +443,58 @@ class PeopleManagerDialog(QDialog):
             self.status_label.setText(f"👥 Showing {shown} of {total} people")
 
     def on_cluster_clicked(self, branch_key: str):
-        """Handle cluster card click."""
-        # Show photos for this person
-        try:
-            paths = self.db.get_paths_for_cluster(self.project_id, branch_key)
+        """
+        FEATURE #3: Handle cluster card click with Shift+Click multi-selection support.
 
-            if paths:
-                # Load photos in main grid
-                if self.parent() and hasattr(self.parent(), "grid"):
-                    grid = self.parent().grid
-                    grid.model.clear()
-                    grid.load_custom_paths(paths, content_type="photos")
+        Behavior:
+        - Normal click: Show photos for this person
+        - Shift+Click: Toggle selection for batch merge
+        """
+        modifiers = QApplication.keyboardModifiers()
 
-                    # Update status
-                    cluster_name = next(
-                        (c["display_name"] for c in self.clusters if c["branch_key"] == branch_key),
-                        "Unknown"
-                    )
-                    self.parent().statusBar().showMessage(f"👤 Showing {len(paths)} photos of {cluster_name}")
-
-                # Close dialog to show photos
-                self.accept()
+        if modifiers & Qt.ShiftModifier:
+            # FEATURE #3: Shift+Click toggles selection
+            if branch_key in self.selected_clusters:
+                self.selected_clusters.remove(branch_key)
+                self._update_card_highlight(branch_key, False)
             else:
-                QMessageBox.information(self, "No Photos", f"No photos found for this person.")
+                self.selected_clusters.append(branch_key)
+                self._update_card_highlight(branch_key, True)
 
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to load photos:\n{str(e)}")
+            # Update status to show selection count
+            if self.selected_clusters:
+                self.status_label.setText(f"✓ {len(self.selected_clusters)} people selected (Shift+Click to select more, Right-click to merge)")
+            else:
+                self.update_status()
+
+        else:
+            # Normal click: Clear selection and show photos for this person
+            self._clear_selection()
+
+            try:
+                paths = self.db.get_paths_for_cluster(self.project_id, branch_key)
+
+                if paths:
+                    # Load photos in main grid
+                    if self.parent() and hasattr(self.parent(), "grid"):
+                        grid = self.parent().grid
+                        grid.model.clear()
+                        grid.load_custom_paths(paths, content_type="photos")
+
+                        # Update status
+                        cluster_name = next(
+                            (c["display_name"] for c in self.clusters if c["branch_key"] == branch_key),
+                            "Unknown"
+                        )
+                        self.parent().statusBar().showMessage(f"👤 Showing {len(paths)} photos of {cluster_name}")
+
+                    # Close dialog to show photos
+                    self.accept()
+                else:
+                    QMessageBox.information(self, "No Photos", f"No photos found for this person.")
+
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to load photos:\n{str(e)}")
 
     def on_cluster_renamed(self, branch_key: str, new_name: str):
         """Handle cluster rename."""
@@ -529,6 +590,147 @@ class PeopleManagerDialog(QDialog):
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to merge clusters:\n{str(e)}")
 
+    def _update_card_highlight(self, branch_key: str, selected: bool):
+        """
+        FEATURE #3: Update visual highlight for selected face card.
+
+        Args:
+            branch_key: Branch key of the face cluster
+            selected: True to highlight, False to remove highlight
+        """
+        card = self.cards.get(branch_key)
+        if not card:
+            return
+
+        if selected:
+            # Apply blue border and checkmark (Google Photos pattern)
+            card.setStyleSheet("""
+                FaceClusterCard {
+                    background-color: #e8f0fe;
+                    border: 3px solid #1a73e8;
+                    border-radius: 8px;
+                }
+            """)
+            # Add checkmark overlay
+            if not hasattr(card, 'checkmark_label') or card.checkmark_label is None:
+                card.checkmark_label = QLabel("✓", card)
+                card.checkmark_label.setStyleSheet("""
+                    QLabel {
+                        background-color: #1a73e8;
+                        color: white;
+                        border-radius: 12px;
+                        font-size: 16px;
+                        font-weight: bold;
+                        padding: 2px;
+                    }
+                """)
+                card.checkmark_label.setFixedSize(24, 24)
+                card.checkmark_label.setAlignment(Qt.AlignCenter)
+
+            # Position checkmark in top-right corner
+            card.checkmark_label.move(card.width() - 30, 6)
+            card.checkmark_label.show()
+        else:
+            # Remove highlight
+            card.setStyleSheet("""
+                FaceClusterCard {
+                    background-color: white;
+                    border-radius: 8px;
+                }
+                FaceClusterCard:hover {
+                    background-color: #f8f8f8;
+                    border: 2px solid #4CAF50;
+                }
+            """)
+            # Hide checkmark
+            if hasattr(card, 'checkmark_label') and card.checkmark_label:
+                card.checkmark_label.hide()
+
+    def _clear_selection(self):
+        """FEATURE #3: Clear all selected clusters."""
+        for branch_key in list(self.selected_clusters):
+            self._update_card_highlight(branch_key, False)
+        self.selected_clusters.clear()
+        self.update_status()
+
+    def _merge_selected_clusters(self):
+        """
+        FEATURE #3: Merge all selected clusters into the first one.
+
+        The first selected cluster becomes the target, and all other
+        selected clusters are merged into it.
+        """
+        if len(self.selected_clusters) < 2:
+            QMessageBox.warning(
+                self,
+                "Selection Required",
+                "Please select at least 2 people to merge.\n\n"
+                "Hold Shift and click on face cards to select multiple people."
+            )
+            return
+
+        target_key = self.selected_clusters[0]
+        source_keys = self.selected_clusters[1:]
+
+        target_name = self._get_cluster_name(target_key)
+        merge_count = len(source_keys)
+
+        # Build list of source names for confirmation
+        source_names = [self._get_cluster_name(key) for key in source_keys]
+        source_list = "\n".join([f"  • {name}" for name in source_names])
+
+        # Confirmation dialog
+        reply = QMessageBox.question(
+            self,
+            "Confirm Multi-Merge",
+            f"Merge {merge_count} people into '{target_name}'?\n\n"
+            f"Source people:\n{source_list}\n\n"
+            f"All faces from these {merge_count} clusters will be moved to '{target_name}'.\n"
+            f"This action cannot be undone.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+
+        if reply != QMessageBox.Yes:
+            return
+
+        # Perform multi-merge
+        try:
+            total_moved = 0
+            for source_key in source_keys:
+                moved = self.db.merge_face_branches(
+                    self.project_id,
+                    source_key,
+                    target_key,
+                    keep_label=target_name
+                )
+                total_moved += moved
+
+            # Clear selection and refresh
+            self._clear_selection()
+            self.load_clusters()
+
+            QMessageBox.information(
+                self,
+                "Multi-Merge Complete",
+                f"Successfully merged {total_moved} faces from {merge_count} people into '{target_name}'."
+            )
+
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Merge Failed",
+                f"Failed to merge clusters:\n{str(e)}"
+            )
+
+    def _get_cluster_name(self, branch_key: str) -> str:
+        """Helper to get display name for a cluster."""
+        cluster = next(
+            (c for c in self.clusters if c["branch_key"] == branch_key),
+            None
+        )
+        return cluster.get("display_name", "Unknown") if cluster else "Unknown"
+
     def on_delete_requested(self, branch_key: str):
         """Handle delete request."""
         cluster_name = next((c["display_name"] for c in self.clusters if c["branch_key"] == branch_key), "Unknown")
@@ -553,14 +755,15 @@ class PeopleManagerDialog(QDialog):
 
     def run_face_detection(self):
         """
-        Run face detection worker (non-blocking, threaded).
+        FEATURE #1: Run face detection with scope selection dialog.
 
-        CRITICAL FIX: Uses QThreadPool for non-blocking execution with progress dialog.
-        Previously called worker.run() synchronously, freezing UI for 10+ minutes.
+        Shows FaceDetectionScopeDialog first to let users choose which photos to process.
+        Uses QThreadPool for non-blocking execution with progress dialog.
         """
         try:
             from config.face_detection_config import get_face_config
             from workers.face_detection_worker import FaceDetectionWorker
+            from ui.face_detection_scope_dialog import FaceDetectionScopeDialog
 
             config = get_face_config()
 
@@ -578,8 +781,29 @@ class PeopleManagerDialog(QDialog):
                 else:
                     return
 
-            # Create worker
-            self.face_detection_worker = FaceDetectionWorker(self.project_id)
+            # FEATURE #1: Show scope selection dialog
+            scope_dialog = FaceDetectionScopeDialog(self.project_id, parent=self)
+
+            # Connect scope selection signal
+            selected_paths = []
+            def on_scope_selected(paths):
+                nonlocal selected_paths
+                selected_paths = paths
+
+            scope_dialog.scopeSelected.connect(on_scope_selected)
+
+            # Show dialog and wait for user selection
+            if scope_dialog.exec() != QDialog.Accepted or not selected_paths:
+                # User canceled or no photos selected
+                return
+
+            logger.info(f"[FaceDetection] User selected {len(selected_paths)} photos for detection")
+
+            # Create worker with selected paths
+            self.face_detection_worker = FaceDetectionWorker(
+                self.project_id,
+                photo_paths=selected_paths  # FEATURE #1: Pass selected paths
+            )
 
             # Connect signals for progress tracking
             self.face_detection_worker.signals.progress.connect(self._on_face_detection_progress)
@@ -603,6 +827,9 @@ class PeopleManagerDialog(QDialog):
             QThreadPool.globalInstance().start(self.face_detection_worker)
 
         except Exception as e:
+            logger.error(f"Failed to start face detection: {e}")
+            import traceback
+            traceback.print_exc()
             QMessageBox.critical(self, "Error", f"Failed to start face detection:\n{str(e)}")
 
     @Slot(int, int, str)
