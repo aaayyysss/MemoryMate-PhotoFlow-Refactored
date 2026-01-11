@@ -20,7 +20,17 @@ import os
 # Solution: Force software rendering using ANGLE WARP backend
 # ========================================================================
 os.environ['QT_ANGLE_PLATFORM'] = 'warp'  # Use WARP (Windows Advanced Rasterization Platform)
-os.environ['QTWEBENGINE_CHROMIUM_FLAGS'] = '--disable-gpu --disable-software-rasterizer'
+
+# Additional flags to suppress GLES3/GPU context errors in embedded maps
+# These prevent the "Failed to create GLES3 context" errors seen in location editor
+os.environ['QTWEBENGINE_CHROMIUM_FLAGS'] = (
+    '--disable-gpu '
+    '--disable-software-rasterizer '
+    '--disable-gpu-compositing '
+    '--disable-gpu-sandbox '
+    '--num-raster-threads=1 '
+    '--disable-features=VizDisplayCompositor'
+)
 
 # Additional Qt WebEngine environment variables for better compatibility
 os.environ['QTWEBENGINE_DISABLE_SANDBOX'] = '1'  # Disable Chromium sandboxing (can cause issues in packaged apps)
