@@ -45,6 +45,12 @@ class FaceClusterCard(QFrame):
         self.branch_key = cluster_data["branch_key"]
         self.thumbnail_size = thumbnail_size
 
+        # CRITICAL FIX: Store reference to dialog explicitly
+        # When card is added to grid_layout, Qt will reparent it to grid_widget,
+        # so self.parent() won't return the PeopleManagerDialog anymore.
+        # We need to store the dialog reference before that happens.
+        self.dialog = parent
+
         self.setup_ui(thumbnail_size)
         self.setFrameStyle(QFrame.Box | QFrame.Raised)
         self.setLineWidth(1)
@@ -174,12 +180,34 @@ class FaceClusterCard(QFrame):
         """
         menu = QMenu(self)
 
-        # Check if parent dialog has multiple selections
-        parent_dialog = self.parent()
+        # CRITICAL FIX: Use self.dialog instead of self.parent()
+        # Qt reparents the card to grid_widget when added to layout,
+        # so self.parent() no longer returns the PeopleManagerDialog
+        parent_dialog = self.dialog
+
+        # DEEP DEBUG: Log all context menu detection details
+        print(f"\n[ContextMenu] ========== CONTEXT MENU OPENED ==========")
+        print(f"[ContextMenu] DEBUG: Right-clicked card branch_key = {self.branch_key}")
+        print(f"[ContextMenu] DEBUG: self.parent() type = {type(self.parent())}")
+        print(f"[ContextMenu] DEBUG: self.dialog type = {type(self.dialog)}")
+        print(f"[ContextMenu] DEBUG: parent_dialog (using self.dialog) type = {type(parent_dialog)}")
+        print(f"[ContextMenu] DEBUG: parent_dialog instance = {parent_dialog}")
+        print(f"[ContextMenu] DEBUG: hasattr(parent_dialog, 'selected_clusters') = {hasattr(parent_dialog, 'selected_clusters')}")
+
+        if hasattr(parent_dialog, 'selected_clusters'):
+            print(f"[ContextMenu] DEBUG: parent_dialog.selected_clusters = {parent_dialog.selected_clusters}")
+            print(f"[ContextMenu] DEBUG: len(parent_dialog.selected_clusters) = {len(parent_dialog.selected_clusters)}")
+        else:
+            print(f"[ContextMenu] DEBUG: parent_dialog does NOT have 'selected_clusters' attribute")
+
         has_multi_selection = (
             hasattr(parent_dialog, 'selected_clusters') and
             len(parent_dialog.selected_clusters) > 1
         )
+
+        print(f"[ContextMenu] DEBUG: has_multi_selection = {has_multi_selection}")
+        print(f"[ContextMenu] DEBUG: Will show {'MULTI-MERGE' if has_multi_selection else 'SINGLE-MERGE'} menu")
+        print(f"[ContextMenu] ===========================================\n")
 
         if has_multi_selection:
             # FEATURE #3: Multi-merge menu - user will choose target from dialog
@@ -489,20 +517,33 @@ class PeopleManagerDialog(QDialog):
         """
         modifiers = QApplication.keyboardModifiers()
 
+        # DEEP DEBUG: Log click event details
+        print(f"\n[ClusterClick] ========== CLUSTER CLICKED ==========")
+        print(f"[ClusterClick] DEBUG: Clicked branch_key = {branch_key}")
+        print(f"[ClusterClick] DEBUG: Shift modifier active? {bool(modifiers & Qt.ShiftModifier)}")
+        print(f"[ClusterClick] DEBUG: selected_clusters BEFORE = {self.selected_clusters}")
+
         if modifiers & Qt.ShiftModifier:
             # FEATURE #3: Shift+Click toggles selection
             if branch_key in self.selected_clusters:
                 self.selected_clusters.remove(branch_key)
                 self._update_card_highlight(branch_key, False)
+                print(f"[ClusterClick] DEBUG: Removed {branch_key} from selection")
             else:
                 self.selected_clusters.append(branch_key)
                 self._update_card_highlight(branch_key, True)
+                print(f"[ClusterClick] DEBUG: Added {branch_key} to selection")
+
+            print(f"[ClusterClick] DEBUG: selected_clusters AFTER = {self.selected_clusters}")
+            print(f"[ClusterClick] DEBUG: Total selected = {len(self.selected_clusters)}")
 
             # Update status to show selection count
             if self.selected_clusters:
                 self.status_label.setText(f"✓ {len(self.selected_clusters)} people selected (Shift+Click to select more, Right-click to merge)")
             else:
                 self.update_status()
+
+            print(f"[ClusterClick] =========================================\n")
 
         else:
             # Normal click: Clear selection and show photos for this person
