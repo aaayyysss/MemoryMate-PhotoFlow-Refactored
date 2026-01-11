@@ -39,25 +39,26 @@ class FaceClusterCard(QFrame):
     merge_requested = Signal(str)  # Emits branch_key
     delete_requested = Signal(str)  # Emits branch_key
 
-    def __init__(self, cluster_data: Dict[str, Any], parent=None):
+    def __init__(self, cluster_data: Dict[str, Any], parent=None, thumbnail_size=192):
         super().__init__(parent)
         self.cluster_data = cluster_data
         self.branch_key = cluster_data["branch_key"]
+        self.thumbnail_size = thumbnail_size
 
-        self.setup_ui()
+        self.setup_ui(thumbnail_size)
         self.setFrameStyle(QFrame.Box | QFrame.Raised)
         self.setLineWidth(1)
         self.setCursor(Qt.PointingHandCursor)
 
-    def setup_ui(self):
+    def setup_ui(self, thumbnail_size=192):
         """Setup the card UI."""
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(4)
 
-        # Face thumbnail (increased from 128x128 to 192x192 for better visibility)
+        # Face thumbnail (size can now be controlled via zoom slider)
         self.thumbnail_label = QLabel()
-        self.thumbnail_label.setFixedSize(192, 192)
+        self.thumbnail_label.setFixedSize(thumbnail_size, thumbnail_size)
         self.thumbnail_label.setScaledContents(True)
         self.thumbnail_label.setStyleSheet("QLabel { background-color: #f0f0f0; border: 1px solid #ccc; }")
 
@@ -248,6 +249,9 @@ class PeopleManagerDialog(QDialog):
         self.selected_clusters: List[str] = []  # Ordered list of selected branch_keys
         self.selection_mode = False  # True when Shift is held
 
+        # Zoom/thumbnail size control
+        self.thumbnail_size = 192  # Default size (was hardcoded before)
+
         # Face detection worker tracking
         self.face_detection_worker = None
         self.face_detection_progress_dialog = None
@@ -335,6 +339,8 @@ class PeopleManagerDialog(QDialog):
 
     def create_toolbar(self) -> QToolBar:
         """Create toolbar with actions."""
+        from PySide6.QtWidgets import QSlider
+
         toolbar = QToolBar()
         toolbar.setIconSize(QSize(24, 24))
 
@@ -361,6 +367,24 @@ class PeopleManagerDialog(QDialog):
         settings_action = QAction("⚙️ Settings", self)
         settings_action.triggered.connect(self.open_settings)
         toolbar.addAction(settings_action)
+
+        toolbar.addSeparator()
+
+        # Zoom slider (FEATURE #3 POLISH: User requested zoom control)
+        zoom_label = QLabel("🔍 Zoom:")
+        toolbar.addWidget(zoom_label)
+
+        self.zoom_slider = QSlider(Qt.Horizontal)
+        self.zoom_slider.setMinimum(128)  # Minimum thumbnail size
+        self.zoom_slider.setMaximum(384)  # Maximum thumbnail size
+        self.zoom_slider.setValue(192)    # Default size
+        self.zoom_slider.setFixedWidth(150)
+        self.zoom_slider.setToolTip("Adjust thumbnail size (128-384px)")
+        self.zoom_slider.valueChanged.connect(self._on_zoom_changed)
+        toolbar.addWidget(self.zoom_slider)
+
+        self.zoom_value_label = QLabel("192px")
+        toolbar.addWidget(self.zoom_value_label)
 
         return toolbar
 
@@ -391,7 +415,7 @@ class PeopleManagerDialog(QDialog):
             row = i // cols
             col = i % cols
 
-            card = FaceClusterCard(cluster, self)
+            card = FaceClusterCard(cluster, self, thumbnail_size=self.thumbnail_size)
             card.clicked.connect(self.on_cluster_clicked)
             card.renamed.connect(self.on_cluster_renamed)
             card.merge_requested.connect(self.on_merge_requested)
@@ -442,6 +466,19 @@ class PeopleManagerDialog(QDialog):
         else:
             self.status_label.setText(f"👥 Showing {shown} of {total} people")
 
+    def _on_zoom_changed(self, value: int):
+        """
+        Handle zoom slider changes - update thumbnail size and rebuild grid.
+
+        FEATURE #3 POLISH: User-requested zoom control for face thumbnails.
+        Range: 128px (small) to 384px (large), default 192px.
+        """
+        self.thumbnail_size = value
+        self.zoom_value_label.setText(f"{value}px")
+
+        # Rebuild grid with new thumbnail size
+        self.display_clusters()
+
     def on_cluster_clicked(self, branch_key: str):
         """
         FEATURE #3: Handle cluster card click with Shift+Click multi-selection support.
@@ -488,8 +525,9 @@ class PeopleManagerDialog(QDialog):
                         )
                         self.parent().statusBar().showMessage(f"👤 Showing {len(paths)} photos of {cluster_name}")
 
-                    # Close dialog to show photos
-                    self.accept()
+                    # FIX: Don't close dialog - let user continue working with People Manager
+                    # User can explicitly close with Close button or X
+                    # self.accept()  # REMOVED: Dialog was closing on every single click
                 else:
                     QMessageBox.information(self, "No Photos", f"No photos found for this person.")
 
@@ -582,6 +620,11 @@ class PeopleManagerDialog(QDialog):
             # Perform merge in database
             moved = self.db.merge_face_branches(self.project_id, source_key, target_key, keep_label=target_name)
 
+            # Emit signal for undo/redo tracking (FEATURE #3 POLISH)
+            if hasattr(self.parent(), 'on_people_merged'):
+                # Notify parent window about merge for undo/redo tracking
+                self.parent().on_people_merged([source_key], target_key, target_name)
+
             # Reload clusters
             self.load_clusters()
 
@@ -655,10 +698,11 @@ class PeopleManagerDialog(QDialog):
 
     def _merge_selected_clusters(self):
         """
-        FEATURE #3: Merge all selected clusters into the first one.
+        FEATURE #3 POLISH: Merge all selected clusters - user chooses target.
 
-        The first selected cluster becomes the target, and all other
-        selected clusters are merged into it.
+        IMPROVEMENT: Instead of automatically using first selected as target,
+        show dialog with list of selected faces so user can choose which one
+        should be the target (requested by user feedback).
         """
         if len(self.selected_clusters) < 2:
             QMessageBox.warning(
@@ -669,10 +713,37 @@ class PeopleManagerDialog(QDialog):
             )
             return
 
-        target_key = self.selected_clusters[0]
-        source_keys = self.selected_clusters[1:]
+        # FEATURE #3 POLISH: Let user choose target from selected faces
+        # Build list of selected cluster names
+        selected_names = []
+        selected_mapping = {}  # Map display names to branch_keys
+        for key in self.selected_clusters:
+            name = self._get_cluster_name(key)
+            selected_names.append(name)
+            selected_mapping[name] = key
 
-        target_name = self._get_cluster_name(target_key)
+        # Show selection dialog to choose target
+        target_name, ok = QInputDialog.getItem(
+            self,
+            "Choose Merge Target",
+            f"You have selected {len(self.selected_clusters)} people.\n\n"
+            f"Choose which person should be the TARGET\n"
+            f"(all other selected faces will be merged into this one):",
+            selected_names,
+            editable=False
+        )
+
+        if not ok or not target_name:
+            return
+
+        # Get target key and determine sources
+        target_key = selected_mapping[target_name]
+        source_keys = [key for key in self.selected_clusters if key != target_key]
+
+        if not source_keys:
+            QMessageBox.information(self, "Merge", "No other people selected to merge.")
+            return
+
         merge_count = len(source_keys)
 
         # Build list of source names for confirmation
@@ -685,8 +756,7 @@ class PeopleManagerDialog(QDialog):
             "Confirm Multi-Merge",
             f"Merge {merge_count} people into '{target_name}'?\n\n"
             f"Source people:\n{source_list}\n\n"
-            f"All faces from these {merge_count} clusters will be moved to '{target_name}'.\n"
-            f"This action cannot be undone.",
+            f"All faces from these {merge_count} people will be moved to '{target_name}'.",
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No
         )
@@ -705,6 +775,11 @@ class PeopleManagerDialog(QDialog):
                     keep_label=target_name
                 )
                 total_moved += moved
+
+            # Emit signal for undo/redo tracking (FEATURE #3 POLISH)
+            if hasattr(self.parent(), 'on_people_merged'):
+                # Notify parent window about merge for undo/redo tracking
+                self.parent().on_people_merged(source_keys, target_key, target_name)
 
             # Clear selection and refresh
             self._clear_selection()
