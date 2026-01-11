@@ -140,7 +140,8 @@ class FaceDetectionWorker(QRunnable):
             metric_get_photos = monitor.record_operation("get_photos_to_process")
             if self.photo_paths is not None:
                 # Use scope-selected photo paths
-                photos = self.photo_paths
+                # Convert list of strings to list of dicts for consistency with DB query format
+                photos = [{"path": path} for path in self.photo_paths]
                 logger.info(f"[FaceDetectionWorker] Using scope-selected photos: {len(photos)} photos")
             else:
                 # Query all photos for this project

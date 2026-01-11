@@ -5121,22 +5121,68 @@ class ReferenceDB:
         FEATURE #1: Get folders with photo counts for folder selection.
 
         Returns:
-            List of dicts with 'path' and 'count' keys
+            List of dicts with 'id', 'name', 'path', 'parent_id', and 'count' keys
         """
         with self._connect() as conn:
             cur = conn.execute("""
-                SELECT pf.path, COUNT(pm.id) as count
+                SELECT pf.id, pf.name, pf.path, pf.parent_id, COUNT(pm.id) as count
                 FROM photo_folders pf
                 LEFT JOIN photo_metadata pm ON pm.folder_id = pf.id
                 WHERE pf.project_id = ?
-                GROUP BY pf.path
+                GROUP BY pf.id, pf.name, pf.path, pf.parent_id
                 ORDER BY pf.path
             """, (project_id,))
 
             return [
-                {"path": row[0], "count": row[1]}
+                {
+                    "id": row[0],
+                    "name": row[1],
+                    "path": row[2],
+                    "parent_id": row[3],
+                    "count": row[4]
+                }
                 for row in cur.fetchall()
             ]
+
+    def get_photos_for_folders(self, project_id: int, folder_ids: List[int]) -> List[str]:
+        """
+        FEATURE #1: Get photo paths for specific folder IDs (including subfolders).
+
+        Args:
+            project_id: Project ID
+            folder_ids: List of folder IDs to get photos from
+
+        Returns:
+            List of photo paths from the selected folders
+        """
+        if not folder_ids:
+            return []
+
+        # Get all descendant folder IDs (including the selected folders themselves)
+        all_folder_ids = set(folder_ids)
+
+        # Recursively get all child folder IDs
+        def get_all_descendants(fid):
+            children = self.get_child_folders(fid, project_id)
+            for child in children:
+                child_id = child['id']
+                if child_id not in all_folder_ids:
+                    all_folder_ids.add(child_id)
+                    get_all_descendants(child_id)
+
+        for fid in folder_ids:
+            get_all_descendants(fid)
+
+        with self._connect() as conn:
+            placeholders = ','.join('?' * len(all_folder_ids))
+            cur = conn.execute(f"""
+                SELECT path
+                FROM photo_metadata
+                WHERE project_id = ? AND folder_id IN ({placeholders})
+                ORDER BY date_taken DESC
+            """, (project_id, *all_folder_ids))
+
+            return [row[0] for row in cur.fetchall()]
 
     def get_paths_with_embeddings(self, project_id: int) -> List[str]:
         """

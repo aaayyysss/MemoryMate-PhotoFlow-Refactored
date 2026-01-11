@@ -249,15 +249,29 @@ class FaceDetectionScopeDialog(QDialog):
             QMessageBox.critical(self, "Error", f"Failed to load photos:\n{str(e)}")
 
     def _populate_folder_tree(self):
-        """Populate folder tree with checkboxes."""
+        """Populate folder tree with checkboxes in hierarchical structure."""
         self.folder_tree.clear()
 
-        for folder in self.folders:
-            item = QTreeWidgetItem()
-            item.setText(0, f"{folder['path']} ({folder['count']} photos)")
-            item.setCheckState(0, Qt.Unchecked)
-            item.setData(0, Qt.UserRole, folder['path'])
-            self.folder_tree.addTopLevelItem(item)
+        # Build folder lookup by ID
+        folder_lookup = {f['id']: f for f in self.folders}
+
+        # Build tree recursively
+        def add_folder(parent_item, parent_id):
+            # Find children of this parent
+            children = [f for f in self.folders if f['parent_id'] == parent_id]
+
+            for folder in children:
+                item = QTreeWidgetItem(parent_item if parent_item else self.folder_tree)
+                item.setText(0, f"{folder['name']} ({folder['count']} photos)")
+                item.setCheckState(0, Qt.Unchecked)
+                item.setData(0, Qt.UserRole, folder['id'])  # Store folder ID instead of path
+                item.setExpanded(True)  # Expand by default
+
+                # Recursively add children
+                add_folder(item, folder['id'])
+
+        # Start with root folders (parent_id is None)
+        add_folder(None, None)
 
     def _on_scope_changed(self, mode: str):
         """Handle scope mode change."""
@@ -282,19 +296,29 @@ class FaceDetectionScopeDialog(QDialog):
             self.selected_paths = [p['path'] for p in self.all_photos]
 
         elif self.scope_mode == "folders":
-            # Get checked folders
-            selected_folders = []
-            for i in range(self.folder_tree.topLevelItemCount()):
-                item = self.folder_tree.topLevelItem(i)
-                if item.checkState(0) == Qt.Checked:
-                    folder_path = item.data(0, Qt.UserRole)
-                    selected_folders.append(folder_path)
+            # Get checked folder IDs recursively
+            selected_folder_ids = []
 
-            # Filter photos by folder
-            self.selected_paths = [
-                p['path'] for p in self.all_photos
-                if any(p['path'].startswith(folder) for folder in selected_folders)
-            ]
+            def get_checked_folders(item):
+                """Recursively collect checked folder IDs."""
+                if item.checkState(0) == Qt.Checked:
+                    folder_id = item.data(0, Qt.UserRole)
+                    if folder_id is not None:
+                        selected_folder_ids.append(folder_id)
+
+                # Check children
+                for i in range(item.childCount()):
+                    get_checked_folders(item.child(i))
+
+            # Check all top-level items
+            for i in range(self.folder_tree.topLevelItemCount()):
+                get_checked_folders(self.folder_tree.topLevelItem(i))
+
+            # Get photos for selected folders (including subfolders)
+            if selected_folder_ids:
+                self.selected_paths = self.db.get_photos_for_folders(self.project_id, selected_folder_ids)
+            else:
+                self.selected_paths = []
             selected_count = len(self.selected_paths)
 
         elif self.scope_mode == "dates":
