@@ -1014,8 +1014,16 @@ class ThumbnailGridQt(QWidget):
         # 🔁 Hook scrollbars AFTER timer exists (debounced incremental scheduling)
         def _on_scroll():
             self._rv_timer.start(50)
+            # PHASE 4: Save scroll position to session state (debounced)
+            self._save_scroll_position()
+
         self.list_view.verticalScrollBar().valueChanged.connect(_on_scroll)
         self.list_view.horizontalScrollBar().valueChanged.connect(_on_scroll)
+
+        # PHASE 4: Timer for debouncing scroll position saves
+        self._scroll_save_timer = QTimer(self)
+        self._scroll_save_timer.setSingleShot(True)
+        self._scroll_save_timer.timeout.connect(self._do_save_scroll_position)
         
 # ===================================================
     # --- Normalization helper used everywhere (model key, cache key, worker emits) ---
@@ -1024,6 +1032,63 @@ class ThumbnailGridQt(QWidget):
             return os.path.normcase(os.path.abspath(os.path.normpath(str(p).strip())))
         except Exception:
             return str(p).strip().lower()
+
+    # ===================================================
+    # PHASE 4: Scroll position persistence
+    # ===================================================
+
+    def _save_scroll_position(self):
+        """
+        PHASE 4: Debounced scroll position save.
+        Starts a timer to delay the actual save (prevents save spam during scrolling).
+        """
+        # Restart timer on every scroll (debounce)
+        self._scroll_save_timer.start(500)  # Save 500ms after scrolling stops
+
+    def _do_save_scroll_position(self):
+        """
+        PHASE 4: Actually save scroll position to session state.
+        Called after scrolling stops (debounced).
+        """
+        try:
+            scrollbar = self.list_view.verticalScrollBar()
+            scroll_max = scrollbar.maximum()
+
+            if scroll_max > 0:
+                # Calculate scroll position as percentage (0.0 to 1.0)
+                scroll_value = scrollbar.value()
+                position = scroll_value / scroll_max
+            else:
+                position = 0.0
+
+            # Save to session state
+            from session_state_manager import get_session_state
+            get_session_state().set_scroll_position(position)
+
+        except Exception:
+            pass  # Silently ignore errors (scroll position is non-critical)
+
+    def restore_scroll_position(self):
+        """
+        PHASE 4: Restore scroll position from session state.
+        Should be called after photos are loaded into grid.
+        """
+        try:
+            from session_state_manager import get_session_state
+            position = get_session_state().get_scroll_position()
+
+            if position > 0:
+                scrollbar = self.list_view.verticalScrollBar()
+                scroll_max = scrollbar.maximum()
+
+                if scroll_max > 0:
+                    # Convert percentage back to scroll value
+                    scroll_value = int(position * scroll_max)
+                    scrollbar.setValue(scroll_value)
+                    print(f"[GRID] PHASE 4: Restored scroll position: {position:.1%} ({scroll_value}/{scroll_max})")
+
+        except Exception as e:
+            print(f"[GRID] PHASE 4: Failed to restore scroll position: {e}")
 
 
     def request_visible_thumbnails(self):
@@ -2731,6 +2796,9 @@ class ThumbnailGridQt(QWidget):
         # Phase 2.3: Emit signal for status bar update
         self.gridReloaded.emit()
 
+        # PHASE 4: Restore scroll position after photos are loaded (defer 200ms for layout)
+        QTimer.singleShot(200, self.restore_scroll_position)
+
     def reload_priortoContext_driven(self):
         """
         Load image paths based on current load_mode and refresh thumbnail grid.
@@ -3001,6 +3069,9 @@ class ThumbnailGridQt(QWidget):
             # Phase 2.3: Emit signal for status bar update
             self.gridReloaded.emit()
             print(f"[GRID] Step 5: ✓ gridReloaded signal emitted")
+
+            # PHASE 4: Restore scroll position after photos are loaded (defer 200ms for layout)
+            QTimer.singleShot(200, self.restore_scroll_position)
 
             print(f"[GRID] ====== reload() COMPLETED SUCCESSFULLY ======\n")
         except Exception as reload_error:
