@@ -43,7 +43,7 @@
 #  Store a hash or last_modified so we can incrementally update later.
 
 from splash_qt import SplashScreen, StartupWorker
-import os, platform, traceback, time as _time, logging
+import os, platform, traceback, time as _time, logging, json
 from thumb_cache_db import get_cache
 
 from db_writer import DBWriter
@@ -2309,24 +2309,26 @@ class MainWindow(QMainWindow):
                 )
                 return
 
-            # Confirm action
-            reply = QMessageBox.question(
-                self,
-                "Detect & Group Faces",
-                f"This will automatically:\n"
-                f"1. Detect faces in all photos\n"
-                f"2. Group similar faces into person albums\n"
-                f"3. Show results in the People tab\n\n"
-                f"This may take 10-20 minutes for large photo collections.\n\n"
-                f"Continue?",
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.No
-            )
+            # FEATURE #1: Show scope selection dialog to choose which photos to process
+            from ui.face_detection_scope_dialog import FaceDetectionScopeDialog
 
-            if reply != QMessageBox.Yes:
+            scope_dialog = FaceDetectionScopeDialog(project_id, parent=self)
+
+            # Connect scope selection signal
+            selected_paths = []
+            def on_scope_selected(paths):
+                nonlocal selected_paths
+                selected_paths = paths
+
+            scope_dialog.scopeSelected.connect(on_scope_selected)
+
+            # Show dialog and wait for user selection
+            if scope_dialog.exec() != QDialog.Accepted or not selected_paths:
+                # User canceled or no photos selected
                 return
 
             print(f"[MainWindow] Launching automatic face grouping pipeline for project {project_id}")
+            print(f"[MainWindow] User selected {len(selected_paths)} photos for detection")
 
             # Create progress dialog
             progress_dialog = QDialog(self)
@@ -2363,8 +2365,12 @@ class MainWindow(QMainWindow):
 
             cancel_btn.clicked.connect(cancel_pipeline)
 
-            # Step 1: Start detection worker
-            detection_worker = FaceDetectionWorker(project_id=project_id)
+            # Step 1: Start detection worker with scope-selected photos
+            # FEATURE #1: Pass selected photo paths to worker
+            detection_worker = FaceDetectionWorker(
+                project_id=project_id,
+                photo_paths=selected_paths  # FEATURE #1: Use scope-selected photos
+            )
             current_detection_worker = detection_worker
 
             def on_detection_progress(current, total, message):
