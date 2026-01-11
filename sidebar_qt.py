@@ -2299,6 +2299,15 @@ class SidebarQt(QWidget):
         if mode == "videos" and value == "all":
             _clear_tag_if_needed()
             try:
+                # PHASE 3: Save video selection to session state
+                try:
+                    from session_state_manager import get_session_state
+                    get_session_state().set_section("videos")
+                    get_session_state().set_selection("video", "all", "All Videos")
+                    print(f"[SidebarQt] PHASE 3: Saved video selection: All Videos")
+                except Exception as se:
+                    print(f"[SidebarQt] Failed to save session state: {se}")
+
                 videos = video_service.get_videos_by_project(self.project_id) if self.project_id else []
                 paths = _ensure_video_paths_only([v["path"] for v in videos])
                 mw.grid.model.clear()
@@ -2391,6 +2400,15 @@ class SidebarQt(QWidget):
         if mode == "videos_year" and value:
             _clear_tag_if_needed()
             try:
+                # PHASE 3: Save video selection to session state
+                try:
+                    from session_state_manager import get_session_state
+                    get_session_state().set_section("videos")
+                    get_session_state().set_selection("video", f"year:{value}", f"Videos {value}")
+                    print(f"[SidebarQt] PHASE 3: Saved video selection: Videos {value}")
+                except Exception as se:
+                    print(f"[SidebarQt] Failed to save session state: {se}")
+
                 videos = video_service.get_videos_by_project(self.project_id)
                 print(f"[VIDEO_FILTER] Year {value}: Loaded {len(videos)} total videos from project")
                 year = int(value)
@@ -2414,6 +2432,15 @@ class SidebarQt(QWidget):
         if mode == "videos_month" and value:
             _clear_tag_if_needed()
             try:
+                # PHASE 3: Save video selection to session state
+                try:
+                    from session_state_manager import get_session_state
+                    get_session_state().set_section("videos")
+                    get_session_state().set_selection("video", f"month:{value}", f"Videos {value}")
+                    print(f"[SidebarQt] PHASE 3: Saved video selection: Videos {value}")
+                except Exception as se:
+                    print(f"[SidebarQt] Failed to save session state: {se}")
+
                 parts = value.split("-")
                 year, month = int(parts[0]), int(parts[1])
                 videos = video_service.get_videos_by_project(self.project_id)
@@ -2438,6 +2465,15 @@ class SidebarQt(QWidget):
         if mode == "videos_day" and value:
             _clear_tag_if_needed()
             try:
+                # PHASE 3: Save video selection to session state
+                try:
+                    from session_state_manager import get_session_state
+                    get_session_state().set_section("videos")
+                    get_session_state().set_selection("video", f"day:{value}", f"Videos {value}")
+                    print(f"[SidebarQt] PHASE 3: Saved video selection: Videos {value}")
+                except Exception as se:
+                    print(f"[SidebarQt] Failed to save session state: {se}")
+
                 print(f"[VIDEO_FILTER] Day {value}: Using direct DB query")
                 paths = self.db.get_videos_by_date(value, project_id=self.project_id)
                 print(f"[VIDEO_FILTER] Day {value}: DB returned {len(paths)} video paths")
