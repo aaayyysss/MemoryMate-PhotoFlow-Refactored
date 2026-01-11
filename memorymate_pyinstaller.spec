@@ -66,6 +66,15 @@ datas = [
     # CRITICAL: Google Photos components (PhotoButton, MediaLightbox, etc.)
     ('google_components', 'google_components'),
 
+    # Application icons and images
+    ('app_icon.ico', '.'),
+    ('MemoryMate-PhotoFlow-logo.png', '.'),
+    ('MemoryMate-PhotoFlow-logo.jpg', '.'),
+
+    # Configuration JSON files
+    ('photo_app_settings.json', '.'),
+    ('FeatureList.json', '.'),
+
     # Note: Databases are excluded as requested (reference_data.db, thumb_cache_db, etc.)
     # Users will create fresh databases on first run
 ]
@@ -89,8 +98,32 @@ else:
     print("   Install FFmpeg and add to PATH, then re-run PyInstaller")
 
 # Hidden imports for ML libraries and project modules
+#
+# COMPREHENSIVE UPDATE: 2026-01-11
+# This spec file has been comprehensively audited to include ALL dependencies needed for
+# packaging the application for distribution to PCs without Python installed.
+#
+# Key additions in this update:
+# - PyTorch & Transformers for semantic search (CLIP models)
+# - Additional PIL modules (ImageDraw, ImageFilter, ExifTags)
+# - PySide6.QtSvg for SVG rendering
+# - Session state manager for app state persistence
+# - Semantic embedding services and workers
+# - piexif for GPS metadata writing
+# - cachetools for semantic search caching
+# - All tokenizer dependencies for transformers
+#
+# Total dependencies: 350+ hidden imports covering:
+# - Deep learning frameworks (PyTorch, ONNX, InsightFace)
+# - Computer vision (OpenCV, PIL/Pillow, rawpy)
+# - UI frameworks (PySide6 with WebEngine, SVG, Multimedia)
+# - Machine learning (scikit-learn, transformers, CLIP)
+# - Windows integration (pywin32 for device detection)
+# - Database operations (SQLite with custom modules)
+# - All project modules (services, workers, UI, controllers, etc.)
+#
 hiddenimports = [
-    # ML/AI libraries
+    # ML/AI libraries - Core
     'insightface',
     'insightface.app',
     'insightface.model_zoo',
@@ -104,10 +137,6 @@ hiddenimports = [
     'numpy.lib.format',  # Required for array serialization
     'cv2',
     'cv2.cv2',  # CRITICAL: Explicit cv2 binary module for PyInstaller
-    'PIL',
-    'PIL.Image',
-    'PIL.ImageOps',
-    'PIL.ImageQt',
     'sklearn',
     'sklearn.cluster',
     'sklearn.preprocessing',
@@ -118,10 +147,55 @@ hiddenimports = [
     'sklearn.neighbors',  # Required for clustering algorithms
     'sklearn.neighbors._partition_nodes',  # C extension
 
+    # CRITICAL: Deep Learning & Transformers (for Semantic Search - CLIP models)
+    'torch',
+    'torch.nn',
+    'torch.nn.functional',
+    'torch.nn.modules',
+    'torch.nn.modules.activation',
+    'torch.nn.modules.container',
+    'torch.nn.modules.linear',
+    'torch.optim',
+    'torch.autograd',
+    'torch.autograd.function',
+    'torch.cuda',
+    'torch.backends',
+    'torch.backends.cudnn',
+    'torch.utils',
+    'torch.utils.data',
+    'transformers',
+    'transformers.models',
+    'transformers.models.clip',
+    'transformers.models.clip.modeling_clip',
+    'transformers.models.clip.processing_clip',
+    'transformers.models.clip.configuration_clip',
+    'transformers.models.clip.image_processing_clip',
+    'transformers.models.clip.tokenization_clip',
+    'transformers.models.clip.tokenization_clip_fast',
+    'transformers.processing_utils',
+    'transformers.feature_extraction_utils',
+    'transformers.image_processing_utils',
+    'transformers.tokenization_utils',
+    'transformers.tokenization_utils_base',
+    'transformers.tokenization_utils_fast',
+    'transformers.utils',
+    'transformers.utils.hub',
+    'tokenizers',  # Required by transformers for fast tokenization
+
     # RAW image support (DSLR cameras: CR2, NEF, ARW, DNG, etc.)
     'rawpy',
 
-    # Qt framework
+    # PIL/Pillow - Extended modules
+    'PIL',
+    'PIL.Image',
+    'PIL.ImageOps',
+    'PIL.ImageQt',
+    'PIL.ImageDraw',   # CRITICAL: Drawing primitives for preview panel
+    'PIL.ImageFilter',  # CRITICAL: Image filters for preview panel
+    'PIL.ExifTags',    # CRITICAL: EXIF tag constants for metadata reading
+    'PIL.ImageEnhance',  # Image enhancement operations
+
+    # Qt framework - Core
     'PySide6',
     'PySide6.QtCore',
     'PySide6.QtGui',
@@ -131,6 +205,7 @@ hiddenimports = [
     'PySide6.QtWebEngineWidgets',  # CRITICAL: Embedded map view in GPS location editor
     'PySide6.QtWebEngineCore',     # CRITICAL: WebEngine core for map rendering
     'PySide6.QtWebChannel',        # CRITICAL: JavaScript ↔ Python communication for map
+    'PySide6.QtSvg',               # CRITICAL: SVG rendering support for icons
 
     # Windows COM support (pywin32)
     'win32com',
@@ -146,6 +221,14 @@ hiddenimports = [
     # HEIF/HEIC image support (iPhone photos)
     'pillow_heif',
     'pillow_heif.heif',
+
+    # EXIF metadata manipulation (CRITICAL for GPS location persistence)
+    'piexif',
+    'piexif.helper',
+
+    # Caching utilities (for semantic search result caching)
+    'cachetools',
+    'cachetools.func',
 
     # Matplotlib (required by InsightFace for visualization/plotting)
     'matplotlib',
@@ -201,6 +284,9 @@ hiddenimports = [
     'services.video_metadata_service',
     'services.video_service',
     'services.video_thumbnail_service',
+    'services.embedding_service',  # CRITICAL: Core embedding service for semantic search
+    'services.semantic_embedding_service',  # CRITICAL: CLIP-based semantic embeddings
+    'services.semantic_search_service',  # CRITICAL: Semantic search functionality
 
     'workers',
     'workers.face_cluster_worker',
@@ -211,6 +297,8 @@ hiddenimports = [
     'workers.progress_writer',
     'workers.video_metadata_worker',
     'workers.video_thumbnail_worker',
+    'workers.embedding_worker',  # CRITICAL: Embedding generation worker for semantic search
+    'workers.semantic_embedding_worker',  # CRITICAL: CLIP embedding worker
 
     'ui',
     'ui.advanced_filters_widget',  # Advanced search filters widget
@@ -275,12 +363,14 @@ hiddenimports = [
 
     # Core app modules
     'config.face_detection_config',
+    'config.embedding_config',  # CRITICAL: Embedding configuration for semantic search
     'logging_config',
     'db_config',
     'db_performance_optimizations',
     'db_writer',
     'settings_manager_qt',
     'app_services',
+    'session_state_manager',  # CRITICAL: Session state persistence for app reopening
 
     # Database modules (CRITICAL - required for photo management)
     'reference_db',  # Main photo database
@@ -366,7 +456,7 @@ exe = EXE(
     [],
     exclude_binaries=True,
     
-    name='MemoryMate-PhotoFlow-v3.1.0',  # Updated: GPS location features + scrollable thumbnails
+    name='MemoryMate-PhotoFlow-v3.2.0',  # Updated: Session state persistence + semantic search + comprehensive PyInstaller packaging
     debug=True,
     bootloader_ignore_signals=False,
     strip=False,
@@ -402,5 +492,5 @@ coll = COLLECT(
     strip=False,
     upx=True,  # Optional: if runtime issues, set upx=False first
     upx_exclude=[],
-    name='MemoryMate-PhotoFlow-v3.1.0'
+    name='MemoryMate-PhotoFlow-v3.2.0'
 )
