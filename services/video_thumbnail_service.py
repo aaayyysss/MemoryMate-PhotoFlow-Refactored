@@ -3,6 +3,7 @@
 # Video thumbnail generation using ffmpeg
 
 import subprocess
+import os
 from typing import Optional
 from pathlib import Path
 from logging_config import get_logger
@@ -20,14 +21,25 @@ class VideoThumbnailService:
     Thumbnail format: JPEG (for compatibility and file size)
     """
 
-    def __init__(self, thumbnail_dir: str = ".thumb_cache"):
+    def __init__(self, thumbnail_dir: str = None):
         """
         Initialize VideoThumbnailService.
 
         Args:
-            thumbnail_dir: Directory to store video thumbnails (default: .thumb_cache)
+            thumbnail_dir: Directory to store video thumbnails (default: .thumb_cache relative to script directory)
         """
         self.logger = logger
+
+        # CRITICAL FIX: Use absolute path relative to script directory
+        # This ensures video thumbnails persist across app restarts in packaged apps
+        if thumbnail_dir is None:
+            # Get directory where this script is located (persistent in PyInstaller bundles)
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            # Go up one level to project root, then use .thumb_cache
+            project_root = os.path.dirname(script_dir)
+            thumbnail_dir = os.path.join(project_root, ".thumb_cache")
+            self.logger.info(f"[VideoThumbnailService] Using default thumbnail directory: {thumbnail_dir}")
+
         self.thumbnail_dir = Path(thumbnail_dir)
         self._ffmpeg_path = self._get_ffmpeg_path()
         self._ffmpeg_available = self._check_ffmpeg()

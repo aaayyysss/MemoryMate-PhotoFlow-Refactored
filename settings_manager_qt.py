@@ -28,6 +28,7 @@ DEFAULT_SETTINGS = {
     # Empty list = use platform-specific defaults from PhotoScanService
     # Non-empty list = override defaults with custom exclusions
     "scan_exclude_folders": [],  # Example: ["node_modules", ".git", "my_private_folder"]
+    "ignore_folders": [],  # CRITICAL: Used by preferences dialog (must match)
 
     # --- Badge overlay settings ---
     "badge_overlays_enabled": True,
