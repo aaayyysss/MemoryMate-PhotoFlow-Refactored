@@ -2125,6 +2125,13 @@ class MainWindow(QMainWindow):
                     accordion_sidebar = self.sidebar.accordion
                     print(f"[MainWindow] PHASE 2: Found AccordionSidebar in sidebar.accordion")
 
+            # Case 3: Current Layout with SidebarQt (tree-based, not accordion-based)
+            if not accordion_sidebar and hasattr(self, 'sidebar') and hasattr(self.sidebar, 'tree'):
+                print(f"[MainWindow] PHASE 2: Using Current Layout (SidebarQt) - will restore via tree selection")
+                # For SidebarQt, we restore by triggering the selection programmatically
+                QTimer.singleShot(300, lambda: self._restore_selection_sidebarqt(session_state))
+                return
+
             if accordion_sidebar:
                 print(f"[MainWindow] PHASE 2: Restoring section={last_section} from session state")
                 accordion_sidebar._expand_section(last_section)
@@ -2132,7 +2139,7 @@ class MainWindow(QMainWindow):
                 # PHASE 3: Restore selection after section loads (defer 300ms for section to load)
                 QTimer.singleShot(300, lambda: self._restore_selection(session_state, accordion_sidebar))
             else:
-                print(f"[MainWindow] PHASE 2: Could not find AccordionSidebar to restore")
+                print(f"[MainWindow] PHASE 2: Could not find any sidebar to restore")
 
         except Exception as e:
             print(f"[MainWindow] PHASE 2: Failed to restore session state: {e}")
@@ -2186,6 +2193,73 @@ class MainWindow(QMainWindow):
 
         except Exception as e:
             print(f"[MainWindow] PHASE 3: Failed to restore selection: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def _restore_selection_sidebarqt(self, session_state):
+        """
+        PHASE 3: Restore last selection for SidebarQt (Current Layout).
+        Called after UI is fully loaded.
+        """
+        try:
+            sel_type, sel_id, sel_name = session_state.get_selection()
+
+            if not sel_type or sel_id is None:
+                print(f"[MainWindow] PHASE 3 (SidebarQt): No selection to restore")
+                return
+
+            print(f"[MainWindow] PHASE 3 (SidebarQt): Restoring {sel_type} selection: {sel_name} (ID={sel_id})")
+
+            # For SidebarQt, we need to programmatically trigger the _on_item_clicked with appropriate mode/value
+            if not hasattr(self, 'sidebar') or not hasattr(self.sidebar, '_on_item_clicked'):
+                print(f"[MainWindow] PHASE 3 (SidebarQt): Sidebar has no _on_item_clicked method")
+                return
+
+            # Map selection type to SidebarQt mode/value format
+            if sel_type == "video":
+                # Parse video selection format
+                if sel_id == "all":
+                    # All videos
+                    mode = "videos"
+                    value = "all"
+                elif sel_id.startswith("year:"):
+                    # Year filter: "year:2024" → mode="videos_year", value="2024"
+                    mode = "videos_year"
+                    value = sel_id.split(":", 1)[1]
+                elif sel_id.startswith("month:"):
+                    # Month filter: "month:2024-07" → mode="videos_month", value="2024-07"
+                    mode = "videos_month"
+                    value = sel_id.split(":", 1)[1]
+                elif sel_id.startswith("day:"):
+                    # Day filter: "day:2024-07-15" → mode="videos_day", value="2024-07-15"
+                    mode = "videos_day"
+                    value = sel_id.split(":", 1)[1]
+                else:
+                    print(f"[MainWindow] PHASE 3 (SidebarQt): Unknown video filter format: {sel_id}")
+                    return
+
+                # Call the sidebar's navigation handler directly
+                print(f"[MainWindow] PHASE 3 (SidebarQt): Triggering {mode}={value}")
+                self.sidebar._on_item_clicked(None, mode=mode, value=value)
+                print(f"[MainWindow] PHASE 3 (SidebarQt): Restored video selection successfully")
+
+            elif sel_type == "folder":
+                # Folder selection
+                self.sidebar._on_item_clicked(None, mode="folder", value=sel_id)
+                print(f"[MainWindow] PHASE 3 (SidebarQt): Restored folder selection: {sel_name}")
+
+            elif sel_type == "date":
+                # Date selection
+                self.sidebar._on_item_clicked(None, mode="branch", value=f"date:{sel_id}")
+                print(f"[MainWindow] PHASE 3 (SidebarQt): Restored date selection: {sel_name}")
+
+            elif sel_type == "person":
+                # Person selection
+                self.sidebar._on_item_clicked(None, mode="branch", value=sel_id)
+                print(f"[MainWindow] PHASE 3 (SidebarQt): Restored person selection: {sel_name}")
+
+        except Exception as e:
+            print(f"[MainWindow] PHASE 3 (SidebarQt): Failed to restore selection: {e}")
             import traceback
             traceback.print_exc()
 
