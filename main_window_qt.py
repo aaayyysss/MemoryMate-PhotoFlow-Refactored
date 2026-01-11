@@ -2105,27 +2105,43 @@ class MainWindow(QMainWindow):
 
             # PHASE 2: Restore last expanded section
             last_section = session_state.get_section()
-            if last_section and hasattr(self, 'sidebar'):
-                # Check if sidebar is AccordionSidebar (has _expand_section method)
-                if hasattr(self.sidebar, 'accordion') and hasattr(self.sidebar.accordion, '_expand_section'):
-                    print(f"[MainWindow] PHASE 2: Restoring section={last_section} from session state")
-                    self.sidebar.accordion._expand_section(last_section)
-
-                    # PHASE 3: Restore selection after section loads (defer 300ms for section to load)
-                    QTimer.singleShot(300, lambda: self._restore_selection(session_state))
-                else:
-                    print(f"[MainWindow] PHASE 2: Sidebar does not support section expansion")
-            else:
+            if not last_section:
                 print(f"[MainWindow] PHASE 2: No previous section to restore")
+                return
+
+            # Find the AccordionSidebar (could be in different locations depending on layout)
+            accordion_sidebar = None
+
+            # Case 1: GooglePhotosLayout - sidebar IS the AccordionSidebar
+            if hasattr(self, 'layout_manager') and hasattr(self.layout_manager, 'current_layout'):
+                current_layout = self.layout_manager.current_layout
+                if hasattr(current_layout, 'sidebar') and hasattr(current_layout.sidebar, '_expand_section'):
+                    accordion_sidebar = current_layout.sidebar
+                    print(f"[MainWindow] PHASE 2: Found AccordionSidebar in GooglePhotosLayout")
+
+            # Case 2: Old SidebarQt - sidebar.accordion
+            if not accordion_sidebar and hasattr(self, 'sidebar'):
+                if hasattr(self.sidebar, 'accordion') and hasattr(self.sidebar.accordion, '_expand_section'):
+                    accordion_sidebar = self.sidebar.accordion
+                    print(f"[MainWindow] PHASE 2: Found AccordionSidebar in sidebar.accordion")
+
+            if accordion_sidebar:
+                print(f"[MainWindow] PHASE 2: Restoring section={last_section} from session state")
+                accordion_sidebar._expand_section(last_section)
+
+                # PHASE 3: Restore selection after section loads (defer 300ms for section to load)
+                QTimer.singleShot(300, lambda: self._restore_selection(session_state, accordion_sidebar))
+            else:
+                print(f"[MainWindow] PHASE 2: Could not find AccordionSidebar to restore")
 
         except Exception as e:
             print(f"[MainWindow] PHASE 2: Failed to restore session state: {e}")
             import traceback
             traceback.print_exc()
 
-    def _restore_selection(self, session_state):
+    def _restore_selection(self, session_state, accordion_sidebar):
         """
-        PHASE 3: Restore last selection (folder/date/person).
+        PHASE 3: Restore last selection (folder/date/person/video).
         Called after section is expanded and loaded.
         """
         try:
@@ -2137,30 +2153,36 @@ class MainWindow(QMainWindow):
 
             print(f"[MainWindow] PHASE 3: Restoring {sel_type} selection: {sel_name} (ID={sel_id})")
 
+            # Use the passed accordion_sidebar to access section_logic
+            if not hasattr(accordion_sidebar, 'section_logic'):
+                print(f"[MainWindow] PHASE 3: AccordionSidebar has no section_logic")
+                return
+
             # Trigger selection based on type
-            if sel_type == "folder" and hasattr(self, 'sidebar'):
-                # Emit folder selection signal
-                if hasattr(self.sidebar, 'accordion'):
-                    folders_section = self.sidebar.accordion.section_logic.get("folders")
-                    if folders_section and hasattr(folders_section, 'folderSelected'):
-                        folders_section.folderSelected.emit(sel_id)
-                        print(f"[MainWindow] PHASE 3: Restored folder selection: {sel_name}")
+            if sel_type == "folder":
+                folders_section = accordion_sidebar.section_logic.get("folders")
+                if folders_section and hasattr(folders_section, 'folderSelected'):
+                    folders_section.folderSelected.emit(sel_id)
+                    print(f"[MainWindow] PHASE 3: Restored folder selection: {sel_name}")
 
-            elif sel_type == "date" and hasattr(self, 'sidebar'):
-                # Emit date selection signal
-                if hasattr(self.sidebar, 'accordion'):
-                    dates_section = self.sidebar.accordion.section_logic.get("dates")
-                    if dates_section and hasattr(dates_section, 'dateSelected'):
-                        dates_section.dateSelected.emit(sel_id)
-                        print(f"[MainWindow] PHASE 3: Restored date selection: {sel_name}")
+            elif sel_type == "date":
+                dates_section = accordion_sidebar.section_logic.get("dates")
+                if dates_section and hasattr(dates_section, 'dateSelected'):
+                    dates_section.dateSelected.emit(sel_id)
+                    print(f"[MainWindow] PHASE 3: Restored date selection: {sel_name}")
 
-            elif sel_type == "person" and hasattr(self, 'sidebar'):
-                # Emit person selection signal
-                if hasattr(self.sidebar, 'accordion'):
-                    people_section = self.sidebar.accordion.section_logic.get("people")
-                    if people_section and hasattr(people_section, 'personSelected'):
-                        people_section.personSelected.emit(sel_id)
-                        print(f"[MainWindow] PHASE 3: Restored person selection: {sel_name}")
+            elif sel_type == "person":
+                people_section = accordion_sidebar.section_logic.get("people")
+                if people_section and hasattr(people_section, 'personSelected'):
+                    people_section.personSelected.emit(sel_id)
+                    print(f"[MainWindow] PHASE 3: Restored person selection: {sel_name}")
+
+            elif sel_type == "video":
+                # PHASE 3 FIX: Add video selection restoration
+                videos_section = accordion_sidebar.section_logic.get("videos")
+                if videos_section and hasattr(videos_section, 'videoFilterSelected'):
+                    videos_section.videoFilterSelected.emit(sel_id)
+                    print(f"[MainWindow] PHASE 3: Restored video selection: {sel_name}")
 
         except Exception as e:
             print(f"[MainWindow] PHASE 3: Failed to restore selection: {e}")

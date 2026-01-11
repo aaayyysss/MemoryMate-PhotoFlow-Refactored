@@ -252,7 +252,7 @@ class AccordionSidebar(QWidget):
         # Videos section
         videos = self.section_logic.get("videos")
         if videos and hasattr(videos, 'videoFilterSelected'):
-            videos.videoFilterSelected.connect(self.selectVideo.emit)
+            videos.videoFilterSelected.connect(self._on_video_selected)
 
         # Devices section
         devices = self.section_logic.get("devices")
@@ -345,6 +345,26 @@ class AccordionSidebar(QWidget):
             logger.warning(f"[AccordionSidebar] PHASE 3: Failed to save person selection: {e}")
 
         self.selectPerson.emit(branch_key)
+
+    def _on_video_selected(self, filter_key: str):
+        """Handle video filter selection and save to session state."""
+        # PHASE 3: Save video selection to session state
+        try:
+            from session_state_manager import get_session_state
+            # filter_key could be: "all", "date:2024", "date:2024-07", etc.
+            display_name = filter_key
+            if filter_key.startswith("date:"):
+                display_name = filter_key.replace("date:", "Videos ")
+            elif filter_key == "all":
+                display_name = "All Videos"
+
+            get_session_state().set_selection("video", filter_key, display_name)
+            logger.debug(f"[AccordionSidebar] PHASE 3: Saved video selection: {display_name}")
+        except Exception as e:
+            logger.warning(f"[AccordionSidebar] PHASE 3: Failed to save video selection: {e}")
+
+        # Emit signal for grid update
+        self.selectVideo.emit(filter_key)
 
     def _expand_section(self, section_id: str):
         """Expand specified section and collapse others."""
