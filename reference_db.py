@@ -5106,7 +5106,7 @@ class ReferenceDB:
         with self._connect() as conn:
             cur = conn.execute("""
                 SELECT path, datetime(date_taken) as date
-                FROM project_images
+                FROM photo_metadata
                 WHERE project_id = ?
                 ORDER BY date_taken DESC
             """, (project_id,))
@@ -5125,11 +5125,12 @@ class ReferenceDB:
         """
         with self._connect() as conn:
             cur = conn.execute("""
-                SELECT folder_path, COUNT(*) as count
-                FROM project_images
-                WHERE project_id = ?
-                GROUP BY folder_path
-                ORDER BY folder_path
+                SELECT pf.path, COUNT(pm.id) as count
+                FROM photo_folders pf
+                LEFT JOIN photo_metadata pm ON pm.folder_id = pf.id
+                WHERE pf.project_id = ?
+                GROUP BY pf.path
+                ORDER BY pf.path
             """, (project_id,))
 
             return [
@@ -5148,7 +5149,7 @@ class ReferenceDB:
         """
         with self._connect() as conn:
             cur = conn.execute("""
-                SELECT DISTINCT crop_path
+                SELECT DISTINCT image_path
                 FROM face_crops
                 WHERE project_id = ? AND embedding IS NOT NULL
             """, (project_id,))
