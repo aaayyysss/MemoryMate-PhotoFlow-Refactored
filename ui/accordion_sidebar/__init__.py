@@ -301,6 +301,14 @@ class AccordionSidebar(QWidget):
 
         logger.info(f"[AccordionSidebar] Expanding section: {section_id}")
 
+        # PHASE 2: Save expanded section to session state
+        try:
+            from session_state_manager import get_session_state
+            get_session_state().set_section(section_id)
+            logger.debug(f"[AccordionSidebar] PHASE 2: Saved section={section_id} to session state")
+        except Exception as e:
+            logger.warning(f"[AccordionSidebar] PHASE 2: Failed to save section state: {e}")
+
         # Emit expansion signal
         self.sectionExpanding.emit(section_id)
 

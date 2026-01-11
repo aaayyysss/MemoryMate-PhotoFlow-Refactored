@@ -868,9 +868,17 @@ class MainWindow(QMainWindow):
         # --- Main layout (Sidebar + Grid + Details)
         self.splitter = QSplitter(Qt.Horizontal)
 
-        default_pid = get_default_project_id()
+        # PHASE 1: Restore last active project from session state
+        from session_state_manager import get_session_state
+        session_state = get_session_state()
+
+        default_pid = session_state.get_project_id()  # Try session state first
+        if default_pid is None:
+            default_pid = get_default_project_id()  # Fall back to default
         if default_pid is None and self._projects:
-            default_pid = self._projects[0]["id"]
+            default_pid = self._projects[0]["id"]  # Last resort: first project
+
+        print(f"[MainWindow] PHASE 1: Restoring project_id={default_pid} from session state")
 
         self.sidebar = SidebarQt(project_id=default_pid)
         
@@ -914,6 +922,10 @@ class MainWindow(QMainWindow):
             self.sidebar.selectVideos.connect(self.sidebar_controller.on_videos_selected)
 
         self.splitter.addWidget(self.sidebar)
+
+        # PHASE 2: Restore last expanded section after UI is fully loaded
+        # Use QTimer to defer restoration until after event loop starts
+        QTimer.singleShot(100, self._restore_session_state)
 
         # Phase 2.3: Grid container with selection toolbar
         self.grid_container = QWidget()
@@ -2026,6 +2038,11 @@ class MainWindow(QMainWindow):
                 print(f"[MainWindow] Already on project {project_id}, skipping switch")
                 return
 
+            # PHASE 1: Save project_id to session state
+            from session_state_manager import get_session_state
+            get_session_state().set_project(project_id)
+            print(f"[MainWindow] PHASE 1: Saved project_id={project_id} to session state")
+
             print(f"[MainWindow] Step 1: Updating grid.project_id...")
             # CRITICAL ORDER: Update grid FIRST before sidebar to prevent race condition
             # Sidebar.set_project() triggers callbacks that reload grid, so grid.project_id
@@ -2076,6 +2093,32 @@ class MainWindow(QMainWindow):
             print(f"[MainWindow] Refreshed project list: {len(self._projects)} projects")
         except Exception as e:
             print(f"[MainWindow] Error refreshing project list: {e}")
+
+    def _restore_session_state(self):
+        """
+        PHASE 2: Restore last browsing state (section expansion).
+        Called after UI is fully loaded via QTimer.singleShot.
+        """
+        try:
+            from session_state_manager import get_session_state
+            session_state = get_session_state()
+
+            # Restore last expanded section
+            last_section = session_state.get_section()
+            if last_section and hasattr(self, 'sidebar'):
+                # Check if sidebar is AccordionSidebar (has _expand_section method)
+                if hasattr(self.sidebar, 'accordion') and hasattr(self.sidebar.accordion, '_expand_section'):
+                    print(f"[MainWindow] PHASE 2: Restoring section={last_section} from session state")
+                    self.sidebar.accordion._expand_section(last_section)
+                else:
+                    print(f"[MainWindow] PHASE 2: Sidebar does not support section expansion")
+            else:
+                print(f"[MainWindow] PHASE 2: No previous section to restore")
+
+        except Exception as e:
+            print(f"[MainWindow] PHASE 2: Failed to restore session state: {e}")
+            import traceback
+            traceback.print_exc()
 
     def _on_folder_selected(self, folder_id: int):
         # DELEGATED to SidebarController (legacy stub kept for compatibility)
