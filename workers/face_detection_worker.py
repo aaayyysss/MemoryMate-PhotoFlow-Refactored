@@ -7,7 +7,7 @@
 import os
 import time
 import numpy as np
-from typing import Optional
+from typing import Optional, List  # FEATURE #1: Added List for photo_paths type hint
 from PySide6.QtCore import QRunnable, QObject, Signal, Slot
 import logging
 
@@ -64,7 +64,8 @@ class FaceDetectionWorker(QRunnable):
     """
 
     def __init__(self, project_id: int, model: str = "buffalo_l",
-                 skip_processed: bool = True, max_faces_per_photo: int = 10):
+                 skip_processed: bool = True, max_faces_per_photo: int = 10,
+                 photo_paths: Optional[List[str]] = None):
         """
         Initialize face detection worker.
 
@@ -74,12 +75,15 @@ class FaceDetectionWorker(QRunnable):
                    Default: "buffalo_l" (high accuracy, 512-D ArcFace embeddings)
             skip_processed: Skip photos already in face_crops table
             max_faces_per_photo: Maximum faces to detect per photo (prevent memory issues)
+            photo_paths: FEATURE #1: Optional list of specific photo paths to process
+                        If None, processes all photos in project
         """
         super().__init__()
         self.project_id = project_id
         self.model = model
         self.skip_processed = skip_processed
         self.max_faces_per_photo = max_faces_per_photo
+        self.photo_paths = photo_paths  # FEATURE #1: Store selected photo paths
         self.signals = FaceDetectionSignals()
         self.cancelled = False
 
@@ -132,9 +136,16 @@ class FaceDetectionWorker(QRunnable):
                 self.signals.finished.emit(0, 0, 0)
                 return
 
-            # Get all photos for this project
+            # FEATURE #1: Get photos to process (either from scope selection or all project photos)
             metric_get_photos = monitor.record_operation("get_photos_to_process")
-            photos = self._get_photos_to_process(db)
+            if self.photo_paths is not None:
+                # Use scope-selected photo paths
+                photos = self.photo_paths
+                logger.info(f"[FaceDetectionWorker] Using scope-selected photos: {len(photos)} photos")
+            else:
+                # Query all photos for this project
+                photos = self._get_photos_to_process(db)
+                logger.info(f"[FaceDetectionWorker] Processing all project photos")
             metric_get_photos.finish()
             total_photos = len(photos)
 
