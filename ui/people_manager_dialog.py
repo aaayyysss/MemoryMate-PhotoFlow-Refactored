@@ -182,12 +182,12 @@ class FaceClusterCard(QFrame):
         )
 
         if has_multi_selection:
-            # FEATURE #3: Multi-merge menu
+            # FEATURE #3: Multi-merge menu - user will choose target from dialog
             merge_count = len(parent_dialog.selected_clusters)
-            first_name = parent_dialog._get_cluster_name(parent_dialog.selected_clusters[0])
 
+            # FIX: Don't show target in menu - user chooses target in dialog
             multi_merge_action = QAction(
-                f"🔗 Merge Selected People ({merge_count}) into '{first_name}'",
+                f"🔗 Merge Selected People ({merge_count})...",
                 self
             )
             multi_merge_action.triggered.connect(parent_dialog._merge_selected_clusters)
@@ -477,7 +477,7 @@ class PeopleManagerDialog(QDialog):
         self.zoom_value_label.setText(f"{value}px")
 
         # Rebuild grid with new thumbnail size
-        self.display_clusters()
+        self.update_grid()  # FIX: Was calling display_clusters() which doesn't exist
 
     def on_cluster_clicked(self, branch_key: str):
         """
@@ -618,12 +618,17 @@ class PeopleManagerDialog(QDialog):
                 return
 
             # Perform merge in database
+            print(f"[PeopleManager] Single merge: {source_key} → {target_key}")
             moved = self.db.merge_face_branches(self.project_id, source_key, target_key, keep_label=target_name)
+            print(f"[PeopleManager] ✓ Merged {moved} faces")
 
             # Emit signal for undo/redo tracking (FEATURE #3 POLISH)
             if hasattr(self.parent(), 'on_people_merged'):
                 # Notify parent window about merge for undo/redo tracking
+                print(f"[PeopleManager] Notifying parent about merge for undo/redo")
                 self.parent().on_people_merged([source_key], target_key, target_name)
+            else:
+                print(f"[PeopleManager] WARNING: Parent has no on_people_merged() method - undo/redo won't work")
 
             # Reload clusters
             self.load_clusters()
@@ -766,20 +771,31 @@ class PeopleManagerDialog(QDialog):
 
         # Perform multi-merge
         try:
+            print(f"[PeopleManager] Starting multi-merge: {len(source_keys)} sources → {target_key}")
+            print(f"[PeopleManager] Source keys: {source_keys}")
+            print(f"[PeopleManager] Target key: {target_key}")
+
             total_moved = 0
-            for source_key in source_keys:
+            for idx, source_key in enumerate(source_keys, 1):
+                print(f"[PeopleManager] Merging {idx}/{len(source_keys)}: {source_key} → {target_key}")
                 moved = self.db.merge_face_branches(
                     self.project_id,
                     source_key,
                     target_key,
                     keep_label=target_name
                 )
+                print(f"[PeopleManager] ✓ Merged {moved} faces from {source_key}")
                 total_moved += moved
+
+            print(f"[PeopleManager] Multi-merge complete: {total_moved} total faces moved")
 
             # Emit signal for undo/redo tracking (FEATURE #3 POLISH)
             if hasattr(self.parent(), 'on_people_merged'):
                 # Notify parent window about merge for undo/redo tracking
+                print(f"[PeopleManager] Notifying parent about merge for undo/redo")
                 self.parent().on_people_merged(source_keys, target_key, target_name)
+            else:
+                print(f"[PeopleManager] WARNING: Parent has no on_people_merged() method - undo/redo won't work")
 
             # Clear selection and refresh
             self._clear_selection()
