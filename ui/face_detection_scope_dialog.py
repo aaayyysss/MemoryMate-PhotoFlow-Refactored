@@ -299,12 +299,12 @@ class FaceDetectionScopeDialog(QDialog):
 
         elif self.scope_mode == "dates":
             # Filter by date range
-            start_date = self.date_from.date().toPython()
-            end_date = self.date_to.date().toPython()
+            start_date = self.date_from.date().toPython()  # datetime.date
+            end_date = self.date_to.date().toPython()      # datetime.date
 
             self.selected_paths = [
                 p['path'] for p in self.all_photos
-                if p.get('date') and start_date <= p['date'] <= end_date
+                if p.get('date') and start_date <= p['date'].date() <= end_date  # Convert datetime to date for comparison
             ]
             selected_count = len(self.selected_paths)
 
