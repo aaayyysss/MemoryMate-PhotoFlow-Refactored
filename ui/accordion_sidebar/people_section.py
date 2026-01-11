@@ -112,8 +112,38 @@ class PeopleSection(BaseSection):
         build_btn("↪️", "sidebar.people_actions.redo_last_undo", "Redo Last Undo", self.redoMergeRequested.emit)
         build_btn("🧰", "sidebar.people_actions.people_tools", "Open People Tools", self.peopleToolsRequested.emit)
 
+        # FEATURE #2: Expand button to open full-screen people manager
+        build_btn("⛶", "sidebar.people_actions.expand_view", "Expand to Full View", self._on_expand_clicked)
+
         self._header_widget = container
         return self._header_widget
+
+    def _on_expand_clicked(self):
+        """
+        FEATURE #2: Open PeopleManagerDialog in maximized state for better face browsing.
+
+        This provides a full-screen view of all detected faces, making it easier to:
+        - Browse large numbers of faces
+        - Perform multi-face merging
+        - Name and organize people
+        """
+        try:
+            from ui.people_manager_dialog import PeopleManagerDialog
+
+            logger.info("[PeopleSection] Opening full-screen people manager")
+
+            dialog = PeopleManagerDialog(self.project_id, parent=self.parent())
+            dialog.showMaximized()  # Open in maximized state
+            dialog.exec()
+
+            # Refresh sidebar after dialog closes (in case faces were merged/renamed)
+            logger.info("[PeopleSection] People manager closed, refreshing section")
+            self.load_data()
+
+        except Exception as e:
+            logger.error(f"[PeopleSection] Failed to open people manager: {e}")
+            import traceback
+            traceback.print_exc()
 
     def load_section(self) -> None:
         """Load people section data in a background thread."""

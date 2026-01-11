@@ -5082,15 +5082,77 @@ class ReferenceDB:
         """
         with self._connect() as conn:
             cur = conn.execute("""
-                
+
                 SELECT crop_path FROM face_crops
                 WHERE project_id=? AND branch_key=?
-                ORDER BY id    
+                ORDER BY id
             """, (project_id, branch_key))
             return [r[0] for r in cur.fetchall()]
-            
+
 #            return rows
 
+    # ------------------------------------------------------
+    # FEATURE #1: Face Detection Scope Selection Support
+    # ------------------------------------------------------
+
+    def get_all_paths_with_dates(self, project_id: int) -> List[Dict[str, Any]]:
+        """
+        FEATURE #1: Get all photo paths with their dates for scope selection.
+
+        Returns:
+            List of dicts with 'path' and 'date' keys
+        """
+        with self._connect() as conn:
+            cur = conn.execute("""
+                SELECT path, datetime(date_taken) as date
+                FROM project_images
+                WHERE project_id = ?
+                ORDER BY date_taken DESC
+            """, (project_id,))
+
+            return [
+                {"path": row[0], "date": datetime.fromisoformat(row[1]) if row[1] else None}
+                for row in cur.fetchall()
+            ]
+
+    def get_folders_with_counts(self, project_id: int) -> List[Dict[str, Any]]:
+        """
+        FEATURE #1: Get folders with photo counts for folder selection.
+
+        Returns:
+            List of dicts with 'path' and 'count' keys
+        """
+        with self._connect() as conn:
+            cur = conn.execute("""
+                SELECT folder_path, COUNT(*) as count
+                FROM project_images
+                WHERE project_id = ?
+                GROUP BY folder_path
+                ORDER BY folder_path
+            """, (project_id,))
+
+            return [
+                {"path": row[0], "count": row[1]}
+                for row in cur.fetchall()
+            ]
+
+    def get_paths_with_embeddings(self, project_id: int) -> List[str]:
+        """
+        FEATURE #1: Get photo paths that already have face embeddings.
+
+        Used to skip already-processed photos in face detection.
+
+        Returns:
+            List of photo paths that have face embeddings
+        """
+        with self._connect() as conn:
+            cur = conn.execute("""
+                SELECT DISTINCT crop_path
+                FROM face_crops
+                WHERE project_id = ? AND embedding IS NOT NULL
+            """, (project_id,))
+
+            return [row[0] for row in cur.fetchall()]
 
 
     # ------------------------------------------------------
