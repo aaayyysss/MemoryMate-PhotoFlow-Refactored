@@ -225,12 +225,12 @@ class AccordionSidebar(QWidget):
         # Folders section
         folders = self.section_logic.get("folders")
         if folders and hasattr(folders, 'folderSelected'):
-            folders.folderSelected.connect(self.selectFolder.emit)
+            folders.folderSelected.connect(self._on_folder_selected)
 
         # Dates section
         dates = self.section_logic.get("dates")
         if dates and hasattr(dates, 'dateSelected'):
-            dates.dateSelected.connect(self.selectDate.emit)
+            dates.dateSelected.connect(self._on_date_selected)
 
         # People section
         people = self.section_logic.get("people")
@@ -273,7 +273,44 @@ class AccordionSidebar(QWidget):
         """Handle section expand request."""
         self._expand_section(section_id)
 
-    # --- People selection helpers ---
+    # --- PHASE 3: Selection handlers with session state persistence ---
+    def _on_folder_selected(self, folder_id: int):
+        """Handle folder selection and save to session state."""
+        # PHASE 3: Save folder selection to session state
+        try:
+            from session_state_manager import get_session_state
+            # Get folder name for display
+            folder_name = f"Folder #{folder_id}"
+            try:
+                from reference_db import ReferenceDB
+                db = ReferenceDB()
+                row = db._connect().execute("SELECT name FROM photo_folders WHERE id = ?", (folder_id,)).fetchone()
+                if row:
+                    folder_name = row[0]
+            except:
+                pass
+
+            get_session_state().set_selection("folder", folder_id, folder_name)
+            logger.debug(f"[AccordionSidebar] PHASE 3: Saved folder selection: {folder_name} (ID={folder_id})")
+        except Exception as e:
+            logger.warning(f"[AccordionSidebar] PHASE 3: Failed to save folder selection: {e}")
+
+        # Emit signal for grid update
+        self.selectFolder.emit(folder_id)
+
+    def _on_date_selected(self, date_key: str):
+        """Handle date selection and save to session state."""
+        # PHASE 3: Save date selection to session state
+        try:
+            from session_state_manager import get_session_state
+            get_session_state().set_selection("date", date_key, date_key)
+            logger.debug(f"[AccordionSidebar] PHASE 3: Saved date selection: {date_key}")
+        except Exception as e:
+            logger.warning(f"[AccordionSidebar] PHASE 3: Failed to save date selection: {e}")
+
+        # Emit signal for grid update
+        self.selectDate.emit(date_key)
+
     def _on_person_selected(self, branch_key: str):
         """Track active person selection, support toggling, and emit filter signal."""
         people_logic = self.section_logic.get("people")
@@ -284,12 +321,28 @@ class AccordionSidebar(QWidget):
             if hasattr(people_logic, "set_active_branch"):
                 people_logic.set_active_branch(None)
             self.selectPerson.emit("")
+            # PHASE 3: Clear person selection from session state
+            try:
+                from session_state_manager import get_session_state
+                get_session_state().set_selection(None, None, None)
+            except:
+                pass
             return
 
         self._active_person_branch = branch_key
 
         if hasattr(people_logic, "set_active_branch"):
             people_logic.set_active_branch(branch_key)
+
+        # PHASE 3: Save person selection to session state
+        try:
+            from session_state_manager import get_session_state
+            # Get person name from branch_key
+            person_name = branch_key.replace("person_", "Person ")
+            get_session_state().set_selection("person", branch_key, person_name)
+            logger.debug(f"[AccordionSidebar] PHASE 3: Saved person selection: {person_name}")
+        except Exception as e:
+            logger.warning(f"[AccordionSidebar] PHASE 3: Failed to save person selection: {e}")
 
         self.selectPerson.emit(branch_key)
 

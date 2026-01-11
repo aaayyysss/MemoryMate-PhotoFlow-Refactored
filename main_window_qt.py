@@ -2096,20 +2096,23 @@ class MainWindow(QMainWindow):
 
     def _restore_session_state(self):
         """
-        PHASE 2: Restore last browsing state (section expansion).
+        PHASE 2 & 3: Restore last browsing state (section expansion + selection).
         Called after UI is fully loaded via QTimer.singleShot.
         """
         try:
             from session_state_manager import get_session_state
             session_state = get_session_state()
 
-            # Restore last expanded section
+            # PHASE 2: Restore last expanded section
             last_section = session_state.get_section()
             if last_section and hasattr(self, 'sidebar'):
                 # Check if sidebar is AccordionSidebar (has _expand_section method)
                 if hasattr(self.sidebar, 'accordion') and hasattr(self.sidebar.accordion, '_expand_section'):
                     print(f"[MainWindow] PHASE 2: Restoring section={last_section} from session state")
                     self.sidebar.accordion._expand_section(last_section)
+
+                    # PHASE 3: Restore selection after section loads (defer 300ms for section to load)
+                    QTimer.singleShot(300, lambda: self._restore_selection(session_state))
                 else:
                     print(f"[MainWindow] PHASE 2: Sidebar does not support section expansion")
             else:
@@ -2117,6 +2120,50 @@ class MainWindow(QMainWindow):
 
         except Exception as e:
             print(f"[MainWindow] PHASE 2: Failed to restore session state: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def _restore_selection(self, session_state):
+        """
+        PHASE 3: Restore last selection (folder/date/person).
+        Called after section is expanded and loaded.
+        """
+        try:
+            sel_type, sel_id, sel_name = session_state.get_selection()
+
+            if not sel_type or sel_id is None:
+                print(f"[MainWindow] PHASE 3: No selection to restore")
+                return
+
+            print(f"[MainWindow] PHASE 3: Restoring {sel_type} selection: {sel_name} (ID={sel_id})")
+
+            # Trigger selection based on type
+            if sel_type == "folder" and hasattr(self, 'sidebar'):
+                # Emit folder selection signal
+                if hasattr(self.sidebar, 'accordion'):
+                    folders_section = self.sidebar.accordion.section_logic.get("folders")
+                    if folders_section and hasattr(folders_section, 'folderSelected'):
+                        folders_section.folderSelected.emit(sel_id)
+                        print(f"[MainWindow] PHASE 3: Restored folder selection: {sel_name}")
+
+            elif sel_type == "date" and hasattr(self, 'sidebar'):
+                # Emit date selection signal
+                if hasattr(self.sidebar, 'accordion'):
+                    dates_section = self.sidebar.accordion.section_logic.get("dates")
+                    if dates_section and hasattr(dates_section, 'dateSelected'):
+                        dates_section.dateSelected.emit(sel_id)
+                        print(f"[MainWindow] PHASE 3: Restored date selection: {sel_name}")
+
+            elif sel_type == "person" and hasattr(self, 'sidebar'):
+                # Emit person selection signal
+                if hasattr(self.sidebar, 'accordion'):
+                    people_section = self.sidebar.accordion.section_logic.get("people")
+                    if people_section and hasattr(people_section, 'personSelected'):
+                        people_section.personSelected.emit(sel_id)
+                        print(f"[MainWindow] PHASE 3: Restored person selection: {sel_name}")
+
+        except Exception as e:
+            print(f"[MainWindow] PHASE 3: Failed to restore selection: {e}")
             import traceback
             traceback.print_exc()
 
