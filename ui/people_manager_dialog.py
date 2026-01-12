@@ -52,6 +52,10 @@ class FaceClusterCard(QFrame):
         # We need to store the dialog reference before that happens.
         self.dialog = parent
 
+        self._press_pos = None
+        self._drag_active = False
+        self.setAcceptDrops(True)        
+
         self.setup_ui(thumbnail_size)
         self.setFrameStyle(QFrame.Box | QFrame.Raised)
         self.setLineWidth(1)
@@ -162,11 +166,47 @@ class FaceClusterCard(QFrame):
         self.thumbnail_label.setAlignment(Qt.AlignCenter)
 
     def mousePressEvent(self, event):
-        """Handle mouse click."""
         if event.button() == Qt.LeftButton:
-            self.clicked.emit(self.branch_key)
+            self._press_pos = event.position().toPoint()
+            self._drag_active = False
         super().mousePressEvent(event)
 
+    def mouseMoveEvent(self, event):
+        if (event.buttons() & Qt.LeftButton) and self._press_pos is not None:
+            if (event.position().toPoint() - self._press_pos).manhattanLength() >= QApplication.startDragDistance():
+                self._begin_drag()
+                return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.LeftButton and not self._drag_active:
+            self.clicked.emit(self.branch_key)
+        self._press_pos = None
+        self._drag_active = False
+        super().mouseReleaseEvent(event)
+
+    def _begin_drag(self):
+        self._drag_active = True
+        drag = QDrag(self)
+        mime = QMimeData()
+        mime.setText(f"person:{self.branch_key}")
+        drag.setMimeData(mime)
+        drag.setPixmap(self.grab())
+        drag.exec(Qt.MoveAction)
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasText() and event.mimeData().text().startswith("person:"):
+            event.acceptProposedAction()
+
+    def dropEvent(self, event):
+        if event.mimeData().hasText():
+            data = event.mimeData().text()
+            if data.startswith("person:") and self.dialog:
+                source_branch = data.split(":", 1)[1]
+                if source_branch != self.branch_key:
+                    self.dialog._handle_drag_merge(source_branch, self.branch_key)
+                    event.acceptProposedAction()
+    
     def mouseDoubleClickEvent(self, event):
         """Handle double-click to rename."""
         if event.button() == Qt.LeftButton:
@@ -422,10 +462,7 @@ class PeopleManagerDialog(QDialog):
         try:
             self.clusters = self.db.get_face_clusters(self.project_id)
             self.filtered_clusters = self.clusters.copy()
-#            self.sort_clusters()
-#            self.update_grid()
-#            self.update_status()
-
+            
             self.sort_clusters(rebuild=False)
             self.update_grid()
             self.update_status()
@@ -487,7 +524,6 @@ class PeopleManagerDialog(QDialog):
         self.update_grid()
         self.update_status()
 
-#    def sort_clusters(self):
     def sort_clusters(self, rebuild: bool = True):               
         """Sort clusters based on selected criterion."""
         sort_by = self.sort_combo.currentText()
@@ -500,7 +536,6 @@ class PeopleManagerDialog(QDialog):
             # Assuming branch_key contains timestamp info or use id
             self.filtered_clusters.sort(key=lambda c: c.get("branch_key", ""), reverse=True)
 
-#        self.update_grid()
         if rebuild:
             self.update_grid()
             self.update_status()        
@@ -628,6 +663,37 @@ class PeopleManagerDialog(QDialog):
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to rename person:\n{str(e)}")
 
+    def _handle_drag_merge(self, dragged_source: str, target_branch: str):
+        # If user multi-selected and dragged one of the selected cards,
+        # merge all selected (excluding target) into target.
+        if self.selected_clusters and dragged_source in self.selected_clusters:
+            source_keys = [k for k in self.selected_clusters if k != target_branch]
+        else:
+            source_keys = [dragged_source]
+
+        if not source_keys:
+            return
+
+        target_name = self._get_cluster_name(target_branch)
+        reply = QMessageBox.question(
+            self,
+            "Confirm Merge",
+            f"Merge {len(source_keys)} into '{target_name}'?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        if reply != QMessageBox.Yes:
+            return
+
+        self.db.merge_face_clusters(
+            project_id=self.project_id,
+            target_branch=target_branch,
+            source_branches=source_keys,
+            log_undo=True
+        )
+        self._clear_selection()
+        QTimer.singleShot(0, self.load_clusters)    
+    
     def on_merge_requested(self, source_branch_key: str):
         """Handle merge request."""
         # Get list of other clusters
@@ -682,20 +748,6 @@ class PeopleManagerDialog(QDialog):
             # Perform merge in database
             print(f"[PeopleManager] Single merge: {source_key} → {target_key}")
 
-#            moved = self.db.merge_face_branches(self.project_id, source_key, target_key, keep_label=target_name)
-#            print(f"[PeopleManager] ✓ Merged {moved} faces")
-#
-#            # Emit signal for undo/redo tracking (FEATURE #3 POLISH)
-#            if hasattr(self.parent(), 'on_people_merged'):
-#                # Notify parent window about merge for undo/redo tracking
-#                print(f"[PeopleManager] Notifying parent about merge for undo/redo")
-#                self.parent().on_people_merged([source_key], target_key, target_name)
-#            else:
-#                print(f"[PeopleManager] WARNING: Parent has no on_people_merged() method - undo/redo won't work")
-#
-#            # Reload clusters
-#            self.load_clusters()
-
             result = self.db.merge_face_clusters(
                 project_id=self.project_id,
                 target_branch=target_key,
@@ -705,8 +757,6 @@ class PeopleManagerDialog(QDialog):
 
             # Reload in next tick so UI reliably refreshes
             QTimer.singleShot(0, self.load_clusters)
-
-#            QMessageBox.information(self, "Merge Complete", f"Merged {moved} faces into '{target_name}'.")
 
             moved_faces = result.get("moved_faces", 0)
             QMessageBox.information(self, "Merge Complete", f"Merged {moved_faces} face crops into '{target_name}'.")
@@ -851,32 +901,6 @@ class PeopleManagerDialog(QDialog):
             print(f"[PeopleManager] Source keys: {source_keys}")
             print(f"[PeopleManager] Target key: {target_key}")
 
-#            total_moved = 0
-#            for idx, source_key in enumerate(source_keys, 1):
-#                print(f"[PeopleManager] Merging {idx}/{len(source_keys)}: {source_key} → {target_key}")
-#                moved = self.db.merge_face_branches(
-#                    self.project_id,
-#                    source_key,
-#                    target_key,
-#                    keep_label=target_name
-#                )
-#                print(f"[PeopleManager] ✓ Merged {moved} faces from {source_key}")
-#                total_moved += moved
-#
-#            print(f"[PeopleManager] Multi-merge complete: {total_moved} total faces moved")
-#
-#            # Emit signal for undo/redo tracking (FEATURE #3 POLISH)
-#            if hasattr(self.parent(), 'on_people_merged'):
-#                # Notify parent window about merge for undo/redo tracking
-#                print(f"[PeopleManager] Notifying parent about merge for undo/redo")
-#                self.parent().on_people_merged(source_keys, target_key, target_name)
-#            else:
-#                print(f"[PeopleManager] WARNING: Parent has no on_people_merged() method - undo/redo won't work")
-#
-#            # Clear selection and refresh
-#            self._clear_selection()
-#            self.load_clusters()
-
             result = self.db.merge_face_clusters(
                 project_id=self.project_id,
                 target_branch=target_key,
@@ -893,7 +917,6 @@ class PeopleManagerDialog(QDialog):
             QMessageBox.information(
                 self,
                 "Multi-Merge Complete",
-#                f"Successfully merged {total_moved} faces from {merge_count} people into '{target_name}'."
                 f"Successfully merged {moved_faces} face crops from {merge_count} people into '{target_name}'."                
             )
 
@@ -1129,4 +1152,5 @@ class PeopleManagerDialog(QDialog):
 
         except ImportError:
             QMessageBox.warning(self, "Settings", "Face settings dialog not available.")
+
 
