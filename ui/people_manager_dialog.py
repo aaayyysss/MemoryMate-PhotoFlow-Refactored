@@ -69,7 +69,9 @@ class FaceClusterCard(QFrame):
 
         # Face thumbnail (size can now be controlled via zoom slider)
         self.thumbnail_label = QLabel()
-        self.thumbnail_label.setFixedSize(thumbnail_size, thumbnail_size)
+
+        self.thumbnail_label.setFixedSize(self.thumbnail_size, self.thumbnail_size)
+
         self.thumbnail_label.setScaledContents(True)
         self.thumbnail_label.setStyleSheet("QLabel { background-color: #f0f0f0; border: 1px solid #ccc; }")
 
@@ -127,8 +129,10 @@ class FaceClusterCard(QFrame):
 
                 if not image.isNull():
                     pixmap = QPixmap.fromImage(image)
+      
                     pixmap = pixmap.scaled(
-                        192, 192,  # Increased from 128 to 192
+                        self.thumbnail_size, self.thumbnail_size,
+                        
                         Qt.KeepAspectRatio,
                         Qt.SmoothTransformation
                     )
@@ -139,8 +143,10 @@ class FaceClusterCard(QFrame):
                 # Fallback to direct QPixmap loading
                 pixmap = QPixmap(rep_path)
                 if not pixmap.isNull():
+
                     pixmap = pixmap.scaled(
-                        192, 192,
+                        self.thumbnail_size, self.thumbnail_size,
+                        
                         Qt.KeepAspectRatio,
                         Qt.SmoothTransformation
                     )
@@ -153,8 +159,10 @@ class FaceClusterCard(QFrame):
             image = QImage.fromData(rep_thumb_png)
             if not image.isNull():
                 pixmap = QPixmap.fromImage(image)
+
                 pixmap = pixmap.scaled(
-                    192, 192,  # Increased from 128 to 192
+                    self.thumbnail_size, self.thumbnail_size,
+                    
                     Qt.KeepAspectRatio,
                     Qt.SmoothTransformation
                 )
@@ -1152,5 +1160,6 @@ class PeopleManagerDialog(QDialog):
 
         except ImportError:
             QMessageBox.warning(self, "Settings", "Face settings dialog not available.")
+
 
 
