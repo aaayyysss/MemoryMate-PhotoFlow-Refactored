@@ -24,8 +24,9 @@ from PySide6.QtWidgets import (
     QMessageBox, QInputDialog, QMenu, QSizePolicy, QToolBar,
     QComboBox, QSpinBox, QProgressDialog, QApplication  # FEATURE #3: Added for keyboard modifiers
 )
-from PySide6.QtCore import Qt, Signal, QSize, QTimer, QThreadPool, Slot
+from PySide6.QtCore import Qt, Signal, QSize, QTimer, QThreadPool, Slot, QPoint, QMimeData
 from PySide6.QtGui import QPixmap, QImage, QAction, QIcon
+from PySide6.QtGui import QDrag
 
 from reference_db import ReferenceDB
 from translation_manager import tr
@@ -421,12 +422,28 @@ class PeopleManagerDialog(QDialog):
         try:
             self.clusters = self.db.get_face_clusters(self.project_id)
             self.filtered_clusters = self.clusters.copy()
-            self.sort_clusters()
+#            self.sort_clusters()
+#            self.update_grid()
+#            self.update_status()
+
+            self.sort_clusters(rebuild=False)
             self.update_grid()
             self.update_status()
+            QTimer.singleShot(0, self._force_repaint)                    
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to load face clusters:\n{str(e)}")
 
+    def _force_repaint(self):
+        """Force UI repaint after mass deleteLater/rebuild."""
+        try:
+            self.grid_widget.updateGeometry()
+            self.grid_widget.adjustSize()
+            self.grid_widget.update()
+            self.update()
+            QApplication.processEvents()
+        except Exception:
+            pass
+        
     def update_grid(self):
         """Update the grid with face cards."""
         # Clear existing cards
@@ -470,7 +487,8 @@ class PeopleManagerDialog(QDialog):
         self.update_grid()
         self.update_status()
 
-    def sort_clusters(self):
+#    def sort_clusters(self):
+    def sort_clusters(self, rebuild: bool = True):               
         """Sort clusters based on selected criterion."""
         sort_by = self.sort_combo.currentText()
 
@@ -482,7 +500,10 @@ class PeopleManagerDialog(QDialog):
             # Assuming branch_key contains timestamp info or use id
             self.filtered_clusters.sort(key=lambda c: c.get("branch_key", ""), reverse=True)
 
-        self.update_grid()
+#        self.update_grid()
+        if rebuild:
+            self.update_grid()
+            self.update_status()        
 
     def update_status(self):
         """Update status label."""
@@ -660,22 +681,36 @@ class PeopleManagerDialog(QDialog):
 
             # Perform merge in database
             print(f"[PeopleManager] Single merge: {source_key} → {target_key}")
-            moved = self.db.merge_face_branches(self.project_id, source_key, target_key, keep_label=target_name)
-            print(f"[PeopleManager] ✓ Merged {moved} faces")
 
-            # Emit signal for undo/redo tracking (FEATURE #3 POLISH)
-            if hasattr(self.parent(), 'on_people_merged'):
-                # Notify parent window about merge for undo/redo tracking
-                print(f"[PeopleManager] Notifying parent about merge for undo/redo")
-                self.parent().on_people_merged([source_key], target_key, target_name)
-            else:
-                print(f"[PeopleManager] WARNING: Parent has no on_people_merged() method - undo/redo won't work")
+#            moved = self.db.merge_face_branches(self.project_id, source_key, target_key, keep_label=target_name)
+#            print(f"[PeopleManager] ✓ Merged {moved} faces")
+#
+#            # Emit signal for undo/redo tracking (FEATURE #3 POLISH)
+#            if hasattr(self.parent(), 'on_people_merged'):
+#                # Notify parent window about merge for undo/redo tracking
+#                print(f"[PeopleManager] Notifying parent about merge for undo/redo")
+#                self.parent().on_people_merged([source_key], target_key, target_name)
+#            else:
+#                print(f"[PeopleManager] WARNING: Parent has no on_people_merged() method - undo/redo won't work")
+#
+#            # Reload clusters
+#            self.load_clusters()
 
-            # Reload clusters
-            self.load_clusters()
+            result = self.db.merge_face_clusters(
+                project_id=self.project_id,
+                target_branch=target_key,
+                source_branches=[source_key],
+                log_undo=True
+            )
 
-            QMessageBox.information(self, "Merge Complete", f"Merged {moved} faces into '{target_name}'.")
+            # Reload in next tick so UI reliably refreshes
+            QTimer.singleShot(0, self.load_clusters)
 
+#            QMessageBox.information(self, "Merge Complete", f"Merged {moved} faces into '{target_name}'.")
+
+            moved_faces = result.get("moved_faces", 0)
+            QMessageBox.information(self, "Merge Complete", f"Merged {moved_faces} face crops into '{target_name}'.")
+            
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to merge clusters:\n{str(e)}")
 
@@ -816,36 +851,50 @@ class PeopleManagerDialog(QDialog):
             print(f"[PeopleManager] Source keys: {source_keys}")
             print(f"[PeopleManager] Target key: {target_key}")
 
-            total_moved = 0
-            for idx, source_key in enumerate(source_keys, 1):
-                print(f"[PeopleManager] Merging {idx}/{len(source_keys)}: {source_key} → {target_key}")
-                moved = self.db.merge_face_branches(
-                    self.project_id,
-                    source_key,
-                    target_key,
-                    keep_label=target_name
-                )
-                print(f"[PeopleManager] ✓ Merged {moved} faces from {source_key}")
-                total_moved += moved
+#            total_moved = 0
+#            for idx, source_key in enumerate(source_keys, 1):
+#                print(f"[PeopleManager] Merging {idx}/{len(source_keys)}: {source_key} → {target_key}")
+#                moved = self.db.merge_face_branches(
+#                    self.project_id,
+#                    source_key,
+#                    target_key,
+#                    keep_label=target_name
+#                )
+#                print(f"[PeopleManager] ✓ Merged {moved} faces from {source_key}")
+#                total_moved += moved
+#
+#            print(f"[PeopleManager] Multi-merge complete: {total_moved} total faces moved")
+#
+#            # Emit signal for undo/redo tracking (FEATURE #3 POLISH)
+#            if hasattr(self.parent(), 'on_people_merged'):
+#                # Notify parent window about merge for undo/redo tracking
+#                print(f"[PeopleManager] Notifying parent about merge for undo/redo")
+#                self.parent().on_people_merged(source_keys, target_key, target_name)
+#            else:
+#                print(f"[PeopleManager] WARNING: Parent has no on_people_merged() method - undo/redo won't work")
+#
+#            # Clear selection and refresh
+#            self._clear_selection()
+#            self.load_clusters()
 
-            print(f"[PeopleManager] Multi-merge complete: {total_moved} total faces moved")
+            result = self.db.merge_face_clusters(
+                project_id=self.project_id,
+                target_branch=target_key,
+                source_branches=source_keys,
+                log_undo=True
+            )
 
-            # Emit signal for undo/redo tracking (FEATURE #3 POLISH)
-            if hasattr(self.parent(), 'on_people_merged'):
-                # Notify parent window about merge for undo/redo tracking
-                print(f"[PeopleManager] Notifying parent about merge for undo/redo")
-                self.parent().on_people_merged(source_keys, target_key, target_name)
-            else:
-                print(f"[PeopleManager] WARNING: Parent has no on_people_merged() method - undo/redo won't work")
-
-            # Clear selection and refresh
             self._clear_selection()
-            self.load_clusters()
+            QTimer.singleShot(0, self.load_clusters)
+
+            moved_faces = result.get("moved_faces", 0)
+            print(f"[PeopleManager] Multi-merge complete: {moved_faces} face crops moved")
 
             QMessageBox.information(
                 self,
                 "Multi-Merge Complete",
-                f"Successfully merged {total_moved} faces from {merge_count} people into '{target_name}'."
+#                f"Successfully merged {total_moved} faces from {merge_count} people into '{target_name}'."
+                f"Successfully merged {moved_faces} face crops from {merge_count} people into '{target_name}'."                
             )
 
         except Exception as e:
@@ -1080,3 +1129,4 @@ class PeopleManagerDialog(QDialog):
 
         except ImportError:
             QMessageBox.warning(self, "Settings", "Face settings dialog not available.")
+
