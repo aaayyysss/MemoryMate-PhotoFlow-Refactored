@@ -13,6 +13,11 @@ Features:
 """
 
 import os
+
+## Fix: runtime crash: logger is used but never defined ###
+import logging
+logger = logging.getLogger(__name__)
+
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
@@ -381,6 +386,16 @@ class PeopleManagerDialog(QDialog):
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText(tr('search.placeholder_filter_people'))
         self.search_input.textChanged.connect(self.filter_clusters)
+
+        ### Fixes with biggest ROI
+        ### 1. Debounce search input (150 to 250 ms)
+        
+        self._search_timer = QTimer(self)
+        self._search_timer.setSingleShot(True)
+        self._search_timer.timeout.connect(lambda: self.filter_clusters(self.search_input.text()))
+        self.search_input.textChanged.disconnect()
+        self.search_input.textChanged.connect(lambda: self._search_timer.start(200))        
+        
         search_layout.addWidget(self.search_input)
 
         # Sort dropdown
@@ -466,6 +481,13 @@ class PeopleManagerDialog(QDialog):
         self.zoom_slider.setFixedWidth(150)
         self.zoom_slider.setToolTip("Adjust thumbnail size (128-384px)")
         self.zoom_slider.valueChanged.connect(self._on_zoom_changed)
+
+        ### Fixes with biggest ROI
+        ### 2. Debounce zoom slider
+        self._zoom_timer = QTimer(self)
+        self._zoom_timer.setSingleShot(True)
+        self._zoom_timer.timeout.connect(self.update_grid)  
+        
         toolbar.addWidget(self.zoom_slider)
 
         self.zoom_value_label = QLabel("192px")
@@ -583,7 +605,8 @@ class PeopleManagerDialog(QDialog):
         self.zoom_value_label.setText(f"{value}px")
 
         # Rebuild grid with new thumbnail size
-        self.update_grid()  # FIX: Was calling display_clusters() which doesn't exist
+        self._zoom_timer.start(80)  # Fixes with biggest ROI: Debounce zoom slider
+
 
     def on_cluster_clicked(self, branch_key: str):
         """
@@ -1174,6 +1197,7 @@ class PeopleManagerDialog(QDialog):
 
         except ImportError:
             QMessageBox.warning(self, "Settings", "Face settings dialog not available.")
+
 
 
 
