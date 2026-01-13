@@ -1,5 +1,5 @@
 # reference_db.py
-# Version 09.42.01.01 dated 20251205
+# Version 10.03.01.01 dated 20260113
 # FIX: Convert db_file to absolute path in __init__ for consistency with DatabaseConnection
 # PHASE 4 CLEANUP: Removed unnecessary ensure_created_date_fields() calls
 # UPDATED: Now uses repository layer for schema management
@@ -456,6 +456,13 @@ class ReferenceDB:
         if conn is None:
             conn = sqlite3.connect(self.db_file, check_same_thread=False)
             conn.execute("PRAGMA foreign_keys = ON")
+            
+            ## Patch in _connect() beim Erzeugen neuer Connections ##
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA synchronous=NORMAL")
+            conn.execute("PRAGMA busy_timeout=5000")            
+            ## END Patch ##
+            
             conn.row_factory = sqlite3.Row  # Always return dict-like rows
             
             with self._pool_lock:
@@ -601,61 +608,72 @@ class ReferenceDB:
             if progress_cb:
                 progress_cb(100)
 
-
+## merge_face_branches wird ein Wrapper ##
     def merge_face_branches(self, project_id, src_branch, target_branch, keep_label=None):
         """
-        Merge face clusters: move all faces from src_branch to target_branch.
-        Updates face_crops table and recalculates counts in face_branch_reps.
-        Returns number of faces moved.
+#        Merge face clusters: move all faces from src_branch to target_branch.
+#        Updates face_crops table and recalculates counts in face_branch_reps.
+#        Returns number of faces moved.
+
+        DEPRECATED: Use merge_face_clusters() to keep semantics, counts and undo consistent.
+        Wrapper kept for backward compatibility.
+
         """
-        with self._connect() as conn:
-            cur = conn.cursor()
+#        with self._connect() as conn:
+#            cur = conn.cursor()
+#
+#            # Update face_crops table - move all faces from source to target
+#            cur.execute(
+#                "UPDATE face_crops SET branch_key=? WHERE project_id=? AND branch_key=?",
+#                (target_branch, project_id, src_branch),
+#            )
+#            moved = cur.rowcount
+#
+#            # Recalculate count for target branch in face_branch_reps
+#            cur.execute("""
+#                UPDATE face_branch_reps
+#                SET count = (
+#                    SELECT COUNT(*)
+#                    FROM face_crops
+#                    WHERE project_id=? AND branch_key=?
+#                )
+#                WHERE project_id=? AND branch_key=?
+#            """, (project_id, target_branch, project_id, target_branch))
+#
+#            # Update label if provided
+#            if keep_label:
+#                cur.execute(
+#                    "UPDATE face_branch_reps SET label=? WHERE project_id=? AND branch_key=?",
+#                    (keep_label, project_id, target_branch)
+#                )
+#
+#            # Delete source branch from face_branch_reps
+#            cur.execute(
+#                "DELETE FROM face_branch_reps WHERE project_id=? AND branch_key=?",
+#                (project_id, src_branch)
+#            )
+#
+#            # Also update legacy project_images table if it exists (for backward compatibility)
+#            try:
+#                cur.execute(
+#                    "UPDATE project_images SET branch_key=?, label=? WHERE project_id=? AND branch_key=?",
+#                    (target_branch, keep_label, project_id, src_branch),
+#                )
+#            except Exception:
+#                pass  # Table might not exist in new installations
+#
+#            conn.commit()
+#            cur.close()
+#            print(f"✅ merge_face_branches: moved {moved} faces from {src_branch} → {target_branch} (project {project_id})")
+#            return moved
 
-            # Update face_crops table - move all faces from source to target
-            cur.execute(
-                "UPDATE face_crops SET branch_key=? WHERE project_id=? AND branch_key=?",
-                (target_branch, project_id, src_branch),
-            )
-            moved = cur.rowcount
-
-            # Recalculate count for target branch in face_branch_reps
-            cur.execute("""
-                UPDATE face_branch_reps
-                SET count = (
-                    SELECT COUNT(*)
-                    FROM face_crops
-                    WHERE project_id=? AND branch_key=?
-                )
-                WHERE project_id=? AND branch_key=?
-            """, (project_id, target_branch, project_id, target_branch))
-
-            # Update label if provided
-            if keep_label:
-                cur.execute(
-                    "UPDATE face_branch_reps SET label=? WHERE project_id=? AND branch_key=?",
-                    (keep_label, project_id, target_branch)
-                )
-
-            # Delete source branch from face_branch_reps
-            cur.execute(
-                "DELETE FROM face_branch_reps WHERE project_id=? AND branch_key=?",
-                (project_id, src_branch)
-            )
-
-            # Also update legacy project_images table if it exists (for backward compatibility)
-            try:
-                cur.execute(
-                    "UPDATE project_images SET branch_key=?, label=? WHERE project_id=? AND branch_key=?",
-                    (target_branch, keep_label, project_id, src_branch),
-                )
-            except Exception:
-                pass  # Table might not exist in new installations
-
-            conn.commit()
-            cur.close()
-            print(f"✅ merge_face_branches: moved {moved} faces from {src_branch} → {target_branch} (project {project_id})")
-            return moved
-
+        res = self.merge_face_clusters(
+            project_id=project_id,
+            target_branch=target_branch,
+            source_branches=[src_branch],
+            log_undo=False
+        )
+        return int(res.get("moved_faces", 0))
 
     def delete_branch(self, project_id, branch_key):
         """
@@ -5227,8 +5245,14 @@ class ReferenceDB:
             raise ValueError("merge_face_clusters requires a target_branch")
 
         # Normalise & dedupe sources
+        
+        ## Patch Deterministic source dedupe (keine Sets)
         src_list = [str(b) for b in (source_branches or []) if b]
-        src_list = list({b for b in src_list if b != target_branch})
+        # Deterministic de-dupe, preserve order
+        seen = set()
+        src_list = [b for b in src_list if b != target_branch and not (b in seen or seen.add(b))]
+        ## END Patch
+        
         if not src_list:
             return {"moved_faces": 0, "moved_images": 0, "deleted_reps": 0, "sources": [], "target": target_branch}
 
@@ -5258,6 +5282,7 @@ class ReferenceDB:
                 "face_branch_reps": [],
                 "face_crops": [],
                 "project_images": [],
+                "project_images_deleted": [],   # Patch: snapshot erweitern+rows vor delete selektieren
             }
 
             placeholders = ",".join("?" * len(all_keys))
@@ -5383,8 +5408,28 @@ class ReferenceDB:
             # - If photo exists ONLY in source: UPDATE to target (move the link)
             # This ensures no photos lose their project_images link during merge
 
+            ## Patch: snapshot erweitern + rows vor delete selektieren ##
             # First, handle true duplicates (photos in both source AND target branches)
-            # These can be safely deleted from source since target already has them
+            # Capture deleted rows fully for perfect undo.
+
+            cur.execute(
+                f"""
+                SELECT id, project_id, branch_key, image_path, label
+                FROM project_images
+                WHERE project_id = ?
+                  AND branch_key IN ({src_placeholders})
+                  AND image_path IN (
+                      SELECT pi_target.image_path
+                      FROM project_images pi_target
+                      WHERE pi_target.project_id = ?
+                        AND pi_target.branch_key = ?
+                  )
+                """,
+                [project_id] + src_list + [project_id, target_branch],
+            )
+            snapshot["project_images_deleted"] = [dict(r) for r in cur.fetchall()]
+            ## END Patch ##            
+            
             cur.execute(
                 f"""
                 DELETE FROM project_images
@@ -5593,6 +5638,11 @@ class ReferenceDB:
 
             faces = snapshot.get("face_crops", [])
             imgs = snapshot.get("project_images", [])
+
+            ## Patch: Undo reinsert deleted rows vor branch restore ##
+            imgs_deleted = snapshot.get("project_images_deleted", [])
+            ## END Patch ##
+            
             branches = snapshot.get("branches", [])
             reps = snapshot.get("face_branch_reps", [])
 
@@ -5652,7 +5702,21 @@ class ReferenceDB:
                     (rec["branch_key"], rec["id"]),
                 )
                 faces_restored += cur.rowcount
-
+            
+            ## Patch: Undo reinsert deleted rows vor branch restore ##
+            # Re-insert any deleted duplicate project_images rows (perfect undo)
+            for rec in imgs_deleted:
+                cur.execute("SELECT 1 FROM project_images WHERE id = ?", (rec["id"],))
+                if cur.fetchone() is None:
+                    cur.execute(
+                        """
+                        INSERT INTO project_images (id, project_id, branch_key, image_path, label)
+                        VALUES (?, ?, ?, ?, ?)
+                        """,
+                        (rec["id"], rec["project_id"], rec["branch_key"], rec["image_path"], rec.get("label")),
+                    )
+            ## END Patch ##
+            
             # Restore project_images
             for rec in imgs:
                 cur.execute(
