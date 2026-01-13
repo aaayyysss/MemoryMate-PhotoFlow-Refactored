@@ -61,6 +61,14 @@ class FaceClusterCard(QFrame):
         self.setLineWidth(1)
         self.setCursor(Qt.PointingHandCursor)
 
+        ### Fix (move checkmark positioning into FaceClusterCard.resizeEvent) ###
+        self.checkmark_label = None
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if getattr(self, "checkmark_label", None) and self.checkmark_label.isVisible():
+            self.checkmark_label.move(self.width() - 30, 6)
+
     def setup_ui(self, thumbnail_size=192):
         """Setup the card UI."""
         layout = QVBoxLayout(self)
@@ -513,6 +521,12 @@ class PeopleManagerDialog(QDialog):
 
             self.grid_layout.addWidget(card, row, col)
             self.cards[cluster["branch_key"]] = card
+            
+        ### Fix (reapply selection after rebuilding) ###
+        # Re-apply selection highlight after rebuild
+        for key in self.selected_clusters:
+            if key in self.cards:
+                self._update_card_highlight(key, True)                    
 
         # Update layout
         self.grid_widget.updateGeometry()
@@ -1160,6 +1174,7 @@ class PeopleManagerDialog(QDialog):
 
         except ImportError:
             QMessageBox.warning(self, "Settings", "Face settings dialog not available.")
+
 
 
 
