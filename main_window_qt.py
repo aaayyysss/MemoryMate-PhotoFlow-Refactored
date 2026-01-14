@@ -1,5 +1,5 @@
 # main_window_qt.py
-# Version 09.20.00.00 dated 20251105
+# Version 10.01.01.04 dated 20260114
 # Added PhotoDeletionService with comprehensive delete functionality
 # Enhanced repositories with utility methods for future migrations
 # Current LOC: ~2,640 (added photo deletion feature)
@@ -1136,11 +1136,42 @@ class MainWindow(QMainWindow):
             import traceback
             traceback.print_exc()
 
+        # CRITICAL FIX: Defer heavy initialization to avoid blocking UI thread
+        # Schedule heavy operations to run after window is shown
+        QTimer.singleShot(100, self._deferred_initialization)
+        
         # DIAGNOSTIC: Confirm __init__() is completing
         print("[MainWindow] ✅ ✅ ✅ __init__() COMPLETED - returning to main_qt.py")
         print(f"[MainWindow] Window object: {self}")
         print(f"[MainWindow] Window valid: {self.isValid() if hasattr(self, 'isValid') else 'N/A'}")
 
+    def _deferred_initialization(self):
+        """
+        CRITICAL FIX: Perform heavy initialization operations after window is shown.
+        This prevents the UI from freezing during startup.
+        """
+        print("[MainWindow] Starting deferred initialization...")
+        
+        try:
+            # Initialize database and sidebar (was previously in __init__)
+            self._init_db_and_sidebar()
+            print("[MainWindow] ✅ Database and sidebar initialized")
+            
+            # Restore session state (was previously in __init__)
+            QTimer.singleShot(300, self._restore_session_state)
+            print("[MainWindow] ✅ Session state restoration scheduled")
+            
+            # Update status bar
+            self._update_status_bar()
+            print("[MainWindow] ✅ Status bar updated")
+            
+            print("[MainWindow] ✅ Deferred initialization completed successfully")
+            
+        except Exception as e:
+            print(f"[MainWindow] ⚠️ Deferred initialization error: {e}")
+            import traceback
+            traceback.print_exc()
+    
     def ensureOnScreen(self):
         """
         CRITICAL FIX: Ensure window is positioned on a visible screen.
@@ -2215,48 +2246,53 @@ class MainWindow(QMainWindow):
                 print(f"[MainWindow] PHASE 3 (SidebarQt): Sidebar has no _on_item_clicked method")
                 return
 
-            # Map selection type to SidebarQt mode/value format
+            # Map selection type to SidebarQt signals
             if sel_type == "video":
                 # Parse video selection format
                 if sel_id == "all":
-                    # All videos
-                    mode = "videos"
-                    value = "all"
+                    # All videos - emit appropriate signal
+                    if hasattr(self.sidebar, 'selectVideos'):
+                        self.sidebar.selectVideos.emit("all")
+                    print(f"[MainWindow] PHASE 3 (SidebarQt): Restored all videos selection")
                 elif sel_id.startswith("year:"):
-                    # Year filter: "year:2024" → mode="videos_year", value="2024"
-                    mode = "videos_year"
-                    value = sel_id.split(":", 1)[1]
+                    # Year filter: "year:2024" 
+                    year = sel_id.split(":", 1)[1]
+                    if hasattr(self.sidebar, 'selectVideos'):
+                        self.sidebar.selectVideos.emit(f"year:{year}")
+                    print(f"[MainWindow] PHASE 3 (SidebarQt): Restored video year selection: {year}")
                 elif sel_id.startswith("month:"):
-                    # Month filter: "month:2024-07" → mode="videos_month", value="2024-07"
-                    mode = "videos_month"
-                    value = sel_id.split(":", 1)[1]
+                    # Month filter: "month:2024-07"
+                    month = sel_id.split(":", 1)[1]
+                    if hasattr(self.sidebar, 'selectVideos'):
+                        self.sidebar.selectVideos.emit(f"month:{month}")
+                    print(f"[MainWindow] PHASE 3 (SidebarQt): Restored video month selection: {month}")
                 elif sel_id.startswith("day:"):
-                    # Day filter: "day:2024-07-15" → mode="videos_day", value="2024-07-15"
-                    mode = "videos_day"
-                    value = sel_id.split(":", 1)[1]
+                    # Day filter: "day:2024-07-15"
+                    day = sel_id.split(":", 1)[1]
+                    if hasattr(self.sidebar, 'selectVideos'):
+                        self.sidebar.selectVideos.emit(f"day:{day}")
+                    print(f"[MainWindow] PHASE 3 (SidebarQt): Restored video day selection: {day}")
                 else:
                     print(f"[MainWindow] PHASE 3 (SidebarQt): Unknown video filter format: {sel_id}")
                     return
 
-                # Call the sidebar's navigation handler directly
-                print(f"[MainWindow] PHASE 3 (SidebarQt): Triggering {mode}={value}")
-                self.sidebar._on_item_clicked(None, mode=mode, value=value)
-                print(f"[MainWindow] PHASE 3 (SidebarQt): Restored video selection successfully")
-
             elif sel_type == "folder":
-                # Folder selection
-                self.sidebar._on_item_clicked(None, mode="folder", value=sel_id)
-                print(f"[MainWindow] PHASE 3 (SidebarQt): Restored folder selection: {sel_name}")
+                # Folder selection - emit selectFolder signal
+                if hasattr(self.sidebar, 'selectFolder'):
+                    self.sidebar.selectFolder.emit(sel_id)
+                print(f"[MainWindow] PHASE 3 (SidebarQt): Restored folder selection: {sel_name} (ID={sel_id})")
 
             elif sel_type == "date":
-                # Date selection
-                self.sidebar._on_item_clicked(None, mode="branch", value=f"date:{sel_id}")
-                print(f"[MainWindow] PHASE 3 (SidebarQt): Restored date selection: {sel_name}")
+                # Date selection - emit selectDate signal
+                if hasattr(self.sidebar, 'selectDate'):
+                    self.sidebar.selectDate.emit(sel_id)
+                print(f"[MainWindow] PHASE 3 (SidebarQt): Restored date selection: {sel_name} (ID={sel_id})")
 
             elif sel_type == "person":
-                # Person selection
-                self.sidebar._on_item_clicked(None, mode="branch", value=sel_id)
-                print(f"[MainWindow] PHASE 3 (SidebarQt): Restored person selection: {sel_name}")
+                # Person selection - emit selectBranch signal for person branches
+                if hasattr(self.sidebar, 'selectBranch'):
+                    self.sidebar.selectBranch.emit(sel_id)
+                print(f"[MainWindow] PHASE 3 (SidebarQt): Restored person selection: {sel_name} (ID={sel_id})")
 
         except Exception as e:
             print(f"[MainWindow] PHASE 3 (SidebarQt): Failed to restore selection: {e}")
