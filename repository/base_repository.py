@@ -1,5 +1,5 @@
 # repository/base_repository.py
-# Version 02.00.00.00 dated 20251103
+# Version 03.00.00.00 dated 20260115
 # Base repository pattern for data access layer
 # UPDATED: Added schema initialization and migration support
 
@@ -100,14 +100,25 @@ class DatabaseConnection:
             # This gives SQLite up to 5 seconds to acquire a lock before failing
             conn.execute("PRAGMA busy_timeout = 5000")
 
-            # TEMPORARY: Disable WAL mode due to threading issues
-            # Worker threads can't see schema created in main thread when WAL is enabled
-            # Use DELETE mode for now until threading issues are resolved
+            # Configure journal mode with graceful fallback
+            # Priority: WAL > DELETE > PERSIST (based on performance and reliability)
             if not read_only:
-                try:
-                    conn.execute("PRAGMA journal_mode=DELETE")
-                except sqlite3.OperationalError:
-                    logger.warning("Could not set DELETE mode")
+                journal_modes = ['WAL', 'DELETE', 'PERSIST']
+                journal_set = False
+                
+                for mode in journal_modes:
+                    try:
+                        result = conn.execute(f"PRAGMA journal_mode={mode}").fetchone()
+                        if result and result[0].upper() == mode:
+                            logger.debug(f"Journal mode set to {mode}")
+                            journal_set = True
+                            break
+                    except sqlite3.OperationalError as e:
+                        logger.debug(f"Could not set journal mode {mode}: {e}")
+                        continue
+                
+                if not journal_set:
+                    logger.warning("Could not set any journal mode, using default")
 
             # Return dictionary-like rows for easier access
             conn.row_factory = self._dict_factory
