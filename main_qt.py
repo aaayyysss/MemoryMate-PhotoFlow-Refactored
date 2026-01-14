@@ -1,5 +1,5 @@
 # main_qt.py
-# Version 09.15.01.02 dated 20251102
+# Version 10.01.01.04 dated 202601014
 # Added centralized logging initialization
 
 import sys
@@ -28,12 +28,27 @@ os.environ['QTWEBENGINE_CHROMIUM_FLAGS'] = (
     '--disable-software-rasterizer '
     '--disable-gpu-compositing '
     '--disable-gpu-sandbox '
+    '--disable-gpu-vsync '
+    '--disable-accelerated-video-decode '
+    '--disable-accelerated-video-encode '
+    '--disable-accelerated-2d-canvas '
+    '--disable-webgl '
+    '--disable-webgl2 '
     '--num-raster-threads=1 '
-    '--disable-features=VizDisplayCompositor'
+    '--disable-features=VizDisplayCompositor,TranslateUI,BlinkGenPropertyTrees'
+    '--renderer-process-limit=1'
 )
 
 # Additional Qt WebEngine environment variables for better compatibility
 os.environ['QTWEBENGINE_DISABLE_SANDBOX'] = '1'  # Disable Chromium sandboxing (can cause issues in packaged apps)
+os.environ['QT_WEBENGINE_CHROMIUM_BINARIES_PATH'] = ''  # Use bundled Chromium binaries
+os.environ['QTWEBENGINE_CHROMIUM_FLAGS'] += ' --no-sandbox'  # Extra sandbox disable flag
+
+# Suppress Qt OpenGL/GPU related warnings and errors
+os.environ['QT_DEBUG_PLUGINS'] = '0'  # Disable plugin debug output
+os.environ['QSG_RENDER_LOOP'] = 'basic'  # Use basic render loop to avoid OpenGL issues
+os.environ['QT_OPENGL'] = 'software'  # Force software OpenGL rendering
+os.environ['QT_QUICK_BACKEND'] = 'software'  # Force software backend for Qt Quick
 
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import Qt, QTimer
