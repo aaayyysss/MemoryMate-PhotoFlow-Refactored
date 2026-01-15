@@ -124,6 +124,30 @@ class StackRepository(BaseRepository):
             row = cur.fetchone()
             return dict(row) if row else None
 
+    def get_stack_by_photo_id(self, project_id: int, photo_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Get stack information for a photo if it belongs to one.
+
+        Args:
+            project_id: Project ID
+            photo_id: Photo ID
+
+        Returns:
+            Stack dictionary or None if photo is not in a stack
+        """
+        sql = """
+            SELECT s.stack_id, s.project_id, s.stack_type, s.representative_photo_id,
+                   s.rule_version, s.created_by, s.created_at
+            FROM media_stack s
+            INNER JOIN media_stack_member m ON s.stack_id = m.stack_id AND s.project_id = m.project_id
+            WHERE s.project_id = ? AND m.photo_id = ?
+            LIMIT 1
+        """
+        with self._db_connection.get_connection(read_only=True) as conn:
+            cur = conn.execute(sql, (project_id, photo_id))
+            row = cur.fetchone()
+            return dict(row) if row else None
+
     def list_stacks(
         self,
         project_id: int,
