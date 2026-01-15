@@ -116,6 +116,70 @@ class PhotoRepository(BaseRepository):
             order_by="date_taken ASC"
         )
 
+    def get_photos_in_time_window(
+        self,
+        project_id: int,
+        reference_timestamp: int,
+        time_window_seconds: int,
+        folder_id: Optional[int] = None,
+        exclude_photo_ids: Optional[List[int]] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Get photos within a time window of a reference timestamp.
+
+        Used for similar shot detection - finds photos taken near the same time
+        as a reference photo (e.g., burst shots, photo series).
+
+        Args:
+            project_id: Project ID
+            reference_timestamp: Reference Unix timestamp (created_ts)
+            time_window_seconds: Time window in seconds (+/- around reference)
+            folder_id: Optional folder filter (for same-folder burst detection)
+            exclude_photo_ids: Optional list of photo IDs to exclude
+
+        Returns:
+            List of photo metadata dicts within time window, ordered by timestamp
+
+        Example:
+            # Find photos within 10 seconds of reference photo
+            candidates = repo.get_photos_in_time_window(
+                project_id=1,
+                reference_timestamp=1704067200,  # 2024-01-01 00:00:00
+                time_window_seconds=10,
+                folder_id=5  # Same folder only
+            )
+        """
+        # Calculate time bounds
+        min_ts = reference_timestamp - time_window_seconds
+        max_ts = reference_timestamp + time_window_seconds
+
+        # Build WHERE clause
+        where_parts = [
+            "project_id = ?",
+            "created_ts IS NOT NULL",
+            "created_ts BETWEEN ? AND ?"
+        ]
+        params: List[Any] = [project_id, min_ts, max_ts]
+
+        # Optional folder filter
+        if folder_id is not None:
+            where_parts.append("folder_id = ?")
+            params.append(folder_id)
+
+        # Optional exclusion list
+        if exclude_photo_ids:
+            placeholders = ','.join('?' * len(exclude_photo_ids))
+            where_parts.append(f"id NOT IN ({placeholders})")
+            params.extend(exclude_photo_ids)
+
+        where_clause = " AND ".join(where_parts)
+
+        return self.find_all(
+            where_clause=where_clause,
+            params=tuple(params),
+            order_by="created_ts ASC"
+        )
+
     def upsert(self,
                path: str,
                folder_id: int,
