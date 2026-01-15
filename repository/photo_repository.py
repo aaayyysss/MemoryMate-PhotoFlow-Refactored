@@ -311,6 +311,27 @@ class PhotoRepository(BaseRepository):
 
         self.logger.debug(f"Updated metadata status for photo {photo_id}: {status}")
 
+    def update_photo_hash(self, photo_id: int, file_hash: str):
+        """
+        Update file_hash for a photo (used during hash backfill).
+
+        Args:
+            photo_id: Photo ID
+            file_hash: SHA256 hash string
+        """
+        sql = """
+            UPDATE photo_metadata
+            SET file_hash = ?
+            WHERE id = ?
+        """
+
+        with self.connection() as conn:
+            cur = conn.cursor()
+            cur.execute(sql, (file_hash, photo_id))
+            conn.commit()
+
+        self.logger.debug(f"Updated file_hash for photo {photo_id}")
+
     def get_missing_metadata(self, max_failures: int = 3, limit: Optional[int] = None) -> List[str]:
         """
         Get photos that need metadata extraction.
