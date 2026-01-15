@@ -175,6 +175,9 @@ class PreferencesDialog(QDialog):
         # Check InsightFace model status after UI is ready
         self._check_model_status()
 
+        # Check hash backfill status
+        self._update_backfill_status()
+
     def _setup_ui(self):
         """Create the main UI layout with sidebar navigation."""
         main_layout = QHBoxLayout(self)
@@ -1054,6 +1057,50 @@ class PreferencesDialog(QDialog):
 
         layout.addWidget(meta_group)
 
+        # Duplicate Management
+        dup_group = QGroupBox(tr("preferences.duplicate.title"))
+        dup_layout = QVBoxLayout(dup_group)
+        dup_layout.setSpacing(10)
+
+        # Description
+        dup_desc = QLabel(tr("preferences.duplicate.description"))
+        dup_desc.setWordWrap(True)
+        dup_desc.setStyleSheet("color: #666; font-size: 11px;")
+        dup_layout.addWidget(dup_desc)
+
+        # Backfill status
+        self.lbl_backfill_status = QLabel(tr("preferences.duplicate.status_checking"))
+        self.lbl_backfill_status.setStyleSheet("color: #666; font-size: 11px;")
+        dup_layout.addWidget(self.lbl_backfill_status)
+
+        # Backfill button
+        self.btn_run_backfill = QPushButton(tr("preferences.duplicate.run_backfill"))
+        self.btn_run_backfill.setToolTip(tr("preferences.duplicate.run_backfill_hint"))
+        self.btn_run_backfill.clicked.connect(self._on_run_hash_backfill)
+        self.btn_run_backfill.setStyleSheet("""
+            QPushButton {
+                padding: 8px 16px;
+                background-color: #4CAF50;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #45a049;
+            }
+            QPushButton:pressed {
+                background-color: #3d8b40;
+            }
+            QPushButton:disabled {
+                background-color: #ccc;
+                color: #666;
+            }
+        """)
+        dup_layout.addWidget(self.btn_run_backfill)
+
+        layout.addWidget(dup_group)
+
         layout.addStretch()
 
         return self._create_scrollable_panel(widget)
@@ -1243,6 +1290,156 @@ class PreferencesDialog(QDialog):
             "meta_batch": self.settings.get("meta_batch", 200),
             "auto_run_backfill_after_scan": self.settings.get("auto_run_backfill_after_scan", False),
         }
+
+    def _on_run_hash_backfill(self):
+        """Handle hash backfill button click."""
+        try:
+            # Import required modules
+            from services.job_service import get_job_service
+            from services.asset_service import AssetService
+            from repository.photo_repository import PhotoRepository
+            from repository.asset_repository import AssetRepository
+            from repository.base_repository import DatabaseConnection
+            from workers.hash_backfill_worker import create_hash_backfill_worker
+            from ui.hash_backfill_progress_dialog import HashBackfillProgressDialog
+            from PySide6.QtCore import QThreadPool
+
+            # Get current project_id (try to get from main window)
+            project_id = 1  # Default to project 1
+            if hasattr(self.parent(), 'sidebar') and hasattr(self.parent().sidebar, 'project_id'):
+                project_id = self.parent().sidebar.project_id
+            elif hasattr(self.parent(), 'grid') and hasattr(self.parent().grid, 'project_id'):
+                project_id = self.parent().grid.project_id
+
+            # Initialize services to check status
+            db_conn = DatabaseConnection()
+            asset_repo = AssetRepository(db_conn)
+
+            # Check how many photos need backfill
+            total_without_instance = asset_repo.count_photos_without_instance(project_id)
+
+            if total_without_instance == 0:
+                QMessageBox.information(
+                    self,
+                    "Duplicate Detection Ready",
+                    "All photos are already hashed and linked to assets.\n\n"
+                    "Duplicate detection is ready to use!",
+                    QMessageBox.Ok
+                )
+                return
+
+            # Confirm with user
+            reply = QMessageBox.question(
+                self,
+                "Prepare Duplicate Detection",
+                f"Found {total_without_instance} photos that need processing.\n\n"
+                f"This will compute SHA256 hashes and link photos to assets.\n"
+                f"Estimated time: ~{int(total_without_instance / 1000) + 1} minutes\n\n"
+                f"Continue?",
+                QMessageBox.Yes | QMessageBox.No
+            )
+
+            if reply != QMessageBox.Yes:
+                return
+
+            # Create progress dialog
+            progress_dialog = HashBackfillProgressDialog(total_without_instance, self)
+
+            # Enqueue job
+            job_service = get_job_service()
+            job_id = job_service.enqueue_job(
+                kind='hash_backfill',
+                payload={
+                    'project_id': project_id
+                },
+                backend='local'
+            )
+
+            # Create worker
+            worker = create_hash_backfill_worker(
+                job_id=job_id,
+                project_id=project_id,
+                batch_size=500
+            )
+
+            # Connect worker signals to progress dialog
+            worker.signals.progress.connect(progress_dialog.update_progress)
+            worker.signals.finished.connect(progress_dialog.on_finished)
+            worker.signals.error.connect(progress_dialog.on_error)
+
+            # Connect dialog cancel to worker (if needed - not implemented in worker yet)
+            # progress_dialog.cancelled.connect(worker.cancel)
+
+            # Start worker
+            QThreadPool.globalInstance().start(worker)
+
+            # Show progress dialog
+            result = progress_dialog.exec()
+
+            # Update status label
+            self._update_backfill_status()
+
+            if result == QDialog.Accepted:
+                QMessageBox.information(
+                    self,
+                    "Backfill Complete",
+                    f"Successfully processed {total_without_instance} photos!\n\n"
+                    f"Duplicate detection is now ready to use.",
+                    QMessageBox.Ok
+                )
+
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Backfill Error",
+                f"Failed to start hash backfill:\n{str(e)}"
+            )
+            print(f"✗ Hash backfill error: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def _update_backfill_status(self):
+        """Update backfill status label."""
+        try:
+            from repository.asset_repository import AssetRepository
+            from repository.photo_repository import PhotoRepository
+            from repository.base_repository import DatabaseConnection
+
+            # Get current project_id
+            project_id = 1
+            if hasattr(self.parent(), 'sidebar') and hasattr(self.parent().sidebar, 'project_id'):
+                project_id = self.parent().sidebar.project_id
+            elif hasattr(self.parent(), 'grid') and hasattr(self.parent().grid, 'project_id'):
+                project_id = self.parent().grid.project_id
+
+            # Check status
+            db_conn = DatabaseConnection()
+            photo_repo = PhotoRepository(db_conn)
+            asset_repo = AssetRepository(db_conn)
+
+            total_photos = photo_repo.count(where_clause="project_id = ?", params=(project_id,))
+            photos_without_instance = asset_repo.count_photos_without_instance(project_id)
+
+            if total_photos == 0:
+                self.lbl_backfill_status.setText("No photos in project")
+                self.lbl_backfill_status.setStyleSheet("color: #666; font-size: 11px;")
+                self.btn_run_backfill.setEnabled(False)
+            elif photos_without_instance == 0:
+                self.lbl_backfill_status.setText("✓ All photos ready for duplicate detection")
+                self.lbl_backfill_status.setStyleSheet("color: #4CAF50; font-size: 11px; font-weight: bold;")
+                self.btn_run_backfill.setEnabled(False)
+            else:
+                progress_pct = ((total_photos - photos_without_instance) / total_photos * 100) if total_photos > 0 else 0
+                self.lbl_backfill_status.setText(
+                    f"{photos_without_instance} photos need processing ({progress_pct:.1f}% complete)"
+                )
+                self.lbl_backfill_status.setStyleSheet("color: #ff9800; font-size: 11px;")
+                self.btn_run_backfill.setEnabled(True)
+
+        except Exception as e:
+            self.lbl_backfill_status.setText(f"Status unavailable: {str(e)}")
+            self.lbl_backfill_status.setStyleSheet("color: #f44336; font-size: 11px;")
+            print(f"Error checking backfill status: {e}")
 
     def _on_cancel(self):
         """Handle cancel button - check for unsaved changes."""

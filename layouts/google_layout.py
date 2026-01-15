@@ -397,6 +397,12 @@ class GooglePhotosLayout(BaseLayout):
         self.btn_select.clicked.connect(self._toggle_selection_mode)
         toolbar.addWidget(self.btn_select)
 
+        # Duplicates button - Open duplicate photo review dialog
+        self.btn_duplicates = QPushButton("🔍 Duplicates")
+        self.btn_duplicates.setToolTip("Review and manage duplicate photos")
+        self.btn_duplicates.clicked.connect(self._open_duplicates_dialog)
+        toolbar.addWidget(self.btn_duplicates)
+
         toolbar.addSeparator()
 
         # Zoom controls (Google Photos style - +/- buttons with slider)
@@ -8456,6 +8462,65 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
             self.search_box.blockSignals(True)
             self.search_box.clear()
             self.search_box.blockSignals(False)
+
+    def _open_duplicates_dialog(self):
+        """
+        Open DuplicatesDialog to review and manage duplicate photos.
+
+        This dialog allows users to:
+        - View all duplicate photo groups
+        - Compare instances side-by-side
+        - Select duplicates for deletion
+        - Set representative photos
+        """
+        try:
+            from layouts.google_components.duplicates_dialog import DuplicatesDialog
+
+            if self.project_id is None:
+                from PySide6.QtWidgets import QMessageBox
+                QMessageBox.warning(
+                    self.main_window if hasattr(self, 'main_window') else None,
+                    "No Project Selected",
+                    "Please select a project before reviewing duplicates."
+                )
+                return
+
+            # Open the dialog
+            dialog = DuplicatesDialog(
+                project_id=self.project_id,
+                parent=self.main_window if hasattr(self, 'main_window') else None
+            )
+
+            # Connect signal for refresh after actions
+            dialog.duplicate_action_taken.connect(self._on_duplicate_action_taken)
+
+            # Show the dialog
+            dialog.exec()
+
+        except Exception as e:
+            from PySide6.QtWidgets import QMessageBox
+            import traceback
+            error_msg = f"Failed to open duplicates dialog:\n{e}\n\n{traceback.format_exc()}"
+            print(f"[GooglePhotosLayout] ERROR: {error_msg}")
+            QMessageBox.critical(
+                self.main_window if hasattr(self, 'main_window') else None,
+                "Error Opening Duplicates",
+                f"Failed to open duplicates dialog:\n{e}"
+            )
+
+    def _on_duplicate_action_taken(self, action: str, asset_id: int):
+        """
+        Handle actions taken in DuplicatesDialog.
+
+        Args:
+            action: Action type ("delete", "set_representative", etc.)
+            asset_id: ID of asset that was modified
+        """
+        print(f"[GooglePhotosLayout] Duplicate action taken: {action} on asset {asset_id}")
+
+        # For now, just log the action
+        # In future, could refresh the current view if needed
+        # self._load_photos(thumb_size=self.current_thumb_size)
 
     def get_sidebar(self):
         """Get sidebar component."""
