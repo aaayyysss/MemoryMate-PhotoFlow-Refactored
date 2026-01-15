@@ -129,8 +129,10 @@ class HashBackfillWorker(QRunnable):
             # Initialize services
             self._init_services()
 
-            # Mark job as running
-            self.job_service.mark_job_running(self.job_id, self.worker_id)
+            # Claim job (transitions from 'queued' to 'running')
+            if not self.job_service.claim_job(self.job_id, self.worker_id):
+                logger.warning(f"[HashBackfill] Job {self.job_id} already claimed or not queued")
+                return
 
             logger.info(f"[HashBackfill] Starting backfill for project {self.project_id}")
 
@@ -138,13 +140,14 @@ class HashBackfillWorker(QRunnable):
             def progress_callback(current: int, total: int):
                 """Progress callback for asset_service."""
                 progress_pct = (current / total * 100) if total > 0 else 0
+                progress_float = current / total if total > 0 else 0.0
                 message = f"Processing {current}/{total} ({progress_pct:.1f}%)"
 
                 # Emit progress signal
                 self.signals.progress.emit(current, total, message)
 
-                # Send heartbeat to JobService
-                self.job_service.heartbeat_job(self.job_id, progress_pct)
+                # Send heartbeat to JobService (progress must be 0.0-1.0)
+                self.job_service.heartbeat(self.job_id, progress_float)
 
             # Execute backfill
             stats = self.asset_service.backfill_hashes_and_link_assets(
@@ -159,7 +162,7 @@ class HashBackfillWorker(QRunnable):
                 f"Backfill complete: {stats.scanned} scanned, {stats.hashed} hashed, "
                 f"{stats.linked} linked, {stats.errors} errors"
             )
-            self.job_service.mark_job_done(self.job_id, result_message)
+            self.job_service.complete_job(self.job_id, success=True)
 
             logger.info(f"[HashBackfill] {result_message}")
 
@@ -172,7 +175,7 @@ class HashBackfillWorker(QRunnable):
 
             # Mark job as failed
             try:
-                self.job_service.mark_job_failed(self.job_id, error_msg)
+                self.job_service.complete_job(self.job_id, success=False, error=error_msg)
             except Exception:
                 pass
 
