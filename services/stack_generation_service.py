@@ -110,6 +110,15 @@ class StackGenerationService:
         self.logger.info(f"Starting similar shot stack generation for project {project_id}")
         self.logger.info(f"Parameters: {params}")
 
+        if not self.similarity_service:
+            self.logger.error("Cannot generate similar shot stacks: similarity_service not provided")
+            return StackGenStats(
+                photos_considered=0,
+                stacks_created=0,
+                memberships_created=0,
+                errors=1
+            )
+
         # Step 1: Clear existing stacks
         cleared = self.stack_repo.clear_stacks_by_type(
             project_id=project_id,
@@ -118,29 +127,148 @@ class StackGenerationService:
         )
         self.logger.info(f"Cleared {cleared} existing similar shot stacks")
 
-        # Step 2: STUB - Full implementation needed
-        # TODO: Implement candidate selection and clustering
-        #
-        # Algorithm outline:
-        # 1. Get all photos with embeddings and timestamps
-        # 2. For each photo, find candidates within time_window
-        # 3. Compute cosine similarity for candidates
-        # 4. Cluster photos with similarity > threshold
-        # 5. For each cluster >= min_stack_size:
-        #    - Create media_stack
-        #    - Choose representative (deterministic selection)
-        #    - Add members with similarity scores
+        # Step 2: Get all photos with embeddings
+        # Note: For large projects, might need pagination
+        all_photos = self.photo_repo.find_all(
+            where_clause="project_id = ? AND created_ts IS NOT NULL",
+            params=(project_id,),
+            order_by="created_ts ASC"
+        )
 
-        self.logger.warning(
-            "Similar shot stack generation not fully implemented. "
-            "Requires PhotoSimilarityService integration and clustering algorithm."
+        if not all_photos:
+            self.logger.info("No photos with timestamps found")
+            return StackGenStats(
+                photos_considered=0,
+                stacks_created=0,
+                memberships_created=0,
+                errors=0
+            )
+
+        self.logger.info(f"Found {len(all_photos)} photos with timestamps")
+
+        # Step 3: Find clusters using time window + similarity
+        photo_to_cluster: Dict[int, int] = {}  # photo_id -> cluster_id
+        all_clusters: List[List[int]] = []
+        photos_processed = 0
+        errors = 0
+
+        for photo in all_photos:
+            photo_id = photo["id"]
+            photos_processed += 1
+
+            # Skip if already in a cluster
+            if photo_id in photo_to_cluster:
+                continue
+
+            # Check if photo has embedding
+            if not self.similarity_service.get_embedding(photo_id):
+                continue
+
+            # Find candidates within time window
+            created_ts = photo.get("created_ts")
+            if not created_ts:
+                continue
+
+            candidates = self._find_time_candidates(
+                project_id=project_id,
+                reference_timestamp=created_ts,
+                time_window_seconds=params.time_window_seconds,
+                reference_photo_id=photo_id,
+                folder_id=photo.get("folder_id")  # Same folder only
+            )
+
+            if not candidates:
+                continue
+
+            # Include reference photo in clustering
+            all_candidates = [photo] + candidates
+
+            # Cluster by similarity
+            clusters = self._cluster_by_similarity(
+                photos=all_candidates,
+                similarity_threshold=params.similarity_threshold,
+                min_cluster_size=params.min_stack_size
+            )
+
+            # Register clusters
+            for cluster in clusters:
+                cluster_id = len(all_clusters)
+                all_clusters.append(cluster)
+
+                for pid in cluster:
+                    photo_to_cluster[pid] = cluster_id
+
+        self.logger.info(f"Found {len(all_clusters)} similar shot clusters")
+
+        # Step 4: Create stacks in database
+        stacks_created = 0
+        memberships_created = 0
+
+        for cluster in all_clusters:
+            try:
+                # Choose representative
+                rep_photo_id = self._choose_stack_representative(project_id, cluster)
+                if not rep_photo_id:
+                    self.logger.warning(f"Could not choose representative for cluster {cluster}")
+                    errors += 1
+                    continue
+
+                # Create stack
+                stack_id = self.stack_repo.create_stack(
+                    project_id=project_id,
+                    stack_type="similar",
+                    representative_photo_id=rep_photo_id,
+                    rule_version=params.rule_version,
+                    created_by="system"
+                )
+
+                stacks_created += 1
+
+                # Add members
+                for photo_id in cluster:
+                    # Compute similarity score to representative
+                    if photo_id == rep_photo_id:
+                        similarity_score = 1.0
+                    else:
+                        rep_emb = self.similarity_service.get_embedding(rep_photo_id)
+                        photo_emb = self.similarity_service.get_embedding(photo_id)
+
+                        if rep_emb is not None and photo_emb is not None:
+                            import numpy as np
+                            # Normalize
+                            rep_emb = rep_emb / np.linalg.norm(rep_emb)
+                            photo_emb = photo_emb / np.linalg.norm(photo_emb)
+                            similarity_score = float(np.dot(rep_emb, photo_emb))
+                        else:
+                            similarity_score = params.similarity_threshold  # Default
+
+                    self.stack_repo.add_stack_member(
+                        project_id=project_id,
+                        stack_id=stack_id,
+                        photo_id=photo_id,
+                        similarity_score=similarity_score
+                    )
+                    memberships_created += 1
+
+                self.logger.debug(
+                    f"Created stack {stack_id} with {len(cluster)} members "
+                    f"(representative: {rep_photo_id})"
+                )
+
+            except Exception as e:
+                self.logger.error(f"Failed to create stack for cluster {cluster}: {e}")
+                errors += 1
+
+        self.logger.info(
+            f"Similar shot stack generation complete: "
+            f"{stacks_created} stacks, {memberships_created} memberships, {errors} errors"
         )
 
         return StackGenStats(
-            photos_considered=0,
-            stacks_created=0,
-            memberships_created=0,
-            errors=0
+            photos_considered=photos_processed,
+            stacks_created=stacks_created,
+            memberships_created=memberships_created,
+            errors=errors
         )
 
     # =========================================================================
@@ -216,7 +344,9 @@ class StackGenerationService:
         self,
         project_id: int,
         reference_timestamp: int,
-        time_window_seconds: int
+        time_window_seconds: int,
+        reference_photo_id: Optional[int] = None,
+        folder_id: Optional[int] = None
     ) -> List[Dict[str, Any]]:
         """
         Find photos within time window of reference timestamp.
@@ -225,14 +355,21 @@ class StackGenerationService:
             project_id: Project ID
             reference_timestamp: Reference Unix timestamp
             time_window_seconds: Time window in seconds (+/- around reference)
+            reference_photo_id: Optional photo ID to exclude from results
+            folder_id: Optional folder filter (same folder only)
 
         Returns:
             List of photo dictionaries within time window
         """
-        # TODO: Implement using photo_repo query with created_ts
-        # SELECT * FROM photo_metadata
-        # WHERE project_id = ? AND created_ts BETWEEN ? AND ?
-        raise NotImplementedError("Time-based candidate selection not implemented")
+        exclude_ids = [reference_photo_id] if reference_photo_id else None
+
+        return self.photo_repo.get_photos_in_time_window(
+            project_id=project_id,
+            reference_timestamp=reference_timestamp,
+            time_window_seconds=time_window_seconds,
+            folder_id=folder_id,
+            exclude_photo_ids=exclude_ids
+        )
 
     def _cluster_by_similarity(
         self,
@@ -241,22 +378,85 @@ class StackGenerationService:
         min_cluster_size: int
     ) -> List[List[int]]:
         """
-        Cluster photos by visual similarity.
+        Cluster photos by visual similarity using greedy grouping.
+
+        Algorithm:
+        1. Load embeddings for all photos
+        2. For each photo, compute cosine similarity with all others
+        3. Greedily assign photos to clusters based on threshold
+        4. Return clusters meeting minimum size requirement
 
         Args:
-            photos: List of photo dictionaries with embeddings
-            similarity_threshold: Minimum similarity for same cluster
+            photos: List of photo dictionaries
+            similarity_threshold: Minimum cosine similarity for same cluster (0.0-1.0)
             min_cluster_size: Minimum photos per cluster
 
         Returns:
             List of clusters (each cluster is a list of photo_ids)
+
+        Note:
+            Requires photos to have semantic embeddings. Photos without
+            embeddings are skipped.
         """
-        # TODO: Implement clustering algorithm
-        # Options:
-        # 1. DBSCAN (density-based)
-        # 2. Hierarchical clustering (agglomerative)
-        # 3. Greedy grouping (simpler, faster)
-        raise NotImplementedError("Similarity clustering not implemented")
+        if not self.similarity_service:
+            self.logger.warning("Cannot cluster: similarity_service not provided")
+            return []
+
+        import numpy as np
+
+        # Load embeddings
+        photo_embeddings: Dict[int, np.ndarray] = {}
+        for photo in photos:
+            photo_id = photo["id"]
+            embedding = self.similarity_service.get_embedding(photo_id)
+            if embedding is not None:
+                # Normalize for cosine similarity
+                norm = np.linalg.norm(embedding)
+                if norm > 0:
+                    photo_embeddings[photo_id] = embedding / norm
+
+        if len(photo_embeddings) < min_cluster_size:
+            self.logger.debug(f"Not enough photos with embeddings: {len(photo_embeddings)}")
+            return []
+
+        # Greedy clustering
+        photo_ids = list(photo_embeddings.keys())
+        assigned = set()
+        clusters = []
+
+        for i, photo_id in enumerate(photo_ids):
+            if photo_id in assigned:
+                continue
+
+            # Start new cluster with this photo
+            cluster = [photo_id]
+            assigned.add(photo_id)
+
+            # Find similar photos not yet assigned
+            embedding = photo_embeddings[photo_id]
+
+            for other_id in photo_ids[i+1:]:
+                if other_id in assigned:
+                    continue
+
+                other_embedding = photo_embeddings[other_id]
+
+                # Cosine similarity (dot product of normalized vectors)
+                similarity = float(np.dot(embedding, other_embedding))
+
+                if similarity >= similarity_threshold:
+                    cluster.append(other_id)
+                    assigned.add(other_id)
+
+            # Keep cluster if meets minimum size
+            if len(cluster) >= min_cluster_size:
+                clusters.append(cluster)
+                self.logger.debug(
+                    f"Created cluster of {len(cluster)} photos "
+                    f"(similarity >= {similarity_threshold:.2f})"
+                )
+
+        return clusters
 
     def _choose_stack_representative(
         self,
@@ -280,9 +480,72 @@ class StackGenerationService:
         Returns:
             photo_id of representative, or None
         """
-        # TODO: Implement representative selection
-        # Could reuse AssetService logic or implement here
-        raise NotImplementedError("Representative selection not implemented")
+        if not photo_ids:
+            return None
+
+        # Fetch photo metadata for all candidates
+        photos = []
+        for photo_id in photo_ids:
+            photo = self.photo_repo.get_by_id(photo_id)
+            if photo:
+                photos.append(photo)
+
+        if not photos:
+            return None
+
+        # Selection key function (same as AssetService)
+        def selection_key(photo: Dict[str, Any]) -> Tuple[float, float, float, int, int]:
+            """
+            Return tuple for sorting (lower = better, so negate values we want maximized).
+
+            Priority order:
+            1. Higher resolution (more pixels)
+            2. Larger file size (less compression)
+            3. Earlier capture date
+            4. Non-screenshot paths
+            5. Earlier import (lower photo ID)
+            """
+            # Resolution (prefer higher)
+            width = photo.get("width") or 0
+            height = photo.get("height") or 0
+            resolution = width * height
+
+            # File size (prefer larger)
+            file_size = photo.get("size_kb") or 0.0
+
+            # Capture timestamp (prefer earlier)
+            if photo.get("created_ts"):
+                timestamp = photo.get("created_ts") or float('inf')
+            else:
+                timestamp = float('inf')
+
+            # Avoid screenshots
+            path = photo.get("path") or ""
+            is_screenshot = 1 if "screenshot" in path.lower() else 0
+
+            # Earlier import (lower ID = earlier)
+            photo_id = photo.get("id") or float('inf')
+
+            return (
+                -resolution,      # Higher resolution first (negated)
+                -file_size,       # Larger file first (negated)
+                timestamp,        # Earlier date first
+                is_screenshot,    # Non-screenshots first
+                photo_id          # Earlier import first
+            )
+
+        # Sort and select best
+        sorted_photos = sorted(photos, key=selection_key)
+        representative = sorted_photos[0]
+        representative_id = representative["id"]
+
+        self.logger.debug(
+            f"Chose photo {representative_id} as stack representative "
+            f"(resolution: {representative.get('width')}x{representative.get('height')}, "
+            f"size: {representative.get('size_kb')} KB)"
+        )
+
+        return representative_id
 
     # =========================================================================
     # UTILITY METHODS
