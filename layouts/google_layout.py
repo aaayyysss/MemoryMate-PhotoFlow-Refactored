@@ -5791,7 +5791,7 @@ class GooglePhotosLayout(BaseLayout):
             # Get photo ID to check for stack membership
             db_conn = DatabaseConnection()
             photo_repo = PhotoRepository(db_conn)
-            photo = photo_repo.get_by_path(path)
+            photo = photo_repo.get_by_path(path, self.project_id)
 
             if photo:
                 photo_id = photo.get('id')
