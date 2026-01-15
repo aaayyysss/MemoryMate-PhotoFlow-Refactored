@@ -516,33 +516,85 @@ class DuplicatesDialog(QDialog):
         if not self.selected_photos:
             return
 
+        photo_ids = list(self.selected_photos)
+
         # Confirm deletion
         reply = QMessageBox.question(
             self,
             "Confirm Deletion",
-            f"Are you sure you want to delete {len(self.selected_photos)} selected photo(s)?\n\n"
+            f"Are you sure you want to delete {len(photo_ids)} selected photo(s)?\n\n"
+            "This will:\n"
+            "• Delete photo files from disk\n"
+            "• Remove photos from database\n"
+            "• Update asset representatives if needed\n\n"
             "This action cannot be undone.",
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No
         )
 
         if reply == QMessageBox.Yes:
-            # TODO: Implement actual deletion
-            # For now, just show a message
-            QMessageBox.information(
-                self,
-                "Deletion Pending",
-                f"Deletion of {len(self.selected_photos)} photo(s) will be implemented.\n\n"
-                "This will:\n"
-                "1. Delete photo files from disk\n"
-                "2. Remove photo_metadata entries\n"
-                "3. Remove media_instance entries\n"
-                "4. Update asset representative if needed"
-            )
+            try:
+                # Import services
+                from services.asset_service import AssetService
+                from repository.asset_repository import AssetRepository
+                from repository.photo_repository import PhotoRepository
+                from repository.base_repository import DatabaseConnection
 
-            # Emit signal
-            if self.selected_asset_id:
-                self.duplicate_action_taken.emit("delete", self.selected_asset_id)
+                # Initialize services
+                db_conn = DatabaseConnection()
+                photo_repo = PhotoRepository(db_conn)
+                asset_repo = AssetRepository(db_conn)
+                asset_service = AssetService(photo_repo, asset_repo)
 
-            # Reload the view
-            self._load_duplicates()
+                # Perform deletion
+                logger.info(f"Deleting {len(photo_ids)} photos: {photo_ids}")
+                result = asset_service.delete_duplicate_photos(
+                    project_id=self.project_id,
+                    photo_ids=photo_ids,
+                    delete_files=True
+                )
+
+                # Check for errors
+                if not result.get('success', False):
+                    error_msg = result.get('error', 'Unknown error')
+                    raise Exception(error_msg)
+
+                # Show success message
+                photos_deleted = result.get('photos_deleted', 0)
+                files_deleted = result.get('files_deleted', 0)
+                updated_reps = result.get('updated_representatives', [])
+
+                success_msg = f"Successfully deleted {photos_deleted} photo(s).\n\n"
+                success_msg += f"• {files_deleted} file(s) removed from disk\n"
+
+                if updated_reps:
+                    success_msg += f"• Updated {len(updated_reps)} asset representative(s)\n"
+
+                errors = result.get('errors', [])
+                if errors:
+                    success_msg += f"\n⚠️ {len(errors)} error(s) occurred:\n"
+                    for error in errors[:3]:  # Show first 3 errors
+                        success_msg += f"  • {error}\n"
+
+                QMessageBox.information(
+                    self,
+                    "Deletion Complete",
+                    success_msg
+                )
+
+                logger.info(f"Deletion complete: {result}")
+
+                # Emit signal
+                if self.selected_asset_id:
+                    self.duplicate_action_taken.emit("delete", self.selected_asset_id)
+
+                # Reload the view
+                self._load_duplicates()
+
+            except Exception as e:
+                logger.error(f"Failed to delete photos: {e}", exc_info=True)
+                QMessageBox.critical(
+                    self,
+                    "Deletion Failed",
+                    f"Failed to delete photos:\n{e}\n\nPlease check the log for details."
+                )

@@ -544,29 +544,87 @@ class StackViewDialog(QDialog):
         if not self.selected_photos:
             return
 
+        photo_ids = list(self.selected_photos)
+
         reply = QMessageBox.question(
             self,
             "Confirm Deletion",
-            f"Delete {len(self.selected_photos)} selected photo(s)?\n\n"
+            f"Delete {len(photo_ids)} selected photo(s)?\n\n"
+            "This will:\n"
+            "• Delete photo files from disk\n"
+            "• Remove photos from database\n"
+            "• Remove from stack\n"
+            "• Update asset representatives if needed\n\n"
             "This action cannot be undone.",
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No
         )
 
         if reply == QMessageBox.Yes:
-            # TODO: Implement deletion
-            QMessageBox.information(
-                self,
-                "Deletion Pending",
-                f"Deletion of {len(self.selected_photos)} photo(s) will be implemented.\n\n"
-                "This will:\n"
-                "1. Delete photo files\n"
-                "2. Remove from stack\n"
-                "3. Update database"
-            )
+            try:
+                # Import services
+                from services.asset_service import AssetService
+                from repository.asset_repository import AssetRepository
+                from repository.photo_repository import PhotoRepository
+                from repository.base_repository import DatabaseConnection
 
-            self.stack_action_taken.emit("delete", self.stack_id)
-            self._load_stack()  # Reload
+                # Initialize services
+                db_conn = DatabaseConnection()
+                photo_repo = PhotoRepository(db_conn)
+                asset_repo = AssetRepository(db_conn)
+                asset_service = AssetService(photo_repo, asset_repo)
+
+                # Perform deletion
+                logger.info(f"Deleting {len(photo_ids)} photos from stack {self.stack_id}: {photo_ids}")
+                result = asset_service.delete_duplicate_photos(
+                    project_id=self.project_id,
+                    photo_ids=photo_ids,
+                    delete_files=True
+                )
+
+                # Check for errors
+                if not result.get('success', False):
+                    error_msg = result.get('error', 'Unknown error')
+                    raise Exception(error_msg)
+
+                # Show success message
+                photos_deleted = result.get('photos_deleted', 0)
+                files_deleted = result.get('files_deleted', 0)
+                updated_reps = result.get('updated_representatives', [])
+
+                success_msg = f"Successfully deleted {photos_deleted} photo(s).\n\n"
+                success_msg += f"• {files_deleted} file(s) removed from disk\n"
+
+                if updated_reps:
+                    success_msg += f"• Updated {len(updated_reps)} asset representative(s)\n"
+
+                errors = result.get('errors', [])
+                if errors:
+                    success_msg += f"\n⚠️ {len(errors)} error(s) occurred:\n"
+                    for error in errors[:3]:  # Show first 3 errors
+                        success_msg += f"  • {error}\n"
+
+                QMessageBox.information(
+                    self,
+                    "Deletion Complete",
+                    success_msg
+                )
+
+                logger.info(f"Deletion complete: {result}")
+
+                # Emit signal
+                self.stack_action_taken.emit("delete", self.stack_id)
+
+                # Reload the stack view
+                self._load_stack()
+
+            except Exception as e:
+                logger.error(f"Failed to delete photos: {e}", exc_info=True)
+                QMessageBox.critical(
+                    self,
+                    "Deletion Failed",
+                    f"Failed to delete photos:\n{e}\n\nPlease check the log for details."
+                )
 
     def _on_unstack_all(self):
         """Handle unstack all button click."""

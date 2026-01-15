@@ -118,6 +118,102 @@ class PhotoDeletionService:
 
         return result
 
+    def delete_photos_by_ids(
+        self,
+        photo_ids: List[int],
+        delete_files: bool = False,
+        invalidate_cache: bool = True
+    ) -> DeletionResult:
+        """
+        Delete photos by photo IDs from database and optionally from disk.
+
+        This method is useful for duplicate management where we work with photo IDs
+        rather than paths. The CASCADE foreign key on media_instance will automatically
+        remove instance entries when photos are deleted.
+
+        Args:
+            photo_ids: List of photo IDs to delete
+            delete_files: If True, also delete actual files from disk
+            invalidate_cache: If True, invalidate thumbnail cache entries
+
+        Returns:
+            DeletionResult with operation details
+        """
+        result = DeletionResult()
+
+        if not photo_ids:
+            self.logger.warning("No photo IDs provided for deletion")
+            return result
+
+        self.logger.info(f"Deleting {len(photo_ids)} photos by ID (delete_files={delete_files})")
+
+        # First, get photo metadata for paths and folder_ids
+        paths = []
+        folders_to_update = set()
+
+        for photo_id in photo_ids:
+            photo = self.photo_repo.get_by_id(photo_id)
+            if photo:
+                path = photo.get('path')
+                if path:
+                    paths.append(path)
+                if photo.get('folder_id'):
+                    folders_to_update.add(photo['folder_id'])
+
+        if not paths:
+            self.logger.warning("No valid photos found for provided IDs")
+            return result
+
+        # Delete from database (CASCADE will handle media_instance)
+        try:
+            # Use raw SQL to delete by IDs
+            from repository.base_repository import DatabaseConnection
+            db_conn = DatabaseConnection()
+
+            placeholders = ','.join('?' * len(photo_ids))
+            sql = f"DELETE FROM photo_metadata WHERE id IN ({placeholders})"
+
+            with db_conn.get_connection(read_only=False) as conn:
+                cur = conn.execute(sql, photo_ids)
+                deleted_count = cur.rowcount
+                conn.commit()
+
+            result.photos_deleted_from_db = deleted_count
+            result.paths_deleted = paths
+            self.logger.info(f"Deleted {deleted_count} photos from database")
+
+        except Exception as e:
+            error_msg = f"Database deletion failed: {e}"
+            self.logger.error(error_msg, exc_info=True)
+            result.errors.append(error_msg)
+            return result
+
+        # Delete actual files if requested
+        if delete_files:
+            for path in paths:
+                try:
+                    if os.path.exists(path):
+                        os.remove(path)
+                        result.files_deleted_from_disk += 1
+                        self.logger.info(f"Deleted file: {path}")
+                    else:
+                        result.files_not_found += 1
+                        self.logger.warning(f"File not found: {path}")
+                except Exception as e:
+                    error_msg = f"Failed to delete file {path}: {e}"
+                    self.logger.error(error_msg)
+                    result.errors.append(error_msg)
+
+        # Update folder photo counts
+        if folders_to_update:
+            self._update_folder_counts(folders_to_update)
+
+        # Invalidate thumbnail cache
+        if invalidate_cache:
+            self._invalidate_thumbnails(paths)
+
+        return result
+
     def delete_folder_photos(
         self,
         folder_id: int,
