@@ -1,5 +1,5 @@
 # services/photo_scan_service.py
-# Version 01.00.01.00 dated 20251102
+# Version 10.01.01.03 dated 20260115
 # Photo scanning service - Uses MetadataService for extraction
 
 import os
@@ -670,7 +670,9 @@ class PhotoScanService:
             # Use repository to get all photos
             with self.photo_repo.connection(read_only=True) as conn:
                 cur = conn.cursor()
-                cur.execute("SELECT path, modified FROM photo_metadata")
+                # CRITICAL BUG FIX: Filter by project_id to avoid cross-project duplicate detection
+                # Without this, photos from other projects are considered duplicates and skipped
+                cur.execute("SELECT path, modified FROM photo_metadata WHERE project_id = ?", (self.project_id,))
                 return {row['path']: row['modified'] for row in cur.fetchall()}
         except Exception as e:
             logger.warning(f"Could not load existing metadata: {e}")
@@ -686,7 +688,9 @@ class PhotoScanService:
         try:
             with self.photo_repo.connection(read_only=True) as conn:
                 cur = conn.cursor()
-                cur.execute("SELECT path, modified FROM video_metadata")
+                # CRITICAL BUG FIX: Filter by project_id to avoid cross-project duplicate detection
+                # Without this, videos from other projects are considered duplicates and skipped
+                cur.execute("SELECT path, modified FROM video_metadata WHERE project_id = ?", (self.project_id,))
                 return {row['path']: row['modified'] for row in cur.fetchall()}
         except Exception as e:
             logger.warning(f"Could not load existing video metadata: {e}")
