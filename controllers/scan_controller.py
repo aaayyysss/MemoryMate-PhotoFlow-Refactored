@@ -1,3 +1,6 @@
+# scan_controller.py
+# Version 10.01.01.03 dated 20260115
+
 """
 ScanController - Photo/Video Scanning Orchestration
 
@@ -11,7 +14,7 @@ Responsibilities:
 - Face detection integration
 - Sidebar/grid refresh coordination
 
-Version: 09.20.00.00
+Version: 10.01.01.03
 """
 
 import logging
@@ -140,21 +143,32 @@ class ScanController(QObject):
         # CRITICAL FIX: Explicitly center progress dialog on main window
         # Qt's automatic centering may fail in some cases (minimized window, multi-monitor, etc.)
         try:
-            # Ensure dialog geometry is calculated
-            self.main._scan_progress.adjustSize()
-            QApplication.processEvents()
-
-            # Get geometries
-            parent_rect = self.main.geometry()
-            dialog_rect = self.main._scan_progress.geometry()
-
-            # Calculate center position
-            center_x = parent_rect.x() + (parent_rect.width() - dialog_rect.width()) // 2
-            center_y = parent_rect.y() + (parent_rect.height() - dialog_rect.height()) // 2
-
-            # Move dialog to center
-            self.main._scan_progress.move(center_x, center_y)
-            self.logger.debug(f"Progress dialog centered at ({center_x}, {center_y})")
+            # More robust centering with retries
+            def center_dialog(dialog):
+                """Center dialog with retry mechanism"""
+                # Ensure dialog geometry is calculated
+                dialog.adjustSize()
+                QApplication.processEvents()
+                
+                # Get geometries
+                parent_rect = self.main.geometry()
+                dialog_rect = dialog.geometry()
+                
+                # Calculate center position
+                center_x = parent_rect.x() + (parent_rect.width() - dialog_rect.width()) // 2
+                center_y = parent_rect.y() + (parent_rect.height() - dialog_rect.height()) // 2
+                
+                # Move dialog to center
+                dialog.move(center_x, center_y)
+                return center_x, center_y
+            
+            # Initial centering attempt
+            center_x, center_y = center_dialog(self.main._scan_progress)
+            self.logger.debug(f"Progress dialog initially centered at ({center_x}, {center_y})")
+            
+            # Additional centering after a brief delay to ensure layout is complete
+            QTimer.singleShot(50, lambda: center_dialog(self.main._scan_progress))
+            
         except Exception as e:
             self.logger.warning(f"Could not center progress dialog: {e}")
 
@@ -455,18 +469,30 @@ class ScanController(QObject):
 
         # CRITICAL FIX: Explicitly center progress dialog on main window
         try:
-            progress.adjustSize()
-            QApplication.processEvents()
-
-            parent_rect = self.main.geometry()
-            dialog_rect = progress.geometry()
-
-            center_x = parent_rect.x() + (parent_rect.width() - dialog_rect.width()) // 2
-            center_y = parent_rect.y() + (parent_rect.height() - dialog_rect.height()) // 2
-
-            progress.move(center_x, center_y)
+            # More robust centering with retries
+            def center_dialog(dialog):
+                """Center dialog with retry mechanism"""
+                dialog.adjustSize()
+                QApplication.processEvents()
+                
+                parent_rect = self.main.geometry()
+                dialog_rect = dialog.geometry()
+                
+                center_x = parent_rect.x() + (parent_rect.width() - dialog_rect.width()) // 2
+                center_y = parent_rect.y() + (parent_rect.height() - dialog_rect.height()) // 2
+                
+                dialog.move(center_x, center_y)
+                return center_x, center_y
+            
+            # Initial centering attempt
+            center_x, center_y = center_dialog(progress)
+            self.logger.debug(f"Post-scan progress dialog centered at ({center_x}, {center_y})")
+            
+            # Additional centering after a brief delay
+            QTimer.singleShot(50, lambda: center_dialog(progress))
+            
         except Exception as e:
-            self.logger.warning(f"Could not center progress dialog: {e}")
+            self.logger.warning(f"Could not center post-scan progress dialog: {e}")
 
         QApplication.processEvents()
 
@@ -590,6 +616,34 @@ class ScanController(QObject):
                             # Show dialog immediately
                             progress_dialog.show()
                             QApplication.processEvents()  # Force UI update
+
+                            # CRITICAL FIX: Explicitly center face detection progress dialog on main window
+                            # This ensures the dialog appears in the center of the application geometry
+                            try:
+                                # More robust centering with retries
+                                def center_dialog(dialog):
+                                    """Center dialog with retry mechanism"""
+                                    dialog.adjustSize()
+                                    QApplication.processEvents()
+                                    
+                                    parent_rect = self.main.geometry()
+                                    dialog_rect = dialog.geometry()
+                                    
+                                    center_x = parent_rect.x() + (parent_rect.width() - dialog_rect.width()) // 2
+                                    center_y = parent_rect.y() + (parent_rect.height() - dialog_rect.height()) // 2
+                                    
+                                    dialog.move(center_x, center_y)
+                                    return center_x, center_y
+                                
+                                # Initial centering attempt
+                                center_x, center_y = center_dialog(progress_dialog)
+                                self.logger.debug(f"Face detection progress dialog centered at ({center_x}, {center_y})")
+                                
+                                # Additional centering after a brief delay
+                                QTimer.singleShot(50, lambda: center_dialog(progress_dialog))
+                                
+                            except Exception as e:
+                                self.logger.warning(f"Could not center face detection progress dialog: {e}")
 
                             # Run face detection worker
                             from workers.face_detection_worker import FaceDetectionWorker
