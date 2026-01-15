@@ -157,7 +157,7 @@ class SemanticEmbeddingWorker(QRunnable):
             return
 
         # Get photo metadata
-        photo = photo_repo.get_photo_by_id(photo_id)
+        photo = photo_repo.get_by_id(photo_id)
         if photo is None:
             logger.warning(f"[SemanticEmbeddingWorker] Photo {photo_id} not found in database")
             self.failed_count += 1
