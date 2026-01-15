@@ -1,3 +1,6 @@
+# media_lightbox.py
+# Version 10.01.01.03 dated 20260115
+
 """
 Google Photos Layout - Media Lightbox Component
 Extracted from google_layout.py for better organization.
@@ -450,19 +453,31 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         screen_width = screen_geometry.width()
         screen_height = screen_geometry.height()
         
-        # Adaptive window sizing (90-95% based on screen size)
-        # Smaller screens need more space, larger screens can have more margin
+        # Adaptive window sizing with screen boundary protection
+        # Smaller screens need more conservative sizing to avoid overflow
         if screen_width >= 2560:  # 4K or ultra-wide
-            size_percent = 0.90  # 90% of screen
+            size_percent = 0.85  # 85% of screen (more margin for large screens)
         elif screen_width >= 1920:  # Full HD
-            size_percent = 0.92  # 92% of screen
-        else:  # HD/Laptop (1366-1920)
-            size_percent = 0.95  # 95% of screen (maximize space)
+            size_percent = 0.88  # 88% of screen
+        elif screen_width >= 1366:  # HD/Laptop
+            size_percent = 0.90  # 90% of screen
+        else:  # Small screens (1366 and below)
+            size_percent = 0.85  # 85% of screen (conservative for small displays)
         
         width = int(screen_width * size_percent)
         height = int(screen_height * size_percent)
-        x = (screen_width - width) // 2
-        y = (screen_height - height) // 2
+        
+        # Ensure window fits within available screen space (respect taskbar, etc.)
+        max_width = available_geometry.width()
+        max_height = available_geometry.height()
+        
+        # Apply bounds checking
+        width = min(width, max_width)
+        height = min(height, max_height)
+        
+        # Center the window
+        x = available_geometry.x() + (available_geometry.width() - width) // 2
+        y = available_geometry.y() + (available_geometry.height() - height) // 2
         
         self.setGeometry(QRect(x, y, width, height))
         
@@ -472,8 +487,9 @@ class MediaLightbox(QDialog, VideoEditorMixin):
 
         self.setStyleSheet("background: #000000; QToolTip { color: white; background-color: rgba(0,0,0,0.92); border: 1px solid #555; padding: 6px 10px; border-radius: 6px; } QMessageBox { background-color: #121212; color: white; } QMessageBox QLabel { color: white; } QMessageBox QPushButton { background: rgba(255,255,255,0.15); color: white; border: none; border-radius: 6px; padding: 6px 12px; } QMessageBox QPushButton:hover { background: rgba(255,255,255,0.25); }")  # Dark theme + tooltip/messagebox styling
 
-        # Start maximized (not fullscreen - user choice)
-        self.showMaximized()
+        # Show window with calculated adaptive size (not maximized to respect screen boundaries)
+        # This ensures the window stays within screen bounds on all resolutions
+        self.show()
 
         # Main layout (vertical with toolbars + media)
         main_layout = QVBoxLayout(self)
