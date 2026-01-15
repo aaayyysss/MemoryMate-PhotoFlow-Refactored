@@ -1,3 +1,6 @@
+# preferences_dialog.py
+# Version 10.01.01.03 dated 20260115
+
 """
 Modern Preferences Dialog with Left Sidebar Navigation
 
@@ -1293,19 +1296,19 @@ class PreferencesDialog(QDialog):
         self.settings.set("ignore_folders", ignore_list)
         self.settings.set("device_auto_refresh", self.chk_device_auto_refresh.isChecked())
 
-        # Face Detection
-        self.face_config.set("insightface_model", self.cmb_insightface_model.currentData())
-        self.face_config.set("min_face_size", self.spin_min_face_size.value())
-        self.face_config.set("confidence_threshold", self.spin_confidence.value() / 100.0)
-        self.face_config.set("clustering_eps", self.spin_cluster_eps.value() / 100.0)
-        self.face_config.set("clustering_min_samples", self.spin_min_samples.value())
-        self.face_config.set("auto_cluster_after_scan", self.chk_auto_cluster.isChecked())
-        self.face_config.set("max_workers", self.spin_max_workers.value())
-        self.face_config.set("batch_size", self.spin_batch_size.value())
-        self.face_config.set("min_quality_score", float(self.spin_min_quality.value()))
-        self.face_config.set("enable_gpu_batch", self.chk_gpu_batch.isChecked())
-        self.face_config.set("gpu_batch_size", self.spin_gpu_batch_size.value())
-        self.face_config.set("gpu_batch_min_photos", self.spin_gpu_batch_min.value())
+        # Face Detection - Batch save to prevent repeated saves
+        self.face_config.set("insightface_model", self.cmb_insightface_model.currentData(), save_now=False)
+        self.face_config.set("min_face_size", self.spin_min_face_size.value(), save_now=False)
+        self.face_config.set("confidence_threshold", self.spin_confidence.value() / 100.0, save_now=False)
+        self.face_config.set("clustering_eps", self.spin_cluster_eps.value() / 100.0, save_now=False)
+        self.face_config.set("clustering_min_samples", self.spin_min_samples.value(), save_now=False)
+        self.face_config.set("auto_cluster_after_scan", self.chk_auto_cluster.isChecked(), save_now=False)
+        self.face_config.set("max_workers", self.spin_max_workers.value(), save_now=False)
+        self.face_config.set("batch_size", self.spin_batch_size.value(), save_now=False)
+        self.face_config.set("min_quality_score", float(self.spin_min_quality.value()), save_now=False)
+        self.face_config.set("enable_gpu_batch", self.chk_gpu_batch.isChecked(), save_now=False)
+        self.face_config.set("gpu_batch_size", self.spin_gpu_batch_size.value(), save_now=False)
+        self.face_config.set("gpu_batch_min_photos", self.spin_gpu_batch_min.value(), save_now=False)
         # Per-project overrides
         if self.chk_project_overrides.isChecked():
             self.face_config.set_project_overrides(self.current_project_id, {
@@ -1320,7 +1323,10 @@ class PreferencesDialog(QDialog):
                 del po[str(self.current_project_id)]
                 self.face_config.set("project_overrides", po)
         # UI low-confidence toggle
-        self.face_config.set("show_low_confidence", self.chk_show_low_conf.isChecked())
+        self.face_config.set("show_low_confidence", self.chk_show_low_conf.isChecked(), save_now=False)
+        
+        # Save all face detection settings at once
+        self.face_config.save()
         print(f"✅ Face detection settings saved: model={self.cmb_insightface_model.currentData()}, "
               f"eps={self.spin_cluster_eps.value()}%, min_samples={self.spin_min_samples.value()}")
 
