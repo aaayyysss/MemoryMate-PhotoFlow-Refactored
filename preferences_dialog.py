@@ -178,6 +178,9 @@ class PreferencesDialog(QDialog):
         # Check hash backfill status
         self._update_backfill_status()
 
+        # Check similar shot status
+        self._update_similar_shot_status()
+
     def _setup_ui(self):
         """Create the main UI layout with sidebar navigation."""
         main_layout = QHBoxLayout(self)
@@ -1099,6 +1102,59 @@ class PreferencesDialog(QDialog):
         """)
         dup_layout.addWidget(self.btn_run_backfill)
 
+        # Separator
+        separator = QFrame()
+        separator.setFrameShape(QFrame.HLine)
+        separator.setFrameShadow(QFrame.Sunken)
+        separator.setStyleSheet("background-color: #ddd;")
+        dup_layout.addWidget(separator)
+
+        # Similar Shot Stacks section
+        similar_title = QLabel("<b>Similar Shot Detection</b>")
+        similar_title.setStyleSheet("font-size: 12px; margin-top: 10px;")
+        dup_layout.addWidget(similar_title)
+
+        similar_desc = QLabel(
+            "Groups burst photos, photo series, and similar poses using AI.\n"
+            "Requires semantic embeddings to be generated first."
+        )
+        similar_desc.setWordWrap(True)
+        similar_desc.setStyleSheet("color: #666; font-size: 11px;")
+        dup_layout.addWidget(similar_desc)
+
+        # Similar shot status
+        self.lbl_similar_shot_status = QLabel("Checking status...")
+        self.lbl_similar_shot_status.setStyleSheet("color: #666; font-size: 11px;")
+        dup_layout.addWidget(self.lbl_similar_shot_status)
+
+        # Similar shot button
+        self.btn_run_similar_shots = QPushButton("🔍 Generate Similar Shot Stacks")
+        self.btn_run_similar_shots.setToolTip(
+            "Generate stacks for burst photos and similar shots using time proximity + visual similarity"
+        )
+        self.btn_run_similar_shots.clicked.connect(self._on_run_similar_shot_stacks)
+        self.btn_run_similar_shots.setStyleSheet("""
+            QPushButton {
+                padding: 8px 16px;
+                background-color: #2196F3;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #1976D2;
+            }
+            QPushButton:pressed {
+                background-color: #0D47A1;
+            }
+            QPushButton:disabled {
+                background-color: #ccc;
+                color: #666;
+            }
+        """)
+        dup_layout.addWidget(self.btn_run_similar_shots)
+
         layout.addWidget(dup_group)
 
         layout.addStretch()
@@ -1397,6 +1453,177 @@ class PreferencesDialog(QDialog):
             print(f"✗ Hash backfill error: {e}")
             import traceback
             traceback.print_exc()
+
+    def _on_run_similar_shot_stacks(self):
+        """Handle similar shot stack generation button click."""
+        try:
+            # Import required modules
+            from services.job_service import get_job_service
+            from services.semantic_embedding_service import SemanticEmbeddingService
+            from repository.stack_repository import StackRepository
+            from repository.base_repository import DatabaseConnection
+            from workers.similar_shot_stack_worker import create_similar_shot_stack_worker
+            from ui.similar_shot_progress_dialog import SimilarShotProgressDialog
+            from PySide6.QtCore import QThreadPool
+
+            # Get current project_id
+            project_id = 1
+            if hasattr(self.parent(), 'sidebar') and hasattr(self.parent().sidebar, 'project_id'):
+                project_id = self.parent().sidebar.project_id
+            elif hasattr(self.parent(), 'grid') and hasattr(self.parent().grid, 'project_id'):
+                project_id = self.parent().grid.project_id
+
+            # Check prerequisites
+            db_conn = DatabaseConnection()
+            embedding_service = SemanticEmbeddingService(db_conn)
+            stack_repo = StackRepository(db_conn)
+
+            # Check if embeddings exist
+            embedding_count = embedding_service.get_embedding_count()
+            if embedding_count == 0:
+                QMessageBox.warning(
+                    self,
+                    "Embeddings Required",
+                    "Similar shot detection requires semantic embeddings.\n\n"
+                    "Please generate embeddings first:\n"
+                    "1. Go to Search → Semantic Search\n"
+                    "2. Click 'Generate Embeddings'\n"
+                    "3. Wait for completion\n"
+                    "4. Return here to generate similar shot stacks",
+                    QMessageBox.Ok
+                )
+                return
+
+            # Check for existing stacks
+            existing_stacks = stack_repo.count_stacks(project_id, stack_type="similar")
+
+            # Confirm with user
+            if existing_stacks > 0:
+                reply = QMessageBox.question(
+                    self,
+                    "Regenerate Similar Shot Stacks",
+                    f"Found {existing_stacks} existing similar shot stacks.\n\n"
+                    f"This will clear and regenerate all similar shot stacks.\n"
+                    f"Photos with embeddings: {embedding_count}\n"
+                    f"Estimated time: ~{int(embedding_count / 500) + 1} minutes\n\n"
+                    f"Continue?",
+                    QMessageBox.Yes | QMessageBox.No
+                )
+            else:
+                reply = QMessageBox.question(
+                    self,
+                    "Generate Similar Shot Stacks",
+                    f"This will analyze photos and group similar shots.\n\n"
+                    f"Photos with embeddings: {embedding_count}\n"
+                    f"Time window: ±10 seconds\n"
+                    f"Similarity threshold: 92%\n"
+                    f"Minimum stack size: 3 photos\n\n"
+                    f"Estimated time: ~{int(embedding_count / 500) + 1} minutes\n\n"
+                    f"Continue?",
+                    QMessageBox.Yes | QMessageBox.No
+                )
+
+            if reply != QMessageBox.Yes:
+                return
+
+            # Create progress dialog
+            progress_dialog = SimilarShotProgressDialog(embedding_count, self)
+
+            # Enqueue job
+            job_service = get_job_service()
+            job_id = job_service.enqueue_job(
+                kind='similar_shot_stacks',
+                payload={
+                    'project_id': project_id
+                },
+                backend='cpu'
+            )
+
+            # Create worker with default parameters
+            worker = create_similar_shot_stack_worker(
+                job_id=job_id,
+                project_id=project_id,
+                time_window_seconds=10,      # ±10 seconds
+                similarity_threshold=0.92,    # 92% similarity
+                min_stack_size=3,             # At least 3 photos
+                rule_version="1"
+            )
+
+            # Connect worker signals to progress dialog
+            worker.signals.progress.connect(progress_dialog.update_progress)
+            worker.signals.finished.connect(progress_dialog.on_finished)
+            worker.signals.error.connect(progress_dialog.on_error)
+
+            # Start worker
+            QThreadPool.globalInstance().start(worker)
+
+            # Show progress dialog
+            result = progress_dialog.exec()
+
+            # Update status label
+            self._update_similar_shot_status()
+
+            if result == QDialog.Accepted:
+                stats = progress_dialog.get_stats()
+                QMessageBox.information(
+                    self,
+                    "Similar Shot Stacks Generated",
+                    f"Successfully processed {stats['photos_considered']} photos!\n\n"
+                    f"• {stats['stacks_created']} stacks created\n"
+                    f"• {stats['memberships_created']} photo memberships\n"
+                    f"• {stats['errors']} errors\n\n"
+                    f"View stacks in the Duplicates dialog.",
+                    QMessageBox.Ok
+                )
+
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Similar Shot Error",
+                f"Failed to start similar shot generation:\n{str(e)}"
+            )
+
+    def _update_similar_shot_status(self):
+        """Update similar shot status label."""
+        try:
+            from repository.stack_repository import StackRepository
+            from repository.base_repository import DatabaseConnection
+            from services.semantic_embedding_service import SemanticEmbeddingService
+
+            # Get current project_id
+            project_id = 1
+            if hasattr(self.parent(), 'sidebar') and hasattr(self.parent().sidebar, 'project_id'):
+                project_id = self.parent().sidebar.project_id
+            elif hasattr(self.parent(), 'grid') and hasattr(self.parent().grid, 'project_id'):
+                project_id = self.parent().grid.project_id
+
+            # Check status
+            db_conn = DatabaseConnection()
+            stack_repo = StackRepository(db_conn)
+            embedding_service = SemanticEmbeddingService(db_conn)
+
+            embedding_count = embedding_service.get_embedding_count()
+            similar_stacks = stack_repo.count_stacks(project_id, stack_type="similar")
+
+            if embedding_count == 0:
+                self.lbl_similar_shot_status.setText("⚠ No embeddings - generate embeddings first")
+                self.lbl_similar_shot_status.setStyleSheet("color: #ff9800; font-size: 11px;")
+                self.btn_run_similar_shots.setEnabled(False)
+            elif similar_stacks == 0:
+                self.lbl_similar_shot_status.setText(f"Ready - {embedding_count} photos with embeddings")
+                self.lbl_similar_shot_status.setStyleSheet("color: #666; font-size: 11px;")
+                self.btn_run_similar_shots.setEnabled(True)
+            else:
+                self.lbl_similar_shot_status.setText(
+                    f"✓ {similar_stacks} similar shot stacks generated ({embedding_count} photos analyzed)"
+                )
+                self.lbl_similar_shot_status.setStyleSheet("color: #4CAF50; font-size: 11px; font-weight: bold;")
+                self.btn_run_similar_shots.setEnabled(True)
+
+        except Exception as e:
+            self.lbl_similar_shot_status.setText(f"Status unavailable: {str(e)}")
+            self.lbl_similar_shot_status.setStyleSheet("color: #f44336; font-size: 11px;")
+            print(f"Error checking similar shot status: {e}")
 
     def _update_backfill_status(self):
         """Update backfill status label."""
