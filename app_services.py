@@ -1,5 +1,5 @@
 # app_services.py
-# Version 09.18.01.15 dated 20251102
+# Version 10.01.01.03 dated 20260115
 # Migrated to use ThumbnailService for unified caching
 
 import os, io, shutil, hashlib, json
@@ -536,17 +536,49 @@ def scan_repository(root_folder, incremental=False, cancel_callback=None):
             # CRITICAL FIX: Add progress dialog for video processing feedback
             # Create progress dialog for video metadata extraction
             from PySide6.QtWidgets import QProgressDialog, QApplication
+            from main_window_qt import get_main_window
+            main_window = get_main_window()
+            
             video_progress = QProgressDialog(
                 "Extracting video metadata...", 
                 "Cancel", 
                 0, 100, 
-                None
+                main_window  # Use main window as parent for proper centering
             )
             video_progress.setWindowTitle("🎬 Video Processing")
             video_progress.setMinimumDuration(0)  # Show immediately
             video_progress.setValue(0)
             video_progress.show()
             QApplication.processEvents()
+            
+            # CRITICAL FIX: Explicitly center video progress dialog on main window
+            try:
+                def center_dialog(dialog):
+                    """Center dialog with retry mechanism"""
+                    dialog.adjustSize()
+                    QApplication.processEvents()
+                    
+                    if main_window:
+                        parent_rect = main_window.geometry()
+                        dialog_rect = dialog.geometry()
+                        
+                        center_x = parent_rect.x() + (parent_rect.width() - dialog_rect.width()) // 2
+                        center_y = parent_rect.y() + (parent_rect.height() - dialog_rect.height()) // 2
+                        
+                        dialog.move(center_x, center_y)
+                        return center_x, center_y
+                    return 0, 0
+                
+                # Initial centering attempt
+                center_x, center_y = center_dialog(video_progress)
+                print(f"[SCAN] Video progress dialog centered at ({center_x}, {center_y})")
+                
+                # Additional centering after a brief delay
+                from PySide6.QtCore import QTimer
+                QTimer.singleShot(50, lambda: center_dialog(video_progress))
+                
+            except Exception as e:
+                print(f"[SCAN] Could not center video progress dialog: {e}")
             
             # Track video progress
             def on_video_progress(current, total, video_path):
