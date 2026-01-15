@@ -5779,7 +5779,45 @@ class GooglePhotosLayout(BaseLayout):
         container.setProperty("photo_path", path)
         container.setProperty("thumbnail_button", thumb)
         container.setProperty("checkbox", checkbox)
-        
+
+        # PHASE 2: Stack badge overlay (bottom-right corner)
+        # Shows count of duplicates/similar photos in stack
+        try:
+            from layouts.google_components.stack_badge_widget import create_stack_badge
+            from repository.stack_repository import StackRepository
+            from repository.photo_repository import PhotoRepository
+            from repository.base_repository import DatabaseConnection
+
+            # Get photo ID to check for stack membership
+            db_conn = DatabaseConnection()
+            photo_repo = PhotoRepository(db_conn)
+            photo = photo_repo.get_by_path(path)
+
+            if photo:
+                photo_id = photo.get('id')
+                stack_repo = StackRepository(db_conn)
+
+                # Check if this photo is in any stack
+                stack = stack_repo.get_stack_by_photo_id(self.project_id, photo_id)
+
+                if stack:
+                    stack_id = stack['stack_id']
+                    member_count = stack_repo.count_stack_members(self.project_id, stack_id)
+
+                    # Create stack badge
+                    stack_badge = create_stack_badge(member_count, stack_id, container)
+
+                    # Connect click signal to open stack view
+                    stack_badge.stack_clicked.connect(self._on_stack_badge_clicked)
+
+                    # Store reference
+                    container.setProperty("stack_badge", stack_badge)
+
+                    logger.debug(f"Added stack badge to {os.path.basename(path)}: {member_count} members")
+        except Exception as e:
+            # Don't fail thumbnail creation if stack badge fails
+            logger.warning(f"Failed to create stack badge for {os.path.basename(path)}: {e}")
+
         # NOTE: Tag badges are now painted directly on PhotoButton, not as QLabel overlays
 
         # Connect signals
@@ -8521,6 +8559,66 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
         # For now, just log the action
         # In future, could refresh the current view if needed
         # self._load_photos(thumb_size=self.current_thumb_size)
+
+    def _on_stack_badge_clicked(self, stack_id: int):
+        """
+        Handle click on stack badge overlay.
+
+        Opens StackViewDialog to show all members of the stack.
+
+        Args:
+            stack_id: Stack ID to display
+        """
+        try:
+            from layouts.google_components.stack_view_dialog import StackViewDialog
+
+            if self.project_id is None:
+                from PySide6.QtWidgets import QMessageBox
+                QMessageBox.warning(
+                    self.main_window if hasattr(self, 'main_window') else None,
+                    "No Project Selected",
+                    "Please select a project before viewing stacks."
+                )
+                return
+
+            # Open the stack view dialog
+            dialog = StackViewDialog(
+                project_id=self.project_id,
+                stack_id=stack_id,
+                parent=self.main_window if hasattr(self, 'main_window') else None
+            )
+
+            # Connect signal for refresh after actions
+            dialog.stack_action_taken.connect(self._on_stack_action_taken)
+
+            # Show the dialog
+            dialog.exec()
+
+        except Exception as e:
+            from PySide6.QtWidgets import QMessageBox
+            import traceback
+            error_msg = f"Failed to open stack view:\n{e}\n\n{traceback.format_exc()}"
+            print(f"[GooglePhotosLayout] ERROR: {error_msg}")
+            QMessageBox.critical(
+                self.main_window if hasattr(self, 'main_window') else None,
+                "Error Opening Stack View",
+                f"Failed to open stack view:\n{e}"
+            )
+
+    def _on_stack_action_taken(self, action: str, stack_id: int):
+        """
+        Handle actions taken in StackViewDialog.
+
+        Args:
+            action: Action type ("delete", "unstack", etc.)
+            stack_id: ID of stack that was modified
+        """
+        print(f"[GooglePhotosLayout] Stack action taken: {action} on stack {stack_id}")
+
+        # Refresh view to show updated state
+        if action in ["delete", "unstack"]:
+            # Reload the current view to reflect deletions
+            self._load_photos(thumb_size=self.current_thumb_size)
 
     def get_sidebar(self):
         """Get sidebar component."""
