@@ -2680,6 +2680,28 @@ class MainWindow(QMainWindow):
             # Show progress dialog
             progress_dialog.show()
 
+            # CRITICAL FIX: Explicitly center face detection progress dialog on main window
+            # This ensures the dialog appears in the center of the application geometry
+            try:
+                # Ensure dialog geometry is calculated
+                progress_dialog.adjustSize()
+                from PySide6.QtWidgets import QApplication
+                QApplication.processEvents()
+
+                # Get geometries
+                parent_rect = self.geometry()
+                dialog_rect = progress_dialog.geometry()
+
+                # Calculate center position
+                center_x = parent_rect.x() + (parent_rect.width() - dialog_rect.width()) // 2
+                center_y = parent_rect.y() + (parent_rect.height() - dialog_rect.height()) // 2
+
+                # Move dialog to center
+                progress_dialog.move(center_x, center_y)
+                print(f"[MainWindow] Face detection progress dialog centered at ({center_x}, {center_y})")
+            except Exception as e:
+                print(f"[MainWindow] Could not center face detection progress dialog: {e}")
+
         except ImportError as e:
             from PySide6.QtWidgets import QMessageBox
             QMessageBox.critical(
