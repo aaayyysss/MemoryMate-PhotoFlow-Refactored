@@ -436,3 +436,110 @@ class AssetService:
             "progress_percent": round(progress_pct, 2),
             "is_complete": photos_without_instance == 0
         }
+
+    # =========================================================================
+    # DUPLICATE DELETION
+    # =========================================================================
+
+    def delete_duplicate_photos(
+        self,
+        project_id: int,
+        photo_ids: List[int],
+        delete_files: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Delete duplicate photos and update asset representatives if needed.
+
+        This method handles the complete deletion workflow:
+        1. Identifies affected assets before deletion
+        2. Deletes photos using PhotoDeletionService (CASCADE removes instances)
+        3. Updates representatives for affected assets
+
+        Args:
+            project_id: Project ID
+            photo_ids: List of photo IDs to delete
+            delete_files: If True, also delete files from disk (default: True)
+
+        Returns:
+            Dictionary with deletion results and affected assets
+        """
+        from services.photo_deletion_service import PhotoDeletionService
+
+        if not photo_ids:
+            return {
+                "success": False,
+                "error": "No photo IDs provided",
+                "photos_deleted": 0,
+                "files_deleted": 0
+            }
+
+        self.logger.info(f"Deleting {len(photo_ids)} duplicate photos from project {project_id}")
+
+        # Step 1: Identify affected assets BEFORE deletion
+        affected_assets = set()
+        representative_updates = {}  # asset_id -> was_representative_deleted
+
+        for photo_id in photo_ids:
+            # Check if this photo is linked to an asset
+            asset_id = self.asset_repo.get_asset_id_by_photo_id(project_id, photo_id)
+            if asset_id:
+                affected_assets.add(asset_id)
+
+                # Check if this photo is the representative
+                asset = self.asset_repo.get_asset_by_id(project_id, asset_id)
+                if asset and asset.get('representative_photo_id') == photo_id:
+                    representative_updates[asset_id] = True
+                    self.logger.info(f"Representative photo {photo_id} will be deleted from asset {asset_id}")
+
+        self.logger.info(f"Deletion affects {len(affected_assets)} assets")
+
+        # Step 2: Delete photos (CASCADE on media_instance handles instance deletion)
+        deletion_service = PhotoDeletionService(
+            photo_repo=self.photo_repo,
+            folder_repo=None  # Will be created internally if needed
+        )
+
+        deletion_result = deletion_service.delete_photos_by_ids(
+            photo_ids=photo_ids,
+            delete_files=delete_files,
+            invalidate_cache=True
+        )
+
+        # Step 3: Update representatives for affected assets
+        updated_representatives = []
+
+        for asset_id in affected_assets:
+            # Check if asset still exists (could be deleted if all instances removed)
+            asset = self.asset_repo.get_asset_by_id(project_id, asset_id)
+            if not asset:
+                self.logger.info(f"Asset {asset_id} was deleted (no remaining instances)")
+                continue
+
+            # Check remaining instance count
+            remaining_instances = self.asset_repo.list_asset_instances(project_id, asset_id)
+
+            if not remaining_instances:
+                # No instances left - delete the asset
+                self.asset_repo.delete({"asset_id": asset_id, "project_id": project_id})
+                self.logger.info(f"Deleted asset {asset_id} (no remaining instances)")
+            elif asset_id in representative_updates:
+                # Representative was deleted, choose a new one
+                new_rep_id = self.choose_representative_photo(project_id, asset_id)
+                if new_rep_id:
+                    self.asset_repo.set_representative_photo(project_id, asset_id, new_rep_id)
+                    updated_representatives.append({
+                        "asset_id": asset_id,
+                        "new_representative_photo_id": new_rep_id
+                    })
+                    self.logger.info(f"Updated representative for asset {asset_id} to photo {new_rep_id}")
+
+        # Step 4: Return results
+        return {
+            "success": True,
+            "photos_deleted": deletion_result.photos_deleted_from_db,
+            "files_deleted": deletion_result.files_deleted_from_disk,
+            "files_not_found": deletion_result.files_not_found,
+            "affected_assets": list(affected_assets),
+            "updated_representatives": updated_representatives,
+            "errors": deletion_result.errors
+        }

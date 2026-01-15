@@ -317,6 +317,28 @@ class AssetRepository(BaseRepository):
             row = cur.fetchone()
             return int(row["count"]) if row else 0
 
+    def get_asset_id_by_photo_id(self, project_id: int, photo_id: int) -> Optional[int]:
+        """
+        Get the asset_id for a given photo_id.
+
+        Args:
+            project_id: Project ID
+            photo_id: Photo ID
+
+        Returns:
+            asset_id if found, None otherwise
+        """
+        sql = """
+            SELECT asset_id
+            FROM media_instance
+            WHERE project_id = ? AND photo_id = ?
+            LIMIT 1
+        """
+        with self._db_connection.get_connection(read_only=True) as conn:
+            cur = conn.execute(sql, (project_id, photo_id))
+            row = cur.fetchone()
+            return int(row["asset_id"]) if row else None
+
     # =========================================================================
     # BACKFILL SUPPORT
     # =========================================================================
