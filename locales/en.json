@@ -313,6 +313,13 @@
       "auto_run": "Auto-run after scan",
       "auto_run_hint": "Automatically extract metadata after completing photo scan"
     },
+    "duplicate": {
+      "title": "Duplicate Management",
+      "description": "Prepare photos for duplicate and similar shot detection by computing file hashes and linking to assets.",
+      "status_checking": "Checking status...",
+      "run_backfill": "🔍 Prepare Duplicate Detection",
+      "run_backfill_hint": "Compute SHA256 hashes and link photos to assets for duplicate detection. This is a one-time operation."
+    },
     "video": {
       "title": "Video Settings",
       "ffprobe_path": "FFprobe Path",
