@@ -329,6 +329,21 @@ VALUES ('7.0.0', 'Semantic embeddings separation: semantic_embeddings, semantic_
 )
 
 
+# Migration to v8.0.0 (Asset-centric duplicate model + stacks)
+MIGRATION_8_0_0 = Migration(
+    version="8.0.0",
+    description="Asset-centric duplicates model + stacks: media_asset, media_instance, media_stack",
+    sql="""
+-- Migration v8.0.0 handled by migration_v8_media_assets_and_stacks.sql
+-- This placeholder ensures version tracking works with MigrationManager
+
+INSERT OR REPLACE INTO schema_version (version, description, applied_at)
+VALUES ('8.0.0', 'Asset-centric duplicates model + stacks: media_asset, media_instance, media_stack', CURRENT_TIMESTAMP);
+""",
+    rollback_sql=""
+)
+
+
 # Ordered list of all migrations
 ALL_MIGRATIONS = [
     MIGRATION_1_5_0,
@@ -337,6 +352,7 @@ ALL_MIGRATIONS = [
     MIGRATION_4_0_0,
     MIGRATION_6_0_0,
     MIGRATION_7_0_0,
+    MIGRATION_8_0_0,
 ]
 
 
@@ -507,6 +523,9 @@ class MigrationManager:
                 elif migration.version == "7.0.0":
                     # Apply migration v7 using migration_v7_semantic_separation.sql
                     self._apply_migration_v7(conn)
+                elif migration.version == "8.0.0":
+                    # Apply migration v8 using migration_v8_media_assets_and_stacks.sql
+                    self._apply_migration_v8(conn)
 
                 # Execute migration SQL (version tracking)
                 conn.executescript(migration.sql)
@@ -795,6 +814,43 @@ class MigrationManager:
 
         except Exception as e:
             self.logger.error(f"Failed to apply migration v7.0.0: {e}")
+            raise
+
+    def _apply_migration_v8(self, conn: sqlite3.Connection):
+        """
+        Apply migration v8.0.0 using migration_v8_media_assets_and_stacks.sql file.
+
+        Args:
+            conn: Database connection
+        """
+        self.logger.info("Applying migration v8.0.0 tables (asset-centric duplicate model)...")
+
+        try:
+            import os
+            from pathlib import Path
+
+            # Find migration SQL file
+            migrations_dir = Path(__file__).parent.parent / "migrations"
+            sql_file = migrations_dir / "migration_v8_media_assets_and_stacks.sql"
+
+            if not sql_file.exists():
+                raise FileNotFoundError(f"Migration file not found: {sql_file}")
+
+            # Read and execute SQL
+            with open(sql_file, 'r') as f:
+                migration_sql = f.read()
+
+            conn.executescript(migration_sql)
+            conn.commit()
+
+            self.logger.info("✓ Migration v8.0.0 tables created successfully")
+            self.logger.info("  - media_asset: unique content identity")
+            self.logger.info("  - media_instance: file occurrences")
+            self.logger.info("  - media_stack: grouping containers")
+            self.logger.info("  - media_stack_member: stack memberships")
+
+        except Exception as e:
+            self.logger.error(f"Failed to apply migration v8.0.0: {e}")
             raise
 
 
