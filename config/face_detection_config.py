@@ -1,3 +1,6 @@
+# face_detection_config.py
+# Version 10.01.01.03 dated 20260115
+
 """
 Face Detection Configuration
 Manages settings for face detection, recognition, and clustering.
@@ -304,12 +307,13 @@ class FaceDetectionConfig:
         """
         return self.config.get(key, default)
 
-    def set(self, key: str, value: Any) -> None:
+    def set(self, key: str, value: Any, save_now: bool = True) -> None:
         """Set configuration value with validation.
 
         Args:
             key: Configuration key
             value: Value to set
+            save_now: Whether to save immediately (default: True)
 
         Raises:
             ValueError: If value fails validation
@@ -320,7 +324,8 @@ class FaceDetectionConfig:
             raise ValueError(f"Invalid configuration: {error_msg}")
 
         self.config[key] = value
-        self.save()
+        if save_now:
+            self.save()
 
     def is_enabled(self) -> bool:
         """Check if face detection is enabled."""
