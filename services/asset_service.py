@@ -289,7 +289,7 @@ class AssetService:
         photos = []
 
         for photo_id in photo_ids:
-            photo = self.photo_repo.get_photo_by_id(photo_id)
+            photo = self.photo_repo.get_by_id(photo_id)
             if photo:
                 photos.append(photo)
 
@@ -391,7 +391,7 @@ class AssetService:
         # Fetch photo details for each instance
         photos = []
         for instance in instances:
-            photo = self.photo_repo.get_photo_by_id(instance["photo_id"])
+            photo = self.photo_repo.get_by_id(instance["photo_id"])
             if photo:
                 # Merge instance metadata
                 photo["instance_info"] = {
