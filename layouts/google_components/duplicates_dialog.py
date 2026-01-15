@@ -117,8 +117,8 @@ class PhotoInstanceWidget(QWidget):
 
         # Selection checkbox (disabled for representative)
         self.checkbox = QCheckBox("Select for deletion")
-        self.checkbox.setEnabled(not is_representative)
-        if is_representative:
+        self.checkbox.setEnabled(not self.is_representative)
+        if self.is_representative:
             self.checkbox.setToolTip("Cannot delete representative photo")
         self.checkbox.stateChanged.connect(self._on_selection_changed)
         layout.addWidget(self.checkbox)
