@@ -343,6 +343,23 @@ VALUES ('8.0.0', 'Asset-centric duplicates model + stacks: media_asset, media_in
     rollback_sql=""
 )
 
+# Migration to v9.0.0 (Add photo_count column to photo_folders)
+MIGRATION_9_0_0 = Migration(
+    version="9.0.0",
+    description="Add photo_count column to photo_folders table",
+    sql="""
+-- Add photo_count column to photo_folders table
+-- SQLite doesn't fail if column already exists when using IF NOT EXISTS workaround
+
+-- Try to add the column (will fail silently if already exists)
+-- We'll use a pragma check to see if the column exists first
+
+INSERT OR REPLACE INTO schema_version (version, description, applied_at)
+VALUES ('9.0.0', 'Add photo_count column to photo_folders table', CURRENT_TIMESTAMP);
+""",
+    rollback_sql=""
+)
+
 
 # Ordered list of all migrations
 ALL_MIGRATIONS = [
@@ -353,6 +370,7 @@ ALL_MIGRATIONS = [
     MIGRATION_6_0_0,
     MIGRATION_7_0_0,
     MIGRATION_8_0_0,
+    MIGRATION_9_0_0,
 ]
 
 
@@ -526,6 +544,9 @@ class MigrationManager:
                 elif migration.version == "8.0.0":
                     # Apply migration v8 using migration_v8_media_assets_and_stacks.sql
                     self._apply_migration_v8(conn)
+                elif migration.version == "9.0.0":
+                    # Apply migration v9: add photo_count column to photo_folders
+                    self._add_photo_count_column_if_missing(conn)
 
                 # Execute migration SQL (version tracking)
                 conn.executescript(migration.sql)
@@ -761,6 +782,32 @@ class MigrationManager:
 
         conn.commit()
         self.logger.info("✓ File hash column added successfully")
+
+    def _add_photo_count_column_if_missing(self, conn: sqlite3.Connection):
+        """
+        Add photo_count column to photo_folders if it doesn't exist.
+
+        This is the core of the v9.0.0 migration - adds photo_count for efficient
+        folder photo counting during deletions.
+
+        Args:
+            conn: Database connection
+        """
+        cur = conn.cursor()
+
+        # Check photo_folders for photo_count column
+        cur.execute("PRAGMA table_info(photo_folders)")
+        folder_columns = {row['name'] for row in cur.fetchall()}
+
+        if 'photo_count' not in folder_columns:
+            self.logger.info("Adding column photo_folders.photo_count")
+            cur.execute("""
+                ALTER TABLE photo_folders
+                ADD COLUMN photo_count INTEGER DEFAULT 0
+            """)
+
+        conn.commit()
+        self.logger.info("✓ Photo count column added successfully")
 
     def _apply_migration_v6(self, conn: sqlite3.Connection):
         """
