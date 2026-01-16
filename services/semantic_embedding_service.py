@@ -92,7 +92,7 @@ class SemanticEmbeddingService:
         return self._available
 
     def _load_model(self):
-        """Lazy load CLIP model."""
+        """Lazy load CLIP model from local cache."""
         if self._model is not None:
             return
 
@@ -120,13 +120,75 @@ class SemanticEmbeddingService:
         }
         hf_model = model_map.get(self.model_name, self.model_name)
 
-        # Load model and processor
-        self._processor = self._CLIPProcessor.from_pretrained(hf_model)
-        self._model = self._CLIPModel.from_pretrained(hf_model)
+        # Get local model path from settings if available
+        local_model_path = None
+        try:
+            from settings_manager import SettingsManager
+            settings = SettingsManager()
+            # Check for custom CLIP model path
+            clip_path = settings.get("clip_model_path", "").strip()
+            if clip_path:
+                from pathlib import Path
+                clip_path_obj = Path(clip_path)
+                if clip_path_obj.exists() and clip_path_obj.is_dir():
+                    local_model_path = str(clip_path_obj)
+                    logger.info(f"[SemanticEmbeddingService] Using custom model path: {local_model_path}")
+
+            # Fallback to Model folder in root
+            if not local_model_path:
+                app_root = Path(__file__).parent.parent.absolute()
+                model_folder = app_root / 'Model' / hf_model.replace('/', '--')
+                if model_folder.exists():
+                    local_model_path = str(model_folder)
+                    logger.info(f"[SemanticEmbeddingService] Using Model folder: {local_model_path}")
+                else:
+                    # Try models folder (lowercase)
+                    model_folder = app_root / 'models' / hf_model.replace('/', '--')
+                    if model_folder.exists():
+                        local_model_path = str(model_folder)
+                        logger.info(f"[SemanticEmbeddingService] Using models folder: {local_model_path}")
+        except Exception as e:
+            logger.warning(f"[SemanticEmbeddingService] Could not check for local models: {e}")
+
+        # Load model and processor with offline support
+        try:
+            if local_model_path:
+                # Load from local path with offline mode
+                logger.info(f"[SemanticEmbeddingService] Loading from local path (offline mode): {local_model_path}")
+                self._processor = self._CLIPProcessor.from_pretrained(
+                    local_model_path,
+                    local_files_only=True
+                )
+                self._model = self._CLIPModel.from_pretrained(
+                    local_model_path,
+                    local_files_only=True
+                )
+            else:
+                # Fallback to HuggingFace with local cache (will download if needed)
+                logger.warning(f"[SemanticEmbeddingService] No local models found, attempting to load from cache: {hf_model}")
+                logger.warning(f"[SemanticEmbeddingService] If offline, this will fail. Place models in: ./Model/{hf_model.replace('/', '--')}/")
+                self._processor = self._CLIPProcessor.from_pretrained(
+                    hf_model,
+                    local_files_only=False  # Allow download if not cached
+                )
+                self._model = self._CLIPModel.from_pretrained(
+                    hf_model,
+                    local_files_only=False  # Allow download if not cached
+                )
+        except Exception as e:
+            logger.error(f"[SemanticEmbeddingService] Failed to load model: {e}")
+            raise RuntimeError(
+                f"Failed to load CLIP model '{hf_model}'.\n\n"
+                f"For offline use:\n"
+                f"1. Download the model to: ./Model/{hf_model.replace('/', '--')}/\n"
+                f"2. Or set custom path in Preferences → Visual Embeddings → Model Path\n\n"
+                f"Error: {str(e)}"
+            )
+
         self._model.to(self._device)
         self._model.eval()
 
-        logger.info(f"[SemanticEmbeddingService] Model loaded: {hf_model}")
+        logger.info(f"[SemanticEmbeddingService] Model loaded successfully: {hf_model}")
 
     def encode_image(self, image_path: str) -> np.ndarray:
         """
