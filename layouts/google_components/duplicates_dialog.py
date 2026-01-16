@@ -161,7 +161,9 @@ class PhotoInstanceWidget(QWidget):
     def _on_selection_changed(self, state):
         """Handle selection change."""
         is_selected = state == Qt.Checked
-        self.selection_changed.emit(self.photo['id'], is_selected)
+        photo_id = self.photo['id']
+        logger.debug(f"PhotoInstanceWidget emitting selection_changed: photo_id={photo_id}, is_selected={is_selected}, state={state}")
+        self.selection_changed.emit(photo_id, is_selected)
 
     def is_selected(self) -> bool:
         """Check if this instance is selected for deletion."""
@@ -503,13 +505,17 @@ class DuplicatesDialog(QDialog):
     @Slot(int, bool)
     def _on_instance_selection_changed(self, photo_id: int, is_selected: bool):
         """Handle instance selection change."""
+        logger.debug(f"Selection changed: photo_id={photo_id}, is_selected={is_selected}")
+
         if is_selected:
             self.selected_photos.add(photo_id)
         else:
             self.selected_photos.discard(photo_id)
 
         # Enable delete button if any photos selected
-        self.btn_delete_selected.setEnabled(len(self.selected_photos) > 0)
+        enabled = len(self.selected_photos) > 0
+        logger.debug(f"Setting delete button enabled={enabled}, selected_photos={self.selected_photos}")
+        self.btn_delete_selected.setEnabled(enabled)
 
     def _on_delete_selected(self):
         """Handle delete selected button click."""
