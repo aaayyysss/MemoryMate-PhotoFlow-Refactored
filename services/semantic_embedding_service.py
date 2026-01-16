@@ -123,12 +123,12 @@ class SemanticEmbeddingService:
         # Get local model path from settings if available
         local_model_path = None
         try:
+            from pathlib import Path  # Import at method level
             from settings_manager_qt import SettingsManager
             settings = SettingsManager()
             # Check for custom CLIP model path
             clip_path = settings.get("clip_model_path", "").strip()
             if clip_path:
-                from pathlib import Path
                 clip_path_obj = Path(clip_path)
                 if clip_path_obj.exists() and clip_path_obj.is_dir():
                     local_model_path = str(clip_path_obj)

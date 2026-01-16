@@ -730,10 +730,12 @@ class ScanController(QObject):
                             # Run similar shot stack generation
                             from services.stack_generation_service import StackGenerationService, StackGenParams
                             from repository.stack_repository import StackRepository
+                            from repository.photo_repository import PhotoRepository
 
+                            photo_repo = PhotoRepository(db_conn)
                             stack_repo = StackRepository(db_conn)
                             stack_gen_service = StackGenerationService(
-                                photo_repo=None,  # Will create internally
+                                photo_repo=photo_repo,
                                 stack_repo=stack_repo,
                                 similarity_service=embedding_service
                             )
