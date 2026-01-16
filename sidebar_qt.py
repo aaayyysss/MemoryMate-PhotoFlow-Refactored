@@ -7,7 +7,7 @@ from PySide6.QtWidgets import (
     QWidget, QTreeView, QMenu, QFileDialog,
     QVBoxLayout, QMessageBox, QTreeWidgetItem, QTreeWidget,
     QHeaderView, QHBoxLayout, QPushButton, QLabel, QTabWidget, QListWidget, QListWidgetItem, QProgressBar, QAbstractItemView,
-    QTableWidget, QTableWidgetItem, QScrollArea, QLineEdit, QTextBrowser, QDialog
+    QTableWidget, QTableWidgetItem, QScrollArea, QLineEdit, QTextBrowser, QDialog, QFrame
 )
 from PySide6.QtCore import Qt, QPoint, Signal, QTimer, QSize
 from PySide6.QtGui import (
@@ -714,10 +714,10 @@ class SidebarTabs(QWidget):
                 asset_repo = AssetRepository(db_conn)
                 stack_repo = StackRepository(db_conn)
 
-                # Get exact duplicate counts
-                exact_groups = asset_repo.get_duplicate_groups_for_project(self.project_id)
-                exact_photo_count = sum(len(group['photos']) for group in exact_groups)
-                exact_group_count = len(exact_groups)
+                # Get exact duplicate counts (assets with 2+ instances)
+                exact_assets = asset_repo.list_duplicate_assets(self.project_id, min_instances=2)
+                exact_photo_count = sum(asset['instance_count'] for asset in exact_assets)
+                exact_group_count = len(exact_assets)
 
                 # Get similar shot stacks (type="similar")
                 similar_stacks = stack_repo.list_stacks(self.project_id, stack_type="similar", limit=10000)

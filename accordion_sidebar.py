@@ -812,6 +812,7 @@ class AccordionSidebar(QWidget):
     # Internal signals for thread-safe UI updates
     _datesLoaded = Signal(dict)    # Thread → UI: dates data ready
     _foldersLoaded = Signal(list)  # Thread → UI: folders data ready
+    _duplicatesLoaded = Signal(dict) # Thread → UI: duplicates counts ready (Phase 3A)
     _tagsLoaded = Signal(list)     # Thread → UI: tags data ready
     _branchesLoaded = Signal(list) # Thread → UI: branches data ready
     _quickLoaded = Signal(list)    # Thread → UI: quick dates data ready
@@ -835,6 +836,7 @@ class AccordionSidebar(QWidget):
             "people": 0,
             "dates": 0,
             "folders": 0,
+            "duplicates": 0,  # Phase 3A
             "tags": 0,
             "branches": 0,
             "quick": 0,
@@ -885,6 +887,7 @@ class AccordionSidebar(QWidget):
         # Connect internal signals for thread-safe UI updates
         self._datesLoaded.connect(self._build_dates_tree, Qt.QueuedConnection)
         self._foldersLoaded.connect(self._build_folders_tree, Qt.QueuedConnection)
+        self._duplicatesLoaded.connect(self._build_duplicates_widget, Qt.QueuedConnection)  # Phase 3A
         self._tagsLoaded.connect(self._build_tags_table, Qt.QueuedConnection)
         self._branchesLoaded.connect(self._build_branches_table, Qt.QueuedConnection)
         self._quickLoaded.connect(self._build_quick_table, Qt.QueuedConnection)
@@ -911,6 +914,7 @@ class AccordionSidebar(QWidget):
 #            ("videos",   "🎬 Videos",      "🎬"),    # >>> FIX: keep only the NEW videos entry
             ("dates",    f"📅 {tr('sidebar.by_date')}",            "📅"),
             ("folders",  f"📁 {tr('sidebar.folders')}",            "📁"),
+            ("duplicates", "⚡ Duplicates",                          "⚡"),  # Phase 3A
             ("videos",   f"🎬 {tr('sidebar.videos')}",             "🎬"),  # NEW: Videos section
             ("tags",     f"🏷️  {tr('sidebar.tags')}",               "🏷️"),
             ("branches", f"🔀 {tr('sidebar.branches')}",           "🔀"),
@@ -1063,6 +1067,8 @@ class AccordionSidebar(QWidget):
             self._load_dates_section()
         elif section_id == "folders":
             self._load_folders_section()
+        elif section_id == "duplicates":
+            self._load_duplicates_section()  # Phase 3A
         elif section_id == "videos":
             self._load_videos_section()  # NEW: Load videos
         elif section_id == "tags":
@@ -1928,6 +1934,247 @@ class AccordionSidebar(QWidget):
             count += 1
             count_recursive(tree.topLevelItem(i))
         return count
+
+    # =========================================================================
+    # DUPLICATES SECTION (Phase 3A)
+    # =========================================================================
+
+    def _load_duplicates_section(self):
+        """Load Duplicates section with duplicate counts."""
+        self._dbg("Loading Duplicates section...")
+
+        section = self.sections.get("duplicates")
+        if not section or not self.project_id:
+            return
+
+        # Increment generation to track this reload
+        self._reload_generations["duplicates"] += 1
+        current_generation = self._reload_generations["duplicates"]
+        self._dbg(f"Duplicates reload generation: {current_generation}")
+
+        # THREAD-SAFE: Load counts in background thread
+        def work():
+            try:
+                from repository.asset_repository import AssetRepository
+                from repository.stack_repository import StackRepository
+                from repository.base_repository import DatabaseConnection
+
+                # Initialize repositories
+                db_conn = DatabaseConnection()
+                asset_repo = AssetRepository(db_conn)
+                stack_repo = StackRepository(db_conn)
+
+                # Get exact duplicate counts (assets with 2+ instances)
+                exact_assets = asset_repo.list_duplicate_assets(self.project_id, min_instances=2)
+                exact_photo_count = sum(asset['instance_count'] for asset in exact_assets)
+                exact_group_count = len(exact_assets)
+
+                # Get similar shot stacks (type="similar")
+                similar_stacks = stack_repo.list_stacks(self.project_id, stack_type="similar", limit=10000)
+                similar_photo_count = 0
+                for stack in similar_stacks:
+                    member_count = stack_repo.count_stack_members(self.project_id, stack['stack_id'])
+                    similar_photo_count += member_count
+                similar_group_count = len(similar_stacks)
+
+                counts = {
+                    'exact_photos': exact_photo_count,
+                    'exact_groups': exact_group_count,
+                    'similar_photos': similar_photo_count,
+                    'similar_groups': similar_group_count
+                }
+
+                self._dbg(f"Loaded duplicate counts: {counts} (gen {current_generation})")
+                return counts
+
+            except Exception as e:
+                self._dbg(f"⚠️ Error loading duplicates: {e}")
+                traceback.print_exc()
+                return {
+                    'exact_photos': 0,
+                    'exact_groups': 0,
+                    'similar_photos': 0,
+                    'similar_groups': 0
+                }
+
+        # Run in thread to avoid blocking UI
+        def on_complete():
+            try:
+                counts = work()
+                # Only emit if this is still the latest reload
+                if current_generation == self._reload_generations["duplicates"]:
+                    self._duplicatesLoaded.emit(counts)
+                else:
+                    self._dbg(f"Discarding stale duplicates data (gen {current_generation} vs {self._reload_generations['duplicates']})")
+            except Exception as e:
+                self._dbg(f"⚠️ Error in duplicates thread: {e}")
+                traceback.print_exc()
+
+        threading.Thread(target=on_complete, daemon=True).start()
+
+    def _build_duplicates_widget(self, counts: dict):
+        """Build duplicates widget with clickable cards."""
+        section = self.sections.get("duplicates")
+        if not section:
+            return
+
+        # Create main container
+        container = QWidget()
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(12, 8, 12, 12)
+        layout.setSpacing(12)
+
+        # Info text
+        info_label = QLabel("Manage and organize duplicate photos")
+        info_label.setStyleSheet("color: #666; font-size: 9pt; padding-bottom: 8px;")
+        layout.addWidget(info_label)
+
+        # Exact Duplicates card
+        exact_card = self._create_duplicate_card(
+            icon="🔍",
+            title="Exact Duplicates",
+            photo_count=counts.get('exact_photos', 0),
+            group_count=counts.get('exact_groups', 0),
+            duplicate_type="exact"
+        )
+        layout.addWidget(exact_card)
+
+        # Similar Shots card
+        similar_card = self._create_duplicate_card(
+            icon="📸",
+            title="Similar Shots",
+            photo_count=counts.get('similar_photos', 0),
+            group_count=counts.get('similar_groups', 0),
+            duplicate_type="similar"
+        )
+        layout.addWidget(similar_card)
+
+        layout.addStretch(1)
+
+        # Action buttons
+        button_layout = QHBoxLayout()
+        button_layout.setSpacing(8)
+
+        btn_refresh = QPushButton("🔄 Refresh")
+        btn_refresh.setToolTip("Refresh duplicate counts")
+        btn_refresh.clicked.connect(lambda: self.reload_section("duplicates"))
+        button_layout.addWidget(btn_refresh)
+
+        btn_settings = QPushButton("⚙️ Settings")
+        btn_settings.setToolTip("Configure duplicate detection")
+        btn_settings.clicked.connect(self._open_duplicate_settings)
+        button_layout.addWidget(btn_settings)
+
+        layout.addLayout(button_layout)
+
+        # Set as section content
+        section.set_content_widget(container)
+
+        total_groups = counts.get('exact_groups', 0) + counts.get('similar_groups', 0)
+        self._dbg(f"Duplicates section loaded: {total_groups} groups")
+
+    def _create_duplicate_card(self, icon: str, title: str, photo_count: int, group_count: int, duplicate_type: str):
+        """Create a clickable card for a duplicate type."""
+        card = QWidget()
+        card.setStyleSheet("""
+            QWidget {
+                background-color: #f8f9fa;
+                border: 1px solid #ddd;
+                border-radius: 6px;
+                padding: 8px;
+            }
+            QWidget:hover {
+                background-color: #e9ecef;
+                border-color: #2196F3;
+            }
+        """)
+        card.setCursor(Qt.PointingHandCursor)
+
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(4)
+
+        # Title row
+        title_layout = QHBoxLayout()
+        title_layout.setSpacing(8)
+
+        icon_label = QLabel(icon)
+        icon_label.setStyleSheet("font-size: 16pt;")
+        title_layout.addWidget(icon_label)
+
+        title_label = QLabel(title)
+        title_label.setStyleSheet("font-weight: bold; font-size: 10pt;")
+        title_layout.addWidget(title_label)
+        title_layout.addStretch(1)
+
+        layout.addLayout(title_layout)
+
+        # Count labels
+        if group_count > 0:
+            count_text = f"{photo_count} photos • {group_count} groups"
+            count_label = QLabel(count_text)
+            count_label.setStyleSheet("color: #555; font-size: 9pt; padding-left: 32px;")
+            layout.addWidget(count_label)
+        else:
+            no_dupes_label = QLabel("No duplicates found")
+            no_dupes_label.setStyleSheet("color: #999; font-size: 9pt; padding-left: 32px;")
+            layout.addWidget(no_dupes_label)
+
+        # Store properties for click handler
+        card.setProperty("duplicate_type", duplicate_type)
+        card.setProperty("has_duplicates", group_count > 0)
+
+        # Make clickable
+        card.mousePressEvent = lambda event: self._on_duplicate_card_clicked(duplicate_type, group_count > 0)
+
+        return card
+
+    def _on_duplicate_card_clicked(self, duplicate_type: str, has_duplicates: bool):
+        """Handle click on duplicate card."""
+        if not has_duplicates:
+            return
+
+        # Import here to avoid circular imports
+        from layouts.google_components.duplicates_dialog import DuplicatesDialog
+
+        # Get main window
+        main_window = self.window()
+
+        # Open duplicates dialog
+        dialog = DuplicatesDialog(
+            project_id=self.project_id,
+            parent=main_window
+        )
+
+        dialog.exec()
+
+        # Refresh counts after dialog closes
+        self.reload_section("duplicates")
+
+    def _open_duplicate_settings(self):
+        """Open preferences dialog to duplicate management settings."""
+        try:
+            # Get main window
+            main_window = self.window()
+
+            # Import preferences dialog
+            from preferences_dialog import PreferencesDialog
+
+            # Open preferences at Duplicate Management tab
+            dialog = PreferencesDialog(parent=main_window)
+
+            # Try to switch to duplicate management tab (tab index 4)
+            if hasattr(dialog, 'tabs'):
+                dialog.tabs.setCurrentIndex(4)
+
+            dialog.exec()
+
+            # Refresh duplicates section after settings change
+            self.reload_section("duplicates")
+
+        except Exception as e:
+            self._dbg(f"Failed to open duplicate settings: {e}")
+            traceback.print_exc()
 
     def _load_tags_section(self):
         """Load Tags section with tag names and photo counts."""
