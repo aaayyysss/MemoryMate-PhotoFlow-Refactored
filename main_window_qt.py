@@ -1244,8 +1244,12 @@ class MainWindow(QMainWindow):
 
         # 🌳 Reload sidebar date tree
         try:
-            self.sidebar.reload_date_tree()
-            print("[Sidebar] Date tree reloaded.")
+            # Check if method exists before calling
+            if hasattr(self.sidebar, 'reload_date_tree'):
+                self.sidebar.reload_date_tree()
+                print("[Sidebar] Date tree reloaded.")
+            else:
+                print("[Sidebar] reload_date_tree() method not available - skipping")
         except Exception as e:
             print(f"[Sidebar] Failed to reload date tree: {e}")
   

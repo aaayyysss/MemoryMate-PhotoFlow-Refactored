@@ -573,6 +573,28 @@ class ScanController(QObject):
                 self.logger.info("Duplicate detection is enabled - starting duplicate detection...")
 
                 try:
+                    # Step 0: Run hash backfill FIRST (required for exact duplicate detection)
+                    if hasattr(self, '_detect_exact') and self._detect_exact:
+                        progress.setLabelText("📝 Computing photo hashes...")
+                        progress.setValue(2)
+                        QApplication.processEvents()
+
+                        self.logger.info("Running hash backfill before duplicate detection...")
+                        from services.asset_service import AssetService
+                        from repository.photo_repository import PhotoRepository
+                        from repository.asset_repository import AssetRepository
+                        from repository.base_repository import DatabaseConnection
+
+                        db_conn = DatabaseConnection()
+                        photo_repo = PhotoRepository(db_conn)
+                        asset_repo = AssetRepository(db_conn)
+                        asset_service = AssetService(photo_repo, asset_repo)
+
+                        # Run hash backfill synchronously
+                        self.logger.info("Starting hash backfill and asset linking...")
+                        backfill_stats = asset_service.backfill_hashes_and_link_assets(current_project_id)
+                        self.logger.info(f"Hash backfill complete: {backfill_stats.scanned} scanned, {backfill_stats.hashed} hashed, {backfill_stats.linked} linked")
+
                     # Step 1: Exact Duplicate Detection (Hash-based)
                     if hasattr(self, '_detect_exact') and self._detect_exact:
                         progress.setLabelText("🔍 Detecting exact duplicates...")
