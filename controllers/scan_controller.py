@@ -97,6 +97,27 @@ class ScanController(QObject):
 
     def start_scan(self, folder, incremental: bool):
         """Entry point called from MainWindow toolbar action."""
+        # Phase 3B: Show pre-scan options dialog
+        from ui.prescan_options_dialog import PreScanOptionsDialog
+
+        options_dialog = PreScanOptionsDialog(parent=self.main, default_incremental=incremental)
+        if options_dialog.exec() != QDialog.Accepted:
+            # User cancelled
+            self.main.statusBar().showMessage("Scan cancelled")
+            return
+
+        # Get user-selected options
+        scan_options = options_dialog.get_options()
+        incremental = scan_options.incremental
+
+        # Store duplicate detection options for post-scan processing
+        self._duplicate_detection_enabled = scan_options.detect_duplicates
+        self._detect_exact = scan_options.detect_exact
+        self._detect_similar = scan_options.detect_similar
+        self._time_window_seconds = scan_options.time_window_seconds
+        self._similarity_threshold = scan_options.similarity_threshold
+        self._min_stack_size = scan_options.min_stack_size
+
         self.cancel_requested = False
         self.main.statusBar().showMessage(f"📸 Scanning repository: {folder} (incremental={incremental})")
         self.main._committed_total = 0
@@ -546,6 +567,105 @@ class ScanController(QObject):
             if video_backfilled:
                 self.logger.info(f"Backfilled {video_backfilled} video rows with created_date")
 
+            # PHASE 3B: Duplicate Detection Integration (Optional Post-Scan Step)
+            duplicate_stats = {"exact": 0, "similar": 0, "total": 0}
+            if hasattr(self, '_duplicate_detection_enabled') and self._duplicate_detection_enabled:
+                self.logger.info("Duplicate detection is enabled - starting duplicate detection...")
+
+                try:
+                    # Step 1: Exact Duplicate Detection (Hash-based)
+                    if hasattr(self, '_detect_exact') and self._detect_exact:
+                        progress.setLabelText("🔍 Detecting exact duplicates...")
+                        progress.setValue(2)
+                        QApplication.processEvents()
+
+                        self.logger.info("Running exact duplicate detection...")
+                        from repository.asset_repository import AssetRepository
+                        from repository.base_repository import DatabaseConnection
+
+                        db_conn = DatabaseConnection()
+                        asset_repo = AssetRepository(db_conn)
+
+                        # Get exact duplicates (assets with 2+ instances)
+                        exact_assets = asset_repo.list_duplicate_assets(current_project_id, min_instances=2)
+                        duplicate_stats["exact"] = len(exact_assets)
+                        duplicate_stats["total"] += duplicate_stats["exact"]
+
+                        self.logger.info(f"Found {duplicate_stats['exact']} exact duplicate groups")
+
+                    # Step 2: Similar Shot Detection (Embedding-based)
+                    if hasattr(self, '_detect_similar') and self._detect_similar:
+                        progress.setLabelText("📸 Detecting similar shots (this may take a while)...")
+                        progress.setValue(3)
+                        QApplication.processEvents()
+
+                        self.logger.info("Running similar shot detection...")
+
+                        # Check if embeddings exist
+                        from services.semantic_embedding_service import SemanticEmbeddingService
+                        from repository.base_repository import DatabaseConnection
+
+                        db_conn = DatabaseConnection()
+                        embedding_service = SemanticEmbeddingService(db_connection=db_conn)
+                        embedding_count = embedding_service.get_embedding_count()
+
+                        if embedding_count == 0:
+                            self.logger.warning("No embeddings found - skipping similar shot detection")
+                            # Show warning to user
+                            QMessageBox.warning(
+                                self.main,
+                                "Similar Shot Detection",
+                                "No image embeddings found.\n\n"
+                                "Similar shot detection requires generating embeddings first.\n"
+                                "Please use Preferences → Duplicate Management → Generate Embeddings."
+                            )
+                        else:
+                            # Run similar shot stack generation
+                            from services.stack_generation_service import StackGenerationService, StackGenParams
+                            from repository.stack_repository import StackRepository
+
+                            stack_repo = StackRepository(db_conn)
+                            stack_gen_service = StackGenerationService(
+                                photo_repo=None,  # Will create internally
+                                stack_repo=stack_repo,
+                                similarity_service=embedding_service
+                            )
+
+                            params = StackGenParams(
+                                time_window_seconds=getattr(self, '_time_window_seconds', 10),
+                                similarity_threshold=getattr(self, '_similarity_threshold', 0.92),
+                                min_stack_size=getattr(self, '_min_stack_size', 3),
+                                rule_version="1"
+                            )
+
+                            stats = stack_gen_service.regenerate_similar_shot_stacks(current_project_id, params)
+                            duplicate_stats["similar"] = stats.stacks_created
+                            duplicate_stats["total"] += duplicate_stats["similar"]
+
+                            self.logger.info(f"Created {duplicate_stats['similar']} similar shot stacks")
+
+                except Exception as e:
+                    self.logger.error(f"Duplicate detection failed: {e}", exc_info=True)
+                    QMessageBox.warning(
+                        self.main,
+                        "Duplicate Detection Error",
+                        f"Duplicate detection failed:\n{str(e)}\n\nThe scan completed successfully, but duplicates were not detected."
+                    )
+
+                # Update message box with duplicate stats if any were found
+                if duplicate_stats["total"] > 0:
+                    try:
+                        if hasattr(self.main, '_scan_complete_msgbox') and self.main._scan_complete_msgbox:
+                            current_text = self.main._scan_complete_msgbox.text()
+                            dup_text = f"\n\n📊 Duplicates found:\n"
+                            if duplicate_stats["exact"] > 0:
+                                dup_text += f"• {duplicate_stats['exact']} exact duplicate groups\n"
+                            if duplicate_stats["similar"] > 0:
+                                dup_text += f"• {duplicate_stats['similar']} similar shot stacks"
+                            self.main._scan_complete_msgbox.setText(current_text + dup_text)
+                    except Exception as e:
+                        self.logger.warning(f"Failed to update scan complete message: {e}")
+
             # PHASE 3: Face Detection Integration (Optional Post-Scan Step)
             # Check if face detection is enabled in configuration
             try:
@@ -889,6 +1009,31 @@ class ScanController(QObject):
                     self.logger.debug("Sidebar reload completed (fallback)")
             elif sidebar_was_updated:
                 self.logger.debug("Skipping sidebar reload - already updated by set_project()")
+
+            # Phase 3B: Refresh duplicates section/tab after scan if duplicate detection was enabled
+            if hasattr(self, '_duplicate_detection_enabled') and self._duplicate_detection_enabled:
+                self.logger.info("Refreshing duplicates section after scan...")
+                try:
+                    # Check which layout is active
+                    if hasattr(self.main, 'layout_manager') and self.main.layout_manager:
+                        current_layout_id = self.main.layout_manager._current_layout_id
+                        if current_layout_id == "google":
+                            # Google Layout: Refresh AccordionSidebar duplicates section
+                            current_layout = self.main.layout_manager._current_layout
+                            if current_layout and hasattr(current_layout, 'accordion_sidebar'):
+                                accordion = current_layout.accordion_sidebar
+                                if hasattr(accordion, 'reload_section'):
+                                    accordion.reload_section("duplicates")
+                                    self.logger.debug("✓ AccordionSidebar duplicates section refreshed")
+                        elif hasattr(self.main.sidebar, "tabs_controller"):
+                            # Current Layout: Refresh SidebarTabs duplicates tab
+                            tabs = self.main.sidebar.tabs_controller
+                            if hasattr(tabs, 'refresh_tab'):
+                                tabs.refresh_tab("duplicates")
+                                self.logger.debug("✓ SidebarTabs duplicates tab refreshed")
+                except Exception as e:
+                    self.logger.warning(f"Failed to refresh duplicates section: {e}")
+
         except Exception as e:
             self.logger.error(f"Error reloading sidebar: {e}", exc_info=True)
 
