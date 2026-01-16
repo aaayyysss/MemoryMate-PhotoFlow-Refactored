@@ -8556,9 +8556,11 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
         """
         print(f"[GooglePhotosLayout] Duplicate action taken: {action} on asset {asset_id}")
 
-        # For now, just log the action
-        # In future, could refresh the current view if needed
-        # self._load_photos(thumb_size=self.current_thumb_size)
+        # Refresh the photo grid to remove deleted photos
+        if action == "delete":
+            print(f"[GooglePhotosLayout] Refreshing grid after deletion...")
+            # Reload photos from database to remove deleted photos from view
+            self._load_photos(thumb_size=self.current_thumb_size)
 
     def _on_stack_badge_clicked(self, stack_id: int):
         """

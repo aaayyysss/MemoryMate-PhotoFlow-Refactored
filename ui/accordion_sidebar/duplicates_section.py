@@ -313,9 +313,13 @@ class DuplicatesSection(BaseSection):
 
             # Import preferences dialog
             from preferences_dialog import PreferencesDialog
+            from settings_manager import SettingsManager
+
+            # Get settings manager
+            settings = SettingsManager()
 
             # Open preferences at Duplicate Management tab
-            dialog = PreferencesDialog(parent=main_window)
+            dialog = PreferencesDialog(settings=settings, parent=main_window)
 
             # Try to switch to duplicate management tab (tab index 4)
             if hasattr(dialog, 'tabs'):

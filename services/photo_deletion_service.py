@@ -73,12 +73,16 @@ class PhotoDeletionService:
 
         self.logger.info(f"Deleting {len(paths)} photos (delete_files={delete_files})")
 
-        # First, get photo metadata to know folder_ids before deletion
+        # First, get photo metadata to know folder_ids and project_ids before deletion
         folders_to_update = set()
+        project_ids = set()
         for path in paths:
             photo = self.photo_repo.get_by_path(path)
-            if photo and photo.get('folder_id'):
-                folders_to_update.add(photo['folder_id'])
+            if photo:
+                if photo.get('folder_id'):
+                    folders_to_update.add(photo['folder_id'])
+                if photo.get('project_id'):
+                    project_ids.add(photo['project_id'])
 
         # Delete from database
         try:
@@ -109,8 +113,9 @@ class PhotoDeletionService:
                     result.errors.append(error_msg)
 
         # Update folder photo counts
-        if folders_to_update:
-            self._update_folder_counts(folders_to_update)
+        if folders_to_update and project_ids:
+            project_id = list(project_ids)[0]
+            self._update_folder_counts(folders_to_update, project_id)
 
         # Invalidate thumbnail cache
         if invalidate_cache:
@@ -150,6 +155,7 @@ class PhotoDeletionService:
         # First, get photo metadata for paths and folder_ids
         paths = []
         folders_to_update = set()
+        project_ids = set()  # Track project IDs for folder count updates
 
         for photo_id in photo_ids:
             photo = self.photo_repo.get_by_id(photo_id)
@@ -159,6 +165,8 @@ class PhotoDeletionService:
                     paths.append(path)
                 if photo.get('folder_id'):
                     folders_to_update.add(photo['folder_id'])
+                if photo.get('project_id'):
+                    project_ids.add(photo['project_id'])
 
         if not paths:
             self.logger.warning("No valid photos found for provided IDs")
@@ -205,8 +213,10 @@ class PhotoDeletionService:
                     result.errors.append(error_msg)
 
         # Update folder photo counts
-        if folders_to_update:
-            self._update_folder_counts(folders_to_update)
+        if folders_to_update and project_ids:
+            # Use first project_id (duplicates should all be from same project)
+            project_id = list(project_ids)[0]
+            self._update_folder_counts(folders_to_update, project_id)
 
         # Invalidate thumbnail cache
         if invalidate_cache:
@@ -280,16 +290,17 @@ class PhotoDeletionService:
 
         return result
 
-    def _update_folder_counts(self, folder_ids: set):
+    def _update_folder_counts(self, folder_ids: set, project_id: int):
         """
         Update photo counts for affected folders.
 
         Args:
             folder_ids: Set of folder IDs to update
+            project_id: Project ID containing the folders
         """
         for folder_id in folder_ids:
             try:
-                count = self.photo_repo.count_by_folder(folder_id)
+                count = self.photo_repo.count_by_folder(folder_id, project_id)
                 self.folder_repo.update_photo_count(folder_id, count)
                 self.logger.debug(f"Updated folder {folder_id} count to {count}")
             except Exception as e:
