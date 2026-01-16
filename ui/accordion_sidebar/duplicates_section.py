@@ -273,8 +273,15 @@ class DuplicatesSection(BaseSection):
         # Import here to avoid circular imports
         from layouts.google_components.duplicates_dialog import DuplicatesDialog
 
-        # Get main window
-        main_window = self.window()
+        # Get main window through parent chain
+        main_window = None
+        if self.parent():
+            # AccordionSidebar is our parent
+            accordion = self.parent()
+            if hasattr(accordion, 'window'):
+                main_window = accordion.window()
+            elif hasattr(accordion, 'parent') and accordion.parent():
+                main_window = accordion.parent()
 
         # Open duplicates dialog
         dialog = DuplicatesDialog(
@@ -294,8 +301,15 @@ class DuplicatesSection(BaseSection):
     def _on_settings_clicked(self):
         """Handle settings button click."""
         try:
-            # Get main window
-            main_window = self.window()
+            # Get main window through parent chain
+            main_window = None
+            if self.parent():
+                # AccordionSidebar is our parent
+                accordion = self.parent()
+                if hasattr(accordion, 'window'):
+                    main_window = accordion.window()
+                elif hasattr(accordion, 'parent') and accordion.parent():
+                    main_window = accordion.parent()
 
             # Import preferences dialog
             from preferences_dialog import PreferencesDialog
