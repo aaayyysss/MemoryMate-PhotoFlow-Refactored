@@ -215,7 +215,7 @@ class SimilarShotStackWorker(QRunnable):
         stack_repo = StackRepository(db_conn)
 
         # Initialize embedding service
-        embedding_service = SemanticEmbeddingService(db_conn)
+        embedding_service = SemanticEmbeddingService(db_connection=db_conn)
 
         # Initialize stack generation service
         self.stack_gen_service = StackGenerationService(

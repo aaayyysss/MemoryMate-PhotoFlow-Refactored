@@ -1475,7 +1475,7 @@ class PreferencesDialog(QDialog):
 
             # Check prerequisites
             db_conn = DatabaseConnection()
-            embedding_service = SemanticEmbeddingService(db_conn)
+            embedding_service = SemanticEmbeddingService(db_connection=db_conn)
             stack_repo = StackRepository(db_conn)
 
             # Check if embeddings exist
@@ -1600,7 +1600,7 @@ class PreferencesDialog(QDialog):
             # Check status
             db_conn = DatabaseConnection()
             stack_repo = StackRepository(db_conn)
-            embedding_service = SemanticEmbeddingService(db_conn)
+            embedding_service = SemanticEmbeddingService(db_connection=db_conn)
 
             embedding_count = embedding_service.get_embedding_count()
             similar_stacks = stack_repo.count_stacks(project_id, stack_type="similar")
