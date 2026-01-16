@@ -143,6 +143,7 @@ class SidebarTabs(QWidget):
     # ▼ add with your other Signals
     _finishBranchesSig = Signal(int, list, float, int)  # (idx, rows, started, gen)
     _finishFoldersSig  = Signal(int, list, float, int)
+    _finishDuplicatesSig = Signal(int, dict, float, int)  # 🔍 Phase 3A (idx, counts_dict, started, gen)
     _finishDatesSig    = Signal(int, object, float, int)  # object to accept dict or list
     _finishTagsSig     = Signal(int, list, float, int)
     _finishPeopleSig   = Signal(int, list, float, int)  # 👥 NEW
@@ -163,7 +164,7 @@ class SidebarTabs(QWidget):
         self._count_targets: list[tuple] = []               # optional future use
         self._tab_indexes: dict[str, int] = {}              # "branches"/"folders"/"dates"/"tags"/"quick" -> tab index
         # ▼ add near your state vars
-        self._tab_gen: dict[str, int] = {"branches":0, "folders":0, "dates":0, "tags":0, "quick":0}
+        self._tab_gen: dict[str, int] = {"branches":0, "folders":0, "duplicates":0, "dates":0, "tags":0, "quick":0}
         # Guard against concurrent refresh_all calls
         self._refreshing_all = False
 
@@ -177,6 +178,7 @@ class SidebarTabs(QWidget):
         self.tab_widget.currentChanged.connect(self._on_tab_changed)
         self._finishBranchesSig.connect(self._finish_branches, Qt.QueuedConnection)
         self._finishFoldersSig.connect(self._finish_folders, Qt.QueuedConnection)
+        self._finishDuplicatesSig.connect(self._finish_duplicates, Qt.QueuedConnection)  # 🔍 Phase 3A
         self._finishDatesSig.connect(self._finish_dates, Qt.QueuedConnection)
         self._finishTagsSig.connect(self._finish_tags, Qt.QueuedConnection)
         self._finishPeopleSig.connect(self._finish_people, Qt.QueuedConnection)
@@ -216,7 +218,7 @@ class SidebarTabs(QWidget):
 
         try:
             self._refreshing_all = True
-            for key in ("branches", "folders", "dates", "tags", "quick"):
+            for key in ("branches", "folders", "duplicates", "dates", "tags", "quick"):
                 idx = self._tab_indexes.get(key)
                 self._dbg(f"refresh_all: key={key}, idx={idx}, force={force}")
                 if idx is not None:
@@ -277,6 +279,7 @@ class SidebarTabs(QWidget):
         for tab_type, label in [
             ("branches", "Branches"),
             ("folders",  "Folders"),
+            ("duplicates", "⚡ Duplicates"),  # 🔍 Phase 3A
             ("dates",    "By Date"),
             ("tags",     "Tags"),
             ("people",   "People"),          # 👥 NEW
@@ -476,6 +479,9 @@ class SidebarTabs(QWidget):
         elif tab_type == "folders":
             self._show_loading(idx, "Loading Folders…")
             self._load_folders(idx, gen)
+        elif tab_type == "duplicates":
+            self._show_loading(idx, "Loading Duplicates…")
+            self._load_duplicates(idx, gen)
         elif tab_type == "dates":
             self._show_loading(idx, "Loading Dates…")
             self._load_dates(idx, gen)
@@ -692,6 +698,260 @@ class SidebarTabs(QWidget):
             count += 1
             count_recursive(tree.topLevelItem(i))
         return count
+
+    # ---------- duplicates ----------
+    def _load_duplicates(self, idx:int, gen:int):
+        """Load duplicate counts (exact, similar shots, burst groups)."""
+        started = time.time()
+        def work():
+            try:
+                from repository.asset_repository import AssetRepository
+                from repository.stack_repository import StackRepository
+                from repository.base_repository import DatabaseConnection
+
+                # Initialize repositories
+                db_conn = DatabaseConnection()
+                asset_repo = AssetRepository(db_conn)
+                stack_repo = StackRepository(db_conn)
+
+                # Get exact duplicate counts
+                exact_groups = asset_repo.get_duplicate_groups_for_project(self.project_id)
+                exact_photo_count = sum(len(group['photos']) for group in exact_groups)
+                exact_group_count = len(exact_groups)
+
+                # Get similar shot stacks (type="similar")
+                similar_stacks = stack_repo.list_stacks(self.project_id, stack_type="similar", limit=10000)
+                similar_photo_count = 0
+                for stack in similar_stacks:
+                    member_count = stack_repo.count_stack_members(self.project_id, stack['stack_id'])
+                    similar_photo_count += member_count
+                similar_group_count = len(similar_stacks)
+
+                counts = {
+                    'exact_photos': exact_photo_count,
+                    'exact_groups': exact_group_count,
+                    'similar_photos': similar_photo_count,
+                    'similar_groups': similar_group_count
+                }
+
+                self._dbg(f"_load_duplicates → got counts: {counts}")
+
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                print(f"[SidebarTabs] _load_duplicates error: {e}")
+                counts = {
+                    'exact_photos': 0,
+                    'exact_groups': 0,
+                    'similar_photos': 0,
+                    'similar_groups': 0
+                }
+
+            self._finishDuplicatesSig.emit(idx, counts, started, gen)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    # ---------- DUPLICATES ----------
+    def _finish_duplicates(self, idx:int, counts:dict, started:float, gen:int):
+        """Populate duplicates tab with counts and action buttons."""
+        if self._is_stale("duplicates", gen):
+            self._dbg(f"_finish_duplicates (stale gen={gen}) — ignoring")
+            return
+
+        self._cancel_timeout(idx)
+        self._clear_tab(idx)
+
+        tab = self.tab_widget.widget(idx)
+        layout = tab.layout()
+
+        # Title
+        title_label = QLabel("<b>⚡ DUPLICATES</b>")
+        title_label.setStyleSheet("font-size: 11pt; padding: 4px;")
+        layout.addWidget(title_label)
+
+        # Info text
+        info_label = QLabel("Manage and organize duplicate photos")
+        info_label.setStyleSheet("color: #666; font-size: 9pt; padding: 2px 4px 8px 4px;")
+        layout.addWidget(info_label)
+
+        # Separator
+        separator = QFrame()
+        separator.setFrameShape(QFrame.HLine)
+        separator.setFrameShadow(QFrame.Sunken)
+        layout.addWidget(separator)
+
+        # Create scrollable area for duplicate types
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setFrameShape(QFrame.NoFrame)
+
+        scroll_widget = QWidget()
+        scroll_layout = QVBoxLayout(scroll_widget)
+        scroll_layout.setContentsMargins(8, 8, 8, 8)
+        scroll_layout.setSpacing(12)
+
+        # Exact Duplicates section
+        exact_widget = self._create_duplicate_type_widget(
+            icon="🔍",
+            title="Exact Duplicates",
+            photo_count=counts.get('exact_photos', 0),
+            group_count=counts.get('exact_groups', 0),
+            duplicate_type="exact"
+        )
+        scroll_layout.addWidget(exact_widget)
+
+        # Similar Shots section
+        similar_widget = self._create_duplicate_type_widget(
+            icon="📸",
+            title="Similar Shots",
+            photo_count=counts.get('similar_photos', 0),
+            group_count=counts.get('similar_groups', 0),
+            duplicate_type="similar"
+        )
+        scroll_layout.addWidget(similar_widget)
+
+        scroll_layout.addStretch(1)
+
+        scroll_area.setWidget(scroll_widget)
+        layout.addWidget(scroll_area, 1)
+
+        # Bottom action buttons
+        button_layout = QHBoxLayout()
+        button_layout.setContentsMargins(8, 8, 8, 8)
+        button_layout.setSpacing(8)
+
+        # Refresh button
+        btn_refresh = QPushButton("🔄 Refresh")
+        btn_refresh.setToolTip("Refresh duplicate counts")
+        btn_refresh.clicked.connect(lambda: self.refresh_tab("duplicates"))
+        button_layout.addWidget(btn_refresh)
+
+        # Settings button
+        btn_settings = QPushButton("⚙️ Settings")
+        btn_settings.setToolTip("Configure duplicate detection settings")
+        btn_settings.clicked.connect(self._open_duplicate_settings)
+        button_layout.addWidget(btn_settings)
+
+        layout.addLayout(button_layout)
+
+        # Mark as populated
+        self._tab_populated.add("duplicates")
+        self._tab_loading.discard("duplicates")
+
+        # Update status
+        st = self._tab_status_labels.get(idx)
+        total_groups = counts.get('exact_groups', 0) + counts.get('similar_groups', 0)
+        if st:
+            st.setText(f"{total_groups} duplicate groups • {time.time()-started:.2f}s")
+
+        self._dbg(f"_finish_duplicates completed: {total_groups} groups")
+
+    def _create_duplicate_type_widget(self, icon: str, title: str, photo_count: int, group_count: int, duplicate_type: str):
+        """Create a clickable widget for a duplicate type with counts."""
+        widget = QWidget()
+        widget.setStyleSheet("""
+            QWidget {
+                background-color: #f8f9fa;
+                border: 1px solid #ddd;
+                border-radius: 6px;
+                padding: 8px;
+            }
+            QWidget:hover {
+                background-color: #e9ecef;
+                border-color: #2196F3;
+            }
+        """)
+        widget.setCursor(Qt.PointingHandCursor)
+
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(4)
+
+        # Title row
+        title_layout = QHBoxLayout()
+        title_layout.setSpacing(8)
+
+        icon_label = QLabel(icon)
+        icon_label.setStyleSheet("font-size: 16pt;")
+        title_layout.addWidget(icon_label)
+
+        title_label = QLabel(title)
+        title_label.setStyleSheet("font-weight: bold; font-size: 10pt;")
+        title_layout.addWidget(title_label)
+        title_layout.addStretch(1)
+
+        layout.addLayout(title_layout)
+
+        # Count labels
+        if group_count > 0:
+            count_text = f"{photo_count} photos • {group_count} groups"
+            count_label = QLabel(count_text)
+            count_label.setStyleSheet("color: #555; font-size: 9pt; padding-left: 32px;")
+            layout.addWidget(count_label)
+        else:
+            no_dupes_label = QLabel("No duplicates found")
+            no_dupes_label.setStyleSheet("color: #999; font-size: 9pt; padding-left: 32px;")
+            layout.addWidget(no_dupes_label)
+
+        # Store duplicate type for click handler
+        widget.setProperty("duplicate_type", duplicate_type)
+        widget.setProperty("has_duplicates", group_count > 0)
+
+        # Make clickable
+        widget.mousePressEvent = lambda event: self._on_duplicate_type_clicked(duplicate_type, group_count > 0)
+
+        return widget
+
+    def _on_duplicate_type_clicked(self, duplicate_type: str, has_duplicates: bool):
+        """Handle click on duplicate type widget."""
+        if not has_duplicates:
+            return
+
+        # Import here to avoid circular imports
+        from layouts.google_components.duplicates_dialog import DuplicatesDialog
+
+        # Get main window to pass as parent
+        main_window = self.window()
+
+        # Open duplicates dialog filtered to this type
+        dialog = DuplicatesDialog(
+            project_id=self.project_id,
+            parent=main_window
+        )
+
+        # TODO: Add filtering by duplicate_type when dialog supports it
+        # For now, just show all duplicates
+
+        dialog.exec()
+
+        # Refresh counts after dialog closes
+        self.refresh_tab("duplicates")
+
+    def _open_duplicate_settings(self):
+        """Open preferences dialog to duplicate management settings."""
+        try:
+            # Get main window
+            main_window = self.window()
+
+            # Import preferences dialog
+            from preferences_dialog import PreferencesDialog
+
+            # Open preferences at Duplicate Management tab
+            dialog = PreferencesDialog(parent=main_window)
+
+            # Try to switch to duplicate management tab (tab index 4)
+            if hasattr(dialog, 'tabs'):
+                dialog.tabs.setCurrentIndex(4)
+
+            dialog.exec()
+
+            # Refresh duplicates tab after settings change
+            self.refresh_tab("duplicates")
+
+        except Exception as e:
+            print(f"[SidebarTabs] Failed to open duplicate settings: {e}")
+            import traceback
+            traceback.print_exc()
 
     # ---------- dates ----------
     def _load_dates(self, idx:int, gen:int):
