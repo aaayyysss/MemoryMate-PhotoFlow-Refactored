@@ -31,6 +31,7 @@ from reference_db import ReferenceDB
 from .section_widgets import AccordionSection
 from .folders_section import FoldersSection
 from .dates_section import DatesSection
+from .duplicates_section import DuplicatesSection  # Phase 3A
 from .videos_section import VideosSection
 from .people_section import PeopleSection
 from .devices_section import DevicesSection
@@ -154,6 +155,7 @@ class AccordionSidebar(QWidget):
         self.section_logic = {
             "folders": FoldersSection(self),
             "dates": DatesSection(self),
+            "duplicates": DuplicatesSection(self),  # Phase 3A
             "videos": VideosSection(self),
             "people": PeopleSection(self),
             "devices": DevicesSection(self),
