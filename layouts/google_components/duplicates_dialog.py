@@ -160,10 +160,14 @@ class PhotoInstanceWidget(QWidget):
 
     def _on_selection_changed(self, state):
         """Handle selection change."""
-        is_selected = (state == Qt.CheckState.Checked)
+        # stateChanged signal passes int: 0=Unchecked, 2=Checked
+        # Compare with Qt.CheckState.Checked.value or just check if state == 2
+        is_selected = (state == Qt.CheckState.Checked.value) or (state == 2)
         photo_id = self.photo['id']
-        logger.debug(f"PhotoInstanceWidget emitting selection_changed: photo_id={photo_id}, is_selected={is_selected}, state={state}")
+        logger.info(f"[PhotoInstanceWidget] Checkbox state changed: photo_id={photo_id}, state={state}, is_selected={is_selected}, Qt.CheckState.Checked.value={Qt.CheckState.Checked.value}")
+        logger.info(f"[PhotoInstanceWidget] Emitting selection_changed signal: photo_id={photo_id}, is_selected={is_selected}")
         self.selection_changed.emit(photo_id, is_selected)
+        logger.info(f"[PhotoInstanceWidget] Signal emitted successfully")
 
     def is_selected(self) -> bool:
         """Check if this instance is selected for deletion."""
@@ -580,17 +584,21 @@ class DuplicatesDialog(QDialog):
     @Slot(int, bool)
     def _on_instance_selection_changed(self, photo_id: int, is_selected: bool):
         """Handle instance selection change."""
-        logger.debug(f"Selection changed: photo_id={photo_id}, is_selected={is_selected}")
+        logger.info(f"[DuplicatesDialog] Selection changed: photo_id={photo_id}, is_selected={is_selected}")
 
         if is_selected:
             self.selected_photos.add(photo_id)
+            logger.info(f"[DuplicatesDialog] Added photo {photo_id} to selection")
         else:
             self.selected_photos.discard(photo_id)
+            logger.info(f"[DuplicatesDialog] Removed photo {photo_id} from selection")
 
         # Enable delete button if any photos selected
         enabled = len(self.selected_photos) > 0
-        logger.debug(f"Setting delete button enabled={enabled}, selected_photos={self.selected_photos}")
+        logger.info(f"[DuplicatesDialog] Setting delete button enabled={enabled}, selected_photos count={len(self.selected_photos)}, ids={self.selected_photos}")
+        logger.info(f"[DuplicatesDialog] Button state before setEnabled: {self.btn_delete_selected.isEnabled()}")
         self.btn_delete_selected.setEnabled(enabled)
+        logger.info(f"[DuplicatesDialog] Button state after setEnabled: {self.btn_delete_selected.isEnabled()}")
 
     def _on_delete_selected(self):
         """Handle delete selected button click."""
