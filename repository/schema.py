@@ -48,6 +48,12 @@ VALUES ('3.3.0', 'Added compound indexes for query optimization (project_id + fo
 INSERT OR IGNORE INTO schema_version (version, description)
 VALUES ('5.0.0', 'Added mobile device tracking: devices, import sessions, and file provenance');
 
+INSERT OR IGNORE INTO schema_version (version, description)
+VALUES ('7.0.0', 'Semantic embeddings separation: semantic_embeddings, semantic_index_meta');
+
+INSERT OR IGNORE INTO schema_version (version, description)
+VALUES ('8.0.0', 'Asset-centric duplicates model + stacks: media_asset, media_instance, media_stack');
+
 -- ============================================================================
 -- FACE RECOGNITION TABLES
 -- ============================================================================
@@ -357,6 +363,145 @@ CREATE TABLE IF NOT EXISTS device_files (
 );
 
 -- ============================================================================
+-- SEMANTIC EMBEDDINGS (v7.0.0)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS semantic_embeddings (
+    photo_id INTEGER PRIMARY KEY,
+    model TEXT NOT NULL,               -- 'clip-vit-b32', 'clip-vit-l14', 'siglip-base'
+    embedding BLOB NOT NULL,           -- float32 bytes (normalized)
+    dim INTEGER NOT NULL,              -- 512, 768, etc.
+    norm REAL NOT NULL,                -- Precomputed L2 norm (should be 1.0 for normalized)
+
+    -- Freshness tracking
+    source_photo_hash TEXT,            -- SHA256 of source image
+    source_photo_mtime TEXT,           -- mtime at computation time
+    artifact_version TEXT DEFAULT '1.0',  -- Recompute trigger
+
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    computed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY(photo_id) REFERENCES photo_metadata(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS semantic_index_meta (
+    model TEXT PRIMARY KEY,
+    dim INTEGER NOT NULL,
+    total_vectors INTEGER NOT NULL,
+    last_rebuild TIMESTAMP,
+    notes TEXT
+);
+
+-- ============================================================================
+-- MEDIA ASSET MODEL (v8.0.0)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS media_asset (
+    asset_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL,
+
+    -- Cryptographic identity (SHA256 or equivalent)
+    content_hash TEXT NOT NULL,
+
+    -- Optional perceptual hash for near-duplicate detection
+    perceptual_hash TEXT,
+
+    -- Chosen representative photo for previews and UI
+    representative_photo_id INTEGER,
+
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    -- Ensure one asset per content_hash per project
+    UNIQUE(project_id, content_hash),
+
+    FOREIGN KEY (representative_photo_id) REFERENCES photo_metadata(id) ON DELETE SET NULL,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS media_instance (
+    instance_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL,
+
+    -- Link to asset (many instances can share one asset)
+    asset_id INTEGER NOT NULL,
+
+    -- Link to existing photo_metadata row (one-to-one mapping)
+    photo_id INTEGER NOT NULL,
+
+    -- Traceability: where did this file come from
+    source_device_id TEXT,
+    source_path TEXT,
+    import_session_id TEXT,
+
+    -- File metadata (denormalized for performance)
+    file_size INTEGER,
+
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    -- Ensure one instance per photo per project
+    UNIQUE(project_id, photo_id),
+
+    FOREIGN KEY (asset_id) REFERENCES media_asset(asset_id) ON DELETE CASCADE,
+    FOREIGN KEY (photo_id) REFERENCES photo_metadata(id) ON DELETE CASCADE,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS media_stack (
+    stack_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL,
+
+    -- Stack type: duplicate, near_duplicate, similar, burst
+    stack_type TEXT NOT NULL CHECK(stack_type IN ('duplicate', 'near_duplicate', 'similar', 'burst')),
+
+    -- Representative photo for preview (shown in timeline)
+    representative_photo_id INTEGER,
+
+    -- Rule version allows algorithm evolution and regeneration
+    rule_version TEXT NOT NULL DEFAULT '1',
+
+    -- Optional: track who/what created this stack (system, user, ml)
+    created_by TEXT DEFAULT 'system',
+
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (representative_photo_id) REFERENCES photo_metadata(id) ON DELETE SET NULL,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS media_stack_member (
+    stack_id INTEGER NOT NULL,
+    project_id INTEGER NOT NULL,
+
+    photo_id INTEGER NOT NULL,
+
+    -- Similarity score (meaning depends on stack_type)
+    similarity_score REAL,
+
+    -- Rank for stable ordering (lower = better/more representative)
+    rank INTEGER,
+
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    PRIMARY KEY (stack_id, photo_id),
+
+    FOREIGN KEY (stack_id) REFERENCES media_stack(stack_id) ON DELETE CASCADE,
+    FOREIGN KEY (photo_id) REFERENCES photo_metadata(id) ON DELETE CASCADE,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS media_stack_meta (
+    stack_id INTEGER PRIMARY KEY,
+    project_id INTEGER NOT NULL,
+
+    -- JSON string with parameters used to build this stack
+    params_json TEXT,
+
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (stack_id) REFERENCES media_stack(stack_id) ON DELETE CASCADE,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
+-- ============================================================================
 -- INDEXES FOR PERFORMANCE
 -- ============================================================================
 
@@ -451,6 +596,33 @@ CREATE INDEX IF NOT EXISTS idx_device_files_photo ON device_files(local_photo_id
 CREATE INDEX IF NOT EXISTS idx_device_files_video ON device_files(local_video_id);
 CREATE INDEX IF NOT EXISTS idx_device_files_session ON device_files(import_session_id);
 CREATE INDEX IF NOT EXISTS idx_device_files_last_seen ON device_files(device_id, last_seen);
+
+-- Semantic embeddings indexes (v7.0.0)
+CREATE INDEX IF NOT EXISTS idx_semantic_model ON semantic_embeddings(model);
+CREATE INDEX IF NOT EXISTS idx_semantic_hash ON semantic_embeddings(source_photo_hash);
+CREATE INDEX IF NOT EXISTS idx_semantic_computed ON semantic_embeddings(computed_at);
+
+-- Media asset indexes (v8.0.0)
+CREATE INDEX IF NOT EXISTS idx_media_asset_project_hash ON media_asset(project_id, content_hash);
+CREATE INDEX IF NOT EXISTS idx_media_asset_representative ON media_asset(project_id, representative_photo_id);
+CREATE INDEX IF NOT EXISTS idx_media_asset_project_id ON media_asset(project_id);
+
+CREATE INDEX IF NOT EXISTS idx_media_instance_project_asset ON media_instance(project_id, asset_id);
+CREATE INDEX IF NOT EXISTS idx_media_instance_project_photo ON media_instance(project_id, photo_id);
+CREATE INDEX IF NOT EXISTS idx_media_instance_project_device ON media_instance(project_id, source_device_id);
+CREATE INDEX IF NOT EXISTS idx_media_instance_asset_id ON media_instance(asset_id);
+
+CREATE INDEX IF NOT EXISTS idx_media_stack_project_type ON media_stack(project_id, stack_type);
+CREATE INDEX IF NOT EXISTS idx_media_stack_project_representative ON media_stack(project_id, representative_photo_id);
+CREATE INDEX IF NOT EXISTS idx_media_stack_project_id ON media_stack(project_id);
+CREATE INDEX IF NOT EXISTS idx_media_stack_type_version ON media_stack(stack_type, rule_version);
+
+CREATE INDEX IF NOT EXISTS idx_media_stack_member_project_stack ON media_stack_member(project_id, stack_id);
+CREATE INDEX IF NOT EXISTS idx_media_stack_member_project_photo ON media_stack_member(project_id, photo_id);
+CREATE INDEX IF NOT EXISTS idx_media_stack_member_stack_id ON media_stack_member(stack_id);
+CREATE INDEX IF NOT EXISTS idx_media_stack_member_photo_id ON media_stack_member(photo_id);
+
+CREATE INDEX IF NOT EXISTS idx_media_stack_meta_project_id ON media_stack_meta(project_id);
 """
 
 
@@ -504,6 +676,17 @@ def get_expected_tables() -> list[str]:
         "mobile_devices",
         "import_sessions",
         "device_files",
+        # Semantic embeddings tables (v7.0.0)
+        "semantic_embeddings",
+        "semantic_index_meta",
+        # Media asset model tables (v8.0.0)
+        "media_asset",
+        "media_instance",
+        "media_stack",
+        "media_stack_member",
+        "media_stack_meta",
+        # Face merge history (should have been included earlier)
+        "face_merge_history",
     ]
 
 
@@ -575,6 +758,27 @@ def get_expected_indexes() -> list[str]:
         "idx_device_files_video",
         "idx_device_files_session",
         "idx_device_files_last_seen",
+        # Semantic embeddings indexes (v7.0.0)
+        "idx_semantic_model",
+        "idx_semantic_hash",
+        "idx_semantic_computed",
+        # Media asset indexes (v8.0.0)
+        "idx_media_asset_project_hash",
+        "idx_media_asset_representative",
+        "idx_media_asset_project_id",
+        "idx_media_instance_project_asset",
+        "idx_media_instance_project_photo",
+        "idx_media_instance_project_device",
+        "idx_media_instance_asset_id",
+        "idx_media_stack_project_type",
+        "idx_media_stack_project_representative",
+        "idx_media_stack_project_id",
+        "idx_media_stack_type_version",
+        "idx_media_stack_member_project_stack",
+        "idx_media_stack_member_project_photo",
+        "idx_media_stack_member_stack_id",
+        "idx_media_stack_member_photo_id",
+        "idx_media_stack_meta_project_id",
     ]
 
 
