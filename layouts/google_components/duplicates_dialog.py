@@ -160,7 +160,7 @@ class PhotoInstanceWidget(QWidget):
 
     def _on_selection_changed(self, state):
         """Handle selection change."""
-        is_selected = state == Qt.Checked
+        is_selected = (state == Qt.CheckState.Checked)
         photo_id = self.photo['id']
         logger.debug(f"PhotoInstanceWidget emitting selection_changed: photo_id={photo_id}, is_selected={is_selected}, state={state}")
         self.selection_changed.emit(photo_id, is_selected)

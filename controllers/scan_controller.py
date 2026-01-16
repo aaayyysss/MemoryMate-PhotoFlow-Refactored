@@ -114,6 +114,7 @@ class ScanController(QObject):
         self._duplicate_detection_enabled = scan_options.detect_duplicates
         self._detect_exact = scan_options.detect_exact
         self._detect_similar = scan_options.detect_similar
+        self._generate_embeddings = scan_options.generate_embeddings
         self._time_window_seconds = scan_options.time_window_seconds
         self._similarity_threshold = scan_options.similarity_threshold
         self._min_stack_size = scan_options.min_stack_size
@@ -615,10 +616,95 @@ class ScanController(QObject):
 
                         self.logger.info(f"Found {duplicate_stats['exact']} exact duplicate groups")
 
+                    # Step 1.5: Generate Embeddings (if enabled and similar detection requested)
+                    if hasattr(self, '_generate_embeddings') and self._generate_embeddings and \
+                       hasattr(self, '_detect_similar') and self._detect_similar:
+                        progress.setLabelText("🤖 Generating AI embeddings for similar detection...")
+                        progress.setValue(3)
+                        QApplication.processEvents()
+
+                        self.logger.info("Generating embeddings for newly scanned photos...")
+
+                        from repository.photo_repository import PhotoRepository
+                        from services.semantic_embedding_service import SemanticEmbeddingService
+                        from repository.base_repository import DatabaseConnection
+
+                        db_conn = DatabaseConnection()
+                        photo_repo = PhotoRepository(db_conn)
+                        embedding_service = SemanticEmbeddingService(db_connection=db_conn)
+
+                        # Get all photos in project that don't have embeddings
+                        all_photos = photo_repo.list_photos(current_project_id)
+                        photos_needing_embeddings = []
+
+                        for photo in all_photos:
+                            photo_id = photo.get('id')
+                            if not embedding_service.has_embedding(photo_id):
+                                photos_needing_embeddings.append(photo_id)
+
+                        if photos_needing_embeddings:
+                            self.logger.info(f"Found {len(photos_needing_embeddings)} photos needing embeddings")
+
+                            # Use SemanticEmbeddingWorker for batch processing
+                            from workers.semantic_embedding_worker import SemanticEmbeddingWorker
+                            from PySide6.QtCore import QThreadPool, QEventLoop
+
+                            # Create worker
+                            worker = SemanticEmbeddingWorker(
+                                photo_ids=photos_needing_embeddings,
+                                model_name="clip-vit-b32",
+                                force_recompute=False
+                            )
+
+                            # Track progress
+                            completed = [False]  # Use list to allow modification in closure
+                            last_progress = [0]  # Track last progress value
+
+                            def on_progress(current, total, message):
+                                """Update progress dialog."""
+                                progress_percent = int((current / total) * 100) if total > 0 else 0
+                                progress.setLabelText(f"🤖 Generating embeddings: {message}")
+                                # Map embedding progress (0-100%) to progress bar range (3-50%)
+                                progress_value = 3 + int(progress_percent * 0.47)
+                                progress.setValue(progress_value)
+                                last_progress[0] = progress_value
+                                QApplication.processEvents()
+
+                            def on_finished(stats):
+                                """Handle completion."""
+                                self.logger.info(f"Embedding generation complete: {stats}")
+                                completed[0] = True
+
+                            def on_error(error_msg):
+                                """Handle error."""
+                                self.logger.error(f"Embedding generation error: {error_msg}")
+                                completed[0] = True  # Still mark as complete to continue
+
+                            # Connect signals
+                            worker.signals.progress.connect(on_progress)
+                            worker.signals.finished.connect(on_finished)
+                            worker.signals.error.connect(on_error)
+
+                            # Start worker in thread pool
+                            QThreadPool.globalInstance().start(worker)
+
+                            # Wait for completion (with event processing)
+                            while not completed[0]:
+                                QApplication.processEvents()
+                                # Small sleep to avoid CPU spinning
+                                import time
+                                time.sleep(0.1)
+
+                            # Set progress back to post-embedding value
+                            progress.setValue(50)
+                            QApplication.processEvents()
+                        else:
+                            self.logger.info("All photos already have embeddings")
+
                     # Step 2: Similar Shot Detection (Embedding-based)
                     if hasattr(self, '_detect_similar') and self._detect_similar:
-                        progress.setLabelText("📸 Detecting similar shots (this may take a while)...")
-                        progress.setValue(3)
+                        progress.setLabelText("📸 Detecting similar shots...")
+                        progress.setValue(55)
                         QApplication.processEvents()
 
                         self.logger.info("Running similar shot detection...")
@@ -633,13 +719,13 @@ class ScanController(QObject):
 
                         if embedding_count == 0:
                             self.logger.warning("No embeddings found - skipping similar shot detection")
-                            # Show warning to user
+                            # Show warning to user (embeddings should have been generated in Step 1.5)
                             QMessageBox.warning(
                                 self.main,
                                 "Similar Shot Detection",
                                 "No image embeddings found.\n\n"
-                                "Similar shot detection requires generating embeddings first.\n"
-                                "Please use Preferences → Duplicate Management → Generate Embeddings."
+                                "Embedding generation may have failed.\n"
+                                "Check the application logs for errors."
                             )
                         else:
                             # Run similar shot stack generation

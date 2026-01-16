@@ -205,6 +205,8 @@ class SemanticEmbeddingWorker(QRunnable):
         """
         Compute SHA256 hash of file (for freshness tracking).
 
+        Performance optimization: Use 64KB chunks for faster I/O.
+
         Args:
             file_path: Path to file
 
@@ -214,8 +216,8 @@ class SemanticEmbeddingWorker(QRunnable):
         try:
             hasher = hashlib.sha256()
             with open(file_path, 'rb') as f:
-                # Read in chunks to handle large files
-                for chunk in iter(lambda: f.read(4096), b''):
+                # Read in larger 64KB chunks for better performance
+                for chunk in iter(lambda: f.read(65536), b''):
                     hasher.update(chunk)
             return hasher.hexdigest()
         except Exception as e:
