@@ -24,6 +24,7 @@ class PreScanOptions:
         self.detect_duplicates = True
         self.detect_exact = True
         self.detect_similar = True
+        self.generate_embeddings = True  # New: Auto-generate embeddings for similar detection
         self.time_window_seconds = 10
         self.similarity_threshold = 0.92
         self.min_stack_size = 3
@@ -124,6 +125,16 @@ class PreScanOptionsDialog(QDialog):
         self.chk_similar.setChecked(self.options.detect_similar)
         dup_types_layout.addWidget(self.chk_similar)
 
+        # Embedding generation option (indented)
+        self.chk_generate_embeddings = QCheckBox("🤖 Generate AI embeddings (required for similar detection)")
+        self.chk_generate_embeddings.setToolTip(
+            "Extract visual embeddings using CLIP model.\n"
+            "Required for similar shot detection.\n"
+            "May add 2-5 seconds per photo depending on hardware."
+        )
+        self.chk_generate_embeddings.setChecked(self.options.generate_embeddings)
+        dup_types_layout.addWidget(self.chk_generate_embeddings)
+
         # Similar shot settings (indented further)
         similar_settings_widget = QFrame()
         similar_settings_layout = QVBoxLayout(similar_settings_widget)
@@ -195,7 +206,8 @@ class PreScanOptionsDialog(QDialog):
 
         info_text = QLabel(
             "Duplicate detection will run automatically after the scan completes. "
-            "This may take additional time depending on the number of photos scanned."
+            "Exact duplicate detection is fast, but embedding generation and similar "
+            "shot detection may take 2-5 seconds per photo depending on hardware (GPU vs CPU)."
         )
         info_text.setWordWrap(True)
         info_text.setStyleSheet("color: #444;")
@@ -279,6 +291,7 @@ class PreScanOptionsDialog(QDialog):
         self.options.detect_duplicates = self.chk_detect_duplicates.isChecked()
         self.options.detect_exact = self.chk_exact.isChecked()
         self.options.detect_similar = self.chk_similar.isChecked()
+        self.options.generate_embeddings = self.chk_generate_embeddings.isChecked()
         self.options.time_window_seconds = self.spin_time_window.value()
         self.options.similarity_threshold = self.spin_similarity.value()
         self.options.min_stack_size = self.spin_stack_size.value()
