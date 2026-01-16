@@ -652,6 +652,9 @@ class ScanController(QObject):
                             from workers.semantic_embedding_worker import SemanticEmbeddingWorker
                             from PySide6.QtCore import QThreadPool, QEventLoop
 
+                            # Create event loop for async waiting
+                            loop = QEventLoop()
+
                             # Create worker
                             worker = SemanticEmbeddingWorker(
                                 photo_ids=photos_needing_embeddings,
@@ -660,7 +663,6 @@ class ScanController(QObject):
                             )
 
                             # Track progress
-                            completed = [False]  # Use list to allow modification in closure
                             last_progress = [0]  # Track last progress value
 
                             def on_progress(current, total, message):
@@ -671,17 +673,16 @@ class ScanController(QObject):
                                 progress_value = 3 + int(progress_percent * 0.47)
                                 progress.setValue(progress_value)
                                 last_progress[0] = progress_value
-                                QApplication.processEvents()
 
                             def on_finished(stats):
                                 """Handle completion."""
                                 self.logger.info(f"Embedding generation complete: {stats}")
-                                completed[0] = True
+                                loop.quit()  # Exit event loop
 
                             def on_error(error_msg):
                                 """Handle error."""
                                 self.logger.error(f"Embedding generation error: {error_msg}")
-                                completed[0] = True  # Still mark as complete to continue
+                                loop.quit()  # Exit event loop even on error
 
                             # Connect signals
                             worker.signals.progress.connect(on_progress)
@@ -691,16 +692,11 @@ class ScanController(QObject):
                             # Start worker in thread pool
                             QThreadPool.globalInstance().start(worker)
 
-                            # Wait for completion (with event processing)
-                            while not completed[0]:
-                                QApplication.processEvents()
-                                # Small sleep to avoid CPU spinning
-                                import time
-                                time.sleep(0.1)
+                            # Wait for completion using event loop (non-blocking)
+                            loop.exec()
 
                             # Set progress back to post-embedding value
                             progress.setValue(50)
-                            QApplication.processEvents()
                         else:
                             self.logger.info("All photos already have embeddings")
 

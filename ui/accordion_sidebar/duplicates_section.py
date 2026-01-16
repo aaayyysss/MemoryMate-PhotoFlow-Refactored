@@ -313,7 +313,7 @@ class DuplicatesSection(BaseSection):
 
             # Import preferences dialog
             from preferences_dialog import PreferencesDialog
-            from settings_manager import SettingsManager
+            from settings_manager_qt import SettingsManager
 
             # Get settings manager
             settings = SettingsManager()

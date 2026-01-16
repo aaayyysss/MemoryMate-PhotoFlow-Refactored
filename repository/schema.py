@@ -19,7 +19,7 @@ Schema Version: 2.0.0
 - Adds schema_version tracking table
 """
 
-SCHEMA_VERSION = "8.0.0"
+SCHEMA_VERSION = "9.0.0"
 
 # Complete schema SQL - executed as a script for new databases
 SCHEMA_SQL = """
@@ -183,6 +183,7 @@ CREATE TABLE IF NOT EXISTS photo_folders (
     path TEXT NOT NULL,
     parent_id INTEGER NULL,
     project_id INTEGER NOT NULL,
+    photo_count INTEGER DEFAULT 0,
     FOREIGN KEY(parent_id) REFERENCES photo_folders(id),
     FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
     UNIQUE(path, project_id)

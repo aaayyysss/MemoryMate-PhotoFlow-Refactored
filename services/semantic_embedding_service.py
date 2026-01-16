@@ -123,7 +123,7 @@ class SemanticEmbeddingService:
         # Get local model path from settings if available
         local_model_path = None
         try:
-            from settings_manager import SettingsManager
+            from settings_manager_qt import SettingsManager
             settings = SettingsManager()
             # Check for custom CLIP model path
             clip_path = settings.get("clip_model_path", "").strip()
@@ -283,6 +283,7 @@ class SemanticEmbeddingService:
                 (photo_id, model, embedding, dim, norm, source_photo_hash, source_photo_mtime, computed_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             """, (photo_id, self.model_name, embedding_blob, dim, norm, source_hash, source_mtime))
+            conn.commit()  # CRITICAL: Explicit commit to persist embeddings
 
             logger.debug(f"[SemanticEmbeddingService] Stored embedding for photo {photo_id}")
 
