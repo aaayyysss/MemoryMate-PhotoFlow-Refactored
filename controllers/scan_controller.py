@@ -634,7 +634,10 @@ class ScanController(QObject):
                         embedding_service = SemanticEmbeddingService(db_connection=db_conn)
 
                         # Get all photos in project that don't have embeddings
-                        all_photos = photo_repo.list_photos(current_project_id)
+                        all_photos = photo_repo.find_all(
+                            where_clause="project_id = ?",
+                            params=(current_project_id,)
+                        )
                         photos_needing_embeddings = []
 
                         for photo in all_photos:
