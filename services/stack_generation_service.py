@@ -161,7 +161,8 @@ class StackGenerationService:
                 continue
 
             # Check if photo has embedding
-            if not self.similarity_service.get_embedding(photo_id):
+            embedding = self.similarity_service.get_embedding(photo_id)
+            if embedding is None:
                 continue
 
             # Find candidates within time window
