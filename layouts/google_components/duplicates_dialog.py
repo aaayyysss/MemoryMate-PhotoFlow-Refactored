@@ -225,6 +225,10 @@ class DuplicatesDialog(QDialog):
         self.subtitle.setStyleSheet("color: #666; font-size: 12px;")
         layout.addWidget(self.subtitle)
 
+        # Phase 3C: Toolbar with filtering, sorting, and batch operations
+        toolbar = self._create_toolbar()
+        layout.addWidget(toolbar)
+
         # Separator
         separator = QFrame()
         separator.setFrameShape(QFrame.HLine)
@@ -295,6 +299,70 @@ class DuplicatesDialog(QDialog):
         button_layout.addWidget(close_btn)
 
         layout.addLayout(button_layout)
+
+    def _create_toolbar(self) -> QWidget:
+        """
+        Create toolbar with filtering, sorting, and batch operations.
+
+        Phase 3C: Enhanced UI Polish
+        """
+        toolbar = QWidget()
+        toolbar_layout = QHBoxLayout(toolbar)
+        toolbar_layout.setContentsMargins(0, 8, 0, 8)
+        toolbar_layout.setSpacing(12)
+
+        # Batch Selection Group
+        batch_group = QGroupBox("Batch Selection")
+        batch_layout = QHBoxLayout(batch_group)
+        batch_layout.setContentsMargins(8, 8, 8, 8)
+        batch_layout.setSpacing(8)
+
+        btn_select_all = QPushButton("Select All")
+        btn_select_all.setToolTip("Select all duplicates for deletion")
+        btn_select_all.clicked.connect(self._on_select_all)
+        batch_layout.addWidget(btn_select_all)
+
+        btn_select_none = QPushButton("Select None")
+        btn_select_none.setToolTip("Deselect all duplicates")
+        btn_select_none.clicked.connect(self._on_select_none)
+        batch_layout.addWidget(btn_select_none)
+
+        btn_invert = QPushButton("Invert Selection")
+        btn_invert.setToolTip("Invert current selection")
+        btn_invert.clicked.connect(self._on_invert_selection)
+        batch_layout.addWidget(btn_invert)
+
+        toolbar_layout.addWidget(batch_group)
+
+        # Smart Cleanup Group
+        smart_group = QGroupBox("Smart Cleanup")
+        smart_layout = QHBoxLayout(smart_group)
+        smart_layout.setContentsMargins(8, 8, 8, 8)
+        smart_layout.setSpacing(8)
+
+        btn_auto_select = QPushButton("🎯 Auto-Select Lower Quality")
+        btn_auto_select.setToolTip("Automatically select lower quality duplicates for deletion\n(Keeps highest resolution, largest file size)")
+        btn_auto_select.clicked.connect(self._on_auto_select_duplicates)
+        btn_auto_select.setStyleSheet("""
+            QPushButton {
+                padding: 6px 12px;
+                background-color: #4CAF50;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #45a049;
+            }
+        """)
+        smart_layout.addWidget(btn_auto_select)
+
+        toolbar_layout.addWidget(smart_group)
+
+        toolbar_layout.addStretch()
+
+        return toolbar
 
     def _create_assets_list_panel(self) -> QWidget:
         """Create left panel with duplicate assets list."""
@@ -604,3 +672,73 @@ class DuplicatesDialog(QDialog):
                     "Deletion Failed",
                     f"Failed to delete photos:\n{e}\n\nPlease check the log for details."
                 )
+
+    # Phase 3C: Batch Selection Handlers
+    def _on_select_all(self):
+        """Select all non-representative photos for deletion."""
+        for widget in self.instance_widgets:
+            if not widget.is_representative:
+                widget.checkbox.setChecked(True)
+
+    def _on_select_none(self):
+        """Deselect all photos."""
+        for widget in self.instance_widgets:
+            widget.checkbox.setChecked(False)
+
+    def _on_invert_selection(self):
+        """Invert current selection."""
+        for widget in self.instance_widgets:
+            if not widget.is_representative:
+                widget.checkbox.setChecked(not widget.checkbox.isChecked())
+
+    # Phase 3C: Smart Cleanup Handler
+    def _on_auto_select_duplicates(self):
+        """
+        Automatically select lower quality duplicates for deletion.
+
+        Algorithm:
+        1. For each duplicate group, keep the best photo (highest resolution, largest file size)
+        2. Select all other photos in the group for deletion
+        3. Never select the representative photo
+        """
+        if not self.selected_asset_id or not self.instance_widgets:
+            QMessageBox.information(
+                self,
+                "No Selection",
+                "Please select a duplicate group first."
+            )
+            return
+
+        # Get all photos in current group
+        photos = [widget.photo for widget in self.instance_widgets]
+
+        # Find the best photo (highest resolution, then largest file size)
+        best_photo = max(photos, key=lambda p: (
+            p.get('width', 0) * p.get('height', 0),  # Resolution
+            p.get('size_kb', 0)  # File size
+        ))
+
+        best_photo_id = best_photo['id']
+
+        # Select all photos except the best one and the representative
+        selected_count = 0
+        for widget in self.instance_widgets:
+            photo_id = widget.photo['id']
+            is_representative = widget.is_representative
+
+            # Don't select if it's the best photo or the representative
+            if photo_id != best_photo_id and not is_representative:
+                widget.checkbox.setChecked(True)
+                selected_count += 1
+            else:
+                widget.checkbox.setChecked(False)
+
+        # Show info message
+        QMessageBox.information(
+            self,
+            "Smart Selection Complete",
+            f"✅ Selected {selected_count} lower quality photo(s) for deletion.\n\n"
+            f"🎯 Kept best photo: {best_photo['width']}×{best_photo['height']}, "
+            f"{best_photo.get('size_kb', 0):.1f} KB\n\n"
+            f"Review the selection and click 'Delete Selected' to proceed."
+        )
