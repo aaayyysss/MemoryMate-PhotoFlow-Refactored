@@ -134,14 +134,14 @@ class StackMemberWidget(QWidget):
 
         # Selection checkbox
         self.checkbox = QCheckBox("Select")
-        self.checkbox.setEnabled(not is_representative)
-        if is_representative:
+        self.checkbox.setEnabled(not self.is_representative)
+        if self.is_representative:
             self.checkbox.setToolTip("Cannot select representative")
         self.checkbox.stateChanged.connect(self._on_selection_changed)
         layout.addWidget(self.checkbox)
 
         # Style
-        border_color = "#FFA500" if is_representative else "#e0e0e0"
+        border_color = "#FFA500" if self.is_representative else "#e0e0e0"
         self.setStyleSheet(f"""
             StackMemberWidget {{
                 background-color: white;
