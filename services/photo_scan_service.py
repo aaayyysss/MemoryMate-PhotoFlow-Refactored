@@ -29,6 +29,10 @@ class ScanResult:
     videos_indexed: int  # 🎬 NEW: video count
     duration_seconds: float
     interrupted: bool = False
+    # Phase 3B: Duplicate detection stats
+    duplicates_detected: int = 0
+    exact_duplicates: int = 0
+    similar_stacks: int = 0
 
 
 @dataclass
