@@ -199,6 +199,7 @@ class DuplicatesDialog(QDialog):
         self.duplicates = []
         self.selected_asset_id = None
         self.selected_photos = set()  # Set of photo_ids selected for deletion
+        self.instance_widgets = []  # Phase 3C: Track instance widgets for batch operations
 
         self.setWindowTitle("Review Duplicates")
         self.setMinimumSize(1200, 700)
@@ -549,6 +550,9 @@ class DuplicatesDialog(QDialog):
                 if item.widget():
                     item.widget().deleteLater()
 
+            # Phase 3C: Clear instance widgets list
+            self.instance_widgets = []
+
             # Add instance widgets in grid (2 columns)
             rep_photo_id = asset.get('representative_photo_id')
 
@@ -557,6 +561,9 @@ class DuplicatesDialog(QDialog):
 
                 widget = PhotoInstanceWidget(photo, is_representative, self)
                 widget.selection_changed.connect(self._on_instance_selection_changed)
+
+                # Phase 3C: Add to tracking list
+                self.instance_widgets.append(widget)
 
                 row = idx // 2
                 col = idx % 2
