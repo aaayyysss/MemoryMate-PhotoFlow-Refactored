@@ -252,18 +252,27 @@ hiddenimports = [
 	'layouts.layout_manager',
 	'layouts.layout_protocol',  # Layout protocol interface
 	'layouts.video_editor_mixin',  # Video editing mixin for layouts
-	
+
+	# CRITICAL: Google Photos components (layouts/google_components)
+	'layouts.google_components',
+	'layouts.google_components.duplicates_dialog',  # CRITICAL: Duplicates/similar photos dialog
+	'layouts.google_components.stack_badge_widget',  # CRITICAL: Stack badge widget
+	'layouts.google_components.stack_view_dialog',  # CRITICAL: Stack browsing and management dialog
+
     'repository',
+    'repository.asset_repository',  # CRITICAL: Asset repository for photos and videos
     'repository.base_repository',
     'repository.folder_repository',
     'repository.photo_repository',
     'repository.project_repository',
+    'repository.stack_repository',  # CRITICAL: Stack repository for similar photo stacks
     'repository.tag_repository',
     'repository.video_repository',
     'repository.migrations',
     'repository.schema',
 
     'services',
+    'services.asset_service',  # CRITICAL: Asset service for photo/video operations
     'services.device_id_extractor',
     'services.device_import_service',
     'services.device_sources',
@@ -287,18 +296,23 @@ hiddenimports = [
     'services.embedding_service',  # CRITICAL: Core embedding service for semantic search
     'services.semantic_embedding_service',  # CRITICAL: CLIP-based semantic embeddings
     'services.semantic_search_service',  # CRITICAL: Semantic search functionality
+    'services.person_stack_service',  # CRITICAL: Person stack management
+    'services.photo_similarity_service',  # CRITICAL: Visual similarity search service
+    'services.stack_generation_service',  # CRITICAL: Similar photo stack generation
 
     'workers',
+    'workers.embedding_worker',  # CRITICAL: Embedding generation worker for semantic search
     'workers.face_cluster_worker',
     'workers.face_detection_worker',
+    'workers.hash_backfill_worker',  # CRITICAL: Hash backfill worker for photo deduplication
     'workers.meta_backfill_pool',
     'workers.meta_backfill_single',
     'workers.mtp_copy_worker',
     'workers.progress_writer',
+    'workers.semantic_embedding_worker',  # CRITICAL: CLIP embedding worker
+    'workers.similar_shot_stack_worker',  # CRITICAL: Similar shot stack generation worker
     'workers.video_metadata_worker',
     'workers.video_thumbnail_worker',
-    'workers.embedding_worker',  # CRITICAL: Embedding generation worker for semantic search
-    'workers.semantic_embedding_worker',  # CRITICAL: CLIP embedding worker
 
     'ui',
     'ui.advanced_filters_widget',  # Advanced search filters widget
@@ -319,6 +333,7 @@ hiddenimports = [
     'ui.people_list_view',
     'ui.people_manager_dialog',
     'ui.performance_analytics_dialog',  # Performance analytics and metrics
+    'ui.prescan_options_dialog',  # CRITICAL: Prescan options dialog
     'ui.semantic_search_dialog',  # Semantic search dialog
     'ui.semantic_search_widget',  # CRITICAL: Semantic search widget (Google Layout)
     'ui.similar_photos_dialog',  # Similar photos finder
@@ -339,6 +354,7 @@ hiddenimports = [
 	'ui.accordion_sidebar.base_section',
 	'ui.accordion_sidebar.dates_section',
 	'ui.accordion_sidebar.devices_section',
+	'ui.accordion_sidebar.duplicates_section',  # CRITICAL: Similar photos/duplicates section
 	'ui.accordion_sidebar.folders_section',
 	'ui.accordion_sidebar.locations_section',  # CRITICAL: GPS locations sidebar section
 	'ui.accordion_sidebar.people_section',
