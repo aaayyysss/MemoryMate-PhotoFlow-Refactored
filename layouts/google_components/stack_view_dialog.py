@@ -1252,7 +1252,7 @@ class StackBrowserDialog(QDialog):
             # Display people
             self._display_people()
 
-            db.close()
+            # Note: ReferenceDB uses connection pooling - no need to close
 
         except Exception as e:
             logger.error(f"Failed to load people: {e}", exc_info=True)
@@ -1381,7 +1381,7 @@ class StackBrowserDialog(QDialog):
                 similarity_threshold=self.similarity_threshold
             )
 
-            db.close()
+            # Note: ReferenceDB uses connection pooling - no need to close
 
             # Open PersonPhotosDialog (simplified - show in message for now)
             photos = person_data.get('photos', [])
