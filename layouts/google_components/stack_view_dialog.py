@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QScrollArea, QWidget, QGridLayout, QFrame, QCheckBox,
     QMessageBox, QTableWidget, QTableWidgetItem, QHeaderView,
-    QGroupBox, QSlider
+    QGroupBox, QSlider, QTabWidget
 )
 from PySide6.QtCore import Signal, Qt, Slot
 from PySide6.QtGui import QFont, QColor, QPixmap
@@ -745,24 +745,32 @@ class StackBrowserDialog(QDialog):
 
         Args:
             project_id: Project ID
-            stack_type: Stack type ("similar" or other)
+            stack_type: Stack type ("similar" for time-based, ignored when tabs are used)
             parent: Parent widget
         """
         super().__init__(parent)
         self.project_id = project_id
         self.stack_type = stack_type
+
+        # Similar Shots mode data
         self.all_stacks = []  # All stacks from DB
         self.filtered_stacks = []  # Filtered by similarity threshold
-        self.similarity_threshold = 0.92  # Default 92% (matches StackGenParams)
 
-        self.setWindowTitle("Similar Photos" if stack_type == "similar" else "Photo Stacks")
+        # People mode data
+        self.all_people = []  # All people from face detection
+        self.selected_person = None  # Currently selected person for detail view
+
+        self.similarity_threshold = 0.92  # Default 92% (matches StackGenParams)
+        self.current_mode = "similar"  # "similar" or "people"
+
+        self.setWindowTitle("Similar Photos & People")
         self.setMinimumSize(1000, 700)
 
         self._init_ui()
-        self._load_stacks()
+        self._load_current_mode_data()
 
     def _init_ui(self):
-        """Initialize UI components."""
+        """Initialize UI components with tabs for Similar Shots and People."""
         layout = QVBoxLayout(self)
         layout.setSpacing(16)
         layout.setContentsMargins(16, 16, 16, 16)
@@ -771,7 +779,7 @@ class StackBrowserDialog(QDialog):
         header_layout = QHBoxLayout()
 
         # Title
-        title_label = QLabel("📸 Similar Photos")
+        title_label = QLabel("📸 Similar Photos & People")
         title_label.setStyleSheet("font-size: 18pt; font-weight: bold; color: #2196F3;")
         header_layout.addWidget(title_label)
 
@@ -784,14 +792,47 @@ class StackBrowserDialog(QDialog):
 
         layout.addLayout(header_layout)
 
+        # Tabs for Similar Shots vs People
+        self.tabs = QTabWidget()
+        self.tabs.setStyleSheet("""
+            QTabWidget::pane {
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                background-color: white;
+            }
+            QTabBar::tab {
+                padding: 8px 16px;
+                margin-right: 4px;
+                background-color: #f0f0f0;
+                border: 1px solid #ddd;
+                border-bottom: none;
+                border-top-left-radius: 4px;
+                border-top-right-radius: 4px;
+            }
+            QTabBar::tab:selected {
+                background-color: white;
+                border-bottom: 2px solid #2196F3;
+            }
+            QTabBar::tab:hover {
+                background-color: #e8f4f8;
+            }
+        """)
+        self.tabs.currentChanged.connect(self._on_tab_changed)
+
+        # Tab 1: Similar Shots (time-based visual similarity)
+        similar_tab = QWidget()
+        similar_layout = QVBoxLayout(similar_tab)
+        similar_layout.setSpacing(12)
+        similar_layout.setContentsMargins(12, 12, 12, 12)
+
         # Similarity threshold slider
-        slider_container = self._create_similarity_slider()
-        layout.addWidget(slider_container)
+        self.slider_container = self._create_similarity_slider()
+        similar_layout.addWidget(self.slider_container)
 
         # Stack grid (scroll area)
-        self.scroll_area = QScrollArea()
-        self.scroll_area.setWidgetResizable(True)
-        self.scroll_area.setStyleSheet("""
+        self.similar_scroll_area = QScrollArea()
+        self.similar_scroll_area.setWidgetResizable(True)
+        self.similar_scroll_area.setStyleSheet("""
             QScrollArea {
                 border: 1px solid #ddd;
                 border-radius: 8px;
@@ -799,14 +840,48 @@ class StackBrowserDialog(QDialog):
             }
         """)
 
-        # Grid container
-        self.grid_container = QWidget()
-        self.grid_layout = QGridLayout(self.grid_container)
-        self.grid_layout.setSpacing(16)
-        self.grid_layout.setContentsMargins(16, 16, 16, 16)
+        self.similar_grid_container = QWidget()
+        self.similar_grid_layout = QGridLayout(self.similar_grid_container)
+        self.similar_grid_layout.setSpacing(16)
+        self.similar_grid_layout.setContentsMargins(16, 16, 16, 16)
 
-        self.scroll_area.setWidget(self.grid_container)
-        layout.addWidget(self.scroll_area, 1)  # Stretch to fill
+        self.similar_scroll_area.setWidget(self.similar_grid_container)
+        similar_layout.addWidget(self.similar_scroll_area, 1)
+
+        self.tabs.addTab(similar_tab, "⏱️ Similar Shots")
+
+        # Tab 2: People (face-based grouping)
+        people_tab = QWidget()
+        people_layout = QVBoxLayout(people_tab)
+        people_layout.setSpacing(12)
+        people_layout.setContentsMargins(12, 12, 12, 12)
+
+        # People slider (reuse similarity slider concept)
+        self.people_slider_container = self._create_people_slider()
+        people_layout.addWidget(self.people_slider_container)
+
+        # People grid (scroll area)
+        self.people_scroll_area = QScrollArea()
+        self.people_scroll_area.setWidgetResizable(True)
+        self.people_scroll_area.setStyleSheet("""
+            QScrollArea {
+                border: 1px solid #ddd;
+                border-radius: 8px;
+                background-color: #f9f9f9;
+            }
+        """)
+
+        self.people_grid_container = QWidget()
+        self.people_grid_layout = QGridLayout(self.people_grid_container)
+        self.people_grid_layout.setSpacing(16)
+        self.people_grid_layout.setContentsMargins(16, 16, 16, 16)
+
+        self.people_scroll_area.setWidget(self.people_grid_container)
+        people_layout.addWidget(self.people_scroll_area, 1)
+
+        self.tabs.addTab(people_tab, "👤 People")
+
+        layout.addWidget(self.tabs, 1)
 
         # Bottom buttons
         button_layout = QHBoxLayout()
@@ -990,8 +1065,8 @@ class StackBrowserDialog(QDialog):
     def _display_stacks(self):
         """Display filtered stacks in grid."""
         # Clear existing widgets
-        while self.grid_layout.count():
-            item = self.grid_layout.takeAt(0)
+        while self.similar_grid_layout.count():
+            item = self.similar_grid_layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
 
@@ -1004,7 +1079,7 @@ class StackBrowserDialog(QDialog):
             )
             no_stacks_label.setAlignment(Qt.AlignCenter)
             no_stacks_label.setStyleSheet("color: #999; font-size: 12pt; padding: 40px;")
-            self.grid_layout.addWidget(no_stacks_label, 0, 0)
+            self.similar_grid_layout.addWidget(no_stacks_label, 0, 0)
             return
 
         # Add stack cards to grid (3 columns)
@@ -1013,7 +1088,7 @@ class StackBrowserDialog(QDialog):
             col = i % 3
 
             card = self._create_stack_card(stack)
-            self.grid_layout.addWidget(card, row, col)
+            self.similar_grid_layout.addWidget(card, row, col)
 
     def _create_stack_card(self, stack: dict) -> QWidget:
         """Create a clickable card for a stack."""
@@ -1130,3 +1205,204 @@ class StackBrowserDialog(QDialog):
 
         # Reload stacks to reflect changes
         self._load_stacks()
+
+    # =========================================================================
+    # PEOPLE MODE (Face-based grouping)
+    # =========================================================================
+
+    def _create_people_slider(self) -> QWidget:
+        """Create similarity threshold slider for people view."""
+        # Reuse the same slider creation logic
+        return self._create_similarity_slider()
+
+    def _on_tab_changed(self, index: int):
+        """Handle tab change between Similar Shots and People."""
+        if index == 0:
+            self.current_mode = "similar"
+        elif index == 1:
+            self.current_mode = "people"
+
+        # Load data for the new mode
+        self._load_current_mode_data()
+
+    def _load_current_mode_data(self):
+        """Load data based on current mode (similar or people)."""
+        if self.current_mode == "similar":
+            self._load_stacks()
+        elif self.current_mode == "people":
+            self._load_people()
+
+    def _load_people(self):
+        """Load all people from face detection."""
+        try:
+            from services.person_stack_service import PersonStackService
+            from reference_db import ReferenceDB
+
+            db = ReferenceDB()
+            person_service = PersonStackService(db)
+
+            # Get all people in project
+            self.all_people = person_service.get_all_people(self.project_id)
+
+            logger.info(f"Loaded {len(self.all_people)} people")
+
+            # Update count
+            self.count_label.setText(f"{len(self.all_people)} people detected")
+
+            # Display people
+            self._display_people()
+
+            db.close()
+
+        except Exception as e:
+            logger.error(f"Failed to load people: {e}", exc_info=True)
+            self.count_label.setText("Error loading people")
+            QMessageBox.critical(self, "Error", f"Failed to load people:\n{e}")
+
+    def _display_people(self):
+        """Display people in grid."""
+        # Clear existing widgets
+        while self.people_grid_layout.count():
+            item = self.people_grid_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        # If no people, show message
+        if not self.all_people:
+            no_people_label = QLabel(
+                "No people detected in this project.\n\n"
+                "Run face detection first to enable person-based grouping."
+            )
+            no_people_label.setAlignment(Qt.AlignCenter)
+            no_people_label.setStyleSheet("color: #999; font-size: 12pt; padding: 40px;")
+            self.people_grid_layout.addWidget(no_people_label, 0, 0)
+            return
+
+        # Add person cards to grid (3 columns)
+        for i, person in enumerate(self.all_people):
+            row = i // 3
+            col = i % 3
+
+            card = self._create_person_card(person)
+            self.people_grid_layout.addWidget(card, row, col)
+
+    def _create_person_card(self, person: dict) -> QWidget:
+        """Create a clickable card for a person."""
+        card = QFrame()
+        card.setStyleSheet("""
+            QFrame {
+                background-color: white;
+                border: 2px solid #ddd;
+                border-radius: 8px;
+                padding: 8px;
+            }
+            QFrame:hover {
+                border-color: #2196F3;
+                background-color: #f5f9ff;
+            }
+        """)
+        card.setCursor(Qt.PointingHandCursor)
+
+        layout = QVBoxLayout(card)
+        layout.setSpacing(8)
+
+        # Representative face thumbnail
+        thumbnail_label = QLabel()
+        thumbnail_label.setFixedSize(200, 200)
+        thumbnail_label.setAlignment(Qt.AlignCenter)
+        thumbnail_label.setStyleSheet("""
+            QLabel {
+                background-color: #f5f5f5;
+                border: 1px solid #ddd;
+                border-radius: 4px;
+            }
+        """)
+
+        # Load representative face thumbnail
+        rep_thumb_png = person.get('rep_thumb_png')
+        if rep_thumb_png:
+            try:
+                from PySide6.QtCore import QByteArray
+                from PySide6.QtGui import QImage, QPixmap
+
+                # Convert blob to pixmap
+                byte_array = QByteArray(rep_thumb_png)
+                image = QImage()
+                image.loadFromData(byte_array, "PNG")
+
+                if not image.isNull():
+                    pixmap = QPixmap.fromImage(image).scaled(
+                        200, 200, Qt.KeepAspectRatio, Qt.SmoothTransformation
+                    )
+                    thumbnail_label.setPixmap(pixmap)
+                else:
+                    thumbnail_label.setText("No Preview")
+            except Exception as e:
+                logger.warning(f"Failed to load person thumbnail: {e}")
+                thumbnail_label.setText("Preview Error")
+        else:
+            thumbnail_label.setText("No Photo")
+
+        layout.addWidget(thumbnail_label)
+
+        # Person info
+        display_name = person.get('display_name', 'Unknown')
+        member_count = person.get('member_count', 0)
+
+        name_label = QLabel(display_name)
+        name_label.setStyleSheet("font-weight: bold; font-size: 11pt; color: #333;")
+        name_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(name_label)
+
+        count_label = QLabel(f"📸 {member_count} photos")
+        count_label.setStyleSheet("font-size: 9pt; color: #666;")
+        count_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(count_label)
+
+        # Make clickable - opens person detail view
+        branch_key = person.get('branch_key')
+        card.mousePressEvent = lambda event: self._on_person_clicked(branch_key, display_name)
+
+        return card
+
+    def _on_person_clicked(self, branch_key: str, display_name: str):
+        """Handle person card click - open photos of this person with similarity filtering."""
+        try:
+            from services.person_stack_service import PersonStackService
+            from reference_db import ReferenceDB
+
+            db = ReferenceDB()
+            person_service = PersonStackService(db)
+
+            # Get person photos with similarity filtering
+            person_data = person_service.get_person_photos(
+                project_id=self.project_id,
+                branch_key=branch_key,
+                similarity_threshold=self.similarity_threshold
+            )
+
+            db.close()
+
+            # Open PersonPhotosDialog (simplified - show in message for now)
+            photos = person_data.get('photos', [])
+            if not photos:
+                QMessageBox.information(
+                    self,
+                    f"No Photos - {display_name}",
+                    f"No photos found for {display_name} at {int(self.similarity_threshold * 100)}% similarity threshold.\n\n"
+                    f"Try lowering the slider to see more photos."
+                )
+                return
+
+            # TODO: Open a detail dialog showing all photos of this person
+            # For now, show count
+            QMessageBox.information(
+                self,
+                f"Photos of {display_name}",
+                f"Found {len(photos)} photos of {display_name} at {int(self.similarity_threshold * 100)}% similarity.\n\n"
+                f"Detail view coming in next update!"
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to open person photos: {e}", exc_info=True)
+            QMessageBox.critical(self, "Error", f"Failed to load person photos:\n{e}")
