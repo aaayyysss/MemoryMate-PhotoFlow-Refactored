@@ -270,9 +270,6 @@ class DuplicatesSection(BaseSection):
         if not has_duplicates:
             return
 
-        # Import here to avoid circular imports
-        from layouts.google_components.duplicates_dialog import DuplicatesDialog
-
         # Get main window through parent chain
         main_window = None
         if self.parent():
@@ -283,13 +280,31 @@ class DuplicatesSection(BaseSection):
             elif hasattr(accordion, 'parent') and accordion.parent():
                 main_window = accordion.parent()
 
-        # Open duplicates dialog
-        dialog = DuplicatesDialog(
-            project_id=self.project_id,
-            parent=main_window
-        )
+        # Route to appropriate dialog based on duplicate type
+        if duplicate_type == "exact":
+            # Import DuplicatesDialog for exact duplicates
+            from layouts.google_components.duplicates_dialog import DuplicatesDialog
 
-        dialog.exec()
+            # Open duplicates dialog
+            dialog = DuplicatesDialog(
+                project_id=self.project_id,
+                parent=main_window
+            )
+
+            dialog.exec()
+
+        elif duplicate_type == "similar":
+            # Import StackBrowserDialog for similar shots
+            from layouts.google_components.stack_view_dialog import StackBrowserDialog
+
+            # Open stack browser dialog for similar shots
+            dialog = StackBrowserDialog(
+                project_id=self.project_id,
+                stack_type="similar",
+                parent=main_window
+            )
+
+            dialog.exec()
 
         # Refresh counts after dialog closes
         self.load_section()
