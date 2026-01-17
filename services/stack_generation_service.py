@@ -161,7 +161,8 @@ class StackGenerationService:
                 continue
 
             # Check if photo has embedding
-            embedding = self.similarity_service.get_embedding(photo_id)
+            # FIX: PhotoSimilarityService doesn't have get_embedding, use embedder
+            embedding = self.similarity_service.embedder.get_embedding(photo_id)
             if embedding is None:
                 continue
 
@@ -231,8 +232,8 @@ class StackGenerationService:
                     if photo_id == rep_photo_id:
                         similarity_score = 1.0
                     else:
-                        rep_emb = self.similarity_service.get_embedding(rep_photo_id)
-                        photo_emb = self.similarity_service.get_embedding(photo_id)
+                        rep_emb = self.similarity_service.embedder.get_embedding(rep_photo_id)
+                        photo_emb = self.similarity_service.embedder.get_embedding(photo_id)
 
                         if rep_emb is not None and photo_emb is not None:
                             import numpy as np
@@ -409,7 +410,7 @@ class StackGenerationService:
         photo_embeddings: Dict[int, np.ndarray] = {}
         for photo in photos:
             photo_id = photo["id"]
-            embedding = self.similarity_service.get_embedding(photo_id)
+            embedding = self.similarity_service.embedder.get_embedding(photo_id)
             if embedding is not None:
                 # Normalize for cosine similarity
                 norm = np.linalg.norm(embedding)
