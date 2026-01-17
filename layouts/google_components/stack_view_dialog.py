@@ -1256,11 +1256,12 @@ class StackBrowserDialog(QDialog):
 
             # Use context manager to get connection properly
             with db_conn.get_connection(read_only=True) as conn:
+                # FIX: Use created_ts (INTEGER timestamp) not created_at (doesn't exist)
                 cursor = conn.execute("""
                     SELECT COUNT(*)
                     FROM photo_metadata
                     WHERE project_id = ?
-                    AND created_at > ?
+                    AND created_ts > ?
                     AND created_ts IS NOT NULL
                 """, (self.project_id, newest_stack_time))
 
