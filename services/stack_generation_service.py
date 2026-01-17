@@ -161,8 +161,17 @@ class StackGenerationService:
                 continue
 
             # Check if photo has embedding
-            # FIX: PhotoSimilarityService doesn't have get_embedding, use embedder
-            embedding = self.similarity_service.embedder.get_embedding(photo_id)
+            # Handle both SemanticEmbeddingService and PhotoSimilarityService
+            if hasattr(self.similarity_service, 'get_embedding'):
+                # SemanticEmbeddingService (scan controller path)
+                embedding = self.similarity_service.get_embedding(photo_id)
+            elif hasattr(self.similarity_service, 'embedder'):
+                # PhotoSimilarityService (dialog regenerate path)
+                embedding = self.similarity_service.embedder.get_embedding(photo_id)
+            else:
+                logger.warning(f"similarity_service has no get_embedding method")
+                continue
+
             if embedding is None:
                 continue
 
@@ -232,8 +241,16 @@ class StackGenerationService:
                     if photo_id == rep_photo_id:
                         similarity_score = 1.0
                     else:
-                        rep_emb = self.similarity_service.embedder.get_embedding(rep_photo_id)
-                        photo_emb = self.similarity_service.embedder.get_embedding(photo_id)
+                        # Handle both service types
+                        if hasattr(self.similarity_service, 'get_embedding'):
+                            rep_emb = self.similarity_service.get_embedding(rep_photo_id)
+                            photo_emb = self.similarity_service.get_embedding(photo_id)
+                        elif hasattr(self.similarity_service, 'embedder'):
+                            rep_emb = self.similarity_service.embedder.get_embedding(rep_photo_id)
+                            photo_emb = self.similarity_service.embedder.get_embedding(photo_id)
+                        else:
+                            rep_emb = None
+                            photo_emb = None
 
                         if rep_emb is not None and photo_emb is not None:
                             import numpy as np
@@ -410,7 +427,15 @@ class StackGenerationService:
         photo_embeddings: Dict[int, np.ndarray] = {}
         for photo in photos:
             photo_id = photo["id"]
-            embedding = self.similarity_service.embedder.get_embedding(photo_id)
+
+            # Handle both service types
+            if hasattr(self.similarity_service, 'get_embedding'):
+                embedding = self.similarity_service.get_embedding(photo_id)
+            elif hasattr(self.similarity_service, 'embedder'):
+                embedding = self.similarity_service.embedder.get_embedding(photo_id)
+            else:
+                embedding = None
+
             if embedding is not None:
                 # Normalize for cosine similarity
                 norm = np.linalg.norm(embedding)
