@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QScrollArea, QWidget, QGridLayout, QFrame, QCheckBox,
     QMessageBox, QTableWidget, QTableWidgetItem, QHeaderView,
-    QGroupBox
+    QGroupBox, QSlider
 )
 from PySide6.QtCore import Signal, Qt, Slot
 from PySide6.QtGui import QFont, QColor, QPixmap
@@ -328,6 +328,25 @@ class StackViewDialog(QDialog):
         """)
         button_layout.addWidget(self.btn_unstack)
 
+        # Smart action: Keep Best (auto-select all except representative)
+        self.btn_keep_best = QPushButton("⭐ Keep Best")
+        self.btn_keep_best.clicked.connect(self._on_keep_best)
+        self.btn_keep_best.setToolTip("Automatically keep the best quality photo and select others for deletion")
+        self.btn_keep_best.setStyleSheet("""
+            QPushButton {
+                padding: 8px 16px;
+                background-color: #4CAF50;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #45a049;
+            }
+        """)
+        button_layout.addWidget(self.btn_keep_best)
+
         button_layout.addStretch()
 
         self.btn_delete_selected = QPushButton("🗑️ Delete Selected")
@@ -539,6 +558,51 @@ class StackViewDialog(QDialog):
 
         self.btn_delete_selected.setEnabled(len(self.selected_photos) > 0)
 
+    def _on_keep_best(self):
+        """
+        Handle 'Keep Best' button click.
+
+        Automatically selects all photos except the representative for deletion.
+        This is a smart action based on Google Photos and iPhone Photos best practices.
+        """
+        rep_photo_id = self.stack.get('representative_photo_id')
+
+        if not rep_photo_id:
+            QMessageBox.warning(
+                self,
+                "No Representative",
+                "Cannot use 'Keep Best' - no representative photo is set for this stack."
+            )
+            return
+
+        # Find all member widgets and select them (except representative)
+        selected_count = 0
+        for i in range(self.members_grid.count()):
+            item = self.members_grid.itemAt(i)
+            if item and item.widget():
+                widget = item.widget()
+                if isinstance(widget, StackMemberWidget):
+                    # Select if not representative
+                    if not widget.is_representative:
+                        widget.checkbox.setChecked(True)
+                        selected_count += 1
+
+        # Show confirmation
+        if selected_count > 0:
+            QMessageBox.information(
+                self,
+                "Photos Selected",
+                f"Selected {selected_count} photo(s) for deletion.\n\n"
+                f"The best quality photo (representative) will be kept.\n"
+                f"Click 'Delete Selected' to proceed."
+            )
+        else:
+            QMessageBox.information(
+                self,
+                "No Photos to Select",
+                "All photos in this stack are already optimal (only representative exists)."
+            )
+
     def _on_delete_selected(self):
         """Handle delete selected button click."""
         if not self.selected_photos:
@@ -655,3 +719,393 @@ class StackViewDialog(QDialog):
             except Exception as e:
                 logger.error(f"Failed to unstack: {e}", exc_info=True)
                 QMessageBox.critical(self, "Error", f"Failed to unstack:\n{e}")
+
+
+# =============================================================================
+# STACK BROWSER DIALOG
+# =============================================================================
+
+class StackBrowserDialog(QDialog):
+    """
+    Dialog for browsing all similar shot stacks.
+
+    Features:
+    - Grid view of all stack thumbnails
+    - Similarity threshold slider (50-100%)
+    - Real-time filtering based on similarity
+    - Click to open detailed StackViewDialog
+    - Total count indicator
+
+    Based on best practices from Google Photos and iPhone Photos.
+    """
+
+    def __init__(self, project_id: int, stack_type: str = "similar", parent=None):
+        """
+        Initialize StackBrowserDialog.
+
+        Args:
+            project_id: Project ID
+            stack_type: Stack type ("similar" or other)
+            parent: Parent widget
+        """
+        super().__init__(parent)
+        self.project_id = project_id
+        self.stack_type = stack_type
+        self.all_stacks = []  # All stacks from DB
+        self.filtered_stacks = []  # Filtered by similarity threshold
+        self.similarity_threshold = 0.92  # Default 92% (matches StackGenParams)
+
+        self.setWindowTitle("Similar Photos" if stack_type == "similar" else "Photo Stacks")
+        self.setMinimumSize(1000, 700)
+
+        self._init_ui()
+        self._load_stacks()
+
+    def _init_ui(self):
+        """Initialize UI components."""
+        layout = QVBoxLayout(self)
+        layout.setSpacing(16)
+        layout.setContentsMargins(16, 16, 16, 16)
+
+        # Header
+        header_layout = QHBoxLayout()
+
+        # Title
+        title_label = QLabel("📸 Similar Photos")
+        title_label.setStyleSheet("font-size: 18pt; font-weight: bold; color: #2196F3;")
+        header_layout.addWidget(title_label)
+
+        header_layout.addStretch(1)
+
+        # Count indicator
+        self.count_label = QLabel("Loading...")
+        self.count_label.setStyleSheet("font-size: 11pt; color: #666;")
+        header_layout.addWidget(self.count_label)
+
+        layout.addLayout(header_layout)
+
+        # Similarity threshold slider
+        slider_container = self._create_similarity_slider()
+        layout.addWidget(slider_container)
+
+        # Stack grid (scroll area)
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setStyleSheet("""
+            QScrollArea {
+                border: 1px solid #ddd;
+                border-radius: 8px;
+                background-color: #f9f9f9;
+            }
+        """)
+
+        # Grid container
+        self.grid_container = QWidget()
+        self.grid_layout = QGridLayout(self.grid_container)
+        self.grid_layout.setSpacing(16)
+        self.grid_layout.setContentsMargins(16, 16, 16, 16)
+
+        self.scroll_area.setWidget(self.grid_container)
+        layout.addWidget(self.scroll_area, 1)  # Stretch to fill
+
+        # Bottom buttons
+        button_layout = QHBoxLayout()
+        button_layout.addStretch(1)
+
+        close_btn = QPushButton("Close")
+        close_btn.setFixedWidth(100)
+        close_btn.clicked.connect(self.accept)
+        button_layout.addWidget(close_btn)
+
+        layout.addLayout(button_layout)
+
+    def _create_similarity_slider(self) -> QWidget:
+        """Create similarity threshold slider."""
+        container = QWidget()
+        container.setStyleSheet("""
+            QWidget {
+                background-color: white;
+                border: 1px solid #ddd;
+                border-radius: 8px;
+                padding: 12px;
+            }
+        """)
+
+        layout = QVBoxLayout(container)
+        layout.setSpacing(8)
+
+        # Label row
+        label_row = QHBoxLayout()
+        label = QLabel("🎚️ Similarity Threshold:")
+        label.setStyleSheet("font-weight: bold; font-size: 11pt;")
+        label_row.addWidget(label)
+
+        self.threshold_value_label = QLabel(f"{int(self.similarity_threshold * 100)}%")
+        self.threshold_value_label.setStyleSheet("font-size: 11pt; color: #2196F3; font-weight: bold;")
+        label_row.addWidget(self.threshold_value_label)
+
+        label_row.addStretch(1)
+
+        # Help text
+        help_label = QLabel("Adjust to filter similar photos by similarity percentage")
+        help_label.setStyleSheet("font-size: 9pt; color: #999;")
+        label_row.addWidget(help_label)
+
+        layout.addLayout(label_row)
+
+        # Slider row
+        slider_row = QHBoxLayout()
+
+        min_label = QLabel("50%")
+        min_label.setStyleSheet("font-size: 9pt; color: #666;")
+        slider_row.addWidget(min_label)
+
+        self.similarity_slider = QSlider(Qt.Horizontal)
+        self.similarity_slider.setMinimum(50)  # 50% minimum
+        self.similarity_slider.setMaximum(100)  # 100% maximum
+        self.similarity_slider.setValue(int(self.similarity_threshold * 100))
+        self.similarity_slider.setTickPosition(QSlider.TicksBelow)
+        self.similarity_slider.setTickInterval(10)
+        self.similarity_slider.setStyleSheet("""
+            QSlider::groove:horizontal {
+                border: 1px solid #bbb;
+                background: #e0e0e0;
+                height: 8px;
+                border-radius: 4px;
+            }
+            QSlider::handle:horizontal {
+                background: #2196F3;
+                border: 2px solid #1976D2;
+                width: 18px;
+                margin: -5px 0;
+                border-radius: 9px;
+            }
+            QSlider::handle:horizontal:hover {
+                background: #1976D2;
+            }
+        """)
+        self.similarity_slider.valueChanged.connect(self._on_slider_changed)
+        slider_row.addWidget(self.similarity_slider, 1)
+
+        max_label = QLabel("100%")
+        max_label.setStyleSheet("font-size: 9pt; color: #666;")
+        slider_row.addWidget(max_label)
+
+        layout.addLayout(slider_row)
+
+        return container
+
+    def _on_slider_changed(self, value: int):
+        """Handle slider value change."""
+        self.similarity_threshold = value / 100.0
+        self.threshold_value_label.setText(f"{value}%")
+
+        # Re-filter and display stacks
+        self._filter_and_display_stacks()
+
+    def _load_stacks(self):
+        """Load all stacks from database."""
+        try:
+            from repository.stack_repository import StackRepository
+            from repository.base_repository import DatabaseConnection
+
+            db_conn = DatabaseConnection()
+            stack_repo = StackRepository(db_conn)
+
+            # Get all stacks of the specified type for this project
+            stacks = stack_repo.list_stacks(
+                project_id=self.project_id,
+                stack_type=self.stack_type
+            )
+
+            # Load members for each stack
+            self.all_stacks = []
+            for stack in stacks:
+                stack_id = stack['stack_id']
+                members = stack_repo.list_stack_members(
+                    project_id=self.project_id,
+                    stack_id=stack_id
+                )
+                stack['members'] = members
+                self.all_stacks.append(stack)
+
+            logger.info(f"Loaded {len(self.all_stacks)} {self.stack_type} stacks")
+
+            # Filter and display
+            self._filter_and_display_stacks()
+
+        except Exception as e:
+            logger.error(f"Failed to load stacks: {e}", exc_info=True)
+            self.count_label.setText("Error loading stacks")
+            QMessageBox.critical(self, "Error", f"Failed to load stacks:\n{e}")
+
+    def _filter_and_display_stacks(self):
+        """Filter stacks by similarity threshold and display."""
+        # Filter stacks based on similarity threshold
+        self.filtered_stacks = []
+
+        for stack in self.all_stacks:
+            # Get max similarity in stack
+            members = stack.get('members', [])
+            if not members:
+                continue
+
+            # Find maximum similarity score in this stack
+            max_similarity = 0.0
+            for member in members:
+                similarity = member.get('similarity_score', 0.0)
+                if similarity > max_similarity:
+                    max_similarity = similarity
+
+            # Include stack if max similarity >= threshold
+            if max_similarity >= self.similarity_threshold:
+                self.filtered_stacks.append(stack)
+
+        # Update count label
+        total_photos = sum(len(stack.get('members', [])) for stack in self.filtered_stacks)
+        self.count_label.setText(
+            f"{len(self.filtered_stacks)} groups • {total_photos} photos"
+        )
+
+        # Display stacks
+        self._display_stacks()
+
+    def _display_stacks(self):
+        """Display filtered stacks in grid."""
+        # Clear existing widgets
+        while self.grid_layout.count():
+            item = self.grid_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        # If no stacks, show message
+        if not self.filtered_stacks:
+            no_stacks_label = QLabel("No similar photo groups found at this similarity level.\nTry lowering the threshold.")
+            no_stacks_label.setAlignment(Qt.AlignCenter)
+            no_stacks_label.setStyleSheet("color: #999; font-size: 12pt; padding: 40px;")
+            self.grid_layout.addWidget(no_stacks_label, 0, 0)
+            return
+
+        # Add stack cards to grid (3 columns)
+        for i, stack in enumerate(self.filtered_stacks):
+            row = i // 3
+            col = i % 3
+
+            card = self._create_stack_card(stack)
+            self.grid_layout.addWidget(card, row, col)
+
+    def _create_stack_card(self, stack: dict) -> QWidget:
+        """Create a clickable card for a stack."""
+        card = QFrame()
+        card.setStyleSheet("""
+            QFrame {
+                background-color: white;
+                border: 2px solid #ddd;
+                border-radius: 8px;
+                padding: 8px;
+            }
+            QFrame:hover {
+                border-color: #2196F3;
+                background-color: #f5f9ff;
+            }
+        """)
+        card.setCursor(Qt.PointingHandCursor)
+
+        layout = QVBoxLayout(card)
+        layout.setSpacing(8)
+
+        # Representative thumbnail
+        thumbnail_label = QLabel()
+        thumbnail_label.setFixedSize(200, 200)
+        thumbnail_label.setAlignment(Qt.AlignCenter)
+        thumbnail_label.setStyleSheet("""
+            QLabel {
+                background-color: #f5f5f5;
+                border: 1px solid #ddd;
+                border-radius: 4px;
+            }
+        """)
+
+        # Load representative photo thumbnail
+        rep_photo_id = stack.get('representative_photo_id')
+        if rep_photo_id:
+            try:
+                from repository.photo_repository import PhotoRepository
+                from repository.base_repository import DatabaseConnection
+                from app_services import get_thumbnail
+
+                db_conn = DatabaseConnection()
+                photo_repo = PhotoRepository(db_conn)
+                photo = photo_repo.get_by_id(rep_photo_id)
+
+                if photo:
+                    path = photo.get('path', '')
+                    if path and Path(path).exists():
+                        pixmap = get_thumbnail(path, 200)
+                        if pixmap:
+                            thumbnail_label.setPixmap(pixmap)
+                        else:
+                            thumbnail_label.setText("No Preview")
+                    else:
+                        thumbnail_label.setText("File Not Found")
+                else:
+                    thumbnail_label.setText("No Photo")
+            except Exception as e:
+                logger.warning(f"Failed to load thumbnail: {e}")
+                thumbnail_label.setText("Preview Error")
+        else:
+            thumbnail_label.setText("No Representative")
+
+        layout.addWidget(thumbnail_label)
+
+        # Stack info
+        members = stack.get('members', [])
+        info_label = QLabel(f"📸 {len(members)} similar photos")
+        info_label.setStyleSheet("font-weight: bold; font-size: 10pt; color: #333;")
+        info_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(info_label)
+
+        # Max similarity
+        max_similarity = 0.0
+        for member in members:
+            similarity = member.get('similarity_score', 0.0)
+            if similarity > max_similarity:
+                max_similarity = similarity
+
+        if max_similarity > 0:
+            similarity_label = QLabel(f"🔗 Up to {int(max_similarity * 100)}% similar")
+            similarity_label.setStyleSheet("font-size: 9pt; color: #2196F3;")
+            similarity_label.setAlignment(Qt.AlignCenter)
+            layout.addWidget(similarity_label)
+
+        # Make clickable
+        stack_id = stack.get('stack_id')
+        card.mousePressEvent = lambda event: self._on_stack_clicked(stack_id)
+
+        return card
+
+    def _on_stack_clicked(self, stack_id: int):
+        """Handle stack card click - open detailed view."""
+        try:
+            # Open detailed StackViewDialog
+            dialog = StackViewDialog(
+                project_id=self.project_id,
+                stack_id=stack_id,
+                parent=self
+            )
+
+            # Connect signal to refresh this browser
+            dialog.stack_action_taken.connect(self._on_stack_action)
+
+            dialog.exec()
+
+        except Exception as e:
+            logger.error(f"Failed to open stack view: {e}", exc_info=True)
+            QMessageBox.critical(self, "Error", f"Failed to open stack view:\n{e}")
+
+    def _on_stack_action(self, action: str, stack_id: int):
+        """Handle action taken in stack view dialog."""
+        logger.info(f"Stack action: {action} on stack {stack_id}")
+
+        # Reload stacks to reflect changes
+        self._load_stacks()
