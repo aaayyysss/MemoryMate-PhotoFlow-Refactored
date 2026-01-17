@@ -46,6 +46,7 @@ class StackMemberWidget(QWidget):
     def __init__(
         self,
         photo: Dict[str, Any],
+        photo_id: int,  # CRITICAL: Pass photo_id explicitly
         similarity_score: Optional[float] = None,
         rank: Optional[int] = None,
         is_representative: bool = False,
@@ -53,6 +54,7 @@ class StackMemberWidget(QWidget):
     ):
         super().__init__(parent)
         self.photo = photo
+        self.photo_id = photo_id  # Store photo_id explicitly
         self.similarity_score = similarity_score
         self.rank = rank
         self.is_representative = is_representative
@@ -178,15 +180,10 @@ class StackMemberWidget(QWidget):
     def _on_selection_changed(self, state):
         """Handle selection change."""
         is_selected = state == Qt.Checked
-        photo_id = self.photo.get('id')
-        logger.debug(f"[SELECTION] StackMemberWidget checkbox changed: state={state}, is_selected={is_selected}, photo_id={photo_id}, photo_keys={list(self.photo.keys())}")
-
-        if photo_id is None:
-            logger.error(f"[SELECTION] ERROR: Photo dict has no 'id' field! Keys: {list(self.photo.keys())}, Photo: {self.photo}")
-            return
-
-        logger.debug(f"[SELECTION] Emitting selection_changed signal: photo_id={photo_id}, is_selected={is_selected}")
-        self.selection_changed.emit(photo_id, is_selected)
+        # Use the explicitly stored photo_id instead of trying to extract from photo dict
+        logger.debug(f"[SELECTION] StackMemberWidget checkbox changed: state={state}, is_selected={is_selected}, photo_id={self.photo_id}")
+        logger.debug(f"[SELECTION] Emitting selection_changed signal: photo_id={self.photo_id}, is_selected={is_selected}")
+        self.selection_changed.emit(self.photo_id, is_selected)
 
     def is_selected(self) -> bool:
         """Check if selected."""
@@ -461,14 +458,14 @@ class StackViewDialog(QDialog):
 
             widget = StackMemberWidget(
                 photo=photo,
+                photo_id=photo_id,  # Pass photo_id explicitly
                 similarity_score=member.get('similarity_score'),
                 rank=member.get('rank'),
                 is_representative=is_representative,
                 parent=self
             )
             widget.selection_changed.connect(self._on_member_selection_changed)
-            photo_id_for_log = photo.get('id', 'MISSING_ID')
-            logger.debug(f"[SIGNAL_CONNECT] Connected selection signal for photo {photo_id_for_log} (rep={is_representative}), photo_keys={list(photo.keys())}")
+            logger.debug(f"[SIGNAL_CONNECT] Connected selection signal for photo {photo_id} (rep={is_representative})")
 
             row = idx // 3
             col = idx % 3
