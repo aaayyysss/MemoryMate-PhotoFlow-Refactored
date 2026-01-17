@@ -847,7 +847,7 @@ class StackBrowserDialog(QDialog):
         label_row.addStretch(1)
 
         # Help text
-        help_label = QLabel("Adjust to filter similar photos by similarity percentage")
+        help_label = QLabel("Lower = more photos (includes less similar) • Higher = fewer photos (only very similar)")
         help_label.setStyleSheet("font-size: 9pt; color: #999;")
         label_row.addWidget(help_label)
 
@@ -940,26 +940,43 @@ class StackBrowserDialog(QDialog):
             QMessageBox.critical(self, "Error", f"Failed to load stacks:\n{e}")
 
     def _filter_and_display_stacks(self):
-        """Filter stacks by similarity threshold and display."""
-        # Filter stacks based on similarity threshold
+        """
+        Filter stacks by similarity threshold and display.
+
+        Based on Google Photos / iPhone Photos best practices:
+        - Always show all stack groups (don't hide groups)
+        - Filter MEMBERS within each stack based on similarity threshold
+        - Lower threshold = MORE photos visible (includes less similar)
+        - Higher threshold = FEWER photos visible (only very similar)
+        - Hide stacks that have no members after filtering
+        """
+        # Filter members within each stack based on similarity threshold
         self.filtered_stacks = []
 
         for stack in self.all_stacks:
-            # Get max similarity in stack
             members = stack.get('members', [])
             if not members:
                 continue
 
-            # Find maximum similarity score in this stack
-            max_similarity = 0.0
+            # Filter members by similarity threshold
+            filtered_members = []
             for member in members:
                 similarity = member.get('similarity_score', 0.0)
-                if similarity > max_similarity:
-                    max_similarity = similarity
+                # Include member if similarity >= threshold OR if it's the representative
+                # Representative should always be included regardless of score
+                photo_id = member.get('photo_id')
+                is_representative = (photo_id == stack.get('representative_photo_id'))
 
-            # Include stack if max similarity >= threshold
-            if max_similarity >= self.similarity_threshold:
-                self.filtered_stacks.append(stack)
+                if is_representative or similarity >= self.similarity_threshold:
+                    filtered_members.append(member)
+
+            # Only include stack if it has at least 2 photos after filtering
+            # (representative + at least 1 similar photo)
+            if len(filtered_members) >= 2:
+                # Create a copy of the stack with filtered members
+                filtered_stack = stack.copy()
+                filtered_stack['members'] = filtered_members
+                self.filtered_stacks.append(filtered_stack)
 
         # Update count label
         total_photos = sum(len(stack.get('members', [])) for stack in self.filtered_stacks)
@@ -980,7 +997,11 @@ class StackBrowserDialog(QDialog):
 
         # If no stacks, show message
         if not self.filtered_stacks:
-            no_stacks_label = QLabel("No similar photo groups found at this similarity level.\nTry lowering the threshold.")
+            no_stacks_label = QLabel(
+                "No similar photo groups found.\n\n"
+                f"At {int(self.similarity_threshold * 100)}% threshold, groups need at least 2 photos.\n"
+                "Try lowering the threshold to see more photos in each group."
+            )
             no_stacks_label.setAlignment(Qt.AlignCenter)
             no_stacks_label.setStyleSheet("color: #999; font-size: 12pt; padding: 40px;")
             self.grid_layout.addWidget(no_stacks_label, 0, 0)
