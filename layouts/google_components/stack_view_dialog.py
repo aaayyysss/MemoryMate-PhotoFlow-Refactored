@@ -839,6 +839,8 @@ class StackBrowserDialog(QDialog):
         similar_layout.addWidget(self.slider_container)
 
         # Info banner showing generation parameters
+        # Store layout reference for proper banner updates
+        self.similar_layout = similar_layout
         self.info_banner = self._create_info_banner()
         similar_layout.addWidget(self.info_banner)
 
@@ -1174,21 +1176,22 @@ class StackBrowserDialog(QDialog):
 
     def _update_info_banner(self):
         """Update info banner with current stack information."""
-        if not hasattr(self, 'info_banner'):
+        if not hasattr(self, 'info_banner') or not hasattr(self, 'similar_layout'):
             return
 
-        # Recreate the info banner with updated information
-        old_banner = self.info_banner
-        self.info_banner = self._create_info_banner()
+        # Find the index of the old banner
+        index = self.similar_layout.indexOf(self.info_banner)
+        if index < 0:
+            logger.warning("Could not find info banner in layout")
+            return
 
-        # Replace in layout
-        layout = old_banner.parent().layout()
-        if layout:
-            index = layout.indexOf(old_banner)
-            if index >= 0:
-                layout.removeWidget(old_banner)
-                old_banner.deleteLater()
-                layout.insertWidget(index, self.info_banner)
+        # Remove old banner
+        self.similar_layout.removeWidget(self.info_banner)
+        self.info_banner.deleteLater()
+
+        # Create and insert new banner at same position
+        self.info_banner = self._create_info_banner()
+        self.similar_layout.insertWidget(index, self.info_banner)
 
     def _load_stacks(self):
         """Load all stacks from database."""
