@@ -459,6 +459,7 @@ class StackViewDialog(QDialog):
                 parent=self
             )
             widget.selection_changed.connect(self._on_member_selection_changed)
+            logger.debug(f"Connected selection signal for photo {photo['id']} (rep={is_representative})")
 
             row = idx // 3
             col = idx % 3
@@ -551,12 +552,17 @@ class StackViewDialog(QDialog):
     @Slot(int, bool)
     def _on_member_selection_changed(self, photo_id: int, is_selected: bool):
         """Handle member selection change."""
+        logger.debug(f"Selection changed: photo_id={photo_id}, is_selected={is_selected}")
+
         if is_selected:
             self.selected_photos.add(photo_id)
         else:
             self.selected_photos.discard(photo_id)
 
-        self.btn_delete_selected.setEnabled(len(self.selected_photos) > 0)
+        # Update button state
+        is_enabled = len(self.selected_photos) > 0
+        logger.debug(f"Delete button enabled: {is_enabled} (selected: {len(self.selected_photos)})")
+        self.btn_delete_selected.setEnabled(is_enabled)
 
     def _on_keep_best(self):
         """
@@ -763,6 +769,9 @@ class StackBrowserDialog(QDialog):
         self.similarity_threshold = 0.92  # Default 92% (matches StackGenParams)
         self.current_mode = "similar"  # "similar" or "people"
 
+        # Track all threshold labels for updating when slider changes
+        self.threshold_labels = []  # List of all QLabel widgets showing threshold
+
         self.setWindowTitle("Similar Photos & People")
         self.setMinimumSize(1000, 700)
 
@@ -919,9 +928,12 @@ class StackBrowserDialog(QDialog):
         label.setStyleSheet("font-weight: bold; font-size: 11pt;")
         label_row.addWidget(label)
 
-        self.threshold_value_label = QLabel(f"{int(self.similarity_threshold * 100)}%")
-        self.threshold_value_label.setStyleSheet("font-size: 11pt; color: #2196F3; font-weight: bold;")
-        label_row.addWidget(self.threshold_value_label)
+        threshold_value_label = QLabel(f"{int(self.similarity_threshold * 100)}%")
+        threshold_value_label.setStyleSheet("font-size: 11pt; color: #2196F3; font-weight: bold;")
+        label_row.addWidget(threshold_value_label)
+
+        # Register this label for updates when slider changes
+        self.threshold_labels.append(threshold_value_label)
 
         label_row.addStretch(1)
 
@@ -977,10 +989,16 @@ class StackBrowserDialog(QDialog):
     def _on_slider_changed(self, value: int):
         """Handle slider value change."""
         self.similarity_threshold = value / 100.0
-        self.threshold_value_label.setText(f"{value}%")
 
-        # Re-filter and display stacks
-        self._filter_and_display_stacks()
+        # Update ALL threshold labels (both tabs have sliders)
+        for label in self.threshold_labels:
+            label.setText(f"{value}%")
+
+        # Re-filter and display based on current mode
+        if self.current_mode == "similar":
+            self._filter_and_display_stacks()
+        elif self.current_mode == "people":
+            self._display_people()  # Re-filter people view
 
     def _create_info_banner(self) -> QWidget:
         """Create info banner showing generation parameters and tips."""
@@ -1004,15 +1022,54 @@ class StackBrowserDialog(QDialog):
         layout.addWidget(title_label)
 
         # Explanation
-        explanation = QLabel(
+        explanation_text = (
             "• Stacks are created during photo scanning with configurable similarity threshold (default 50%)\n"
             "• The slider above filters which photos to show within each stack\n"
             "• Lower slider = more photos visible | Higher slider = only very similar photos\n"
             "• If you don't see expected photos, they may have been excluded during scanning"
         )
+
+        # Add generation threshold info if we can infer it
+        if self.all_stacks:
+            min_similarity = self._get_minimum_similarity_in_stacks()
+            if min_similarity:
+                generation_threshold = int(min_similarity * 100)
+                explanation_text += f"\n\n📊 Estimated generation threshold: ~{generation_threshold}%"
+
+                # Warn if viewing threshold is lower than generation
+                if self.similarity_threshold < min_similarity:
+                    warning_text = f" ⚠️ Your slider is at {int(self.similarity_threshold * 100)}%, but stacks were generated at ~{generation_threshold}%"
+                    explanation_text += f"\n{warning_text}"
+
+        explanation = QLabel(explanation_text)
         explanation.setStyleSheet("font-size: 9pt; color: #01579b; line-height: 1.4;")
         explanation.setWordWrap(True)
         layout.addWidget(explanation)
+
+        # Stale stack warning
+        if hasattr(self, 'stale_photo_count') and self.stale_photo_count > 0:
+            warning_frame = QFrame()
+            warning_frame.setStyleSheet("""
+                QFrame {
+                    background-color: #fff3cd;
+                    border: 1px solid #ffc107;
+                    border-radius: 4px;
+                    padding: 8px;
+                    margin-top: 6px;
+                }
+            """)
+            warning_layout = QHBoxLayout(warning_frame)
+            warning_layout.setContentsMargins(8, 4, 8, 4)
+
+            warning_label = QLabel(
+                f"⚠️ {self.stale_photo_count} new photo(s) added since last stack generation. "
+                f"Regenerate to include them in grouping."
+            )
+            warning_label.setStyleSheet("font-size: 9pt; color: #856404; font-weight: bold;")
+            warning_label.setWordWrap(True)
+            warning_layout.addWidget(warning_label, 1)
+
+            layout.addWidget(warning_frame)
 
         # Action row
         action_row = QHBoxLayout()
@@ -1046,6 +1103,93 @@ class StackBrowserDialog(QDialog):
 
         return banner
 
+    def _get_minimum_similarity_in_stacks(self) -> Optional[float]:
+        """
+        Get the minimum similarity score across all stacks.
+        This helps infer what threshold was used during generation.
+        """
+        if not self.all_stacks:
+            return None
+
+        min_sim = 1.0
+        for stack in self.all_stacks:
+            members = stack.get('members', [])
+            for member in members:
+                similarity = member.get('similarity_score', 1.0)
+                if similarity < min_sim and similarity > 0:  # Exclude 0 scores
+                    min_sim = similarity
+
+        return min_sim if min_sim < 1.0 else None
+
+    def _check_stale_stacks(self):
+        """
+        Check if stacks are stale (new photos added since generation).
+        Shows a warning banner if stale.
+        """
+        try:
+            from repository.photo_repository import PhotoRepository
+            from repository.base_repository import DatabaseConnection
+
+            # Get the newest stack's creation time
+            if not self.all_stacks:
+                return
+
+            newest_stack_time = None
+            for stack in self.all_stacks:
+                created_at = stack.get('created_at')
+                if created_at:
+                    if newest_stack_time is None or created_at > newest_stack_time:
+                        newest_stack_time = created_at
+
+            if not newest_stack_time:
+                return
+
+            # Count photos added after stack generation
+            db_conn = DatabaseConnection()
+            photo_repo = PhotoRepository(db_conn)
+
+            # Get count of photos created after the stack generation
+            import sqlite3
+            conn = sqlite3.connect(db_conn.db_file)
+            cursor = conn.execute("""
+                SELECT COUNT(*)
+                FROM photo_metadata
+                WHERE project_id = ?
+                AND created_at > ?
+                AND created_ts IS NOT NULL
+            """, (self.project_id, newest_stack_time))
+
+            new_photo_count = cursor.fetchone()[0]
+            conn.close()
+
+            if new_photo_count > 0:
+                self.stale_photo_count = new_photo_count
+                logger.info(f"Detected {new_photo_count} new photos since last stack generation")
+            else:
+                self.stale_photo_count = 0
+
+        except Exception as e:
+            logger.warning(f"Failed to check stale stacks: {e}")
+            self.stale_photo_count = 0
+
+    def _update_info_banner(self):
+        """Update info banner with current stack information."""
+        if not hasattr(self, 'info_banner'):
+            return
+
+        # Recreate the info banner with updated information
+        old_banner = self.info_banner
+        self.info_banner = self._create_info_banner()
+
+        # Replace in layout
+        layout = old_banner.parent().layout()
+        if layout:
+            index = layout.indexOf(old_banner)
+            if index >= 0:
+                layout.removeWidget(old_banner)
+                old_banner.deleteLater()
+                layout.insertWidget(index, self.info_banner)
+
     def _load_stacks(self):
         """Load all stacks from database."""
         try:
@@ -1073,6 +1217,12 @@ class StackBrowserDialog(QDialog):
                 self.all_stacks.append(stack)
 
             logger.info(f"Loaded {len(self.all_stacks)} {self.stack_type} stacks")
+
+            # Check for stale stacks (new photos added since generation)
+            self._check_stale_stacks()
+
+            # Update info banner with generation threshold info
+            self._update_info_banner()
 
             # Filter and display
             self._filter_and_display_stacks()
