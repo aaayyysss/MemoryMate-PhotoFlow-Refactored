@@ -25,9 +25,9 @@ class PreScanOptions:
         self.detect_exact = True
         self.detect_similar = True
         self.generate_embeddings = True  # New: Auto-generate embeddings for similar detection
-        self.time_window_seconds = 10
-        self.similarity_threshold = 0.92
-        self.min_stack_size = 3
+        self.time_window_seconds = 30  # Increased from 10 to catch more candidates
+        self.similarity_threshold = 0.50  # Lowered from 0.92 to match UI minimum
+        self.min_stack_size = 2  # Lowered from 3 to allow smaller stacks
 
 
 class PreScanOptionsDialog(QDialog):
@@ -145,10 +145,10 @@ class PreScanOptionsDialog(QDialog):
         time_row = QHBoxLayout()
         time_row.addWidget(QLabel("Time window:"))
         self.spin_time_window = QSpinBox()
-        self.spin_time_window.setRange(1, 60)
+        self.spin_time_window.setRange(5, 120)  # Expanded from 60 to 120 for event photography
         self.spin_time_window.setValue(self.options.time_window_seconds)
         self.spin_time_window.setSuffix(" seconds")
-        self.spin_time_window.setToolTip("Only compare photos within this time range")
+        self.spin_time_window.setToolTip("Only compare photos within this time range\nDefault 30s for normal shooting, up to 120s for events")
         time_row.addWidget(self.spin_time_window)
         time_row.addStretch(1)
         similar_settings_layout.addLayout(time_row)
@@ -157,10 +157,10 @@ class PreScanOptionsDialog(QDialog):
         sim_row = QHBoxLayout()
         sim_row.addWidget(QLabel("Similarity:"))
         self.spin_similarity = QDoubleSpinBox()
-        self.spin_similarity.setRange(0.80, 0.99)
+        self.spin_similarity.setRange(0.50, 0.99)  # Lowered from 0.80 to match UI slider
         self.spin_similarity.setSingleStep(0.01)
         self.spin_similarity.setValue(self.options.similarity_threshold)
-        self.spin_similarity.setToolTip("Minimum visual similarity (0.80-0.99)")
+        self.spin_similarity.setToolTip("Minimum visual similarity (0.50-0.99)\nLower = more photos grouped, Higher = only very similar")
         sim_row.addWidget(self.spin_similarity)
         sim_row.addStretch(1)
         similar_settings_layout.addLayout(sim_row)
