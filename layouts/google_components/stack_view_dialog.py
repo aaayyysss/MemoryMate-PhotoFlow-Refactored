@@ -58,21 +58,26 @@ class ThumbnailLoader(QRunnable):
 
     def run(self):
         """Load thumbnail in background thread."""
+        logger.debug(f"[THUMBNAIL_LOADER] Starting thumbnail load for: {self.photo_path}")
         try:
             from app_services import get_thumbnail
 
             if self.photo_path and Path(self.photo_path).exists():
+                logger.debug(f"[THUMBNAIL_LOADER] File exists, loading thumbnail...")
                 pixmap = get_thumbnail(self.photo_path, self.size)
                 if pixmap and not pixmap.isNull():
                     # Signal success with pixmap
+                    logger.debug(f"[THUMBNAIL_LOADER] Thumbnail loaded successfully, emitting signal")
                     self.signals.finished.emit(pixmap, self.thumbnail_label)
                 else:
+                    logger.warning(f"[THUMBNAIL_LOADER] get_thumbnail returned None or null pixmap")
                     self.signals.error.emit("No Preview", self.thumbnail_label)
             else:
+                logger.warning(f"[THUMBNAIL_LOADER] File not found: {self.photo_path}")
                 self.signals.error.emit("File Not Found", self.thumbnail_label)
 
         except Exception as e:
-            logger.debug(f"Thumbnail load error: {e}")
+            logger.error(f"[THUMBNAIL_LOADER] Exception during thumbnail load: {e}", exc_info=True)
             self.signals.error.emit("Error", self.thumbnail_label)
 
 
@@ -195,8 +200,9 @@ class StackMemberWidget(QWidget):
         else:
             logger.debug(f"[CHECKBOX_INIT] Creating enabled checkbox for photo_id={self.photo_id}")
 
-        self.checkbox.stateChanged.connect(self._on_selection_changed)
-        logger.debug(f"[CHECKBOX_INIT] Connected stateChanged signal for photo_id={self.photo_id}, enabled={self.checkbox.isEnabled()}")
+        # CRITICAL: Use clicked signal instead of stateChanged for more reliable detection
+        self.checkbox.clicked.connect(lambda checked: self._on_selection_changed(Qt.Checked if checked else Qt.Unchecked))
+        logger.debug(f"[CHECKBOX_INIT] Connected clicked signal for photo_id={self.photo_id}, enabled={self.checkbox.isEnabled()}, isCheckable={self.checkbox.isCheckable()}")
         layout.addWidget(self.checkbox)
 
         # Style
@@ -211,19 +217,29 @@ class StackMemberWidget(QWidget):
 
     def _load_thumbnail(self):
         """Load thumbnail asynchronously (Phase 3: Progressive Loading)."""
+        logger.debug(f"[MEMBER_WIDGET] _load_thumbnail called for photo_id={self.photo_id}")
         try:
             path = self.photo.get('path', '')
+            logger.debug(f"[MEMBER_WIDGET] Photo path: {path}")
 
             if path:
                 # Load thumbnail in background thread
-                loader = ThumbnailLoader(path, self.thumbnail_label, size=180)
+                logger.debug(f"[MEMBER_WIDGET] Creating ThumbnailLoader for {path}")
+
+                # CRITICAL: Keep reference to prevent garbage collection
+                self._thumbnail_loader = ThumbnailLoader(path, self.thumbnail_label, size=180)
 
                 # Connect signals
                 def on_loaded(pixmap, label):
+                    logger.debug(f"[MEMBER_WIDGET] on_loaded callback: label={label}, self.thumbnail_label={self.thumbnail_label}")
                     if label == self.thumbnail_label:
+                        logger.debug(f"[MEMBER_WIDGET] Setting pixmap on label")
                         label.setPixmap(pixmap)
+                    else:
+                        logger.warning(f"[MEMBER_WIDGET] Label mismatch in on_loaded!")
 
                 def on_error(error_msg, label):
+                    logger.debug(f"[MEMBER_WIDGET] on_error callback: error={error_msg}")
                     if label == self.thumbnail_label:
                         label.setText(error_msg)
                         if "Not Found" in error_msg:
@@ -235,16 +251,19 @@ class StackMemberWidget(QWidget):
                                 }
                             """)
 
-                loader.signals.finished.connect(on_loaded)
-                loader.signals.error.connect(on_error)
+                self._thumbnail_loader.signals.finished.connect(on_loaded)
+                self._thumbnail_loader.signals.error.connect(on_error)
+                logger.debug(f"[MEMBER_WIDGET] Signals connected, starting loader in thread pool")
 
                 # Start async loading
-                QThreadPool.globalInstance().start(loader)
+                QThreadPool.globalInstance().start(self._thumbnail_loader)
+                logger.debug(f"[MEMBER_WIDGET] Loader started successfully")
             else:
+                logger.warning(f"[MEMBER_WIDGET] No path for photo_id={self.photo_id}")
                 self.thumbnail_label.setText("No path")
 
         except Exception as e:
-            logger.error(f"Failed to init thumbnail loader: {e}")
+            logger.error(f"[MEMBER_WIDGET] Failed to init thumbnail loader: {e}", exc_info=True)
             self.thumbnail_label.setText("Error")
 
     def _on_selection_changed(self, state):
