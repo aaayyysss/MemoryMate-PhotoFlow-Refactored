@@ -139,7 +139,11 @@ class StackMemberWidget(QWidget):
         self.checkbox.setEnabled(not self.is_representative)
         if self.is_representative:
             self.checkbox.setToolTip("Cannot select representative")
+        else:
+            logger.debug(f"[CHECKBOX_INIT] Creating enabled checkbox for photo_id={self.photo_id}")
+
         self.checkbox.stateChanged.connect(self._on_selection_changed)
+        logger.debug(f"[CHECKBOX_INIT] Connected stateChanged signal for photo_id={self.photo_id}, enabled={self.checkbox.isEnabled()}")
         layout.addWidget(self.checkbox)
 
         # Style
@@ -370,10 +374,11 @@ class StackViewDialog(QDialog):
                 background-color: #d32f2f;
             }
             QPushButton:disabled {
-                background-color: #ccc;
-                color: #999;
+                background-color: #ccc !important;
+                color: #999 !important;
             }
         """)
+        logger.debug(f"[DELETE_BTN_INIT] Delete button created: {self.btn_delete_selected}, enabled={self.btn_delete_selected.isEnabled()}")
         button_layout.addWidget(self.btn_delete_selected)
 
         close_btn = QPushButton("Close")
@@ -575,9 +580,21 @@ class StackViewDialog(QDialog):
         logger.debug(f"[HANDLER] Delete button enabled: {is_enabled} (selected count: {len(self.selected_photos)})")
         logger.debug(f"[HANDLER] Delete button object: {self.btn_delete_selected}, current enabled state: {self.btn_delete_selected.isEnabled()}")
 
+        # Force update the button state
         self.btn_delete_selected.setEnabled(is_enabled)
 
-        logger.debug(f"[HANDLER] Delete button enabled state AFTER setEnabled({is_enabled}): {self.btn_delete_selected.isEnabled()}")
+        # Verify state was actually set
+        actual_state = self.btn_delete_selected.isEnabled()
+        logger.debug(f"[HANDLER] Delete button enabled state AFTER setEnabled({is_enabled}): {actual_state}")
+
+        if is_enabled and not actual_state:
+            logger.error(f"[HANDLER] CRITICAL: setEnabled(True) FAILED! Button still disabled!")
+
+        # Force repaint to ensure visual update
+        self.btn_delete_selected.update()
+
+        # Log button's current visual properties
+        logger.debug(f"[HANDLER] Button visible={self.btn_delete_selected.isVisible()}, text={self.btn_delete_selected.text()}")
         logger.debug(f"[HANDLER] ====== END SELECTION SIGNAL ======\n")
 
     def _on_keep_best(self):
@@ -1170,21 +1187,18 @@ class StackBrowserDialog(QDialog):
 
             # Count photos added after stack generation
             db_conn = DatabaseConnection()
-            photo_repo = PhotoRepository(db_conn)
 
-            # Get count of photos created after the stack generation
-            import sqlite3
-            conn = sqlite3.connect(db_conn.db_file)
-            cursor = conn.execute("""
-                SELECT COUNT(*)
-                FROM photo_metadata
-                WHERE project_id = ?
-                AND created_at > ?
-                AND created_ts IS NOT NULL
-            """, (self.project_id, newest_stack_time))
+            # Use context manager to get connection properly
+            with db_conn.get_connection(read_only=True) as conn:
+                cursor = conn.execute("""
+                    SELECT COUNT(*)
+                    FROM photo_metadata
+                    WHERE project_id = ?
+                    AND created_at > ?
+                    AND created_ts IS NOT NULL
+                """, (self.project_id, newest_stack_time))
 
-            new_photo_count = cursor.fetchone()[0]
-            conn.close()
+                new_photo_count = cursor.fetchone()[0]
 
             if new_photo_count > 0:
                 self.stale_photo_count = new_photo_count
