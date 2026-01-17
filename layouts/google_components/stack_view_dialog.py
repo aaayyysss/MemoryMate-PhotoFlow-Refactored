@@ -775,8 +775,11 @@ class StackBrowserDialog(QDialog):
         self.setWindowTitle("Similar Photos & People")
         self.setMinimumSize(1000, 700)
 
+        logger.debug("[__INIT__] Starting _init_ui()")
         self._init_ui()
+        logger.debug("[__INIT__] Finished _init_ui(), starting _load_current_mode_data()")
         self._load_current_mode_data()
+        logger.debug("[__INIT__] Finished initialization")
 
     def _init_ui(self):
         """Initialize UI components with tabs for Similar Shots and People."""
@@ -841,8 +844,10 @@ class StackBrowserDialog(QDialog):
         # Info banner showing generation parameters
         # Store layout reference for proper banner updates
         self.similar_layout = similar_layout
+        logger.debug(f"[INIT_UI] Creating initial info banner, layout has {similar_layout.count()} widgets")
         self.info_banner = self._create_info_banner()
         similar_layout.addWidget(self.info_banner)
+        logger.debug(f"[INIT_UI] Added info banner, layout now has {similar_layout.count()} widgets")
 
         # Stack grid (scroll area)
         self.similar_scroll_area = QScrollArea()
@@ -1004,6 +1009,7 @@ class StackBrowserDialog(QDialog):
 
     def _create_info_banner(self) -> QWidget:
         """Create info banner showing generation parameters and tips."""
+        logger.debug("[CREATE_BANNER] Creating new info banner widget")
         banner = QFrame()
         banner.setStyleSheet("""
             QFrame {
@@ -1176,22 +1182,37 @@ class StackBrowserDialog(QDialog):
 
     def _update_info_banner(self):
         """Update info banner with current stack information."""
+        logger.debug("[UPDATE_BANNER] Called _update_info_banner()")
+        logger.debug(f"[UPDATE_BANNER] Layout has {self.similar_layout.count()} widgets before update")
+
         if not hasattr(self, 'info_banner') or not hasattr(self, 'similar_layout'):
+            logger.warning("[UPDATE_BANNER] Missing info_banner or similar_layout, skipping update")
             return
 
         # Find the index of the old banner
         index = self.similar_layout.indexOf(self.info_banner)
+        logger.debug(f"[UPDATE_BANNER] Found old banner at index {index}")
+
         if index < 0:
-            logger.warning("Could not find info banner in layout")
+            logger.warning("[UPDATE_BANNER] Could not find info banner in layout")
             return
 
         # Remove old banner
+        logger.debug(f"[UPDATE_BANNER] Removing widget at index {index}")
         self.similar_layout.removeWidget(self.info_banner)
+        logger.debug(f"[UPDATE_BANNER] Layout has {self.similar_layout.count()} widgets after removeWidget()")
+
+        # CRITICAL: Must hide the widget before deleteLater() to prevent it from being visible
+        # removeWidget() only removes from layout management, widget is still a child of parent widget
+        self.info_banner.hide()
+        self.info_banner.setParent(None)  # Remove from parent widget's children
         self.info_banner.deleteLater()
 
         # Create and insert new banner at same position
+        logger.debug(f"[UPDATE_BANNER] Creating new banner and inserting at index {index}")
         self.info_banner = self._create_info_banner()
         self.similar_layout.insertWidget(index, self.info_banner)
+        logger.debug(f"[UPDATE_BANNER] Layout now has {self.similar_layout.count()} widgets after insertWidget()")
 
     def _load_stacks(self):
         """Load all stacks from database."""
@@ -1225,7 +1246,9 @@ class StackBrowserDialog(QDialog):
             self._check_stale_stacks()
 
             # Update info banner with generation threshold info
+            logger.debug("[LOAD_STACKS] About to call _update_info_banner()")
             self._update_info_banner()
+            logger.debug("[LOAD_STACKS] Returned from _update_info_banner()")
 
             # Filter and display
             self._filter_and_display_stacks()
