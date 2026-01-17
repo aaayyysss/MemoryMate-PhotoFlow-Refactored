@@ -178,7 +178,15 @@ class StackMemberWidget(QWidget):
     def _on_selection_changed(self, state):
         """Handle selection change."""
         is_selected = state == Qt.Checked
-        self.selection_changed.emit(self.photo['id'], is_selected)
+        photo_id = self.photo.get('id')
+        logger.debug(f"[SELECTION] StackMemberWidget checkbox changed: state={state}, is_selected={is_selected}, photo_id={photo_id}, photo_keys={list(self.photo.keys())}")
+
+        if photo_id is None:
+            logger.error(f"[SELECTION] ERROR: Photo dict has no 'id' field! Keys: {list(self.photo.keys())}, Photo: {self.photo}")
+            return
+
+        logger.debug(f"[SELECTION] Emitting selection_changed signal: photo_id={photo_id}, is_selected={is_selected}")
+        self.selection_changed.emit(photo_id, is_selected)
 
     def is_selected(self) -> bool:
         """Check if selected."""
@@ -459,7 +467,8 @@ class StackViewDialog(QDialog):
                 parent=self
             )
             widget.selection_changed.connect(self._on_member_selection_changed)
-            logger.debug(f"Connected selection signal for photo {photo['id']} (rep={is_representative})")
+            photo_id_for_log = photo.get('id', 'MISSING_ID')
+            logger.debug(f"[SIGNAL_CONNECT] Connected selection signal for photo {photo_id_for_log} (rep={is_representative}), photo_keys={list(photo.keys())}")
 
             row = idx // 3
             col = idx % 3
@@ -552,17 +561,27 @@ class StackViewDialog(QDialog):
     @Slot(int, bool)
     def _on_member_selection_changed(self, photo_id: int, is_selected: bool):
         """Handle member selection change."""
-        logger.debug(f"Selection changed: photo_id={photo_id}, is_selected={is_selected}")
+        logger.debug(f"[HANDLER] ====== RECEIVED SELECTION SIGNAL ======")
+        logger.debug(f"[HANDLER] photo_id={photo_id}, is_selected={is_selected}, type(photo_id)={type(photo_id)}")
+        logger.debug(f"[HANDLER] Current selected_photos before update: {self.selected_photos}")
 
         if is_selected:
             self.selected_photos.add(photo_id)
+            logger.debug(f"[HANDLER] Added {photo_id} to selected_photos")
         else:
             self.selected_photos.discard(photo_id)
+            logger.debug(f"[HANDLER] Removed {photo_id} from selected_photos")
 
         # Update button state
         is_enabled = len(self.selected_photos) > 0
-        logger.debug(f"Delete button enabled: {is_enabled} (selected: {len(self.selected_photos)})")
+        logger.debug(f"[HANDLER] Current selected_photos after update: {self.selected_photos}")
+        logger.debug(f"[HANDLER] Delete button enabled: {is_enabled} (selected count: {len(self.selected_photos)})")
+        logger.debug(f"[HANDLER] Delete button object: {self.btn_delete_selected}, current enabled state: {self.btn_delete_selected.isEnabled()}")
+
         self.btn_delete_selected.setEnabled(is_enabled)
+
+        logger.debug(f"[HANDLER] Delete button enabled state AFTER setEnabled({is_enabled}): {self.btn_delete_selected.isEnabled()}")
+        logger.debug(f"[HANDLER] ====== END SELECTION SIGNAL ======\n")
 
     def _on_keep_best(self):
         """
@@ -1308,11 +1327,21 @@ class StackBrowserDialog(QDialog):
 
     def _display_stacks(self):
         """Display filtered stacks in grid."""
+        logger.debug(f"[DISPLAY_STACKS] Clearing grid with {self.similar_grid_layout.count()} widgets")
+
         # Clear existing widgets
         while self.similar_grid_layout.count():
             item = self.similar_grid_layout.takeAt(0)
             if item.widget():
-                item.widget().deleteLater()
+                widget = item.widget()
+                logger.debug(f"[DISPLAY_STACKS] Removing widget: {type(widget).__name__}")
+                # CRITICAL: Must hide and remove from parent before deleteLater()
+                # takeAt() only removes from layout, widget is still visible as child of parent
+                widget.hide()
+                widget.setParent(None)
+                widget.deleteLater()
+
+        logger.debug(f"[DISPLAY_STACKS] Grid cleared, displaying {len(self.filtered_stacks)} stacks")
 
         # If no stacks, show message
         if not self.filtered_stacks:
@@ -1604,11 +1633,20 @@ class StackBrowserDialog(QDialog):
 
     def _display_people(self):
         """Display people in grid."""
+        logger.debug(f"[DISPLAY_PEOPLE] Clearing grid with {self.people_grid_layout.count()} widgets")
+
         # Clear existing widgets
         while self.people_grid_layout.count():
             item = self.people_grid_layout.takeAt(0)
             if item.widget():
-                item.widget().deleteLater()
+                widget = item.widget()
+                logger.debug(f"[DISPLAY_PEOPLE] Removing widget: {type(widget).__name__}")
+                # CRITICAL: Must hide and remove from parent before deleteLater()
+                widget.hide()
+                widget.setParent(None)
+                widget.deleteLater()
+
+        logger.debug(f"[DISPLAY_PEOPLE] Grid cleared, displaying {len(self.all_people)} people")
 
         # If no people, show message
         if not self.all_people:
