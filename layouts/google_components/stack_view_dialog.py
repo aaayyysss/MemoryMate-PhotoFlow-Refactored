@@ -225,7 +225,9 @@ class StackMemberWidget(QWidget):
             if path:
                 # Load thumbnail in background thread
                 logger.debug(f"[MEMBER_WIDGET] Creating ThumbnailLoader for {path}")
-                loader = ThumbnailLoader(path, self.thumbnail_label, size=180)
+
+                # CRITICAL: Keep reference to prevent garbage collection
+                self._thumbnail_loader = ThumbnailLoader(path, self.thumbnail_label, size=180)
 
                 # Connect signals
                 def on_loaded(pixmap, label):
@@ -249,12 +251,12 @@ class StackMemberWidget(QWidget):
                                 }
                             """)
 
-                loader.signals.finished.connect(on_loaded)
-                loader.signals.error.connect(on_error)
+                self._thumbnail_loader.signals.finished.connect(on_loaded)
+                self._thumbnail_loader.signals.error.connect(on_error)
                 logger.debug(f"[MEMBER_WIDGET] Signals connected, starting loader in thread pool")
 
                 # Start async loading
-                QThreadPool.globalInstance().start(loader)
+                QThreadPool.globalInstance().start(self._thumbnail_loader)
                 logger.debug(f"[MEMBER_WIDGET] Loader started successfully")
             else:
                 logger.warning(f"[MEMBER_WIDGET] No path for photo_id={self.photo_id}")
