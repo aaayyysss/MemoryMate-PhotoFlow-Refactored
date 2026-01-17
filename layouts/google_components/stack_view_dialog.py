@@ -1509,26 +1509,29 @@ class StackBrowserDialog(QDialog):
                 if photo:
                     path = photo.get('path', '')
                     if path:
-                        # Load thumbnail asynchronously (non-blocking)
-                        loader = ThumbnailLoader(path, thumbnail_label, size=200)
+                        logger.debug(f"[STACK_CARD] Creating async loader for stack {stack.get('stack_id')}, photo path: {path}")
+
+                        # CRITICAL: Attach loader to card to prevent garbage collection
+                        # Store as attribute of the card widget
+                        card._thumbnail_loader = ThumbnailLoader(path, thumbnail_label, size=200)
 
                         # Connect signals for when thumbnail loads
                         def on_thumbnail_loaded(pixmap, label):
+                            logger.debug(f"[STACK_CARD] Thumbnail loaded for label {label}")
                             if label == thumbnail_label:  # Ensure we're updating the right label
                                 label.setPixmap(pixmap)
 
                         def on_thumbnail_error(error_msg, label):
+                            logger.warning(f"[STACK_CARD] Thumbnail error: {error_msg}")
                             if label == thumbnail_label:
                                 label.setText(error_msg)
 
-                        loader.signals.finished.connect(on_thumbnail_loaded)
-                        loader.signals.error.connect(on_thumbnail_error)
+                        card._thumbnail_loader.signals.finished.connect(on_thumbnail_loaded)
+                        card._thumbnail_loader.signals.error.connect(on_thumbnail_error)
 
                         # Submit to thread pool (non-blocking)
-                        if not hasattr(self, 'thumbnail_thread_pool'):
-                            self.thumbnail_thread_pool = QThreadPool.globalInstance()
-
-                        self.thumbnail_thread_pool.start(loader)
+                        QThreadPool.globalInstance().start(card._thumbnail_loader)
+                        logger.debug(f"[STACK_CARD] Thumbnail loader started for stack {stack.get('stack_id')}")
                     else:
                         thumbnail_label.setText("No Path")
                 else:
