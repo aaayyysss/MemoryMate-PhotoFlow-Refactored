@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
     QMessageBox, QTableWidget, QTableWidgetItem, QHeaderView,
     QGroupBox, QSlider, QTabWidget
 )
-from PySide6.QtCore import Signal, Qt, Slot
+from PySide6.QtCore import Signal, Qt, Slot, QRunnable, QThreadPool, QObject
 from PySide6.QtGui import QFont, QColor, QPixmap
 from typing import Optional, List, Dict, Any
 from pathlib import Path
@@ -26,6 +26,59 @@ from logging_config import get_logger
 
 logger = get_logger(__name__)
 
+
+# ============================================================================
+# PHASE 3: Progressive Loading - Async Thumbnail Loader
+# ============================================================================
+
+class ThumbnailLoadSignals(QObject):
+    """Signals for async thumbnail loading (Qt cross-thread communication)."""
+    finished = Signal(object, object)  # pixmap, thumbnail_label
+    error = Signal(str, object)  # error_msg, thumbnail_label
+
+
+class ThumbnailLoader(QRunnable):
+    """
+    Runnable task to load thumbnail in background thread.
+
+    Based on iPhone Photos / Google Photos best practice:
+    - Load thumbnails asynchronously to avoid UI freezing
+    - Show placeholder immediately, load actual image in background
+    - Update UI when thumbnail is ready
+
+    This prevents the app from freezing when loading large photo libraries.
+    """
+
+    def __init__(self, photo_path: str, thumbnail_label: QLabel, size: int = 200):
+        super().__init__()
+        self.photo_path = photo_path
+        self.thumbnail_label = thumbnail_label
+        self.size = size
+        self.signals = ThumbnailLoadSignals()
+
+    def run(self):
+        """Load thumbnail in background thread."""
+        try:
+            from app_services import get_thumbnail
+
+            if self.photo_path and Path(self.photo_path).exists():
+                pixmap = get_thumbnail(self.photo_path, self.size)
+                if pixmap and not pixmap.isNull():
+                    # Signal success with pixmap
+                    self.signals.finished.emit(pixmap, self.thumbnail_label)
+                else:
+                    self.signals.error.emit("No Preview", self.thumbnail_label)
+            else:
+                self.signals.error.emit("File Not Found", self.thumbnail_label)
+
+        except Exception as e:
+            logger.debug(f"Thumbnail load error: {e}")
+            self.signals.error.emit("Error", self.thumbnail_label)
+
+
+# ============================================================================
+# Stack Member Widget
+# ============================================================================
 
 class StackMemberWidget(QWidget):
     """
@@ -139,7 +192,11 @@ class StackMemberWidget(QWidget):
         self.checkbox.setEnabled(not self.is_representative)
         if self.is_representative:
             self.checkbox.setToolTip("Cannot select representative")
+        else:
+            logger.debug(f"[CHECKBOX_INIT] Creating enabled checkbox for photo_id={self.photo_id}")
+
         self.checkbox.stateChanged.connect(self._on_selection_changed)
+        logger.debug(f"[CHECKBOX_INIT] Connected stateChanged signal for photo_id={self.photo_id}, enabled={self.checkbox.isEnabled()}")
         layout.addWidget(self.checkbox)
 
         # Style
@@ -153,28 +210,41 @@ class StackMemberWidget(QWidget):
         """)
 
     def _load_thumbnail(self):
-        """Load thumbnail synchronously."""
+        """Load thumbnail asynchronously (Phase 3: Progressive Loading)."""
         try:
-            from app_services import get_thumbnail
             path = self.photo.get('path', '')
 
-            if path and Path(path).exists():
-                pixmap = get_thumbnail(path, 180)
-                if pixmap and not pixmap.isNull():
-                    self.thumbnail_label.setPixmap(pixmap)
-                else:
-                    self.thumbnail_label.setText("No preview")
+            if path:
+                # Load thumbnail in background thread
+                loader = ThumbnailLoader(path, self.thumbnail_label, size=180)
+
+                # Connect signals
+                def on_loaded(pixmap, label):
+                    if label == self.thumbnail_label:
+                        label.setPixmap(pixmap)
+
+                def on_error(error_msg, label):
+                    if label == self.thumbnail_label:
+                        label.setText(error_msg)
+                        if "Not Found" in error_msg:
+                            label.setStyleSheet("""
+                                QLabel {
+                                    background-color: #fee;
+                                    border: 1px solid #fcc;
+                                    color: #c00;
+                                }
+                            """)
+
+                loader.signals.finished.connect(on_loaded)
+                loader.signals.error.connect(on_error)
+
+                # Start async loading
+                QThreadPool.globalInstance().start(loader)
             else:
-                self.thumbnail_label.setText("Not found")
-                self.thumbnail_label.setStyleSheet("""
-                    QLabel {
-                        background-color: #fee;
-                        border: 1px solid #fcc;
-                        color: #c00;
-                    }
-                """)
+                self.thumbnail_label.setText("No path")
+
         except Exception as e:
-            logger.error(f"Failed to load thumbnail: {e}")
+            logger.error(f"Failed to init thumbnail loader: {e}")
             self.thumbnail_label.setText("Error")
 
     def _on_selection_changed(self, state):
@@ -370,10 +440,11 @@ class StackViewDialog(QDialog):
                 background-color: #d32f2f;
             }
             QPushButton:disabled {
-                background-color: #ccc;
-                color: #999;
+                background-color: #ccc !important;
+                color: #999 !important;
             }
         """)
+        logger.debug(f"[DELETE_BTN_INIT] Delete button created: {self.btn_delete_selected}, enabled={self.btn_delete_selected.isEnabled()}")
         button_layout.addWidget(self.btn_delete_selected)
 
         close_btn = QPushButton("Close")
@@ -575,9 +646,21 @@ class StackViewDialog(QDialog):
         logger.debug(f"[HANDLER] Delete button enabled: {is_enabled} (selected count: {len(self.selected_photos)})")
         logger.debug(f"[HANDLER] Delete button object: {self.btn_delete_selected}, current enabled state: {self.btn_delete_selected.isEnabled()}")
 
+        # Force update the button state
         self.btn_delete_selected.setEnabled(is_enabled)
 
-        logger.debug(f"[HANDLER] Delete button enabled state AFTER setEnabled({is_enabled}): {self.btn_delete_selected.isEnabled()}")
+        # Verify state was actually set
+        actual_state = self.btn_delete_selected.isEnabled()
+        logger.debug(f"[HANDLER] Delete button enabled state AFTER setEnabled({is_enabled}): {actual_state}")
+
+        if is_enabled and not actual_state:
+            logger.error(f"[HANDLER] CRITICAL: setEnabled(True) FAILED! Button still disabled!")
+
+        # Force repaint to ensure visual update
+        self.btn_delete_selected.update()
+
+        # Log button's current visual properties
+        logger.debug(f"[HANDLER] Button visible={self.btn_delete_selected.isVisible()}, text={self.btn_delete_selected.text()}")
         logger.debug(f"[HANDLER] ====== END SELECTION SIGNAL ======\n")
 
     def _on_keep_best(self):
@@ -1170,21 +1253,18 @@ class StackBrowserDialog(QDialog):
 
             # Count photos added after stack generation
             db_conn = DatabaseConnection()
-            photo_repo = PhotoRepository(db_conn)
 
-            # Get count of photos created after the stack generation
-            import sqlite3
-            conn = sqlite3.connect(db_conn.db_file)
-            cursor = conn.execute("""
-                SELECT COUNT(*)
-                FROM photo_metadata
-                WHERE project_id = ?
-                AND created_at > ?
-                AND created_ts IS NOT NULL
-            """, (self.project_id, newest_stack_time))
+            # Use context manager to get connection properly
+            with db_conn.get_connection(read_only=True) as conn:
+                cursor = conn.execute("""
+                    SELECT COUNT(*)
+                    FROM photo_metadata
+                    WHERE project_id = ?
+                    AND created_at > ?
+                    AND created_ts IS NOT NULL
+                """, (self.project_id, newest_stack_time))
 
-            new_photo_count = cursor.fetchone()[0]
-            conn.close()
+                new_photo_count = cursor.fetchone()[0]
 
             if new_photo_count > 0:
                 self.stale_photo_count = new_photo_count
@@ -1380,7 +1460,7 @@ class StackBrowserDialog(QDialog):
         layout = QVBoxLayout(card)
         layout.setSpacing(8)
 
-        # Representative thumbnail
+        # Representative thumbnail - with progressive loading
         thumbnail_label = QLabel()
         thumbnail_label.setFixedSize(200, 200)
         thumbnail_label.setAlignment(Qt.AlignCenter)
@@ -1392,13 +1472,15 @@ class StackBrowserDialog(QDialog):
             }
         """)
 
-        # Load representative photo thumbnail
+        # PHASE 3: Show placeholder immediately, load thumbnail in background
+        thumbnail_label.setText("Loading...")
+
+        # Load representative photo thumbnail asynchronously
         rep_photo_id = stack.get('representative_photo_id')
         if rep_photo_id:
             try:
                 from repository.photo_repository import PhotoRepository
                 from repository.base_repository import DatabaseConnection
-                from app_services import get_thumbnail
 
                 db_conn = DatabaseConnection()
                 photo_repo = PhotoRepository(db_conn)
@@ -1406,18 +1488,33 @@ class StackBrowserDialog(QDialog):
 
                 if photo:
                     path = photo.get('path', '')
-                    if path and Path(path).exists():
-                        pixmap = get_thumbnail(path, 200)
-                        if pixmap:
-                            thumbnail_label.setPixmap(pixmap)
-                        else:
-                            thumbnail_label.setText("No Preview")
+                    if path:
+                        # Load thumbnail asynchronously (non-blocking)
+                        loader = ThumbnailLoader(path, thumbnail_label, size=200)
+
+                        # Connect signals for when thumbnail loads
+                        def on_thumbnail_loaded(pixmap, label):
+                            if label == thumbnail_label:  # Ensure we're updating the right label
+                                label.setPixmap(pixmap)
+
+                        def on_thumbnail_error(error_msg, label):
+                            if label == thumbnail_label:
+                                label.setText(error_msg)
+
+                        loader.signals.finished.connect(on_thumbnail_loaded)
+                        loader.signals.error.connect(on_thumbnail_error)
+
+                        # Submit to thread pool (non-blocking)
+                        if not hasattr(self, 'thumbnail_thread_pool'):
+                            self.thumbnail_thread_pool = QThreadPool.globalInstance()
+
+                        self.thumbnail_thread_pool.start(loader)
                     else:
-                        thumbnail_label.setText("File Not Found")
+                        thumbnail_label.setText("No Path")
                 else:
                     thumbnail_label.setText("No Photo")
             except Exception as e:
-                logger.warning(f"Failed to load thumbnail: {e}")
+                logger.warning(f"Failed to init thumbnail loader: {e}")
                 thumbnail_label.setText("Preview Error")
         else:
             thumbnail_label.setText("No Representative")
