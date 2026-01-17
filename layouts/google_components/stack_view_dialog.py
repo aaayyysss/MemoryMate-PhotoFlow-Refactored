@@ -829,6 +829,10 @@ class StackBrowserDialog(QDialog):
         self.slider_container = self._create_similarity_slider()
         similar_layout.addWidget(self.slider_container)
 
+        # Info banner showing generation parameters
+        self.info_banner = self._create_info_banner()
+        similar_layout.addWidget(self.info_banner)
+
         # Stack grid (scroll area)
         self.similar_scroll_area = QScrollArea()
         self.similar_scroll_area.setWidgetResizable(True)
@@ -977,6 +981,70 @@ class StackBrowserDialog(QDialog):
 
         # Re-filter and display stacks
         self._filter_and_display_stacks()
+
+    def _create_info_banner(self) -> QWidget:
+        """Create info banner showing generation parameters and tips."""
+        banner = QFrame()
+        banner.setStyleSheet("""
+            QFrame {
+                background-color: #e8f4f8;
+                border: 1px solid #b3d9e6;
+                border-radius: 6px;
+                padding: 10px;
+            }
+        """)
+
+        layout = QVBoxLayout(banner)
+        layout.setSpacing(6)
+        layout.setContentsMargins(12, 8, 12, 8)
+
+        # Title
+        title_label = QLabel("ℹ️ How Similar Photos Work")
+        title_label.setStyleSheet("font-weight: bold; font-size: 10pt; color: #0277bd;")
+        layout.addWidget(title_label)
+
+        # Explanation
+        explanation = QLabel(
+            "• Stacks are created during photo scanning with configurable similarity threshold (default 50%)\n"
+            "• The slider above filters which photos to show within each stack\n"
+            "• Lower slider = more photos visible | Higher slider = only very similar photos\n"
+            "• If you don't see expected photos, they may have been excluded during scanning"
+        )
+        explanation.setStyleSheet("font-size: 9pt; color: #01579b; line-height: 1.4;")
+        explanation.setWordWrap(True)
+        layout.addWidget(explanation)
+
+        # Action row
+        action_row = QHBoxLayout()
+
+        tip_label = QLabel("💡 Tip: To see more photos, regenerate stacks with lower similarity threshold")
+        tip_label.setStyleSheet("font-size: 9pt; color: #0277bd; font-style: italic;")
+        tip_label.setWordWrap(True)
+        action_row.addWidget(tip_label, 1)
+
+        # Regenerate button
+        self.btn_regenerate = QPushButton("🔄 Regenerate Stacks")
+        self.btn_regenerate.setToolTip("Re-scan photos and create new similarity stacks with optimized settings")
+        self.btn_regenerate.setStyleSheet("""
+            QPushButton {
+                padding: 6px 12px;
+                background-color: #2196F3;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                font-weight: bold;
+                font-size: 9pt;
+            }
+            QPushButton:hover {
+                background-color: #1976D2;
+            }
+        """)
+        self.btn_regenerate.clicked.connect(self._on_regenerate_clicked)
+        action_row.addWidget(self.btn_regenerate)
+
+        layout.addLayout(action_row)
+
+        return banner
 
     def _load_stacks(self):
         """Load all stacks from database."""
@@ -1179,6 +1247,105 @@ class StackBrowserDialog(QDialog):
         card.mousePressEvent = lambda event: self._on_stack_clicked(stack_id)
 
         return card
+
+    def _on_regenerate_clicked(self):
+        """Handle regenerate stacks button click."""
+        try:
+            # Confirm with user
+            from PySide6.QtWidgets import QMessageBox
+
+            reply = QMessageBox.question(
+                self,
+                "Regenerate Stacks",
+                "This will:\n"
+                "• Delete all existing similar photo stacks\n"
+                "• Re-analyze all photos with optimized settings\n"
+                "• Use lower similarity threshold (50%) to capture more photos\n"
+                "• Use larger time window (30s) for better grouping\n\n"
+                "This may take several minutes for large photo collections.\n\n"
+                "Continue?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No
+            )
+
+            if reply != QMessageBox.Yes:
+                return
+
+            # Import necessary modules
+            from services.stack_generation_service import StackGenerationService, StackGenParams
+            from services.photo_similarity_service import PhotoSimilarityService
+            from repository.photo_repository import PhotoRepository
+            from repository.stack_repository import StackRepository
+            from repository.base_repository import DatabaseConnection
+
+            # Initialize services
+            db_conn = DatabaseConnection()
+            photo_repo = PhotoRepository(db_conn)
+            stack_repo = StackRepository(db_conn)
+            similarity_service = PhotoSimilarityService()
+
+            stack_gen_service = StackGenerationService(
+                photo_repo=photo_repo,
+                stack_repo=stack_repo,
+                similarity_service=similarity_service
+            )
+
+            # Create optimized parameters
+            params = StackGenParams(
+                rule_version="1",
+                time_window_seconds=30,  # Larger time window
+                min_stack_size=2,  # Smaller minimum
+                similarity_threshold=0.50,  # Lower threshold
+                top_k=30,
+                candidate_limit_per_photo=300
+            )
+
+            # Show progress dialog
+            from PySide6.QtWidgets import QProgressDialog
+            progress = QProgressDialog(
+                "Regenerating similar photo stacks...\nThis may take a few minutes.",
+                "Cancel",
+                0,
+                0,
+                self
+            )
+            progress.setWindowTitle("Processing")
+            progress.setWindowModality(Qt.WindowModal)
+            progress.setMinimumDuration(0)
+            progress.setValue(0)
+            progress.show()
+
+            # Run regeneration
+            stats = stack_gen_service.regenerate_similar_shot_stacks(
+                project_id=self.project_id,
+                params=params
+            )
+
+            progress.close()
+
+            # Show results
+            QMessageBox.information(
+                self,
+                "Regeneration Complete",
+                f"Successfully regenerated similar photo stacks:\n\n"
+                f"• Photos analyzed: {stats.photos_considered}\n"
+                f"• Stacks created: {stats.stacks_created}\n"
+                f"• Photo memberships: {stats.memberships_created}\n"
+                f"• Errors: {stats.errors}\n\n"
+                f"The slider now controls filtering from 50-100%."
+            )
+
+            # Reload stacks
+            self._load_stacks()
+
+        except Exception as e:
+            logger.error(f"Failed to regenerate stacks: {e}", exc_info=True)
+            QMessageBox.critical(
+                self,
+                "Error",
+                f"Failed to regenerate stacks:\n{e}\n\n"
+                f"Check the log for details."
+            )
 
     def _on_stack_clicked(self, stack_id: int):
         """Handle stack card click - open detailed view."""
