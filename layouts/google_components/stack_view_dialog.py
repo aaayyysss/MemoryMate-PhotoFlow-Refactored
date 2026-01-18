@@ -498,7 +498,14 @@ class StackViewDialog(QDialog):
             # Load stack
             self.stack = stack_repo.get_stack_by_id(self.project_id, self.stack_id)
             if not self.stack:
-                QMessageBox.warning(self, "Stack Not Found", f"Stack #{self.stack_id} not found.")
+                logger.warning(f"Stack {self.stack_id} not found in project {self.project_id}")
+                QMessageBox.warning(
+                    self,
+                    "Stack Not Found",
+                    f"Stack #{self.stack_id} not found.\n\n"
+                    f"This can happen if stacks were recently regenerated.\n"
+                    f"Please close this dialog and refresh the similar photos view."
+                )
                 self.reject()
                 return
 
@@ -884,7 +891,7 @@ class StackBrowserDialog(QDialog):
         self.all_people = []  # All people from face detection
         self.selected_person = None  # Currently selected person for detail view
 
-        self.similarity_threshold = 0.92  # Default 92% (matches StackGenParams)
+        self.similarity_threshold = 0.85  # Default 85% (matches StackGenParams)
         self.current_mode = "similar"  # "similar" or "people"
 
         # Track all threshold labels for updating when slider changes

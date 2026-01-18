@@ -23,10 +23,10 @@ logger = get_logger(__name__)
 class StackGenParams:
     """Parameters for stack generation algorithms."""
     rule_version: str = "1"
-    time_window_seconds: int = 10
+    time_window_seconds: int = 300  # 5 minutes - covers burst sequences and photo series
     min_stack_size: int = 3
     top_k: int = 30
-    similarity_threshold: float = 0.92
+    similarity_threshold: float = 0.85  # Balanced threshold - high quality but not overly strict
     candidate_limit_per_photo: int = 300
 
 
@@ -125,7 +125,12 @@ class StackGenerationService:
             stack_type="similar",
             rule_version=params.rule_version
         )
-        self.logger.info(f"Cleared {cleared} existing similar shot stacks")
+        self.logger.info(f"Cleared {cleared} existing similar shot stacks for rule v{params.rule_version}")
+        if cleared > 0:
+            self.logger.warning(
+                f"IMPORTANT: {cleared} stacks were deleted. UI components displaying "
+                f"stack badges should be refreshed to prevent 'Stack not found' errors."
+            )
 
         # Step 2: Get all photos with embeddings
         # Note: For large projects, might need pagination
@@ -397,13 +402,14 @@ class StackGenerationService:
         min_cluster_size: int
     ) -> List[List[int]]:
         """
-        Cluster photos by visual similarity using greedy grouping.
+        Cluster photos by visual similarity using strict complete-linkage clustering.
 
-        Algorithm:
+        Algorithm (FIXED - prevents transitive grouping):
         1. Load embeddings for all photos
-        2. For each photo, compute cosine similarity with all others
-        3. Greedily assign photos to clusters based on threshold
-        4. Return clusters meeting minimum size requirement
+        2. For each photo, find candidates that meet threshold with THIS photo
+        3. STRICT CHECK: Only add to cluster if similar to ALL existing cluster members
+        4. This prevents transitive grouping where A similar to B, B to C, but A not to C
+        5. Return clusters meeting minimum size requirement
 
         Args:
             photos: List of photo dictionaries
@@ -416,6 +422,9 @@ class StackGenerationService:
         Note:
             Requires photos to have semantic embeddings. Photos without
             embeddings are skipped.
+
+        Fix: Previous greedy algorithm allowed transitive clustering. Now requires
+        each photo to be similar to ALL cluster members, not just one.
         """
         if not self.similarity_service:
             self.logger.warning("Cannot cluster: similarity_service not provided")
@@ -446,7 +455,7 @@ class StackGenerationService:
             self.logger.debug(f"Not enough photos with embeddings: {len(photo_embeddings)}")
             return []
 
-        # Greedy clustering
+        # FIXED: Complete-linkage clustering (strict similarity requirement)
         photo_ids = list(photo_embeddings.keys())
         assigned = set()
         clusters = []
@@ -468,10 +477,18 @@ class StackGenerationService:
 
                 other_embedding = photo_embeddings[other_id]
 
-                # Cosine similarity (dot product of normalized vectors)
-                similarity = float(np.dot(embedding, other_embedding))
+                # CRITICAL FIX: Check similarity with ALL cluster members, not just seed
+                is_similar_to_all = True
+                for cluster_member_id in cluster:
+                    cluster_member_embedding = photo_embeddings[cluster_member_id]
+                    similarity = float(np.dot(other_embedding, cluster_member_embedding))
 
-                if similarity >= similarity_threshold:
+                    if similarity < similarity_threshold:
+                        is_similar_to_all = False
+                        break
+
+                # Only add if similar to ALL cluster members
+                if is_similar_to_all:
                     cluster.append(other_id)
                     assigned.add(other_id)
 
@@ -480,7 +497,7 @@ class StackGenerationService:
                 clusters.append(cluster)
                 self.logger.debug(
                     f"Created cluster of {len(cluster)} photos "
-                    f"(similarity >= {similarity_threshold:.2f})"
+                    f"(all-pairs similarity >= {similarity_threshold:.2f})"
                 )
 
         return clusters
