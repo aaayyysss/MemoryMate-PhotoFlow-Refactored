@@ -142,9 +142,25 @@ class SemanticEmbeddingService:
             clip_path = settings.get("clip_model_path", "").strip()
             if clip_path:
                 clip_path_obj = Path(clip_path)
+
+                # Handle both absolute and relative paths
+                if not clip_path_obj.is_absolute():
+                    # Relative path - resolve relative to app root
+                    app_root = Path(__file__).parent.parent.absolute()
+                    clip_path_obj = app_root / clip_path_obj
+                    logger.debug(f"[SemanticEmbeddingService] Resolving relative path: {clip_path} → {clip_path_obj}")
+
+                # Validate model path
                 if clip_path_obj.exists() and (clip_path_obj / 'config.json').exists():
                     local_model_path = str(clip_path_obj)
-                    logger.info(f"[SemanticEmbeddingService] Using stored preference: {local_model_path}")
+                    logger.info(f"[SemanticEmbeddingService] ✓ Using stored preference: {local_model_path}")
+                else:
+                    logger.warning(
+                        f"[SemanticEmbeddingService] Stored preference path invalid:\n"
+                        f"  Path: {clip_path_obj}\n"
+                        f"  Exists: {clip_path_obj.exists()}\n"
+                        f"  Has config.json: {(clip_path_obj / 'config.json').exists() if clip_path_obj.exists() else False}"
+                    )
         except Exception as e:
             logger.warning(f"[SemanticEmbeddingService] Could not check stored preference: {e}")
 
@@ -155,32 +171,64 @@ class SemanticEmbeddingService:
                 app_root = Path(__file__).parent.parent.absolute()
                 folder_name = hf_model.replace('/', '--')
 
-                # Check Model folder (uppercase)
-                model_folder = app_root / 'Model' / folder_name
-                if model_folder.exists() and (model_folder / 'config.json').exists():
-                    local_model_path = str(model_folder)
-                    logger.info(f"[SemanticEmbeddingService] Found in Model folder: {local_model_path}")
-                else:
-                    # Check models folder (lowercase)
-                    model_folder = app_root / 'models' / folder_name
+                # Check multiple possible locations
+                possible_locations = [
+                    app_root / 'Model' / folder_name,      # Uppercase M, singular
+                    app_root / 'model' / folder_name,      # Lowercase m, singular
+                    app_root / 'models' / folder_name,     # Lowercase m, plural
+                ]
+
+                for model_folder in possible_locations:
                     if model_folder.exists() and (model_folder / 'config.json').exists():
                         local_model_path = str(model_folder)
-                        logger.info(f"[SemanticEmbeddingService] Found in models folder: {local_model_path}")
+                        logger.info(f"[SemanticEmbeddingService] Found offline model: {local_model_path}")
+                        break
+                    else:
+                        logger.debug(f"[SemanticEmbeddingService] Checked {model_folder}: not found or invalid")
+
             except Exception as e:
                 logger.warning(f"[SemanticEmbeddingService] Could not check for local models: {e}")
 
-        # STEP 3: If no offline model found, show user dialog for model selection
+        # STEP 3: If no offline model found, handle appropriately
         if not local_model_path:
             logger.warning(f"[SemanticEmbeddingService] No offline model found for {hf_model}")
-            logger.info("[SemanticEmbeddingService] Showing model selection dialog to user")
 
-            # Show dialog (only if we have GUI context)
+            # CRITICAL: Check if we're on the main thread
+            # Background workers should NOT show dialogs (causes UI freeze)
             try:
-                from ui.clip_model_dialog import show_clip_model_dialog
                 from PySide6.QtWidgets import QApplication
+                from PySide6.QtCore import QThread
 
-                # Only show dialog if we're in a GUI application
-                if QApplication.instance():
+                app = QApplication.instance()
+                is_main_thread = QThread.currentThread() == app.thread() if app else False
+
+                if not is_main_thread:
+                    # We're in a background worker - DO NOT show dialog
+                    logger.error(
+                        f"[SemanticEmbeddingService] Model not found and running in background thread. "
+                        f"Cannot show dialog during background processing."
+                    )
+                    raise RuntimeError(
+                        f"CLIP model '{hf_model}' not found offline.\n\n"
+                        f"The model is required for similar photo detection.\n\n"
+                        f"Please ensure model is installed at one of:\n"
+                        f"  • ./Model/{hf_model.replace('/', '--')}/\n"
+                        f"  • ./model/{hf_model.replace('/', '--')}/\n"
+                        f"  • ./models/{hf_model.replace('/', '--')}/\n\n"
+                        f"Or set path in: Preferences → Visual Embeddings → Model Path\n\n"
+                        f"Note: This error occurred during background processing.\n"
+                        f"The model must be downloaded before starting similar photo detection."
+                    )
+
+            except ImportError:
+                is_main_thread = False  # Assume not main thread if Qt not available
+
+            # Show dialog only if on main thread AND GUI available
+            if is_main_thread:
+                logger.info("[SemanticEmbeddingService] On main thread, showing model selection dialog")
+                try:
+                    from ui.clip_model_dialog import show_clip_model_dialog
+
                     result = show_clip_model_dialog()
 
                     if result:
@@ -200,23 +248,25 @@ class SemanticEmbeddingService:
                             f"To use visual embedding features, you need to download a model.\n"
                             f"Please try again and select a model to download."
                         )
-                else:
-                    # No GUI - can't show dialog
-                    logger.error("[SemanticEmbeddingService] No GUI available to show model selection dialog")
+
+                except ImportError as e:
+                    logger.error(f"[SemanticEmbeddingService] Could not import model dialog: {e}")
                     raise RuntimeError(
                         f"CLIP model '{hf_model}' not found offline.\n\n"
                         f"For offline use:\n"
                         f"1. Download the model to: ./Model/{hf_model.replace('/', '--')}/\n"
-                        f"2. Or run the application in GUI mode to download via the model dialog"
+                        f"2. Or set custom path in Preferences → Visual Embeddings → Model Path"
                     )
-
-            except ImportError as e:
-                logger.error(f"[SemanticEmbeddingService] Could not import model dialog: {e}")
+            else:
+                # No GUI or not main thread
+                logger.error("[SemanticEmbeddingService] Cannot show dialog (no GUI or background thread)")
                 raise RuntimeError(
                     f"CLIP model '{hf_model}' not found offline.\n\n"
-                    f"For offline use:\n"
-                    f"1. Download the model to: ./Model/{hf_model.replace('/', '--')}/\n"
-                    f"2. Or set custom path in Preferences → Visual Embeddings → Model Path"
+                    f"For offline use, place model files at one of:\n"
+                    f"  • ./Model/{hf_model.replace('/', '--')}/\n"
+                    f"  • ./model/{hf_model.replace('/', '--')}/\n"
+                    f"  • ./models/{hf_model.replace('/', '--')}/\n\n"
+                    f"Or set custom path in: Preferences → Visual Embeddings → Model Path"
                 )
 
         # STEP 4: Load model from local path (offline mode)
