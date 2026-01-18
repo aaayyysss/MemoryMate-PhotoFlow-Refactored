@@ -72,6 +72,8 @@ class SemanticEmbeddingService:
         self._model = None
         self._processor = None
         self._device = None
+        self._load_attempted = False  # Track if we've tried to load (prevents retrying on every photo)
+        self._load_error = None  # Store error if loading failed
 
         # Try to import dependencies
         self._available = False
@@ -104,11 +106,22 @@ class SemanticEmbeddingService:
 
         This prevents unexpected downloads and gives users control.
         """
+        # If model already loaded, return immediately
         if self._model is not None:
             return
 
+        # CRITICAL: If we already tried and failed, don't retry on every photo!
+        # This prevents repeated model checking for each of 27 photos
+        if self._load_attempted and self._load_error:
+            raise self._load_error
+
+        # Mark that we're attempting to load
+        self._load_attempted = True
+
         if not self._available:
-            raise RuntimeError("PyTorch/Transformers not available")
+            error = RuntimeError("PyTorch/Transformers not available")
+            self._load_error = error
+            raise error
 
         logger.info(f"[SemanticEmbeddingService] Loading model: {self.model_name}")
 
@@ -168,6 +181,7 @@ class SemanticEmbeddingService:
         if not local_model_path:
             try:
                 from pathlib import Path
+                import os
                 app_root = Path(__file__).parent.parent.absolute()
                 folder_name = hf_model.replace('/', '--')
 
@@ -182,6 +196,15 @@ class SemanticEmbeddingService:
                     app_root / 'models' / folder_name,     # Lowercase m, plural
                 ]
 
+                # CRITICAL: Also check HuggingFace default cache location
+                # This is where transformers downloads models by default
+                home = Path.home()
+                hf_cache_locations = [
+                    home / '.cache' / 'huggingface' / 'hub' / f'models--{folder_name.replace("--", "-")}',
+                    home / '.cache' / 'huggingface' / 'transformers' / folder_name,
+                ]
+                possible_locations.extend(hf_cache_locations)
+
                 for model_folder in possible_locations:
                     logger.info(f"[SemanticEmbeddingService]   Checking: {model_folder}")
 
@@ -191,8 +214,27 @@ class SemanticEmbeddingService:
                     logger.info(f"[SemanticEmbeddingService]     → Exists: {exists}")
                     if exists:
                         logger.info(f"[SemanticEmbeddingService]     → Has config.json: {has_config}")
-                        if has_config:
+
+                        # For HuggingFace cache, also check for snapshots folder
+                        if not has_config and (model_folder / 'snapshots').exists():
+                            # HF cache structure: models--xxx/snapshots/hash/
+                            try:
+                                snapshots_dir = model_folder / 'snapshots'
+                                snapshot_folders = [d for d in snapshots_dir.iterdir() if d.is_dir()]
+                                if snapshot_folders:
+                                    # Use the most recent snapshot
+                                    latest_snapshot = max(snapshot_folders, key=lambda p: p.stat().st_mtime)
+                                    if (latest_snapshot / 'config.json').exists():
+                                        logger.info(f"[SemanticEmbeddingService]     → ✓ VALID MODEL FOUND in HF cache snapshot!")
+                                        local_model_path = str(latest_snapshot)
+                                        break
+                            except Exception as e:
+                                logger.warning(f"[SemanticEmbeddingService]     → Error checking snapshots: {e}")
+
+                        elif has_config:
                             logger.info(f"[SemanticEmbeddingService]     → ✓ VALID MODEL FOUND!")
+                            local_model_path = str(model_folder)
+                            break
                         else:
                             # List what files ARE in the folder
                             try:
@@ -200,11 +242,6 @@ class SemanticEmbeddingService:
                                 logger.warning(f"[SemanticEmbeddingService]     → Folder exists but no config.json. Contents: {[f.name for f in files[:10]]}")
                             except Exception as e:
                                 logger.warning(f"[SemanticEmbeddingService]     → Could not list contents: {e}")
-
-                    if exists and has_config:
-                        local_model_path = str(model_folder)
-                        logger.info(f"[SemanticEmbeddingService] ✓ Found offline model: {local_model_path}")
-                        break
 
                 if not local_model_path:
                     logger.warning(f"[SemanticEmbeddingService] ✗ No valid model found in any location")
@@ -231,7 +268,7 @@ class SemanticEmbeddingService:
                         f"[SemanticEmbeddingService] Model not found and running in background thread. "
                         f"Cannot show dialog during background processing."
                     )
-                    raise RuntimeError(
+                    error = RuntimeError(
                         f"CLIP model '{hf_model}' not found offline.\n\n"
                         f"The model is required for similar photo detection.\n\n"
                         f"Please ensure model is installed at one of:\n"
@@ -239,9 +276,10 @@ class SemanticEmbeddingService:
                         f"  • ./model/{hf_model.replace('/', '--')}/\n"
                         f"  • ./models/{hf_model.replace('/', '--')}/\n\n"
                         f"Or set path in: Preferences → Visual Embeddings → Model Path\n\n"
-                        f"Note: This error occurred during background processing.\n"
-                        f"The model must be downloaded before starting similar photo detection."
+                        f"Note: Model check performed once and cached - will not retry for each photo."
                     )
+                    self._load_error = error  # Cache the error to avoid retrying
+                    raise error
 
             except ImportError:
                 is_main_thread = False  # Assume not main thread if Qt not available
@@ -266,24 +304,28 @@ class SemanticEmbeddingService:
                         hf_model = model_map.get(self.model_name, self.model_name)
                     else:
                         # User cancelled - raise error
-                        raise RuntimeError(
+                        error = RuntimeError(
                             f"CLIP model '{hf_model}' not found offline.\n\n"
                             f"To use visual embedding features, you need to download a model.\n"
                             f"Please try again and select a model to download."
                         )
+                        self._load_error = error
+                        raise error
 
                 except ImportError as e:
                     logger.error(f"[SemanticEmbeddingService] Could not import model dialog: {e}")
-                    raise RuntimeError(
+                    error = RuntimeError(
                         f"CLIP model '{hf_model}' not found offline.\n\n"
                         f"For offline use:\n"
                         f"1. Download the model to: ./Model/{hf_model.replace('/', '--')}/\n"
                         f"2. Or set custom path in Preferences → Visual Embeddings → Model Path"
                     )
+                    self._load_error = error
+                    raise error
             else:
                 # No GUI or not main thread
                 logger.error("[SemanticEmbeddingService] Cannot show dialog (no GUI or background thread)")
-                raise RuntimeError(
+                error = RuntimeError(
                     f"CLIP model '{hf_model}' not found offline.\n\n"
                     f"For offline use, place model files at one of:\n"
                     f"  • ./Model/{hf_model.replace('/', '--')}/\n"
@@ -291,6 +333,8 @@ class SemanticEmbeddingService:
                     f"  • ./models/{hf_model.replace('/', '--')}/\n\n"
                     f"Or set custom path in: Preferences → Visual Embeddings → Model Path"
                 )
+                self._load_error = error
+                raise error
 
         # STEP 4: Load model from local path (offline mode)
         try:
@@ -308,16 +352,20 @@ class SemanticEmbeddingService:
 
         except Exception as e:
             logger.error(f"[SemanticEmbeddingService] Failed to load model from {local_model_path}: {e}")
-            raise RuntimeError(
+            error = RuntimeError(
                 f"Failed to load CLIP model from:\n{local_model_path}\n\n"
                 f"The model files may be corrupted or incomplete.\n"
                 f"Please delete the folder and download again.\n\n"
                 f"Error: {str(e)}"
             )
+            self._load_error = error
+            raise error
 
         self._model.to(self._device)
         self._model.eval()
 
+        # Successfully loaded - clear any previous error
+        self._load_error = None
         logger.info(f"[SemanticEmbeddingService] Model ready on {self._device}")
 
     def encode_image(self, image_path: str) -> np.ndarray:
