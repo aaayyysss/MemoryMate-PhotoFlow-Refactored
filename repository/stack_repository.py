@@ -262,6 +262,36 @@ class StackRepository(BaseRepository):
         self.logger.info(f"Cleared {deleted_count} {stack_type} stacks (rule v{rule_version or 'all'})")
         return deleted_count
 
+    def delete_stack(self, project_id: int, stack_id: int) -> bool:
+        """
+        Delete a specific stack.
+
+        CASCADE delete will automatically remove:
+        - All stack_member rows
+        - All stack_meta rows
+
+        Args:
+            project_id: Project ID
+            stack_id: Stack ID to delete
+
+        Returns:
+            True if stack was deleted, False if not found
+        """
+        with self._db_connection.get_connection(read_only=False) as conn:
+            cur = conn.execute(
+                "DELETE FROM media_stack WHERE project_id = ? AND stack_id = ?",
+                (project_id, stack_id)
+            )
+            deleted = cur.rowcount > 0
+            conn.commit()
+
+        if deleted:
+            self.logger.info(f"Deleted stack {stack_id} from project {project_id}")
+        else:
+            self.logger.warning(f"Stack {stack_id} not found in project {project_id}")
+
+        return deleted
+
     # =========================================================================
     # STACK MEMBER OPERATIONS
     # =========================================================================
@@ -407,6 +437,39 @@ class StackRepository(BaseRepository):
             self.logger.debug(f"Removed photo {photo_id} from stack {stack_id}")
 
         return removed
+
+    def remove_stack_members(self, project_id: int, stack_id: int, photo_ids: List[int]) -> int:
+        """
+        Remove multiple members from stack (batch operation).
+
+        Args:
+            project_id: Project ID
+            stack_id: Stack ID
+            photo_ids: List of photo IDs to remove
+
+        Returns:
+            Number of members removed
+        """
+        if not photo_ids:
+            return 0
+
+        with self._db_connection.get_connection(read_only=False) as conn:
+            # Build placeholders for IN clause
+            placeholders = ','.join('?' * len(photo_ids))
+            sql = f"""
+                DELETE FROM media_stack_member
+                WHERE project_id = ? AND stack_id = ? AND photo_id IN ({placeholders})
+            """
+
+            params = [project_id, stack_id] + list(photo_ids)
+            cur = conn.execute(sql, params)
+            removed_count = cur.rowcount
+            conn.commit()
+
+        if removed_count > 0:
+            self.logger.info(f"Removed {removed_count} photos from stack {stack_id}")
+
+        return removed_count
 
     # =========================================================================
     # STACK META OPERATIONS
