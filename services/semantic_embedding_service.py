@@ -171,6 +171,10 @@ class SemanticEmbeddingService:
                 app_root = Path(__file__).parent.parent.absolute()
                 folder_name = hf_model.replace('/', '--')
 
+                logger.info(f"[SemanticEmbeddingService] Searching for offline model...")
+                logger.info(f"[SemanticEmbeddingService]   App root: {app_root}")
+                logger.info(f"[SemanticEmbeddingService]   Looking for: {folder_name}")
+
                 # Check multiple possible locations
                 possible_locations = [
                     app_root / 'Model' / folder_name,      # Uppercase M, singular
@@ -179,15 +183,34 @@ class SemanticEmbeddingService:
                 ]
 
                 for model_folder in possible_locations:
-                    if model_folder.exists() and (model_folder / 'config.json').exists():
+                    logger.info(f"[SemanticEmbeddingService]   Checking: {model_folder}")
+
+                    exists = model_folder.exists()
+                    has_config = (model_folder / 'config.json').exists() if exists else False
+
+                    logger.info(f"[SemanticEmbeddingService]     → Exists: {exists}")
+                    if exists:
+                        logger.info(f"[SemanticEmbeddingService]     → Has config.json: {has_config}")
+                        if has_config:
+                            logger.info(f"[SemanticEmbeddingService]     → ✓ VALID MODEL FOUND!")
+                        else:
+                            # List what files ARE in the folder
+                            try:
+                                files = list(model_folder.iterdir())
+                                logger.warning(f"[SemanticEmbeddingService]     → Folder exists but no config.json. Contents: {[f.name for f in files[:10]]}")
+                            except Exception as e:
+                                logger.warning(f"[SemanticEmbeddingService]     → Could not list contents: {e}")
+
+                    if exists and has_config:
                         local_model_path = str(model_folder)
-                        logger.info(f"[SemanticEmbeddingService] Found offline model: {local_model_path}")
+                        logger.info(f"[SemanticEmbeddingService] ✓ Found offline model: {local_model_path}")
                         break
-                    else:
-                        logger.debug(f"[SemanticEmbeddingService] Checked {model_folder}: not found or invalid")
+
+                if not local_model_path:
+                    logger.warning(f"[SemanticEmbeddingService] ✗ No valid model found in any location")
 
             except Exception as e:
-                logger.warning(f"[SemanticEmbeddingService] Could not check for local models: {e}")
+                logger.error(f"[SemanticEmbeddingService] Error checking for local models: {e}", exc_info=True)
 
         # STEP 3: If no offline model found, handle appropriately
         if not local_model_path:
