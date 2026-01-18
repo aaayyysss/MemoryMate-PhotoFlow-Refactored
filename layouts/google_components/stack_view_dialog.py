@@ -422,6 +422,30 @@ class StackViewDialog(QDialog):
         """)
         button_layout.addWidget(self.btn_unstack)
 
+        # Unstack selected photos
+        self.btn_unstack_selected = QPushButton("🔓 Unstack Selected")
+        self.btn_unstack_selected.setEnabled(False)  # Disabled until photos are selected
+        self.btn_unstack_selected.setToolTip("Remove only selected photos from this stack (keeps photos)")
+        self.btn_unstack_selected.clicked.connect(self._on_unstack_selected)
+        self.btn_unstack_selected.setStyleSheet("""
+            QPushButton {
+                padding: 8px 16px;
+                background-color: #FF9800;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #F57C00;
+            }
+            QPushButton:disabled {
+                background-color: #ccc !important;
+                color: #999 !important;
+            }
+        """)
+        button_layout.addWidget(self.btn_unstack_selected)
+
         # Smart action: Keep Best (auto-select all except representative)
         self.btn_keep_best = QPushButton("⭐ Keep Best")
         self.btn_keep_best.clicked.connect(self._on_keep_best)
@@ -666,27 +690,34 @@ class StackViewDialog(QDialog):
             self.selected_photos.discard(photo_id)
             logger.debug(f"[HANDLER] Removed {photo_id} from selected_photos")
 
-        # Update button state
+        # Update button states
         is_enabled = len(self.selected_photos) > 0
         logger.debug(f"[HANDLER] Current selected_photos after update: {self.selected_photos}")
-        logger.debug(f"[HANDLER] Delete button enabled: {is_enabled} (selected count: {len(self.selected_photos)})")
+        logger.debug(f"[HANDLER] Buttons enabled: {is_enabled} (selected count: {len(self.selected_photos)})")
         logger.debug(f"[HANDLER] Delete button object: {self.btn_delete_selected}, current enabled state: {self.btn_delete_selected.isEnabled()}")
 
-        # Force update the button state
+        # Force update both button states (delete and unstack selected)
         self.btn_delete_selected.setEnabled(is_enabled)
+        self.btn_unstack_selected.setEnabled(is_enabled)
 
         # Verify state was actually set
-        actual_state = self.btn_delete_selected.isEnabled()
-        logger.debug(f"[HANDLER] Delete button enabled state AFTER setEnabled({is_enabled}): {actual_state}")
+        actual_state_delete = self.btn_delete_selected.isEnabled()
+        actual_state_unstack = self.btn_unstack_selected.isEnabled()
+        logger.debug(f"[HANDLER] Delete button enabled state AFTER setEnabled({is_enabled}): {actual_state_delete}")
+        logger.debug(f"[HANDLER] Unstack Selected button enabled state AFTER setEnabled({is_enabled}): {actual_state_unstack}")
 
-        if is_enabled and not actual_state:
-            logger.error(f"[HANDLER] CRITICAL: setEnabled(True) FAILED! Button still disabled!")
+        if is_enabled and not actual_state_delete:
+            logger.error(f"[HANDLER] CRITICAL: Delete button setEnabled(True) FAILED! Button still disabled!")
+        if is_enabled and not actual_state_unstack:
+            logger.error(f"[HANDLER] CRITICAL: Unstack Selected button setEnabled(True) FAILED! Button still disabled!")
 
         # Force repaint to ensure visual update
         self.btn_delete_selected.update()
+        self.btn_unstack_selected.update()
 
         # Log button's current visual properties
-        logger.debug(f"[HANDLER] Button visible={self.btn_delete_selected.isVisible()}, text={self.btn_delete_selected.text()}")
+        logger.debug(f"[HANDLER] Delete button visible={self.btn_delete_selected.isVisible()}, text={self.btn_delete_selected.text()}")
+        logger.debug(f"[HANDLER] Unstack Selected button visible={self.btn_unstack_selected.isVisible()}, text={self.btn_unstack_selected.text()}")
         logger.debug(f"[HANDLER] ====== END SELECTION SIGNAL ======\n")
 
     def _on_keep_best(self):
@@ -825,9 +856,10 @@ class StackViewDialog(QDialog):
         """Handle unstack all button click."""
         reply = QMessageBox.question(
             self,
-            "Confirm Unstack",
+            "Confirm Unstack All",
             f"Remove all {len(self.members)} photos from this stack?\n\n"
-            "Photos will not be deleted, only unstacked.",
+            "Photos will not be deleted, only unstacked.\n"
+            "The stack will be completely dissolved.",
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No
         )
@@ -840,16 +872,122 @@ class StackViewDialog(QDialog):
                 db_conn = DatabaseConnection()
                 stack_repo = StackRepository(db_conn)
 
-                # Delete the stack (CASCADE will remove members)
-                stack_repo.delete({"stack_id": self.stack_id, "project_id": self.project_id})
+                # Delete the stack (CASCADE will remove all members automatically)
+                deleted = stack_repo.delete_stack(self.project_id, self.stack_id)
 
-                QMessageBox.information(self, "Success", "Stack has been removed.")
-                self.stack_action_taken.emit("unstack", self.stack_id)
-                self.accept()
+                if deleted:
+                    logger.info(f"Successfully unstacked all photos from stack {self.stack_id}")
+                    QMessageBox.information(
+                        self,
+                        "Success",
+                        f"Stack has been removed.\n"
+                        f"All {len(self.members)} photos are now unstacked."
+                    )
+                    self.stack_action_taken.emit("unstack_all", self.stack_id)
+                    self.accept()
+                else:
+                    QMessageBox.warning(
+                        self,
+                        "Not Found",
+                        "Stack not found. It may have been already removed."
+                    )
 
             except Exception as e:
-                logger.error(f"Failed to unstack: {e}", exc_info=True)
-                QMessageBox.critical(self, "Error", f"Failed to unstack:\n{e}")
+                logger.error(f"Failed to unstack all: {e}", exc_info=True)
+                QMessageBox.critical(self, "Error", f"Failed to unstack all:\n{e}")
+
+    def _on_unstack_selected(self):
+        """Handle unstack selected photos button click."""
+        if not self.selected_photos:
+            QMessageBox.information(
+                self,
+                "No Selection",
+                "Please select photos to unstack using the checkboxes."
+            )
+            return
+
+        # Check if user is trying to unstack ALL photos
+        if len(self.selected_photos) == len(self.members):
+            reply = QMessageBox.question(
+                self,
+                "Unstack All?",
+                f"You've selected all {len(self.members)} photos.\n\n"
+                "This will dissolve the entire stack.\n"
+                "Use 'Unstack All' button instead?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No
+            )
+            if reply == QMessageBox.Yes:
+                self._on_unstack_all()
+                return
+
+        reply = QMessageBox.question(
+            self,
+            "Confirm Unstack Selected",
+            f"Remove {len(self.selected_photos)} selected photo(s) from this stack?\n\n"
+            "Photos will not be deleted, only unstacked.\n"
+            f"The stack will still contain {len(self.members) - len(self.selected_photos)} photo(s).",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+
+        if reply == QMessageBox.Yes:
+            try:
+                from repository.stack_repository import StackRepository
+                from repository.base_repository import DatabaseConnection
+
+                db_conn = DatabaseConnection()
+                stack_repo = StackRepository(db_conn)
+
+                # Remove selected members from stack
+                removed_count = stack_repo.remove_stack_members(
+                    self.project_id,
+                    self.stack_id,
+                    list(self.selected_photos)
+                )
+
+                if removed_count > 0:
+                    logger.info(f"Successfully unstacked {removed_count} photos from stack {self.stack_id}")
+
+                    # Check if stack still has enough members (min 2)
+                    remaining_count = stack_repo.count_stack_members(self.project_id, self.stack_id)
+
+                    if remaining_count < 2:
+                        # Stack no longer valid (less than 2 photos), delete it
+                        logger.info(f"Stack {self.stack_id} now has {remaining_count} member(s), deleting stack")
+                        stack_repo.delete_stack(self.project_id, self.stack_id)
+
+                        QMessageBox.information(
+                            self,
+                            "Success",
+                            f"{removed_count} photo(s) unstacked.\n\n"
+                            f"Stack dissolved as it had less than 2 photos remaining."
+                        )
+                        self.stack_action_taken.emit("unstack_selected", self.stack_id)
+                        self.accept()
+                    else:
+                        # Stack still valid, reload
+                        QMessageBox.information(
+                            self,
+                            "Success",
+                            f"{removed_count} photo(s) unstacked.\n\n"
+                            f"Stack now contains {remaining_count} photo(s)."
+                        )
+                        self.stack_action_taken.emit("unstack_selected", self.stack_id)
+
+                        # Clear selection and reload stack
+                        self.selected_photos.clear()
+                        self._load_stack()
+                else:
+                    QMessageBox.warning(
+                        self,
+                        "Not Found",
+                        "Selected photos not found in stack."
+                    )
+
+            except Exception as e:
+                logger.error(f"Failed to unstack selected: {e}", exc_info=True)
+                QMessageBox.critical(self, "Error", f"Failed to unstack selected:\n{e}")
 
 
 # =============================================================================
