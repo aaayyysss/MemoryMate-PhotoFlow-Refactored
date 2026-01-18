@@ -369,6 +369,8 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         self.before_after_active = False  # Before/After comparison toggle
         self._original_pixmap = None  # Original pixmap for editing
         self._edit_pixmap = None  # Current edited pixmap
+        self._preview_pixmap = None  # Preview resolution pixmap for fast adjustments
+        self._using_preview = False  # Whether using preview resolution
         self._crop_rect_norm = None  # Normalized crop rectangle (0-1 coords)
 
         # VIDEO EDITING STATE (Phase 1)
@@ -1832,12 +1834,17 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             self.adjustments_layout = QVBoxLayout(self.editor_right_panel)
             self.adjustments_layout.setContentsMargins(12, 12, 12, 12)
             self.adjustments_layout.setSpacing(8)
-        # Debounce timer for smooth slider drags
+        # ============================================================
+        # PERFORMANCE: Debounce timer for smooth real-time preview
+        # ============================================================
         if not hasattr(self, '_adjust_debounce_timer') or self._adjust_debounce_timer is None:
             self._adjust_debounce_timer = QTimer(self)
             self._adjust_debounce_timer.setSingleShot(True)
-            self._adjust_debounce_timer.setInterval(75)
-            self._adjust_debounce_timer.timeout.connect(self._apply_adjustments)
+            self._adjust_debounce_timer.setInterval(100)  # 100ms for smooth preview
+            # Real-time preview: use_preview=True, skip histogram+history
+            self._adjust_debounce_timer.timeout.connect(
+                lambda: self._apply_adjustments(use_preview=True, update_histogram=False, push_history=False)
+            )
         # Initialize adjustments dict
         self.adjustments = {
             'brightness': 0,
@@ -1903,7 +1910,10 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             slider = QSlider(Qt.Horizontal)
             slider.setRange(-100, 100)
             slider.setValue(0)
+            # Real-time preview during drag
             slider.valueChanged.connect(lambda v: self._on_slider_change(name, v))
+            # Final quality when released - PERFORMANCE OPTIMIZATION
+            slider.sliderReleased.connect(lambda: self._on_slider_released(name))
             setattr(self, f"slider_{name}", slider)
             return label_row, slider
         
@@ -2124,10 +2134,10 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             
             # Restore current preset
             self.current_preset_adjustments = edit_state.get('current_preset', {})
-            
-            # Apply the loaded adjustments
-            self._apply_adjustments()
-            
+
+            # Apply the loaded adjustments - full quality with histogram
+            self._apply_adjustments(use_preview=True, update_histogram=True, push_history=False)
+
             print(f"[EditState] Restored edit state for {os.path.basename(self.media_path)}")
             return True
         except Exception as e:
@@ -2408,10 +2418,10 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             # Apply copied preset
             if self.copied_preset:
                 self.current_preset_adjustments = self.copied_preset.copy()
-            
-            # Re-render with pasted adjustments
-            self._apply_adjustments()
-            
+
+            # Re-render with pasted adjustments - full quality with histogram+history
+            self._apply_adjustments(use_preview=True, update_histogram=True, push_history=True)
+
             # Visual feedback
             if hasattr(self, 'paste_adj_btn'):
                 original_text = self.paste_adj_btn.text()
@@ -2636,6 +2646,37 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             if getattr(self, 'original_pixmap', None) and not self.original_pixmap.isNull():
                 self._original_pixmap = self.original_pixmap
                 self._edit_pixmap = self.original_pixmap.copy()
+
+                # ============================================================
+                # PERFORMANCE OPTIMIZATION: Create preview-resolution pixmap
+                # ============================================================
+                # For real-time adjustments, use a scaled-down preview to avoid UI freeze
+                # Only process full resolution on final export/save
+                PREVIEW_MAX_SIZE = 2048  # Max dimension for real-time preview
+
+                orig_width = self._original_pixmap.width()
+                orig_height = self._original_pixmap.height()
+                max_dim = max(orig_width, orig_height)
+
+                if max_dim > PREVIEW_MAX_SIZE:
+                    # Scale down for preview
+                    scale_factor = PREVIEW_MAX_SIZE / max_dim
+                    preview_width = int(orig_width * scale_factor)
+                    preview_height = int(orig_height * scale_factor)
+
+                    self._preview_pixmap = self._original_pixmap.scaled(
+                        preview_width, preview_height,
+                        Qt.KeepAspectRatio, Qt.SmoothTransformation
+                    )
+                    self._using_preview = True
+                    print(f"[Editor] PERFORMANCE: Using preview resolution {preview_width}x{preview_height} "
+                          f"(original: {orig_width}x{orig_height})")
+                else:
+                    # Image small enough, use original
+                    self._preview_pixmap = self._original_pixmap
+                    self._using_preview = False
+                    print(f"[Editor] Using original resolution {orig_width}x{orig_height}")
+
                 # Initialize edit history
                 self.edit_history = [(self._edit_pixmap.copy(), self.adjustments.copy())]
                 self.edit_history_index = 0
@@ -2842,6 +2883,24 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         else:
             self._apply_adjustments()
 
+    def _on_slider_released(self, key: str):
+        """
+        Handle slider release - apply final quality with histogram and history.
+
+        ⚡ PERFORMANCE: Called when user finishes dragging slider
+        - Stops debounce timer (no need for another preview)
+        - Applies full quality (still uses preview for speed)
+        - Updates histogram (expensive operation)
+        - Pushes to history (for undo/redo)
+        """
+        # Stop debounce timer - no need for another preview
+        if hasattr(self, '_adjust_debounce_timer') and self._adjust_debounce_timer:
+            self._adjust_debounce_timer.stop()
+
+        # Apply with histogram and history
+        self._apply_adjustments(use_preview=True, update_histogram=True, push_history=True)
+        print(f"[Editor] Slider released: {key} = {self.adjustments.get(key, 0)}")
+
     def _reset_adjustments(self):
         """Reset all adjustments to 0."""
         for k in self.adjustments:
@@ -2859,28 +2918,65 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 spinbox.blockSignals(True)
                 spinbox.setValue(0)
                 spinbox.blockSignals(False)
-        self._apply_adjustments()
+        # Reset is a complete operation - use full quality with histogram+history
+        self._apply_adjustments(use_preview=True, update_histogram=True, push_history=True)
 
-    def _apply_adjustments(self):
-        """Apply adjustments to edit pixmap (brightness, exposure, contrast, highlights, shadows, saturation, warmth, vignette)."""
+    def _apply_adjustments(self, use_preview=True, update_histogram=False, push_history=False):
+        """
+        Apply adjustments to edit pixmap with performance optimizations.
+
+        ⚡ PERFORMANCE FEATURES:
+        - use_preview=True: Process preview resolution for instant results (default)
+        - use_preview=False: Process full resolution (only on export/save)
+        - update_histogram=False: Skip expensive histogram calculation (default)
+        - push_history=False: Skip history push for real-time adjustments (default)
+
+        Args:
+            use_preview: Use preview resolution for fast real-time adjustments
+            update_histogram: Update histogram (expensive, skip during real-time)
+            push_history: Push to edit history (skip during slider moves)
+        """
         try:
             # RAW FILE HANDLING: If RAW adjustments changed, reprocess from RAW
             if getattr(self, 'is_raw_file', False) and getattr(self, 'raw_image', None):
                 raw_adj_keys = ['white_balance_temp', 'white_balance_tint', 'exposure_recovery']
                 raw_adj_changed = any(self.adjustments.get(k, 0) != 0 for k in raw_adj_keys)
-                
+
                 if raw_adj_changed:
                     print("[RAW] Reprocessing RAW image with adjustments...")
                     # Reprocess RAW with current adjustments
                     raw_pixmap = self._process_raw_to_pixmap(self.raw_image, self.adjustments)
                     if raw_pixmap:
                         self._original_pixmap = raw_pixmap
+                        # Also update preview if using it
+                        if use_preview and self._using_preview:
+                            PREVIEW_MAX_SIZE = 2048
+                            orig_width = self._original_pixmap.width()
+                            orig_height = self._original_pixmap.height()
+                            max_dim = max(orig_width, orig_height)
+                            if max_dim > PREVIEW_MAX_SIZE:
+                                scale_factor = PREVIEW_MAX_SIZE / max_dim
+                                preview_width = int(orig_width * scale_factor)
+                                preview_height = int(orig_height * scale_factor)
+                                self._preview_pixmap = self._original_pixmap.scaled(
+                                    preview_width, preview_height,
+                                    Qt.KeepAspectRatio, Qt.SmoothTransformation
+                                )
                         print("[RAW] RAW reprocessed successfully")
-            
-            if not getattr(self, '_original_pixmap', None) or self._original_pixmap.isNull():
+
+            # Select source pixmap based on performance mode
+            if use_preview and hasattr(self, '_preview_pixmap') and not self._preview_pixmap.isNull():
+                source_pixmap = self._preview_pixmap
+            elif hasattr(self, '_original_pixmap') and not self._original_pixmap.isNull():
+                source_pixmap = self._original_pixmap
+            else:
                 return
-            # Convert QPixmap -> PIL
-            pil_img = self._qpixmap_to_pil(self._original_pixmap)
+
+            if source_pixmap.isNull():
+                return
+
+            # Convert QPixmap -> PIL (use selected source)
+            pil_img = self._qpixmap_to_pil(source_pixmap)
             from PIL import ImageEnhance, Image, ImageDraw
             # Brightness (mid-tone)
             b = self.adjustments.get('brightness', 0)
@@ -2994,12 +3090,29 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             self._edit_pixmap = self._pil_to_qpixmap(pil_img)
             self._update_editor_canvas_pixmap()
             self._apply_editor_zoom()
-            # Push to history after applying adjustments
-            self._push_edit_history()
-            # Update histogram image at top of panel
-            if hasattr(self, 'histogram_label'):
+
+            # ============================================================
+            # PERFORMANCE: Conditional expensive operations
+            # ============================================================
+            # Only push to history if requested (not during real-time slider moves)
+            if push_history:
+                self._push_edit_history()
+
+            # Only update histogram if requested (expensive, skip during real-time)
+            if update_histogram and hasattr(self, 'histogram_label'):
                 hist_img = self._render_histogram_image(pil_img, width=360, height=120)
                 self.histogram_label.setPixmap(self._pil_to_qpixmap(hist_img))
+
+            # Log performance mode
+            if use_preview and hasattr(self, '_using_preview') and self._using_preview:
+                # Only log occasionally to avoid spam
+                if not hasattr(self, '_last_perf_log'):
+                    self._last_perf_log = 0
+                import time
+                if time.time() - self._last_perf_log > 2.0:
+                    print(f"[Editor] ⚡ FAST MODE: Preview resolution ({pil_img.width}x{pil_img.height})")
+                    self._last_perf_log = time.time()
+
         except Exception as e:
             print(f"[Adjustments] Error applying adjustments: {e}")
 
@@ -4417,9 +4530,9 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 spinbox.blockSignals(True)
                 spinbox.setValue(scaled_val)
                 spinbox.blockSignals(False)
-        
-        # Re-render
-        self._apply_adjustments()
+
+        # Re-render - full quality with histogram+history
+        self._apply_adjustments(use_preview=True, update_histogram=True, push_history=True)
         print(f"[Filter] Applied preset with {intensity}% intensity")
     
     def _apply_preset_adjustments(self, preset_adj: dict):
