@@ -92,7 +92,18 @@ class SemanticEmbeddingService:
         return self._available
 
     def _load_model(self):
-        """Lazy load CLIP model from local cache."""
+        """
+        Lazy load CLIP model with offline-first approach.
+
+        Best Practices (based on Lightroom, Capture One, Google Photos):
+        1. Check for offline models first
+        2. Inform user if model is missing
+        3. Let user choose model variant
+        4. Request explicit download consent
+        5. Store preference to avoid repeated prompts
+
+        This prevents unexpected downloads and gives users control.
+        """
         if self._model is not None:
             return
 
@@ -120,75 +131,121 @@ class SemanticEmbeddingService:
         }
         hf_model = model_map.get(self.model_name, self.model_name)
 
-        # Get local model path from settings if available
+        # STEP 1: Check for stored preference first
         local_model_path = None
         try:
-            from pathlib import Path  # Import at method level
+            from pathlib import Path
             from settings_manager_qt import SettingsManager
             settings = SettingsManager()
-            # Check for custom CLIP model path
+
+            # Check if user has already chosen a model path
             clip_path = settings.get("clip_model_path", "").strip()
             if clip_path:
                 clip_path_obj = Path(clip_path)
-                if clip_path_obj.exists() and clip_path_obj.is_dir():
+                if clip_path_obj.exists() and (clip_path_obj / 'config.json').exists():
                     local_model_path = str(clip_path_obj)
-                    logger.info(f"[SemanticEmbeddingService] Using custom model path: {local_model_path}")
+                    logger.info(f"[SemanticEmbeddingService] Using stored preference: {local_model_path}")
+        except Exception as e:
+            logger.warning(f"[SemanticEmbeddingService] Could not check stored preference: {e}")
 
-            # Fallback to Model folder in root
-            if not local_model_path:
+        # STEP 2: Check for offline models in standard locations
+        if not local_model_path:
+            try:
+                from pathlib import Path
                 app_root = Path(__file__).parent.parent.absolute()
-                model_folder = app_root / 'Model' / hf_model.replace('/', '--')
-                if model_folder.exists():
-                    local_model_path = str(model_folder)
-                    logger.info(f"[SemanticEmbeddingService] Using Model folder: {local_model_path}")
-                else:
-                    # Try models folder (lowercase)
-                    model_folder = app_root / 'models' / hf_model.replace('/', '--')
-                    if model_folder.exists():
-                        local_model_path = str(model_folder)
-                        logger.info(f"[SemanticEmbeddingService] Using models folder: {local_model_path}")
-        except Exception as e:
-            logger.warning(f"[SemanticEmbeddingService] Could not check for local models: {e}")
+                folder_name = hf_model.replace('/', '--')
 
-        # Load model and processor with offline support
+                # Check Model folder (uppercase)
+                model_folder = app_root / 'Model' / folder_name
+                if model_folder.exists() and (model_folder / 'config.json').exists():
+                    local_model_path = str(model_folder)
+                    logger.info(f"[SemanticEmbeddingService] Found in Model folder: {local_model_path}")
+                else:
+                    # Check models folder (lowercase)
+                    model_folder = app_root / 'models' / folder_name
+                    if model_folder.exists() and (model_folder / 'config.json').exists():
+                        local_model_path = str(model_folder)
+                        logger.info(f"[SemanticEmbeddingService] Found in models folder: {local_model_path}")
+            except Exception as e:
+                logger.warning(f"[SemanticEmbeddingService] Could not check for local models: {e}")
+
+        # STEP 3: If no offline model found, show user dialog for model selection
+        if not local_model_path:
+            logger.warning(f"[SemanticEmbeddingService] No offline model found for {hf_model}")
+            logger.info("[SemanticEmbeddingService] Showing model selection dialog to user")
+
+            # Show dialog (only if we have GUI context)
+            try:
+                from ui.clip_model_dialog import show_clip_model_dialog
+                from PySide6.QtWidgets import QApplication
+
+                # Only show dialog if we're in a GUI application
+                if QApplication.instance():
+                    result = show_clip_model_dialog()
+
+                    if result:
+                        selected_model_name, selected_model_path = result
+                        logger.info(f"[SemanticEmbeddingService] User selected: {selected_model_name} → {selected_model_path}")
+
+                        # Update to use selected model
+                        self.model_name = selected_model_name
+                        local_model_path = selected_model_path
+
+                        # Update hf_model for consistency
+                        hf_model = model_map.get(self.model_name, self.model_name)
+                    else:
+                        # User cancelled - raise error
+                        raise RuntimeError(
+                            f"CLIP model '{hf_model}' not found offline.\n\n"
+                            f"To use visual embedding features, you need to download a model.\n"
+                            f"Please try again and select a model to download."
+                        )
+                else:
+                    # No GUI - can't show dialog
+                    logger.error("[SemanticEmbeddingService] No GUI available to show model selection dialog")
+                    raise RuntimeError(
+                        f"CLIP model '{hf_model}' not found offline.\n\n"
+                        f"For offline use:\n"
+                        f"1. Download the model to: ./Model/{hf_model.replace('/', '--')}/\n"
+                        f"2. Or run the application in GUI mode to download via the model dialog"
+                    )
+
+            except ImportError as e:
+                logger.error(f"[SemanticEmbeddingService] Could not import model dialog: {e}")
+                raise RuntimeError(
+                    f"CLIP model '{hf_model}' not found offline.\n\n"
+                    f"For offline use:\n"
+                    f"1. Download the model to: ./Model/{hf_model.replace('/', '--')}/\n"
+                    f"2. Or set custom path in Preferences → Visual Embeddings → Model Path"
+                )
+
+        # STEP 4: Load model from local path (offline mode)
         try:
-            if local_model_path:
-                # Load from local path with offline mode
-                logger.info(f"[SemanticEmbeddingService] Loading from local path (offline mode): {local_model_path}")
-                self._processor = self._CLIPProcessor.from_pretrained(
-                    local_model_path,
-                    local_files_only=True
-                )
-                self._model = self._CLIPModel.from_pretrained(
-                    local_model_path,
-                    local_files_only=True
-                )
-            else:
-                # Fallback to HuggingFace with local cache (will download if needed)
-                logger.warning(f"[SemanticEmbeddingService] No local models found, attempting to load from cache: {hf_model}")
-                logger.warning(f"[SemanticEmbeddingService] If offline, this will fail. Place models in: ./Model/{hf_model.replace('/', '--')}/")
-                self._processor = self._CLIPProcessor.from_pretrained(
-                    hf_model,
-                    local_files_only=False  # Allow download if not cached
-                )
-                self._model = self._CLIPModel.from_pretrained(
-                    hf_model,
-                    local_files_only=False  # Allow download if not cached
-                )
+            logger.info(f"[SemanticEmbeddingService] Loading from local path (offline mode): {local_model_path}")
+            self._processor = self._CLIPProcessor.from_pretrained(
+                local_model_path,
+                local_files_only=True
+            )
+            self._model = self._CLIPModel.from_pretrained(
+                local_model_path,
+                local_files_only=True
+            )
+
+            logger.info(f"[SemanticEmbeddingService] Model loaded successfully: {hf_model}")
+
         except Exception as e:
-            logger.error(f"[SemanticEmbeddingService] Failed to load model: {e}")
+            logger.error(f"[SemanticEmbeddingService] Failed to load model from {local_model_path}: {e}")
             raise RuntimeError(
-                f"Failed to load CLIP model '{hf_model}'.\n\n"
-                f"For offline use:\n"
-                f"1. Download the model to: ./Model/{hf_model.replace('/', '--')}/\n"
-                f"2. Or set custom path in Preferences → Visual Embeddings → Model Path\n\n"
+                f"Failed to load CLIP model from:\n{local_model_path}\n\n"
+                f"The model files may be corrupted or incomplete.\n"
+                f"Please delete the folder and download again.\n\n"
                 f"Error: {str(e)}"
             )
 
         self._model.to(self._device)
         self._model.eval()
 
-        logger.info(f"[SemanticEmbeddingService] Model loaded successfully: {hf_model}")
+        logger.info(f"[SemanticEmbeddingService] Model ready on {self._device}")
 
     def encode_image(self, image_path: str) -> np.ndarray:
         """

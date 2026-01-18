@@ -316,6 +316,7 @@ hiddenimports = [
 
     'ui',
     'ui.advanced_filters_widget',  # Advanced search filters widget
+    'ui.clip_model_dialog',  # CRITICAL: CLIP model selection and download dialog
     'ui.cluster_face_selector',  # Face clustering selector
     'ui.device_import_dialog',
     'ui.embedding_progress_dialog',  # Embedding generation progress dialog
