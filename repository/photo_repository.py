@@ -1,5 +1,5 @@
 # repository/photo_repository.py
-# Version 02.00.00.00 dated 20251205
+# Version 02.01.00.00 dated 20260122
 # Repository for photo_metadata table operations
 
 from typing import Optional, List, Dict, Any
@@ -612,3 +612,44 @@ class PhotoRepository(BaseRepository):
                 self.logger.info("No duplicate photo entries found")
 
             return deleted_count
+
+    def get_photos_needing_embeddings(self, project_id: int, limit: Optional[int] = None) -> List[Dict[str, Any]]:
+        """
+        Get photos that don't have embeddings yet.
+
+        Args:
+            project_id: Project ID to filter by
+            limit: Optional maximum number of results
+
+        Returns:
+            List of photo metadata dicts that need embeddings
+        """
+        # First, get all photos in the project
+        all_photos = self.find_all(
+            where_clause="project_id = ?",
+            params=(project_id,),
+            order_by="id ASC",
+            limit=limit
+        )
+
+        # Filter out photos that already have embeddings
+        # This requires joining with semantic_embeddings table
+        photos_needing_embeddings = []
+        
+        with self.connection(read_only=True) as conn:
+            for photo in all_photos:
+                photo_id = photo['id']
+                
+                # Check if embedding exists for this photo
+                cur = conn.cursor()
+                cur.execute(
+                    "SELECT COUNT(*) as count FROM semantic_embeddings WHERE photo_id = ?",
+                    (photo_id,)
+                )
+                result = cur.fetchone()
+                has_embedding = result['count'] > 0
+                
+                if not has_embedding:
+                    photos_needing_embeddings.append(photo)
+        
+        return photos_needing_embeddings
