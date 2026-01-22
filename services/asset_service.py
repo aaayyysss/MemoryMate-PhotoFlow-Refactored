@@ -1,5 +1,5 @@
 # services/asset_service.py
-# Version 01.00.00.00 dated 20260115
+# Version 01.01.00.00 dated 20260122
 # Asset backfill and instance linking service
 #
 # Part of the asset-centric duplicate management system.
@@ -357,19 +357,41 @@ class AssetService:
     def list_duplicates(
         self,
         project_id: int,
-        min_instances: int = 2
+        min_instances: int = 2,
+        limit: Optional[int] = None,
+        offset: int = 0
     ) -> List[Dict[str, Any]]:
         """
         Returns duplicate assets with instance counts.
-
+            
         Args:
             project_id: Project ID
             min_instances: Minimum number of instances to be considered duplicate (default: 2)
-
+            limit: Maximum number of results to return (None = no limit)
+            offset: Number of results to skip (for pagination)
+            
         Returns:
             List of asset dicts with instance_count >= min_instances
         """
-        return self.asset_repo.list_duplicate_assets(project_id, min_instances=min_instances)
+        return self.asset_repo.list_duplicate_assets(
+            project_id, 
+            min_instances=min_instances,
+            limit=limit,
+            offset=offset
+        )
+        
+    def count_duplicates(self, project_id: int, min_instances: int = 2) -> int:
+        """
+        Count total number of duplicate assets.
+            
+        Args:
+            project_id: Project ID
+            min_instances: Minimum number of instances to be considered duplicate
+            
+        Returns:
+            Total count of duplicate assets
+        """
+        return self.asset_repo.count_duplicate_assets(project_id, min_instances=min_instances)
 
     def get_duplicate_details(
         self,
