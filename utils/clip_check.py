@@ -1,3 +1,6 @@
+# clip_check.py
+# veriosn 01.00.00.00 dated 20260122
+
 """
 CLIP model availability checker with user-friendly notifications.
 
@@ -15,19 +18,22 @@ logger = logging.getLogger(__name__)
 # Model variant configurations
 MODEL_CONFIGS = {
     'openai/clip-vit-base-patch32': {
-        'dir_name': 'clip-vit-base-patch32',
+        'dir_name': 'openai--clip-vit-base-patch32',  # Updated to match actual directory structure
+        'legacy_dir_name': 'clip-vit-base-patch32',  # Legacy fallback for backward compatibility
         'dimension': 512,
         'description': 'Base model, fastest (512-D)',
         'size_mb': 600
     },
     'openai/clip-vit-base-patch16': {
-        'dir_name': 'clip-vit-base-patch16',
+        'dir_name': 'openai--clip-vit-base-patch16',  # Updated to match actual directory structure
+        'legacy_dir_name': 'clip-vit-base-patch16',  # Legacy fallback for backward compatibility
         'dimension': 512,
         'description': 'Base model, better quality (512-D)',
         'size_mb': 600
     },
     'openai/clip-vit-large-patch14': {
-        'dir_name': 'clip-vit-large-patch14',
+        'dir_name': 'openai--clip-vit-large-patch14',  # Updated to match actual directory structure
+        'legacy_dir_name': 'clip-vit-large-patch14',  # Legacy fallback for backward compatibility
         'dimension': 768,
         'description': 'Large model, best quality (768-D)',
         'size_mb': 1700
@@ -69,17 +75,24 @@ def check_clip_availability(variant: str = 'openai/clip-vit-base-patch32') -> Tu
 
     config = MODEL_CONFIGS[variant]
     dir_name = config['dir_name']
+    legacy_dir_name = config.get('legacy_dir_name', dir_name)
 
     # Check if models exist in any of the standard locations
     model_locations = _get_model_search_paths()
     models_found = False
     model_path = None
 
+    # Check both new and legacy directory names
+    dir_names_to_check = [dir_name]
+    if legacy_dir_name != dir_name:
+        dir_names_to_check.append(legacy_dir_name)
+
     for location in model_locations:
-        # Check for models/<variant> directory
-        base_dir = Path(location) / 'models' / dir_name
-        if not base_dir.exists():
-            continue
+        for check_dir_name in dir_names_to_check:
+            # Check for models/<variant> directory
+            base_dir = Path(location) / 'models' / check_dir_name
+            if not base_dir.exists():
+                continue
 
         # Check for snapshots directory
         snapshots_dir = base_dir / 'snapshots'
@@ -219,13 +232,20 @@ def get_clip_download_status(variant: str = 'openai/clip-vit-base-patch32') -> D
 
     config = MODEL_CONFIGS[variant]
     dir_name = config['dir_name']
+    legacy_dir_name = config.get('legacy_dir_name', dir_name)
+
+    # Check both new and legacy directory names
+    dir_names_to_check = [dir_name]
+    if legacy_dir_name != dir_name:
+        dir_names_to_check.append(legacy_dir_name)
 
     # Check models
     model_locations = _get_model_search_paths()
     for location in model_locations:
-        base_dir = Path(location) / 'models' / dir_name
-        if not base_dir.exists():
-            continue
+        for check_dir_name in dir_names_to_check:
+            base_dir = Path(location) / 'models' / check_dir_name
+            if not base_dir.exists():
+                continue
 
         snapshots_dir = base_dir / 'snapshots'
         if not snapshots_dir.exists():
