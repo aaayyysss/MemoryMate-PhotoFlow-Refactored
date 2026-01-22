@@ -258,6 +258,13 @@ hiddenimports = [
 	'layouts.google_components.duplicates_dialog',  # CRITICAL: Duplicates/similar photos dialog
 	'layouts.google_components.stack_badge_widget',  # CRITICAL: Stack badge widget
 	'layouts.google_components.stack_view_dialog',  # CRITICAL: Stack browsing and management dialog
+	    
+	# CRITICAL: Google Components package (root-level)
+	'google_components',
+	'google_components.widgets',
+	'google_components.media_lightbox',
+	'google_components.photo_helpers',
+	'google_components.dialogs'
 
     'repository',
     'repository.asset_repository',  # CRITICAL: Asset repository for photos and videos
@@ -313,6 +320,8 @@ hiddenimports = [
     'workers.similar_shot_stack_worker',  # CRITICAL: Similar shot stack generation worker
     'workers.video_metadata_worker',
     'workers.video_thumbnail_worker',
+    'workers.duplicate_loading_worker',  # CRITICAL: Async duplicate loading worker
+    'workers.ffmpeg_detection_worker',   # CRITICAL: Async FFmpeg/FFprobe detection worker
 
     'ui',
     'ui.advanced_filters_widget',  # Advanced search filters widget
@@ -356,6 +365,17 @@ hiddenimports = [
 	'ui.accordion_sidebar.dates_section',
 	'ui.accordion_sidebar.devices_section',
 	'ui.accordion_sidebar.duplicates_section',  # CRITICAL: Similar photos/duplicates section
+	    
+	# CRITICAL: Additional accordion sidebar sections
+	'ui.accordion_sidebar.base_section',
+	'ui.accordion_sidebar.dates_section',
+	'ui.accordion_sidebar.devices_section',
+	'ui.accordion_sidebar.folders_section',
+	'ui.accordion_sidebar.locations_section',
+	'ui.accordion_sidebar.people_section',
+	'ui.accordion_sidebar.quick_section',
+	'ui.accordion_sidebar.section_widgets',
+	'ui.accordion_sidebar.videos_section'
 	'ui.accordion_sidebar.folders_section',
 	'ui.accordion_sidebar.locations_section',  # CRITICAL: GPS locations sidebar section
 	'ui.accordion_sidebar.people_section',
@@ -473,7 +493,7 @@ exe = EXE(
     [],
     exclude_binaries=True,
     
-    name='MemoryMate-PhotoFlow-v3.2.0',  # Updated: Session state persistence + semantic search + comprehensive PyInstaller packaging
+    name='MemoryMate-PhotoFlow-v3.2.2',  # Updated: Session state persistence + semantic search + comprehensive PyInstaller packaging
     debug=True,
     bootloader_ignore_signals=False,
     strip=False,
@@ -509,5 +529,5 @@ coll = COLLECT(
     strip=False,
     upx=True,  # Optional: if runtime issues, set upx=False first
     upx_exclude=[],
-    name='MemoryMate-PhotoFlow-v3.2.0'
+    name='MemoryMate-PhotoFlow-v3.2.2'
 )
