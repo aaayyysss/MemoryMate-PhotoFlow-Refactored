@@ -8721,13 +8721,12 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
                     for photo in batch:
                         try:
                             # Extract embedding
-                            embedding = embedding_service.extract_image_embedding(photo['file_path'])
+                            embedding = embedding_service.encode_image(photo['file_path'])
                             if embedding is not None:
                                 # Store embedding
                                 embedding_service.store_embedding(
                                     photo_id=photo['id'],
-                                    embedding=embedding,
-                                    model_id="clip-vit-b32"
+                                    embedding=embedding
                                 )
                                 embeddings_generated += 1
                                 processed_in_batch += 1
