@@ -1,5 +1,5 @@
 # main_qt.py
-# Version 10.01.01.04 dated 202601014
+# Version 10.01.01.05 dated 202601022
 # Added centralized logging initialization
 
 import sys
@@ -250,54 +250,75 @@ if __name__ == "__main__":
         print(f"[Startup]   3. Screen geometry: {win.screen().availableGeometry() if win.screen() else 'N/A'}")
         print(f"[Startup]   4. Check if window is off-screen or on disconnected monitor")
 
-        # Check FFmpeg availability and notify user if needed
-        try:
-            # P2-24 FIX: Use structured status returns instead of emoji string matching
-            # This avoids issues with localization, encoding, or format changes
-            from utils.ffmpeg_check import check_ffmpeg_availability
-            ffmpeg_ok, ffprobe_ok, ffmpeg_message = check_ffmpeg_availability()
-
-            # P2-24 FIX: Check boolean status instead of parsing message string
-            if not (ffmpeg_ok and ffprobe_ok):
-                # FFmpeg/FFprobe are missing or misconfigured - show warning
-                print(ffmpeg_message)
-                from PySide6.QtWidgets import QMessageBox
-                msg_box = QMessageBox(win)
-                msg_box.setIcon(QMessageBox.Warning)
-
-                # Check if it's a configuration issue
-                if "configured at" in ffmpeg_message and "not working" in ffmpeg_message:
-                    msg_box.setWindowTitle("Video Support - FFprobe Configuration Issue")
-                    msg_box.setText("The configured FFprobe path is not working.")
-                    msg_box.setInformativeText(
-                        "Please verify the path in Preferences:\n"
-                        "  1. Press Ctrl+, to open Preferences\n"
-                        "  2. Go to '🎬 Video Settings'\n"
-                        "  3. Use 'Browse' to select ffprobe.exe (not ffmpeg.exe)\n"
-                        "  4. Click 'Test' to verify it works\n"
-                        "  5. Click OK and restart the app"
-                    )
-                else:
-                    msg_box.setWindowTitle("Video Support - FFmpeg Not Found")
-                    msg_box.setText("FFmpeg and/or FFprobe are not installed on your system.")
-                    msg_box.setInformativeText(
-                        "Video features will be limited:\n"
-                        "  • Videos can be indexed and played\n"
-                        "  • Video thumbnails won't be generated\n"
-                        "  • Duration/resolution won't be extracted\n\n"
-                        "Options:\n"
-                        "  1. Install FFmpeg system-wide (requires admin)\n"
-                        "  2. Configure custom path in Preferences (Ctrl+,)"
-                    )
-
-                msg_box.setDetailedText(ffmpeg_message)
-                msg_box.setStandardButtons(QMessageBox.Ok)
-                msg_box.exec()
-            elif ffmpeg_message:
-                # FFmpeg is available, just log it
-                print(ffmpeg_message)
-        except Exception as e:
-            logger.warning(f"Failed to check FFmpeg availability: {e}")
+        # Check FFmpeg availability asynchronously to prevent UI freezing
+        def check_ffmpeg_async():
+            """Launch async FFmpeg detection worker."""
+            try:
+                from workers.ffmpeg_detection_worker import FFmpegDetectionWorker
+                from PySide6.QtCore import QThreadPool
+                
+                def on_detection_complete(ffmpeg_ok, ffprobe_ok, message):
+                    """Handle async detection results."""
+                    print(message)  # Always log the result
+                    
+                    # Only show dialog if there are issues
+                    if not (ffmpeg_ok and ffprobe_ok):
+                        from PySide6.QtWidgets import QMessageBox
+                        msg_box = QMessageBox(win)
+                        msg_box.setIcon(QMessageBox.Warning)
+                        
+                        # Check if it's a configuration issue
+                        if "configured at" in message and "not working" in message:
+                            msg_box.setWindowTitle("Video Support - FFprobe Configuration Issue")
+                            msg_box.setText("The configured FFprobe path is not working.")
+                            msg_box.setInformativeText(
+                                "Please verify the path in Preferences:\n"
+                                "  1. Press Ctrl+, to open Preferences\n"
+                                "  2. Go to '🎬 Video Settings'\n"
+                                "  3. Use 'Browse' to select ffprobe.exe (not ffmpeg.exe)\n"
+                                "  4. Click 'Test' to verify it works\n"
+                                "  5. Click OK and restart the app"
+                            )
+                        else:
+                            msg_box.setWindowTitle("Video Support - FFmpeg Not Found")
+                            msg_box.setText("FFmpeg and/or FFprobe are not installed on your system.")
+                            msg_box.setInformativeText(
+                                "Video features will be limited:\n"
+                                "  • Videos can be indexed and played\n"
+                                "  • Video thumbnails won't be generated\n"
+                                "  • Duration/resolution won't be extracted\n\n"
+                                "Options:\n"
+                                "  1. Install FFmpeg system-wide (requires admin)\n"
+                                "  2. Configure custom path in Preferences (Ctrl+,)"
+                            )
+                        
+                        msg_box.setDetailedText(message)
+                        msg_box.setStandardButtons(QMessageBox.Ok)
+                        msg_box.exec()
+                
+                def on_detection_error(error_msg):
+                    """Handle detection errors."""
+                    logger.warning(f"FFmpeg detection failed: {error_msg}")
+                    # Silently fail - don't bother user with detection errors
+                
+                # Create and configure worker
+                worker = FFmpegDetectionWorker()
+                worker.signals.detection_complete.connect(on_detection_complete)
+                worker.signals.error.connect(on_detection_error)
+                
+                # Launch in thread pool
+                thread_pool = QThreadPool.globalInstance()
+                thread_pool.start(worker)
+                
+                logger.info("[Main] Async FFmpeg detection worker launched")
+                
+            except Exception as e:
+                logger.warning(f"Failed to launch async FFmpeg detection: {e}")
+                # Fall back to simple logging
+                print("⚠️ FFmpeg detection skipped due to initialization error")
+        
+        # Launch async FFmpeg detection after window is shown
+        check_ffmpeg_async()
 
         # Check InsightFace models availability and notify user if needed
         try:
