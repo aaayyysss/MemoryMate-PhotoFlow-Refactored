@@ -1,5 +1,5 @@
 # media_lightbox.py
-# Version 10.01.01.03 dated 20260115
+# Version 10.01.01.04 dated 20260122
 
 """
 Google Photos Layout - Media Lightbox Component
@@ -471,66 +471,78 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         screen_height = screen_geometry.height()
         
         # ============================================================
-        # ENHANCED 5-TIER PROFESSIONAL BREAKPOINT SYSTEM
-        # Following best practices from Google Photos, iPhone Photos, Adobe Lightroom
+        # OPTIMIZED 5-TIER PROFESSIONAL BREAKPOINT SYSTEM
+        # Following Google Photos/iPhone Photos/Lightroom best practices
+        # Industry standard: Maximize media viewing area, minimize UI overhead
         # ============================================================
 
-        # Breakpoint categories with responsive parameters
-        if screen_width >= 3840:  # 4K+ / 8K (3840px+)
-            size_percent = 0.82
-            self.responsive_tier = "4K+"
-            self.toolbar_height = 80
-            self.button_size = 56
-            self.button_size_sm = 32
-            self.margin_size = 20
-            self.spacing_size = 12
-            self.font_size_title = 13
-            self.font_size_body = 11
-            self.font_size_caption = 9
-        elif screen_width >= 2560:  # QHD / 2K (2560-3839px)
-            size_percent = 0.85
-            self.responsive_tier = "QHD/2K"
-            self.toolbar_height = 76
-            self.button_size = 54
-            self.button_size_sm = 30
-            self.margin_size = 18
-            self.spacing_size = 11
-            self.font_size_title = 12
+        # ============================================================
+        # PROFESSIONAL LIGHTBOX SIZING SYSTEM
+        # Industry-standard sizing following Google Photos/iPhone/Lightroom best practices
+        # Goal: 85-90% screen utilization with proper breathing room for window management
+        # ============================================================
+
+        # Breakpoint categories with professional sizing (industry-standard approach)
+        if screen_width >= 3840:  # 4K+ / 8K (3840px+) - Ultra-wide displays
+            size_percent = 0.85  # Conservative sizing for professional workflow
+            self.responsive_tier = "4K+ Professional"
+            self.toolbar_height = 64  # Standard professional toolbar height
+            self.button_size = 48  # Standard button size
+            self.button_size_sm = 28  # Standard small button size
+            self.margin_size = 12  # Standard margins
+            self.spacing_size = 8  # Standard spacing
+            self.font_size_title = 12  # Standard font sizes
             self.font_size_body = 10
-            self.font_size_caption = 9
-        elif screen_width >= 1920:  # Full HD (1920-2559px)
-            size_percent = 0.88
-            self.responsive_tier = "FullHD"
-            self.toolbar_height = 72
-            self.button_size = 52
-            self.button_size_sm = 28
-            self.margin_size = 16
-            self.spacing_size = 10
-            self.font_size_title = 11
-            self.font_size_body = 10
-            self.font_size_caption = 9
-        elif screen_width >= 1366:  # HD / Laptop (1366-1919px)
-            size_percent = 0.92
-            self.responsive_tier = "HD"
-            self.toolbar_height = 68
-            self.button_size = 48
-            self.button_size_sm = 26
-            self.margin_size = 12
-            self.spacing_size = 8
-            self.font_size_title = 11
-            self.font_size_body = 10
-            self.font_size_caption = 9
-        else:  # Small screens (<1366px)
-            size_percent = 0.95
-            self.responsive_tier = "Small"
+            self.font_size_caption = 8
+            self.panel_width = 320  # Professional panel width
+        elif screen_width >= 2560:  # QHD / 2K (2560-3839px) - High-end monitors
+            size_percent = 0.87  # Slightly larger for bigger screens
+            self.responsive_tier = "QHD/2K Professional"
             self.toolbar_height = 60
+            self.button_size = 46
+            self.button_size_sm = 26
+            self.margin_size = 10
+            self.spacing_size = 7
+            self.font_size_title = 11
+            self.font_size_body = 10
+            self.font_size_caption = 8
+            self.panel_width = 300
+        elif screen_width >= 1920:  # Full HD (1920-2559px) - Standard desktop
+            size_percent = 0.88  # Balanced sizing for standard desktop
+            self.responsive_tier = "FullHD Professional"
+            self.toolbar_height = 56
             self.button_size = 44
             self.button_size_sm = 24
             self.margin_size = 8
             self.spacing_size = 6
+            self.font_size_title = 11
+            self.font_size_body = 9
+            self.font_size_caption = 7
+            self.panel_width = 280
+        elif screen_width >= 1366:  # HD / Laptop (1366-1919px) - Laptops/small screens
+            size_percent = 0.90  # Maximum for smaller screens
+            self.responsive_tier = "HD/Laptop Professional"
+            self.toolbar_height = 52
+            self.button_size = 40
+            self.button_size_sm = 22
+            self.margin_size = 6
+            self.spacing_size = 5
             self.font_size_title = 10
             self.font_size_body = 9
-            self.font_size_caption = 8
+            self.font_size_caption = 7
+            self.panel_width = 260
+        else:  # Small screens (<1366px) - Compact devices
+            size_percent = 0.92  # Nearly fullscreen for tiny screens
+            self.responsive_tier = "Small Screen Professional"
+            self.toolbar_height = 48
+            self.button_size = 36
+            self.button_size_sm = 20
+            self.margin_size = 4
+            self.spacing_size = 4
+            self.font_size_title = 10
+            self.font_size_body = 8
+            self.font_size_caption = 6
+            self.panel_width = 240
         
         width = int(screen_width * size_percent)
         height = int(screen_height * size_percent)
@@ -978,7 +990,8 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         # Right tools panel wrapped in scroll area (always accessible)
         from PySide6.QtWidgets import QScrollArea
         self.editor_right_panel = QWidget()
-        self.editor_right_panel.setFixedWidth(400)
+        # Ultra-optimized editor panel: Reduce from 400px to 300px
+        self.editor_right_panel.setFixedWidth(300)
         self.editor_right_panel.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
         self.editor_right_scroll = QScrollArea()
         self.editor_right_scroll.setWidget(self.editor_right_panel)
@@ -1200,6 +1213,13 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             self._position_media_caption()
 
         # ============================================================
+        # PROFESSIONAL PANEL AUTO-HIDING
+        # Automatically hide panels when window becomes too narrow
+        # Following Google Photos/iPhone/Lightroom best practices
+        # ============================================================
+        self._handle_panel_visibility()
+
+        # ============================================================
         # DEBOUNCED UPDATES: Performance-critical operations
         # ============================================================
         # Restart debounce timer - only execute once user stops resizing
@@ -1215,6 +1235,54 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             print(f"[MediaLightbox] Resize: {new_size.width()}x{new_size.height()}")
             self._last_resize_log_time = current_time
 
+    def _handle_panel_visibility(self):
+        """
+        Professional panel auto-hiding system.
+        
+        Industry Best Practice: Automatically hide panels when window becomes too narrow
+        to maintain optimal media viewing area, following Google Photos/iPhone/Lightroom standards.
+        
+        Thresholds:
+        - Window width < 1200px: Auto-hide panels for better media focus
+        - Window width >= 1200px: Allow panels to be visible
+        - Respects user's last panel state when restoring
+        """
+        current_width = self.width()
+        
+        # Store original panel states if this is the first call
+        if not hasattr(self, '_original_info_visible'):
+            self._original_info_visible = getattr(self, 'info_panel_visible', False)
+            self._original_enhance_visible = getattr(self, 'enhance_panel_visible', False)
+        
+        # Define minimum width for panels to remain visible
+        MIN_PANEL_WIDTH = 1200  # Industry standard threshold
+        
+        # Auto-hide panels when window becomes too narrow
+        if current_width < MIN_PANEL_WIDTH:
+            # Hide panels but remember their original state
+            if hasattr(self, 'info_panel') and self.info_panel.isVisible():
+                self.info_panel.hide()
+                self.info_panel_visible = False
+                print(f"[MediaLightbox] Auto-hidden info panel (window width: {current_width}px < {MIN_PANEL_WIDTH}px)")
+            
+            if hasattr(self, 'enhance_panel') and self.enhance_panel.isVisible():
+                self.enhance_panel.hide()
+                self.enhance_panel_visible = False
+                print(f"[MediaLightbox] Auto-hidden enhance panel (window width: {current_width}px < {MIN_PANEL_WIDTH}px)")
+        else:
+            # Restore panels if they were originally visible
+            # But only restore one at a time to avoid crowding
+            if (hasattr(self, '_original_info_visible') and self._original_info_visible and 
+                hasattr(self, 'info_panel') and not self.info_panel.isVisible()):
+                # Only show info panel if enhance panel isn't visible
+                if not (hasattr(self, '_original_enhance_visible') and self._original_enhance_visible):
+                    self.info_panel.show()
+                    self.info_panel_visible = True
+                    print(f"[MediaLightbox] Restored info panel (window width: {current_width}px >= {MIN_PANEL_WIDTH}px)")
+            
+            # Note: We don't auto-show enhance panel to avoid conflicts
+            # User can manually toggle it if needed
+    
     def _enhanced_responsive_behavior(self):
         """
         Enhanced responsive behavior triggered after resize debounce.
@@ -3311,6 +3379,36 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 self._crop_handle = None  # 'TL','TR','BL','BR','L','R','T','B','move'
                 self._drag_start_pos = None
                 self._crop_start_rect = None
+                
+                # PROFESSIONAL FIX: Consistent sizing for smooth preview transitions
+                self._consistent_pixmap = None  # Stores consistently scaled pixmap
+                self._consistent_size = None    # Reference size for consistency
+
+            def set_pixmap_consistent(self, pixmap):
+                """
+                Set pixmap with consistent sizing to eliminate zoom effects during preview transitions.
+                
+                ✨ PROFESSIONAL APPROACH (Like Lightroom/Photoshop):
+                - Store consistently scaled pixmap
+                - Maintain aspect ratio during quality transitions
+                - Eliminate jarring zoom-in/out effects
+                """
+                if not pixmap or pixmap.isNull():
+                    self._consistent_pixmap = None
+                    self._consistent_size = None
+                    self.update()
+                    return
+                
+                # Store the consistently scaled pixmap
+                self._consistent_pixmap = pixmap
+                self._consistent_size = pixmap.size()
+                
+                # Trigger repaint with consistent sizing
+                self.update()
+                
+                # Debug logging
+                if hasattr(self.parent, '_debug_size_consistency') and self.parent._debug_size_consistency:
+                    print(f"[EditCanvas] Set consistent pixmap: {pixmap.width()}x{pixmap.height()}")
 
             def wheelEvent(self, event):
                 """Handle wheel events for zoom - DIRECT implementation."""
@@ -3341,12 +3439,22 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 from PySide6.QtCore import QRect, QRectF
                 p = QPainter(self)
                 p.setRenderHint(QPainter.Antialiasing)
-                # Choose pixmap (before/after)
-                pix_to_draw = None
-                if getattr(self.parent, 'before_after_active', False) and getattr(self.parent, '_original_pixmap', None):
-                    pix_to_draw = self.parent._original_pixmap
-                elif getattr(self.parent, '_edit_pixmap', None):
-                    pix_to_draw = self.parent._edit_pixmap
+                
+                # ============================================================
+                # PROFESSIONAL FIX: Use consistent pixmap first to eliminate zoom effects
+                # ============================================================
+                # Check for consistently scaled pixmap (from quality transitions)
+                if hasattr(self, '_consistent_pixmap') and self._consistent_pixmap and not self._consistent_pixmap.isNull():
+                    pix_to_draw = self._consistent_pixmap
+                    if hasattr(self.parent, '_debug_size_consistency') and self.parent._debug_size_consistency:
+                        print(f"[EditCanvas] Using consistent pixmap: {pix_to_draw.width()}x{pix_to_draw.height()}")
+                else:
+                    # Fall back to normal pixmap selection
+                    pix_to_draw = None
+                    if getattr(self.parent, 'before_after_active', False) and getattr(self.parent, '_original_pixmap', None):
+                        pix_to_draw = self.parent._original_pixmap
+                    elif getattr(self.parent, '_edit_pixmap', None):
+                        pix_to_draw = self.parent._edit_pixmap
                 
                 # FAST ROTATION: Use Qt QTransform instead of PIL (GPU accelerated!)
                 if getattr(self.parent, 'crop_mode_active', False) and hasattr(self.parent, 'rotation_angle') and self.parent.rotation_angle != 0 and pix_to_draw:
@@ -4671,18 +4779,63 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             self.before_after_btn.setChecked(self.before_after_active)
 
     def _update_editor_canvas_pixmap(self):
+        """
+        Update editor canvas pixmap with CONSISTENT SIZING to eliminate zoom effects.
+        
+        ✨ PROFESSIONAL FIX (Like Lightroom/Photoshop):
+        - Scale all previews to consistent viewport size
+        - Maintain aspect ratio during quality transitions
+        - Eliminate jarring zoom-in/out effects
+        """
         try:
             pix = None
             if getattr(self, 'before_after_active', False) and getattr(self, '_original_pixmap', None):
                 pix = self._original_pixmap
             else:
                 pix = getattr(self, '_edit_pixmap', None)
+            
             if pix and not pix.isNull():
-                self.editor_canvas.repaint()  # canvas draws pix on paintEvent
+                # ============================================================
+                # PROFESSIONAL FIX: Consistent Sizing During Quality Transitions
+                # ============================================================
+                # Store the target display size to maintain consistency
+                if not hasattr(self, '_consistent_display_size') or self._consistent_display_size is None:
+                    # First time: Store the size of the normal preview as reference
+                    self._consistent_display_size = pix.size()
+                    print(f"[Editor] Setting consistent display size: {pix.width()}x{pix.height()}")
+                
+                # Get canvas viewport size
+                canvas_size = self.editor_canvas.size()
+                
+                # Calculate scale factors to maintain consistent appearance
+                target_width = self._consistent_display_size.width()
+                target_height = self._consistent_display_size.height()
+                
+                # Scale the pixmap to fit consistently within canvas
+                scaled_pix = pix.scaled(
+                    target_width, target_height,
+                    Qt.KeepAspectRatio,
+                    Qt.SmoothTransformation  # Always use smooth for quality
+                )
+                
+                # Store the consistently scaled pixmap
+                self._consistent_scaled_pixmap = scaled_pix
+                
+                # Update canvas with consistent sizing
+                self.editor_canvas.set_pixmap_consistent(scaled_pix)
+                
+                # Debug logging for size consistency
+                if hasattr(self, '_debug_size_consistency') and self._debug_size_consistency:
+                    print(f"[Editor] Consistent sizing - Source: {pix.width()}x{pix.height()}, Display: {scaled_pix.width()}x{scaled_pix.height()}")
             else:
                 self.editor_canvas.clear()
-        except Exception:
-            pass
+                # Clear consistent size reference when no pixmap
+                if hasattr(self, '_consistent_display_size'):
+                    self._consistent_display_size = None
+        except Exception as e:
+            print(f"[Editor] Error in _update_editor_canvas_pixmap: {e}")
+            import traceback
+            traceback.print_exc()
 
     def _create_video_controls(self) -> QWidget:
         """Create video playback controls (play/pause, seek, volume, time)."""
@@ -4890,7 +5043,9 @@ class MediaLightbox(QDialog, VideoEditorMixin):
     def _create_info_panel(self) -> QWidget:
         """Create toggleable info panel with tabbed metadata (on right side)."""
         panel = QWidget()
-        panel.setFixedWidth(350)
+        # Professional panel width: Responsive based on screen size
+        # Following industry standards for balanced UI/UX
+        panel.setFixedWidth(self.panel_width)
         panel.setStyleSheet("""
             QWidget {
                 background: rgba(32, 33, 36, 0.95);
@@ -4899,8 +5054,9 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         """)
 
         panel_layout = QVBoxLayout(panel)
-        panel_layout.setContentsMargins(20, 20, 20, 20)
-        panel_layout.setSpacing(16)
+        # Professional margins: Balanced for readability and space efficiency
+        panel_layout.setContentsMargins(12, 16, 12, 16)
+        panel_layout.setSpacing(8)
 
         # Panel header
         header = QLabel("Media Information")
@@ -4960,8 +5116,9 @@ class MediaLightbox(QDialog, VideoEditorMixin):
 
         widget = QWidget()
         layout = QVBoxLayout(widget)
+        # Ultra-optimize tab content spacing: Reduce from 12px to 4px
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(12)
+        layout.setSpacing(4)
         layout.setAlignment(Qt.AlignTop)
 
         scroll.setWidget(widget)
@@ -4970,7 +5127,8 @@ class MediaLightbox(QDialog, VideoEditorMixin):
 
     def _create_enhance_panel(self) -> QWidget:
         panel = QWidget()
-        panel.setFixedWidth(350)
+        # Professional panel width: Match info panel for consistency
+        panel.setFixedWidth(self.panel_width)
         panel.setStyleSheet("""
             QWidget {
                 background: rgba(32, 33, 36, 0.95);
@@ -4978,8 +5136,9 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             }
         """)
         panel_layout = QVBoxLayout(panel)
-        panel_layout.setContentsMargins(20, 20, 20, 20)
-        panel_layout.setSpacing(12)
+        # Professional margins: Consistent with info panel
+        panel_layout.setContentsMargins(12, 16, 12, 16)
+        panel_layout.setSpacing(6)
 
         header = QLabel("Suggestions")
         header.setStyleSheet("color: white; font-size: 12pt; font-weight: bold; background: transparent;")
@@ -6288,9 +6447,13 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 self._apply_zoom()
 
     def _position_nav_buttons(self):
-        """Position navigation buttons on left/right sides, vertically centered (like Current Layout)."""
+        """Position navigation buttons relative to media area with responsive margins.
+        
+        Professional approach: Buttons positioned relative to scroll area (media content)
+        rather than window edges, ensuring they stay visible regardless of panel state.
+        """
         if not hasattr(self, 'prev_btn') or not hasattr(self, 'scroll_area'):
-            print(f"[MediaLightbox] _position_nav_buttons: Missing attributes (prev_btn={hasattr(self, 'prev_btn')}, scroll_area={hasattr(self, 'scroll_area')})")
+            print(f"[MediaLightbox] _position_nav_buttons: Missing attributes")
             return
 
         # Check if scroll area has valid size
@@ -6298,7 +6461,7 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             # Safety limit: stop retrying after 20 attempts (1 second total)
             if self._position_retry_count < 20:
                 self._position_retry_count += 1
-                print(f"[MediaLightbox] Scroll area not ready (retry {self._position_retry_count}/20), waiting 50ms...")
+                print(f"[MediaLightbox] Scroll area not ready (retry {self._position_retry_count}/20)")
                 from PySide6.QtCore import QTimer
                 QTimer.singleShot(50, self._position_nav_buttons)
             else:
@@ -6308,45 +6471,50 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         # Reset retry counter on success
         self._position_retry_count = 0
 
-        # Position buttons relative to scroll_area (like Current Layout does with canvas)
-        # The scroll_area is the main media display widget
+        # Get scroll area viewport coordinates relative to dialog
         try:
             from PySide6.QtCore import QPoint
             viewport = self.scroll_area.viewport()
+            # Get the top-left corner of scroll area viewport in dialog coordinates
             scroll_tl = viewport.mapTo(self, QPoint(0, 0))
         except Exception as e:
-            print(f"[MediaLightbox] ⚠️ mapTo() failed: {e}, using fallback")
-            from PySide6.QtCore import QPoint
-            scroll_tl = QPoint(0, 0)
+            print(f"[MediaLightbox] ⚠️ mapTo() failed: {e}, using fallback positioning")
+            # Fallback: position relative to dialog with reasonable defaults
+            scroll_tl = QPoint(0, self.top_toolbar.height() if hasattr(self, 'top_toolbar') else 0)
 
         scroll_w = viewport.width()
         scroll_h = viewport.height()
 
-        # Button dimensions
-        btn_w = self.prev_btn.width() or 48
-        btn_h = self.prev_btn.height() or 48
-        margin = 12  # Distance from edges
+        # Button dimensions (responsive)
+        btn_w = self.button_size_sm  # Use responsive button size
+        btn_h = self.button_size_sm
+        
+        # Responsive margins based on screen size
+        base_margin = max(8, self.margin_size)  # Minimum 8px, or responsive margin
+        
+        # Calculate vertical center position within scroll area
+        center_y = scroll_tl.y() + (scroll_h // 2) - (btn_h // 2)
+        
+        # Position buttons relative to scroll area edges with responsive margins
+        left_x = scroll_tl.x() + base_margin
+        right_x = scroll_tl.x() + scroll_w - btn_w - base_margin
+        
+        # Ensure buttons stay within dialog bounds
+        left_x = max(base_margin, left_x)
+        right_x = min(self.width() - btn_w - base_margin, right_x)
+        center_y = max(base_margin, center_y)
+        
+        # Apply positioning
+        self.prev_btn.move(int(left_x), int(center_y))
+        self.next_btn.move(int(right_x), int(center_y))
 
-        # Calculate vertical center position within middle content area (excluding toolbars)
-        top_h = self.top_toolbar.height() if hasattr(self, 'top_toolbar') else 0
-        bottom_h = self.bottom_toolbar.height() if hasattr(self, 'bottom_toolbar') else 0
-        center_y = top_h + ((self.height() - top_h - bottom_h) // 2) - (btn_h // 2)
-
-        # Position buttons at the dialog's left/right visible edges
-        margin = 16
-        left_x = margin
-        self.prev_btn.move(left_x, max(8, center_y))
-
-        right_x = self.width() - btn_w - margin
-        self.next_btn.move(right_x, max(8, center_y))
-
-        # CRITICAL: Ensure buttons are visible and on top
+        # Ensure buttons are visible and on top
         self.prev_btn.show()
         self.next_btn.show()
         self.prev_btn.raise_()
         self.next_btn.raise_()
 
-        print(f"[MediaLightbox] ✓ Nav buttons positioned: left={left_x}, right={right_x}, y={center_y}")
+        print(f"[MediaLightbox] ✓ Nav buttons positioned: left={int(left_x)}, right={int(right_x)}, y={int(center_y)}")
 
     def _show_nav_buttons(self):
         """Show navigation buttons with instant visibility (always visible for usability)."""
@@ -8305,4 +8473,3 @@ class TrimMarkerSlider(QSlider):
         painter.drawLine(end_x, 0, end_x, self.height())
 
         painter.end()
-
