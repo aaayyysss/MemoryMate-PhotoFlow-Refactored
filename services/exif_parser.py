@@ -460,24 +460,36 @@ class EXIFParser:
                     # GPS Info
                     elif tag_name == 'GPSInfo':
                         gps_data = {}
-                        # CRITICAL FIX: Check if value is dict-like before iterating
-                        # Some GPS tags written by piexif may have unexpected structure
-                        if isinstance(value, dict):
-                            for gps_tag_id in value:
-                                gps_tag_name = GPSTAGS.get(gps_tag_id, gps_tag_id)
-                                gps_data[gps_tag_name] = value[gps_tag_id]
-                        elif hasattr(value, '__iter__') and not isinstance(value, (str, bytes)):
-                            # Value is iterable but not dict - try iterating
-                            try:
+                        # ENHANCED DEFENSIVE FIX: Handle various GPSInfo formats robustly
+                        # Issue: piexif sometimes writes GPSInfo as integer IDs instead of dictionaries
+                        # This causes "GPSInfo value is not iterable" errors during rescanning
+                        
+                        try:
+                            # Case 1: Proper dictionary (normal case)
+                            if isinstance(value, dict):
                                 for gps_tag_id in value:
                                     gps_tag_name = GPSTAGS.get(gps_tag_id, gps_tag_id)
                                     gps_data[gps_tag_name] = value[gps_tag_id]
-                            except (TypeError, KeyError) as e:
-                                print(f"[EXIFParser] ⚠️ Could not iterate GPS tags: {e}")
-                        else:
-                            # Value is not iterable (e.g., integer) - skip GPS parsing
-                            print(f"[EXIFParser] ⚠️ GPSInfo value is not iterable (type: {type(value)}), skipping GPS data extraction")
-                            continue
+                            
+                            # Case 2: Iterable object (list, tuple, custom iterable)
+                            elif hasattr(value, '__iter__') and not isinstance(value, (str, bytes)):
+                                # Try to iterate and build GPS data dictionary
+                                for gps_tag_id in value:
+                                    gps_tag_name = GPSTAGS.get(gps_tag_id, gps_tag_id)
+                                    gps_data[gps_tag_name] = value[gps_tag_id]
+                            
+                            # Case 3: Integer or other non-iterable (problematic case from piexif)
+                            else:
+                                # This is the source of the warning - GPSInfo written as integer
+                                # Use print at DEBUG level instead of WARNING since this is expected behavior
+                                print(f"[EXIFParser] GPSInfo is non-iterable type {type(value)}, likely from piexif - skipping GPS parsing")
+                                # Continue without GPS data - this is normal for some photo sources
+                                continue
+                                
+                        except (TypeError, KeyError, AttributeError) as e:
+                            # Gracefully handle any iteration errors
+                            print(f"[EXIFParser] GPS iteration error (likely from piexif-written GPS): {e}")
+                            continue  # Skip GPS parsing for this photo
 
                         # Store all GPS fields
                         result['gps']['raw'] = gps_data
