@@ -1,8 +1,8 @@
 """
 SemanticEmbeddingService - Clean Architectural Separation
 
-Version: 1.0.0
-Date: 2026-01-05
+Version: 1.1.0
+Date: 2026-01-22
 
 This service handles SEMANTIC embeddings ONLY.
 Face embeddings are handled separately by face services.
@@ -283,6 +283,10 @@ class SemanticEmbeddingService:
 
             except ImportError:
                 is_main_thread = False  # Assume not main thread if Qt not available
+            except Exception as thread_check_error:
+                # If thread checking fails, assume we're in background thread
+                logger.warning(f"[SemanticEmbeddingService] Thread check failed: {thread_check_error}")
+                is_main_thread = False
 
             # Show dialog only if on main thread AND GUI available
             if is_main_thread:
@@ -322,8 +326,20 @@ class SemanticEmbeddingService:
                     )
                     self._load_error = error
                     raise error
+                except Exception as dialog_error:
+                    logger.error(f"[SemanticEmbeddingService] Dialog error: {dialog_error}")
+                    error = RuntimeError(
+                        f"CLIP model '{hf_model}' not found offline.\n\n"
+                        f"For offline use, place model files at one of:\n"
+                        f"  • ./Model/{hf_model.replace('/', '--')}/\n"
+                        f"  • ./model/{hf_model.replace('/', '--')}/\n"
+                        f"  • ./models/{hf_model.replace('/', '--')}/\n\n"
+                        f"Or set custom path in: Preferences → Visual Embeddings → Model Path"
+                    )
+                    self._load_error = error
+                    raise error
             else:
-                # No GUI or not main thread
+                # No GUI or not main thread - raise error without showing dialog
                 logger.error("[SemanticEmbeddingService] Cannot show dialog (no GUI or background thread)")
                 error = RuntimeError(
                     f"CLIP model '{hf_model}' not found offline.\n\n"
