@@ -94,19 +94,22 @@ def check_clip_availability(variant: str = 'openai/clip-vit-base-patch32') -> Tu
             if not base_dir.exists():
                 continue
 
-        # Check for snapshots directory
-        snapshots_dir = base_dir / 'snapshots'
-        if not snapshots_dir.exists():
-            continue
+            # Check for snapshots directory
+            snapshots_dir = base_dir / 'snapshots'
+            if not snapshots_dir.exists():
+                continue
 
-        # Look for ANY commit hash directory in snapshots/
-        for commit_dir in snapshots_dir.iterdir():
-            if commit_dir.is_dir():
-                # Check if this directory has all required files
-                if _verify_model_files(str(commit_dir)):
-                    models_found = True
-                    model_path = str(commit_dir)
-                    break
+            # Look for ANY commit hash directory in snapshots/
+            for commit_dir in snapshots_dir.iterdir():
+                if commit_dir.is_dir():
+                    # Check if this directory has all required files
+                    if _verify_model_files(str(commit_dir)):
+                        models_found = True
+                        model_path = str(commit_dir)
+                        break
+
+            if models_found:
+                break
 
         if models_found:
             break
@@ -247,51 +250,51 @@ def get_clip_download_status(variant: str = 'openai/clip-vit-base-patch32') -> D
             if not base_dir.exists():
                 continue
 
-        snapshots_dir = base_dir / 'snapshots'
-        if not snapshots_dir.exists():
-            continue
-
-        # Look for ANY commit hash directory
-        for commit_dir in snapshots_dir.iterdir():
-            if not commit_dir.is_dir():
+            snapshots_dir = base_dir / 'snapshots'
+            if not snapshots_dir.exists():
                 continue
 
-            # Check which files are missing
-            missing = []
-            total_size = 0
+            # Look for ANY commit hash directory
+            for commit_dir in snapshots_dir.iterdir():
+                if not commit_dir.is_dir():
+                    continue
 
-            for filename in REQUIRED_FILES:
-                file_path = commit_dir / filename
-                if file_path.exists():
-                    total_size += file_path.stat().st_size
-                else:
-                    missing.append(filename)
+                # Check which files are missing
+                missing = []
+                total_size = 0
 
-            # Check for model weights (at least one format)
-            has_weights = False
-            for weights_file in MODEL_WEIGHTS_FILES:
-                weights_path = commit_dir / weights_file
-                if weights_path.exists():
-                    has_weights = True
-                    total_size += weights_path.stat().st_size
-                    break
+                for filename in REQUIRED_FILES:
+                    file_path = commit_dir / filename
+                    if file_path.exists():
+                        total_size += file_path.stat().st_size
+                    else:
+                        missing.append(filename)
 
-            if not has_weights:
-                missing.append("pytorch_model.bin or model.safetensors")
+                # Check for model weights (at least one format)
+                has_weights = False
+                for weights_file in MODEL_WEIGHTS_FILES:
+                    weights_path = commit_dir / weights_file
+                    if weights_path.exists():
+                        has_weights = True
+                        total_size += weights_path.stat().st_size
+                        break
 
-            if not missing:
-                # All files present
-                status['models_available'] = True
-                status['model_path'] = str(commit_dir)
-                status['total_size_mb'] = round(total_size / (1024 * 1024), 1)
-                status['message'] = f"✅ {config['description']} installed ({status['total_size_mb']} MB)"
-                return status
-            elif len(missing) < len(REQUIRED_FILES):
-                # Some files present
-                status['missing_files'] = missing
-                status['model_path'] = str(commit_dir)
-                status['message'] = f"⚠️ Incomplete installation - {len(missing)} files missing"
-                return status
+                if not has_weights:
+                    missing.append("pytorch_model.bin or model.safetensors")
+
+                if not missing:
+                    # All files present
+                    status['models_available'] = True
+                    status['model_path'] = str(commit_dir)
+                    status['total_size_mb'] = round(total_size / (1024 * 1024), 1)
+                    status['message'] = f"✅ {config['description']} installed ({status['total_size_mb']} MB)"
+                    return status
+                elif len(missing) < len(REQUIRED_FILES):
+                    # Some files present
+                    status['missing_files'] = missing
+                    status['model_path'] = str(commit_dir)
+                    status['message'] = f"⚠️ Incomplete installation - {len(missing)} files missing"
+                    return status
 
     # No installation found
     status['message'] = f"❌ {config['description']} not installed"
