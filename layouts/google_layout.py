@@ -715,6 +715,28 @@ class GooglePhotosLayout(BaseLayout):
                 self.main_window, "Tools", "Clear Thumbnail Cache not available"))
         menu.addAction(clear_cache_action)
 
+        # Duplicate Detection and Similar Photos
+        menu.addSeparator()
+        menu.addSection("🔍 Media Analysis")
+        
+        # Duplicate Detection
+        duplicate_action = QAction("🔍 Detect Duplicates...", menu)
+        duplicate_action.setToolTip("Find exact and similar duplicates in your collection")
+        duplicate_action.triggered.connect(self._on_detect_duplicates)
+        menu.addAction(duplicate_action)
+        
+        # Similar Photos
+        similar_action = QAction("📸 Find Similar Photos...", menu)
+        similar_action.setToolTip("Discover visually similar photos using AI embeddings")
+        similar_action.triggered.connect(self._on_find_similar_photos)
+        menu.addAction(similar_action)
+        
+        # Duplicate Status
+        dup_status_action = QAction("📊 Show Duplicate Status", menu)
+        dup_status_action.setToolTip("View current duplicate detection statistics")
+        dup_status_action.triggered.connect(self._on_show_duplicate_status)
+        menu.addAction(dup_status_action)
+
         menu.addSeparator()
 
         # VIEW section
@@ -8501,6 +8523,378 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
             self.search_box.clear()
             self.search_box.blockSignals(False)
 
+    def _on_detect_duplicates(self):
+        """
+        Run actual duplicate detection process (not just show results).
+        
+        This triggers the complete duplicate detection workflow:
+        1. Hash backfill for exact duplicate detection
+        2. Exact duplicate identification
+        3. Shows results in DuplicatesDialog
+        """
+        try:
+            from PySide6.QtWidgets import QMessageBox, QProgressDialog
+            from PySide6.QtCore import Qt, QCoreApplication
+            from services.asset_service import AssetService
+            from repository.photo_repository import PhotoRepository
+            from repository.asset_repository import AssetRepository
+            from repository.base_repository import DatabaseConnection
+
+            if self.project_id is None:
+                QMessageBox.warning(
+                    self.main_window if hasattr(self, 'main_window') else None,
+                    "No Project Selected",
+                    "Please select a project before detecting duplicates."
+                )
+                return
+
+            # Show progress dialog
+            progress = QProgressDialog(
+                "Preparing duplicate detection...",
+                "Cancel",
+                0, 100,
+                self.main_window if hasattr(self, 'main_window') else None
+            )
+            progress.setWindowModality(Qt.WindowModal)
+            progress.setWindowTitle("Duplicate Detection")
+            progress.setMinimumDuration(0)
+            progress.show()
+
+            # Initialize services
+            db_conn = DatabaseConnection()
+            photo_repo = PhotoRepository(db_conn)
+            asset_repo = AssetRepository(db_conn)
+            asset_service = AssetService(photo_repo, asset_repo)
+
+            # Step 1: Run hash backfill (required for exact duplicates)
+            progress.setLabelText("Computing photo hashes...")
+            progress.setValue(20)
+            QCoreApplication.processEvents()
+
+            backfill_stats = asset_service.backfill_hashes_and_link_assets(
+                project_id=self.project_id,
+                batch_size=500,
+                progress_callback=lambda current, total: (
+                    progress.setValue(20 + int(30 * current / total)) if total > 0 else None,
+                    QCoreApplication.processEvents()
+                )
+            )
+
+            if progress.wasCanceled():
+                return
+
+            # Step 2: Find exact duplicates
+            progress.setLabelText("Finding exact duplicates...")
+            progress.setValue(60)
+            QCoreApplication.processEvents()
+
+            duplicates = asset_service.list_duplicates(
+                project_id=self.project_id,
+                min_instances=2
+            )
+
+            progress.setValue(80)
+            QCoreApplication.processEvents()
+
+            # Show results
+            progress.setLabelText("Loading results...")
+            progress.setValue(90)
+            QCoreApplication.processEvents()
+
+            # Close progress
+            progress.setValue(100)
+            progress.close()
+
+            # Show summary
+            duplicate_count = len(duplicates)
+            photo_count = sum(dup['instance_count'] for dup in duplicates)
+            
+            QMessageBox.information(
+                self.main_window if hasattr(self, 'main_window') else None,
+                "Duplicate Detection Complete",
+                f"✅ Duplicate detection completed successfully!\n\n"
+                f"Found {duplicate_count} duplicate groups\n"
+                f"Total duplicate photos: {photo_count}\n\n"
+                f"Hash backfill: {backfill_stats.scanned} photos processed\n"
+                f"Exact duplicates: {duplicate_count} groups identified"
+            )
+
+            # Now open the dialog to view/manage results
+            from layouts.google_components.duplicates_dialog import DuplicatesDialog
+            dialog = DuplicatesDialog(
+                project_id=self.project_id,
+                parent=self.main_window
+            )
+            dialog.exec()
+
+        except Exception as e:
+            print(f"[GooglePhotosLayout] Error running duplicate detection: {e}")
+            import traceback
+            traceback.print_exc()
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.critical(
+                self.main_window if hasattr(self, 'main_window') else None,
+                "Error",
+                f"Failed to run duplicate detection:\n{str(e)}"
+            )
+
+    def _on_find_similar_photos(self):
+        """
+        Run actual similar photo detection process (not just show results).
+        
+        This triggers the complete similar photo workflow:
+        1. Generate embeddings for photos without embeddings
+        2. Run similar shot detection using AI embeddings
+        3. Shows results in StackBrowserDialog
+        """
+        try:
+            from PySide6.QtWidgets import QMessageBox, QProgressDialog
+            from PySide6.QtCore import Qt, QCoreApplication
+            from services.semantic_embedding_service import SemanticEmbeddingService
+            from services.stack_generation_service import StackGenerationService
+            from repository.photo_repository import PhotoRepository
+            from repository.stack_repository import StackRepository
+            from repository.base_repository import DatabaseConnection
+            import time
+
+            if self.project_id is None:
+                QMessageBox.warning(
+                    self.main_window if hasattr(self, 'main_window') else None,
+                    "No Project Selected",
+                    "Please select a project before finding similar photos."
+                )
+                return
+
+            # Show progress dialog
+            progress = QProgressDialog(
+                "Preparing similarity detection...",
+                "Cancel",
+                0, 100,
+                self.main_window if hasattr(self, 'main_window') else None
+            )
+            progress.setWindowModality(Qt.WindowModal)
+            progress.setWindowTitle("Similar Photo Detection")
+            progress.setMinimumDuration(0)
+            progress.show()
+
+            # Initialize services
+            db_conn = DatabaseConnection()
+            photo_repo = PhotoRepository(db_conn)
+            stack_repo = StackRepository(db_conn)
+            embedding_service = SemanticEmbeddingService(db_connection=db_conn)
+            stack_service = StackGenerationService(photo_repo, stack_repo, embedding_service)
+
+            # Step 1: Check if embeddings exist
+            progress.setLabelText("Checking existing embeddings...")
+            progress.setValue(10)
+            QCoreApplication.processEvents()
+
+            # Count photos needing embeddings
+            total_photos = photo_repo.count(where_clause="project_id = ?", params=(self.project_id,))
+            photos_with_embeddings = embedding_service.get_embedding_count()
+            photos_needing_embeddings = total_photos - photos_with_embeddings
+
+            # Step 2: Generate embeddings if needed
+            embeddings_generated = 0
+            if photos_needing_embeddings > 0:
+                progress.setLabelText(f"Generating embeddings for {photos_needing_embeddings} photos...")
+                progress.setValue(20)
+                QCoreApplication.processEvents()
+
+                start_time = time.time()
+                
+                # Get photos without embeddings
+                photos_without_embeddings = photo_repo.get_photos_needing_embeddings(
+                    self.project_id, 
+                    limit=1000  # Process in batches
+                )
+
+                # Generate embeddings
+                batch_size = 50
+                for i in range(0, len(photos_without_embeddings), batch_size):
+                    if progress.wasCanceled():
+                        return
+                        
+                    batch = photos_without_embeddings[i:i + batch_size]
+                    processed_in_batch = 0
+                    
+                    for photo in batch:
+                        try:
+                            # Extract embedding
+                            embedding = embedding_service.extract_image_embedding(photo['file_path'])
+                            if embedding is not None:
+                                # Store embedding
+                                embedding_service.store_embedding(
+                                    photo_id=photo['id'],
+                                    embedding=embedding,
+                                    model_id="clip-vit-b32"
+                                )
+                                embeddings_generated += 1
+                                processed_in_batch += 1
+                        except Exception as e:
+                            print(f"Warning: Failed to process photo {photo['id']}: {e}")
+                            continue
+                    
+                    # Update progress
+                    overall_progress = 20 + int(40 * (i + processed_in_batch) / len(photos_without_embeddings))
+                    progress.setValue(overall_progress)
+                    progress.setLabelText(f"Generated {embeddings_generated} embeddings...")
+                    QCoreApplication.processEvents()
+
+                elapsed_time = time.time() - start_time
+                print(f"[GooglePhotosLayout] Embedding generation took {elapsed_time:.2f} seconds for {embeddings_generated} photos")
+
+            # Step 3: Run similar shot detection
+            progress.setLabelText("Detecting similar photo stacks...")
+            progress.setValue(70)
+            QCoreApplication.processEvents()
+
+            # Configure parameters
+            from services.stack_generation_service import StackGenParams
+            params = StackGenParams(
+                rule_version="1",
+                time_window_seconds=30,
+                min_stack_size=2,
+                top_k=30,
+                similarity_threshold=0.5,
+                candidate_limit_per_photo=300
+            )
+
+            # Generate similar shot stacks
+            stack_stats = stack_service.regenerate_similar_shot_stacks(
+                project_id=self.project_id,
+                params=params
+            )
+
+            progress.setValue(90)
+            QCoreApplication.processEvents()
+
+            # Close progress
+            progress.setValue(100)
+            progress.close()
+
+            # Show results
+            QMessageBox.information(
+                self.main_window if hasattr(self, 'main_window') else None,
+                "Similar Photo Detection Complete",
+                f"✅ Similar photo detection completed successfully!\n\n"
+                f"Embeddings generated: {embeddings_generated}\n"
+                f"Similar stacks created: {stack_stats.stacks_created}\n"
+                f"Stack memberships: {stack_stats.memberships_created}\n\n"
+                f"Time window: ±30 seconds\n"
+                f"Similarity threshold: 0.5\n"
+                f"Minimum stack size: 2 photos"
+            )
+
+            # Now open the dialog to view/manage results
+            from layouts.google_components.stack_view_dialog import StackBrowserDialog
+            dialog = StackBrowserDialog(
+                project_id=self.project_id,
+                stack_type="similar",
+                parent=self.main_window
+            )
+            dialog.exec()
+
+        except Exception as e:
+            print(f"[GooglePhotosLayout] Error running similar photo detection: {e}")
+            import traceback
+            traceback.print_exc()
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.critical(
+                self.main_window if hasattr(self, 'main_window') else None,
+                "Error",
+                f"Failed to run similar photo detection:\n{str(e)}"
+            )
+
+    def _on_show_duplicate_status(self):
+        """
+        Show duplicate detection status and statistics.
+
+        Displays:
+        - Exact duplicate counts
+        - Similar stack counts
+        - AI embedding coverage
+        - Readiness for similarity detection
+        """
+        try:
+            from PySide6.QtWidgets import QMessageBox
+            from reference_db import ReferenceDB
+
+            if self.project_id is None:
+                QMessageBox.warning(
+                    self.main_window if hasattr(self, 'main_window') else None,
+                    "No Project Selected",
+                    "Please select a project to view duplicate status."
+                )
+                return
+
+            # Query database for duplicate stats
+            db = ReferenceDB()
+
+            with db._connect() as conn:
+                cur = conn.cursor()
+
+                # Exact duplicates (media assets)
+                cur.execute("""
+                    SELECT COUNT(*) FROM media_asset 
+                    WHERE project_id = ? AND content_hash IS NOT NULL
+                """, (self.project_id,))
+                total_assets = cur.fetchone()[0]
+
+                cur.execute("""
+                    SELECT COUNT(DISTINCT content_hash) FROM media_asset 
+                    WHERE project_id = ? AND content_hash IS NOT NULL
+                """, (self.project_id,))
+                unique_hashes = cur.fetchone()[0]
+
+                exact_duplicates = total_assets - unique_hashes
+
+                # Similar stacks
+                cur.execute("""
+                    SELECT COUNT(*) FROM media_stack 
+                    WHERE project_id = ?
+                """, (self.project_id,))
+                similar_stacks = cur.fetchone()[0]
+
+                # Photos with embeddings
+                cur.execute("""
+                    SELECT COUNT(DISTINCT se.photo_id)
+                    FROM semantic_embeddings se
+                    JOIN photo_metadata p ON se.photo_id = p.id
+                    WHERE p.project_id = ?
+                """, (self.project_id,))
+                photos_with_embeddings = cur.fetchone()[0]
+
+                # Total photos
+                cur.execute("""
+                    SELECT COUNT(*) FROM photo_metadata WHERE project_id = ?
+                """, (self.project_id,))
+                total_photos = cur.fetchone()[0]
+
+            embed_percent = (photos_with_embeddings / total_photos * 100) if total_photos > 0 else 0
+
+            QMessageBox.information(
+                self.main_window if hasattr(self, 'main_window') else None,
+                "Duplicate Detection Status",
+                f"=== Duplicate Detection Status ===\n\n"
+                f"Exact Duplicates: {exact_duplicates:,}\n"
+                f"Similar Photo Stacks: {similar_stacks:,}\n\n"
+                f"=== AI Readiness ===\n"
+                f"Photos with embeddings: {photos_with_embeddings:,} / {total_photos:,} ({embed_percent:.1f}%)\n\n"
+                f"{'✓ Ready for similarity detection!' if photos_with_embeddings > 10 else 'Need more embeddings for similarity detection.'}"
+            )
+
+        except Exception as e:
+            print(f"[GooglePhotosLayout] Error getting duplicate status: {e}")
+            import traceback
+            traceback.print_exc()
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.critical(
+                self.main_window if hasattr(self, 'main_window') else None,
+                "Status Error",
+                f"Failed to get duplicate status:\n{str(e)}"
+            )
+
     def _open_duplicates_dialog(self):
         """
         Open DuplicatesDialog to review and manage duplicate photos.
@@ -9335,5 +9729,3 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
             print(f"[GooglePhotosLayout] ⚠️ Error refreshing tag overlays: {e}")
             import traceback
             traceback.print_exc()
-
-
