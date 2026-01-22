@@ -1,5 +1,5 @@
 # main_window_qt.py
-# Version 10.01.01.04 dated 20260114
+# Version 10.01.01.05 dated 20260122
 # Added PhotoDeletionService with comprehensive delete functionality
 # Enhanced repositories with utility methods for future migrations
 # Current LOC: ~2,640 (added photo deletion feature)
@@ -609,6 +609,22 @@ class MainWindow(QMainWindow):
         act_ai_status = menu_ai.addAction("Show Embedding Status")
         act_ai_status.setToolTip("Check how many photos have embeddings extracted")
 
+        menu_tools.addSeparator()
+
+        # Duplicate Detection submenu
+        menu_duplicates = menu_tools.addMenu("🔍 Duplicate Detection")
+
+        act_detect_duplicates = menu_duplicates.addAction("Detect Duplicates...")
+        act_detect_duplicates.setToolTip("Find exact and similar duplicates in your collection")
+        
+        act_find_similar = menu_duplicates.addAction("Find Similar Photos...")
+        act_find_similar.setToolTip("Discover visually similar photos using AI")
+        
+        menu_duplicates.addSeparator()
+        
+        act_dup_status = menu_duplicates.addAction("Show Duplicate Status")
+        act_dup_status.setToolTip("Check current duplicate detection status")
+
         act_clear_cache = QAction(tr("menu.tools_clear_cache"), self)
         menu_tools.addAction(act_clear_cache)
         act_clear_cache.triggered.connect(self._on_clear_thumbnail_cache)
@@ -686,6 +702,11 @@ class MainWindow(QMainWindow):
 
         act_extract_embeddings.triggered.connect(self._on_extract_embeddings)
         act_ai_status.triggered.connect(self._on_show_embedding_status)
+
+        # Duplicate detection connections
+        act_detect_duplicates.triggered.connect(self._on_detect_duplicates)
+        act_find_similar.triggered.connect(self._on_find_similar_photos)
+        act_dup_status.triggered.connect(self._on_show_duplicate_status)
 
         act_db_fresh.triggered.connect(self._db_fresh_start)
         act_db_check.triggered.connect(self._db_self_check)
@@ -1669,6 +1690,157 @@ class MainWindow(QMainWindow):
                 f"Failed to get embedding status:\n{str(e)}"
             )
             print(f"✗ Embedding status error: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def _on_detect_duplicates(self):
+        """Launch duplicate detection dialog."""
+        try:
+            # Get project_id
+            project_id = None
+            if hasattr(self, 'grid') and hasattr(self.grid, 'project_id'):
+                project_id = self.grid.project_id
+            elif hasattr(self, 'sidebar') and hasattr(self.sidebar, 'project_id'):
+                project_id = self.sidebar.project_id
+
+            if project_id is None:
+                from app_services import get_default_project_id
+                project_id = get_default_project_id()
+
+            if project_id is None:
+                QMessageBox.warning(self, "No Project", "No project is currently active.")
+                return
+
+            # Import and show dialog
+            from ui.duplicate_detection_dialog import DuplicateDetectionDialog
+            dialog = DuplicateDetectionDialog(project_id=project_id, parent=self)
+            dialog.exec()
+
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Duplicate Detection Error",
+                f"Failed to launch duplicate detection:\n{str(e)}"
+            )
+            print(f"✗ Duplicate detection error: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def _on_find_similar_photos(self):
+        """Launch similar photo detection dialog."""
+        try:
+            # Get project_id
+            project_id = None
+            if hasattr(self, 'grid') and hasattr(self.grid, 'project_id'):
+                project_id = self.grid.project_id
+            elif hasattr(self, 'sidebar') and hasattr(self.sidebar, 'project_id'):
+                project_id = self.sidebar.project_id
+
+            if project_id is None:
+                from app_services import get_default_project_id
+                project_id = get_default_project_id()
+
+            if project_id is None:
+                QMessageBox.warning(self, "No Project", "No project is currently active.")
+                return
+
+            # Import and show dialog
+            from ui.similar_photo_dialog import SimilarPhotoDetectionDialog
+            dialog = SimilarPhotoDetectionDialog(project_id=project_id, parent=self)
+            dialog.exec()
+
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Similar Photo Detection Error",
+                f"Failed to launch similar photo detection:\n{str(e)}"
+            )
+            print(f"✗ Similar photo detection error: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def _on_show_duplicate_status(self):
+        """Show duplicate detection status."""
+        try:
+            # Get project_id
+            project_id = None
+            if hasattr(self, 'grid') and hasattr(self.grid, 'project_id'):
+                project_id = self.grid.project_id
+            elif hasattr(self, 'sidebar') and hasattr(self.sidebar, 'project_id'):
+                project_id = self.sidebar.project_id
+
+            if project_id is None:
+                from app_services import get_default_project_id
+                project_id = get_default_project_id()
+
+            if project_id is None:
+                QMessageBox.warning(self, "No Project", "No project is currently active.")
+                return
+
+            # Query database for duplicate stats
+            from reference_db import ReferenceDB
+            db = ReferenceDB()
+
+            with db._connect() as conn:
+                cur = conn.cursor()
+
+                # Exact duplicates (media assets)
+                cur.execute("""
+                    SELECT COUNT(*) FROM media_asset 
+                    WHERE project_id = ? AND content_hash IS NOT NULL
+                """, (project_id,))
+                total_assets = cur.fetchone()[0]
+
+                cur.execute("""
+                    SELECT COUNT(DISTINCT content_hash) FROM media_asset 
+                    WHERE project_id = ? AND content_hash IS NOT NULL
+                """, (project_id,))
+                unique_hashes = cur.fetchone()[0]
+
+                exact_duplicates = total_assets - unique_hashes
+
+                # Similar stacks
+                cur.execute("""
+                    SELECT COUNT(*) FROM media_stack 
+                    WHERE project_id = ?
+                """, (project_id,))
+                similar_stacks = cur.fetchone()[0]
+
+                # Photos with embeddings
+                cur.execute("""
+                    SELECT COUNT(DISTINCT se.photo_id)
+                    FROM semantic_embeddings se
+                    JOIN photo_metadata p ON se.photo_id = p.id
+                    WHERE p.project_id = ?
+                """, (project_id,))
+                photos_with_embeddings = cur.fetchone()[0]
+
+                # Total photos
+                cur.execute("""
+                    SELECT COUNT(*) FROM photo_metadata WHERE project_id = ?
+                """, (project_id,))
+                total_photos = cur.fetchone()[0]
+
+            embed_percent = (photos_with_embeddings / total_photos * 100) if total_photos > 0 else 0
+
+            QMessageBox.information(
+                self,
+                "Duplicate Detection Status",
+                f"=== Duplicate Detection Status ===\n\n"
+                f"Exact Duplicates: {exact_duplicates:,}\n"
+                f"Similar Photo Stacks: {similar_stacks:,}\n\n"
+                f"=== AI Readiness ===\n"
+                f"Photos with embeddings: {photos_with_embeddings:,} / {total_photos:,} ({embed_percent:.1f}%)\n\n"
+                f"{'✓ Ready for similarity detection!' if photos_with_embeddings > 10 else 'Need more embeddings for similarity detection.'}"
+            )
+
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Status Error",
+                f"Failed to get duplicate status:\n{str(e)}"
+            )
+            print(f"✗ Duplicate status error: {e}")
             import traceback
             traceback.print_exc()
 
