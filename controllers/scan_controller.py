@@ -1,5 +1,5 @@
 # scan_controller.py
-# Version 10.01.01.03 dated 20260115
+# Version 10.01.01.04 dated 20260122
 
 """
 ScanController - Photo/Video Scanning Orchestration
@@ -619,11 +619,11 @@ class ScanController(QObject):
                     # Step 1.5: Generate Embeddings (if enabled and similar detection requested)
                     if hasattr(self, '_generate_embeddings') and self._generate_embeddings and \
                        hasattr(self, '_detect_similar') and self._detect_similar:
-                        progress.setLabelText("🤖 Generating AI embeddings for similar detection...")
+                        progress.setLabelText("🤖 Queueing AI embeddings for similar detection...")
                         progress.setValue(3)
                         QApplication.processEvents()
 
-                        self.logger.info("Generating embeddings for newly scanned photos...")
+                        self.logger.info("Queueing embeddings for newly scanned photos...")
 
                         from repository.photo_repository import PhotoRepository
                         from services.semantic_embedding_service import SemanticEmbeddingService
@@ -646,14 +646,11 @@ class ScanController(QObject):
                                 photos_needing_embeddings.append(photo_id)
 
                         if photos_needing_embeddings:
-                            self.logger.info(f"Found {len(photos_needing_embeddings)} photos needing embeddings")
+                            self.logger.info(f"Found {len(photos_needing_embeddings)} photos needing embeddings - queuing for background processing")
 
-                            # Use SemanticEmbeddingWorker for batch processing
+                            # Use SemanticEmbeddingWorker for batch processing (NON-BLOCKING)
                             from workers.semantic_embedding_worker import SemanticEmbeddingWorker
-                            from PySide6.QtCore import QThreadPool, QEventLoop
-
-                            # Create event loop for async waiting
-                            loop = QEventLoop()
+                            from PySide6.QtCore import QThreadPool
 
                             # Create worker
                             worker = SemanticEmbeddingWorker(
@@ -662,43 +659,47 @@ class ScanController(QObject):
                                 force_recompute=False
                             )
 
-                            # Track progress
-                            last_progress = [0]  # Track last progress value
-
+                            # Track progress (but don't block UI)
                             def on_progress(current, total, message):
                                 """Update progress dialog."""
                                 progress_percent = int((current / total) * 100) if total > 0 else 0
-                                progress.setLabelText(f"🤖 Generating embeddings: {message}")
+                                progress.setLabelText(f"🤖 Embedding queued: {message}")
                                 # Map embedding progress (0-100%) to progress bar range (3-50%)
                                 progress_value = 3 + int(progress_percent * 0.47)
                                 progress.setValue(progress_value)
-                                last_progress[0] = progress_value
+                                QApplication.processEvents()  # Keep UI responsive
 
                             def on_finished(stats):
                                 """Handle completion."""
                                 self.logger.info(f"Embedding generation complete: {stats}")
-                                loop.quit()  # Exit event loop
+                                # Update progress to show completion
+                                progress.setLabelText("✅ Embedding generation complete")
+                                progress.setValue(50)
+                                QApplication.processEvents()
 
                             def on_error(error_msg):
                                 """Handle error."""
                                 self.logger.error(f"Embedding generation error: {error_msg}")
-                                loop.quit()  # Exit event loop even on error
+                                progress.setLabelText(f"❌ Embedding error: {error_msg}")
+                                QApplication.processEvents()
 
                             # Connect signals
                             worker.signals.progress.connect(on_progress)
                             worker.signals.finished.connect(on_finished)
                             worker.signals.error.connect(on_error)
 
-                            # Start worker in thread pool
+                            # Start worker in thread pool (NON-BLOCKING)
                             QThreadPool.globalInstance().start(worker)
 
-                            # Wait for completion using event loop (non-blocking)
-                            loop.exec()
-
-                            # Set progress back to post-embedding value
-                            progress.setValue(50)
+                            # Continue immediately without waiting - let worker run in background
+                            progress.setLabelText("🤖 Embedding generation started in background...")
+                            progress.setValue(5)  # Small progress bump to show activity
+                            QApplication.processEvents()
                         else:
                             self.logger.info("All photos already have embeddings")
+                            progress.setLabelText("✅ All photos already have embeddings")
+                            progress.setValue(50)
+                            QApplication.processEvents()
 
                     # Step 2: Similar Shot Detection (Embedding-based)
                     if hasattr(self, '_detect_similar') and self._detect_similar:
@@ -739,6 +740,9 @@ class ScanController(QObject):
                                 stack_repo=stack_repo,
                                 similarity_service=embedding_service
                             )
+                            
+                            # ✅ CRITICAL FIX: Connect stack update signal to refresh UI
+                            stack_gen_service.stacks_updated.connect(self._on_stacks_updated)
 
                             params = StackGenParams(
                                 time_window_seconds=getattr(self, '_time_window_seconds', 10),
@@ -1206,5 +1210,47 @@ class ScanController(QObject):
 
         # Note: Video metadata worker callback is now connected at worker creation time
         # in start_scan() to avoid race conditions with worker finishing before cleanup runs
+
+    @Slot(int, str)
+    def _on_stacks_updated(self, project_id: int, stack_type: str):
+        """
+        ✅ CRITICAL FIX: Handle stack updates from StackGenerationService.
+        
+        Called when stack operations complete to refresh UI components
+        displaying stack badges to prevent "Stack not found" errors.
+        
+        Args:
+            project_id: Project ID where stacks were updated
+            stack_type: Type of stacks that were updated (similar, near_duplicate, etc.)
+        """
+        self.logger.info(f"Stacks updated notification received: project={project_id}, type={stack_type}")
+        
+        try:
+            # Refresh current layout to update stack badges
+            if hasattr(self.main, 'layout_manager') and self.main.layout_manager:
+                current_layout = self.main.layout_manager._current_layout
+                if current_layout and hasattr(current_layout, 'refresh_after_scan'):
+                    self.logger.info("Refreshing current layout to update stack badges...")
+                    current_layout.refresh_after_scan()
+                    self.logger.info("✓ Layout refreshed with updated stack data")
+                else:
+                    # Fallback: refresh sidebar and grid directly
+                    self.logger.info("Refreshing sidebar and grid to update stack badges...")
+                    if hasattr(self.main.sidebar, "reload"):
+                        self.main.sidebar.reload()
+                    if hasattr(self.main.grid, "reload"):
+                        self.main.grid.reload()
+                    self.logger.info("✓ Sidebar and grid refreshed with updated stack data")
+            else:
+                # Legacy fallback
+                self.logger.info("Refreshing legacy components to update stack badges...")
+                if hasattr(self.main.sidebar, "reload"):
+                    self.main.sidebar.reload()
+                if hasattr(self.main.grid, "reload"):
+                    self.main.grid.reload()
+                self.logger.info("✓ Legacy components refreshed with updated stack data")
+                
+        except Exception as e:
+            self.logger.error(f"Error refreshing UI after stack updates: {e}", exc_info=True)
 
 
