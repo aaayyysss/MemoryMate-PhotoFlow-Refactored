@@ -8720,8 +8720,12 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
                     
                     for photo in batch:
                         try:
-                            # Extract embedding
-                            embedding = embedding_service.encode_image(photo['file_path'])
+                            # Extract embedding (handle both 'file_path' and 'path' keys)
+                            file_path = photo.get('file_path') or photo.get('path')
+                            if not file_path:
+                                print(f"Warning: Photo {photo['id']} has no file path")
+                                continue
+                            embedding = embedding_service.encode_image(file_path)
                             if embedding is not None:
                                 # Store embedding
                                 embedding_service.store_embedding(

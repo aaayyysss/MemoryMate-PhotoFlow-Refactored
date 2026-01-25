@@ -113,13 +113,20 @@ class DuplicateDetectionWorker(QObject):
                         batch = photos[i:i + batch_size]
                         for photo in batch:
                             try:
-                                embedding = embedding_service.extract_image_embedding(photo['file_path'])
+                                # Handle both 'file_path' and 'path' keys
+                                file_path = photo.get('file_path') or photo.get('path')
+                                photo_id = photo.get('photo_id') or photo.get('id')
+                                if not file_path or not photo_id:
+                                    logger.warning(f"Photo missing file_path or id: {photo}")
+                                    continue
+                                embedding = embedding_service.extract_image_embedding(file_path)
                                 embedding_service.store_embedding(
-                                    photo['photo_id'], embedding, model_id
+                                    photo_id, embedding, model_id
                                 )
                                 results['embeddings_generated'] += 1
                             except Exception as e:
-                                logger.warning(f"Failed to process photo {photo['photo_id']}: {e}")
+                                photo_id = photo.get('photo_id') or photo.get('id')
+                                logger.warning(f"Failed to process photo {photo_id}: {e}")
                         
                         current_step += 1
                         progress = int((current_step / total_steps) * 100)
