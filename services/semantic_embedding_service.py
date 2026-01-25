@@ -198,9 +198,10 @@ class SemanticEmbeddingService:
 
                 # CRITICAL: Also check HuggingFace default cache location
                 # This is where transformers downloads models by default
+                # HF cache uses format: models--{org}--{model} e.g., models--openai--clip-vit-base-patch32
                 home = Path.home()
                 hf_cache_locations = [
-                    home / '.cache' / 'huggingface' / 'hub' / f'models--{folder_name.replace("--", "-")}',
+                    home / '.cache' / 'huggingface' / 'hub' / f'models--{folder_name}',
                     home / '.cache' / 'huggingface' / 'transformers' / folder_name,
                 ]
                 possible_locations.extend(hf_cache_locations)
