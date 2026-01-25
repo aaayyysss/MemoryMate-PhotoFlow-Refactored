@@ -151,6 +151,23 @@ class StackGenerationService:
 
         self.logger.info(f"Found {len(all_photos)} photos with timestamps")
 
+        # Step 2.5: PERFORMANCE OPTIMIZATION - Batch load all embeddings at once
+        # This reduces N database queries to just 1 query
+        photo_ids = [p["id"] for p in all_photos]
+        preloaded_embeddings: Dict[int, Any] = {}
+
+        if hasattr(self.similarity_service, 'get_all_embeddings_for_project'):
+            # Use efficient batch method from SemanticEmbeddingService
+            preloaded_embeddings = self.similarity_service.get_all_embeddings_for_project(project_id)
+            self.logger.info(f"Batch-loaded {len(preloaded_embeddings)} embeddings for similarity comparison")
+        elif hasattr(self.similarity_service, 'get_embeddings_batch'):
+            # Fallback to batch method with photo_ids
+            preloaded_embeddings = self.similarity_service.get_embeddings_batch(photo_ids)
+            self.logger.info(f"Batch-loaded {len(preloaded_embeddings)} embeddings")
+        else:
+            # Last resort: load one by one (legacy path)
+            self.logger.warning("similarity_service doesn't support batch loading - using slow path")
+
         # Step 3: Find clusters using time window + similarity
         photo_to_cluster: Dict[int, int] = {}  # photo_id -> cluster_id
         all_clusters: List[List[int]] = []
@@ -165,17 +182,15 @@ class StackGenerationService:
             if photo_id in photo_to_cluster:
                 continue
 
-            # Check if photo has embedding
-            # Handle both SemanticEmbeddingService and PhotoSimilarityService
-            if hasattr(self.similarity_service, 'get_embedding'):
-                # SemanticEmbeddingService (scan controller path)
-                embedding = self.similarity_service.get_embedding(photo_id)
-            elif hasattr(self.similarity_service, 'embedder'):
-                # PhotoSimilarityService (dialog regenerate path)
-                embedding = self.similarity_service.embedder.get_embedding(photo_id)
-            else:
-                logger.warning(f"similarity_service has no get_embedding method")
-                continue
+            # Get embedding from preloaded cache or fetch individually
+            embedding = preloaded_embeddings.get(photo_id)
+
+            if embedding is None:
+                # Fallback to individual fetch for backwards compatibility
+                if hasattr(self.similarity_service, 'get_embedding'):
+                    embedding = self.similarity_service.get_embedding(photo_id)
+                elif hasattr(self.similarity_service, 'embedder'):
+                    embedding = self.similarity_service.embedder.get_embedding(photo_id)
 
             if embedding is None:
                 continue
@@ -199,11 +214,12 @@ class StackGenerationService:
             # Include reference photo in clustering
             all_candidates = [photo] + candidates
 
-            # Cluster by similarity
+            # Cluster by similarity (pass preloaded embeddings to avoid N+1 queries)
             clusters = self._cluster_by_similarity(
                 photos=all_candidates,
                 similarity_threshold=params.similarity_threshold,
-                min_cluster_size=params.min_stack_size
+                min_cluster_size=params.min_stack_size,
+                preloaded_embeddings=preloaded_embeddings
             )
 
             # Register clusters
@@ -240,25 +256,27 @@ class StackGenerationService:
 
                 stacks_created += 1
 
-                # Add members
+                # Add members (use preloaded embeddings for efficiency)
+                import numpy as np
                 for photo_id in cluster:
                     # Compute similarity score to representative
                     if photo_id == rep_photo_id:
                         similarity_score = 1.0
                     else:
-                        # Handle both service types
-                        if hasattr(self.similarity_service, 'get_embedding'):
-                            rep_emb = self.similarity_service.get_embedding(rep_photo_id)
-                            photo_emb = self.similarity_service.get_embedding(photo_id)
-                        elif hasattr(self.similarity_service, 'embedder'):
-                            rep_emb = self.similarity_service.embedder.get_embedding(rep_photo_id)
-                            photo_emb = self.similarity_service.embedder.get_embedding(photo_id)
-                        else:
-                            rep_emb = None
-                            photo_emb = None
+                        # Use preloaded embeddings first (avoids repeated DB queries)
+                        rep_emb = preloaded_embeddings.get(rep_photo_id)
+                        photo_emb = preloaded_embeddings.get(photo_id)
+
+                        # Fallback to individual fetch if not in cache
+                        if rep_emb is None or photo_emb is None:
+                            if hasattr(self.similarity_service, 'get_embedding'):
+                                rep_emb = rep_emb or self.similarity_service.get_embedding(rep_photo_id)
+                                photo_emb = photo_emb or self.similarity_service.get_embedding(photo_id)
+                            elif hasattr(self.similarity_service, 'embedder'):
+                                rep_emb = rep_emb or self.similarity_service.embedder.get_embedding(rep_photo_id)
+                                photo_emb = photo_emb or self.similarity_service.embedder.get_embedding(photo_id)
 
                         if rep_emb is not None and photo_emb is not None:
-                            import numpy as np
                             # Normalize
                             rep_emb = rep_emb / np.linalg.norm(rep_emb)
                             photo_emb = photo_emb / np.linalg.norm(photo_emb)
@@ -399,13 +417,14 @@ class StackGenerationService:
         self,
         photos: List[Dict[str, Any]],
         similarity_threshold: float,
-        min_cluster_size: int
+        min_cluster_size: int,
+        preloaded_embeddings: Optional[Dict[int, Any]] = None
     ) -> List[List[int]]:
         """
         Cluster photos by visual similarity using strict complete-linkage clustering.
 
         Algorithm (FIXED - prevents transitive grouping):
-        1. Load embeddings for all photos
+        1. Load embeddings for all photos (or use preloaded cache)
         2. For each photo, find candidates that meet threshold with THIS photo
         3. STRICT CHECK: Only add to cluster if similar to ALL existing cluster members
         4. This prevents transitive grouping where A similar to B, B to C, but A not to C
@@ -415,6 +434,8 @@ class StackGenerationService:
             photos: List of photo dictionaries
             similarity_threshold: Minimum cosine similarity for same cluster (0.0-1.0)
             min_cluster_size: Minimum photos per cluster
+            preloaded_embeddings: Optional pre-loaded embeddings dict (photo_id -> embedding)
+                                  If provided, skips individual database lookups
 
         Returns:
             List of clusters (each cluster is a list of photo_ids)
@@ -432,18 +453,20 @@ class StackGenerationService:
 
         import numpy as np
 
-        # Load embeddings
+        # Load embeddings (use preloaded cache if available for performance)
         photo_embeddings: Dict[int, np.ndarray] = {}
         for photo in photos:
             photo_id = photo["id"]
 
-            # Handle both service types
-            if hasattr(self.similarity_service, 'get_embedding'):
-                embedding = self.similarity_service.get_embedding(photo_id)
-            elif hasattr(self.similarity_service, 'embedder'):
-                embedding = self.similarity_service.embedder.get_embedding(photo_id)
-            else:
-                embedding = None
+            # Try preloaded cache first (avoids N database queries)
+            embedding = preloaded_embeddings.get(photo_id) if preloaded_embeddings else None
+
+            # Fallback to individual fetch only if not in cache
+            if embedding is None:
+                if hasattr(self.similarity_service, 'get_embedding'):
+                    embedding = self.similarity_service.get_embedding(photo_id)
+                elif hasattr(self.similarity_service, 'embedder'):
+                    embedding = self.similarity_service.embedder.get_embedding(photo_id)
 
             if embedding is not None:
                 # Normalize for cosine similarity
