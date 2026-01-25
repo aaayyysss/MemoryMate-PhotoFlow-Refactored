@@ -618,7 +618,7 @@ class SemanticEmbeddingService:
             query = """
                 SELECT se.photo_id, se.embedding, se.dim
                 FROM semantic_embeddings se
-                JOIN photos p ON se.photo_id = p.id
+                JOIN photo_metadata p ON se.photo_id = p.id
                 WHERE p.project_id = ? AND se.model = ?
             """
 

@@ -635,10 +635,11 @@ class PhotoRepository(BaseRepository):
         """
         # Single efficient query using LEFT JOIN
         # Returns photos where no matching embedding exists
+        # Note: table is photo_metadata, not photos
         query = """
             SELECT p.id, p.path, p.created_ts, p.folder_id, p.project_id,
                    p.width, p.height, p.file_size, p.date_taken
-            FROM photos p
+            FROM photo_metadata p
             LEFT JOIN semantic_embeddings se
                 ON p.id = se.photo_id AND se.model = ?
             WHERE p.project_id = ?
