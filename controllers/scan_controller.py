@@ -646,11 +646,12 @@ class ScanController(QObject):
                                 photos_needing_embeddings.append(photo_id)
 
                         if photos_needing_embeddings:
-                            self.logger.info(f"Found {len(photos_needing_embeddings)} photos needing embeddings - queuing for background processing")
+                            self.logger.info(f"Found {len(photos_needing_embeddings)} photos needing embeddings - processing synchronously for similar detection")
 
-                            # Use SemanticEmbeddingWorker for batch processing (NON-BLOCKING)
+                            # Use SemanticEmbeddingWorker for batch processing
+                            # CRITICAL: Must wait for completion before similar shot detection
                             from workers.semantic_embedding_worker import SemanticEmbeddingWorker
-                            from PySide6.QtCore import QThreadPool
+                            from PySide6.QtCore import QThreadPool, QEventLoop
 
                             # Create worker
                             worker = SemanticEmbeddingWorker(
@@ -659,42 +660,56 @@ class ScanController(QObject):
                                 force_recompute=False
                             )
 
-                            # Track progress (but don't block UI)
+                            # Create event loop to wait for worker completion
+                            embedding_loop = QEventLoop()
+                            embedding_completed = [False]  # Use list to allow modification in nested function
+
+                            # Track progress (keep UI responsive while waiting)
                             def on_progress(current, total, message):
                                 """Update progress dialog."""
                                 progress_percent = int((current / total) * 100) if total > 0 else 0
-                                progress.setLabelText(f"🤖 Embedding queued: {message}")
+                                progress.setLabelText(f"🤖 Generating embeddings: {current}/{total} - {message}")
                                 # Map embedding progress (0-100%) to progress bar range (3-50%)
                                 progress_value = 3 + int(progress_percent * 0.47)
                                 progress.setValue(progress_value)
                                 QApplication.processEvents()  # Keep UI responsive
 
                             def on_finished(stats):
-                                """Handle completion."""
+                                """Handle completion and exit wait loop."""
                                 self.logger.info(f"Embedding generation complete: {stats}")
+                                embedding_completed[0] = True
                                 # Update progress to show completion
                                 progress.setLabelText("✅ Embedding generation complete")
                                 progress.setValue(50)
                                 QApplication.processEvents()
+                                # Exit the event loop to continue processing
+                                embedding_loop.quit()
 
                             def on_error(error_msg):
-                                """Handle error."""
+                                """Handle error and exit wait loop."""
                                 self.logger.error(f"Embedding generation error: {error_msg}")
+                                embedding_completed[0] = True  # Still mark as done to proceed
                                 progress.setLabelText(f"❌ Embedding error: {error_msg}")
                                 QApplication.processEvents()
+                                # Exit the event loop to continue processing
+                                embedding_loop.quit()
 
                             # Connect signals
                             worker.signals.progress.connect(on_progress)
                             worker.signals.finished.connect(on_finished)
                             worker.signals.error.connect(on_error)
 
-                            # Start worker in thread pool (NON-BLOCKING)
+                            # Start worker in thread pool
+                            progress.setLabelText("🤖 Starting embedding generation...")
+                            progress.setValue(5)
+                            QApplication.processEvents()
                             QThreadPool.globalInstance().start(worker)
 
-                            # Continue immediately without waiting - let worker run in background
-                            progress.setLabelText("🤖 Embedding generation started in background...")
-                            progress.setValue(5)  # Small progress bump to show activity
-                            QApplication.processEvents()
+                            # CRITICAL FIX: Wait for embedding worker to complete before similar shot detection
+                            # This ensures embeddings are available for similarity comparison
+                            self.logger.info("Waiting for embedding generation to complete before similar shot detection...")
+                            embedding_loop.exec()
+                            self.logger.info("Embedding generation finished, proceeding to similar shot detection")
                         else:
                             self.logger.info("All photos already have embeddings")
                             progress.setLabelText("✅ All photos already have embeddings")
