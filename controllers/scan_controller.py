@@ -758,15 +758,21 @@ class ScanController(QObject):
 
                             # Use unified SimilarityConfig for consistent parameters
                             from config.similarity_config import SimilarityConfig
+                            from dataclasses import replace
                             params = SimilarityConfig.get_params()
 
                             # Allow instance attribute overrides for backwards compatibility
+                            # Use dataclasses.replace() since StackGenParams is frozen
+                            overrides = {}
                             if hasattr(self, '_time_window_seconds') and self._time_window_seconds:
-                                params.time_window_seconds = self._time_window_seconds
+                                overrides['time_window_seconds'] = self._time_window_seconds
                             if hasattr(self, '_similarity_threshold') and self._similarity_threshold:
-                                params.similarity_threshold = self._similarity_threshold
+                                overrides['similarity_threshold'] = self._similarity_threshold
                             if hasattr(self, '_min_stack_size') and self._min_stack_size:
-                                params.min_stack_size = self._min_stack_size
+                                overrides['min_stack_size'] = self._min_stack_size
+
+                            if overrides:
+                                params = replace(params, **overrides)
 
                             stats = stack_gen_service.regenerate_similar_shot_stacks(current_project_id, params)
                             duplicate_stats["similar"] = stats.stacks_created
