@@ -232,20 +232,56 @@ class SemanticEmbeddingService:
                             logger.info(f"[SemanticEmbeddingService]     → Has config.json: {has_config}")
 
                             # For HuggingFace cache, also check for snapshots folder
-                            if not has_config and (model_folder / 'snapshots').exists():
+                            snapshots_dir = model_folder / 'snapshots'
+                            snapshots_exists = snapshots_dir.exists()
+                            logger.info(f"[SemanticEmbeddingService]     → Has snapshots folder: {snapshots_exists}")
+
+                            if not has_config and snapshots_exists:
                                 # HF cache structure: models--xxx/snapshots/hash/
+                                # Also check refs/main for the current snapshot reference
                                 try:
-                                    snapshots_dir = model_folder / 'snapshots'
                                     snapshot_folders = [d for d in snapshots_dir.iterdir() if d.is_dir()]
+                                    logger.info(f"[SemanticEmbeddingService]     → Found {len(snapshot_folders)} snapshot(s)")
+
                                     if snapshot_folders:
-                                        # Use the most recent snapshot
-                                        latest_snapshot = max(snapshot_folders, key=lambda p: p.stat().st_mtime)
-                                        if (latest_snapshot / 'config.json').exists():
+                                        # Try to use refs/main to find the correct snapshot first
+                                        refs_main = model_folder / 'refs' / 'main'
+                                        latest_snapshot = None
+
+                                        if refs_main.exists():
+                                            try:
+                                                ref_hash = refs_main.read_text().strip()
+                                                logger.info(f"[SemanticEmbeddingService]     → refs/main points to: {ref_hash}")
+                                                ref_snapshot = snapshots_dir / ref_hash
+                                                if ref_snapshot.exists():
+                                                    latest_snapshot = ref_snapshot
+                                            except Exception as ref_err:
+                                                logger.warning(f"[SemanticEmbeddingService]     → Could not read refs/main: {ref_err}")
+
+                                        # Fallback: use the most recent snapshot by mtime
+                                        if latest_snapshot is None:
+                                            latest_snapshot = max(snapshot_folders, key=lambda p: p.stat().st_mtime)
+
+                                        logger.info(f"[SemanticEmbeddingService]     → Using snapshot: {latest_snapshot.name}")
+
+                                        snapshot_has_config = (latest_snapshot / 'config.json').exists()
+                                        logger.info(f"[SemanticEmbeddingService]     → Snapshot has config.json: {snapshot_has_config}")
+
+                                        if snapshot_has_config:
                                             logger.info(f"[SemanticEmbeddingService]     → ✓ VALID MODEL FOUND in HF cache snapshot!")
                                             local_model_path = str(latest_snapshot)
                                             break
+                                        else:
+                                            # List files in snapshot to debug
+                                            try:
+                                                snapshot_files = list(latest_snapshot.iterdir())
+                                                logger.warning(f"[SemanticEmbeddingService]     → Snapshot contents: {[f.name for f in snapshot_files[:15]]}")
+                                            except Exception as list_err:
+                                                logger.warning(f"[SemanticEmbeddingService]     → Could not list snapshot: {list_err}")
+                                    else:
+                                        logger.warning(f"[SemanticEmbeddingService]     → Snapshots folder exists but is empty")
                                 except Exception as e:
-                                    logger.warning(f"[SemanticEmbeddingService]     → Error checking snapshots: {e}")
+                                    logger.warning(f"[SemanticEmbeddingService]     → Error checking snapshots: {e}", exc_info=True)
 
                             elif has_config:
                                 logger.info(f"[SemanticEmbeddingService]     → ✓ VALID MODEL FOUND!")
