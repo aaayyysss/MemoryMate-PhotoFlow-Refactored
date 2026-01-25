@@ -32,7 +32,7 @@ Usage:
 import threading
 import numpy as np
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List, Dict
 from PIL import Image
 
 from repository.base_repository import DatabaseConnection
@@ -499,15 +499,20 @@ class SemanticEmbeddingService:
                        photo_id: int,
                        embedding: np.ndarray,
                        source_hash: Optional[str] = None,
-                       source_mtime: Optional[str] = None):
+                       source_mtime: Optional[str] = None,
+                       use_half_precision: bool = True):
         """
         Store semantic embedding in database.
+
+        Uses float16 (half-precision) by default for 50% storage savings.
+        The precision loss is negligible for similarity search (cosine similarity).
 
         Args:
             photo_id: Photo ID
             embedding: Normalized embedding vector
             source_hash: Optional SHA256 hash of source image
             source_mtime: Optional mtime of source file
+            use_half_precision: If True, store as float16 (default). If False, use float32.
         """
         # Validate normalization
         norm = float(np.linalg.norm(embedding))
@@ -519,29 +524,43 @@ class SemanticEmbeddingService:
             embedding = embedding / norm
             norm = 1.0
 
-        # Serialize
-        embedding_blob = embedding.astype('float32').tobytes()
+        # Serialize with half-precision for 50% storage savings
+        # float16 has enough precision for similarity search (cosine similarity)
+        # Precision: float32 = ~7 decimal digits, float16 = ~3 decimal digits
+        # For normalized vectors, this is more than sufficient
         dim = len(embedding)
+
+        if use_half_precision:
+            embedding_blob = embedding.astype('float16').tobytes()
+            # Store negative dim to indicate float16 format (backward compatible marker)
+            stored_dim = -dim
+        else:
+            embedding_blob = embedding.astype('float32').tobytes()
+            stored_dim = dim
 
         with self.db.get_connection() as conn:
             conn.execute("""
                 INSERT OR REPLACE INTO semantic_embeddings
                 (photo_id, model, embedding, dim, norm, source_photo_hash, source_photo_mtime, computed_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-            """, (photo_id, self.model_name, embedding_blob, dim, norm, source_hash, source_mtime))
+            """, (photo_id, self.model_name, embedding_blob, stored_dim, norm, source_hash, source_mtime))
             conn.commit()  # CRITICAL: Explicit commit to persist embeddings
 
-            logger.debug(f"[SemanticEmbeddingService] Stored embedding for photo {photo_id}")
+            precision = "float16" if use_half_precision else "float32"
+            logger.debug(f"[SemanticEmbeddingService] Stored {precision} embedding for photo {photo_id}")
 
     def get_embedding(self, photo_id: int) -> Optional[np.ndarray]:
         """
         Retrieve semantic embedding from database.
 
+        Automatically handles both float16 (half-precision) and float32 (legacy) formats.
+        Returns float32 for computation compatibility.
+
         Args:
             photo_id: Photo ID
 
         Returns:
-            Embedding vector or None if not found
+            Embedding vector (float32) or None if not found
         """
         with self.db.get_connection() as conn:
             cursor = conn.execute("""
@@ -555,18 +574,28 @@ class SemanticEmbeddingService:
                 return None
 
             embedding_blob = row['embedding']
-            dim = row['dim']
+            stored_dim = row['dim']
 
             # Deserialize
             if isinstance(embedding_blob, str):
                 embedding_blob = embedding_blob.encode('latin1')
 
-            embedding = np.frombuffer(embedding_blob, dtype='float32')
+            # Detect precision from dim sign:
+            # - Negative dim = float16 (new format, 50% smaller)
+            # - Positive dim = float32 (legacy format)
+            if stored_dim < 0:
+                # Half-precision format
+                actual_dim = -stored_dim
+                embedding = np.frombuffer(embedding_blob, dtype='float16').astype('float32')
+            else:
+                # Legacy full-precision format
+                actual_dim = stored_dim
+                embedding = np.frombuffer(embedding_blob, dtype='float32')
 
-            if len(embedding) != dim:
+            if len(embedding) != actual_dim:
                 logger.warning(
                     f"[SemanticEmbeddingService] Dimension mismatch for photo {photo_id}: "
-                    f"expected {dim}, got {len(embedding)}"
+                    f"expected {actual_dim}, got {len(embedding)}"
                 )
                 return None
 
@@ -590,11 +619,13 @@ class SemanticEmbeddingService:
         This is much more efficient than calling get_embedding() N times,
         reducing database round-trips from N to 1.
 
+        Automatically handles both float16 (half-precision) and float32 (legacy) formats.
+
         Args:
             photo_ids: List of photo IDs to retrieve
 
         Returns:
-            Dictionary mapping photo_id -> embedding (np.ndarray)
+            Dictionary mapping photo_id -> embedding (np.ndarray, float32)
             Missing photos are not included in the result.
         """
         if not photo_ids:
@@ -617,20 +648,28 @@ class SemanticEmbeddingService:
             for row in cursor.fetchall():
                 photo_id = row['photo_id']
                 embedding_blob = row['embedding']
-                dim = row['dim']
+                stored_dim = row['dim']
 
                 # Deserialize
                 if isinstance(embedding_blob, str):
                     embedding_blob = embedding_blob.encode('latin1')
 
-                embedding = np.frombuffer(embedding_blob, dtype='float32')
+                # Detect precision from dim sign
+                if stored_dim < 0:
+                    # Half-precision format
+                    actual_dim = -stored_dim
+                    embedding = np.frombuffer(embedding_blob, dtype='float16').astype('float32')
+                else:
+                    # Legacy full-precision format
+                    actual_dim = stored_dim
+                    embedding = np.frombuffer(embedding_blob, dtype='float32')
 
-                if len(embedding) == dim:
+                if len(embedding) == actual_dim:
                     embeddings[photo_id] = embedding
                 else:
                     logger.warning(
                         f"[SemanticEmbeddingService] Dimension mismatch for photo {photo_id}: "
-                        f"expected {dim}, got {len(embedding)}"
+                        f"expected {actual_dim}, got {len(embedding)}"
                     )
 
         logger.debug(f"[SemanticEmbeddingService] Batch loaded {len(embeddings)} embeddings for {len(photo_ids)} photos")
@@ -641,12 +680,13 @@ class SemanticEmbeddingService:
         Get all embeddings for photos in a project (single query).
 
         Efficient batch load for similarity detection across entire project.
+        Automatically handles both float16 (half-precision) and float32 (legacy) formats.
 
         Args:
             project_id: Project ID
 
         Returns:
-            Dictionary mapping photo_id -> embedding (np.ndarray)
+            Dictionary mapping photo_id -> embedding (np.ndarray, float32)
         """
         embeddings = {}
 
@@ -663,18 +703,340 @@ class SemanticEmbeddingService:
             for row in cursor.fetchall():
                 photo_id = row['photo_id']
                 embedding_blob = row['embedding']
+                stored_dim = row['dim']
+
+                if isinstance(embedding_blob, str):
+                    embedding_blob = embedding_blob.encode('latin1')
+
+                # Detect precision from dim sign
+                if stored_dim < 0:
+                    # Half-precision format
+                    actual_dim = -stored_dim
+                    embedding = np.frombuffer(embedding_blob, dtype='float16').astype('float32')
+                else:
+                    # Legacy full-precision format
+                    actual_dim = stored_dim
+                    embedding = np.frombuffer(embedding_blob, dtype='float32')
+
+                if len(embedding) == actual_dim:
+                    embeddings[photo_id] = embedding
+
+        logger.info(f"[SemanticEmbeddingService] Loaded {len(embeddings)} embeddings for project {project_id}")
+        return embeddings
+
+    # =========================================================================
+    # STALENESS DETECTION
+    # =========================================================================
+
+    def is_embedding_stale(self, photo_id: int, file_path: str) -> bool:
+        """
+        Check if an embedding is stale (source file has changed).
+
+        Compares the stored mtime against the current file mtime.
+        An embedding is stale if:
+        - The file has been modified since the embedding was computed
+        - The stored mtime is missing (legacy embedding)
+
+        Args:
+            photo_id: Photo ID
+            file_path: Current path to the photo file
+
+        Returns:
+            True if embedding is stale and needs regeneration
+        """
+        import os
+        from pathlib import Path
+
+        try:
+            # Get stored mtime from database
+            with self.db.get_connection() as conn:
+                cursor = conn.execute("""
+                    SELECT source_photo_mtime
+                    FROM semantic_embeddings
+                    WHERE photo_id = ? AND model = ?
+                """, (photo_id, self.model_name))
+
+                row = cursor.fetchone()
+                if row is None:
+                    # No embedding exists - not stale, just missing
+                    return False
+
+                stored_mtime = row['source_photo_mtime']
+
+            # If no mtime was stored (legacy), consider it stale
+            if stored_mtime is None:
+                logger.debug(f"[SemanticEmbeddingService] Photo {photo_id} has no stored mtime - marking stale")
+                return True
+
+            # Get current file mtime
+            path = Path(file_path)
+            if not path.exists():
+                logger.warning(f"[SemanticEmbeddingService] File not found for staleness check: {file_path}")
+                return False  # Can't regenerate if file doesn't exist
+
+            current_mtime = str(path.stat().st_mtime)
+
+            # Compare mtimes
+            is_stale = stored_mtime != current_mtime
+            if is_stale:
+                logger.debug(f"[SemanticEmbeddingService] Photo {photo_id} is stale: stored={stored_mtime}, current={current_mtime}")
+
+            return is_stale
+
+        except Exception as e:
+            logger.warning(f"[SemanticEmbeddingService] Error checking staleness for photo {photo_id}: {e}")
+            return False
+
+    def get_stale_embeddings_for_project(self, project_id: int) -> list:
+        """
+        Get list of photo IDs with stale embeddings in a project.
+
+        Efficiently checks all embeddings in one query and compares against
+        current file mtimes.
+
+        Args:
+            project_id: Project ID
+
+        Returns:
+            List of (photo_id, file_path) tuples for photos with stale embeddings
+        """
+        import os
+        from pathlib import Path
+
+        stale_photos = []
+
+        with self.db.get_connection() as conn:
+            # Get all embeddings with their stored mtimes and file paths
+            query = """
+                SELECT se.photo_id, p.path, se.source_photo_mtime
+                FROM semantic_embeddings se
+                JOIN photo_metadata p ON se.photo_id = p.id
+                WHERE p.project_id = ? AND se.model = ?
+            """
+
+            cursor = conn.execute(query, (project_id, self.model_name))
+
+            for row in cursor.fetchall():
+                photo_id = row['photo_id']
+                file_path = row['path']
+                stored_mtime = row['source_photo_mtime']
+
+                # Legacy embedding with no mtime - mark as stale
+                if stored_mtime is None:
+                    stale_photos.append((photo_id, file_path))
+                    continue
+
+                # Check if file still exists and compare mtime
+                try:
+                    path = Path(file_path)
+                    if path.exists():
+                        current_mtime = str(path.stat().st_mtime)
+                        if stored_mtime != current_mtime:
+                            stale_photos.append((photo_id, file_path))
+                except Exception as e:
+                    logger.warning(f"[SemanticEmbeddingService] Error checking mtime for {file_path}: {e}")
+
+        if stale_photos:
+            logger.info(f"[SemanticEmbeddingService] Found {len(stale_photos)} stale embeddings in project {project_id}")
+        else:
+            logger.debug(f"[SemanticEmbeddingService] No stale embeddings in project {project_id}")
+
+        return stale_photos
+
+    def invalidate_stale_embeddings(self, project_id: int) -> int:
+        """
+        Delete stale embeddings so they will be regenerated on next scan.
+
+        Args:
+            project_id: Project ID
+
+        Returns:
+            Number of embeddings invalidated (deleted)
+        """
+        stale_photos = self.get_stale_embeddings_for_project(project_id)
+
+        if not stale_photos:
+            return 0
+
+        photo_ids = [photo_id for photo_id, _ in stale_photos]
+
+        with self.db.get_connection() as conn:
+            placeholders = ','.join('?' * len(photo_ids))
+            query = f"""
+                DELETE FROM semantic_embeddings
+                WHERE photo_id IN ({placeholders}) AND model = ?
+            """
+            params = photo_ids + [self.model_name]
+            conn.execute(query, params)
+            conn.commit()
+
+        logger.info(f"[SemanticEmbeddingService] Invalidated {len(photo_ids)} stale embeddings")
+        return len(photo_ids)
+
+    def get_staleness_stats(self, project_id: int) -> dict:
+        """
+        Get statistics about embedding staleness for a project.
+
+        Args:
+            project_id: Project ID
+
+        Returns:
+            Dictionary with stats: total, fresh, stale, missing_mtime
+        """
+        stats = {
+            'total': 0,
+            'fresh': 0,
+            'stale': 0,
+            'missing_mtime': 0
+        }
+
+        stale_photos = self.get_stale_embeddings_for_project(project_id)
+
+        with self.db.get_connection() as conn:
+            # Count total embeddings
+            cursor = conn.execute("""
+                SELECT COUNT(*) as count
+                FROM semantic_embeddings se
+                JOIN photo_metadata p ON se.photo_id = p.id
+                WHERE p.project_id = ? AND se.model = ?
+            """, (project_id, self.model_name))
+            stats['total'] = cursor.fetchone()['count']
+
+            # Count embeddings without mtime
+            cursor = conn.execute("""
+                SELECT COUNT(*) as count
+                FROM semantic_embeddings se
+                JOIN photo_metadata p ON se.photo_id = p.id
+                WHERE p.project_id = ? AND se.model = ?
+                AND se.source_photo_mtime IS NULL
+            """, (project_id, self.model_name))
+            stats['missing_mtime'] = cursor.fetchone()['count']
+
+        stats['stale'] = len(stale_photos)
+        stats['fresh'] = stats['total'] - stats['stale']
+
+        return stats
+
+    # =========================================================================
+    # STORAGE STATISTICS
+    # =========================================================================
+
+    def get_storage_stats(self) -> dict:
+        """
+        Get storage statistics for embeddings.
+
+        Returns breakdown of float16 vs float32 embeddings and space savings.
+
+        Returns:
+            Dictionary with:
+            - total_embeddings: Total count
+            - float16_count: Embeddings stored as float16 (new format)
+            - float32_count: Embeddings stored as float32 (legacy)
+            - total_bytes: Actual storage used
+            - float32_equivalent_bytes: What storage would be with all float32
+            - space_saved_bytes: Bytes saved by using float16
+            - space_saved_percent: Percentage of space saved
+        """
+        stats = {
+            'total_embeddings': 0,
+            'float16_count': 0,
+            'float32_count': 0,
+            'total_bytes': 0,
+            'float32_equivalent_bytes': 0,
+            'space_saved_bytes': 0,
+            'space_saved_percent': 0.0
+        }
+
+        with self.db.get_connection() as conn:
+            cursor = conn.execute("""
+                SELECT dim, LENGTH(embedding) as blob_size
+                FROM semantic_embeddings
+                WHERE model = ?
+            """, (self.model_name,))
+
+            for row in cursor.fetchall():
+                stored_dim = row['dim']
+                blob_size = row['blob_size']
+
+                stats['total_embeddings'] += 1
+                stats['total_bytes'] += blob_size
+
+                if stored_dim < 0:
+                    # float16 format
+                    stats['float16_count'] += 1
+                    actual_dim = -stored_dim
+                    # float32 would use 4 bytes per dimension
+                    stats['float32_equivalent_bytes'] += actual_dim * 4
+                else:
+                    # float32 format (legacy)
+                    stats['float32_count'] += 1
+                    stats['float32_equivalent_bytes'] += blob_size
+
+        if stats['float32_equivalent_bytes'] > 0:
+            stats['space_saved_bytes'] = stats['float32_equivalent_bytes'] - stats['total_bytes']
+            stats['space_saved_percent'] = (stats['space_saved_bytes'] / stats['float32_equivalent_bytes']) * 100
+
+        return stats
+
+    def migrate_to_half_precision(self, batch_size: int = 100) -> int:
+        """
+        Migrate existing float32 embeddings to float16 format.
+
+        This is a one-time migration that saves ~50% storage space.
+        Safe to run multiple times - only affects float32 embeddings.
+
+        Args:
+            batch_size: Number of embeddings to process per batch
+
+        Returns:
+            Number of embeddings migrated
+        """
+        migrated = 0
+
+        with self.db.get_connection() as conn:
+            # Find float32 embeddings (positive dim)
+            cursor = conn.execute("""
+                SELECT photo_id, embedding, dim
+                FROM semantic_embeddings
+                WHERE model = ? AND dim > 0
+                LIMIT ?
+            """, (self.model_name, batch_size))
+
+            rows = cursor.fetchall()
+
+            for row in rows:
+                photo_id = row['photo_id']
+                embedding_blob = row['embedding']
                 dim = row['dim']
 
                 if isinstance(embedding_blob, str):
                     embedding_blob = embedding_blob.encode('latin1')
 
+                # Deserialize float32
                 embedding = np.frombuffer(embedding_blob, dtype='float32')
 
-                if len(embedding) == dim:
-                    embeddings[photo_id] = embedding
+                if len(embedding) != dim:
+                    logger.warning(f"[SemanticEmbeddingService] Skipping corrupted embedding for photo {photo_id}")
+                    continue
 
-        logger.info(f"[SemanticEmbeddingService] Loaded {len(embeddings)} embeddings for project {project_id}")
-        return embeddings
+                # Convert to float16 and store
+                new_blob = embedding.astype('float16').tobytes()
+                new_dim = -dim  # Negative dim indicates float16
+
+                conn.execute("""
+                    UPDATE semantic_embeddings
+                    SET embedding = ?, dim = ?
+                    WHERE photo_id = ? AND model = ?
+                """, (new_blob, new_dim, photo_id, self.model_name))
+
+                migrated += 1
+
+            conn.commit()
+
+        if migrated > 0:
+            logger.info(f"[SemanticEmbeddingService] Migrated {migrated} embeddings to float16 format")
+
+        return migrated
 
     def get_embedding_count(self) -> int:
         """Get total number of semantic embeddings for this model."""

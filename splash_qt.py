@@ -162,6 +162,26 @@ class StartupWorker(QThread):
             if self._cancel:
                 return
 
+            # STEP 10 — Warm up CLIP model for semantic embeddings (92%)
+            # This pre-loads the model into memory so first "Find Similar" is fast
+            if self.settings.get("enable_semantic_embeddings", True):
+                self.progress.emit(92, "Warming up CLIP model…")
+                self.emit_detail("🧠 Warming up CLIP model for similar photo detection...")
+                try:
+                    from services.semantic_embedding_service import get_semantic_embedding_service
+                    service = get_semantic_embedding_service()
+                    # Trigger lazy model loading (this is the expensive part)
+                    service._load_model()
+                    self.emit_detail("✓ CLIP model loaded and ready")
+                except Exception as e:
+                    # Non-fatal - model will load on first use if warmup fails
+                    self.emit_detail(f"⚠ CLIP model warmup skipped: {str(e)[:50]}")
+                    print(f"[Startup] CLIP model warmup failed (non-fatal): {e}")
+            else:
+                self.emit_detail("⚠ Semantic embeddings disabled in settings")
+            if self._cancel:
+                return
+
             # Done with background initialization
             # MainWindow creation happens next (on main thread)
             self.progress.emit(95, "Preparing main window…")
