@@ -755,9 +755,6 @@ class ScanController(QObject):
                                 stack_repo=stack_repo,
                                 similarity_service=embedding_service
                             )
-                            
-                            # ✅ CRITICAL FIX: Connect stack update signal to refresh UI
-                            stack_gen_service.stacks_updated.connect(self._on_stacks_updated)
 
                             params = StackGenParams(
                                 time_window_seconds=getattr(self, '_time_window_seconds', 10),
