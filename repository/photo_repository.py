@@ -613,43 +613,44 @@ class PhotoRepository(BaseRepository):
 
             return deleted_count
 
-    def get_photos_needing_embeddings(self, project_id: int, limit: Optional[int] = None) -> List[Dict[str, Any]]:
+    def get_photos_needing_embeddings(
+        self,
+        project_id: int,
+        model: str = "clip-vit-b32",
+        limit: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
         """
         Get photos that don't have embeddings yet.
 
+        Uses efficient single SQL query with LEFT JOIN instead of N+1 queries.
+        For 1000 photos, this reduces from 1001 queries to just 1 query.
+
         Args:
             project_id: Project ID to filter by
+            model: Embedding model name to check for
             limit: Optional maximum number of results
 
         Returns:
             List of photo metadata dicts that need embeddings
         """
-        # First, get all photos in the project
-        all_photos = self.find_all(
-            where_clause="project_id = ?",
-            params=(project_id,),
-            order_by="id ASC",
-            limit=limit
-        )
+        # Single efficient query using LEFT JOIN
+        # Returns photos where no matching embedding exists
+        query = """
+            SELECT p.id, p.path, p.created_ts, p.folder_id, p.project_id,
+                   p.width, p.height, p.file_size, p.date_taken
+            FROM photos p
+            LEFT JOIN semantic_embeddings se
+                ON p.id = se.photo_id AND se.model = ?
+            WHERE p.project_id = ?
+                AND se.photo_id IS NULL
+            ORDER BY p.id ASC
+        """
+        params = [model, project_id]
 
-        # Filter out photos that already have embeddings
-        # This requires joining with semantic_embeddings table
-        photos_needing_embeddings = []
-        
+        if limit:
+            query += " LIMIT ?"
+            params.append(limit)
+
         with self.connection(read_only=True) as conn:
-            for photo in all_photos:
-                photo_id = photo['id']
-                
-                # Check if embedding exists for this photo
-                cur = conn.cursor()
-                cur.execute(
-                    "SELECT COUNT(*) as count FROM semantic_embeddings WHERE photo_id = ?",
-                    (photo_id,)
-                )
-                result = cur.fetchone()
-                has_embedding = result['count'] > 0
-                
-                if not has_embedding:
-                    photos_needing_embeddings.append(photo)
-        
-        return photos_needing_embeddings
+            cursor = conn.execute(query, params)
+            return [dict(row) for row in cursor.fetchall()]

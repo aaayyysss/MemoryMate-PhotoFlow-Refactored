@@ -756,12 +756,17 @@ class ScanController(QObject):
                                 similarity_service=embedding_service
                             )
 
-                            params = StackGenParams(
-                                time_window_seconds=getattr(self, '_time_window_seconds', 10),
-                                similarity_threshold=getattr(self, '_similarity_threshold', 0.92),
-                                min_stack_size=getattr(self, '_min_stack_size', 3),
-                                rule_version="1"
-                            )
+                            # Use unified SimilarityConfig for consistent parameters
+                            from config.similarity_config import SimilarityConfig
+                            params = SimilarityConfig.get_params()
+
+                            # Allow instance attribute overrides for backwards compatibility
+                            if hasattr(self, '_time_window_seconds') and self._time_window_seconds:
+                                params.time_window_seconds = self._time_window_seconds
+                            if hasattr(self, '_similarity_threshold') and self._similarity_threshold:
+                                params.similarity_threshold = self._similarity_threshold
+                            if hasattr(self, '_min_stack_size') and self._min_stack_size:
+                                params.min_stack_size = self._min_stack_size
 
                             stats = stack_gen_service.regenerate_similar_shot_stacks(current_project_id, params)
                             duplicate_stats["similar"] = stats.stacks_created

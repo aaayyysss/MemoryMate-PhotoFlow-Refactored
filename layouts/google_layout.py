@@ -8641,21 +8641,28 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
     def _on_find_similar_photos(self):
         """
         Run actual similar photo detection process (not just show results).
-        
+
         This triggers the complete similar photo workflow:
-        1. Generate embeddings for photos without embeddings
+        1. Generate embeddings for photos without embeddings (background worker)
         2. Run similar shot detection using AI embeddings
         3. Shows results in StackBrowserDialog
+
+        Uses background worker to avoid blocking the UI during embedding generation.
         """
         try:
             from PySide6.QtWidgets import QMessageBox, QProgressDialog
-            from PySide6.QtCore import Qt, QCoreApplication
+            from PySide6.QtCore import Qt, QCoreApplication, QEventLoop, QThreadPool
             from services.semantic_embedding_service import SemanticEmbeddingService
-            from services.stack_generation_service import StackGenerationService
+            from services.stack_generation_service import StackGenerationService, StackGenParams
             from repository.photo_repository import PhotoRepository
             from repository.stack_repository import StackRepository
             from repository.base_repository import DatabaseConnection
+            from workers.semantic_embedding_worker import SemanticEmbeddingWorker
+            from config.similarity_config import SimilarityConfig
+            from logging_config import get_logger
             import time
+
+            logger = get_logger(__name__)
 
             if self.project_id is None:
                 QMessageBox.warning(
@@ -8668,7 +8675,7 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
             # Show progress dialog
             progress = QProgressDialog(
                 "Preparing similarity detection...",
-                "Cancel",
+                None,  # No cancel button during background processing
                 0, 100,
                 self.main_window if hasattr(self, 'main_window') else None
             )
@@ -8689,79 +8696,86 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
             progress.setValue(10)
             QCoreApplication.processEvents()
 
-            # Count photos needing embeddings
-            total_photos = photo_repo.count(where_clause="project_id = ?", params=(self.project_id,))
-            photos_with_embeddings = embedding_service.get_embedding_count()
-            photos_needing_embeddings = total_photos - photos_with_embeddings
+            # Get photos needing embeddings using efficient SQL JOIN query
+            photos_needing_embeddings = photo_repo.get_photos_needing_embeddings(
+                self.project_id,
+                limit=1000
+            )
 
-            # Step 2: Generate embeddings if needed
+            # Step 2: Generate embeddings using background worker (non-blocking)
             embeddings_generated = 0
-            if photos_needing_embeddings > 0:
-                progress.setLabelText(f"Generating embeddings for {photos_needing_embeddings} photos...")
+            start_time = time.time()
+
+            if photos_needing_embeddings:
+                photo_ids = [p['id'] for p in photos_needing_embeddings]
+                logger.info(f"[GooglePhotosLayout] Generating embeddings for {len(photo_ids)} photos using background worker")
+
+                # Create worker for background processing
+                worker = SemanticEmbeddingWorker(
+                    photo_ids=photo_ids,
+                    model_name="clip-vit-b32",
+                    force_recompute=False
+                )
+
+                # Use QEventLoop to wait for worker while keeping UI responsive
+                embedding_loop = QEventLoop()
+                worker_stats = [None]  # Container for stats from callback
+
+                def on_progress(current, total, message):
+                    """Update progress dialog with ETA."""
+                    elapsed = time.time() - start_time
+                    if current > 0:
+                        rate = current / elapsed
+                        remaining = (total - current) / rate if rate > 0 else 0
+                        eta = f" (~{int(remaining)}s remaining)" if remaining > 0 else ""
+                    else:
+                        eta = ""
+
+                    progress_pct = 20 + int(40 * current / total) if total > 0 else 20
+                    progress.setValue(progress_pct)
+                    progress.setLabelText(f"🤖 Generating embeddings: {current}/{total}{eta}")
+                    QCoreApplication.processEvents()
+
+                def on_finished(stats):
+                    """Handle worker completion."""
+                    worker_stats[0] = stats
+                    logger.info(f"[GooglePhotosLayout] Embedding worker finished: {stats}")
+                    embedding_loop.quit()
+
+                def on_error(error_msg):
+                    """Handle worker error."""
+                    logger.error(f"[GooglePhotosLayout] Embedding worker error: {error_msg}")
+                    embedding_loop.quit()
+
+                # Connect signals before starting worker
+                worker.signals.progress.connect(on_progress)
+                worker.signals.finished.connect(on_finished)
+                worker.signals.error.connect(on_error)
+
+                # Start worker in thread pool
+                progress.setLabelText(f"🤖 Starting embedding generation for {len(photo_ids)} photos...")
                 progress.setValue(20)
                 QCoreApplication.processEvents()
 
-                start_time = time.time()
-                
-                # Get photos without embeddings
-                photos_without_embeddings = photo_repo.get_photos_needing_embeddings(
-                    self.project_id, 
-                    limit=1000  # Process in batches
-                )
+                QThreadPool.globalInstance().start(worker)
 
-                # Generate embeddings
-                batch_size = 50
-                for i in range(0, len(photos_without_embeddings), batch_size):
-                    if progress.wasCanceled():
-                        return
-                        
-                    batch = photos_without_embeddings[i:i + batch_size]
-                    processed_in_batch = 0
-                    
-                    for photo in batch:
-                        try:
-                            # Extract embedding (handle both 'file_path' and 'path' keys)
-                            file_path = photo.get('file_path') or photo.get('path')
-                            if not file_path:
-                                print(f"Warning: Photo {photo['id']} has no file path")
-                                continue
-                            embedding = embedding_service.encode_image(file_path)
-                            if embedding is not None:
-                                # Store embedding
-                                embedding_service.store_embedding(
-                                    photo_id=photo['id'],
-                                    embedding=embedding
-                                )
-                                embeddings_generated += 1
-                                processed_in_batch += 1
-                        except Exception as e:
-                            print(f"Warning: Failed to process photo {photo['id']}: {e}")
-                            continue
-                    
-                    # Update progress
-                    overall_progress = 20 + int(40 * (i + processed_in_batch) / len(photos_without_embeddings))
-                    progress.setValue(overall_progress)
-                    progress.setLabelText(f"Generated {embeddings_generated} embeddings...")
-                    QCoreApplication.processEvents()
+                # Wait for worker to complete (UI stays responsive via signals)
+                embedding_loop.exec()
 
-                elapsed_time = time.time() - start_time
-                print(f"[GooglePhotosLayout] Embedding generation took {elapsed_time:.2f} seconds for {embeddings_generated} photos")
+                # Get results
+                if worker_stats[0]:
+                    embeddings_generated = worker_stats[0].get('success', 0)
+
+            elapsed_time = time.time() - start_time
+            logger.info(f"[GooglePhotosLayout] Embedding generation took {elapsed_time:.2f}s for {embeddings_generated} photos")
 
             # Step 3: Run similar shot detection
             progress.setLabelText("Detecting similar photo stacks...")
             progress.setValue(70)
             QCoreApplication.processEvents()
 
-            # Configure parameters
-            from services.stack_generation_service import StackGenParams
-            params = StackGenParams(
-                rule_version="1",
-                time_window_seconds=30,
-                min_stack_size=2,
-                top_k=30,
-                similarity_threshold=0.5,
-                candidate_limit_per_photo=300
-            )
+            # Get unified parameters from config
+            params = SimilarityConfig.get_params()
 
             # Generate similar shot stacks
             stack_stats = stack_service.regenerate_similar_shot_stacks(
@@ -8776,7 +8790,7 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
             progress.setValue(100)
             progress.close()
 
-            # Show results
+            # Show results with actual parameters used
             QMessageBox.information(
                 self.main_window if hasattr(self, 'main_window') else None,
                 "Similar Photo Detection Complete",
@@ -8784,9 +8798,10 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
                 f"Embeddings generated: {embeddings_generated}\n"
                 f"Similar stacks created: {stack_stats.stacks_created}\n"
                 f"Stack memberships: {stack_stats.memberships_created}\n\n"
-                f"Time window: ±30 seconds\n"
-                f"Similarity threshold: 0.5\n"
-                f"Minimum stack size: 2 photos"
+                f"Parameters used:\n"
+                f"• Time window: ±{params.time_window_seconds} seconds\n"
+                f"• Similarity threshold: {params.similarity_threshold}\n"
+                f"• Minimum stack size: {params.min_stack_size} photos"
             )
 
             # Now open the dialog to view/manage results
