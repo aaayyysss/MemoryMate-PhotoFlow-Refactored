@@ -51,12 +51,15 @@ class SemanticEmbeddingWorker(QRunnable):
     - ✔ Restart-safe (no state corruption on crash)
     - ✔ Per-photo error handling
     - ✔ Progress reporting
+    - ✔ Resumable (saves progress for interrupted jobs)
     """
 
     def __init__(self,
                  photo_ids: List[int],
                  model_name: str = "clip-vit-b32",
-                 force_recompute: bool = False):
+                 force_recompute: bool = False,
+                 project_id: Optional[int] = None,
+                 save_progress_interval: int = 10):
         """
         Initialize semantic embedding worker.
 
@@ -64,11 +67,15 @@ class SemanticEmbeddingWorker(QRunnable):
             photo_ids: List of photo IDs to process
             model_name: CLIP/SigLIP model variant
             force_recompute: If True, recompute even if embedding exists
+            project_id: Optional project ID for progress tracking (enables resumability)
+            save_progress_interval: Save progress every N photos (default: 10)
         """
         super().__init__()
         self.photo_ids = photo_ids
         self.model_name = model_name
         self.force_recompute = force_recompute
+        self.project_id = project_id
+        self.save_progress_interval = save_progress_interval
 
         self.signals = SemanticEmbeddingSignals()
 
@@ -77,14 +84,15 @@ class SemanticEmbeddingWorker(QRunnable):
         self.skipped_count = 0
         self.failed_count = 0
         self.start_time = None
+        self._last_processed_photo_id = None
 
     def run(self):
-        """Execute batch embedding extraction."""
+        """Execute batch embedding extraction with progress saving for resumability."""
         self.start_time = time.time()
 
         logger.info(
             f"[SemanticEmbeddingWorker] Starting batch: {len(self.photo_ids)} photos, "
-            f"model={self.model_name}, force={self.force_recompute}"
+            f"model={self.model_name}, force={self.force_recompute}, project={self.project_id}"
         )
 
         try:
@@ -101,22 +109,43 @@ class SemanticEmbeddingWorker(QRunnable):
 
             total = len(self.photo_ids)
 
+            # Save initial job progress if project_id is provided
+            if self.project_id is not None:
+                embedder.save_job_progress(
+                    project_id=self.project_id,
+                    last_photo_id=0,
+                    total_photos=total,
+                    processed_count=0,
+                    status='in_progress'
+                )
+
             for i, photo_id in enumerate(self.photo_ids, 1):
                 try:
                     self._process_photo(photo_id, embedder, photo_repo)
+                    self._last_processed_photo_id = photo_id
                 except Exception as e:
                     logger.error(f"[SemanticEmbeddingWorker] Failed to process photo {photo_id}: {e}")
                     self.failed_count += 1
 
-                # Progress reporting (every 10 photos or last)
-                if i % 10 == 0 or i == total:
+                # Progress reporting and saving (every N photos or last)
+                if i % self.save_progress_interval == 0 or i == total:
                     self.signals.progress.emit(
                         i,
                         total,
                         f"Processing {i}/{total} photos... (✓{self.success_count}, ⊘{self.skipped_count}, ✗{self.failed_count})"
                     )
 
-            # Finish
+                    # Save progress for resumability
+                    if self.project_id is not None and self._last_processed_photo_id:
+                        embedder.save_job_progress(
+                            project_id=self.project_id,
+                            last_photo_id=self._last_processed_photo_id,
+                            total_photos=total,
+                            processed_count=i,
+                            status='in_progress'
+                        )
+
+            # Finish - mark job as completed
             duration = time.time() - self.start_time
             stats = {
                 'total': total,
@@ -124,7 +153,18 @@ class SemanticEmbeddingWorker(QRunnable):
                 'skipped': self.skipped_count,
                 'failed': self.failed_count,
                 'duration_sec': duration,
+                'resumed': False,  # Will be set by caller if this was a resumed job
             }
+
+            # Mark job as completed
+            if self.project_id is not None:
+                embedder.save_job_progress(
+                    project_id=self.project_id,
+                    last_photo_id=self._last_processed_photo_id or 0,
+                    total_photos=total,
+                    processed_count=total,
+                    status='completed'
+                )
 
             logger.info(
                 f"[SemanticEmbeddingWorker] Batch complete: "
@@ -136,6 +176,21 @@ class SemanticEmbeddingWorker(QRunnable):
 
         except Exception as e:
             logger.error(f"[SemanticEmbeddingWorker] Fatal error: {e}", exc_info=True)
+
+            # Save failed status for debugging
+            if self.project_id is not None:
+                try:
+                    embedder = get_semantic_embedding_service(model_name=self.model_name)
+                    embedder.save_job_progress(
+                        project_id=self.project_id,
+                        last_photo_id=self._last_processed_photo_id or 0,
+                        total_photos=len(self.photo_ids),
+                        processed_count=self.success_count + self.skipped_count + self.failed_count,
+                        status='failed'
+                    )
+                except Exception:
+                    pass  # Best effort
+
             self.signals.error.emit(str(e))
 
     def _process_photo(self,

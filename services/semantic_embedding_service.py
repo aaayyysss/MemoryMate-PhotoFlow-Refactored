@@ -43,6 +43,17 @@ logger = get_logger(__name__)
 # Thread-safe singleton lock
 _service_lock = threading.Lock()
 
+# Optional FAISS import for fast similarity search on large collections
+# Falls back to brute-force numpy when FAISS is not available
+_faiss_available = False
+_faiss = None
+try:
+    import faiss as _faiss
+    _faiss_available = True
+    logger.info("[SemanticEmbeddingService] FAISS available - fast ANN search enabled")
+except ImportError:
+    logger.debug("[SemanticEmbeddingService] FAISS not installed - using numpy fallback for similarity search")
+
 
 class SemanticEmbeddingService:
     """
@@ -1038,6 +1049,214 @@ class SemanticEmbeddingService:
 
         return migrated
 
+    # =========================================================================
+    # APPROXIMATE NEAREST NEIGHBOR (ANN) SEARCH
+    # =========================================================================
+
+    def build_similarity_index(self, embeddings: Dict[int, np.ndarray]) -> Tuple[object, List[int]]:
+        """
+        Build a similarity index for fast nearest neighbor search.
+
+        Uses FAISS for large collections (500+ embeddings), falls back to
+        numpy for smaller collections or when FAISS isn't available.
+
+        Args:
+            embeddings: Dictionary mapping photo_id -> embedding vector
+
+        Returns:
+            Tuple of (index, photo_ids_list) where index is either FAISS index
+            or numpy array, and photo_ids_list maps index positions to photo IDs
+        """
+        if not embeddings:
+            return None, []
+
+        # Convert to numpy array and track photo_id mapping
+        photo_ids = list(embeddings.keys())
+        vectors = np.array([embeddings[pid] for pid in photo_ids], dtype='float32')
+
+        # Normalize vectors for cosine similarity (FAISS uses inner product)
+        norms = np.linalg.norm(vectors, axis=1, keepdims=True)
+        vectors = vectors / np.maximum(norms, 1e-8)
+
+        n_vectors = len(photo_ids)
+        dim = vectors.shape[1]
+
+        # Use FAISS for large collections if available
+        if _faiss_available and n_vectors >= 500:
+            # Use IndexFlatIP (inner product = cosine similarity for normalized vectors)
+            index = _faiss.IndexFlatIP(dim)
+            index.add(vectors)
+            logger.info(f"[SemanticEmbeddingService] Built FAISS index with {n_vectors} vectors (dim={dim})")
+            return ('faiss', index, vectors), photo_ids
+        else:
+            # Use numpy array for brute force (small collections or no FAISS)
+            logger.debug(f"[SemanticEmbeddingService] Using numpy for similarity search ({n_vectors} vectors)")
+            return ('numpy', None, vectors), photo_ids
+
+    def find_similar_photos(self,
+                           query_embedding: np.ndarray,
+                           embeddings: Dict[int, np.ndarray],
+                           top_k: int = 10,
+                           threshold: float = 0.75,
+                           exclude_photo_id: Optional[int] = None) -> List[Tuple[int, float]]:
+        """
+        Find photos most similar to a query embedding.
+
+        Uses FAISS for O(log n) search on large collections, falls back to
+        numpy brute force O(n) for small collections.
+
+        Args:
+            query_embedding: Query embedding vector (normalized)
+            embeddings: Dictionary mapping photo_id -> embedding vector
+            top_k: Maximum number of results to return
+            threshold: Minimum similarity score (0-1)
+            exclude_photo_id: Optional photo ID to exclude from results
+
+        Returns:
+            List of (photo_id, similarity_score) tuples, sorted by similarity descending
+        """
+        if not embeddings:
+            return []
+
+        # Normalize query
+        query = query_embedding.astype('float32')
+        query = query / np.maximum(np.linalg.norm(query), 1e-8)
+        query = query.reshape(1, -1)
+
+        # Build index
+        index_data, photo_ids = self.build_similarity_index(embeddings)
+        if index_data is None:
+            return []
+
+        index_type, index, vectors = index_data
+        results = []
+
+        if index_type == 'faiss' and _faiss_available:
+            # FAISS search (fast for large collections)
+            k = min(top_k + 1, len(photo_ids))  # +1 in case we need to exclude self
+            similarities, indices = index.search(query, k)
+
+            for sim, idx in zip(similarities[0], indices[0]):
+                if idx < 0 or idx >= len(photo_ids):
+                    continue
+                photo_id = photo_ids[idx]
+                if exclude_photo_id and photo_id == exclude_photo_id:
+                    continue
+                if sim >= threshold:
+                    results.append((photo_id, float(sim)))
+                if len(results) >= top_k:
+                    break
+
+        else:
+            # Numpy brute force (for small collections or no FAISS)
+            similarities = np.dot(vectors, query.T).flatten()
+
+            # Get top-k indices
+            if len(similarities) > top_k + 1:
+                top_indices = np.argpartition(similarities, -top_k - 1)[-top_k - 1:]
+                top_indices = top_indices[np.argsort(similarities[top_indices])[::-1]]
+            else:
+                top_indices = np.argsort(similarities)[::-1]
+
+            for idx in top_indices:
+                photo_id = photo_ids[idx]
+                sim = similarities[idx]
+                if exclude_photo_id and photo_id == exclude_photo_id:
+                    continue
+                if sim >= threshold:
+                    results.append((photo_id, float(sim)))
+                if len(results) >= top_k:
+                    break
+
+        return results
+
+    def find_all_similar_pairs(self,
+                               embeddings: Dict[int, np.ndarray],
+                               threshold: float = 0.75,
+                               max_pairs_per_photo: int = 5) -> Dict[int, List[Tuple[int, float]]]:
+        """
+        Find all similar photo pairs in a collection (for clustering/stacking).
+
+        Efficiently finds similar pairs using FAISS batch search.
+
+        Args:
+            embeddings: Dictionary mapping photo_id -> embedding vector
+            threshold: Minimum similarity score (0-1)
+            max_pairs_per_photo: Maximum similar photos per source photo
+
+        Returns:
+            Dictionary mapping photo_id -> [(similar_photo_id, similarity), ...]
+        """
+        if len(embeddings) < 2:
+            return {}
+
+        # Build index
+        index_data, photo_ids = self.build_similarity_index(embeddings)
+        if index_data is None:
+            return {}
+
+        index_type, index, vectors = index_data
+        similar_pairs = {}
+
+        n_photos = len(photo_ids)
+        k = min(max_pairs_per_photo + 1, n_photos)  # +1 to exclude self
+
+        if index_type == 'faiss' and _faiss_available:
+            # FAISS batch search (much faster for large collections)
+            similarities, indices = index.search(vectors, k)
+
+            for i, photo_id in enumerate(photo_ids):
+                pairs = []
+                for sim, idx in zip(similarities[i], indices[i]):
+                    if idx < 0 or idx >= n_photos:
+                        continue
+                    other_id = photo_ids[idx]
+                    if other_id == photo_id:  # Skip self
+                        continue
+                    if sim >= threshold:
+                        pairs.append((other_id, float(sim)))
+                if pairs:
+                    similar_pairs[photo_id] = pairs
+
+            logger.info(f"[SemanticEmbeddingService] FAISS found {sum(len(v) for v in similar_pairs.values())} "
+                        f"similar pairs among {n_photos} photos")
+
+        else:
+            # Numpy batch computation
+            # Compute all pairwise similarities at once
+            similarity_matrix = np.dot(vectors, vectors.T)
+
+            for i, photo_id in enumerate(photo_ids):
+                sims = similarity_matrix[i]
+                # Get top-k (excluding self)
+                sims[i] = -1  # Exclude self
+
+                if n_photos > k:
+                    top_indices = np.argpartition(sims, -k)[-k:]
+                    top_indices = top_indices[np.argsort(sims[top_indices])[::-1]]
+                else:
+                    top_indices = np.argsort(sims)[::-1]
+
+                pairs = []
+                for idx in top_indices:
+                    if sims[idx] >= threshold:
+                        pairs.append((photo_ids[idx], float(sims[idx])))
+                    if len(pairs) >= max_pairs_per_photo:
+                        break
+
+                if pairs:
+                    similar_pairs[photo_id] = pairs
+
+            logger.debug(f"[SemanticEmbeddingService] Numpy found {sum(len(v) for v in similar_pairs.values())} "
+                         f"similar pairs among {n_photos} photos")
+
+        return similar_pairs
+
+    @staticmethod
+    def is_faiss_available() -> bool:
+        """Check if FAISS is available for fast similarity search."""
+        return _faiss_available
+
     def get_embedding_count(self) -> int:
         """Get total number of semantic embeddings for this model."""
         with self.db.get_connection() as conn:
@@ -1048,6 +1267,210 @@ class SemanticEmbeddingService:
             """, (self.model_name,))
 
             return cursor.fetchone()['count']
+
+    # =========================================================================
+    # RESUMABLE JOB TRACKING
+    # =========================================================================
+
+    def save_job_progress(self, project_id: int, last_photo_id: int, total_photos: int,
+                          processed_count: int, status: str = "in_progress"):
+        """
+        Save embedding job progress for resumability.
+
+        Allows interrupted jobs to resume from where they stopped,
+        preventing wasted work on large imports.
+
+        Args:
+            project_id: Project being processed
+            last_photo_id: Last successfully processed photo ID
+            total_photos: Total photos in the job
+            processed_count: Number of photos processed so far
+            status: Job status ('in_progress', 'completed', 'failed')
+        """
+        import json
+        from datetime import datetime
+
+        progress_data = {
+            'project_id': project_id,
+            'last_photo_id': last_photo_id,
+            'total_photos': total_photos,
+            'processed_count': processed_count,
+            'status': status,
+            'model': self.model_name,
+            'updated_at': datetime.now().isoformat()
+        }
+
+        with self.db.get_connection() as conn:
+            # Create job_progress table if not exists
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS embedding_job_progress (
+                    project_id INTEGER PRIMARY KEY,
+                    model TEXT NOT NULL,
+                    last_photo_id INTEGER,
+                    total_photos INTEGER,
+                    processed_count INTEGER,
+                    status TEXT DEFAULT 'in_progress',
+                    started_at TEXT,
+                    updated_at TEXT,
+                    completed_at TEXT
+                )
+            """)
+
+            # Check if job exists
+            cursor = conn.execute("""
+                SELECT 1 FROM embedding_job_progress
+                WHERE project_id = ? AND model = ?
+            """, (project_id, self.model_name))
+
+            if cursor.fetchone():
+                # Update existing job
+                if status == 'completed':
+                    conn.execute("""
+                        UPDATE embedding_job_progress
+                        SET last_photo_id = ?, total_photos = ?, processed_count = ?,
+                            status = ?, updated_at = ?, completed_at = ?
+                        WHERE project_id = ? AND model = ?
+                    """, (last_photo_id, total_photos, processed_count, status,
+                          progress_data['updated_at'], progress_data['updated_at'],
+                          project_id, self.model_name))
+                else:
+                    conn.execute("""
+                        UPDATE embedding_job_progress
+                        SET last_photo_id = ?, total_photos = ?, processed_count = ?,
+                            status = ?, updated_at = ?
+                        WHERE project_id = ? AND model = ?
+                    """, (last_photo_id, total_photos, processed_count, status,
+                          progress_data['updated_at'], project_id, self.model_name))
+            else:
+                # Insert new job
+                conn.execute("""
+                    INSERT INTO embedding_job_progress
+                    (project_id, model, last_photo_id, total_photos, processed_count,
+                     status, started_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (project_id, self.model_name, last_photo_id, total_photos,
+                      processed_count, status, progress_data['updated_at'],
+                      progress_data['updated_at']))
+
+            conn.commit()
+
+        logger.debug(f"[SemanticEmbeddingService] Saved job progress: project={project_id}, "
+                     f"processed={processed_count}/{total_photos}, status={status}")
+
+    def get_job_progress(self, project_id: int) -> Optional[dict]:
+        """
+        Get saved job progress for a project.
+
+        Args:
+            project_id: Project ID
+
+        Returns:
+            Progress dict or None if no saved progress
+        """
+        with self.db.get_connection() as conn:
+            # Check if table exists
+            cursor = conn.execute("""
+                SELECT name FROM sqlite_master
+                WHERE type='table' AND name='embedding_job_progress'
+            """)
+            if not cursor.fetchone():
+                return None
+
+            cursor = conn.execute("""
+                SELECT project_id, model, last_photo_id, total_photos, processed_count,
+                       status, started_at, updated_at, completed_at
+                FROM embedding_job_progress
+                WHERE project_id = ? AND model = ?
+            """, (project_id, self.model_name))
+
+            row = cursor.fetchone()
+            if row is None:
+                return None
+
+            return {
+                'project_id': row['project_id'],
+                'model': row['model'],
+                'last_photo_id': row['last_photo_id'],
+                'total_photos': row['total_photos'],
+                'processed_count': row['processed_count'],
+                'status': row['status'],
+                'started_at': row['started_at'],
+                'updated_at': row['updated_at'],
+                'completed_at': row['completed_at'],
+                'progress_percent': (row['processed_count'] / row['total_photos'] * 100)
+                                    if row['total_photos'] > 0 else 0
+            }
+
+    def get_resumable_photo_ids(self, project_id: int, all_photo_ids: List[int]) -> List[int]:
+        """
+        Get photo IDs that still need processing (for job resume).
+
+        Filters out already-processed photos to resume from where we left off.
+
+        Args:
+            project_id: Project ID
+            all_photo_ids: Full list of photo IDs that need embeddings
+
+        Returns:
+            Filtered list of photo IDs still needing processing
+        """
+        progress = self.get_job_progress(project_id)
+
+        if progress is None or progress['status'] == 'completed':
+            # No saved progress or job completed - process all
+            return all_photo_ids
+
+        last_photo_id = progress.get('last_photo_id')
+        if last_photo_id is None:
+            return all_photo_ids
+
+        # Find the index of last processed photo and return remaining
+        try:
+            last_index = all_photo_ids.index(last_photo_id)
+            remaining = all_photo_ids[last_index + 1:]
+            logger.info(f"[SemanticEmbeddingService] Resuming job: skipping {last_index + 1} already processed, "
+                        f"{len(remaining)} remaining")
+            return remaining
+        except ValueError:
+            # last_photo_id not in list - process all
+            logger.warning(f"[SemanticEmbeddingService] Last photo ID {last_photo_id} not in current list, "
+                           "starting fresh")
+            return all_photo_ids
+
+    def clear_job_progress(self, project_id: int):
+        """
+        Clear saved job progress (call when job completes or user cancels).
+
+        Args:
+            project_id: Project ID
+        """
+        with self.db.get_connection() as conn:
+            # Check if table exists
+            cursor = conn.execute("""
+                SELECT name FROM sqlite_master
+                WHERE type='table' AND name='embedding_job_progress'
+            """)
+            if cursor.fetchone():
+                conn.execute("""
+                    DELETE FROM embedding_job_progress
+                    WHERE project_id = ? AND model = ?
+                """, (project_id, self.model_name))
+                conn.commit()
+
+        logger.debug(f"[SemanticEmbeddingService] Cleared job progress for project {project_id}")
+
+    def has_incomplete_job(self, project_id: int) -> bool:
+        """
+        Check if there's an incomplete job that can be resumed.
+
+        Args:
+            project_id: Project ID
+
+        Returns:
+            True if there's an in-progress job
+        """
+        progress = self.get_job_progress(project_id)
+        return progress is not None and progress['status'] == 'in_progress'
 
 
 # Singleton instance
