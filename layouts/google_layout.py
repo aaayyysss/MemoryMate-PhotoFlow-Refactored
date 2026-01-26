@@ -5840,6 +5840,45 @@ class GooglePhotosLayout(BaseLayout):
             # Don't fail thumbnail creation if stack badge fails
             logger.warning(f"Failed to create stack badge for {os.path.basename(path)}: {e}")
 
+        # PHASE 3: Duplicate badge overlay (bottom-left corner)
+        # Shows count of duplicate copies (exact matches based on content hash)
+        try:
+            from layouts.google_components.duplicate_badge_widget import create_duplicate_badge
+            from repository.asset_repository import AssetRepository
+            from repository.photo_repository import PhotoRepository
+            from repository.base_repository import DatabaseConnection
+
+            # Get photo to check for duplicates
+            db_conn = DatabaseConnection()
+            photo_repo = PhotoRepository(db_conn)
+            photo = photo_repo.get_by_path(path, self.project_id)
+
+            if photo:
+                photo_id = photo.get('id')
+                asset_repo = AssetRepository(db_conn)
+
+                # Check if this photo belongs to an asset with duplicates
+                asset_id = asset_repo.get_asset_id_by_photo_id(self.project_id, photo_id)
+
+                if asset_id:
+                    instance_count = asset_repo.count_instances_for_asset(self.project_id, asset_id)
+
+                    # Only show badge if there are duplicates (more than 1 instance)
+                    if instance_count > 1:
+                        # Create duplicate badge
+                        dup_badge = create_duplicate_badge(instance_count, asset_id, container)
+
+                        # Connect click signal to open duplicates dialog
+                        dup_badge.duplicate_clicked.connect(self._on_duplicate_badge_clicked)
+
+                        # Store reference
+                        container.setProperty("duplicate_badge", dup_badge)
+
+                        logger.debug(f"Added duplicate badge to {os.path.basename(path)}: {instance_count} copies")
+        except Exception as e:
+            # Don't fail thumbnail creation if duplicate badge fails
+            logger.warning(f"Failed to create duplicate badge for {os.path.basename(path)}: {e}")
+
         # NOTE: Tag badges are now painted directly on PhotoButton, not as QLabel overlays
 
         # Connect signals
@@ -9033,6 +9072,63 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
         if action in ["delete", "unstack"]:
             # Reload the current view to reflect deletions
             self._load_photos(thumb_size=self.current_thumb_size)
+
+    def _on_duplicate_badge_clicked(self, asset_id: int):
+        """
+        Handle click on duplicate badge overlay.
+
+        Opens DuplicatesDialog with the specific asset pre-selected.
+
+        Args:
+            asset_id: Asset ID to display duplicates for
+        """
+        try:
+            from layouts.google_components.duplicates_dialog import DuplicatesDialog
+
+            if self.project_id is None:
+                from PySide6.QtWidgets import QMessageBox
+                QMessageBox.warning(
+                    self.main_window if hasattr(self, 'main_window') else None,
+                    "No Project Selected",
+                    "Please select a project before viewing duplicates."
+                )
+                return
+
+            print(f"[GooglePhotosLayout] Opening duplicates dialog for asset {asset_id}")
+
+            # Open the duplicates dialog
+            dialog = DuplicatesDialog(
+                project_id=self.project_id,
+                parent=self.main_window if hasattr(self, 'main_window') else None
+            )
+
+            # Connect signal for refresh after actions
+            dialog.duplicate_action_taken.connect(self._on_duplicate_action_taken)
+
+            # Pre-select the specific asset if dialog supports it
+            if hasattr(dialog, 'select_asset'):
+                dialog.select_asset(asset_id)
+            elif hasattr(dialog, 'asset_list'):
+                # Try to select in asset list
+                for i in range(dialog.asset_list.count()):
+                    item = dialog.asset_list.item(i)
+                    if item and item.data(Qt.UserRole) == asset_id:
+                        dialog.asset_list.setCurrentItem(item)
+                        break
+
+            # Show the dialog
+            dialog.exec()
+
+        except Exception as e:
+            from PySide6.QtWidgets import QMessageBox
+            import traceback
+            error_msg = f"Failed to open duplicates dialog:\n{e}\n\n{traceback.format_exc()}"
+            print(f"[GooglePhotosLayout] ERROR: {error_msg}")
+            QMessageBox.critical(
+                self.main_window if hasattr(self, 'main_window') else None,
+                "Error Opening Duplicates",
+                f"Failed to open duplicates dialog:\n{e}"
+            )
 
     def get_sidebar(self):
         """Get sidebar component."""
