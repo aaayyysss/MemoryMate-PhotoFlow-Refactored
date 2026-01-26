@@ -5081,6 +5081,58 @@ class SidebarQt(QWidget):
                 self._show_device_troubleshooting()
             return
 
+        # Folder context menu
+        if mode == "folder" and value:
+            folder_id = value
+            act_view = menu.addAction("📂 View Photos")
+            menu.addSeparator()
+            act_extract_embeddings = menu.addAction("🧠 Extract Embeddings for Folder")
+            act_extract_embeddings.setToolTip("Generate AI embeddings for photos in this folder")
+            act_show_stats = menu.addAction("📊 Embedding Statistics")
+            menu.addSeparator()
+            act_export = menu.addAction("📁 Export Photos to Folder…")
+
+            chosen = menu.exec(global_pos)
+            if chosen == act_view:
+                mw = self.window()
+                if hasattr(mw, 'grid'):
+                    mw.grid.set_context("folder", folder_id)
+            elif chosen == act_extract_embeddings:
+                self._extract_embeddings_for_folder(folder_id)
+            elif chosen == act_show_stats:
+                self._show_folder_embedding_stats(folder_id)
+            elif chosen == act_export:
+                self._do_export(folder_id)
+            return
+
+        # Branch (project) context menu
+        if mode == "branch" and value:
+            branch_key = value
+            act_view = menu.addAction("📂 View Photos")
+            menu.addSeparator()
+            act_extract_embeddings = menu.addAction("🧠 Extract All Embeddings")
+            act_extract_embeddings.setToolTip("Generate AI embeddings for all photos in this project")
+            act_show_stats = menu.addAction("📊 Embedding Statistics Dashboard")
+            act_migrate_float16 = menu.addAction("⚡ Migrate to Float16")
+            act_migrate_float16.setToolTip("Convert embeddings to half-precision (50% space savings)")
+            menu.addSeparator()
+            act_export = menu.addAction("📁 Export Photos to Folder…")
+
+            chosen = menu.exec(global_pos)
+            if chosen == act_view:
+                mw = self.window()
+                if hasattr(mw, 'grid'):
+                    mw.grid.set_context("branch", branch_key)
+            elif chosen == act_extract_embeddings:
+                self._extract_embeddings_for_project()
+            elif chosen == act_show_stats:
+                self._show_project_embedding_dashboard()
+            elif chosen == act_migrate_float16:
+                self._migrate_embeddings_to_float16()
+            elif chosen == act_export:
+                self._do_export(branch_key)
+            return
+
         act_export = menu.addAction("📁 Export Photos to Folder…")
         chosen = menu.exec(self.tree.viewport().mapToGlobal(pos))
         if chosen is act_export:
@@ -6130,6 +6182,150 @@ class SidebarQt(QWidget):
                                     f"Exported {count} photos from '{branch_key}' to:\n{dest}")
         except Exception as e:
             QMessageBox.critical(self, "Export Failed", str(e))
+
+    def _extract_embeddings_for_folder(self, folder_id: int):
+        """Extract embeddings for all photos in a specific folder."""
+        try:
+            # Get photos in this folder
+            photos = self.db.get_images_by_folder(folder_id, self.project_id) or []
+            photo_ids = [p.get('id') for p in photos if p.get('id')]
+
+            if not photo_ids:
+                QMessageBox.information(self, "No Photos", "No photos found in this folder.")
+                return
+
+            # Confirm with user
+            reply = QMessageBox.question(
+                self,
+                "Extract Embeddings",
+                f"Extract AI embeddings for {len(photo_ids)} photos in this folder?\n\n"
+                "This enables semantic search (e.g., 'sunset at beach').",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.Yes
+            )
+
+            if reply != QMessageBox.Yes:
+                return
+
+            # Start embedding extraction
+            mw = self.window()
+            if hasattr(mw, '_on_extract_embeddings'):
+                # Pass photo_ids to extraction method
+                mw._start_embedding_extraction(photo_ids)
+            else:
+                QMessageBox.warning(self, "Not Available", "Embedding extraction is not available.")
+
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to extract embeddings:\n{str(e)}")
+
+    def _show_folder_embedding_stats(self, folder_id: int):
+        """Show embedding statistics for a specific folder."""
+        try:
+            from services.semantic_embedding_service import get_semantic_embedding_service
+
+            # Get photos in this folder
+            photos = self.db.get_images_by_folder(folder_id, self.project_id) or []
+            photo_ids = [p.get('id') for p in photos if p.get('id')]
+
+            if not photo_ids:
+                QMessageBox.information(self, "No Photos", "No photos found in this folder.")
+                return
+
+            service = get_semantic_embedding_service()
+
+            # Count photos with embeddings
+            with_embeddings = sum(1 for pid in photo_ids if service.has_embedding(pid))
+            coverage = (with_embeddings / len(photo_ids) * 100) if photo_ids else 0
+
+            QMessageBox.information(
+                self,
+                "Folder Embedding Stats",
+                f"Photos in folder: {len(photo_ids)}\n"
+                f"With embeddings: {with_embeddings}\n"
+                f"Coverage: {coverage:.1f}%\n\n"
+                f"{'✓ Ready for semantic search!' if with_embeddings > 0 else 'Run Extract Embeddings to enable semantic search.'}"
+            )
+
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to get stats:\n{str(e)}")
+
+    def _extract_embeddings_for_project(self):
+        """Extract embeddings for all photos in the current project."""
+        try:
+            mw = self.window()
+            if hasattr(mw, '_on_extract_embeddings'):
+                mw._on_extract_embeddings()
+            else:
+                QMessageBox.warning(self, "Not Available", "Embedding extraction is not available.")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to start extraction:\n{str(e)}")
+
+    def _show_project_embedding_dashboard(self):
+        """Show the embedding statistics dashboard for the current project."""
+        try:
+            mw = self.window()
+            if hasattr(mw, '_on_open_embedding_dashboard'):
+                mw._on_open_embedding_dashboard()
+            else:
+                # Fallback: try to open dashboard directly
+                from ui.embedding_stats_dashboard import show_embedding_stats_dashboard
+                if self.project_id:
+                    self._embedding_dashboard = show_embedding_stats_dashboard(self.project_id, self)
+                else:
+                    QMessageBox.warning(self, "No Project", "Please select a project first.")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to open dashboard:\n{str(e)}")
+
+    def _migrate_embeddings_to_float16(self):
+        """Migrate float32 embeddings to float16 format."""
+        try:
+            mw = self.window()
+            if hasattr(mw, '_on_migrate_embeddings_float16'):
+                mw._on_migrate_embeddings_float16()
+            else:
+                # Fallback: do it directly
+                from services.semantic_embedding_service import get_semantic_embedding_service
+
+                service = get_semantic_embedding_service()
+                stats = service.get_project_embedding_stats(self.project_id) if self.project_id else {}
+                float32_count = stats.get('float32_count', 0)
+
+                if float32_count == 0:
+                    QMessageBox.information(
+                        self,
+                        "No Migration Needed",
+                        "All embeddings are already in float16 format."
+                    )
+                    return
+
+                reply = QMessageBox.question(
+                    self,
+                    "Migrate to Float16",
+                    f"Found {float32_count} embeddings in legacy float32 format.\n\n"
+                    "Converting to float16 will save ~50% storage space.\n\n"
+                    "Proceed?",
+                    QMessageBox.Yes | QMessageBox.No,
+                    QMessageBox.Yes
+                )
+
+                if reply != QMessageBox.Yes:
+                    return
+
+                migrated = 0
+                while True:
+                    batch_migrated = service.migrate_to_half_precision(batch_size=500)
+                    if batch_migrated == 0:
+                        break
+                    migrated += batch_migrated
+
+                QMessageBox.information(
+                    self,
+                    "Migration Complete",
+                    f"Successfully migrated {migrated} embeddings to float16 format."
+                )
+
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to migrate embeddings:\n{str(e)}")
 
     def _find_root_item(self, title: str):
         for row in range(self.model.rowCount()):

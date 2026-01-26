@@ -936,11 +936,81 @@ class PreferencesDialog(QDialog):
 
         layout.addWidget(extraction_group)
 
+        # GPU & Performance Section
+        gpu_group = QGroupBox("GPU & Performance")
+        gpu_layout = QFormLayout(gpu_group)
+        gpu_layout.setSpacing(10)
+
+        # GPU Device Status
+        self.lbl_gpu_device = QLabel("Detecting...")
+        self.lbl_gpu_device.setStyleSheet("font-weight: bold;")
+        gpu_layout.addRow("GPU Device:", self.lbl_gpu_device)
+
+        # GPU Memory
+        self.lbl_gpu_memory = QLabel("—")
+        gpu_layout.addRow("Available Memory:", self.lbl_gpu_memory)
+
+        # Optimal Batch Size
+        self.lbl_optimal_batch = QLabel("—")
+        self.lbl_optimal_batch.setToolTip("Auto-tuned batch size based on GPU memory")
+        gpu_layout.addRow("Optimal Batch Size:", self.lbl_optimal_batch)
+
+        # FAISS Status
+        self.lbl_faiss_status = QLabel("Checking...")
+        self.lbl_faiss_status.setToolTip("FAISS enables fast approximate nearest neighbor search")
+        gpu_layout.addRow("FAISS (Fast Search):", self.lbl_faiss_status)
+
+        # Refresh GPU info button
+        btn_refresh_gpu = QPushButton("🔄 Refresh")
+        btn_refresh_gpu.setMaximumWidth(100)
+        btn_refresh_gpu.clicked.connect(self._refresh_gpu_info)
+        gpu_layout.addRow("", btn_refresh_gpu)
+
+        layout.addWidget(gpu_group)
+
+        # Statistics & Storage Section
+        stats_group = QGroupBox("Statistics & Storage")
+        stats_layout = QVBoxLayout(stats_group)
+        stats_layout.setSpacing(10)
+
+        # Quick coverage summary
+        self.lbl_embedding_coverage = QLabel("Loading statistics...")
+        self.lbl_embedding_coverage.setStyleSheet("font-size: 11pt;")
+        stats_layout.addWidget(self.lbl_embedding_coverage)
+
+        # Storage format info
+        self.lbl_storage_format = QLabel("")
+        self.lbl_storage_format.setStyleSheet("color: #666;")
+        stats_layout.addWidget(self.lbl_storage_format)
+
+        # Action buttons row
+        stats_btn_row = QWidget()
+        stats_btn_layout = QHBoxLayout(stats_btn_row)
+        stats_btn_layout.setContentsMargins(0, 4, 0, 0)
+
+        btn_open_dashboard = QPushButton("📊 Open Statistics Dashboard")
+        btn_open_dashboard.setToolTip("View detailed embedding statistics, coverage, and storage info")
+        btn_open_dashboard.clicked.connect(self._open_embedding_stats_dashboard)
+        stats_btn_layout.addWidget(btn_open_dashboard)
+
+        btn_migrate_float16 = QPushButton("⚡ Migrate to Float16")
+        btn_migrate_float16.setToolTip("Convert legacy float32 embeddings to float16 (50% space savings)")
+        btn_migrate_float16.clicked.connect(self._migrate_embeddings_to_float16)
+        self.btn_migrate_float16 = btn_migrate_float16
+        stats_btn_layout.addWidget(btn_migrate_float16)
+
+        stats_btn_layout.addStretch()
+        stats_layout.addWidget(stats_btn_row)
+
+        layout.addWidget(stats_group)
+
         layout.addStretch()
 
         # Check CLIP status after UI is ready
         from PySide6.QtCore import QTimer
         QTimer.singleShot(100, self._check_clip_status)
+        QTimer.singleShot(200, self._refresh_gpu_info)
+        QTimer.singleShot(300, self._refresh_embedding_stats)
 
         return self._create_scrollable_panel(widget)
 
@@ -2309,6 +2379,181 @@ class PreferencesDialog(QDialog):
                 self,
                 "Open Folder Failed",
                 f"Could not open model folder:\n{str(e)}"
+            )
+
+    def _refresh_gpu_info(self):
+        """Refresh GPU and performance information."""
+        try:
+            from services.semantic_embedding_service import get_semantic_embedding_service
+            service = get_semantic_embedding_service()
+
+            # Get GPU info
+            gpu_info = service.get_gpu_memory_info()
+            device = gpu_info.get('device', 'cpu')
+            total_mb = gpu_info.get('total_mb', 0)
+            available_mb = gpu_info.get('available_mb', 0)
+
+            # Update GPU device label
+            device_text = device.upper()
+            if device == 'cuda':
+                device_text = f"CUDA ({gpu_info.get('device_name', 'NVIDIA GPU')})"
+            elif device == 'mps':
+                device_text = "Apple Metal (MPS)"
+            elif device == 'cpu':
+                device_text = "CPU (No GPU detected)"
+            self.lbl_gpu_device.setText(device_text)
+
+            # Update memory info
+            if total_mb > 0:
+                self.lbl_gpu_memory.setText(f"{available_mb:.0f} MB / {total_mb:.0f} MB")
+            else:
+                self.lbl_gpu_memory.setText("N/A (CPU mode)")
+
+            # Get optimal batch size
+            try:
+                batch_size = service.get_optimal_batch_size()
+                self.lbl_optimal_batch.setText(f"{batch_size} photos/batch")
+            except Exception:
+                self.lbl_optimal_batch.setText("N/A")
+
+            # Check FAISS availability
+            try:
+                import faiss
+                self.lbl_faiss_status.setText("✓ Available")
+                self.lbl_faiss_status.setStyleSheet("color: #4CAF50; font-weight: bold;")
+            except ImportError:
+                self.lbl_faiss_status.setText("Not installed (using numpy)")
+                self.lbl_faiss_status.setStyleSheet("color: #666;")
+
+        except Exception as e:
+            self.lbl_gpu_device.setText("Error detecting GPU")
+            self.lbl_gpu_memory.setText("—")
+            self.lbl_optimal_batch.setText("—")
+            self.lbl_faiss_status.setText("Unknown")
+
+    def _refresh_embedding_stats(self):
+        """Refresh embedding statistics summary."""
+        try:
+            from services.semantic_embedding_service import get_semantic_embedding_service
+
+            # Get current project ID from main window if available
+            project_id = None
+            if self.parent() and hasattr(self.parent(), 'project_id'):
+                project_id = self.parent().project_id
+            elif self.parent() and hasattr(self.parent(), 'current_project_id'):
+                project_id = self.parent().current_project_id
+
+            if project_id is None:
+                self.lbl_embedding_coverage.setText("No project selected")
+                self.lbl_storage_format.setText("")
+                self.btn_migrate_float16.setEnabled(False)
+                return
+
+            service = get_semantic_embedding_service()
+            stats = service.get_project_embedding_stats(project_id)
+
+            # Coverage summary
+            total = stats.get('total_photos', 0)
+            with_emb = stats.get('photos_with_embeddings', 0)
+            coverage = stats.get('coverage_percent', 0)
+            self.lbl_embedding_coverage.setText(
+                f"📊 Coverage: {with_emb}/{total} photos ({coverage:.1f}%)"
+            )
+
+            # Storage format
+            float16 = stats.get('float16_count', 0)
+            float32 = stats.get('float32_count', 0)
+            storage_mb = stats.get('storage_mb', 0)
+
+            if float16 > 0 or float32 > 0:
+                self.lbl_storage_format.setText(
+                    f"Storage: {storage_mb:.2f} MB ({float16} float16, {float32} float32)"
+                )
+                self.btn_migrate_float16.setEnabled(float32 > 0)
+            else:
+                self.lbl_storage_format.setText("No embeddings yet")
+                self.btn_migrate_float16.setEnabled(False)
+
+        except Exception as e:
+            self.lbl_embedding_coverage.setText("Could not load statistics")
+            self.lbl_storage_format.setText(f"Error: {str(e)[:50]}")
+            self.btn_migrate_float16.setEnabled(False)
+
+    def _open_embedding_stats_dashboard(self):
+        """Open the full embedding statistics dashboard."""
+        try:
+            from ui.embedding_stats_dashboard import show_embedding_stats_dashboard
+
+            # Get current project ID
+            project_id = None
+            if self.parent() and hasattr(self.parent(), 'project_id'):
+                project_id = self.parent().project_id
+            elif self.parent() and hasattr(self.parent(), 'current_project_id'):
+                project_id = self.parent().current_project_id
+
+            if project_id is None:
+                QMessageBox.warning(
+                    self,
+                    "No Project Selected",
+                    "Please select a project first to view embedding statistics."
+                )
+                return
+
+            # Show the dashboard (non-modal)
+            self._stats_dashboard = show_embedding_stats_dashboard(project_id, self)
+            # Connect refresh signal to update our summary
+            self._stats_dashboard.refreshRequested.connect(self._refresh_embedding_stats)
+
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Error Opening Dashboard",
+                f"Could not open embedding statistics dashboard:\n{str(e)}"
+            )
+
+    def _migrate_embeddings_to_float16(self):
+        """Migrate legacy float32 embeddings to float16."""
+        try:
+            from services.semantic_embedding_service import get_semantic_embedding_service
+
+            reply = QMessageBox.question(
+                self,
+                "Migrate to Float16",
+                "This will convert legacy float32 embeddings to half-precision format, "
+                "saving approximately 50% storage space.\n\n"
+                "This is safe and reversible (embeddings can be regenerated).\n\n"
+                "Proceed?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.Yes
+            )
+
+            if reply != QMessageBox.Yes:
+                return
+
+            service = get_semantic_embedding_service()
+            migrated = 0
+
+            # Migrate in batches
+            while True:
+                batch_migrated = service.migrate_to_half_precision(batch_size=500)
+                if batch_migrated == 0:
+                    break
+                migrated += batch_migrated
+
+            QMessageBox.information(
+                self,
+                "Migration Complete",
+                f"Successfully migrated {migrated} embeddings to float16 format."
+            )
+
+            # Refresh stats
+            self._refresh_embedding_stats()
+
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Migration Failed",
+                f"Error during migration:\n{str(e)}"
             )
 
     def _show_cache_stats(self):
