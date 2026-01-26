@@ -506,6 +506,296 @@ class SemanticEmbeddingService:
 
         return vec
 
+    # =========================================================================
+    # GPU MEMORY MANAGEMENT
+    # =========================================================================
+
+    def get_gpu_memory_info(self) -> dict:
+        """
+        Get GPU memory information for the current device.
+
+        Returns:
+            Dictionary with:
+            - device_type: 'cuda', 'mps', or 'cpu'
+            - total_memory_mb: Total GPU memory (0 for CPU)
+            - free_memory_mb: Available GPU memory (0 for CPU)
+            - used_memory_mb: Used GPU memory (0 for CPU)
+            - utilization_percent: Memory utilization percentage
+        """
+        info = {
+            'device_type': 'cpu',
+            'total_memory_mb': 0,
+            'free_memory_mb': 0,
+            'used_memory_mb': 0,
+            'utilization_percent': 0.0
+        }
+
+        if not self._available:
+            return info
+
+        # Ensure model is loaded to know the device
+        try:
+            self._load_model()
+        except Exception:
+            return info
+
+        if self._device is None:
+            return info
+
+        device_type = self._device.type
+        info['device_type'] = device_type
+
+        if device_type == 'cuda':
+            try:
+                # Get CUDA memory info
+                total = self._torch.cuda.get_device_properties(self._device).total_memory
+                reserved = self._torch.cuda.memory_reserved(self._device)
+                allocated = self._torch.cuda.memory_allocated(self._device)
+
+                # Free memory = total - reserved (reserved includes allocated + cached)
+                free = total - reserved
+
+                info['total_memory_mb'] = total / (1024 * 1024)
+                info['used_memory_mb'] = allocated / (1024 * 1024)
+                info['free_memory_mb'] = free / (1024 * 1024)
+                info['utilization_percent'] = (allocated / total) * 100 if total > 0 else 0
+
+            except Exception as e:
+                logger.warning(f"[SemanticEmbeddingService] Error getting CUDA memory: {e}")
+
+        elif device_type == 'mps':
+            # MPS (Apple Silicon) - limited memory info available
+            try:
+                # MPS doesn't expose detailed memory info like CUDA
+                # We can estimate based on system memory
+                import psutil
+                vm = psutil.virtual_memory()
+                # Assume we can use up to 50% of system memory for GPU
+                info['total_memory_mb'] = vm.total / (1024 * 1024) * 0.5
+                info['free_memory_mb'] = vm.available / (1024 * 1024) * 0.5
+                info['used_memory_mb'] = info['total_memory_mb'] - info['free_memory_mb']
+                info['utilization_percent'] = (info['used_memory_mb'] / info['total_memory_mb']) * 100
+            except ImportError:
+                # psutil not available
+                info['total_memory_mb'] = 8192  # Assume 8GB
+                info['free_memory_mb'] = 4096  # Assume 4GB free
+            except Exception as e:
+                logger.warning(f"[SemanticEmbeddingService] Error getting MPS memory: {e}")
+
+        return info
+
+    def get_optimal_batch_size(self, target_memory_usage: float = 0.7) -> int:
+        """
+        Calculate optimal batch size based on available GPU memory.
+
+        Uses heuristics based on model size and image dimensions to estimate
+        memory requirements per image.
+
+        Args:
+            target_memory_usage: Target GPU memory utilization (0.0-1.0, default 0.7)
+
+        Returns:
+            Recommended batch size (minimum 1, maximum 64)
+        """
+        # Model memory estimates (approximate, in MB)
+        model_memory_estimates = {
+            'clip-vit-b32': 350,   # ~350MB for ViT-B/32
+            'clip-vit-b16': 350,   # ~350MB for ViT-B/16
+            'clip-vit-l14': 900,   # ~900MB for ViT-L/14
+        }
+
+        # Memory per image during inference (approximate, in MB)
+        # Includes input tensor, intermediate activations, output
+        per_image_memory = {
+            'clip-vit-b32': 50,   # ~50MB per 224x224 image
+            'clip-vit-b16': 80,   # ~80MB per 224x224 image
+            'clip-vit-l14': 150,  # ~150MB per 224x224 image
+        }
+
+        mem_info = self.get_gpu_memory_info()
+
+        # CPU mode - use reasonable defaults
+        if mem_info['device_type'] == 'cpu':
+            logger.debug("[SemanticEmbeddingService] CPU mode - using batch size 4")
+            return 4
+
+        available_mb = mem_info['free_memory_mb']
+        model_mb = model_memory_estimates.get(self.model_name, 400)
+        per_image_mb = per_image_memory.get(self.model_name, 60)
+
+        # Calculate available memory for batching (after model overhead)
+        usable_memory = (available_mb * target_memory_usage) - model_mb
+
+        if usable_memory <= 0:
+            logger.warning(f"[SemanticEmbeddingService] Low GPU memory ({available_mb:.0f}MB free), using batch size 1")
+            return 1
+
+        # Calculate batch size
+        batch_size = int(usable_memory / per_image_mb)
+
+        # Clamp to reasonable range
+        batch_size = max(1, min(batch_size, 64))
+
+        logger.info(f"[SemanticEmbeddingService] Auto-tuned batch size: {batch_size} "
+                    f"(GPU: {available_mb:.0f}MB free, {mem_info['device_type']})")
+
+        return batch_size
+
+    def encode_images_batch(self, image_paths: List[str],
+                            batch_size: Optional[int] = None,
+                            on_progress: Optional[callable] = None) -> List[Tuple[str, Optional[np.ndarray]]]:
+        """
+        Extract embeddings from multiple images with GPU memory management.
+
+        Automatically batches images based on available GPU memory to prevent
+        OOM errors. Includes automatic retry with smaller batch sizes on failure.
+
+        Args:
+            image_paths: List of image file paths
+            batch_size: Optional batch size (auto-tuned if None)
+            on_progress: Optional callback(processed, total, message)
+
+        Returns:
+            List of (image_path, embedding) tuples. embedding is None if failed.
+        """
+        self._load_model()
+
+        if batch_size is None:
+            batch_size = self.get_optimal_batch_size()
+
+        results = []
+        total = len(image_paths)
+        processed = 0
+
+        # Process in batches
+        for i in range(0, total, batch_size):
+            batch_paths = image_paths[i:i + batch_size]
+            batch_results = self._process_image_batch(batch_paths, batch_size)
+
+            results.extend(batch_results)
+            processed += len(batch_paths)
+
+            if on_progress:
+                on_progress(processed, total, f"Processed {processed}/{total} images")
+
+            # Clear GPU cache between batches to prevent memory buildup
+            if self._device and self._device.type == 'cuda':
+                self._torch.cuda.empty_cache()
+
+        return results
+
+    def _process_image_batch(self, image_paths: List[str],
+                             max_batch_size: int) -> List[Tuple[str, Optional[np.ndarray]]]:
+        """
+        Process a batch of images with automatic retry on OOM.
+
+        Args:
+            image_paths: List of image paths to process
+            max_batch_size: Maximum batch size to try
+
+        Returns:
+            List of (path, embedding) tuples
+        """
+        current_batch_size = min(len(image_paths), max_batch_size)
+        results = []
+
+        while current_batch_size >= 1:
+            try:
+                # Load images
+                images = []
+                valid_paths = []
+
+                for path in image_paths:
+                    try:
+                        img = Image.open(path).convert('RGB')
+                        images.append(img)
+                        valid_paths.append(path)
+                    except Exception as e:
+                        logger.warning(f"[SemanticEmbeddingService] Failed to load {path}: {e}")
+                        results.append((path, None))
+
+                if not images:
+                    return results
+
+                # Process in sub-batches
+                for j in range(0, len(images), current_batch_size):
+                    batch_images = images[j:j + current_batch_size]
+                    batch_valid_paths = valid_paths[j:j + current_batch_size]
+
+                    # Preprocess batch
+                    inputs = self._processor(images=batch_images, return_tensors="pt", padding=True)
+                    inputs = {k: v.to(self._device) for k, v in inputs.items()}
+
+                    # Extract features
+                    with self._torch.no_grad():
+                        image_features = self._model.get_image_features(**inputs)
+
+                    # Convert to numpy and normalize
+                    embeddings = image_features.cpu().numpy().astype('float32')
+                    norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
+                    embeddings = embeddings / np.maximum(norms, 1e-8)
+
+                    # Add to results
+                    for path, emb in zip(batch_valid_paths, embeddings):
+                        results.append((path, emb))
+
+                    # Clear intermediate tensors
+                    del inputs, image_features
+                    if self._device and self._device.type == 'cuda':
+                        self._torch.cuda.empty_cache()
+
+                return results
+
+            except RuntimeError as e:
+                if 'out of memory' in str(e).lower() or 'CUDA' in str(e):
+                    # OOM error - reduce batch size and retry
+                    if self._device and self._device.type == 'cuda':
+                        self._torch.cuda.empty_cache()
+
+                    old_batch_size = current_batch_size
+                    current_batch_size = max(1, current_batch_size // 2)
+
+                    logger.warning(f"[SemanticEmbeddingService] OOM with batch size {old_batch_size}, "
+                                   f"retrying with {current_batch_size}")
+
+                    if current_batch_size == old_batch_size:
+                        # Already at minimum, process one by one
+                        break
+                else:
+                    # Other error - re-raise
+                    raise
+
+        # Fallback: process one by one
+        logger.info("[SemanticEmbeddingService] Falling back to single-image processing")
+        for path in image_paths:
+            if any(r[0] == path for r in results):
+                continue  # Already processed
+            try:
+                emb = self.encode_image(path)
+                results.append((path, emb))
+            except Exception as e:
+                logger.warning(f"[SemanticEmbeddingService] Failed to encode {path}: {e}")
+                results.append((path, None))
+
+        return results
+
+    def clear_gpu_cache(self):
+        """
+        Clear GPU memory cache to free up memory.
+
+        Call this after processing large batches or when memory is low.
+        """
+        if self._available and self._device:
+            if self._device.type == 'cuda':
+                self._torch.cuda.empty_cache()
+                self._torch.cuda.synchronize()
+                logger.debug("[SemanticEmbeddingService] Cleared CUDA cache")
+            elif self._device.type == 'mps':
+                # MPS doesn't have explicit cache clearing
+                import gc
+                gc.collect()
+                logger.debug("[SemanticEmbeddingService] Triggered garbage collection for MPS")
+
     def store_embedding(self,
                        photo_id: int,
                        embedding: np.ndarray,
@@ -1048,6 +1338,174 @@ class SemanticEmbeddingService:
             logger.info(f"[SemanticEmbeddingService] Migrated {migrated} embeddings to float16 format")
 
         return migrated
+
+    # =========================================================================
+    # EMBEDDING STATISTICS DASHBOARD
+    # =========================================================================
+
+    def get_project_embedding_stats(self, project_id: int) -> dict:
+        """
+        Get comprehensive embedding statistics for a project (for UI dashboard).
+
+        Provides all metrics needed for the embedding statistics dashboard.
+
+        Args:
+            project_id: Project ID
+
+        Returns:
+            Dictionary with comprehensive stats for UI display
+        """
+        stats = {
+            # Coverage
+            'total_photos': 0,
+            'photos_with_embeddings': 0,
+            'photos_without_embeddings': 0,
+            'coverage_percent': 0.0,
+
+            # Staleness
+            'fresh_embeddings': 0,
+            'stale_embeddings': 0,
+            'missing_mtime': 0,
+
+            # Storage
+            'storage_bytes': 0,
+            'storage_mb': 0.0,
+            'float16_count': 0,
+            'float32_count': 0,
+            'space_saved_percent': 0.0,
+
+            # Model info
+            'model_name': self.model_name,
+            'embedding_dimension': 512,  # Default for CLIP ViT-B/32
+
+            # GPU info
+            'gpu_device': 'unknown',
+            'gpu_memory_mb': 0,
+
+            # Job status
+            'has_incomplete_job': False,
+            'job_progress_percent': 0.0,
+
+            # Performance
+            'faiss_available': _faiss_available,
+        }
+
+        with self.db.get_connection() as conn:
+            # Get total photos in project
+            cursor = conn.execute("""
+                SELECT COUNT(*) as count FROM photo_metadata WHERE project_id = ?
+            """, (project_id,))
+            stats['total_photos'] = cursor.fetchone()['count']
+
+            # Get photos with embeddings
+            cursor = conn.execute("""
+                SELECT COUNT(DISTINCT se.photo_id) as count
+                FROM semantic_embeddings se
+                JOIN photo_metadata p ON se.photo_id = p.id
+                WHERE p.project_id = ? AND se.model = ?
+            """, (project_id, self.model_name))
+            stats['photos_with_embeddings'] = cursor.fetchone()['count']
+
+            stats['photos_without_embeddings'] = stats['total_photos'] - stats['photos_with_embeddings']
+
+            if stats['total_photos'] > 0:
+                stats['coverage_percent'] = (stats['photos_with_embeddings'] / stats['total_photos']) * 100
+
+            # Get storage stats for project
+            cursor = conn.execute("""
+                SELECT se.dim, LENGTH(se.embedding) as blob_size
+                FROM semantic_embeddings se
+                JOIN photo_metadata p ON se.photo_id = p.id
+                WHERE p.project_id = ? AND se.model = ?
+            """, (project_id, self.model_name))
+
+            float32_equivalent = 0
+            for row in cursor.fetchall():
+                stored_dim = row['dim']
+                blob_size = row['blob_size']
+                stats['storage_bytes'] += blob_size
+
+                if stored_dim < 0:
+                    stats['float16_count'] += 1
+                    stats['embedding_dimension'] = -stored_dim
+                    float32_equivalent += (-stored_dim) * 4
+                else:
+                    stats['float32_count'] += 1
+                    stats['embedding_dimension'] = stored_dim
+                    float32_equivalent += blob_size
+
+            stats['storage_mb'] = stats['storage_bytes'] / (1024 * 1024)
+
+            if float32_equivalent > 0:
+                saved = float32_equivalent - stats['storage_bytes']
+                stats['space_saved_percent'] = (saved / float32_equivalent) * 100
+
+            # Get embeddings without mtime (legacy)
+            cursor = conn.execute("""
+                SELECT COUNT(*) as count
+                FROM semantic_embeddings se
+                JOIN photo_metadata p ON se.photo_id = p.id
+                WHERE p.project_id = ? AND se.model = ?
+                AND se.source_photo_mtime IS NULL
+            """, (project_id, self.model_name))
+            stats['missing_mtime'] = cursor.fetchone()['count']
+
+        # Get staleness info (may be slow for large projects)
+        try:
+            stale_photos = self.get_stale_embeddings_for_project(project_id)
+            stats['stale_embeddings'] = len(stale_photos)
+            stats['fresh_embeddings'] = stats['photos_with_embeddings'] - stats['stale_embeddings']
+        except Exception as e:
+            logger.warning(f"[SemanticEmbeddingService] Could not check staleness: {e}")
+            stats['fresh_embeddings'] = stats['photos_with_embeddings']
+
+        # Get GPU info
+        try:
+            gpu_info = self.get_gpu_memory_info()
+            stats['gpu_device'] = gpu_info['device_type']
+            stats['gpu_memory_mb'] = gpu_info['total_memory_mb']
+        except Exception:
+            pass
+
+        # Get job status
+        try:
+            stats['has_incomplete_job'] = self.has_incomplete_job(project_id)
+            if stats['has_incomplete_job']:
+                progress = self.get_job_progress(project_id)
+                if progress:
+                    stats['job_progress_percent'] = progress.get('progress_percent', 0)
+        except Exception:
+            pass
+
+        return stats
+
+    def get_all_projects_embedding_stats(self) -> List[dict]:
+        """
+        Get embedding statistics for all projects.
+
+        Returns:
+            List of stats dictionaries, one per project
+        """
+        all_stats = []
+
+        with self.db.get_connection() as conn:
+            cursor = conn.execute("""
+                SELECT DISTINCT id, name FROM projects ORDER BY name
+            """)
+
+            for row in cursor.fetchall():
+                project_id = row['id']
+                project_name = row['name']
+
+                try:
+                    stats = self.get_project_embedding_stats(project_id)
+                    stats['project_id'] = project_id
+                    stats['project_name'] = project_name
+                    all_stats.append(stats)
+                except Exception as e:
+                    logger.warning(f"[SemanticEmbeddingService] Error getting stats for project {project_id}: {e}")
+
+        return all_stats
 
     # =========================================================================
     # APPROXIMATE NEAREST NEIGHBOR (ANN) SEARCH
