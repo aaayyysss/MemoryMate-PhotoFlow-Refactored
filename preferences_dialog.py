@@ -2381,6 +2381,41 @@ class PreferencesDialog(QDialog):
                 f"Could not open model folder:\n{str(e)}"
             )
 
+    def _get_current_project_id(self):
+        """
+        Get the current project ID from the main window.
+
+        Checks multiple sources in order:
+        1. Main window's grid.project_id
+        2. Main window's sidebar.project_id
+        3. Default project from app_services
+
+        Returns:
+            Project ID or None if not found
+        """
+        try:
+            parent = self.parent()
+
+            # Try grid.project_id
+            if parent and hasattr(parent, 'grid') and hasattr(parent.grid, 'project_id'):
+                pid = parent.grid.project_id
+                if pid is not None:
+                    return pid
+
+            # Try sidebar.project_id
+            if parent and hasattr(parent, 'sidebar') and hasattr(parent.sidebar, 'project_id'):
+                pid = parent.sidebar.project_id
+                if pid is not None:
+                    return pid
+
+            # Fallback to default project
+            from app_services import get_default_project_id
+            return get_default_project_id()
+
+        except Exception as e:
+            print(f"[PreferencesDialog] Error getting project_id: {e}")
+            return None
+
     def _refresh_gpu_info(self):
         """Refresh GPU and performance information."""
         try:
@@ -2436,12 +2471,8 @@ class PreferencesDialog(QDialog):
         try:
             from services.semantic_embedding_service import get_semantic_embedding_service
 
-            # Get current project ID from main window if available
-            project_id = None
-            if self.parent() and hasattr(self.parent(), 'project_id'):
-                project_id = self.parent().project_id
-            elif self.parent() and hasattr(self.parent(), 'current_project_id'):
-                project_id = self.parent().current_project_id
+            # Get current project ID from main window's grid or sidebar
+            project_id = self._get_current_project_id()
 
             if project_id is None:
                 self.lbl_embedding_coverage.setText("No project selected")
@@ -2485,11 +2516,7 @@ class PreferencesDialog(QDialog):
             from ui.embedding_stats_dashboard import show_embedding_stats_dashboard
 
             # Get current project ID
-            project_id = None
-            if self.parent() and hasattr(self.parent(), 'project_id'):
-                project_id = self.parent().project_id
-            elif self.parent() and hasattr(self.parent(), 'current_project_id'):
-                project_id = self.parent().current_project_id
+            project_id = self._get_current_project_id()
 
             if project_id is None:
                 QMessageBox.warning(
