@@ -609,6 +609,22 @@ class MainWindow(QMainWindow):
         act_ai_status = menu_ai.addAction("Show Embedding Status")
         act_ai_status.setToolTip("Check how many photos have embeddings extracted")
 
+        menu_ai.addSeparator()
+
+        act_embedding_dashboard = menu_ai.addAction("📊 Embedding Statistics Dashboard")
+        act_embedding_dashboard.setToolTip("View detailed embedding coverage, storage, and performance stats")
+
+        act_gpu_info = menu_ai.addAction("⚙️ GPU & Performance Info")
+        act_gpu_info.setToolTip("Show GPU device, memory, and optimal batch size for embeddings")
+
+        act_migrate_float16 = menu_ai.addAction("⚡ Migrate to Float16")
+        act_migrate_float16.setToolTip("Convert float32 embeddings to float16 (50% space savings)")
+
+        # Store actions as instance attributes for signal connections
+        self.act_embedding_dashboard = act_embedding_dashboard
+        self.act_gpu_info = act_gpu_info
+        self.act_migrate_float16 = act_migrate_float16
+
         menu_tools.addSeparator()
 
         # Duplicate Detection submenu
@@ -702,6 +718,9 @@ class MainWindow(QMainWindow):
 
         act_extract_embeddings.triggered.connect(self._on_extract_embeddings)
         act_ai_status.triggered.connect(self._on_show_embedding_status)
+        self.act_embedding_dashboard.triggered.connect(self._on_open_embedding_dashboard)
+        self.act_gpu_info.triggered.connect(self._on_show_gpu_info)
+        self.act_migrate_float16.triggered.connect(self._on_migrate_embeddings_float16)
 
         # Duplicate detection connections
         act_detect_duplicates.triggered.connect(self._on_detect_duplicates)
@@ -1132,6 +1151,12 @@ class MainWindow(QMainWindow):
             self._init_progress_pollers()
         except Exception as e:
             print(f"[MainWindow] ⚠️ Progress pollers init failed: {e}")
+
+        # === Initialize embedding status bar indicator ===
+        try:
+            self._init_embedding_status_indicator()
+        except Exception as e:
+            print(f"[MainWindow] ⚠️ Embedding status indicator init failed: {e}")
 
         # Phase 2: Initialize breadcrumb navigation
         QTimer.singleShot(100, self._update_breadcrumb)
@@ -1626,6 +1651,89 @@ class MainWindow(QMainWindow):
             import traceback
             traceback.print_exc()
 
+    def _start_embedding_extraction(self, photo_ids: list):
+        """
+        Start embedding extraction for a specific list of photo IDs.
+
+        This is a helper method for folder/selection-specific extraction.
+
+        Args:
+            photo_ids: List of photo IDs to process
+        """
+        try:
+            if not photo_ids:
+                QMessageBox.information(self, "No Photos", "No photos to process.")
+                return
+
+            # Get model selection
+            from utils.model_selection_helper import check_and_select_model
+
+            model_variant, should_continue = check_and_select_model(self)
+
+            if not should_continue:
+                return
+
+            if model_variant == 'OPEN_DOWNLOAD_DIALOG':
+                QMessageBox.information(
+                    self,
+                    "Download Required",
+                    "Please download the CLIP model from Preferences > Visual Embeddings."
+                )
+                return
+
+            # Launch the embedding worker with progress dialog
+            from workers.embedding_worker import EmbeddingWorker
+            from services.job_service import get_job_service
+            from ui.embedding_progress_dialog import EmbeddingProgressDialog
+            from PySide6.QtCore import QThreadPool
+
+            # Create progress dialog
+            progress_dialog = EmbeddingProgressDialog(len(photo_ids), self)
+
+            # Enqueue job
+            job_service = get_job_service()
+            job_id = job_service.enqueue_job(
+                kind='embed',
+                payload={
+                    'photo_ids': photo_ids,
+                    'model_variant': model_variant
+                },
+                backend='auto'
+            )
+
+            # Create worker
+            worker = EmbeddingWorker(
+                job_id=job_id,
+                photo_ids=photo_ids,
+                model_variant=model_variant,
+                device='auto'
+            )
+
+            # Connect worker signals to progress dialog
+            worker.signals.progress.connect(progress_dialog.update_progress)
+            worker.signals.finished.connect(progress_dialog.on_finished)
+            worker.signals.error.connect(progress_dialog.on_error)
+
+            # Connect dialog cancel to worker cancel
+            progress_dialog.cancelled.connect(worker.cancel)
+
+            # Start worker
+            QThreadPool.globalInstance().start(worker)
+
+            # Show progress dialog
+            progress_dialog.exec()
+
+            # Update embedding status bar after extraction
+            if hasattr(self, '_update_embedding_status_bar'):
+                self._update_embedding_status_bar()
+
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Extraction Error",
+                f"Failed to start embedding extraction:\n{str(e)}"
+            )
+
     def _on_show_embedding_status(self):
         """Show embedding extraction status."""
         try:
@@ -1692,6 +1800,157 @@ class MainWindow(QMainWindow):
             print(f"✗ Embedding status error: {e}")
             import traceback
             traceback.print_exc()
+
+    def _on_open_embedding_dashboard(self):
+        """Open the embedding statistics dashboard."""
+        try:
+            from ui.embedding_stats_dashboard import show_embedding_stats_dashboard
+
+            # Get project_id
+            project_id = None
+            if hasattr(self, 'grid') and hasattr(self.grid, 'project_id'):
+                project_id = self.grid.project_id
+            elif hasattr(self, 'sidebar') and hasattr(self.sidebar, 'project_id'):
+                project_id = self.sidebar.project_id
+
+            if project_id is None:
+                from app_services import get_default_project_id
+                project_id = get_default_project_id()
+
+            if project_id is None:
+                QMessageBox.warning(self, "No Project", "Please select a project first.")
+                return
+
+            # Keep reference to prevent garbage collection
+            self._embedding_dashboard = show_embedding_stats_dashboard(project_id, self)
+
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Dashboard Error",
+                f"Failed to open embedding dashboard:\n{str(e)}"
+            )
+
+    def _on_show_gpu_info(self):
+        """Show GPU and performance information dialog."""
+        try:
+            from services.semantic_embedding_service import get_semantic_embedding_service
+
+            service = get_semantic_embedding_service()
+            gpu_info = service.get_gpu_memory_info()
+
+            device = gpu_info.get('device', 'cpu')
+            device_name = gpu_info.get('device_name', 'Unknown')
+            total_mb = gpu_info.get('total_mb', 0)
+            available_mb = gpu_info.get('available_mb', 0)
+
+            # Get optimal batch size
+            try:
+                batch_size = service.get_optimal_batch_size()
+            except Exception:
+                batch_size = "N/A"
+
+            # Check FAISS
+            try:
+                import faiss
+                faiss_status = "✓ Available (Fast ANN search)"
+            except ImportError:
+                faiss_status = "✗ Not installed (using numpy fallback)"
+
+            # Build message
+            if device == 'cuda':
+                device_info = f"CUDA GPU: {device_name}"
+                mem_info = f"Memory: {available_mb:.0f} MB available / {total_mb:.0f} MB total"
+            elif device == 'mps':
+                device_info = "Apple Metal (MPS)"
+                mem_info = "Memory: Shared with system RAM"
+            else:
+                device_info = "CPU (No GPU detected)"
+                mem_info = "Memory: Using system RAM"
+
+            QMessageBox.information(
+                self,
+                "GPU & Performance Info",
+                f"Device: {device_info}\n"
+                f"{mem_info}\n\n"
+                f"Optimal Batch Size: {batch_size} photos\n"
+                f"FAISS: {faiss_status}\n\n"
+                f"💡 Batch size is auto-tuned based on available GPU memory."
+            )
+
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "GPU Info Error",
+                f"Failed to get GPU info:\n{str(e)}"
+            )
+
+    def _on_migrate_embeddings_float16(self):
+        """Migrate float32 embeddings to float16 format."""
+        try:
+            from services.semantic_embedding_service import get_semantic_embedding_service
+
+            # First check if there are any float32 embeddings
+            service = get_semantic_embedding_service()
+
+            # Get stats to check float32 count
+            project_id = None
+            if hasattr(self, 'grid') and hasattr(self.grid, 'project_id'):
+                project_id = self.grid.project_id
+
+            if project_id is None:
+                from app_services import get_default_project_id
+                project_id = get_default_project_id()
+
+            stats = service.get_project_embedding_stats(project_id) if project_id else {}
+            float32_count = stats.get('float32_count', 0)
+
+            if float32_count == 0:
+                QMessageBox.information(
+                    self,
+                    "No Migration Needed",
+                    "All embeddings are already in float16 format.\n"
+                    "No migration is necessary."
+                )
+                return
+
+            reply = QMessageBox.question(
+                self,
+                "Migrate to Float16",
+                f"Found {float32_count} embeddings in legacy float32 format.\n\n"
+                "Converting to float16 will save ~50% storage space.\n"
+                "This is safe and reversible (embeddings can be regenerated).\n\n"
+                "Proceed?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.Yes
+            )
+
+            if reply != QMessageBox.Yes:
+                return
+
+            migrated = 0
+            while True:
+                batch_migrated = service.migrate_to_half_precision(batch_size=500)
+                if batch_migrated == 0:
+                    break
+                migrated += batch_migrated
+
+            QMessageBox.information(
+                self,
+                "Migration Complete",
+                f"Successfully migrated {migrated} embeddings to float16 format."
+            )
+
+            # Update status bar if we have embedding coverage indicator
+            if hasattr(self, '_update_embedding_status_bar'):
+                self._update_embedding_status_bar()
+
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Migration Error",
+                f"Failed to migrate embeddings:\n{str(e)}"
+            )
 
     def _on_detect_duplicates(self):
         """Launch duplicate detection dialog."""
@@ -3399,6 +3658,137 @@ class MainWindow(QMainWindow):
         self.backfill_timer = QTimer(self)
         self.backfill_timer.timeout.connect(self._poll_backfill_status)
         self.backfill_timer.start(2000)
+
+    def _init_embedding_status_indicator(self):
+        """
+        Initialize the embedding coverage status bar indicator.
+
+        Shows a compact indicator like: "🧠 85% embeddings"
+        Clicking it opens the full embedding dashboard.
+        """
+        from PySide6.QtWidgets import QLabel
+
+        # Create clickable label for status bar
+        self.embedding_status_label = QLabel("🧠 —%")
+        self.embedding_status_label.setStyleSheet("""
+            QLabel {
+                color: #888;
+                padding: 0 8px;
+                font-size: 10pt;
+            }
+            QLabel:hover {
+                color: #4A90E2;
+                text-decoration: underline;
+            }
+        """)
+        self.embedding_status_label.setCursor(Qt.PointingHandCursor)
+        self.embedding_status_label.setToolTip("Embedding coverage. Click to view details.")
+
+        # Make label clickable
+        self.embedding_status_label.mousePressEvent = lambda e: self._on_open_embedding_dashboard()
+
+        # Add to status bar as permanent widget (right side)
+        self.statusBar().addPermanentWidget(self.embedding_status_label)
+
+        # Start periodic updates (every 30 seconds)
+        self.embedding_status_timer = QTimer(self)
+        self.embedding_status_timer.timeout.connect(self._update_embedding_status_bar)
+        self.embedding_status_timer.start(30000)  # 30 seconds
+
+        # Initial update after short delay
+        QTimer.singleShot(2000, self._update_embedding_status_bar)
+
+    def _update_embedding_status_bar(self):
+        """Update the embedding coverage indicator in the status bar."""
+        try:
+            # Get current project_id
+            project_id = None
+            if hasattr(self, 'grid') and hasattr(self.grid, 'project_id'):
+                project_id = self.grid.project_id
+            elif hasattr(self, 'sidebar') and hasattr(self.sidebar, 'project_id'):
+                project_id = self.sidebar.project_id
+
+            if project_id is None:
+                from app_services import get_default_project_id
+                project_id = get_default_project_id()
+
+            if project_id is None:
+                self.embedding_status_label.setText("🧠 —%")
+                self.embedding_status_label.setToolTip("No project selected")
+                return
+
+            # Get stats from service
+            from services.semantic_embedding_service import get_semantic_embedding_service
+            service = get_semantic_embedding_service()
+            stats = service.get_project_embedding_stats(project_id)
+
+            coverage = stats.get('coverage_percent', 0)
+            total = stats.get('total_photos', 0)
+            with_emb = stats.get('photos_with_embeddings', 0)
+
+            # Update label
+            if coverage >= 100:
+                self.embedding_status_label.setText("🧠 100%")
+                self.embedding_status_label.setStyleSheet("""
+                    QLabel {
+                        color: #4CAF50;
+                        padding: 0 8px;
+                        font-size: 10pt;
+                    }
+                    QLabel:hover {
+                        color: #66BB6A;
+                        text-decoration: underline;
+                    }
+                """)
+            elif coverage >= 80:
+                self.embedding_status_label.setText(f"🧠 {coverage:.0f}%")
+                self.embedding_status_label.setStyleSheet("""
+                    QLabel {
+                        color: #8BC34A;
+                        padding: 0 8px;
+                        font-size: 10pt;
+                    }
+                    QLabel:hover {
+                        color: #9CCC65;
+                        text-decoration: underline;
+                    }
+                """)
+            elif coverage > 0:
+                self.embedding_status_label.setText(f"🧠 {coverage:.0f}%")
+                self.embedding_status_label.setStyleSheet("""
+                    QLabel {
+                        color: #FFC107;
+                        padding: 0 8px;
+                        font-size: 10pt;
+                    }
+                    QLabel:hover {
+                        color: #FFCA28;
+                        text-decoration: underline;
+                    }
+                """)
+            else:
+                self.embedding_status_label.setText("🧠 0%")
+                self.embedding_status_label.setStyleSheet("""
+                    QLabel {
+                        color: #888;
+                        padding: 0 8px;
+                        font-size: 10pt;
+                    }
+                    QLabel:hover {
+                        color: #4A90E2;
+                        text-decoration: underline;
+                    }
+                """)
+
+            # Update tooltip with details
+            tooltip = f"Embedding Coverage: {with_emb}/{total} photos ({coverage:.1f}%)\n"
+            tooltip += "Click to view detailed statistics."
+            self.embedding_status_label.setToolTip(tooltip)
+
+        except Exception as e:
+            # Silently fail - don't spam console with errors
+            self.embedding_status_label.setText("🧠 —%")
+            self.embedding_status_label.setToolTip(f"Could not load stats: {str(e)[:30]}")
 
     def _poll_cluster_status(self):
         path = os.path.join(self.app_root, "status", "cluster_status.json")
