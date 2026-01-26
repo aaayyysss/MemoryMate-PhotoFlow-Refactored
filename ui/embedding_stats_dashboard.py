@@ -114,9 +114,13 @@ class EmbeddingStatsDashboard(QDialog):
 
     def _create_ui(self):
         """Create the dashboard UI."""
-        layout = QVBoxLayout(self)
-        layout.setSpacing(16)
-        layout.setContentsMargins(20, 20, 20, 20)
+        # Reuse existing layout if present (for refresh), otherwise create new
+        if self.layout():
+            layout = self.layout()
+        else:
+            layout = QVBoxLayout(self)
+            layout.setSpacing(16)
+            layout.setContentsMargins(20, 20, 20, 20)
 
         # Title
         title = QLabel("Semantic Embedding Statistics")
