@@ -184,12 +184,20 @@ class SemanticSearchService:
                 if isinstance(embedding_blob, str):
                     embedding_blob = embedding_blob.encode('latin1')
 
-                embedding = np.frombuffer(embedding_blob, dtype='float32')
+                # CRITICAL FIX: Handle float16 vs float32 storage format
+                # Negative dim indicates float16 format (new, 50% smaller)
+                # Positive dim indicates float32 format (legacy)
+                if dim < 0:
+                    actual_dim = abs(dim)
+                    embedding = np.frombuffer(embedding_blob, dtype='float16').astype('float32')
+                else:
+                    actual_dim = dim
+                    embedding = np.frombuffer(embedding_blob, dtype='float32')
 
-                if len(embedding) != dim:
+                if len(embedding) != actual_dim:
                     logger.warning(
                         f"[SemanticSearchService] Dimension mismatch for photo {photo_id}: "
-                        f"expected {dim}, got {len(embedding)}"
+                        f"expected {actual_dim}, got {len(embedding)}"
                     )
                     continue
 
