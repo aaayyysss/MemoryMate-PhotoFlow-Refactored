@@ -1,5 +1,5 @@
 # scan_controller.py
-# Version 10.01.01.04 dated 20260122
+# Version 10.01.01.05 dated 20260127
 
 """
 ScanController - Photo/Video Scanning Orchestration
@@ -316,7 +316,10 @@ class ScanController(QObject):
         except Exception as e:
             self.logger.error(f"Critical error creating scan worker: {e}", exc_info=True)
             self.main.statusBar().showMessage(f"❌ Failed to create scan worker: {e}")
-            from translations import tr
+#            from translations import tr
+
+            from translation_manager import tr
+
             QMessageBox.critical(self.main, tr("messages.scan_error"), tr("messages.scan_error_worker", error=str(e)))
             return
 
@@ -328,7 +331,10 @@ class ScanController(QObject):
                 self.worker.stop()
             except Exception:
                 pass
-        from translations import tr
+#        from translations import tr
+
+        from translation_manager import tr
+
         self.main.statusBar().showMessage(tr('status_messages.scan_cancel_requested'))
         self.main.act_cancel_scan.setEnabled(False)
 
@@ -409,12 +415,15 @@ class ScanController(QObject):
     def _on_error(self, err_text: str):
         self.logger.error(f"Scan error: {err_text}")
         try:
-            from translations import tr
+#            from translations import tr
+
+            from translation_manager import tr
+
             QMessageBox.critical(self.main, tr("messages.scan_error"), err_text)
         except Exception:
             QMessageBox.critical(self.main, "Scan Error", err_text)
         if self.thread and self.thread.isRunning():
-            self.thread.quit()
+            self.threa_manager.quit()
 
     def _cleanup(self):
         """
@@ -457,7 +466,9 @@ class ScanController(QObject):
         # CRITICAL FIX: Create and show message box explicitly, then close it properly
         # Using QMessageBox.information() can cause issues with multiple scans
         #from translations import tr
+        
         from translation_manager import tr
+        
         msgbox = QMessageBox(self.main)
         msgbox.setWindowTitle(tr("messages.scan_complete_title"))
         msgbox.setText(msg)
