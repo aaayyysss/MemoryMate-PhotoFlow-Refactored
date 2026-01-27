@@ -1,3 +1,6 @@
+## services\semantic_embedding_service.py
+## Version: 1.1.1 dated 20260126
+ 
 """
 SemanticEmbeddingService - Clean Architectural Separation
 
@@ -109,6 +112,22 @@ class SemanticEmbeddingService:
         """Check if service is available."""
         return self._available
 
+    def _has_model_weights(model_dir: str) -> bool:
+        from pathlib import Path
+        p = Path(model_dir)
+        if not (p / "config.json").exists():
+            return False
+        # At least one of these must exist for transformers models
+        weight_candidates = [
+            p / "model.safetensors",
+            p / "pytorch_model.bin",
+            p / "pytorch_model.bin.index.json",
+            p / "tf_model.h5",
+            p / "flax_model.msgpack",
+        ]
+        return any(x.exists() for x in weight_candidates)
+
+
     def _load_model(self):
         """
         Lazy load CLIP model with offline-first approach.
@@ -190,7 +209,8 @@ class SemanticEmbeddingService:
                         logger.debug(f"[SemanticEmbeddingService] Resolving relative path: {clip_path} → {clip_path_obj}")
 
                     # Validate model path
-                    if clip_path_obj.exists() and (clip_path_obj / 'config.json').exists():
+#                    if clip_path_obj.exists() and (clip_path_obj / 'config.json').exists():
+                    if clip_path_obj.exists() and _has_model_weights(str(clip_path_obj)):    
                         local_model_path = str(clip_path_obj)
                         logger.info(f"[SemanticEmbeddingService] ✓ Using stored preference: {local_model_path}")
                     else:
