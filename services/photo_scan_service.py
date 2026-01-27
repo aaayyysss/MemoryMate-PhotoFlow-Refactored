@@ -1,5 +1,5 @@
 # services/photo_scan_service.py
-# Version 10.01.01.03 dated 20260115
+# Version 10.01.01.04 dated 20260127
 # Photo scanning service - Uses MetadataService for extraction
 
 import os
@@ -152,6 +152,7 @@ class PhotoScanService:
         }
 
     def __init__(self,
+                 project_id: int | None = None,
                  photo_repo: Optional[PhotoRepository] = None,
                  folder_repo: Optional[FolderRepository] = None,
                  project_repo: Optional[ProjectRepository] = None,
@@ -171,6 +172,8 @@ class PhotoScanService:
             stat_timeout: Timeout for os.stat calls in seconds (default: 3.0)
                          NOTE: Could be made configurable via SettingsManager in the future
         """
+        self.project_id = project_id
+        
         self.photo_repo = photo_repo or PhotoRepository()
         self.folder_repo = folder_repo or FolderRepository()
         self.project_repo = project_repo or ProjectRepository()
