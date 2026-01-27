@@ -1,5 +1,5 @@
 # services/scan_worker_adapter.py
-# Version 01.00.00.00 dated 20251102
+# Version 01.00.00.01 dated 20260127
 # Qt adapter for PhotoScanService - bridges service layer with MainWindow
 
 from PySide6.QtCore import QObject, Signal, QTimer
@@ -60,6 +60,7 @@ class ScanWorkerAdapter(QObject):
 
         # Create service instance
         self.service = PhotoScanService(
+            project_id,
             batch_size=settings.get("scan_batch_size", 200),
             stat_timeout=settings.get("stat_timeout_secs", 3.0)
         )
