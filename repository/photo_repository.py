@@ -1,5 +1,5 @@
 # repository/photo_repository.py
-# Version 02.01.00.00 dated 20260122
+# Version 02.01.00.01 dated 20260127
 # Repository for photo_metadata table operations
 
 from typing import Optional, List, Dict, Any
@@ -638,7 +638,9 @@ class PhotoRepository(BaseRepository):
         # Note: table is photo_metadata, not photos
         query = """
             SELECT p.id, p.path, p.created_ts, p.folder_id, p.project_id,
-                   p.width, p.height, p.file_size, p.date_taken
+                   p.width, p.height,  
+                   CAST(ROUND(COALESCE(p.size_kb, 0) * 1024) AS INTEGER) AS file_size,
+                   p.date_taken
             FROM photo_metadata p
             LEFT JOIN semantic_embeddings se
                 ON p.id = se.photo_id AND se.model = ?
