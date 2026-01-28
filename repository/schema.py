@@ -19,7 +19,7 @@ Schema Version: 2.0.0
 - Adds schema_version tracking table
 """
 
-SCHEMA_VERSION = "9.0.0"
+SCHEMA_VERSION = "9.1.0"
 
 # Complete schema SQL - executed as a script for new databases
 SCHEMA_SQL = """
@@ -54,6 +54,9 @@ VALUES ('7.0.0', 'Semantic embeddings separation: semantic_embeddings, semantic_
 INSERT OR IGNORE INTO schema_version (version, description)
 VALUES ('8.0.0', 'Asset-centric duplicates model + stacks: media_asset, media_instance, media_stack');
 
+INSERT OR IGNORE INTO schema_version (version, description)
+VALUES ('9.1.0', 'Project canonical semantic model: projects.semantic_model for embedding consistency');
+
 -- ============================================================================
 -- FACE RECOGNITION TABLES
 -- ============================================================================
@@ -87,12 +90,14 @@ CREATE TABLE IF NOT EXISTS reference_labels (
 -- ============================================================================
 
 -- Projects (top-level organizational unit)
+-- v9.1.0: Added semantic_model for canonical embedding model per project
 CREATE TABLE IF NOT EXISTS projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     folder TEXT NOT NULL,
     mode TEXT NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    semantic_model TEXT DEFAULT 'clip-vit-b32'  -- Canonical embedding model for this project
 );
 
 -- Branches (sub-groups within projects)
