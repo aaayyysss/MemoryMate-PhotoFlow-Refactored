@@ -8753,7 +8753,8 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
                 worker = SemanticEmbeddingWorker(
                     photo_ids=photo_ids,
                     model_name="clip-vit-b32",
-                    force_recompute=False
+                    force_recompute=False,
+                    project_id=self.project_id
                 )
 
                 # Use QEventLoop to wait for worker while keeping UI responsive
