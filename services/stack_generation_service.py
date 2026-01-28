@@ -1,5 +1,5 @@
 # services/stack_generation_service.py
-# Version 01.00.00.00 dated 20260115
+# Version 01.00.00.01 dated 20260128
 # Similar-shot and near-duplicate stack generation service
 #
 # Part of the asset-centric duplicate management system.
@@ -11,10 +11,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional, List, Dict, Any, Tuple
 import json
+
+import sqlite3
+
 from logging_config import get_logger
 
 from repository.stack_repository import StackRepository
 from repository.photo_repository import PhotoRepository
+from repository.base_repository import DatabaseConnection
 
 logger = get_logger(__name__)
 
@@ -71,6 +75,32 @@ class StackGenerationService:
         self.stack_repo = stack_repo
         self.similarity_service = similarity_service
         self.logger = get_logger(self.__class__.__name__)
+
+    def _get_representative_photo_ids(self, project_id: int) -> Optional[set[int]]:
+        """
+        Return the set of representative photo_ids for each asset.
+
+        This enforces the policy:
+        - Similar-shot stacks operate on asset representatives
+        - Exact duplicate instances are handled by the Duplicates pipeline, not Similar
+
+        If schema differs, returns None and caller falls back to legacy behavior.
+        """
+        try:
+            db = getattr(self.photo_repo, "db", None) or DatabaseConnection()
+            with db.get_connection() as conn:
+                rows = conn.execute("""
+                    SELECT a.representative_photo_id AS photo_id
+                    FROM media_asset a
+                    WHERE a.project_id = ?
+                      AND a.representative_photo_id IS NOT NULL
+                """, (project_id,)).fetchall()
+                rep_ids = {r["photo_id"] for r in rows if r and r["photo_id"] is not None}
+                return rep_ids if rep_ids else set()
+        except sqlite3.OperationalError as e:
+            self.logger.debug(f"Representative filtering skipped (schema mismatch): {e}")
+            return None
+
 
     # =========================================================================
     # SIMILAR SHOT STACKS
@@ -132,7 +162,12 @@ class StackGenerationService:
                 f"stack badges should be refreshed to prevent 'Stack not found' errors."
             )
 
-        # Step 2: Get all photos with embeddings
+#        # Step 2: Get all photos with embeddings
+        # Step 2: Get all photos with timestamps
+        # Policy: Prefer asset representatives only, to prevent exact duplicates appearing in Similar stacks
+        representative_ids = self._get_representative_photo_ids(project_id)
+
+
         # Note: For large projects, might need pagination
         all_photos = self.photo_repo.find_all(
             where_clause="project_id = ? AND created_ts IS NOT NULL",
@@ -147,6 +182,13 @@ class StackGenerationService:
                 stacks_created=0,
                 memberships_created=0,
                 errors=0
+            )
+
+        if representative_ids is not None:
+            before = len(all_photos)
+            all_photos = [p for p in all_photos if p.get("id") in representative_ids]
+            self.logger.info(
+                f"Representative-only mode enabled: {before} → {len(all_photos)} photos considered"
             )
 
         self.logger.info(f"Found {len(all_photos)} photos with timestamps")
