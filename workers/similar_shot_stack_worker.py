@@ -46,6 +46,7 @@ from services.job_service import get_job_service
 from services.stack_generation_service import StackGenerationService, StackGenParams
 from repository.photo_repository import PhotoRepository
 from repository.stack_repository import StackRepository
+from repository.project_repository import ProjectRepository
 from repository.base_repository import DatabaseConnection
 from services.semantic_embedding_service import SemanticEmbeddingService
 from logging_config import get_logger
@@ -203,6 +204,9 @@ class SimilarShotStackWorker(QRunnable):
 
         Services must be initialized in the worker thread, not main thread,
         to avoid database connection issues.
+
+        IMPORTANT: Uses the project's canonical semantic model to ensure
+        embedding consistency and prevent vector space contamination.
         """
         # Initialize database connection
         if self.db_path:
@@ -213,9 +217,30 @@ class SimilarShotStackWorker(QRunnable):
         # Initialize repositories
         photo_repo = PhotoRepository(db_conn)
         stack_repo = StackRepository(db_conn)
+        project_repo = ProjectRepository(db_conn)
 
-        # Initialize embedding service
-        embedding_service = SemanticEmbeddingService(db_connection=db_conn)
+        # Get the project's canonical semantic model
+        canonical_model = project_repo.get_semantic_model(self.project_id)
+        logger.info(
+            f"[SimilarShotStacks] Using project canonical model: {canonical_model} "
+            f"(project_id={self.project_id})"
+        )
+
+        # Check for embedding model mismatches before proceeding
+        mismatch_info = project_repo.get_embedding_model_mismatch_count(self.project_id)
+        if mismatch_info['mismatched_embeddings'] > 0:
+            logger.warning(
+                f"[SimilarShotStacks] WARNING: {mismatch_info['mismatched_embeddings']} embeddings "
+                f"use a different model than canonical model '{canonical_model}'. "
+                f"Models in use: {mismatch_info['models_in_use']}. "
+                f"Consider running semantic reindex for accurate results."
+            )
+
+        # Initialize embedding service with the project's canonical model
+        embedding_service = SemanticEmbeddingService(
+            model_name=canonical_model,
+            db_connection=db_conn
+        )
 
         # Initialize stack generation service
         self.stack_gen_service = StackGenerationService(
@@ -226,7 +251,9 @@ class SimilarShotStackWorker(QRunnable):
 
         self.job_service = get_job_service()
 
-        logger.debug("[SimilarShotStacks] Services initialized")
+        logger.debug(
+            f"[SimilarShotStacks] Services initialized with model={canonical_model}"
+        )
 
 
 def create_similar_shot_stack_worker(

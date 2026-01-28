@@ -51,6 +51,34 @@ def apply_migration_v6(conn: sqlite3.Connection):
         return False
 
 
+def apply_migration_v9_1(conn: sqlite3.Connection):
+    """Apply migration v9.1.0: Project Canonical Semantic Model"""
+    logger.info("=" * 80)
+    logger.info("Applying Migration v9.1.0: Project Canonical Semantic Model")
+    logger.info("=" * 80)
+
+    try:
+        from migrations import migration_v9_1_semantic_model
+
+        if migration_v9_1_semantic_model.migrate_up(conn):
+            # Verify migration
+            success, errors = migration_v9_1_semantic_model.verify_migration(conn)
+            if not success:
+                logger.error("Migration v9.1.0 verification failed:")
+                for error in errors:
+                    logger.error(f"  - {error}")
+                return False
+
+            logger.info("Migration v9.1.0 applied and verified successfully")
+            return True
+        else:
+            return False
+
+    except Exception as e:
+        logger.error(f"Failed to apply migration v9.1.0: {e}", exc_info=True)
+        return False
+
+
 def apply_migration_v7(conn: sqlite3.Connection):
     """Apply migration v7.0.0: Semantic Embeddings Separation"""
     logger.info("=" * 80)
@@ -97,6 +125,13 @@ def check_table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
     return cursor.fetchone() is not None
 
 
+def check_column_exists(conn: sqlite3.Connection, table_name: str, column_name: str) -> bool:
+    """Check if a column exists in a table"""
+    cursor = conn.execute(f"PRAGMA table_info({table_name})")
+    columns = [row[1] for row in cursor.fetchall()]
+    return column_name in columns
+
+
 def main():
     """Main entry point"""
     logger.info("=" * 80)
@@ -140,24 +175,40 @@ def main():
             else:
                 logger.info("\n[3] Migration v7.0.0 already applied, skipping")
 
+            # Check for v9.1.0 migration (semantic_model column in projects)
+            has_semantic_model_column = check_column_exists(conn, 'projects', 'semantic_model')
+            logger.info(f"   projects.semantic_model column exists: {has_semantic_model_column}")
+
+            if not has_semantic_model_column:
+                logger.info("\n[4] Applying migration v9.1.0 (adds projects.semantic_model column)...")
+                if apply_migration_v9_1(conn):
+                    applied_count += 1
+                else:
+                    logger.error("Migration v9.1.0 failed!")
+                    return 1
+            else:
+                logger.info("\n[4] Migration v9.1.0 already applied, skipping")
+
             # Final verification
-            logger.info("\n[4] Final verification...")
+            logger.info("\n[5] Final verification...")
 
             has_ml_job = check_table_exists(conn, 'ml_job')
             has_semantic_embeddings = check_table_exists(conn, 'semantic_embeddings')
+            has_semantic_model_column = check_column_exists(conn, 'projects', 'semantic_model')
 
             logger.info(f"   ml_job table exists: {has_ml_job}")
             logger.info(f"   semantic_embeddings table exists: {has_semantic_embeddings}")
+            logger.info(f"   projects.semantic_model column exists: {has_semantic_model_column}")
 
-            if has_ml_job and has_semantic_embeddings:
+            if has_ml_job and has_semantic_embeddings and has_semantic_model_column:
                 logger.info("\n" + "=" * 80)
-                logger.info(f"✓ SUCCESS: Applied {applied_count} migration(s)")
-                logger.info("✓ Database is now up to date")
+                logger.info(f"SUCCESS: Applied {applied_count} migration(s)")
+                logger.info("Database is now up to date")
                 logger.info("=" * 80)
                 return 0
             else:
                 logger.error("\n" + "=" * 80)
-                logger.error("✗ FAILED: Some tables are still missing")
+                logger.error("FAILED: Some tables/columns are still missing")
                 logger.error("=" * 80)
                 return 1
 

@@ -29,9 +29,15 @@ from PySide6.QtCore import QRunnable, QObject, Signal
 
 from services.semantic_embedding_service import get_semantic_embedding_service
 from repository.photo_repository import PhotoRepository
+from repository.project_repository import ProjectRepository
 from logging_config import get_logger
 
 logger = get_logger(__name__)
+
+
+class SemanticModelMismatchError(Exception):
+    """Raised when trying to create embeddings with a model that doesn't match the project's canonical model."""
+    pass
 
 
 class SemanticEmbeddingSignals(QObject):
@@ -56,26 +62,35 @@ class SemanticEmbeddingWorker(QRunnable):
 
     def __init__(self,
                  photo_ids: List[int],
-                 model_name: str = "clip-vit-b32",
+                 model_name: Optional[str] = None,
                  force_recompute: bool = False,
                  project_id: Optional[int] = None,
                  save_progress_interval: int = 10):
         """
         Initialize semantic embedding worker.
 
+        IMPORTANT: Model selection follows the "project canonical model" principle.
+        The model_name is determined by the project's semantic_model setting.
+
         Args:
             photo_ids: List of photo IDs to process
-            model_name: CLIP/SigLIP model variant
+            model_name: DEPRECATED - If provided, must match project's canonical model.
+                       Will be ignored if project_id is provided (project's model takes precedence).
             force_recompute: If True, recompute even if embedding exists
-            project_id: Optional project ID for progress tracking (enables resumability)
+            project_id: Project ID (REQUIRED for canonical model enforcement)
             save_progress_interval: Save progress every N photos (default: 10)
+
+        Raises:
+            SemanticModelMismatchError: If model_name doesn't match project's canonical model
         """
         super().__init__()
         self.photo_ids = photo_ids
-        self.model_name = model_name
         self.force_recompute = force_recompute
         self.project_id = project_id
         self.save_progress_interval = save_progress_interval
+
+        # Resolve canonical model from project
+        self.model_name = self._resolve_canonical_model(model_name)
 
         self.signals = SemanticEmbeddingSignals()
 
@@ -85,6 +100,63 @@ class SemanticEmbeddingWorker(QRunnable):
         self.failed_count = 0
         self.start_time = None
         self._last_processed_photo_id = None
+
+    def _resolve_canonical_model(self, requested_model: Optional[str]) -> str:
+        """
+        Resolve the canonical model for embedding generation.
+
+        Priority order:
+        1. Project's canonical model (if project_id provided)
+        2. Requested model (if matches project canonical, or no project)
+        3. Default model (if no project and no request)
+
+        Args:
+            requested_model: Optional model name requested by caller
+
+        Returns:
+            Resolved model name
+
+        Raises:
+            SemanticModelMismatchError: If requested model doesn't match project's canonical model
+        """
+        default_model = "clip-vit-b32"
+
+        if self.project_id is not None:
+            try:
+                project_repo = ProjectRepository()
+                canonical_model = project_repo.get_semantic_model(self.project_id)
+
+                # If caller explicitly requested a different model, that's an error
+                if requested_model is not None and requested_model != canonical_model:
+                    raise SemanticModelMismatchError(
+                        f"Model mismatch: requested '{requested_model}' but project {self.project_id} "
+                        f"uses canonical model '{canonical_model}'. "
+                        f"Either change the project's semantic model or omit the model_name parameter."
+                    )
+
+                logger.info(
+                    f"[SemanticEmbeddingWorker] Using project canonical model: {canonical_model} "
+                    f"(project_id={self.project_id})"
+                )
+                return canonical_model
+
+            except SemanticModelMismatchError:
+                raise  # Re-raise model mismatch
+            except Exception as e:
+                logger.warning(
+                    f"[SemanticEmbeddingWorker] Could not read project canonical model: {e}. "
+                    f"Falling back to requested/default model."
+                )
+
+        # No project_id or couldn't read project - use requested or default
+        model = requested_model or default_model
+        if self.project_id is None:
+            logger.warning(
+                f"[SemanticEmbeddingWorker] No project_id provided. "
+                f"Using model '{model}' without canonical model enforcement. "
+                f"This may lead to vector space contamination!"
+            )
+        return model
 
     def run(self):
         """Execute batch embedding extraction with progress saving for resumability."""
