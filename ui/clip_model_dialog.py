@@ -112,21 +112,38 @@ class CLIPModelDialog(QDialog):
     """
     Dialog for CLIP model selection and download.
 
+    IMPORTANT: Model selection is PROJECT-LEVEL metadata (Google Photos/Lightroom best practice).
+    When project_id is provided, model changes are treated as project migrations that
+    require reindexing all embeddings.
+
     Workflow:
     1. Check for offline models
     2. Show available options
     3. Let user choose model variant
     4. Download with explicit consent
-    5. Store preference
+    5. Store as project canonical model (if project_id provided) or global preference
+    6. Trigger reindex job if model changed
     """
 
     model_selected = Signal(str, str)  # model_name, model_path
+    reindex_required = Signal(int, str, str)  # project_id, old_model, new_model
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, project_id: Optional[int] = None):
+        """
+        Initialize CLIP model dialog.
+
+        Args:
+            parent: Parent widget
+            project_id: Optional project ID for project-level model binding.
+                       When provided, model selection becomes project metadata
+                       and triggers reindexing workflow on change.
+        """
         super().__init__(parent)
         self.selected_model = None
         self.model_path = None
         self.download_worker = None
+        self.project_id = project_id
+        self.current_project_model = None
 
         self.setWindowTitle("CLIP Model Setup")
         self.setMinimumSize(700, 600)
@@ -134,6 +151,7 @@ class CLIPModelDialog(QDialog):
 
         self._init_ui()
         self._check_offline_availability()
+        self._load_project_model()
 
     def _init_ui(self):
         """Initialize user interface."""
@@ -345,11 +363,54 @@ class CLIPModelDialog(QDialog):
 
         return model_map.get(checked_id, model_map[0])
 
+    def _confirm_model_change(self, new_model: str) -> bool:
+        """
+        Confirm model change when it requires reindexing.
+
+        Returns True if user confirms, False to cancel.
+        """
+        if self.project_id is None or self.current_project_model is None:
+            return True  # No project context, no confirmation needed
+
+        if self.current_project_model == new_model:
+            return True  # Same model, no change
+
+        # Count photos that need reindexing
+        try:
+            from repository.project_repository import ProjectRepository
+            project_repo = ProjectRepository()
+            mismatch = project_repo.get_embedding_model_mismatch_count(self.project_id)
+            total = mismatch['total_embeddings']
+        except Exception:
+            total = "unknown number of"
+
+        reply = QMessageBox.warning(
+            self,
+            "Model Change Requires Reindexing",
+            f"Changing from '{self.current_project_model}' to '{new_model}' requires "
+            f"reindexing all embeddings for this project.\n\n"
+            f"This will:\n"
+            f"  - Regenerate embeddings for {total} photos\n"
+            f"  - Take some time depending on your hardware\n"
+            f"  - Keep old embeddings until reindex completes\n\n"
+            f"Similar photo search and semantic search will use the new model "
+            f"after reindexing is complete.\n\n"
+            f"Do you want to proceed?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+
+        return reply == QMessageBox.Yes
+
     def _on_use_existing(self):
         """Use existing offline model."""
         model_name, _ = self._get_selected_model()
 
         if model_name in self.offline_models:
+            # Confirm model change if needed
+            if not self._confirm_model_change(model_name):
+                return
+
             model_path = self.offline_models[model_name]
             logger.info(f"[CLIPModelDialog] Using existing model: {model_path}")
 
@@ -370,6 +431,10 @@ class CLIPModelDialog(QDialog):
     def _on_download(self):
         """Download selected model."""
         model_name, hf_model = self._get_selected_model()
+
+        # Confirm model change if needed (before download)
+        if not self._confirm_model_change(model_name):
+            return
 
         # Confirm download
         reply = QMessageBox.question(
@@ -450,14 +515,79 @@ class CLIPModelDialog(QDialog):
                 f"Please check your internet connection and try again."
             )
 
-    def _store_preference(self, model_name: str, model_path: str):
-        """Store model preference in settings."""
+    def _load_project_model(self):
+        """Load current project's canonical model if project_id is provided."""
+        if self.project_id is None:
+            return
+
         try:
+            from repository.project_repository import ProjectRepository
+            project_repo = ProjectRepository()
+            self.current_project_model = project_repo.get_semantic_model(self.project_id)
+
+            # Pre-select the current model in the UI
+            model_to_radio = {
+                'clip-vit-b32': self.radio_b32,
+                'clip-vit-b16': self.radio_b16,
+                'clip-vit-l14': self.radio_l14,
+            }
+            if self.current_project_model in model_to_radio:
+                model_to_radio[self.current_project_model].setChecked(True)
+
+            logger.info(
+                f"[CLIPModelDialog] Project {self.project_id} current model: {self.current_project_model}"
+            )
+        except Exception as e:
+            logger.warning(f"[CLIPModelDialog] Could not load project model: {e}")
+
+    def _store_preference(self, model_name: str, model_path: str):
+        """
+        Store model preference.
+
+        If project_id is provided, stores as project canonical model and
+        triggers reindexing workflow. Otherwise stores as global preference.
+        """
+        try:
+            # Always store global preference for model path
             from settings_manager_qt import SettingsManager
             settings = SettingsManager()
             settings.set("clip_model_name", model_name)
             settings.set("clip_model_path", model_path)
-            logger.info(f"[CLIPModelDialog] Stored preference: {model_name} → {model_path}")
+            logger.info(f"[CLIPModelDialog] Stored global preference: {model_name} → {model_path}")
+
+            # If project_id is provided, update project's canonical model
+            if self.project_id is not None:
+                from repository.project_repository import ProjectRepository
+                project_repo = ProjectRepository()
+
+                old_model = self.current_project_model or project_repo.get_semantic_model(self.project_id)
+
+                if old_model != model_name:
+                    # This is a MODEL MIGRATION - important workflow!
+                    logger.info(
+                        f"[CLIPModelDialog] PROJECT MODEL CHANGE: "
+                        f"Project {self.project_id}: {old_model} → {model_name}"
+                    )
+
+                    # Change the project's canonical model
+                    change_result = project_repo.change_semantic_model(
+                        project_id=self.project_id,
+                        new_model=model_name,
+                        keep_old_embeddings=True  # Keep for comparison/rollback
+                    )
+
+                    # Emit signal to trigger reindex job
+                    self.reindex_required.emit(self.project_id, old_model, model_name)
+
+                    logger.info(
+                        f"[CLIPModelDialog] Project migration initiated: "
+                        f"{change_result['photos_to_reindex']} photos need reindexing"
+                    )
+                else:
+                    logger.info(
+                        f"[CLIPModelDialog] Project {self.project_id} already uses model {model_name}"
+                    )
+
         except Exception as e:
             logger.warning(f"[CLIPModelDialog] Could not store preference: {e}")
 
@@ -492,17 +622,39 @@ class CLIPModelDialog(QDialog):
             event.accept()
 
 
-def show_clip_model_dialog(parent=None) -> Optional[Tuple[str, str]]:
+def show_clip_model_dialog(
+    parent=None,
+    project_id: Optional[int] = None,
+    on_reindex_required=None
+) -> Optional[Tuple[str, str]]:
     """
     Show CLIP model selection dialog.
 
     Args:
         parent: Parent widget
+        project_id: Optional project ID for project-level model binding.
+                   When provided, model changes trigger reindexing workflow.
+        on_reindex_required: Optional callback(project_id, old_model, new_model)
+                            called when model change requires reindexing.
 
     Returns:
         Tuple of (model_name, model_path) if selected, None if cancelled
+
+    Example:
+        def handle_reindex(project_id, old_model, new_model):
+            # Enqueue reindex job
+            from workers.semantic_embedding_worker import SemanticEmbeddingWorker
+            photo_ids = get_photo_ids_for_project(project_id)
+            worker = SemanticEmbeddingWorker(photo_ids=photo_ids, project_id=project_id)
+            QThreadPool.globalInstance().start(worker)
+
+        result = show_clip_model_dialog(
+            parent=self,
+            project_id=current_project_id,
+            on_reindex_required=handle_reindex
+        )
     """
-    dialog = CLIPModelDialog(parent)
+    dialog = CLIPModelDialog(parent, project_id=project_id)
 
     result = [None]  # Use list to capture result from signal
 
@@ -510,6 +662,9 @@ def show_clip_model_dialog(parent=None) -> Optional[Tuple[str, str]]:
         result[0] = (model_name, model_path)
 
     dialog.model_selected.connect(on_model_selected)
+
+    if on_reindex_required is not None:
+        dialog.reindex_required.connect(on_reindex_required)
 
     if dialog.exec() == QDialog.Accepted:
         return result[0]

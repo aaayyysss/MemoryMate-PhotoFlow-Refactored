@@ -821,12 +821,20 @@ class SemanticEmbeddingService:
                        embedding: np.ndarray,
                        source_hash: Optional[str] = None,
                        source_mtime: Optional[str] = None,
-                       use_half_precision: bool = True):
+                       use_half_precision: bool = True,
+                       project_id: Optional[int] = None,
+                       enforce_canonical_model: bool = True):
         """
         Store semantic embedding in database.
 
         Uses float16 (half-precision) by default for 50% storage savings.
         The precision loss is negligible for similarity search (cosine similarity).
+
+        WRITE BOUNDARY GUARD (Google Photos/Lightroom best practice):
+        When project_id is provided and enforce_canonical_model is True,
+        this method will reject writes if the embedding model doesn't match
+        the project's canonical model. This prevents vector space contamination
+        where embeddings from different models are silently mixed.
 
         Args:
             photo_id: Photo ID
@@ -834,7 +842,31 @@ class SemanticEmbeddingService:
             source_hash: Optional SHA256 hash of source image
             source_mtime: Optional mtime of source file
             use_half_precision: If True, store as float16 (default). If False, use float32.
+            project_id: Optional project ID for canonical model enforcement
+            enforce_canonical_model: If True and project_id is provided, reject writes
+                                   that don't match the project's canonical model
+
+        Raises:
+            ValueError: If enforce_canonical_model is True and model doesn't match
+                       the project's canonical model
         """
+        # WRITE BOUNDARY GUARD: Enforce canonical model per project
+        # This is critical to prevent vector space contamination
+        if project_id is not None and enforce_canonical_model:
+            from repository.project_repository import ProjectRepository
+            project_repo = ProjectRepository()
+            canonical_model = project_repo.get_semantic_model(project_id)
+
+            if self.model_name != canonical_model:
+                error_msg = (
+                    f"[SemanticEmbeddingService] WRITE BLOCKED: Cannot store embedding "
+                    f"with model '{self.model_name}' for project {project_id}. "
+                    f"Project's canonical model is '{canonical_model}'. "
+                    f"Either use the canonical model or change the project's semantic_model setting."
+                )
+                logger.error(error_msg)
+                raise ValueError(error_msg)
+
         # Validate normalization
         norm = float(np.linalg.norm(embedding))
         if not (0.99 <= norm <= 1.01):
