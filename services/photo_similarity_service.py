@@ -1,8 +1,11 @@
+# services/photo_similarity_service.py
+# Version: 1.0.1 dated 20260128
+ 
 """
 PhotoSimilarityService - Visual Similarity Search
 
-Version: 1.0.0
-Date: 2026-01-05
+Version: 1.0.1
+Date: 2026-01-28
 
 Find visually similar photos using semantic embeddings.
 
@@ -28,6 +31,7 @@ Usage:
 import numpy as np
 from typing import List, Tuple, Optional
 from dataclasses import dataclass
+import sqlite3
 
 from services.semantic_embedding_service import get_semantic_embedding_service
 from repository.base_repository import DatabaseConnection
@@ -69,11 +73,55 @@ class PhotoSimilarityService:
 
         logger.info(f"[PhotoSimilarityService] Initialized with model={model_name}")
 
+    def _get_asset_sibling_photo_ids(self, project_id: int, photo_id: int) -> set[int]:
+        """
+        Return all photo_ids that belong to the same asset as photo_id.
+
+        This is the key to separating:
+        - Exact duplicates (same asset, handled by Duplicates pipeline)
+        - Similar photos (different assets, handled here)
+
+        If your schema differs or the asset tables do not exist, this fails safely.
+        """
+        if project_id is None:
+            return set()
+
+        try:
+            with self.db.get_connection() as conn:
+                # Expected schema (asset-centric system):
+                # media_instance(project_id, photo_id, asset_id)
+                row = conn.execute("""
+                    SELECT asset_id
+                    FROM media_instance
+                    WHERE project_id = ? AND photo_id = ?
+                    LIMIT 1
+                """, (project_id, photo_id)).fetchone()
+
+                if not row or row["asset_id"] is None:
+                    return set()
+
+                asset_id = row["asset_id"]
+                sibs = conn.execute("""
+                    SELECT photo_id
+                    FROM media_instance
+                    WHERE project_id = ? AND asset_id = ?
+                """, (project_id, asset_id)).fetchall()
+
+                return {r["photo_id"] for r in sibs if r and r["photo_id"] is not None}
+
+        except sqlite3.OperationalError as e:
+            # Schema mismatch, do not crash similarity search
+            logger.debug(f"[PhotoSimilarityService] Asset sibling lookup skipped: {e}")
+            return set()
+
+
     def find_similar(self,
                     photo_id: int,
                     top_k: int = 20,
                     threshold: float = 0.7,
-                    include_metadata: bool = False) -> List[SimilarPhoto]:
+                    include_metadata: bool = False,
+                    project_id: Optional[int] = None,
+                    exclude_exact_duplicates: bool = True) -> List[SimilarPhoto]:
         """
         Find visually similar photos.
 
@@ -82,6 +130,8 @@ class PhotoSimilarityService:
             top_k: Number of similar photos to return
             threshold: Minimum similarity score (0.0 to 1.0)
             include_metadata: If True, fetch file paths for results
+            project_id: Optional project filter (recommended)
+            exclude_exact_duplicates: If True, excludes photos from the same asset
 
         Returns:
             List of SimilarPhoto objects, sorted by similarity descending
@@ -99,8 +149,16 @@ class PhotoSimilarityService:
             logger.warning(f"[PhotoSimilarityService] Photo {photo_id} has no embedding")
             return []
 
+        # Exclude exact duplicates (handled by Duplicates pipeline)
+        exclude_ids: set[int] = set()
+        if exclude_exact_duplicates and project_id is not None:
+            exclude_ids = self._get_asset_sibling_photo_ids(project_id, photo_id)
+        exclude_ids.add(photo_id)
+
         # Get all other embeddings
-        candidates = self._get_all_embeddings(exclude_photo_id=photo_id)
+#        candidates = self._get_all_embeddings(exclude_photo_id=photo_id)
+        candidates = self._get_all_embeddings(exclude_photo_id=photo_id, project_id=project_id)
+ 
         if not candidates:
             logger.warning("[PhotoSimilarityService] No other embeddings found")
             return []
@@ -108,6 +166,9 @@ class PhotoSimilarityService:
         # Compute similarities
         similarities = []
         for candidate_id, candidate_embedding in candidates:
+            if candidate_id in exclude_ids:
+                continue
+                
             # Cosine similarity = dot product (vectors are normalized)
             score = float(np.dot(ref_embedding, candidate_embedding))
 
@@ -139,22 +200,41 @@ class PhotoSimilarityService:
 
         return results
 
-    def _get_all_embeddings(self, exclude_photo_id: int) -> List[Tuple[int, np.ndarray]]:
+#    def _get_all_embeddings(self, exclude_photo_id: int) -> List[Tuple[int, np.ndarray]]:
+    def _get_all_embeddings(self, exclude_photo_id: int, project_id: Optional[int] = None) -> List[Tuple[int, np.ndarray]]:
+ 
         """
         Get all embeddings except reference photo.
 
         Args:
             exclude_photo_id: Photo ID to exclude
+            project_id: Optional project filter
 
         Returns:
             List of (photo_id, embedding) tuples
         """
         with self.db.get_connection() as conn:
-            cursor = conn.execute("""
-                SELECT photo_id, embedding, dim
-                FROM semantic_embeddings
-                WHERE photo_id != ? AND model = ?
-            """, (exclude_photo_id, self.model_name))
+#            cursor = conn.execute("""
+#                SELECT photo_id, embedding, dim
+#                FROM semantic_embeddings
+#                WHERE photo_id != ? AND model = ?
+#            """, (exclude_photo_id, self.model_name))
+
+            # Project filter is applied via join to photo_metadata (portable and safe)
+            if project_id is None:
+                cursor = conn.execute("""
+                    SELECT se.photo_id, se.embedding, se.dim
+                    FROM semantic_embeddings se
+                    WHERE se.photo_id != ? AND se.model = ?
+                """, (exclude_photo_id, self.model_name))
+            else:
+                cursor = conn.execute("""
+                    SELECT se.photo_id, se.embedding, se.dim
+                    FROM semantic_embeddings se
+                    JOIN photo_metadata p ON p.id = se.photo_id
+                    WHERE se.photo_id != ? AND se.model = ? AND p.project_id = ?
+                """, (exclude_photo_id, self.model_name, project_id))
+ 
 
             results = []
             for row in cursor.fetchall():
