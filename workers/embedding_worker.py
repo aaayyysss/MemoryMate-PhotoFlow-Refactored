@@ -45,9 +45,15 @@ from PySide6.QtCore import QRunnable, QObject, Signal, Slot
 from services.job_service import get_job_service
 from services.embedding_service import get_embedding_service
 from repository.photo_repository import PhotoRepository
+from repository.project_repository import ProjectRepository
 from logging_config import get_logger
 
 logger = get_logger(__name__)
+
+
+class ModelAutoSelectWarning(UserWarning):
+    """Warning issued when model is auto-selected without project context."""
+    pass
 
 
 class EmbeddingWorkerSignals(QObject):
@@ -88,27 +94,30 @@ class EmbeddingWorker(QRunnable):
                  job_id: int,
                  photo_ids: Optional[List[int]] = None,
                  model_variant: Optional[str] = None,
-                 device: str = 'auto'):
+                 device: str = 'auto',
+                 project_id: Optional[int] = None):
         """
         Initialize embedding worker.
+
+        IMPORTANT: Model selection follows the "project canonical model" principle.
+        When project_id is provided, the model_variant is resolved from the project's
+        semantic_model setting. This ensures embedding consistency within a project.
 
         Args:
             job_id: Job ID from ml_job table
             photo_ids: Optional list of photo IDs (loaded from job if None)
-            model_variant: CLIP model variant (None = auto-select best available)
+            model_variant: CLIP model variant (DEPRECATED - prefer using project_id)
+                          If provided, must match project's canonical model when project_id is set.
             device: Compute device ('auto', 'cpu', 'cuda', 'mps')
+            project_id: Project ID for canonical model resolution (RECOMMENDED)
         """
         super().__init__()
         self.job_id = job_id
         self.photo_ids = photo_ids
+        self.project_id = project_id
 
-        # Auto-select best model if not specified
-        if model_variant is None:
-            from utils.clip_check import get_recommended_variant
-            model_variant = get_recommended_variant()
-            logger.info(f"[EmbeddingWorker] Auto-selected model variant: {model_variant}")
-
-        self.model_variant = model_variant
+        # Resolve model variant with project canonical model enforcement
+        self.model_variant = self._resolve_model_variant(model_variant)
         self.device = device
 
         self.signals = EmbeddingWorkerSignals()
@@ -125,6 +134,69 @@ class EmbeddingWorker(QRunnable):
 
         # Cancellation flag
         self._is_cancelled = False
+
+    def _resolve_model_variant(self, requested_variant: Optional[str]) -> str:
+        """
+        Resolve model variant with project canonical model enforcement.
+
+        Priority:
+        1. Project's canonical model (if project_id provided)
+        2. Requested model variant (if matches canonical or no project)
+        3. Auto-detect best available (WARNING: may cause inconsistency)
+
+        Args:
+            requested_variant: Optional model variant requested by caller
+
+        Returns:
+            Resolved model variant
+        """
+        # If project_id is provided, use project's canonical model
+        if self.project_id is not None:
+            try:
+                project_repo = ProjectRepository()
+                canonical_model = project_repo.get_semantic_model(self.project_id)
+
+                # Warn if caller requested a different model
+                if requested_variant is not None and requested_variant != canonical_model:
+                    logger.warning(
+                        f"[EmbeddingWorker] Requested model '{requested_variant}' differs from "
+                        f"project canonical model '{canonical_model}'. Using canonical model."
+                    )
+
+                logger.info(
+                    f"[EmbeddingWorker] Using project canonical model: {canonical_model} "
+                    f"(project_id={self.project_id})"
+                )
+                return canonical_model
+
+            except Exception as e:
+                logger.warning(
+                    f"[EmbeddingWorker] Could not read project canonical model: {e}. "
+                    f"Falling back to requested/auto-detect."
+                )
+
+        # No project_id - fall back to requested or auto-detect
+        if requested_variant is not None:
+            logger.info(f"[EmbeddingWorker] Using requested model variant: {requested_variant}")
+            return requested_variant
+
+        # Auto-detect - WARNING: This can cause model inconsistency!
+        import warnings
+        from utils.clip_check import get_recommended_variant
+        model_variant = get_recommended_variant()
+
+        warnings.warn(
+            f"[EmbeddingWorker] Auto-selecting model variant '{model_variant}' without project context. "
+            f"This may cause vector space contamination if different models are used within a project. "
+            f"Provide project_id parameter to enforce canonical model.",
+            ModelAutoSelectWarning
+        )
+        logger.warning(
+            f"[EmbeddingWorker] Auto-selected model variant: {model_variant} "
+            f"(NO PROJECT CONTEXT - may cause inconsistency!)"
+        )
+
+        return model_variant
 
     def run(self):
         """
