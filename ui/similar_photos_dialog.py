@@ -1,8 +1,8 @@
 """
 SimilarPhotosDialog - Visual Similarity Browser
 
-Version: 1.0.0
-Date: 2026-01-05
+Version: 1.0.1
+Date: 2026-01-29
 
 Show visually similar photos with threshold control.
 
@@ -12,9 +12,15 @@ Features:
 - Threshold slider (0.0 to 1.0)
 - Real-time filtering
 - Double-click to open photo
+- Project-aware canonical model support (v1.0.1)
 
 Usage:
-    dialog = SimilarPhotosDialog(reference_photo_id=123, parent=parent_widget)
+    # RECOMMENDED: Use with project_id for correct canonical model
+    dialog = SimilarPhotosDialog(
+        reference_photo_id=123,
+        project_id=current_project_id,
+        parent=parent_widget
+    )
     dialog.exec()
 """
 
@@ -29,7 +35,13 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal, QSize
 from PySide6.QtGui import QPixmap, QMouseEvent
 
-from services.photo_similarity_service import get_photo_similarity_service, SimilarPhoto
+from services.photo_similarity_service import (
+    get_photo_similarity_service,
+    get_photo_similarity_service_for_project,
+    PhotoSimilarityService,
+    SimilarPhoto,
+    EmbeddingNotReadyError
+)
 from logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -106,16 +118,43 @@ class SimilarPhotosDialog(QDialog):
     Dialog for browsing visually similar photos.
 
     Shows grid of similar photos with threshold control.
+
+    IMPORTANT: Always provide project_id to ensure correct canonical model is used.
+    Without project_id, the dialog falls back to default model which may not match
+    the embeddings in the database.
     """
 
     photo_clicked = Signal(int)  # photo_id
 
-    def __init__(self, reference_photo_id: int, parent=None):
+    def __init__(self, reference_photo_id: int, project_id: Optional[int] = None, parent=None):
+        """
+        Initialize similar photos dialog.
+
+        Args:
+            reference_photo_id: ID of the reference photo to find similar photos for
+            project_id: Project ID (REQUIRED for correct canonical model usage)
+            parent: Parent widget
+        """
         super().__init__(parent)
         self.reference_photo_id = reference_photo_id
-        self.similarity_service = get_photo_similarity_service()
+        self.project_id = project_id
         self.all_results: List[SimilarPhoto] = []
         self.current_threshold = 0.7
+
+        # Use project-aware service if project_id is provided
+        # This ensures we use the correct canonical model for embeddings
+        if project_id is not None:
+            self.similarity_service = get_photo_similarity_service_for_project(project_id)
+            logger.info(
+                f"[SimilarPhotosDialog] Using project-aware service for project {project_id}"
+            )
+        else:
+            # Fallback to default service (may cause model mismatch!)
+            self.similarity_service = get_photo_similarity_service()
+            logger.warning(
+                f"[SimilarPhotosDialog] No project_id provided! "
+                f"Using default service - may cause model mismatch."
+            )
 
         self.setWindowTitle(f"Similar Photos (Reference: Photo #{reference_photo_id})")
         self.resize(900, 700)
@@ -197,7 +236,7 @@ class SimilarPhotosDialog(QDialog):
             coverage = self.similarity_service.get_embedding_coverage()
             self.coverage_label.setText(
                 f"{coverage['embedded_photos']}/{coverage['total_photos']} photos embedded "
-                f"({coverage['coverage_percent']:.1f}%)"
+                f"({coverage['coverage_percent']:.1f}%) - Model: {coverage['model']}"
             )
 
             if coverage['embedded_photos'] < 2:
@@ -208,11 +247,18 @@ class SimilarPhotosDialog(QDialog):
                 return
 
             # Load all results (we'll filter by threshold in UI)
+            # CRITICAL: Pass project_id to enable:
+            # - Exact duplicate exclusion (asset siblings)
+            # - Project-specific embedding filtering
+            # - Canonical model validation
             self.all_results = self.similarity_service.find_similar(
                 photo_id=self.reference_photo_id,
                 top_k=100,  # Get more results for threshold filtering
                 threshold=0.5,  # Lower threshold to get more candidates
-                include_metadata=True
+                include_metadata=True,
+                project_id=self.project_id,  # Required for correct filtering
+                exclude_exact_duplicates=True,  # Don't show asset siblings
+                strict_model_check=True  # Ensure embedding model matches canonical
             )
 
             self.title_label.setText(f"Similar Photos (Photo #{self.reference_photo_id})")
@@ -220,10 +266,22 @@ class SimilarPhotosDialog(QDialog):
             # Display filtered results
             self._update_display()
 
+        except EmbeddingNotReadyError as e:
+            # Specific error when embedding model doesn't match canonical model
+            logger.warning(f"[SimilarPhotosDialog] Embedding not ready: {e}")
+            self.title_label.setText("Embedding Index Required")
+            self.results_label.setText(
+                f"{str(e)}\n\n"
+                f"The reference photo's embedding was created with a different model.\n"
+                f"Please run 'Regenerate Semantic Index' from the Tools menu to fix this."
+            )
+            self.results_label.setStyleSheet("color: #e67e22;")  # Orange warning color
+
         except Exception as e:
             logger.error(f"[SimilarPhotosDialog] Failed to load similar photos: {e}", exc_info=True)
             self.title_label.setText("Error loading similar photos")
             self.results_label.setText(str(e))
+            self.results_label.setStyleSheet("color: #e74c3c;")  # Red error color
 
     def _on_threshold_changed(self, value: int):
         """Handle threshold slider change."""
