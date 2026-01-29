@@ -1,5 +1,5 @@
 # duplicate_detection_dialog.py
-# Version 1.01.00.00 dated 20260129
+# Version 1.02.00.00 dated 20260129
 
 """
 Duplicate Detection Dialog
@@ -11,12 +11,14 @@ Design follows best practices from:
 - iPhone Photos: Simple yet powerful, clear visual hierarchy
 
 Unified dialog for both menu and toolbar access.
+Layout: Fixed header with action buttons + scrollable content area.
 """
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QCheckBox, QGroupBox, QSpinBox, QDoubleSpinBox, QRadioButton,
-    QButtonGroup, QFrame, QProgressBar, QMessageBox, QWidget
+    QButtonGroup, QFrame, QProgressBar, QMessageBox, QWidget,
+    QScrollArea, QSizePolicy
 )
 from PySide6.QtCore import Qt, Signal, QThread, QObject
 from PySide6.QtGui import QFont
@@ -249,6 +251,11 @@ class DuplicateDetectionDialog(QDialog):
     """
     Professional duplicate detection dialog with clean Google/iPhone-inspired design.
 
+    Layout:
+    - Fixed header with title and action buttons (always visible)
+    - Scrollable content area for all settings
+    - Progress bar appears at bottom when running
+
     Features:
     - Exact duplicate detection (hash-based)
     - Similar shot detection (AI-powered)
@@ -267,131 +274,156 @@ class DuplicateDetectionDialog(QDialog):
 
         self.setWindowTitle("🔍 Duplicate Detection - Select Scope")
         self.setModal(True)
-        self.resize(720, 680)
+        self.resize(700, 600)
+        self.setMinimumSize(600, 450)
 
         self._build_ui()
         self._connect_signals()
         self._check_system_readiness()
 
     def _build_ui(self):
-        """Build dialog UI with clean, professional design."""
-        layout = QVBoxLayout(self)
-        layout.setSpacing(16)
-        layout.setContentsMargins(24, 20, 24, 20)
+        """Build dialog UI with fixed header and scrollable content."""
+        main_layout = QVBoxLayout(self)
+        main_layout.setSpacing(0)
+        main_layout.setContentsMargins(0, 0, 0, 0)
 
-        # === HEADER ===
+        # === FIXED HEADER (Title + Buttons) ===
+        header_widget = QWidget()
+        header_widget.setStyleSheet("background-color: white; border-bottom: 1px solid #e0e0e0;")
+        header_layout = QHBoxLayout(header_widget)
+        header_layout.setContentsMargins(20, 16, 20, 16)
+        header_layout.setSpacing(16)
+
+        # Title section
+        title_section = QVBoxLayout()
+        title_section.setSpacing(4)
+
         title = QLabel("Find Duplicates & Similar Photos")
-        title.setStyleSheet("font-size: 16pt; font-weight: bold; color: #333; padding-bottom: 4px;")
-        layout.addWidget(title)
+        title.setStyleSheet("font-size: 14pt; font-weight: bold; color: #333;")
+        title_section.addWidget(title)
 
-        subtitle = QLabel(
-            "Detect exact duplicates and visually similar photos in your collection. "
-            "Select which photos to scan and configure detection settings."
-        )
-        subtitle.setWordWrap(True)
-        subtitle.setStyleSheet("color: #666; font-size: 10pt; padding-bottom: 8px;")
-        layout.addWidget(subtitle)
+        subtitle = QLabel("Select scope and configure detection settings")
+        subtitle.setStyleSheet("color: #666; font-size: 9pt;")
+        title_section.addWidget(subtitle)
 
-        # Separator
-        self._add_separator(layout)
+        header_layout.addLayout(title_section)
+        header_layout.addStretch()
+
+        # Action buttons in header
+        self.btn_help = QPushButton("Help")
+        self.btn_help.setStyleSheet(self._secondary_button_style())
+        self.btn_help.setFixedWidth(70)
+        self.btn_help.clicked.connect(self._show_help)
+        header_layout.addWidget(self.btn_help)
+
+        self.btn_cancel = QPushButton("Cancel")
+        self.btn_cancel.setStyleSheet(self._secondary_button_style())
+        self.btn_cancel.setFixedWidth(80)
+        self.btn_cancel.clicked.connect(self.reject)
+        header_layout.addWidget(self.btn_cancel)
+
+        self.btn_start = QPushButton("▶ Start")
+        self.btn_start.setStyleSheet(self._primary_button_style())
+        self.btn_start.setFixedWidth(100)
+        self.btn_start.clicked.connect(self._start_detection)
+        header_layout.addWidget(self.btn_start)
+
+        main_layout.addWidget(header_widget)
+
+        # === SCROLLABLE CONTENT AREA ===
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setFrameShape(QFrame.NoFrame)
+        scroll_area.setStyleSheet("QScrollArea { background-color: #fafafa; }")
+
+        scroll_content = QWidget()
+        scroll_content.setStyleSheet("background-color: #fafafa;")
+        content_layout = QVBoxLayout(scroll_content)
+        content_layout.setSpacing(12)
+        content_layout.setContentsMargins(20, 16, 20, 16)
 
         # === SCOPE SELECTION ===
         self.scope_widget = EmbeddingScopeWidget(self.project_id, self)
         self.scope_widget.scopeChanged.connect(self._on_scope_changed)
-        layout.addWidget(self.scope_widget)
-
-        # Separator
-        self._add_separator(layout)
+        content_layout.addWidget(self.scope_widget)
 
         # === DETECTION METHODS ===
         methods_group = QGroupBox("🔍 Detection Methods")
         methods_group.setStyleSheet(self._groupbox_style())
         methods_layout = QVBoxLayout(methods_group)
-        methods_layout.setSpacing(10)
+        methods_layout.setSpacing(6)
+        methods_layout.setContentsMargins(12, 16, 12, 12)
 
         # Exact duplicates
         self.chk_exact = QCheckBox("Exact Duplicates (Fast)")
         self.chk_exact.setChecked(True)
-        self.chk_exact.setToolTip(
-            "Find photos with identical content using SHA256 hashing.\n"
-            "Very fast, catches perfect copies and backups."
-        )
+        self.chk_exact.setToolTip("Find identical files using SHA256 hashing")
         self.chk_exact.setStyleSheet("font-weight: bold;")
         methods_layout.addWidget(self.chk_exact)
 
         exact_desc = QLabel("Identical file content - No false positives")
-        exact_desc.setStyleSheet("color: #888; font-size: 9pt; margin-left: 24px; margin-bottom: 8px;")
+        exact_desc.setStyleSheet("color: #888; font-size: 8pt; margin-left: 20px;")
         methods_layout.addWidget(exact_desc)
 
         # Similar shots
         self.chk_similar = QCheckBox("Similar Shots (AI-Powered)")
-        self.chk_similar.setToolTip(
-            "Find visually similar photos using AI embeddings.\n"
-            "Catches burst shots, edited versions, and similar compositions."
-        )
+        self.chk_similar.setToolTip("Find visually similar photos using AI embeddings")
         self.chk_similar.setStyleSheet("font-weight: bold;")
         methods_layout.addWidget(self.chk_similar)
 
-        similar_desc = QLabel("Visually similar content - May have false positives")
-        similar_desc.setStyleSheet("color: #888; font-size: 9pt; margin-left: 24px;")
+        similar_desc = QLabel("Visually similar - May have false positives")
+        similar_desc.setStyleSheet("color: #888; font-size: 8pt; margin-left: 20px;")
         methods_layout.addWidget(similar_desc)
 
-        layout.addWidget(methods_group)
+        content_layout.addWidget(methods_group)
 
-        # === ADVANCED SETTINGS (collapsible feel) ===
+        # === ADVANCED SETTINGS ===
         settings_group = QGroupBox("⚙️ Advanced Settings")
         settings_group.setStyleSheet(self._groupbox_style())
         settings_layout = QVBoxLayout(settings_group)
-        settings_layout.setSpacing(10)
+        settings_layout.setSpacing(8)
+        settings_layout.setContentsMargins(12, 16, 12, 12)
 
         # Generate embeddings checkbox
-        self.chk_generate_embeddings = QCheckBox("Generate AI Embeddings (required for similar detection)")
-        self.chk_generate_embeddings.setToolTip(
-            "Extract visual embeddings using CLIP model.\n"
-            "Takes 2-5 seconds per photo depending on hardware."
-        )
+        self.chk_generate_embeddings = QCheckBox("Generate AI Embeddings (for similar detection)")
+        self.chk_generate_embeddings.setToolTip("Extract visual embeddings using CLIP model")
         settings_layout.addWidget(self.chk_generate_embeddings)
 
-        # Sensitivity settings container
+        # Sensitivity settings in one row
         self.sensitivity_widget = QWidget()
         sensitivity_layout = QHBoxLayout(self.sensitivity_widget)
-        sensitivity_layout.setContentsMargins(0, 8, 0, 0)
-        sensitivity_layout.setSpacing(20)
+        sensitivity_layout.setContentsMargins(0, 4, 0, 0)
+        sensitivity_layout.setSpacing(16)
 
         # Similarity threshold
-        sim_container = QHBoxLayout()
-        sim_container.addWidget(QLabel("Similarity:"))
+        sensitivity_layout.addWidget(QLabel("Similarity:"))
         self.spin_similarity = QDoubleSpinBox()
         self.spin_similarity.setRange(0.50, 0.99)
         self.spin_similarity.setSingleStep(0.05)
         self.spin_similarity.setValue(0.85)
-        self.spin_similarity.setToolTip("Minimum visual similarity (0.50-0.99)")
-        self.spin_similarity.setFixedWidth(70)
-        sim_container.addWidget(self.spin_similarity)
-        sensitivity_layout.addLayout(sim_container)
+        self.spin_similarity.setFixedWidth(65)
+        sensitivity_layout.addWidget(self.spin_similarity)
 
         # Time window
-        time_container = QHBoxLayout()
-        time_container.addWidget(QLabel("Time Window:"))
+        sensitivity_layout.addWidget(QLabel("Time Window:"))
         self.spin_time_window = QSpinBox()
         self.spin_time_window.setRange(5, 120)
         self.spin_time_window.setValue(30)
         self.spin_time_window.setSuffix("s")
-        self.spin_time_window.setToolTip("Compare photos taken within this time period")
-        self.spin_time_window.setFixedWidth(70)
-        time_container.addWidget(self.spin_time_window)
-        sensitivity_layout.addLayout(time_container)
+        self.spin_time_window.setFixedWidth(65)
+        sensitivity_layout.addWidget(self.spin_time_window)
 
         sensitivity_layout.addStretch()
         settings_layout.addWidget(self.sensitivity_widget)
 
-        layout.addWidget(settings_group)
+        content_layout.addWidget(settings_group)
 
         # === SYSTEM STATUS ===
         status_group = QGroupBox("📊 System Status")
         status_group.setStyleSheet(self._groupbox_style())
         self.status_group = status_group
         status_layout = QVBoxLayout(status_group)
+        status_layout.setContentsMargins(12, 16, 12, 12)
 
         self.status_label = QLabel("Checking system...")
         self.status_label.setStyleSheet("font-weight: bold;")
@@ -402,13 +434,21 @@ class DuplicateDetectionDialog(QDialog):
         self.status_detail.setStyleSheet("color: #666; font-size: 9pt;")
         status_layout.addWidget(self.status_detail)
 
-        layout.addWidget(status_group)
+        content_layout.addWidget(status_group)
 
-        # === PROGRESS (hidden initially) ===
-        self.progress_group = QGroupBox("⏳ Progress")
-        self.progress_group.setStyleSheet(self._groupbox_style())
-        self.progress_group.setVisible(False)
-        progress_layout = QVBoxLayout(self.progress_group)
+        # Add stretch to push content up
+        content_layout.addStretch()
+
+        scroll_area.setWidget(scroll_content)
+        main_layout.addWidget(scroll_area, 1)  # Takes remaining space
+
+        # === PROGRESS BAR (hidden initially, at bottom) ===
+        self.progress_widget = QWidget()
+        self.progress_widget.setStyleSheet("background-color: white; border-top: 1px solid #e0e0e0;")
+        self.progress_widget.setVisible(False)
+        progress_layout = QVBoxLayout(self.progress_widget)
+        progress_layout.setContentsMargins(20, 12, 20, 12)
+        progress_layout.setSpacing(6)
 
         self.progress_bar = QProgressBar()
         self.progress_bar.setTextVisible(True)
@@ -417,7 +457,7 @@ class DuplicateDetectionDialog(QDialog):
                 border: 1px solid #ddd;
                 border-radius: 4px;
                 text-align: center;
-                height: 24px;
+                height: 20px;
             }
             QProgressBar::chunk {
                 background-color: #1a73e8;
@@ -426,68 +466,29 @@ class DuplicateDetectionDialog(QDialog):
         """)
         progress_layout.addWidget(self.progress_bar)
 
-        self.progress_label = QLabel("Ready to start...")
-        self.progress_label.setStyleSheet("color: #666;")
+        self.progress_label = QLabel("Ready...")
+        self.progress_label.setStyleSheet("color: #666; font-size: 9pt;")
         progress_layout.addWidget(self.progress_label)
 
-        layout.addWidget(self.progress_group)
-
-        # Add stretch
-        layout.addStretch()
-
-        # === BUTTONS ===
-        button_layout = QHBoxLayout()
-        button_layout.setSpacing(12)
-
-        # Help/info button (left side)
-        help_btn = QPushButton("ℹ️ Help")
-        help_btn.setStyleSheet(self._secondary_button_style())
-        help_btn.clicked.connect(self._show_help)
-        button_layout.addWidget(help_btn)
-
-        button_layout.addStretch()
-
-        # Cancel button
-        self.btn_cancel = QPushButton("Cancel")
-        self.btn_cancel.setStyleSheet(self._secondary_button_style())
-        self.btn_cancel.clicked.connect(self.reject)
-        button_layout.addWidget(self.btn_cancel)
-
-        # Start button
-        self.btn_start = QPushButton("▶ Start Detection")
-        self.btn_start.setStyleSheet(self._primary_button_style())
-        self.btn_start.clicked.connect(self._start_detection)
-        button_layout.addWidget(self.btn_start)
-
-        layout.addLayout(button_layout)
-
-    def _add_separator(self, layout):
-        """Add a subtle separator line."""
-        sep = QFrame()
-        sep.setFrameShape(QFrame.HLine)
-        sep.setStyleSheet("background-color: #e0e0e0; max-height: 1px;")
-        layout.addWidget(sep)
+        main_layout.addWidget(self.progress_widget)
 
     def _groupbox_style(self) -> str:
-        """Return consistent GroupBox styling."""
+        """Return compact GroupBox styling."""
         return """
             QGroupBox {
                 font-weight: bold;
-                font-size: 10pt;
+                font-size: 9pt;
                 border: 1px solid #e0e0e0;
-                border-radius: 8px;
-                margin-top: 12px;
-                padding: 12px;
-                padding-top: 24px;
-                background-color: #fafafa;
+                border-radius: 6px;
+                margin-top: 8px;
+                padding-top: 16px;
+                background-color: white;
             }
             QGroupBox::title {
                 subcontrol-origin: margin;
                 subcontrol-position: top left;
-                padding: 4px 12px;
-                background-color: white;
-                border: 1px solid #e0e0e0;
-                border-radius: 4px;
+                padding: 2px 8px;
+                background-color: #fafafa;
             }
         """
 
@@ -497,12 +498,11 @@ class DuplicateDetectionDialog(QDialog):
             QPushButton {
                 background-color: #1a73e8;
                 color: white;
-                padding: 10px 24px;
+                padding: 8px 16px;
                 font-weight: bold;
-                font-size: 10pt;
+                font-size: 9pt;
                 border: none;
-                border-radius: 6px;
-                min-width: 140px;
+                border-radius: 4px;
             }
             QPushButton:hover {
                 background-color: #1557b0;
@@ -522,11 +522,10 @@ class DuplicateDetectionDialog(QDialog):
             QPushButton {
                 background-color: white;
                 color: #333;
-                padding: 10px 20px;
-                font-weight: normal;
-                font-size: 10pt;
+                padding: 8px 12px;
+                font-size: 9pt;
                 border: 1px solid #ddd;
-                border-radius: 6px;
+                border-radius: 4px;
             }
             QPushButton:hover {
                 background-color: #f5f5f5;
@@ -663,16 +662,19 @@ class DuplicateDetectionDialog(QDialog):
     def _show_progress_mode(self):
         """Switch to progress display mode."""
         # Disable configuration
-        for widget in [self.scope_widget, self.chk_exact, self.chk_similar,
-                       self.chk_generate_embeddings, self.sensitivity_widget,
-                       self.status_group]:
-            widget.setEnabled(False)
+        self.scope_widget.setEnabled(False)
+        self.chk_exact.setEnabled(False)
+        self.chk_similar.setEnabled(False)
+        self.chk_generate_embeddings.setEnabled(False)
+        self.sensitivity_widget.setEnabled(False)
+        self.status_group.setEnabled(False)
 
         # Show progress
-        self.progress_group.setVisible(True)
+        self.progress_widget.setVisible(True)
         self.btn_start.setText("Running...")
         self.btn_start.setEnabled(False)
         self.btn_cancel.setText("Stop")
+        self.btn_help.setEnabled(False)
 
     def _update_progress(self, percentage: int, message: str):
         """Update progress display."""
@@ -721,16 +723,19 @@ class DuplicateDetectionDialog(QDialog):
     def _show_configuration_mode(self):
         """Switch back to configuration mode."""
         # Re-enable configuration
-        for widget in [self.scope_widget, self.chk_exact, self.chk_similar,
-                       self.chk_generate_embeddings, self.sensitivity_widget,
-                       self.status_group]:
-            widget.setEnabled(True)
+        self.scope_widget.setEnabled(True)
+        self.chk_exact.setEnabled(True)
+        self.chk_similar.setEnabled(True)
+        self.chk_generate_embeddings.setEnabled(True)
+        self.sensitivity_widget.setEnabled(True)
+        self.status_group.setEnabled(True)
 
         # Hide progress
-        self.progress_group.setVisible(False)
-        self.btn_start.setText("▶ Start Detection")
+        self.progress_widget.setVisible(False)
+        self.btn_start.setText("▶ Start")
         self.btn_start.setEnabled(True)
         self.btn_cancel.setText("Cancel")
+        self.btn_help.setEnabled(True)
 
     def reject(self):
         """Handle dialog rejection (cancel/escape)."""
