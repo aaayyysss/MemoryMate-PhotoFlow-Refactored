@@ -25,7 +25,7 @@ from services.library_detector import check_system_readiness
 from services.embedding_service import EmbeddingService
 from repository.photo_repository import PhotoRepository
 from repository.semantic_embedding_repository import SemanticEmbeddingRepository
-from utils.logger import get_logger
+from logging_config import get_logger
 
 logger = get_logger(__name__)
 

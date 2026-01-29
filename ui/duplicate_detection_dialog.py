@@ -14,11 +14,12 @@ Follows best practices from:
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QCheckBox, QGroupBox, QSpinBox, QDoubleSpinBox, QRadioButton,
-    QButtonGroup, QFrame, QTextEdit, QProgressBar, QMessageBox
+    QButtonGroup, QFrame, QTextEdit, QProgressBar, QMessageBox,
+    QScrollArea, QWidget
 )
 from PySide6.QtCore import Qt, Signal, QThread, QObject
 from PySide6.QtGui import QFont
-from typing import Optional
+from typing import Optional, List
 import time
 
 from services.library_detector import check_system_readiness
@@ -28,24 +29,26 @@ from repository.photo_repository import PhotoRepository
 from repository.video_repository import VideoRepository
 from services.embedding_service import EmbeddingService
 from services.job_service import JobService
-from utils.logger import get_logger
+from ui.embedding_scope_widget import EmbeddingScopeWidget
+from logging_config import get_logger
 
 logger = get_logger(__name__)
 
 
 class DuplicateDetectionWorker(QObject):
     """Background worker for duplicate detection."""
-    
+
     progress_updated = Signal(int, str)  # percentage, message
     finished = Signal(dict)  # results
     error = Signal(str)
-    
-    def __init__(self, project_id: int, options: dict):
+
+    def __init__(self, project_id: int, options: dict, photo_ids: Optional[List[int]] = None):
         super().__init__()
         self.project_id = project_id
         self.options = options
+        self.photo_ids = photo_ids  # If None, process all photos
         self._running = True
-    
+
     def run(self):
         """Run duplicate detection process."""
         try:
@@ -53,16 +56,26 @@ class DuplicateDetectionWorker(QObject):
                 'exact_duplicates': 0,
                 'similar_stacks': 0,
                 'photos_processed': 0,
-                'embeddings_generated': 0
+                'embeddings_generated': 0,
+                'scope': self.options.get('scope_description', 'All photos')
             }
-            
+
             total_steps = 0
             current_step = 0
-            
+
+            # Determine photo count for progress estimation
+            if self.photo_ids:
+                photo_count = len(self.photo_ids)
+            else:
+                photo_repo = PhotoRepository()
+                photo_count = photo_repo.count_photos_in_project(self.project_id)
+
+            results['photos_processed'] = photo_count
+
             # Step 1: Exact duplicate detection
             if self.options.get('detect_exact', False):
                 total_steps += 1
-                
+
             # Step 2: Embedding generation
             if self.options.get('generate_embeddings', False):
                 # Estimate based on photo count
@@ -74,7 +87,10 @@ class DuplicateDetectionWorker(QObject):
             # Step 3: Similar detection
             if self.options.get('detect_similar', False):
                 total_steps += 2
-            
+
+            if total_steps == 0:
+                total_steps = 1  # Prevent division by zero
+
             # Execute steps
             if self.options.get('detect_exact', False):
                 if not self._running:
@@ -90,7 +106,7 @@ class DuplicateDetectionWorker(QObject):
                 exact_count = len(duplicate_assets)
                 results['exact_duplicates'] = exact_count
                 current_step += 1
-            
+
             # Generate embeddings if requested
             if self.options.get('generate_embeddings', False):
                 if not self._running:
@@ -99,7 +115,7 @@ class DuplicateDetectionWorker(QObject):
                     int((current_step / total_steps) * 100),
                     "Generating AI embeddings..."
                 )
-                
+
                 embedding_service = EmbeddingService()
                 try:
                     # Load model
@@ -111,14 +127,15 @@ class DuplicateDetectionWorker(QObject):
                     photos = photo_repo.get_photos_needing_embeddings(self.project_id, limit=1000)
                     
                     batch_size = 50
-                    for i in range(0, len(photos), batch_size):
+                    total_photos = len(photos)
+
+                    for i in range(0, total_photos, batch_size):
                         if not self._running:
                             return
-                            
+
                         batch = photos[i:i + batch_size]
                         for photo in batch:
                             try:
-                                # Handle both 'file_path' and 'path' keys
                                 file_path = photo.get('file_path') or photo.get('path')
                                 photo_id = photo.get('photo_id') or photo.get('id')
                                 if not file_path or not photo_id:
@@ -132,18 +149,20 @@ class DuplicateDetectionWorker(QObject):
                             except Exception as e:
                                 photo_id = photo.get('photo_id') or photo.get('id')
                                 logger.warning(f"Failed to process photo {photo_id}: {e}")
-                        
+
                         current_step += 1
-                        progress = int((current_step / total_steps) * 100)
+                        progress = min(95, int((current_step / total_steps) * 100))
+                        processed = results['embeddings_generated']
                         self.progress_updated.emit(
                             progress,
-                            f"Generated embeddings: {results['embeddings_generated']}"
+                            f"Generated embeddings: {processed:,}/{total_photos:,}"
                         )
-                        
+
                 except Exception as e:
                     logger.error(f"Embedding generation failed: {e}")
                     self.error.emit(f"Embedding generation failed: {e}")
-            
+                    return
+
             # Similar detection
             if self.options.get('detect_similar', False):
                 if not self._running:
@@ -152,14 +171,44 @@ class DuplicateDetectionWorker(QObject):
                     int((current_step / total_steps) * 100),
                     "Finding similar shots..."
                 )
-                
-                # TODO: Implement similar shot detection using embeddings
-                # This would use clustering algorithms on the generated embeddings
+
+                # Use similar shot detection with specified photo IDs
+                try:
+                    from services.stack_generation_service import StackGenerationService
+                    from repository.stack_repository import StackRepository
+                    from services.semantic_embedding_service import SemanticEmbeddingService
+
+                    stack_repo = StackRepository()
+                    embedding_svc = SemanticEmbeddingService()
+                    stack_svc = StackGenerationService(photo_repo, stack_repo, embedding_svc)
+
+                    threshold = self.options.get('similarity_threshold', 0.85)
+                    time_window = self.options.get('time_window_seconds', 30)
+
+                    if self.photo_ids:
+                        similar_count = stack_svc.generate_stacks_for_photos(
+                            self.project_id,
+                            self.photo_ids,
+                            similarity_threshold=threshold,
+                            time_window_seconds=time_window
+                        )
+                    else:
+                        similar_count = stack_svc.generate_stacks(
+                            self.project_id,
+                            similarity_threshold=threshold,
+                            time_window_seconds=time_window
+                        )
+
+                    results['similar_stacks'] = similar_count or 0
+                except Exception as e:
+                    logger.warning(f"Similar detection service not available: {e}")
+                    results['similar_stacks'] = 0
+
                 current_step += 2
-                results['similar_stacks'] = 0  # Placeholder
-            
+
+            self.progress_updated.emit(100, "Detection complete!")
             self.finished.emit(results)
-            
+
         except Exception as e:
             logger.error(f"Duplicate detection failed: {e}")
             self.error.emit(str(e))
@@ -168,26 +217,33 @@ class DuplicateDetectionWorker(QObject):
 class DuplicateDetectionDialog(QDialog):
     """
     Professional duplicate detection dialog.
-    
+
     Features:
     - Exact duplicate detection (hash-based)
     - Similar shot detection (AI-powered)
+    - Scope selection (all/folders/dates/recent/quantity)
     - Configurable parameters
     - Real-time progress
     - System readiness checking
+
+    Best practices from:
+    - Google Photos: Simple defaults with smart suggestions
+    - iPhone Photos: Automatic background processing
+    - Lightroom: Professional folder/collection selection
     """
-    
+
     def __init__(self, project_id: int, parent=None):
         super().__init__(parent)
         self.project_id = project_id
         self.worker_thread = None
         self.worker = None
-        
-        self.setWindowTitle("🔍 Detect Duplicates")
+        self.selected_photo_ids: List[int] = []
+
+        self.setWindowTitle("Detect Duplicates & Similar Photos")
         self.setModal(True)
-        self.setMinimumWidth(600)
-        self.setMinimumHeight(700)
-        
+        self.setMinimumWidth(650)
+        self.setMinimumHeight(800)
+
         self._build_ui()
         self._apply_styles()
         self._connect_signals()
@@ -195,39 +251,54 @@ class DuplicateDetectionDialog(QDialog):
     
     def _build_ui(self):
         """Build dialog UI."""
-        layout = QVBoxLayout(self)
-        layout.setSpacing(16)
+        # Main layout with scroll area for smaller screens
+        main_layout = QVBoxLayout(self)
+        main_layout.setSpacing(0)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setFrameShape(QFrame.NoFrame)
+
+        scroll_content = QWidget()
+        layout = QVBoxLayout(scroll_content)
+        layout.setSpacing(12)
         layout.setContentsMargins(20, 20, 20, 20)
-        
+
         # Header
         header_layout = QHBoxLayout()
-        
-        title_icon = QLabel("🔍")
-        title_icon.setStyleSheet("font-size: 24px;")
-        
-        title_label = QLabel("<h2>Detect Duplicates</h2>")
-        title_label.setStyleSheet("margin-left: 10px;")
-        
-        header_layout.addWidget(title_icon)
+
+        title_label = QLabel("<h2>Detect Duplicates & Similar Photos</h2>")
         header_layout.addWidget(title_label)
         header_layout.addStretch()
-        
+
         layout.addLayout(header_layout)
-        
+
         desc_label = QLabel(
             "Find duplicate and similar photos in your collection. "
-            "Choose detection methods and configure sensitivity settings."
+            "Select which photos to scan, choose detection methods, and configure settings."
         )
         desc_label.setWordWrap(True)
         desc_label.setStyleSheet("color: #666; margin-bottom: 8px;")
         layout.addWidget(desc_label)
-        
+
         # Separator
         sep1 = QFrame()
         sep1.setFrameShape(QFrame.HLine)
         sep1.setFrameShadow(QFrame.Sunken)
         layout.addWidget(sep1)
-        
+
+        # === SCOPE SELECTION WIDGET ===
+        self.scope_widget = EmbeddingScopeWidget(self.project_id, self)
+        self.scope_widget.scopeChanged.connect(self._on_scope_changed)
+        layout.addWidget(self.scope_widget)
+
+        # Separator
+        sep2 = QFrame()
+        sep2.setFrameShape(QFrame.HLine)
+        sep2.setFrameShadow(QFrame.Sunken)
+        layout.addWidget(sep2)
+
         # Detection Types
         detection_group = QGroupBox("Detection Methods")
         detection_layout = QVBoxLayout(detection_group)
@@ -346,21 +417,30 @@ class DuplicateDetectionDialog(QDialog):
         
         layout.addWidget(self.progress_group)
         
-        # Buttons
+        # Add stretch before buttons
         layout.addStretch(1)
-        button_layout = QHBoxLayout()
+
+        # Set up scroll area
+        scroll_area.setWidget(scroll_content)
+        main_layout.addWidget(scroll_area)
+
+        # Buttons (outside scroll area for always visible)
+        button_widget = QWidget()
+        button_widget.setStyleSheet("background-color: white; border-top: 1px solid #ddd;")
+        button_layout = QHBoxLayout(button_widget)
+        button_layout.setContentsMargins(20, 12, 20, 12)
         button_layout.addStretch(1)
-        
+
         self.btn_cancel = QPushButton("Cancel")
         self.btn_cancel.clicked.connect(self.reject)
         button_layout.addWidget(self.btn_cancel)
-        
+
         self.btn_start = QPushButton("Start Detection")
         self.btn_start.setDefault(True)
         self.btn_start.clicked.connect(self._start_detection)
         button_layout.addWidget(self.btn_start)
-        
-        layout.addLayout(button_layout)
+
+        main_layout.addWidget(button_widget)
     
     def _apply_styles(self):
         """Apply custom styles."""
@@ -407,9 +487,14 @@ class DuplicateDetectionDialog(QDialog):
         """Connect signals."""
         self.chk_similar.toggled.connect(self._on_similar_toggled)
         self.chk_generate_embeddings.toggled.connect(self._on_embedding_toggled)
-        
+
         # Initial state
         self._on_similar_toggled(self.chk_similar.isChecked())
+
+    def _on_scope_changed(self, photo_ids: List[int], count: int):
+        """Handle scope selection change from widget."""
+        self.selected_photo_ids = photo_ids
+        logger.debug(f"Scope changed: {count} photos selected")
     
     def _check_system_readiness(self):
         """Check system readiness and update UI."""
@@ -458,42 +543,59 @@ class DuplicateDetectionDialog(QDialog):
                 self,
                 "No Detection Method Selected",
                 "Please select at least one detection method:\n"
-                "• Exact Duplicates\n"
-                "• Similar Shots"
+                "  Exact Duplicates\n"
+                "  Similar Shots"
             )
             return
-        
+
+        # Get selected photo IDs from scope widget
+        photo_ids = self.scope_widget.get_selected_photo_ids()
+
+        if not photo_ids:
+            QMessageBox.warning(
+                self,
+                "No Photos Selected",
+                "Please select at least some photos to scan.\n\n"
+                "Use the 'Photo Selection' options above to choose which photos to analyze."
+            )
+            return
+
         # Prepare options
         options = {
             'detect_exact': self.chk_exact.isChecked(),
             'detect_similar': self.chk_similar.isChecked(),
             'generate_embeddings': self.chk_generate_embeddings.isChecked(),
             'similarity_threshold': self.spin_similarity.value(),
-            'time_window_seconds': self.spin_time_window.value()
+            'time_window_seconds': self.spin_time_window.value(),
+            'scope_description': self.scope_widget.get_scope_description(),
+            'processing_order': self.scope_widget.get_processing_order()
         }
-        
+
+        logger.info(f"Starting duplicate detection: {len(photo_ids)} photos, scope: {options['scope_description']}")
+
         # Hide configuration, show progress
         self._show_progress_mode()
-        
-        # Start worker thread
-        self.worker = DuplicateDetectionWorker(self.project_id, options)
+
+        # Start worker thread with photo_ids
+        self.worker = DuplicateDetectionWorker(self.project_id, options, photo_ids)
         self.worker_thread = QThread()
-        
+
         self.worker.moveToThread(self.worker_thread)
         self.worker.progress_updated.connect(self._update_progress)
         self.worker.finished.connect(self._on_detection_finished)
         self.worker.error.connect(self._on_detection_error)
         self.worker_thread.started.connect(self.worker.run)
-        
+
         self.worker_thread.start()
     
     def _show_progress_mode(self):
         """Switch to progress display mode."""
-        # Hide configuration elements
-        for widget in [self.chk_exact, self.chk_similar, self.chk_generate_embeddings,
-                      self.sensitivity_widget, self.status_group]:
+        # Disable configuration elements
+        for widget in [self.scope_widget, self.chk_exact, self.chk_similar,
+                       self.chk_generate_embeddings, self.sensitivity_widget,
+                       self.status_group]:
             widget.setEnabled(False)
-        
+
         # Show progress elements
         self.progress_group.setVisible(True)
         self.btn_start.setText("Running...")
@@ -513,13 +615,16 @@ class DuplicateDetectionDialog(QDialog):
             self.worker_thread.wait()
         
         # Show results
+        scope = results.get('scope', 'All photos')
         message = f"""Duplicate detection completed!
 
+Scope: {scope}
+
 Results:
-• Exact duplicates found: {results['exact_duplicates']}
-• Similar stacks created: {results['similar_stacks']}
-• Photos processed: {results['photos_processed']}
-• Embeddings generated: {results['embeddings_generated']}
+  Exact duplicates found: {results.get('exact_duplicates', 0):,}
+  Similar stacks created: {results.get('similar_stacks', 0):,}
+  Photos processed: {results.get('photos_processed', 0):,}
+  Embeddings generated: {results.get('embeddings_generated', 0):,}
 
 You can now browse duplicates in the sidebar under 'Duplicates' section."""
 
@@ -544,11 +649,12 @@ You can now browse duplicates in the sidebar under 'Duplicates' section."""
     
     def _show_configuration_mode(self):
         """Switch back to configuration mode."""
-        # Show configuration elements
-        for widget in [self.chk_exact, self.chk_similar, self.chk_generate_embeddings,
-                      self.sensitivity_widget, self.status_group]:
+        # Re-enable configuration elements
+        for widget in [self.scope_widget, self.chk_exact, self.chk_similar,
+                       self.chk_generate_embeddings, self.sensitivity_widget,
+                       self.status_group]:
             widget.setEnabled(True)
-        
+
         # Hide progress elements
         self.progress_group.setVisible(False)
         self.btn_start.setText("Start Detection")

@@ -361,6 +361,21 @@ VALUES ('9.0.0', 'Add photo_count column to photo_folders table', CURRENT_TIMEST
 )
 
 
+# Migration to v9.1.0 (Add semantic_model column to projects)
+MIGRATION_9_1_0 = Migration(
+    version="9.1.0",
+    description="Project canonical semantic model: projects.semantic_model for embedding consistency",
+    sql="""
+-- Migration v9.1.0 handled by migration_v9_1_semantic_model.py
+-- This placeholder ensures version tracking works with MigrationManager
+
+INSERT OR REPLACE INTO schema_version (version, description, applied_at)
+VALUES ('9.1.0', 'Project canonical semantic model: projects.semantic_model for embedding consistency', CURRENT_TIMESTAMP);
+""",
+    rollback_sql=""
+)
+
+
 # Ordered list of all migrations
 ALL_MIGRATIONS = [
     MIGRATION_1_5_0,
@@ -371,6 +386,7 @@ ALL_MIGRATIONS = [
     MIGRATION_7_0_0,
     MIGRATION_8_0_0,
     MIGRATION_9_0_0,
+    MIGRATION_9_1_0,
 ]
 
 
@@ -547,6 +563,9 @@ class MigrationManager:
                 elif migration.version == "9.0.0":
                     # Apply migration v9: add photo_count column to photo_folders
                     self._add_photo_count_column_if_missing(conn)
+                elif migration.version == "9.1.0":
+                    # Apply migration v9.1: add semantic_model column to projects
+                    self._apply_migration_v9_1(conn)
 
                 # Execute migration SQL (version tracking)
                 conn.executescript(migration.sql)
@@ -898,6 +917,32 @@ class MigrationManager:
 
         except Exception as e:
             self.logger.error(f"Failed to apply migration v8.0.0: {e}")
+            raise
+
+    def _apply_migration_v9_1(self, conn: sqlite3.Connection):
+        """
+        Apply migration v9.1.0 using migration_v9_1_semantic_model.py module.
+
+        Adds semantic_model column to projects table for canonical model enforcement.
+
+        Args:
+            conn: Database connection
+        """
+        self.logger.info("Applying migration v9.1.0 (semantic_model column)...")
+
+        try:
+            from migrations import migration_v9_1_semantic_model
+
+            # Apply the migration
+            success = migration_v9_1_semantic_model.migrate_up(conn)
+
+            if success:
+                self.logger.info("Migration v9.1.0 applied successfully")
+            else:
+                raise Exception("Migration v9.1.0 returned failure status")
+
+        except Exception as e:
+            self.logger.error(f"Failed to apply migration v9.1.0: {e}")
             raise
 
 

@@ -213,6 +213,7 @@ hiddenimports = [
     'win32com.shell',
     'win32api',
     'win32con',
+    'win32timezone',  # CRITICAL: Required for MTP file date/time metadata
     'pythoncom',
     'pywintypes',
     'ctypes',
@@ -264,7 +265,7 @@ hiddenimports = [
 	'google_components.widgets',
 	'google_components.media_lightbox',
 	'google_components.photo_helpers',
-	'google_components.dialogs'
+	'google_components.dialogs',
 
     'repository',
     'repository.asset_repository',  # CRITICAL: Asset repository for photos and videos
@@ -329,6 +330,7 @@ hiddenimports = [
     'ui.cluster_face_selector',  # Face clustering selector
     'ui.device_import_dialog',
     'ui.embedding_progress_dialog',  # Embedding generation progress dialog
+    'ui.embedding_scope_widget',  # CRITICAL: Scope selection for embedding extraction
     'ui.face_crop_editor',  # CRITICAL: Face crop editor (manual face cropping)
     'ui.face_detection_config_dialog',  # Face detection configuration
     'ui.face_detection_progress_dialog',  # Face detection progress tracking
@@ -371,12 +373,6 @@ hiddenimports = [
 	'ui.accordion_sidebar.dates_section',
 	'ui.accordion_sidebar.devices_section',
 	'ui.accordion_sidebar.folders_section',
-	'ui.accordion_sidebar.locations_section',
-	'ui.accordion_sidebar.people_section',
-	'ui.accordion_sidebar.quick_section',
-	'ui.accordion_sidebar.section_widgets',
-	'ui.accordion_sidebar.videos_section'
-	'ui.accordion_sidebar.folders_section',
 	'ui.accordion_sidebar.locations_section',  # CRITICAL: GPS locations sidebar section
 	'ui.accordion_sidebar.people_section',
 	'ui.accordion_sidebar.quick_section',
@@ -384,19 +380,8 @@ hiddenimports = [
 	'ui.accordion_sidebar.videos_section',
 
     'utils',
-	'utils.diagnose_insightface',
-	'utils.dpi_helper',  # CRITICAL: DPI/resolution adaptive scaling helper
-	'utils.ffmpeg_check',
-	'utils.insightface_check',
-	'utils.test_insightface_models',
+    'utils.dpi_helper',  # CRITICAL: DPI/resolution adaptive scaling helper
     'utils.translation_manager',
-
-    # Google Photos components (PhotoButton, MediaLightbox, etc.)
-    'google_components',
-    'google_components.photo_helpers',  # CRITICAL: PhotoButton with tag badges
-    'google_components.widgets',  # Google Photos UI widgets
-    'google_components.dialogs',  # Google Photos dialogs
-    'google_components.media_lightbox',  # Media lightbox viewer
 
     # Core app modules
     'config.face_detection_config',
@@ -500,7 +485,7 @@ exe = EXE(
     upx=True,  # SECURITY: Compress executable to obfuscate structure
     upx_exclude=[],
     runtime_tmpdir=None,  # Extract to temp on each run
-    console=True,  # No console window
+    console=True,  # Show console window for debugging (set False for release)
     disable_windowing_traceback=False,
     argv_emulation=False,
     target_arch=None,

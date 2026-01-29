@@ -668,7 +668,8 @@ class ScanController(QObject):
                             worker = SemanticEmbeddingWorker(
                                 photo_ids=photos_needing_embeddings,
                                 model_name="clip-vit-b32",
-                                force_recompute=False
+                                force_recompute=False,
+                                project_id=current_project_id
                             )
 
                             # Create event loop to wait for worker completion

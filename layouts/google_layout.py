@@ -8564,20 +8564,16 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
 
     def _on_detect_duplicates(self):
         """
-        Run actual duplicate detection process (not just show results).
-        
-        This triggers the complete duplicate detection workflow:
-        1. Hash backfill for exact duplicate detection
-        2. Exact duplicate identification
-        3. Shows results in DuplicatesDialog
+        Show duplicate detection configuration dialog.
+
+        The dialog allows users to:
+        1. Select scope (all photos, specific folders, date range, etc.)
+        2. Choose detection methods (exact, similar, or both)
+        3. Configure sensitivity parameters
+        4. Run detection with progress tracking
         """
         try:
-            from PySide6.QtWidgets import QMessageBox, QProgressDialog
-            from PySide6.QtCore import Qt, QCoreApplication
-            from services.asset_service import AssetService
-            from repository.photo_repository import PhotoRepository
-            from repository.asset_repository import AssetRepository
-            from repository.base_repository import DatabaseConnection
+            from PySide6.QtWidgets import QMessageBox
 
             if self.project_id is None:
                 QMessageBox.warning(
@@ -8587,94 +8583,32 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
                 )
                 return
 
-            # Show progress dialog
-            progress = QProgressDialog(
-                "Preparing duplicate detection...",
-                "Cancel",
-                0, 100,
-                self.main_window if hasattr(self, 'main_window') else None
-            )
-            progress.setWindowModality(Qt.WindowModal)
-            progress.setWindowTitle("Duplicate Detection")
-            progress.setMinimumDuration(0)
-            progress.show()
-
-            # Initialize services
-            db_conn = DatabaseConnection()
-            photo_repo = PhotoRepository(db_conn)
-            asset_repo = AssetRepository(db_conn)
-            asset_service = AssetService(photo_repo, asset_repo)
-
-            # Step 1: Run hash backfill (required for exact duplicates)
-            progress.setLabelText("Computing photo hashes...")
-            progress.setValue(20)
-            QCoreApplication.processEvents()
-
-            backfill_stats = asset_service.backfill_hashes_and_link_assets(
+            # Show the duplicate detection configuration dialog
+            from ui.duplicate_detection_dialog import DuplicateDetectionDialog
+            dialog = DuplicateDetectionDialog(
                 project_id=self.project_id,
-                batch_size=500,
-                progress_callback=lambda current, total: (
-                    progress.setValue(20 + int(30 * current / total)) if total > 0 else None,
-                    QCoreApplication.processEvents()
+                parent=self.main_window if hasattr(self, 'main_window') else None
+            )
+
+            # If user completed detection, show the results dialog
+            if dialog.exec():
+                # Detection completed - show results
+                from layouts.google_components.duplicates_dialog import DuplicatesDialog
+                results_dialog = DuplicatesDialog(
+                    project_id=self.project_id,
+                    parent=self.main_window if hasattr(self, 'main_window') else None
                 )
-            )
-
-            if progress.wasCanceled():
-                return
-
-            # Step 2: Find exact duplicates
-            progress.setLabelText("Finding exact duplicates...")
-            progress.setValue(60)
-            QCoreApplication.processEvents()
-
-            duplicates = asset_service.list_duplicates(
-                project_id=self.project_id,
-                min_instances=2
-            )
-
-            progress.setValue(80)
-            QCoreApplication.processEvents()
-
-            # Show results
-            progress.setLabelText("Loading results...")
-            progress.setValue(90)
-            QCoreApplication.processEvents()
-
-            # Close progress
-            progress.setValue(100)
-            progress.close()
-
-            # Show summary
-            duplicate_count = len(duplicates)
-            photo_count = sum(dup['instance_count'] for dup in duplicates)
-            
-            QMessageBox.information(
-                self.main_window if hasattr(self, 'main_window') else None,
-                "Duplicate Detection Complete",
-                f"✅ Duplicate detection completed successfully!\n\n"
-                f"Found {duplicate_count} duplicate groups\n"
-                f"Total duplicate photos: {photo_count}\n\n"
-                f"Hash backfill: {backfill_stats.scanned} photos processed\n"
-                f"Exact duplicates: {duplicate_count} groups identified"
-            )
-
-            # Now open the dialog to view/manage results
-            from layouts.google_components.duplicates_dialog import DuplicatesDialog
-            dialog = DuplicatesDialog(
-                project_id=self.project_id,
-                parent=self.main_window
-            )
-            dialog.exec()
+                results_dialog.exec()
 
         except Exception as e:
-            print(f"[GooglePhotosLayout] Error running duplicate detection: {e}")
+            print(f"[GooglePhotosLayout] Error opening duplicate detection dialog: {e}")
             import traceback
             traceback.print_exc()
             from PySide6.QtWidgets import QMessageBox
             QMessageBox.critical(
                 self.main_window if hasattr(self, 'main_window') else None,
                 "Error",
-                f"Failed to run duplicate detection:\n{str(e)}"
+                f"Failed to open duplicate detection dialog:\n{str(e)}"
             )
 
     def _on_find_similar_photos(self):
@@ -8753,7 +8687,8 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
                 worker = SemanticEmbeddingWorker(
                     photo_ids=photo_ids,
                     model_name="clip-vit-b32",
-                    force_recompute=False
+                    force_recompute=False,
+                    project_id=self.project_id
                 )
 
                 # Use QEventLoop to wait for worker while keeping UI responsive
