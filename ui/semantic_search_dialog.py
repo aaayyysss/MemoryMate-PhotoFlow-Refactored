@@ -1,8 +1,8 @@
 """
 SemanticSearchDialog - Natural Language Photo Search
 
-Version: 1.0.0
-Date: 2026-01-05
+Version: 1.0.1
+Date: 2026-01-29
 
 Search photos using natural language queries.
 
@@ -13,9 +13,14 @@ Features:
 - Threshold slider (0.0 to 1.0)
 - Real-time search
 - Score visualization (color-coded)
+- Project-aware canonical model support (v1.0.1)
 
 Usage:
-    dialog = SemanticSearchDialog(parent=parent_widget)
+    # RECOMMENDED: Use with project_id for correct canonical model
+    dialog = SemanticSearchDialog(
+        project_id=current_project_id,
+        parent=parent_widget
+    )
     dialog.exec()
 """
 
@@ -30,7 +35,11 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal, QSize
 from PySide6.QtGui import QPixmap, QMouseEvent
 
-from services.semantic_search_service import get_semantic_search_service, SearchResult
+from services.semantic_search_service import (
+    get_semantic_search_service,
+    get_semantic_search_service_for_project,
+    SearchResult
+)
 from logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -139,12 +148,34 @@ class SemanticSearchDialog(QDialog):
         "snow",
     ]
 
-    def __init__(self, parent=None):
+    def __init__(self, project_id: Optional[int] = None, parent=None):
+        """
+        Initialize semantic search dialog.
+
+        Args:
+            project_id: Project ID (REQUIRED for correct canonical model usage)
+            parent: Parent widget
+        """
         super().__init__(parent)
-        self.search_service = get_semantic_search_service()
+        self.project_id = project_id
         self.all_results: List[SearchResult] = []
         self.current_threshold = 0.25
         self.current_query = ""
+
+        # Use project-aware service if project_id is provided
+        # This ensures we use the correct canonical model for embeddings
+        if project_id is not None:
+            self.search_service = get_semantic_search_service_for_project(project_id)
+            logger.info(
+                f"[SemanticSearchDialog] Using project-aware service for project {project_id}"
+            )
+        else:
+            # Fallback to default service (may cause model mismatch!)
+            self.search_service = get_semantic_search_service()
+            logger.warning(
+                f"[SemanticSearchDialog] No project_id provided! "
+                f"Using default service - may cause model mismatch."
+            )
 
         self.setWindowTitle("Semantic Photo Search")
         self.resize(900, 700)

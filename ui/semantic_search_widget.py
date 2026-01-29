@@ -1,8 +1,8 @@
 """
 Semantic Search Widget - Natural Language Photo Search
 
-Version: 1.0.0
-Date: 2026-01-01
+Version: 1.0.1
+Date: 2026-01-29
 
 Widget for searching photos by natural language descriptions using
 CLIP/SigLIP visual embeddings.
@@ -12,9 +12,11 @@ Features:
 - Real-time search as user types
 - Display results in main grid
 - Integration with EmbeddingService
+- Project-aware context support (v1.0.1)
 
 Usage:
     widget = SemanticSearchWidget(parent)
+    widget.set_project_id(current_project_id)  # Set project for canonical model
     widget.searchTriggered.connect(on_semantic_search)
     toolbar.addWidget(widget)
 """
@@ -26,7 +28,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtGui import QIcon, QPixmap
 
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Dict, Any
 import numpy as np
 import time
 from pathlib import Path
@@ -150,11 +152,19 @@ class SemanticSearchWidget(QWidget):
     # Signal: (error_message)
     errorOccurred = Signal(str)
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, project_id: Optional[int] = None):
+        """
+        Initialize semantic search widget.
+
+        Args:
+            parent: Parent widget
+            project_id: Optional project ID for canonical model context
+        """
         super().__init__(parent)
         self.embedding_service = None
         self.photo_repo = PhotoRepository()
         self.search_history_service = get_search_history_service()
+        self._project_id = project_id
         self._last_query = ""
         self._query_image_path = None  # Path to uploaded query image
         self._query_image_embedding = None  # Cached image embedding
@@ -177,6 +187,38 @@ class SemanticSearchWidget(QWidget):
 
         # Proactively check for available CLIP models at startup
         self._check_available_models()
+
+    def set_project_id(self, project_id: Optional[int]):
+        """
+        Set the current project context.
+
+        Call this when the active project changes to ensure searches use
+        the correct canonical model for the project.
+
+        Args:
+            project_id: Project ID, or None to clear project context
+        """
+        if self._project_id != project_id:
+            old_project = self._project_id
+            self._project_id = project_id
+
+            # Clear cached results when project changes
+            if self._result_cache is not None:
+                self._result_cache.clear()
+                logger.info(
+                    f"[SemanticSearch] Project changed {old_project} -> {project_id}, "
+                    f"cleared result cache"
+                )
+
+            # Clear embedding service to force reload with new project model
+            self.embedding_service = None
+
+            logger.info(f"[SemanticSearch] Project context set to: {project_id}")
+
+    @property
+    def project_id(self) -> Optional[int]:
+        """Get the current project ID."""
+        return self._project_id
 
     def _check_available_models(self):
         """
