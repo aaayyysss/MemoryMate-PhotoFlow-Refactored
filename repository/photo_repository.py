@@ -396,11 +396,12 @@ class PhotoRepository(BaseRepository):
 
         self.logger.debug(f"Updated file_hash for photo {photo_id}")
 
-    def get_missing_metadata(self, max_failures: int = 3, limit: Optional[int] = None) -> List[str]:
+    def get_missing_metadata(self, project_id: int, max_failures: int = 3, limit: Optional[int] = None) -> List[str]:
         """
-        Get photos that need metadata extraction.
+        Get photos that need metadata extraction for a specific project.
 
         Args:
+            project_id: Project ID to filter by
             max_failures: Maximum allowed failure count
             limit: Optional maximum number of results
 
@@ -409,8 +410,9 @@ class PhotoRepository(BaseRepository):
         """
         sql = """
             SELECT path FROM photo_metadata
-            WHERE metadata_status = 'pending'
-               OR (metadata_status = 'failed' AND metadata_fail_count < ?)
+            WHERE project_id = ?
+              AND (metadata_status = 'pending'
+                   OR (metadata_status = 'failed' AND metadata_fail_count < ?))
             ORDER BY id ASC
         """
 
@@ -419,7 +421,7 @@ class PhotoRepository(BaseRepository):
 
         with self.connection(read_only=True) as conn:
             cur = conn.cursor()
-            cur.execute(sql, (max_failures,))
+            cur.execute(sql, (project_id, max_failures))
             return [row['path'] for row in cur.fetchall()]
 
     def count_by_folder(self, folder_id: int, project_id: int) -> int:
@@ -437,12 +439,14 @@ class PhotoRepository(BaseRepository):
 
     def search(self,
                query: str,
+               project_id: int,
                limit: int = 100) -> List[Dict[str, Any]]:
         """
-        Search photos by path or tags.
+        Search photos by path or tags within a specific project.
 
         Args:
             query: Search query
+            project_id: Project ID to filter by
             limit: Maximum results
 
         Returns:
@@ -451,15 +455,18 @@ class PhotoRepository(BaseRepository):
         pattern = f"%{query}%"
 
         return self.find_all(
-            where_clause="path LIKE ? OR tags LIKE ?",
-            params=(pattern, pattern),
+            where_clause="project_id = ? AND (path LIKE ? OR tags LIKE ?)",
+            params=(project_id, pattern, pattern),
             order_by="modified DESC",
             limit=limit
         )
 
-    def get_statistics(self) -> Dict[str, Any]:
+    def get_statistics(self, project_id: Optional[int] = None) -> Dict[str, Any]:
         """
-        Get database statistics.
+        Get database statistics for a specific project or globally.
+
+        Args:
+            project_id: Project ID to filter by. If None, returns global stats (use with caution).
 
         Returns:
             Dict with counts and aggregates
@@ -467,57 +474,78 @@ class PhotoRepository(BaseRepository):
         with self.connection(read_only=True) as conn:
             cur = conn.cursor()
 
-            # Total count
-            cur.execute("SELECT COUNT(*) as total FROM photo_metadata")
-            total = cur.fetchone()['total']
+            if project_id is not None:
+                # Project-specific statistics
+                cur.execute("SELECT COUNT(*) as total FROM photo_metadata WHERE project_id = ?", (project_id,))
+                total = cur.fetchone()['total']
 
-            # Count by status
-            cur.execute("""
-                SELECT metadata_status, COUNT(*) as count
-                FROM photo_metadata
-                GROUP BY metadata_status
-            """)
-            by_status = {row['metadata_status']: row['count'] for row in cur.fetchall()}
+                cur.execute("""
+                    SELECT metadata_status, COUNT(*) as count
+                    FROM photo_metadata
+                    WHERE project_id = ?
+                    GROUP BY metadata_status
+                """, (project_id,))
+                by_status = {row['metadata_status']: row['count'] for row in cur.fetchall()}
 
-            # Total size
-            cur.execute("SELECT SUM(size_kb) as total_size FROM photo_metadata")
-            total_size_kb = cur.fetchone()['total_size'] or 0
+                cur.execute("SELECT SUM(size_kb) as total_size FROM photo_metadata WHERE project_id = ?", (project_id,))
+                total_size_kb = cur.fetchone()['total_size'] or 0
+            else:
+                # Global statistics (legacy behavior - use with caution)
+                self.logger.warning("get_statistics called without project_id - returning global stats")
+                cur.execute("SELECT COUNT(*) as total FROM photo_metadata")
+                total = cur.fetchone()['total']
+
+                cur.execute("""
+                    SELECT metadata_status, COUNT(*) as count
+                    FROM photo_metadata
+                    GROUP BY metadata_status
+                """)
+                by_status = {row['metadata_status']: row['count'] for row in cur.fetchall()}
+
+                cur.execute("SELECT SUM(size_kb) as total_size FROM photo_metadata")
+                total_size_kb = cur.fetchone()['total_size'] or 0
 
             return {
                 "total_photos": total,
                 "by_status": by_status,
-                "total_size_mb": round(total_size_kb / 1024, 2)
+                "total_size_mb": round(total_size_kb / 1024, 2),
+                "project_id": project_id
             }
 
-    def delete_by_path(self, path: str) -> bool:
+    def delete_by_path(self, path: str, project_id: int) -> bool:
         """
-        Delete a photo by file path.
+        Delete a photo by file path within a specific project.
 
         Args:
             path: Full file path
+            project_id: Project ID to ensure we only delete from this project
 
         Returns:
             True if deleted, False if not found
         """
         with self.connection() as conn:
             cur = conn.cursor()
-            cur.execute("DELETE FROM photo_metadata WHERE path = ?", (path,))
+            cur.execute(
+                "DELETE FROM photo_metadata WHERE path = ? AND project_id = ?",
+                (path, project_id)
+            )
             conn.commit()
             deleted = cur.rowcount > 0
 
         if deleted:
-            self.logger.info(f"Deleted photo: {path}")
+            self.logger.info(f"Deleted photo from project {project_id}: {path}")
         else:
-            self.logger.warning(f"Photo not found for deletion: {path}")
+            self.logger.warning(f"Photo not found for deletion in project {project_id}: {path}")
 
         return deleted
 
-    def delete_by_paths(self, paths: List[str]) -> int:
+    def delete_by_paths(self, paths: List[str], project_id: int) -> int:
         """
-        Delete multiple photos by file paths.
+        Delete multiple photos by file paths within a specific project.
 
         Args:
             paths: List of file paths
+            project_id: Project ID to ensure we only delete from this project
 
         Returns:
             Number of photos deleted
@@ -526,43 +554,50 @@ class PhotoRepository(BaseRepository):
             return 0
 
         placeholders = ','.join('?' * len(paths))
-        sql = f"DELETE FROM photo_metadata WHERE path IN ({placeholders})"
+        sql = f"DELETE FROM photo_metadata WHERE path IN ({placeholders}) AND project_id = ?"
 
         with self.connection() as conn:
             cur = conn.cursor()
-            cur.execute(sql, paths)
+            cur.execute(sql, (*paths, project_id))
             conn.commit()
             deleted = cur.rowcount
 
-        self.logger.info(f"Bulk deleted {deleted} photos")
+        self.logger.info(f"Bulk deleted {deleted} photos from project {project_id}")
         return deleted
 
-    def delete_by_folder(self, folder_id: int) -> int:
+    def delete_by_folder(self, folder_id: int, project_id: int) -> int:
         """
-        Delete all photos in a folder.
+        Delete all photos in a folder within a specific project.
 
         Args:
             folder_id: Folder ID
+            project_id: Project ID to ensure we only delete from this project
 
         Returns:
             Number of photos deleted
         """
         with self.connection() as conn:
             cur = conn.cursor()
-            cur.execute("DELETE FROM photo_metadata WHERE folder_id = ?", (folder_id,))
+            cur.execute(
+                "DELETE FROM photo_metadata WHERE folder_id = ? AND project_id = ?",
+                (folder_id, project_id)
+            )
             conn.commit()
             deleted = cur.rowcount
 
-        self.logger.info(f"Deleted {deleted} photos from folder {folder_id}")
+        self.logger.info(f"Deleted {deleted} photos from folder {folder_id} in project {project_id}")
         return deleted
 
-    def cleanup_duplicate_paths(self) -> int:
+    def cleanup_duplicate_paths(self, project_id: int) -> int:
         """
-        Clean up duplicate photo entries caused by path format differences.
+        Clean up duplicate photo entries caused by path format differences within a project.
 
         Removes duplicates where paths differ only in slash direction (e.g.,
         'C:\\path\\photo.jpg' vs 'C:/path/photo.jpg'), keeping the entry
         with the lowest ID (oldest).
+
+        Args:
+            project_id: Project ID to limit cleanup to
 
         Returns:
             Number of duplicate entries removed
@@ -570,8 +605,11 @@ class PhotoRepository(BaseRepository):
         with self.connection() as conn:
             cur = conn.cursor()
 
-            # Find all photo paths
-            cur.execute("SELECT id, path FROM photo_metadata ORDER BY id")
+            # Find all photo paths for this project only
+            cur.execute(
+                "SELECT id, path FROM photo_metadata WHERE project_id = ? ORDER BY id",
+                (project_id,)
+            )
             all_photos = cur.fetchall()
 
             # Build map of normalized_path -> list of (id, original_path)
@@ -598,7 +636,7 @@ class PhotoRepository(BaseRepository):
                         ids_to_delete.append(dup_id)
                         self.logger.debug(f"Duplicate found: keeping ID={keep_id} '{keep_path}', removing ID={dup_id} '{dup_path}'")
 
-            # Delete duplicates
+            # Delete duplicates (already filtered by project via the SELECT)
             if ids_to_delete:
                 placeholders = ','.join('?' * len(ids_to_delete))
                 sql = f"DELETE FROM photo_metadata WHERE id IN ({placeholders})"
@@ -607,9 +645,9 @@ class PhotoRepository(BaseRepository):
 
             deleted_count = len(ids_to_delete)
             if deleted_count > 0:
-                self.logger.info(f"Cleaned up {deleted_count} duplicate photo entries")
+                self.logger.info(f"Cleaned up {deleted_count} duplicate photo entries in project {project_id}")
             else:
-                self.logger.info("No duplicate photo entries found")
+                self.logger.info(f"No duplicate photo entries found in project {project_id}")
 
             return deleted_count
 
