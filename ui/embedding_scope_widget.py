@@ -283,15 +283,12 @@ class EmbeddingScopeWidget(QWidget):
     def _load_data(self):
         """Load photos and folders from database."""
         try:
-            # Load all photos with dates
-            self.all_photos = self.db.get_all_photos_with_dates(self.project_id) or []
-
-            # Fallback if method doesn't exist
-            if not self.all_photos:
+            # Try to load all photos with dates - use method that exists in ReferenceDB
+            try:
+                self.all_photos = self.db.get_all_paths_with_dates(self.project_id) or []
+            except AttributeError:
+                # Method doesn't exist, try alternative
                 try:
-                    self.all_photos = self.db.get_all_paths_with_dates(self.project_id) or []
-                except:
-                    # Last resort: get basic photo list
                     from repository.photo_repository import PhotoRepository
                     photo_repo = PhotoRepository()
                     photos = photo_repo.get_all_photos_for_project(self.project_id)
@@ -299,11 +296,15 @@ class EmbeddingScopeWidget(QWidget):
                                         'path': p.get('file_path') or p.get('path'),
                                         'date': p.get('date_taken') or p.get('created_at')}
                                        for p in (photos or [])]
+                except Exception as e:
+                    logger.warning(f"Failed to load photos via repository: {e}")
+                    self.all_photos = []
 
             # Load folders
             try:
                 self.folders = self.db.get_folders_with_counts(self.project_id) or []
-            except:
+            except Exception as e:
+                logger.debug(f"Could not load folders: {e}")
                 self.folders = []
 
             # Populate folder tree
