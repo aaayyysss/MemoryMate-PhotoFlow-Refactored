@@ -111,11 +111,12 @@ class DuplicateDetectionWorker(QObject):
                     asset_service = AssetService(photo_repo, asset_repo)
 
                     # Run hash backfill - this creates media_asset and media_instance records
+                    # Note: backfill processes all photos without instance links (idempotent)
+                    # This ensures duplicate detection works even for legacy photos
                     backfill_stats = asset_service.backfill_hashes_and_link_assets(
-                        project_id=self.project_id,
-                        photo_ids=self.photo_ids  # Pass selected photo IDs if available
+                        project_id=self.project_id
                     )
-                    logger.info(f"Hash backfill complete: {backfill_stats.scanned} scanned, {backfill_stats.hashed} hashed")
+                    logger.info(f"Hash backfill complete: {backfill_stats.scanned} scanned, {backfill_stats.hashed} hashed, {backfill_stats.linked} linked")
                 except Exception as e:
                     logger.error(f"Hash backfill failed: {e}")
                     # Continue anyway - we can still query existing duplicates
