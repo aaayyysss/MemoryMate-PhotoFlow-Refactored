@@ -33,7 +33,17 @@ MIGRATION_DESCRIPTION = "Project canonical semantic model: projects.semantic_mod
 def check_column_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:
     """Check if a column exists in a table."""
     cursor = conn.execute(f"PRAGMA table_info({table})")
-    columns = [row[1] for row in cursor.fetchall()]
+    rows = cursor.fetchall()
+    # Handle both sqlite3.Row objects and tuples
+    # PRAGMA table_info returns: cid, name, type, notnull, dflt_value, pk
+    columns = []
+    for row in rows:
+        try:
+            # Try dictionary/Row access first (column name)
+            columns.append(row['name'])
+        except (KeyError, TypeError):
+            # Fall back to tuple index access
+            columns.append(row[1])
     return column in columns
 
 
@@ -165,9 +175,13 @@ def verify_migration(conn: sqlite3.Connection) -> Tuple[bool, List[str]]:
 
     # Check all projects have semantic_model set
     cursor = conn.execute("""
-        SELECT COUNT(*) FROM projects WHERE semantic_model IS NULL
+        SELECT COUNT(*) as cnt FROM projects WHERE semantic_model IS NULL
     """)
-    null_count = cursor.fetchone()[0]
+    row = cursor.fetchone()
+    try:
+        null_count = row['cnt']
+    except (KeyError, TypeError):
+        null_count = row[0]
     if null_count > 0:
         errors.append(f"{null_count} projects have NULL semantic_model")
 
