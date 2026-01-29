@@ -213,6 +213,7 @@ hiddenimports = [
     'win32com.shell',
     'win32api',
     'win32con',
+    'win32timezone',  # CRITICAL: Required for MTP file date/time metadata
     'pythoncom',
     'pywintypes',
     'ctypes',
@@ -329,6 +330,7 @@ hiddenimports = [
     'ui.cluster_face_selector',  # Face clustering selector
     'ui.device_import_dialog',
     'ui.embedding_progress_dialog',  # Embedding generation progress dialog
+    'ui.embedding_scope_widget',  # CRITICAL: Scope selection for embedding extraction
     'ui.face_crop_editor',  # CRITICAL: Face crop editor (manual face cropping)
     'ui.face_detection_config_dialog',  # Face detection configuration
     'ui.face_detection_progress_dialog',  # Face detection progress tracking
