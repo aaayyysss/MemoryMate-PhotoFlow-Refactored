@@ -84,9 +84,11 @@ class PhotoDeletionService:
                 if photo.get('project_id'):
                     project_ids.add(photo['project_id'])
 
-        # Delete from database
+        # Delete from database (per project for safety)
         try:
-            deleted_count = self.photo_repo.delete_by_paths(paths)
+            deleted_count = 0
+            for project_id in project_ids:
+                deleted_count += self.photo_repo.delete_by_paths(paths, project_id)
             result.photos_deleted_from_db = deleted_count
             result.paths_deleted = paths[:deleted_count]
             self.logger.info(f"Deleted {deleted_count} photos from database")
@@ -227,6 +229,7 @@ class PhotoDeletionService:
     def delete_folder_photos(
         self,
         folder_id: int,
+        project_id: int,
         delete_files: bool = False
     ) -> DeletionResult:
         """
@@ -234,6 +237,7 @@ class PhotoDeletionService:
 
         Args:
             folder_id: Folder ID
+            project_id: Project ID for proper isolation
             delete_files: If True, also delete actual files from disk
 
         Returns:
@@ -253,7 +257,7 @@ class PhotoDeletionService:
 
         # Delete from database
         try:
-            deleted_count = self.photo_repo.delete_by_folder(folder_id)
+            deleted_count = self.photo_repo.delete_by_folder(folder_id, project_id)
             result.photos_deleted_from_db = deleted_count
             result.paths_deleted = paths
             self.logger.info(f"Deleted {deleted_count} photos from database")

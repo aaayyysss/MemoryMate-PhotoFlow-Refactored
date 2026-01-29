@@ -13,6 +13,7 @@ Usage:
 import sys
 import os
 from repository.photo_repository import PhotoRepository
+from repository.project_repository import ProjectRepository
 from repository.base_repository import DatabaseConnection
 from logging_config import get_logger
 
@@ -104,11 +105,21 @@ def main():
         print("=" * 70)
         print()
 
-        # STEP 2: Remove duplicates
-        deleted_count = photo_repo.cleanup_duplicate_paths()
+        # STEP 2: Remove duplicates for each project
+        project_repo = ProjectRepository(db_conn)
+        all_projects = project_repo.get_all_with_details()
 
-        # Get stats after
-        stats_after = photo_repo.get_statistics()
+        deleted_count = 0
+        for project in all_projects:
+            project_id = project['id']
+            project_name = project.get('name', f'Project {project_id}')
+            count = photo_repo.cleanup_duplicate_paths(project_id)
+            if count > 0:
+                print(f"  - {project_name}: removed {count} duplicates")
+            deleted_count += count
+
+        # Get stats after (global)
+        stats_after = photo_repo.get_statistics()  # Global stats for comparison
         total_after = stats_after['total_photos']
 
         print()
