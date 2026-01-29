@@ -24,6 +24,7 @@ import time
 
 from services.library_detector import check_system_readiness
 from repository.asset_repository import AssetRepository
+from repository.base_repository import DatabaseConnection
 from repository.photo_repository import PhotoRepository
 from repository.video_repository import VideoRepository
 from services.embedding_service import EmbeddingService
@@ -77,8 +78,12 @@ class DuplicateDetectionWorker(QObject):
 
             # Step 2: Embedding generation
             if self.options.get('generate_embeddings', False):
-                total_steps += max(1, photo_count // 50)  # Batches of 50
-
+                # Estimate based on photo count
+                db_conn = DatabaseConnection()
+                photo_repo = PhotoRepository(db_conn)
+                photo_count = photo_repo.count_photos_in_project(self.project_id)
+                total_steps += photo_count // 100 + 1  # Rough estimate
+            
             # Step 3: Similar detection
             if self.options.get('detect_similar', False):
                 total_steps += 2
@@ -95,16 +100,11 @@ class DuplicateDetectionWorker(QObject):
                     "Finding exact duplicates..."
                 )
 
-                asset_repo = AssetRepository()
-                # Pass photo_ids if we have a specific scope
-                if self.photo_ids:
-                    exact_count = asset_repo.find_exact_duplicates_for_photos(
-                        self.project_id, self.photo_ids
-                    ) if hasattr(asset_repo, 'find_exact_duplicates_for_photos') else \
-                        asset_repo.find_exact_duplicates(self.project_id)
-                else:
-                    exact_count = asset_repo.find_exact_duplicates(self.project_id)
-                results['exact_duplicates'] = exact_count or 0
+                db_conn = DatabaseConnection()
+                asset_repo = AssetRepository(db_conn)
+                duplicate_assets = asset_repo.list_duplicate_assets(self.project_id, min_instances=2)
+                exact_count = len(duplicate_assets)
+                results['exact_duplicates'] = exact_count
                 current_step += 1
 
             # Generate embeddings if requested
@@ -121,21 +121,11 @@ class DuplicateDetectionWorker(QObject):
                     # Load model
                     model_id = embedding_service.load_clip_model()
 
-                    # Get photos to process
-                    photo_repo = PhotoRepository()
-                    if self.photo_ids:
-                        # Get photo details for specified IDs
-                        photos = photo_repo.get_photos_by_ids(self.photo_ids)
-                        # Filter to only those needing embeddings if not forcing regeneration
-                        if not self.options.get('force_regenerate', False):
-                            photos_needing = photo_repo.get_photos_needing_embeddings(
-                                self.project_id, limit=10000
-                            )
-                            needed_ids = {p.get('photo_id') or p.get('id') for p in photos_needing}
-                            photos = [p for p in photos if (p.get('photo_id') or p.get('id')) in needed_ids]
-                    else:
-                        photos = photo_repo.get_photos_needing_embeddings(self.project_id, limit=10000)
-
+                    # Process photos in batches
+                    db_conn = DatabaseConnection()
+                    photo_repo = PhotoRepository(db_conn)
+                    photos = photo_repo.get_photos_needing_embeddings(self.project_id, limit=1000)
+                    
                     batch_size = 50
                     total_photos = len(photos)
 
@@ -472,6 +462,12 @@ class DuplicateDetectionDialog(QDialog):
                 padding: 8px 16px;
                 border-radius: 4px;
                 font-weight: bold;
+                background-color: #f5f5f5;
+                color: #333333;
+                border: 1px solid #cccccc;
+            }
+            QPushButton:hover {
+                background-color: #e8e8e8;
             }
             QPushButton#btn_start {
                 background-color: #1a73e8;

@@ -316,8 +316,10 @@ class DuplicatesDialog(QDialog):
             QPushButton {
                 padding: 8px 16px;
                 background-color: #f5f5f5;
+                color: #333333;
                 border: 1px solid #ccc;
                 border-radius: 4px;
+                font-weight: bold;
             }
             QPushButton:hover {
                 background-color: #e8e8e8;
@@ -344,18 +346,36 @@ class DuplicatesDialog(QDialog):
         batch_layout.setContentsMargins(8, 8, 8, 8)
         batch_layout.setSpacing(8)
 
+        # Common button style for toolbar buttons
+        toolbar_btn_style = """
+            QPushButton {
+                padding: 6px 12px;
+                background-color: #f5f5f5;
+                color: #333333;
+                border: 1px solid #cccccc;
+                border-radius: 4px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #e8e8e8;
+            }
+        """
+
         btn_select_all = QPushButton("Select All")
         btn_select_all.setToolTip("Select all duplicates for deletion")
+        btn_select_all.setStyleSheet(toolbar_btn_style)
         btn_select_all.clicked.connect(self._on_select_all)
         batch_layout.addWidget(btn_select_all)
 
         btn_select_none = QPushButton("Select None")
         btn_select_none.setToolTip("Deselect all duplicates")
+        btn_select_none.setStyleSheet(toolbar_btn_style)
         btn_select_none.clicked.connect(self._on_select_none)
         batch_layout.addWidget(btn_select_none)
 
         btn_invert = QPushButton("Invert Selection")
         btn_invert.setToolTip("Invert current selection")
+        btn_invert.setStyleSheet(toolbar_btn_style)
         btn_invert.clicked.connect(self._on_invert_selection)
         batch_layout.addWidget(btn_invert)
 
