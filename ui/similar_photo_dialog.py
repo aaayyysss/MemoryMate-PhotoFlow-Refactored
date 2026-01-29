@@ -24,7 +24,8 @@ import numpy as np
 from services.library_detector import check_system_readiness
 from services.embedding_service import EmbeddingService
 from repository.photo_repository import PhotoRepository
-from repository.semantic_embedding_repository import SemanticEmbeddingRepository
+from repository.base_repository import DatabaseConnection
+from services.semantic_embedding_service import SemanticEmbeddingService
 from logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -55,9 +56,11 @@ class SimilarPhotoWorker(QObject):
             
             start_time = time.time()
             
-            # Check if embeddings exist
-            embedding_repo = SemanticEmbeddingRepository()
-            photos_with_embeddings = embedding_repo.get_photos_with_embeddings(self.project_id)
+            # Check if embeddings exist using SemanticEmbeddingService
+            embedding_service = SemanticEmbeddingService()
+            # Get all embeddings for the project to check count
+            embeddings_dict = embedding_service.get_all_embeddings_for_project(self.project_id)
+            photos_with_embeddings = [{'photo_id': pid} for pid in embeddings_dict.keys()]
             
             if len(photos_with_embeddings) < 2:
                 self.error.emit(
@@ -67,19 +70,18 @@ class SimilarPhotoWorker(QObject):
                 return
             
             self.progress_updated.emit(10, f"Analyzing {len(photos_with_embeddings)} embedded photos...")
-            
-            # Extract embeddings
+
+            # Extract embeddings from the preloaded dict
             embeddings = []
             photo_ids = []
-            
-            for photo_data in photos_with_embeddings:
+
+            for photo_id, embedding in embeddings_dict.items():
                 if not self._running:
                     return
-                
-                embedding_data = embedding_repo.get_embedding(photo_data['photo_id'])
-                if embedding_data and embedding_data['embedding']:
-                    embeddings.append(np.frombuffer(embedding_data['embedding'], dtype=np.float32))
-                    photo_ids.append(photo_data['photo_id'])
+
+                if embedding is not None:
+                    embeddings.append(embedding)
+                    photo_ids.append(photo_id)
             
             if len(embeddings) < 2:
                 self.error.emit("Insufficient valid embeddings found.")
@@ -447,18 +449,27 @@ class SimilarPhotoDetectionDialog(QDialog):
     def _load_existing_stats(self):
         """Load statistics about existing embeddings."""
         try:
-            embedding_repo = SemanticEmbeddingRepository()
-            photo_repo = PhotoRepository()
-            
-            total_photos = photo_repo.count_photos_in_project(self.project_id)
-            photos_with_embeddings = embedding_repo.count_photos_with_embeddings(self.project_id)
-            
+            # BUG FIX: Use proper service initialization with db connection
+            db_conn = DatabaseConnection()
+            photo_repo = PhotoRepository(db_conn)
+            embedding_service = SemanticEmbeddingService(db_connection=db_conn)
+
+            # BUG FIX: Use base repository count() method instead of non-existent count_photos_in_project
+            total_photos = photo_repo.count(
+                where_clause="project_id = ?",
+                params=(self.project_id,)
+            )
+
+            # Get embedding stats from service
+            stats = embedding_service.get_project_embedding_stats(self.project_id)
+            photos_with_embeddings = stats.get('photos_with_embeddings', 0)
+
             self.stats_label.setText(
                 f"Total Photos: {total_photos} | "
                 f"With Embeddings: {photos_with_embeddings} | "
                 f"Coverage: {int((photos_with_embeddings/max(total_photos,1))*100)}%"
             )
-            
+
         except Exception as e:
             self.stats_label.setText(f"Error loading statistics: {e}")
     
