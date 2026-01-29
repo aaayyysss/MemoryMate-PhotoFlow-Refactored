@@ -5202,6 +5202,65 @@ class ReferenceDB:
 
             return [row[0] for row in cur.fetchall()]
 
+    def get_photo_ids_for_folders(self, project_id: int, folder_ids: List[int]) -> List[int]:
+        """
+        Get photo IDs for specific folder IDs (including subfolders).
+
+        Args:
+            project_id: Project ID
+            folder_ids: List of folder IDs to get photos from
+
+        Returns:
+            List of photo IDs from the selected folders
+        """
+        if not folder_ids:
+            return []
+
+        # Get all descendant folder IDs (including the selected folders themselves)
+        all_folder_ids = set(folder_ids)
+
+        # Recursively get all child folder IDs
+        def get_all_descendants(fid):
+            children = self.get_child_folders(fid, project_id)
+            for child in children:
+                child_id = child['id']
+                if child_id not in all_folder_ids:
+                    all_folder_ids.add(child_id)
+                    get_all_descendants(child_id)
+
+        for fid in folder_ids:
+            get_all_descendants(fid)
+
+        with self._connect() as conn:
+            placeholders = ','.join('?' * len(all_folder_ids))
+            cur = conn.execute(f"""
+                SELECT id
+                FROM photo_metadata
+                WHERE project_id = ? AND folder_id IN ({placeholders})
+                ORDER BY date_taken DESC
+            """, (project_id, *all_folder_ids))
+
+            return [row[0] for row in cur.fetchall()]
+
+    def get_photo_ids_with_embeddings(self, project_id: int) -> List[int]:
+        """
+        Get photo IDs that already have semantic embeddings.
+
+        Used to skip already-processed photos in duplicate/similarity detection.
+
+        Returns:
+            List of photo IDs that have semantic embeddings
+        """
+        with self._connect() as conn:
+            cur = conn.execute("""
+                SELECT DISTINCT se.photo_id
+                FROM semantic_embeddings se
+                JOIN photo_metadata p ON se.photo_id = p.id
+                WHERE p.project_id = ?
+            """, (project_id,))
+
+            return [row[0] for row in cur.fetchall()]
+
     def get_paths_with_embeddings(self, project_id: int) -> List[str]:
         """
         FEATURE #1: Get photo paths that already have face embeddings.

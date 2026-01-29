@@ -95,6 +95,32 @@ class DuplicateDetectionWorker(QObject):
             if self.options.get('detect_exact', False):
                 if not self._running:
                     return
+
+                # Step 1a: Run hash backfill to compute file hashes and link assets
+                self.progress_updated.emit(
+                    int((current_step / total_steps) * 100),
+                    "Computing file hashes..."
+                )
+
+                try:
+                    from services.asset_service import AssetService
+
+                    db_conn = DatabaseConnection()
+                    photo_repo = PhotoRepository(db_conn)
+                    asset_repo = AssetRepository(db_conn)
+                    asset_service = AssetService(photo_repo, asset_repo)
+
+                    # Run hash backfill - this creates media_asset and media_instance records
+                    backfill_stats = asset_service.backfill_hashes_and_link_assets(
+                        project_id=self.project_id,
+                        photo_ids=self.photo_ids  # Pass selected photo IDs if available
+                    )
+                    logger.info(f"Hash backfill complete: {backfill_stats.scanned} scanned, {backfill_stats.hashed} hashed")
+                except Exception as e:
+                    logger.error(f"Hash backfill failed: {e}")
+                    # Continue anyway - we can still query existing duplicates
+
+                # Step 1b: Query for duplicates
                 self.progress_updated.emit(
                     int((current_step / total_steps) * 100),
                     "Finding exact duplicates..."
