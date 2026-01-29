@@ -198,7 +198,17 @@ class DuplicateDetectionWorker(QObject):
                     from repository.stack_repository import StackRepository
                     from services.semantic_embedding_service import SemanticEmbeddingService
 
-                    stack_repo = StackRepository()
+                    # BUG FIX: Create db_conn for similar detection if not already created
+                    # (may not exist if detect_exact and generate_embeddings were both False)
+                    if 'db_conn' not in dir() or db_conn is None:
+                        db_conn = DatabaseConnection()
+
+                    # BUG FIX: Create photo_repo if not already created
+                    if 'photo_repo' not in dir() or photo_repo is None:
+                        photo_repo = PhotoRepository(db_conn)
+
+                    # BUG FIX: StackRepository requires db parameter
+                    stack_repo = StackRepository(db_conn)
                     embedding_svc = SemanticEmbeddingService()
                     stack_svc = StackGenerationService(photo_repo, stack_repo, embedding_svc)
 

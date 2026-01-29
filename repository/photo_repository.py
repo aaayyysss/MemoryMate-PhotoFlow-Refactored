@@ -437,6 +437,18 @@ class PhotoRepository(BaseRepository):
         """
         return self.count(where_clause="folder_id = ? AND project_id = ?", params=(folder_id, project_id))
 
+    def count_photos_in_project(self, project_id: int) -> int:
+        """
+        Count total photos in a project.
+
+        Args:
+            project_id: Project ID
+
+        Returns:
+            Number of photos in the project
+        """
+        return self.count(where_clause="project_id = ?", params=(project_id,))
+
     def search(self,
                query: str,
                project_id: int,
