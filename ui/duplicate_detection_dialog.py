@@ -64,11 +64,7 @@ class DuplicateDetectionWorker(QObject):
             current_step = 0
 
             # Determine photo count for progress estimation
-            if self.photo_ids:
-                photo_count = len(self.photo_ids)
-            else:
-                photo_repo = PhotoRepository()
-                photo_count = photo_repo.count_photos_in_project(self.project_id)
+            photo_count = len(self.photo_ids) if self.photo_ids else 0
 
             results['photos_processed'] = photo_count
 
@@ -78,11 +74,8 @@ class DuplicateDetectionWorker(QObject):
 
             # Step 2: Embedding generation
             if self.options.get('generate_embeddings', False):
-                # Estimate based on photo count
-                db_conn = DatabaseConnection()
-                photo_repo = PhotoRepository(db_conn)
-                photo_count = photo_repo.count_photos_in_project(self.project_id)
-                total_steps += photo_count // 100 + 1  # Rough estimate
+                # Estimate based on photo count (reuse already computed value)
+                total_steps += max(1, photo_count // 100 + 1)  # Rough estimate
             
             # Step 3: Similar detection
             if self.options.get('detect_similar', False):
