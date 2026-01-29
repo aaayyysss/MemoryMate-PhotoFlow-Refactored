@@ -349,6 +349,8 @@ hiddenimports = [
     'ui.semantic_search_dialog',  # Semantic search dialog
     'ui.semantic_search_widget',  # CRITICAL: Semantic search widget (Google Layout)
     'ui.similar_photos_dialog',  # Similar photos finder
+    'ui.duplicate_detection_dialog',  # CRITICAL: Unified duplicate detection dialog
+    'ui.duplicate_scope_dialog',  # Compatibility wrapper for duplicate detection
     'ui.ui_builder',
     'ui.visual_photo_browser',  # Visual photo browser
 
