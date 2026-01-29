@@ -22,7 +22,8 @@ from typing import Optional
 import time
 
 from services.library_detector import check_system_readiness
-from repository.media_asset_repository import MediaAssetRepository
+from repository.asset_repository import AssetRepository
+from repository.base_repository import DatabaseConnection
 from repository.photo_repository import PhotoRepository
 from repository.video_repository import VideoRepository
 from services.embedding_service import EmbeddingService
@@ -65,7 +66,8 @@ class DuplicateDetectionWorker(QObject):
             # Step 2: Embedding generation
             if self.options.get('generate_embeddings', False):
                 # Estimate based on photo count
-                photo_repo = PhotoRepository()
+                db_conn = DatabaseConnection()
+                photo_repo = PhotoRepository(db_conn)
                 photo_count = photo_repo.count_photos_in_project(self.project_id)
                 total_steps += photo_count // 100 + 1  # Rough estimate
             
@@ -81,9 +83,11 @@ class DuplicateDetectionWorker(QObject):
                     int((current_step / total_steps) * 100),
                     "Finding exact duplicates..."
                 )
-                
-                asset_repo = MediaAssetRepository()
-                exact_count = asset_repo.find_exact_duplicates(self.project_id)
+
+                db_conn = DatabaseConnection()
+                asset_repo = AssetRepository(db_conn)
+                duplicate_assets = asset_repo.list_duplicate_assets(self.project_id, min_instances=2)
+                exact_count = len(duplicate_assets)
                 results['exact_duplicates'] = exact_count
                 current_step += 1
             
@@ -100,9 +104,10 @@ class DuplicateDetectionWorker(QObject):
                 try:
                     # Load model
                     model_id = embedding_service.load_clip_model()
-                    
+
                     # Process photos in batches
-                    photo_repo = PhotoRepository()
+                    db_conn = DatabaseConnection()
+                    photo_repo = PhotoRepository(db_conn)
                     photos = photo_repo.get_photos_needing_embeddings(self.project_id, limit=1000)
                     
                     batch_size = 50
@@ -377,6 +382,12 @@ class DuplicateDetectionDialog(QDialog):
                 padding: 8px 16px;
                 border-radius: 4px;
                 font-weight: bold;
+                background-color: #f5f5f5;
+                color: #333333;
+                border: 1px solid #cccccc;
+            }
+            QPushButton:hover {
+                background-color: #e8e8e8;
             }
             QPushButton#btn_start {
                 background-color: #1a73e8;

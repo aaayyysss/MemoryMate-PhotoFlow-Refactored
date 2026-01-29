@@ -83,12 +83,38 @@ class FaceDetectionScopeDialog(QDialog):
 
         save_btn = QPushButton("💾 Save Selection")
         save_btn.setToolTip("Save this selection as a preset for quick access")
+        save_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #f5f5f5;
+                color: #333333;
+                padding: 8px 16px;
+                font-weight: bold;
+                border-radius: 4px;
+                border: 1px solid #cccccc;
+            }
+            QPushButton:hover {
+                background-color: #e8e8e8;
+            }
+        """)
         save_btn.clicked.connect(self._save_selection)
         button_layout.addWidget(save_btn)
 
         button_layout.addStretch()
 
         cancel_btn = QPushButton("Cancel")
+        cancel_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #f5f5f5;
+                color: #333333;
+                padding: 8px 16px;
+                font-weight: bold;
+                border-radius: 4px;
+                border: 1px solid #cccccc;
+            }
+            QPushButton:hover {
+                background-color: #e8e8e8;
+            }
+        """)
         cancel_btn.clicked.connect(self.reject)
         button_layout.addWidget(cancel_btn)
 

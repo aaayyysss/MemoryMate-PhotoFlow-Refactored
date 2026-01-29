@@ -496,8 +496,10 @@ class StackViewDialog(QDialog):
             QPushButton {
                 padding: 8px 16px;
                 background-color: #f5f5f5;
+                color: #333333;
                 border: 1px solid #ccc;
                 border-radius: 4px;
+                font-weight: bold;
             }
             QPushButton:hover {
                 background-color: #e8e8e8;
@@ -1172,6 +1174,19 @@ class StackBrowserDialog(QDialog):
 
         close_btn = QPushButton("Close")
         close_btn.setFixedWidth(100)
+        close_btn.setStyleSheet("""
+            QPushButton {
+                padding: 8px 16px;
+                background-color: #f5f5f5;
+                color: #333333;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #e8e8e8;
+            }
+        """)
         close_btn.clicked.connect(self.accept)
         button_layout.addWidget(close_btn)
 
