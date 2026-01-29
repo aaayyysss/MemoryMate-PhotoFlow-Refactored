@@ -23,13 +23,13 @@ from typing import Optional, List
 import time
 
 from services.library_detector import check_system_readiness
-from repository.media_asset_repository import MediaAssetRepository
+from repository.asset_repository import AssetRepository
 from repository.photo_repository import PhotoRepository
 from repository.video_repository import VideoRepository
 from services.embedding_service import EmbeddingService
 from services.job_service import JobService
 from ui.embedding_scope_widget import EmbeddingScopeWidget
-from utils.logger import get_logger
+from logging_config import get_logger
 
 logger = get_logger(__name__)
 
@@ -95,7 +95,7 @@ class DuplicateDetectionWorker(QObject):
                     "Finding exact duplicates..."
                 )
 
-                asset_repo = MediaAssetRepository()
+                asset_repo = AssetRepository()
                 # Pass photo_ids if we have a specific scope
                 if self.photo_ids:
                     exact_count = asset_repo.find_exact_duplicates_for_photos(
