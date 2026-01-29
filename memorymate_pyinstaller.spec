@@ -213,6 +213,7 @@ hiddenimports = [
     'win32com.shell',
     'win32api',
     'win32con',
+    'win32timezone',  # CRITICAL: Required for MTP file date/time metadata
     'pythoncom',
     'pywintypes',
     'ctypes',
