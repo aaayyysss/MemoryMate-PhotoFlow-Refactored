@@ -25,6 +25,7 @@ import time
 
 from services.library_detector import check_system_readiness
 from repository.asset_repository import AssetRepository
+from repository.base_repository import DatabaseConnection
 from repository.photo_repository import PhotoRepository
 from repository.video_repository import VideoRepository
 from services.embedding_service import EmbeddingService
@@ -64,11 +65,7 @@ class DuplicateDetectionWorker(QObject):
             current_step = 0
 
             # Determine photo count for progress estimation
-            if self.photo_ids:
-                photo_count = len(self.photo_ids)
-            else:
-                photo_repo = PhotoRepository()
-                photo_count = photo_repo.count_photos_in_project(self.project_id)
+            photo_count = len(self.photo_ids) if self.photo_ids else 0
 
             results['photos_processed'] = photo_count
 
@@ -78,8 +75,9 @@ class DuplicateDetectionWorker(QObject):
 
             # Step 2: Embedding generation
             if self.options.get('generate_embeddings', False):
-                total_steps += max(1, photo_count // 50)  # Batches of 50
-
+                # Estimate based on photo count (reuse already computed value)
+                total_steps += max(1, photo_count // 100 + 1)  # Rough estimate
+            
             # Step 3: Similar detection
             if self.options.get('detect_similar', False):
                 total_steps += 2
@@ -91,21 +89,43 @@ class DuplicateDetectionWorker(QObject):
             if self.options.get('detect_exact', False):
                 if not self._running:
                     return
+
+                # Step 1a: Run hash backfill to compute file hashes and link assets
+                self.progress_updated.emit(
+                    int((current_step / total_steps) * 100),
+                    "Computing file hashes..."
+                )
+
+                try:
+                    from services.asset_service import AssetService
+
+                    db_conn = DatabaseConnection()
+                    photo_repo = PhotoRepository(db_conn)
+                    asset_repo = AssetRepository(db_conn)
+                    asset_service = AssetService(photo_repo, asset_repo)
+
+                    # Run hash backfill - this creates media_asset and media_instance records
+                    # Note: backfill processes all photos without instance links (idempotent)
+                    # This ensures duplicate detection works even for legacy photos
+                    backfill_stats = asset_service.backfill_hashes_and_link_assets(
+                        project_id=self.project_id
+                    )
+                    logger.info(f"Hash backfill complete: {backfill_stats.scanned} scanned, {backfill_stats.hashed} hashed, {backfill_stats.linked} linked")
+                except Exception as e:
+                    logger.error(f"Hash backfill failed: {e}")
+                    # Continue anyway - we can still query existing duplicates
+
+                # Step 1b: Query for duplicates
                 self.progress_updated.emit(
                     int((current_step / total_steps) * 100),
                     "Finding exact duplicates..."
                 )
 
-                asset_repo = AssetRepository()
-                # Pass photo_ids if we have a specific scope
-                if self.photo_ids:
-                    exact_count = asset_repo.find_exact_duplicates_for_photos(
-                        self.project_id, self.photo_ids
-                    ) if hasattr(asset_repo, 'find_exact_duplicates_for_photos') else \
-                        asset_repo.find_exact_duplicates(self.project_id)
-                else:
-                    exact_count = asset_repo.find_exact_duplicates(self.project_id)
-                results['exact_duplicates'] = exact_count or 0
+                db_conn = DatabaseConnection()
+                asset_repo = AssetRepository(db_conn)
+                duplicate_assets = asset_repo.list_duplicate_assets(self.project_id, min_instances=2)
+                exact_count = len(duplicate_assets)
+                results['exact_duplicates'] = exact_count
                 current_step += 1
 
             # Generate embeddings if requested
@@ -122,21 +142,11 @@ class DuplicateDetectionWorker(QObject):
                     # Load model
                     model_id = embedding_service.load_clip_model()
 
-                    # Get photos to process
-                    photo_repo = PhotoRepository()
-                    if self.photo_ids:
-                        # Get photo details for specified IDs
-                        photos = photo_repo.get_photos_by_ids(self.photo_ids)
-                        # Filter to only those needing embeddings if not forcing regeneration
-                        if not self.options.get('force_regenerate', False):
-                            photos_needing = photo_repo.get_photos_needing_embeddings(
-                                self.project_id, limit=10000
-                            )
-                            needed_ids = {p.get('photo_id') or p.get('id') for p in photos_needing}
-                            photos = [p for p in photos if (p.get('photo_id') or p.get('id')) in needed_ids]
-                    else:
-                        photos = photo_repo.get_photos_needing_embeddings(self.project_id, limit=10000)
-
+                    # Process photos in batches
+                    db_conn = DatabaseConnection()
+                    photo_repo = PhotoRepository(db_conn)
+                    photos = photo_repo.get_photos_needing_embeddings(self.project_id, limit=1000)
+                    
                     batch_size = 50
                     total_photos = len(photos)
 
@@ -189,7 +199,17 @@ class DuplicateDetectionWorker(QObject):
                     from repository.stack_repository import StackRepository
                     from services.semantic_embedding_service import SemanticEmbeddingService
 
-                    stack_repo = StackRepository()
+                    # BUG FIX: Create db_conn for similar detection if not already created
+                    # (may not exist if detect_exact and generate_embeddings were both False)
+                    if 'db_conn' not in dir() or db_conn is None:
+                        db_conn = DatabaseConnection()
+
+                    # BUG FIX: Create photo_repo if not already created
+                    if 'photo_repo' not in dir() or photo_repo is None:
+                        photo_repo = PhotoRepository(db_conn)
+
+                    # BUG FIX: StackRepository requires db parameter
+                    stack_repo = StackRepository(db_conn)
                     embedding_svc = SemanticEmbeddingService()
                     stack_svc = StackGenerationService(photo_repo, stack_repo, embedding_svc)
 

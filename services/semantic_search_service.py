@@ -53,23 +53,63 @@ class SemanticSearchService:
     - "sunset over ocean"
     - "dog playing in park"
     - "mountain landscape with snow"
+
+    IMPORTANT: Always use for_project() factory method to ensure
+    the correct canonical model is used for the project.
     """
 
     def __init__(self,
                  model_name: str = "clip-vit-b32",
-                 db_connection: Optional[DatabaseConnection] = None):
+                 db_connection: Optional[DatabaseConnection] = None,
+                 project_id: Optional[int] = None):
         """
         Initialize semantic search service.
+
+        NOTE: Prefer using SemanticSearchService.for_project() factory method
+        to automatically use the project's canonical model.
 
         Args:
             model_name: CLIP/SigLIP model variant (must match embeddings)
             db_connection: Optional database connection
+            project_id: Optional project ID (used for filtering and model validation)
         """
         self.model_name = model_name
+        self.project_id = project_id
         self.db = db_connection or DatabaseConnection()
         self.embedder = get_semantic_embedding_service(model_name=model_name)
 
         logger.info(f"[SemanticSearchService] Initialized with model={model_name}")
+
+    @classmethod
+    def for_project(cls, project_id: int, db_connection: Optional[DatabaseConnection] = None) -> 'SemanticSearchService':
+        """
+        Factory method to create a SemanticSearchService using the project's canonical model.
+
+        This is the RECOMMENDED way to create a SemanticSearchService.
+        It ensures that search uses the same model that was used
+        to generate the embeddings for this project.
+
+        Args:
+            project_id: Project ID
+            db_connection: Optional database connection
+
+        Returns:
+            SemanticSearchService configured with the project's canonical model
+        """
+        from repository.project_repository import ProjectRepository
+        project_repo = ProjectRepository()
+        canonical_model = project_repo.get_semantic_model(project_id)
+
+        logger.info(
+            f"[SemanticSearchService] Creating service for project {project_id} "
+            f"with canonical model: {canonical_model}"
+        )
+
+        return cls(
+            model_name=canonical_model,
+            db_connection=db_connection,
+            project_id=project_id
+        )
 
     @property
     def available(self) -> bool:
@@ -269,9 +309,15 @@ class SemanticSearchService:
 _semantic_search_service = None
 
 
+# Per-project service cache
+_project_search_services: dict = {}
+
+
 def get_semantic_search_service(model_name: str = "clip-vit-b32") -> SemanticSearchService:
     """
     Get singleton semantic search service.
+
+    NOTE: Prefer get_semantic_search_service_for_project() for project-aware service.
 
     Args:
         model_name: CLIP/SigLIP model variant
@@ -283,3 +329,44 @@ def get_semantic_search_service(model_name: str = "clip-vit-b32") -> SemanticSea
     if _semantic_search_service is None:
         _semantic_search_service = SemanticSearchService(model_name=model_name)
     return _semantic_search_service
+
+
+def get_semantic_search_service_for_project(project_id: int) -> SemanticSearchService:
+    """
+    Get semantic search service configured with the project's canonical model.
+
+    This is the RECOMMENDED way to get a SemanticSearchService.
+    It ensures search uses the project's canonical embedding model.
+
+    Args:
+        project_id: Project ID
+
+    Returns:
+        SemanticSearchService configured with the project's canonical model
+    """
+    global _project_search_services
+
+    if project_id not in _project_search_services:
+        _project_search_services[project_id] = SemanticSearchService.for_project(project_id)
+
+    return _project_search_services[project_id]
+
+
+def invalidate_project_search_service(project_id: int):
+    """
+    Invalidate the cached search service for a project.
+
+    Call this when the project's semantic_model changes to force
+    recreation of the service with the new model.
+
+    Args:
+        project_id: Project ID
+    """
+    global _project_search_services
+
+    if project_id in _project_search_services:
+        del _project_search_services[project_id]
+        logger.info(
+            f"[SemanticSearchService] Invalidated cached service for project {project_id}. "
+            f"Next access will recreate with current canonical model."
+        )

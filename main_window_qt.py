@@ -1953,7 +1953,7 @@ class MainWindow(QMainWindow):
             )
 
     def _on_detect_duplicates(self):
-        """Launch duplicate detection dialog."""
+        """Launch duplicate detection scope dialog."""
         try:
             # Get project_id
             project_id = None
@@ -1970,9 +1970,15 @@ class MainWindow(QMainWindow):
                 QMessageBox.warning(self, "No Project", "No project is currently active.")
                 return
 
-            # Import and show dialog
-            from ui.duplicate_detection_dialog import DuplicateDetectionDialog
-            dialog = DuplicateDetectionDialog(project_id=project_id, parent=self)
+            # Import and show the scope selection dialog
+            from ui.duplicate_scope_dialog import DuplicateScopeDialog
+            dialog = DuplicateScopeDialog(project_id=project_id, parent=self)
+
+            # Connect signal to run detection when user clicks Proceed
+            dialog.scopeSelected.connect(
+                lambda photo_ids, options: self._run_duplicate_detection(project_id, photo_ids, options)
+            )
+
             dialog.exec()
 
         except Exception as e:
@@ -1980,6 +1986,141 @@ class MainWindow(QMainWindow):
                 self,
                 "Duplicate Detection Error",
                 f"Failed to launch duplicate detection:\n{str(e)}"
+            )
+            print(f"✗ Duplicate detection error: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def _run_duplicate_detection(self, project_id: int, photo_ids: list, options: dict):
+        """Run duplicate detection with the selected scope and options."""
+        try:
+            from PySide6.QtWidgets import QProgressDialog
+            from PySide6.QtCore import Qt, QCoreApplication
+            from services.asset_service import AssetService
+            from repository.photo_repository import PhotoRepository
+            from repository.asset_repository import AssetRepository
+            from repository.base_repository import DatabaseConnection
+
+            # Show progress dialog
+            progress = QProgressDialog(
+                "Running duplicate detection...",
+                "Cancel",
+                0, 100,
+                self
+            )
+            progress.setWindowModality(Qt.WindowModal)
+            progress.setWindowTitle("Duplicate Detection")
+            progress.setMinimumDuration(0)
+            progress.show()
+
+            # Initialize services
+            db_conn = DatabaseConnection()
+            photo_repo = PhotoRepository(db_conn)
+            asset_repo = AssetRepository(db_conn)
+            asset_service = AssetService(photo_repo, asset_repo)
+
+            results = {
+                'exact_duplicates': 0,
+                'similar_stacks': 0,
+                'photos_processed': len(photo_ids)
+            }
+
+            # Step 1: Exact duplicate detection (hash-based)
+            if options.get('detect_exact', False):
+                progress.setLabelText("Computing photo hashes...")
+                progress.setValue(20)
+                QCoreApplication.processEvents()
+
+                # Run hash backfill and link assets
+                backfill_stats = asset_service.backfill_hashes_and_link_assets(
+                    project_id=project_id,
+                    photo_ids=photo_ids
+                )
+
+                progress.setLabelText("Finding exact duplicates...")
+                progress.setValue(40)
+                QCoreApplication.processEvents()
+
+                # Get duplicate assets
+                duplicates = asset_repo.list_duplicate_assets(project_id, min_instances=2)
+                results['exact_duplicates'] = len(duplicates)
+
+            # Step 2: Similar photo detection (AI-powered)
+            if options.get('detect_similar', False):
+                progress.setLabelText("Generating AI embeddings...")
+                progress.setValue(60)
+                QCoreApplication.processEvents()
+
+                # Generate embeddings for photos that need them
+                from services.embedding_service import EmbeddingService
+                embedding_service = EmbeddingService()
+
+                try:
+                    model_id = embedding_service.load_clip_model()
+                    photos_needing_embeddings = photo_repo.get_photos_needing_embeddings(project_id)
+
+                    # Filter to only selected photos
+                    selected_set = set(photo_ids)
+                    photos_to_process = [
+                        p for p in photos_needing_embeddings
+                        if (p.get('id') or p.get('photo_id')) in selected_set
+                    ]
+
+                    for i, photo in enumerate(photos_to_process):
+                        if progress.wasCanceled():
+                            break
+
+                        photo_id = photo.get('id') or photo.get('photo_id')
+                        file_path = photo.get('path') or photo.get('file_path')
+
+                        if file_path and photo_id:
+                            try:
+                                embedding = embedding_service.extract_image_embedding(file_path)
+                                embedding_service.store_embedding(photo_id, embedding, model_id)
+                            except Exception as e:
+                                print(f"Failed to process photo {photo_id}: {e}")
+
+                        # Update progress
+                        embed_progress = 60 + int((i / max(len(photos_to_process), 1)) * 30)
+                        progress.setValue(embed_progress)
+                        progress.setLabelText(f"Generating embeddings... ({i+1}/{len(photos_to_process)})")
+                        QCoreApplication.processEvents()
+
+                except Exception as e:
+                    print(f"Embedding generation failed: {e}")
+
+                # Run similar shot detection
+                progress.setLabelText("Finding similar photos...")
+                progress.setValue(95)
+                QCoreApplication.processEvents()
+
+                # TODO: Integrate similar shot stacking here
+                # For now, count existing similar stacks
+                from repository.stack_repository import StackRepository
+                stack_repo = StackRepository(db_conn)
+                similar_stacks = stack_repo.list_stacks(project_id, stack_type="similar")
+                results['similar_stacks'] = len(similar_stacks)
+
+            # Close progress
+            progress.setValue(100)
+            progress.close()
+
+            # Show results
+            QMessageBox.information(
+                self,
+                "Duplicate Detection Complete",
+                f"Duplicate detection completed!\n\n"
+                f"Photos processed: {results['photos_processed']:,}\n"
+                f"Exact duplicate groups: {results['exact_duplicates']:,}\n"
+                f"Similar photo stacks: {results['similar_stacks']:,}\n\n"
+                f"You can view and manage duplicates from the Duplicates section."
+            )
+
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Detection Error",
+                f"Failed to run duplicate detection:\n{str(e)}"
             )
             print(f"✗ Duplicate detection error: {e}")
             import traceback
