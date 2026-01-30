@@ -1,5 +1,5 @@
 # services/stack_generation_service.py
-# Version 01.00.00.01 dated 20260128
+# Version 01.01.00.00 dated 20260130
 # Similar-shot and near-duplicate stack generation service
 #
 # Part of the asset-centric duplicate management system.
@@ -354,6 +354,202 @@ class StackGenerationService:
             memberships_created=memberships_created,
             errors=errors
         )
+
+    def generate_stacks(
+        self,
+        project_id: int,
+        similarity_threshold: float = 0.85,
+        time_window_seconds: int = 300
+    ) -> int:
+        """
+        Convenience method to generate similar shot stacks for all photos.
+
+        This is a simplified interface for the duplicate detection dialog.
+
+        Args:
+            project_id: Project ID
+            similarity_threshold: Minimum similarity (0.0-1.0)
+            time_window_seconds: Time window for candidates
+
+        Returns:
+            Number of stacks created
+        """
+        params = StackGenParams(
+            similarity_threshold=similarity_threshold,
+            time_window_seconds=time_window_seconds
+        )
+        stats = self.regenerate_similar_shot_stacks(project_id, params)
+        return stats.stacks_created
+
+    def generate_stacks_for_photos(
+        self,
+        project_id: int,
+        photo_ids: List[int],
+        similarity_threshold: float = 0.85,
+        time_window_seconds: int = 300
+    ) -> int:
+        """
+        Generate similar shot stacks for a specific subset of photos.
+
+        This method filters the processing to only consider the given photo IDs.
+
+        Args:
+            project_id: Project ID
+            photo_ids: List of photo IDs to consider for stacking
+            similarity_threshold: Minimum similarity (0.0-1.0)
+            time_window_seconds: Time window for candidates
+
+        Returns:
+            Number of stacks created
+        """
+        if not photo_ids:
+            self.logger.warning("generate_stacks_for_photos called with empty photo_ids")
+            return 0
+
+        self.logger.info(
+            f"Starting similar shot stack generation for {len(photo_ids)} selected photos"
+        )
+
+        if not self.similarity_service:
+            self.logger.error("Cannot generate stacks: similarity_service not provided")
+            return 0
+
+        params = StackGenParams(
+            similarity_threshold=similarity_threshold,
+            time_window_seconds=time_window_seconds
+        )
+
+        # Clear existing stacks for this rule version
+        cleared = self.stack_repo.clear_stacks_by_type(
+            project_id=project_id,
+            stack_type="similar",
+            rule_version=params.rule_version
+        )
+        if cleared > 0:
+            self.logger.info(f"Cleared {cleared} existing similar shot stacks")
+
+        # Get photos with timestamps from the selected set
+        photo_id_set = set(photo_ids)
+        all_photos = self.photo_repo.find_all(
+            where_clause="project_id = ? AND created_ts IS NOT NULL",
+            params=(project_id,),
+            order_by="created_ts ASC"
+        )
+
+        # Filter to only selected photos
+        selected_photos = [p for p in all_photos if p.get("id") in photo_id_set]
+
+        if not selected_photos:
+            self.logger.info("No selected photos with timestamps found")
+            return 0
+
+        self.logger.info(f"Processing {len(selected_photos)} photos with timestamps")
+
+        # Batch load embeddings for efficiency
+        preloaded_embeddings: Dict[int, Any] = {}
+        if hasattr(self.similarity_service, 'get_all_embeddings_for_project'):
+            preloaded_embeddings = self.similarity_service.get_all_embeddings_for_project(project_id)
+        elif hasattr(self.similarity_service, 'get_embeddings_batch'):
+            preloaded_embeddings = self.similarity_service.get_embeddings_batch(photo_ids)
+
+        self.logger.info(f"Loaded {len(preloaded_embeddings)} embeddings for comparison")
+
+        # Find clusters using time window + similarity
+        photo_to_cluster: Dict[int, int] = {}
+        all_clusters: List[List[int]] = []
+
+        for photo in selected_photos:
+            photo_id = photo["id"]
+
+            if photo_id in photo_to_cluster:
+                continue
+
+            embedding = preloaded_embeddings.get(photo_id)
+            if embedding is None:
+                if hasattr(self.similarity_service, 'get_embedding'):
+                    embedding = self.similarity_service.get_embedding(photo_id)
+
+            if embedding is None:
+                continue
+
+            created_ts = photo.get("created_ts")
+            if not created_ts:
+                continue
+
+            # Find candidates within time window (from selected photos only)
+            candidates = [
+                p for p in selected_photos
+                if p["id"] != photo_id
+                and p.get("created_ts")
+                and abs(p.get("created_ts") - created_ts) <= time_window_seconds
+            ]
+
+            if not candidates:
+                continue
+
+            all_candidates = [photo] + candidates
+
+            # Cluster by similarity
+            clusters = self._cluster_by_similarity(
+                photos=all_candidates,
+                similarity_threshold=similarity_threshold,
+                min_cluster_size=params.min_stack_size,
+                preloaded_embeddings=preloaded_embeddings
+            )
+
+            for cluster in clusters:
+                cluster_id = len(all_clusters)
+                all_clusters.append(cluster)
+                for pid in cluster:
+                    photo_to_cluster[pid] = cluster_id
+
+        self.logger.info(f"Found {len(all_clusters)} similar shot clusters")
+
+        # Create stacks in database
+        stacks_created = 0
+        import numpy as np
+
+        for cluster in all_clusters:
+            try:
+                rep_photo_id = self._choose_stack_representative(project_id, cluster)
+                if not rep_photo_id:
+                    continue
+
+                stack_id = self.stack_repo.create_stack(
+                    project_id=project_id,
+                    stack_type="similar",
+                    representative_photo_id=rep_photo_id,
+                    rule_version=params.rule_version,
+                    created_by="system"
+                )
+                stacks_created += 1
+
+                for photo_id in cluster:
+                    if photo_id == rep_photo_id:
+                        similarity_score = 1.0
+                    else:
+                        rep_emb = preloaded_embeddings.get(rep_photo_id)
+                        photo_emb = preloaded_embeddings.get(photo_id)
+
+                        if rep_emb is not None and photo_emb is not None:
+                            rep_emb = rep_emb / np.linalg.norm(rep_emb)
+                            photo_emb = photo_emb / np.linalg.norm(photo_emb)
+                            similarity_score = float(np.dot(rep_emb, photo_emb))
+                        else:
+                            similarity_score = similarity_threshold
+
+                    self.stack_repo.add_stack_member(
+                        project_id=project_id,
+                        stack_id=stack_id,
+                        photo_id=photo_id,
+                        similarity_score=similarity_score
+                    )
+
+            except Exception as e:
+                self.logger.error(f"Failed to create stack for cluster {cluster}: {e}")
+
+        self.logger.info(f"Created {stacks_created} similar shot stacks")
+        return stacks_created
 
     # =========================================================================
     # NEAR-DUPLICATE STACKS
