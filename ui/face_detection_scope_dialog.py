@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QRadioButton, QButtonGroup, QTreeWidget, QTreeWidgetItem,
     QDateEdit, QSlider, QCheckBox, QGroupBox, QWidget,
-    QProgressBar, QMessageBox
+    QProgressBar, QMessageBox, QScrollArea, QFrame, QSizePolicy
 )
 from PySide6.QtCore import Qt, QDate, Signal
 from PySide6.QtGui import QIcon
@@ -56,90 +56,152 @@ class FaceDetectionScopeDialog(QDialog):
         self.scope_mode = "all"  # "all", "folders", "dates", "quantity"
 
         self.setWindowTitle("🎯 Face Detection - Select Scope")
-        self.resize(700, 600)
+        self.resize(700, 550)
+        self.setMinimumSize(600, 400)
 
         self.setup_ui()
         self.load_data()
 
     def setup_ui(self):
-        """Setup the user interface."""
-        layout = QVBoxLayout(self)
+        """Setup the user interface with fixed header and scrollable content."""
+        main_layout = QVBoxLayout(self)
+        main_layout.setSpacing(0)
+        main_layout.setContentsMargins(0, 0, 0, 0)
 
-        # Title
-        title = QLabel("Select Photos for Face Detection")
-        title.setStyleSheet("font-size: 14pt; font-weight: bold; padding: 10px;")
-        layout.addWidget(title)
+        # === FIXED HEADER (Title + Buttons) ===
+        header_widget = QWidget()
+        header_widget.setStyleSheet("background-color: white; border-bottom: 1px solid #e0e0e0;")
+        header_widget.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+        header_layout = QHBoxLayout(header_widget)
+        header_layout.setContentsMargins(20, 12, 20, 12)
+        header_layout.setSpacing(16)
+
+        # Title section
+        title_section = QVBoxLayout()
+        title_section.setSpacing(2)
+
+        title = QLabel("Face Detection - Select Scope")
+        title.setStyleSheet("font-size: 14pt; font-weight: bold; color: #333;")
+        title_section.addWidget(title)
+
+        subtitle = QLabel("Choose which photos to scan for faces")
+        subtitle.setStyleSheet("color: #666; font-size: 9pt;")
+        title_section.addWidget(subtitle)
+
+        header_layout.addLayout(title_section)
+        header_layout.addStretch()
+
+        # Action buttons in header
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.setStyleSheet(self._secondary_button_style())
+        cancel_btn.setFixedWidth(80)
+        cancel_btn.clicked.connect(self.reject)
+        header_layout.addWidget(cancel_btn)
+
+        start_btn = QPushButton("▶ Start")
+        start_btn.setStyleSheet(self._primary_button_style())
+        start_btn.setFixedWidth(100)
+        start_btn.clicked.connect(self._start_detection)
+        header_layout.addWidget(start_btn)
+
+        main_layout.addWidget(header_widget)
+
+        # === SCROLLABLE CONTENT AREA ===
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setFrameShape(QFrame.NoFrame)
+        scroll_area.setStyleSheet("QScrollArea { background-color: #fafafa; }")
+        scroll_area.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+
+        scroll_content = QWidget()
+        scroll_content.setStyleSheet("background-color: #fafafa;")
+        scroll_content.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+        content_layout = QVBoxLayout(scroll_content)
+        content_layout.setSpacing(10)
+        content_layout.setContentsMargins(16, 12, 16, 12)
 
         # Scope selection group
         scope_group = self._create_scope_selection()
-        layout.addWidget(scope_group)
+        content_layout.addWidget(scope_group)
 
         # Summary panel
         self.summary_panel = self._create_summary_panel()
-        layout.addWidget(self.summary_panel)
+        content_layout.addWidget(self.summary_panel)
 
-        # Buttons
-        button_layout = QHBoxLayout()
+        content_layout.addStretch()
 
-        save_btn = QPushButton("💾 Save Selection")
-        save_btn.setToolTip("Save this selection as a preset for quick access")
-        save_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #f5f5f5;
-                color: #333333;
-                padding: 8px 16px;
-                font-weight: bold;
-                border-radius: 4px;
-                border: 1px solid #cccccc;
-            }
-            QPushButton:hover {
-                background-color: #e8e8e8;
-            }
-        """)
-        save_btn.clicked.connect(self._save_selection)
-        button_layout.addWidget(save_btn)
+        scroll_area.setWidget(scroll_content)
+        main_layout.addWidget(scroll_area, 1)
 
-        button_layout.addStretch()
-
-        cancel_btn = QPushButton("Cancel")
-        cancel_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #f5f5f5;
-                color: #333333;
-                padding: 8px 16px;
-                font-weight: bold;
-                border-radius: 4px;
-                border: 1px solid #cccccc;
-            }
-            QPushButton:hover {
-                background-color: #e8e8e8;
-            }
-        """)
-        cancel_btn.clicked.connect(self.reject)
-        button_layout.addWidget(cancel_btn)
-
-        start_btn = QPushButton("▶ Start Detection")
-        start_btn.setStyleSheet("""
+    def _primary_button_style(self) -> str:
+        """Return primary button styling (blue)."""
+        return """
             QPushButton {
                 background-color: #1a73e8;
                 color: white;
                 padding: 8px 16px;
                 font-weight: bold;
+                font-size: 9pt;
+                border: none;
                 border-radius: 4px;
             }
             QPushButton:hover {
                 background-color: #1557b0;
             }
-        """)
-        start_btn.clicked.connect(self._start_detection)
-        button_layout.addWidget(start_btn)
+            QPushButton:pressed {
+                background-color: #0d47a1;
+            }
+        """
 
-        layout.addLayout(button_layout)
+    def _secondary_button_style(self) -> str:
+        """Return secondary button styling (outlined)."""
+        return """
+            QPushButton {
+                background-color: white;
+                color: #333;
+                padding: 8px 12px;
+                font-size: 9pt;
+                border: 1px solid #ddd;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background-color: #f5f5f5;
+                border-color: #ccc;
+            }
+            QPushButton:pressed {
+                background-color: #e8e8e8;
+            }
+        """
+
+    def _groupbox_style(self) -> str:
+        """Return compact GroupBox styling."""
+        return """
+            QGroupBox {
+                font-weight: bold;
+                font-size: 9pt;
+                border: 1px solid #e0e0e0;
+                border-radius: 6px;
+                margin-top: 8px;
+                padding-top: 12px;
+                background-color: white;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                subcontrol-position: top left;
+                padding: 2px 6px;
+                background-color: #fafafa;
+            }
+        """
 
     def _create_scope_selection(self) -> QGroupBox:
         """Create scope selection radio buttons and options."""
-        group = QGroupBox("Detection Scope")
+        group = QGroupBox("📸 Detection Scope")
+        group.setStyleSheet(self._groupbox_style())
         layout = QVBoxLayout(group)
+        layout.setSpacing(4)
+        layout.setContentsMargins(10, 14, 10, 10)
 
         # Radio button group
         self.button_group = QButtonGroup(self)
@@ -161,10 +223,11 @@ class FaceDetectionScopeDialog(QDialog):
         self.button_group.addButton(self.radio_folders)
         layout.addWidget(self.radio_folders)
 
-        # Folder tree (hidden by default)
+        # Folder tree (hidden by default) - compact height
         self.folder_tree = QTreeWidget()
         self.folder_tree.setHeaderLabel("Select Folders")
-        self.folder_tree.setMaximumHeight(200)
+        self.folder_tree.setMaximumHeight(120)
+        self.folder_tree.setStyleSheet("font-size: 9pt;")
         self.folder_tree.hide()
         self.folder_tree.itemChanged.connect(self._on_folder_selection_changed)
         layout.addWidget(self.folder_tree)
@@ -234,7 +297,10 @@ class FaceDetectionScopeDialog(QDialog):
     def _create_summary_panel(self) -> QGroupBox:
         """Create summary panel showing selection statistics."""
         group = QGroupBox("📊 Summary")
+        group.setStyleSheet(self._groupbox_style())
         layout = QVBoxLayout(group)
+        layout.setSpacing(2)
+        layout.setContentsMargins(10, 14, 10, 10)
 
         self.summary_selected = QLabel()
         self.summary_selected.setStyleSheet("font-size: 11pt; font-weight: bold;")

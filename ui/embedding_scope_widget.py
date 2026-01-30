@@ -1,5 +1,5 @@
 # embedding_scope_widget.py
-# Version 1.00.00.00 dated 20260129
+# Version 1.01.00.00 dated 20260130
 
 """
 Embedding Scope Selection Widget
@@ -27,7 +27,7 @@ from datetime import datetime, timedelta
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QRadioButton,
     QButtonGroup, QTreeWidget, QTreeWidgetItem, QDateEdit,
-    QSlider, QCheckBox, QGroupBox, QComboBox, QFrame
+    QSlider, QCheckBox, QGroupBox, QComboBox, QFrame, QSizePolicy
 )
 from PySide6.QtCore import Qt, QDate, Signal
 
@@ -73,27 +73,35 @@ class EmbeddingScopeWidget(QWidget):
 
     def _setup_ui(self):
         """Setup the user interface."""
+        # CRITICAL: Size policy allows this widget to be scrollable within parent
+        self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(8)
 
         # Scope selection group
         scope_group = self._create_scope_selection()
+        scope_group.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
         layout.addWidget(scope_group)
 
         # Options group
         options_group = self._create_options_group()
+        options_group.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
         layout.addWidget(options_group)
 
         # Summary panel
         self.summary_panel = self._create_summary_panel()
+        self.summary_panel.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
         layout.addWidget(self.summary_panel)
 
     def _create_scope_selection(self) -> QGroupBox:
         """Create scope selection radio buttons and options."""
-        group = QGroupBox("Photo Selection")
+        group = QGroupBox("📸 Photo Selection")
+        group.setStyleSheet(self._groupbox_style())
         layout = QVBoxLayout(group)
-        layout.setSpacing(6)
+        layout.setSpacing(4)
+        layout.setContentsMargins(10, 14, 10, 10)
 
         # Radio button group
         self.button_group = QButtonGroup(self)
@@ -119,10 +127,11 @@ class EmbeddingScopeWidget(QWidget):
         self.button_group.addButton(self.radio_folders)
         layout.addWidget(self.radio_folders)
 
-        # Folder tree (hidden by default)
+        # Folder tree (hidden by default) - compact height
         self.folder_tree = QTreeWidget()
         self.folder_tree.setHeaderLabel("Select Folders")
-        self.folder_tree.setMaximumHeight(150)
+        self.folder_tree.setMaximumHeight(120)
+        self.folder_tree.setStyleSheet("font-size: 9pt;")
         self.folder_tree.hide()
         self.folder_tree.itemChanged.connect(self._on_folder_selection_changed)
         layout.addWidget(self.folder_tree)
@@ -219,9 +228,11 @@ class EmbeddingScopeWidget(QWidget):
 
     def _create_options_group(self) -> QGroupBox:
         """Create additional options group."""
-        group = QGroupBox("Options")
+        group = QGroupBox("⚙️ Options")
+        group.setStyleSheet(self._groupbox_style())
         layout = QVBoxLayout(group)
-        layout.setSpacing(6)
+        layout.setSpacing(4)
+        layout.setContentsMargins(10, 14, 10, 10)
 
         # Skip already processed checkbox
         self.chk_skip_processed = QCheckBox("Skip photos that already have embeddings")
@@ -258,9 +269,11 @@ class EmbeddingScopeWidget(QWidget):
 
     def _create_summary_panel(self) -> QGroupBox:
         """Create summary panel showing selection statistics."""
-        group = QGroupBox("Summary")
+        group = QGroupBox("📊 Summary")
+        group.setStyleSheet(self._groupbox_style())
         layout = QVBoxLayout(group)
-        layout.setSpacing(4)
+        layout.setSpacing(2)
+        layout.setContentsMargins(10, 14, 10, 10)
 
         self.summary_selected = QLabel()
         self.summary_selected.setStyleSheet("font-weight: bold;")
@@ -319,6 +332,26 @@ class EmbeddingScopeWidget(QWidget):
         except Exception as e:
             logger.error(f"Failed to load data: {e}")
             self.label_all_count.setText("Error loading photos")
+
+    def _groupbox_style(self) -> str:
+        """Return compact GroupBox styling."""
+        return """
+            QGroupBox {
+                font-weight: bold;
+                font-size: 9pt;
+                border: 1px solid #e0e0e0;
+                border-radius: 6px;
+                margin-top: 8px;
+                padding-top: 12px;
+                background-color: white;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                subcontrol-position: top left;
+                padding: 2px 6px;
+                background-color: #fafafa;
+            }
+        """
 
     def _populate_folder_tree(self):
         """Populate folder tree with checkboxes in hierarchical structure."""

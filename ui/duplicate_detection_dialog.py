@@ -1,5 +1,5 @@
 # duplicate_detection_dialog.py
-# Version 1.02.00.00 dated 20260129
+# Version 1.03.00.00 dated 20260130
 
 """
 Duplicate Detection Dialog
@@ -290,8 +290,10 @@ class DuplicateDetectionDialog(QDialog):
         # === FIXED HEADER (Title + Buttons) ===
         header_widget = QWidget()
         header_widget.setStyleSheet("background-color: white; border-bottom: 1px solid #e0e0e0;")
+        # CRITICAL: Fixed size policy ensures header stays at top and doesn't expand
+        header_widget.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
         header_layout = QHBoxLayout(header_widget)
-        header_layout.setContentsMargins(20, 16, 20, 16)
+        header_layout.setContentsMargins(20, 12, 20, 12)
         header_layout.setSpacing(16)
 
         # Title section
@@ -335,12 +337,18 @@ class DuplicateDetectionDialog(QDialog):
         scroll_area.setWidgetResizable(True)
         scroll_area.setFrameShape(QFrame.NoFrame)
         scroll_area.setStyleSheet("QScrollArea { background-color: #fafafa; }")
+        # CRITICAL: Expanding policy allows scroll area to take remaining space
+        scroll_area.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
 
         scroll_content = QWidget()
         scroll_content.setStyleSheet("background-color: #fafafa;")
+        # Content can be larger than visible area - this enables scrolling
+        scroll_content.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
         content_layout = QVBoxLayout(scroll_content)
-        content_layout.setSpacing(12)
-        content_layout.setContentsMargins(20, 16, 20, 16)
+        content_layout.setSpacing(10)
+        content_layout.setContentsMargins(16, 12, 16, 12)
 
         # === SCOPE SELECTION ===
         self.scope_widget = EmbeddingScopeWidget(self.project_id, self)
@@ -445,10 +453,12 @@ class DuplicateDetectionDialog(QDialog):
         # === PROGRESS BAR (hidden initially, at bottom) ===
         self.progress_widget = QWidget()
         self.progress_widget.setStyleSheet("background-color: white; border-top: 1px solid #e0e0e0;")
+        # CRITICAL: Fixed size policy ensures progress bar stays at bottom
+        self.progress_widget.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
         self.progress_widget.setVisible(False)
         progress_layout = QVBoxLayout(self.progress_widget)
-        progress_layout.setContentsMargins(20, 12, 20, 12)
-        progress_layout.setSpacing(6)
+        progress_layout.setContentsMargins(16, 10, 16, 10)
+        progress_layout.setSpacing(4)
 
         self.progress_bar = QProgressBar()
         self.progress_bar.setTextVisible(True)
