@@ -5145,7 +5145,7 @@ class GooglePhotosLayout(BaseLayout):
 
             # Render visible groups
             if groups_to_render:
-                print(f"[GooglePhotosLayout] 🎨 Rendering {len(groups_to_render)} date groups that entered viewport...")
+                logger.debug(f"Rendering {len(groups_to_render)} date groups that entered viewport...")
 
                 for index, metadata in groups_to_render:
                     try:
@@ -5171,13 +5171,13 @@ class GooglePhotosLayout(BaseLayout):
                             self.rendered_date_groups.add(index)
 
                     except Exception as e:
-                        print(f"[GooglePhotosLayout] ⚠️ Error rendering date group {index}: {e}")
+                        logger.warning(f"Error rendering date group {index}: {e}")
                         continue
 
-                print(f"[GooglePhotosLayout] ✓ Now {len(self.rendered_date_groups)}/{len(self.date_groups_metadata)} groups rendered")
+                logger.debug(f"Now {len(self.rendered_date_groups)}/{len(self.date_groups_metadata)} groups rendered")
 
         except Exception as e:
-            print(f"[GooglePhotosLayout] ⚠️ Error in virtual scrolling: {e}")
+            logger.warning(f"Error in virtual scrolling: {e}")
 
     def _create_photo_grid(self, photos: List[Tuple], thumb_size: int = 200) -> QWidget:
         """
@@ -5648,14 +5648,14 @@ class GooglePhotosLayout(BaseLayout):
 
         # Load visible thumbnails
         if paths_to_load:
-            print(f"[GooglePhotosLayout] 📜 Scroll detected, loading {len(paths_to_load)} visible thumbnails...")
+            logger.debug(f"Scroll detected, loading {len(paths_to_load)} visible thumbnails...")
             for path in paths_to_load:
                 button, size = self.unloaded_thumbnails.pop(path)
                 # Queue async loading
                 loader = ThumbnailLoader(path, size, self.thumbnail_signals)
                 self.thumbnail_thread_pool.start(loader)
 
-            print(f"[GooglePhotosLayout] ✓ Loaded {len(paths_to_load)} thumbnails, {len(self.unloaded_thumbnails)} remaining")
+            logger.debug(f"Loaded {len(paths_to_load)} thumbnails, {len(self.unloaded_thumbnails)} remaining")
 
     def _create_thumbnail(self, path: str, size: int) -> QWidget:
         """
@@ -5770,7 +5770,8 @@ class GooglePhotosLayout(BaseLayout):
         else:
             # Store for lazy loading on scroll
             self.unloaded_thumbnails[path] = (thumb, size)
-            print(f"[GooglePhotosLayout] Deferred thumbnail #{self.thumbnail_load_count + 1}: {os.path.basename(path)}")
+            # NOTE: Removed verbose print that fired for every deferred thumbnail
+            # This was causing performance issues with large photo collections
 
         # Phase 2: Selection checkbox (overlay top-left corner)
         # QUICK WIN #8: Enhanced with modern hover effects

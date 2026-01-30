@@ -651,7 +651,9 @@ class PhotoScanService:
         try:
             from settings_manager_qt import SettingsManager
             settings = SettingsManager()
-            custom_exclusions = settings.get("scan_exclude_folders", [])
+            # CRITICAL FIX: Use "ignore_folders" which is the key used by preferences_dialog.py
+            # The previous key "scan_exclude_folders" was never populated by the UI
+            custom_exclusions = settings.get("ignore_folders", [])
 
             if custom_exclusions:
                 # User has configured custom exclusions - use them

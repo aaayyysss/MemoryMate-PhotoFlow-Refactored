@@ -149,6 +149,8 @@ class VideoThumbnailService:
 
         try:
             # Use ffmpeg to extract frame
+            # Note: -pix_fmt yuvj420p is required for WMV and some other formats
+            # that use non-full-range YUV color space (fixes "Non full-range YUV" error)
             cmd = [
                 self._ffmpeg_path,  # Use configured ffmpeg path
                 '-y',  # Overwrite output file
@@ -156,6 +158,7 @@ class VideoThumbnailService:
                 '-i', video_path,  # Input file
                 '-vframes', '1',  # Extract 1 frame
                 '-vf', f'scale={width}:{height}:force_original_aspect_ratio=decrease',  # Scale
+                '-pix_fmt', 'yuvj420p',  # Force full-range YUV for JPEG compatibility
                 '-q:v', '2',  # Quality (2 = high quality for JPEG)
                 str(output_path)
             ]
