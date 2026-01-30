@@ -677,7 +677,7 @@ class PhotoRepository(BaseRepository):
 
         Args:
             project_id: Project ID to filter by
-            model: Embedding model name to check for
+            model: Embedding model name (unused, kept for backward compatibility)
             limit: Optional maximum number of results
 
         Returns:
@@ -685,20 +685,21 @@ class PhotoRepository(BaseRepository):
         """
         # Single efficient query using LEFT JOIN
         # Returns photos where no matching embedding exists
-        # Note: table is photo_metadata, not photos
+        # CRITICAL FIX: Check photo_embedding table (where EmbeddingService stores embeddings)
+        # NOT semantic_embeddings (which is a separate system)
         query = """
             SELECT p.id, p.path, p.created_ts, p.folder_id, p.project_id,
-                   p.width, p.height,  
+                   p.width, p.height,
                    CAST(ROUND(COALESCE(p.size_kb, 0) * 1024) AS INTEGER) AS file_size,
                    p.date_taken
             FROM photo_metadata p
-            LEFT JOIN semantic_embeddings se
-                ON p.id = se.photo_id AND se.model = ?
+            LEFT JOIN photo_embedding pe
+                ON p.id = pe.photo_id AND pe.embedding_type = 'visual_semantic'
             WHERE p.project_id = ?
-                AND se.photo_id IS NULL
+                AND pe.photo_id IS NULL
             ORDER BY p.id ASC
         """
-        params = [model, project_id]
+        params = [project_id]
 
         if limit:
             query += " LIMIT ?"

@@ -199,7 +199,10 @@ class DuplicateDetectionWorker(QObject):
                 try:
                     from services.stack_generation_service import StackGenerationService
                     from repository.stack_repository import StackRepository
-                    from services.semantic_embedding_service import SemanticEmbeddingService
+                    # CRITICAL FIX: Use EmbeddingService which reads from photo_embedding table
+                    # (same table where embeddings are stored above)
+                    # NOT SemanticEmbeddingService which reads from semantic_embeddings table
+                    from services.embedding_service import EmbeddingService as SimilarityEmbeddingService
 
                     # BUG FIX: Create db_conn for similar detection if not already created
                     # (may not exist if detect_exact and generate_embeddings were both False)
@@ -212,7 +215,9 @@ class DuplicateDetectionWorker(QObject):
 
                     # BUG FIX: StackRepository requires db parameter
                     stack_repo = StackRepository(db_conn)
-                    embedding_svc = SemanticEmbeddingService()
+                    # Use EmbeddingService with same db_conn to read from photo_embedding table
+                    embedding_svc = SimilarityEmbeddingService(db_connection=db_conn)
+                    embedding_svc.load_clip_model()  # Load model to get model_id for queries
                     stack_svc = StackGenerationService(photo_repo, stack_repo, embedding_svc)
 
                     threshold = self.options.get('similarity_threshold', 0.85)
