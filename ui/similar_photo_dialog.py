@@ -74,7 +74,7 @@ class SimilarPhotoWorker(QObject):
 
             # Use EmbeddingService which reads from photo_embedding table
             # (same table where DuplicateDetectionWorker stores embeddings)
-            embedding_service = EmbeddingService(db=db_conn)
+            embedding_service = EmbeddingService(db_connection=db_conn)
 
             # Load the CLIP model to get the model_id
             self.progress_updated.emit(8, "Loading CLIP model...")
