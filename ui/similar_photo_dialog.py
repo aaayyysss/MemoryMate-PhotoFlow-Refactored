@@ -1,5 +1,5 @@
 # similar_photo_dialog.py
-# Version 02.00.00.00 dated 20260130
+# Version 02.01.00.00 dated 20260130
 """
 Similar Photo Detection Dialog
 Specialized dialog for finding visually similar photos using AI embeddings.
@@ -31,7 +31,7 @@ from services.library_detector import check_system_readiness
 from repository.photo_repository import PhotoRepository
 from repository.base_repository import DatabaseConnection
 from repository.stack_repository import StackRepository
-from services.semantic_embedding_service import SemanticEmbeddingService
+from services.embedding_service import EmbeddingService
 from services.stack_generation_service import StackGenerationService, StackGenParams
 from logging_config import get_logger
 
@@ -71,7 +71,14 @@ class SimilarPhotoWorker(QObject):
             db_conn = DatabaseConnection()
             photo_repo = PhotoRepository(db_conn)
             stack_repo = StackRepository(db_conn)
-            embedding_service = SemanticEmbeddingService(db_connection=db_conn)
+
+            # Use EmbeddingService which reads from photo_embedding table
+            # (same table where DuplicateDetectionWorker stores embeddings)
+            embedding_service = EmbeddingService(db=db_conn)
+
+            # Load the CLIP model to get the model_id
+            self.progress_updated.emit(8, "Loading CLIP model...")
+            embedding_service.load_clip_model()
 
             # Create stack generation service
             stack_gen_service = StackGenerationService(
@@ -82,7 +89,7 @@ class SimilarPhotoWorker(QObject):
 
             self.progress_updated.emit(10, "Checking embeddings...")
 
-            # Get all embeddings for the project
+            # Get all embeddings for the project from photo_embedding table
             embeddings_dict = embedding_service.get_all_embeddings_for_project(self.project_id)
 
             if len(embeddings_dict) < 2:
@@ -516,15 +523,23 @@ class SimilarPhotoDetectionDialog(QDialog):
         try:
             db_conn = DatabaseConnection()
             photo_repo = PhotoRepository(db_conn)
-            embedding_service = SemanticEmbeddingService(db_connection=db_conn)
 
             total_photos = photo_repo.count(
                 where_clause="project_id = ?",
                 params=(self.project_id,)
             )
 
-            stats = embedding_service.get_project_embedding_stats(self.project_id)
-            photos_with_embeddings = stats.get('photos_with_embeddings', 0)
+            # Query photo_embedding table directly for accurate count
+            # (embeddings are stored here by DuplicateDetectionWorker)
+            with db_conn.get_connection() as conn:
+                cursor = conn.execute("""
+                    SELECT COUNT(DISTINCT pe.photo_id) as cnt
+                    FROM photo_embedding pe
+                    JOIN photo_metadata p ON pe.photo_id = p.id
+                    WHERE p.project_id = ? AND pe.embedding_type = 'visual_semantic'
+                """, (self.project_id,))
+                row = cursor.fetchone()
+                photos_with_embeddings = row['cnt'] if row else 0
 
             coverage = int((photos_with_embeddings / max(total_photos, 1)) * 100)
 
