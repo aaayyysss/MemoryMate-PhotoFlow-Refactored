@@ -403,6 +403,12 @@ class GooglePhotosLayout(BaseLayout):
         self.btn_duplicates.clicked.connect(self._open_duplicates_dialog)
         toolbar.addWidget(self.btn_duplicates)
 
+        # Similar button - Open similar photos detection dialog
+        self.btn_similar = QPushButton("🎯 Similar")
+        self.btn_similar.setToolTip("Find visually similar photos using AI")
+        self.btn_similar.clicked.connect(self._open_similar_photos_dialog)
+        toolbar.addWidget(self.btn_similar)
+
         toolbar.addSeparator()
 
         # Zoom controls (Google Photos style - +/- buttons with slider)
@@ -8930,6 +8936,47 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
                 self.main_window if hasattr(self, 'main_window') else None,
                 "Error Opening Duplicates",
                 f"Failed to open duplicates dialog:\n{e}"
+            )
+
+    def _open_similar_photos_dialog(self):
+        """
+        Open SimilarPhotoDetectionDialog to find visually similar photos.
+
+        This dialog allows users to:
+        - Configure similarity threshold and clustering parameters
+        - Find visually similar photos using AI embeddings
+        - Results are persisted to database and shown in sidebar
+        """
+        try:
+            from ui.similar_photo_dialog import SimilarPhotoDetectionDialog
+
+            if self.project_id is None:
+                from PySide6.QtWidgets import QMessageBox
+                QMessageBox.warning(
+                    self.main_window if hasattr(self, 'main_window') else None,
+                    "No Project Selected",
+                    "Please select a project before finding similar photos."
+                )
+                return
+
+            # Open the dialog
+            dialog = SimilarPhotoDetectionDialog(
+                project_id=self.project_id,
+                parent=self.main_window if hasattr(self, 'main_window') else None
+            )
+
+            # Show the dialog
+            dialog.exec()
+
+        except Exception as e:
+            from PySide6.QtWidgets import QMessageBox
+            import traceback
+            error_msg = f"Failed to open similar photos dialog:\n{e}\n\n{traceback.format_exc()}"
+            print(f"[GooglePhotosLayout] ERROR: {error_msg}")
+            QMessageBox.critical(
+                self.main_window if hasattr(self, 'main_window') else None,
+                "Error Opening Similar Photos",
+                f"Failed to open similar photos dialog:\n{e}"
             )
 
     def _on_duplicate_action_taken(self, action: str, asset_id: int):
