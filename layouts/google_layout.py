@@ -8611,6 +8611,11 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
             if hasattr(self, 'accordion_sidebar') and self.accordion_sidebar:
                 self.accordion_sidebar.reload_section("duplicates")
 
+            # CRITICAL: Refresh photo grid to show duplicate/similar badges
+            # Badges are only created when thumbnails are created, so we need to reload
+            logger.info("[GooglePhotosLayout] Refreshing grid to show duplicate/similar badges...")
+            self._load_photos()
+
         except Exception as e:
             print(f"[GooglePhotosLayout] Error opening duplicate detection dialog: {e}")
             import traceback
@@ -8655,6 +8660,11 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
             # Refresh sidebar duplicates section after dialog closes
             if hasattr(self, 'accordion_sidebar') and self.accordion_sidebar:
                 self.accordion_sidebar.reload_section("duplicates")
+
+            # CRITICAL: Refresh photo grid to show similar stack badges
+            # Badges are only created when thumbnails are created, so we need to reload
+            logger.info("[GooglePhotosLayout] Refreshing grid to show similar stack badges...")
+            self._load_photos()
 
         except Exception as e:
             from PySide6.QtWidgets import QMessageBox
@@ -8834,6 +8844,10 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
             # Refresh sidebar duplicates section after dialog closes
             if hasattr(self, 'accordion_sidebar') and self.accordion_sidebar:
                 self.accordion_sidebar.reload_section("duplicates")
+
+            # CRITICAL: Refresh photo grid to show similar stack badges
+            logger.info("[GooglePhotosLayout] Refreshing grid to show similar stack badges...")
+            self._load_photos()
 
         except Exception as e:
             from PySide6.QtWidgets import QMessageBox

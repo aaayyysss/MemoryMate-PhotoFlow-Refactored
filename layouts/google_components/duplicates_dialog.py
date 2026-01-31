@@ -57,15 +57,15 @@ class PhotoInstanceWidget(QWidget):
         layout.setSpacing(8)
         layout.setContentsMargins(8, 8, 8, 8)
 
-        # Thumbnail placeholder
+        # Thumbnail placeholder - IMPROVED: Larger size for better comparison (Google Photos style)
         self.thumbnail_label = QLabel()
-        self.thumbnail_label.setFixedSize(200, 200)
+        self.thumbnail_label.setFixedSize(280, 280)
         self.thumbnail_label.setAlignment(Qt.AlignCenter)
         self.thumbnail_label.setStyleSheet("""
             QLabel {
                 background-color: #f5f5f5;
                 border: 1px solid #ddd;
-                border-radius: 4px;
+                border-radius: 8px;
             }
         """)
         self.thumbnail_label.setText("Loading...")
@@ -139,7 +139,7 @@ class PhotoInstanceWidget(QWidget):
             path = self.photo.get('path', '')
 
             if path and Path(path).exists():
-                pixmap = get_thumbnail(path, 200)
+                pixmap = get_thumbnail(path, 280)  # Larger thumbnail for better comparison
                 if pixmap and not pixmap.isNull():
                     self.thumbnail_label.setPixmap(pixmap)
                 else:
@@ -454,10 +454,88 @@ class DuplicatesDialog(QDialog):
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(0, 0, 0, 0)
 
+        # Header with title and navigation (Google Photos / Lightroom style)
+        header_layout = QHBoxLayout()
+
         # Title
         self.details_title = QLabel("Select a duplicate group")
         self.details_title.setStyleSheet("font-weight: bold; font-size: 13px;")
-        layout.addWidget(self.details_title)
+        header_layout.addWidget(self.details_title)
+
+        header_layout.addStretch()
+
+        # Navigation buttons (iPhone/Lightroom style quick browse)
+        nav_btn_style = """
+            QPushButton {
+                padding: 6px 12px;
+                background-color: #f0f0f0;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                font-weight: bold;
+                min-width: 40px;
+            }
+            QPushButton:hover {
+                background-color: #e0e0e0;
+            }
+            QPushButton:disabled {
+                color: #aaa;
+                background-color: #f5f5f5;
+            }
+        """
+
+        self.btn_prev_group = QPushButton("◀ Prev")
+        self.btn_prev_group.setToolTip("Previous duplicate group (↑)")
+        self.btn_prev_group.setStyleSheet(nav_btn_style)
+        self.btn_prev_group.clicked.connect(self._on_prev_group)
+        self.btn_prev_group.setEnabled(False)
+        header_layout.addWidget(self.btn_prev_group)
+
+        self.group_counter = QLabel("0 / 0")
+        self.group_counter.setStyleSheet("color: #666; margin: 0 8px;")
+        header_layout.addWidget(self.group_counter)
+
+        self.btn_next_group = QPushButton("Next ▶")
+        self.btn_next_group.setToolTip("Next duplicate group (↓)")
+        self.btn_next_group.setStyleSheet(nav_btn_style)
+        self.btn_next_group.clicked.connect(self._on_next_group)
+        self.btn_next_group.setEnabled(False)
+        header_layout.addWidget(self.btn_next_group)
+
+        layout.addLayout(header_layout)
+
+        # Quick action bar (Google Photos style - per-group actions)
+        quick_actions = QHBoxLayout()
+        quick_actions.setContentsMargins(0, 8, 0, 8)
+
+        self.btn_keep_best = QPushButton("⭐ Keep Best Quality")
+        self.btn_keep_best.setToolTip("Auto-select lower quality copies for deletion\n(Keeps largest file with best resolution)")
+        self.btn_keep_best.setStyleSheet("""
+            QPushButton {
+                padding: 6px 16px;
+                background-color: #4CAF50;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #45a049;
+            }
+            QPushButton:disabled {
+                background-color: #ccc;
+            }
+        """)
+        self.btn_keep_best.clicked.connect(self._on_keep_best_in_group)
+        self.btn_keep_best.setEnabled(False)
+        quick_actions.addWidget(self.btn_keep_best)
+
+        # Space savings indicator
+        self.savings_label = QLabel("")
+        self.savings_label.setStyleSheet("color: #666; font-style: italic; margin-left: 16px;")
+        quick_actions.addWidget(self.savings_label)
+
+        quick_actions.addStretch()
+        layout.addLayout(quick_actions)
 
         # Scroll area for instances
         scroll = QScrollArea()
@@ -732,7 +810,9 @@ class DuplicatesDialog(QDialog):
             col = idx % 2
             self.instances_layout.addWidget(widget, row, col)
 
-
+        # Update navigation controls and savings indicator
+        self._update_navigation_controls()
+        self._update_savings_indicator()
 
     @Slot(int, bool)
     def _on_instance_selection_changed(self, photo_id: int, is_selected: bool):
@@ -749,9 +829,10 @@ class DuplicatesDialog(QDialog):
         # Enable delete button if any photos selected
         enabled = len(self.selected_photos) > 0
         logger.info(f"[DuplicatesDialog] Setting delete button enabled={enabled}, selected_photos count={len(self.selected_photos)}, ids={self.selected_photos}")
-        logger.info(f"[DuplicatesDialog] Button state before setEnabled: {self.btn_delete_selected.isEnabled()}")
         self.btn_delete_selected.setEnabled(enabled)
-        logger.info(f"[DuplicatesDialog] Button state after setEnabled: {self.btn_delete_selected.isEnabled()}")
+
+        # Update savings indicator
+        self._update_savings_indicator()
 
     def _on_delete_selected(self):
         """Handle delete selected button click."""
@@ -910,3 +991,123 @@ class DuplicatesDialog(QDialog):
             f"{best_photo.get('size_kb', 0):.1f} KB\n\n"
             f"Review the selection and click 'Delete Selected' to proceed."
         )
+
+    # ========================================================================
+    # NAVIGATION METHODS (Google Photos / Lightroom style quick browsing)
+    # ========================================================================
+
+    def _on_prev_group(self):
+        """Navigate to previous duplicate group."""
+        if not self.duplicates or not self.selected_asset_id:
+            return
+
+        # Find current index
+        current_idx = self._get_current_group_index()
+        if current_idx > 0:
+            self._select_group_by_index(current_idx - 1)
+
+    def _on_next_group(self):
+        """Navigate to next duplicate group."""
+        if not self.duplicates or not self.selected_asset_id:
+            return
+
+        # Find current index
+        current_idx = self._get_current_group_index()
+        if current_idx < len(self.duplicates) - 1:
+            self._select_group_by_index(current_idx + 1)
+
+    def _get_current_group_index(self) -> int:
+        """Get index of currently selected group."""
+        for idx, asset in enumerate(self.duplicates):
+            if asset['asset_id'] == self.selected_asset_id:
+                return idx
+        return -1
+
+    def _select_group_by_index(self, idx: int):
+        """Select group by index and update UI."""
+        if 0 <= idx < len(self.duplicates):
+            # Select in list widget
+            self.assets_list.setCurrentRow(idx)
+            # Trigger selection handler
+            item = self.assets_list.item(idx)
+            if item:
+                self._on_asset_selected(item)
+
+    def _update_navigation_controls(self):
+        """Update navigation button states and counter."""
+        if not self.duplicates:
+            self.btn_prev_group.setEnabled(False)
+            self.btn_next_group.setEnabled(False)
+            self.btn_keep_best.setEnabled(False)
+            self.group_counter.setText("0 / 0")
+            return
+
+        current_idx = self._get_current_group_index()
+        total = len(self.duplicates)
+
+        # Update navigation buttons
+        self.btn_prev_group.setEnabled(current_idx > 0)
+        self.btn_next_group.setEnabled(current_idx < total - 1)
+        self.btn_keep_best.setEnabled(current_idx >= 0)
+
+        # Update counter
+        if current_idx >= 0:
+            self.group_counter.setText(f"{current_idx + 1} / {total}")
+        else:
+            self.group_counter.setText(f"0 / {total}")
+
+    def _update_savings_indicator(self):
+        """Calculate and display potential storage savings."""
+        if not self.instance_widgets:
+            self.savings_label.setText("")
+            return
+
+        # Calculate total size of selected photos
+        total_savings_kb = 0
+        for widget in self.instance_widgets:
+            if widget.checkbox.isChecked():
+                total_savings_kb += widget.photo.get('size_kb', 0)
+
+        if total_savings_kb > 0:
+            if total_savings_kb >= 1024:
+                savings_str = f"{total_savings_kb / 1024:.1f} MB"
+            else:
+                savings_str = f"{total_savings_kb:.0f} KB"
+            self.savings_label.setText(f"💾 Potential savings: {savings_str}")
+        else:
+            self.savings_label.setText("")
+
+    def _on_keep_best_in_group(self):
+        """
+        Quick action: Keep only the best quality photo in current group.
+
+        This is the same as _on_auto_select_duplicates but without the message box,
+        for faster workflow when reviewing multiple groups.
+        """
+        if not self.selected_asset_id or not self.instance_widgets:
+            return
+
+        # Get all photos in current group
+        photos = [widget.photo for widget in self.instance_widgets]
+
+        # Find the best photo (highest resolution, then largest file size)
+        best_photo = max(photos, key=lambda p: (
+            p.get('width', 0) * p.get('height', 0),  # Resolution
+            p.get('size_kb', 0)  # File size
+        ))
+
+        best_photo_id = best_photo['id']
+
+        # Select all photos except the best one and the representative
+        for widget in self.instance_widgets:
+            photo_id = widget.photo['id']
+            is_representative = widget.is_representative
+
+            # Don't select if it's the best photo or the representative
+            if photo_id != best_photo_id and not is_representative:
+                widget.checkbox.setChecked(True)
+            else:
+                widget.checkbox.setChecked(False)
+
+        # Update savings indicator
+        self._update_savings_indicator()
