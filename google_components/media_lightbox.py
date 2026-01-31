@@ -3419,7 +3419,7 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             def set_pixmap_consistent(self, pixmap):
                 """
                 Set pixmap with consistent sizing to eliminate zoom effects during preview transitions.
-                
+
                 ✨ PROFESSIONAL APPROACH (Like Lightroom/Photoshop):
                 - Store consistently scaled pixmap
                 - Maintain aspect ratio during quality transitions
@@ -3430,17 +3430,23 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                     self._consistent_size = None
                     self.update()
                     return
-                
+
                 # Store the consistently scaled pixmap
                 self._consistent_pixmap = pixmap
                 self._consistent_size = pixmap.size()
-                
+
                 # Trigger repaint with consistent sizing
                 self.update()
-                
+
                 # Debug logging
                 if hasattr(self.parent, '_debug_size_consistency') and self.parent._debug_size_consistency:
                     print(f"[EditCanvas] Set consistent pixmap: {pixmap.width()}x{pixmap.height()}")
+
+            def clear(self):
+                """Clear the canvas - reset pixmap and trigger repaint."""
+                self._consistent_pixmap = None
+                self._consistent_size = None
+                self.update()
 
             def wheelEvent(self, event):
                 """Handle wheel events for zoom - DIRECT implementation."""
@@ -5662,6 +5668,62 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             self.video_widget.hide()
         if hasattr(self, 'video_controls_widget'):
             self.video_controls_widget.hide()
+
+    def _fit_video_view(self):
+        """
+        Fit video to view and calculate base scale for zoom operations.
+
+        This method:
+        1. Gets the native size of the video
+        2. Calculates scale to fit in the view
+        3. Sets video_base_scale for _apply_video_zoom to use
+        """
+        try:
+            if not hasattr(self, 'video_item') or not hasattr(self, 'video_graphics_view'):
+                return
+
+            # Get native video size
+            native_size = self.video_item.nativeSize()
+            if native_size.isEmpty() or native_size.width() <= 0 or native_size.height() <= 0:
+                # Video size not yet available, try again later
+                from PySide6.QtCore import QTimer
+                QTimer.singleShot(100, self._fit_video_view)
+                return
+
+            # Get view size
+            view_rect = self.video_graphics_view.viewport().rect()
+            view_w = view_rect.width()
+            view_h = view_rect.height()
+
+            if view_w <= 0 or view_h <= 0:
+                return
+
+            # Calculate scale to fit video in view (with some padding)
+            video_w = native_size.width()
+            video_h = native_size.height()
+
+            scale_w = view_w / video_w
+            scale_h = view_h / video_h
+            self.video_base_scale = min(scale_w, scale_h) * 0.95  # 5% padding
+
+            # Set scene rect to video native size
+            self.video_scene.setSceneRect(0, 0, video_w, video_h)
+
+            # Reset edit zoom level
+            self.edit_zoom_level = 1.0
+
+            # Apply the transform (this centers and scales the video)
+            self._apply_video_zoom()
+
+            # Center the view on the video
+            self.video_graphics_view.centerOn(self.video_item)
+
+            print(f"[MediaLightbox] Video fitted: native={video_w}x{video_h}, view={view_w}x{view_h}, base_scale={self.video_base_scale:.2f}")
+
+        except Exception as e:
+            print(f"[MediaLightbox] _fit_video_view error: {e}")
+            import traceback
+            traceback.print_exc()
 
     def _on_duration_changed(self, duration: int):
         """Handle video duration change (set seek slider range)."""
