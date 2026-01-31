@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
     QGridLayout, QFrame, QCheckBox, QMessageBox, QSplitter,
     QGroupBox, QTableWidget, QTableWidgetItem, QHeaderView
 )
-from PySide6.QtCore import Signal, Qt, QSize, Slot, QThreadPool
+from PySide6.QtCore import Signal, Qt, QSize, Slot, QThreadPool, QTimer
 from PySide6.QtGui import QPixmap, QFont, QColor
 from typing import Optional, List, Dict, Any
 from pathlib import Path
@@ -32,7 +32,7 @@ class PhotoInstanceWidget(QWidget):
     Widget displaying a single photo instance with thumbnail and metadata.
 
     Shows:
-    - Thumbnail
+    - Thumbnail (responsive size)
     - Resolution
     - File size
     - Date taken
@@ -43,10 +43,11 @@ class PhotoInstanceWidget(QWidget):
 
     selection_changed = Signal(int, bool)  # photo_id, is_selected
 
-    def __init__(self, photo: Dict[str, Any], is_representative: bool = False, parent=None):
+    def __init__(self, photo: Dict[str, Any], is_representative: bool = False, thumb_size: int = 280, parent=None):
         super().__init__(parent)
         self.photo = photo
         self.is_representative = is_representative
+        self.thumb_size = int(thumb_size)
 
         self._init_ui()
         self._load_thumbnail_async()
@@ -54,12 +55,12 @@ class PhotoInstanceWidget(QWidget):
     def _init_ui(self):
         """Initialize UI components."""
         layout = QVBoxLayout(self)
-        layout.setSpacing(8)
+        layout.setSpacing(6)
         layout.setContentsMargins(8, 8, 8, 8)
 
-        # Thumbnail placeholder - IMPROVED: Larger size for better comparison (Google Photos style)
+        # Thumbnail placeholder - Responsive size for better comparison (Google Photos style)
         self.thumbnail_label = QLabel()
-        self.thumbnail_label.setFixedSize(280, 280)
+        self.thumbnail_label.setFixedSize(self.thumb_size, self.thumb_size)
         self.thumbnail_label.setAlignment(Qt.AlignCenter)
         self.thumbnail_label.setStyleSheet("""
             QLabel {
@@ -71,45 +72,42 @@ class PhotoInstanceWidget(QWidget):
         self.thumbnail_label.setText("Loading...")
         layout.addWidget(self.thumbnail_label, alignment=Qt.AlignCenter)
 
-        # Metadata
+        # Metadata - Compact single-line format for media-first layout
         metadata_layout = QVBoxLayout()
-        metadata_layout.setSpacing(4)
+        metadata_layout.setSpacing(2)
 
         # Representative badge
         if self.is_representative:
             rep_label = QLabel("⭐ Representative")
-            rep_label.setStyleSheet("color: #FFA500; font-weight: bold; font-size: 12px;")
+            rep_label.setStyleSheet("color: #FFA500; font-weight: bold;")
             metadata_layout.addWidget(rep_label)
 
-        # Resolution
+        # Compact metadata: Resolution • Size • Date (Google Photos style)
         width = self.photo.get('width', 0)
         height = self.photo.get('height', 0)
-        res_label = QLabel(f"📐 {width}×{height}")
-        res_label.setStyleSheet("font-size: 11px; color: #666;")
-        metadata_layout.addWidget(res_label)
-
-        # File size
         size_kb = self.photo.get('size_kb', 0)
         if size_kb >= 1024:
             size_str = f"{size_kb/1024:.1f} MB"
         else:
-            size_str = f"{size_kb:.1f} KB"
-        size_label = QLabel(f"💾 {size_str}")
-        size_label.setStyleSheet("font-size: 11px; color: #666;")
-        metadata_layout.addWidget(size_label)
+            size_str = f"{size_kb:.0f} KB"
+        date_taken = self.photo.get('date_taken', '')
+        if date_taken and len(date_taken) > 10:
+            date_taken = date_taken[:10]  # Just the date part
 
-        # Date taken
-        date_taken = self.photo.get('date_taken', 'Unknown')
-        date_label = QLabel(f"📅 {date_taken}")
-        date_label.setStyleSheet("font-size: 11px; color: #666;")
-        metadata_layout.addWidget(date_label)
+        compact_info = f"{width}×{height} • {size_str}"
+        if date_taken:
+            compact_info += f" • {date_taken}"
 
-        # File path (truncated)
+        info_label = QLabel(compact_info)
+        info_label.setStyleSheet("color: #666;")
+        metadata_layout.addWidget(info_label)
+
+        # File name (truncated) with full path in tooltip
         path = self.photo.get('path', '')
         filename = Path(path).name
         path_label = QLabel(f"📄 {filename}")
         path_label.setToolTip(path)
-        path_label.setStyleSheet("font-size: 11px; color: #666;")
+        path_label.setStyleSheet("color: #888;")
         path_label.setWordWrap(True)
         metadata_layout.addWidget(path_label)
 
@@ -139,7 +137,7 @@ class PhotoInstanceWidget(QWidget):
             path = self.photo.get('path', '')
 
             if path and Path(path).exists():
-                pixmap = get_thumbnail(path, 280)  # Larger thumbnail for better comparison
+                pixmap = get_thumbnail(path, self.thumb_size)
                 if pixmap and not pixmap.isNull():
                     self.thumbnail_label.setPixmap(pixmap)
                 else:
@@ -157,6 +155,25 @@ class PhotoInstanceWidget(QWidget):
         except Exception as e:
             logger.error(f"Failed to load thumbnail for {self.photo.get('id')}: {e}")
             self.thumbnail_label.setText("Error loading")
+
+    def set_thumb_size(self, size: int):
+        """Update thumbnail size dynamically (for responsive resizing)."""
+        size = int(size)
+        if size == getattr(self, "thumb_size", None):
+            return
+        self.thumb_size = size
+        self.thumbnail_label.setFixedSize(size, size)
+
+        # Reload pixmap at new size (cache-friendly if get_thumbnail caches by size)
+        try:
+            from app_services import get_thumbnail
+            path = self.photo.get('path', '')
+            if path and Path(path).exists():
+                pixmap = get_thumbnail(path, size)
+                if pixmap and not pixmap.isNull():
+                    self.thumbnail_label.setPixmap(pixmap)
+        except Exception:
+            pass
 
     def _on_selection_changed(self, state):
         """Handle selection change."""
@@ -219,7 +236,15 @@ class DuplicatesDialog(QDialog):
             
         self.setWindowTitle("Review Duplicates")
         self.setMinimumSize(1200, 700)
-    
+
+        # Resize throttle timer for responsive grid relayout
+        self._relayout_timer = QTimer(self)
+        self._relayout_timer.setSingleShot(True)
+        self._relayout_timer.timeout.connect(self._relayout_instances_grid)
+
+        # Store current asset for resize rebuilds
+        self._current_asset = None
+
         self._init_ui()
         self._load_duplicates_async()
 
@@ -263,20 +288,24 @@ class DuplicatesDialog(QDialog):
         layout.addWidget(separator)
 
         # Main content: Splitter with list and details
-        splitter = QSplitter(Qt.Horizontal)
+        self.splitter = QSplitter(Qt.Horizontal)
 
-        # Left panel: Duplicate assets list
+        # Left panel: Duplicate assets list (narrower for media-first layout)
         left_panel = self._create_assets_list_panel()
-        splitter.addWidget(left_panel)
+        left_panel.setMinimumWidth(260)
+        left_panel.setMaximumWidth(340)
+        self.splitter.addWidget(left_panel)
 
-        # Right panel: Instance details
+        # Right panel: Instance details (dominant, media-first)
         right_panel = self._create_instance_details_panel()
-        splitter.addWidget(right_panel)
+        self.splitter.addWidget(right_panel)
 
-        splitter.setStretchFactor(0, 1)
-        splitter.setStretchFactor(1, 3)
+        # Give more space to the right panel (Lightroom filmstrip + main area pattern)
+        self.splitter.setStretchFactor(0, 0)  # Left panel doesn't stretch
+        self.splitter.setStretchFactor(1, 1)  # Right panel takes all extra space
+        self.splitter.setSizes([300, 900])  # Initial sizes: left fixed-ish, right dominant
 
-        layout.addWidget(splitter)
+        layout.addWidget(self.splitter)
 
         # Separator
         separator2 = QFrame()
@@ -773,9 +802,12 @@ class DuplicatesDialog(QDialog):
         logger.info(f"Started async details loading for asset {asset_id} (generation {current_generation})")
     
     def _display_asset_details(self, details: dict):
-        """Display loaded asset details in UI."""
+        """Display loaded asset details in UI with responsive grid layout."""
         if not details:
             return
+
+        # Store for resize rebuilds
+        self._current_asset = details
 
         asset = details['asset']
         photos = details['photos']
@@ -785,29 +817,36 @@ class DuplicatesDialog(QDialog):
         # Update title
         self.details_title.setText(f"Asset #{asset_id} - {instance_count} Copies")
 
-        # Clear existing instances
-        while self.instances_layout.count():
-            item = self.instances_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
+        # Clear existing instances safely
+        self._clear_instances_grid()
 
-        # Phase 3C: Clear instance widgets list
-        self.instance_widgets = []
+        # Calculate responsive grid metrics
+        cols, thumb_size, spacing = self._grid_metrics()
 
-        # Add instance widgets in grid (2 columns)
+        # Update layout spacing and margins
+        self.instances_layout.setSpacing(spacing)
+        self.instances_layout.setContentsMargins(16, 16, 16, 16)
+
+        # Add instance widgets in responsive grid
         rep_photo_id = asset.get('representative_photo_id')
 
         for idx, photo in enumerate(photos):
             is_representative = (photo['id'] == rep_photo_id)
 
-            widget = PhotoInstanceWidget(photo, is_representative, self)
+            widget = PhotoInstanceWidget(
+                photo,
+                is_representative,
+                thumb_size=thumb_size,
+                parent=self.instances_container
+            )
             widget.selection_changed.connect(self._on_instance_selection_changed)
 
-            # Phase 3C: Add to tracking list
+            # Add to tracking list
             self.instance_widgets.append(widget)
 
-            row = idx // 2
-            col = idx % 2
+            # Calculate row/col based on responsive column count
+            row = idx // cols
+            col = idx % cols
             self.instances_layout.addWidget(widget, row, col)
 
         # Update navigation controls and savings indicator
@@ -912,7 +951,7 @@ class DuplicatesDialog(QDialog):
                     self.duplicate_action_taken.emit("delete", self.selected_asset_id)
 
                 # Reload the view
-                self._load_duplicates()
+                self._load_duplicates_async()
 
             except Exception as e:
                 logger.error(f"Failed to delete photos: {e}", exc_info=True)
@@ -1076,6 +1115,65 @@ class DuplicatesDialog(QDialog):
             self.savings_label.setText(f"💾 Potential savings: {savings_str}")
         else:
             self.savings_label.setText("")
+
+    # ========================================================================
+    # RESPONSIVE GRID LAYOUT (Google Photos / Lightroom style media-first)
+    # ========================================================================
+
+    def _grid_metrics(self):
+        """
+        Calculate responsive grid metrics based on container width.
+
+        Returns: (cols, thumb_size, spacing)
+        """
+        # Get container width
+        w = self.instances_container.width() if hasattr(self, "instances_container") else 900
+        w = max(w, 360)
+
+        # Spacing and margins should match grid layout
+        spacing = 16
+        margins = 16 * 2  # left + right
+
+        # Target card width like Google Photos tiles: thumb + metadata padding
+        target_card_w = 320
+
+        cols = max(1, min(6, (w - margins) // target_card_w))
+
+        # Compute thumb size from available width and columns
+        # Card needs: thumb + padding around + checkbox/labels; reserve ~56px
+        available_per_col = (w - margins - spacing * (cols - 1)) / cols
+        thumb_size = int(max(180, min(360, available_per_col - 56)))
+
+        return cols, thumb_size, spacing
+
+    def _clear_instances_grid(self):
+        """Safely clear all widgets from the instances grid."""
+        if not hasattr(self, "instances_layout"):
+            return
+        while self.instances_layout.count():
+            item = self.instances_layout.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.setParent(None)
+                w.deleteLater()
+        self.instance_widgets = []
+
+    def _relayout_instances_grid(self):
+        """Relayout the instances grid after resize (throttled callback)."""
+        # Only relayout if a group is currently shown
+        asset = getattr(self, "_current_asset", None)
+        if not asset:
+            return
+
+        # Re-render with new cols/thumb size
+        self._display_asset_details(asset)
+
+    def resizeEvent(self, event):
+        """Handle window resize with throttled grid relayout."""
+        super().resizeEvent(event)
+        # Throttle to avoid rebuild spam during live resize dragging
+        if hasattr(self, "_relayout_timer"):
+            self._relayout_timer.start(120)
 
     def _on_keep_best_in_group(self):
         """
