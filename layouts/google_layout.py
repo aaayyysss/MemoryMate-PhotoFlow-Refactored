@@ -1,4 +1,5 @@
 # layouts/google_layout.py
+# Version 10.01.01.09 dated 20260131
 # Google Photos-style layout - Timeline-based, date-grouped, minimalist design
 
 from PySide6.QtWidgets import (
@@ -19,6 +20,8 @@ from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from .base_layout import BaseLayout
 from logging_config import get_logger
+
+from PySide6.QtWidgets import QApplication
 
 logger = get_logger(__name__)
 from .video_editor_mixin import VideoEditorMixin
@@ -45,6 +48,9 @@ from datetime import datetime
 import os
 import subprocess
 from translation_manager import tr as t
+
+
+
 
 
 class GooglePhotosLayout(BaseLayout):
@@ -92,6 +98,9 @@ class GooglePhotosLayout(BaseLayout):
         """
         Create Google Photos-style layout.
         """
+        self._ensure_tooltip_style()
+
+        
         # Face merge undo/redo stacks (CRITICAL FIX 2026-01-07)
         self.redo_stack = []  # Stack for redo operations after undo
 
@@ -277,6 +286,28 @@ class GooglePhotosLayout(BaseLayout):
         self._load_photos()
 
         return main_widget
+
+    
+
+    def _ensure_tooltip_style(self):
+        app = QApplication.instance()
+        if not app:
+            return
+        # Prevent duplicating the stylesheet if layouts are switched repeatedly
+        if getattr(app, "_mm_tooltip_style_applied", False):
+            return
+
+        app.setStyleSheet((app.styleSheet() or "") + """
+        QToolTip {
+            background-color: #000000;
+            color: #ffffff;
+            border: 1px solid #444444;
+            padding: 6px;
+            border-radius: 4px;
+            font-size: 10pt;
+        }
+        """)
+        app._mm_tooltip_style_applied = True
 
     def _create_toolbar(self) -> QToolBar:
         """
