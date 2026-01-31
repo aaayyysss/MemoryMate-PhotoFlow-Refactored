@@ -1831,32 +1831,34 @@ class MediaLightbox(QDialog, VideoEditorMixin):
     def eventFilter(self, obj, event):
         try:
             from PySide6.QtCore import QEvent, Qt
-            # Handle wheel zoom in editor canvas
-            if hasattr(self, 'editor_canvas') and obj == self.editor_canvas:
-                if event.type() == QEvent.Wheel:
-                    # Check if in editor mode
-                    if hasattr(self, 'mode_stack') and self.mode_stack.currentIndex() == 1:
-                        # Ctrl+Wheel = zoom, plain wheel = scroll
-                        from PySide6.QtCore import Qt as QtCore
-                        try:
-                            # Try both modifiers() and the event itself
-                            modifiers = event.modifiers()
-                            ctrl_pressed = bool(modifiers & Qt.ControlModifier)
-                        except:
-                            ctrl_pressed = False
-                        
-                        if ctrl_pressed:
-                            delta = event.angleDelta().y()
-                            print(f"[Zoom] Ctrl+Wheel detected: delta={delta}")
-                            if delta > 0:
-                                self._editor_zoom_in()
-                                print(f"[Zoom] Zoomed IN to {self.edit_zoom_level:.2f}x")
-                            else:
-                                self._editor_zoom_out()
-                                print(f"[Zoom] Zoomed OUT to {self.edit_zoom_level:.2f}x")
-                            return True  # Consume event
+
+            # Identify if event source is an editor zoom target
+            is_editor_canvas = hasattr(self, 'editor_canvas') and obj == self.editor_canvas
+            is_video_view = hasattr(self, 'video_graphics_view') and (
+                obj == self.video_graphics_view or
+                obj == self.video_graphics_view.viewport()
+            )
+            is_zoom_target = is_editor_canvas or is_video_view
+
+            # Handle wheel zoom on any zoom target
+            if is_zoom_target and event.type() == QEvent.Wheel:
+                # Check if in editor mode
+                if hasattr(self, 'mode_stack') and self.mode_stack.currentIndex() == 1:
+                    # Ctrl+Wheel = zoom, plain wheel = scroll
+                    try:
+                        modifiers = event.modifiers()
+                        ctrl_pressed = bool(modifiers & Qt.ControlModifier)
+                    except:
+                        ctrl_pressed = False
+
+                    if ctrl_pressed:
+                        delta = event.angleDelta().y()
+                        if delta > 0:
+                            self._editor_zoom_in()
                         else:
-                            print("[Zoom] Wheel event without Ctrl - not zooming")
+                            self._editor_zoom_out()
+                        return True  # Consume event
+
             return super().eventFilter(obj, event)
         except Exception as e:
             import traceback
@@ -2695,6 +2697,10 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                             if hasattr(self, '_fit_video_view'):
                                 self._fit_video_view()
                             print("[Editor] ✓ Video widget reparented to editor canvas")
+
+                            # FOCUS FIX: Set focus to video_graphics_view for wheel events
+                            if hasattr(self, 'video_graphics_view') and self.video_graphics_view:
+                                self.video_graphics_view.setFocus()
 
                     # Switch to editor page to show video controls
                     if hasattr(self, 'mode_stack'):
@@ -4394,6 +4400,27 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                     print(f"[MediaLightbox] Keyboard: Next frame (→ key)")
                     return
 
+                # M key: Toggle mute
+                elif event.key() == Qt.Key_M:
+                    if hasattr(self, '_on_mute_clicked'):
+                        self._on_mute_clicked()
+                        print("[MediaLightbox] Keyboard: Toggle mute (M key)")
+                    return
+
+                # S key: Cycle playback speed
+                elif event.key() == Qt.Key_S:
+                    if hasattr(self, '_on_speed_clicked'):
+                        self._on_speed_clicked()
+                        print("[MediaLightbox] Keyboard: Cycle speed (S key)")
+                    return
+
+            # M key for mute also works outside edit mode for video
+            if is_video_loaded and event.key() == Qt.Key_M:
+                if hasattr(self, '_on_mute_clicked'):
+                    self._on_mute_clicked()
+                    print("[MediaLightbox] Keyboard: Toggle mute (M key)")
+                return
+
             # Undo/Redo shortcuts (for photo editing)
             if event.modifiers() & Qt.ControlModifier:
                 if event.key() == Qt.Key_Z:
@@ -4944,49 +4971,25 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         self.time_total_label.setStyleSheet("color: white; font-size: 9pt; background: transparent;")
         layout.addWidget(self.time_total_label)
 
-        # Volume icon
-        volume_icon = QLabel("🔊")
-        volume_icon.setStyleSheet("font-size: 12pt; background: transparent;")
-        layout.addWidget(volume_icon)
-
-        # Volume slider
-        self.volume_slider = QSlider(Qt.Horizontal)
-        self.volume_slider.setFocusPolicy(Qt.NoFocus)
-        self.volume_slider.setFixedWidth(80)
-        self.volume_slider.setMinimum(0)
-        self.volume_slider.setMaximum(100)
-        self.volume_slider.setValue(80)
-        self.volume_slider.setStyleSheet("""
-            QSlider::groove:horizontal {
-                background: rgba(255, 255, 255, 0.2);
-                height: 4px;
-                border-radius: 2px;
+        # Mute button (clickable volume icon)
+        self.mute_btn = QPushButton("🔊")
+        self.mute_btn.setFocusPolicy(Qt.NoFocus)
+        self.mute_btn.setFixedSize(32, 32)
+        self.mute_btn.setCursor(Qt.PointingHandCursor)
+        self.mute_btn.setToolTip("Toggle Mute (M)")
+        self.mute_btn.setStyleSheet("""
+            QPushButton {
+                background: transparent;
+                border: none;
+                font-size: 12pt;
             }
-            QSlider::handle:horizontal {
-                background: white;
-                width: 10px;
-                height: 10px;
-                margin: -3px 0;
-                border-radius: 5px;
-            }
-            QSlider::sub-page:horizontal {
-                background: white;
-                border-radius: 2px;
+            QPushButton:hover {
+                background: rgba(255, 255, 255, 0.15);
+                border-radius: 4px;
             }
         """)
-        self.seek_slider.installEventFilter(self)
-
-        layout.addWidget(self.seek_slider, 1)
-
-        # Time label (total)
-        self.time_total_label = QLabel("0:00")
-        self.time_total_label.setStyleSheet("color: white; font-size: 9pt; background: transparent;")
-        layout.addWidget(self.time_total_label)
-
-        # Volume icon
-        volume_icon = QLabel("🔊")
-        volume_icon.setStyleSheet("font-size: 12pt; background: transparent;")
-        layout.addWidget(volume_icon)
+        self.mute_btn.clicked.connect(self._on_mute_clicked)
+        layout.addWidget(self.mute_btn)
 
         # Volume slider
         self.volume_slider = QSlider(Qt.Horizontal)
@@ -5352,6 +5355,32 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         if hasattr(self, 'audio_output'):
             volume = value / 100.0
             self.audio_output.setVolume(volume)
+            # Update mute state based on volume
+            if value == 0:
+                self.video_is_muted = True
+                if hasattr(self, 'mute_btn'):
+                    self.mute_btn.setText("🔇")
+            elif self.video_is_muted:
+                # Un-mute when volume is raised
+                self.video_is_muted = False
+                self.audio_output.setMuted(False)
+                if hasattr(self, 'mute_btn'):
+                    self.mute_btn.setText("🔊")
+
+    def _on_mute_clicked(self):
+        """Toggle audio mute state."""
+        self.video_is_muted = not self.video_is_muted
+
+        if hasattr(self, 'audio_output') and self.audio_output is not None:
+            self.audio_output.setMuted(self.video_is_muted)
+
+        # Update button icon
+        if hasattr(self, 'mute_btn'):
+            self.mute_btn.setText("🔇" if self.video_is_muted else "🔊")
+
+        # Show status toast
+        status = "Muted" if self.video_is_muted else "Unmuted"
+        self._show_toast(status)
 
     def _on_seek_pressed(self):
         """Handle seek slider press (pause position updates)."""
@@ -5400,6 +5429,38 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             '.raw',  # Generic
         }
         return os.path.splitext(path)[1].lower() in raw_extensions
+
+    def _show_toast(self, message: str, duration: int = 1500):
+        """Show a transient toast message overlay for feedback."""
+        from PySide6.QtCore import QTimer
+
+        # Create or reuse toast label
+        if not hasattr(self, '_toast_label') or self._toast_label is None:
+            self._toast_label = QLabel(self)
+            self._toast_label.setStyleSheet("""
+                QLabel {
+                    background: rgba(0, 0, 0, 0.75);
+                    color: white;
+                    padding: 12px 24px;
+                    border-radius: 8px;
+                    font-size: 11pt;
+                    font-weight: bold;
+                }
+            """)
+            self._toast_label.setAlignment(Qt.AlignCenter)
+
+        self._toast_label.setText(message)
+        self._toast_label.adjustSize()
+
+        # Center the toast in the lightbox
+        x = (self.width() - self._toast_label.width()) // 2
+        y = self.height() - 150  # Position above bottom toolbar
+        self._toast_label.move(x, y)
+        self._toast_label.raise_()
+        self._toast_label.show()
+
+        # Auto-hide after duration
+        QTimer.singleShot(duration, lambda: self._toast_label.hide() if hasattr(self, '_toast_label') and self._toast_label else None)
 
     def _detect_motion_photo(self, photo_path: str) -> str:
         """
@@ -8156,6 +8217,8 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             print(f"[MediaLightbox] PlaybackRate not supported: {e}")
         if hasattr(self, 'speed_btn'):
             self.speed_btn.setText(f"{rate:.1f}x")
+        # Show toast feedback
+        self._show_toast(f"Speed: {rate:.1f}x")
         print(f"[MediaLightbox] Playback speed set to {rate:.1f}x")
 
     # ==================== PHASE C IMPROVEMENTS ====================
