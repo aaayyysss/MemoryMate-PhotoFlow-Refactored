@@ -726,14 +726,13 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 border: none;
                 border-radius: 6px;
                 padding: 10px 24px;
-                font-size: 12pt;
-                font-weight: bold;
             }
             QPushButton:hover {
                 background: rgba(34, 139, 34, 1.0);
             }
         """)
         save_btn.clicked.connect(self._save_edits)
+        self._register_caption_btn(save_btn, "primary")
         cancel_btn.setText(t('google_layout.lightbox.cancel_button'))
         cancel_btn.setToolTip(t('google_layout.lightbox.cancel_tooltip'))
         cancel_btn.setStyleSheet("""
@@ -743,14 +742,13 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 border: none;
                 border-radius: 6px;
                 padding: 10px 24px;
-                font-size: 12pt;
-                font-weight: bold;
             }
             QPushButton:hover {
                 background: rgba(220, 53, 69, 1.0);
             }
         """)
         cancel_btn.clicked.connect(self._cancel_edits)
+        self._register_caption_btn(cancel_btn, "primary")
         editor_topbar_layout.addWidget(save_btn)
         editor_topbar_layout.addWidget(cancel_btn)
         editor_topbar_layout.addSpacing(20)
@@ -769,7 +767,7 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         editor_topbar_layout.addWidget(zoom_out_btn_edit)
         editor_topbar_layout.addWidget(zoom_in_btn_edit)
         editor_topbar_layout.addWidget(zoom_reset_btn_edit)
-        # Crop toggle (STYLED)
+        # Crop toggle (STYLED) - No hardcoded font-size (uses typography system)
         self.crop_btn = QPushButton()
         self.crop_btn.setText(t('google_layout.lightbox.crop_button'))
         self.crop_btn.setCheckable(True)
@@ -781,7 +779,6 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 border: 1px solid rgba(255, 255, 255, 0.3);
                 border-radius: 6px;
                 padding: 8px 16px;
-                font-size: 10pt;
             }
             QPushButton:hover {
                 background: rgba(255, 255, 255, 0.25);
@@ -792,8 +789,9 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             }
         """)
         self.crop_btn.clicked.connect(self._toggle_crop_mode)
+        self._register_caption_btn(self.crop_btn, "secondary")
         editor_topbar_layout.addWidget(self.crop_btn)
-        # Filters toggle (STYLED)
+        # Filters toggle (STYLED) - No hardcoded font-size (uses typography system)
         self.filters_btn = QPushButton()
         self.filters_btn.setText(t('google_layout.lightbox.filters_button'))
         self.filters_btn.setCheckable(True)
@@ -805,7 +803,6 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 border: 1px solid rgba(255, 255, 255, 0.3);
                 border-radius: 6px;
                 padding: 8px 16px;
-                font-size: 10pt;
             }
             QPushButton:hover {
                 background: rgba(255, 255, 255, 0.25);
@@ -816,8 +813,9 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             }
         """)
         self.filters_btn.clicked.connect(self._toggle_filters_panel)
+        self._register_caption_btn(self.filters_btn, "secondary")
         editor_topbar_layout.addWidget(self.filters_btn)
-        # Before/After toggle (STYLED)
+        # Before/After toggle (STYLED) - No hardcoded font-size (uses typography system)
         self.before_after_btn = QPushButton()
         self.before_after_btn.setText(t('google_layout.lightbox.before_after_button'))
         self.before_after_btn.setCheckable(True)
@@ -829,7 +827,6 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 border: 1px solid rgba(255, 255, 255, 0.3);
                 border-radius: 6px;
                 padding: 8px 16px;
-                font-size: 10pt;
             }
             QPushButton:hover {
                 background: rgba(255, 255, 255, 0.25);
@@ -840,9 +837,10 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             }
         """)
         self.before_after_btn.clicked.connect(self._toggle_before_after)
+        self._register_caption_btn(self.before_after_btn, "secondary")
         editor_topbar_layout.addWidget(self.before_after_btn)
         
-        # Tools panel toggle (show/hide right-side editing tools)
+        # Tools panel toggle (show/hide right-side editing tools) - No hardcoded font-size
         self.tools_toggle_btn = QPushButton()
         self.tools_toggle_btn.setText(t('google_layout.lightbox.tools_button'))
         self.tools_toggle_btn.setCheckable(True)
@@ -855,7 +853,6 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 border: 1px solid rgba(255, 255, 255, 0.3);
                 border-radius: 6px;
                 padding: 8px 16px;
-                font-size: 10pt;
             }
             QPushButton:hover {
                 background: rgba(255, 255, 255, 0.25);
@@ -866,10 +863,11 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             }
         """)
         self.tools_toggle_btn.toggled.connect(lambda v: (self.editor_right_scroll.setVisible(v), self.editor_right_panel.setVisible(v)) if hasattr(self, 'editor_right_scroll') else (self.editor_right_panel.setVisible(v) if hasattr(self, 'editor_right_panel') else None))
+        self._register_caption_btn(self.tools_toggle_btn, "secondary")
         editor_topbar_layout.addWidget(self.tools_toggle_btn)
         
         editor_topbar_layout.addStretch()  # Push buttons to left, Undo/Redo/Export to right
-        # Undo/Redo buttons (MORE PROMINENT)
+        # Undo/Redo buttons (MORE PROMINENT) - No hardcoded font-size (uses typography system)
         self.undo_btn = QPushButton()
         self.redo_btn = QPushButton()
         self.undo_btn.setText(t('google_layout.lightbox.undo_button'))
@@ -882,8 +880,6 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 border: none;
                 border-radius: 6px;
                 padding: 8px 16px;
-                font-size: 11pt;
-                font-weight: bold;
             }
             QPushButton:hover {
                 background: rgba(66, 133, 244, 1.0);
@@ -894,6 +890,7 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             }
         """)
         self.undo_btn.clicked.connect(self._editor_undo)
+        self._register_caption_btn(self.undo_btn, "primary")
         editor_topbar_layout.addWidget(self.undo_btn)
         self.redo_btn.setText(t('google_layout.lightbox.redo_button'))
         self.redo_btn.setToolTip(t('google_layout.lightbox.redo_tooltip'))
@@ -905,8 +902,6 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 border: none;
                 border-radius: 6px;
                 padding: 8px 16px;
-                font-size: 11pt;
-                font-weight: bold;
             }
             QPushButton:hover {
                 background: rgba(66, 133, 244, 1.0);
@@ -917,10 +912,11 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             }
         """)
         self.redo_btn.clicked.connect(self._editor_redo)
+        self._register_caption_btn(self.redo_btn, "primary")
         editor_topbar_layout.addWidget(self.redo_btn)
         editor_topbar_layout.addSpacing(16)  # Visual separator
         
-        # Copy/Paste buttons (BATCH EDITING)
+        # Copy/Paste buttons (BATCH EDITING) - No hardcoded font-size (uses typography system)
         self.copy_adj_btn = QPushButton()
         self.paste_adj_btn = QPushButton()
         self.copy_adj_btn.setText(t('google_layout.lightbox.copy_button'))
@@ -932,16 +928,15 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 border: none;
                 border-radius: 6px;
                 padding: 8px 16px;
-                font-size: 10pt;
-                font-weight: bold;
             }
             QPushButton:hover {
                 background: rgba(255, 193, 7, 1.0);
             }
         """)
         self.copy_adj_btn.clicked.connect(self._copy_adjustments)
+        self._register_caption_btn(self.copy_adj_btn, "secondary")
         editor_topbar_layout.addWidget(self.copy_adj_btn)
-        
+
         self.paste_adj_btn.setText(t('google_layout.lightbox.paste_button'))
         self.paste_adj_btn.setToolTip(t('google_layout.lightbox.paste_tooltip'))
         self.paste_adj_btn.setEnabled(False)  # Disabled until something is copied
@@ -952,8 +947,6 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 border: none;
                 border-radius: 6px;
                 padding: 8px 16px;
-                font-size: 10pt;
-                font-weight: bold;
             }
             QPushButton:hover {
                 background: rgba(156, 39, 176, 1.0);
@@ -964,10 +957,11 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             }
         """)
         self.paste_adj_btn.clicked.connect(self._paste_adjustments)
+        self._register_caption_btn(self.paste_adj_btn, "secondary")
         editor_topbar_layout.addWidget(self.paste_adj_btn)
         editor_topbar_layout.addSpacing(16)  # Visual separator
         
-        # Export button (MORE PROMINENT) - Handles both photos and videos
+        # Export button (MORE PROMINENT) - No hardcoded font-size (uses typography system)
         self.export_btn = QPushButton()
         self.export_btn.setText(t('google_layout.lightbox.export_button'))
         self.export_btn.setToolTip(t('google_layout.lightbox.export_tooltip'))
@@ -978,14 +972,13 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 border: none;
                 border-radius: 6px;
                 padding: 8px 20px;
-                font-size: 11pt;
-                font-weight: bold;
             }
             QPushButton:hover {
                 background: rgba(34, 139, 34, 1.0);
             }
         """)
         self.export_btn.clicked.connect(self._export_current_media)
+        self._register_caption_btn(self.export_btn, "primary")
         editor_topbar_layout.addWidget(self.export_btn)
         editor_vlayout.addWidget(editor_topbar)
         # Crop toolbar (hidden by default)
@@ -1309,7 +1302,63 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             
             # Note: We don't auto-show enhance panel to avoid conflicts
             # User can manually toggle it if needed
-    
+
+    # ============================================================
+    # CENTRALIZED TYPOGRAPHY SYSTEM (Google Photos / Lightroom style)
+    # ============================================================
+    # Single scaling source of truth for all caption button fonts.
+    # No hardcoded font sizes scattered across styles.
+    # Uses Qt the intended way: stylesheet for colors/padding/borders; QFont for typography
+
+    def _ui_font_pt(self, kind: str) -> int:
+        """
+        Centralized typography sizes (pt), derived from responsive tier variables.
+
+        kind: 'primary', 'secondary', 'small', 'nav', 'label'
+        """
+        # Base from responsive system
+        body = int(getattr(self, "font_size_body", 10))
+        cap = int(getattr(self, "font_size_caption", 9))
+
+        if kind == "primary":
+            return max(10, body + 1)  # e.g. Save/Cancel/Undo/Redo/Export
+        if kind == "secondary":
+            return max(9, body)  # e.g. Crop/Filters/Tools/Copy/Paste
+        if kind == "small":
+            return max(8, cap)  # e.g. crop toolbar rotate/flip/aspect buttons
+        if kind == "nav":
+            # Nav arrows scale with button size (not fixed 18pt)
+            btn_sm = int(getattr(self, "button_size_sm", 28))
+            return max(12, int(btn_sm * 0.55))
+        if kind == "label":
+            return max(8, cap)  # e.g. toolbar labels like "Rotate:", "Flip:"
+        return body
+
+    def _register_caption_btn(self, btn, kind: str):
+        """Register a caption button for responsive font scaling."""
+        if not hasattr(self, "_caption_buttons"):
+            self._caption_buttons = []
+        self._caption_buttons.append((btn, kind))
+
+    def _apply_caption_fonts(self):
+        """Apply scaled fonts to all registered caption buttons."""
+        from PySide6.QtGui import QFont
+        if not hasattr(self, "_caption_buttons"):
+            return
+        for btn, kind in self._caption_buttons:
+            if btn is None:
+                continue
+            try:
+                pt = self._ui_font_pt(kind)
+                font = QFont()
+                font.setPointSize(pt)
+                # Keep bold for primary buttons
+                if kind == "primary":
+                    font.setBold(True)
+                btn.setFont(font)
+            except Exception as e:
+                print(f"[Typography] Error setting font: {e}")
+
     def _enhanced_responsive_behavior(self):
         """
         Enhanced responsive behavior triggered after resize debounce.
@@ -1461,7 +1510,43 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         if hasattr(self, 'motion_indicator') and self.is_motion_photo:
             self._position_motion_indicator()
 
+        # ============================================================
+        # STEP 5: Update caption button fonts (centralized typography)
+        # ============================================================
+        self._apply_caption_fonts()
+
+        # Update nav arrow font sizes (style-based since they're simple)
+        if tier_changed:
+            self._update_nav_button_styles()
+
         print(f"[MediaLightbox] ✓ Responsive behavior update completed")
+
+    def _update_nav_button_styles(self):
+        """Update navigation button styles with scaled font sizes."""
+        nav_pt = self._ui_font_pt("nav")
+        nav_style = f"""
+            QPushButton {{
+                background: rgba(0, 0, 0, 0.5);
+                color: white;
+                border: none;
+                border-radius: 24px;
+                font-size: {nav_pt}pt;
+            }}
+            QPushButton:hover {{
+                background: rgba(0, 0, 0, 0.7);
+            }}
+            QPushButton:pressed {{
+                background: rgba(0, 0, 0, 0.9);
+            }}
+            QPushButton:disabled {{
+                background: rgba(0, 0, 0, 0.2);
+                color: rgba(255, 255, 255, 0.3);
+            }}
+        """
+        if hasattr(self, 'prev_btn') and self.prev_btn:
+            self.prev_btn.setStyleSheet(nav_style)
+        if hasattr(self, 'next_btn') and self.next_btn:
+            self.next_btn.setStyleSheet(nav_style)
 
     def _adjust_filmstrip_position(self):
         """Adjust filmstrip position and size based on window dimensions."""
@@ -1650,36 +1735,56 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         self.photo_only_buttons.append(self.edit_btn)
 
         # Hide inline enhance/preset buttons (moved to panel)
+        # Use pill-style for caption buttons (Lightroom/iOS style) - not circular icon style
+        pill_btn_style = """
+            QPushButton {
+                background: rgba(255, 255, 255, 0.15);
+                color: white;
+                border: none;
+                border-radius: 8px;
+                padding: 6px 14px;
+            }
+            QPushButton:hover {
+                background: rgba(255, 255, 255, 0.25);
+            }
+            QPushButton:pressed {
+                background: rgba(255, 255, 255, 0.35);
+            }
+        """
         self.enhance_btn = QPushButton("✨ Enhance")
         self.enhance_btn.setFocusPolicy(Qt.NoFocus)
         self.enhance_btn.setFixedHeight(32)
-        self.enhance_btn.setStyleSheet(btn_style)
+        self.enhance_btn.setStyleSheet(pill_btn_style)
         self.enhance_btn.setToolTip("Auto-Enhance (Improve brightness/contrast/color)")
         self.enhance_btn.clicked.connect(self._toggle_auto_enhance)
+        self._register_caption_btn(self.enhance_btn, "secondary")
         self.enhance_btn.hide()
 
         self.dynamic_btn = QPushButton("Dynamic")
         self.dynamic_btn.setFocusPolicy(Qt.NoFocus)
         self.dynamic_btn.setFixedHeight(32)
-        self.dynamic_btn.setStyleSheet(btn_style)
+        self.dynamic_btn.setStyleSheet(pill_btn_style)
         self.dynamic_btn.setToolTip("Dynamic: vivid colors & contrast")
         self.dynamic_btn.clicked.connect(lambda: self._set_preset("dynamic"))
+        self._register_caption_btn(self.dynamic_btn, "secondary")
         self.dynamic_btn.hide()
 
         self.warm_btn = QPushButton("Warm")
         self.warm_btn.setFocusPolicy(Qt.NoFocus)
         self.warm_btn.setFixedHeight(32)
-        self.warm_btn.setStyleSheet(btn_style)
+        self.warm_btn.setStyleSheet(pill_btn_style)
         self.warm_btn.setToolTip("Warm: cozy tones")
         self.warm_btn.clicked.connect(lambda: self._set_preset("warm"))
+        self._register_caption_btn(self.warm_btn, "secondary")
         self.warm_btn.hide()
 
         self.cool_btn = QPushButton("Cool")
         self.cool_btn.setFocusPolicy(Qt.NoFocus)
         self.cool_btn.setFixedHeight(32)
-        self.cool_btn.setStyleSheet(btn_style)
+        self.cool_btn.setStyleSheet(pill_btn_style)
         self.cool_btn.setToolTip("Cool: crisp bluish look")
         self.cool_btn.clicked.connect(lambda: self._set_preset("cool"))
+        self._register_caption_btn(self.cool_btn, "secondary")
         self.cool_btn.hide()
 
         return toolbar
@@ -1718,30 +1823,34 @@ class MediaLightbox(QDialog, VideoEditorMixin):
 
         print("[MediaLightbox] Creating overlay navigation buttons...")
 
+        # Get dynamic nav font size from typography system (scales with button_size_sm)
+        nav_pt = self._ui_font_pt("nav")
+        nav_style = f"""
+            QPushButton {{
+                background: rgba(0, 0, 0, 0.5);
+                color: white;
+                border: none;
+                border-radius: 24px;
+                font-size: {nav_pt}pt;
+            }}
+            QPushButton:hover {{
+                background: rgba(0, 0, 0, 0.7);
+            }}
+            QPushButton:pressed {{
+                background: rgba(0, 0, 0, 0.9);
+            }}
+            QPushButton:disabled {{
+                background: rgba(0, 0, 0, 0.2);
+                color: rgba(255, 255, 255, 0.3);
+            }}
+        """
+
         # Previous button (left side)
         self.prev_btn = QPushButton("◄", self)
         self.prev_btn.setFocusPolicy(Qt.NoFocus)
         self.prev_btn.setFixedSize(48, 48)
         self.prev_btn.setCursor(Qt.PointingHandCursor)
-        self.prev_btn.setStyleSheet("""
-            QPushButton {
-                background: rgba(0, 0, 0, 0.5);
-                color: white;
-                border: none;
-                border-radius: 24px;
-                font-size: 18pt;
-            }
-            QPushButton:hover {
-                background: rgba(0, 0, 0, 0.7);
-            }
-            QPushButton:pressed {
-                background: rgba(0, 0, 0, 0.9);
-            }
-            QPushButton:disabled {
-                background: rgba(0, 0, 0, 0.2);
-                color: rgba(255, 255, 255, 0.3);
-            }
-        """)
+        self.prev_btn.setStyleSheet(nav_style)
         self.prev_btn.clicked.connect(self._previous_media)
 
         # Next button (right side)
@@ -1749,25 +1858,7 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         self.next_btn.setFocusPolicy(Qt.NoFocus)
         self.next_btn.setFixedSize(48, 48)
         self.next_btn.setCursor(Qt.PointingHandCursor)
-        self.next_btn.setStyleSheet("""
-            QPushButton {
-                background: rgba(0, 0, 0, 0.5);
-                color: white;
-                border: none;
-                border-radius: 24px;
-                font-size: 18pt;
-            }
-            QPushButton:hover {
-                background: rgba(0, 0, 0, 0.7);
-            }
-            QPushButton:pressed {
-                background: rgba(0, 0, 0, 0.9);
-            }
-            QPushButton:disabled {
-                background: rgba(0, 0, 0, 0.2);
-                color: rgba(255, 255, 255, 0.3);
-            }
-        """)
+        self.next_btn.setStyleSheet(nav_style)
         self.next_btn.clicked.connect(self._next_media)
 
         # CRITICAL: Show buttons explicitly
@@ -3773,11 +3864,13 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         straighten_layout.setSpacing(8)
         
         straighten_icon = QLabel("↻")
-        straighten_icon.setStyleSheet("color: white; font-size: 16pt; font-weight: bold;")
+        straighten_icon.setStyleSheet("color: white; font-weight: bold;")
+        self._register_caption_btn(straighten_icon, "nav")  # Use nav size for icon
         straighten_layout.addWidget(straighten_icon)
-        
+
         straighten_lbl = QLabel("Straighten:")
-        straighten_lbl.setStyleSheet("color: rgba(255,255,255,0.9); font-size: 10pt;")
+        straighten_lbl.setStyleSheet("color: rgba(255,255,255,0.9);")
+        self._register_caption_btn(straighten_lbl, "secondary")
         straighten_layout.addWidget(straighten_lbl)
         
         self.straighten_slider = QSlider(Qt.Horizontal)
@@ -3813,24 +3906,24 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         self.straighten_label = QLabel("0.0°")
         self.straighten_label.setStyleSheet("""
             color: white;
-            font-size: 10pt;
-            font-weight: bold;
             min-width: 50px;
             padding: 4px 8px;
             background: rgba(255, 255, 255, 0.1);
             border-radius: 4px;
         """)
         self.straighten_label.setAlignment(Qt.AlignCenter)
+        self._register_caption_btn(self.straighten_label, "secondary")
         straighten_layout.addWidget(self.straighten_label)
         
         lay.addWidget(straighten_container)
         lay.addSpacing(20)
         
-        # 90° Rotation buttons (LEFT-MIDDLE)
+        # 90° Rotation buttons (LEFT-MIDDLE) - No hardcoded font-size (uses typography system)
         rotate_label = QLabel("Rotate:")
-        rotate_label.setStyleSheet("color: rgba(255,255,255,0.7); font-size: 9pt;")
+        rotate_label.setStyleSheet("color: rgba(255,255,255,0.7);")
+        self._register_caption_btn(rotate_label, "label")
         lay.addWidget(rotate_label)
-        
+
         rotate_left_btn = QPushButton("↶ 90°")
         rotate_left_btn.setToolTip("Rotate 90° counter-clockwise")
         rotate_left_btn.setStyleSheet("""
@@ -3840,8 +3933,6 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 border: 1px solid rgba(255, 255, 255, 0.2);
                 border-radius: 4px;
                 padding: 6px 12px;
-                font-size: 10pt;
-                font-weight: bold;
             }
             QPushButton:hover {
                 background: rgba(255, 255, 255, 0.2);
@@ -3853,8 +3944,9 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             }
         """)
         rotate_left_btn.clicked.connect(self._rotate_90_left)
+        self._register_caption_btn(rotate_left_btn, "small")
         lay.addWidget(rotate_left_btn)
-        
+
         rotate_right_btn = QPushButton("↷ 90°")
         rotate_right_btn.setToolTip("Rotate 90° clockwise")
         rotate_right_btn.setStyleSheet("""
@@ -3864,8 +3956,6 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 border: 1px solid rgba(255, 255, 255, 0.2);
                 border-radius: 4px;
                 padding: 6px 12px;
-                font-size: 10pt;
-                font-weight: bold;
             }
             QPushButton:hover {
                 background: rgba(255, 255, 255, 0.2);
@@ -3877,15 +3967,17 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             }
         """)
         rotate_right_btn.clicked.connect(self._rotate_90_right)
+        self._register_caption_btn(rotate_right_btn, "small")
         lay.addWidget(rotate_right_btn)
         
         lay.addSpacing(20)
         
-        # Flip buttons (MIDDLE)
+        # Flip buttons (MIDDLE) - No hardcoded font-size (uses typography system)
         flip_label = QLabel("Flip:")
-        flip_label.setStyleSheet("color: rgba(255,255,255,0.7); font-size: 9pt;")
+        flip_label.setStyleSheet("color: rgba(255,255,255,0.7);")
+        self._register_caption_btn(flip_label, "label")
         lay.addWidget(flip_label)
-        
+
         flip_h_btn = QPushButton("↔ Horizontal")
         flip_h_btn.setToolTip("Flip horizontally (mirror)")
         flip_h_btn.setStyleSheet("""
@@ -3895,7 +3987,6 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 border: 1px solid rgba(255, 255, 255, 0.2);
                 border-radius: 4px;
                 padding: 6px 12px;
-                font-size: 9pt;
             }
             QPushButton:hover {
                 background: rgba(255, 255, 255, 0.2);
@@ -3907,8 +3998,9 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             }
         """)
         flip_h_btn.clicked.connect(self._flip_horizontal)
+        self._register_caption_btn(flip_h_btn, "small")
         lay.addWidget(flip_h_btn)
-        
+
         flip_v_btn = QPushButton("↕ Vertical")
         flip_v_btn.setToolTip("Flip vertically")
         flip_v_btn.setStyleSheet("""
@@ -3918,7 +4010,6 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 border: 1px solid rgba(255, 255, 255, 0.2);
                 border-radius: 4px;
                 padding: 6px 12px;
-                font-size: 9pt;
             }
             QPushButton:hover {
                 background: rgba(255, 255, 255, 0.2);
@@ -3930,18 +4021,20 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             }
         """)
         flip_v_btn.clicked.connect(self._flip_vertical)
+        self._register_caption_btn(flip_v_btn, "small")
         lay.addWidget(flip_v_btn)
         
         lay.addSpacing(20)
         
-        # Aspect ratio presets (MIDDLE)
+        # Aspect ratio presets (MIDDLE) - No hardcoded font-size (uses typography system)
         aspect_label = QLabel("Aspect:")
-        aspect_label.setStyleSheet("color: rgba(255,255,255,0.7); font-size: 9pt;")
+        aspect_label.setStyleSheet("color: rgba(255,255,255,0.7);")
+        self._register_caption_btn(aspect_label, "label")
         lay.addWidget(aspect_label)
-        
+
         # Create button group for exclusive selection
         self.aspect_button_group = []
-        
+
         for label, ratio in [("Free", "free"), ("1:1", (1,1)), ("4:3", (4,3)), ("16:9", (16,9)), ("Original", None)]:
             btn = QPushButton(label)
             btn.setCheckable(True)
@@ -3952,7 +4045,6 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                     border: 1px solid rgba(255, 255, 255, 0.2);
                     border-radius: 4px;
                     padding: 6px 12px;
-                    font-size: 9pt;
                 }
                 QPushButton:hover {
                     background: rgba(255, 255, 255, 0.15);
@@ -3962,21 +4054,21 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                     background: rgba(66, 133, 244, 0.8);
                     color: white;
                     border: 1px solid rgba(66, 133, 244, 1.0);
-                    font-weight: bold;
                 }
             """)
             # Connect with lambda that unchecks other buttons
             btn.clicked.connect(lambda checked, r=ratio, b=btn: self._on_aspect_preset_clicked(r, b))
+            self._register_caption_btn(btn, "small")
             lay.addWidget(btn)
             self.aspect_button_group.append(btn)
-            
+
             # Check 'Free' by default
             if label == "Free":
                 btn.setChecked(True)
         
         lay.addStretch()
         
-        # Apply/Cancel buttons (RIGHT SIDE)
+        # Apply/Cancel buttons (RIGHT SIDE) - No hardcoded font-size (uses typography system)
         apply_btn = QPushButton("✓ Apply Crop")
         apply_btn.setStyleSheet("""
             QPushButton {
@@ -3985,16 +4077,15 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 border: none;
                 border-radius: 6px;
                 padding: 8px 20px;
-                font-size: 10pt;
-                font-weight: bold;
             }
             QPushButton:hover {
                 background: rgba(34, 139, 34, 1.0);
             }
         """)
         apply_btn.clicked.connect(self._apply_crop)
+        self._register_caption_btn(apply_btn, "secondary")
         lay.addWidget(apply_btn)
-        
+
         cancel_btn = QPushButton("✕ Cancel")
         cancel_btn.setStyleSheet("""
             QPushButton {
@@ -4003,13 +4094,13 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 border: 1px solid rgba(255, 255, 255, 0.3);
                 border-radius: 6px;
                 padding: 8px 20px;
-                font-size: 10pt;
             }
             QPushButton:hover {
                 background: rgba(255, 255, 255, 0.15);
             }
         """)
         cancel_btn.clicked.connect(self._cancel_crop)
+        self._register_caption_btn(cancel_btn, "secondary")
         lay.addWidget(cancel_btn)
         
         return bar
