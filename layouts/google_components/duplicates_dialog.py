@@ -55,8 +55,8 @@ class PhotoInstanceWidget(QWidget):
     def _init_ui(self):
         """Initialize UI components."""
         layout = QVBoxLayout(self)
-        layout.setSpacing(6)
-        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(4)
+        layout.setContentsMargins(6, 6, 6, 6)
 
         # Thumbnail placeholder - Responsive size for better comparison (Google Photos style)
         self.thumbnail_label = QLabel()
@@ -249,45 +249,47 @@ class DuplicatesDialog(QDialog):
         self._load_duplicates_async()
 
     def _init_ui(self):
-        """Initialize UI components."""
+        """Initialize UI components - compact layout for media-first design."""
         layout = QVBoxLayout(self)
-        layout.setSpacing(16)
-        layout.setContentsMargins(8, 16, 16, 16)
+        layout.setSpacing(4)  # Minimal spacing between sections
+        layout.setContentsMargins(8, 8, 8, 8)  # Reduced margins
 
-        # Title
+        # Compact header row: Title + Subtitle + Counter (all on one line)
+        header_row = QHBoxLayout()
+        header_row.setSpacing(12)
+
         title = QLabel("📸 Duplicate Photo Review")
         title_font = QFont()
-        title_font.setPointSize(16)
+        title_font.setPointSize(14)
         title_font.setBold(True)
         title.setFont(title_font)
-        layout.addWidget(title)
+        header_row.addWidget(title)
 
-        # Subtitle/loading indicator
-        self.subtitle = QLabel("Loading duplicates...")
-        self.subtitle.setStyleSheet("color: #666; font-size: 12px;")
-        layout.addWidget(self.subtitle)
-        
-        # Loading indicator (hidden initially)
+        # Subtitle/loading indicator (inline with title)
+        self.subtitle = QLabel("Loading...")
+        self.subtitle.setStyleSheet("color: #666;")
+        header_row.addWidget(self.subtitle)
+
+        header_row.addStretch()
+
+        # Items loaded counter (moved to header)
+        self.items_counter = QLabel("")
+        self.items_counter.setStyleSheet("color: #888;")
+        header_row.addWidget(self.items_counter)
+
+        layout.addLayout(header_row)
+
+        # Loading indicator (hidden initially, shown below header when loading)
         self.loading_spinner = QLabel("⏳ Loading duplicate data...")
         self.loading_spinner.setStyleSheet("color: #444; font-style: italic;")
         self.loading_spinner.hide()
         layout.addWidget(self.loading_spinner)
-        
-        # Pagination controls
-        self.pagination_widget = self._create_pagination_controls()
-        layout.addWidget(self.pagination_widget)
 
-        # Phase 3C: Toolbar with filtering, sorting, and batch operations
+        # Compact toolbar with batch operations (no group boxes - just buttons)
         toolbar = self._create_toolbar()
         layout.addWidget(toolbar)
 
-        # Separator
-        separator = QFrame()
-        separator.setFrameShape(QFrame.HLine)
-        separator.setFrameShadow(QFrame.Sunken)
-        layout.addWidget(separator)
-
-        # Main content: Splitter with list and details
+        # Main content: Splitter with list and details (takes most space)
         self.splitter = QSplitter(Qt.Horizontal)
 
         # Left panel: Duplicate assets list (narrower for media-first layout)
@@ -305,16 +307,11 @@ class DuplicatesDialog(QDialog):
         self.splitter.setStretchFactor(1, 1)  # Right panel takes all extra space
         self.splitter.setSizes([300, 900])  # Initial sizes: left fixed-ish, right dominant
 
-        layout.addWidget(self.splitter)
+        layout.addWidget(self.splitter, 1)  # Stretch factor 1 to take available space
 
-        # Separator
-        separator2 = QFrame()
-        separator2.setFrameShape(QFrame.HLine)
-        separator2.setFrameShadow(QFrame.Sunken)
-        layout.addWidget(separator2)
-
-        # Bottom action buttons
+        # Bottom action buttons (compact)
         button_layout = QHBoxLayout()
+        button_layout.setContentsMargins(0, 4, 0, 0)
         button_layout.addStretch()
 
         self.btn_delete_selected = QPushButton("🗑️ Delete Selected")
@@ -359,82 +356,89 @@ class DuplicatesDialog(QDialog):
         layout.addLayout(button_layout)
 
     def _create_toolbar(self) -> QWidget:
-        """
-        Create toolbar with filtering, sorting, and batch operations.
-
-        Phase 3C: Enhanced UI Polish
-        """
+        """Create compact toolbar with batch operations (no group boxes)."""
         toolbar = QWidget()
         toolbar_layout = QHBoxLayout(toolbar)
-        toolbar_layout.setContentsMargins(0, 8, 0, 8)
-        toolbar_layout.setSpacing(12)
+        toolbar_layout.setContentsMargins(0, 2, 0, 2)  # Minimal vertical padding
+        toolbar_layout.setSpacing(6)
 
-        # Batch Selection Group
-        batch_group = QGroupBox("Batch Selection")
-        batch_layout = QHBoxLayout(batch_group)
-        batch_layout.setContentsMargins(8, 8, 8, 8)
-        batch_layout.setSpacing(8)
-
-        # Common button style for toolbar buttons
+        # Compact button style
         toolbar_btn_style = """
             QPushButton {
-                padding: 6px 12px;
+                padding: 4px 10px;
                 background-color: #f5f5f5;
                 color: #333333;
                 border: 1px solid #cccccc;
                 border-radius: 4px;
-                font-weight: bold;
             }
             QPushButton:hover {
                 background-color: #e8e8e8;
             }
         """
 
+        # Batch selection buttons (no group box wrapper)
         btn_select_all = QPushButton("Select All")
         btn_select_all.setToolTip("Select all duplicates for deletion")
         btn_select_all.setStyleSheet(toolbar_btn_style)
         btn_select_all.clicked.connect(self._on_select_all)
-        batch_layout.addWidget(btn_select_all)
+        toolbar_layout.addWidget(btn_select_all)
 
         btn_select_none = QPushButton("Select None")
         btn_select_none.setToolTip("Deselect all duplicates")
         btn_select_none.setStyleSheet(toolbar_btn_style)
         btn_select_none.clicked.connect(self._on_select_none)
-        batch_layout.addWidget(btn_select_none)
+        toolbar_layout.addWidget(btn_select_none)
 
-        btn_invert = QPushButton("Invert Selection")
+        btn_invert = QPushButton("Invert")
         btn_invert.setToolTip("Invert current selection")
         btn_invert.setStyleSheet(toolbar_btn_style)
         btn_invert.clicked.connect(self._on_invert_selection)
-        batch_layout.addWidget(btn_invert)
+        toolbar_layout.addWidget(btn_invert)
 
-        toolbar_layout.addWidget(batch_group)
+        # Separator
+        sep = QLabel("|")
+        sep.setStyleSheet("color: #ccc;")
+        toolbar_layout.addWidget(sep)
 
-        # Smart Cleanup Group
-        smart_group = QGroupBox("Smart Cleanup")
-        smart_layout = QHBoxLayout(smart_group)
-        smart_layout.setContentsMargins(8, 8, 8, 8)
-        smart_layout.setSpacing(8)
-
+        # Auto-select button
         btn_auto_select = QPushButton("🎯 Auto-Select Lower Quality")
-        btn_auto_select.setToolTip("Automatically select lower quality duplicates for deletion\n(Keeps highest resolution, largest file size)")
+        btn_auto_select.setToolTip("Automatically select lower quality duplicates for deletion")
         btn_auto_select.clicked.connect(self._on_auto_select_duplicates)
         btn_auto_select.setStyleSheet("""
             QPushButton {
-                padding: 6px 12px;
+                padding: 4px 10px;
                 background-color: #4CAF50;
                 color: white;
                 border: none;
                 border-radius: 4px;
-                font-weight: bold;
             }
             QPushButton:hover {
                 background-color: #45a049;
             }
         """)
-        smart_layout.addWidget(btn_auto_select)
+        toolbar_layout.addWidget(btn_auto_select)
 
-        toolbar_layout.addWidget(smart_group)
+        # Load more button (moved here from pagination widget)
+        self.load_more_btn = QPushButton("Load More")
+        self.load_more_btn.clicked.connect(self._load_more_duplicates)
+        self.load_more_btn.setStyleSheet("""
+            QPushButton {
+                padding: 4px 10px;
+                background-color: #2196F3;
+                color: white;
+                border: none;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background-color: #1976D2;
+            }
+            QPushButton:disabled {
+                background-color: #BBDEFB;
+                color: #90CAF9;
+            }
+        """)
+        self.load_more_btn.hide()  # Hidden initially
+        toolbar_layout.addWidget(self.load_more_btn)
 
         toolbar_layout.addStretch()
 
@@ -493,15 +497,15 @@ class DuplicatesDialog(QDialog):
 
         header_layout.addStretch()
 
-        # Navigation buttons (iPhone/Lightroom style quick browse)
+        # Navigation buttons (compact style)
         nav_btn_style = """
             QPushButton {
-                padding: 6px 12px;
+                padding: 4px 8px;
                 background-color: #f0f0f0;
                 border: 1px solid #ccc;
                 border-radius: 4px;
                 font-weight: bold;
-                min-width: 40px;
+                min-width: 36px;
             }
             QPushButton:hover {
                 background-color: #e0e0e0;
@@ -534,13 +538,13 @@ class DuplicatesDialog(QDialog):
 
         # Quick action bar (Google Photos style - per-group actions)
         quick_actions = QHBoxLayout()
-        quick_actions.setContentsMargins(0, 8, 0, 8)
+        quick_actions.setContentsMargins(0, 2, 0, 2)
 
         self.btn_keep_best = QPushButton("⭐ Keep Best Quality")
         self.btn_keep_best.setToolTip("Auto-select lower quality copies for deletion\n(Keeps largest file with best resolution)")
         self.btn_keep_best.setStyleSheet("""
             QPushButton {
-                padding: 6px 16px;
+                padding: 4px 10px;
                 background-color: #4CAF50;
                 color: white;
                 border: none;
@@ -580,52 +584,14 @@ class DuplicatesDialog(QDialog):
         # Container for instance widgets
         self.instances_container = QWidget()
         self.instances_layout = QGridLayout(self.instances_container)
-        self.instances_layout.setSpacing(16)
-        self.instances_layout.setContentsMargins(16, 16, 16, 16)
+        self.instances_layout.setSpacing(8)
+        self.instances_layout.setContentsMargins(8, 8, 8, 8)
 
         scroll.setWidget(self.instances_container)
         layout.addWidget(scroll)
 
         return panel
 
-    def _create_pagination_controls(self) -> QWidget:
-        """Create pagination controls for loading more duplicates."""
-        pagination = QWidget()
-        pagination_layout = QHBoxLayout(pagination)
-        pagination_layout.setContentsMargins(0, 8, 0, 8)
-        
-        # Load More button
-        self.load_more_btn = QPushButton("Load More Duplicates")
-        self.load_more_btn.clicked.connect(self._load_more_duplicates)
-        self.load_more_btn.setStyleSheet("""
-            QPushButton {
-                padding: 6px 12px;
-                background-color: #2196F3;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #1976D2;
-            }
-            QPushButton:disabled {
-                background-color: #BBDEFB;
-                color: #90CAF9;
-            }
-        """)
-        self.load_more_btn.hide()  # Hidden initially
-        
-        # Items loaded counter
-        self.items_counter = QLabel("0 items loaded")
-        self.items_counter.setStyleSheet("color: #666; font-size: 11px;")
-        
-        pagination_layout.addWidget(self.load_more_btn)
-        pagination_layout.addWidget(self.items_counter)
-        pagination_layout.addStretch()
-        
-        return pagination
-    
     def _load_duplicates_async(self):
         """Load duplicate assets asynchronously using background worker."""
         # Increment generation counter to track this load operation
@@ -825,7 +791,7 @@ class DuplicatesDialog(QDialog):
 
         # Update layout spacing and margins
         self.instances_layout.setSpacing(spacing)
-        self.instances_layout.setContentsMargins(16, 16, 16, 16)
+        self.instances_layout.setContentsMargins(8, 8, 8, 8)
 
         # Add instance widgets in responsive grid
         rep_photo_id = asset.get('representative_photo_id')
@@ -1130,9 +1096,9 @@ class DuplicatesDialog(QDialog):
         w = self.instances_container.width() if hasattr(self, "instances_container") else 900
         w = max(w, 360)
 
-        # Spacing and margins should match grid layout
-        spacing = 16
-        margins = 16 * 2  # left + right
+        # Spacing and margins should match grid layout (compact values)
+        spacing = 8
+        margins = 8 * 2  # left + right
 
         # Target card width like Google Photos tiles: thumb + metadata padding
         target_card_w = 320
