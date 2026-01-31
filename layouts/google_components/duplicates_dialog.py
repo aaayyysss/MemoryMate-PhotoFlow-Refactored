@@ -139,7 +139,17 @@ class PhotoInstanceWidget(QWidget):
             if path and Path(path).exists():
                 pixmap = get_thumbnail(path, self.thumb_size)
                 if pixmap and not pixmap.isNull():
-                    self.thumbnail_label.setPixmap(pixmap)
+                    # Google Photos style: center-crop to fill square
+                    scaled = pixmap.scaled(
+                        self.thumb_size, self.thumb_size,
+                        Qt.KeepAspectRatioByExpanding,
+                        Qt.SmoothTransformation
+                    )
+                    # Center-crop to exact square
+                    x = (scaled.width() - self.thumb_size) // 2
+                    y = (scaled.height() - self.thumb_size) // 2
+                    cropped = scaled.copy(x, y, self.thumb_size, self.thumb_size)
+                    self.thumbnail_label.setPixmap(cropped)
                 else:
                     self.thumbnail_label.setText("No preview")
             else:
@@ -171,7 +181,17 @@ class PhotoInstanceWidget(QWidget):
             if path and Path(path).exists():
                 pixmap = get_thumbnail(path, size)
                 if pixmap and not pixmap.isNull():
-                    self.thumbnail_label.setPixmap(pixmap)
+                    # Google Photos style: center-crop to fill square
+                    scaled = pixmap.scaled(
+                        size, size,
+                        Qt.KeepAspectRatioByExpanding,
+                        Qt.SmoothTransformation
+                    )
+                    # Center-crop to exact square
+                    x = (scaled.width() - size) // 2
+                    y = (scaled.height() - size) // 2
+                    cropped = scaled.copy(x, y, size, size)
+                    self.thumbnail_label.setPixmap(cropped)
         except Exception:
             pass
 
