@@ -460,15 +460,28 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         # Window settings - ADAPTIVE SIZING: Based on screen resolution and DPI
         self.setWindowTitle(t('google_layout.lightbox.window_title'))
 
-        # Get screen information with DPI awareness
-        screen = QApplication.primaryScreen()
-        screen_geometry = screen.geometry()
-        available_geometry = screen.availableGeometry()  # Exclude taskbar
+        # ============================================================
+        # FIX A: Use the correct screen (parent's screen or cursor's screen)
+        # instead of always using primaryScreen()
+        # This fixes multi-monitor setups where the app is on a secondary monitor
+        # ============================================================
+        screen = None
+        if self.parent():
+            screen = self.parent().screen()
+
+        if screen is None:
+            screen = QApplication.screenAt(QCursor.pos())
+
+        if screen is None:
+            screen = QApplication.primaryScreen()
+
+        # Use available geometry (excludes taskbar) for all sizing
+        available_geometry = screen.availableGeometry()
         dpi_scale = screen.devicePixelRatio()  # Windows scale (1.0, 1.25, 1.5, 2.0)
-        
-        # Calculate logical pixels
-        screen_width = screen_geometry.width()
-        screen_height = screen_geometry.height()
+
+        # Calculate from available geometry (not full screen)
+        avail_width = available_geometry.width()
+        avail_height = available_geometry.height()
         
         # ============================================================
         # OPTIMIZED 5-TIER PROFESSIONAL BREAKPOINT SYSTEM
@@ -483,7 +496,8 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         # ============================================================
 
         # Breakpoint categories with professional sizing (industry-standard approach)
-        if screen_width >= 3840:  # 4K+ / 8K (3840px+) - Ultra-wide displays
+        # Now uses avail_width from available_geometry for proper multi-monitor support
+        if avail_width >= 3840:  # 4K+ / 8K (3840px+) - Ultra-wide displays
             size_percent = 0.85  # Conservative sizing for professional workflow
             self.responsive_tier = "4K+ Professional"
             self.toolbar_height = 64  # Standard professional toolbar height
@@ -495,7 +509,7 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             self.font_size_body = 10
             self.font_size_caption = 8
             self.panel_width = 320  # Professional panel width
-        elif screen_width >= 2560:  # QHD / 2K (2560-3839px) - High-end monitors
+        elif avail_width >= 2560:  # QHD / 2K (2560-3839px) - High-end monitors
             size_percent = 0.87  # Slightly larger for bigger screens
             self.responsive_tier = "QHD/2K Professional"
             self.toolbar_height = 60
@@ -507,7 +521,7 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             self.font_size_body = 10
             self.font_size_caption = 8
             self.panel_width = 300
-        elif screen_width >= 1920:  # Full HD (1920-2559px) - Standard desktop
+        elif avail_width >= 1920:  # Full HD (1920-2559px) - Standard desktop
             size_percent = 0.88  # Balanced sizing for standard desktop
             self.responsive_tier = "FullHD Professional"
             self.toolbar_height = 56
@@ -519,7 +533,7 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             self.font_size_body = 9
             self.font_size_caption = 7
             self.panel_width = 280
-        elif screen_width >= 1366:  # HD / Laptop (1366-1919px) - Laptops/small screens
+        elif avail_width >= 1366:  # HD / Laptop (1366-1919px) - Laptops/small screens
             size_percent = 0.90  # Maximum for smaller screens
             self.responsive_tier = "HD/Laptop Professional"
             self.toolbar_height = 52
@@ -543,35 +557,31 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             self.font_size_body = 8
             self.font_size_caption = 6
             self.panel_width = 240
-        
-        width = int(screen_width * size_percent)
-        height = int(screen_height * size_percent)
-        
-        # Ensure window fits within available screen space (respect taskbar, etc.)
-        max_width = available_geometry.width()
-        max_height = available_geometry.height()
-        
-        # Apply bounds checking
-        width = min(width, max_width)
-        height = min(height, max_height)
-        
-        # Center the window
-        x = available_geometry.x() + (available_geometry.width() - width) // 2
-        y = available_geometry.y() + (available_geometry.height() - height) // 2
-        
+
+        # Calculate window size from available geometry (respects taskbar, etc.)
+        width = int(avail_width * size_percent)
+        height = int(avail_height * size_percent)
+
+        # FIX B: Set min/max constraints to keep window usable but never oversized
+        self.setMinimumSize(900, 600)
+        self.setMaximumSize(available_geometry.size())
+
+        # Center the window within available geometry
+        x = available_geometry.x() + (avail_width - width) // 2
+        y = available_geometry.y() + (avail_height - height) // 2
+
         self.setGeometry(QRect(x, y, width, height))
-        
+
         # Log sizing and responsive tier for debugging
-        print(f"[MediaLightbox] Screen: {screen_width}x{screen_height} (DPI: {dpi_scale}x)")
+        print(f"[MediaLightbox] Available: {avail_width}x{avail_height} (DPI: {dpi_scale}x)")
         print(f"[MediaLightbox] Responsive Tier: {self.responsive_tier}")
-        print(f"[MediaLightbox] Window: {width}x{height} ({int(size_percent*100)}% of screen)")
+        print(f"[MediaLightbox] Window: {width}x{height} ({int(size_percent*100)}% of available)")
         print(f"[MediaLightbox] UI Scaling: Toolbar={self.toolbar_height}px, Buttons={self.button_size}px, Margins={self.margin_size}px")
 
         self.setStyleSheet("background: #000000; QToolTip { color: white; background-color: rgba(0,0,0,0.92); border: 1px solid #555; padding: 6px 10px; border-radius: 6px; } QMessageBox { background-color: #121212; color: white; } QMessageBox QLabel { color: white; } QMessageBox QPushButton { background: rgba(255,255,255,0.15); color: white; border: none; border-radius: 6px; padding: 6px 12px; } QMessageBox QPushButton:hover { background: rgba(255,255,255,0.25); }")  # Dark theme + tooltip/messagebox styling
 
-        # Show window with calculated adaptive size (not maximized to respect screen boundaries)
-        # This ensures the window stays within screen bounds on all resolutions
-        self.show()
+        # FIX C: Removed self.show() from _setup_ui()
+        # Let the caller control display via exec() or show() to avoid flashing at odd sizes
 
         # Main layout (vertical with toolbars + media)
         main_layout = QVBoxLayout(self)
@@ -988,28 +998,38 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         self.editor_canvas = self._create_edit_canvas()
         
         # Right tools panel wrapped in scroll area (always accessible)
+        # FIX E: Use min/max width instead of fixed, with proportional sizing (Lightroom pattern)
         from PySide6.QtWidgets import QScrollArea
         self.editor_right_panel = QWidget()
-        # Ultra-optimized editor panel: Reduce from 400px to 300px
-        self.editor_right_panel.setFixedWidth(300)
-        self.editor_right_panel.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
+        # Slim tools column like Lightroom mobile/Photos - responsive width
+        self.editor_right_panel.setMinimumWidth(260)
+        self.editor_right_panel.setMaximumWidth(340)
+        self.editor_right_panel.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
         self.editor_right_scroll = QScrollArea()
         self.editor_right_scroll.setWidget(self.editor_right_panel)
         self.editor_right_scroll.setWidgetResizable(True)
         self.editor_right_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.editor_right_scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
-        # Toggle right tools panel visibility and resize splitter
+
+        # Toggle right tools panel visibility and resize splitter proportionally
         if hasattr(self, 'tools_toggle_btn'):
-            self.tools_toggle_btn.toggled.connect(lambda checked: (
-                self.editor_right_scroll.setVisible(checked),
-                self.editor_splitter.setSizes([int(self.width()*0.7), 400]) if checked else self.editor_splitter.setSizes([int(self.width()*0.95), 0])
-            ))
-        
+            def _toggle_tools_panel(checked):
+                self.editor_right_scroll.setVisible(checked)
+                if checked:
+                    # 75% canvas / 25% tools, clamped to panel limits
+                    tools_w = min(340, max(260, int(self.width() * 0.25)))
+                    self.editor_splitter.setSizes([self.width() - tools_w, tools_w])
+                else:
+                    self.editor_splitter.setSizes([self.width(), 0])
+            self.tools_toggle_btn.toggled.connect(_toggle_tools_panel)
+
         from PySide6.QtWidgets import QSplitter
         self.editor_splitter = QSplitter(Qt.Horizontal)
         self.editor_splitter.addWidget(self.editor_canvas)
         self.editor_splitter.addWidget(self.editor_right_scroll)
-        self.editor_splitter.setSizes([int(self.width()*0.7), 400])
+        # Initial split: 75% canvas / 25% tools, clamped
+        tools_w = min(340, max(260, int(self.width() * 0.25)))
+        self.editor_splitter.setSizes([self.width() - tools_w, tools_w])
         editor_row_layout.addWidget(self.editor_splitter)
         editor_vlayout.addWidget(editor_row, 1)
         # Build adjustments panel in right placeholder
@@ -1218,6 +1238,13 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         # Following Google Photos/iPhone/Lightroom best practices
         # ============================================================
         self._handle_panel_visibility()
+
+        # FIX D: Update panel max widths dynamically (Lightroom drawer pattern)
+        max_panel_width = max(240, int(self.width() * 0.30))
+        if hasattr(self, 'info_panel') and self.info_panel:
+            self.info_panel.setMaximumWidth(max_panel_width)
+        if hasattr(self, 'enhance_panel') and self.enhance_panel:
+            self.enhance_panel.setMaximumWidth(max_panel_width)
 
         # ============================================================
         # DEBOUNCED UPDATES: Performance-critical operations
@@ -1660,7 +1687,10 @@ class MediaLightbox(QDialog, VideoEditorMixin):
     def _create_bottom_toolbar(self) -> QWidget:
         """Create bottom overlay toolbar with navigation and video controls."""
         toolbar = QWidget()
-        toolbar.setFixedHeight(80)
+        # FIX F: Make toolbar height responsive based on tier (not hardcoded 80px)
+        # On smaller screens, 80px eats precious vertical space making content feel cramped
+        toolbar_h = max(56, int(self.toolbar_height * 1.1))  # Tier-based, min 56px
+        toolbar.setFixedHeight(toolbar_h)
         toolbar.setStyleSheet("""
             QWidget {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
@@ -5043,9 +5073,11 @@ class MediaLightbox(QDialog, VideoEditorMixin):
     def _create_info_panel(self) -> QWidget:
         """Create toggleable info panel with tabbed metadata (on right side)."""
         panel = QWidget()
-        # Professional panel width: Responsive based on screen size
-        # Following industry standards for balanced UI/UX
-        panel.setFixedWidth(self.panel_width)
+        # FIX D: Make panel adaptive (not fixed width) like Lightroom drawers
+        # Cap relative to window width so it never dominates the canvas
+        panel.setMinimumWidth(240)
+        panel.setMaximumWidth(max(240, int(self.width() * 0.30)))  # <= 30% of window
+        panel.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
         panel.setStyleSheet("""
             QWidget {
                 background: rgba(32, 33, 36, 0.95);
@@ -5127,8 +5159,11 @@ class MediaLightbox(QDialog, VideoEditorMixin):
 
     def _create_enhance_panel(self) -> QWidget:
         panel = QWidget()
-        # Professional panel width: Match info panel for consistency
-        panel.setFixedWidth(self.panel_width)
+        # FIX D: Make panel adaptive (not fixed width) like Lightroom drawers
+        # Cap relative to window width so it never dominates the canvas
+        panel.setMinimumWidth(240)
+        panel.setMaximumWidth(max(240, int(self.width() * 0.30)))  # <= 30% of window
+        panel.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
         panel.setStyleSheet("""
             QWidget {
                 background: rgba(32, 33, 36, 0.95);
