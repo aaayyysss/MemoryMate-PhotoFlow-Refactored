@@ -2330,10 +2330,12 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         """Check if file is a video format."""
         if not file_path:
             return False
-        video_extensions = [
-            '.mp4', '.mov', '.avi', '.mkv', '.webm',
-            '.m4v', '.3gp', '.flv', '.wmv', '.mpg', '.mpeg'
-        ]
+        # Keep in sync with _is_video() for consistent behavior
+        video_extensions = {
+            '.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v', '.3gp',
+            '.flv', '.wmv', '.mpg', '.mpeg', '.mts', '.m2ts', '.ts',
+            '.vob', '.ogv', '.divx', '.asf', '.rm', '.rmvb'
+        }
         ext = os.path.splitext(file_path)[1].lower()
         return ext in video_extensions
     
@@ -5360,7 +5362,13 @@ class MediaLightbox(QDialog, VideoEditorMixin):
 
     def _is_video(self, path: str) -> bool:
         """Check if file is a video based on extension."""
-        video_extensions = {'.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v', '.3gp'}
+        # CRITICAL FIX: Include ALL video extensions (was missing .wmv, .flv, .mpg, .mpeg)
+        # Must match _is_video_file() for consistent behavior
+        video_extensions = {
+            '.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v', '.3gp',
+            '.flv', '.wmv', '.mpg', '.mpeg', '.mts', '.m2ts', '.ts',
+            '.vob', '.ogv', '.divx', '.asf', '.rm', '.rmvb'
+        }
         return os.path.splitext(path)[1].lower() in video_extensions
 
     def _is_raw(self, path: str) -> bool:
