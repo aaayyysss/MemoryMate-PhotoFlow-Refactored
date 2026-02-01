@@ -838,6 +838,99 @@ class EmbeddingService:
             'cache_hit_rate': sum(1 for m in self._search_metrics if m.cache_hit) / len(self._search_metrics),
         }
 
+    def get_all_embeddings_for_project(self, project_id: int, model_id: Optional[int] = None) -> Dict[int, np.ndarray]:
+        """
+        Get all embeddings for photos in a project (batch load).
+
+        Efficient batch load for similarity detection across entire project.
+        Reads from photo_embedding table.
+
+        Args:
+            project_id: Project ID
+            model_id: Optional model ID (uses current CLIP model if None)
+
+        Returns:
+            Dictionary mapping photo_id -> embedding (np.ndarray, float32)
+        """
+        if model_id is None:
+            model_id = self._clip_model_id
+            if model_id is None:
+                logger.warning("[EmbeddingService] No model loaded - cannot get embeddings")
+                return {}
+
+        embeddings = {}
+
+        with self.db.get_connection() as conn:
+            query = """
+                SELECT pe.photo_id, pe.embedding, pe.dim
+                FROM photo_embedding pe
+                JOIN photo_metadata p ON pe.photo_id = p.id
+                WHERE p.project_id = ? AND pe.model_id = ? AND pe.embedding_type = 'visual_semantic'
+            """
+
+            cursor = conn.execute(query, (project_id, model_id))
+
+            for row in cursor.fetchall():
+                photo_id = row['photo_id']
+                embedding_blob = row['embedding']
+                stored_dim = row['dim']
+
+                if embedding_blob is None:
+                    continue
+
+                try:
+                    # Decode embedding
+                    embedding = np.frombuffer(embedding_blob, dtype=np.float32)
+
+                    if len(embedding) == stored_dim:
+                        embeddings[photo_id] = embedding
+                    else:
+                        logger.warning(
+                            f"[EmbeddingService] Embedding dimension mismatch for photo {photo_id}: "
+                            f"expected {stored_dim}, got {len(embedding)}"
+                        )
+                except Exception as e:
+                    logger.warning(f"[EmbeddingService] Failed to decode embedding for photo {photo_id}: {e}")
+
+        logger.info(f"[EmbeddingService] Loaded {len(embeddings)} embeddings for project {project_id}")
+        return embeddings
+
+    def get_embedding(self, photo_id: int, model_id: Optional[int] = None) -> Optional[np.ndarray]:
+        """
+        Get embedding for a single photo.
+
+        Args:
+            photo_id: Photo ID
+            model_id: Optional model ID (uses current CLIP model if None)
+
+        Returns:
+            Embedding array or None if not found
+        """
+        if model_id is None:
+            model_id = self._clip_model_id
+            if model_id is None:
+                return None
+
+        with self.db.get_connection() as conn:
+            cursor = conn.execute(
+                """
+                SELECT embedding, dim FROM photo_embedding
+                WHERE photo_id = ? AND model_id = ? AND embedding_type = 'visual_semantic'
+                """,
+                (photo_id, model_id)
+            )
+            row = cursor.fetchone()
+
+            if row and row['embedding']:
+                try:
+                    embedding = np.frombuffer(row['embedding'], dtype=np.float32)
+                    if len(embedding) == row['dim']:
+                        return embedding
+                except Exception as e:
+                    logger.warning(f"[EmbeddingService] Failed to decode embedding for photo {photo_id}: {e}")
+
+        return None
+
     def get_embedding_count(self, model_id: Optional[int] = None) -> int:
         """Get count of stored embeddings."""
         with self.db.get_connection() as conn:

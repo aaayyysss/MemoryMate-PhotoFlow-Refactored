@@ -1,4 +1,5 @@
 # layouts/google_layout.py
+# Version 10.01.01.09 dated 20260131
 # Google Photos-style layout - Timeline-based, date-grouped, minimalist design
 
 from PySide6.QtWidgets import (
@@ -19,6 +20,8 @@ from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from .base_layout import BaseLayout
 from logging_config import get_logger
+
+from PySide6.QtWidgets import QApplication
 
 logger = get_logger(__name__)
 from .video_editor_mixin import VideoEditorMixin
@@ -45,6 +48,16 @@ from datetime import datetime
 import os
 import subprocess
 from translation_manager import tr as t
+
+# Background Jobs UI (best-practice non-blocking background operations)
+try:
+    from ui.background_activity_panel import BackgroundActivityPanel
+    HAS_ACTIVITY_PANEL = True
+except ImportError:
+    HAS_ACTIVITY_PANEL = False
+
+
+
 
 
 class GooglePhotosLayout(BaseLayout):
@@ -92,6 +105,9 @@ class GooglePhotosLayout(BaseLayout):
         """
         Create Google Photos-style layout.
         """
+        self._ensure_tooltip_style()
+
+        
         # Face merge undo/redo stacks (CRITICAL FIX 2026-01-07)
         self.redo_stack = []  # Stack for redo operations after undo
 
@@ -251,6 +267,18 @@ class GooglePhotosLayout(BaseLayout):
 
         main_layout.addWidget(self.splitter)
 
+        # Background Activity Panel - shows background job progress (face detection, embeddings, etc.)
+        # Non-intrusive panel at bottom, collapsible, with pause/resume/cancel controls
+        if HAS_ACTIVITY_PANEL:
+            try:
+                self.activity_panel = BackgroundActivityPanel(main_widget)
+                main_layout.addWidget(self.activity_panel)
+            except Exception as e:
+                logger.warning(f"[GooglePhotosLayout] Could not create activity panel: {e}")
+                self.activity_panel = None
+        else:
+            self.activity_panel = None
+
         # QUICK WIN #6: Create floating selection toolbar (initially hidden)
         self.floating_toolbar = self._create_floating_toolbar(main_widget)
         self.floating_toolbar.hide()
@@ -263,6 +291,28 @@ class GooglePhotosLayout(BaseLayout):
         self._load_photos()
 
         return main_widget
+
+    
+
+    def _ensure_tooltip_style(self):
+        app = QApplication.instance()
+        if not app:
+            return
+        # Prevent duplicating the stylesheet if layouts are switched repeatedly
+        if getattr(app, "_mm_tooltip_style_applied", False):
+            return
+
+        app.setStyleSheet((app.styleSheet() or "") + """
+        QToolTip {
+            background-color: #000000;
+            color: #ffffff;
+            border: 1px solid #444444;
+            padding: 6px;
+            border-radius: 4px;
+            font-size: 10pt;
+        }
+        """)
+        app._mm_tooltip_style_applied = True
 
     def _create_toolbar(self) -> QToolBar:
         """
@@ -388,6 +438,12 @@ class GooglePhotosLayout(BaseLayout):
         self.btn_duplicates.setToolTip("Review and manage duplicate photos")
         self.btn_duplicates.clicked.connect(self._open_duplicates_dialog)
         toolbar.addWidget(self.btn_duplicates)
+
+        # Similar button - Open similar photos detection dialog
+        self.btn_similar = QPushButton("🎯 Similar")
+        self.btn_similar.setToolTip("Find visually similar photos using AI")
+        self.btn_similar.clicked.connect(self._open_similar_photos_dialog)
+        toolbar.addWidget(self.btn_similar)
 
         toolbar.addSeparator()
 
@@ -5126,7 +5182,7 @@ class GooglePhotosLayout(BaseLayout):
 
             # Render visible groups
             if groups_to_render:
-                print(f"[GooglePhotosLayout] 🎨 Rendering {len(groups_to_render)} date groups that entered viewport...")
+                logger.debug(f"Rendering {len(groups_to_render)} date groups that entered viewport...")
 
                 for index, metadata in groups_to_render:
                     try:
@@ -5152,13 +5208,13 @@ class GooglePhotosLayout(BaseLayout):
                             self.rendered_date_groups.add(index)
 
                     except Exception as e:
-                        print(f"[GooglePhotosLayout] ⚠️ Error rendering date group {index}: {e}")
+                        logger.warning(f"Error rendering date group {index}: {e}")
                         continue
 
-                print(f"[GooglePhotosLayout] ✓ Now {len(self.rendered_date_groups)}/{len(self.date_groups_metadata)} groups rendered")
+                logger.debug(f"Now {len(self.rendered_date_groups)}/{len(self.date_groups_metadata)} groups rendered")
 
         except Exception as e:
-            print(f"[GooglePhotosLayout] ⚠️ Error in virtual scrolling: {e}")
+            logger.warning(f"Error in virtual scrolling: {e}")
 
     def _create_photo_grid(self, photos: List[Tuple], thumb_size: int = 200) -> QWidget:
         """
@@ -5760,7 +5816,8 @@ class GooglePhotosLayout(BaseLayout):
         else:
             # Store for lazy loading on scroll
             self.unloaded_thumbnails[path] = (thumb, size)
-            print(f"[GooglePhotosLayout] Deferred thumbnail #{self.thumbnail_load_count + 1}: {os.path.basename(path)}")
+            # NOTE: Removed verbose print that fired for every deferred thumbnail
+            # This was causing performance issues with large photo collections
 
         # Phase 2: Selection checkbox (overlay top-left corner)
         # QUICK WIN #8: Enhanced with modern hover effects
@@ -8596,6 +8653,15 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
                 )
                 results_dialog.exec()
 
+            # Refresh sidebar duplicates section after dialog closes
+            if hasattr(self, 'accordion_sidebar') and self.accordion_sidebar:
+                self.accordion_sidebar.reload_section("duplicates")
+
+            # CRITICAL: Refresh photo grid to show duplicate/similar badges
+            # Badges are only created when thumbnails are created, so we need to reload
+            logger.info("[GooglePhotosLayout] Refreshing grid to show duplicate/similar badges...")
+            self._load_photos()
+
         except Exception as e:
             print(f"[GooglePhotosLayout] Error opening duplicate detection dialog: {e}")
             import traceback
@@ -8609,31 +8675,18 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
 
     def _on_find_similar_photos(self):
         """
-        Run actual similar photo detection process (not just show results).
+        Open SimilarPhotoDetectionDialog to find visually similar photos.
 
-        This triggers the complete similar photo workflow:
-        1. Generate embeddings for photos without embeddings (background worker)
-        2. Run similar shot detection using AI embeddings
-        3. Shows results in StackBrowserDialog
-
-        Uses background worker to avoid blocking the UI during embedding generation.
+        This dialog allows users to:
+        - Configure similarity threshold and clustering parameters
+        - Find visually similar photos using AI embeddings
+        - Results are persisted to database and shown in sidebar
         """
         try:
-            from PySide6.QtWidgets import QMessageBox, QProgressDialog
-            from PySide6.QtCore import Qt, QCoreApplication, QEventLoop, QThreadPool
-            from services.semantic_embedding_service import SemanticEmbeddingService
-            from services.stack_generation_service import StackGenerationService, StackGenParams
-            from repository.photo_repository import PhotoRepository
-            from repository.stack_repository import StackRepository
-            from repository.base_repository import DatabaseConnection
-            from workers.semantic_embedding_worker import SemanticEmbeddingWorker
-            from config.similarity_config import SimilarityConfig
-            from logging_config import get_logger
-            import time
-
-            logger = get_logger(__name__)
+            from ui.similar_photo_dialog import SimilarPhotoDetectionDialog
 
             if self.project_id is None:
+                from PySide6.QtWidgets import QMessageBox
                 QMessageBox.warning(
                     self.main_window if hasattr(self, 'main_window') else None,
                     "No Project Selected",
@@ -8641,157 +8694,33 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
                 )
                 return
 
-            # Show progress dialog
-            progress = QProgressDialog(
-                "Preparing similarity detection...",
-                None,  # No cancel button during background processing
-                0, 100,
-                self.main_window if hasattr(self, 'main_window') else None
-            )
-            progress.setWindowModality(Qt.WindowModal)
-            progress.setWindowTitle("Similar Photo Detection")
-            progress.setMinimumDuration(0)
-            progress.show()
-
-            # Initialize services
-            db_conn = DatabaseConnection()
-            photo_repo = PhotoRepository(db_conn)
-            stack_repo = StackRepository(db_conn)
-            embedding_service = SemanticEmbeddingService(db_connection=db_conn)
-            stack_service = StackGenerationService(photo_repo, stack_repo, embedding_service)
-
-            # Step 1: Check if embeddings exist
-            progress.setLabelText("Checking existing embeddings...")
-            progress.setValue(10)
-            QCoreApplication.processEvents()
-
-            # Get photos needing embeddings using efficient SQL JOIN query
-            photos_needing_embeddings = photo_repo.get_photos_needing_embeddings(
-                self.project_id,
-                limit=1000
-            )
-
-            # Step 2: Generate embeddings using background worker (non-blocking)
-            embeddings_generated = 0
-            start_time = time.time()
-
-            if photos_needing_embeddings:
-                photo_ids = [p['id'] for p in photos_needing_embeddings]
-                logger.info(f"[GooglePhotosLayout] Generating embeddings for {len(photo_ids)} photos using background worker")
-
-                # Create worker for background processing
-                worker = SemanticEmbeddingWorker(
-                    photo_ids=photo_ids,
-                    model_name="clip-vit-b32",
-                    force_recompute=False,
-                    project_id=self.project_id
-                )
-
-                # Use QEventLoop to wait for worker while keeping UI responsive
-                embedding_loop = QEventLoop()
-                worker_stats = [None]  # Container for stats from callback
-
-                def on_progress(current, total, message):
-                    """Update progress dialog with ETA."""
-                    elapsed = time.time() - start_time
-                    if current > 0:
-                        rate = current / elapsed
-                        remaining = (total - current) / rate if rate > 0 else 0
-                        eta = f" (~{int(remaining)}s remaining)" if remaining > 0 else ""
-                    else:
-                        eta = ""
-
-                    progress_pct = 20 + int(40 * current / total) if total > 0 else 20
-                    progress.setValue(progress_pct)
-                    progress.setLabelText(f"🤖 Generating embeddings: {current}/{total}{eta}")
-                    QCoreApplication.processEvents()
-
-                def on_finished(stats):
-                    """Handle worker completion."""
-                    worker_stats[0] = stats
-                    logger.info(f"[GooglePhotosLayout] Embedding worker finished: {stats}")
-                    embedding_loop.quit()
-
-                def on_error(error_msg):
-                    """Handle worker error."""
-                    logger.error(f"[GooglePhotosLayout] Embedding worker error: {error_msg}")
-                    embedding_loop.quit()
-
-                # Connect signals before starting worker
-                worker.signals.progress.connect(on_progress)
-                worker.signals.finished.connect(on_finished)
-                worker.signals.error.connect(on_error)
-
-                # Start worker in thread pool
-                progress.setLabelText(f"🤖 Starting embedding generation for {len(photo_ids)} photos...")
-                progress.setValue(20)
-                QCoreApplication.processEvents()
-
-                QThreadPool.globalInstance().start(worker)
-
-                # Wait for worker to complete (UI stays responsive via signals)
-                embedding_loop.exec()
-
-                # Get results
-                if worker_stats[0]:
-                    embeddings_generated = worker_stats[0].get('success', 0)
-
-            elapsed_time = time.time() - start_time
-            logger.info(f"[GooglePhotosLayout] Embedding generation took {elapsed_time:.2f}s for {embeddings_generated} photos")
-
-            # Step 3: Run similar shot detection
-            progress.setLabelText("Detecting similar photo stacks...")
-            progress.setValue(70)
-            QCoreApplication.processEvents()
-
-            # Get unified parameters from config
-            params = SimilarityConfig.get_params()
-
-            # Generate similar shot stacks
-            stack_stats = stack_service.regenerate_similar_shot_stacks(
+            # Open the dialog
+            dialog = SimilarPhotoDetectionDialog(
                 project_id=self.project_id,
-                params=params
+                parent=self.main_window if hasattr(self, 'main_window') else None
             )
 
-            progress.setValue(90)
-            QCoreApplication.processEvents()
+            # Show the dialog
+            result = dialog.exec()
 
-            # Close progress
-            progress.setValue(100)
-            progress.close()
+            # Refresh sidebar duplicates section after dialog closes
+            if hasattr(self, 'accordion_sidebar') and self.accordion_sidebar:
+                self.accordion_sidebar.reload_section("duplicates")
 
-            # Show results with actual parameters used
-            QMessageBox.information(
-                self.main_window if hasattr(self, 'main_window') else None,
-                "Similar Photo Detection Complete",
-                f"✅ Similar photo detection completed successfully!\n\n"
-                f"Embeddings generated: {embeddings_generated}\n"
-                f"Similar stacks created: {stack_stats.stacks_created}\n"
-                f"Stack memberships: {stack_stats.memberships_created}\n\n"
-                f"Parameters used:\n"
-                f"• Time window: ±{params.time_window_seconds} seconds\n"
-                f"• Similarity threshold: {params.similarity_threshold}\n"
-                f"• Minimum stack size: {params.min_stack_size} photos"
-            )
-
-            # Now open the dialog to view/manage results
-            from layouts.google_components.stack_view_dialog import StackBrowserDialog
-            dialog = StackBrowserDialog(
-                project_id=self.project_id,
-                stack_type="similar",
-                parent=self.main_window
-            )
-            dialog.exec()
+            # CRITICAL: Refresh photo grid to show similar stack badges
+            # Badges are only created when thumbnails are created, so we need to reload
+            logger.info("[GooglePhotosLayout] Refreshing grid to show similar stack badges...")
+            self._load_photos()
 
         except Exception as e:
-            print(f"[GooglePhotosLayout] Error running similar photo detection: {e}")
-            import traceback
-            traceback.print_exc()
             from PySide6.QtWidgets import QMessageBox
+            import traceback
+            error_msg = f"Failed to open similar photos dialog:\n{e}\n\n{traceback.format_exc()}"
+            print(f"[GooglePhotosLayout] ERROR: {error_msg}")
             QMessageBox.critical(
                 self.main_window if hasattr(self, 'main_window') else None,
-                "Error",
-                f"Failed to run similar photo detection:\n{str(e)}"
+                "Error Opening Similar Photos",
+                f"Failed to open similar photos dialog:\n{e}"
             )
 
     def _on_show_duplicate_status(self):
@@ -8926,6 +8855,55 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
                 self.main_window if hasattr(self, 'main_window') else None,
                 "Error Opening Duplicates",
                 f"Failed to open duplicates dialog:\n{e}"
+            )
+
+    def _open_similar_photos_dialog(self):
+        """
+        Open SimilarPhotoDetectionDialog to find visually similar photos.
+
+        This dialog allows users to:
+        - Configure similarity threshold and clustering parameters
+        - Find visually similar photos using AI embeddings
+        - Results are persisted to database and shown in sidebar
+        """
+        try:
+            from ui.similar_photo_dialog import SimilarPhotoDetectionDialog
+
+            if self.project_id is None:
+                from PySide6.QtWidgets import QMessageBox
+                QMessageBox.warning(
+                    self.main_window if hasattr(self, 'main_window') else None,
+                    "No Project Selected",
+                    "Please select a project before finding similar photos."
+                )
+                return
+
+            # Open the dialog
+            dialog = SimilarPhotoDetectionDialog(
+                project_id=self.project_id,
+                parent=self.main_window if hasattr(self, 'main_window') else None
+            )
+
+            # Show the dialog
+            result = dialog.exec()
+
+            # Refresh sidebar duplicates section after dialog closes
+            if hasattr(self, 'accordion_sidebar') and self.accordion_sidebar:
+                self.accordion_sidebar.reload_section("duplicates")
+
+            # CRITICAL: Refresh photo grid to show similar stack badges
+            logger.info("[GooglePhotosLayout] Refreshing grid to show similar stack badges...")
+            self._load_photos()
+
+        except Exception as e:
+            from PySide6.QtWidgets import QMessageBox
+            import traceback
+            error_msg = f"Failed to open similar photos dialog:\n{e}\n\n{traceback.format_exc()}"
+            print(f"[GooglePhotosLayout] ERROR: {error_msg}")
+            QMessageBox.critical(
+                self.main_window if hasattr(self, 'main_window') else None,
+                "Error Opening Similar Photos",
+                f"Failed to open similar photos dialog:\n{e}"
             )
 
     def _on_duplicate_action_taken(self, action: str, asset_id: int):

@@ -1,21 +1,24 @@
 # duplicate_detection_dialog.py
-# Version 1.00.00.00 dated 20260122
+# Version 1.03.00.00 dated 20260130
 
 """
 Duplicate Detection Dialog
 Professional dialog for configuring and running duplicate detection.
 
-Follows best practices from:
-- Google Photos: Clear parameter controls and progress indication
-- Lightroom: Professional workflow with preview options  
-- iPhone Photos: Simple yet powerful interface
+Design follows best practices from:
+- Google Photos: Clean interface, smart defaults, progressive disclosure
+- Lightroom: Professional workflow with clear parameter controls
+- iPhone Photos: Simple yet powerful, clear visual hierarchy
+
+Unified dialog for both menu and toolbar access.
+Layout: Fixed header with action buttons + scrollable content area.
 """
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QCheckBox, QGroupBox, QSpinBox, QDoubleSpinBox, QRadioButton,
-    QButtonGroup, QFrame, QTextEdit, QProgressBar, QMessageBox,
-    QScrollArea, QWidget
+    QButtonGroup, QFrame, QProgressBar, QMessageBox, QWidget,
+    QScrollArea, QSizePolicy
 )
 from PySide6.QtCore import Qt, Signal, QThread, QObject
 from PySide6.QtGui import QFont
@@ -196,7 +199,10 @@ class DuplicateDetectionWorker(QObject):
                 try:
                     from services.stack_generation_service import StackGenerationService
                     from repository.stack_repository import StackRepository
-                    from services.semantic_embedding_service import SemanticEmbeddingService
+                    # CRITICAL FIX: Use EmbeddingService which reads from photo_embedding table
+                    # (same table where embeddings are stored above)
+                    # NOT SemanticEmbeddingService which reads from semantic_embeddings table
+                    from services.embedding_service import EmbeddingService as SimilarityEmbeddingService
 
                     # BUG FIX: Create db_conn for similar detection if not already created
                     # (may not exist if detect_exact and generate_embeddings were both False)
@@ -209,7 +215,9 @@ class DuplicateDetectionWorker(QObject):
 
                     # BUG FIX: StackRepository requires db parameter
                     stack_repo = StackRepository(db_conn)
-                    embedding_svc = SemanticEmbeddingService()
+                    # Use EmbeddingService with same db_conn to read from photo_embedding table
+                    embedding_svc = SimilarityEmbeddingService(db_connection=db_conn)
+                    embedding_svc.load_clip_model()  # Load model to get model_id for queries
                     stack_svc = StackGenerationService(photo_repo, stack_repo, embedding_svc)
 
                     threshold = self.options.get('similarity_threshold', 0.85)
@@ -246,7 +254,12 @@ class DuplicateDetectionWorker(QObject):
 
 class DuplicateDetectionDialog(QDialog):
     """
-    Professional duplicate detection dialog.
+    Professional duplicate detection dialog with clean Google/iPhone-inspired design.
+
+    Layout:
+    - Fixed header with title and action buttons (always visible)
+    - Scrollable content area for all settings
+    - Progress bar appears at bottom when running
 
     Features:
     - Exact duplicate detection (hash-based)
@@ -255,11 +268,6 @@ class DuplicateDetectionDialog(QDialog):
     - Configurable parameters
     - Real-time progress
     - System readiness checking
-
-    Best practices from:
-    - Google Photos: Simple defaults with smart suggestions
-    - iPhone Photos: Automatic background processing
-    - Lightroom: Professional folder/collection selection
     """
 
     def __init__(self, project_id: int, parent=None):
@@ -269,250 +277,280 @@ class DuplicateDetectionDialog(QDialog):
         self.worker = None
         self.selected_photo_ids: List[int] = []
 
-        self.setWindowTitle("Detect Duplicates & Similar Photos")
+        self.setWindowTitle("🔍 Duplicate Detection - Select Scope")
         self.setModal(True)
-        self.setMinimumWidth(650)
-        self.setMinimumHeight(800)
+        self.resize(700, 600)
+        self.setMinimumSize(600, 450)
 
         self._build_ui()
-        self._apply_styles()
         self._connect_signals()
         self._check_system_readiness()
-    
+
     def _build_ui(self):
-        """Build dialog UI."""
-        # Main layout with scroll area for smaller screens
+        """Build dialog UI with fixed header and scrollable content."""
         main_layout = QVBoxLayout(self)
         main_layout.setSpacing(0)
         main_layout.setContentsMargins(0, 0, 0, 0)
 
+        # === FIXED HEADER (Title + Buttons) ===
+        header_widget = QWidget()
+        header_widget.setStyleSheet("background-color: white; border-bottom: 1px solid #e0e0e0;")
+        # CRITICAL: Fixed size policy ensures header stays at top and doesn't expand
+        header_widget.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+        header_layout = QHBoxLayout(header_widget)
+        header_layout.setContentsMargins(20, 12, 20, 12)
+        header_layout.setSpacing(16)
+
+        # Title section
+        title_section = QVBoxLayout()
+        title_section.setSpacing(4)
+
+        title = QLabel("Find Duplicates & Similar Photos")
+        title.setStyleSheet("font-size: 14pt; font-weight: bold; color: #333;")
+        title_section.addWidget(title)
+
+        subtitle = QLabel("Select scope and configure detection settings")
+        subtitle.setStyleSheet("color: #666; font-size: 9pt;")
+        title_section.addWidget(subtitle)
+
+        header_layout.addLayout(title_section)
+        header_layout.addStretch()
+
+        # Action buttons in header
+        self.btn_help = QPushButton("Help")
+        self.btn_help.setStyleSheet(self._secondary_button_style())
+        self.btn_help.setFixedWidth(70)
+        self.btn_help.clicked.connect(self._show_help)
+        header_layout.addWidget(self.btn_help)
+
+        self.btn_cancel = QPushButton("Cancel")
+        self.btn_cancel.setStyleSheet(self._secondary_button_style())
+        self.btn_cancel.setFixedWidth(80)
+        self.btn_cancel.clicked.connect(self.reject)
+        header_layout.addWidget(self.btn_cancel)
+
+        self.btn_start = QPushButton("▶ Start")
+        self.btn_start.setStyleSheet(self._primary_button_style())
+        self.btn_start.setFixedWidth(100)
+        self.btn_start.clicked.connect(self._start_detection)
+        header_layout.addWidget(self.btn_start)
+
+        main_layout.addWidget(header_widget)
+
+        # === SCROLLABLE CONTENT AREA ===
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
         scroll_area.setFrameShape(QFrame.NoFrame)
+        scroll_area.setStyleSheet("QScrollArea { background-color: #fafafa; }")
+        # CRITICAL: Expanding policy allows scroll area to take remaining space
+        scroll_area.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
 
         scroll_content = QWidget()
-        layout = QVBoxLayout(scroll_content)
-        layout.setSpacing(12)
-        layout.setContentsMargins(20, 20, 20, 20)
+        scroll_content.setStyleSheet("background-color: #fafafa;")
+        # Content can be larger than visible area - this enables scrolling
+        scroll_content.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+        content_layout = QVBoxLayout(scroll_content)
+        content_layout.setSpacing(10)
+        content_layout.setContentsMargins(16, 12, 16, 12)
 
-        # Header
-        header_layout = QHBoxLayout()
-
-        title_label = QLabel("<h2>Detect Duplicates & Similar Photos</h2>")
-        header_layout.addWidget(title_label)
-        header_layout.addStretch()
-
-        layout.addLayout(header_layout)
-
-        desc_label = QLabel(
-            "Find duplicate and similar photos in your collection. "
-            "Select which photos to scan, choose detection methods, and configure settings."
-        )
-        desc_label.setWordWrap(True)
-        desc_label.setStyleSheet("color: #666; margin-bottom: 8px;")
-        layout.addWidget(desc_label)
-
-        # Separator
-        sep1 = QFrame()
-        sep1.setFrameShape(QFrame.HLine)
-        sep1.setFrameShadow(QFrame.Sunken)
-        layout.addWidget(sep1)
-
-        # === SCOPE SELECTION WIDGET ===
+        # === SCOPE SELECTION ===
         self.scope_widget = EmbeddingScopeWidget(self.project_id, self)
         self.scope_widget.scopeChanged.connect(self._on_scope_changed)
-        layout.addWidget(self.scope_widget)
+        content_layout.addWidget(self.scope_widget)
 
-        # Separator
-        sep2 = QFrame()
-        sep2.setFrameShape(QFrame.HLine)
-        sep2.setFrameShadow(QFrame.Sunken)
-        layout.addWidget(sep2)
+        # === DETECTION METHODS ===
+        methods_group = QGroupBox("🔍 Detection Methods")
+        methods_group.setStyleSheet(self._groupbox_style())
+        methods_layout = QVBoxLayout(methods_group)
+        methods_layout.setSpacing(6)
+        methods_layout.setContentsMargins(12, 16, 12, 12)
 
-        # Detection Types
-        detection_group = QGroupBox("Detection Methods")
-        detection_layout = QVBoxLayout(detection_group)
-        detection_layout.setSpacing(12)
-        
         # Exact duplicates
-        self.chk_exact = QCheckBox("🔍 Exact Duplicates (Fast)")
-        self.chk_exact.setToolTip(
-            "Find photos with identical content using SHA256 hashing.\n"
-            "Very fast, catches perfect copies and backups."
-        )
+        self.chk_exact = QCheckBox("Exact Duplicates (Fast)")
         self.chk_exact.setChecked(True)
-        detection_layout.addWidget(self.chk_exact)
-        
-        exact_desc = QLabel("    Identical file content - No false positives")
-        exact_desc.setStyleSheet("color: #666; font-size: 9pt; margin-left: 24px;")
-        detection_layout.addWidget(exact_desc)
-        
+        self.chk_exact.setToolTip("Find identical files using SHA256 hashing")
+        self.chk_exact.setStyleSheet("font-weight: bold;")
+        methods_layout.addWidget(self.chk_exact)
+
+        exact_desc = QLabel("Identical file content - No false positives")
+        exact_desc.setStyleSheet("color: #888; font-size: 8pt; margin-left: 20px;")
+        methods_layout.addWidget(exact_desc)
+
         # Similar shots
-        self.chk_similar = QCheckBox("📸 Similar Shots (AI-Powered)")
-        self.chk_similar.setToolTip(
-            "Find visually similar photos using AI embeddings.\n"
-            "Catches burst shots, edited versions, and similar compositions."
-        )
-        detection_layout.addWidget(self.chk_similar)
-        
-        similar_desc = QLabel("    Visually similar content - May have false positives")
-        similar_desc.setStyleSheet("color: #666; font-size: 9pt; margin-left: 24px;")
-        detection_layout.addWidget(similar_desc)
-        
-        layout.addWidget(detection_group)
-        
-        # Parameters Group
-        params_group = QGroupBox("Parameters")
-        params_layout = QVBoxLayout(params_group)
-        params_layout.setSpacing(12)
-        
-        # Embedding generation
-        self.chk_generate_embeddings = QCheckBox("🤖 Generate AI Embeddings")
-        self.chk_generate_embeddings.setToolTip(
-            "Extract visual embeddings using CLIP model.\n"
-            "Required for similar shot detection.\n"
-            "Takes 2-5 seconds per photo depending on hardware."
-        )
-        params_layout.addWidget(self.chk_generate_embeddings)
-        
-        # Sensitivity settings (only enabled when similar detection is checked)
-        sensitivity_widget = QFrame()
-        sensitivity_layout = QVBoxLayout(sensitivity_widget)
-        sensitivity_layout.setContentsMargins(24, 8, 0, 0)
-        sensitivity_layout.setSpacing(8)
-        
+        self.chk_similar = QCheckBox("Similar Shots (AI-Powered)")
+        self.chk_similar.setToolTip("Find visually similar photos using AI embeddings")
+        self.chk_similar.setStyleSheet("font-weight: bold;")
+        methods_layout.addWidget(self.chk_similar)
+
+        similar_desc = QLabel("Visually similar - May have false positives")
+        similar_desc.setStyleSheet("color: #888; font-size: 8pt; margin-left: 20px;")
+        methods_layout.addWidget(similar_desc)
+
+        content_layout.addWidget(methods_group)
+
+        # === ADVANCED SETTINGS ===
+        settings_group = QGroupBox("⚙️ Advanced Settings")
+        settings_group.setStyleSheet(self._groupbox_style())
+        settings_layout = QVBoxLayout(settings_group)
+        settings_layout.setSpacing(8)
+        settings_layout.setContentsMargins(12, 16, 12, 12)
+
+        # Generate embeddings checkbox
+        self.chk_generate_embeddings = QCheckBox("Generate AI Embeddings (for similar detection)")
+        self.chk_generate_embeddings.setToolTip("Extract visual embeddings using CLIP model")
+        settings_layout.addWidget(self.chk_generate_embeddings)
+
+        # Sensitivity settings in one row
+        self.sensitivity_widget = QWidget()
+        sensitivity_layout = QHBoxLayout(self.sensitivity_widget)
+        sensitivity_layout.setContentsMargins(0, 4, 0, 0)
+        sensitivity_layout.setSpacing(16)
+
         # Similarity threshold
-        sim_row = QHBoxLayout()
-        sim_row.addWidget(QLabel("Similarity Threshold:"))
+        sensitivity_layout.addWidget(QLabel("Similarity:"))
         self.spin_similarity = QDoubleSpinBox()
         self.spin_similarity.setRange(0.50, 0.99)
         self.spin_similarity.setSingleStep(0.05)
         self.spin_similarity.setValue(0.85)
-        self.spin_similarity.setToolTip(
-            "Minimum visual similarity (0.50-0.99)\n"
-            "Lower = more aggressive grouping\n"
-            "Higher = stricter matching"
-        )
-        sim_row.addWidget(self.spin_similarity)
-        sim_row.addStretch(1)
-        sensitivity_layout.addLayout(sim_row)
-        
-        # Time window for burst detection
-        time_row = QHBoxLayout()
-        time_row.addWidget(QLabel("Time Window:"))
+        self.spin_similarity.setFixedWidth(65)
+        sensitivity_layout.addWidget(self.spin_similarity)
+
+        # Time window
+        sensitivity_layout.addWidget(QLabel("Time Window:"))
         self.spin_time_window = QSpinBox()
         self.spin_time_window.setRange(5, 120)
         self.spin_time_window.setValue(30)
-        self.spin_time_window.setSuffix(" seconds")
-        self.spin_time_window.setToolTip(
-            "Only compare photos taken within this time period\n"
-            "Good for burst mode photography (5-10s) or events (30-120s)"
-        )
-        time_row.addWidget(self.spin_time_window)
-        time_row.addStretch(1)
-        sensitivity_layout.addLayout(time_row)
-        
-        sensitivity_widget.setLayout(sensitivity_layout)
-        params_layout.addWidget(sensitivity_widget)
-        self.sensitivity_widget = sensitivity_widget
-        
-        layout.addWidget(params_group)
-        
-        # System Status
-        self.status_group = QGroupBox("System Status")
-        status_layout = QVBoxLayout(self.status_group)
-        
+        self.spin_time_window.setSuffix("s")
+        self.spin_time_window.setFixedWidth(65)
+        sensitivity_layout.addWidget(self.spin_time_window)
+
+        sensitivity_layout.addStretch()
+        settings_layout.addWidget(self.sensitivity_widget)
+
+        content_layout.addWidget(settings_group)
+
+        # === SYSTEM STATUS ===
+        status_group = QGroupBox("📊 System Status")
+        status_group.setStyleSheet(self._groupbox_style())
+        self.status_group = status_group
+        status_layout = QVBoxLayout(status_group)
+        status_layout.setContentsMargins(12, 16, 12, 12)
+
         self.status_label = QLabel("Checking system...")
         self.status_label.setStyleSheet("font-weight: bold;")
         status_layout.addWidget(self.status_label)
-        
-        self.recommendations_text = QTextEdit()
-        self.recommendations_text.setMaximumHeight(100)
-        self.recommendations_text.setReadOnly(True)
-        status_layout.addWidget(self.recommendations_text)
-        
-        layout.addWidget(self.status_group)
-        
-        # Progress Section (initially hidden)
-        self.progress_group = QGroupBox("Progress")
-        self.progress_group.setVisible(False)
-        progress_layout = QVBoxLayout(self.progress_group)
-        
+
+        self.status_detail = QLabel("")
+        self.status_detail.setWordWrap(True)
+        self.status_detail.setStyleSheet("color: #666; font-size: 9pt;")
+        status_layout.addWidget(self.status_detail)
+
+        content_layout.addWidget(status_group)
+
+        # Add stretch to push content up
+        content_layout.addStretch()
+
+        scroll_area.setWidget(scroll_content)
+        main_layout.addWidget(scroll_area, 1)  # Takes remaining space
+
+        # === PROGRESS BAR (hidden initially, at bottom) ===
+        self.progress_widget = QWidget()
+        self.progress_widget.setStyleSheet("background-color: white; border-top: 1px solid #e0e0e0;")
+        # CRITICAL: Fixed size policy ensures progress bar stays at bottom
+        self.progress_widget.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+        self.progress_widget.setVisible(False)
+        progress_layout = QVBoxLayout(self.progress_widget)
+        progress_layout.setContentsMargins(16, 10, 16, 10)
+        progress_layout.setSpacing(4)
+
         self.progress_bar = QProgressBar()
         self.progress_bar.setTextVisible(True)
+        self.progress_bar.setStyleSheet("""
+            QProgressBar {
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                text-align: center;
+                height: 20px;
+            }
+            QProgressBar::chunk {
+                background-color: #1a73e8;
+                border-radius: 3px;
+            }
+        """)
         progress_layout.addWidget(self.progress_bar)
-        
-        self.progress_label = QLabel("Ready to start...")
+
+        self.progress_label = QLabel("Ready...")
+        self.progress_label.setStyleSheet("color: #666; font-size: 9pt;")
         progress_layout.addWidget(self.progress_label)
-        
-        layout.addWidget(self.progress_group)
-        
-        # Add stretch before buttons
-        layout.addStretch(1)
 
-        # Set up scroll area
-        scroll_area.setWidget(scroll_content)
-        main_layout.addWidget(scroll_area)
+        main_layout.addWidget(self.progress_widget)
 
-        # Buttons (outside scroll area for always visible)
-        button_widget = QWidget()
-        button_widget.setStyleSheet("background-color: white; border-top: 1px solid #ddd;")
-        button_layout = QHBoxLayout(button_widget)
-        button_layout.setContentsMargins(20, 12, 20, 12)
-        button_layout.addStretch(1)
-
-        self.btn_cancel = QPushButton("Cancel")
-        self.btn_cancel.clicked.connect(self.reject)
-        button_layout.addWidget(self.btn_cancel)
-
-        self.btn_start = QPushButton("Start Detection")
-        self.btn_start.setDefault(True)
-        self.btn_start.clicked.connect(self._start_detection)
-        button_layout.addWidget(self.btn_start)
-
-        main_layout.addWidget(button_widget)
-    
-    def _apply_styles(self):
-        """Apply custom styles."""
-        self.setStyleSheet("""
+    def _groupbox_style(self) -> str:
+        """Return compact GroupBox styling."""
+        return """
             QGroupBox {
                 font-weight: bold;
-                border: 1px solid #ddd;
+                font-size: 9pt;
+                border: 1px solid #e0e0e0;
                 border-radius: 6px;
-                margin-top: 12px;
-                padding-top: 12px;
+                margin-top: 8px;
+                padding-top: 16px;
+                background-color: white;
             }
             QGroupBox::title {
                 subcontrol-origin: margin;
                 subcontrol-position: top left;
-                padding: 0 8px;
-                background-color: white;
+                padding: 2px 8px;
+                background-color: #fafafa;
             }
+        """
+
+    def _primary_button_style(self) -> str:
+        """Return primary button styling (blue)."""
+        return """
             QPushButton {
-                padding: 8px 16px;
-                border-radius: 4px;
-                font-weight: bold;
-                background-color: #f5f5f5;
-                color: #333333;
-                border: 1px solid #cccccc;
-            }
-            QPushButton:hover {
-                background-color: #e8e8e8;
-            }
-            QPushButton#btn_start {
                 background-color: #1a73e8;
                 color: white;
+                padding: 8px 16px;
+                font-weight: bold;
+                font-size: 9pt;
                 border: none;
+                border-radius: 4px;
             }
-            QPushButton#btn_start:hover {
+            QPushButton:hover {
                 background-color: #1557b0;
             }
-            QPushButton#btn_start:pressed {
+            QPushButton:pressed {
                 background-color: #0d47a1;
             }
-        """)
-        self.btn_start.setObjectName("btn_start")
-    
+            QPushButton:disabled {
+                background-color: #ccc;
+                color: #888;
+            }
+        """
+
+    def _secondary_button_style(self) -> str:
+        """Return secondary button styling (outlined)."""
+        return """
+            QPushButton {
+                background-color: white;
+                color: #333;
+                padding: 8px 12px;
+                font-size: 9pt;
+                border: 1px solid #ddd;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background-color: #f5f5f5;
+                border-color: #ccc;
+            }
+            QPushButton:pressed {
+                background-color: #e8e8e8;
+            }
+        """
+
     def _connect_signals(self):
         """Connect signals."""
         self.chk_similar.toggled.connect(self._on_similar_toggled)
@@ -525,34 +563,35 @@ class DuplicateDetectionDialog(QDialog):
         """Handle scope selection change from widget."""
         self.selected_photo_ids = photo_ids
         logger.debug(f"Scope changed: {count} photos selected")
-    
+
     def _check_system_readiness(self):
         """Check system readiness and update UI."""
         ready, summary, recommendations = check_system_readiness()
-        
+
         self.status_label.setText(summary)
-        
+
         if ready:
             self.status_label.setStyleSheet("color: #2e7d32; font-weight: bold;")
-            self.recommendations_text.setPlainText("✅ System ready for duplicate detection!")
+            self.status_detail.setText("✓ System ready for duplicate detection")
+            self.status_detail.setStyleSheet("color: #2e7d32;")
             self.btn_start.setEnabled(True)
         else:
             self.status_label.setStyleSheet("color: #c62828; font-weight: bold;")
-            rec_text = "⚠️ System issues detected:\n\n" + "\n".join(f"• {rec}" for rec in recommendations)
-            self.recommendations_text.setPlainText(rec_text)
+            rec_text = " | ".join(recommendations[:2]) if recommendations else "System check failed"
+            self.status_detail.setText(f"⚠ {rec_text}")
+            self.status_detail.setStyleSheet("color: #c62828;")
             self.btn_start.setEnabled(False)
-    
+
     def _on_similar_toggled(self, checked: bool):
         """Handle similar detection toggle."""
         self.chk_generate_embeddings.setEnabled(checked)
         self.sensitivity_widget.setEnabled(checked)
-        
+
         if checked and not self.chk_generate_embeddings.isChecked():
             self.chk_generate_embeddings.setChecked(True)
-    
+
     def _on_embedding_toggled(self, checked: bool):
         """Handle embedding generation toggle."""
-        # If embeddings are disabled but similar detection is enabled, warn user
         if not checked and self.chk_similar.isChecked():
             reply = QMessageBox.question(
                 self,
@@ -564,17 +603,35 @@ class DuplicateDetectionDialog(QDialog):
             )
             if reply == QMessageBox.No:
                 self.chk_generate_embeddings.setChecked(True)
-    
+
+    def _show_help(self):
+        """Show help information."""
+        QMessageBox.information(
+            self,
+            "Duplicate Detection Help",
+            "<b>Exact Duplicates</b><br>"
+            "Finds identical photos using file content hashing (SHA256). "
+            "Very fast and has zero false positives.<br><br>"
+            "<b>Similar Shots</b><br>"
+            "Uses AI (CLIP) to find visually similar photos like burst shots, "
+            "edited versions, or similar compositions. Requires embeddings.<br><br>"
+            "<b>Tips:</b><br>"
+            "• Start with 'Exact Duplicates' for quick results<br>"
+            "• Use 'Similar Shots' for burst photography cleanup<br>"
+            "• Lower similarity threshold = more aggressive grouping<br>"
+            "• Time window helps group burst shots taken within seconds"
+        )
+
     def _start_detection(self):
         """Start duplicate detection process."""
         # Validate options
         if not self.chk_exact.isChecked() and not self.chk_similar.isChecked():
             QMessageBox.warning(
                 self,
-                "No Detection Method Selected",
-                "Please select at least one detection method:\n"
-                "  Exact Duplicates\n"
-                "  Similar Shots"
+                "No Detection Method",
+                "Please select at least one detection method:\n\n"
+                "• Exact Duplicates\n"
+                "• Similar Shots"
             )
             return
 
@@ -585,8 +642,7 @@ class DuplicateDetectionDialog(QDialog):
             QMessageBox.warning(
                 self,
                 "No Photos Selected",
-                "Please select at least some photos to scan.\n\n"
-                "Use the 'Photo Selection' options above to choose which photos to analyze."
+                "Please select photos to scan using the options above."
             )
             return
 
@@ -603,7 +659,7 @@ class DuplicateDetectionDialog(QDialog):
 
         logger.info(f"Starting duplicate detection: {len(photo_ids)} photos, scope: {options['scope_description']}")
 
-        # Hide configuration, show progress
+        # Show progress mode
         self._show_progress_mode()
 
         # Start worker thread with photo_ids
@@ -617,80 +673,85 @@ class DuplicateDetectionDialog(QDialog):
         self.worker_thread.started.connect(self.worker.run)
 
         self.worker_thread.start()
-    
+
     def _show_progress_mode(self):
         """Switch to progress display mode."""
-        # Disable configuration elements
-        for widget in [self.scope_widget, self.chk_exact, self.chk_similar,
-                       self.chk_generate_embeddings, self.sensitivity_widget,
-                       self.status_group]:
-            widget.setEnabled(False)
+        # Disable configuration
+        self.scope_widget.setEnabled(False)
+        self.chk_exact.setEnabled(False)
+        self.chk_similar.setEnabled(False)
+        self.chk_generate_embeddings.setEnabled(False)
+        self.sensitivity_widget.setEnabled(False)
+        self.status_group.setEnabled(False)
 
-        # Show progress elements
-        self.progress_group.setVisible(True)
+        # Show progress
+        self.progress_widget.setVisible(True)
         self.btn_start.setText("Running...")
         self.btn_start.setEnabled(False)
         self.btn_cancel.setText("Stop")
-    
+        self.btn_help.setEnabled(False)
+
     def _update_progress(self, percentage: int, message: str):
         """Update progress display."""
         self.progress_bar.setValue(percentage)
         self.progress_label.setText(message)
-    
+
     def _on_detection_finished(self, results: dict):
         """Handle detection completion."""
         # Clean up worker
         if self.worker_thread and self.worker_thread.isRunning():
             self.worker_thread.quit()
             self.worker_thread.wait()
-        
+
         # Show results
         scope = results.get('scope', 'All photos')
-        message = f"""Duplicate detection completed!
-
-Scope: {scope}
-
-Results:
-  Exact duplicates found: {results.get('exact_duplicates', 0):,}
-  Similar stacks created: {results.get('similar_stacks', 0):,}
-  Photos processed: {results.get('photos_processed', 0):,}
-  Embeddings generated: {results.get('embeddings_generated', 0):,}
-
-You can now browse duplicates in the sidebar under 'Duplicates' section."""
+        message = (
+            f"<b>Detection Complete!</b><br><br>"
+            f"<b>Scope:</b> {scope}<br><br>"
+            f"<b>Results:</b><br>"
+            f"• Exact duplicates: {results.get('exact_duplicates', 0):,}<br>"
+            f"• Similar stacks: {results.get('similar_stacks', 0):,}<br>"
+            f"• Photos processed: {results.get('photos_processed', 0):,}<br>"
+            f"• Embeddings generated: {results.get('embeddings_generated', 0):,}<br><br>"
+            f"<i>Browse duplicates in the sidebar under 'Duplicates' section.</i>"
+        )
 
         QMessageBox.information(self, "Detection Complete", message)
         self.accept()
-    
+
     def _on_detection_error(self, error_message: str):
         """Handle detection error."""
         # Clean up worker
         if self.worker_thread and self.worker_thread.isRunning():
             self.worker_thread.quit()
             self.worker_thread.wait()
-        
+
         QMessageBox.critical(
             self,
             "Detection Failed",
             f"Duplicate detection failed:\n\n{error_message}"
         )
-        
+
         # Return to configuration mode
         self._show_configuration_mode()
-    
+
     def _show_configuration_mode(self):
         """Switch back to configuration mode."""
-        # Re-enable configuration elements
-        for widget in [self.scope_widget, self.chk_exact, self.chk_similar,
-                       self.chk_generate_embeddings, self.sensitivity_widget,
-                       self.status_group]:
-            widget.setEnabled(True)
+        # Re-enable configuration
+        self.scope_widget.setEnabled(True)
+        self.chk_exact.setEnabled(True)
+        self.chk_similar.setEnabled(True)
+        self.chk_generate_embeddings.setEnabled(True)
+        self.sensitivity_widget.setEnabled(True)
+        self.status_group.setEnabled(True)
 
-        # Hide progress elements
-        self.progress_group.setVisible(False)
-        self.btn_start.setText("Start Detection")
+        # Hide progress
+        self.progress_widget.setVisible(False)
+        self.btn_start.setText("▶ Start")
         self.btn_start.setEnabled(True)
         self.btn_cancel.setText("Cancel")
-    
+        self.btn_help.setEnabled(True)
+
     def reject(self):
         """Handle dialog rejection (cancel/escape)."""
         if self.worker_thread and self.worker_thread.isRunning():
@@ -699,14 +760,14 @@ You can now browse duplicates in the sidebar under 'Duplicates' section."""
                 self.worker._running = False
             self.worker_thread.quit()
             self.worker_thread.wait()
-        
+
         super().reject()
 
 
 if __name__ == "__main__":
     from PySide6.QtWidgets import QApplication
     import sys
-    
+
     app = QApplication(sys.argv)
     dialog = DuplicateDetectionDialog(project_id=1)
     dialog.exec()

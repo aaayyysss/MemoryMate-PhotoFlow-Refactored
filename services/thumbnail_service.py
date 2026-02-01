@@ -451,10 +451,11 @@ class ThumbnailService:
 
         timeout = timeout or self.default_timeout
 
-        # 1. Check L1 (memory) cache
-        l1_entry = self.l1_cache.get(norm_path)
+        # 1. Check L1 (memory) cache - key includes height for size-specific caching
+        cache_key = f"{norm_path}:{height}"
+        l1_entry = self.l1_cache.get(cache_key)
         if l1_entry and self._is_cache_valid(l1_entry, current_mtime):
-            logger.debug(f"L1 hit: {path}")
+            logger.debug(f"L1 hit: {path} @ {height}px")
             return l1_entry["pixmap"]
 
         # 2. Check L2 (database) cache
@@ -462,16 +463,16 @@ class ThumbnailService:
         if l2_pixmap and not l2_pixmap.isNull():
             logger.debug(f"L2 hit: {path}")
             # Store in L1 for faster subsequent access
-            self.l1_cache.put(norm_path, {"pixmap": l2_pixmap, "mtime": current_mtime})
+            self.l1_cache.put(cache_key, {"pixmap": l2_pixmap, "mtime": current_mtime})
             return l2_pixmap
 
         # 3. Generate thumbnail
-        logger.debug(f"Cache miss, generating: {path}")
+        logger.debug(f"Cache miss, generating: {path} @ {height}px")
         pixmap = self._generate_thumbnail(path, height, timeout)
 
         if pixmap and not pixmap.isNull():
             # Store in both caches
-            self.l1_cache.put(norm_path, {"pixmap": pixmap, "mtime": current_mtime})
+            self.l1_cache.put(cache_key, {"pixmap": pixmap, "mtime": current_mtime})
             self.l2_cache.store_thumbnail(path, current_mtime, pixmap)
 
         return pixmap
@@ -709,8 +710,14 @@ class ThumbnailService:
         """
         norm_path = self._normalize_path(path)
 
-        # Remove from L1
-        l1_removed = self.l1_cache.invalidate(norm_path)
+        # Remove from L1 - invalidate all size variants
+        # L1 keys are now f"{norm_path}:{height}", so we need to clear common sizes
+        common_sizes = [80, 160, 200, 280, 320, 360, 400, 512]
+        l1_removed = 0
+        for size in common_sizes:
+            cache_key = f"{norm_path}:{size}"
+            if self.l1_cache.invalidate(cache_key):
+                l1_removed += 1
 
         # Remove from L2
         self.l2_cache.invalidate(path)
@@ -722,7 +729,7 @@ class ThumbnailService:
             if was_failed:
                 self._failed_images.discard(norm_path)
 
-        logger.info(f"Invalidated thumbnail: {path} (L1={'yes' if l1_removed else 'no'}, was_failed={was_failed})")
+        logger.info(f"Invalidated thumbnail: {path} (L1={l1_removed} sizes, was_failed={was_failed})")
 
     def clear_all(self):
         """

@@ -1,5 +1,5 @@
 # layouts/google_components/duplicates_dialog.py
-# Version 02.01.00.00 dated 20260122
+# Version 02.01.00.01 dated 20260126
 # Duplicate review and management dialog for Google Layout
 
 """
@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
     QGridLayout, QFrame, QCheckBox, QMessageBox, QSplitter,
     QGroupBox, QTableWidget, QTableWidgetItem, QHeaderView
 )
-from PySide6.QtCore import Signal, Qt, QSize, Slot, QThreadPool
+from PySide6.QtCore import Signal, Qt, QSize, Slot, QThreadPool, QTimer
 from PySide6.QtGui import QPixmap, QFont, QColor
 from typing import Optional, List, Dict, Any
 from pathlib import Path
@@ -32,7 +32,7 @@ class PhotoInstanceWidget(QWidget):
     Widget displaying a single photo instance with thumbnail and metadata.
 
     Shows:
-    - Thumbnail
+    - Thumbnail (responsive size)
     - Resolution
     - File size
     - Date taken
@@ -43,10 +43,11 @@ class PhotoInstanceWidget(QWidget):
 
     selection_changed = Signal(int, bool)  # photo_id, is_selected
 
-    def __init__(self, photo: Dict[str, Any], is_representative: bool = False, parent=None):
+    def __init__(self, photo: Dict[str, Any], is_representative: bool = False, thumb_size: int = 280, parent=None):
         super().__init__(parent)
         self.photo = photo
         self.is_representative = is_representative
+        self.thumb_size = int(thumb_size)
 
         self._init_ui()
         self._load_thumbnail_async()
@@ -54,62 +55,59 @@ class PhotoInstanceWidget(QWidget):
     def _init_ui(self):
         """Initialize UI components."""
         layout = QVBoxLayout(self)
-        layout.setSpacing(8)
-        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(4)
+        layout.setContentsMargins(6, 6, 6, 6)
 
-        # Thumbnail placeholder
+        # Thumbnail placeholder - Responsive size for better comparison (Google Photos style)
         self.thumbnail_label = QLabel()
-        self.thumbnail_label.setFixedSize(200, 200)
+        self.thumbnail_label.setFixedSize(self.thumb_size, self.thumb_size)
         self.thumbnail_label.setAlignment(Qt.AlignCenter)
         self.thumbnail_label.setStyleSheet("""
             QLabel {
                 background-color: #f5f5f5;
                 border: 1px solid #ddd;
-                border-radius: 4px;
+                border-radius: 8px;
             }
         """)
         self.thumbnail_label.setText("Loading...")
         layout.addWidget(self.thumbnail_label, alignment=Qt.AlignCenter)
 
-        # Metadata
+        # Metadata - Compact single-line format for media-first layout
         metadata_layout = QVBoxLayout()
-        metadata_layout.setSpacing(4)
+        metadata_layout.setSpacing(2)
 
         # Representative badge
         if self.is_representative:
             rep_label = QLabel("⭐ Representative")
-            rep_label.setStyleSheet("color: #FFA500; font-weight: bold; font-size: 12px;")
+            rep_label.setStyleSheet("color: #FFA500; font-weight: bold;")
             metadata_layout.addWidget(rep_label)
 
-        # Resolution
+        # Compact metadata: Resolution • Size • Date (Google Photos style)
         width = self.photo.get('width', 0)
         height = self.photo.get('height', 0)
-        res_label = QLabel(f"📐 {width}×{height}")
-        res_label.setStyleSheet("font-size: 11px; color: #666;")
-        metadata_layout.addWidget(res_label)
-
-        # File size
         size_kb = self.photo.get('size_kb', 0)
         if size_kb >= 1024:
             size_str = f"{size_kb/1024:.1f} MB"
         else:
-            size_str = f"{size_kb:.1f} KB"
-        size_label = QLabel(f"💾 {size_str}")
-        size_label.setStyleSheet("font-size: 11px; color: #666;")
-        metadata_layout.addWidget(size_label)
+            size_str = f"{size_kb:.0f} KB"
+        date_taken = self.photo.get('date_taken', '')
+        if date_taken and len(date_taken) > 10:
+            date_taken = date_taken[:10]  # Just the date part
 
-        # Date taken
-        date_taken = self.photo.get('date_taken', 'Unknown')
-        date_label = QLabel(f"📅 {date_taken}")
-        date_label.setStyleSheet("font-size: 11px; color: #666;")
-        metadata_layout.addWidget(date_label)
+        compact_info = f"{width}×{height} • {size_str}"
+        if date_taken:
+            compact_info += f" • {date_taken}"
 
-        # File path (truncated)
+        info_label = QLabel(compact_info)
+        info_label.setStyleSheet("color: #666;")
+        metadata_layout.addWidget(info_label)
+
+        # File name (truncated) with full path in tooltip
         path = self.photo.get('path', '')
         filename = Path(path).name
         path_label = QLabel(f"📄 {filename}")
         path_label.setToolTip(path)
-        path_label.setStyleSheet("font-size: 11px; color: #666;")
+        path_label.setStyleSheet("color: #888;")
         path_label.setWordWrap(True)
         metadata_layout.addWidget(path_label)
 
@@ -139,9 +137,21 @@ class PhotoInstanceWidget(QWidget):
             path = self.photo.get('path', '')
 
             if path and Path(path).exists():
-                pixmap = get_thumbnail(path, 200)
+                pixmap = get_thumbnail(path, self.thumb_size)
                 if pixmap and not pixmap.isNull():
-                    self.thumbnail_label.setPixmap(pixmap)
+                    # Google Photos style: center-crop to fill square
+                    scaled = pixmap.scaled(
+                        self.thumb_size, self.thumb_size,
+                        Qt.KeepAspectRatio,
+                        Qt.SmoothTransformation
+                    )
+                    # Center-crop to exact square
+                    x = (scaled.width() - self.thumb_size) // 2
+                    y = (scaled.height() - self.thumb_size) // 2
+                    cropped = scaled.copy(x, y, self.thumb_size, self.thumb_size)
+                    self.thumbnail_label.setPixmap(cropped)
+                    
+#                    self.thumbnail_label.setPixmap(scaled)
                 else:
                     self.thumbnail_label.setText("No preview")
             else:
@@ -157,6 +167,37 @@ class PhotoInstanceWidget(QWidget):
         except Exception as e:
             logger.error(f"Failed to load thumbnail for {self.photo.get('id')}: {e}")
             self.thumbnail_label.setText("Error loading")
+
+    def set_thumb_size(self, size: int):
+        """Update thumbnail size dynamically (for responsive resizing)."""
+        size = int(size)
+        if size == getattr(self, "thumb_size", None):
+            return
+        self.thumb_size = size
+        self.thumbnail_label.setFixedSize(size, size)
+
+        # Reload pixmap at new size (cache-friendly if get_thumbnail caches by size)
+        try:
+            from app_services import get_thumbnail
+            path = self.photo.get('path', '')
+            if path and Path(path).exists():
+                pixmap = get_thumbnail(path, size)
+                if pixmap and not pixmap.isNull():
+                    # Google Photos style: center-crop to fill square
+                    scaled = pixmap.scaled(
+                        size, size,
+                        Qt.KeepAspectRatio,
+                        Qt.SmoothTransformation
+                    )
+                    # Center-crop to exact square
+                    x = (scaled.width() - size) // 2
+                    y = (scaled.height() - size) // 2
+                    cropped = scaled.copy(x, y, size, size)
+                    self.thumbnail_label.setPixmap(cropped)
+                    
+#                    self.thumbnail_label.setPixmap(scaled)
+        except Exception:
+            pass
 
     def _on_selection_changed(self, state):
         """Handle selection change."""
@@ -219,73 +260,82 @@ class DuplicatesDialog(QDialog):
             
         self.setWindowTitle("Review Duplicates")
         self.setMinimumSize(1200, 700)
-    
+
+        # Resize throttle timer for responsive grid relayout
+        self._relayout_timer = QTimer(self)
+        self._relayout_timer.setSingleShot(True)
+        self._relayout_timer.timeout.connect(self._relayout_instances_grid)
+
+        # Store current asset for resize rebuilds
+        self._current_asset = None
+
         self._init_ui()
         self._load_duplicates_async()
 
     def _init_ui(self):
-        """Initialize UI components."""
+        """Initialize UI components - compact layout for media-first design."""
         layout = QVBoxLayout(self)
-        layout.setSpacing(16)
-        layout.setContentsMargins(8, 16, 16, 16)
+        layout.setSpacing(4)  # Minimal spacing between sections
+        layout.setContentsMargins(8, 8, 8, 8)  # Reduced margins
 
-        # Title
+        # Compact header row: Title + Subtitle + Counter (all on one line)
+        header_row = QHBoxLayout()
+        header_row.setSpacing(12)
+
         title = QLabel("📸 Duplicate Photo Review")
         title_font = QFont()
-        title_font.setPointSize(16)
+        title_font.setPointSize(14)
         title_font.setBold(True)
         title.setFont(title_font)
-        layout.addWidget(title)
+        header_row.addWidget(title)
 
-        # Subtitle/loading indicator
-        self.subtitle = QLabel("Loading duplicates...")
-        self.subtitle.setStyleSheet("color: #666; font-size: 12px;")
-        layout.addWidget(self.subtitle)
-        
-        # Loading indicator (hidden initially)
+        # Subtitle/loading indicator (inline with title)
+        self.subtitle = QLabel("Loading...")
+        self.subtitle.setStyleSheet("color: #666;")
+        header_row.addWidget(self.subtitle)
+
+        header_row.addStretch()
+
+        # Items loaded counter (moved to header)
+        self.items_counter = QLabel("")
+        self.items_counter.setStyleSheet("color: #888;")
+        header_row.addWidget(self.items_counter)
+
+        layout.addLayout(header_row)
+
+        # Loading indicator (hidden initially, shown below header when loading)
         self.loading_spinner = QLabel("⏳ Loading duplicate data...")
         self.loading_spinner.setStyleSheet("color: #444; font-style: italic;")
         self.loading_spinner.hide()
         layout.addWidget(self.loading_spinner)
-        
-        # Pagination controls
-        self.pagination_widget = self._create_pagination_controls()
-        layout.addWidget(self.pagination_widget)
 
-        # Phase 3C: Toolbar with filtering, sorting, and batch operations
+        # Compact toolbar with batch operations (no group boxes - just buttons)
         toolbar = self._create_toolbar()
         layout.addWidget(toolbar)
 
-        # Separator
-        separator = QFrame()
-        separator.setFrameShape(QFrame.HLine)
-        separator.setFrameShadow(QFrame.Sunken)
-        layout.addWidget(separator)
+        # Main content: Splitter with list and details (takes most space)
+        self.splitter = QSplitter(Qt.Horizontal)
 
-        # Main content: Splitter with list and details
-        splitter = QSplitter(Qt.Horizontal)
-
-        # Left panel: Duplicate assets list
+        # Left panel: Duplicate assets list (narrower for media-first layout)
         left_panel = self._create_assets_list_panel()
-        splitter.addWidget(left_panel)
+        left_panel.setMinimumWidth(260)
+        left_panel.setMaximumWidth(340)
+        self.splitter.addWidget(left_panel)
 
-        # Right panel: Instance details
+        # Right panel: Instance details (dominant, media-first)
         right_panel = self._create_instance_details_panel()
-        splitter.addWidget(right_panel)
+        self.splitter.addWidget(right_panel)
 
-        splitter.setStretchFactor(0, 1)
-        splitter.setStretchFactor(1, 3)
+        # Give more space to the right panel (Lightroom filmstrip + main area pattern)
+        self.splitter.setStretchFactor(0, 0)  # Left panel doesn't stretch
+        self.splitter.setStretchFactor(1, 1)  # Right panel takes all extra space
+        self.splitter.setSizes([300, 900])  # Initial sizes: left fixed-ish, right dominant
 
-        layout.addWidget(splitter)
+        layout.addWidget(self.splitter, 1)  # Stretch factor 1 to take available space
 
-        # Separator
-        separator2 = QFrame()
-        separator2.setFrameShape(QFrame.HLine)
-        separator2.setFrameShadow(QFrame.Sunken)
-        layout.addWidget(separator2)
-
-        # Bottom action buttons
+        # Bottom action buttons (compact)
         button_layout = QHBoxLayout()
+        button_layout.setContentsMargins(0, 4, 0, 0)
         button_layout.addStretch()
 
         self.btn_delete_selected = QPushButton("🗑️ Delete Selected")
@@ -330,82 +380,89 @@ class DuplicatesDialog(QDialog):
         layout.addLayout(button_layout)
 
     def _create_toolbar(self) -> QWidget:
-        """
-        Create toolbar with filtering, sorting, and batch operations.
-
-        Phase 3C: Enhanced UI Polish
-        """
+        """Create compact toolbar with batch operations (no group boxes)."""
         toolbar = QWidget()
         toolbar_layout = QHBoxLayout(toolbar)
-        toolbar_layout.setContentsMargins(0, 8, 0, 8)
-        toolbar_layout.setSpacing(12)
+        toolbar_layout.setContentsMargins(0, 2, 0, 2)  # Minimal vertical padding
+        toolbar_layout.setSpacing(6)
 
-        # Batch Selection Group
-        batch_group = QGroupBox("Batch Selection")
-        batch_layout = QHBoxLayout(batch_group)
-        batch_layout.setContentsMargins(8, 8, 8, 8)
-        batch_layout.setSpacing(8)
-
-        # Common button style for toolbar buttons
+        # Compact button style
         toolbar_btn_style = """
             QPushButton {
-                padding: 6px 12px;
+                padding: 4px 10px;
                 background-color: #f5f5f5;
                 color: #333333;
                 border: 1px solid #cccccc;
                 border-radius: 4px;
-                font-weight: bold;
             }
             QPushButton:hover {
                 background-color: #e8e8e8;
             }
         """
 
+        # Batch selection buttons (no group box wrapper)
         btn_select_all = QPushButton("Select All")
         btn_select_all.setToolTip("Select all duplicates for deletion")
         btn_select_all.setStyleSheet(toolbar_btn_style)
         btn_select_all.clicked.connect(self._on_select_all)
-        batch_layout.addWidget(btn_select_all)
+        toolbar_layout.addWidget(btn_select_all)
 
         btn_select_none = QPushButton("Select None")
         btn_select_none.setToolTip("Deselect all duplicates")
         btn_select_none.setStyleSheet(toolbar_btn_style)
         btn_select_none.clicked.connect(self._on_select_none)
-        batch_layout.addWidget(btn_select_none)
+        toolbar_layout.addWidget(btn_select_none)
 
-        btn_invert = QPushButton("Invert Selection")
+        btn_invert = QPushButton("Invert")
         btn_invert.setToolTip("Invert current selection")
         btn_invert.setStyleSheet(toolbar_btn_style)
         btn_invert.clicked.connect(self._on_invert_selection)
-        batch_layout.addWidget(btn_invert)
+        toolbar_layout.addWidget(btn_invert)
 
-        toolbar_layout.addWidget(batch_group)
+        # Separator
+        sep = QLabel("|")
+        sep.setStyleSheet("color: #ccc;")
+        toolbar_layout.addWidget(sep)
 
-        # Smart Cleanup Group
-        smart_group = QGroupBox("Smart Cleanup")
-        smart_layout = QHBoxLayout(smart_group)
-        smart_layout.setContentsMargins(8, 8, 8, 8)
-        smart_layout.setSpacing(8)
-
+        # Auto-select button
         btn_auto_select = QPushButton("🎯 Auto-Select Lower Quality")
-        btn_auto_select.setToolTip("Automatically select lower quality duplicates for deletion\n(Keeps highest resolution, largest file size)")
+        btn_auto_select.setToolTip("Automatically select lower quality duplicates for deletion")
         btn_auto_select.clicked.connect(self._on_auto_select_duplicates)
         btn_auto_select.setStyleSheet("""
             QPushButton {
-                padding: 6px 12px;
+                padding: 4px 10px;
                 background-color: #4CAF50;
                 color: white;
                 border: none;
                 border-radius: 4px;
-                font-weight: bold;
             }
             QPushButton:hover {
                 background-color: #45a049;
             }
         """)
-        smart_layout.addWidget(btn_auto_select)
+        toolbar_layout.addWidget(btn_auto_select)
 
-        toolbar_layout.addWidget(smart_group)
+        # Load more button (moved here from pagination widget)
+        self.load_more_btn = QPushButton("Load More")
+        self.load_more_btn.clicked.connect(self._load_more_duplicates)
+        self.load_more_btn.setStyleSheet("""
+            QPushButton {
+                padding: 4px 10px;
+                background-color: #2196F3;
+                color: white;
+                border: none;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background-color: #1976D2;
+            }
+            QPushButton:disabled {
+                background-color: #BBDEFB;
+                color: #90CAF9;
+            }
+        """)
+        self.load_more_btn.hide()  # Hidden initially
+        toolbar_layout.addWidget(self.load_more_btn)
 
         toolbar_layout.addStretch()
 
@@ -454,10 +511,88 @@ class DuplicatesDialog(QDialog):
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(0, 0, 0, 0)
 
+        # Header with title and navigation (Google Photos / Lightroom style)
+        header_layout = QHBoxLayout()
+
         # Title
         self.details_title = QLabel("Select a duplicate group")
         self.details_title.setStyleSheet("font-weight: bold; font-size: 13px;")
-        layout.addWidget(self.details_title)
+        header_layout.addWidget(self.details_title)
+
+        header_layout.addStretch()
+
+        # Navigation buttons (compact style)
+        nav_btn_style = """
+            QPushButton {
+                padding: 4px 8px;
+                background-color: #f0f0f0;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                font-weight: bold;
+                min-width: 36px;
+            }
+            QPushButton:hover {
+                background-color: #e0e0e0;
+            }
+            QPushButton:disabled {
+                color: #aaa;
+                background-color: #f5f5f5;
+            }
+        """
+
+        self.btn_prev_group = QPushButton("◀ Prev")
+        self.btn_prev_group.setToolTip("Previous duplicate group (↑)")
+        self.btn_prev_group.setStyleSheet(nav_btn_style)
+        self.btn_prev_group.clicked.connect(self._on_prev_group)
+        self.btn_prev_group.setEnabled(False)
+        header_layout.addWidget(self.btn_prev_group)
+
+        self.group_counter = QLabel("0 / 0")
+        self.group_counter.setStyleSheet("color: #666; margin: 0 8px;")
+        header_layout.addWidget(self.group_counter)
+
+        self.btn_next_group = QPushButton("Next ▶")
+        self.btn_next_group.setToolTip("Next duplicate group (↓)")
+        self.btn_next_group.setStyleSheet(nav_btn_style)
+        self.btn_next_group.clicked.connect(self._on_next_group)
+        self.btn_next_group.setEnabled(False)
+        header_layout.addWidget(self.btn_next_group)
+
+        layout.addLayout(header_layout)
+
+        # Quick action bar (Google Photos style - per-group actions)
+        quick_actions = QHBoxLayout()
+        quick_actions.setContentsMargins(0, 2, 0, 2)
+
+        self.btn_keep_best = QPushButton("⭐ Keep Best Quality")
+        self.btn_keep_best.setToolTip("Auto-select lower quality copies for deletion\n(Keeps largest file with best resolution)")
+        self.btn_keep_best.setStyleSheet("""
+            QPushButton {
+                padding: 4px 10px;
+                background-color: #4CAF50;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #45a049;
+            }
+            QPushButton:disabled {
+                background-color: #ccc;
+            }
+        """)
+        self.btn_keep_best.clicked.connect(self._on_keep_best_in_group)
+        self.btn_keep_best.setEnabled(False)
+        quick_actions.addWidget(self.btn_keep_best)
+
+        # Space savings indicator
+        self.savings_label = QLabel("")
+        self.savings_label.setStyleSheet("color: #666; font-style: italic; margin-left: 16px;")
+        quick_actions.addWidget(self.savings_label)
+
+        quick_actions.addStretch()
+        layout.addLayout(quick_actions)
 
         # Scroll area for instances
         scroll = QScrollArea()
@@ -473,52 +608,14 @@ class DuplicatesDialog(QDialog):
         # Container for instance widgets
         self.instances_container = QWidget()
         self.instances_layout = QGridLayout(self.instances_container)
-        self.instances_layout.setSpacing(16)
-        self.instances_layout.setContentsMargins(16, 16, 16, 16)
+        self.instances_layout.setSpacing(8)
+        self.instances_layout.setContentsMargins(8, 8, 8, 8)
 
         scroll.setWidget(self.instances_container)
         layout.addWidget(scroll)
 
         return panel
 
-    def _create_pagination_controls(self) -> QWidget:
-        """Create pagination controls for loading more duplicates."""
-        pagination = QWidget()
-        pagination_layout = QHBoxLayout(pagination)
-        pagination_layout.setContentsMargins(0, 8, 0, 8)
-        
-        # Load More button
-        self.load_more_btn = QPushButton("Load More Duplicates")
-        self.load_more_btn.clicked.connect(self._load_more_duplicates)
-        self.load_more_btn.setStyleSheet("""
-            QPushButton {
-                padding: 6px 12px;
-                background-color: #2196F3;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #1976D2;
-            }
-            QPushButton:disabled {
-                background-color: #BBDEFB;
-                color: #90CAF9;
-            }
-        """)
-        self.load_more_btn.hide()  # Hidden initially
-        
-        # Items loaded counter
-        self.items_counter = QLabel("0 items loaded")
-        self.items_counter.setStyleSheet("color: #666; font-size: 11px;")
-        
-        pagination_layout.addWidget(self.load_more_btn)
-        pagination_layout.addWidget(self.items_counter)
-        pagination_layout.addStretch()
-        
-        return pagination
-    
     def _load_duplicates_async(self):
         """Load duplicate assets asynchronously using background worker."""
         # Increment generation counter to track this load operation
@@ -695,9 +792,12 @@ class DuplicatesDialog(QDialog):
         logger.info(f"Started async details loading for asset {asset_id} (generation {current_generation})")
     
     def _display_asset_details(self, details: dict):
-        """Display loaded asset details in UI."""
+        """Display loaded asset details in UI with responsive grid layout."""
         if not details:
             return
+
+        # Store for resize rebuilds
+        self._current_asset = details
 
         asset = details['asset']
         photos = details['photos']
@@ -707,32 +807,41 @@ class DuplicatesDialog(QDialog):
         # Update title
         self.details_title.setText(f"Asset #{asset_id} - {instance_count} Copies")
 
-        # Clear existing instances
-        while self.instances_layout.count():
-            item = self.instances_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
+        # Clear existing instances safely
+        self._clear_instances_grid()
 
-        # Phase 3C: Clear instance widgets list
-        self.instance_widgets = []
+        # Calculate responsive grid metrics
+        cols, thumb_size, spacing = self._grid_metrics()
 
-        # Add instance widgets in grid (2 columns)
+        # Update layout spacing and margins
+        self.instances_layout.setSpacing(spacing)
+        self.instances_layout.setContentsMargins(8, 8, 8, 8)
+
+        # Add instance widgets in responsive grid
         rep_photo_id = asset.get('representative_photo_id')
 
         for idx, photo in enumerate(photos):
             is_representative = (photo['id'] == rep_photo_id)
 
-            widget = PhotoInstanceWidget(photo, is_representative, self)
+            widget = PhotoInstanceWidget(
+                photo,
+                is_representative,
+                thumb_size=thumb_size,
+                parent=self.instances_container
+            )
             widget.selection_changed.connect(self._on_instance_selection_changed)
 
-            # Phase 3C: Add to tracking list
+            # Add to tracking list
             self.instance_widgets.append(widget)
 
-            row = idx // 2
-            col = idx % 2
+            # Calculate row/col based on responsive column count
+            row = idx // cols
+            col = idx % cols
             self.instances_layout.addWidget(widget, row, col)
 
-
+        # Update navigation controls and savings indicator
+        self._update_navigation_controls()
+        self._update_savings_indicator()
 
     @Slot(int, bool)
     def _on_instance_selection_changed(self, photo_id: int, is_selected: bool):
@@ -749,9 +858,10 @@ class DuplicatesDialog(QDialog):
         # Enable delete button if any photos selected
         enabled = len(self.selected_photos) > 0
         logger.info(f"[DuplicatesDialog] Setting delete button enabled={enabled}, selected_photos count={len(self.selected_photos)}, ids={self.selected_photos}")
-        logger.info(f"[DuplicatesDialog] Button state before setEnabled: {self.btn_delete_selected.isEnabled()}")
         self.btn_delete_selected.setEnabled(enabled)
-        logger.info(f"[DuplicatesDialog] Button state after setEnabled: {self.btn_delete_selected.isEnabled()}")
+
+        # Update savings indicator
+        self._update_savings_indicator()
 
     def _on_delete_selected(self):
         """Handle delete selected button click."""
@@ -831,7 +941,7 @@ class DuplicatesDialog(QDialog):
                     self.duplicate_action_taken.emit("delete", self.selected_asset_id)
 
                 # Reload the view
-                self._load_duplicates()
+                self._load_duplicates_async()
 
             except Exception as e:
                 logger.error(f"Failed to delete photos: {e}", exc_info=True)
@@ -910,3 +1020,182 @@ class DuplicatesDialog(QDialog):
             f"{best_photo.get('size_kb', 0):.1f} KB\n\n"
             f"Review the selection and click 'Delete Selected' to proceed."
         )
+
+    # ========================================================================
+    # NAVIGATION METHODS (Google Photos / Lightroom style quick browsing)
+    # ========================================================================
+
+    def _on_prev_group(self):
+        """Navigate to previous duplicate group."""
+        if not self.duplicates or not self.selected_asset_id:
+            return
+
+        # Find current index
+        current_idx = self._get_current_group_index()
+        if current_idx > 0:
+            self._select_group_by_index(current_idx - 1)
+
+    def _on_next_group(self):
+        """Navigate to next duplicate group."""
+        if not self.duplicates or not self.selected_asset_id:
+            return
+
+        # Find current index
+        current_idx = self._get_current_group_index()
+        if current_idx < len(self.duplicates) - 1:
+            self._select_group_by_index(current_idx + 1)
+
+    def _get_current_group_index(self) -> int:
+        """Get index of currently selected group."""
+        for idx, asset in enumerate(self.duplicates):
+            if asset['asset_id'] == self.selected_asset_id:
+                return idx
+        return -1
+
+    def _select_group_by_index(self, idx: int):
+        """Select group by index and update UI."""
+        if 0 <= idx < len(self.duplicates):
+            # Select in list widget
+            self.assets_list.setCurrentRow(idx)
+            # Trigger selection handler
+            item = self.assets_list.item(idx)
+            if item:
+                self._on_asset_selected(item)
+
+    def _update_navigation_controls(self):
+        """Update navigation button states and counter."""
+        if not self.duplicates:
+            self.btn_prev_group.setEnabled(False)
+            self.btn_next_group.setEnabled(False)
+            self.btn_keep_best.setEnabled(False)
+            self.group_counter.setText("0 / 0")
+            return
+
+        current_idx = self._get_current_group_index()
+        total = len(self.duplicates)
+
+        # Update navigation buttons
+        self.btn_prev_group.setEnabled(current_idx > 0)
+        self.btn_next_group.setEnabled(current_idx < total - 1)
+        self.btn_keep_best.setEnabled(current_idx >= 0)
+
+        # Update counter
+        if current_idx >= 0:
+            self.group_counter.setText(f"{current_idx + 1} / {total}")
+        else:
+            self.group_counter.setText(f"0 / {total}")
+
+    def _update_savings_indicator(self):
+        """Calculate and display potential storage savings."""
+        if not self.instance_widgets:
+            self.savings_label.setText("")
+            return
+
+        # Calculate total size of selected photos
+        total_savings_kb = 0
+        for widget in self.instance_widgets:
+            if widget.checkbox.isChecked():
+                total_savings_kb += widget.photo.get('size_kb', 0)
+
+        if total_savings_kb > 0:
+            if total_savings_kb >= 1024:
+                savings_str = f"{total_savings_kb / 1024:.1f} MB"
+            else:
+                savings_str = f"{total_savings_kb:.0f} KB"
+            self.savings_label.setText(f"💾 Potential savings: {savings_str}")
+        else:
+            self.savings_label.setText("")
+
+    # ========================================================================
+    # RESPONSIVE GRID LAYOUT (Google Photos / Lightroom style media-first)
+    # ========================================================================
+
+    def _grid_metrics(self):
+        """
+        Calculate responsive grid metrics based on container width.
+
+        Returns: (cols, thumb_size, spacing)
+        """
+        # Get container width
+        w = self.instances_container.width() if hasattr(self, "instances_container") else 900
+        w = max(w, 360)
+
+        # Spacing and margins should match grid layout (compact values)
+        spacing = 8
+        margins = 8 * 2  # left + right
+
+        # Target card width like Google Photos tiles: thumb + metadata padding
+        target_card_w = 320
+
+        cols = max(1, min(6, (w - margins) // target_card_w))
+
+        # Compute thumb size from available width and columns
+        # Card needs: thumb + padding around + checkbox/labels; reserve ~56px
+        available_per_col = (w - margins - spacing * (cols - 1)) / cols
+        thumb_size = int(max(180, min(360, available_per_col - 56)))
+
+        return cols, thumb_size, spacing
+
+    def _clear_instances_grid(self):
+        """Safely clear all widgets from the instances grid."""
+        if not hasattr(self, "instances_layout"):
+            return
+        while self.instances_layout.count():
+            item = self.instances_layout.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.setParent(None)
+                w.deleteLater()
+        self.instance_widgets = []
+
+    def _relayout_instances_grid(self):
+        """Relayout the instances grid after resize (throttled callback)."""
+        # Only relayout if a group is currently shown
+        asset = getattr(self, "_current_asset", None)
+        if not asset:
+            return
+
+        # Re-render with new cols/thumb size
+        self._display_asset_details(asset)
+
+    def resizeEvent(self, event):
+        """Handle window resize with throttled grid relayout."""
+        super().resizeEvent(event)
+        # Throttle to avoid rebuild spam during live resize dragging
+        if hasattr(self, "_relayout_timer"):
+            self._relayout_timer.start(120)
+
+    def _on_keep_best_in_group(self):
+        """
+        Quick action: Keep only the best quality photo in current group.
+
+        This is the same as _on_auto_select_duplicates but without the message box,
+        for faster workflow when reviewing multiple groups.
+        """
+        if not self.selected_asset_id or not self.instance_widgets:
+            return
+
+        # Get all photos in current group
+        photos = [widget.photo for widget in self.instance_widgets]
+
+        # Find the best photo (highest resolution, then largest file size)
+        best_photo = max(photos, key=lambda p: (
+            p.get('width', 0) * p.get('height', 0),  # Resolution
+            p.get('size_kb', 0)  # File size
+        ))
+
+        best_photo_id = best_photo['id']
+
+        # Select all photos except the best one and the representative
+        for widget in self.instance_widgets:
+            photo_id = widget.photo['id']
+            is_representative = widget.is_representative
+
+            # Don't select if it's the best photo or the representative
+            if photo_id != best_photo_id and not is_representative:
+                widget.checkbox.setChecked(True)
+            else:
+                widget.checkbox.setChecked(False)
+
+        # Update savings indicator
+        self._update_savings_indicator()

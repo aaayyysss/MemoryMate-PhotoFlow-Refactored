@@ -105,6 +105,7 @@ from controllers import ScanController, SidebarController, ProjectController, Ph
 from ui.widgets.breadcrumb_navigation import BreadcrumbNavigation
 from ui.widgets.backfill_indicator import CompactBackfillIndicator
 from ui.widgets.selection_toolbar import SelectionToolbar
+from ui.background_activity_panel import BackgroundActivityPanel, MinimalActivityIndicator
 from ui.ui_builder import UIBuilder
 
 # Phase 2 Refactoring: Extracted services
@@ -1029,6 +1030,14 @@ class MainWindow(QMainWindow):
 
         main_layout.addWidget(self.splitter, 1)
 
+        # --- Background Activity Panel (best-practice background jobs UI)
+        try:
+            self.activity_panel = BackgroundActivityPanel(self)
+            main_layout.addWidget(self.activity_panel)
+        except Exception as e:
+            print(f"[MainWindow] Could not create activity panel: {e}")
+            self.activity_panel = None
+
         # --- Wire toolbar actions
         act_select_all.triggered.connect(self.grid.list_view.selectAll)
         act_clear_sel.triggered.connect(self.grid.list_view.clearSelection)
@@ -1599,12 +1608,16 @@ class MainWindow(QMainWindow):
                 backend='auto'
             )
 
+            # Get current project_id for canonical model enforcement
+            current_project_id = getattr(self.grid, 'project_id', None) if hasattr(self, 'grid') else None
+
             # Create worker
             worker = EmbeddingWorker(
                 job_id=job_id,
                 photo_ids=photo_ids,
                 model_variant=model_variant,
-                device='auto'
+                device='auto',
+                project_id=current_project_id
             )
 
             # Connect worker signals to progress dialog
@@ -1681,12 +1694,16 @@ class MainWindow(QMainWindow):
                 backend='auto'
             )
 
+            # Get current project_id for canonical model enforcement
+            current_project_id = getattr(self.grid, 'project_id', None) if hasattr(self, 'grid') else None
+
             # Create worker
             worker = EmbeddingWorker(
                 job_id=job_id,
                 photo_ids=photo_ids,
                 model_variant=model_variant,
-                device='auto'
+                device='auto',
+                project_id=current_project_id
             )
 
             # Connect worker signals to progress dialog

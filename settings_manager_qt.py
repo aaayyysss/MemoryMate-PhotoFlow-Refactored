@@ -27,8 +27,8 @@ DEFAULT_SETTINGS = {
     # Scan exclusions (folders to skip during photo scanning)
     # Empty list = use platform-specific defaults from PhotoScanService
     # Non-empty list = override defaults with custom exclusions
-    "scan_exclude_folders": [],  # Example: ["node_modules", ".git", "my_private_folder"]
-    "ignore_folders": [],  # CRITICAL: Used by preferences dialog (must match)
+    # Used by: preferences_dialog.py (UI), photo_scan_service.py (scanning)
+    "ignore_folders": [],  # Example: ["node_modules", ".git", "my_private_folder"]
 
     # --- Badge overlay settings ---
     "badge_overlays_enabled": True,

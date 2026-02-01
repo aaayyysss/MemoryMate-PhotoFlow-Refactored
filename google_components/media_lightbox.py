@@ -460,15 +460,28 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         # Window settings - ADAPTIVE SIZING: Based on screen resolution and DPI
         self.setWindowTitle(t('google_layout.lightbox.window_title'))
 
-        # Get screen information with DPI awareness
-        screen = QApplication.primaryScreen()
-        screen_geometry = screen.geometry()
-        available_geometry = screen.availableGeometry()  # Exclude taskbar
+        # ============================================================
+        # FIX A: Use the correct screen (parent's screen or cursor's screen)
+        # instead of always using primaryScreen()
+        # This fixes multi-monitor setups where the app is on a secondary monitor
+        # ============================================================
+        screen = None
+        if self.parent():
+            screen = self.parent().screen()
+
+        if screen is None:
+            screen = QApplication.screenAt(QCursor.pos())
+
+        if screen is None:
+            screen = QApplication.primaryScreen()
+
+        # Use available geometry (excludes taskbar) for all sizing
+        available_geometry = screen.availableGeometry()
         dpi_scale = screen.devicePixelRatio()  # Windows scale (1.0, 1.25, 1.5, 2.0)
-        
-        # Calculate logical pixels
-        screen_width = screen_geometry.width()
-        screen_height = screen_geometry.height()
+
+        # Calculate from available geometry (not full screen)
+        avail_width = available_geometry.width()
+        avail_height = available_geometry.height()
         
         # ============================================================
         # OPTIMIZED 5-TIER PROFESSIONAL BREAKPOINT SYSTEM
@@ -483,7 +496,8 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         # ============================================================
 
         # Breakpoint categories with professional sizing (industry-standard approach)
-        if screen_width >= 3840:  # 4K+ / 8K (3840px+) - Ultra-wide displays
+        # Now uses avail_width from available_geometry for proper multi-monitor support
+        if avail_width >= 3840:  # 4K+ / 8K (3840px+) - Ultra-wide displays
             size_percent = 0.85  # Conservative sizing for professional workflow
             self.responsive_tier = "4K+ Professional"
             self.toolbar_height = 64  # Standard professional toolbar height
@@ -495,7 +509,7 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             self.font_size_body = 10
             self.font_size_caption = 8
             self.panel_width = 320  # Professional panel width
-        elif screen_width >= 2560:  # QHD / 2K (2560-3839px) - High-end monitors
+        elif avail_width >= 2560:  # QHD / 2K (2560-3839px) - High-end monitors
             size_percent = 0.87  # Slightly larger for bigger screens
             self.responsive_tier = "QHD/2K Professional"
             self.toolbar_height = 60
@@ -507,7 +521,7 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             self.font_size_body = 10
             self.font_size_caption = 8
             self.panel_width = 300
-        elif screen_width >= 1920:  # Full HD (1920-2559px) - Standard desktop
+        elif avail_width >= 1920:  # Full HD (1920-2559px) - Standard desktop
             size_percent = 0.88  # Balanced sizing for standard desktop
             self.responsive_tier = "FullHD Professional"
             self.toolbar_height = 56
@@ -519,7 +533,7 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             self.font_size_body = 9
             self.font_size_caption = 7
             self.panel_width = 280
-        elif screen_width >= 1366:  # HD / Laptop (1366-1919px) - Laptops/small screens
+        elif avail_width >= 1366:  # HD / Laptop (1366-1919px) - Laptops/small screens
             size_percent = 0.90  # Maximum for smaller screens
             self.responsive_tier = "HD/Laptop Professional"
             self.toolbar_height = 52
@@ -543,35 +557,31 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             self.font_size_body = 8
             self.font_size_caption = 6
             self.panel_width = 240
-        
-        width = int(screen_width * size_percent)
-        height = int(screen_height * size_percent)
-        
-        # Ensure window fits within available screen space (respect taskbar, etc.)
-        max_width = available_geometry.width()
-        max_height = available_geometry.height()
-        
-        # Apply bounds checking
-        width = min(width, max_width)
-        height = min(height, max_height)
-        
-        # Center the window
-        x = available_geometry.x() + (available_geometry.width() - width) // 2
-        y = available_geometry.y() + (available_geometry.height() - height) // 2
-        
+
+        # Calculate window size from available geometry (respects taskbar, etc.)
+        width = int(avail_width * size_percent)
+        height = int(avail_height * size_percent)
+
+        # FIX B: Set min/max constraints to keep window usable but never oversized
+        self.setMinimumSize(900, 600)
+        self.setMaximumSize(available_geometry.size())
+
+        # Center the window within available geometry
+        x = available_geometry.x() + (avail_width - width) // 2
+        y = available_geometry.y() + (avail_height - height) // 2
+
         self.setGeometry(QRect(x, y, width, height))
-        
+
         # Log sizing and responsive tier for debugging
-        print(f"[MediaLightbox] Screen: {screen_width}x{screen_height} (DPI: {dpi_scale}x)")
+        print(f"[MediaLightbox] Available: {avail_width}x{avail_height} (DPI: {dpi_scale}x)")
         print(f"[MediaLightbox] Responsive Tier: {self.responsive_tier}")
-        print(f"[MediaLightbox] Window: {width}x{height} ({int(size_percent*100)}% of screen)")
+        print(f"[MediaLightbox] Window: {width}x{height} ({int(size_percent*100)}% of available)")
         print(f"[MediaLightbox] UI Scaling: Toolbar={self.toolbar_height}px, Buttons={self.button_size}px, Margins={self.margin_size}px")
 
         self.setStyleSheet("background: #000000; QToolTip { color: white; background-color: rgba(0,0,0,0.92); border: 1px solid #555; padding: 6px 10px; border-radius: 6px; } QMessageBox { background-color: #121212; color: white; } QMessageBox QLabel { color: white; } QMessageBox QPushButton { background: rgba(255,255,255,0.15); color: white; border: none; border-radius: 6px; padding: 6px 12px; } QMessageBox QPushButton:hover { background: rgba(255,255,255,0.25); }")  # Dark theme + tooltip/messagebox styling
 
-        # Show window with calculated adaptive size (not maximized to respect screen boundaries)
-        # This ensures the window stays within screen bounds on all resolutions
-        self.show()
+        # FIX C: Removed self.show() from _setup_ui()
+        # Let the caller control display via exec() or show() to avoid flashing at odd sizes
 
         # Main layout (vertical with toolbars + media)
         main_layout = QVBoxLayout(self)
@@ -716,14 +726,13 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 border: none;
                 border-radius: 6px;
                 padding: 10px 24px;
-                font-size: 12pt;
-                font-weight: bold;
             }
             QPushButton:hover {
                 background: rgba(34, 139, 34, 1.0);
             }
         """)
         save_btn.clicked.connect(self._save_edits)
+        self._register_caption_btn(save_btn, "primary")
         cancel_btn.setText(t('google_layout.lightbox.cancel_button'))
         cancel_btn.setToolTip(t('google_layout.lightbox.cancel_tooltip'))
         cancel_btn.setStyleSheet("""
@@ -733,14 +742,13 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 border: none;
                 border-radius: 6px;
                 padding: 10px 24px;
-                font-size: 12pt;
-                font-weight: bold;
             }
             QPushButton:hover {
                 background: rgba(220, 53, 69, 1.0);
             }
         """)
         cancel_btn.clicked.connect(self._cancel_edits)
+        self._register_caption_btn(cancel_btn, "primary")
         editor_topbar_layout.addWidget(save_btn)
         editor_topbar_layout.addWidget(cancel_btn)
         editor_topbar_layout.addSpacing(20)
@@ -759,7 +767,7 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         editor_topbar_layout.addWidget(zoom_out_btn_edit)
         editor_topbar_layout.addWidget(zoom_in_btn_edit)
         editor_topbar_layout.addWidget(zoom_reset_btn_edit)
-        # Crop toggle (STYLED)
+        # Crop toggle (STYLED) - No hardcoded font-size (uses typography system)
         self.crop_btn = QPushButton()
         self.crop_btn.setText(t('google_layout.lightbox.crop_button'))
         self.crop_btn.setCheckable(True)
@@ -771,7 +779,6 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 border: 1px solid rgba(255, 255, 255, 0.3);
                 border-radius: 6px;
                 padding: 8px 16px;
-                font-size: 10pt;
             }
             QPushButton:hover {
                 background: rgba(255, 255, 255, 0.25);
@@ -782,8 +789,9 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             }
         """)
         self.crop_btn.clicked.connect(self._toggle_crop_mode)
+        self._register_caption_btn(self.crop_btn, "secondary")
         editor_topbar_layout.addWidget(self.crop_btn)
-        # Filters toggle (STYLED)
+        # Filters toggle (STYLED) - No hardcoded font-size (uses typography system)
         self.filters_btn = QPushButton()
         self.filters_btn.setText(t('google_layout.lightbox.filters_button'))
         self.filters_btn.setCheckable(True)
@@ -795,7 +803,6 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 border: 1px solid rgba(255, 255, 255, 0.3);
                 border-radius: 6px;
                 padding: 8px 16px;
-                font-size: 10pt;
             }
             QPushButton:hover {
                 background: rgba(255, 255, 255, 0.25);
@@ -806,8 +813,9 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             }
         """)
         self.filters_btn.clicked.connect(self._toggle_filters_panel)
+        self._register_caption_btn(self.filters_btn, "secondary")
         editor_topbar_layout.addWidget(self.filters_btn)
-        # Before/After toggle (STYLED)
+        # Before/After toggle (STYLED) - No hardcoded font-size (uses typography system)
         self.before_after_btn = QPushButton()
         self.before_after_btn.setText(t('google_layout.lightbox.before_after_button'))
         self.before_after_btn.setCheckable(True)
@@ -819,7 +827,6 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 border: 1px solid rgba(255, 255, 255, 0.3);
                 border-radius: 6px;
                 padding: 8px 16px;
-                font-size: 10pt;
             }
             QPushButton:hover {
                 background: rgba(255, 255, 255, 0.25);
@@ -830,9 +837,10 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             }
         """)
         self.before_after_btn.clicked.connect(self._toggle_before_after)
+        self._register_caption_btn(self.before_after_btn, "secondary")
         editor_topbar_layout.addWidget(self.before_after_btn)
         
-        # Tools panel toggle (show/hide right-side editing tools)
+        # Tools panel toggle (show/hide right-side editing tools) - No hardcoded font-size
         self.tools_toggle_btn = QPushButton()
         self.tools_toggle_btn.setText(t('google_layout.lightbox.tools_button'))
         self.tools_toggle_btn.setCheckable(True)
@@ -845,7 +853,6 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 border: 1px solid rgba(255, 255, 255, 0.3);
                 border-radius: 6px;
                 padding: 8px 16px;
-                font-size: 10pt;
             }
             QPushButton:hover {
                 background: rgba(255, 255, 255, 0.25);
@@ -856,10 +863,11 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             }
         """)
         self.tools_toggle_btn.toggled.connect(lambda v: (self.editor_right_scroll.setVisible(v), self.editor_right_panel.setVisible(v)) if hasattr(self, 'editor_right_scroll') else (self.editor_right_panel.setVisible(v) if hasattr(self, 'editor_right_panel') else None))
+        self._register_caption_btn(self.tools_toggle_btn, "secondary")
         editor_topbar_layout.addWidget(self.tools_toggle_btn)
         
         editor_topbar_layout.addStretch()  # Push buttons to left, Undo/Redo/Export to right
-        # Undo/Redo buttons (MORE PROMINENT)
+        # Undo/Redo buttons (MORE PROMINENT) - No hardcoded font-size (uses typography system)
         self.undo_btn = QPushButton()
         self.redo_btn = QPushButton()
         self.undo_btn.setText(t('google_layout.lightbox.undo_button'))
@@ -872,8 +880,6 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 border: none;
                 border-radius: 6px;
                 padding: 8px 16px;
-                font-size: 11pt;
-                font-weight: bold;
             }
             QPushButton:hover {
                 background: rgba(66, 133, 244, 1.0);
@@ -884,6 +890,7 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             }
         """)
         self.undo_btn.clicked.connect(self._editor_undo)
+        self._register_caption_btn(self.undo_btn, "primary")
         editor_topbar_layout.addWidget(self.undo_btn)
         self.redo_btn.setText(t('google_layout.lightbox.redo_button'))
         self.redo_btn.setToolTip(t('google_layout.lightbox.redo_tooltip'))
@@ -895,8 +902,6 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 border: none;
                 border-radius: 6px;
                 padding: 8px 16px;
-                font-size: 11pt;
-                font-weight: bold;
             }
             QPushButton:hover {
                 background: rgba(66, 133, 244, 1.0);
@@ -907,10 +912,11 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             }
         """)
         self.redo_btn.clicked.connect(self._editor_redo)
+        self._register_caption_btn(self.redo_btn, "primary")
         editor_topbar_layout.addWidget(self.redo_btn)
         editor_topbar_layout.addSpacing(16)  # Visual separator
         
-        # Copy/Paste buttons (BATCH EDITING)
+        # Copy/Paste buttons (BATCH EDITING) - No hardcoded font-size (uses typography system)
         self.copy_adj_btn = QPushButton()
         self.paste_adj_btn = QPushButton()
         self.copy_adj_btn.setText(t('google_layout.lightbox.copy_button'))
@@ -922,16 +928,15 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 border: none;
                 border-radius: 6px;
                 padding: 8px 16px;
-                font-size: 10pt;
-                font-weight: bold;
             }
             QPushButton:hover {
                 background: rgba(255, 193, 7, 1.0);
             }
         """)
         self.copy_adj_btn.clicked.connect(self._copy_adjustments)
+        self._register_caption_btn(self.copy_adj_btn, "secondary")
         editor_topbar_layout.addWidget(self.copy_adj_btn)
-        
+
         self.paste_adj_btn.setText(t('google_layout.lightbox.paste_button'))
         self.paste_adj_btn.setToolTip(t('google_layout.lightbox.paste_tooltip'))
         self.paste_adj_btn.setEnabled(False)  # Disabled until something is copied
@@ -942,8 +947,6 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 border: none;
                 border-radius: 6px;
                 padding: 8px 16px;
-                font-size: 10pt;
-                font-weight: bold;
             }
             QPushButton:hover {
                 background: rgba(156, 39, 176, 1.0);
@@ -954,10 +957,11 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             }
         """)
         self.paste_adj_btn.clicked.connect(self._paste_adjustments)
+        self._register_caption_btn(self.paste_adj_btn, "secondary")
         editor_topbar_layout.addWidget(self.paste_adj_btn)
         editor_topbar_layout.addSpacing(16)  # Visual separator
         
-        # Export button (MORE PROMINENT) - Handles both photos and videos
+        # Export button (MORE PROMINENT) - No hardcoded font-size (uses typography system)
         self.export_btn = QPushButton()
         self.export_btn.setText(t('google_layout.lightbox.export_button'))
         self.export_btn.setToolTip(t('google_layout.lightbox.export_tooltip'))
@@ -968,14 +972,13 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 border: none;
                 border-radius: 6px;
                 padding: 8px 20px;
-                font-size: 11pt;
-                font-weight: bold;
             }
             QPushButton:hover {
                 background: rgba(34, 139, 34, 1.0);
             }
         """)
         self.export_btn.clicked.connect(self._export_current_media)
+        self._register_caption_btn(self.export_btn, "primary")
         editor_topbar_layout.addWidget(self.export_btn)
         editor_vlayout.addWidget(editor_topbar)
         # Crop toolbar (hidden by default)
@@ -988,28 +991,38 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         self.editor_canvas = self._create_edit_canvas()
         
         # Right tools panel wrapped in scroll area (always accessible)
+        # FIX E: Use min/max width instead of fixed, with proportional sizing (Lightroom pattern)
         from PySide6.QtWidgets import QScrollArea
         self.editor_right_panel = QWidget()
-        # Ultra-optimized editor panel: Reduce from 400px to 300px
-        self.editor_right_panel.setFixedWidth(300)
-        self.editor_right_panel.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
+        # Slim tools column like Lightroom mobile/Photos - responsive width
+        self.editor_right_panel.setMinimumWidth(260)
+        self.editor_right_panel.setMaximumWidth(340)
+        self.editor_right_panel.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
         self.editor_right_scroll = QScrollArea()
         self.editor_right_scroll.setWidget(self.editor_right_panel)
         self.editor_right_scroll.setWidgetResizable(True)
         self.editor_right_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.editor_right_scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
-        # Toggle right tools panel visibility and resize splitter
+
+        # Toggle right tools panel visibility and resize splitter proportionally
         if hasattr(self, 'tools_toggle_btn'):
-            self.tools_toggle_btn.toggled.connect(lambda checked: (
-                self.editor_right_scroll.setVisible(checked),
-                self.editor_splitter.setSizes([int(self.width()*0.7), 400]) if checked else self.editor_splitter.setSizes([int(self.width()*0.95), 0])
-            ))
-        
+            def _toggle_tools_panel(checked):
+                self.editor_right_scroll.setVisible(checked)
+                if checked:
+                    # 75% canvas / 25% tools, clamped to panel limits
+                    tools_w = min(340, max(260, int(self.width() * 0.25)))
+                    self.editor_splitter.setSizes([self.width() - tools_w, tools_w])
+                else:
+                    self.editor_splitter.setSizes([self.width(), 0])
+            self.tools_toggle_btn.toggled.connect(_toggle_tools_panel)
+
         from PySide6.QtWidgets import QSplitter
         self.editor_splitter = QSplitter(Qt.Horizontal)
         self.editor_splitter.addWidget(self.editor_canvas)
         self.editor_splitter.addWidget(self.editor_right_scroll)
-        self.editor_splitter.setSizes([int(self.width()*0.7), 400])
+        # Initial split: 75% canvas / 25% tools, clamped
+        tools_w = min(340, max(260, int(self.width() * 0.25)))
+        self.editor_splitter.setSizes([self.width() - tools_w, tools_w])
         editor_row_layout.addWidget(self.editor_splitter)
         editor_vlayout.addWidget(editor_row, 1)
         # Build adjustments panel in right placeholder
@@ -1219,6 +1232,13 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         # ============================================================
         self._handle_panel_visibility()
 
+        # FIX D: Update panel max widths dynamically (Lightroom drawer pattern)
+        max_panel_width = max(240, int(self.width() * 0.30))
+        if hasattr(self, 'info_panel') and self.info_panel:
+            self.info_panel.setMaximumWidth(max_panel_width)
+        if hasattr(self, 'enhance_panel') and self.enhance_panel:
+            self.enhance_panel.setMaximumWidth(max_panel_width)
+
         # ============================================================
         # DEBOUNCED UPDATES: Performance-critical operations
         # ============================================================
@@ -1282,7 +1302,63 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             
             # Note: We don't auto-show enhance panel to avoid conflicts
             # User can manually toggle it if needed
-    
+
+    # ============================================================
+    # CENTRALIZED TYPOGRAPHY SYSTEM (Google Photos / Lightroom style)
+    # ============================================================
+    # Single scaling source of truth for all caption button fonts.
+    # No hardcoded font sizes scattered across styles.
+    # Uses Qt the intended way: stylesheet for colors/padding/borders; QFont for typography
+
+    def _ui_font_pt(self, kind: str) -> int:
+        """
+        Centralized typography sizes (pt), derived from responsive tier variables.
+
+        kind: 'primary', 'secondary', 'small', 'nav', 'label'
+        """
+        # Base from responsive system
+        body = int(getattr(self, "font_size_body", 10))
+        cap = int(getattr(self, "font_size_caption", 9))
+
+        if kind == "primary":
+            return max(10, body + 1)  # e.g. Save/Cancel/Undo/Redo/Export
+        if kind == "secondary":
+            return max(9, body)  # e.g. Crop/Filters/Tools/Copy/Paste
+        if kind == "small":
+            return max(8, cap)  # e.g. crop toolbar rotate/flip/aspect buttons
+        if kind == "nav":
+            # Nav arrows scale with button size (not fixed 18pt)
+            btn_sm = int(getattr(self, "button_size_sm", 28))
+            return max(12, int(btn_sm * 0.55))
+        if kind == "label":
+            return max(8, cap)  # e.g. toolbar labels like "Rotate:", "Flip:"
+        return body
+
+    def _register_caption_btn(self, btn, kind: str):
+        """Register a caption button for responsive font scaling."""
+        if not hasattr(self, "_caption_buttons"):
+            self._caption_buttons = []
+        self._caption_buttons.append((btn, kind))
+
+    def _apply_caption_fonts(self):
+        """Apply scaled fonts to all registered caption buttons."""
+        from PySide6.QtGui import QFont
+        if not hasattr(self, "_caption_buttons"):
+            return
+        for btn, kind in self._caption_buttons:
+            if btn is None:
+                continue
+            try:
+                pt = self._ui_font_pt(kind)
+                font = QFont()
+                font.setPointSize(pt)
+                # Keep bold for primary buttons
+                if kind == "primary":
+                    font.setBold(True)
+                btn.setFont(font)
+            except Exception as e:
+                print(f"[Typography] Error setting font: {e}")
+
     def _enhanced_responsive_behavior(self):
         """
         Enhanced responsive behavior triggered after resize debounce.
@@ -1434,7 +1510,43 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         if hasattr(self, 'motion_indicator') and self.is_motion_photo:
             self._position_motion_indicator()
 
+        # ============================================================
+        # STEP 5: Update caption button fonts (centralized typography)
+        # ============================================================
+        self._apply_caption_fonts()
+
+        # Update nav arrow font sizes (style-based since they're simple)
+        if tier_changed:
+            self._update_nav_button_styles()
+
         print(f"[MediaLightbox] ✓ Responsive behavior update completed")
+
+    def _update_nav_button_styles(self):
+        """Update navigation button styles with scaled font sizes."""
+        nav_pt = self._ui_font_pt("nav")
+        nav_style = f"""
+            QPushButton {{
+                background: rgba(0, 0, 0, 0.5);
+                color: white;
+                border: none;
+                border-radius: 24px;
+                font-size: {nav_pt}pt;
+            }}
+            QPushButton:hover {{
+                background: rgba(0, 0, 0, 0.7);
+            }}
+            QPushButton:pressed {{
+                background: rgba(0, 0, 0, 0.9);
+            }}
+            QPushButton:disabled {{
+                background: rgba(0, 0, 0, 0.2);
+                color: rgba(255, 255, 255, 0.3);
+            }}
+        """
+        if hasattr(self, 'prev_btn') and self.prev_btn:
+            self.prev_btn.setStyleSheet(nav_style)
+        if hasattr(self, 'next_btn') and self.next_btn:
+            self.next_btn.setStyleSheet(nav_style)
 
     def _adjust_filmstrip_position(self):
         """Adjust filmstrip position and size based on window dimensions."""
@@ -1623,36 +1735,56 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         self.photo_only_buttons.append(self.edit_btn)
 
         # Hide inline enhance/preset buttons (moved to panel)
+        # Use pill-style for caption buttons (Lightroom/iOS style) - not circular icon style
+        pill_btn_style = """
+            QPushButton {
+                background: rgba(255, 255, 255, 0.15);
+                color: white;
+                border: none;
+                border-radius: 8px;
+                padding: 6px 14px;
+            }
+            QPushButton:hover {
+                background: rgba(255, 255, 255, 0.25);
+            }
+            QPushButton:pressed {
+                background: rgba(255, 255, 255, 0.35);
+            }
+        """
         self.enhance_btn = QPushButton("✨ Enhance")
         self.enhance_btn.setFocusPolicy(Qt.NoFocus)
         self.enhance_btn.setFixedHeight(32)
-        self.enhance_btn.setStyleSheet(btn_style)
+        self.enhance_btn.setStyleSheet(pill_btn_style)
         self.enhance_btn.setToolTip("Auto-Enhance (Improve brightness/contrast/color)")
         self.enhance_btn.clicked.connect(self._toggle_auto_enhance)
+        self._register_caption_btn(self.enhance_btn, "secondary")
         self.enhance_btn.hide()
 
         self.dynamic_btn = QPushButton("Dynamic")
         self.dynamic_btn.setFocusPolicy(Qt.NoFocus)
         self.dynamic_btn.setFixedHeight(32)
-        self.dynamic_btn.setStyleSheet(btn_style)
+        self.dynamic_btn.setStyleSheet(pill_btn_style)
         self.dynamic_btn.setToolTip("Dynamic: vivid colors & contrast")
         self.dynamic_btn.clicked.connect(lambda: self._set_preset("dynamic"))
+        self._register_caption_btn(self.dynamic_btn, "secondary")
         self.dynamic_btn.hide()
 
         self.warm_btn = QPushButton("Warm")
         self.warm_btn.setFocusPolicy(Qt.NoFocus)
         self.warm_btn.setFixedHeight(32)
-        self.warm_btn.setStyleSheet(btn_style)
+        self.warm_btn.setStyleSheet(pill_btn_style)
         self.warm_btn.setToolTip("Warm: cozy tones")
         self.warm_btn.clicked.connect(lambda: self._set_preset("warm"))
+        self._register_caption_btn(self.warm_btn, "secondary")
         self.warm_btn.hide()
 
         self.cool_btn = QPushButton("Cool")
         self.cool_btn.setFocusPolicy(Qt.NoFocus)
         self.cool_btn.setFixedHeight(32)
-        self.cool_btn.setStyleSheet(btn_style)
+        self.cool_btn.setStyleSheet(pill_btn_style)
         self.cool_btn.setToolTip("Cool: crisp bluish look")
         self.cool_btn.clicked.connect(lambda: self._set_preset("cool"))
+        self._register_caption_btn(self.cool_btn, "secondary")
         self.cool_btn.hide()
 
         return toolbar
@@ -1660,7 +1792,10 @@ class MediaLightbox(QDialog, VideoEditorMixin):
     def _create_bottom_toolbar(self) -> QWidget:
         """Create bottom overlay toolbar with navigation and video controls."""
         toolbar = QWidget()
-        toolbar.setFixedHeight(80)
+        # FIX F: Make toolbar height responsive based on tier (not hardcoded 80px)
+        # On smaller screens, 80px eats precious vertical space making content feel cramped
+        toolbar_h = max(56, int(self.toolbar_height * 1.1))  # Tier-based, min 56px
+        toolbar.setFixedHeight(toolbar_h)
         toolbar.setStyleSheet("""
             QWidget {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
@@ -1688,30 +1823,34 @@ class MediaLightbox(QDialog, VideoEditorMixin):
 
         print("[MediaLightbox] Creating overlay navigation buttons...")
 
+        # Get dynamic nav font size from typography system (scales with button_size_sm)
+        nav_pt = self._ui_font_pt("nav")
+        nav_style = f"""
+            QPushButton {{
+                background: rgba(0, 0, 0, 0.5);
+                color: white;
+                border: none;
+                border-radius: 24px;
+                font-size: {nav_pt}pt;
+            }}
+            QPushButton:hover {{
+                background: rgba(0, 0, 0, 0.7);
+            }}
+            QPushButton:pressed {{
+                background: rgba(0, 0, 0, 0.9);
+            }}
+            QPushButton:disabled {{
+                background: rgba(0, 0, 0, 0.2);
+                color: rgba(255, 255, 255, 0.3);
+            }}
+        """
+
         # Previous button (left side)
         self.prev_btn = QPushButton("◄", self)
         self.prev_btn.setFocusPolicy(Qt.NoFocus)
         self.prev_btn.setFixedSize(48, 48)
         self.prev_btn.setCursor(Qt.PointingHandCursor)
-        self.prev_btn.setStyleSheet("""
-            QPushButton {
-                background: rgba(0, 0, 0, 0.5);
-                color: white;
-                border: none;
-                border-radius: 24px;
-                font-size: 18pt;
-            }
-            QPushButton:hover {
-                background: rgba(0, 0, 0, 0.7);
-            }
-            QPushButton:pressed {
-                background: rgba(0, 0, 0, 0.9);
-            }
-            QPushButton:disabled {
-                background: rgba(0, 0, 0, 0.2);
-                color: rgba(255, 255, 255, 0.3);
-            }
-        """)
+        self.prev_btn.setStyleSheet(nav_style)
         self.prev_btn.clicked.connect(self._previous_media)
 
         # Next button (right side)
@@ -1719,25 +1858,7 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         self.next_btn.setFocusPolicy(Qt.NoFocus)
         self.next_btn.setFixedSize(48, 48)
         self.next_btn.setCursor(Qt.PointingHandCursor)
-        self.next_btn.setStyleSheet("""
-            QPushButton {
-                background: rgba(0, 0, 0, 0.5);
-                color: white;
-                border: none;
-                border-radius: 24px;
-                font-size: 18pt;
-            }
-            QPushButton:hover {
-                background: rgba(0, 0, 0, 0.7);
-            }
-            QPushButton:pressed {
-                background: rgba(0, 0, 0, 0.9);
-            }
-            QPushButton:disabled {
-                background: rgba(0, 0, 0, 0.2);
-                color: rgba(255, 255, 255, 0.3);
-            }
-        """)
+        self.next_btn.setStyleSheet(nav_style)
         self.next_btn.clicked.connect(self._next_media)
 
         # CRITICAL: Show buttons explicitly
@@ -1801,32 +1922,34 @@ class MediaLightbox(QDialog, VideoEditorMixin):
     def eventFilter(self, obj, event):
         try:
             from PySide6.QtCore import QEvent, Qt
-            # Handle wheel zoom in editor canvas
-            if hasattr(self, 'editor_canvas') and obj == self.editor_canvas:
-                if event.type() == QEvent.Wheel:
-                    # Check if in editor mode
-                    if hasattr(self, 'mode_stack') and self.mode_stack.currentIndex() == 1:
-                        # Ctrl+Wheel = zoom, plain wheel = scroll
-                        from PySide6.QtCore import Qt as QtCore
-                        try:
-                            # Try both modifiers() and the event itself
-                            modifiers = event.modifiers()
-                            ctrl_pressed = bool(modifiers & Qt.ControlModifier)
-                        except:
-                            ctrl_pressed = False
-                        
-                        if ctrl_pressed:
-                            delta = event.angleDelta().y()
-                            print(f"[Zoom] Ctrl+Wheel detected: delta={delta}")
-                            if delta > 0:
-                                self._editor_zoom_in()
-                                print(f"[Zoom] Zoomed IN to {self.edit_zoom_level:.2f}x")
-                            else:
-                                self._editor_zoom_out()
-                                print(f"[Zoom] Zoomed OUT to {self.edit_zoom_level:.2f}x")
-                            return True  # Consume event
+
+            # Identify if event source is an editor zoom target
+            is_editor_canvas = hasattr(self, 'editor_canvas') and obj == self.editor_canvas
+            is_video_view = hasattr(self, 'video_graphics_view') and (
+                obj == self.video_graphics_view or
+                obj == self.video_graphics_view.viewport()
+            )
+            is_zoom_target = is_editor_canvas or is_video_view
+
+            # Handle wheel zoom on any zoom target
+            if is_zoom_target and event.type() == QEvent.Wheel:
+                # Check if in editor mode
+                if hasattr(self, 'mode_stack') and self.mode_stack.currentIndex() == 1:
+                    # Ctrl+Wheel = zoom, plain wheel = scroll
+                    try:
+                        modifiers = event.modifiers()
+                        ctrl_pressed = bool(modifiers & Qt.ControlModifier)
+                    except:
+                        ctrl_pressed = False
+
+                    if ctrl_pressed:
+                        delta = event.angleDelta().y()
+                        if delta > 0:
+                            self._editor_zoom_in()
                         else:
-                            print("[Zoom] Wheel event without Ctrl - not zooming")
+                            self._editor_zoom_out()
+                        return True  # Consume event
+
             return super().eventFilter(obj, event)
         except Exception as e:
             import traceback
@@ -2300,10 +2423,12 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         """Check if file is a video format."""
         if not file_path:
             return False
-        video_extensions = [
-            '.mp4', '.mov', '.avi', '.mkv', '.webm',
-            '.m4v', '.3gp', '.flv', '.wmv', '.mpg', '.mpeg'
-        ]
+        # Keep in sync with _is_video() for consistent behavior
+        video_extensions = {
+            '.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v', '.3gp',
+            '.flv', '.wmv', '.mpg', '.mpeg', '.mts', '.m2ts', '.ts',
+            '.vob', '.ogv', '.divx', '.asf', '.rm', '.rmvb'
+        }
         ext = os.path.splitext(file_path)[1].lower()
         return ext in video_extensions
     
@@ -2663,6 +2788,10 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                             if hasattr(self, '_fit_video_view'):
                                 self._fit_video_view()
                             print("[Editor] ✓ Video widget reparented to editor canvas")
+
+                            # FOCUS FIX: Set focus to video_graphics_view for wheel events
+                            if hasattr(self, 'video_graphics_view') and self.video_graphics_view:
+                                self.video_graphics_view.setFocus()
 
                     # Switch to editor page to show video controls
                     if hasattr(self, 'mode_stack'):
@@ -3387,7 +3516,7 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             def set_pixmap_consistent(self, pixmap):
                 """
                 Set pixmap with consistent sizing to eliminate zoom effects during preview transitions.
-                
+
                 ✨ PROFESSIONAL APPROACH (Like Lightroom/Photoshop):
                 - Store consistently scaled pixmap
                 - Maintain aspect ratio during quality transitions
@@ -3398,17 +3527,23 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                     self._consistent_size = None
                     self.update()
                     return
-                
+
                 # Store the consistently scaled pixmap
                 self._consistent_pixmap = pixmap
                 self._consistent_size = pixmap.size()
-                
+
                 # Trigger repaint with consistent sizing
                 self.update()
-                
+
                 # Debug logging
                 if hasattr(self.parent, '_debug_size_consistency') and self.parent._debug_size_consistency:
                     print(f"[EditCanvas] Set consistent pixmap: {pixmap.width()}x{pixmap.height()}")
+
+            def clear(self):
+                """Clear the canvas - reset pixmap and trigger repaint."""
+                self._consistent_pixmap = None
+                self._consistent_size = None
+                self.update()
 
             def wheelEvent(self, event):
                 """Handle wheel events for zoom - DIRECT implementation."""
@@ -3729,11 +3864,13 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         straighten_layout.setSpacing(8)
         
         straighten_icon = QLabel("↻")
-        straighten_icon.setStyleSheet("color: white; font-size: 16pt; font-weight: bold;")
+        straighten_icon.setStyleSheet("color: white; font-weight: bold;")
+        self._register_caption_btn(straighten_icon, "nav")  # Use nav size for icon
         straighten_layout.addWidget(straighten_icon)
-        
+
         straighten_lbl = QLabel("Straighten:")
-        straighten_lbl.setStyleSheet("color: rgba(255,255,255,0.9); font-size: 10pt;")
+        straighten_lbl.setStyleSheet("color: rgba(255,255,255,0.9);")
+        self._register_caption_btn(straighten_lbl, "secondary")
         straighten_layout.addWidget(straighten_lbl)
         
         self.straighten_slider = QSlider(Qt.Horizontal)
@@ -3769,24 +3906,24 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         self.straighten_label = QLabel("0.0°")
         self.straighten_label.setStyleSheet("""
             color: white;
-            font-size: 10pt;
-            font-weight: bold;
             min-width: 50px;
             padding: 4px 8px;
             background: rgba(255, 255, 255, 0.1);
             border-radius: 4px;
         """)
         self.straighten_label.setAlignment(Qt.AlignCenter)
+        self._register_caption_btn(self.straighten_label, "secondary")
         straighten_layout.addWidget(self.straighten_label)
         
         lay.addWidget(straighten_container)
         lay.addSpacing(20)
         
-        # 90° Rotation buttons (LEFT-MIDDLE)
+        # 90° Rotation buttons (LEFT-MIDDLE) - No hardcoded font-size (uses typography system)
         rotate_label = QLabel("Rotate:")
-        rotate_label.setStyleSheet("color: rgba(255,255,255,0.7); font-size: 9pt;")
+        rotate_label.setStyleSheet("color: rgba(255,255,255,0.7);")
+        self._register_caption_btn(rotate_label, "label")
         lay.addWidget(rotate_label)
-        
+
         rotate_left_btn = QPushButton("↶ 90°")
         rotate_left_btn.setToolTip("Rotate 90° counter-clockwise")
         rotate_left_btn.setStyleSheet("""
@@ -3796,8 +3933,6 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 border: 1px solid rgba(255, 255, 255, 0.2);
                 border-radius: 4px;
                 padding: 6px 12px;
-                font-size: 10pt;
-                font-weight: bold;
             }
             QPushButton:hover {
                 background: rgba(255, 255, 255, 0.2);
@@ -3809,8 +3944,9 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             }
         """)
         rotate_left_btn.clicked.connect(self._rotate_90_left)
+        self._register_caption_btn(rotate_left_btn, "small")
         lay.addWidget(rotate_left_btn)
-        
+
         rotate_right_btn = QPushButton("↷ 90°")
         rotate_right_btn.setToolTip("Rotate 90° clockwise")
         rotate_right_btn.setStyleSheet("""
@@ -3820,8 +3956,6 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 border: 1px solid rgba(255, 255, 255, 0.2);
                 border-radius: 4px;
                 padding: 6px 12px;
-                font-size: 10pt;
-                font-weight: bold;
             }
             QPushButton:hover {
                 background: rgba(255, 255, 255, 0.2);
@@ -3833,15 +3967,17 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             }
         """)
         rotate_right_btn.clicked.connect(self._rotate_90_right)
+        self._register_caption_btn(rotate_right_btn, "small")
         lay.addWidget(rotate_right_btn)
         
         lay.addSpacing(20)
         
-        # Flip buttons (MIDDLE)
+        # Flip buttons (MIDDLE) - No hardcoded font-size (uses typography system)
         flip_label = QLabel("Flip:")
-        flip_label.setStyleSheet("color: rgba(255,255,255,0.7); font-size: 9pt;")
+        flip_label.setStyleSheet("color: rgba(255,255,255,0.7);")
+        self._register_caption_btn(flip_label, "label")
         lay.addWidget(flip_label)
-        
+
         flip_h_btn = QPushButton("↔ Horizontal")
         flip_h_btn.setToolTip("Flip horizontally (mirror)")
         flip_h_btn.setStyleSheet("""
@@ -3851,7 +3987,6 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 border: 1px solid rgba(255, 255, 255, 0.2);
                 border-radius: 4px;
                 padding: 6px 12px;
-                font-size: 9pt;
             }
             QPushButton:hover {
                 background: rgba(255, 255, 255, 0.2);
@@ -3863,8 +3998,9 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             }
         """)
         flip_h_btn.clicked.connect(self._flip_horizontal)
+        self._register_caption_btn(flip_h_btn, "small")
         lay.addWidget(flip_h_btn)
-        
+
         flip_v_btn = QPushButton("↕ Vertical")
         flip_v_btn.setToolTip("Flip vertically")
         flip_v_btn.setStyleSheet("""
@@ -3874,7 +4010,6 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 border: 1px solid rgba(255, 255, 255, 0.2);
                 border-radius: 4px;
                 padding: 6px 12px;
-                font-size: 9pt;
             }
             QPushButton:hover {
                 background: rgba(255, 255, 255, 0.2);
@@ -3886,18 +4021,20 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             }
         """)
         flip_v_btn.clicked.connect(self._flip_vertical)
+        self._register_caption_btn(flip_v_btn, "small")
         lay.addWidget(flip_v_btn)
         
         lay.addSpacing(20)
         
-        # Aspect ratio presets (MIDDLE)
+        # Aspect ratio presets (MIDDLE) - No hardcoded font-size (uses typography system)
         aspect_label = QLabel("Aspect:")
-        aspect_label.setStyleSheet("color: rgba(255,255,255,0.7); font-size: 9pt;")
+        aspect_label.setStyleSheet("color: rgba(255,255,255,0.7);")
+        self._register_caption_btn(aspect_label, "label")
         lay.addWidget(aspect_label)
-        
+
         # Create button group for exclusive selection
         self.aspect_button_group = []
-        
+
         for label, ratio in [("Free", "free"), ("1:1", (1,1)), ("4:3", (4,3)), ("16:9", (16,9)), ("Original", None)]:
             btn = QPushButton(label)
             btn.setCheckable(True)
@@ -3908,7 +4045,6 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                     border: 1px solid rgba(255, 255, 255, 0.2);
                     border-radius: 4px;
                     padding: 6px 12px;
-                    font-size: 9pt;
                 }
                 QPushButton:hover {
                     background: rgba(255, 255, 255, 0.15);
@@ -3918,21 +4054,21 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                     background: rgba(66, 133, 244, 0.8);
                     color: white;
                     border: 1px solid rgba(66, 133, 244, 1.0);
-                    font-weight: bold;
                 }
             """)
             # Connect with lambda that unchecks other buttons
             btn.clicked.connect(lambda checked, r=ratio, b=btn: self._on_aspect_preset_clicked(r, b))
+            self._register_caption_btn(btn, "small")
             lay.addWidget(btn)
             self.aspect_button_group.append(btn)
-            
+
             # Check 'Free' by default
             if label == "Free":
                 btn.setChecked(True)
         
         lay.addStretch()
         
-        # Apply/Cancel buttons (RIGHT SIDE)
+        # Apply/Cancel buttons (RIGHT SIDE) - No hardcoded font-size (uses typography system)
         apply_btn = QPushButton("✓ Apply Crop")
         apply_btn.setStyleSheet("""
             QPushButton {
@@ -3941,16 +4077,15 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 border: none;
                 border-radius: 6px;
                 padding: 8px 20px;
-                font-size: 10pt;
-                font-weight: bold;
             }
             QPushButton:hover {
                 background: rgba(34, 139, 34, 1.0);
             }
         """)
         apply_btn.clicked.connect(self._apply_crop)
+        self._register_caption_btn(apply_btn, "secondary")
         lay.addWidget(apply_btn)
-        
+
         cancel_btn = QPushButton("✕ Cancel")
         cancel_btn.setStyleSheet("""
             QPushButton {
@@ -3959,13 +4094,13 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 border: 1px solid rgba(255, 255, 255, 0.3);
                 border-radius: 6px;
                 padding: 8px 20px;
-                font-size: 10pt;
             }
             QPushButton:hover {
                 background: rgba(255, 255, 255, 0.15);
             }
         """)
         cancel_btn.clicked.connect(self._cancel_crop)
+        self._register_caption_btn(cancel_btn, "secondary")
         lay.addWidget(cancel_btn)
         
         return bar
@@ -4355,6 +4490,27 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                     self.video_player.setPosition(int(new_pos))
                     print(f"[MediaLightbox] Keyboard: Next frame (→ key)")
                     return
+
+                # M key: Toggle mute
+                elif event.key() == Qt.Key_M:
+                    if hasattr(self, '_on_mute_clicked'):
+                        self._on_mute_clicked()
+                        print("[MediaLightbox] Keyboard: Toggle mute (M key)")
+                    return
+
+                # S key: Cycle playback speed
+                elif event.key() == Qt.Key_S:
+                    if hasattr(self, '_on_speed_clicked'):
+                        self._on_speed_clicked()
+                        print("[MediaLightbox] Keyboard: Cycle speed (S key)")
+                    return
+
+            # M key for mute also works outside edit mode for video
+            if is_video_loaded and event.key() == Qt.Key_M:
+                if hasattr(self, '_on_mute_clicked'):
+                    self._on_mute_clicked()
+                    print("[MediaLightbox] Keyboard: Toggle mute (M key)")
+                return
 
             # Undo/Redo shortcuts (for photo editing)
             if event.modifiers() & Qt.ControlModifier:
@@ -4906,49 +5062,25 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         self.time_total_label.setStyleSheet("color: white; font-size: 9pt; background: transparent;")
         layout.addWidget(self.time_total_label)
 
-        # Volume icon
-        volume_icon = QLabel("🔊")
-        volume_icon.setStyleSheet("font-size: 12pt; background: transparent;")
-        layout.addWidget(volume_icon)
-
-        # Volume slider
-        self.volume_slider = QSlider(Qt.Horizontal)
-        self.volume_slider.setFocusPolicy(Qt.NoFocus)
-        self.volume_slider.setFixedWidth(80)
-        self.volume_slider.setMinimum(0)
-        self.volume_slider.setMaximum(100)
-        self.volume_slider.setValue(80)
-        self.volume_slider.setStyleSheet("""
-            QSlider::groove:horizontal {
-                background: rgba(255, 255, 255, 0.2);
-                height: 4px;
-                border-radius: 2px;
+        # Mute button (clickable volume icon)
+        self.mute_btn = QPushButton("🔊")
+        self.mute_btn.setFocusPolicy(Qt.NoFocus)
+        self.mute_btn.setFixedSize(32, 32)
+        self.mute_btn.setCursor(Qt.PointingHandCursor)
+        self.mute_btn.setToolTip("Toggle Mute (M)")
+        self.mute_btn.setStyleSheet("""
+            QPushButton {
+                background: transparent;
+                border: none;
+                font-size: 12pt;
             }
-            QSlider::handle:horizontal {
-                background: white;
-                width: 10px;
-                height: 10px;
-                margin: -3px 0;
-                border-radius: 5px;
-            }
-            QSlider::sub-page:horizontal {
-                background: white;
-                border-radius: 2px;
+            QPushButton:hover {
+                background: rgba(255, 255, 255, 0.15);
+                border-radius: 4px;
             }
         """)
-        self.seek_slider.installEventFilter(self)
-
-        layout.addWidget(self.seek_slider, 1)
-
-        # Time label (total)
-        self.time_total_label = QLabel("0:00")
-        self.time_total_label.setStyleSheet("color: white; font-size: 9pt; background: transparent;")
-        layout.addWidget(self.time_total_label)
-
-        # Volume icon
-        volume_icon = QLabel("🔊")
-        volume_icon.setStyleSheet("font-size: 12pt; background: transparent;")
-        layout.addWidget(volume_icon)
+        self.mute_btn.clicked.connect(self._on_mute_clicked)
+        layout.addWidget(self.mute_btn)
 
         # Volume slider
         self.volume_slider = QSlider(Qt.Horizontal)
@@ -5043,9 +5175,11 @@ class MediaLightbox(QDialog, VideoEditorMixin):
     def _create_info_panel(self) -> QWidget:
         """Create toggleable info panel with tabbed metadata (on right side)."""
         panel = QWidget()
-        # Professional panel width: Responsive based on screen size
-        # Following industry standards for balanced UI/UX
-        panel.setFixedWidth(self.panel_width)
+        # FIX D: Make panel adaptive (not fixed width) like Lightroom drawers
+        # Cap relative to window width so it never dominates the canvas
+        panel.setMinimumWidth(240)
+        panel.setMaximumWidth(max(240, int(self.width() * 0.30)))  # <= 30% of window
+        panel.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
         panel.setStyleSheet("""
             QWidget {
                 background: rgba(32, 33, 36, 0.95);
@@ -5127,8 +5261,11 @@ class MediaLightbox(QDialog, VideoEditorMixin):
 
     def _create_enhance_panel(self) -> QWidget:
         panel = QWidget()
-        # Professional panel width: Match info panel for consistency
-        panel.setFixedWidth(self.panel_width)
+        # FIX D: Make panel adaptive (not fixed width) like Lightroom drawers
+        # Cap relative to window width so it never dominates the canvas
+        panel.setMinimumWidth(240)
+        panel.setMaximumWidth(max(240, int(self.width() * 0.30)))  # <= 30% of window
+        panel.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
         panel.setStyleSheet("""
             QWidget {
                 background: rgba(32, 33, 36, 0.95);
@@ -5309,6 +5446,32 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         if hasattr(self, 'audio_output'):
             volume = value / 100.0
             self.audio_output.setVolume(volume)
+            # Update mute state based on volume
+            if value == 0:
+                self.video_is_muted = True
+                if hasattr(self, 'mute_btn'):
+                    self.mute_btn.setText("🔇")
+            elif self.video_is_muted:
+                # Un-mute when volume is raised
+                self.video_is_muted = False
+                self.audio_output.setMuted(False)
+                if hasattr(self, 'mute_btn'):
+                    self.mute_btn.setText("🔊")
+
+    def _on_mute_clicked(self):
+        """Toggle audio mute state."""
+        self.video_is_muted = not self.video_is_muted
+
+        if hasattr(self, 'audio_output') and self.audio_output is not None:
+            self.audio_output.setMuted(self.video_is_muted)
+
+        # Update button icon
+        if hasattr(self, 'mute_btn'):
+            self.mute_btn.setText("🔇" if self.video_is_muted else "🔊")
+
+        # Show status toast
+        status = "Muted" if self.video_is_muted else "Unmuted"
+        self._show_toast(status)
 
     def _on_seek_pressed(self):
         """Handle seek slider press (pause position updates)."""
@@ -5325,7 +5488,13 @@ class MediaLightbox(QDialog, VideoEditorMixin):
 
     def _is_video(self, path: str) -> bool:
         """Check if file is a video based on extension."""
-        video_extensions = {'.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v', '.3gp'}
+        # CRITICAL FIX: Include ALL video extensions (was missing .wmv, .flv, .mpg, .mpeg)
+        # Must match _is_video_file() for consistent behavior
+        video_extensions = {
+            '.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v', '.3gp',
+            '.flv', '.wmv', '.mpg', '.mpeg', '.mts', '.m2ts', '.ts',
+            '.vob', '.ogv', '.divx', '.asf', '.rm', '.rmvb'
+        }
         return os.path.splitext(path)[1].lower() in video_extensions
 
     def _is_raw(self, path: str) -> bool:
@@ -5351,6 +5520,38 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             '.raw',  # Generic
         }
         return os.path.splitext(path)[1].lower() in raw_extensions
+
+    def _show_toast(self, message: str, duration: int = 1500):
+        """Show a transient toast message overlay for feedback."""
+        from PySide6.QtCore import QTimer
+
+        # Create or reuse toast label
+        if not hasattr(self, '_toast_label') or self._toast_label is None:
+            self._toast_label = QLabel(self)
+            self._toast_label.setStyleSheet("""
+                QLabel {
+                    background: rgba(0, 0, 0, 0.75);
+                    color: white;
+                    padding: 12px 24px;
+                    border-radius: 8px;
+                    font-size: 11pt;
+                    font-weight: bold;
+                }
+            """)
+            self._toast_label.setAlignment(Qt.AlignCenter)
+
+        self._toast_label.setText(message)
+        self._toast_label.adjustSize()
+
+        # Center the toast in the lightbox
+        x = (self.width() - self._toast_label.width()) // 2
+        y = self.height() - 150  # Position above bottom toolbar
+        self._toast_label.move(x, y)
+        self._toast_label.raise_()
+        self._toast_label.show()
+
+        # Auto-hide after duration
+        QTimer.singleShot(duration, lambda: self._toast_label.hide() if hasattr(self, '_toast_label') and self._toast_label else None)
 
     def _detect_motion_photo(self, photo_path: str) -> str:
         """
@@ -5619,6 +5820,62 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             self.video_widget.hide()
         if hasattr(self, 'video_controls_widget'):
             self.video_controls_widget.hide()
+
+    def _fit_video_view(self):
+        """
+        Fit video to view and calculate base scale for zoom operations.
+
+        This method:
+        1. Gets the native size of the video
+        2. Calculates scale to fit in the view
+        3. Sets video_base_scale for _apply_video_zoom to use
+        """
+        try:
+            if not hasattr(self, 'video_item') or not hasattr(self, 'video_graphics_view'):
+                return
+
+            # Get native video size
+            native_size = self.video_item.nativeSize()
+            if native_size.isEmpty() or native_size.width() <= 0 or native_size.height() <= 0:
+                # Video size not yet available, try again later
+                from PySide6.QtCore import QTimer
+                QTimer.singleShot(100, self._fit_video_view)
+                return
+
+            # Get view size
+            view_rect = self.video_graphics_view.viewport().rect()
+            view_w = view_rect.width()
+            view_h = view_rect.height()
+
+            if view_w <= 0 or view_h <= 0:
+                return
+
+            # Calculate scale to fit video in view (with some padding)
+            video_w = native_size.width()
+            video_h = native_size.height()
+
+            scale_w = view_w / video_w
+            scale_h = view_h / video_h
+            self.video_base_scale = min(scale_w, scale_h) * 0.95  # 5% padding
+
+            # Set scene rect to video native size
+            self.video_scene.setSceneRect(0, 0, video_w, video_h)
+
+            # Reset edit zoom level
+            self.edit_zoom_level = 1.0
+
+            # Apply the transform (this centers and scales the video)
+            self._apply_video_zoom()
+
+            # Center the view on the video
+            self.video_graphics_view.centerOn(self.video_item)
+
+            print(f"[MediaLightbox] Video fitted: native={video_w}x{video_h}, view={view_w}x{view_h}, base_scale={self.video_base_scale:.2f}")
+
+        except Exception as e:
+            print(f"[MediaLightbox] _fit_video_view error: {e}")
+            import traceback
+            traceback.print_exc()
 
     def _on_duration_changed(self, duration: int):
         """Handle video duration change (set seek slider range)."""
@@ -8051,6 +8308,8 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             print(f"[MediaLightbox] PlaybackRate not supported: {e}")
         if hasattr(self, 'speed_btn'):
             self.speed_btn.setText(f"{rate:.1f}x")
+        # Show toast feedback
+        self._show_toast(f"Speed: {rate:.1f}x")
         print(f"[MediaLightbox] Playback speed set to {rate:.1f}x")
 
     # ==================== PHASE C IMPROVEMENTS ====================

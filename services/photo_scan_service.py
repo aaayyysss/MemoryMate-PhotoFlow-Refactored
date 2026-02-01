@@ -324,6 +324,11 @@ class PhotoScanService:
 
         logger.info(f"Starting scan: {root_folder} (incremental={incremental}, skip_unchanged={skip_unchanged})")
 
+        # CRITICAL FIX: Ensure project exists before any operations that reference it
+        # The photo_folders table has a FOREIGN KEY constraint on project_id -> project(id)
+        # Without this, folder creation fails with FOREIGN KEY constraint failed
+        self._ensure_project_exists(project_id, root_folder)
+
         try:
             # Step 1: Discover all media files (photos + videos)
             # Priority: explicit parameter > settings > platform-specific defaults
@@ -651,7 +656,9 @@ class PhotoScanService:
         try:
             from settings_manager_qt import SettingsManager
             settings = SettingsManager()
-            custom_exclusions = settings.get("scan_exclude_folders", [])
+            # CRITICAL FIX: Use "ignore_folders" which is the key used by preferences_dialog.py
+            # The previous key "scan_exclude_folders" was never populated by the UI
+            custom_exclusions = settings.get("ignore_folders", [])
 
             if custom_exclusions:
                 # User has configured custom exclusions - use them
@@ -1114,6 +1121,51 @@ class PhotoScanService:
         except Exception as e:
             logger.warning(f"Could not create default project: {e}")
 
+    def _ensure_project_exists(self, project_id: int, root_folder: str):
+        """
+        Ensure the specified project exists in the database.
+
+        CRITICAL: This must be called BEFORE any operations that reference project_id
+        (folder creation, photo insertion, etc.) because the database has FOREIGN KEY
+        constraints that require the project to exist.
+
+        Args:
+            project_id: Project ID to verify
+            root_folder: Repository root folder (used for default project creation)
+
+        Raises:
+            ValueError: If project_id is None or invalid
+        """
+        if project_id is None:
+            raise ValueError("project_id cannot be None for scan operations")
+
+        try:
+            # Check if project exists
+            project = self.project_repo.get_by_id(project_id)
+
+            if project is None:
+                # Project doesn't exist - create it
+                logger.warning(f"Project {project_id} not found, creating default project...")
+                created_id = self.project_repo.create(
+                    name="Default Project",
+                    folder=root_folder,
+                    mode="date"
+                )
+                logger.info(f"Created project: Default Project (id={created_id}, semantic_model=clip-vit-b32)")
+
+                # Verify the created project ID matches expected (it should if DB is empty)
+                if created_id != project_id:
+                    logger.warning(
+                        f"Created project has different ID ({created_id}) than requested ({project_id}). "
+                        f"This may cause issues if caller expects specific project_id."
+                    )
+            else:
+                logger.debug(f"Project {project_id} exists: {project.get('name', 'Unknown')}")
+
+        except Exception as e:
+            logger.error(f"Failed to ensure project exists: {e}")
+            raise ValueError(f"Cannot verify project {project_id}: {e}")
+
     def _process_videos(self, video_files: List[Path], root_path: Path, project_id: int,
                        folders_seen: Set[str], skip_unchanged: bool, existing_video_metadata: Dict[str, str],
                        progress_callback: Optional[Callable] = None):
@@ -1137,6 +1189,10 @@ class PhotoScanService:
                 if self._cancelled:
                     logger.info("Video processing cancelled by user")
                     break
+
+                # Initialize size_kb before try block to avoid UnboundLocalError
+                # if exception occurs before it's assigned
+                size_kb = 0
 
                 try:
                     # Track folder

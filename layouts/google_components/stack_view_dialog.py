@@ -1,5 +1,5 @@
 # layouts/google_components/stack_view_dialog.py
-# Version 01.02.00.00 dated 20260122
+# Version 01.02.00.02 dated 20260201
 # Stack comparison dialog for Google Layout
 
 """
@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
     QMessageBox, QTableWidget, QTableWidgetItem, QHeaderView,
     QGroupBox, QSlider, QTabWidget
 )
-from PySide6.QtCore import Signal, Qt, Slot, QRunnable, QThreadPool, QObject
+from PySide6.QtCore import Signal, Qt, Slot, QRunnable, QThreadPool, QObject, QTimer
 from PySide6.QtGui import QFont, QColor, QPixmap
 from typing import Optional, List, Dict, Any
 from pathlib import Path
@@ -121,14 +121,24 @@ class StackMemberWidget(QWidget):
         self._load_thumbnail()
 
     def _init_ui(self):
-        """Initialize UI components."""
-        layout = QVBoxLayout(self)
-        layout.setSpacing(8)
-        layout.setContentsMargins(8, 8, 8, 8)
+#        """Initialize UI components - compact layout."""
+#        layout = QVBoxLayout(self)
+#        layout.setSpacing(4)
+#        layout.setContentsMargins(6, 6, 6, 6)
+#
+#        # Thumbnail (compact size)
+#        self.thumbnail_label = QLabel()
+#        self.thumbnail_label.setFixedSize(160, 160)  # Reduced from 180
 
-        # Thumbnail
+        """Initialize UI components - compact layout with fixed height."""
+        layout = QVBoxLayout(self)
+        layout.setSpacing(2)  # Minimal spacing
+        layout.setContentsMargins(4, 4, 4, 4)
+ 
+        # Thumbnail (compact size)
         self.thumbnail_label = QLabel()
-        self.thumbnail_label.setFixedSize(180, 180)
+        self.thumbnail_label.setFixedSize(160, 160)
+
         self.thumbnail_label.setAlignment(Qt.AlignCenter)
         self.thumbnail_label.setStyleSheet("""
             QLabel {
@@ -140,59 +150,38 @@ class StackMemberWidget(QWidget):
         self.thumbnail_label.setText("Loading...")
         layout.addWidget(self.thumbnail_label, alignment=Qt.AlignCenter)
 
-        # Metadata
-        metadata_layout = QVBoxLayout()
-        metadata_layout.setSpacing(4)
-
-        # Representative badge
-        if self.is_representative:
-            rep_label = QLabel("⭐ Representative")
-            rep_label.setStyleSheet("color: #FFA500; font-weight: bold; font-size: 11px;")
-            metadata_layout.addWidget(rep_label)
-
-        # Similarity score (if available)
-        if self.similarity_score is not None:
-            score_pct = self.similarity_score * 100
-            score_label = QLabel(f"🔗 Similarity: {score_pct:.1f}%")
-            score_label.setStyleSheet("font-size: 11px; color: #2196F3; font-weight: bold;")
-            metadata_layout.addWidget(score_label)
-
-        # Rank (if available)
-        if self.rank is not None:
-            rank_label = QLabel(f"📊 Rank: #{self.rank}")
-            rank_label.setStyleSheet("font-size: 11px; color: #666;")
-            metadata_layout.addWidget(rank_label)
-
-        # Resolution
+        # Compact metadata: one-liner with key info
         width = self.photo.get('width', 0)
         height = self.photo.get('height', 0)
-        res_label = QLabel(f"📐 {width}×{height}")
-        res_label.setStyleSheet("font-size: 10px; color: #666;")
-        metadata_layout.addWidget(res_label)
-
-        # File size
         size_kb = self.photo.get('size_kb', 0)
-        if size_kb >= 1024:
-            size_str = f"{size_kb/1024:.1f} MB"
-        else:
-            size_str = f"{size_kb:.1f} KB"
-        size_label = QLabel(f"💾 {size_str}")
-        size_label.setStyleSheet("font-size: 10px; color: #666;")
-        metadata_layout.addWidget(size_label)
+        size_str = f"{size_kb/1024:.1f}MB" if size_kb >= 1024 else f"{size_kb:.0f}KB"
 
-        # Filename (truncated)
+        # Build compact info line
+        info_parts = []
+        if self.is_representative:
+            info_parts.append("⭐")
+        if self.similarity_score is not None:
+            info_parts.append(f"{int(self.similarity_score * 100)}%")
+        info_parts.append(f"{width}×{height}")
+        info_parts.append(size_str)
+
+        info_label = QLabel(" • ".join(info_parts))
+        info_label.setStyleSheet("font-size: 9px; color: #555;")
+        info_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(info_label)
+
+        # Filename (truncated, as tooltip)
         path = self.photo.get('path', '')
         filename = Path(path).name
-        if len(filename) > 20:
-            filename = filename[:17] + "..."
-        path_label = QLabel(f"📄 {filename}")
+        if len(filename) > 25:
+            filename = filename[:22] + "..."
+        path_label = QLabel(filename)
         path_label.setToolTip(path)
-        path_label.setStyleSheet("font-size: 10px; color: #666;")
-        metadata_layout.addWidget(path_label)
+        path_label.setStyleSheet("font-size: 8px; color: #888;")
+        path_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(path_label)
 
-        layout.addLayout(metadata_layout)
-
-        # Selection checkbox
+        # Selection checkbox (compact)
         self.checkbox = QCheckBox("Select")
         self.checkbox.setEnabled(not self.is_representative)
         if self.is_representative:
@@ -200,7 +189,6 @@ class StackMemberWidget(QWidget):
         else:
             logger.debug(f"[CHECKBOX_INIT] Creating enabled checkbox for photo_id={self.photo_id}")
 
-        # CRITICAL: Use clicked signal instead of stateChanged for more reliable detection
         self.checkbox.clicked.connect(lambda checked: self._on_selection_changed(Qt.Checked if checked else Qt.Unchecked))
         logger.debug(f"[CHECKBOX_INIT] Connected clicked signal for photo_id={self.photo_id}, enabled={self.checkbox.isEnabled()}, isCheckable={self.checkbox.isCheckable()}")
         layout.addWidget(self.checkbox)
@@ -210,10 +198,16 @@ class StackMemberWidget(QWidget):
         self.setStyleSheet(f"""
             StackMemberWidget {{
                 background-color: white;
-                border: 2px solid {border_color};
-                border-radius: 8px;
+                border: 1px solid {border_color};
+                border-radius: 6px;
             }}
         """)
+        
+        # Fix vertical stretching: set maximum height based on content
+        # 160 (thumb) + 4*2 (margins) + 3*2 (spacing) + ~50 (labels+checkbox)
+        self.setMaximumHeight(230)
+        from PySide6.QtWidgets import QSizePolicy
+        self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)        
 
     def _load_thumbnail(self):
         """Load thumbnail asynchronously (Phase 3: Progressive Loading)."""
@@ -227,14 +221,25 @@ class StackMemberWidget(QWidget):
                 logger.debug(f"[MEMBER_WIDGET] Creating ThumbnailLoader for {path}")
 
                 # CRITICAL: Keep reference to prevent garbage collection
-                self._thumbnail_loader = ThumbnailLoader(path, self.thumbnail_label, size=180)
+                thumb_size = 160  # Match the label size
+                self._thumbnail_loader = ThumbnailLoader(path, self.thumbnail_label, size=thumb_size)
 
-                # Connect signals
-                def on_loaded(pixmap, label):
+                # Connect signals with center-crop scaling
+                def on_loaded(pixmap, label, size=thumb_size):
                     logger.debug(f"[MEMBER_WIDGET] on_loaded callback: label={label}, self.thumbnail_label={self.thumbnail_label}")
                     if label == self.thumbnail_label:
-                        logger.debug(f"[MEMBER_WIDGET] Setting pixmap on label")
-                        label.setPixmap(pixmap)
+                        logger.debug(f"[MEMBER_WIDGET] Setting pixmap on label with center-crop")
+                        # Google Photos style: center-crop to fill square
+                        scaled = pixmap.scaled(
+                            size, size,
+                            Qt.KeepAspectRatio,
+                            Qt.SmoothTransformation
+                        )
+                        # Center-crop to exact square
+                        x = (scaled.width() - size) // 2
+                        y = (scaled.height() - size) // 2
+                        cropped = scaled.copy(x, y, size, size)
+                        label.setPixmap(cropped)
                     else:
                         logger.warning(f"[MEMBER_WIDGET] Label mismatch in on_loaded!")
 
@@ -321,62 +326,82 @@ class StackViewDialog(QDialog):
         self._load_stack()
 
     def _init_ui(self):
-        """Initialize UI components."""
+        """Initialize UI components - compact layout for media-first design."""
         layout = QVBoxLayout(self)
-        layout.setSpacing(16)
-        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(4)  # Reduced from 16
+        layout.setContentsMargins(8, 8, 8, 8)  # Reduced from 16
 
-        # Title section
+        # Compact title row: Title + Info on same line
         title_layout = QHBoxLayout()
+        title_layout.setSpacing(12)
 
         self.title_label = QLabel("📚 Stack Comparison")
         title_font = QFont()
-        title_font.setPointSize(16)
+        title_font.setPointSize(14)  # Reduced from 16
         title_font.setBold(True)
         self.title_label.setFont(title_font)
         title_layout.addWidget(self.title_label)
 
-        title_layout.addStretch()
-
-        # Stack info
+        # Stack info (inline)
         self.info_label = QLabel("Loading...")
-        self.info_label.setStyleSheet("color: #666; font-size: 12px;")
+        self.info_label.setStyleSheet("color: #666; font-size: 11px;")
         title_layout.addWidget(self.info_label)
+
+        title_layout.addStretch()
 
         layout.addLayout(title_layout)
 
-        # Separator
-        separator = QFrame()
-        separator.setFrameShape(QFrame.HLine)
-        separator.setFrameShadow(QFrame.Sunken)
-        layout.addWidget(separator)
-
-        # Members grid
-        members_group = QGroupBox("Stack Members")
-        members_layout = QVBoxLayout(members_group)
-
+        # Members grid (no QGroupBox wrapper, direct scroll area)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setStyleSheet("""
             QScrollArea {
                 border: 1px solid #ddd;
+                border-radius: 4px;
                 background-color: #fafafa;
             }
         """)
 
         self.members_container = QWidget()
         self.members_grid = QGridLayout(self.members_container)
-        self.members_grid.setSpacing(16)
-        self.members_grid.setContentsMargins(16, 16, 16, 16)
+        self.members_grid.setSpacing(8)  # Reduced from 16
+        self.members_grid.setContentsMargins(8, 8, 8, 8)  # Reduced from 16
 
         scroll.setWidget(self.members_container)
-        members_layout.addWidget(scroll)
+        layout.addWidget(scroll, stretch=3)
 
-        layout.addWidget(members_group, stretch=3)
 
-        # Comparison table
-        table_group = QGroupBox("Detailed Comparison")
-        table_layout = QVBoxLayout(table_group)
+        # Comparison table (collapsible, hidden by default for more thumbnail space)
+        table_header = QHBoxLayout()
+        table_header.setContentsMargins(0, 2, 0, 0)
+
+        self.table_toggle_btn = QPushButton("📊 Show Comparison Table")
+        self.table_toggle_btn.setCheckable(True)
+        self.table_toggle_btn.setChecked(False)
+        self.table_toggle_btn.setStyleSheet("""
+            QPushButton {
+                padding: 2px 8px;
+                background-color: #f0f0f0;
+                border: 1px solid #ccc;
+                border-radius: 3px;
+                font-size: 10px;
+                color: #555;
+            }
+            QPushButton:checked {
+                background-color: #e0e0e0;
+            }
+            QPushButton:hover {
+                background-color: #e8e8e8;
+            }
+        """)
+        self.table_toggle_btn.clicked.connect(self._toggle_comparison_table)
+        table_header.addWidget(self.table_toggle_btn)
+        table_header.addStretch(1)
+        layout.addLayout(table_header)
+
+
+
+
 
         self.comparison_table = QTableWidget()
         self.comparison_table.setStyleSheet("""
@@ -386,125 +411,81 @@ class StackViewDialog(QDialog):
             }
             QHeaderView::section {
                 background-color: #f5f5f5;
-                padding: 4px;
+                padding: 2px 4px;
                 border: 1px solid #ddd;
-                font-weight: bold;
+                font-size: 10px;
             }
         """)
-        table_layout.addWidget(self.comparison_table)
+        
+        self.comparison_table.setMaximumHeight(120)  # Compact height when shown
+        self.comparison_table.hide()  # Hidden by default        
+        
+#        self.comparison_table.setMaximumHeight(150)  # Limit table height
+        layout.addWidget(self.comparison_table)
 
-        layout.addWidget(table_group, stretch=2)
-
-        # Separator
-        separator2 = QFrame()
-        separator2.setFrameShape(QFrame.HLine)
-        separator2.setFrameShadow(QFrame.Sunken)
-        layout.addWidget(separator2)
-
-        # Action buttons
+        # Action buttons (compact)
         button_layout = QHBoxLayout()
+        button_layout.setContentsMargins(0, 4, 0, 0)
 
-        self.btn_unstack = QPushButton("🔓 Unstack All")
-        self.btn_unstack.setToolTip("Remove all members from this stack (keeps photos)")
+        # Compact button style
+        compact_btn_style = """
+            QPushButton {{
+                padding: 4px 10px;
+                background-color: {bg};
+                color: {fg};
+                border: {border};
+                border-radius: 3px;
+            }}
+            QPushButton:hover {{
+                background-color: {hover};
+            }}
+            QPushButton:disabled {{
+                background-color: #ccc;
+                color: #999;
+            }}
+        """
+
+        self.btn_unstack = QPushButton("🔓 Unstack")
+        self.btn_unstack.setToolTip("Remove all members from this stack")
         self.btn_unstack.clicked.connect(self._on_unstack_all)
-        self.btn_unstack.setStyleSheet("""
-            QPushButton {
-                padding: 8px 16px;
-                background-color: #FF9800;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #F57C00;
-            }
-        """)
+        self.btn_unstack.setStyleSheet(compact_btn_style.format(
+            bg="#FF9800", fg="white", border="none", hover="#F57C00"
+        ))
         button_layout.addWidget(self.btn_unstack)
 
-        # Unstack selected photos
-        self.btn_unstack_selected = QPushButton("🔓 Unstack Selected")
-        self.btn_unstack_selected.setEnabled(False)  # Disabled until photos are selected
-        self.btn_unstack_selected.setToolTip("Remove only selected photos from this stack (keeps photos)")
+        self.btn_unstack_selected = QPushButton("🔓 Unstack Sel.")
+        self.btn_unstack_selected.setEnabled(False)
+        self.btn_unstack_selected.setToolTip("Remove selected photos from stack")
         self.btn_unstack_selected.clicked.connect(self._on_unstack_selected)
-        self.btn_unstack_selected.setStyleSheet("""
-            QPushButton {
-                padding: 8px 16px;
-                background-color: #FF9800;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #F57C00;
-            }
-            QPushButton:disabled {
-                background-color: #ccc !important;
-                color: #999 !important;
-            }
-        """)
+        self.btn_unstack_selected.setStyleSheet(compact_btn_style.format(
+            bg="#FF9800", fg="white", border="none", hover="#F57C00"
+        ))
         button_layout.addWidget(self.btn_unstack_selected)
 
-        # Smart action: Keep Best (auto-select all except representative)
         self.btn_keep_best = QPushButton("⭐ Keep Best")
         self.btn_keep_best.clicked.connect(self._on_keep_best)
-        self.btn_keep_best.setToolTip("Automatically keep the best quality photo and select others for deletion")
-        self.btn_keep_best.setStyleSheet("""
-            QPushButton {
-                padding: 8px 16px;
-                background-color: #4CAF50;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #45a049;
-            }
-        """)
+        self.btn_keep_best.setToolTip("Keep best quality, select others for deletion")
+        self.btn_keep_best.setStyleSheet(compact_btn_style.format(
+            bg="#4CAF50", fg="white", border="none", hover="#45a049"
+        ))
         button_layout.addWidget(self.btn_keep_best)
 
         button_layout.addStretch()
 
-        self.btn_delete_selected = QPushButton("🗑️ Delete Selected")
+        self.btn_delete_selected = QPushButton("🗑️ Delete")
         self.btn_delete_selected.setEnabled(False)
         self.btn_delete_selected.clicked.connect(self._on_delete_selected)
-        self.btn_delete_selected.setStyleSheet("""
-            QPushButton {
-                padding: 8px 16px;
-                background-color: #f44336;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #d32f2f;
-            }
-            QPushButton:disabled {
-                background-color: #ccc !important;
-                color: #999 !important;
-            }
-        """)
+        self.btn_delete_selected.setStyleSheet(compact_btn_style.format(
+            bg="#f44336", fg="white", border="none", hover="#d32f2f"
+        ))
         logger.debug(f"[DELETE_BTN_INIT] Delete button created: {self.btn_delete_selected}, enabled={self.btn_delete_selected.isEnabled()}")
         button_layout.addWidget(self.btn_delete_selected)
 
         close_btn = QPushButton("Close")
         close_btn.clicked.connect(self.accept)
-        close_btn.setStyleSheet("""
-            QPushButton {
-                padding: 8px 16px;
-                background-color: #f5f5f5;
-                color: #333333;
-                border: 1px solid #ccc;
-                border-radius: 4px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #e8e8e8;
-            }
-        """)
+        close_btn.setStyleSheet(compact_btn_style.format(
+            bg="#f5f5f5", fg="#333", border="1px solid #ccc", hover="#e8e8e8"
+        ))
         button_layout.addWidget(close_btn)
 
         layout.addLayout(button_layout)
@@ -592,7 +573,11 @@ class StackViewDialog(QDialog):
 
             row = idx // 3
             col = idx % 3
-            self.members_grid.addWidget(widget, row, col)
+
+            # Use AlignTop to prevent vertical stretching
+            self.members_grid.addWidget(widget, row, col, Qt.AlignTop)
+            
+#            self.members_grid.addWidget(widget, row, col)
 
         # Populate comparison table
         self._populate_comparison_table()
@@ -677,6 +662,16 @@ class StackViewDialog(QDialog):
         self.comparison_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
         for col in range(1, len(headers)):
             self.comparison_table.horizontalHeader().setSectionResizeMode(col, QHeaderView.ResizeToContents)
+            
+    def _toggle_comparison_table(self, checked: bool):
+        """Toggle visibility of comparison table."""
+        if checked:
+            self.comparison_table.show()
+            self.table_toggle_btn.setText("📊 Hide Comparison Table")
+        else:
+            self.comparison_table.hide()
+            self.table_toggle_btn.setText("📊 Show Comparison Table")
+            
 
     @Slot(int, bool)
     def _on_member_selection_changed(self, photo_id: int, is_selected: bool):
@@ -1040,6 +1035,14 @@ class StackBrowserDialog(QDialog):
         self.setWindowTitle("Similar Photos & People")
         self.setMinimumSize(1000, 700)
 
+        # Resize throttle timer for responsive grid relayout
+        self._relayout_timer = QTimer(self)
+        self._relayout_timer.setSingleShot(True)
+        self._relayout_timer.timeout.connect(self._relayout_grids)
+
+        # Store current thumb size for responsive grid
+        self._current_thumb_size = 200
+
         logger.debug("[__INIT__] Starting _init_ui()")
         self._init_ui()
         logger.debug("[__INIT__] Finished _init_ui(), starting _load_current_mode_data()")
@@ -1049,27 +1052,28 @@ class StackBrowserDialog(QDialog):
     def _init_ui(self):
         """Initialize UI components with tabs for Similar Shots and People."""
         layout = QVBoxLayout(self)
-        layout.setSpacing(16)
-        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(4)  # Reduced from 16 for compact layout
+        layout.setContentsMargins(8, 8, 8, 8)  # Reduced from 16
 
-        # Header
+        # Compact header row: Title + Count on same line
         header_layout = QHBoxLayout()
+        header_layout.setSpacing(12)
 
-        # Title
+        # Title (smaller, inline)
         title_label = QLabel("📸 Similar Photos & People")
-        title_label.setStyleSheet("font-size: 18pt; font-weight: bold; color: #2196F3;")
+        title_label.setStyleSheet("font-size: 14pt; font-weight: bold; color: #2196F3;")
         header_layout.addWidget(title_label)
+
+        # Count indicator (inline with title)
+        self.count_label = QLabel("Loading...")
+        self.count_label.setStyleSheet("font-size: 10pt; color: #666;")
+        header_layout.addWidget(self.count_label)
 
         header_layout.addStretch(1)
 
-        # Count indicator
-        self.count_label = QLabel("Loading...")
-        self.count_label.setStyleSheet("font-size: 11pt; color: #666;")
-        header_layout.addWidget(self.count_label)
-
         layout.addLayout(header_layout)
 
-        # Tabs for Similar Shots vs People
+        # Tabs for Similar Shots vs People (compact styling)
         self.tabs = QTabWidget()
         self.tabs.setStyleSheet("""
             QTabWidget::pane {
@@ -1078,8 +1082,8 @@ class StackBrowserDialog(QDialog):
                 background-color: white;
             }
             QTabBar::tab {
-                padding: 8px 16px;
-                margin-right: 4px;
+                padding: 4px 12px;
+                margin-right: 2px;
                 background-color: #f0f0f0;
                 border: 1px solid #ddd;
                 border-bottom: none;
@@ -1099,8 +1103,8 @@ class StackBrowserDialog(QDialog):
         # Tab 1: Similar Shots (time-based visual similarity)
         similar_tab = QWidget()
         similar_layout = QVBoxLayout(similar_tab)
-        similar_layout.setSpacing(12)
-        similar_layout.setContentsMargins(12, 12, 12, 12)
+        similar_layout.setSpacing(4)  # Reduced from 12
+        similar_layout.setContentsMargins(4, 4, 4, 4)  # Reduced from 12
 
         # Similarity threshold slider
         self.slider_container = self._create_similarity_slider()
@@ -1114,21 +1118,21 @@ class StackBrowserDialog(QDialog):
         similar_layout.addWidget(self.info_banner)
         logger.debug(f"[INIT_UI] Added info banner, layout now has {similar_layout.count()} widgets")
 
-        # Stack grid (scroll area)
+        # Stack grid (scroll area) - takes all remaining space
         self.similar_scroll_area = QScrollArea()
         self.similar_scroll_area.setWidgetResizable(True)
         self.similar_scroll_area.setStyleSheet("""
             QScrollArea {
                 border: 1px solid #ddd;
-                border-radius: 8px;
-                background-color: #f9f9f9;
+                border-radius: 4px;
+                background-color: #fafafa;
             }
         """)
 
         self.similar_grid_container = QWidget()
         self.similar_grid_layout = QGridLayout(self.similar_grid_container)
-        self.similar_grid_layout.setSpacing(16)
-        self.similar_grid_layout.setContentsMargins(16, 16, 16, 16)
+        self.similar_grid_layout.setSpacing(8)  # Reduced from 16
+        self.similar_grid_layout.setContentsMargins(8, 8, 8, 8)  # Reduced from 16
 
         self.similar_scroll_area.setWidget(self.similar_grid_container)
         similar_layout.addWidget(self.similar_scroll_area, 1)
@@ -1138,28 +1142,28 @@ class StackBrowserDialog(QDialog):
         # Tab 2: People (face-based grouping)
         people_tab = QWidget()
         people_layout = QVBoxLayout(people_tab)
-        people_layout.setSpacing(12)
-        people_layout.setContentsMargins(12, 12, 12, 12)
+        people_layout.setSpacing(4)  # Reduced from 12
+        people_layout.setContentsMargins(4, 4, 4, 4)  # Reduced from 12
 
         # People slider (reuse similarity slider concept)
         self.people_slider_container = self._create_people_slider()
         people_layout.addWidget(self.people_slider_container)
 
-        # People grid (scroll area)
+        # People grid (scroll area) - takes all remaining space
         self.people_scroll_area = QScrollArea()
         self.people_scroll_area.setWidgetResizable(True)
         self.people_scroll_area.setStyleSheet("""
             QScrollArea {
                 border: 1px solid #ddd;
-                border-radius: 8px;
-                background-color: #f9f9f9;
+                border-radius: 4px;
+                background-color: #fafafa;
             }
         """)
 
         self.people_grid_container = QWidget()
         self.people_grid_layout = QGridLayout(self.people_grid_container)
-        self.people_grid_layout.setSpacing(16)
-        self.people_grid_layout.setContentsMargins(16, 16, 16, 16)
+        self.people_grid_layout.setSpacing(8)  # Reduced from 16
+        self.people_grid_layout.setContentsMargins(8, 8, 8, 8)  # Reduced from 16
 
         self.people_scroll_area.setWidget(self.people_grid_container)
         people_layout.addWidget(self.people_scroll_area, 1)
@@ -1168,20 +1172,19 @@ class StackBrowserDialog(QDialog):
 
         layout.addWidget(self.tabs, 1)
 
-        # Bottom buttons
+        # Bottom buttons (compact)
         button_layout = QHBoxLayout()
+        button_layout.setContentsMargins(0, 4, 0, 0)
         button_layout.addStretch(1)
 
         close_btn = QPushButton("Close")
-        close_btn.setFixedWidth(100)
         close_btn.setStyleSheet("""
             QPushButton {
-                padding: 8px 16px;
+                padding: 6px 16px;
                 background-color: #f5f5f5;
                 color: #333333;
                 border: 1px solid #ccc;
                 border-radius: 4px;
-                font-weight: bold;
             }
             QPushButton:hover {
                 background-color: #e8e8e8;
@@ -1193,81 +1196,75 @@ class StackBrowserDialog(QDialog):
         layout.addLayout(button_layout)
 
     def _create_similarity_slider(self) -> QWidget:
-        """Create similarity threshold slider."""
+        """Create compact similarity threshold slider (single row)."""
         container = QWidget()
         container.setStyleSheet("""
             QWidget {
-                background-color: white;
-                border: 1px solid #ddd;
-                border-radius: 8px;
-                padding: 12px;
+                background-color: #f8f9fa;
+                border: 1px solid #e0e0e0;
+                border-radius: 4px;
             }
         """)
 
-        layout = QVBoxLayout(container)
+        layout = QHBoxLayout(container)
         layout.setSpacing(8)
+        layout.setContentsMargins(8, 4, 8, 4)  # Minimal vertical padding
 
-        # Label row
-        label_row = QHBoxLayout()
-        label = QLabel("🎚️ Similarity Threshold:")
-        label.setStyleSheet("font-weight: bold; font-size: 11pt;")
-        label_row.addWidget(label)
+        # Label
+        label = QLabel("🎚️ Similarity:")
+        label.setStyleSheet("font-weight: bold; font-size: 10pt;")
+        layout.addWidget(label)
 
-        threshold_value_label = QLabel(f"{int(self.similarity_threshold * 100)}%")
-        threshold_value_label.setStyleSheet("font-size: 11pt; color: #2196F3; font-weight: bold;")
-        label_row.addWidget(threshold_value_label)
-
-        # Register this label for updates when slider changes
-        self.threshold_labels.append(threshold_value_label)
-
-        label_row.addStretch(1)
-
-        # Help text
-        help_label = QLabel("Lower = more photos (includes less similar) • Higher = fewer photos (only very similar)")
-        help_label.setStyleSheet("font-size: 9pt; color: #999;")
-        label_row.addWidget(help_label)
-
-        layout.addLayout(label_row)
-
-        # Slider row
-        slider_row = QHBoxLayout()
-
+        # Min label
         min_label = QLabel("50%")
         min_label.setStyleSheet("font-size: 9pt; color: #666;")
-        slider_row.addWidget(min_label)
+        layout.addWidget(min_label)
 
+        # Slider
         self.similarity_slider = QSlider(Qt.Horizontal)
-        self.similarity_slider.setMinimum(50)  # 50% minimum
-        self.similarity_slider.setMaximum(100)  # 100% maximum
+        self.similarity_slider.setMinimum(50)
+        self.similarity_slider.setMaximum(100)
         self.similarity_slider.setValue(int(self.similarity_threshold * 100))
-        self.similarity_slider.setTickPosition(QSlider.TicksBelow)
-        self.similarity_slider.setTickInterval(10)
+        self.similarity_slider.setFixedWidth(200)
         self.similarity_slider.setStyleSheet("""
             QSlider::groove:horizontal {
                 border: 1px solid #bbb;
                 background: #e0e0e0;
-                height: 8px;
-                border-radius: 4px;
+                height: 6px;
+                border-radius: 3px;
             }
             QSlider::handle:horizontal {
                 background: #2196F3;
-                border: 2px solid #1976D2;
-                width: 18px;
-                margin: -5px 0;
-                border-radius: 9px;
+                border: 1px solid #1976D2;
+                width: 14px;
+                margin: -4px 0;
+                border-radius: 7px;
             }
             QSlider::handle:horizontal:hover {
                 background: #1976D2;
             }
         """)
         self.similarity_slider.valueChanged.connect(self._on_slider_changed)
-        slider_row.addWidget(self.similarity_slider, 1)
+        layout.addWidget(self.similarity_slider)
 
+        # Max label
         max_label = QLabel("100%")
         max_label.setStyleSheet("font-size: 9pt; color: #666;")
-        slider_row.addWidget(max_label)
+        layout.addWidget(max_label)
 
-        layout.addLayout(slider_row)
+        # Current value
+        threshold_value_label = QLabel(f"{int(self.similarity_threshold * 100)}%")
+        threshold_value_label.setStyleSheet("font-size: 10pt; color: #2196F3; font-weight: bold; min-width: 40px;")
+        layout.addWidget(threshold_value_label)
+        self.threshold_labels.append(threshold_value_label)
+
+        # Inline help (tooltip instead of taking space)
+        help_label = QLabel("ℹ️")
+        help_label.setToolTip("Lower = more photos (includes less similar)\nHigher = fewer photos (only very similar)")
+        help_label.setStyleSheet("font-size: 10pt; color: #999;")
+        layout.addWidget(help_label)
+
+        layout.addStretch(1)
 
         return container
 
@@ -1286,96 +1283,60 @@ class StackBrowserDialog(QDialog):
             self._display_people()  # Re-filter people view
 
     def _create_info_banner(self) -> QWidget:
-        """Create info banner showing generation parameters and tips."""
-        logger.debug("[CREATE_BANNER] Creating new info banner widget")
+        """Create compact info banner (single row with regenerate button)."""
+        logger.debug("[CREATE_BANNER] Creating new compact info banner widget")
         banner = QFrame()
         banner.setStyleSheet("""
             QFrame {
-                background-color: #e8f4f8;
-                border: 1px solid #b3d9e6;
-                border-radius: 6px;
-                padding: 10px;
+                background-color: #f0f7fa;
+                border: 1px solid #c8e1eb;
+                border-radius: 4px;
             }
         """)
 
-        layout = QVBoxLayout(banner)
-        layout.setSpacing(6)
-        layout.setContentsMargins(12, 8, 12, 8)
+        layout = QHBoxLayout(banner)
+        layout.setSpacing(8)
+        layout.setContentsMargins(8, 4, 8, 4)  # Minimal vertical padding
 
-        # Title
-        title_label = QLabel("ℹ️ How Similar Photos Work")
-        title_label.setStyleSheet("font-weight: bold; font-size: 10pt; color: #0277bd;")
-        layout.addWidget(title_label)
-
-        # Explanation
-        explanation_text = (
-            "• Stacks are created during photo scanning with configurable similarity threshold (default 50%)\n"
-            "• The slider above filters which photos to show within each stack\n"
-            "• Lower slider = more photos visible | Higher slider = only very similar photos\n"
-            "• If you don't see expected photos, they may have been excluded during scanning"
-        )
+        # Compact info with tooltip for details
+        info_text = "💡 Slider filters photos within stacks"
 
         # Add generation threshold info if we can infer it
         if self.all_stacks:
             min_similarity = self._get_minimum_similarity_in_stacks()
             if min_similarity:
                 generation_threshold = int(min_similarity * 100)
-                explanation_text += f"\n\n📊 Estimated generation threshold: ~{generation_threshold}%"
+                info_text = f"💡 Stacks generated at ~{generation_threshold}%"
 
-                # Warn if viewing threshold is lower than generation
-                if self.similarity_threshold < min_similarity:
-                    warning_text = f" ⚠️ Your slider is at {int(self.similarity_threshold * 100)}%, but stacks were generated at ~{generation_threshold}%"
-                    explanation_text += f"\n{warning_text}"
+        info_label = QLabel(info_text)
+        info_label.setStyleSheet("font-size: 9pt; color: #0277bd;")
+        info_label.setToolTip(
+            "How Similar Photos Work:\n\n"
+            "• Stacks are created during photo scanning\n"
+            "• The slider filters which photos to show\n"
+            "• Lower = more photos | Higher = only very similar\n"
+            "• Regenerate to include new photos or change threshold"
+        )
+        layout.addWidget(info_label)
 
-        explanation = QLabel(explanation_text)
-        explanation.setStyleSheet("font-size: 9pt; color: #01579b; line-height: 1.4;")
-        explanation.setWordWrap(True)
-        layout.addWidget(explanation)
-
-        # Stale stack warning
+        # Stale stack warning (inline, compact)
         if hasattr(self, 'stale_photo_count') and self.stale_photo_count > 0:
-            warning_frame = QFrame()
-            warning_frame.setStyleSheet("""
-                QFrame {
-                    background-color: #fff3cd;
-                    border: 1px solid #ffc107;
-                    border-radius: 4px;
-                    padding: 8px;
-                    margin-top: 6px;
-                }
-            """)
-            warning_layout = QHBoxLayout(warning_frame)
-            warning_layout.setContentsMargins(8, 4, 8, 4)
-
-            warning_label = QLabel(
-                f"⚠️ {self.stale_photo_count} new photo(s) added since last stack generation. "
-                f"Regenerate to include them in grouping."
-            )
+            warning_label = QLabel(f"⚠️ {self.stale_photo_count} new photo(s) not in stacks")
             warning_label.setStyleSheet("font-size: 9pt; color: #856404; font-weight: bold;")
-            warning_label.setWordWrap(True)
-            warning_layout.addWidget(warning_label, 1)
+            layout.addWidget(warning_label)
 
-            layout.addWidget(warning_frame)
+        layout.addStretch(1)
 
-        # Action row
-        action_row = QHBoxLayout()
-
-        tip_label = QLabel("💡 Tip: To see more photos, regenerate stacks with lower similarity threshold")
-        tip_label.setStyleSheet("font-size: 9pt; color: #0277bd; font-style: italic;")
-        tip_label.setWordWrap(True)
-        action_row.addWidget(tip_label, 1)
-
-        # Regenerate button
-        self.btn_regenerate = QPushButton("🔄 Regenerate Stacks")
-        self.btn_regenerate.setToolTip("Re-scan photos and create new similarity stacks with optimized settings")
+        # Regenerate button (compact)
+        self.btn_regenerate = QPushButton("🔄 Regenerate")
+        self.btn_regenerate.setToolTip("Re-scan photos and create new similarity stacks")
         self.btn_regenerate.setStyleSheet("""
             QPushButton {
-                padding: 6px 12px;
+                padding: 3px 8px;
                 background-color: #2196F3;
                 color: white;
                 border: none;
-                border-radius: 4px;
-                font-weight: bold;
+                border-radius: 3px;
                 font-size: 9pt;
             }
             QPushButton:hover {
@@ -1383,9 +1344,7 @@ class StackBrowserDialog(QDialog):
             }
         """)
         self.btn_regenerate.clicked.connect(self._on_regenerate_clicked)
-        action_row.addWidget(self.btn_regenerate)
-
-        layout.addLayout(action_row)
+        layout.addWidget(self.btn_regenerate)
 
         return banner
 
@@ -1573,27 +1532,31 @@ class StackBrowserDialog(QDialog):
                 "Try lowering the threshold to see more photos in each group."
             )
             no_stacks_label.setAlignment(Qt.AlignCenter)
-            no_stacks_label.setStyleSheet("color: #999; font-size: 12pt; padding: 40px;")
+            no_stacks_label.setStyleSheet("color: #999; font-size: 11pt; padding: 20px;")
             self.similar_grid_layout.addWidget(no_stacks_label, 0, 0)
             return
 
-        # Add stack cards to grid (3 columns)
-        for i, stack in enumerate(self.filtered_stacks):
-            row = i // 3
-            col = i % 3
+        # Calculate responsive grid metrics
+        cols, thumb_size, spacing = self._grid_metrics()
+        self._current_thumb_size = thumb_size
+        self.similar_grid_layout.setSpacing(spacing)
 
-            card = self._create_stack_card(stack)
+        # Add stack cards to grid (responsive columns)
+        for i, stack in enumerate(self.filtered_stacks):
+            row = i // cols
+            col = i % cols
+
+            card = self._create_stack_card(stack, thumb_size)
             self.similar_grid_layout.addWidget(card, row, col)
 
-    def _create_stack_card(self, stack: dict) -> QWidget:
-        """Create a clickable card for a stack."""
+    def _create_stack_card(self, stack: dict, thumb_size: int = 200) -> QWidget:
+        """Create a clickable card for a stack with responsive thumbnail."""
         card = QFrame()
         card.setStyleSheet("""
             QFrame {
                 background-color: white;
-                border: 2px solid #ddd;
-                border-radius: 8px;
-                padding: 8px;
+                border: 1px solid #ddd;
+                border-radius: 6px;
             }
             QFrame:hover {
                 border-color: #2196F3;
@@ -1603,11 +1566,15 @@ class StackBrowserDialog(QDialog):
         card.setCursor(Qt.PointingHandCursor)
 
         layout = QVBoxLayout(card)
-        layout.setSpacing(8)
+        layout.setSpacing(4)
+        layout.setContentsMargins(6, 6, 6, 6)
 
-        # Representative thumbnail - with progressive loading
+        # Store thumb_size on card for later reference
+        card._thumb_size = thumb_size
+
+        # Representative thumbnail - responsive size
         thumbnail_label = QLabel()
-        thumbnail_label.setFixedSize(200, 200)
+        thumbnail_label.setFixedSize(thumb_size, thumb_size)
         thumbnail_label.setAlignment(Qt.AlignCenter)
         thumbnail_label.setStyleSheet("""
             QLabel {
@@ -1617,7 +1584,7 @@ class StackBrowserDialog(QDialog):
             }
         """)
 
-        # PHASE 3: Show placeholder immediately, load thumbnail in background
+        # Show placeholder immediately, load thumbnail in background
         thumbnail_label.setText("Loading...")
 
         # Load representative photo thumbnail asynchronously
@@ -1637,14 +1604,23 @@ class StackBrowserDialog(QDialog):
                         logger.debug(f"[STACK_CARD] Creating async loader for stack {stack.get('stack_id')}, photo path: {path}")
 
                         # CRITICAL: Attach loader to card to prevent garbage collection
-                        # Store as attribute of the card widget
-                        card._thumbnail_loader = ThumbnailLoader(path, thumbnail_label, size=200)
+                        card._thumbnail_loader = ThumbnailLoader(path, thumbnail_label, size=thumb_size)
 
-                        # Connect signals for when thumbnail loads
-                        def on_thumbnail_loaded(pixmap, label):
+                        # Connect signals for when thumbnail loads - with center-crop scaling
+                        def on_thumbnail_loaded(pixmap, label, size=thumb_size):
                             logger.debug(f"[STACK_CARD] Thumbnail loaded for label {label}")
-                            if label == thumbnail_label:  # Ensure we're updating the right label
-                                label.setPixmap(pixmap)
+                            if label == thumbnail_label:
+                                # Google Photos style: center-crop to fill square
+                                scaled = pixmap.scaled(
+                                    size, size,
+                                    Qt.KeepAspectRatio,
+                                    Qt.SmoothTransformation
+                                )
+                                # Center-crop to exact square
+                                x = (scaled.width() - size) // 2
+                                y = (scaled.height() - size) // 2
+                                cropped = scaled.copy(x, y, size, size)
+                                label.setPixmap(cropped)
 
                         def on_thumbnail_error(error_msg, label):
                             logger.warning(f"[STACK_CARD] Thumbnail error: {error_msg}")
@@ -1669,25 +1645,18 @@ class StackBrowserDialog(QDialog):
 
         layout.addWidget(thumbnail_label)
 
-        # Stack info
+        # Compact info: count + similarity on one line
         members = stack.get('members', [])
-        info_label = QLabel(f"📸 {len(members)} similar photos")
-        info_label.setStyleSheet("font-weight: bold; font-size: 10pt; color: #333;")
+        max_similarity = max((m.get('similarity_score', 0.0) for m in members), default=0.0)
+
+        info_text = f"📸 {len(members)} photos"
+        if max_similarity > 0:
+            info_text += f" • {int(max_similarity * 100)}%"
+
+        info_label = QLabel(info_text)
+        info_label.setStyleSheet("font-size: 9pt; color: #555;")
         info_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(info_label)
-
-        # Max similarity
-        max_similarity = 0.0
-        for member in members:
-            similarity = member.get('similarity_score', 0.0)
-            if similarity > max_similarity:
-                max_similarity = similarity
-
-        if max_similarity > 0:
-            similarity_label = QLabel(f"🔗 Up to {int(max_similarity * 100)}% similar")
-            similarity_label.setStyleSheet("font-size: 9pt; color: #2196F3;")
-            similarity_label.setAlignment(Qt.AlignCenter)
-            layout.addWidget(similarity_label)
 
         # Make clickable
         stack_id = stack.get('stack_id')
@@ -1821,6 +1790,54 @@ class StackBrowserDialog(QDialog):
         self._load_stacks()
 
     # =========================================================================
+    # RESPONSIVE GRID LAYOUT (Google Photos / Lightroom style media-first)
+    # =========================================================================
+
+    def _grid_metrics(self):
+        """
+        Calculate responsive grid metrics based on container width.
+
+        Returns: (cols, thumb_size, spacing)
+        """
+        # Get container width from current tab's scroll area
+        if self.current_mode == "similar":
+            w = self.similar_grid_container.width() if hasattr(self, "similar_grid_container") else 900
+        else:
+            w = self.people_grid_container.width() if hasattr(self, "people_grid_container") else 900
+        w = max(w, 360)
+
+        # Spacing and margins (compact)
+        spacing = 8
+        margins = 8 * 2  # left + right
+
+        # Target card width: thumb + padding + info row
+        target_card_w = 240
+
+        cols = max(1, min(6, (w - margins) // target_card_w))
+
+        # Compute thumb size from available width and columns
+        # Card needs: thumb + padding (~24px total for card padding and info)
+        available_per_col = (w - margins - spacing * (cols - 1)) / cols
+        thumb_size = int(max(140, min(280, available_per_col - 24)))
+
+        return cols, thumb_size, spacing
+
+    def _relayout_grids(self):
+        """Relayout the grids after resize (throttled callback)."""
+        # Re-display based on current mode
+        if self.current_mode == "similar" and self.filtered_stacks:
+            self._display_stacks()
+        elif self.current_mode == "people" and self.all_people:
+            self._display_people()
+
+    def resizeEvent(self, event):
+        """Handle window resize with throttled grid relayout."""
+        super().resizeEvent(event)
+        # Throttle to avoid rebuild spam during live resize dragging
+        if hasattr(self, "_relayout_timer"):
+            self._relayout_timer.start(120)
+
+    # =========================================================================
     # PEOPLE MODE (Face-based grouping)
     # =========================================================================
 
@@ -1897,27 +1914,31 @@ class StackBrowserDialog(QDialog):
                 "Run face detection first to enable person-based grouping."
             )
             no_people_label.setAlignment(Qt.AlignCenter)
-            no_people_label.setStyleSheet("color: #999; font-size: 12pt; padding: 40px;")
+            no_people_label.setStyleSheet("color: #999; font-size: 11pt; padding: 20px;")
             self.people_grid_layout.addWidget(no_people_label, 0, 0)
             return
 
-        # Add person cards to grid (3 columns)
-        for i, person in enumerate(self.all_people):
-            row = i // 3
-            col = i % 3
+        # Calculate responsive grid metrics
+        cols, thumb_size, spacing = self._grid_metrics()
+        self._current_thumb_size = thumb_size
+        self.people_grid_layout.setSpacing(spacing)
 
-            card = self._create_person_card(person)
+        # Add person cards to grid (responsive columns)
+        for i, person in enumerate(self.all_people):
+            row = i // cols
+            col = i % cols
+
+            card = self._create_person_card(person, thumb_size)
             self.people_grid_layout.addWidget(card, row, col)
 
-    def _create_person_card(self, person: dict) -> QWidget:
-        """Create a clickable card for a person."""
+    def _create_person_card(self, person: dict, thumb_size: int = 200) -> QWidget:
+        """Create a clickable card for a person with responsive thumbnail."""
         card = QFrame()
         card.setStyleSheet("""
             QFrame {
                 background-color: white;
-                border: 2px solid #ddd;
-                border-radius: 8px;
-                padding: 8px;
+                border: 1px solid #ddd;
+                border-radius: 6px;
             }
             QFrame:hover {
                 border-color: #2196F3;
@@ -1927,11 +1948,15 @@ class StackBrowserDialog(QDialog):
         card.setCursor(Qt.PointingHandCursor)
 
         layout = QVBoxLayout(card)
-        layout.setSpacing(8)
+        layout.setSpacing(4)
+        layout.setContentsMargins(6, 6, 6, 6)
 
-        # Representative face thumbnail
+        # Store thumb_size on card
+        card._thumb_size = thumb_size
+
+        # Representative face thumbnail - responsive size
         thumbnail_label = QLabel()
-        thumbnail_label.setFixedSize(200, 200)
+        thumbnail_label.setFixedSize(thumb_size, thumb_size)
         thumbnail_label.setAlignment(Qt.AlignCenter)
         thumbnail_label.setStyleSheet("""
             QLabel {
@@ -1941,7 +1966,7 @@ class StackBrowserDialog(QDialog):
             }
         """)
 
-        # Load representative face thumbnail
+        # Load representative face thumbnail with center-crop
         rep_thumb_png = person.get('rep_thumb_png')
         if rep_thumb_png:
             try:
@@ -1954,10 +1979,18 @@ class StackBrowserDialog(QDialog):
                 image.loadFromData(byte_array, "PNG")
 
                 if not image.isNull():
-                    pixmap = QPixmap.fromImage(image).scaled(
-                        200, 200, Qt.KeepAspectRatio, Qt.SmoothTransformation
+                    pixmap = QPixmap.fromImage(image)
+                    # Google Photos style: center-crop to fill square
+                    scaled = pixmap.scaled(
+                        thumb_size, thumb_size,
+                        Qt.KeepAspectRatio,
+                        Qt.SmoothTransformation
                     )
-                    thumbnail_label.setPixmap(pixmap)
+                    # Center-crop to exact square
+                    x = (scaled.width() - thumb_size) // 2
+                    y = (scaled.height() - thumb_size) // 2
+                    cropped = scaled.copy(x, y, thumb_size, thumb_size)
+                    thumbnail_label.setPixmap(cropped)
                 else:
                     thumbnail_label.setText("No Preview")
             except Exception as e:
@@ -1968,19 +2001,14 @@ class StackBrowserDialog(QDialog):
 
         layout.addWidget(thumbnail_label)
 
-        # Person info
+        # Compact info: name + count on one line
         display_name = person.get('display_name', 'Unknown')
         member_count = person.get('member_count', 0)
 
-        name_label = QLabel(display_name)
-        name_label.setStyleSheet("font-weight: bold; font-size: 11pt; color: #333;")
-        name_label.setAlignment(Qt.AlignCenter)
-        layout.addWidget(name_label)
-
-        count_label = QLabel(f"📸 {member_count} photos")
-        count_label.setStyleSheet("font-size: 9pt; color: #666;")
-        count_label.setAlignment(Qt.AlignCenter)
-        layout.addWidget(count_label)
+        info_label = QLabel(f"{display_name} • {member_count} 📸")
+        info_label.setStyleSheet("font-size: 9pt; color: #555;")
+        info_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(info_label)
 
         # Make clickable - opens person detail view
         branch_key = person.get('branch_key')
