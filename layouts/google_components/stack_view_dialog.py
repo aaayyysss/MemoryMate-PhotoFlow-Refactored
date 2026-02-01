@@ -121,14 +121,14 @@ class StackMemberWidget(QWidget):
         self._load_thumbnail()
 
     def _init_ui(self):
-        """Initialize UI components - compact layout."""
+        """Initialize UI components - compact layout with fixed height."""
         layout = QVBoxLayout(self)
-        layout.setSpacing(4)
-        layout.setContentsMargins(6, 6, 6, 6)
+        layout.setSpacing(2)  # Minimal spacing
+        layout.setContentsMargins(4, 4, 4, 4)
 
         # Thumbnail (compact size)
         self.thumbnail_label = QLabel()
-        self.thumbnail_label.setFixedSize(160, 160)  # Reduced from 180
+        self.thumbnail_label.setFixedSize(160, 160)
         self.thumbnail_label.setAlignment(Qt.AlignCenter)
         self.thumbnail_label.setStyleSheet("""
             QLabel {
@@ -183,7 +183,7 @@ class StackMemberWidget(QWidget):
         logger.debug(f"[CHECKBOX_INIT] Connected clicked signal for photo_id={self.photo_id}, enabled={self.checkbox.isEnabled()}, isCheckable={self.checkbox.isCheckable()}")
         layout.addWidget(self.checkbox)
 
-        # Style
+        # Style and size policy - prevent vertical stretching in grid layout
         border_color = "#FFA500" if self.is_representative else "#e0e0e0"
         self.setStyleSheet(f"""
             StackMemberWidget {{
@@ -192,6 +192,11 @@ class StackMemberWidget(QWidget):
                 border-radius: 6px;
             }}
         """)
+        # Fix vertical stretching: set maximum height based on content
+        # 160 (thumb) + 4*2 (margins) + 3*2 (spacing) + ~50 (labels+checkbox)
+        self.setMaximumHeight(230)
+        from PySide6.QtWidgets import QSizePolicy
+        self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
 
     def _load_thumbnail(self):
         """Load thumbnail asynchronously (Phase 3: Progressive Loading)."""
@@ -354,10 +359,33 @@ class StackViewDialog(QDialog):
         scroll.setWidget(self.members_container)
         layout.addWidget(scroll, stretch=3)
 
-        # Comparison table (compact, no QGroupBox)
-        table_label = QLabel("📊 Comparison")
-        table_label.setStyleSheet("font-weight: bold; font-size: 11px; color: #555;")
-        layout.addWidget(table_label)
+        # Comparison table (collapsible, hidden by default for more thumbnail space)
+        table_header = QHBoxLayout()
+        table_header.setContentsMargins(0, 2, 0, 0)
+
+        self.table_toggle_btn = QPushButton("📊 Show Comparison Table")
+        self.table_toggle_btn.setCheckable(True)
+        self.table_toggle_btn.setChecked(False)
+        self.table_toggle_btn.setStyleSheet("""
+            QPushButton {
+                padding: 2px 8px;
+                background-color: #f0f0f0;
+                border: 1px solid #ccc;
+                border-radius: 3px;
+                font-size: 10px;
+                color: #555;
+            }
+            QPushButton:checked {
+                background-color: #e0e0e0;
+            }
+            QPushButton:hover {
+                background-color: #e8e8e8;
+            }
+        """)
+        self.table_toggle_btn.clicked.connect(self._toggle_comparison_table)
+        table_header.addWidget(self.table_toggle_btn)
+        table_header.addStretch(1)
+        layout.addLayout(table_header)
 
         self.comparison_table = QTableWidget()
         self.comparison_table.setStyleSheet("""
@@ -372,7 +400,8 @@ class StackViewDialog(QDialog):
                 font-size: 10px;
             }
         """)
-        self.comparison_table.setMaximumHeight(150)  # Limit table height
+        self.comparison_table.setMaximumHeight(120)  # Compact height when shown
+        self.comparison_table.hide()  # Hidden by default
         layout.addWidget(self.comparison_table)
 
         # Action buttons (compact)
@@ -525,7 +554,8 @@ class StackViewDialog(QDialog):
 
             row = idx // 3
             col = idx % 3
-            self.members_grid.addWidget(widget, row, col)
+            # Use AlignTop to prevent vertical stretching
+            self.members_grid.addWidget(widget, row, col, Qt.AlignTop)
 
         # Populate comparison table
         self._populate_comparison_table()
@@ -610,6 +640,15 @@ class StackViewDialog(QDialog):
         self.comparison_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
         for col in range(1, len(headers)):
             self.comparison_table.horizontalHeader().setSectionResizeMode(col, QHeaderView.ResizeToContents)
+
+    def _toggle_comparison_table(self, checked: bool):
+        """Toggle visibility of comparison table."""
+        if checked:
+            self.comparison_table.show()
+            self.table_toggle_btn.setText("📊 Hide Comparison Table")
+        else:
+            self.comparison_table.hide()
+            self.table_toggle_btn.setText("📊 Show Comparison Table")
 
     @Slot(int, bool)
     def _on_member_selection_changed(self, photo_id: int, is_selected: bool):
