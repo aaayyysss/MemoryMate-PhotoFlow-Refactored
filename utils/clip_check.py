@@ -87,10 +87,21 @@ def check_clip_availability(variant: str = 'openai/clip-vit-base-patch32') -> Tu
     if legacy_dir_name != dir_name:
         dir_names_to_check.append(legacy_dir_name)
 
+    # Also search HuggingFace cache directory naming format
+    hf_dir_name = f"models--{dir_name.replace('/', '--')}"  # models--openai--clip-vit-...
+    hf_legacy_name = f"models--{legacy_dir_name}" if legacy_dir_name != dir_name else None
+
     for location in model_locations:
+        # Build list of candidate directories to check
+        candidates = []
         for check_dir_name in dir_names_to_check:
-            # Check for models/<variant> directory
-            base_dir = Path(location) / 'models' / check_dir_name
+            candidates.append(Path(location) / 'models' / check_dir_name)
+        # HuggingFace cache format (models--openai--clip-vit-... at root, no models/ subdir)
+        candidates.append(Path(location) / hf_dir_name)
+        if hf_legacy_name:
+            candidates.append(Path(location) / hf_legacy_name)
+
+        for base_dir in candidates:
             if not base_dir.exists():
                 continue
 
@@ -128,7 +139,8 @@ def _get_model_search_paths() -> list:
 
     Priority order:
     1. App directory (./models/clip-vit-base-patch32/)
-    2. Custom path from settings (for offline use)
+    2. HuggingFace cache (~/.cache/huggingface/hub/)
+    3. Custom path from settings (for offline use)
     """
     import sys
 
@@ -141,7 +153,25 @@ def _get_model_search_paths() -> list:
     except Exception:
         pass
 
-    # 2. Custom path from settings (optional)
+    # 2. HuggingFace cache (transformers / huggingface_hub default cache)
+    try:
+        hf_cache = Path.home() / '.cache' / 'huggingface' / 'hub'
+        if hf_cache.exists():
+            # HF cache stores models in models--<org>--<name>/ format
+            # Map them to a structure compatible with our check
+            for model_dir in hf_cache.iterdir():
+                if model_dir.is_dir() and model_dir.name.startswith('models--openai--clip-vit-'):
+                    # HF cache structure: models--openai--clip-vit-.../snapshots/<hash>/
+                    snapshots_dir = model_dir / 'snapshots'
+                    if snapshots_dir.exists():
+                        # Create a virtual root that maps HF names to our names
+                        # e.g. models--openai--clip-vit-large-patch14 → openai--clip-vit-large-patch14
+                        paths.append(str(hf_cache))
+                        break  # Only need to add the cache root once
+    except Exception:
+        pass
+
+    # 3. Custom path from settings (optional)
     try:
         from settings_manager_qt import SettingsManager
         settings = SettingsManager()
@@ -195,12 +225,7 @@ def _verify_model_files(snapshot_path: str) -> bool:
         logger.debug(f"Missing model weights file (need one of: {MODEL_WEIGHTS_FILES})")
         return False
 
-    # Also check refs/main file exists (but don't validate hash - accept any version)
-    refs_main = snapshot_path.parent.parent / 'refs' / 'main'
-    if not refs_main.exists():
-        logger.debug("Missing refs/main file")
-        return False
-
+    # refs/main is optional — HuggingFace cache has it, manual installs may not
     return True
 
 

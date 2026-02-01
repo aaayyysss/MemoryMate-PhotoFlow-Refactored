@@ -974,26 +974,6 @@ class MainWindow(QMainWindow):
         grid_layout.setContentsMargins(0, 0, 0, 0)
         grid_layout.setSpacing(4)
 
-        # Chip filter bar
-        chip_bar = QWidget()
-        chip_layout = QHBoxLayout(chip_bar)
-        chip_layout.setContentsMargins(8, 6, 8, 6)
-        chip_layout.setSpacing(8)
-        def make_chip(text, cb):
-            b = QPushButton(text)
-            b.setStyleSheet("QPushButton{border:1px solid #ccc; border-radius:14px; padding:4px 10px; background:#f7f7f7;} QPushButton:hover{background:#eaeaea;}")
-            if cb: b.clicked.connect(cb)
-            return b
-        chip_layout.addWidget(make_chip(tr('toolbar.favorites'), lambda: self._apply_tag_filter("favorite")))
-        chip_layout.addWidget(make_chip(tr('toolbar.people'), lambda: self._apply_tag_filter("face")))
-        chip_layout.addWidget(make_chip(tr('toolbar.videos'), lambda: self.grid.set_context("videos", None)))
-        chip_layout.addSpacing(12)
-        chip_layout.addWidget(make_chip(tr('toolbar.today'), lambda: self.grid.set_context("date", "today")))
-        chip_layout.addWidget(make_chip(tr('toolbar.this_week'), lambda: self.grid.set_context("date", "this-week")))
-        chip_layout.addWidget(make_chip(tr('toolbar.this_month'), lambda: self.grid.set_context("date", "this-month")))
-        chip_layout.addStretch()
-        grid_layout.addWidget(chip_bar)
-
         # Selection toolbar (hidden by default, shows when items selected)
         self.selection_toolbar = SelectionToolbar(self)
         grid_layout.addWidget(self.selection_toolbar)
