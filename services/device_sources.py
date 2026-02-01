@@ -58,7 +58,7 @@ class DeviceScanner:
     # OPTIMIZATION: Scan result caching (class-level to persist across instances)
     _last_scan_time = 0.0
     _last_scan_results = []
-    _scan_cache_ttl = 5.0  # seconds - cache results for this duration
+    _scan_cache_ttl = 300.0  # seconds — 5 min cache; prevents repeated COM scans
 
     # Skip these folders during deep scan (system/hidden folders)
     SKIP_FOLDERS = {

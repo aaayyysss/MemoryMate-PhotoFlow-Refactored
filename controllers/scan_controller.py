@@ -579,240 +579,79 @@ class ScanController(QObject):
             if video_backfilled:
                 self.logger.info(f"Backfilled {video_backfilled} video rows with created_date")
 
-            # PHASE 3B: Duplicate Detection Integration (Optional Post-Scan Step)
-            duplicate_stats = {"exact": 0, "similar": 0, "total": 0}
+            # PHASE 3B: Duplicate Detection — dispatched to background thread
+            # Instead of blocking the UI with QEventLoop / QProgressDialog,
+            # we fire a PostScanPipelineWorker and let it run asynchronously.
             if hasattr(self, '_duplicate_detection_enabled') and self._duplicate_detection_enabled:
-                self.logger.info("Duplicate detection is enabled - starting duplicate detection...")
+                self.logger.info("Enqueueing duplicate detection pipeline as background job...")
 
                 try:
-                    # Step 0: Run hash backfill FIRST (required for exact duplicate detection)
-                    if hasattr(self, '_detect_exact') and self._detect_exact:
-                        progress.setLabelText("📝 Computing photo hashes...")
-                        progress.setValue(2)
-                        QApplication.processEvents()
+                    from workers.post_scan_pipeline_worker import PostScanPipelineWorker
 
-                        self.logger.info("Running hash backfill before duplicate detection...")
-                        from services.asset_service import AssetService
-                        from repository.photo_repository import PhotoRepository
-                        from repository.asset_repository import AssetRepository
-                        from repository.base_repository import DatabaseConnection
+                    pipeline_options = {
+                        "detect_exact": getattr(self, '_detect_exact', False),
+                        "detect_similar": getattr(self, '_detect_similar', False),
+                        "generate_embeddings": getattr(self, '_generate_embeddings', False),
+                        "time_window_seconds": getattr(self, '_time_window_seconds', None),
+                        "similarity_threshold": getattr(self, '_similarity_threshold', None),
+                        "min_stack_size": getattr(self, '_min_stack_size', None),
+                    }
 
-                        db_conn = DatabaseConnection()
-                        photo_repo = PhotoRepository(db_conn)
-                        asset_repo = AssetRepository(db_conn)
-                        asset_service = AssetService(photo_repo, asset_repo)
-
-                        # Run hash backfill synchronously
-                        self.logger.info("Starting hash backfill and asset linking...")
-                        backfill_stats = asset_service.backfill_hashes_and_link_assets(current_project_id)
-                        self.logger.info(f"Hash backfill complete: {backfill_stats.scanned} scanned, {backfill_stats.hashed} hashed, {backfill_stats.linked} linked")
-
-                    # Step 1: Exact Duplicate Detection (Hash-based)
-                    if hasattr(self, '_detect_exact') and self._detect_exact:
-                        progress.setLabelText("🔍 Detecting exact duplicates...")
-                        progress.setValue(2)
-                        QApplication.processEvents()
-
-                        self.logger.info("Running exact duplicate detection...")
-                        from repository.asset_repository import AssetRepository
-                        from repository.base_repository import DatabaseConnection
-
-                        db_conn = DatabaseConnection()
-                        asset_repo = AssetRepository(db_conn)
-
-                        # Get exact duplicates (assets with 2+ instances)
-                        exact_assets = asset_repo.list_duplicate_assets(current_project_id, min_instances=2)
-                        duplicate_stats["exact"] = len(exact_assets)
-                        duplicate_stats["total"] += duplicate_stats["exact"]
-
-                        self.logger.info(f"Found {duplicate_stats['exact']} exact duplicate groups")
-
-                    # Step 1.5: Generate Embeddings (if enabled and similar detection requested)
-                    if hasattr(self, '_generate_embeddings') and self._generate_embeddings and \
-                       hasattr(self, '_detect_similar') and self._detect_similar:
-                        progress.setLabelText("🤖 Queueing AI embeddings for similar detection...")
-                        progress.setValue(3)
-                        QApplication.processEvents()
-
-                        self.logger.info("Queueing embeddings for newly scanned photos...")
-
-                        from repository.photo_repository import PhotoRepository
-                        from services.semantic_embedding_service import SemanticEmbeddingService
-                        from repository.base_repository import DatabaseConnection
-
-                        db_conn = DatabaseConnection()
-                        photo_repo = PhotoRepository(db_conn)
-                        embedding_service = SemanticEmbeddingService(db_connection=db_conn)
-
-                        # Get all photos in project that don't have embeddings
-                        all_photos = photo_repo.find_all(
-                            where_clause="project_id = ?",
-                            params=(current_project_id,)
-                        )
-                        photos_needing_embeddings = []
-
-                        for photo in all_photos:
-                            photo_id = photo.get('id')
-                            if not embedding_service.has_embedding(photo_id):
-                                photos_needing_embeddings.append(photo_id)
-
-                        if photos_needing_embeddings:
-                            self.logger.info(f"Found {len(photos_needing_embeddings)} photos needing embeddings - processing synchronously for similar detection")
-
-                            # Use SemanticEmbeddingWorker for batch processing
-                            # CRITICAL: Must wait for completion before similar shot detection
-                            from workers.semantic_embedding_worker import SemanticEmbeddingWorker
-                            from PySide6.QtCore import QThreadPool, QEventLoop
-
-                            # Create worker
-                            worker = SemanticEmbeddingWorker(
-                                photo_ids=photos_needing_embeddings,
-                                model_name="clip-vit-b32",
-                                force_recompute=False,
-                                project_id=current_project_id
-                            )
-
-                            # Create event loop to wait for worker completion
-                            embedding_loop = QEventLoop()
-                            embedding_completed = [False]  # Use list to allow modification in nested function
-
-                            # Track progress (keep UI responsive while waiting)
-                            def on_progress(current, total, message):
-                                """Update progress dialog."""
-                                progress_percent = int((current / total) * 100) if total > 0 else 0
-                                progress.setLabelText(f"🤖 Generating embeddings: {current}/{total} - {message}")
-                                # Map embedding progress (0-100%) to progress bar range (3-50%)
-                                progress_value = 3 + int(progress_percent * 0.47)
-                                progress.setValue(progress_value)
-                                QApplication.processEvents()  # Keep UI responsive
-
-                            def on_finished(stats):
-                                """Handle completion and exit wait loop."""
-                                self.logger.info(f"Embedding generation complete: {stats}")
-                                embedding_completed[0] = True
-                                # Update progress to show completion
-                                progress.setLabelText("✅ Embedding generation complete")
-                                progress.setValue(50)
-                                QApplication.processEvents()
-                                # Exit the event loop to continue processing
-                                embedding_loop.quit()
-
-                            def on_error(error_msg):
-                                """Handle error and exit wait loop."""
-                                self.logger.error(f"Embedding generation error: {error_msg}")
-                                embedding_completed[0] = True  # Still mark as done to proceed
-                                progress.setLabelText(f"❌ Embedding error: {error_msg}")
-                                QApplication.processEvents()
-                                # Exit the event loop to continue processing
-                                embedding_loop.quit()
-
-                            # Connect signals
-                            worker.signals.progress.connect(on_progress)
-                            worker.signals.finished.connect(on_finished)
-                            worker.signals.error.connect(on_error)
-
-                            # Start worker in thread pool
-                            progress.setLabelText("🤖 Starting embedding generation...")
-                            progress.setValue(5)
-                            QApplication.processEvents()
-                            QThreadPool.globalInstance().start(worker)
-
-                            # CRITICAL FIX: Wait for embedding worker to complete before similar shot detection
-                            # This ensures embeddings are available for similarity comparison
-                            self.logger.info("Waiting for embedding generation to complete before similar shot detection...")
-                            embedding_loop.exec()
-                            self.logger.info("Embedding generation finished, proceeding to similar shot detection")
-                        else:
-                            self.logger.info("All photos already have embeddings")
-                            progress.setLabelText("✅ All photos already have embeddings")
-                            progress.setValue(50)
-                            QApplication.processEvents()
-
-                    # Step 2: Similar Shot Detection (Embedding-based)
-                    if hasattr(self, '_detect_similar') and self._detect_similar:
-                        progress.setLabelText("📸 Detecting similar shots...")
-                        progress.setValue(55)
-                        QApplication.processEvents()
-
-                        self.logger.info("Running similar shot detection...")
-
-                        # Check if embeddings exist
-                        from services.semantic_embedding_service import SemanticEmbeddingService
-                        from repository.base_repository import DatabaseConnection
-
-                        db_conn = DatabaseConnection()
-                        embedding_service = SemanticEmbeddingService(db_connection=db_conn)
-                        embedding_count = embedding_service.get_embedding_count()
-
-                        if embedding_count == 0:
-                            self.logger.warning("No embeddings found - skipping similar shot detection")
-                            # Show warning to user (embeddings should have been generated in Step 1.5)
-                            QMessageBox.warning(
-                                self.main,
-                                "Similar Shot Detection",
-                                "No image embeddings found.\n\n"
-                                "Embedding generation may have failed.\n"
-                                "Check the application logs for errors."
-                            )
-                        else:
-                            # Run similar shot stack generation
-                            from services.stack_generation_service import StackGenerationService, StackGenParams
-                            from repository.stack_repository import StackRepository
-                            from repository.photo_repository import PhotoRepository
-
-                            photo_repo = PhotoRepository(db_conn)
-                            stack_repo = StackRepository(db_conn)
-                            stack_gen_service = StackGenerationService(
-                                photo_repo=photo_repo,
-                                stack_repo=stack_repo,
-                                similarity_service=embedding_service
-                            )
-
-                            # Use unified SimilarityConfig for consistent parameters
-                            from config.similarity_config import SimilarityConfig
-                            from dataclasses import replace
-                            params = SimilarityConfig.get_params()
-
-                            # Allow instance attribute overrides for backwards compatibility
-                            # Use dataclasses.replace() since StackGenParams is frozen
-                            overrides = {}
-                            if hasattr(self, '_time_window_seconds') and self._time_window_seconds:
-                                overrides['time_window_seconds'] = self._time_window_seconds
-                            if hasattr(self, '_similarity_threshold') and self._similarity_threshold:
-                                overrides['similarity_threshold'] = self._similarity_threshold
-                            if hasattr(self, '_min_stack_size') and self._min_stack_size:
-                                overrides['min_stack_size'] = self._min_stack_size
-
-                            if overrides:
-                                params = replace(params, **overrides)
-
-                            stats = stack_gen_service.regenerate_similar_shot_stacks(current_project_id, params)
-                            duplicate_stats["similar"] = stats.stacks_created
-                            duplicate_stats["total"] += duplicate_stats["similar"]
-
-                            self.logger.info(f"Created {duplicate_stats['similar']} similar shot stacks")
-
-                except Exception as e:
-                    self.logger.error(f"Duplicate detection failed: {e}", exc_info=True)
-                    QMessageBox.warning(
-                        self.main,
-                        "Duplicate Detection Error",
-                        f"Duplicate detection failed:\n{str(e)}\n\nThe scan completed successfully, but duplicates were not detected."
+                    self._post_scan_worker = PostScanPipelineWorker(
+                        project_id=current_project_id,
+                        options=pipeline_options,
                     )
 
-                # Update message box with duplicate stats if any were found
-                if duplicate_stats["total"] > 0:
-                    try:
-                        if hasattr(self.main, '_scan_complete_msgbox') and self.main._scan_complete_msgbox:
-                            current_text = self.main._scan_complete_msgbox.text()
-                            dup_text = f"\n\n📊 Duplicates found:\n"
-                            if duplicate_stats["exact"] > 0:
-                                dup_text += f"• {duplicate_stats['exact']} exact duplicate groups\n"
-                            if duplicate_stats["similar"] > 0:
-                                dup_text += f"• {duplicate_stats['similar']} similar shot stacks"
-                            self.main._scan_complete_msgbox.setText(current_text + dup_text)
-                    except Exception as e:
-                        self.logger.warning(f"Failed to update scan complete message: {e}")
+                    # Progress updates go to status bar (non-blocking)
+                    def _on_pipeline_progress(step_name, step_num, total, message):
+                        try:
+                            self.main.statusBar().showMessage(
+                                f"[{step_num}/{total}] {message}", 0
+                            )
+                        except Exception:
+                            pass
+
+                    def _on_pipeline_finished(results):
+                        errors = results.get("errors", [])
+                        exact = results.get("exact_duplicates", 0)
+                        similar = results.get("similar_stacks", 0)
+                        total = exact + similar
+
+                        if total > 0:
+                            parts = []
+                            if exact > 0:
+                                parts.append(f"{exact} exact duplicate groups")
+                            if similar > 0:
+                                parts.append(f"{similar} similar shot stacks")
+                            self.main.statusBar().showMessage(
+                                f"Duplicate detection complete: {', '.join(parts)}", 8000
+                            )
+                        else:
+                            self.main.statusBar().showMessage(
+                                "Duplicate detection complete — no duplicates found", 5000
+                            )
+
+                        if errors:
+                            self.logger.warning("Pipeline completed with errors: %s", errors)
+
+                        # Refresh duplicates section in sidebar
+                        self._refresh_duplicates_section()
+
+                    def _on_pipeline_error(msg):
+                        self.logger.error("Post-scan pipeline error: %s", msg)
+                        self.main.statusBar().showMessage(
+                            f"Duplicate detection failed: {msg}", 8000
+                        )
+
+                    self._post_scan_worker.signals.progress.connect(_on_pipeline_progress)
+                    self._post_scan_worker.signals.finished.connect(_on_pipeline_finished)
+                    self._post_scan_worker.signals.error.connect(_on_pipeline_error)
+
+                    QThreadPool.globalInstance().start(self._post_scan_worker)
+                    self.logger.info("Post-scan pipeline dispatched to background thread pool")
+
+                except Exception as e:
+                    self.logger.error(f"Failed to start post-scan pipeline: {e}", exc_info=True)
 
             # PHASE 3: Face Detection Integration (Optional Post-Scan Step)
             # Check if face detection is enabled in configuration
@@ -1093,6 +932,26 @@ class ScanController(QObject):
         # PHASE 2 Task 2.2: OLD refresh_ui() moved to _finalize_scan_refresh()
         # This ensures only ONE refresh happens after ALL async operations complete
 
+    def _refresh_duplicates_section(self):
+        """Refresh the duplicates section/tab in the sidebar after background pipeline completes."""
+        try:
+            if hasattr(self.main, 'layout_manager') and self.main.layout_manager:
+                current_layout_id = self.main.layout_manager._current_layout_id
+                if current_layout_id == "google":
+                    current_layout = self.main.layout_manager._current_layout
+                    if current_layout and hasattr(current_layout, 'accordion_sidebar'):
+                        accordion = current_layout.accordion_sidebar
+                        if hasattr(accordion, 'reload_section'):
+                            accordion.reload_section("duplicates")
+                            self.logger.debug("Refreshed accordion duplicates section after pipeline")
+                elif hasattr(self.main.sidebar, "tabs_controller"):
+                    tabs = self.main.sidebar.tabs_controller
+                    if hasattr(tabs, 'refresh_tab'):
+                        tabs.refresh_tab("duplicates")
+                        self.logger.debug("Refreshed sidebar duplicates tab after pipeline")
+        except Exception as e:
+            self.logger.warning(f"Failed to refresh duplicates section after pipeline: {e}")
+
     def _check_and_trigger_final_refresh(self):
         """
         PHASE 2 Task 2.2: Check if all scan operations are complete.
@@ -1158,29 +1017,8 @@ class ScanController(QObject):
             elif sidebar_was_updated:
                 self.logger.debug("Skipping sidebar reload - already updated by set_project()")
 
-            # Phase 3B: Refresh duplicates section/tab after scan if duplicate detection was enabled
-            if hasattr(self, '_duplicate_detection_enabled') and self._duplicate_detection_enabled:
-                self.logger.info("Refreshing duplicates section after scan...")
-                try:
-                    # Check which layout is active
-                    if hasattr(self.main, 'layout_manager') and self.main.layout_manager:
-                        current_layout_id = self.main.layout_manager._current_layout_id
-                        if current_layout_id == "google":
-                            # Google Layout: Refresh AccordionSidebar duplicates section
-                            current_layout = self.main.layout_manager._current_layout
-                            if current_layout and hasattr(current_layout, 'accordion_sidebar'):
-                                accordion = current_layout.accordion_sidebar
-                                if hasattr(accordion, 'reload_section'):
-                                    accordion.reload_section("duplicates")
-                                    self.logger.debug("✓ AccordionSidebar duplicates section refreshed")
-                        elif hasattr(self.main.sidebar, "tabs_controller"):
-                            # Current Layout: Refresh SidebarTabs duplicates tab
-                            tabs = self.main.sidebar.tabs_controller
-                            if hasattr(tabs, 'refresh_tab'):
-                                tabs.refresh_tab("duplicates")
-                                self.logger.debug("✓ SidebarTabs duplicates tab refreshed")
-                except Exception as e:
-                    self.logger.warning(f"Failed to refresh duplicates section: {e}")
+            # Phase 3B: Duplicates section refresh is now handled by the
+            # PostScanPipelineWorker's finished signal → _refresh_duplicates_section()
 
         except Exception as e:
             self.logger.error(f"Error reloading sidebar: {e}", exc_info=True)

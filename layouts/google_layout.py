@@ -114,6 +114,7 @@ class GooglePhotosLayout(BaseLayout):
         # QUICK WIN #1: Track unloaded thumbnails for scroll-triggered loading
         self.unloaded_thumbnails = {}  # Map path -> (button, size) for lazy loading
         self.initial_load_limit = 50  # Load first 50 immediately (increased from 30)
+        self._thumb_inflight = set()  # Paths currently being loaded — prevents re-queuing
 
         # QUICK WIN #3: Virtual scrolling - render only visible date groups
         self.date_groups_metadata = []  # List of {date_str, photos, thumb_size, index}
@@ -220,21 +221,6 @@ class GooglePhotosLayout(BaseLayout):
         self.view_tabs.addTab("⭐ Favorites")
         self.view_tabs.currentChanged.connect(self._on_view_tab_changed)
         main_layout.addWidget(self.view_tabs)
-
-        # Photos mode switcher (Grid / Timeline / Single)
-        self.photos_mode_bar = QToolBar()
-        self.photos_mode_bar.setMovable(False)
-        self.btn_mode_grid = QPushButton("Grid")
-        self.btn_mode_timeline = QPushButton("Timeline")
-        self.btn_mode_single = QPushButton("Single")
-        self.btn_mode_grid.clicked.connect(self._show_grid_view)
-        self.btn_mode_timeline.clicked.connect(self._show_timeline_view)
-        self.btn_mode_single.clicked.connect(self._show_single_view)
-        self.photos_mode_bar.addWidget(self.btn_mode_grid)
-        self.photos_mode_bar.addWidget(self.btn_mode_timeline)
-        self.photos_mode_bar.addWidget(self.btn_mode_single)
-        main_layout.addWidget(self.photos_mode_bar)
-        self.photos_mode_bar.setVisible(True)
 
         # Create horizontal splitter (Sidebar | Timeline)
         self.splitter = QSplitter(Qt.Horizontal)
@@ -1142,6 +1128,7 @@ class GooglePhotosLayout(BaseLayout):
             # Clear thumbnail button cache and reset load counter
             self.thumbnail_buttons.clear()
             self.thumbnail_load_count = 0  # Reset counter for new photo set
+            self._thumb_inflight.clear()  # Reset inflight guard on reload
 
             # CRITICAL FIX: Only clear trees when NOT filtering
             # When filtering, we want to keep the tree structure visible
@@ -5264,6 +5251,9 @@ class GooglePhotosLayout(BaseLayout):
         Phase 3 #1: Added smooth fade-in animation for loaded thumbnails.
         Phase 3 #2: Stops pulsing animation and shows cached thumbnail.
         """
+        # Clear inflight guard so this path isn't blocked on future reloads
+        self._thumb_inflight.discard(path)
+
         # Find the button for this path
         button = self.thumbnail_buttons.get(path)
         if not button:
@@ -5640,16 +5630,22 @@ class GooglePhotosLayout(BaseLayout):
                 # Button might have been deleted
                 continue
 
-        # Load visible thumbnails
+        # Load visible thumbnails (with inflight guard)
         if paths_to_load:
-            print(f"[GooglePhotosLayout] 📜 Scroll detected, loading {len(paths_to_load)} visible thumbnails...")
+            actually_queued = 0
             for path in paths_to_load:
-                button, size = self.unloaded_thumbnails.pop(path)
-                # Queue async loading
+                if path in self._thumb_inflight:
+                    continue  # Already being loaded
+                button, size = self.unloaded_thumbnails.pop(path, (None, None))
+                if button is None:
+                    continue
+                self._thumb_inflight.add(path)
                 loader = ThumbnailLoader(path, size, self.thumbnail_signals)
                 self.thumbnail_thread_pool.start(loader)
+                actually_queued += 1
 
-            print(f"[GooglePhotosLayout] ✓ Loaded {len(paths_to_load)} thumbnails, {len(self.unloaded_thumbnails)} remaining")
+            if actually_queued > 0:
+                print(f"[GooglePhotosLayout] 📜 Queued {actually_queued} thumbnails, {len(self.unloaded_thumbnails)} remaining")
 
     def _create_thumbnail(self, path: str, size: int) -> QWidget:
         """
@@ -9076,14 +9072,8 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
     def _on_view_tab_changed(self, index: int):
         tab_text = self.view_tabs.tabText(index)
         if "Photos" in tab_text:
-            if hasattr(self, 'photos_mode_bar'):
-                self.photos_mode_bar.setVisible(True)
             self._show_timeline_view()
         else:
-            if hasattr(self, 'photos_mode_bar'):
-                self.photos_mode_bar.setVisible(False)
-            # Old sidebar navigation - no longer needed with AccordionSidebar
-            # AccordionSidebar handles section expansion internally
             if "Favorites" in tab_text:
                 self._filter_by_tag("favorite")
 
