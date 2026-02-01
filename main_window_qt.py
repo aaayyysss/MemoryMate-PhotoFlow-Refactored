@@ -1,5 +1,5 @@
 # main_window_qt.py
-# Version 10.01.01.05 dated 20260122
+# Version 10.01.01.06 dated 20260202
 # Added PhotoDeletionService with comprehensive delete functionality
 # Enhanced repositories with utility methods for future migrations
 # Current LOC: ~2,640 (added photo deletion feature)
@@ -1030,14 +1030,15 @@ class MainWindow(QMainWindow):
 
         main_layout.addWidget(self.splitter, 1)
 
-        # --- Background Activity Panel (best-practice background jobs UI)
-        try:
-            self.activity_panel = BackgroundActivityPanel(self)
-            main_layout.addWidget(self.activity_panel)
-        except Exception as e:
-            print(f"[MainWindow] Could not create activity panel: {e}")
-            self.activity_panel = None
-
+#        # --- Background Activity Panel (best-practice background jobs UI)
+#        try:
+#            self.activity_panel = BackgroundActivityPanel(self)
+#            main_layout.addWidget(self.activity_panel)
+#        except Exception as e:
+#            print(f"[MainWindow] Could not create activity panel: {e}")
+#            self.activity_panel = None
+        
+        self.activity_panel = None
         # --- Wire toolbar actions
         act_select_all.triggered.connect(self.grid.list_view.selectAll)
         act_clear_sel.triggered.connect(self.grid.list_view.clearSelection)
