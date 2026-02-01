@@ -122,6 +122,18 @@ class FaceDetectionConfig:
             "type": int,
             "description": "Minimum photos required to enable GPU batch processing"
         },
+        "ui_yield_ms": {
+            "min": 0,
+            "max": 100,
+            "type": int,
+            "description": "Milliseconds to yield between photos for UI responsiveness (0=disabled)"
+        },
+        "process_workers": {
+            "min": 1,
+            "max": 8,
+            "type": int,
+            "description": "Number of workers in multiprocessing mode"
+        },
 
         # Storage parameters
         "crop_size": {
@@ -188,6 +200,17 @@ class FaceDetectionConfig:
         "batch_size": 50,  # Number of images to process before committing to DB
         "max_workers": 4,  # Max parallel face detection workers
         "skip_detected": True,  # Skip images that already have faces detected
+
+        # Execution Mode (best-practice non-blocking UI)
+        "execution_mode": "thread",  # "thread" (default) or "process"
+                                      # thread: Uses QThreadPool, simpler, good for most cases
+                                      # process: Uses ProcessPoolExecutor, better CPU utilization
+                                      # Start with "thread", switch to "process" if UI still janky
+        "process_workers": 2,  # Number of workers in multiprocessing mode
+        "ui_yield_ms": 1,  # Milliseconds to yield between photos for UI responsiveness
+                           # 0 = disabled (max speed, may cause UI jank)
+                           # 1-5 = recommended for smooth UI while scanning
+                           # Higher values = slower but smoother UI
 
         # GPU Batch Processing (ENHANCEMENT 2026-01-07)
         "enable_gpu_batch": True,  # Enable GPU batch processing when GPU is available

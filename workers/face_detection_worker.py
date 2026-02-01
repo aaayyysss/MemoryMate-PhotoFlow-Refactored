@@ -225,90 +225,135 @@ class FaceDetectionWorker(QRunnable):
 
     def _process_photos_sequential(self, photos, face_service, db, face_crops_dir,
                                    structured_logger, monitor):
-        """Sequential photo processing (original method)."""
+        """
+        Sequential photo processing with batch DB writes.
+
+        BEST PRACTICE (2026-02-01):
+        - Keeps single DB connection open across all photos
+        - Commits in batches (every N photos) instead of per-face
+        - Micro-yields between photos for UI responsiveness
+        - Reduces DB lock churn and improves throughput
+        """
+        cfg = get_face_config()
+        batch_size = int(cfg.get('batch_size', 50))
+        ui_yield_ms = cfg.get('ui_yield_ms', 1)  # Micro-yield for UI responsiveness
+
         total_photos = len(photos)
-        for idx, photo in enumerate(photos, 1):
-            if self.cancelled:
-                logger.info("[FaceDetectionWorker] Cancelled by user")
-                break
+        pending_rows = []  # Accumulate face rows for batch insert
 
-            photo_path = photo['path']
-            photo_filename = os.path.basename(photo_path)
+        # Keep single connection open for all batches
+        with db._connect() as conn:
+            for idx, photo in enumerate(photos, 1):
+                if self.cancelled:
+                    # Flush pending rows before exit
+                    if pending_rows:
+                        self._save_faces_batch(conn, pending_rows)
+                        pending_rows.clear()
+                    logger.info("[FaceDetectionWorker] Cancelled by user")
+                    break
 
-            # Calculate percentage
-            percentage = int((idx / total_photos) * 100)
+                photo_path = photo['path']
+                photo_filename = os.path.basename(photo_path)
 
-            # Emit progress with rich information
-            progress_msg = (
-                f"[{idx}/{total_photos}] ({percentage}%) "
-                f"Detecting faces: {photo_filename} | "
-                f"Found: {self._stats['faces_detected']} faces so far"
-            )
-            self.signals.progress.emit(idx, total_photos, progress_msg)
+                # Calculate percentage
+                percentage = int((idx / total_photos) * 100)
 
-            # Detect faces
-            photo_start_time = time.time()
-            try:
-                faces = face_service.detect_faces(photo_path, project_id=self.project_id)
-                photo_duration_ms = (time.time() - photo_start_time) * 1000
+                # Emit progress with rich information
+                progress_msg = (
+                    f"[{idx}/{total_photos}] ({percentage}%) "
+                    f"Detecting faces: {photo_filename} | "
+                    f"Found: {self._stats['faces_detected']} faces so far"
+                )
+                self.signals.progress.emit(idx, total_photos, progress_msg)
 
-                if not faces:
-                    self._stats['photos_processed'] += 1
-                    structured_logger.log_photo_processed(photo_path, 0, photo_duration_ms, success=True)
+                # Detect faces
+                photo_start_time = time.time()
+                try:
+                    faces = face_service.detect_faces(photo_path, project_id=self.project_id)
+                    photo_duration_ms = (time.time() - photo_start_time) * 1000
+
+                    if not faces:
+                        self._stats['photos_processed'] += 1
+                        structured_logger.log_photo_processed(photo_path, 0, photo_duration_ms, success=True)
+                        self.signals.progress.emit(
+                            idx, total_photos,
+                            f"[{idx}/{total_photos}] ({percentage}%) {photo_filename}: No faces found | Total: {self._stats['faces_detected']} faces"
+                        )
+                    else:
+                        # Limit faces per photo
+                        if len(faces) > self.max_faces_per_photo:
+                            logger.warning(
+                                f"[FaceDetectionWorker] {photo_path} has {len(faces)} faces, "
+                                f"keeping largest {self.max_faces_per_photo}"
+                            )
+                            faces = sorted(faces, key=lambda f: f['bbox_w'] * f['bbox_h'], reverse=True)
+                            faces = faces[:self.max_faces_per_photo]
+
+                        # Prepare face rows for batch insert (saves crops to disk)
+                        faces_saved = 0
+                        for face_idx, face in enumerate(faces):
+                            row = self._prepare_face_row(photo_path, face, face_idx, face_crops_dir)
+                            if row:
+                                pending_rows.append(row)
+                                faces_saved += 1
+
+                        self._stats['photos_processed'] += 1
+                        self._stats['faces_detected'] += faces_saved
+                        if faces_saved > 0:
+                            self._stats['images_with_faces'] += 1
+
+                        self.signals.face_detected.emit(photo_path, faces_saved)
+                        structured_logger.log_photo_processed(photo_path, faces_saved, photo_duration_ms, success=True)
+
+                        self.signals.progress.emit(
+                            idx, total_photos,
+                            f"[{idx}/{total_photos}] ({percentage}%) {photo_filename}: Found {faces_saved} face(s) | Total: {self._stats['faces_detected']} faces"
+                        )
+
+                        logger.info(f"[FaceDetectionWorker] ✓ {photo_path}: {faces_saved} faces")
+
+                except Exception as e:
+                    self._stats['photos_failed'] += 1
+                    error_msg = str(e)
+                    photo_duration_ms = (time.time() - photo_start_time) * 1000
+
+                    import traceback
+                    traceback_str = traceback.format_exc()
+                    structured_logger.log_error(
+                        photo_path,
+                        type(e).__name__,
+                        error_msg,
+                        traceback_str
+                    )
+
+                    logger.error(f"[FaceDetectionWorker] ✗ {photo_path}: {error_msg}")
+                    self.signals.error.emit(photo_path, error_msg)
+
                     self.signals.progress.emit(
                         idx, total_photos,
-                        f"[{idx}/{total_photos}] ({percentage}%) {photo_filename}: No faces found | Total: {self._stats['faces_detected']} faces"
+                        f"[{idx}/{total_photos}] ({percentage}%) {photo_filename}: ERROR - {error_msg[:50]}..."
                     )
-                    continue
 
-                # Limit faces per photo
-                if len(faces) > self.max_faces_per_photo:
-                    logger.warning(
-                        f"[FaceDetectionWorker] {photo_path} has {len(faces)} faces, "
-                        f"keeping largest {self.max_faces_per_photo}"
+                # Batch commit every N photos (not every face!)
+                if idx % batch_size == 0 and pending_rows:
+                    saved = self._save_faces_batch(conn, pending_rows)
+                    logger.debug(f"[FaceDetectionWorker] Batch commit: {saved} faces saved")
+                    pending_rows.clear()
+
+                    # Emit progress after batch commit (UI sees incremental results)
+                    self.signals.progress.emit(
+                        idx, total_photos,
+                        f"[{idx}/{total_photos}] ({percentage}%) Batch saved | Total: {self._stats['faces_detected']} faces"
                     )
-                    faces = sorted(faces, key=lambda f: f['bbox_w'] * f['bbox_h'], reverse=True)
-                    faces = faces[:self.max_faces_per_photo]
 
-                # Save faces to database
-                for face_idx, face in enumerate(faces):
-                    self._save_face(db, photo_path, face, face_idx, face_crops_dir)
+                # Micro-yield for UI responsiveness (prevents UI freeze on CPU-heavy workloads)
+                if ui_yield_ms > 0:
+                    time.sleep(ui_yield_ms / 1000.0)
 
-                self._stats['photos_processed'] += 1
-                self._stats['faces_detected'] += len(faces)
-                self._stats['images_with_faces'] += 1
-
-                self.signals.face_detected.emit(photo_path, len(faces))
-                structured_logger.log_photo_processed(photo_path, len(faces), photo_duration_ms, success=True)
-
-                self.signals.progress.emit(
-                    idx, total_photos,
-                    f"[{idx}/{total_photos}] ({percentage}%) {photo_filename}: Found {len(faces)} face(s) | Total: {self._stats['faces_detected']} faces"
-                )
-
-                logger.info(f"[FaceDetectionWorker] ✓ {photo_path}: {len(faces)} faces")
-
-            except Exception as e:
-                self._stats['photos_failed'] += 1
-                error_msg = str(e)
-                photo_duration_ms = (time.time() - photo_start_time) * 1000
-
-                import traceback
-                traceback_str = traceback.format_exc()
-                structured_logger.log_error(
-                    photo_path,
-                    type(e).__name__,
-                    error_msg,
-                    traceback_str
-                )
-
-                logger.error(f"[FaceDetectionWorker] ✗ {photo_path}: {error_msg}")
-                self.signals.error.emit(photo_path, error_msg)
-
-                self.signals.progress.emit(
-                    idx, total_photos,
-                    f"[{idx}/{total_photos}] ({percentage}%) {photo_filename}: ERROR - {error_msg[:50]}..."
-                )
+            # Final flush of any remaining rows
+            if pending_rows:
+                saved = self._save_faces_batch(conn, pending_rows)
+                logger.debug(f"[FaceDetectionWorker] Final batch commit: {saved} faces saved")
 
     def _process_photos_batch(self, photos, face_service, db, face_crops_dir,
                              structured_logger, monitor, batch_size):
@@ -554,10 +599,104 @@ class FaceDetectionWorker(QRunnable):
                 logger.info(f"[FaceDetectionWorker] Processing all {len(photos)} photos in project {self.project_id} (videos excluded)")
                 return photos
 
+    def _prepare_face_row(self, image_path: str, face: dict, face_idx: int,
+                          face_crops_dir: str) -> Optional[tuple]:
+        """
+        Prepare face data for batch insert (saves crop, returns DB row tuple).
+
+        BEST PRACTICE: Separates disk I/O from DB writes for batch efficiency.
+        Called for each face, accumulates rows, then batch-commits to DB.
+
+        Args:
+            image_path: Original photo path
+            face: Face dictionary with bbox and embedding
+            face_idx: Face index in photo (for naming)
+            face_crops_dir: Directory to save face crops
+
+        Returns:
+            tuple: Row data for INSERT, or None if face cannot be saved
+        """
+        # Validate embedding exists
+        if face.get('embedding') is None:
+            logger.warning(
+                f"⚠️  Skipping face for {os.path.basename(image_path)} face#{face_idx}: "
+                f"No embedding (detection-only mode)."
+            )
+            return None
+
+        try:
+            # Generate crop path
+            image_basename = os.path.splitext(os.path.basename(image_path))[0]
+            crop_filename = f"{image_basename}_face{face_idx}.jpg"
+            crop_path = os.path.join(face_crops_dir, crop_filename)
+
+            # Save face crop to disk
+            face_service = get_face_detection_service()
+            if get_face_config().get('save_face_crops', True):
+                if not face_service.save_face_crop(image_path, face, crop_path):
+                    logger.warning(f"Failed to save face crop: {crop_path}")
+                    return None
+            else:
+                os.makedirs(os.path.dirname(crop_path), exist_ok=True)
+
+            # Convert embedding to bytes
+            embedding_bytes = face['embedding'].astype(np.float32).tobytes()
+
+            # Return row tuple for batch insert
+            return (
+                self.project_id,
+                image_path,
+                crop_path,
+                embedding_bytes,
+                face['bbox_x'],
+                face['bbox_y'],
+                face['bbox_w'],
+                face['bbox_h'],
+                face['confidence']
+            )
+        except Exception as e:
+            logger.error(f"Failed to prepare face row: {e}")
+            return None
+
+    def _save_faces_batch(self, conn, rows: list) -> int:
+        """
+        Batch insert face rows in a single transaction.
+
+        BEST PRACTICE: Short transaction, predictable commit cadence.
+        Much faster than per-face commits and reduces lock churn.
+
+        Args:
+            conn: Database connection (keep open across batches)
+            rows: List of row tuples from _prepare_face_row()
+
+        Returns:
+            int: Number of rows successfully inserted
+        """
+        if not rows:
+            return 0
+
+        try:
+            cur = conn.cursor()
+            cur.executemany("""
+                INSERT OR REPLACE INTO face_crops (
+                    project_id, image_path, crop_path, embedding,
+                    bbox_x, bbox_y, bbox_w, bbox_h, confidence
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, rows)
+            conn.commit()
+            return len(rows)
+        except Exception as e:
+            logger.error(f"Batch insert failed: {e}")
+            conn.rollback()
+            return 0
+
     def _save_face(self, db: ReferenceDB, image_path: str, face: dict,
                    face_idx: int, face_crops_dir: str):
         """
         Save detected face to database and disk using transactional approach.
+
+        LEGACY METHOD: Kept for compatibility. New code should use
+        _prepare_face_row() + _save_faces_batch() for better performance.
 
         CRITICAL ENHANCEMENT (2026-01-07):
         Uses atomic transaction to prevent orphaned face crops.
