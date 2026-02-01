@@ -1619,12 +1619,16 @@ class MainWindow(QMainWindow):
                 backend='auto'
             )
 
+            # Get current project_id for canonical model enforcement
+            current_project_id = getattr(self.grid, 'project_id', None) if hasattr(self, 'grid') else None
+
             # Create worker
             worker = EmbeddingWorker(
                 job_id=job_id,
                 photo_ids=photo_ids,
                 model_variant=model_variant,
-                device='auto'
+                device='auto',
+                project_id=current_project_id
             )
 
             # Connect worker signals to progress dialog
@@ -1701,12 +1705,16 @@ class MainWindow(QMainWindow):
                 backend='auto'
             )
 
+            # Get current project_id for canonical model enforcement
+            current_project_id = getattr(self.grid, 'project_id', None) if hasattr(self, 'grid') else None
+
             # Create worker
             worker = EmbeddingWorker(
                 job_id=job_id,
                 photo_ids=photo_ids,
                 model_variant=model_variant,
-                device='auto'
+                device='auto',
+                project_id=current_project_id
             )
 
             # Connect worker signals to progress dialog
