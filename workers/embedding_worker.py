@@ -396,15 +396,17 @@ class EmbeddingWorker(QRunnable):
 
 
 def launch_embedding_worker(photo_ids: List[int],
-                            model_variant: str = 'openai/clip-vit-base-patch32',
-                            device: str = 'auto') -> int:
+                            model_variant: Optional[str] = None,
+                            device: str = 'auto',
+                            project_id: Optional[int] = None) -> int:
     """
     Convenience function to enqueue embedding job and launch worker.
 
     Args:
         photo_ids: List of photo IDs to process
-        model_variant: CLIP model variant
+        model_variant: CLIP model variant (optional - will use project's canonical model if project_id provided)
         device: Compute device
+        project_id: Project ID for canonical model enforcement (RECOMMENDED)
 
     Returns:
         int: Job ID
@@ -412,7 +414,7 @@ def launch_embedding_worker(photo_ids: List[int],
     Example:
         job_id = launch_embedding_worker(
             photo_ids=[1, 2, 3, 4, 5],
-            model_variant='openai/clip-vit-base-patch32',
+            project_id=1,  # Will use project's canonical model
             device='cuda'
         )
     """
@@ -424,19 +426,21 @@ def launch_embedding_worker(photo_ids: List[int],
         kind='embed',
         payload={
             'photo_ids': photo_ids,
-            'model_variant': model_variant
+            'model_variant': model_variant,
+            'project_id': project_id
         },
         backend=device
     )
 
-    logger.info(f"[EmbeddingWorker] Enqueued job {job_id} for {len(photo_ids)} photos")
+    logger.info(f"[EmbeddingWorker] Enqueued job {job_id} for {len(photo_ids)} photos (project_id={project_id})")
 
     # Create and start worker
     worker = EmbeddingWorker(
         job_id=job_id,
         photo_ids=photo_ids,
         model_variant=model_variant,
-        device=device
+        device=device,
+        project_id=project_id
     )
 
     # Connect signals (optional - caller can also connect)
