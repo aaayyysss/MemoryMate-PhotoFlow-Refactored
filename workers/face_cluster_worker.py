@@ -153,7 +153,14 @@ class FaceClusterWorker(QRunnable):
     @Slot()
     def run(self):
         """Main worker execution."""
-        logger.info(f"[FaceClusterWorker] Starting face clustering for project {self.project_id}")
+        import threading
+        _thread = threading.current_thread()
+        _is_main = _thread is threading.main_thread()
+        logger.info(
+            "[FaceClusterWorker] Starting face clustering for project %d "
+            "(thread=%s, is_main=%s)",
+            self.project_id, _thread.name, _is_main,
+        )
         start_time = time.time()
 
         # Initialize performance monitoring

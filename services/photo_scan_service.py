@@ -264,10 +264,6 @@ class PhotoScanService:
             current_file=str(file_path)
         )
 
-        # DEBUG: Verify message content
-        print(f"[SCAN] 🔍 Emitting progress: percent={percentage}, message='{status_line}'")
-        sys.stdout.flush()
-
         try:
             progress_callback(progress)
             if update_last_emit:
@@ -413,27 +409,15 @@ class PhotoScanService:
                         logger.info("Scan cancelled by user")
                         break
 
-                    # DIAGNOSTIC: Log which file we're about to process
-                    print(f"[SCAN] Starting file {i}/{total_files}: {file_path.name}")
-                    logger.info(f"[Scan] File {i}/{total_files}: {file_path.name}")
-
-                    # Update progress details for UI - mark as starting
+                    # Update progress details for UI — mark as starting
                     self._last_file_details['filename'] = file_path.name
                     self._last_file_details['status'] = 'starting'
                     self._last_file_details['width'] = None
                     self._last_file_details['height'] = None
                     self._last_file_details['date_taken'] = None
 
-                    # Emit immediate progress update so dialog shows starting message before processing
-                    if progress_callback:
-                        self._emit_progress_event(
-                            progress_callback=progress_callback,
-                            file_path=file_path,
-                            file_index=i,
-                            total_files=total_files,
-                            row=None,
-                            update_last_emit=False
-                        )
+                    # NOTE: Removed per-file "starting" emit to prevent UI stutter.
+                    # The main throttled emit below (every 0.35 s / 25 files) is sufficient.
 
                     try:
                         # Process file
@@ -460,17 +444,11 @@ class PhotoScanService:
                     folders_seen.add(folder_path)
 
                     batch_rows.append(row)
-                    print(f"[SCAN] Added to batch: {file_path.name} [batch size: {len(batch_rows)}/{self.batch_size}]")
-                    sys.stdout.flush()  # Force log output immediately
 
                     # Flush batch if needed
                     if len(batch_rows) >= self.batch_size:
-                        print(f"[SCAN] ⚡ Writing batch to database: {len(batch_rows)} photos")
-                        sys.stdout.flush()
                         logger.info(f"Writing batch of {len(batch_rows)} photos to database")
                         self._write_batch(batch_rows, project_id)
-                        print(f"[SCAN] ✓ Batch write complete")
-                        sys.stdout.flush()
                         batch_rows.clear()
 
                     self._photos_processed = i

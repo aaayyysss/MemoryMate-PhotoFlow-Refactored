@@ -105,7 +105,14 @@ class FaceDetectionWorker(QRunnable):
     @Slot()
     def run(self):
         """Main worker execution."""
-        logger.info(f"[FaceDetectionWorker] Starting face detection for project {self.project_id}")
+        import threading
+        _thread = threading.current_thread()
+        _is_main = _thread is threading.main_thread()
+        logger.info(
+            "[FaceDetectionWorker] Starting face detection for project %d "
+            "(thread=%s, is_main=%s)",
+            self.project_id, _thread.name, _is_main,
+        )
         self.start_time = time.time()
 
         # Initialize performance monitoring

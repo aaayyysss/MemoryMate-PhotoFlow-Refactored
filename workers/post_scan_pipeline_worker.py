@@ -58,6 +58,15 @@ class PostScanPipelineWorker(QRunnable):
 
     def run(self):
         """Execute pipeline steps sequentially in background thread."""
+        import threading
+        _thread = threading.current_thread()
+        _is_main = _thread is threading.main_thread()
+        logger.info(
+            "[PostScanPipelineWorker] Starting post-scan pipeline for project %d "
+            "(thread=%s, is_main=%s)",
+            self.project_id, _thread.name, _is_main,
+        )
+
         results = {
             "hash_backfill": 0,
             "exact_duplicates": 0,
