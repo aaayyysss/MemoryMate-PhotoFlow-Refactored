@@ -1,5 +1,5 @@
 # layouts/google_layout.py
-# Version 10.01.01.09 dated 20260131
+# Version 10.01.01.10 dated 20260202
 # Google Photos-style layout - Timeline-based, date-grouped, minimalist design
 
 from PySide6.QtWidgets import (
@@ -267,17 +267,18 @@ class GooglePhotosLayout(BaseLayout):
 
         main_layout.addWidget(self.splitter)
 
-        # Background Activity Panel - shows background job progress (face detection, embeddings, etc.)
-        # Non-intrusive panel at bottom, collapsible, with pause/resume/cancel controls
-        if HAS_ACTIVITY_PANEL:
-            try:
-                self.activity_panel = BackgroundActivityPanel(main_widget)
-                main_layout.addWidget(self.activity_panel)
-            except Exception as e:
-                logger.warning(f"[GooglePhotosLayout] Could not create activity panel: {e}")
-                self.activity_panel = None
-        else:
-            self.activity_panel = None
+#        # Background Activity Panel - shows background job progress (face detection, embeddings, etc.)
+#        # Non-intrusive panel at bottom, collapsible, with pause/resume/cancel controls
+#        if HAS_ACTIVITY_PANEL:
+#            try:
+#                self.activity_panel = BackgroundActivityPanel(main_widget)
+#                main_layout.addWidget(self.activity_panel)
+#            except Exception as e:
+#                logger.warning(f"[GooglePhotosLayout] Could not create activity panel: {e}")
+#                self.activity_panel = None
+#        else:
+#            self.activity_panel = None
+        self.activity_panel = None
 
         # QUICK WIN #6: Create floating selection toolbar (initially hidden)
         self.floating_toolbar = self._create_floating_toolbar(main_widget)
