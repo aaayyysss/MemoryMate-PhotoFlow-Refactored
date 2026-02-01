@@ -227,6 +227,12 @@ class JobManager(QObject):
         self._heartbeat_timer.timeout.connect(self._send_heartbeats)
         self._heartbeat_timer.start(30000)  # Every 30 seconds
 
+        # User activity throttling (reduce work when user is scrolling)
+        self._user_active = False
+        self._user_activity_timer = QTimer()
+        self._user_activity_timer.timeout.connect(self._on_user_inactive)
+        self._user_activity_timer.setSingleShot(True)
+
         # Progress debounce timer (avoid UI flood)
         self._progress_timer = QTimer()
         self._progress_timer.timeout.connect(self._emit_debounced_progress)
@@ -445,6 +451,25 @@ class JobManager(QObject):
             + (f" for project {project_id}" if project_id else "")
         )
 
+    def notify_user_active(self):
+        """
+        Notify that user is actively interacting (scrolling, clicking).
+
+        Call this from scroll handlers to temporarily reduce background
+        work and prioritize UI responsiveness.
+        """
+        self._user_active = True
+        # Reset timer - mark inactive after 2 seconds of no activity
+        self._user_activity_timer.start(2000)
+
+    def _on_user_inactive(self):
+        """Called when user stops interacting."""
+        self._user_active = False
+
+    def is_user_active(self) -> bool:
+        """Check if user is currently actively interacting."""
+        return self._user_active
+
     # ─────────────────────────────────────────────────────────────────────────
     # Public API: Priority Management
     # ─────────────────────────────────────────────────────────────────────────
@@ -486,6 +511,105 @@ class JobManager(QObject):
         # This would require tracking which paths each job covers
         # and reordering the queue accordingly
         logger.debug(f"[JobManager] Prioritize {len(paths)} paths (not yet implemented)")
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Convenience Methods: Launch Common Jobs
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def start_face_scan(
+        self,
+        project_id: int,
+        photo_paths: Optional[List[str]] = None,
+        priority: JobPriority = JobPriority.NORMAL,
+        skip_processed: bool = True
+    ) -> int:
+        """
+        Start a face detection scan job.
+
+        Args:
+            project_id: Project to scan
+            photo_paths: Optional list of specific paths (None = all photos)
+            priority: Job priority (use HIGH for user-initiated)
+            skip_processed: Skip photos already processed
+
+        Returns:
+            int: Job ID
+
+        Example:
+            # Scan all photos in project
+            job_id = manager.start_face_scan(project_id=1, priority=JobPriority.HIGH)
+
+            # Scan specific photos
+            job_id = manager.start_face_scan(
+                project_id=1,
+                photo_paths=['/path/to/photo1.jpg', '/path/to/photo2.jpg']
+            )
+        """
+        return self.enqueue(
+            job_type=JobType.FACE_SCAN,
+            project_id=project_id,
+            priority=priority,
+            payload={
+                'photo_paths': photo_paths,
+                'skip_processed': skip_processed
+            }
+        )
+
+    def start_embedding_extraction(
+        self,
+        project_id: int,
+        photo_ids: Optional[List[int]] = None,
+        model_variant: Optional[str] = None,
+        priority: JobPriority = JobPriority.NORMAL
+    ) -> int:
+        """
+        Start an embedding extraction job.
+
+        Args:
+            project_id: Project to process
+            photo_ids: Optional list of photo IDs (None = all photos)
+            model_variant: CLIP model variant (None = use project canonical)
+            priority: Job priority
+
+        Returns:
+            int: Job ID
+
+        Example:
+            job_id = manager.start_embedding_extraction(
+                project_id=1,
+                priority=JobPriority.HIGH
+            )
+        """
+        return self.enqueue(
+            job_type=JobType.EMBEDDING,
+            project_id=project_id,
+            priority=priority,
+            payload={
+                'photo_ids': photo_ids,
+                'model_variant': model_variant
+            }
+        )
+
+    def start_duplicate_scan(
+        self,
+        project_id: int,
+        priority: JobPriority = JobPriority.LOW
+    ) -> int:
+        """
+        Start a duplicate detection scan.
+
+        Args:
+            project_id: Project to scan
+            priority: Job priority (default LOW for background)
+
+        Returns:
+            int: Job ID
+        """
+        return self.enqueue(
+            job_type=JobType.DUPLICATE_HASH,
+            project_id=project_id,
+            priority=priority
+        )
 
     # ─────────────────────────────────────────────────────────────────────────
     # Public API: Status & Info
