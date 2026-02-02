@@ -183,6 +183,27 @@ class GooglePhotosLayout(BaseLayout):
         self._photo_load_in_progress = False
         self._loading_indicator = None  # Will be created in _create_timeline()
 
+        # ── Paged loading state ──────────────────────────────────
+        from workers.photo_page_worker import PhotoPageSignals
+        from services.photo_query_service import (
+            SMALL_THRESHOLD, PAGE_SIZE, PREFETCH_PAGES, MAX_IN_MEMORY_ROWS,
+        )
+        self._page_signals = PhotoPageSignals()
+        self._page_signals.count_ready.connect(self._on_page_count_ready)
+        self._page_signals.page_ready.connect(self._on_page_ready)
+        self._page_signals.error.connect(self._on_page_error)
+        self._paging_total = 0          # total rows from count query
+        self._paging_loaded = 0         # rows received so far
+        self._paging_offset = 0         # next offset to fetch
+        self._paging_active = False     # True while paged loading is in progress
+        self._paging_fetching = False   # True while a page worker is running
+        self._paging_all_rows = []      # accumulated rows for incremental merge
+        self._paging_filters = {}       # current filter dict for paged loading
+        self._page_size = PAGE_SIZE
+        self._small_threshold = SMALL_THRESHOLD
+        self._prefetch_pages = PREFETCH_PAGES
+        self._max_in_memory = MAX_IN_MEMORY_ROWS
+
         # Get current project ID (CRITICAL: Photos are organized by project)
         from app_services import get_default_project_id, list_projects
         self.project_id = get_default_project_id()
@@ -1236,7 +1257,7 @@ class GooglePhotosLayout(BaseLayout):
                 pass  # Already deleted
             return
 
-        # Build filter params
+        # Build filter params (legacy format for PhotoLoadWorker)
         filter_params = {
             'year': filter_year,
             'month': filter_month,
@@ -1246,18 +1267,57 @@ class GooglePhotosLayout(BaseLayout):
             'paths': filter_paths
         }
 
-        # PHASE 2 Task 2.1: Start async worker (non-blocking)
-        worker = PhotoLoadWorker(
-            project_id=self.project_id,
-            filter_params=filter_params,
-            generation=current_gen,
-            signals=self.photo_load_signals
-        )
+        # ── Decide: paged loading vs legacy single-query ──────────
+        # filter_paths (location filter) is not supported by PhotoQueryService
+        # so fall back to the legacy all-at-once PhotoLoadWorker for that case.
+        if filter_paths is not None:
+            # Legacy path: load everything in one shot
+            worker = PhotoLoadWorker(
+                project_id=self.project_id,
+                filter_params=filter_params,
+                generation=current_gen,
+                signals=self.photo_load_signals
+            )
+            QThreadPool.globalInstance().start(worker)
+            print(f"[GooglePhotosLayout] Photo load worker started (generation {current_gen}, legacy/paths)")
+        else:
+            # Paged loading path via PhotoPageWorker + PhotoQueryService
+            from workers.photo_page_worker import PhotoPageWorker
 
-        # Run worker in thread pool
-        QThreadPool.globalInstance().start(worker)
+            # Map filter names → PhotoQueryService filter dict
+            pq_filters = {}
+            if filter_year is not None:
+                pq_filters["year"] = filter_year
+            if filter_month is not None:
+                pq_filters["month"] = filter_month
+            if filter_day is not None:
+                pq_filters["day"] = filter_day
+            if filter_folder is not None:
+                pq_filters["folder"] = filter_folder
+            if filter_person is not None:
+                pq_filters["person_branch_key"] = filter_person
 
-        print(f"[GooglePhotosLayout] ✅ Photo load worker started (generation {current_gen})")
+            # Reset paging state
+            self._paging_total = 0
+            self._paging_loaded = 0
+            self._paging_offset = 0
+            self._paging_active = True
+            self._paging_fetching = True
+            self._paging_all_rows = []
+            self._paging_filters = pq_filters
+
+            # Dispatch first page with count
+            worker = PhotoPageWorker(
+                project_id=self.project_id,
+                generation=current_gen,
+                offset=0,
+                limit=self._page_size,
+                filters=pq_filters,
+                signals=self._page_signals,
+                include_count=True,
+            )
+            QThreadPool.globalInstance().start(worker)
+            print(f"[GooglePhotosLayout] Paged load started (generation {current_gen}, page_size={self._page_size})")
 
     def _group_photos_by_date(self, rows) -> Dict[str, List[Tuple]]:
         """
@@ -5407,6 +5467,195 @@ class GooglePhotosLayout(BaseLayout):
         error_label.setStyleSheet("font-size: 11pt; color: #d32f2f; padding: 40px;")
         self.timeline_layout.addWidget(error_label)
 
+    # ── Paged-loading handlers ────────────────────────────────────────
+
+    def _on_page_count_ready(self, generation: int, total: int):
+        """Receives total count from the first PhotoPageWorker."""
+        if generation != self._photo_load_generation:
+            return
+        self._paging_total = total
+        logger.info(
+            "[GoogleLayout] Page count ready: gen=%d total=%d (threshold=%d)",
+            generation, total, self._small_threshold,
+        )
+
+    def _on_page_ready(self, generation: int, offset: int, rows: list):
+        """
+        Receives a page of rows from PhotoPageWorker.
+
+        First page (offset==0): full timeline rebuild.
+        Subsequent pages: incremental merge into existing date groups.
+        """
+        if generation != self._photo_load_generation:
+            logger.debug("[GoogleLayout] Discarding stale page gen=%d", generation)
+            return
+
+        self._paging_fetching = False
+
+        # Convert list[dict] → list[tuple] for compatibility with display code
+        tuples = [
+            (r["path"], r["date_taken"], r.get("width", 0), r.get("height", 0))
+            for r in rows
+        ]
+
+        page_count = len(tuples)
+        self._paging_loaded += page_count
+        self._paging_offset = offset + page_count
+
+        logger.info(
+            "[GoogleLayout] Page ready: gen=%d offset=%d rows=%d loaded=%d/%d",
+            generation, offset, page_count, self._paging_loaded, self._paging_total,
+        )
+
+        if offset == 0:
+            # First page → full timeline build (same path as legacy)
+            self._paging_all_rows = list(tuples)
+            self._photo_load_in_progress = False
+            try:
+                if self._loading_indicator:
+                    self._loading_indicator.hide()
+            except RuntimeError:
+                pass
+            self._display_photos_in_timeline(tuples)
+        else:
+            # Subsequent pages → incremental merge
+            self._paging_all_rows.extend(tuples)
+            self._merge_page_into_timeline(tuples)
+
+        # If we got fewer rows than page_size, we've reached the end
+        all_loaded = page_count < self._page_size
+        if all_loaded:
+            self._paging_active = False
+            logger.info(
+                "[GoogleLayout] All pages loaded: %d rows total", self._paging_loaded,
+            )
+        else:
+            # Auto-prefetch next pages if within prefetch window
+            self._maybe_prefetch_next_page()
+
+    def _on_page_error(self, generation: int, error_msg: str):
+        """Handle paged loading error — delegates to existing error handler."""
+        self._paging_fetching = False
+        self._paging_active = False
+        self._on_photos_load_error(generation, error_msg)
+
+    def _merge_page_into_timeline(self, new_rows: list):
+        """
+        Incrementally add *new_rows* (tuples) into the existing timeline.
+
+        Rows arrive sorted by date_taken DESC, so new rows may extend the
+        last existing date group and/or introduce entirely new (older) groups.
+        """
+        if not new_rows:
+            return
+
+        new_groups = self._group_photos_by_date(new_rows)
+
+        # Remove trailing stretch so we can append
+        last_idx = self.timeline_layout.count() - 1
+        if last_idx >= 0:
+            last_item = self.timeline_layout.itemAt(last_idx)
+            if last_item and last_item.spacerItem():
+                self.timeline_layout.removeItem(last_item)
+
+        # Track all displayed paths for selection
+        for photos in new_groups.values():
+            for p in photos:
+                self.all_displayed_paths.append(p[0])
+
+        # Update section count
+        try:
+            if hasattr(self, 'timeline_section'):
+                self.timeline_section.update_count(len(self.all_displayed_paths))
+        except Exception:
+            pass
+
+        for date_str, photos in new_groups.items():
+            # Check if this date group already exists
+            existing_idx = None
+            for i, meta in enumerate(self.date_groups_metadata):
+                if meta['date_str'] == date_str:
+                    existing_idx = i
+                    break
+
+            if existing_idx is not None:
+                # Extend existing date group
+                self.date_groups_metadata[existing_idx]['photos'].extend(photos)
+                widget = self.date_group_widgets.get(existing_idx)
+                if widget and existing_idx in self.rendered_date_groups:
+                    # Re-render the group with all photos
+                    try:
+                        new_widget = self._create_date_group(
+                            date_str,
+                            self.date_groups_metadata[existing_idx]['photos'],
+                            self.current_thumb_size,
+                        )
+                        idx_in_layout = self.timeline_layout.indexOf(widget)
+                        if idx_in_layout >= 0:
+                            self.timeline_layout.removeWidget(widget)
+                            widget.deleteLater()
+                            self.timeline_layout.insertWidget(idx_in_layout, new_widget)
+                        else:
+                            self.timeline_layout.addWidget(new_widget)
+                        self.date_group_widgets[existing_idx] = new_widget
+                    except RuntimeError:
+                        pass  # Widget deleted during re-render
+            else:
+                # New date group — append at end
+                new_idx = len(self.date_groups_metadata)
+                self.date_groups_metadata.append({
+                    'index': new_idx,
+                    'date_str': date_str,
+                    'photos': photos,
+                    'thumb_size': self.current_thumb_size,
+                })
+
+                if self.virtual_scroll_enabled and new_idx >= self.initial_render_count:
+                    widget = self._create_date_group_placeholder(
+                        self.date_groups_metadata[-1]
+                    )
+                else:
+                    widget = self._create_date_group(
+                        date_str, photos, self.current_thumb_size,
+                    )
+                    self.rendered_date_groups.add(new_idx)
+
+                self.date_group_widgets[new_idx] = widget
+                self.timeline_layout.addWidget(widget)
+
+        # Re-add bottom stretch
+        self.timeline_layout.addStretch()
+
+        logger.debug(
+            "[GoogleLayout] Merged %d rows into timeline (%d date groups now)",
+            len(new_rows), len(self.date_groups_metadata),
+        )
+
+    def _maybe_prefetch_next_page(self):
+        """Dispatch the next page if within the prefetch window."""
+        if not self._paging_active or self._paging_fetching:
+            return
+        if self._paging_loaded >= self._max_in_memory:
+            logger.info("[GoogleLayout] Max in-memory cap reached (%d)", self._max_in_memory)
+            self._paging_active = False
+            return
+
+        from workers.photo_page_worker import PhotoPageWorker
+
+        self._paging_fetching = True
+        worker = PhotoPageWorker(
+            project_id=self.project_id,
+            generation=self._photo_load_generation,
+            offset=self._paging_offset,
+            limit=self._page_size,
+            filters=self._paging_filters,
+            signals=self._page_signals,
+        )
+        QThreadPool.globalInstance().start(worker)
+        logger.debug(
+            "[GoogleLayout] Prefetch page offset=%d", self._paging_offset,
+        )
+
     def _display_photos_in_timeline(self, rows: list):
         """
         PHASE 2 Task 2.1: Display photos in timeline after async query completes.
@@ -5646,9 +5895,10 @@ class GooglePhotosLayout(BaseLayout):
 
         This is called 150ms after scrolling stops/slows down.
 
-        Two functions:
+        Three functions:
         1. Load thumbnails that are now visible (Quick Win #1)
         2. Render date groups that entered viewport (Quick Win #3)
+        3. Prefetch next page when near bottom of scroll area
         """
         # Get viewport rectangle
         viewport = self.timeline_scroll.viewport()
@@ -5657,6 +5907,15 @@ class GooglePhotosLayout(BaseLayout):
         # QUICK WIN #3: Virtual scrolling - render date groups that entered viewport
         if self.virtual_scroll_enabled and self.date_groups_metadata:
             self._render_visible_date_groups(viewport, viewport_rect)
+
+        # Paged loading: prefetch when scrolled near bottom
+        if self._paging_active and not self._paging_fetching:
+            scroll_bar = self.timeline_scroll.verticalScrollBar()
+            if scroll_bar and scroll_bar.maximum() > 0:
+                remaining = scroll_bar.maximum() - scroll_bar.value()
+                threshold = viewport_rect.height() * self._prefetch_pages
+                if remaining < threshold:
+                    self._maybe_prefetch_next_page()
 
         # QUICK WIN #1: Lazy thumbnail loading
         if not self.unloaded_thumbnails:

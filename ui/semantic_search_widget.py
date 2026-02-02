@@ -215,6 +215,43 @@ class SemanticSearchWidget(QWidget):
 
             logger.info(f"[SemanticSearch] Project context set to: {project_id}")
 
+    def _resolve_clip_variant(self) -> str:
+        """
+        Resolve which CLIP model variant to use.
+
+        Priority:
+        1. Project's canonical model (projects.semantic_model) — single source of truth
+        2. Fallback to get_recommended_variant() if no project or model not set
+        """
+        from utils.clip_check import get_recommended_variant
+
+        if self._project_id:
+            try:
+                from repository.project_repository import ProjectRepository
+                from db_connection import DatabaseConnection
+                db = DatabaseConnection()
+                repo = ProjectRepository(db)
+                canonical = repo.get_semantic_model(self._project_id)
+                if canonical:
+                    # Map short key (e.g. "clip-vit-b32") to full HF name
+                    short_to_full = {
+                        "clip-vit-b32": "openai/clip-vit-base-patch32",
+                        "clip-vit-b16": "openai/clip-vit-base-patch16",
+                        "clip-vit-l14": "openai/clip-vit-large-patch14",
+                    }
+                    full_name = short_to_full.get(canonical, canonical)
+                    logger.info(
+                        "[SemanticSearch] Using project canonical model: %s -> %s",
+                        canonical, full_name,
+                    )
+                    return full_name
+            except Exception as e:
+                logger.warning("[SemanticSearch] Could not resolve project model: %s", e)
+
+        variant = get_recommended_variant()
+        logger.info("[SemanticSearch] No project model, using recommended: %s", variant)
+        return variant
+
     @property
     def project_id(self) -> Optional[int]:
         """Get the current project ID."""
@@ -226,13 +263,13 @@ class SemanticSearchWidget(QWidget):
         Logs findings and warns if better models are available.
         """
         try:
-            from utils.clip_check import get_available_variants, get_recommended_variant, MODEL_CONFIGS
+            from utils.clip_check import get_available_variants, MODEL_CONFIGS
 
             # Get all available models
             available = get_available_variants()
 
-            # Get recommended model
-            recommended = get_recommended_variant()
+            # Use project canonical model (single source of truth)
+            recommended = self._resolve_clip_variant()
             recommended_config = MODEL_CONFIGS.get(recommended, {})
 
             # Log findings
@@ -544,9 +581,8 @@ class SemanticSearchWidget(QWidget):
 
             # Load model if needed
             if self.embedding_service._clip_model is None:
-                # Auto-select best available CLIP model variant
-                from utils.clip_check import get_recommended_variant, MODEL_CONFIGS
-                variant = get_recommended_variant()
+                from utils.clip_check import MODEL_CONFIGS
+                variant = self._resolve_clip_variant()
                 config = MODEL_CONFIGS.get(variant, {})
 
                 progress = QProgressDialog(
@@ -653,9 +689,8 @@ class SemanticSearchWidget(QWidget):
 
             # Check if model is loaded
             if self.embedding_service._clip_model is None:
-                # Auto-select best available CLIP model variant
-                from utils.clip_check import get_recommended_variant, MODEL_CONFIGS
-                variant = get_recommended_variant()
+                from utils.clip_check import MODEL_CONFIGS
+                variant = self._resolve_clip_variant()
                 config = MODEL_CONFIGS.get(variant, {})
 
                 logger.info(
