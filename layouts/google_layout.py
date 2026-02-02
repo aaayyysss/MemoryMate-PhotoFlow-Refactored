@@ -9102,17 +9102,20 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
             print(f"[GooglePhotosLayout] ⚠️ Error opening single view: {e}")
     def on_layout_activated(self):
         """Called when this layout becomes active."""
-        print("[GooglePhotosLayout] 📍 Layout activated")
+        print("[GooglePhotosLayout] Layout activated")
 
         # Store main_window method references for Settings menu
-        # (btn_scan and btn_faces removed from toolbar, now in Settings menu)
         if hasattr(self.main_window, '_on_scan_repository'):
             self._scan_repository_handler = self.main_window._on_scan_repository
-            print("[GooglePhotosLayout] ✓ Stored Scan Repository handler")
 
         if hasattr(self.main_window, '_on_detect_and_group_faces'):
             self._detect_faces_handler = self.main_window._on_detect_and_group_faces
-            print("[GooglePhotosLayout] ✓ Stored Detect Faces handler")
+
+        # Flush any pending UI refresh requests that were deferred while this
+        # layout was hidden (e.g. face detection finished during layout switch)
+        mediator = getattr(self.main_window, '_ui_refresh_mediator', None)
+        if mediator:
+            mediator.on_layout_activated("google")
 
     def on_layout_deactivated(self):
         """

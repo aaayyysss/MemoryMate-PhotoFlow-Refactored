@@ -956,6 +956,46 @@ class MainWindow(QMainWindow):
         self.project_controller = ProjectController(self)
         self.photo_ops_controller = PhotoOperationsController(self)  # Phase 3
 
+        # === UI Refresh Mediator (debounced, visibility-safe) ===
+        from services.ui_refresh_mediator import UIRefreshMediator
+        self._ui_refresh_mediator = UIRefreshMediator(self, parent=self)
+
+        # === Central Face Pipeline Service wiring ===
+        try:
+            from services.face_pipeline_service import FacePipelineService
+            _face_svc = FacePipelineService.instance()
+            # Progress → status bar
+            _face_svc.progress.connect(
+                lambda step, msg, pid: self.statusBar().showMessage(msg, 0)
+            )
+            # Incremental batch commits → People refresh via mediator
+            _face_svc.batch_committed.connect(
+                lambda proc, total, faces, pid: self._ui_refresh_mediator.request_refresh(
+                    {"people"}, "faces_batch", pid
+                )
+            )
+            # Finished → final People refresh + status bar
+            def _on_face_svc_finished(results, pid):
+                faces = results.get("faces_detected", 0)
+                clusters = results.get("clusters_created", 0)
+                if faces > 0:
+                    self.statusBar().showMessage(
+                        f"Face pipeline complete: {faces} faces, {clusters} clusters", 8000
+                    )
+                else:
+                    self.statusBar().showMessage(
+                        "Face pipeline complete — no faces detected", 5000
+                    )
+                self._ui_refresh_mediator.request_refresh({"people"}, "pipeline_done", pid)
+            _face_svc.finished.connect(_on_face_svc_finished)
+            # Error → status bar
+            _face_svc.error.connect(
+                lambda msg, pid: self.statusBar().showMessage(f"Face pipeline error: {msg}", 8000)
+            )
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning("FacePipelineService wiring failed: %s", e)
+
         self.sidebar.on_branch_selected = self.sidebar_controller.on_branch_selected
         self.sidebar.folderSelected.connect(self.sidebar_controller.on_folder_selected)
         # 🎬 Phase 4: Videos support
@@ -3079,207 +3119,56 @@ class MainWindow(QMainWindow):
 
     def _on_detect_and_group_faces(self):
         """
-        Launch automatic face grouping pipeline.
+        Launch automatic face grouping pipeline via FacePipelineService.
 
-        Pipeline: Detection → Clustering → UI Refresh
-        - Detection: Scans photos, detects faces, generates embeddings
-        - Clustering: Groups similar faces using DBSCAN
-        - Refresh: Auto-updates People tab with results
-
-        User sees: Single button click → Automatic results ✅
+        Pipeline: Detection -> Clustering -> UI Refresh (all background).
+        Progress shown in status bar.  No modal dialogs.
         """
         try:
-            from PySide6.QtCore import QThreadPool
-            from PySide6.QtWidgets import QMessageBox, QProgressBar, QVBoxLayout, QDialog, QLabel, QPushButton
-            from workers.face_detection_worker import FaceDetectionWorker
-            from workers.face_cluster_worker import FaceClusterWorker
+            from PySide6.QtWidgets import QMessageBox, QDialog
 
             # Get current project ID
             project_id = getattr(self.grid, "project_id", None)
             if not project_id:
-                QMessageBox.warning(
-                    self,
-                    "No Project",
-                    "Please select a project first."
-                )
+                QMessageBox.warning(self, "No Project", "Please select a project first.")
                 return
 
-            # FEATURE #1: Show scope selection dialog to choose which photos to process
+            # Scope selection dialog (user-initiated, OK to be modal)
             from ui.face_detection_scope_dialog import FaceDetectionScopeDialog
-
             scope_dialog = FaceDetectionScopeDialog(project_id, parent=self)
-
-            # Connect scope selection signal
             selected_paths = []
+
             def on_scope_selected(paths):
                 nonlocal selected_paths
                 selected_paths = paths
 
             scope_dialog.scopeSelected.connect(on_scope_selected)
-
-            # Show dialog and wait for user selection
             if scope_dialog.exec() != QDialog.Accepted or not selected_paths:
-                # User canceled or no photos selected
                 return
 
-            print(f"[MainWindow] Launching automatic face grouping pipeline for project {project_id}")
-            print(f"[MainWindow] User selected {len(selected_paths)} photos for detection")
+            # Launch via central service (no modal progress, no inline workers)
+            from services.face_pipeline_service import FacePipelineService
+            svc = FacePipelineService.instance()
 
-            # Create progress dialog
-            progress_dialog = QDialog(self)
-            progress_dialog.setWindowTitle("Grouping Faces")
-            progress_dialog.setModal(True)
-            progress_dialog.setMinimumWidth(500)
+            if svc.is_running(project_id):
+                self.statusBar().showMessage("Face pipeline already running for this project", 5000)
+                return
 
-            layout = QVBoxLayout()
-            status_label = QLabel("Starting face detection...")
-            progress_bar = QProgressBar()
-            progress_bar.setRange(0, 100)
-            progress_bar.setValue(0)
-
-            cancel_btn = QPushButton("Cancel")
-            cancel_btn.setStyleSheet("QPushButton{padding:5px 15px;}")
-
-            layout.addWidget(status_label)
-            layout.addWidget(progress_bar)
-            layout.addWidget(cancel_btn)
-            progress_dialog.setLayout(layout)
-
-            # Worker references (for cancellation)
-            current_detection_worker = None
-            current_cluster_worker = None
-
-            def cancel_pipeline():
-                """Cancel the entire pipeline."""
-                if current_detection_worker:
-                    current_detection_worker.cancel()
-                if current_cluster_worker:
-                    current_cluster_worker.cancel()
-                progress_dialog.close()
-                print("[MainWindow] Face grouping pipeline cancelled by user")
-
-            cancel_btn.clicked.connect(cancel_pipeline)
-
-            # Step 1: Start detection worker with scope-selected photos
-            # FEATURE #1: Pass selected photo paths to worker
-            detection_worker = FaceDetectionWorker(
+            started = svc.start(
                 project_id=project_id,
-                photo_paths=selected_paths  # FEATURE #1: Use scope-selected photos
+                photo_paths=selected_paths,
             )
-            current_detection_worker = detection_worker
-
-            def on_detection_progress(current, total, message):
-                """Update progress during detection (0-50%)."""
-                pct = int((current / total) * 50) if total > 0 else 0
-                progress_bar.setValue(pct)
-                status_label.setText(f"[1/2] {message}")
-                print(f"[FaceDetection] [{current}/{total}] {message}")
-
-            def on_detection_finished(success, failed, total_faces):
-                """Detection complete → Auto-start clustering."""
-                print(f"[FaceDetection] Complete: {success} photos, {total_faces} faces detected")
-
-                if total_faces == 0:
-                    progress_dialog.close()
-                    QMessageBox.information(
-                        self,
-                        "No Faces Found",
-                        f"No faces detected in {success} photos.\n\n"
-                        f"Try photos with clear, front-facing faces for best results."
-                    )
-                    return
-
-                # Step 2: Auto-start clustering worker
-                nonlocal current_cluster_worker
-                cluster_worker = FaceClusterWorker(project_id=project_id)
-                current_cluster_worker = cluster_worker
-
-                def on_cluster_progress(current, total, message):
-                    """Update progress during clustering (50-100%)."""
-                    pct = int(50 + (current / total) * 50) if total > 0 else 50
-                    progress_bar.setValue(pct)
-                    status_label.setText(f"[2/2] {message}")
-                    print(f"[FaceCluster] {message}")
-
-                def on_cluster_finished(cluster_count, total_clustered):
-                    """Clustering complete → Auto-refresh UI."""
-                    progress_dialog.close()
-                    print(f"[FaceCluster] Complete: {cluster_count} person groups created")
-
-                    # Refresh the sidebar to show new People clusters
-                    if hasattr(self, "sidebar"):
-                        self.sidebar.reload()
-
-                    # CRITICAL FIX: Also refresh Google Photos layout people section
-                    if hasattr(self.grid, "_build_people_tree"):
-                        print("[MainWindow] Refreshing Google Photos layout people section...")
-                        self.grid._build_people_tree()
-                        # Prompt quick naming for unnamed clusters
-                        if hasattr(self.grid, "_prompt_quick_name_dialog"):
-                            self.grid._prompt_quick_name_dialog()
-
-                    # Show success notification
-                    QMessageBox.information(
-                        self,
-                        "Face Grouping Complete",
-                        f"✅ Found {cluster_count} people in your photos!\n\n"
-                        f"Grouped {total_clustered} faces from {success} photos.\n\n"
-                        f"View results in the People section of the sidebar."
-                    )
-
-                def on_cluster_error(error_msg):
-                    """Handle clustering errors."""
-                    progress_dialog.close()
-                    QMessageBox.warning(
-                        self,
-                        "Clustering Failed",
-                        f"Face detection succeeded ({total_faces} faces found),\n"
-                        f"but clustering failed:\n\n{error_msg}\n\n"
-                        f"Try clicking 🔁 Re-Cluster to retry."
-                    )
-
-                cluster_worker.signals.progress.connect(on_cluster_progress)
-                cluster_worker.signals.finished.connect(on_cluster_finished)
-                cluster_worker.signals.error.connect(on_cluster_error)
-
-                QThreadPool.globalInstance().start(cluster_worker)
-
-            detection_worker.signals.progress.connect(on_detection_progress)
-            detection_worker.signals.finished.connect(on_detection_finished)
-
-            # Start detection worker
-            QThreadPool.globalInstance().start(detection_worker)
-
-            # Show progress dialog
-            progress_dialog.show()
-
-            # CRITICAL FIX: Explicitly center face detection progress dialog on main window
-            # This ensures the dialog appears in the center of the application geometry
-            try:
-                # Ensure dialog geometry is calculated
-                progress_dialog.adjustSize()
-                from PySide6.QtWidgets import QApplication
-                QApplication.processEvents()
-
-                # Get geometries
-                parent_rect = self.geometry()
-                dialog_rect = progress_dialog.geometry()
-
-                # Calculate center position
-                center_x = parent_rect.x() + (parent_rect.width() - dialog_rect.width()) // 2
-                center_y = parent_rect.y() + (parent_rect.height() - dialog_rect.height()) // 2
-
-                # Move dialog to center
-                progress_dialog.move(center_x, center_y)
-                print(f"[MainWindow] Face detection progress dialog centered at ({center_x}, {center_y})")
-            except Exception as e:
-                print(f"[MainWindow] Could not center face detection progress dialog: {e}")
+            if started:
+                self.statusBar().showMessage(
+                    f"Face pipeline started: processing {len(selected_paths)} photos...", 0
+                )
+            else:
+                self.statusBar().showMessage("Failed to start face pipeline", 5000)
 
         except ImportError as e:
             from PySide6.QtWidgets import QMessageBox
             QMessageBox.critical(
-                self,
-                "Missing Library",
+                self, "Missing Library",
                 f"InsightFace library not installed.\n\n"
                 f"Install with:\npip install insightface onnxruntime\n\n"
                 f"Error: {e}"
@@ -3292,106 +3181,70 @@ class MainWindow(QMainWindow):
 
     def _on_recluster_faces(self):
         """
-        Manually re-run clustering on existing face detections.
+        Re-run clustering on existing face detections (no re-detection).
 
-        Use case: User wants to re-group faces without re-detecting
-        (e.g., after adjusting clustering parameters, or if auto-clustering failed)
+        Non-blocking: dispatches to QThreadPool, progress via status bar,
+        People refresh via UIRefreshMediator.
         """
         try:
             from PySide6.QtCore import QThreadPool
-            from PySide6.QtWidgets import QMessageBox, QProgressDialog
+            from PySide6.QtWidgets import QMessageBox
             from workers.face_cluster_worker import FaceClusterWorker
             from reference_db import ReferenceDB
 
-            # Get current project ID
             project_id = getattr(self.grid, "project_id", None)
             if not project_id:
-                QMessageBox.warning(
-                    self,
-                    "No Project",
-                    "Please select a project first."
-                )
+                QMessageBox.warning(self, "No Project", "Please select a project first.")
                 return
 
-            # Check if faces exist
+            # Quick validation — are there faces to cluster?
             db = ReferenceDB()
             with db._connect() as conn:
-                cur = conn.execute("SELECT COUNT(*) FROM face_crops WHERE project_id = ?", (project_id,))
+                cur = conn.execute(
+                    "SELECT COUNT(*) FROM face_crops WHERE project_id = ?", (project_id,)
+                )
                 face_count = cur.fetchone()[0]
 
             if face_count == 0:
                 QMessageBox.warning(
-                    self,
-                    "No Faces Detected",
+                    self, "No Faces Detected",
                     "No faces have been detected yet.\n\n"
-                    f"Click ⚡ Detect & Group Faces first to scan your photos."
+                    "Click Detect & Group Faces first to scan your photos."
                 )
                 return
 
-            print(f"[MainWindow] Launching clustering worker for {face_count} detected faces")
+            self.statusBar().showMessage(f"Re-clustering {face_count} faces...", 0)
 
-            # Create progress dialog
-            progress = QProgressDialog("Grouping faces...", "Cancel", 0, 100, self)
-            progress.setWindowTitle("Re-Clustering Faces")
-            progress.setWindowModality(Qt.WindowModal)
-            progress.setMinimumDuration(0)
-            progress.setValue(0)
-
-            # Create worker
             worker = FaceClusterWorker(project_id=project_id)
 
             def on_progress(current, total, message):
-                progress.setLabelText(message)
-                progress.setValue(current)
-                print(f"[FaceCluster] {message}")
+                try:
+                    self.statusBar().showMessage(f"[Clustering] {message}", 0)
+                except Exception:
+                    pass
 
             def on_finished(cluster_count, total_faces):
-                progress.close()
-                print(f"[FaceCluster] Complete: {cluster_count} person groups created")
-
-                # Refresh sidebar to show new clusters
-                if hasattr(self, "sidebar"):
-                    self.sidebar.reload()
-
-                # CRITICAL FIX: Also refresh Google Photos layout people section
-                if hasattr(self.grid, "_build_people_tree"):
-                    print("[MainWindow] Refreshing Google Photos layout people section...")
-                    self.grid._build_people_tree()
-                    # Prompt quick naming for unnamed clusters
-                    if hasattr(self.grid, "_prompt_quick_name_dialog"):
-                        self.grid._prompt_quick_name_dialog()
-
-                QMessageBox.information(
-                    self,
-                    "Clustering Complete",
-                    f"✅ Grouped {total_faces} faces into {cluster_count} person albums.\n\n"
-                    f"View results in the People section of the sidebar."
+                self.statusBar().showMessage(
+                    f"Clustering complete: {total_faces} faces into {cluster_count} groups", 8000
                 )
+                # Refresh People section via mediator
+                if hasattr(self, '_ui_refresh_mediator'):
+                    self._ui_refresh_mediator.request_refresh(
+                        {"people"}, "recluster_done", project_id
+                    )
 
             def on_error(error_msg):
-                progress.close()
-                QMessageBox.critical(
-                    self,
-                    "Clustering Failed",
-                    f"Failed to cluster faces:\n\n{error_msg}"
-                )
-
-            def on_cancel():
-                worker.cancel()
+                self.statusBar().showMessage(f"Clustering failed: {error_msg}", 8000)
 
             worker.signals.progress.connect(on_progress)
             worker.signals.finished.connect(on_finished)
             worker.signals.error.connect(on_error)
-            progress.canceled.connect(on_cancel)
-
-            # Start worker
             QThreadPool.globalInstance().start(worker)
 
         except Exception as e:
             import traceback
             traceback.print_exc()
             from PySide6.QtWidgets import QMessageBox
-
             QMessageBox.critical(self, "Re-Cluster Failed", str(e))
 
     def _request_delete_from_selection(self):

@@ -1,5 +1,5 @@
 # workers/face_pipeline_worker.py
-# Version 01.00.00.00 dated 20260201
+# Version 02.00.00.00 dated 20260202
 #
 # Background pipeline worker that chains face detection + clustering
 # as a single non-blocking job.  No modal dialogs, no UI coupling.
@@ -8,11 +8,10 @@
 #   1. Face detection (InsightFace on all unprocessed photos)
 #   2. Face clustering (DBSCAN on ArcFace embeddings)
 #
-# Progress is reported via Qt signals for status-bar display.
-# The worker is fully idempotent and skip-safe.
+# Incremental batch_committed events are forwarded so the UI can
+# refresh People progressively while detection is still running.
 
 import threading
-import time
 
 from PySide6.QtCore import QRunnable, QObject, Signal
 
@@ -25,6 +24,9 @@ class FacePipelineSignals(QObject):
     """Signals emitted by the face pipeline worker."""
     # (step_name, message)
     progress = Signal(str, str)
+    # Forwarded from FaceDetectionWorker after each DB batch commit
+    # (processed, total, faces_so_far, project_id)
+    batch_committed = Signal(int, int, int, int)
     # Emitted when pipeline finishes: {faces_detected, clusters_created, errors}
     finished = Signal(dict)
     # Fatal error
@@ -50,6 +52,8 @@ class FacePipelineWorker(QRunnable):
         self.project_id = project_id
         self.model = model
         self._cancelled = False
+        # Optional: scoped photo paths (set by FacePipelineService)
+        self._scoped_photo_paths = None
 
     def cancel(self):
         self._cancelled = True
@@ -82,15 +86,16 @@ class FacePipelineWorker(QRunnable):
         try:
             from workers.face_detection_worker import FaceDetectionWorker
 
-            face_worker = FaceDetectionWorker(
-                project_id=self.project_id,
-                model=self.model,
-                skip_processed=True,
-            )
+            worker_kwargs = {
+                "project_id": self.project_id,
+                "model": self.model,
+                "skip_processed": True,
+            }
+            if self._scoped_photo_paths:
+                worker_kwargs["photo_paths"] = self._scoped_photo_paths
 
-            # Run the worker's run() method directly in THIS background thread
-            # (FaceDetectionWorker.run is a @Slot that does the actual work)
-            detection_done = threading.Event()
+            face_worker = FaceDetectionWorker(**worker_kwargs)
+
             detection_results = {}
 
             def _on_detect_progress(current, total, message):
@@ -99,16 +104,20 @@ class FacePipelineWorker(QRunnable):
                     f"Detecting faces: {current}/{total} — {message}",
                 )
 
+            def _on_detect_batch(processed, total, faces_so_far, pid):
+                # Forward to pipeline-level signal for incremental UI refresh
+                self.signals.batch_committed.emit(processed, total, faces_so_far, pid)
+
             def _on_detect_finished(success, failed, total_faces):
                 detection_results["success"] = success
                 detection_results["failed"] = failed
                 detection_results["total_faces"] = total_faces
-                detection_done.set()
 
             def _on_detect_error(path, msg):
                 logger.warning("[FacePipelineWorker] Detection error on %s: %s", path, msg)
 
             face_worker.signals.progress.connect(_on_detect_progress)
+            face_worker.signals.batch_committed.connect(_on_detect_batch)
             face_worker.signals.finished.connect(_on_detect_finished)
             face_worker.signals.error.connect(_on_detect_error)
 

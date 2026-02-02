@@ -30,6 +30,10 @@ class FaceDetectionSignals(QObject):
     # face_detected(image_path, face_count)
     face_detected = Signal(str, int)
 
+    # Emitted after each batch DB commit so the UI can refresh incrementally
+    # (processed, total, faces_so_far, project_id)
+    batch_committed = Signal(int, int, int, int)
+
     # finished(success_count, failed_count, total_faces)
     finished = Signal(int, int, int)
 
@@ -345,6 +349,10 @@ class FaceDetectionWorker(QRunnable):
                     saved = self._save_faces_batch(conn, pending_rows)
                     logger.debug(f"[FaceDetectionWorker] Batch commit: {saved} faces saved")
                     pending_rows.clear()
+                    # Signal for incremental UI refresh
+                    self.signals.batch_committed.emit(
+                        idx, total_photos, self._stats['faces_detected'], self.project_id
+                    )
 
                 # Micro-yield for UI responsiveness (prevents UI freeze on CPU-heavy workloads)
                 if ui_yield_ms > 0:
@@ -354,6 +362,9 @@ class FaceDetectionWorker(QRunnable):
             if pending_rows:
                 saved = self._save_faces_batch(conn, pending_rows)
                 logger.debug(f"[FaceDetectionWorker] Final batch commit: {saved} faces saved")
+                self.signals.batch_committed.emit(
+                    total_photos, total_photos, self._stats['faces_detected'], self.project_id
+                )
 
     def _process_photos_batch(self, photos, face_service, db, face_crops_dir,
                              structured_logger, monitor, batch_size):
