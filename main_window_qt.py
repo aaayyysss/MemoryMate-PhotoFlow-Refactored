@@ -993,8 +993,7 @@ class MainWindow(QMainWindow):
                 lambda msg, pid: self.statusBar().showMessage(f"Face pipeline error: {msg}", 8000)
             )
         except Exception as e:
-            import logging
-            logging.getLogger(__name__).warning("FacePipelineService wiring failed: %s", e)
+            print(f"[MainWindow] FacePipelineService wiring failed: {e}")
 
         self.sidebar.on_branch_selected = self.sidebar_controller.on_branch_selected
         self.sidebar.folderSelected.connect(self.sidebar_controller.on_folder_selected)
