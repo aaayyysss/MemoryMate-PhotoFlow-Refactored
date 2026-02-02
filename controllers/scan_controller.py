@@ -556,68 +556,30 @@ class ScanController(QObject):
                 except Exception as e:
                     self.logger.error(f"Failed to start post-scan pipeline: {e}", exc_info=True)
 
-            # PHASE 3: Face Detection — dispatched to background thread
-            # No modal dialogs, no user confirmation, no QProgressDialog.
-            # Runs face detection + clustering as a single background job and
-            # reports progress via the status bar.
+            # PHASE 3: Face Detection — via central FacePipelineService
+            # The service validates project_id, prevents duplicate runs,
+            # and the UIRefreshMediator handles incremental People refresh.
             try:
                 from config.face_detection_config import get_face_config
                 face_config = get_face_config()
 
                 if face_config.is_enabled() and face_config.get("auto_cluster_after_scan", True):
-                    # Verify backend availability (lightweight check)
                     from services.face_detection_service import FaceDetectionService
                     availability = FaceDetectionService.check_backend_availability()
                     backend = face_config.get_backend()
 
                     if availability.get(backend, False):
-                        self.logger.info("Enqueueing face pipeline as background job (backend=%s)...", backend)
-
-                        from workers.face_pipeline_worker import FacePipelineWorker
-
-                        self._face_pipeline_worker = FacePipelineWorker(
+                        self.logger.info("Enqueueing face pipeline via FacePipelineService (backend=%s)...", backend)
+                        from services.face_pipeline_service import FacePipelineService
+                        svc = FacePipelineService.instance()
+                        started = svc.start(
                             project_id=current_project_id,
                             model=face_config.get("model", "buffalo_l"),
                         )
-
-                        def _on_face_progress(step_name, message):
-                            try:
-                                self.main.statusBar().showMessage(message, 0)
-                            except Exception:
-                                pass
-
-                        def _on_face_finished(results):
-                            faces = results.get("faces_detected", 0)
-                            clusters = results.get("clusters_created", 0)
-                            errors = results.get("errors", [])
-
-                            if faces > 0:
-                                self.main.statusBar().showMessage(
-                                    f"Face pipeline complete: {faces} faces, {clusters} clusters", 8000
-                                )
-                            else:
-                                self.main.statusBar().showMessage(
-                                    "Face pipeline complete — no faces detected", 5000
-                                )
-
-                            if errors:
-                                self.logger.warning("Face pipeline errors: %s", errors)
-
-                            # Safely refresh People section
-                            self._safe_refresh_people_section()
-
-                        def _on_face_error(msg):
-                            self.logger.error("Face pipeline error: %s", msg)
-                            self.main.statusBar().showMessage(
-                                f"Face pipeline failed: {msg}", 8000
-                            )
-
-                        self._face_pipeline_worker.signals.progress.connect(_on_face_progress)
-                        self._face_pipeline_worker.signals.finished.connect(_on_face_finished)
-                        self._face_pipeline_worker.signals.error.connect(_on_face_error)
-
-                        QThreadPool.globalInstance().start(self._face_pipeline_worker)
-                        self.logger.info("Face pipeline dispatched to background thread pool")
+                        if started:
+                            self.logger.info("Face pipeline dispatched via FacePipelineService")
+                        else:
+                            self.logger.info("Face pipeline already running or project invalid")
                     else:
                         self.logger.warning("Face backend '%s' not available (available: %s)",
                                             backend, [k for k, v in availability.items() if v])

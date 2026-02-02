@@ -171,11 +171,16 @@ class LayoutManager:
         # Activate new layout
         new_layout.on_layout_activated()
 
+        # Notify UIRefreshMediator about activation (flush pending refreshes)
+        mediator = getattr(self.main_window, '_ui_refresh_mediator', None)
+        if mediator:
+            mediator.on_layout_activated(layout_id)
+
         # Save preference
         if self.settings:
             self.settings.set("current_layout", layout_id)
 
-        print(f"[LayoutManager] ✓ Switched to: {new_layout.get_name()}")
+        print(f"[LayoutManager] Switched to: {new_layout.get_name()}")
         return True
 
     def get_current_layout(self) -> Optional[BaseLayout]:
