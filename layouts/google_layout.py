@@ -4743,10 +4743,16 @@ class GooglePhotosLayout(BaseLayout):
         video_path = video.get('path', '')
 
         try:
-            # Try to load video thumbnail from video thumbnail service
             from services.video_thumbnail_service import get_video_thumbnail_service
             thumb_service = get_video_thumbnail_service()
-            thumb_path = thumb_service.get_thumbnail_path(video_path)
+
+            # Try existing thumbnail first, then generate
+            if thumb_service.thumbnail_exists(video_path):
+                thumb_path = str(thumb_service.get_thumbnail_path(video_path))
+            else:
+                thumb_path = thumb_service.generate_thumbnail(
+                    video_path, width=200, height=200,
+                )
 
             if thumb_path and os.path.exists(thumb_path):
                 pixmap = QPixmap(str(thumb_path))
@@ -4766,20 +4772,69 @@ class GooglePhotosLayout(BaseLayout):
                         by = thumb_widget.height() - badge.height() - 6
                         badge.move(bx, by)
                         badge.raise_()
-                else:
-                    thumb_widget.setText("🎬\nVideo")
-                    thumb_widget.setStyleSheet("color: white;")
-            else:
-                thumb_widget.setText("🎬\nVideo")
+                    return thumb_widget
+
+            # Fallback: styled placeholder with play triangle
+            self._apply_video_placeholder(thumb_widget, video)
         except Exception as e:
             print(f"[GoogleLayout] Error loading video thumbnail for {video_path}: {e}")
-            thumb_widget.setText("🎬\nVideo")
+            self._apply_video_placeholder(thumb_widget, video)
 
         # FIXED: Open lightbox instead of video player directly
-        # This allows browsing through mixed photos and videos
         thumb_widget.mousePressEvent = lambda event: self._open_photo_lightbox(video_path)
 
         return thumb_widget
+
+    def _apply_video_placeholder(self, widget: QLabel, video: dict):
+        """Apply a proper styled video placeholder with play triangle."""
+        from PySide6.QtGui import QPainter, QBrush, QPolygonF, QPen, QFont as QFontG
+        from PySide6.QtCore import QPointF, QRectF
+
+        sz = 200
+        pixmap = QPixmap(sz, sz)
+        pixmap.fill(QColor(38, 38, 38))
+
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing)
+
+        # Play triangle
+        tri = sz * 0.30
+        cx, cy = sz / 2.0, sz / 2.0 - 10
+        triangle = QPolygonF([
+            QPointF(cx - tri * 0.4, cy - tri * 0.5),
+            QPointF(cx + tri * 0.5, cy),
+            QPointF(cx - tri * 0.4, cy + tri * 0.5),
+        ])
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QBrush(QColor(255, 255, 255, 200)))
+        painter.drawPolygon(triangle)
+
+        # Filename label
+        fname = os.path.basename(video.get("path", ""))
+        if len(fname) > 24:
+            fname = fname[:21] + "..."
+        painter.setPen(QPen(QColor(180, 180, 180)))
+        font = QFontG()
+        font.setPixelSize(11)
+        painter.setFont(font)
+        painter.drawText(QRectF(4, sz - 28, sz - 8, 24), Qt.AlignHCenter | Qt.AlignBottom, fname)
+
+        # Duration badge if available
+        dur = video.get("duration_seconds")
+        if dur:
+            mins, secs = int(dur) // 60, int(dur) % 60
+            dur_text = f"{mins}:{secs:02d}"
+            painter.setBrush(QBrush(QColor(0, 0, 0, 160)))
+            painter.setPen(Qt.NoPen)
+            painter.drawRoundedRect(QRectF(sz - 52, 6, 46, 20), 4, 4)
+            painter.setPen(QPen(QColor(255, 255, 255)))
+            font.setPixelSize(10)
+            font.setBold(True)
+            painter.setFont(font)
+            painter.drawText(QRectF(sz - 52, 6, 46, 20), Qt.AlignCenter, dur_text)
+
+        painter.end()
+        widget.setPixmap(pixmap)
 
     def _open_video_player(self, video_path: str):
         """
@@ -9376,6 +9431,33 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
         mediator = getattr(self.main_window, '_ui_refresh_mediator', None)
         if mediator:
             mediator.on_layout_activated("google")
+
+        # Recompute grid columns after the widget geometry has settled.
+        # During create_layout() the viewport is narrow (not yet shown);
+        # by the time the event loop returns here the true width is known.
+        QTimer.singleShot(0, self._recheck_column_count)
+
+    def _recheck_column_count(self):
+        """Recompute columns now that the viewport has its real width.
+
+        If the column count changed from what was used during the initial
+        _load_photos() call (widget not yet visible), re-trigger the load
+        so grids are laid out correctly.
+        """
+        thumb_size = getattr(self, 'current_thumb_size', 200)
+        old_cols = getattr(self, '_last_column_count', None)
+        new_cols = self._calculate_responsive_columns(thumb_size)
+        if old_cols is not None and new_cols != old_cols:
+            print(f"[GooglePhotosLayout] Column count changed {old_cols} -> {new_cols}, refreshing grid")
+            self._load_photos(
+                thumb_size=thumb_size,
+                filter_year=getattr(self, 'current_filter_year', None),
+                filter_month=getattr(self, 'current_filter_month', None),
+                filter_day=getattr(self, 'current_filter_day', None),
+                filter_folder=getattr(self, 'current_filter_folder', None),
+                filter_person=getattr(self, 'current_filter_person', None),
+                filter_paths=getattr(self, 'current_filter_paths', None),
+            )
 
     def on_layout_deactivated(self):
         """

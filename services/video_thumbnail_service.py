@@ -1,6 +1,6 @@
 # services/video_thumbnail_service.py
-# Version 1.0.0 dated 2025-11-09
-# Video thumbnail generation using ffmpeg
+# Version 1.1.0 dated 2026-02-02
+# Video thumbnail generation using ffmpeg with OpenCV (cv2) fallback
 
 import subprocess
 import os
@@ -9,6 +9,14 @@ from pathlib import Path
 from logging_config import get_logger
 
 logger = get_logger(__name__)
+
+# Check OpenCV availability once at import time
+_cv2_available = False
+try:
+    import cv2 as _cv2
+    _cv2_available = True
+except ImportError:
+    _cv2 = None
 
 
 class VideoThumbnailService:
@@ -113,6 +121,9 @@ class VideoThumbnailService:
         """
         Generate a thumbnail for a video file.
 
+        Tries ffmpeg first, falls back to OpenCV (cv2) if ffmpeg is
+        unavailable.
+
         Args:
             video_path: Path to video file
             output_path: Optional output path (default: auto-generated in thumbnail_dir)
@@ -122,17 +133,12 @@ class VideoThumbnailService:
 
         Returns:
             Path to generated thumbnail, or None if failed
-
-        Example:
-            >>> service.generate_thumbnail('/videos/clip.mp4')
-            '.thumb_cache/clip_mp4_thumb.jpg'
-
-            >>> service.generate_thumbnail('/videos/clip.mp4', timestamp=5.0, width=640, height=480)
-            '.thumb_cache/clip_mp4_thumb.jpg'
         """
         if not self._ffmpeg_available:
-            self.logger.warning(f"Cannot generate thumbnail for {video_path} (ffmpeg not available)")
-            return None
+            # Try OpenCV fallback before giving up
+            return self._generate_thumbnail_cv2(
+                video_path, output_path, timestamp, width, height,
+            )
 
         # Generate output path if not provided
         if output_path is None:
@@ -187,6 +193,79 @@ class VideoThumbnailService:
             return None
         except Exception as e:
             self.logger.error(f"Unexpected error generating thumbnail for {video_path}: {e}")
+            return None
+
+    def _generate_thumbnail_cv2(
+        self,
+        video_path: str,
+        output_path: Optional[str] = None,
+        timestamp: Optional[float] = None,
+        width: int = 320,
+        height: int = 240,
+    ) -> Optional[str]:
+        """Extract a video frame using OpenCV when ffmpeg is unavailable."""
+        if not _cv2_available:
+            self.logger.warning(
+                "Cannot generate thumbnail for %s (ffmpeg and cv2 both unavailable)",
+                video_path,
+            )
+            return None
+
+        # Resolve output path
+        if output_path is None:
+            video_name = Path(video_path).stem
+            video_ext = Path(video_path).suffix.replace('.', '_')
+            out = self.thumbnail_dir / f"{video_name}{video_ext}_thumb.jpg"
+        else:
+            out = Path(output_path)
+
+        try:
+            cap = _cv2.VideoCapture(str(video_path))
+            if not cap.isOpened():
+                self.logger.warning("cv2 could not open %s", video_path)
+                return None
+
+            # Seek to requested timestamp (or ~10 % of duration)
+            fps = cap.get(_cv2.CAP_PROP_FPS) or 25.0
+            total_frames = cap.get(_cv2.CAP_PROP_FRAME_COUNT) or 0
+            if timestamp is not None:
+                target_frame = int(timestamp * fps)
+            elif total_frames > 0:
+                target_frame = max(1, int(total_frames * 0.1))
+            else:
+                target_frame = int(fps)  # 1 second in
+
+            cap.set(_cv2.CAP_PROP_POS_FRAMES, target_frame)
+            ok, frame = cap.read()
+            if not ok:
+                # Fallback to first frame
+                cap.set(_cv2.CAP_PROP_POS_FRAMES, 0)
+                ok, frame = cap.read()
+            cap.release()
+
+            if not ok or frame is None:
+                self.logger.warning("cv2 failed to read frame from %s", video_path)
+                return None
+
+            # Resize while keeping aspect ratio
+            h, w = frame.shape[:2]
+            scale = min(width / w, height / h)
+            new_w, new_h = int(w * scale), int(h * scale)
+            resized = _cv2.resize(frame, (new_w, new_h), interpolation=_cv2.INTER_AREA)
+
+            _cv2.imwrite(str(out), resized, [_cv2.IMWRITE_JPEG_QUALITY, 85])
+
+            if out.exists() and out.stat().st_size > 0:
+                self.logger.info(
+                    "Generated thumbnail (cv2) for %s at %s", video_path, out,
+                )
+                return str(out)
+
+            return None
+        except Exception as exc:
+            self.logger.error(
+                "cv2 thumbnail error for %s: %s", video_path, exc,
+            )
             return None
 
     def _get_default_timestamp(self, video_path: str) -> float:

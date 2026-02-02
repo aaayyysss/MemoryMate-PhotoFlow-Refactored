@@ -58,6 +58,21 @@ except ImportError:
     logger.debug("[SemanticEmbeddingService] FAISS not installed - using numpy fallback for similarity search")
 
 
+def _has_model_weights(model_dir: str) -> bool:
+    """Check if a local model directory contains valid weight files."""
+    p = Path(model_dir)
+    if not (p / "config.json").exists():
+        return False
+    weight_candidates = [
+        p / "model.safetensors",
+        p / "pytorch_model.bin",
+        p / "pytorch_model.bin.index.json",
+        p / "tf_model.h5",
+        p / "flax_model.msgpack",
+    ]
+    return any(x.exists() for x in weight_candidates)
+
+
 class SemanticEmbeddingService:
     """
     Service for semantic visual embeddings (CLIP/SigLIP).
@@ -86,24 +101,25 @@ class SemanticEmbeddingService:
         self.model_name = model_name
         self.db = db_connection or DatabaseConnection()
 
-        # Model cache (lazy loading)
+        # Model cache (lazy loading — torch/transformers imported on first use)
         self._model = None
         self._processor = None
         self._device = None
-        self._load_attempted = False  # Track if we've tried to load (prevents retrying on every photo)
-        self._load_error = None  # Store error if loading failed
-        self._load_lock = threading.Lock()  # Thread-safe model loading
+        self._load_attempted = False
+        self._load_error = None
+        self._load_lock = threading.Lock()
 
-        # Try to import dependencies
+        # Defer heavy imports to _load_model(); just probe availability here
         self._available = False
+        self._torch = None
+        self._CLIPProcessor = None
+        self._CLIPModel = None
         try:
-            import torch
-            from transformers import CLIPProcessor, CLIPModel
-            self._torch = torch
-            self._CLIPProcessor = CLIPProcessor
-            self._CLIPModel = CLIPModel
+            import importlib
+            importlib.import_module("torch")
+            importlib.import_module("transformers")
             self._available = True
-            logger.info(f"[SemanticEmbeddingService] Initialized with model={model_name}")
+            logger.info(f"[SemanticEmbeddingService] Initialized (lazy) with model={model_name}")
         except ImportError:
             logger.warning("[SemanticEmbeddingService] PyTorch/Transformers not available")
 
@@ -111,21 +127,6 @@ class SemanticEmbeddingService:
     def available(self) -> bool:
         """Check if service is available."""
         return self._available
-
-    def _has_model_weights(model_dir: str) -> bool:
-        from pathlib import Path
-        p = Path(model_dir)
-        if not (p / "config.json").exists():
-            return False
-        # At least one of these must exist for transformers models
-        weight_candidates = [
-            p / "model.safetensors",
-            p / "pytorch_model.bin",
-            p / "pytorch_model.bin.index.json",
-            p / "tf_model.h5",
-            p / "flax_model.msgpack",
-        ]
-        return any(x.exists() for x in weight_candidates)
 
 
     def _load_model(self):
@@ -167,6 +168,14 @@ class SemanticEmbeddingService:
                 error = RuntimeError("PyTorch/Transformers not available")
                 self._load_error = error
                 raise error
+
+            # Import heavy dependencies now (deferred from __init__)
+            if self._torch is None:
+                import torch
+                from transformers import CLIPProcessor, CLIPModel
+                self._torch = torch
+                self._CLIPProcessor = CLIPProcessor
+                self._CLIPModel = CLIPModel
 
             logger.info(f"[SemanticEmbeddingService] Loading model: {self.model_name}")
 
