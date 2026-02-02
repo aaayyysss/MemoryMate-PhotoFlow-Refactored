@@ -57,11 +57,12 @@ class FacePipelineWorker(QRunnable):
     def run(self):
         """Execute face detection + clustering sequentially in background thread."""
         import threading
-        thread_name = threading.current_thread().name
+        _thread = threading.current_thread()
+        _is_main = _thread is threading.main_thread()
         logger.info(
             "[FacePipelineWorker] Starting face pipeline for project %d "
-            "(thread=%s, is_main=False)",
-            self.project_id, thread_name,
+            "(thread=%s, is_main=%s)",
+            self.project_id, _thread.name, _is_main,
         )
 
         results = {
