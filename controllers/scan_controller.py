@@ -22,8 +22,7 @@ from datetime import datetime
 from typing import List
 from PySide6.QtCore import QThread, Qt, QTimer, QThreadPool, Slot, QObject, Signal
 from PySide6.QtWidgets import (
-    QProgressDialog, QMessageBox, QDialog, QVBoxLayout,
-    QLabel, QProgressBar, QApplication
+    QProgressDialog, QMessageBox, QDialog, QApplication
 )
 #from translations import tr
 from translation_manager import tr
@@ -130,9 +129,7 @@ class ScanController(QObject):
         self._scan_result_cached = None
         self._progress_events = []
 
-        # Progress dialog - REVERT TO OLD WORKING VERSION
-        # Create and show dialog IMMEDIATELY (no threshold, no lazy creation)
-        # This is simpler and avoids Qt threading issues
+        # Progress dialog — non-modal so the user can still interact with the app
         from translation_manager import tr
         self.main._scan_progress = QProgressDialog(
             tr("messages.scan_preparing"),
@@ -140,59 +137,13 @@ class ScanController(QObject):
             0, 100, self.main
         )
         self.main._scan_progress.setWindowTitle(tr("messages.scan_dialog_title"))
-        self.main._scan_progress.setWindowModality(Qt.WindowModal)
+        self.main._scan_progress.setWindowModality(Qt.NonModal)
+        self.main._scan_progress.setModal(False)
         self.main._scan_progress.setAutoClose(False)
         self.main._scan_progress.setAutoReset(False)
-        self.main._scan_progress.setMinimumDuration(0)  # CRITICAL: Show immediately, no timer delay (prevents Qt timer thread errors)
+        self.main._scan_progress.setMinimumDuration(0)
         self.main._scan_progress.setMinimumWidth(520)
-
-        # CRITICAL FIX: Calculate maximum height based on available screen geometry
-        # This prevents Qt geometry warnings when dialog is too tall for screen
-        try:
-            from PySide6.QtWidgets import QApplication
-            screen = QApplication.primaryScreen()
-            screen_geometry = screen.availableGeometry()
-            # Use 80% of available height as maximum, with 50px margin for safety
-            max_height = int(screen_geometry.height() * 0.8 - 50)
-            if max_height > 0:
-                self.main._scan_progress.setMaximumHeight(max_height)
-                self.logger.debug(f"Progress dialog max height set to {max_height}px (screen: {screen_geometry.height()}px)")
-        except Exception as e:
-            self.logger.warning(f"Could not set progress dialog max height: {e}")
-
         self.main._scan_progress.show()
-
-        # CRITICAL FIX: Explicitly center progress dialog on main window
-        # Qt's automatic centering may fail in some cases (minimized window, multi-monitor, etc.)
-        try:
-            # More robust centering with retries
-            def center_dialog(dialog):
-                """Center dialog with retry mechanism"""
-                # Ensure dialog geometry is calculated
-                dialog.adjustSize()
-                QApplication.processEvents()
-                
-                # Get geometries
-                parent_rect = self.main.geometry()
-                dialog_rect = dialog.geometry()
-                
-                # Calculate center position
-                center_x = parent_rect.x() + (parent_rect.width() - dialog_rect.width()) // 2
-                center_y = parent_rect.y() + (parent_rect.height() - dialog_rect.height()) // 2
-                
-                # Move dialog to center
-                dialog.move(center_x, center_y)
-                return center_x, center_y
-            
-            # Initial centering attempt
-            center_x, center_y = center_dialog(self.main._scan_progress)
-            self.logger.debug(f"Progress dialog initially centered at ({center_x}, {center_y})")
-            
-            # Additional centering after a brief delay to ensure layout is complete
-            QTimer.singleShot(50, lambda: center_dialog(self.main._scan_progress))
-            
-        except Exception as e:
-            self.logger.warning(f"Could not center progress dialog: {e}")
 
         # DB writer
         # NOTE: Schema creation handled automatically by repository layer
@@ -381,9 +332,9 @@ class ScanController(QObject):
 
         self.main._scan_progress.setLabelText(label)
         self.main._scan_progress.setWindowTitle(f"{tr('messages.scan_dialog_title')} ({pct_i}%)")
-        QApplication.processEvents()
 
-        # Check for cancellation
+        # Check for cancellation (no processEvents — the signal is QueuedConnection
+        # so this handler already runs inside the main-thread event loop)
         if self.main._scan_progress.wasCanceled():
             self.cancel()
 
@@ -406,9 +357,11 @@ class ScanController(QObject):
         except Exception:
             pass
 
+        # Status bar notification instead of blocking QMessageBox
         try:
-            title = tr("messages.scan_complete") if callable(tr) else "Scan complete"
-            QMessageBox.information(self.main, title, summary)
+            self.main.statusBar().showMessage(
+                f"Scan complete: {folders} folders, {photos} photos, {videos} videos", 8000
+            )
         except Exception:
             pass
 
@@ -455,86 +408,37 @@ class ScanController(QObject):
         # Get scan results BEFORE heavy operations
         f, p, v = self.main._scan_result if len(self.main._scan_result) == 3 else (*self.main._scan_result, 0)
 
-        # Show completion message IMMEDIATELY (before heavy operations)
-        # This prevents UI freeze perception and gives user feedback
-        msg = f"Indexed {p} photos"
-        if v > 0:
-            msg += f" and {v} videos"
-        msg += f" in {f} folders.\n\n"
-        msg += "📊 Processing metadata and updating views...\nThis may take a few seconds."
-
-        # CRITICAL FIX: Create and show message box explicitly, then close it properly
-        # Using QMessageBox.information() can cause issues with multiple scans
-        #from translations import tr
-        
+        # Report post-scan progress via status bar (no modal dialogs)
         from translation_manager import tr
-        
-        msgbox = QMessageBox(self.main)
-        msgbox.setWindowTitle(tr("messages.scan_complete_title"))
-        msgbox.setText(msg)
-        msgbox.setIcon(QMessageBox.Information)
-        msgbox.setStandardButtons(QMessageBox.Ok)
-        msgbox.setModal(True)
-        msgbox.show()
-        QApplication.processEvents()
+        self.main._scan_complete_msgbox = None  # no blocking msgbox
+        self.main.statusBar().showMessage(tr("messages.progress_building_branches"), 0)
 
-        # Store reference to close it later
-        self.main._scan_complete_msgbox = msgbox
+        # Lightweight progress tracker (no dialog — just a counter for _finalize_scan_refresh)
+        class _ProgressStub:
+            """Minimal stub so downstream code that calls progress.setValue/setLabelText/close
+            still works but routes everything to the status bar."""
+            def __init__(self, status_bar, logger):
+                self._bar = status_bar
+                self._log = logger
+            def setValue(self, v):
+                pass
+            def setLabelText(self, text):
+                try:
+                    self._bar.showMessage(text, 0)
+                except Exception:
+                    pass
+            def close(self):
+                pass
+            def show(self):
+                pass
 
-        # Show progress indicator for post-scan processing
-        progress = QProgressDialog(tr("messages.progress_building_branches"), None, 0, 4, self.main)
-        progress.setWindowTitle(tr("messages.progress_processing"))
-        progress.setWindowModality(Qt.WindowModal)
-        progress.setAutoClose(True)
-        progress.setValue(0)
-
-        # CRITICAL FIX: Calculate maximum height based on available screen geometry
-        try:
-            screen = QApplication.primaryScreen()
-            screen_geometry = screen.availableGeometry()
-            max_height = int(screen_geometry.height() * 0.8 - 50)
-            if max_height > 0:
-                progress.setMaximumHeight(max_height)
-        except Exception as e:
-            self.logger.warning(f"Could not set progress dialog max height: {e}")
-
-        progress.show()
-
-        # CRITICAL FIX: Explicitly center progress dialog on main window
-        try:
-            # More robust centering with retries
-            def center_dialog(dialog):
-                """Center dialog with retry mechanism"""
-                dialog.adjustSize()
-                QApplication.processEvents()
-                
-                parent_rect = self.main.geometry()
-                dialog_rect = dialog.geometry()
-                
-                center_x = parent_rect.x() + (parent_rect.width() - dialog_rect.width()) // 2
-                center_y = parent_rect.y() + (parent_rect.height() - dialog_rect.height()) // 2
-                
-                dialog.move(center_x, center_y)
-                return center_x, center_y
-            
-            # Initial centering attempt
-            center_x, center_y = center_dialog(progress)
-            self.logger.debug(f"Post-scan progress dialog centered at ({center_x}, {center_y})")
-            
-            # Additional centering after a brief delay
-            QTimer.singleShot(50, lambda: center_dialog(progress))
-            
-        except Exception as e:
-            self.logger.warning(f"Could not center post-scan progress dialog: {e}")
-
-        QApplication.processEvents()
+        progress = _ProgressStub(self.main.statusBar(), self.logger)
 
         # Build date branches after scan completes
         sidebar_was_updated = False
         try:
             progress.setLabelText(tr("messages.progress_building_photo_branches"))
             progress.setValue(1)
-            QApplication.processEvents()
 
             self.logger.info("Building date branches...")
             from reference_db import ReferenceDB
@@ -563,7 +467,6 @@ class ScanController(QObject):
 
             progress.setLabelText(tr("messages.progress_backfilling_metadata"))
             progress.setValue(2)
-            QApplication.processEvents()
 
             # CRITICAL: Backfill created_date field immediately after scan
             # This populates created_date from date_taken so get_date_hierarchy() works
@@ -846,7 +749,6 @@ class ScanController(QObject):
         try:
             progress.setLabelText(tr("messages.progress_refreshing_sidebar"))
             progress.setValue(3)
-            QApplication.processEvents()
 
             self.logger.info("Reloading sidebar after date branches built...")
             # CRITICAL FIX: Only reload sidebar if it wasn't just updated via set_project()
@@ -898,7 +800,6 @@ class ScanController(QObject):
         try:
             progress.setLabelText(tr("messages.progress_loading_thumbnails"))
             progress.setValue(4)
-            QApplication.processEvents()
 
             # reload thumbnails after scan
             if self.main.thumbnails and hasattr(self.main.grid, "get_visible_paths"):
@@ -922,16 +823,7 @@ class ScanController(QObject):
             self.logger.error(f"Error refreshing Google Photos layout: {e}", exc_info=True)
             # Don't let layout refresh errors break scan completion
 
-        # CRITICAL FIX: Close scan completion message box if still open
-        try:
-            if hasattr(self.main, '_scan_complete_msgbox') and self.main._scan_complete_msgbox:
-                self.main._scan_complete_msgbox.close()
-                self.main._scan_complete_msgbox.deleteLater()
-                self.main._scan_complete_msgbox = None
-        except Exception as e:
-            self.logger.error(f"Error closing scan message box: {e}")
-
-        # Close progress dialog
+        # Close progress stub / status bar
         try:
             progress.close()
         except Exception as e:
