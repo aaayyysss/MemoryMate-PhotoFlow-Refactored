@@ -5,9 +5,14 @@
 # both GoogleLayout and CurrentLayout can load large result sets in
 # incremental pages without duplicates or missing rows.
 #
+# SQL mirrors google_components/photo_helpers.PhotoLoadWorker exactly:
+#   photos → photo_metadata JOIN project_images ON image_path
+#   videos → video_metadata WHERE project_id = ?  (direct, no join)
+#
 # Thresholds are centralised here and can be tuned from preferences.
 
 import logging
+import platform
 from typing import Optional, Dict, Any, List
 
 from reference_db import ReferenceDB
@@ -19,6 +24,16 @@ SMALL_THRESHOLD = 3_000      # below this: load everything in one shot
 PAGE_SIZE = 250              # rows per page (base grid)
 PREFETCH_PAGES = 2           # keep N pages ahead of the viewport
 MAX_IN_MEMORY_ROWS = 10_000  # upper cap to avoid OOM
+
+_IS_WIN = platform.system() == "Windows"
+
+
+def _normalize_folder(raw: str) -> str:
+    """Normalize folder for LIKE comparison (match PhotoLoadWorker)."""
+    normalized = raw.replace("\\", "/")
+    if _IS_WIN:
+        normalized = normalized.lower()
+    return normalized.rstrip("/")
 
 
 class PhotoQueryService:
@@ -61,7 +76,7 @@ class PhotoQueryService:
         limit: int = PAGE_SIZE,
     ) -> List[Dict[str, Any]]:
         """
-        Fetch a page of rows sorted by created_date DESC, rowid DESC.
+        Fetch a page of rows sorted by date_taken DESC, path DESC.
 
         Returns list of dicts: {path, date_taken, width, height, media_type}.
         """
@@ -81,30 +96,31 @@ class PhotoQueryService:
         """Return True if the result set is large enough to warrant paging."""
         return total > SMALL_THRESHOLD
 
-    # ── SQL builders ─────────────────────────────────────────────────
+    # ── Internal: build photo WHERE ──────────────────────────────────
 
-    def _build_where(
+    def _photo_where(
         self, project_id: int, filters: Dict[str, Any]
     ) -> tuple[str, list]:
-        """Build shared WHERE clause fragments + params."""
+        """WHERE clause for photo_metadata m JOIN project_images pi."""
         clauses = ["pi.project_id = ?"]
         params: list = [project_id]
 
         if filters.get("year"):
-            clauses.append("strftime('%Y', m.created_date) = ?")
+            clauses.append("strftime('%Y', pm.created_date) = ?")
             params.append(str(filters["year"]))
         if filters.get("month"):
-            clauses.append("strftime('%m', m.created_date) = ?")
+            clauses.append("strftime('%m', pm.created_date) = ?")
             params.append(str(filters["month"]).zfill(2))
         if filters.get("day"):
-            clauses.append("strftime('%d', m.created_date) = ?")
+            clauses.append("strftime('%d', pm.created_date) = ?")
             params.append(str(filters["day"]).zfill(2))
         if filters.get("folder"):
-            clauses.append("m.path LIKE ?")
-            params.append(filters["folder"].rstrip("/\\") + "%")
+            folder = _normalize_folder(filters["folder"])
+            clauses.append("pm.path LIKE ?")
+            params.append(f"{folder}%")
         if filters.get("person_branch_key"):
             clauses.append(
-                "m.path IN ("
+                "pm.path IN ("
                 "  SELECT DISTINCT fc.image_path FROM face_crops fc"
                 "  WHERE fc.project_id = ? AND fc.branch_key = ?"
                 ")"
@@ -113,32 +129,60 @@ class PhotoQueryService:
 
         return " AND ".join(clauses), params
 
+    # ── Internal: build video WHERE ──────────────────────────────────
+
+    def _video_where(
+        self, project_id: int, filters: Dict[str, Any]
+    ) -> tuple[str, list]:
+        """WHERE clause for video_metadata vm (direct project_id, no join)."""
+        clauses = ["vm.project_id = ?"]
+        params: list = [project_id]
+
+        if filters.get("year"):
+            clauses.append("strftime('%Y', vm.created_date) = ?")
+            params.append(str(filters["year"]))
+        if filters.get("month"):
+            clauses.append("strftime('%m', vm.created_date) = ?")
+            params.append(str(filters["month"]).zfill(2))
+        if filters.get("day"):
+            clauses.append("strftime('%d', vm.created_date) = ?")
+            params.append(str(filters["day"]).zfill(2))
+        if filters.get("folder"):
+            folder = _normalize_folder(filters["folder"])
+            clauses.append("vm.path LIKE ?")
+            params.append(f"{folder}%")
+
+        # No person filter for videos (face_crops is photo-only)
+        return " AND ".join(clauses), params
+
+    # ── SQL assemblers ───────────────────────────────────────────────
+
+    def _include_videos(self, filters: Dict[str, Any]) -> bool:
+        """Videos are excluded when filtering by person (no face data)."""
+        return not filters.get("person_branch_key")
+
     def _build_count_sql(
         self, project_id: int, filters: Dict[str, Any]
     ) -> tuple[str, list]:
-        where, params = self._build_where(project_id, filters)
+        pw, pp = self._photo_where(project_id, filters)
 
-        # Photos
         photo_sql = (
-            "SELECT COUNT(DISTINCT m.path) FROM photo_metadata m "
-            "JOIN project_images pi ON m.path = pi.image_path "
-            f"WHERE {where}"
+            "SELECT COUNT(DISTINCT pm.path) FROM photo_metadata pm "
+            "JOIN project_images pi ON pm.path = pi.image_path "
+            f"WHERE {pw}"
         )
 
-        # Videos (skip person filter — face_crops is photo-only)
-        if not filters.get("person_branch_key"):
-            video_where = where.replace("m.path", "v.path").replace(
-                "m.created_date", "v.created_date"
-            )
+        if self._include_videos(filters):
+            vw, vp = self._video_where(project_id, filters)
             video_sql = (
-                "SELECT COUNT(DISTINCT v.path) FROM video_metadata v "
-                "JOIN project_videos pv ON v.path = pv.video_path "
-                f"WHERE {video_where.replace('pi.project_id', 'pv.project_id')}"
+                "SELECT COUNT(DISTINCT vm.path) FROM video_metadata vm "
+                f"WHERE {vw}"
             )
             sql = f"SELECT (({photo_sql}) + ({video_sql}))"
-            params = params + params  # second set for video sub-query
+            params = pp + vp
         else:
             sql = photo_sql
+            params = pp
 
         return sql, params
 
@@ -149,44 +193,36 @@ class PhotoQueryService:
         offset: int,
         limit: int,
     ) -> tuple[str, list]:
-        where_photo, params_photo = self._build_where(project_id, filters)
+        pw, pp = self._photo_where(project_id, filters)
 
-        # Photos sub-query
         photo_sql = (
-            "SELECT DISTINCT m.path, m.created_date AS date_taken, "
-            "m.width, m.height, 'photo' AS media_type "
-            "FROM photo_metadata m "
-            "JOIN project_images pi ON m.path = pi.image_path "
-            f"WHERE {where_photo}"
+            "SELECT DISTINCT pm.path, pm.created_date AS date_taken, "
+            "pm.width, pm.height, 'photo' AS media_type "
+            "FROM photo_metadata pm "
+            "JOIN project_images pi ON pm.path = pi.image_path "
+            f"WHERE {pw}"
         )
 
-        if not filters.get("person_branch_key"):
-            # Videos sub-query (mirror WHERE for video tables)
-            where_video = where_photo.replace("m.path", "v.path").replace(
-                "m.created_date", "v.created_date"
-            ).replace("m.width", "v.width").replace("m.height", "v.height")
-            where_video = where_video.replace("pi.project_id", "pv.project_id")
-
+        if self._include_videos(filters):
+            vw, vp = self._video_where(project_id, filters)
             video_sql = (
-                "SELECT DISTINCT v.path, v.created_date AS date_taken, "
-                "v.width, v.height, 'video' AS media_type "
-                "FROM video_metadata v "
-                "JOIN project_videos pv ON v.path = pv.video_path "
-                f"WHERE {where_video}"
+                "SELECT DISTINCT vm.path, vm.created_date AS date_taken, "
+                "vm.width, vm.height, 'video' AS media_type "
+                "FROM video_metadata vm "
+                f"WHERE {vw}"
             )
-
             union_sql = (
                 f"SELECT * FROM ({photo_sql} UNION ALL {video_sql}) "
                 "ORDER BY date_taken DESC, path DESC "
                 "LIMIT ? OFFSET ?"
             )
-            all_params = params_photo + params_photo + [limit, offset]
+            all_params = pp + vp + [limit, offset]
         else:
             union_sql = (
                 f"{photo_sql} "
                 "ORDER BY date_taken DESC, path DESC "
                 "LIMIT ? OFFSET ?"
             )
-            all_params = params_photo + [limit, offset]
+            all_params = pp + [limit, offset]
 
         return union_sql, all_params
