@@ -653,251 +653,78 @@ class ScanController(QObject):
                 except Exception as e:
                     self.logger.error(f"Failed to start post-scan pipeline: {e}", exc_info=True)
 
-            # PHASE 3: Face Detection Integration (Optional Post-Scan Step)
-            # Check if face detection is enabled in configuration
+            # PHASE 3: Face Detection — dispatched to background thread
+            # No modal dialogs, no user confirmation, no QProgressDialog.
+            # Runs face detection + clustering as a single background job and
+            # reports progress via the status bar.
             try:
-                # NOTE: QMessageBox is already imported at module level (line 64)
-                # Do NOT re-import here as it makes QMessageBox a local variable
                 from config.face_detection_config import get_face_config
                 face_config = get_face_config()
 
                 if face_config.is_enabled() and face_config.get("auto_cluster_after_scan", True):
-                    self.logger.info("Face detection is enabled - starting face detection worker...")
-
-                    # Check if backend is available
+                    # Verify backend availability (lightweight check)
                     from services.face_detection_service import FaceDetectionService
                     availability = FaceDetectionService.check_backend_availability()
                     backend = face_config.get_backend()
 
                     if availability.get(backend, False):
-                        # Ask user for confirmation if required
-                        if face_config.get("require_confirmation", True):
-                            reply = QMessageBox.question(
-                                self.main,
-                                "Face Detection",
-                                f"Scan completed!\n\nWould you like to detect faces in the scanned images?\n\n"
-                                f"Backend: {backend}\n"
-                                f"This may take a few minutes depending on the number of images.",
-                                QMessageBox.Yes | QMessageBox.No,
-                                QMessageBox.Yes
-                            )
+                        self.logger.info("Enqueueing face pipeline as background job (backend=%s)...", backend)
 
-                            if reply != QMessageBox.Yes:
-                                self.logger.info("User declined face detection")
-                                face_detection_enabled = False
-                            else:
-                                face_detection_enabled = True
-                        else:
-                            face_detection_enabled = True
+                        from workers.face_pipeline_worker import FacePipelineWorker
 
-                        if face_detection_enabled:
-                            self.logger.info(f"Starting face detection with backend: {backend}")
+                        self._face_pipeline_worker = FacePipelineWorker(
+                            project_id=current_project_id,
+                            model=face_config.get("model", "buffalo_l"),
+                        )
 
-                            # CRITICAL FIX: Show progress dialog to prevent frozen UI appearance
-                            # Create non-modal progress dialog
-                            # Note: All required widgets already imported at module level
-
-                            progress_dialog = QDialog(self.main)
-                            progress_dialog.setWindowTitle(tr("messages.progress_processing_photos"))
-                            progress_dialog.setModal(False)  # Non-modal allows UI to stay responsive
-                            progress_dialog.setMinimumWidth(500)
-                            progress_dialog.setWindowFlags(
-                                progress_dialog.windowFlags() & ~Qt.WindowCloseButtonHint
-                            )
-
-                            layout = QVBoxLayout()
-                            status_label = QLabel("Initializing face detection...")
-                            status_label.setStyleSheet("font-weight: bold; font-size: 12pt;")
-                            progress_bar = QProgressBar()
-                            progress_bar.setMinimum(0)
-                            progress_bar.setMaximum(100)
-                            progress_bar.setValue(0)
-                            detail_label = QLabel("Please wait...")
-                            detail_label.setWordWrap(True)
-
-                            layout.addWidget(status_label)
-                            layout.addWidget(progress_bar)
-                            layout.addWidget(detail_label)
-                            progress_dialog.setLayout(layout)
-
-                            # Show dialog immediately
-                            progress_dialog.show()
-                            QApplication.processEvents()  # Force UI update
-
-                            # CRITICAL FIX: Explicitly center face detection progress dialog on main window
-                            # This ensures the dialog appears in the center of the application geometry
+                        def _on_face_progress(step_name, message):
                             try:
-                                # More robust centering with retries
-                                def center_dialog(dialog):
-                                    """Center dialog with retry mechanism"""
-                                    dialog.adjustSize()
-                                    QApplication.processEvents()
-                                    
-                                    parent_rect = self.main.geometry()
-                                    dialog_rect = dialog.geometry()
-                                    
-                                    center_x = parent_rect.x() + (parent_rect.width() - dialog_rect.width()) // 2
-                                    center_y = parent_rect.y() + (parent_rect.height() - dialog_rect.height()) // 2
-                                    
-                                    dialog.move(center_x, center_y)
-                                    return center_x, center_y
-                                
-                                # Initial centering attempt
-                                center_x, center_y = center_dialog(progress_dialog)
-                                self.logger.debug(f"Face detection progress dialog centered at ({center_x}, {center_y})")
-                                
-                                # Additional centering after a brief delay
-                                QTimer.singleShot(50, lambda: center_dialog(progress_dialog))
-                                
-                            except Exception as e:
-                                self.logger.warning(f"Could not center face detection progress dialog: {e}")
+                                self.main.statusBar().showMessage(message, 0)
+                            except Exception:
+                                pass
 
-                            # Run face detection worker
-                            from workers.face_detection_worker import FaceDetectionWorker
-                            face_worker = FaceDetectionWorker(current_project_id)
+                        def _on_face_finished(results):
+                            faces = results.get("faces_detected", 0)
+                            clusters = results.get("clusters_created", 0)
+                            errors = results.get("errors", [])
 
-                            # Connect progress signals to update dialog
-                            def update_progress(current, total, filename):
-                                percent = int((current / total) * 80) if total > 0 else 0  # 80% for detection
-                                progress_bar.setValue(percent)
-                                status_label.setText(tr("messages.progress_detecting_faces", current=current, total=total))
-                                detail_label.setText(tr("messages.progress_processing_file", filename=filename))
-                                QApplication.processEvents()
+                            if faces > 0:
+                                self.main.statusBar().showMessage(
+                                    f"Face pipeline complete: {faces} faces, {clusters} clusters", 8000
+                                )
+                            else:
+                                self.main.statusBar().showMessage(
+                                    "Face pipeline complete — no faces detected", 5000
+                                )
 
-                            face_worker.signals.progress.connect(update_progress)
+                            if errors:
+                                self.logger.warning("Face pipeline errors: %s", errors)
 
-                            # Update initial status
-                            status_label.setText(tr("messages.progress_loading_models"))
-                            detail_label.setText(tr("messages.progress_models_first_run"))
-                            QApplication.processEvents()
+                            # Safely refresh People section
+                            self._safe_refresh_people_section()
 
-                            # CRITICAL FIX: Run face detection asynchronously using QThreadPool
-                            # DO NOT call face_worker.run() directly - it blocks the main thread!
+                        def _on_face_error(msg):
+                            self.logger.error("Face pipeline error: %s", msg)
+                            self.main.statusBar().showMessage(
+                                f"Face pipeline failed: {msg}", 8000
+                            )
 
-                            def on_face_detection_finished(success_count, failed_count, total_faces):
-                                """Handle face detection completion"""
-                                try:
-                                    self.logger.info(f"Face detection completed: {total_faces} faces detected in {success_count} images")
+                        self._face_pipeline_worker.signals.progress.connect(_on_face_progress)
+                        self._face_pipeline_worker.signals.finished.connect(_on_face_finished)
+                        self._face_pipeline_worker.signals.error.connect(_on_face_error)
 
-                                    # Update for clustering phase
-                                    if face_config.get("clustering_enabled", True) and total_faces > 0:
-                                        progress_bar.setValue(85)
-                                        status_label.setText(tr("messages.progress_grouping_faces"))
-                                        detail_label.setText(tr("messages.progress_clustering_faces", total_faces=total_faces))
-                                        QApplication.processEvents()
-
-                                        self.logger.info("Starting face clustering...")
-
-                                        from workers.face_cluster_worker import cluster_faces
-                                        cluster_params = face_config.get_clustering_params()
-
-                                        # CRITICAL FIX: Run clustering asynchronously to avoid UI freeze
-                                        # DO NOT call cluster_faces() directly - it blocks during DBSCAN computation!
-
-                                        def run_clustering_async():
-                                            """Run clustering in background thread"""
-                                            try:
-                                                cluster_faces(
-                                                    current_project_id,
-                                                    eps=cluster_params["eps"],
-                                                    min_samples=cluster_params["min_samples"]
-                                                )
-                                                self.logger.info("Face clustering completed")
-                                            except Exception as e:
-                                                self.logger.error(f"Error during clustering: {e}", exc_info=True)
-
-                                        def on_clustering_finished():
-                                            """Handle clustering completion on main thread"""
-                                            try:
-                                                # Final update
-                                                progress_bar.setValue(100)
-                                                status_label.setText(tr("messages.progress_complete"))
-                                                detail_label.setText(tr("messages.progress_faces_found", total_faces=total_faces, success_count=success_count))
-                                                QApplication.processEvents()
-
-                                                # CRITICAL FIX: Refresh Google Photos layout People grid after clustering
-                                                # Without this, user must manually toggle layouts to see faces
-                                                self.logger.info("Refreshing People grid after face clustering...")
-                                                try:
-                                                    if hasattr(self.main, 'layout_manager') and self.main.layout_manager:
-                                                        current_layout_id = self.main.layout_manager._current_layout_id
-                                                        if current_layout_id == "google":
-                                                            current_layout = self.main.layout_manager._current_layout
-                                                            if current_layout and hasattr(current_layout, '_build_people_tree'):
-                                                                # Refresh People grid with newly clustered faces
-                                                                current_layout._build_people_tree()
-                                                                self.logger.info("✓ People grid refreshed with detected faces")
-
-                                                                # CRITICAL FIX: Also refresh People section in accordion sidebar
-                                                                # Without this, sidebar doesn't update until user toggles layouts
-                                                                if hasattr(current_layout, 'accordion_sidebar'):
-                                                                    self.logger.info("Refreshing People section in sidebar...")
-                                                                    current_layout.accordion_sidebar.reload_people_section()
-                                                                    self.logger.info("✓ People section in sidebar refreshed")
-                                                except Exception as refresh_err:
-                                                    self.logger.error(f"Failed to refresh People grid: {refresh_err}", exc_info=True)
-
-                                                # Close dialog after short delay
-                                                QTimer.singleShot(1500, progress_dialog.accept)
-                                            except Exception as e:
-                                                self.logger.error(f"Error in clustering completion handler: {e}", exc_info=True)
-                                                progress_dialog.accept()
-
-                                        # Run clustering in thread pool (NON-BLOCKING!)
-                                        from PySide6.QtCore import QRunnable, QThreadPool, pyqtSignal, QObject
-
-                                        class ClusterSignals(QObject):
-                                            finished = pyqtSignal()
-
-                                        class ClusterRunnable(QRunnable):
-                                            def __init__(self, cluster_func):
-                                                super().__init__()
-                                                self.cluster_func = cluster_func
-                                                self.signals = ClusterSignals()
-
-                                            def run(self):
-                                                self.cluster_func()
-                                                self.signals.finished.emit()
-
-                                        cluster_runnable = ClusterRunnable(run_clustering_async)
-                                        cluster_runnable.signals.finished.connect(on_clustering_finished)
-                                        QThreadPool.globalInstance().start(cluster_runnable)
-
-                                    else:
-                                        # No clustering needed, finish immediately
-                                        progress_bar.setValue(100)
-                                        status_label.setText(tr("messages.progress_complete"))
-                                        detail_label.setText(tr("messages.progress_faces_found", total_faces=total_faces, success_count=success_count))
-                                        QApplication.processEvents()
-
-                                        # Close dialog after short delay
-                                        QTimer.singleShot(1500, progress_dialog.accept)
-
-                                except Exception as e:
-                                    self.logger.error(f"Error in face detection completion handler: {e}", exc_info=True)
-                                    progress_dialog.accept()
-
-                            # Connect finished signal
-                            face_worker.signals.finished.connect(on_face_detection_finished)
-
-                            # Run asynchronously in background thread (NON-BLOCKING!)
-                            QThreadPool.globalInstance().start(face_worker)
+                        QThreadPool.globalInstance().start(self._face_pipeline_worker)
+                        self.logger.info("Face pipeline dispatched to background thread pool")
                     else:
-                        self.logger.warning(f"Face detection backend '{backend}' is not available")
-                        self.logger.warning(f"Available backends: {[k for k, v in availability.items() if v]}")
+                        self.logger.warning("Face backend '%s' not available (available: %s)",
+                                            backend, [k for k, v in availability.items() if v])
                 else:
-                    self.logger.debug("Face detection is disabled or auto-clustering is off")
+                    self.logger.debug("Face detection disabled or auto-clustering off")
 
             except ImportError as e:
-                self.logger.debug(f"Face detection modules not available: {e}")
+                self.logger.debug("Face detection modules not available: %s", e)
             except Exception as e:
-                self.logger.error(f"Face detection error: {e}", exc_info=True)
-                # Don't fail the entire scan if face detection fails
-                QMessageBox.warning(
-                    self.main,
-                    "Face Detection Error",
-                    f"Face detection failed:\n{str(e)}\n\nThe scan completed successfully, but faces were not detected."
-                )
+                self.logger.error("Face detection setup error: %s", e, exc_info=True)
 
             # CRITICAL: Update sidebar project_id if it was None (fresh database)
             # The scan creates the first project, so we need to tell the sidebar about it
@@ -931,6 +758,43 @@ class ScanController(QObject):
 
         # PHASE 2 Task 2.2: OLD refresh_ui() moved to _finalize_scan_refresh()
         # This ensures only ONE refresh happens after ALL async operations complete
+
+    def _safe_refresh_people_section(self):
+        """Safely refresh the People section after face pipeline completes.
+
+        Uses try/except to handle cases where widgets may have been
+        destroyed since the background job started.
+        """
+        try:
+            # Guard: check main window is still alive
+            if not self.main or not hasattr(self.main, 'layout_manager'):
+                return
+
+            lm = self.main.layout_manager
+            if not lm:
+                return
+
+            current_layout_id = lm._current_layout_id
+            if current_layout_id == "google":
+                current_layout = lm._current_layout
+                if current_layout and hasattr(current_layout, 'accordion_sidebar'):
+                    accordion = current_layout.accordion_sidebar
+                    if hasattr(accordion, 'reload_people_section'):
+                        accordion.reload_people_section()
+                        self.logger.info("Refreshed people section after face pipeline")
+                    if hasattr(current_layout, '_build_people_tree'):
+                        current_layout._build_people_tree()
+                        self.logger.debug("Refreshed people grid after face pipeline")
+            elif hasattr(self.main, 'sidebar') and self.main.sidebar:
+                try:
+                    if self.main.sidebar.isVisible() and hasattr(self.main.sidebar, 'reload'):
+                        self.main.sidebar.reload()
+                        self.logger.debug("Refreshed sidebar after face pipeline")
+                except RuntimeError:
+                    # Widget was deleted — safe to ignore
+                    self.logger.debug("Sidebar widget deleted, skipping refresh")
+        except Exception as e:
+            self.logger.warning("Failed to refresh people section: %s", e)
 
     def _refresh_duplicates_section(self):
         """Refresh the duplicates section/tab in the sidebar after background pipeline completes."""

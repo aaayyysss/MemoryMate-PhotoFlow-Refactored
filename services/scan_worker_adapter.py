@@ -85,7 +85,13 @@ class ScanWorkerAdapter(QObject):
             error: On failure
         """
         try:
-            logger.info(f"ScanWorkerAdapter starting scan of {self.folder}")
+            import threading
+            _thread = threading.current_thread()
+            _is_main = _thread is threading.main_thread()
+            logger.info(
+                "[ScanWorkerAdapter] Starting scan of %s (thread=%s, is_main=%s)",
+                self.folder, _thread.name, _is_main,
+            )
 
             # Extract settings
             skip_unchanged = self.settings.get("skip_unchanged_photos", True)
