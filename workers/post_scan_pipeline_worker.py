@@ -155,7 +155,15 @@ class PostScanPipelineWorker(QRunnable):
 
                 try:
                     from services.semantic_embedding_service import SemanticEmbeddingService
-                    embedding_service = SemanticEmbeddingService(db_connection=db_conn)
+                    from repository.project_repository import ProjectRepository
+
+                    # Use project's canonical model (single source of truth)
+                    proj_repo = ProjectRepository(db_conn)
+                    canonical_model = proj_repo.get_semantic_model(self.project_id)
+
+                    embedding_service = SemanticEmbeddingService(
+                        model_name=canonical_model, db_connection=db_conn,
+                    )
 
                     all_photos = photo_repo.find_all(
                         where_clause="project_id = ?",
@@ -175,7 +183,7 @@ class PostScanPipelineWorker(QRunnable):
 
                         worker = SemanticEmbeddingWorker(
                             photo_ids=photos_needing,
-                            model_name="clip-vit-b32",
+                            model_name=canonical_model,
                             force_recompute=False,
                             project_id=self.project_id,
                         )
@@ -222,7 +230,9 @@ class PostScanPipelineWorker(QRunnable):
                     from services.stack_generation_service import StackGenerationService, StackGenParams
                     from repository.stack_repository import StackRepository
 
-                    embedding_service = SemanticEmbeddingService(db_connection=db_conn)
+                    embedding_service = SemanticEmbeddingService(
+                        model_name=canonical_model, db_connection=db_conn,
+                    )
                     embedding_count = embedding_service.get_embedding_count()
 
                     if embedding_count == 0:

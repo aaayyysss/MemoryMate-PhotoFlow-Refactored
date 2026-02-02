@@ -2742,6 +2742,11 @@ class MainWindow(QMainWindow):
         PHASE 2 & 3: Restore last browsing state (section expansion + selection).
         Called after UI is fully loaded via QTimer.singleShot.
         """
+        # One-shot guard: this may be scheduled from multiple init paths
+        if getattr(self, '_session_restored', False):
+            return
+        self._session_restored = True
+
         try:
             from session_state_manager import get_session_state
             session_state = get_session_state()

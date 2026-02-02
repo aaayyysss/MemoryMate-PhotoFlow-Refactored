@@ -9431,6 +9431,33 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
         if mediator:
             mediator.on_layout_activated("google")
 
+        # Recompute grid columns after the widget geometry has settled.
+        # During create_layout() the viewport is narrow (not yet shown);
+        # by the time the event loop returns here the true width is known.
+        QTimer.singleShot(0, self._recheck_column_count)
+
+    def _recheck_column_count(self):
+        """Recompute columns now that the viewport has its real width.
+
+        If the column count changed from what was used during the initial
+        _load_photos() call (widget not yet visible), re-trigger the load
+        so grids are laid out correctly.
+        """
+        thumb_size = getattr(self, 'current_thumb_size', 200)
+        old_cols = getattr(self, '_last_column_count', None)
+        new_cols = self._calculate_responsive_columns(thumb_size)
+        if old_cols is not None and new_cols != old_cols:
+            print(f"[GooglePhotosLayout] Column count changed {old_cols} -> {new_cols}, refreshing grid")
+            self._load_photos(
+                thumb_size=thumb_size,
+                filter_year=getattr(self, 'current_filter_year', None),
+                filter_month=getattr(self, 'current_filter_month', None),
+                filter_day=getattr(self, 'current_filter_day', None),
+                filter_folder=getattr(self, 'current_filter_folder', None),
+                filter_person=getattr(self, 'current_filter_person', None),
+                filter_paths=getattr(self, 'current_filter_paths', None),
+            )
+
     def on_layout_deactivated(self):
         """
         CRITICAL FIX: Called when layout is being switched or destroyed.
