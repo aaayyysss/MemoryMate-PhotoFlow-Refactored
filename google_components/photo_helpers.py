@@ -212,22 +212,47 @@ class ThumbnailLoader(QRunnable):
             print(f"[ThumbnailLoader] Error loading {self.path}: {e}")
 
     def _emit_video_placeholder(self):
-        """Emit a video placeholder icon."""
-        from PySide6.QtGui import QPainter, QFont
-        from PySide6.QtCore import Qt
+        """Emit a video placeholder icon using Qt drawing primitives.
 
-        # Create a dark pixmap with video icon
-        pixmap = QPixmap(self.size, self.size)
-        pixmap.fill(QColor(45, 45, 45))
+        Draws a dark background with a centered play-triangle and a
+        "VIDEO" label.  Does NOT rely on emoji (unreliable cross-platform).
+        """
+        from PySide6.QtGui import QPainter, QFont, QPen, QBrush, QPolygonF
+        from PySide6.QtCore import Qt, QPointF, QRectF
+
+        sz = self.size
+        pixmap = QPixmap(sz, sz)
+        pixmap.fill(QColor(38, 38, 38))  # dark background
 
         painter = QPainter(pixmap)
-        painter.setPen(QColor(200, 200, 200))
-        font = QFont()
-        font.setPixelSize(self.size // 3)
-        painter.setFont(font)
-        painter.drawText(pixmap.rect(), Qt.AlignCenter, "🎬")
-        painter.end()
+        painter.setRenderHint(QPainter.Antialiasing)
 
+        # --- play triangle (centred, white, 40 % of size) ---
+        tri_sz = sz * 0.35
+        cx, cy = sz / 2.0, sz / 2.0 - sz * 0.06
+        left_x = cx - tri_sz * 0.4
+        right_x = cx + tri_sz * 0.5
+        top_y = cy - tri_sz * 0.5
+        bot_y = cy + tri_sz * 0.5
+        triangle = QPolygonF([
+            QPointF(left_x, top_y),
+            QPointF(right_x, cy),
+            QPointF(left_x, bot_y),
+        ])
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QBrush(QColor(255, 255, 255, 200)))
+        painter.drawPolygon(triangle)
+
+        # --- "VIDEO" label below the triangle ---
+        painter.setPen(QPen(QColor(180, 180, 180)))
+        font = QFont()
+        font.setPixelSize(max(10, sz // 10))
+        font.setBold(True)
+        painter.setFont(font)
+        label_rect = QRectF(0, cy + tri_sz * 0.45, sz, sz * 0.2)
+        painter.drawText(label_rect, Qt.AlignHCenter | Qt.AlignTop, "VIDEO")
+
+        painter.end()
         self.signals.loaded.emit(self.path, pixmap, self.size)
 
 
