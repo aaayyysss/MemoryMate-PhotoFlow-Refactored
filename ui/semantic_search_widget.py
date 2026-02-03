@@ -215,28 +215,18 @@ class SemanticSearchWidget(QWidget):
 
             logger.info(f"[SemanticSearch] Project context set to: {project_id}")
 
-    # Canonical short-key → HuggingFace name map (shared across methods)
-    _SHORT_TO_FULL = {
-        "clip-vit-b32": "openai/clip-vit-base-patch32",
-        "clip-vit-b16": "openai/clip-vit-base-patch16",
-        "clip-vit-l14": "openai/clip-vit-large-patch14",
-    }
-
-    # Default model when project has no canonical model set
-    _DEFAULT_MODEL = "clip-vit-b32"
-
     def _resolve_clip_variant(self) -> str:
         """
         Resolve which CLIP model variant to use.
 
         Priority:
         1. Project's canonical model (projects.semantic_model)
-        2. Hard default 'clip-vit-b32' — never 'best available'
+        2. Hard default from clip_model_registry — never 'best available'
 
-        Using 'best available' as fallback is wrong because it can silently
-        select a different model than the one used for existing embeddings,
-        making search results incoherent.
+        Uses centralized clip_model_registry for all name resolution.
         """
+        from utils.clip_model_registry import normalize_model_id, DEFAULT_MODEL
+
         if self._project_id:
             try:
                 from repository.project_repository import ProjectRepository
@@ -245,19 +235,14 @@ class SemanticSearchWidget(QWidget):
                 repo = ProjectRepository(db)
                 canonical = repo.get_semantic_model(self._project_id)
                 if canonical:
-                    full_name = self._SHORT_TO_FULL.get(canonical, canonical)
-                    logger.info(
-                        "[SemanticSearch] Using project canonical model: %s -> %s",
-                        canonical, full_name,
-                    )
-                    return full_name
+                    logger.info("[SemanticSearch] Using project canonical model: %s", canonical)
+                    return canonical  # Already normalized by repo
             except Exception as e:
                 logger.warning("[SemanticSearch] Could not resolve project model: %s", e)
 
-        # Hard default — matches SemanticEmbeddingService default and DB schema default
-        default_full = self._SHORT_TO_FULL.get(self._DEFAULT_MODEL, self._DEFAULT_MODEL)
-        logger.info("[SemanticSearch] No project model set, using default: %s", default_full)
-        return default_full
+        default = normalize_model_id(DEFAULT_MODEL)
+        logger.info("[SemanticSearch] No project model set, using default: %s", default)
+        return default
 
     @property
     def project_id(self) -> Optional[int]:

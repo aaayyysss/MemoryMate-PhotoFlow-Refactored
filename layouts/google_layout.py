@@ -9680,6 +9680,10 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
         self.project_id = get_default_project_id()
         print(f"[GooglePhotosLayout] Updated project_id: {self.project_id}")
 
+        # Update accordion sidebar immediately (prevents empty sidebar glitch)
+        if hasattr(self, 'accordion_sidebar') and self.project_id is not None:
+            self.accordion_sidebar.set_project(self.project_id)
+
         # Refresh project selector and layout
         self._populate_project_selector()
         self._load_photos()

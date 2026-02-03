@@ -94,11 +94,12 @@ class SemanticEmbeddingService:
         Initialize semantic embedding service.
 
         Args:
-            model_name: CLIP/SigLIP model variant
-                       'clip-vit-b32', 'clip-vit-b16', 'clip-vit-l14'
+            model_name: CLIP/SigLIP model variant (short alias or full HF name)
             db_connection: Optional database connection
         """
-        self.model_name = model_name
+        from utils.clip_model_registry import normalize_model_id, all_aliases_for
+        self.model_name = normalize_model_id(model_name)
+        self._model_aliases = all_aliases_for(self.model_name)
         self.db = db_connection or DatabaseConnection()
 
         # Model cache (lazy loading — torch/transformers imported on first use)
@@ -190,13 +191,9 @@ class SemanticEmbeddingService:
                 self._device = self._torch.device("cpu")
                 logger.info("[SemanticEmbeddingService] Using CPU")
 
-            # Map model name to HuggingFace ID
-            model_map = {
-                'clip-vit-b32': 'openai/clip-vit-base-patch32',
-                'clip-vit-b16': 'openai/clip-vit-base-patch16',
-                'clip-vit-l14': 'openai/clip-vit-large-patch14',
-            }
-            hf_model = model_map.get(self.model_name, self.model_name)
+            # model_name is already a canonical HuggingFace ID
+            # (normalized in __init__ via clip_model_registry)
+            hf_model = self.model_name
 
             # STEP 1: Check for stored preference first
             local_model_path = None
@@ -925,11 +922,14 @@ class SemanticEmbeddingService:
             Embedding vector (float32) or None if not found
         """
         with self.db.get_connection() as conn:
-            cursor = conn.execute("""
+            # Query all known aliases for backward compatibility
+            # (old rows may use short key 'clip-vit-b32', new rows use HF name)
+            placeholders = ",".join("?" for _ in self._model_aliases)
+            cursor = conn.execute(f"""
                 SELECT embedding, dim
                 FROM semantic_embeddings
-                WHERE photo_id = ? AND model = ?
-            """, (photo_id, self.model_name))
+                WHERE photo_id = ? AND model IN ({placeholders})
+            """, (photo_id, *self._model_aliases))
 
             row = cursor.fetchone()
             if row is None:
@@ -966,11 +966,12 @@ class SemanticEmbeddingService:
     def has_embedding(self, photo_id: int) -> bool:
         """Check if photo has semantic embedding."""
         with self.db.get_connection() as conn:
-            cursor = conn.execute("""
+            placeholders = ",".join("?" for _ in self._model_aliases)
+            cursor = conn.execute(f"""
                 SELECT 1 FROM semantic_embeddings
-                WHERE photo_id = ? AND model = ?
+                WHERE photo_id = ? AND model IN ({placeholders})
                 LIMIT 1
-            """, (photo_id, self.model_name))
+            """, (photo_id, *self._model_aliases))
 
             return cursor.fetchone() is not None
 
@@ -997,13 +998,15 @@ class SemanticEmbeddingService:
 
         with self.db.get_connection() as conn:
             # Use parameterized query with IN clause
-            placeholders = ','.join('?' * len(photo_ids))
+            # Include all model aliases for backward compatibility
+            id_ph = ','.join('?' * len(photo_ids))
+            model_ph = ','.join('?' * len(self._model_aliases))
             query = f"""
                 SELECT photo_id, embedding, dim
                 FROM semantic_embeddings
-                WHERE photo_id IN ({placeholders}) AND model = ?
+                WHERE photo_id IN ({id_ph}) AND model IN ({model_ph})
             """
-            params = list(photo_ids) + [self.model_name]
+            params = list(photo_ids) + list(self._model_aliases)
 
             cursor = conn.execute(query, params)
 
@@ -1777,13 +1780,14 @@ class SemanticEmbeddingService:
         return _faiss_available
 
     def get_embedding_count(self) -> int:
-        """Get total number of semantic embeddings for this model."""
+        """Get total number of semantic embeddings for this model (including aliases)."""
         with self.db.get_connection() as conn:
-            cursor = conn.execute("""
+            placeholders = ",".join("?" for _ in self._model_aliases)
+            cursor = conn.execute(f"""
                 SELECT COUNT(*) as count
                 FROM semantic_embeddings
-                WHERE model = ?
-            """, (self.model_name,))
+                WHERE model IN ({placeholders})
+            """, tuple(self._model_aliases))
 
             return cursor.fetchone()['count']
 

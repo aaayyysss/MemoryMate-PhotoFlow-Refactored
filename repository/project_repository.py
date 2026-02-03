@@ -20,8 +20,8 @@ class ProjectRepository(BaseRepository):
     def _table_name(self) -> str:
         return "projects"
 
-    # Default semantic model for new projects
-    DEFAULT_SEMANTIC_MODEL = "clip-vit-b32"
+    # Default semantic model for new projects (canonical HuggingFace ID)
+    DEFAULT_SEMANTIC_MODEL = "openai/clip-vit-base-patch32"
 
     def create(self, name: str, folder: str, mode: str, semantic_model: Optional[str] = None) -> int:
         """
@@ -327,9 +327,11 @@ class ProjectRepository(BaseRepository):
             project_id: Project ID
 
         Returns:
-            Model name (e.g., 'clip-vit-b32', 'clip-vit-l14')
+            Canonical HuggingFace model ID (e.g. 'openai/clip-vit-base-patch32')
             Falls back to DEFAULT_SEMANTIC_MODEL if not set
         """
+        from utils.clip_model_registry import normalize_model_id
+
         sql = "SELECT semantic_model FROM projects WHERE id = ?"
 
         with self.connection(read_only=True) as conn:
@@ -338,7 +340,8 @@ class ProjectRepository(BaseRepository):
             result = cur.fetchone()
 
             if result and result.get('semantic_model'):
-                return result['semantic_model']
+                # Normalize old short names to canonical HF IDs
+                return normalize_model_id(result['semantic_model'])
 
         self.logger.debug(
             f"Project {project_id} has no semantic_model set, "

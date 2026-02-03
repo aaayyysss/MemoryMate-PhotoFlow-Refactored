@@ -128,7 +128,7 @@
     "all_photos": "All Photos",
     "favorites": "Favorites",
     "albums": "Albums",
-    "people": "People",
+    "people_label": "People",
     "places": "Places",
     "dates": "Dates",
     "search_results": "Search Results",
@@ -206,7 +206,8 @@
       "merge_history": "View Merge History",
       "undo_last_merge": "Undo Last Merge",
       "redo_last_undo": "Redo Last Undo",
-      "people_tools": "Open People Tools"
+      "people_tools": "Open People Tools",
+      "expand_view": "Expand to Full View"
     },
     "devices": {
       "refresh": "Refresh devices",
