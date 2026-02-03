@@ -3699,6 +3699,67 @@ class MainWindow(QMainWindow):
         self.backfill_timer.timeout.connect(self._poll_backfill_status)
         self.backfill_timer.start(2000)
 
+    # ------------------------------------------------------------------
+    # Scan progress widgets (non-modal, in status bar)
+    # ------------------------------------------------------------------
+    def _ensure_scan_status_widgets(self):
+        """Lazily create the permanent status-bar widgets for scan progress."""
+        if getattr(self, "_scan_progress_bar", None) is not None:
+            return
+
+        from PySide6.QtWidgets import QProgressBar, QLabel
+
+        self._scan_status_label = QLabel("")
+        self._scan_progress_bar = QProgressBar()
+        self._scan_progress_bar.setRange(0, 100)
+        self._scan_progress_bar.setValue(0)
+        self._scan_progress_bar.setTextVisible(False)
+        self._scan_progress_bar.setFixedWidth(160)
+        self._scan_progress_bar.setFixedHeight(14)
+        self._scan_progress_bar.setStyleSheet("""
+            QProgressBar {
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                background: #f0f0f0;
+            }
+            QProgressBar::chunk {
+                background: #1a73e8;
+                border-radius: 3px;
+            }
+        """)
+        self._scan_progress_bar.hide()
+
+        sb = self.statusBar()
+        sb.addPermanentWidget(self._scan_status_label)
+        sb.addPermanentWidget(self._scan_progress_bar)
+
+    def scan_ui_begin(self, text: str = "Scanning..."):
+        """Show the non-modal scan progress indicator in the status bar."""
+        self._ensure_scan_status_widgets()
+        self._scan_status_label.setText(text)
+        self._scan_progress_bar.setValue(0)
+        self._scan_progress_bar.show()
+
+    def scan_ui_update(self, percent: int, text: str | None = None):
+        """Update scan progress (called from main thread via QueuedConnection)."""
+        self._ensure_scan_status_widgets()
+        if text:
+            self._scan_status_label.setText(text)
+        self._scan_progress_bar.setValue(max(0, min(100, int(percent))))
+
+    def scan_ui_finish(self, text: str = "Scan complete", timeout_ms: int = 4000):
+        """Mark scan complete, auto-hide after *timeout_ms*."""
+        self._ensure_scan_status_widgets()
+        self._scan_status_label.setText(text)
+        self._scan_progress_bar.setValue(100)
+
+        def _hide():
+            if getattr(self, "_scan_progress_bar", None):
+                self._scan_progress_bar.hide()
+                self._scan_status_label.setText("")
+
+        QTimer.singleShot(timeout_ms, _hide)
+
     def _init_embedding_status_indicator(self):
         """
         Initialize the embedding coverage status bar indicator.

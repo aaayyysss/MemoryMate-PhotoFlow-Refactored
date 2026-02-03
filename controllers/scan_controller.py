@@ -18,13 +18,13 @@ Version: 10.01.01.03
 """
 
 import logging
+import time
 from datetime import datetime
 from typing import List
 from PySide6.QtCore import QThread, Qt, QTimer, QThreadPool, Slot, QObject, Signal
 from PySide6.QtWidgets import (
-    QProgressDialog, QMessageBox, QDialog, QApplication
+    QMessageBox, QDialog, QApplication
 )
-#from translations import tr
 from translation_manager import tr
 
 
@@ -96,10 +96,19 @@ class ScanController(QObject):
 
     def start_scan(self, folder, incremental: bool):
         """Entry point called from MainWindow toolbar action."""
-        # Phase 3B: Show pre-scan options dialog
+        # Phase 3B: Show pre-scan options dialog with quick stats
         from ui.prescan_options_dialog import PreScanOptionsDialog
+        from services.photo_scan_service import PhotoScanService
 
-        options_dialog = PreScanOptionsDialog(parent=self.main, default_incremental=incremental)
+        scan_service = PhotoScanService()
+        options_dialog = PreScanOptionsDialog(
+            parent=self.main,
+            default_incremental=incremental,
+            scan_service=scan_service,
+        )
+        # Kick off background file-count while user reviews options
+        options_dialog.start_stats_count(folder)
+
         if options_dialog.exec() != QDialog.Accepted:
             # User cancelled
             self.main.statusBar().showMessage("Scan cancelled")
@@ -129,21 +138,9 @@ class ScanController(QObject):
         self._scan_result_cached = None
         self._progress_events = []
 
-        # Progress dialog — non-modal so the user can still interact with the app
-        from translation_manager import tr
-        self.main._scan_progress = QProgressDialog(
-            tr("messages.scan_preparing"),
-            tr("messages.scan_cancel_button"),
-            0, 100, self.main
-        )
-        self.main._scan_progress.setWindowTitle(tr("messages.scan_dialog_title"))
-        self.main._scan_progress.setWindowModality(Qt.NonModal)
-        self.main._scan_progress.setModal(False)
-        self.main._scan_progress.setAutoClose(False)
-        self.main._scan_progress.setAutoReset(False)
-        self.main._scan_progress.setMinimumDuration(0)
-        self.main._scan_progress.setMinimumWidth(520)
-        self.main._scan_progress.show()
+        # Non-modal progress via status-bar widgets (replaces old QProgressDialog)
+        self.main.scan_ui_begin(tr("messages.scan_preparing"))
+        self._last_progress_ui_ts = 0.0
 
         # DB writer
         # NOTE: Schema creation handled automatically by repository layer
@@ -291,12 +288,24 @@ class ScanController(QObject):
 
     def _on_committed(self, n: int):
         self.main._committed_total += n
+        self._maybe_refresh_grid_incremental()
+
+    def _maybe_refresh_grid_incremental(self):
+        """Trigger a lightweight grid reload at most once every 1.2 s so the
+        user sees thumbnails filling in while the scan is still running."""
+        now = time.time()
+        last = getattr(self, "_last_incremental_refresh_ts", 0.0)
+        if now - last < 1.2:
+            return
+        self._last_incremental_refresh_ts = now
+
         try:
-            if self.main._scan_progress:
-                cur = self.main._scan_progress.labelText() or ""
-                self.main._scan_progress.setLabelText(f"{cur}\nCommitted: {self.main._committed_total} rows")
+            if hasattr(self.main.grid, "_schedule_reload"):
+                self.main.grid._schedule_reload()
+            elif hasattr(self.main.grid, "reload"):
+                self.main.grid.reload()
         except Exception:
-            pass
+            pass  # grid may not be ready yet
 
     def _log_progress_event(self, message: str) -> str:
         """Track recent progress lines so the dialog can show contextual history."""
@@ -311,56 +320,41 @@ class ScanController(QObject):
         return "\n".join(self._progress_events)
 
     def _on_progress(self, pct: int, msg: str):
-        """
-        Handle progress updates from scan worker thread.
+        """Handle progress updates from scan worker thread.
 
-        REVERT TO OLD WORKING VERSION - Simple and reliable.
+        Uses throttling (80 ms) to avoid flooding the event loop with
+        status-bar repaints while still showing crisp 0 % / 100 % updates.
         """
-        if not self.main._scan_progress:
-            return
+        now = time.time()
+        last = getattr(self, "_last_progress_ui_ts", 0.0)
 
         pct_i = max(0, min(100, int(pct or 0)))
-        self.main._scan_progress.setValue(pct_i)
+
+        # Throttle intermediate updates to ~12 fps
+        if now - last < 0.08 and pct_i not in (0, 100):
+            return
+        self._last_progress_ui_ts = now
 
         if msg:
-            # Enhanced progress display with file details
-            history = self._log_progress_event(msg)
-            label = f"{history}\nCommitted: {self.main._committed_total} rows"
-        else:
-            history = self._log_progress_event("")
-            label = f"Progress: {pct_i}%\n{history}\nCommitted: {self.main._committed_total} rows"
+            self._log_progress_event(msg)
 
-        self.main._scan_progress.setLabelText(label)
-        self.main._scan_progress.setWindowTitle(f"{tr('messages.scan_dialog_title')} ({pct_i}%)")
+        committed = getattr(self.main, "_committed_total", 0)
+        short_msg = msg or f"Scanning... {pct_i}%"
+        # Keep status-bar text compact
+        if committed:
+            short_msg = f"{short_msg}  ({committed} rows)"
 
-        # Check for cancellation (no processEvents — the signal is QueuedConnection
-        # so this handler already runs inside the main-thread event loop)
-        if self.main._scan_progress.wasCanceled():
-            self.cancel()
+        self.main.scan_ui_update(pct_i, short_msg)
 
     def _on_finished(self, folders, photos, videos=0):
         self.logger.info(f"Scan finished: {folders} folders, {photos} photos, {videos} videos")
         self.main._scan_result = (folders, photos, videos)
-        summary = (
-            f"Scan complete.\n"
-            f"Folders: {folders}\n"
-            f"Photos: {photos}\n"
-            f"Videos: {videos}\n"
-            f"Committed rows: {getattr(self.main, '_committed_total', 0)}"
-        )
 
+        # Update status bar progress to 100 %
         try:
-            if self.main._scan_progress:
-                self.main._scan_progress.setValue(100)
-                self.main._scan_progress.setLabelText(summary)
-                self.main._scan_progress.setWindowTitle(f"{tr('messages.scan_dialog_title')} (100%)")
-        except Exception:
-            pass
-
-        # Status bar notification instead of blocking QMessageBox
-        try:
-            self.main.statusBar().showMessage(
-                f"Scan complete: {folders} folders, {photos} photos, {videos} videos", 8000
+            self.main.scan_ui_update(
+                100,
+                f"Indexed {photos} photos, {videos} videos in {folders} folders",
             )
         except Exception:
             pass
@@ -397,9 +391,6 @@ class ScanController(QObject):
         """Actual cleanup implementation - must run in main thread."""
         try:
             self.main.act_cancel_scan.setEnabled(False)
-            if self.main._scan_progress:
-                self.main._scan_progress.setValue(100)
-                self.main._scan_progress.close()
             if self.db_writer:
                 self.db_writer.shutdown(wait=True)
         except Exception as e:
@@ -838,9 +829,9 @@ class ScanController(QObject):
         except Exception as e:
             self.logger.error(f"Error closing progress dialog: {e}")
 
-        # Final status message
-        self.main.statusBar().showMessage(f"✓ Scan complete: {p} photos, {v} videos indexed", 5000)
-        self.logger.info(f"✅ Final refresh complete: {p} photos, {v} videos")
+        # Final status message — auto-hides after 5 s
+        self.main.scan_ui_finish(f"Scan complete: {p} photos, {v} videos indexed", 5000)
+        self.logger.info(f"Final refresh complete: {p} photos, {v} videos")
 
         # PHASE 2 Task 2.2: Reset state for next scan
         self._scan_refresh_scheduled = False
