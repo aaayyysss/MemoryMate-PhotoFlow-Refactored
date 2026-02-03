@@ -266,8 +266,6 @@ class ScanController(QObject):
             self.main.statusBar().showMessage(f"❌ Failed to create scan worker: {e}")
 #            from translations import tr
 
-            from translation_manager import tr
-
             QMessageBox.critical(self.main, tr("messages.scan_error"), tr("messages.scan_error_worker", error=str(e)))
             return
 
@@ -280,8 +278,6 @@ class ScanController(QObject):
             except Exception:
                 pass
 #        from translations import tr
-
-        from translation_manager import tr
 
         self.main.statusBar().showMessage(tr('status_messages.scan_cancel_requested'))
         self.main.act_cancel_scan.setEnabled(False)
@@ -364,8 +360,6 @@ class ScanController(QObject):
         try:
 #            from translations import tr
 
-            from translation_manager import tr
-
             QMessageBox.critical(self.main, tr("messages.scan_error"), err_text)
         except Exception:
             QMessageBox.critical(self.main, "Scan Error", err_text)
@@ -400,7 +394,6 @@ class ScanController(QObject):
         f, p, v = self.main._scan_result if len(self.main._scan_result) == 3 else (*self.main._scan_result, 0)
 
         # Report post-scan progress via status bar (no modal dialogs)
-        from translation_manager import tr
         self.main._scan_complete_msgbox = None  # no blocking msgbox
         self.main.statusBar().showMessage(tr("messages.progress_building_branches"), 0)
 
