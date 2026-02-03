@@ -261,13 +261,24 @@ def _get_insightface_app():
                     sig = inspect.signature(FaceAnalysis.__init__)
                     supports_providers = 'providers' in sig.parameters
 
-                    # Initialize FaceAnalysis with version-appropriate parameters
-                    # FaceAnalysis(name='buffalo_l', root=ROOT) constructs model path as:
-                    #   {ROOT}/models/{name}/
-                    # buffalo_dir is e.g. ~/.insightface/models/buffalo_l
-                    # So ROOT must be two levels up (grandparent), NOT one level.
-                    root_dir = os.path.dirname(os.path.dirname(buffalo_dir))
+                    # Initialize FaceAnalysis with version-appropriate root path.
+                    # FaceAnalysis resolves models at {root}/models/{name}/.
+                    #
+                    # Newer InsightFace (has 'providers' param):
+                    #   root = grandparent of buffalo_dir so it finds
+                    #   {app_root}/models/buffalo_l directly.
+                    #
+                    # Older InsightFace (v0.2.x, no 'providers' param):
+                    #   root = buffalo_dir (the original working value).
+                    #   v0.2.x's model_zoo cannot parse newer ONNX files at
+                    #   buffalo_dir; instead it resolves its own compatible
+                    #   model cache at {buffalo_dir}/models/buffalo_l/.
+                    if supports_providers:
+                        root_dir = os.path.dirname(os.path.dirname(buffalo_dir))
+                    else:
+                        root_dir = buffalo_dir
                     init_params = {'name': 'buffalo_l', 'root': root_dir}
+                    logger.info(f"✓ Root dir for FaceAnalysis: {root_dir}")
 
                     if supports_providers:
                         # NEWER VERSION: Pass providers for optimal performance
@@ -855,17 +866,20 @@ class FaceDetectionService:
                             import os as os_module
                             original_home = os_module.environ.get('INSIGHTFACE_HOME')
                             try:
-                                # Point InsightFace to grandparent of buffalo_l directory
-                                # FaceAnalysis constructs {root}/models/{name}/, so root
-                                # must be two levels above the actual model files directory
-                                parent_dir = os.path.dirname(os.path.dirname(_buffalo_dir_path))
-                                os_module.environ['INSIGHTFACE_HOME'] = parent_dir
-                                logger.debug(f"[INSIGHTFACE] Temporarily set INSIGHTFACE_HOME to: {parent_dir}")
-
                                 # Version detection: Check if FaceAnalysis supports providers parameter
                                 import inspect
                                 sig = inspect.signature(FaceAnalysis.__init__)
                                 supports_providers = 'providers' in sig.parameters
+
+                                # Same version-conditional root as main init:
+                                # newer → grandparent so {root}/models/{name} resolves;
+                                # older (v0.2.x) → buffalo_dir itself.
+                                if supports_providers:
+                                    parent_dir = os.path.dirname(os.path.dirname(_buffalo_dir_path))
+                                else:
+                                    parent_dir = _buffalo_dir_path
+                                os_module.environ['INSIGHTFACE_HOME'] = parent_dir
+                                logger.debug(f"[INSIGHTFACE] Temporarily set INSIGHTFACE_HOME to: {parent_dir}")
 
                                 # Initialize fallback app with version-appropriate parameters
                                 if supports_providers:
