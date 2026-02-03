@@ -1713,6 +1713,7 @@ class SidebarQt(QWidget):
 
     def __init__(self, project_id=None):
         super().__init__()
+        self._disposed = False  # Lifecycle flag: True after cleanup()
         self.db = ReferenceDB()
         self.project_id = project_id
 
@@ -6492,8 +6493,18 @@ class SidebarQt(QWidget):
         finally:
             self._reload_block = False
 
+    def cleanup(self):
+        """Mark widget as disposed so background workers skip stale refreshes."""
+        if self._disposed:
+            return
+        self._disposed = True
+        print("[SidebarQt] cleanup() — marked as disposed")
+
     def reload(self):
         # CRITICAL: Guard against crashes during widget deletion
+        if self._disposed:
+            print("[SidebarQt] reload() blocked - widget disposed")
+            return
         try:
             # Check if widget is being deleted
             if not self.isVisible():
@@ -6727,11 +6738,20 @@ class SidebarQt(QWidget):
         if mode in ("folder", "branch", "date") and hasattr(mw, "_clear_tag_filter"):
             mw._clear_tag_filter()
 
+        # Normalize value: strip "branch:" prefix added by accordion/tabs
+        if mode == "branch" and isinstance(value, str) and value.startswith("branch:"):
+            value = value[7:]
+
         if mode == "branch" and isinstance(value, str) and value.startswith("date:"):
             mw.grid.set_context("date", value.replace("date:", ""))
         elif mode == "branch" and isinstance(value, str) and value.startswith("videos"):
             # Route video branches to videos mode
             mw.grid.set_context("videos", value)
+        elif mode == "branch" and isinstance(value, str) and (
+            value.startswith("face_") or value == "face_unidentified"
+        ):
+            # Route face branches to people mode so breadcrumb shows person name
+            mw.grid.set_context("people", value)
         else:
             mw.grid.set_context(mode, value)
 

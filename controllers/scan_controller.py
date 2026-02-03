@@ -486,6 +486,7 @@ class ScanController(QObject):
             # Instead of blocking the UI with QEventLoop / QProgressDialog,
             # we fire a PostScanPipelineWorker and let it run asynchronously.
             if hasattr(self, '_duplicate_detection_enabled') and self._duplicate_detection_enabled:
+                self._scan_operations_pending.add("post_scan_pipeline")
                 self.logger.info("Enqueueing duplicate detection pipeline as background job...")
 
                 try:
@@ -540,11 +541,19 @@ class ScanController(QObject):
                         # Refresh duplicates section in sidebar
                         self._refresh_duplicates_section()
 
+                        # Mark post-scan pipeline complete and check final refresh
+                        self._scan_operations_pending.discard("post_scan_pipeline")
+                        self.logger.info(f"Post-scan pipeline complete. Remaining: {self._scan_operations_pending}")
+                        self._check_and_trigger_final_refresh()
+
                     def _on_pipeline_error(msg):
                         self.logger.error("Post-scan pipeline error: %s", msg)
                         self.main.statusBar().showMessage(
                             f"Duplicate detection failed: {msg}", 8000
                         )
+                        # Still mark complete on error so final refresh isn't blocked
+                        self._scan_operations_pending.discard("post_scan_pipeline")
+                        self._check_and_trigger_final_refresh()
 
                     self._post_scan_worker.signals.progress.connect(_on_pipeline_progress)
                     self._post_scan_worker.signals.finished.connect(_on_pipeline_finished)
@@ -555,6 +564,7 @@ class ScanController(QObject):
 
                 except Exception as e:
                     self.logger.error(f"Failed to start post-scan pipeline: {e}", exc_info=True)
+                    self._scan_operations_pending.discard("post_scan_pipeline")
 
             # PHASE 3: Face Detection — via central FacePipelineService
             # The service validates project_id, prevents duplicate runs,
@@ -572,6 +582,35 @@ class ScanController(QObject):
                         self.logger.info("Enqueueing face pipeline via FacePipelineService (backend=%s)...", backend)
                         from services.face_pipeline_service import FacePipelineService
                         svc = FacePipelineService.instance()
+
+                        # Track face pipeline in pending operations
+                        self._scan_operations_pending.add("face_pipeline")
+
+                        def _on_face_pipeline_done(results, pid):
+                            # Disconnect to prevent accumulation across scans
+                            try:
+                                svc.finished.disconnect(_on_face_pipeline_done)
+                                svc.error.disconnect(_on_face_pipeline_error)
+                            except (RuntimeError, TypeError):
+                                pass
+                            self._scan_operations_pending.discard("face_pipeline")
+                            self.logger.info(f"Face pipeline complete for project {pid}. Remaining: {self._scan_operations_pending}")
+                            self._safe_refresh_people_section()
+                            self._check_and_trigger_final_refresh()
+
+                        def _on_face_pipeline_error(msg, pid):
+                            try:
+                                svc.finished.disconnect(_on_face_pipeline_done)
+                                svc.error.disconnect(_on_face_pipeline_error)
+                            except (RuntimeError, TypeError):
+                                pass
+                            self._scan_operations_pending.discard("face_pipeline")
+                            self.logger.error(f"Face pipeline error for project {pid}: {msg}")
+                            self._check_and_trigger_final_refresh()
+
+                        svc.finished.connect(_on_face_pipeline_done)
+                        svc.error.connect(_on_face_pipeline_error)
+
                         started = svc.start(
                             project_id=current_project_id,
                             model=face_config.get("model", "buffalo_l"),
@@ -579,6 +618,8 @@ class ScanController(QObject):
                         if started:
                             self.logger.info("Face pipeline dispatched via FacePipelineService")
                         else:
+                            # Pipeline didn't start (already running or invalid)
+                            self._scan_operations_pending.discard("face_pipeline")
                             self.logger.info("Face pipeline already running or project invalid")
                     else:
                         self.logger.warning("Face backend '%s' not available (available: %s)",
@@ -644,6 +685,9 @@ class ScanController(QObject):
                 current_layout = lm._current_layout
                 if current_layout and hasattr(current_layout, 'accordion_sidebar'):
                     accordion = current_layout.accordion_sidebar
+                    if getattr(accordion, '_disposed', False):
+                        self.logger.debug("Accordion disposed, skipping people refresh")
+                        return
                     if hasattr(accordion, 'reload_people_section'):
                         accordion.reload_people_section()
                         self.logger.info("Refreshed people section after face pipeline")
@@ -652,6 +696,9 @@ class ScanController(QObject):
                         self.logger.debug("Refreshed people grid after face pipeline")
             elif hasattr(self.main, 'sidebar') and self.main.sidebar:
                 try:
+                    if getattr(self.main.sidebar, '_disposed', False):
+                        self.logger.debug("Sidebar disposed, skipping refresh")
+                        return
                     if self.main.sidebar.isVisible() and hasattr(self.main.sidebar, 'reload'):
                         self.main.sidebar.reload()
                         self.logger.debug("Refreshed sidebar after face pipeline")

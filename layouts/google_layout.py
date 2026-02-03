@@ -9481,6 +9481,11 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
         """
         print("[GooglePhotosLayout] Cleaning up resources...")
 
+        # 0. Mark accordion sidebar as disposed so background workers skip stale refreshes
+        if hasattr(self, 'accordion_sidebar') and self.accordion_sidebar:
+            if hasattr(self.accordion_sidebar, 'cleanup'):
+                self.accordion_sidebar.cleanup()
+
         # 1. Disconnect all signals (CRITICAL - prevents 173 connection leak)
         self._disconnect_all_signals()
 

@@ -855,6 +855,13 @@ class ThumbnailGridQt(QWidget):
         self.date_key = None               # 'YYYY' or 'YYYY-MM-DD'
         self.branch_key = None
         
+        # --- Reload debounce timer (coalesces rapid navigation clicks) ---
+        self._reload_debounce_timer = QTimer(self)
+        self._reload_debounce_timer.setSingleShot(True)
+        self._reload_debounce_timer.setInterval(150)  # 150ms window
+        self._reload_debounce_timer.timeout.connect(self._debounced_reload)
+        self._pending_reload = False
+
         # --- Thumbnail pipeline safety ---
         self._reload_token = uuid.uuid4()
         # NOTE: _thumb_cache kept for backward compatibility but no longer used
@@ -1347,7 +1354,7 @@ class ThumbnailGridQt(QWidget):
         tag_map = {}
         try:
             tag_map = self.db.get_tags_for_paths(self._paths, self.project_id)
-            print(f"[GRID] Fetched tags for {len(self._paths)} paths ({content_type}), got {len(tag_map)} entries")
+            print(f"[GRID] Fetched tags for {len(self._paths)} paths ({content_type}), got {len(tag_map)} paths with tags")
         except Exception as e:
             print(f"[GRID] Warning: Could not fetch tags: {e}")
 
@@ -2277,7 +2284,7 @@ class ThumbnailGridQt(QWidget):
             # Use TagService for proper layered architecture
             tag_service = get_tag_service()
             tags_map = tag_service.get_tags_for_paths(paths, self.project_id)
-            print(f"[TagCache] Refreshing tags for {len(paths)} paths, got {len(tags_map)} entries")
+            print(f"[TagCache] Refreshing tags for {len(paths)} paths, got {len(tags_map)} paths with tags")
         except Exception as e:
             print(f"[TagCache] ❌ Failed to fetch tags: {e}")
             return
@@ -2694,7 +2701,7 @@ class ThumbnailGridQt(QWidget):
 
         self.load_mode = "folder"
         self.current_folder_id = folder_id
-        self.reload()
+        self._schedule_reload()
         
         self._apply_zoom_geometry()
         
@@ -2703,7 +2710,7 @@ class ThumbnailGridQt(QWidget):
         """Called when a branch node is clicked."""
         print(f"\n[GRID] >>>>>> set_branch('{branch_key}') CALLED")
         print(f"[GRID]   Current state: project_id={self.project_id}, load_mode={self.load_mode}")
-        
+
         try:
             self.navigation_mode = "branch"
             self.navigation_key = branch_key
@@ -2711,8 +2718,8 @@ class ThumbnailGridQt(QWidget):
 
             self.load_mode = "branch"
             self.branch_key = branch_key
-            print(f"[GRID]   State updated, calling reload()...")
-            self.reload()
+            print(f"[GRID]   State updated, scheduling debounced reload...")
+            self._schedule_reload()
             print(f"[GRID] <<<<<< set_branch('{branch_key}') COMPLETED\n")
         except Exception as e:
             print(f"[GRID] !!!!! set_branch('{branch_key}') CRASHED: {e}")
@@ -2729,19 +2736,18 @@ class ThumbnailGridQt(QWidget):
 
         self.load_mode = "date"
         self.date_key = date_key
-        self.reload()
+        self._schedule_reload()
 
     def set_videos(self):
         """
         Called when Videos tab is selected - show all videos for current project.
-        🎬 Phase 4.3: Video support
         """
         self.navigation_mode = "videos"
         self.navigation_key = None
         self.active_tag_filter = None
 
         self.load_mode = "videos"
-        self.reload()
+        self._schedule_reload()
 
     def load_paths(self, paths: list[str]):
         """
@@ -2915,12 +2921,29 @@ class ThumbnailGridQt(QWidget):
         print(f"[GRID] Reloaded {len(self._paths)} thumbnails in {self.load_mode}-mode.")
  
     # ============================================================
+    # 🔄 Debounced reload helpers
+    # ============================================================
+    def _schedule_reload(self):
+        """Schedule a debounced reload.  Rapid calls within the 150 ms window
+        are coalesced so only the *last* navigation request fires a reload."""
+        self._pending_reload = True
+        self._reload_debounce_timer.start()  # (re)starts the 150 ms timer
+
+    def _debounced_reload(self):
+        """Executed when the debounce timer fires."""
+        if self._pending_reload:
+            self._pending_reload = False
+            self.reload()
+
+    # ============================================================
     # 🌍 Context-driven navigation & reload (Enhanced with user feedback)
     # ============================================================
     def set_context(self, mode: str, key: str | int | None):
         """
-        Sets navigation context (folder, branch, or date) and triggers reload.
+        Sets navigation context (folder, branch, date, people, videos) and triggers reload.
         Clears any active tag overlay.
+        Also syncs the legacy navigation_mode / navigation_key fields so that
+        breadcrumb and other code that reads those stays in sync.
         """
         self.context = getattr(self, "context", {
             "mode": None, "key": None, "tag_filter": None
@@ -2928,7 +2951,12 @@ class ThumbnailGridQt(QWidget):
         self.context["mode"] = mode
         self.context["key"] = key
         self.context["tag_filter"] = None
-        self.reload()
+
+        # Sync legacy fields used by breadcrumb and status bar
+        self.navigation_mode = mode
+        self.navigation_key = key
+
+        self._schedule_reload()
 
     # ============================================================
     def apply_tag_filter(self, tag: str | None):
@@ -2939,7 +2967,7 @@ class ThumbnailGridQt(QWidget):
         if not hasattr(self, "context"):
             self.context = {"mode": None, "key": None, "tag_filter": None}
         self.context["tag_filter"] = tag if tag not in (None, "", "all") else None
-        self.reload()
+        self._schedule_reload()
 
     # ============================================================
     def reload(self):
@@ -3141,7 +3169,7 @@ class ThumbnailGridQt(QWidget):
         # Paths from get_images_by_branch are already in DB format
         # get_tags_for_paths will normalize them internally to match photo_metadata table
         tag_map = self.db.get_tags_for_paths(self._paths, self.project_id)
-        print(f"[GRID] Fetched tags for {len(self._paths)} paths, got {len(tag_map)} entries")
+        print(f"[GRID] Fetched tags for {len(self._paths)} paths, got {len(tag_map)} paths with tags")
         
         # 📅 Grouping: fetch date_taken and sort descending
         import os, time

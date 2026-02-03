@@ -821,6 +821,7 @@ class AccordionSidebar(QWidget):
 
     def __init__(self, project_id: int | None, parent=None):
         super().__init__(parent)
+        self._disposed = False  # Lifecycle flag: True after cleanup()
         self.project_id = project_id
         self.sections = {}  # section_id -> AccordionSection
         self.expanded_section_id = None
@@ -1057,6 +1058,8 @@ class AccordionSidebar(QWidget):
 
     def _load_section_content(self, section_id: str):
         """Load content for the specified section."""
+        if self._disposed:
+            return
         self._dbg(f"Loading content for section: {section_id}")
 
         if section_id == "people":
@@ -1085,6 +1088,13 @@ class AccordionSidebar(QWidget):
             placeholder.setStyleSheet("padding: 20px; color: #666;")
             section.set_content_widget(placeholder)
 
+    def cleanup(self):
+        """Mark widget as disposed so background workers skip stale refreshes."""
+        if self._disposed:
+            return
+        self._disposed = True
+        self._dbg("cleanup() — marked as disposed")
+
     def reload_section(self, section_id: str):
         """
         Public method to reload a specific section's content.
@@ -1098,6 +1108,8 @@ class AccordionSidebar(QWidget):
         Args:
             section_id: Section to reload ("people", "dates", "folders", "tags", "branches", "quick")
         """
+        if self._disposed:
+            return
         self._dbg(f"Reloading section: {section_id}")
         if section_id in self.sections:
             self._load_section_content(section_id)
@@ -1111,6 +1123,8 @@ class AccordionSidebar(QWidget):
         This is useful for refreshing the entire sidebar after major operations
         like bulk photo imports or database migrations.
         """
+        if self._disposed:
+            return
         self._dbg("Reloading all sections...")
         for section_id in self.sections.keys():
             self._load_section_content(section_id)
@@ -1167,6 +1181,8 @@ class AccordionSidebar(QWidget):
 
     def _build_people_grid(self, rows: list):
         """Build people grid from loaded data (runs on main thread via signal)."""
+        if self._disposed:
+            return
         section = self.sections.get("people")
         if not section:
             return
@@ -1275,7 +1291,7 @@ class AccordionSidebar(QWidget):
     def _on_person_clicked(self, branch_key: str):
         """Handle person card click - emit signal to filter grid."""
         self._dbg(f"Person clicked: {branch_key}")
-        self.selectBranch.emit(f"branch:{branch_key}")
+        self.selectBranch.emit(branch_key)
 
     def _on_person_context_menu(self, branch_key: str, action: str):
         """Handle person context menu actions."""
@@ -1520,7 +1536,7 @@ class AccordionSidebar(QWidget):
         """Handle person click - emit signal to filter grid."""
         self._dbg(f"Person activated: {branch_key}")
         # Emit branch selection signal for grid filtering
-        self.selectBranch.emit(f"branch:{branch_key}")
+        self.selectBranch.emit(branch_key)
 
     def _set_people_busy(self, busy: bool, message: str = ""):
         if self._people_grid:

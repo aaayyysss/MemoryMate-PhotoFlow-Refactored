@@ -121,7 +121,10 @@ class UIRefreshMediator(QObject):
             return
 
         try:
-            # Check visibility — if hidden, defer
+            # Check disposal flag first (reliable), then visibility
+            if getattr(accordion, '_disposed', False):
+                logger.debug("[UIRefreshMediator] Accordion disposed, skipping refresh")
+                return
             if not accordion.isVisible():
                 logger.debug("[UIRefreshMediator] Accordion not visible, deferring refresh")
                 existing = self._pending.get(project_id, set())
@@ -155,6 +158,9 @@ class UIRefreshMediator(QObject):
             return
 
         try:
+            if getattr(sidebar, '_disposed', False):
+                logger.debug("[UIRefreshMediator] Sidebar disposed, skipping refresh")
+                return
             if not sidebar.isVisible():
                 logger.debug("[UIRefreshMediator] Sidebar not visible, deferring refresh")
                 existing = self._pending.get(project_id, set())
