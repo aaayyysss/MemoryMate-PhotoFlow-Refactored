@@ -262,10 +262,11 @@ def _get_insightface_app():
                     supports_providers = 'providers' in sig.parameters
 
                     # Initialize FaceAnalysis with version-appropriate parameters
-                    # FaceAnalysis(name='buffalo_l', root=ROOT) expects ROOT to be the
-                    # parent directory that CONTAINS the buffalo_l folder.
-                    # buffalo_dir is the buffalo_l directory itself, so pass its parent.
-                    root_dir = os.path.dirname(buffalo_dir)
+                    # FaceAnalysis(name='buffalo_l', root=ROOT) constructs model path as:
+                    #   {ROOT}/models/{name}/
+                    # buffalo_dir is e.g. ~/.insightface/models/buffalo_l
+                    # So ROOT must be two levels up (grandparent), NOT one level.
+                    root_dir = os.path.dirname(os.path.dirname(buffalo_dir))
                     init_params = {'name': 'buffalo_l', 'root': root_dir}
 
                     if supports_providers:
@@ -854,8 +855,10 @@ class FaceDetectionService:
                             import os as os_module
                             original_home = os_module.environ.get('INSIGHTFACE_HOME')
                             try:
-                                # Point InsightFace to parent of buffalo_l directory
-                                parent_dir = os.path.dirname(_buffalo_dir_path)
+                                # Point InsightFace to grandparent of buffalo_l directory
+                                # FaceAnalysis constructs {root}/models/{name}/, so root
+                                # must be two levels above the actual model files directory
+                                parent_dir = os.path.dirname(os.path.dirname(_buffalo_dir_path))
                                 os_module.environ['INSIGHTFACE_HOME'] = parent_dir
                                 logger.debug(f"[INSIGHTFACE] Temporarily set INSIGHTFACE_HOME to: {parent_dir}")
 
