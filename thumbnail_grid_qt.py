@@ -3050,8 +3050,10 @@ class ThumbnailGridQt(QWidget):
                         # Fallback: get all unique images regardless of branch
                         paths = db.get_project_images(self.project_id)
                     if paths:
-                        self.context["mode"] = "branch"
-                        self.context["key"] = "all"
+                        ctx["mode"] = "branch"
+                        ctx["key"] = "all"
+                        self.context = ctx
+                        self.load_mode = "branch"
                         print(f"[GRID] Default view: loaded {len(paths)} photos (mode=None -> branch/all)")
 
             final_count = len(paths)
