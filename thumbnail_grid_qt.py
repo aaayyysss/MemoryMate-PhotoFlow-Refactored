@@ -3044,7 +3044,15 @@ class ThumbnailGridQt(QWidget):
                         print(f"[GRID] Failed to load videos: {e}")
                         paths = []
                 else:
-                    paths = []
+                    # Default: show all photos for current project (branch='all')
+                    paths = db.get_images_by_branch(self.project_id, 'all')
+                    if not paths:
+                        # Fallback: get all unique images regardless of branch
+                        paths = db.get_project_images(self.project_id)
+                    if paths:
+                        self.context["mode"] = "branch"
+                        self.context["key"] = "all"
+                        print(f"[GRID] Default view: loaded {len(paths)} photos (mode=None -> branch/all)")
 
             final_count = len(paths)
             base_count = final_count  # For status message compatibility

@@ -262,10 +262,11 @@ def _get_insightface_app():
                     supports_providers = 'providers' in sig.parameters
 
                     # Initialize FaceAnalysis with version-appropriate parameters
-                    # RESTORED FROM WORKING VERSION: Pass BOTH name and root parameters
-                    # buffalo_dir IS the buffalo_l directory (not parent), pass it as root
-                    # This matches the proven working pattern from previous version
-                    init_params = {'name': 'buffalo_l', 'root': buffalo_dir}
+                    # FaceAnalysis(name='buffalo_l', root=ROOT) expects ROOT to be the
+                    # parent directory that CONTAINS the buffalo_l folder.
+                    # buffalo_dir is the buffalo_l directory itself, so pass its parent.
+                    root_dir = os.path.dirname(buffalo_dir)
+                    init_params = {'name': 'buffalo_l', 'root': root_dir}
 
                     if supports_providers:
                         # NEWER VERSION: Pass providers for optimal performance
@@ -306,7 +307,7 @@ def _get_insightface_app():
                             try:
                                 _insightface_app = FaceAnalysis(
                                     name='buffalo_l',
-                                    root=buffalo_dir,
+                                    root=root_dir,
                                     allowed_modules=['detection', 'recognition'],
                                     providers=providers
                                 )
@@ -346,7 +347,7 @@ def _get_insightface_app():
                             try:
                                 _insightface_app = FaceAnalysis(
                                     name='buffalo_l',
-                                    root=buffalo_dir,
+                                    root=root_dir,
                                     allowed_modules=['detection', 'recognition']
                                 )
                                 _insightface_app.prepare(ctx_id=ctx_id, det_size=(640, 640))

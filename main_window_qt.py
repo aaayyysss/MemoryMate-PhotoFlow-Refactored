@@ -564,7 +564,7 @@ class MainWindow(QMainWindow):
         self.btn_fav.setCheckable(True)
         menu_filters.addAction(self.btn_fav)
 
-        self.btn_faces = QAction(tr("sidebar.people"), self)
+        self.btn_faces = QAction(tr("sidebar.people_label"), self)
         self.btn_faces.setCheckable(True)
         menu_filters.addAction(self.btn_faces)
 
@@ -914,6 +914,20 @@ class MainWindow(QMainWindow):
         session_state = get_session_state()
 
         default_pid = session_state.get_project_id()  # Try session state first
+
+        # Validate stored project_id against DB (prevents stale references)
+        if default_pid is not None:
+            try:
+                from repository.project_repository import ProjectRepository
+                from repository.base_repository import DatabaseConnection
+                _proj = ProjectRepository(DatabaseConnection()).find_by_id(default_pid)
+                if _proj is None:
+                    print(f"[MainWindow] PHASE 1: Session project_id={default_pid} not in DB, clearing")
+                    session_state.set_project(None)
+                    default_pid = None
+            except Exception:
+                default_pid = None
+
         if default_pid is None:
             default_pid = get_default_project_id()  # Fall back to default
         if default_pid is None and self._projects:
