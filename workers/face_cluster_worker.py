@@ -331,12 +331,9 @@ class FaceClusterWorker(QRunnable):
                 metric_clear.finish()
 
                 # Step 4: Write new cluster results
-                metric_save = monitor.record_operation("save_cluster_results", {
-                    "cluster_count": cluster_count
-                })
+                # Split into separate operations so timing attribution is accurate
 
                 # PERFORMANCE OPTIMIZATION (2026-01-07): Create quality analyzer ONCE for all clusters
-                # Previously created new instance for each cluster (wasteful initialization)
                 face_quality_analyzer = FaceQualityAnalyzer()
 
                 # Track granular timing within cluster loop
@@ -522,9 +519,17 @@ class FaceClusterWorker(QRunnable):
 
                     logger.info(f"[FaceClusterWorker] Cluster {cid} → {member_count} faces")
 
-                metric_save.finish()
+                # Record split metrics so PerformanceMonitor shows accurate attribution
+                monitor.record_operation("quality_analysis", {
+                    "cluster_count": cluster_count,
+                    "elapsed_s": round(total_quality_analysis_time, 3),
+                }).finish()
+                monitor.record_operation("db_write_clusters", {
+                    "cluster_count": cluster_count,
+                    "elapsed_s": round(total_db_operations_time, 3),
+                }).finish()
 
-                # PERFORMANCE LOG (2026-01-07): Report granular timing breakdown
+                # Report granular timing breakdown
                 total_loop_time = total_quality_analysis_time + total_db_operations_time
                 quality_pct = (total_quality_analysis_time / total_loop_time * 100) if total_loop_time > 0 else 0
                 db_pct = (total_db_operations_time / total_loop_time * 100) if total_loop_time > 0 else 0
