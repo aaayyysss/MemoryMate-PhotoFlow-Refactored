@@ -273,6 +273,72 @@ class PhotoScanService:
             print(f"[SCAN] ⚠️ Progress callback failed: {e}")
             sys.stdout.flush()
 
+    # ------------------------------------------------------------------
+    # Quick pre-scan statistics (no metadata, no hashes — just counting)
+    # ------------------------------------------------------------------
+    def estimate_repository_stats(
+        self,
+        root_folder: str,
+        options: dict | None = None,
+        should_cancel=None,
+    ) -> dict:
+        """Walk *root_folder* and return fast file-count statistics.
+
+        This is intentionally "dumb but fast" — no EXIF, no hashes, only
+        ``os.walk`` + ``os.stat``.  Used by the PreScanOptionsDialog to show
+        a quick preflight summary before the real scan starts.
+        """
+        options = options or {}
+        ignore_hidden = bool(options.get("ignore_hidden", True))
+
+        photo_ext = {
+            ".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif",
+            ".tif", ".tiff", ".bmp", ".gif",
+        }
+        video_ext = {".mp4", ".mov", ".mkv", ".avi", ".m4v", ".wmv"}
+
+        photos = 0
+        videos = 0
+        folders = 0
+        bytes_total = 0
+
+        for dirpath, dirnames, filenames in os.walk(root_folder):
+            if should_cancel and should_cancel():
+                break
+
+            if ignore_hidden and os.path.basename(dirpath).startswith("."):
+                dirnames.clear()  # prune hidden subtrees
+                continue
+
+            folders += 1
+
+            for fn in filenames:
+                if should_cancel and should_cancel():
+                    break
+
+                if ignore_hidden and fn.startswith("."):
+                    continue
+
+                ext = os.path.splitext(fn)[1].lower()
+                full = os.path.join(dirpath, fn)
+
+                try:
+                    bytes_total += os.stat(full).st_size
+                except OSError:
+                    pass
+
+                if ext in photo_ext:
+                    photos += 1
+                elif ext in video_ext:
+                    videos += 1
+
+        return {
+            "photos": photos,
+            "videos": videos,
+            "folders": folders,
+            "bytes": bytes_total,
+        }
+
     def scan_repository(self,
                        root_folder: str,
                        project_id: int,
