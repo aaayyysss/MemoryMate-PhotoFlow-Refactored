@@ -2919,8 +2919,10 @@ class ThumbnailGridQt(QWidget):
     # ============================================================
     def set_context(self, mode: str, key: str | int | None):
         """
-        Sets navigation context (folder, branch, or date) and triggers reload.
+        Sets navigation context (folder, branch, date, people, videos) and triggers reload.
         Clears any active tag overlay.
+        Also syncs the legacy navigation_mode / navigation_key fields so that
+        breadcrumb and other code that reads those stays in sync.
         """
         self.context = getattr(self, "context", {
             "mode": None, "key": None, "tag_filter": None
@@ -2928,6 +2930,11 @@ class ThumbnailGridQt(QWidget):
         self.context["mode"] = mode
         self.context["key"] = key
         self.context["tag_filter"] = None
+
+        # Sync legacy fields used by breadcrumb and status bar
+        self.navigation_mode = mode
+        self.navigation_key = key
+
         self.reload()
 
     # ============================================================

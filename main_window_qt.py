@@ -3559,10 +3559,40 @@ class MainWindow(QMainWindow):
                 segments.append(("Timeline", partial(self.grid.set_branch, "all")))
                 segments.append((date_key, None))
                 print(f"[Breadcrumb] Added date segments: Timeline > {date_key}")
+            elif self.grid.navigation_mode == "people" and hasattr(self.grid, "navigation_key"):
+                # For people/face mode, show person name
+                face_key = str(self.grid.navigation_key or "")
+                person_label = face_key
+                # Try to resolve a display name from DB
+                try:
+                    with self.db._connect() as conn:
+                        cur = conn.cursor()
+                        cur.execute(
+                            "SELECT COALESCE(label, branch_key) FROM face_branch_reps WHERE branch_key = ? AND project_id = ?",
+                            (face_key, self.grid.project_id),
+                        )
+                        row = cur.fetchone()
+                        if row and row[0]:
+                            person_label = row[0]
+                        elif face_key == "face_unidentified":
+                            person_label = "Unidentified"
+                except Exception:
+                    pass
+                from functools import partial
+                segments.append(("People", partial(self.grid.set_branch, "all")))
+                segments.append((person_label, None))
+                print(f"[Breadcrumb] Added people segments: People > {person_label}")
             elif self.grid.navigation_mode == "branch":
-                # For branch mode, show "All Photos"
-                segments.append(("All Photos", None))
-                print(f"[Breadcrumb] Added branch segment: All Photos")
+                # For branch mode, show branch label
+                branch_key = getattr(self.grid, "navigation_key", "all")
+                if branch_key and branch_key != "all":
+                    from functools import partial
+                    segments.append(("All Photos", partial(self.grid.set_branch, "all")))
+                    segments.append((str(branch_key), None))
+                    print(f"[Breadcrumb] Added branch segment: All Photos > {branch_key}")
+                else:
+                    segments.append(("All Photos", None))
+                    print(f"[Breadcrumb] Added branch segment: All Photos")
             elif hasattr(self.grid, "active_tag_filter") and self.grid.active_tag_filter:
                 # Tag filter mode
                 tag = self.grid.active_tag_filter

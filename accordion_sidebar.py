@@ -1275,7 +1275,7 @@ class AccordionSidebar(QWidget):
     def _on_person_clicked(self, branch_key: str):
         """Handle person card click - emit signal to filter grid."""
         self._dbg(f"Person clicked: {branch_key}")
-        self.selectBranch.emit(f"branch:{branch_key}")
+        self.selectBranch.emit(branch_key)
 
     def _on_person_context_menu(self, branch_key: str, action: str):
         """Handle person context menu actions."""
@@ -1520,7 +1520,7 @@ class AccordionSidebar(QWidget):
         """Handle person click - emit signal to filter grid."""
         self._dbg(f"Person activated: {branch_key}")
         # Emit branch selection signal for grid filtering
-        self.selectBranch.emit(f"branch:{branch_key}")
+        self.selectBranch.emit(branch_key)
 
     def _set_people_busy(self, busy: bool, message: str = ""):
         if self._people_grid:
