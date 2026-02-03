@@ -4117,7 +4117,7 @@ class ReferenceDB:
                             print(f"  Available keys: {list(nmap.keys())[:2]}...")
         
         paths_with_tags = sum(1 for v in out.values() if v)
-        print(f"[DB_TAGS] Retrieved {tags_found} tags for {paths_with_tags}/{len(orig_paths)} paths (project_id={project_id})")
+        print(f"[DB_TAGS] Retrieved {tags_found} tag assignments across {paths_with_tags}/{len(orig_paths)} paths (project_id={project_id})")
         return out
     # <<< FIX 1
 
