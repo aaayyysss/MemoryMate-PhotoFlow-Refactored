@@ -1,0 +1,380 @@
+--- services/job_manager.py (before)
++++ services/job_manager.py (after)
+@@ -60,6 +60,7 @@
+ from PySide6.QtCore import QObject, Signal, QThreadPool, QTimer, QRunnable, Slot
+ 
+ from services.job_service import get_job_service, Job
++from repository.job_history_repository import JobHistoryRepository
+ from logging_config import get_logger
+ 
+ logger = get_logger(__name__)
+@@ -252,6 +253,12 @@
+         self._tracked_counter = 0
+         self._tracked_cancel_callbacks: Dict[int, Callable] = {}
+         self._tracked_descriptions: Dict[int, str] = {}
++        self._history_repo = None
++        self._last_hist_progress_write: dict[int, float] = {}
++        try:
++            self._history_repo = JobHistoryRepository()
++        except Exception as e:
++            logger.warning(f"[JobManager] Job history disabled (DB init failed): {e}")
+ 
+         self._initialized = True
+         logger.info(f"[JobManager] Initialized with max {self._max_workers} workers")
+@@ -405,6 +412,12 @@
+             self._tracked_descriptions.pop(job_id, None)
+             if active:
+                 logger.info(f"[JobManager] Canceled tracked job {job_id}")
++                if self._history_repo:
++                    try:
++                        self._history_repo.finish(job_id=str(job_id), status='canceled', canceled=1)
++                    except Exception:
++                        pass
++
+                 self.signals.job_canceled.emit(job_id, active.job_type)
+                 self.signals.active_jobs_changed.emit(len(self._active_jobs))
+             return True
+@@ -531,6 +544,12 @@
+             self._tracked_cancel_callbacks[job_id] = cancel_callback
+         if description:
+             self._tracked_descriptions[job_id] = description
++
++        if self._history_repo:
++            try:
++                self._history_repo.upsert_start(job_id=str(job_id), job_type=job_type, title=description)
++            except Exception as e:
++                logger.debug(f"[JobManager] Failed to persist job start {job_id}: {e}")
+ 
+         logger.info(f"[JobManager] Registered tracked job {job_id}: {job_type} — {description}")
+         self.signals.job_started.emit(job_id, job_type, total)
+@@ -572,6 +591,17 @@
+                 message=message,
+                 started_at=active.started_at,
+             )
++        if self._history_repo:
++            try:
++                frac = (float(current) / float(total)) if total else 0.0
++                now = time.time()
++                last = self._last_hist_progress_write.get(job_id, 0.0)
++                if now - last >= 1.0 or (total and current >= total):
++                    self._history_repo.update_progress(job_id=str(job_id), progress=frac)
++                    self._last_hist_progress_write[job_id] = now
++            except Exception:
++                pass
++
+ 
+     def report_log(self, job_id: int, message: str):
+         """
+@@ -620,6 +650,15 @@
+             return
+ 
+         stats_json = json.dumps(stats or {})
++        if self._history_repo:
++            try:
++                if success:
++                    self._history_repo.finish(job_id=str(job_id), status='succeeded', result=stats or {})
++                else:
++                    self._history_repo.finish(job_id=str(job_id), status='failed', error=error or 'error')
++            except Exception:
++                pass
++
+ 
+         if success:
+             logger.info(f"[JobManager] Tracked job {job_id} ({active.job_type}) completed: {stats}")
+@@ -632,6 +671,24 @@
+ 
+         if len(self._active_jobs) == 0:
+             self.signals.all_jobs_completed.emit()
++
++    def get_history(self, limit: int = 200):
++        """Return recent tracked-job runs from persistent history, most recent first."""
++        if not self._history_repo:
++            return []
++        try:
++            return self._history_repo.list_recent(limit=limit)
++        except Exception:
++            return []
++
++    def clear_history(self) -> None:
++        """Clear persisted job history."""
++        if not self._history_repo:
++            return
++        try:
++            self._history_repo.clear_all()
++        except Exception:
++            pass
+ 
+     def get_job_description(self, job_id: int) -> str:
+         """Return the human-readable description for a tracked job, or ``""``."""
+
+--- ui/activity_center.py (before)
++++ ui/activity_center.py (after)
+@@ -391,13 +391,21 @@
+ 
+         layout.addLayout(header)
+ 
+-        # Scrollable job cards
++        # Tabs: Active jobs and History
++        self._tabs = QTabWidget()
++        self._tabs.setDocumentMode(True)
++        self._tabs.setStyleSheet("QTabWidget::pane { border: none; }")
++
++        # --- Active tab ---
++        active_tab = QWidget()
++        active_layout = QVBoxLayout(active_tab)
++        active_layout.setContentsMargins(0, 0, 0, 0)
++        active_layout.setSpacing(6)
++
+         self._scroll = QScrollArea()
+         self._scroll.setWidgetResizable(True)
+-        self._scroll.setHorizontalScrollBarPolicy(
+-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+-        self._scroll.setStyleSheet(
+-            "QScrollArea { border: none; background: transparent; }")
++        self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
++        self._scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
+ 
+         self._cards_container = QWidget()
+         self._cards_layout = QVBoxLayout(self._cards_container)
+@@ -406,19 +414,83 @@
+         self._cards_layout.addStretch()
+ 
+         self._scroll.setWidget(self._cards_container)
+-        layout.addWidget(self._scroll, 1)
++        active_layout.addWidget(self._scroll, 1)
+ 
+         # Empty state
+         self._empty_label = QLabel("No background tasks running")
+         self._empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+-        self._empty_label.setStyleSheet(
+-            "color: #666; font-size: 11px; padding: 20px;")
+-        layout.addWidget(self._empty_label)
++        self._empty_label.setStyleSheet("color: #666; font-size: 11px; padding: 20px;")
++        active_layout.addWidget(self._empty_label)
++
++        self._tabs.addTab(active_tab, "Active")
++
++        # --- History tab ---
++        history_tab = QWidget()
++        history_layout = QVBoxLayout(history_tab)
++        history_layout.setContentsMargins(0, 0, 0, 0)
++        history_layout.setSpacing(6)
++
++        hist_actions = QHBoxLayout()
++        self._refresh_history_btn = QPushButton("Refresh")
++        self._refresh_history_btn.clicked.connect(self.refresh_history)
++        hist_actions.addWidget(self._refresh_history_btn)
++        self._clear_history_btn = QPushButton("Clear")
++        self._clear_history_btn.clicked.connect(self._on_clear_history)
++        hist_actions.addWidget(self._clear_history_btn)
++        hist_actions.addStretch(1)
++        history_layout.addLayout(hist_actions)
++
++        self._history_tree = QTreeWidget()
++        self._history_tree.setHeaderLabels(["Time", "Type", "Title", "Status", "Duration"])
++        self._history_tree.setRootIsDecorated(False)
++        self._history_tree.setAlternatingRowColors(True)
++        self._history_tree.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
++        self._history_tree.setUniformRowHeights(True)
++        self._history_tree.header().setStretchLastSection(True)
++        history_layout.addWidget(self._history_tree, 1)
++
++        self._tabs.addTab(history_tab, "History")
++
++        layout.addWidget(self._tabs, 1)
+ 
+         self.setWidget(container)
+         self._update_empty_state()
+-
+-    # ── Signal wiring ───────────────────────────────────────────────────
++        self.refresh_history()
++    
++    def refresh_history(self, limit: int = 200) -> None:
++        """Populate History tab from JobManager persisted job history."""
++        try:
++            from services.job_manager import get_job_manager
++            mgr = get_job_manager()
++            rows = mgr.get_history(limit=limit)
++        except Exception:
++            rows = []
++
++        self._history_tree.clear()
++        for r in rows:
++            created = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(r.created_ts))
++            dur = ""
++            if r.started_ts and r.finished_ts:
++                dur_s = max(0.0, float(r.finished_ts) - float(r.started_ts))
++                dur = f"{dur_s:.1f}s"
++            status = r.status
++            item = QTreeWidgetItem([created, r.job_type, r.title, status, dur])
++            item.setData(0, Qt.ItemDataRole.UserRole, r.job_id)
++            self._history_tree.addTopLevelItem(item)
++
++        self._history_tree.resizeColumnToContents(0)
++        self._history_tree.resizeColumnToContents(1)
++        self._history_tree.resizeColumnToContents(3)
++
++    def _on_clear_history(self) -> None:
++        try:
++            from services.job_manager import get_job_manager
++            mgr = get_job_manager()
++            mgr.clear_history()
++        except Exception:
++            pass
++        self.refresh_history()
++# ── Signal wiring ───────────────────────────────────────────────────
+ 
+     def _connect_internal_signals(self):
+         """Wire _ActivitySignals to UI mutations (always QueuedConnection)."""
+
+--- /dev/null
++++ repository/job_history_repository.py
+@@ -0,0 +1,148 @@
++from __future__ import annotations
++
++import json
++import time
++from dataclasses import dataclass
++from typing import Any, Dict, List, Optional
++
++from repository.base_repository import DatabaseConnection
++from db_config import get_db_path
++
++
++CREATE_SQL = """
++CREATE TABLE IF NOT EXISTS job_history (
++    id INTEGER PRIMARY KEY AUTOINCREMENT,
++    job_id TEXT NOT NULL,
++    job_type TEXT NOT NULL,
++    title TEXT NOT NULL,
++    status TEXT NOT NULL,
++    created_ts REAL NOT NULL,
++    started_ts REAL,
++    finished_ts REAL,
++    progress REAL,
++    result_json TEXT,
++    error TEXT,
++    canceled INTEGER DEFAULT 0
++);
++CREATE INDEX IF NOT EXISTS idx_job_history_created_ts
++    ON job_history(created_ts DESC);
++CREATE INDEX IF NOT EXISTS idx_job_history_job_id
++    ON job_history(job_id);
++"""
++
++
++@dataclass
++class JobHistoryRow:
++    job_id: str
++    job_type: str
++    title: str
++    status: str
++    created_ts: float
++    started_ts: Optional[float] = None
++    finished_ts: Optional[float] = None
++    progress: Optional[float] = None
++    result: Optional[Dict[str, Any]] = None
++    error: Optional[str] = None
++    canceled: int = 0
++
++
++class JobHistoryRepository:
++    """
++    Lightweight persistence for JobManager tracked jobs.
++    Designed for UI history, not for high-frequency progress writes.
++    """
++
++    def __init__(self, db_path: Optional[str] = None):
++        self._db = DatabaseConnection(db_path or get_db_path(), auto_init=False)
++        self._ensure()
++
++    def _ensure(self) -> None:
++        with self._db.get_connection() as conn:
++            conn.executescript(CREATE_SQL)
++            conn.commit()
++
++    def upsert_start(self, *, job_id: str, job_type: str, title: str) -> None:
++        now = time.time()
++        with self._db.get_connection() as conn:
++            conn.execute(
++                """
++                INSERT INTO job_history (job_id, job_type, title, status, created_ts, started_ts, progress)
++                VALUES (?, ?, ?, ?, ?, ?, ?)
++                """,
++                (job_id, job_type, title, "running", now, now, 0.0),
++            )
++            conn.commit()
++
++    def update_progress(self, *, job_id: str, progress: float) -> None:
++        with self._db.get_connection() as conn:
++            conn.execute(
++                "UPDATE job_history SET progress=? WHERE job_id=?",
++                (float(progress), job_id),
++            )
++            conn.commit()
++
++    def finish(
++        self,
++        *,
++        job_id: str,
++        status: str,
++        result: Optional[Dict[str, Any]] = None,
++        error: Optional[str] = None,
++        canceled: int = 0,
++    ) -> None:
++        now = time.time()
++        result_json = json.dumps(result) if result is not None else None
++        with self._db.get_connection() as conn:
++            conn.execute(
++                """
++                UPDATE job_history
++                   SET status=?, finished_ts=?, progress=COALESCE(progress, 1.0),
++                       result_json=?, error=?, canceled=?
++                 WHERE job_id=?
++                """,
++                (status, now, result_json, error, int(canceled), job_id),
++            )
++            conn.commit()
++
++    def list_recent(self, limit: int = 200) -> List[JobHistoryRow]:
++        with self._db.get_connection() as conn:
++            rows = conn.execute(
++                """
++                SELECT job_id, job_type, title, status, created_ts, started_ts, finished_ts,
++                       progress, result_json, error, canceled
++                  FROM job_history
++                 ORDER BY created_ts DESC
++                 LIMIT ?
++                """,
++                (int(limit),),
++            ).fetchall()
++
++        out: List[JobHistoryRow] = []
++        for r in rows:
++            result = None
++            if r["result_json"]:
++                try:
++                    result = json.loads(r["result_json"])
++                except Exception:
++                    result = None
++            out.append(
++                JobHistoryRow(
++                    job_id=r["job_id"],
++                    job_type=r["job_type"],
++                    title=r["title"],
++                    status=r["status"],
++                    created_ts=float(r["created_ts"]),
++                    started_ts=float(r["started_ts"]) if r["started_ts"] else None,
++                    finished_ts=float(r["finished_ts"]) if r["finished_ts"] else None,
++                    progress=float(r["progress"]) if r["progress"] is not None else None,
++                    result=result,
++                    error=r["error"],
++                    canceled=int(r["canceled"] or 0),
++                )
++            )
++        return out
++
++    def clear_all(self) -> None:
++        with self._db.get_connection() as conn:
++            conn.execute("DELETE FROM job_history")
++            conn.commit()
