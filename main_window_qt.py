@@ -1,5 +1,5 @@
 # main_window_qt.py
-# Version 10.01.01.05 dated 20260122
+# Version 10.01.01.06 dated 20260202
 # Added PhotoDeletionService with comprehensive delete functionality
 # Enhanced repositories with utility methods for future migrations
 # Current LOC: ~2,640 (added photo deletion feature)

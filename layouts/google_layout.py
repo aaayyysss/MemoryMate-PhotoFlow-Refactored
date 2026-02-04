@@ -1,5 +1,5 @@
 # layouts/google_layout.py
-# Version 10.01.01.09 dated 20260131
+# Version 10.01.01.10 dated 20260202
 # Google Photos-style layout - Timeline-based, date-grouped, minimalist design
 
 from PySide6.QtWidgets import (
