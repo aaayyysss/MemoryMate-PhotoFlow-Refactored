@@ -601,6 +601,29 @@ class GooglePhotosLayout(BaseLayout):
         """)
         toolbar.addWidget(self.btn_settings)
 
+        # Activity Center toggle button
+        self.btn_activity = QPushButton("Activity")
+        self.btn_activity.setToolTip("Show/hide background tasks (Ctrl+Shift+A)")
+        self.btn_activity.setFixedHeight(28)
+        self.btn_activity.setStyleSheet("""
+            QPushButton {
+                background: transparent;
+                border: 1px solid transparent;
+                border-radius: 4px;
+                padding: 2px 8px;
+                font-size: 11px;
+                color: #5f6368;
+            }
+            QPushButton:hover {
+                background: #f1f3f4;
+            }
+            QPushButton:pressed {
+                background: #e8eaed;
+            }
+        """)
+        self.btn_activity.clicked.connect(self._on_toggle_activity_center)
+        toolbar.addWidget(self.btn_activity)
+
         # Spacer (push remaining items to the right)
         spacer = QWidget()
         spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
@@ -7835,6 +7858,14 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
         # Call existing batch edit method (reuses Sprint 1 implementation)
         print(f"[GooglePhotosLayout] 📍 Batch location edit triggered from toolbar for {len(self.selected_photos)} photos")
         self._edit_photos_location_batch(list(self.selected_photos))
+
+    def _on_toggle_activity_center(self):
+        """Toggle the Activity Center dock widget from the layout toolbar."""
+        try:
+            if hasattr(self.main_window, "_toggle_activity_center"):
+                self.main_window._toggle_activity_center()
+        except Exception:
+            pass
 
     def _on_delete_selected(self):
         """
