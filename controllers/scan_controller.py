@@ -143,20 +143,17 @@ class ScanController(QObject):
         self.main.scan_ui_begin(tr("messages.scan_preparing"))
         self._last_progress_ui_ts = 0.0
 
-        # Register scan with Activity Center (if available)
-        self._scan_activity = None
-        ac = getattr(self.main, "activity_center", None)
-        if ac:
-            try:
-                ac.show()
-                self._scan_activity = ac.start_job(
-                    job_id=f"scan_{int(time.time())}",
-                    job_type="scan",
-                    description=f"Scanning {os.path.basename(folder)}",
-                    on_cancel=self.cancel,
-                )
-            except Exception as e:
-                self.logger.debug(f"Activity center registration failed: {e}")
+        # Register scan with JobManager as a tracked job
+        self._scan_job_id = None
+        try:
+            from services.job_manager import get_job_manager
+            self._scan_job_id = get_job_manager().register_tracked_job(
+                job_type='scan',
+                description=f"Scanning {os.path.basename(folder)}",
+                cancel_callback=self.cancel,
+            )
+        except Exception as e:
+            self.logger.debug(f"JobManager tracked-job registration failed: {e}")
 
         # DB writer
         # NOTE: Schema creation handled automatically by repository layer
@@ -358,13 +355,14 @@ class ScanController(QObject):
 
         self.main.scan_ui_update(pct_i, short_msg)
 
-        # Mirror to Activity Center handle
-        ah = getattr(self, "_scan_activity", None)
-        if ah:
+        # Report to JobManager (routes to Activity Center & status bar)
+        if self._scan_job_id is not None:
             try:
-                ah.update(pct_i, short_msg)
+                from services.job_manager import get_job_manager
+                mgr = get_job_manager()
+                mgr.report_progress(self._scan_job_id, pct_i, 100, short_msg)
                 if msg:
-                    ah.log(msg)
+                    mgr.report_log(self._scan_job_id, msg)
             except Exception:
                 pass
 
@@ -372,10 +370,13 @@ class ScanController(QObject):
         self.logger.info(f"Scan finished: {folders} folders, {photos} photos, {videos} videos")
         self.main._scan_result = (folders, photos, videos)
 
-        ah = getattr(self, "_scan_activity", None)
-        if ah:
+        if self._scan_job_id is not None:
             try:
-                ah.log(f"Scan finished: {folders} folders, {photos} photos, {videos} videos")
+                from services.job_manager import get_job_manager
+                get_job_manager().report_log(
+                    self._scan_job_id,
+                    f"Scan finished: {folders} folders, {photos} photos, {videos} videos",
+                )
             except Exception:
                 pass
 
@@ -390,13 +391,15 @@ class ScanController(QObject):
 
     def _on_error(self, err_text: str):
         self.logger.error(f"Scan error: {err_text}")
-        ah = getattr(self, "_scan_activity", None)
-        if ah:
+        if self._scan_job_id is not None:
             try:
-                ah.fail(err_text[:80])
+                from services.job_manager import get_job_manager
+                get_job_manager().complete_tracked_job(
+                    self._scan_job_id, success=False, error=err_text[:80],
+                )
             except Exception:
                 pass
-            self._scan_activity = None
+            self._scan_job_id = None
         try:
             QMessageBox.critical(self.main, tr("messages.scan_error"), err_text)
         except Exception:
@@ -528,23 +531,22 @@ class ScanController(QObject):
                         options=pipeline_options,
                     )
 
-                    # Register with Activity Center
-                    _pspl_handle = None
-                    ac = getattr(self.main, "activity_center", None)
-                    if ac:
-                        try:
-                            _pspl_handle = ac.start_job(
-                                job_id=f"post_scan_{int(time.time())}",
-                                job_type="post_scan_pipeline",
-                                description="Duplicate Detection",
-                                on_cancel=lambda: (
-                                    self._post_scan_worker.cancel()
-                                    if hasattr(self._post_scan_worker, "cancel") else None),
-                            )
-                        except Exception:
-                            pass
+                    # Register with JobManager as tracked job
+                    self._pspl_job_id = None
+                    try:
+                        from services.job_manager import get_job_manager
+                        self._pspl_job_id = get_job_manager().register_tracked_job(
+                            job_type='post_scan',
+                            project_id=current_project_id,
+                            description="Duplicate Detection",
+                            cancel_callback=lambda: (
+                                self._post_scan_worker.cancel()
+                                if hasattr(self._post_scan_worker, "cancel") else None),
+                        )
+                    except Exception:
+                        pass
 
-                    # Progress updates go to status bar + Activity Center
+                    # Progress updates go to status bar + JobManager
                     def _on_pipeline_progress(step_name, step_num, total, message):
                         try:
                             self.main.statusBar().showMessage(
@@ -552,11 +554,13 @@ class ScanController(QObject):
                             )
                         except Exception:
                             pass
-                        if _pspl_handle:
+                        if self._pspl_job_id is not None:
                             try:
-                                pct = int(step_num / total * 100) if total else 0
-                                _pspl_handle.update(pct, f"[{step_num}/{total}] {message}")
-                                _pspl_handle.log(message)
+                                from services.job_manager import get_job_manager
+                                mgr = get_job_manager()
+                                mgr.report_progress(self._pspl_job_id, step_num, total,
+                                                    f"[{step_num}/{total}] {message}")
+                                mgr.report_log(self._pspl_job_id, message)
                             except Exception:
                                 pass
 
@@ -585,11 +589,16 @@ class ScanController(QObject):
                         if errors:
                             self.logger.warning("Pipeline completed with errors: %s", errors)
 
-                        if _pspl_handle:
+                        if self._pspl_job_id is not None:
                             try:
-                                _pspl_handle.complete(summary)
+                                from services.job_manager import get_job_manager
+                                get_job_manager().complete_tracked_job(
+                                    self._pspl_job_id, success=True,
+                                    stats={"exact": exact, "similar": similar},
+                                )
                             except Exception:
                                 pass
+                            self._pspl_job_id = None
 
                         # Refresh duplicates section in sidebar
                         self._refresh_duplicates_section()
@@ -604,11 +613,16 @@ class ScanController(QObject):
                         self.main.statusBar().showMessage(
                             f"Duplicate detection failed: {msg}", 8000
                         )
-                        if _pspl_handle:
+                        if self._pspl_job_id is not None:
                             try:
-                                _pspl_handle.fail(str(msg)[:80])
+                                from services.job_manager import get_job_manager
+                                get_job_manager().complete_tracked_job(
+                                    self._pspl_job_id, success=False,
+                                    error=str(msg)[:80],
+                                )
                             except Exception:
                                 pass
+                            self._pspl_job_id = None
                         # Still mark complete on error so final refresh isn't blocked
                         self._scan_operations_pending.discard("post_scan_pipeline")
                         self._check_and_trigger_final_refresh()
@@ -644,31 +658,32 @@ class ScanController(QObject):
                         # Track face pipeline in pending operations
                         self._scan_operations_pending.add("face_pipeline")
 
-                        # Register with Activity Center
-                        _face_handle = None
-                        ac = getattr(self.main, "activity_center", None)
-                        if ac:
-                            try:
-                                _face_handle = ac.start_job(
-                                    job_id=f"face_{current_project_id}_{int(time.time())}",
-                                    job_type="face_pipeline",
-                                    description="Face Detection & Clustering",
-                                    on_cancel=lambda: svc.cancel(current_project_id),
-                                )
-                            except Exception:
-                                pass
+                        # Register with JobManager as tracked job
+                        self._face_job_id = None
+                        try:
+                            from services.job_manager import get_job_manager
+                            self._face_job_id = get_job_manager().register_tracked_job(
+                                job_type='face_pipeline',
+                                project_id=current_project_id,
+                                description="Face Detection & Clustering",
+                                cancel_callback=lambda: svc.cancel(current_project_id),
+                            )
+                        except Exception:
+                            pass
 
-                        # Wire FacePipelineService progress to Activity Center
+                        # Wire FacePipelineService progress to JobManager
                         def _on_face_progress(step_name, message, pid):
-                            if _face_handle:
+                            if self._face_job_id is not None:
                                 try:
-                                    # Face pipeline doesn't emit numeric %, use indeterminate
-                                    _face_handle.update(50, f"{step_name}: {message}")
-                                    _face_handle.log(message)
+                                    from services.job_manager import get_job_manager
+                                    mgr = get_job_manager()
+                                    mgr.report_progress(self._face_job_id, 50, 100,
+                                                        f"{step_name}: {message}")
+                                    mgr.report_log(self._face_job_id, message)
                                 except Exception:
                                     pass
 
-                        if _face_handle:
+                        if self._face_job_id is not None:
                             try:
                                 svc.progress.connect(_on_face_progress)
                             except Exception:
@@ -690,12 +705,16 @@ class ScanController(QObject):
 
                             faces = results.get("faces_detected", 0) if isinstance(results, dict) else 0
                             clusters = results.get("clusters_created", 0) if isinstance(results, dict) else 0
-                            if _face_handle:
+                            if self._face_job_id is not None:
                                 try:
-                                    _face_handle.complete(
-                                        f"{faces} faces, {clusters} people")
+                                    from services.job_manager import get_job_manager
+                                    get_job_manager().complete_tracked_job(
+                                        self._face_job_id, success=True,
+                                        stats={"faces": faces, "clusters": clusters},
+                                    )
                                 except Exception:
                                     pass
+                                self._face_job_id = None
 
                             self._safe_refresh_people_section()
                             self._check_and_trigger_final_refresh()
@@ -712,11 +731,16 @@ class ScanController(QObject):
                                 pass
                             self._scan_operations_pending.discard("face_pipeline")
                             self.logger.error(f"Face pipeline error for project {pid}: {msg}")
-                            if _face_handle:
+                            if self._face_job_id is not None:
                                 try:
-                                    _face_handle.fail(str(msg)[:80])
+                                    from services.job_manager import get_job_manager
+                                    get_job_manager().complete_tracked_job(
+                                        self._face_job_id, success=False,
+                                        error=str(msg)[:80],
+                                    )
                                 except Exception:
                                     pass
+                                self._face_job_id = None
                             self._check_and_trigger_final_refresh()
 
                         svc.finished.connect(_on_face_pipeline_done)
@@ -953,14 +977,17 @@ class ScanController(QObject):
         self.main.scan_ui_finish(f"Scan complete: {p} photos, {v} videos indexed", 5000)
         self.logger.info(f"Final refresh complete: {p} photos, {v} videos")
 
-        # Mark scan complete in Activity Center
-        ah = getattr(self, "_scan_activity", None)
-        if ah:
+        # Mark scan complete via JobManager
+        if self._scan_job_id is not None:
             try:
-                ah.complete(f"{p} photos, {v} videos indexed")
+                from services.job_manager import get_job_manager
+                get_job_manager().complete_tracked_job(
+                    self._scan_job_id, success=True,
+                    stats={"photos": p, "videos": v},
+                )
             except Exception:
                 pass
-            self._scan_activity = None
+            self._scan_job_id = None
 
         # PHASE 2 Task 2.2: Reset state for next scan
         self._scan_refresh_scheduled = False

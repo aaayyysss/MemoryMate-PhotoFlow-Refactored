@@ -80,12 +80,15 @@ class JobPriority(IntEnum):
 
 class JobType:
     """Job type constants."""
+    SCAN = 'scan'
     FACE_SCAN = 'face_scan'
     FACE_EMBED = 'face_embed'
     FACE_CLUSTER = 'face_cluster'
+    FACE_PIPELINE = 'face_pipeline'
     EMBEDDING = 'embedding'
     DUPLICATE_HASH = 'duplicate_hash'
     DUPLICATE_GROUP = 'duplicate_group'
+    POST_SCAN = 'post_scan'
 
 
 class JobStatus:
@@ -170,6 +173,9 @@ class JobManagerSignals(QObject):
     # job_resumed(job_id, job_type)
     job_resumed = Signal(int, str)
 
+    # job_log(job_id, job_type, message) — log line for Activity Center
+    job_log = Signal(int, str, str)
+
     # all_jobs_completed()
     all_jobs_completed = Signal()
 
@@ -241,6 +247,11 @@ class JobManager(QObject):
         # Pending progress updates (debounced)
         self._pending_progress: Dict[int, JobProgress] = {}
         self._progress_lock = Lock()
+
+        # Tracked (externally-managed) jobs use negative IDs
+        self._tracked_counter = 0
+        self._tracked_cancel_callbacks: Dict[int, Callable] = {}
+        self._tracked_descriptions: Dict[int, str] = {}
 
         self._initialized = True
         logger.info(f"[JobManager] Initialized with max {self._max_workers} workers")
@@ -380,6 +391,24 @@ class JobManager(QObject):
         Returns:
             bool: True if canceled
         """
+        # Handle tracked (externally-managed) jobs — negative IDs have no DB record
+        if job_id < 0:
+            cb = self._tracked_cancel_callbacks.pop(job_id, None)
+            if cb:
+                try:
+                    cb()
+                except Exception as e:
+                    logger.warning(
+                        f"[JobManager] Cancel callback error for tracked job {job_id}: {e}")
+            with self._jobs_lock:
+                active = self._active_jobs.pop(job_id, None)
+            self._tracked_descriptions.pop(job_id, None)
+            if active:
+                logger.info(f"[JobManager] Canceled tracked job {job_id}")
+                self.signals.job_canceled.emit(job_id, active.job_type)
+                self.signals.active_jobs_changed.emit(len(self._active_jobs))
+            return True
+
         # Mark in database
         self._job_service.cancel_job(job_id)
 
@@ -450,6 +479,163 @@ class JobManager(QObject):
             f"[JobManager] Canceled {len(jobs_to_cancel)} jobs"
             + (f" for project {project_id}" if project_id else "")
         )
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Public API: Tracked (Externally-Managed) Jobs
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def register_tracked_job(
+        self,
+        job_type: str,
+        project_id: int = 0,
+        total: int = 0,
+        description: str = "",
+        cancel_callback: Optional[Callable] = None,
+    ) -> int:
+        """
+        Register an externally-managed job for unified signal flow.
+
+        Use this for jobs whose threads/workers are managed outside JobManager
+        (e.g. ScanController's QThread, FacePipelineService).  The job appears
+        in the Activity Center and status bar like any other managed job.
+
+        Returns a negative job_id to avoid clashing with DB auto-increment IDs.
+
+        Args:
+            job_type:         Category key (scan, face_pipeline, post_scan, …)
+            project_id:       Project this job belongs to (informational)
+            total:            Expected total work items (0 = indeterminate)
+            description:      Human-readable label for the Activity Center card
+            cancel_callback:  Called if the user clicks Cancel on this job
+
+        Returns:
+            int: Negative job_id
+        """
+        with self._jobs_lock:
+            self._tracked_counter -= 1
+            job_id = self._tracked_counter
+
+        active = ActiveJob(
+            job_id=job_id,
+            job_type=job_type,
+            project_id=project_id,
+            worker=None,
+            started_at=time.time(),
+            total=total,
+        )
+
+        with self._jobs_lock:
+            self._active_jobs[job_id] = active
+
+        if cancel_callback:
+            self._tracked_cancel_callbacks[job_id] = cancel_callback
+        if description:
+            self._tracked_descriptions[job_id] = description
+
+        logger.info(f"[JobManager] Registered tracked job {job_id}: {job_type} — {description}")
+        self.signals.job_started.emit(job_id, job_type, total)
+        self.signals.active_jobs_changed.emit(len(self._active_jobs))
+        return job_id
+
+    def report_progress(self, job_id: int, current: int, total: int, message: str = ""):
+        """
+        Report progress for a tracked (or managed) job.
+
+        Progress flows through the same 250 ms debounce as managed jobs.
+
+        Args:
+            job_id:  Job ID (negative for tracked, positive for managed)
+            current: Items processed so far
+            total:   Total items expected
+            message: One-line status message
+        """
+        with self._jobs_lock:
+            active = self._active_jobs.get(job_id)
+            if not active:
+                return
+            active.processed = current
+            active.total = total
+
+            elapsed = time.time() - active.started_at
+            rate = current / elapsed if elapsed > 0 else 0
+            remaining = total - current
+            eta = remaining / rate if rate > 0 else 0
+
+        with self._progress_lock:
+            self._pending_progress[job_id] = JobProgress(
+                job_id=job_id,
+                job_type=active.job_type,
+                processed=current,
+                total=total,
+                rate=rate,
+                eta_seconds=eta,
+                message=message,
+                started_at=active.started_at,
+            )
+
+    def report_log(self, job_id: int, message: str):
+        """
+        Emit a log line for any job (tracked or managed).
+
+        The Activity Center picks this up and appends it to the
+        job's expandable log viewer.
+
+        Args:
+            job_id:  Job ID
+            message: Log line text
+        """
+        with self._jobs_lock:
+            active = self._active_jobs.get(job_id)
+            if not active:
+                return
+            job_type = active.job_type
+        self.signals.job_log.emit(job_id, job_type, message)
+
+    def complete_tracked_job(
+        self,
+        job_id: int,
+        success: bool = True,
+        stats: Optional[Dict[str, Any]] = None,
+        error: str = "",
+    ):
+        """
+        Complete a tracked (externally-managed) job.
+
+        Emits ``job_completed`` (success) or ``job_failed``, then removes the
+        job from the active set.
+
+        Args:
+            job_id:  Negative job ID returned by ``register_tracked_job``
+            success: True if job succeeded
+            stats:   Optional stats dict (serialised to JSON in signal)
+            error:   Error message (used when success=False)
+        """
+        with self._jobs_lock:
+            active = self._active_jobs.pop(job_id, None)
+        self._tracked_cancel_callbacks.pop(job_id, None)
+        self._tracked_descriptions.pop(job_id, None)
+
+        if not active:
+            logger.warning(f"[JobManager] complete_tracked_job: job {job_id} not found")
+            return
+
+        stats_json = json.dumps(stats or {})
+
+        if success:
+            logger.info(f"[JobManager] Tracked job {job_id} ({active.job_type}) completed: {stats}")
+            self.signals.job_completed.emit(job_id, active.job_type, True, stats_json)
+        else:
+            logger.info(f"[JobManager] Tracked job {job_id} ({active.job_type}) failed: {error}")
+            self.signals.job_failed.emit(job_id, active.job_type, error)
+
+        self.signals.active_jobs_changed.emit(len(self._active_jobs))
+
+        if len(self._active_jobs) == 0:
+            self.signals.all_jobs_completed.emit()
+
+    def get_job_description(self, job_id: int) -> str:
+        """Return the human-readable description for a tracked job, or ``""``."""
+        return self._tracked_descriptions.get(job_id, "")
 
     def notify_user_active(self):
         """
@@ -895,6 +1081,8 @@ class JobManager(QObject):
         """Send heartbeats for all active jobs."""
         with self._jobs_lock:
             for job_id, active in self._active_jobs.items():
+                if job_id < 0:
+                    continue  # tracked jobs have no DB record
                 if not active.paused:
                     progress = active.processed / active.total if active.total > 0 else 0
                     self._job_service.heartbeat(job_id, progress)
