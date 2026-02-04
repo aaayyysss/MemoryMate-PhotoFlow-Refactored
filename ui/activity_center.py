@@ -119,6 +119,7 @@ class ActivityJobCard(QFrame):
         "embeddings": "🧠",
         "duplicates": "🔗",
         "duplicate_hash": "🔗",
+        "post_scan": "⚙️",
         "post_scan_pipeline": "⚙️",
     }
 
@@ -131,6 +132,7 @@ class ActivityJobCard(QFrame):
         "embeddings": "Embeddings",
         "duplicates": "Duplicate Detection",
         "duplicate_hash": "Duplicate Detection",
+        "post_scan": "Post-Scan Pipeline",
         "post_scan_pipeline": "Post-Scan Pipeline",
     }
 
@@ -438,6 +440,7 @@ class ActivityCenter(QDockWidget):
             mgr.signals.job_completed.connect(self._on_jm_completed)
             mgr.signals.job_failed.connect(self._on_jm_failed)
             mgr.signals.job_canceled.connect(self._on_jm_canceled)
+            mgr.signals.job_log.connect(self._on_jm_log)
             logger.info("[ActivityCenter] Connected to JobManager signals")
         except Exception as e:
             logger.info(f"[ActivityCenter] JobManager not available: {e}")
@@ -609,13 +612,21 @@ class ActivityCenter(QDockWidget):
     def _on_jm_started(self, job_id: int, job_type: str, total: int):
         jid = f"jm_{job_id}"
         if jid not in self._cards:
+            # Fetch description from JobManager (tracked jobs store it)
+            desc = ""
+            try:
+                from services.job_manager import get_job_manager
+                desc = get_job_manager().get_job_description(job_id)
+            except Exception:
+                pass
+
             def _cancel_jm():
                 try:
                     from services.job_manager import get_job_manager
                     get_job_manager().cancel(job_id)
                 except Exception:
                     pass
-            self.start_job(jid, job_type, on_cancel=_cancel_jm)
+            self.start_job(jid, job_type, description=desc, on_cancel=_cancel_jm)
 
     @Slot(int, int, int, float, float, str)
     def _on_jm_progress(self, job_id: int, processed: int, total: int,
@@ -670,3 +681,10 @@ class ActivityCenter(QDockWidget):
             card.mark_failed("Cancelled")
             self._completed_at[jid] = time.time()
         self._emit_headline()
+
+    @Slot(int, str, str)
+    def _on_jm_log(self, job_id: int, job_type: str, message: str):
+        jid = f"jm_{job_id}"
+        card = self._cards.get(jid)
+        if card:
+            card.append_log(message)
