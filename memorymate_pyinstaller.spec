@@ -368,6 +368,7 @@ hiddenimports = [
     # --- ui (comprehensive — includes all 35+ modules) ---
     'ui',
     'ui.advanced_filters_widget',
+    'ui.activity_center',
     'ui.background_activity_panel',
     'ui.clip_model_dialog',
     'ui.cluster_face_selector',

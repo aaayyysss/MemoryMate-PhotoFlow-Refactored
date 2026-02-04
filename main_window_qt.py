@@ -105,7 +105,7 @@ from controllers import ScanController, SidebarController, ProjectController, Ph
 from ui.widgets.breadcrumb_navigation import BreadcrumbNavigation
 from ui.widgets.backfill_indicator import CompactBackfillIndicator
 from ui.widgets.selection_toolbar import SelectionToolbar
-from ui.background_activity_panel import BackgroundActivityPanel, MinimalActivityIndicator
+from ui.activity_center import ActivityCenter
 from ui.ui_builder import UIBuilder
 
 # Phase 2 Refactoring: Extracted services
@@ -1083,13 +1083,16 @@ class MainWindow(QMainWindow):
 
         main_layout.addWidget(self.splitter, 1)
 
-        # --- Background Activity Panel (best-practice background jobs UI)
+        # --- Activity Center (QDockWidget, non-modal, shows all background jobs)
         try:
-            self.activity_panel = BackgroundActivityPanel(self)
-            main_layout.addWidget(self.activity_panel)
+            self.activity_center = ActivityCenter(self)
+            self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea,
+                               self.activity_center)
+            # Start hidden; auto-shows when a job is registered
+            self.activity_center.hide()
         except Exception as e:
-            print(f"[MainWindow] Could not create activity panel: {e}")
-            self.activity_panel = None
+            print(f"[MainWindow] Could not create activity center: {e}")
+            self.activity_center = None
 
         # --- Wire toolbar actions
         act_select_all.triggered.connect(self.grid.list_view.selectAll)

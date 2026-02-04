@@ -49,12 +49,8 @@ import os
 import subprocess
 from translation_manager import tr as t
 
-# Background Jobs UI (best-practice non-blocking background operations)
-try:
-    from ui.background_activity_panel import BackgroundActivityPanel
-    HAS_ACTIVITY_PANEL = True
-except ImportError:
-    HAS_ACTIVITY_PANEL = False
+# Activity Center is now a QDockWidget managed by MainWindow.
+# Google layout no longer creates its own activity panel.
 
 
 
@@ -289,16 +285,9 @@ class GooglePhotosLayout(BaseLayout):
         main_layout.addWidget(self.splitter)
 
         # Background Activity Panel - shows background job progress (face detection, embeddings, etc.)
-        # Non-intrusive panel at bottom, collapsible, with pause/resume/cancel controls
-        if HAS_ACTIVITY_PANEL:
-            try:
-                self.activity_panel = BackgroundActivityPanel(main_widget)
-                main_layout.addWidget(self.activity_panel)
-            except Exception as e:
-                logger.warning(f"[GooglePhotosLayout] Could not create activity panel: {e}")
-                self.activity_panel = None
-        else:
-            self.activity_panel = None
+        # Activity Center is now a QDockWidget owned by MainWindow;
+        # no per-layout activity panel needed.
+        self.activity_panel = None
 
         # QUICK WIN #6: Create floating selection toolbar (initially hidden)
         self.floating_toolbar = self._create_floating_toolbar(main_widget)
