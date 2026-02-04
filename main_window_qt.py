@@ -552,6 +552,19 @@ class MainWindow(QMainWindow):
             self.layout_action_group.addAction(action)
             menu_layout.addAction(action)
 
+        menu_view.addSeparator()
+
+        # Activity Center toggle
+        self._act_toggle_activity = QAction("Activity Center", self)
+        self._act_toggle_activity.setShortcut("Ctrl+Shift+A")
+        self._act_toggle_activity.setCheckable(True)
+        self._act_toggle_activity.setChecked(False)
+        self._act_toggle_activity.setToolTip(
+            "Show/hide the Activity Center panel (background jobs)")
+        self._act_toggle_activity.triggered.connect(
+            self._toggle_activity_center)
+        menu_view.addAction(self._act_toggle_activity)
+
         # ========== FILTERS MENU ==========
         menu_filters = menu_bar.addMenu("Filters")
 
@@ -798,6 +811,15 @@ class MainWindow(QMainWindow):
             handler=self._on_cancel_scan_clicked
         )
         self.act_cancel_scan.setEnabled(False)
+
+        # Activity Center toggle in main toolbar
+        self.act_toolbar_activity = ui.action(
+            "Activity",
+            icon=None,
+            tooltip="Show/hide Activity Center (background jobs) (Ctrl+Shift+A)",
+            handler=self._toggle_activity_center,
+        )
+        tb.addAction(self.act_toolbar_activity)
 
         # Incremental vs full scan
         self.chk_incremental = ui.checkbox(tr('toolbar.incremental'), checked=True)
@@ -1088,6 +1110,10 @@ class MainWindow(QMainWindow):
             self.activity_center = ActivityCenter(self)
             self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea,
                                self.activity_center)
+            # Sync the View > Activity Center checkbox when user closes
+            # the dock via its own ✕ button
+            self.activity_center.visibilityChanged.connect(
+                self._on_activity_center_visibility_changed)
             # Start hidden; auto-shows when a job is registered
             self.activity_center.hide()
         except Exception as e:
@@ -3761,6 +3787,28 @@ class MainWindow(QMainWindow):
                 self._scan_status_label.setText("")
 
         QTimer.singleShot(timeout_ms, _hide)
+
+    # ------------------------------------------------------------------
+    # Activity Center toggle
+    # ------------------------------------------------------------------
+    def _toggle_activity_center(self, checked: bool = None):
+        """Toggle the Activity Center dock widget visibility."""
+        ac = getattr(self, "activity_center", None)
+        if not ac:
+            return
+        if checked is None:
+            checked = not ac.isVisible()
+        ac.setVisible(checked)
+        # Sync the View menu checkbox
+        act = getattr(self, "_act_toggle_activity", None)
+        if act and act.isChecked() != checked:
+            act.setChecked(checked)
+
+    def _on_activity_center_visibility_changed(self, visible: bool):
+        """Keep the View > Activity Center menu checkbox in sync."""
+        act = getattr(self, "_act_toggle_activity", None)
+        if act and act.isChecked() != visible:
+            act.setChecked(visible)
 
     def _init_embedding_status_indicator(self):
         """

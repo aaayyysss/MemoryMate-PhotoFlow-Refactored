@@ -438,9 +438,9 @@ class ActivityCenter(QDockWidget):
             mgr.signals.job_completed.connect(self._on_jm_completed)
             mgr.signals.job_failed.connect(self._on_jm_failed)
             mgr.signals.job_canceled.connect(self._on_jm_canceled)
-            logger.debug("[ActivityCenter] Connected to JobManager signals")
+            logger.info("[ActivityCenter] Connected to JobManager signals")
         except Exception as e:
-            logger.debug(f"[ActivityCenter] JobManager not available: {e}")
+            logger.info(f"[ActivityCenter] JobManager not available: {e}")
 
     # ─────────────────────────────────────────────────────────────────────
     # Public API
@@ -498,7 +498,7 @@ class ActivityCenter(QDockWidget):
         # Auto-show the dock when a job is registered
         if not self.isVisible():
             self.show()
-        logger.debug(f"[ActivityCenter] Job card created: {job_id} ({job_type})")
+        logger.info(f"[ActivityCenter] Job card created: {job_id} ({job_type})")
 
     @Slot(str, int, str)
     def _handle_progress(self, job_id: str, percent: int, message: str):
@@ -518,6 +518,7 @@ class ActivityCenter(QDockWidget):
         if card:
             card.mark_complete(summary)
             self._completed_at[job_id] = time.time()
+        logger.info(f"[ActivityCenter] Job completed: {job_id} — {summary}")
         self._emit_headline()
 
     @Slot(str, str)
@@ -526,6 +527,7 @@ class ActivityCenter(QDockWidget):
         if card:
             card.mark_failed(error)
             self._completed_at[job_id] = time.time()
+        logger.info(f"[ActivityCenter] Job failed: {job_id} — {error}")
         self._emit_headline()
 
     @Slot(str)
