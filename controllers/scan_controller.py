@@ -18,6 +18,7 @@ Version: 10.01.01.03
 """
 
 import logging
+import os
 import time
 from datetime import datetime
 from typing import List
@@ -141,6 +142,21 @@ class ScanController(QObject):
         # Non-modal progress via status-bar widgets (replaces old QProgressDialog)
         self.main.scan_ui_begin(tr("messages.scan_preparing"))
         self._last_progress_ui_ts = 0.0
+
+        # Register scan with Activity Center (if available)
+        self._scan_activity = None
+        ac = getattr(self.main, "activity_center", None)
+        if ac:
+            try:
+                ac.show()
+                self._scan_activity = ac.start_job(
+                    job_id=f"scan_{int(time.time())}",
+                    job_type="scan",
+                    description=f"Scanning {os.path.basename(folder)}",
+                    on_cancel=self.cancel,
+                )
+            except Exception as e:
+                self.logger.debug(f"Activity center registration failed: {e}")
 
         # DB writer
         # NOTE: Schema creation handled automatically by repository layer
@@ -342,9 +358,26 @@ class ScanController(QObject):
 
         self.main.scan_ui_update(pct_i, short_msg)
 
+        # Mirror to Activity Center handle
+        ah = getattr(self, "_scan_activity", None)
+        if ah:
+            try:
+                ah.update(pct_i, short_msg)
+                if msg:
+                    ah.log(msg)
+            except Exception:
+                pass
+
     def _on_finished(self, folders, photos, videos=0):
         self.logger.info(f"Scan finished: {folders} folders, {photos} photos, {videos} videos")
         self.main._scan_result = (folders, photos, videos)
+
+        ah = getattr(self, "_scan_activity", None)
+        if ah:
+            try:
+                ah.log(f"Scan finished: {folders} folders, {photos} photos, {videos} videos")
+            except Exception:
+                pass
 
         # Update status bar progress to 100 %
         try:
@@ -357,14 +390,19 @@ class ScanController(QObject):
 
     def _on_error(self, err_text: str):
         self.logger.error(f"Scan error: {err_text}")
+        ah = getattr(self, "_scan_activity", None)
+        if ah:
+            try:
+                ah.fail(err_text[:80])
+            except Exception:
+                pass
+            self._scan_activity = None
         try:
-#            from translations import tr
-
             QMessageBox.critical(self.main, tr("messages.scan_error"), err_text)
         except Exception:
             QMessageBox.critical(self.main, "Scan Error", err_text)
         if self.thread and self.thread.isRunning():
-            self.threa_manager.quit()
+            self.thread.quit()
 
     def _cleanup(self):
         """
@@ -490,7 +528,23 @@ class ScanController(QObject):
                         options=pipeline_options,
                     )
 
-                    # Progress updates go to status bar (non-blocking)
+                    # Register with Activity Center
+                    _pspl_handle = None
+                    ac = getattr(self.main, "activity_center", None)
+                    if ac:
+                        try:
+                            _pspl_handle = ac.start_job(
+                                job_id=f"post_scan_{int(time.time())}",
+                                job_type="post_scan_pipeline",
+                                description="Duplicate Detection",
+                                on_cancel=lambda: (
+                                    self._post_scan_worker.cancel()
+                                    if hasattr(self._post_scan_worker, "cancel") else None),
+                            )
+                        except Exception:
+                            pass
+
+                    # Progress updates go to status bar + Activity Center
                     def _on_pipeline_progress(step_name, step_num, total, message):
                         try:
                             self.main.statusBar().showMessage(
@@ -498,6 +552,13 @@ class ScanController(QObject):
                             )
                         except Exception:
                             pass
+                        if _pspl_handle:
+                            try:
+                                pct = int(step_num / total * 100) if total else 0
+                                _pspl_handle.update(pct, f"[{step_num}/{total}] {message}")
+                                _pspl_handle.log(message)
+                            except Exception:
+                                pass
 
                     def _on_pipeline_finished(results):
                         errors = results.get("errors", [])
@@ -511,16 +572,24 @@ class ScanController(QObject):
                                 parts.append(f"{exact} exact duplicate groups")
                             if similar > 0:
                                 parts.append(f"{similar} similar shot stacks")
+                            summary = f"Found {', '.join(parts)}"
                             self.main.statusBar().showMessage(
                                 f"Duplicate detection complete: {', '.join(parts)}", 8000
                             )
                         else:
+                            summary = "No duplicates found"
                             self.main.statusBar().showMessage(
                                 "Duplicate detection complete — no duplicates found", 5000
                             )
 
                         if errors:
                             self.logger.warning("Pipeline completed with errors: %s", errors)
+
+                        if _pspl_handle:
+                            try:
+                                _pspl_handle.complete(summary)
+                            except Exception:
+                                pass
 
                         # Refresh duplicates section in sidebar
                         self._refresh_duplicates_section()
@@ -535,6 +604,11 @@ class ScanController(QObject):
                         self.main.statusBar().showMessage(
                             f"Duplicate detection failed: {msg}", 8000
                         )
+                        if _pspl_handle:
+                            try:
+                                _pspl_handle.fail(str(msg)[:80])
+                            except Exception:
+                                pass
                         # Still mark complete on error so final refresh isn't blocked
                         self._scan_operations_pending.discard("post_scan_pipeline")
                         self._check_and_trigger_final_refresh()
@@ -570,6 +644,36 @@ class ScanController(QObject):
                         # Track face pipeline in pending operations
                         self._scan_operations_pending.add("face_pipeline")
 
+                        # Register with Activity Center
+                        _face_handle = None
+                        ac = getattr(self.main, "activity_center", None)
+                        if ac:
+                            try:
+                                _face_handle = ac.start_job(
+                                    job_id=f"face_{current_project_id}_{int(time.time())}",
+                                    job_type="face_pipeline",
+                                    description="Face Detection & Clustering",
+                                    on_cancel=lambda: svc.cancel(current_project_id),
+                                )
+                            except Exception:
+                                pass
+
+                        # Wire FacePipelineService progress to Activity Center
+                        def _on_face_progress(step_name, message, pid):
+                            if _face_handle:
+                                try:
+                                    # Face pipeline doesn't emit numeric %, use indeterminate
+                                    _face_handle.update(50, f"{step_name}: {message}")
+                                    _face_handle.log(message)
+                                except Exception:
+                                    pass
+
+                        if _face_handle:
+                            try:
+                                svc.progress.connect(_on_face_progress)
+                            except Exception:
+                                pass
+
                         def _on_face_pipeline_done(results, pid):
                             # Disconnect to prevent accumulation across scans
                             try:
@@ -577,8 +681,22 @@ class ScanController(QObject):
                                 svc.error.disconnect(_on_face_pipeline_error)
                             except (RuntimeError, TypeError):
                                 pass
+                            try:
+                                svc.progress.disconnect(_on_face_progress)
+                            except (RuntimeError, TypeError):
+                                pass
                             self._scan_operations_pending.discard("face_pipeline")
                             self.logger.info(f"Face pipeline complete for project {pid}. Remaining: {self._scan_operations_pending}")
+
+                            faces = results.get("faces_detected", 0) if isinstance(results, dict) else 0
+                            clusters = results.get("clusters_created", 0) if isinstance(results, dict) else 0
+                            if _face_handle:
+                                try:
+                                    _face_handle.complete(
+                                        f"{faces} faces, {clusters} people")
+                                except Exception:
+                                    pass
+
                             self._safe_refresh_people_section()
                             self._check_and_trigger_final_refresh()
 
@@ -588,8 +706,17 @@ class ScanController(QObject):
                                 svc.error.disconnect(_on_face_pipeline_error)
                             except (RuntimeError, TypeError):
                                 pass
+                            try:
+                                svc.progress.disconnect(_on_face_progress)
+                            except (RuntimeError, TypeError):
+                                pass
                             self._scan_operations_pending.discard("face_pipeline")
                             self.logger.error(f"Face pipeline error for project {pid}: {msg}")
+                            if _face_handle:
+                                try:
+                                    _face_handle.fail(str(msg)[:80])
+                                except Exception:
+                                    pass
                             self._check_and_trigger_final_refresh()
 
                         svc.finished.connect(_on_face_pipeline_done)
@@ -825,6 +952,15 @@ class ScanController(QObject):
         # Final status message — auto-hides after 5 s
         self.main.scan_ui_finish(f"Scan complete: {p} photos, {v} videos indexed", 5000)
         self.logger.info(f"Final refresh complete: {p} photos, {v} videos")
+
+        # Mark scan complete in Activity Center
+        ah = getattr(self, "_scan_activity", None)
+        if ah:
+            try:
+                ah.complete(f"{p} photos, {v} videos indexed")
+            except Exception:
+                pass
+            self._scan_activity = None
 
         # PHASE 2 Task 2.2: Reset state for next scan
         self._scan_refresh_scheduled = False
