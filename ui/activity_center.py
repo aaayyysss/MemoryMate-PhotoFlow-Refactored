@@ -45,7 +45,8 @@ from typing import Optional, Dict, Callable
 from PySide6.QtWidgets import (
     QDockWidget, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QProgressBar, QFrame, QScrollArea, QToolButton,
-    QPlainTextEdit, QSizePolicy,
+    QPlainTextEdit, QSizePolicy, QTabWidget, QTreeWidget,
+    QTreeWidgetItem, QAbstractItemView,
 )
 from PySide6.QtCore import Qt, QTimer, Signal, Slot, QObject
 from PySide6.QtGui import QTextCursor
@@ -391,7 +392,18 @@ class ActivityCenter(QDockWidget):
 
         layout.addLayout(header)
 
-        # Scrollable job cards
+        # Tabs: Active jobs and History
+        self._tabs = QTabWidget()
+        self._tabs.setDocumentMode(True)
+        self._tabs.setStyleSheet("QTabWidget::pane { border: none; }")
+        self._tabs.currentChanged.connect(self._on_tab_changed)
+
+        # --- Active tab ---
+        active_tab = QWidget()
+        active_layout = QVBoxLayout(active_tab)
+        active_layout.setContentsMargins(0, 0, 0, 0)
+        active_layout.setSpacing(6)
+
         self._scroll = QScrollArea()
         self._scroll.setWidgetResizable(True)
         self._scroll.setHorizontalScrollBarPolicy(
@@ -406,17 +418,129 @@ class ActivityCenter(QDockWidget):
         self._cards_layout.addStretch()
 
         self._scroll.setWidget(self._cards_container)
-        layout.addWidget(self._scroll, 1)
+        active_layout.addWidget(self._scroll, 1)
 
         # Empty state
         self._empty_label = QLabel("No background tasks running")
         self._empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._empty_label.setStyleSheet(
             "color: #666; font-size: 11px; padding: 20px;")
-        layout.addWidget(self._empty_label)
+        active_layout.addWidget(self._empty_label)
+
+        self._tabs.addTab(active_tab, "Active")
+
+        # --- History tab ---
+        history_tab = QWidget()
+        history_layout = QVBoxLayout(history_tab)
+        history_layout.setContentsMargins(0, 0, 0, 0)
+        history_layout.setSpacing(6)
+
+        hist_actions = QHBoxLayout()
+        self._refresh_history_btn = QPushButton("Refresh")
+        self._refresh_history_btn.setFixedHeight(22)
+        self._refresh_history_btn.setStyleSheet(
+            "QPushButton { background: #3E3E42; color: #CCCCCC; "
+            "border: 1px solid #555; border-radius: 3px; "
+            "padding: 2px 10px; font-size: 11px; }"
+            "QPushButton:hover { background: #505050; }")
+        self._refresh_history_btn.clicked.connect(self.refresh_history)
+        hist_actions.addWidget(self._refresh_history_btn)
+        self._clear_history_btn = QPushButton("Clear")
+        self._clear_history_btn.setFixedHeight(22)
+        self._clear_history_btn.setStyleSheet(
+            "QPushButton { background: #3E3E42; color: #CCCCCC; "
+            "border: 1px solid #555; border-radius: 3px; "
+            "padding: 2px 10px; font-size: 11px; }"
+            "QPushButton:hover { background: #4E3E3E; border-color: #AA6666; }")
+        self._clear_history_btn.clicked.connect(self._on_clear_history)
+        hist_actions.addWidget(self._clear_history_btn)
+        hist_actions.addStretch(1)
+        history_layout.addLayout(hist_actions)
+
+        self._history_tree = QTreeWidget()
+        self._history_tree.setHeaderLabels(
+            ["Time", "Type", "Title", "Status", "Duration"])
+        self._history_tree.setRootIsDecorated(False)
+        self._history_tree.setAlternatingRowColors(True)
+        self._history_tree.setSelectionMode(
+            QAbstractItemView.SelectionMode.SingleSelection)
+        self._history_tree.setUniformRowHeights(True)
+        self._history_tree.header().setStretchLastSection(True)
+        self._history_tree.setStyleSheet(
+            "QTreeWidget { background-color: #1E1E1E; color: #CCCCCC; "
+            "border: none; font-size: 11px; }"
+            "QTreeWidget::item:alternate { background-color: #252526; }"
+            "QHeaderView::section { background-color: #2D2D30; color: #CCC; "
+            "border: 1px solid #3E3E42; padding: 2px 6px; font-size: 11px; }")
+        history_layout.addWidget(self._history_tree, 1)
+
+        self._tabs.addTab(history_tab, "History")
+
+        layout.addWidget(self._tabs, 1)
 
         self.setWidget(container)
         self._update_empty_state()
+        self.refresh_history()
+
+    # ── History tab helpers ─────────────────────────────────────────────
+
+    _STATUS_COLORS = {
+        "succeeded": "#4EC9B0",
+        "failed": "#F44747",
+        "canceled": "#DCDCAA",
+        "running": "#569CD6",
+    }
+
+    def refresh_history(self, limit: int = 200) -> None:
+        """Populate the History tab from JobManager's persisted job history."""
+        try:
+            from services.job_manager import get_job_manager
+            rows = get_job_manager().get_history(limit=limit)
+        except Exception:
+            rows = []
+
+        self._history_tree.clear()
+        for r in rows:
+            created = time.strftime(
+                "%Y-%m-%d %H:%M:%S", time.localtime(r.created_ts))
+            dur = ""
+            if r.started_ts and r.finished_ts:
+                dur_s = max(0.0, float(r.finished_ts) - float(r.started_ts))
+                dur = self._fmt_duration(dur_s)
+            item = QTreeWidgetItem(
+                [created, r.job_type, r.title, r.status, dur])
+            item.setData(0, Qt.ItemDataRole.UserRole, r.job_id)
+            # Color-code the status column
+            color = self._STATUS_COLORS.get(r.status, "#CCCCCC")
+            from PySide6.QtGui import QBrush, QColor
+            item.setForeground(3, QBrush(QColor(color)))
+            self._history_tree.addTopLevelItem(item)
+
+        for col in (0, 1, 3, 4):
+            self._history_tree.resizeColumnToContents(col)
+
+    def _on_clear_history(self) -> None:
+        try:
+            from services.job_manager import get_job_manager
+            get_job_manager().clear_history()
+        except Exception:
+            pass
+        self.refresh_history()
+
+    def _on_tab_changed(self, index: int) -> None:
+        """Auto-refresh History tab when the user switches to it."""
+        if index == 1:  # History tab
+            self.refresh_history()
+
+    @staticmethod
+    def _fmt_duration(seconds: float) -> str:
+        m, s = divmod(int(seconds), 60)
+        h, m = divmod(m, 60)
+        if h:
+            return f"{h}h {m}m"
+        if m:
+            return f"{m}m {s}s"
+        return f"{s}s"
 
     # ── Signal wiring ───────────────────────────────────────────────────
 
