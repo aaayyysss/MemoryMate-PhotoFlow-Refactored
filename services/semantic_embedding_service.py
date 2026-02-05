@@ -1095,35 +1095,41 @@ class SemanticEmbeddingService:
         return embeddings
 
     # =========================================================================
-    # STALENESS DETECTION
+    # STALENESS DETECTION (v9.3.0: Pixel-based using dHash)
     # =========================================================================
 
     def is_embedding_stale(self, photo_id: int, file_path: str) -> bool:
         """
-        Check if an embedding is stale (source file has changed).
+        Check if an embedding is stale (source image pixels have changed).
 
-        Compares the stored mtime against the current file mtime.
+        v9.3.0: Uses pixel-based detection via perceptual hash (dHash).
+        Compares the stored source_photo_hash against the current image_content_hash.
+
         An embedding is stale if:
-        - The file has been modified since the embedding was computed
-        - The stored mtime is missing (legacy embedding)
+        - The image pixels have changed (different content hash)
+        - The stored hash is missing (legacy embedding)
+        - The current content hash is missing (legacy scan)
+
+        CRITICAL ADVANTAGE over mtime-based detection:
+        - EXIF-only edits (rating, tags, GPS) do NOT cause false-positive staleness
+        - Only actual pixel changes trigger re-embedding
+        - Saves compute and storage by avoiding unnecessary re-processing
 
         Args:
             photo_id: Photo ID
-            file_path: Current path to the photo file
+            file_path: Current path to the photo file (unused but kept for API compatibility)
 
         Returns:
             True if embedding is stale and needs regeneration
         """
-        import os
-        from pathlib import Path
-
         try:
-            # Get stored mtime from database
             with self.db.get_connection() as conn:
+                # Get stored embedding hash AND current image content hash in single query
                 cursor = conn.execute("""
-                    SELECT source_photo_mtime
-                    FROM semantic_embeddings
-                    WHERE photo_id = ? AND model = ?
+                    SELECT se.source_photo_hash, pm.image_content_hash
+                    FROM semantic_embeddings se
+                    LEFT JOIN photo_metadata pm ON se.photo_id = pm.id
+                    WHERE se.photo_id = ? AND se.model = ?
                 """, (photo_id, self.model_name))
 
                 row = cursor.fetchone()
@@ -1131,25 +1137,24 @@ class SemanticEmbeddingService:
                     # No embedding exists - not stale, just missing
                     return False
 
-                stored_mtime = row['source_photo_mtime']
+                stored_hash = row['source_photo_hash']
+                current_hash = row['image_content_hash']
 
-            # If no mtime was stored (legacy), consider it stale
-            if stored_mtime is None:
-                logger.debug(f"[SemanticEmbeddingService] Photo {photo_id} has no stored mtime - marking stale")
+            # If no stored hash (legacy embedding), consider it stale
+            if stored_hash is None:
+                logger.debug(f"[SemanticEmbeddingService] Photo {photo_id} has no stored hash - marking stale (legacy)")
                 return True
 
-            # Get current file mtime
-            path = Path(file_path)
-            if not path.exists():
-                logger.warning(f"[SemanticEmbeddingService] File not found for staleness check: {file_path}")
-                return False  # Can't regenerate if file doesn't exist
+            # If no current content hash (legacy scan), consider it stale
+            # This will trigger re-scan which will compute the hash
+            if current_hash is None:
+                logger.debug(f"[SemanticEmbeddingService] Photo {photo_id} has no content hash in metadata - marking stale (needs rescan)")
+                return True
 
-            current_mtime = str(path.stat().st_mtime)
-
-            # Compare mtimes
-            is_stale = stored_mtime != current_mtime
+            # Compare content hashes
+            is_stale = stored_hash != current_hash
             if is_stale:
-                logger.debug(f"[SemanticEmbeddingService] Photo {photo_id} is stale: stored={stored_mtime}, current={current_mtime}")
+                logger.debug(f"[SemanticEmbeddingService] Photo {photo_id} is stale: stored_hash={stored_hash[:8]}..., current_hash={current_hash[:8]}...")
 
             return is_stale
 
@@ -1161,8 +1166,9 @@ class SemanticEmbeddingService:
         """
         Get list of photo IDs with stale embeddings in a project.
 
-        Efficiently checks all embeddings in one query and compares against
-        current file mtimes.
+        v9.3.0: Uses pixel-based detection via perceptual hash (dHash).
+        Efficiently finds stale embeddings in a single SQL query by comparing
+        stored source_photo_hash against current image_content_hash.
 
         Args:
             project_id: Project ID
@@ -1170,18 +1176,24 @@ class SemanticEmbeddingService:
         Returns:
             List of (photo_id, file_path) tuples for photos with stale embeddings
         """
-        import os
-        from pathlib import Path
-
         stale_photos = []
 
         with self.db.get_connection() as conn:
-            # Get all embeddings with their stored mtimes and file paths
+            # Single efficient query: Find embeddings where hash doesn't match
+            # This includes:
+            # 1. source_photo_hash IS NULL (legacy embedding)
+            # 2. image_content_hash IS NULL (legacy scan, needs rescan)
+            # 3. source_photo_hash != image_content_hash (actual pixel change)
             query = """
-                SELECT se.photo_id, p.path, se.source_photo_mtime
+                SELECT se.photo_id, p.path, se.source_photo_hash, p.image_content_hash
                 FROM semantic_embeddings se
                 JOIN photo_metadata p ON se.photo_id = p.id
                 WHERE p.project_id = ? AND se.model = ?
+                AND (
+                    se.source_photo_hash IS NULL
+                    OR p.image_content_hash IS NULL
+                    OR se.source_photo_hash != p.image_content_hash
+                )
             """
 
             cursor = conn.execute(query, (project_id, self.model_name))
@@ -1189,25 +1201,10 @@ class SemanticEmbeddingService:
             for row in cursor.fetchall():
                 photo_id = row['photo_id']
                 file_path = row['path']
-                stored_mtime = row['source_photo_mtime']
-
-                # Legacy embedding with no mtime - mark as stale
-                if stored_mtime is None:
-                    stale_photos.append((photo_id, file_path))
-                    continue
-
-                # Check if file still exists and compare mtime
-                try:
-                    path = Path(file_path)
-                    if path.exists():
-                        current_mtime = str(path.stat().st_mtime)
-                        if stored_mtime != current_mtime:
-                            stale_photos.append((photo_id, file_path))
-                except Exception as e:
-                    logger.warning(f"[SemanticEmbeddingService] Error checking mtime for {file_path}: {e}")
+                stale_photos.append((photo_id, file_path))
 
         if stale_photos:
-            logger.info(f"[SemanticEmbeddingService] Found {len(stale_photos)} stale embeddings in project {project_id}")
+            logger.info(f"[SemanticEmbeddingService] Found {len(stale_photos)} stale embeddings in project {project_id} (pixel-hash based)")
         else:
             logger.debug(f"[SemanticEmbeddingService] No stale embeddings in project {project_id}")
 
@@ -1247,20 +1244,20 @@ class SemanticEmbeddingService:
         """
         Get statistics about embedding staleness for a project.
 
+        v9.3.0: Uses pixel-based detection via perceptual hash (dHash).
+
         Args:
             project_id: Project ID
 
         Returns:
-            Dictionary with stats: total, fresh, stale, missing_mtime
+            Dictionary with stats: total, fresh, stale, missing_hash (legacy embeddings)
         """
         stats = {
             'total': 0,
             'fresh': 0,
             'stale': 0,
-            'missing_mtime': 0
+            'missing_hash': 0  # Renamed from missing_mtime for v9.3.0
         }
-
-        stale_photos = self.get_stale_embeddings_for_project(project_id)
 
         with self.db.get_connection() as conn:
             # Count total embeddings
@@ -1272,16 +1269,18 @@ class SemanticEmbeddingService:
             """, (project_id, self.model_name))
             stats['total'] = cursor.fetchone()['count']
 
-            # Count embeddings without mtime
+            # Count embeddings without source hash (legacy)
             cursor = conn.execute("""
                 SELECT COUNT(*) as count
                 FROM semantic_embeddings se
                 JOIN photo_metadata p ON se.photo_id = p.id
                 WHERE p.project_id = ? AND se.model = ?
-                AND se.source_photo_mtime IS NULL
+                AND se.source_photo_hash IS NULL
             """, (project_id, self.model_name))
-            stats['missing_mtime'] = cursor.fetchone()['count']
+            stats['missing_hash'] = cursor.fetchone()['count']
 
+        # Get staleness info using the efficient query
+        stale_photos = self.get_stale_embeddings_for_project(project_id)
         stats['stale'] = len(stale_photos)
         stats['fresh'] = stats['total'] - stats['stale']
 
@@ -1431,10 +1430,10 @@ class SemanticEmbeddingService:
             'photos_without_embeddings': 0,
             'coverage_percent': 0.0,
 
-            # Staleness
+            # Staleness (v9.3.0: pixel-hash based)
             'fresh_embeddings': 0,
             'stale_embeddings': 0,
-            'missing_mtime': 0,
+            'missing_hash': 0,
 
             # Storage
             'storage_bytes': 0,
@@ -1509,15 +1508,15 @@ class SemanticEmbeddingService:
                 saved = float32_equivalent - stats['storage_bytes']
                 stats['space_saved_percent'] = (saved / float32_equivalent) * 100
 
-            # Get embeddings without mtime (legacy)
+            # Get embeddings without source hash (legacy - v9.3.0)
             cursor = conn.execute("""
                 SELECT COUNT(*) as count
                 FROM semantic_embeddings se
                 JOIN photo_metadata p ON se.photo_id = p.id
                 WHERE p.project_id = ? AND se.model = ?
-                AND se.source_photo_mtime IS NULL
+                AND se.source_photo_hash IS NULL
             """, (project_id, self.model_name))
-            stats['missing_mtime'] = cursor.fetchone()['count']
+            stats['missing_hash'] = cursor.fetchone()['count']
 
         # Get staleness info (may be slow for large projects)
         try:

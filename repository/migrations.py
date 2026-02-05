@@ -395,6 +395,23 @@ VALUES ('9.2.0', 'Add GPS columns to photo_metadata for location-based browsing'
 )
 
 
+# Migration to v9.3.0 (Add image_content_hash for pixel-based staleness detection)
+MIGRATION_9_3_0 = Migration(
+    version="9.3.0",
+    description="Add image_content_hash for pixel-based embedding staleness detection",
+    sql="""
+-- Migration v9.3.0: Add image_content_hash for pixel-based staleness detection
+-- This uses perceptual hash (dHash) which is resilient to metadata-only changes
+-- Replaces mtime-based staleness detection that caused unnecessary re-embedding on EXIF edits
+-- Note: ALTER TABLE is handled in _add_image_content_hash_column_if_missing()
+
+INSERT OR REPLACE INTO schema_version (version, description, applied_at)
+VALUES ('9.3.0', 'Add image_content_hash for pixel-based embedding staleness detection', CURRENT_TIMESTAMP);
+""",
+    rollback_sql=""
+)
+
+
 # Ordered list of all migrations
 ALL_MIGRATIONS = [
     MIGRATION_1_5_0,
@@ -407,6 +424,7 @@ ALL_MIGRATIONS = [
     MIGRATION_9_0_0,
     MIGRATION_9_1_0,
     MIGRATION_9_2_0,
+    MIGRATION_9_3_0,
 ]
 
 
@@ -589,6 +607,9 @@ class MigrationManager:
                 elif migration.version == "9.2.0":
                     # Apply migration v9.2: add GPS columns to photo_metadata
                     self._add_gps_columns_if_missing(conn)
+                elif migration.version == "9.3.0":
+                    # Apply migration v9.3: add image_content_hash column
+                    self._add_image_content_hash_column_if_missing(conn)
 
                 # Execute migration SQL (version tracking)
                 conn.executescript(migration.sql)
@@ -998,6 +1019,38 @@ class MigrationManager:
 
         conn.commit()
         self.logger.info("✓ GPS columns added successfully")
+
+    def _add_image_content_hash_column_if_missing(self, conn: sqlite3.Connection):
+        """
+        Add image_content_hash column to photo_metadata if it doesn't exist.
+
+        This is the core of the v9.3.0 migration - adds image_content_hash for
+        pixel-based embedding staleness detection using perceptual hash (dHash).
+
+        The dHash is computed from decoded pixel data and is resilient to:
+        - EXIF metadata changes (GPS, date, camera settings)
+        - File re-saves without pixel changes
+        - Minor compression artifacts
+
+        This replaces mtime-based staleness detection which incorrectly marked
+        embeddings as stale after EXIF-only edits.
+
+        Args:
+            conn: Database connection
+        """
+        cur = conn.cursor()
+
+        # Check photo_metadata for image_content_hash column
+        cur.execute("PRAGMA table_info(photo_metadata)")
+        metadata_columns = {row['name'] for row in cur.fetchall()}
+
+        if 'image_content_hash' not in metadata_columns:
+            self.logger.info("Adding column photo_metadata.image_content_hash")
+            cur.execute("ALTER TABLE photo_metadata ADD COLUMN image_content_hash TEXT")
+            conn.commit()
+            self.logger.info("✓ image_content_hash column added successfully")
+        else:
+            self.logger.info("✓ image_content_hash column already exists")
 
 
 def get_migration_status(db_connection) -> Dict[str, Any]:

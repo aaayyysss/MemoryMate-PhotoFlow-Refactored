@@ -194,7 +194,8 @@ class PhotoRepository(BaseRepository):
                created_date: Optional[str] = None,
                created_year: Optional[int] = None,
                gps_latitude: Optional[float] = None,
-               gps_longitude: Optional[float] = None) -> int:
+               gps_longitude: Optional[float] = None,
+               image_content_hash: Optional[str] = None) -> int:
         """
         Insert or update photo metadata for a project.
 
@@ -213,6 +214,7 @@ class PhotoRepository(BaseRepository):
             created_year: Year for date grouping (BUG FIX #7)
             gps_latitude: GPS latitude in decimal degrees (LONG-TERM FIX 2026-01-08)
             gps_longitude: GPS longitude in decimal degrees (LONG-TERM FIX 2026-01-08)
+            image_content_hash: Perceptual hash (dHash) for pixel-based staleness detection (v9.3.0)
 
         Returns:
             Photo ID (newly inserted or existing)
@@ -224,7 +226,7 @@ class PhotoRepository(BaseRepository):
 
         now = time.strftime("%Y-%m-%d %H:%M:%S")
 
-        # DEFENSIVE FALLBACK: GPS columns should be added by migration v9.2.0 at app startup.
+        # DEFENSIVE FALLBACK: GPS/hash columns should be added by migration v9.2.0/v9.3.0 at app startup.
         # This fallback only triggers if migration didn't run (shouldn't happen in normal use).
         with self.connection() as conn:
             cur = conn.cursor()
@@ -239,17 +241,21 @@ class PhotoRepository(BaseRepository):
             if 'location_name' not in existing_cols:
                 cur.execute("ALTER TABLE photo_metadata ADD COLUMN location_name TEXT")
                 missing_cols.append('location_name')
+            if 'image_content_hash' not in existing_cols:
+                cur.execute("ALTER TABLE photo_metadata ADD COLUMN image_content_hash TEXT")
+                missing_cols.append('image_content_hash')
             if missing_cols:
-                self.logger.warning(f"[PhotoRepository] Defensive fallback: added missing GPS columns {missing_cols} - check migration system")
+                self.logger.warning(f"[PhotoRepository] Defensive fallback: added missing columns {missing_cols} - check migration system")
                 conn.commit()
 
         # BUG FIX #7: Include created_ts, created_date, created_year for date hierarchy queries
         # LONG-TERM FIX (2026-01-08): Include gps_latitude, gps_longitude for Locations section
+        # v9.3.0: Include image_content_hash for pixel-based embedding staleness detection
         sql = """
             INSERT INTO photo_metadata
                 (path, folder_id, project_id, size_kb, modified, width, height, date_taken, tags, updated_at,
-                 created_ts, created_date, created_year, gps_latitude, gps_longitude)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 created_ts, created_date, created_year, gps_latitude, gps_longitude, image_content_hash)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(path, project_id) DO UPDATE SET
                 folder_id = excluded.folder_id,
                 size_kb = excluded.size_kb,
@@ -263,13 +269,14 @@ class PhotoRepository(BaseRepository):
                 created_date = excluded.created_date,
                 created_year = excluded.created_year,
                 gps_latitude = COALESCE(excluded.gps_latitude, photo_metadata.gps_latitude),
-                gps_longitude = COALESCE(excluded.gps_longitude, photo_metadata.gps_longitude)
+                gps_longitude = COALESCE(excluded.gps_longitude, photo_metadata.gps_longitude),
+                image_content_hash = COALESCE(excluded.image_content_hash, photo_metadata.image_content_hash)
         """
 
         with self.connection() as conn:
             cur = conn.cursor()
             cur.execute(sql, (normalized_path, folder_id, project_id, size_kb, modified, width, height,
-                            date_taken, tags, now, created_ts, created_date, created_year, gps_latitude, gps_longitude))
+                            date_taken, tags, now, created_ts, created_date, created_year, gps_latitude, gps_longitude, image_content_hash))
             conn.commit()
 
             # Get the ID of the inserted/updated row
@@ -277,7 +284,7 @@ class PhotoRepository(BaseRepository):
             result = cur.fetchone()
             photo_id = result['id'] if result else None
 
-        self.logger.debug(f"Upserted photo: {normalized_path} (id={photo_id}, project={project_id}, GPS=({gps_latitude}, {gps_longitude}))")
+        self.logger.debug(f"Upserted photo: {normalized_path} (id={photo_id}, project={project_id}, GPS=({gps_latitude}, {gps_longitude}), hash={image_content_hash[:8] if image_content_hash else None}...)")
         return photo_id
 
     def bulk_upsert(self, rows: List[tuple], project_id: int) -> int:
@@ -286,7 +293,8 @@ class PhotoRepository(BaseRepository):
 
         Args:
             rows: List of tuples: (path, folder_id, size_kb, modified, width, height, date_taken, tags,
-                                   created_ts, created_date, created_year, gps_latitude, gps_longitude)
+                                   created_ts, created_date, created_year, gps_latitude, gps_longitude,
+                                   image_content_hash)
             project_id: Project ID
 
         Returns:
@@ -298,7 +306,7 @@ class PhotoRepository(BaseRepository):
         import time
         now = time.strftime("%Y-%m-%d %H:%M:%S")
 
-        # DEFENSIVE FALLBACK: GPS columns should be added by migration v9.2.0 at app startup.
+        # DEFENSIVE FALLBACK: GPS/hash columns should be added by migration v9.2.0/v9.3.0 at app startup.
         # This fallback only triggers if migration didn't run (shouldn't happen in normal use).
         with self.connection() as conn:
             cur = conn.cursor()
@@ -313,21 +321,24 @@ class PhotoRepository(BaseRepository):
             if 'location_name' not in existing_cols:
                 cur.execute("ALTER TABLE photo_metadata ADD COLUMN location_name TEXT")
                 missing_cols.append('location_name')
+            if 'image_content_hash' not in existing_cols:
+                cur.execute("ALTER TABLE photo_metadata ADD COLUMN image_content_hash TEXT")
+                missing_cols.append('image_content_hash')
             if missing_cols:
-                self.logger.warning(f"[PhotoRepository] Defensive fallback: added missing GPS columns {missing_cols} - check migration system")
+                self.logger.warning(f"[PhotoRepository] Defensive fallback: added missing columns {missing_cols} - check migration system")
                 conn.commit()
 
         # Normalize paths and add project_id + updated_at timestamp to each row
         rows_normalized = []
         for row in rows:
-            # BUG FIX #7 + LONG-TERM FIX (2026-01-08): Unpack with created_* and GPS fields
-            # (path, folder_id, size_kb, modified, width, height, date_taken, tags,
-            #  created_ts, created_date, created_year, gps_latitude, gps_longitude)
+            # BUG FIX #7 + LONG-TERM FIX (2026-01-08) + v9.3.0: Unpack with created_*, GPS, and content hash
+            # Input: (path, folder_id, size_kb, modified, width, height, date_taken, tags,
+            #         created_ts, created_date, created_year, gps_latitude, gps_longitude, image_content_hash)
             path = row[0]
             normalized_path = self._normalize_path(path)
             # Rebuild tuple with normalized path and project_id
-            # New order: (path, folder_id, project_id, size_kb, modified, width, height, date_taken, tags,
-            #             updated_at, created_ts, created_date, created_year, gps_latitude, gps_longitude)
+            # Output: (path, folder_id, project_id, size_kb, modified, width, height, date_taken, tags,
+            #          updated_at, created_ts, created_date, created_year, gps_latitude, gps_longitude, image_content_hash)
             normalized_row = (normalized_path, row[1], project_id) + row[2:8] + (now,) + row[8:]
             rows_normalized.append(normalized_row)
 
@@ -335,11 +346,12 @@ class PhotoRepository(BaseRepository):
 
         # BUG FIX #7: Include created_ts, created_date, created_year in INSERT
         # LONG-TERM FIX (2026-01-08): Include gps_latitude, gps_longitude for Locations section
+        # v9.3.0: Include image_content_hash for pixel-based embedding staleness detection
         sql = """
             INSERT INTO photo_metadata
                 (path, folder_id, project_id, size_kb, modified, width, height, date_taken, tags, updated_at,
-                 created_ts, created_date, created_year, gps_latitude, gps_longitude)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 created_ts, created_date, created_year, gps_latitude, gps_longitude, image_content_hash)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(path, project_id) DO UPDATE SET
                 folder_id = excluded.folder_id,
                 size_kb = excluded.size_kb,
@@ -353,7 +365,8 @@ class PhotoRepository(BaseRepository):
                 created_date = excluded.created_date,
                 created_year = excluded.created_year,
                 gps_latitude = COALESCE(excluded.gps_latitude, photo_metadata.gps_latitude),
-                gps_longitude = COALESCE(excluded.gps_longitude, photo_metadata.gps_longitude)
+                gps_longitude = COALESCE(excluded.gps_longitude, photo_metadata.gps_longitude),
+                image_content_hash = COALESCE(excluded.image_content_hash, photo_metadata.image_content_hash)
         """
 
         with self.connection() as conn:
