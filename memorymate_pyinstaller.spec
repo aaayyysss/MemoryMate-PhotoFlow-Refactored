@@ -290,6 +290,7 @@ hiddenimports = [
     'repository.asset_repository',
     'repository.base_repository',
     'repository.folder_repository',
+    'repository.job_history_repository',
     'repository.photo_repository',
     'repository.project_repository',
     'repository.stack_repository',

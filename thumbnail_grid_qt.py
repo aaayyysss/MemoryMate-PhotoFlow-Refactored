@@ -1354,7 +1354,8 @@ class ThumbnailGridQt(QWidget):
         tag_map = {}
         try:
             tag_map = self.db.get_tags_for_paths(self._paths, self.project_id)
-            print(f"[GRID] Fetched tags for {len(self._paths)} paths ({content_type}), got {len(tag_map)} paths with tags")
+            paths_with_tags = sum(1 for v in tag_map.values() if v)
+            print(f"[GRID] Queried tags for {len(self._paths)} paths ({content_type}), {paths_with_tags} have tags")
         except Exception as e:
             print(f"[GRID] Warning: Could not fetch tags: {e}")
 
@@ -3169,7 +3170,8 @@ class ThumbnailGridQt(QWidget):
         # Paths from get_images_by_branch are already in DB format
         # get_tags_for_paths will normalize them internally to match photo_metadata table
         tag_map = self.db.get_tags_for_paths(self._paths, self.project_id)
-        print(f"[GRID] Fetched tags for {len(self._paths)} paths, got {len(tag_map)} paths with tags")
+        paths_with_tags = sum(1 for v in tag_map.values() if v)
+        print(f"[GRID] Queried tags for {len(self._paths)} paths, {paths_with_tags} have tags")
         
         # 📅 Grouping: fetch date_taken and sort descending
         import os, time

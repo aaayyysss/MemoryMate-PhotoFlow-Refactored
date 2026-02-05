@@ -163,15 +163,14 @@ class ScanController(QObject):
         self.db_writer.committed.connect(self._on_committed)
         self.db_writer.start()
 
-        # CRITICAL: Initialize database schema before starting scan
-        # This ensures the repository layer has created all necessary tables
+        # Verify database connection (schema already initialized at startup)
         try:
             from repository.base_repository import DatabaseConnection
-            db_conn = DatabaseConnection("reference_data.db", auto_init=True)
-            self.logger.info("Database schema initialized successfully")
+            db_conn = DatabaseConnection("reference_data.db", auto_init=False)
+            self.logger.info("Database connection verified for scan")
         except Exception as e:
-            self.logger.error(f"Failed to initialize database schema: {e}", exc_info=True)
-            self.main.statusBar().showMessage(f"❌ Database initialization failed: {e}")
+            self.logger.error(f"Failed to verify database connection: {e}", exc_info=True)
+            self.main.statusBar().showMessage(f"Database connection failed: {e}")
             return
 
         # Get current project_id

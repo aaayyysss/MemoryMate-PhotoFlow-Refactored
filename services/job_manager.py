@@ -60,6 +60,7 @@ from threading import Lock
 from PySide6.QtCore import QObject, Signal, QThreadPool, QTimer, QRunnable, Slot
 
 from services.job_service import get_job_service, Job
+from repository.job_history_repository import JobHistoryRepository
 from logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -253,6 +254,14 @@ class JobManager(QObject):
         self._tracked_cancel_callbacks: Dict[int, Callable] = {}
         self._tracked_descriptions: Dict[int, str] = {}
 
+        # Persistent job history (graceful fallback if DB init fails)
+        self._history_repo: Optional[JobHistoryRepository] = None
+        self._last_hist_progress_write: Dict[int, float] = {}
+        try:
+            self._history_repo = JobHistoryRepository()
+        except Exception as e:
+            logger.warning(f"[JobManager] Job history disabled (DB init failed): {e}")
+
         self._initialized = True
         logger.info(f"[JobManager] Initialized with max {self._max_workers} workers")
 
@@ -405,6 +414,13 @@ class JobManager(QObject):
             self._tracked_descriptions.pop(job_id, None)
             if active:
                 logger.info(f"[JobManager] Canceled tracked job {job_id}")
+                if self._history_repo:
+                    try:
+                        self._history_repo.finish(
+                            job_id=str(job_id), status='canceled', canceled=1)
+                    except Exception:
+                        pass
+                self._last_hist_progress_write.pop(job_id, None)
                 self.signals.job_canceled.emit(job_id, active.job_type)
                 self.signals.active_jobs_changed.emit(len(self._active_jobs))
             return True
@@ -532,6 +548,13 @@ class JobManager(QObject):
         if description:
             self._tracked_descriptions[job_id] = description
 
+        if self._history_repo:
+            try:
+                self._history_repo.upsert_start(
+                    job_id=str(job_id), job_type=job_type, title=description)
+            except Exception as e:
+                logger.debug(f"[JobManager] Failed to persist job start {job_id}: {e}")
+
         logger.info(f"[JobManager] Registered tracked job {job_id}: {job_type} — {description}")
         self.signals.job_started.emit(job_id, job_type, total)
         self.signals.active_jobs_changed.emit(len(self._active_jobs))
@@ -572,6 +595,19 @@ class JobManager(QObject):
                 message=message,
                 started_at=active.started_at,
             )
+
+        # Throttled persistence (at most once per second per job)
+        if self._history_repo:
+            try:
+                frac = float(current) / float(total) if total else 0.0
+                now = time.time()
+                last = self._last_hist_progress_write.get(job_id, 0.0)
+                if now - last >= 1.0 or (total and current >= total):
+                    self._history_repo.update_progress(
+                        job_id=str(job_id), progress=frac)
+                    self._last_hist_progress_write[job_id] = now
+            except Exception:
+                pass
 
     def report_log(self, job_id: int, message: str):
         """
@@ -621,6 +657,19 @@ class JobManager(QObject):
 
         stats_json = json.dumps(stats or {})
 
+        # Persist to history DB
+        if self._history_repo:
+            try:
+                if success:
+                    self._history_repo.finish(
+                        job_id=str(job_id), status='succeeded', result=stats or {})
+                else:
+                    self._history_repo.finish(
+                        job_id=str(job_id), status='failed', error=error or 'error')
+            except Exception:
+                pass
+        self._last_hist_progress_write.pop(job_id, None)
+
         if success:
             logger.info(f"[JobManager] Tracked job {job_id} ({active.job_type}) completed: {stats}")
             self.signals.job_completed.emit(job_id, active.job_type, True, stats_json)
@@ -636,6 +685,24 @@ class JobManager(QObject):
     def get_job_description(self, job_id: int) -> str:
         """Return the human-readable description for a tracked job, or ``""``."""
         return self._tracked_descriptions.get(job_id, "")
+
+    def get_history(self, limit: int = 200):
+        """Return recent tracked-job runs from persistent history, most recent first."""
+        if not self._history_repo:
+            return []
+        try:
+            return self._history_repo.list_recent(limit=limit)
+        except Exception:
+            return []
+
+    def clear_history(self) -> None:
+        """Clear persisted job history."""
+        if not self._history_repo:
+            return
+        try:
+            self._history_repo.clear_all()
+        except Exception:
+            pass
 
     def notify_user_active(self):
         """
