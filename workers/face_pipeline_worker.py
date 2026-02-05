@@ -58,6 +58,69 @@ class FacePipelineWorker(QRunnable):
     def cancel(self):
         self._cancelled = True
 
+    def _clear_stale_face_data(self):
+        """
+        Clear stale face detection data from previous pipeline runs.
+
+        This prevents the "20 detected / 30 loaded" mismatch where old faces
+        from previous runs accumulate and pollute clustering results.
+
+        Clears:
+        - face_crops: All face crops for this project (embeddings + bboxes)
+        - face_branch_reps: Derived cluster representatives
+        - branches with face-related branch_keys (auto-generated clusters)
+
+        Does NOT clear:
+        - User-curated labels or manual assignments (if any)
+        """
+        from reference_db import ReferenceDB
+
+        db = ReferenceDB()
+        try:
+            with db._connect() as conn:
+                cur = conn.cursor()
+
+                # Count existing face data for logging
+                cur.execute(
+                    "SELECT COUNT(*) FROM face_crops WHERE project_id = ?",
+                    (self.project_id,)
+                )
+                old_crop_count = cur.fetchone()[0]
+
+                cur.execute(
+                    "SELECT COUNT(*) FROM face_branch_reps WHERE project_id = ?",
+                    (self.project_id,)
+                )
+                old_rep_count = cur.fetchone()[0]
+
+                # Clear face_crops (detection results with embeddings)
+                cur.execute(
+                    "DELETE FROM face_crops WHERE project_id = ?",
+                    (self.project_id,)
+                )
+
+                # Clear face_branch_reps (cluster centroids and representatives)
+                cur.execute(
+                    "DELETE FROM face_branch_reps WHERE project_id = ?",
+                    (self.project_id,)
+                )
+
+                # Clear auto-generated branches (face_cluster_* pattern)
+                cur.execute(
+                    "DELETE FROM branches WHERE project_id = ? AND branch_key LIKE 'face_cluster_%'",
+                    (self.project_id,)
+                )
+
+                conn.commit()
+
+                logger.info(
+                    "[FacePipelineWorker] Cleared stale face data: "
+                    "%d crops, %d reps (project %d)",
+                    old_crop_count, old_rep_count, self.project_id
+                )
+        finally:
+            db.close()
+
     def run(self):
         """Execute face detection + clustering sequentially in background thread."""
         import threading
@@ -75,6 +138,22 @@ class FacePipelineWorker(QRunnable):
             "clusters_created": 0,
             "errors": [],
         }
+
+        # ── Step 0: Clear stale face data from previous runs ──────
+        # This prevents accumulating old faces that would pollute clustering.
+        # We clear derived artifacts (clusters, face_crops embeddings) but keep
+        # user-curated data if any exists.
+        if self._cancelled:
+            self.signals.finished.emit(results)
+            return
+
+        self.signals.progress.emit("cleanup", "Clearing previous face detection data...")
+        try:
+            self._clear_stale_face_data()
+            logger.info("[FacePipelineWorker] Cleared stale face data for project %d", self.project_id)
+        except Exception as e:
+            logger.warning("[FacePipelineWorker] Cleanup warning (continuing): %s", e)
+            # Don't fail the whole pipeline on cleanup error
 
         # ── Step 1: Face Detection ────────────────────────────────
         if self._cancelled:
