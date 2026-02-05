@@ -9,10 +9,11 @@
 #   - Progress is forwarded through unified Qt signals
 #   - Cancellation is clean and idempotent
 #   - Incremental batch_committed events drive progressive People refresh
+#   - All runs are registered as tracked jobs with JobManager for history
 
 import logging
 import threading
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 
 from PySide6.QtCore import QObject, Signal, QThreadPool
 
@@ -59,6 +60,8 @@ class FacePipelineService(QObject):
         super().__init__(parent)
         # project_id → worker reference (for cancellation / duplicate guard)
         self._running: dict[int, object] = {}
+        # project_id → tracked job_id in JobManager
+        self._tracked_job_ids: Dict[int, int] = {}
         self._lock = threading.Lock()
 
     # ── Public API ───────────────────────────────────────────
@@ -122,6 +125,7 @@ class FacePipelineService(QObject):
         )
 
         from workers.face_pipeline_worker import FacePipelineWorker
+        from services.job_manager import get_job_manager
 
         worker = FacePipelineWorker(
             project_id=project_id,
@@ -131,18 +135,63 @@ class FacePipelineService(QObject):
         if photo_paths:
             worker._scoped_photo_paths = photo_paths
 
+        # ── Register as tracked job with JobManager for Activity Center + History ─────
+        scope_desc = f"{len(photo_paths)} photos" if photo_paths else "all photos"
+        description = f"Face detection ({scope_desc})"
+        tracked_job_id: Optional[int] = None
+        try:
+            jm = get_job_manager()
+            tracked_job_id = jm.register_tracked_job(
+                job_type="face_pipeline",
+                total=0,  # indeterminate until worker reports
+                cancel_callback=lambda: self.cancel(project_id),
+                description=description,
+            )
+            with self._lock:
+                self._tracked_job_ids[project_id] = tracked_job_id
+            logger.debug(
+                "[FacePipelineService] Registered tracked job %d for project %d",
+                tracked_job_id, project_id,
+            )
+        except Exception as e:
+            logger.warning("[FacePipelineService] Could not register tracked job: %s", e)
+
         # ── Connect worker signals → service signals ─────────
         def _on_progress(step_name, message):
             self.progress.emit(step_name, message, project_id)
+            # Forward to JobManager for Activity Center updates
+            if tracked_job_id is not None:
+                try:
+                    jm = get_job_manager()
+                    jm.report_progress(tracked_job_id, 0, 0, message=f"{step_name}: {message}")
+                except Exception:
+                    pass
 
         def _on_finished(results):
             with self._lock:
                 self._running.pop(project_id, None)
+                job_id = self._tracked_job_ids.pop(project_id, None)
+            # Report completion to JobManager
+            if job_id is not None:
+                try:
+                    jm = get_job_manager()
+                    stats = results if isinstance(results, dict) else {"result": str(results)}
+                    jm.complete_tracked_job(job_id, success=True, stats=stats)
+                except Exception:
+                    pass
             self.finished.emit(results, project_id)
 
         def _on_error(msg):
             with self._lock:
                 self._running.pop(project_id, None)
+                job_id = self._tracked_job_ids.pop(project_id, None)
+            # Report failure to JobManager
+            if job_id is not None:
+                try:
+                    jm = get_job_manager()
+                    jm.complete_tracked_job(job_id, success=False, error=msg)
+                except Exception:
+                    pass
             self.error.emit(msg, project_id)
 
         worker.signals.progress.connect(_on_progress)
@@ -160,8 +209,19 @@ class FacePipelineService(QObject):
         """Cancel the running pipeline for *project_id* (idempotent)."""
         with self._lock:
             worker = self._running.get(project_id)
+            job_id = self._tracked_job_ids.get(project_id)
         if worker and hasattr(worker, "cancel"):
             logger.info("[FacePipelineService] Cancelling pipeline for project %d", project_id)
             worker.cancel()
+            # Note: _on_error or _on_finished callback will handle JobManager cleanup
         else:
             logger.debug("[FacePipelineService] No running pipeline for project %d", project_id)
+            # Clean up orphaned tracked job if worker already gone
+            if job_id is not None:
+                with self._lock:
+                    self._tracked_job_ids.pop(project_id, None)
+                try:
+                    from services.job_manager import get_job_manager
+                    get_job_manager().cancel_tracked_job(job_id)
+                except Exception:
+                    pass
