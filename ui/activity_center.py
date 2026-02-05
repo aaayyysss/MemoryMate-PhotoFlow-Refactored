@@ -347,6 +347,10 @@ class ActivityCenter(QDockWidget):
         self._remove_timer.start()
         self._completed_at: Dict[str, float] = {}
 
+        # JobManager bridge state — prevent duplicate connects, allow cleanup
+        self._jm_connected_id: Optional[int] = None
+        self._jm_connections: list = []  # (signal, slot) pairs
+
         self._build_ui()
         self._connect_internal_signals()
         self._try_connect_job_manager()
@@ -555,19 +559,63 @@ class ActivityCenter(QDockWidget):
         self._signals.cancel_requested.connect(self._handle_cancel, conn)
 
     def _try_connect_job_manager(self):
-        """Auto-bridge the existing JobManager so its jobs appear here."""
+        """Auto-bridge the existing JobManager so its jobs appear here.
+
+        Guards against duplicate connects via ``_jm_connected_id``.
+        Stores (signal, slot) pairs so ``closeEvent`` can disconnect
+        deterministically even though Qt *usually* cleans up.
+        """
         try:
             from services.job_manager import get_job_manager
             mgr = get_job_manager()
-            mgr.signals.job_started.connect(self._on_jm_started)
-            mgr.signals.progress.connect(self._on_jm_progress)
-            mgr.signals.job_completed.connect(self._on_jm_completed)
-            mgr.signals.job_failed.connect(self._on_jm_failed)
-            mgr.signals.job_canceled.connect(self._on_jm_canceled)
-            mgr.signals.job_log.connect(self._on_jm_log)
+
+            # Guard: skip if already connected to this exact manager instance
+            mgr_id = id(mgr)
+            if self._jm_connected_id == mgr_id:
+                return
+            # If connected to a stale manager, disconnect first
+            if self._jm_connected_id is not None:
+                self._disconnect_job_manager()
+
+            pairs = [
+                (mgr.signals.job_started, self._on_jm_started),
+                (mgr.signals.progress, self._on_jm_progress),
+                (mgr.signals.job_completed, self._on_jm_completed),
+                (mgr.signals.job_failed, self._on_jm_failed),
+                (mgr.signals.job_canceled, self._on_jm_canceled),
+                (mgr.signals.job_log, self._on_jm_log),
+            ]
+            for sig, slot in pairs:
+                sig.connect(slot)
+            self._jm_connections = pairs
+            self._jm_connected_id = mgr_id
             logger.info("[ActivityCenter] Connected to JobManager signals")
         except Exception as e:
             logger.info(f"[ActivityCenter] JobManager not available: {e}")
+
+    def _disconnect_job_manager(self):
+        """Disconnect all stored JobManager signal connections."""
+        for sig, slot in self._jm_connections:
+            try:
+                sig.disconnect(slot)
+            except (RuntimeError, TypeError):
+                pass
+        self._jm_connections.clear()
+        self._jm_connected_id = None
+
+    def closeEvent(self, event):
+        """Defensive disconnect on close to prevent stale signal delivery."""
+        self._disconnect_job_manager()
+        self._flush_timer.stop()
+        self._remove_timer.stop()
+        super().closeEvent(event)
+
+    def showEvent(self, event):
+        """Reconnect JobManager signals when the dock is re-shown."""
+        super().showEvent(event)
+        self._try_connect_job_manager()
+        self._flush_timer.start()
+        self._remove_timer.start()
 
     # ─────────────────────────────────────────────────────────────────────
     # Public API
