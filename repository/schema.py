@@ -19,7 +19,7 @@ Schema Version: 2.0.0
 - Adds schema_version tracking table
 """
 
-SCHEMA_VERSION = "9.2.0"
+SCHEMA_VERSION = "9.3.0"
 
 # Complete schema SQL - executed as a script for new databases
 SCHEMA_SQL = """
@@ -59,6 +59,9 @@ VALUES ('9.1.0', 'Project canonical semantic model: projects.semantic_model for 
 
 INSERT OR IGNORE INTO schema_version (version, description)
 VALUES ('9.2.0', 'Add GPS columns to photo_metadata for location-based browsing');
+
+INSERT OR IGNORE INTO schema_version (version, description)
+VALUES ('9.3.0', 'Add image_content_hash for pixel-based embedding staleness detection');
 
 -- ============================================================================
 -- FACE RECOGNITION TABLES
@@ -221,6 +224,9 @@ CREATE TABLE IF NOT EXISTS photo_metadata (
     gps_latitude REAL,
     gps_longitude REAL,
     location_name TEXT,  -- Reverse-geocoded location name
+    -- Perceptual hash for pixel-based embedding staleness detection (v9.3.0)
+    -- Uses dHash (difference hash) which is resilient to metadata-only changes
+    image_content_hash TEXT,
     FOREIGN KEY(folder_id) REFERENCES photo_folders(id),
     FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
     UNIQUE(path, project_id)
@@ -830,6 +836,17 @@ VALUES ('9.2.0', 'Add GPS columns to photo_metadata for location-based browsing'
 -- Create partial index for GPS queries (fast location lookups)
 CREATE INDEX IF NOT EXISTS idx_photo_metadata_gps ON photo_metadata(project_id, gps_latitude, gps_longitude)
     WHERE gps_latitude IS NOT NULL AND gps_longitude IS NOT NULL;
+"""
+    },
+    "9.3.0": {
+        "description": "Add image_content_hash for pixel-based embedding staleness detection",
+        "sql": """
+-- v9.3.0: Add image_content_hash column for pixel-based staleness detection
+-- This uses perceptual hash (dHash) which is resilient to metadata-only changes like GPS edits
+-- Replaces mtime-based staleness detection that caused unnecessary re-embedding on EXIF edits
+
+INSERT OR IGNORE INTO schema_version (version, description)
+VALUES ('9.3.0', 'Add image_content_hash for pixel-based embedding staleness detection');
 """
     }
 }
