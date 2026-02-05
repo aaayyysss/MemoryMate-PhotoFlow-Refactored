@@ -3482,10 +3482,11 @@ class ReferenceDB:
                 """, (project_id,))
             else:
                 cur.execute("""
-                    SELECT path, gps_latitude, gps_longitude, location_name, folder_path
-                    FROM photo_metadata
-                    WHERE gps_latitude IS NOT NULL AND gps_longitude IS NOT NULL
-                    ORDER BY gps_latitude, gps_longitude
+                    SELECT p.path, p.gps_latitude, p.gps_longitude, p.location_name, f.path as folder_path
+                    FROM photo_metadata p
+                    JOIN photo_folders f ON f.id = p.folder_id
+                    WHERE p.gps_latitude IS NOT NULL AND p.gps_longitude IS NOT NULL
+                    ORDER BY p.gps_latitude, p.gps_longitude
                 """)
             
             rows = cur.fetchall()
