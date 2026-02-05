@@ -88,13 +88,18 @@ class SemanticEmbeddingService:
     """
 
     def __init__(self,
-                 model_name: str = "clip-vit-b32",
+                 model_name: str = "openai/clip-vit-base-patch32",
                  db_connection: Optional[DatabaseConnection] = None):
         """
         Initialize semantic embedding service.
 
+        IMPORTANT: Always use get_semantic_embedding_service() instead of
+        instantiating directly. Direct instantiation bypasses the per-model
+        cache and can create duplicate instances.
+
         Args:
-            model_name: CLIP/SigLIP model variant (short alias or full HF name)
+            model_name: CLIP/SigLIP model variant (canonical HuggingFace ID preferred)
+                       Default: "openai/clip-vit-base-patch32"
             db_connection: Optional database connection
         """
         from utils.clip_model_registry import normalize_model_id, all_aliases_for
@@ -1996,32 +2001,41 @@ class SemanticEmbeddingService:
         return progress is not None and progress['status'] == 'in_progress'
 
 
-# Singleton instance
-_semantic_embedding_service = None
+# Per-model service cache (singleton per model, not global singleton)
+# This prevents model mismatch bugs when different code paths request different models
+_semantic_services: Dict[str, SemanticEmbeddingService] = {}
 
 
-def get_semantic_embedding_service(model_name: str = "clip-vit-b32") -> SemanticEmbeddingService:
+def get_semantic_embedding_service(model_name: str = "openai/clip-vit-base-patch32") -> SemanticEmbeddingService:
     """
-    Get singleton semantic embedding service (thread-safe).
+    Get semantic embedding service for a specific model (thread-safe).
 
-    Uses double-checked locking pattern for thread safety without
-    acquiring lock on every call.
+    Uses per-model caching: each model gets its own singleton instance.
+    This is safer than a global singleton because:
+    - Different code paths can use different models without conflict
+    - The model_name parameter is actually respected
+    - Prevents subtle bugs where first caller "wins" with their model choice
 
     Args:
-        model_name: CLIP/SigLIP model variant
+        model_name: CLIP/SigLIP model variant (canonical HuggingFace ID or short alias)
+                   Default: "openai/clip-vit-base-patch32" (canonical ID for CLIP ViT-B/32)
 
     Returns:
-        SemanticEmbeddingService instance
+        SemanticEmbeddingService instance for the specified model
     """
-    global _semantic_embedding_service
+    global _semantic_services
 
-    # Fast path: check without lock (most common case)
-    if _semantic_embedding_service is not None:
-        return _semantic_embedding_service
+    # Normalize to canonical model ID for consistent cache keys
+    from utils.clip_model_registry import normalize_model_id
+    canonical_key = normalize_model_id(model_name)
+
+    # Fast path: check without lock
+    if canonical_key in _semantic_services:
+        return _semantic_services[canonical_key]
 
     # Slow path: acquire lock and double-check
     with _service_lock:
-        # Another thread may have created instance while we waited for lock
-        if _semantic_embedding_service is None:
-            _semantic_embedding_service = SemanticEmbeddingService(model_name=model_name)
-        return _semantic_embedding_service
+        if canonical_key not in _semantic_services:
+            logger.info(f"[SemanticEmbeddingService] Creating service for model: {canonical_key}")
+            _semantic_services[canonical_key] = SemanticEmbeddingService(model_name=canonical_key)
+        return _semantic_services[canonical_key]

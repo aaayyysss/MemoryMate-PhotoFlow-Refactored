@@ -1243,15 +1243,9 @@ class MainWindow(QMainWindow):
             import traceback
             traceback.print_exc()
 
-        # === Initialize database schema at startup ===
-        try:
-            from repository.base_repository import DatabaseConnection
-            db_conn = DatabaseConnection("reference_data.db", auto_init=True)
-            print("[Startup] Database schema initialized successfully")
-        except Exception as e:
-            print(f"[Startup] ⚠️ Database initialization failed: {e}")
-            import traceback
-            traceback.print_exc()
+        # NOTE: Database schema initialization is now handled in splash_qt.py startup worker
+        # to avoid duplicate initialization. ReferenceDB() calls DatabaseConnection(auto_init=True)
+        # which handles schema creation and migrations.
 
         # CRITICAL FIX: Defer heavy initialization to avoid blocking UI thread
         # Schedule heavy operations to run after window is shown
@@ -1281,13 +1275,54 @@ class MainWindow(QMainWindow):
             # Update status bar
             self._update_status_bar()
             print("[MainWindow] ✅ Status bar updated")
-            
+
+            # Warmup CLIP model in background (after UI is visible)
+            # This prevents blocking startup while still pre-loading the model
+            self._warmup_clip_in_background()
+
             print("[MainWindow] ✅ Deferred initialization completed successfully")
-            
+
         except Exception as e:
             print(f"[MainWindow] ⚠️ Deferred initialization error: {e}")
             import traceback
             traceback.print_exc()
+
+    def _warmup_clip_in_background(self):
+        """
+        Warm up CLIP model in a background thread after UI is shown.
+
+        This gives the best UX: UI appears immediately, and CLIP loads quietly
+        in the background while the user starts working. First semantic search
+        will be fast because model is already loaded.
+        """
+        try:
+            from settings_manager_qt import SettingsManager
+            settings = SettingsManager()
+
+            # Only warmup if semantic embeddings are enabled
+            if not settings.get("enable_semantic_embeddings", True):
+                print("[MainWindow] CLIP warmup skipped (semantic embeddings disabled)")
+                return
+
+            import threading
+
+            def _warmup():
+                try:
+                    from services.semantic_embedding_service import get_semantic_embedding_service
+                    svc = get_semantic_embedding_service()
+                    svc._load_model()  # Intentionally warm cache, tokenizer, weights
+                    print("[MainWindow] ✅ CLIP model warmed up in background")
+                except Exception as e:
+                    # Non-fatal - model will load on first use if warmup fails
+                    print(f"[MainWindow] ⚠️ CLIP background warmup failed (non-fatal): {e}")
+
+            # Run in daemon thread so it doesn't block app shutdown
+            thread = threading.Thread(target=_warmup, name="clip_warmup", daemon=True)
+            thread.start()
+            print("[MainWindow] 🧠 CLIP background warmup started")
+
+        except Exception as e:
+            print(f"[MainWindow] ⚠️ Could not start CLIP warmup: {e}")
     
     def ensureOnScreen(self):
         """

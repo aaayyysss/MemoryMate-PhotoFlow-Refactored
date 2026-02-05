@@ -1529,7 +1529,7 @@ class PreferencesDialog(QDialog):
         try:
             # Import required modules
             from services.job_service import get_job_service
-            from services.semantic_embedding_service import SemanticEmbeddingService
+            from services.semantic_embedding_service import get_semantic_embedding_service
             from repository.stack_repository import StackRepository
             from repository.base_repository import DatabaseConnection
             from workers.similar_shot_stack_worker import create_similar_shot_stack_worker
@@ -1543,9 +1543,9 @@ class PreferencesDialog(QDialog):
             elif hasattr(self.parent(), 'grid') and hasattr(self.parent().grid, 'project_id'):
                 project_id = self.parent().grid.project_id
 
-            # Check prerequisites
+            # Check prerequisites - use getter to avoid duplicate instances
             db_conn = DatabaseConnection()
-            embedding_service = SemanticEmbeddingService(db_connection=db_conn)
+            embedding_service = get_semantic_embedding_service()
             stack_repo = StackRepository(db_conn)
 
             # Check if embeddings exist
@@ -1658,7 +1658,7 @@ class PreferencesDialog(QDialog):
         try:
             from repository.stack_repository import StackRepository
             from repository.base_repository import DatabaseConnection
-            from services.semantic_embedding_service import SemanticEmbeddingService
+            from services.semantic_embedding_service import get_semantic_embedding_service
 
             # Get current project_id
             project_id = 1
@@ -1667,10 +1667,10 @@ class PreferencesDialog(QDialog):
             elif hasattr(self.parent(), 'grid') and hasattr(self.parent().grid, 'project_id'):
                 project_id = self.parent().grid.project_id
 
-            # Check status
+            # Check status - use getter to avoid duplicate instances
             db_conn = DatabaseConnection()
             stack_repo = StackRepository(db_conn)
-            embedding_service = SemanticEmbeddingService(db_connection=db_conn)
+            embedding_service = get_semantic_embedding_service()
 
             embedding_count = embedding_service.get_embedding_count()
             similar_stacks = stack_repo.count_stacks(project_id, stack_type="similar")

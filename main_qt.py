@@ -35,8 +35,10 @@ os.environ['QTWEBENGINE_CHROMIUM_FLAGS'] = (
     '--disable-webgl '
     '--disable-webgl2 '
     '--num-raster-threads=1 '
-    '--disable-features=VizDisplayCompositor,TranslateUI,BlinkGenPropertyTrees'
-    '--renderer-process-limit=1'
+    '--disable-features=VizDisplayCompositor,TranslateUI,BlinkGenPropertyTrees '
+    '--renderer-process-limit=1 '
+    '--in-process-gpu '
+    '--ignore-gpu-blocklist'
 )
 
 # Additional Qt WebEngine environment variables for better compatibility
