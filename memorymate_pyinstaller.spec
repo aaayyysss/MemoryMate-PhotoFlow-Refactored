@@ -13,7 +13,7 @@ PREREQUISITES:
     3. Optionally install FFmpeg and add to PATH (for video features)
 
 OUTPUT:
-    dist/MemoryMate-PhotoFlow-v3.3.0/  (ONEDIR bundle)
+    dist/MemoryMate-PhotoFlow-v9.3.0/  (ONEDIR bundle)
 """
 
 import os
@@ -123,7 +123,7 @@ else:
 # --------------------------------------------------------------------------
 # Hidden imports
 # --------------------------------------------------------------------------
-# Comprehensive audit: 2026-02-03
+# Comprehensive audit: 2026-02-05
 # Covers all project modules + third-party libraries that are lazy-loaded,
 # dynamically imported, or otherwise invisible to PyInstaller's analysis.
 # --------------------------------------------------------------------------
@@ -242,6 +242,18 @@ hiddenimports = [
     'matplotlib.backends',
     'matplotlib.backends.backend_agg',
 
+    # === HTTP / Networking (for CLIP model downloads, geocoding) ===
+    'requests',
+    'requests.adapters',
+    'requests.models',
+    'urllib3',
+
+    # === System utilities ===
+    'psutil',
+
+    # === FAISS (optional - fast ANN search, graceful fallback if missing) ===
+    'faiss',
+
     # ======================================================================
     # PROJECT MODULES
     # ======================================================================
@@ -284,6 +296,11 @@ hiddenimports = [
     'google_components.media_lightbox',
     'google_components.photo_helpers',
     'google_components.dialogs',
+
+    # --- migrations (SQL + Python migration scripts) ---
+    'migrations',
+    'migrations.migration_v6_visual_semantics',
+    'migrations.migration_v9_1_semantic_model',
 
     # --- repository ---
     'repository',
@@ -436,6 +453,10 @@ hiddenimports = [
     'utils.model_selection_helper',
     'utils.translation_manager',
 
+    # --- Core database/migration modules ---
+    'apply_migrations',
+    'apply_performance_optimizations',
+
     # --- Core app modules (root-level) ---
     'logging_config',
     'db_config',
@@ -515,7 +536,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='MemoryMate-PhotoFlow-v3.3.0',
+    name='MemoryMate-PhotoFlow-v9.3.0',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -542,5 +563,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='MemoryMate-PhotoFlow-v3.3.0',
+    name='MemoryMate-PhotoFlow-v9.3.0',
 )
