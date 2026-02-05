@@ -51,6 +51,7 @@ import os
 import time
 import uuid
 import json
+import functools
 from enum import IntEnum
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -142,6 +143,8 @@ class ActiveJob:
     total: int = 0
     paused: bool = False
     cancel_requested: bool = False
+    # Stored (signal, slot) pairs for deterministic disconnect on cleanup
+    _connections: List[tuple] = field(default_factory=list)
 
 
 class JobManagerSignals(QObject):
@@ -440,13 +443,28 @@ class JobManager(QObject):
                 if hasattr(active.worker, 'cancel'):
                     active.worker.cancel()
 
+                # Disconnect worker signals
+                self._disconnect_worker(job_id, active)
+
                 logger.info(f"[JobManager] Canceled running job {job_id}")
+                if self._history_repo:
+                    try:
+                        self._history_repo.finish(
+                            job_id=str(job_id), status='canceled', canceled=1)
+                    except Exception:
+                        pass
                 self.signals.job_canceled.emit(job_id, active.job_type)
             else:
                 logger.info(f"[JobManager] Canceled queued job {job_id}")
                 # Get job type from database
                 job = self._job_service.get_job(job_id)
                 job_type = job.kind if job else 'unknown'
+                if self._history_repo:
+                    try:
+                        self._history_repo.finish(
+                            job_id=str(job_id), status='canceled', canceled=1)
+                    except Exception:
+                        pass
                 self.signals.job_canceled.emit(job_id, job_type)
 
         return True
@@ -974,6 +992,15 @@ class JobManager(QObject):
         # Start worker
         self._thread_pool.start(worker)
 
+        # Persist to job history
+        if self._history_repo:
+            try:
+                desc = job.kind.replace('_', ' ').title()
+                self._history_repo.upsert_start(
+                    job_id=str(job.job_id), job_type=job.kind, title=desc)
+            except Exception:
+                pass
+
         logger.info(f"[JobManager] Started job {job.job_id}: {job.kind}")
         self.signals.job_started.emit(job.job_id, job.kind, active.total)
         self.signals.active_jobs_changed.emit(len(self._active_jobs))
@@ -1014,37 +1041,65 @@ class JobManager(QObject):
         return None
 
     def _connect_worker_signals(self, job_id: int, worker: QRunnable):
-        """Connect worker signals to job manager handlers."""
-        if hasattr(worker, 'signals'):
-            signals = worker.signals
+        """Connect worker signals to job manager handlers.
 
-            # Progress signal
-            if hasattr(signals, 'progress'):
-                signals.progress.connect(
-                    lambda cur, total, msg, jid=job_id: self._on_worker_progress(jid, cur, total, msg)
-                )
+        Uses functools.partial instead of lambdas so slots are storable,
+        disconnectable, and don't accidentally capture mutable state.
+        All connections use Qt.QueuedConnection because workers fire
+        from the QThreadPool, and downstream code may touch UI state.
+        """
+        if not hasattr(worker, 'signals'):
+            return
 
-            # Finished signal
-            if hasattr(signals, 'finished'):
-                # Handle different signal signatures
-                try:
-                    signals.finished.connect(
-                        lambda *args, jid=job_id: self._on_worker_finished(jid, True, args)
-                    )
-                except Exception:
-                    pass
+        signals = worker.signals
+        conn_type = Qt.ConnectionType.QueuedConnection
 
-            # Error signal
-            if hasattr(signals, 'error'):
-                signals.error.connect(
-                    lambda *args, jid=job_id: self._on_worker_error(jid, args)
-                )
+        with self._jobs_lock:
+            active = self._active_jobs.get(job_id)
+        if not active:
+            return
 
-            # Face detected signal (for partial results)
-            if hasattr(signals, 'face_detected'):
-                signals.face_detected.connect(
-                    lambda path, count, jid=job_id: self._on_face_detected(jid, path, count)
-                )
+        def _store(sig, slot):
+            """Connect and remember (signal, slot) for deterministic disconnect."""
+            sig.connect(slot, conn_type)
+            active._connections.append((sig, slot))
+
+        # Progress signal
+        if hasattr(signals, 'progress'):
+            _store(signals.progress,
+                   functools.partial(self._on_worker_progress, job_id))
+
+        # Finished signal
+        if hasattr(signals, 'finished'):
+            _store(signals.finished,
+                   functools.partial(self._on_worker_finished_adapter, job_id))
+
+        # Error signal
+        if hasattr(signals, 'error'):
+            _store(signals.error,
+                   functools.partial(self._on_worker_error_adapter, job_id))
+
+        # Face detected signal (partial results)
+        if hasattr(signals, 'face_detected'):
+            _store(signals.face_detected,
+                   functools.partial(self._on_face_detected, job_id))
+
+    def _on_worker_finished_adapter(self, job_id: int, *args):
+        """Adapter for worker.signals.finished which may emit varying arg counts."""
+        self._on_worker_finished(job_id, True, args)
+
+    def _on_worker_error_adapter(self, job_id: int, *args):
+        """Adapter for worker.signals.error which may emit varying arg counts."""
+        self._on_worker_error(job_id, args)
+
+    def _disconnect_worker(self, job_id: int, active: 'ActiveJob'):
+        """Deterministically disconnect all worker signal connections for a job."""
+        for sig, slot in active._connections:
+            try:
+                sig.disconnect(slot)
+            except (RuntimeError, TypeError):
+                pass  # already disconnected or object deleted
+        active._connections.clear()
 
     def _on_worker_progress(self, job_id: int, current: int, total: int, message: str):
         """Handle worker progress update."""
@@ -1085,6 +1140,9 @@ class JobManager(QObject):
             active = self._active_jobs.pop(job_id, None)
 
         if active:
+            # Deterministic disconnect before anything else
+            self._disconnect_worker(job_id, active)
+
             # Complete in database
             self._job_service.complete_job(job_id, success=success)
 
@@ -1096,6 +1154,15 @@ class JobManager(QObject):
                     'failed_count': args[1],
                     'total_count': args[2]
                 }
+
+            # Persist to job history (managed jobs, positive IDs)
+            if self._history_repo:
+                try:
+                    self._history_repo.finish(
+                        job_id=str(job_id), status='succeeded' if success else 'failed',
+                        result=stats if stats else None)
+                except Exception:
+                    pass
 
             logger.info(f"[JobManager] Job {job_id} completed: {stats}")
             self.signals.job_completed.emit(job_id, active.job_type, success, json.dumps(stats))
@@ -1116,7 +1183,19 @@ class JobManager(QObject):
             active = self._active_jobs.pop(job_id, None)
 
         if active:
+            # Deterministic disconnect before anything else
+            self._disconnect_worker(job_id, active)
+
             self._job_service.complete_job(job_id, success=False, error=error_msg)
+
+            # Persist to job history
+            if self._history_repo:
+                try:
+                    self._history_repo.finish(
+                        job_id=str(job_id), status='failed', error=error_msg)
+                except Exception:
+                    pass
+
             logger.error(f"[JobManager] Job {job_id} failed: {error_msg}")
             self.signals.job_failed.emit(job_id, active.job_type, error_msg)
             self.signals.active_jobs_changed.emit(len(self._active_jobs))
