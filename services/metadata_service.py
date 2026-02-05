@@ -328,6 +328,8 @@ class MetadataService:
         Extracts latitude and longitude coordinates from photo EXIF GPS tags.
         This enables automatic population of the Locations section during photo scanning.
 
+        Uses Pillow's get_ifd(0x8825) for robust GPS IFD access (Pillow 9.2+).
+
         Args:
             img: PIL Image object
 
@@ -343,22 +345,30 @@ class MetadataService:
             if not exif:
                 return (None, None)
 
-            # Find GPS IFD tag (0x8825)
+            # ── Primary method: use get_ifd(0x8825) for GPS sub-IFD (Pillow 9.2+) ──
             gps_ifd = None
-            for tag_id, value in exif.items():
-                tag_name = ExifTags.TAGS.get(tag_id, tag_id)
-                if tag_name == 'GPSInfo':
-                    gps_ifd = value
-                    break
+            try:
+                gps_ifd = exif.get_ifd(0x8825)  # GPS IFD tag
+            except (AttributeError, KeyError):
+                # Pillow version doesn't support get_ifd or no GPS IFD
+                pass
+
+            # ── Fallback: iterate main IFD for embedded GPS dict (older Pillow) ──
+            if not gps_ifd:
+                for tag_id, value in exif.items():
+                    tag_name = ExifTags.TAGS.get(tag_id, tag_id)
+                    if tag_name == 'GPSInfo' and isinstance(value, dict):
+                        gps_ifd = value
+                        break
 
             if not gps_ifd:
                 return (None, None)
 
-            # Convert GPS IFD to readable dictionary
+            # Convert GPS IFD to readable dictionary with string keys
             gps_data = {}
-            for tag_id in gps_ifd:
+            for tag_id, value in gps_ifd.items():
                 tag_name = GPSTAGS.get(tag_id, tag_id)
-                gps_data[tag_name] = gps_ifd[tag_id]
+                gps_data[tag_name] = value
 
             # Extract and convert coordinates
             if 'GPSLatitude' in gps_data and 'GPSLongitude' in gps_data:
@@ -374,6 +384,7 @@ class MetadataService:
                 # Validate coordinates
                 if lat is not None and lon is not None:
                     if -90 <= lat <= 90 and -180 <= lon <= 180:
+                        logger.debug(f"GPS extracted: lat={lat}, lon={lon}")
                         return (lat, lon)
 
             return (None, None)
@@ -386,6 +397,11 @@ class MetadataService:
         """
         Convert GPS coordinates from degrees/minutes/seconds to decimal degrees.
 
+        Handles multiple Pillow formats:
+        - Tuples of floats: (52.0, 30.0, 0.0)
+        - Tuples of IFDRational: each with numerator/denominator
+        - Mixed formats from different camera manufacturers
+
         Args:
             gps_coord: GPS coordinate in DMS format (degrees, minutes, seconds)
             ref: Reference direction ('N', 'S', 'E', 'W')
@@ -394,9 +410,24 @@ class MetadataService:
             Decimal degrees or None if conversion fails
         """
         try:
-            degrees = float(gps_coord[0])
-            minutes = float(gps_coord[1])
-            seconds = float(gps_coord[2])
+            def _to_float(val) -> float:
+                """Convert various Pillow value types to float."""
+                # IFDRational has numerator/denominator attributes
+                if hasattr(val, 'numerator') and hasattr(val, 'denominator'):
+                    if val.denominator == 0:
+                        return 0.0
+                    return float(val.numerator) / float(val.denominator)
+                # Tuple format (numerator, denominator) from older Pillow
+                if isinstance(val, tuple) and len(val) == 2:
+                    if val[1] == 0:
+                        return 0.0
+                    return float(val[0]) / float(val[1])
+                # Already a number
+                return float(val)
+
+            degrees = _to_float(gps_coord[0])
+            minutes = _to_float(gps_coord[1])
+            seconds = _to_float(gps_coord[2])
 
             decimal = degrees + (minutes / 60.0) + (seconds / 3600.0)
 
@@ -406,7 +437,7 @@ class MetadataService:
 
             return decimal
 
-        except (IndexError, TypeError, ValueError) as e:
+        except (IndexError, TypeError, ValueError, ZeroDivisionError) as e:
             logger.debug(f"GPS coordinate conversion failed: {e}")
             return None
 
