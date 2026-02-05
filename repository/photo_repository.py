@@ -224,18 +224,24 @@ class PhotoRepository(BaseRepository):
 
         now = time.strftime("%Y-%m-%d %H:%M:%S")
 
-        # Ensure GPS columns exist (creates columns automatically if needed)
+        # DEFENSIVE FALLBACK: GPS columns should be added by migration v9.2.0 at app startup.
+        # This fallback only triggers if migration didn't run (shouldn't happen in normal use).
         with self.connection() as conn:
             cur = conn.cursor()
-            # PRAGMA table_info returns Row objects, use column name access
             existing_cols = [r['name'] for r in cur.execute("PRAGMA table_info(photo_metadata)")]
+            missing_cols = []
             if 'gps_latitude' not in existing_cols:
                 cur.execute("ALTER TABLE photo_metadata ADD COLUMN gps_latitude REAL")
+                missing_cols.append('gps_latitude')
             if 'gps_longitude' not in existing_cols:
                 cur.execute("ALTER TABLE photo_metadata ADD COLUMN gps_longitude REAL")
+                missing_cols.append('gps_longitude')
             if 'location_name' not in existing_cols:
                 cur.execute("ALTER TABLE photo_metadata ADD COLUMN location_name TEXT")
-            conn.commit()
+                missing_cols.append('location_name')
+            if missing_cols:
+                self.logger.warning(f"[PhotoRepository] Defensive fallback: added missing GPS columns {missing_cols} - check migration system")
+                conn.commit()
 
         # BUG FIX #7: Include created_ts, created_date, created_year for date hierarchy queries
         # LONG-TERM FIX (2026-01-08): Include gps_latitude, gps_longitude for Locations section
@@ -292,18 +298,24 @@ class PhotoRepository(BaseRepository):
         import time
         now = time.strftime("%Y-%m-%d %H:%M:%S")
 
-        # Ensure GPS columns exist before bulk insert (creates columns automatically if needed)
+        # DEFENSIVE FALLBACK: GPS columns should be added by migration v9.2.0 at app startup.
+        # This fallback only triggers if migration didn't run (shouldn't happen in normal use).
         with self.connection() as conn:
             cur = conn.cursor()
-            # PRAGMA table_info returns Row objects, use column name access
             existing_cols = [r['name'] for r in cur.execute("PRAGMA table_info(photo_metadata)")]
+            missing_cols = []
             if 'gps_latitude' not in existing_cols:
                 cur.execute("ALTER TABLE photo_metadata ADD COLUMN gps_latitude REAL")
+                missing_cols.append('gps_latitude')
             if 'gps_longitude' not in existing_cols:
                 cur.execute("ALTER TABLE photo_metadata ADD COLUMN gps_longitude REAL")
+                missing_cols.append('gps_longitude')
             if 'location_name' not in existing_cols:
                 cur.execute("ALTER TABLE photo_metadata ADD COLUMN location_name TEXT")
-            conn.commit()
+                missing_cols.append('location_name')
+            if missing_cols:
+                self.logger.warning(f"[PhotoRepository] Defensive fallback: added missing GPS columns {missing_cols} - check migration system")
+                conn.commit()
 
         # Normalize paths and add project_id + updated_at timestamp to each row
         rows_normalized = []

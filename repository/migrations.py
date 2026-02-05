@@ -376,6 +376,25 @@ VALUES ('9.1.0', 'Project canonical semantic model: projects.semantic_model for 
 )
 
 
+# Migration to v9.2.0 (Add GPS columns to photo_metadata)
+MIGRATION_9_2_0 = Migration(
+    version="9.2.0",
+    description="Add GPS columns to photo_metadata for location-based browsing",
+    sql="""
+-- Migration v9.2.0: Add GPS columns for location-based browsing
+-- Note: ALTER TABLE is handled in _add_gps_columns_if_missing()
+
+-- Create partial index for GPS queries (fast location lookups)
+CREATE INDEX IF NOT EXISTS idx_photo_metadata_gps ON photo_metadata(project_id, gps_latitude, gps_longitude)
+    WHERE gps_latitude IS NOT NULL AND gps_longitude IS NOT NULL;
+
+INSERT OR REPLACE INTO schema_version (version, description, applied_at)
+VALUES ('9.2.0', 'Add GPS columns to photo_metadata for location-based browsing', CURRENT_TIMESTAMP);
+""",
+    rollback_sql=""
+)
+
+
 # Ordered list of all migrations
 ALL_MIGRATIONS = [
     MIGRATION_1_5_0,
@@ -387,6 +406,7 @@ ALL_MIGRATIONS = [
     MIGRATION_8_0_0,
     MIGRATION_9_0_0,
     MIGRATION_9_1_0,
+    MIGRATION_9_2_0,
 ]
 
 
@@ -566,6 +586,9 @@ class MigrationManager:
                 elif migration.version == "9.1.0":
                     # Apply migration v9.1: add semantic_model column to projects
                     self._apply_migration_v9_1(conn)
+                elif migration.version == "9.2.0":
+                    # Apply migration v9.2: add GPS columns to photo_metadata
+                    self._add_gps_columns_if_missing(conn)
 
                 # Execute migration SQL (version tracking)
                 conn.executescript(migration.sql)
@@ -944,6 +967,37 @@ class MigrationManager:
         except Exception as e:
             self.logger.error(f"Failed to apply migration v9.1.0: {e}")
             raise
+
+    def _add_gps_columns_if_missing(self, conn: sqlite3.Connection):
+        """
+        Add GPS columns to photo_metadata if they don't exist.
+
+        This is the core of the v9.2.0 migration - adds gps_latitude, gps_longitude,
+        and location_name for location-based photo browsing in the Locations sidebar.
+
+        Args:
+            conn: Database connection
+        """
+        cur = conn.cursor()
+
+        # Check photo_metadata for GPS columns
+        cur.execute("PRAGMA table_info(photo_metadata)")
+        metadata_columns = {row['name'] for row in cur.fetchall()}
+
+        if 'gps_latitude' not in metadata_columns:
+            self.logger.info("Adding column photo_metadata.gps_latitude")
+            cur.execute("ALTER TABLE photo_metadata ADD COLUMN gps_latitude REAL")
+
+        if 'gps_longitude' not in metadata_columns:
+            self.logger.info("Adding column photo_metadata.gps_longitude")
+            cur.execute("ALTER TABLE photo_metadata ADD COLUMN gps_longitude REAL")
+
+        if 'location_name' not in metadata_columns:
+            self.logger.info("Adding column photo_metadata.location_name")
+            cur.execute("ALTER TABLE photo_metadata ADD COLUMN location_name TEXT")
+
+        conn.commit()
+        self.logger.info("✓ GPS columns added successfully")
 
 
 def get_migration_status(db_connection) -> Dict[str, Any]:
