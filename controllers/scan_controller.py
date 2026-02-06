@@ -426,7 +426,10 @@ class ScanController(QObject):
         try:
             self.main.act_cancel_scan.setEnabled(False)
             if self.db_writer:
-                self.db_writer.shutdown(wait=True)
+                # FIX #1: Never block the UI thread waiting for the writer
+                # to drain.  The signal-driven _check_and_trigger_final_refresh
+                # path handles post-scan coordination asynchronously.
+                self.db_writer.shutdown(wait=False)
         except Exception as e:
             self.logger.error(f"Cleanup error: {e}", exc_info=True)
 

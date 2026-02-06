@@ -1305,6 +1305,11 @@ class MainWindow(QMainWindow):
             self._warmup_clip_in_background()
             print("[MainWindow] ✅ CLIP warmup scheduled")
 
+            # Step 6 (FIX #6): Deferred thumbnail cache purge
+            # Moved here from splash_qt.py so startup isn't blocked.
+            self._deferred_cache_purge()
+            print("[MainWindow] ✅ Cache purge scheduled")
+
             print("[MainWindow] ✅ Deferred initialization completed successfully")
 
         except Exception as e:
@@ -1418,6 +1423,31 @@ class MainWindow(QMainWindow):
         except Exception as e:
             print(f"[MainWindow] ⚠️ Could not start CLIP warmup: {e}")
     
+    def _deferred_cache_purge(self):
+        """FIX #6: Run thumbnail cache purge in a background thread after startup."""
+        try:
+            from settings_manager_qt import SettingsManager
+            settings = SettingsManager()
+            if not settings.get("cache_auto_cleanup", True):
+                print("[MainWindow] Cache auto-cleanup disabled, skipping purge")
+                return
+
+            import threading
+
+            def _purge():
+                try:
+                    from thumb_cache_db import get_cache
+                    cache = get_cache()
+                    cache.purge_stale(max_age_days=7)
+                    print("[MainWindow] Deferred cache purge completed")
+                except Exception as e:
+                    print(f"[MainWindow] Cache purge error (non-fatal): {e}")
+
+            thread = threading.Thread(target=_purge, name="cache_purge", daemon=True)
+            thread.start()
+        except Exception as e:
+            print(f"[MainWindow] Could not start cache purge: {e}")
+
     def ensureOnScreen(self):
         """
         CRITICAL FIX: Ensure window is positioned on a visible screen.

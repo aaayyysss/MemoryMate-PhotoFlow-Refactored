@@ -5767,16 +5767,37 @@ class GooglePhotosLayout(BaseLayout):
             "[GoogleLayout] Prefetch page offset=%d", self._paging_offset,
         )
 
+    # ── FIX #5 helpers: background grouping + chunked widget creation ──
+
+    class _GroupingSignals(QObject):
+        """Signals for the background grouping worker."""
+        done = Signal(int, dict, list)  # (generation, photos_by_date, rows)
+
+    class _GroupingWorker(QRunnable):
+        """Runs _group_photos_by_date off the UI thread."""
+        def __init__(self, rows, generation, group_fn, signals):
+            super().__init__()
+            self.setAutoDelete(True)
+            self._rows = rows
+            self._gen = generation
+            self._group_fn = group_fn
+            self._signals = signals
+
+        def run(self):
+            grouped = self._group_fn(self._rows)
+            self._signals.done.emit(self._gen, grouped, self._rows)
+
     def _display_photos_in_timeline(self, rows: list):
         """
         PHASE 2 Task 2.1: Display photos in timeline after async query completes.
-        This method contains the UI update logic extracted from _load_photos().
+
+        FIX #5: Grouping runs in a background QRunnable, and widget creation
+        is chunked via QTimer.singleShot(0, ...) to keep the UI responsive.
 
         Args:
             rows: List of (path, date_taken, width, height) tuples from database
         """
         if not rows:
-            # PHASE 2 #7: Enhanced empty state with friendly illustration
             empty_widget = self._create_empty_state(
                 icon="📷",
                 title="No photos yet",
@@ -5787,15 +5808,27 @@ class GooglePhotosLayout(BaseLayout):
             print(f"[GooglePhotosLayout] No photos found in project {self.project_id}")
             return
 
-        # === PROGRESS: Grouping photos by date ===
-        print(f"[GooglePhotosLayout] 📅 Grouping {len(rows)} photos by date...")
+        print(f"[GooglePhotosLayout] Dispatching {len(rows)} photos to background grouping worker...")
 
-        # Group photos by date
-        photos_by_date = self._group_photos_by_date(rows)
+        # Bump generation so stale results are discarded
+        gen = self._photo_load_generation
 
-        print(f"[GooglePhotosLayout] ✅ Grouped into {len(photos_by_date)} date groups")
+        if not hasattr(self, '_grouping_signals'):
+            self._grouping_signals = self._GroupingSignals()
+            self._grouping_signals.done.connect(self._on_grouping_done)
 
-        # Update section counts: timeline and videos
+        worker = self._GroupingWorker(rows, gen, self._group_photos_by_date, self._grouping_signals)
+        QThreadPool.globalInstance().start(worker)
+
+    def _on_grouping_done(self, generation: int, photos_by_date: dict, rows: list):
+        """Slot: background grouping finished — build metadata, then chunk widgets."""
+        if generation != self._photo_load_generation:
+            print(f"[GooglePhotosLayout] Discarding stale grouping result (gen {generation})")
+            return
+
+        print(f"[GooglePhotosLayout] Grouped into {len(photos_by_date)} date groups")
+
+        # Update section counts
         try:
             if hasattr(self, 'timeline_section'):
                 self.timeline_section.update_count(len(rows))
@@ -5810,15 +5843,11 @@ class GooglePhotosLayout(BaseLayout):
         self.all_displayed_paths = [photo[0] for photos_list in photos_by_date.values() for photo in photos_list]
         print(f"[GooglePhotosLayout] Tracking {len(self.all_displayed_paths)} paths for multi-selection")
 
-        # === PROGRESS: Virtual scrolling setup ===
-        print(f"[GooglePhotosLayout] 🚀 Setting up virtual scrolling for {len(photos_by_date)} date groups...")
-
-        # QUICK WIN #3: Virtual scrolling - create date groups with lazy rendering
+        # Build metadata list for virtual scrolling
         self.date_groups_metadata.clear()
         self.date_group_widgets.clear()
         self.rendered_date_groups.clear()
 
-        # Store metadata for all date groups
         for index, (date_str, photos) in enumerate(photos_by_date.items()):
             self.date_groups_metadata.append({
                 'index': index,
@@ -5827,44 +5856,68 @@ class GooglePhotosLayout(BaseLayout):
                 'thumb_size': self.current_thumb_size
             })
 
-        # Create widgets (placeholders or rendered) for each group
-        for metadata in self.date_groups_metadata:
-            index = metadata['index']
+        # Chunk widget creation: process CHUNK_SIZE groups per event-loop tick
+        self._widget_chunk_idx = 0
+        self._widget_chunk_gen = generation
+        self._widget_chunk_total = len(self.date_groups_metadata)
+        self._widget_chunk_photos_by_date = photos_by_date
+        self._widget_chunk_rows = rows
+        self._process_widget_chunk()
 
-            # Render first N groups immediately, placeholders for the rest
+    _WIDGET_CHUNK_SIZE = 30  # groups per tick — tune for responsiveness
+
+    def _process_widget_chunk(self):
+        """Create the next batch of date-group widgets, then yield to the event loop."""
+        if self._widget_chunk_gen != self._photo_load_generation:
+            return  # stale
+
+        start = self._widget_chunk_idx
+        end = min(start + self._WIDGET_CHUNK_SIZE, self._widget_chunk_total)
+
+        for metadata in self.date_groups_metadata[start:end]:
+            index = metadata['index']
             if self.virtual_scroll_enabled and index >= self.initial_render_count:
-                # Create placeholder for off-screen groups
                 widget = self._create_date_group_placeholder(metadata)
             else:
-                # Render initial groups
                 widget = self._create_date_group(
                     metadata['date_str'],
                     metadata['photos'],
                     metadata['thumb_size']
                 )
                 self.rendered_date_groups.add(index)
-
             self.date_group_widgets[index] = widget
             self.timeline_layout.addWidget(widget)
 
-        # Add spacer at bottom
+        self._widget_chunk_idx = end
+
+        if end < self._widget_chunk_total:
+            # Yield to event loop, then continue
+            QTimer.singleShot(0, self._process_widget_chunk)
+        else:
+            # All chunks done — finalize
+            self._finalize_timeline_display()
+
+    def _finalize_timeline_display(self):
+        """Called after all widget chunks are created."""
+        photos_by_date = self._widget_chunk_photos_by_date
+        rows = self._widget_chunk_rows
+
         self.timeline_layout.addStretch()
 
-        # Restore pending scroll position (e.g., after zoom/aspect change)
+        # Restore pending scroll position
         if self._pending_scroll_restore is not None:
             pct = self._pending_scroll_restore
             self._pending_scroll_restore = None
             QTimer.singleShot(0, lambda: self._restore_scroll_percentage(pct))
 
-        # === PROGRESS: Rendering complete ===
         if self.virtual_scroll_enabled:
-            print(f"[GooglePhotosLayout] ✅ Virtual scrolling enabled: {len(photos_by_date)} total date groups")
-            print(f"[GooglePhotosLayout] 📊 Rendered: {len(self.rendered_date_groups)} groups | Placeholders: {len(photos_by_date) - len(self.rendered_date_groups)} groups")
+            print(f"[GooglePhotosLayout] Virtual scrolling enabled: {len(photos_by_date)} total date groups")
+            print(f"[GooglePhotosLayout] Rendered: {len(self.rendered_date_groups)} groups | Placeholders: {len(photos_by_date) - len(self.rendered_date_groups)} groups")
         else:
-            print(f"[GooglePhotosLayout] ✅ Loaded {len(rows)} photos in {len(photos_by_date)} date groups")
+            print(f"[GooglePhotosLayout] Loaded {len(rows)} photos in {len(photos_by_date)} date groups")
 
-        print(f"[GooglePhotosLayout] 🖼️ Queued {self.thumbnail_load_count} thumbnails for loading (initial limit: {self.initial_load_limit})")
-        print(f"[GooglePhotosLayout] ✅ Photo loading complete! Thumbnails will load progressively.")
+        print(f"[GooglePhotosLayout] Queued {self.thumbnail_load_count} thumbnails for loading (initial limit: {self.initial_load_limit})")
+        print(f"[GooglePhotosLayout] Photo loading complete! Thumbnails will load progressively.")
 
     def _on_timeline_scrolled(self):
         """

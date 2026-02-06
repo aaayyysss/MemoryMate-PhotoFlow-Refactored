@@ -97,9 +97,11 @@ class StartupWorker(QThread):
             stats = cache.get_stats()
             print(f"[Cache] {stats}")
             self.emit_detail(f"✓ Cache: {stats.get('entries', 0)} entries, {stats.get('size_mb', 0):.1f} MB")
+            # FIX #6: Defer purge_stale to after the main window is shown.
+            # Purging can take hundreds of ms on large caches and blocks the
+            # startup sequence.  The cache's own background worker handles it.
             if self.settings.get("cache_auto_cleanup", True):
-                cache.purge_stale(max_age_days=7)
-                self.emit_detail("✓ Stale cache entries purged")
+                self.emit_detail("✓ Cache cleanup deferred to post-startup")
             if self._cancel:
                 return
 

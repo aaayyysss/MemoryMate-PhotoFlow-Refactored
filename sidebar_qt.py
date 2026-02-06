@@ -1747,7 +1747,9 @@ class SidebarQt(QWidget):
         self._device_refresh_timer.setInterval(30000)  # 30 seconds
         self._device_refresh_timer.timeout.connect(self._check_device_changes)
         self._last_device_count = 0
-        self._device_auto_refresh_enabled = self.settings.get("device_auto_refresh", True) if self.settings else True
+        # FIX #3: Default must match settings_manager (False) — never run
+        # COM enumeration unless the user explicitly enabled it.
+        self._device_auto_refresh_enabled = self.settings.get("device_auto_refresh", False) if self.settings else False
         self._device_monitor = None  # Will be initialized if auto-refresh enabled
 
         if self._device_auto_refresh_enabled:
@@ -1941,32 +1943,12 @@ class SidebarQt(QWidget):
         layout.addWidget(search_container)  # Search box
         layout.addWidget(self.tree, 1)
         
-        # Tabs controller (new owner of tab UI)
-        self.tabs_controller = SidebarTabs(project_id=self.project_id, parent=self)
-        self.tabs_controller.hide()            # start hidden if default is list
-        layout.addWidget(self.tabs_controller, 1)
-
-        # Connect SidebarTabs signals to your grid helpers
-        self.tabs_controller.selectBranch.connect(lambda key: self._set_grid_context("branch", key))
-        self.tabs_controller.selectFolder.connect(lambda folder_id: self._set_grid_context("folder", folder_id))
-        self.tabs_controller.selectDate.connect(lambda key: self._set_grid_context("date", key))
-        self.tabs_controller.selectTag.connect(
-            lambda name: self.window()._apply_tag_filter(name) if hasattr(self.window(), "_apply_tag_filter") else None
-        )
-
-        # Accordion controller (Google Photos-style accordion sidebar)
-        from accordion_sidebar import AccordionSidebar
-        self.accordion_controller = AccordionSidebar(project_id=self.project_id, parent=self)
-        self.accordion_controller.hide()       # start hidden if default is list
-        layout.addWidget(self.accordion_controller, 1)
-
-        # Connect AccordionSidebar signals to your grid helpers
-        self.accordion_controller.selectBranch.connect(lambda key: self._set_grid_context("branch", key))
-        self.accordion_controller.selectFolder.connect(lambda folder_id: self._set_grid_context("folder", folder_id))
-        self.accordion_controller.selectDate.connect(lambda key: self._set_grid_context("date", key))
-        self.accordion_controller.selectTag.connect(
-            lambda name: self.window()._apply_tag_filter(name) if hasattr(self.window(), "_apply_tag_filter") else None
-        )
+        # FIX #2: Lazy-init sidebar modes — only build the active mode.
+        # Controllers start as None and are created on first use via
+        # _ensure_tabs_controller() / _ensure_accordion_controller().
+        self._sidebar_layout = layout          # keep ref for lazy addWidget
+        self.tabs_controller = None
+        self.accordion_controller = None
         
         # Connect counts update signal from worker thread to UI handler
         self._countsReady.connect(self._apply_counts_defensive, Qt.QueuedConnection)        
@@ -2025,6 +2007,41 @@ class SidebarQt(QWidget):
             self._spin_timer.stop()
 
         event.accept()
+
+    # ---- lazy sidebar mode factories (FIX #2) ----
+
+    def _ensure_tabs_controller(self):
+        """Create SidebarTabs on first use."""
+        if self.tabs_controller is not None:
+            return self.tabs_controller
+        self.tabs_controller = SidebarTabs(project_id=self.project_id, parent=self)
+        self.tabs_controller.hide()
+        self._sidebar_layout.addWidget(self.tabs_controller, 1)
+        self.tabs_controller.selectBranch.connect(lambda key: self._set_grid_context("branch", key))
+        self.tabs_controller.selectFolder.connect(lambda folder_id: self._set_grid_context("folder", folder_id))
+        self.tabs_controller.selectDate.connect(lambda key: self._set_grid_context("date", key))
+        self.tabs_controller.selectTag.connect(
+            lambda name: self.window()._apply_tag_filter(name) if hasattr(self.window(), "_apply_tag_filter") else None
+        )
+        print("[SidebarQt] Lazy-created SidebarTabs controller")
+        return self.tabs_controller
+
+    def _ensure_accordion_controller(self):
+        """Create AccordionSidebar on first use."""
+        if self.accordion_controller is not None:
+            return self.accordion_controller
+        from accordion_sidebar import AccordionSidebar
+        self.accordion_controller = AccordionSidebar(project_id=self.project_id, parent=self)
+        self.accordion_controller.hide()
+        self._sidebar_layout.addWidget(self.accordion_controller, 1)
+        self.accordion_controller.selectBranch.connect(lambda key: self._set_grid_context("branch", key))
+        self.accordion_controller.selectFolder.connect(lambda folder_id: self._set_grid_context("folder", folder_id))
+        self.accordion_controller.selectDate.connect(lambda key: self._set_grid_context("date", key))
+        self.accordion_controller.selectTag.connect(
+            lambda name: self.window()._apply_tag_filter(name) if hasattr(self.window(), "_apply_tag_filter") else None
+        )
+        print("[SidebarQt] Lazy-created AccordionSidebar controller")
+        return self.accordion_controller
 
     # ---- header helpers ----
 
@@ -2150,7 +2167,7 @@ class SidebarQt(QWidget):
             mode = self._effective_display_mode()
             if mode == "tabs":
                 # Collapse/expand trees in active tab
-                if hasattr(self, "tabs_controller"):
+                if self.tabs_controller is not None:
                     self.tabs_controller.toggle_collapse_expand()
             else:
                 any_expanded = False
@@ -3117,7 +3134,7 @@ class SidebarQt(QWidget):
                                 self._build_tree_model()
 
                                 # Refresh tabs (tabs mode)
-                                if hasattr(self, 'tabs_controller') and hasattr(self.tabs_controller, '_tab_populated'):
+                                if self.tabs_controller is not None and hasattr(self.tabs_controller, '_tab_populated'):
                                     # Refresh Folders tab (force reload)
                                     if "folders" in self.tabs_controller._tab_populated:
                                         self.tabs_controller._tab_populated.discard("folders")
@@ -4699,8 +4716,10 @@ class SidebarQt(QWidget):
     def set_project(self, project_id: int):
         print(f"[SidebarQt] set_project({project_id}) called")
         self.project_id = project_id
-        self.tabs_controller.set_project(project_id)   # <-- delegate
-        self.accordion_controller.set_project(project_id)  # <-- delegate accordion too
+        if self.tabs_controller is not None:
+            self.tabs_controller.set_project(project_id)
+        if self.accordion_controller is not None:
+            self.accordion_controller.set_project(project_id)
         print(f"[SidebarQt] Calling reload() after setting project_id")
         self.reload()
 
@@ -6406,13 +6425,15 @@ class SidebarQt(QWidget):
 
             print("[SidebarQt] Hiding tree view and accordion")
             self.tree.hide()
-            self.accordion_controller.hide()
+            if self.accordion_controller is not None:
+                self.accordion_controller.hide()
             print("[SidebarQt] Showing tabs controller")
-            self.tabs_controller.show_tabs()
+            tabs = self._ensure_tabs_controller()
+            tabs.show_tabs()
             # Force refresh tabs when switching to tabs mode (ensures fresh data after scans)
             print("[SidebarQt] Calling tabs_controller.refresh_all(force=True) after mode switch")
             try:
-                self.tabs_controller.refresh_all(force=True)
+                tabs.refresh_all(force=True)
                 print("[SidebarQt] tabs_controller.refresh_all() completed after mode switch")
             except Exception as e:
                 print(f"[SidebarQt] ERROR in tabs_controller.refresh_all() after mode switch: {e}")
@@ -6425,13 +6446,15 @@ class SidebarQt(QWidget):
 
             print("[SidebarQt] Hiding tree view and tabs")
             self.tree.hide()
-            self.tabs_controller.hide_tabs()
+            if self.tabs_controller is not None:
+                self.tabs_controller.hide_tabs()
             print("[SidebarQt] Showing accordion controller")
-            self.accordion_controller.show()
+            accordion = self._ensure_accordion_controller()
+            accordion.show()
             # Force refresh accordion when switching to accordion mode (ensures fresh data after scans)
             print("[SidebarQt] Calling accordion_controller.refresh_all(force=True) after mode switch")
             try:
-                self.accordion_controller.refresh_all(force=True)
+                accordion.refresh_all(force=True)
                 print("[SidebarQt] accordion_controller.refresh_all() completed after mode switch")
             except Exception as e:
                 print(f"[SidebarQt] ERROR in accordion_controller.refresh_all() after mode switch: {e}")
@@ -6440,8 +6463,10 @@ class SidebarQt(QWidget):
         else:
             # Cancel tab and accordion workers
             print("[SidebarQt] Hiding tabs controller and accordion")
-            self.tabs_controller.hide_tabs()
-            self.accordion_controller.hide()
+            if self.tabs_controller is not None:
+                self.tabs_controller.hide_tabs()
+            if self.accordion_controller is not None:
+                self.accordion_controller.hide()
             print("[SidebarQt] Canceled tab/accordion workers via hide")
 
             # Process events again after hiding tabs/accordion to clear widgets
@@ -6528,7 +6553,7 @@ class SidebarQt(QWidget):
         try:
             self._refreshing = True
             mode = self._effective_display_mode()
-            tabs_visible = self.tabs_controller.isVisible()
+            tabs_visible = self.tabs_controller.isVisible() if self.tabs_controller else False
             print(f"[SidebarQt] reload() called, display_mode={mode}, tabs_visible={tabs_visible}")
 
             # CRITICAL FIX: Only refresh tabs if they're actually visible
@@ -6726,7 +6751,8 @@ class SidebarQt(QWidget):
             
     def auto_refresh_sidebar_tabs(self):
         # Thin delegate to the new tabs widget
-        self.tabs_controller.refresh_all(force=True)
+        if self.tabs_controller is not None:
+            self.tabs_controller.refresh_all(force=True)
   
 
     def _set_grid_context(self, mode: str, value):
