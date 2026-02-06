@@ -922,35 +922,35 @@ class ScanController(QObject):
             progress.setValue(3)
 
             self.logger.info("Reloading sidebar after date branches built...")
-            # CRITICAL FIX: Only reload sidebar if it wasn't just updated via set_project()
-            # set_project() already calls reload(), so reloading again causes double refresh crash
-            if not sidebar_was_updated:
-                # Check which layout is active and reload appropriate sidebar
-                if hasattr(self.main, 'layout_manager') and self.main.layout_manager:
-                    current_layout_id = self.main.layout_manager._current_layout_id
-                    if current_layout_id == "google":
-                        # Google Layout uses AccordionSidebar
-                        current_layout = self.main.layout_manager._current_layout
-                        if current_layout and hasattr(current_layout, 'accordion_sidebar'):
-                            self.logger.debug("Reloading AccordionSidebar for Google Layout...")
-                            # Get project_id from active layout (not hidden CurrentLayout grid)
-                            active_pid = self._get_active_project_id()
-                            if active_pid is not None:
-                                self.logger.debug(f"Setting accordion_sidebar project_id to {active_pid}")
-                                current_layout.accordion_sidebar.set_project(active_pid)
-                                self.logger.debug("AccordionSidebar project_id propagated to all sections")
-                            else:
-                                self.logger.warning("Cannot set accordion_sidebar project_id - no active project")
-                    elif hasattr(self.main.sidebar, "reload"):
-                        # Current Layout uses old SidebarQt
+            # Refresh the correct sidebar for the active layout.
+            # IMPORTANT: Google Layout's AccordionSidebar must ALWAYS be
+            # refreshed after scan (new folders/dates/etc exist in DB).
+            # The sidebar_was_updated flag only applies to CurrentLayout's
+            # SidebarQt, not the accordion.
+            if hasattr(self.main, 'layout_manager') and self.main.layout_manager:
+                current_layout_id = self.main.layout_manager._current_layout_id
+                if current_layout_id == "google":
+                    # Always reload accordion after scan — sections have new data
+                    current_layout = self.main.layout_manager._current_layout
+                    if current_layout and hasattr(current_layout, 'accordion_sidebar'):
+                        accordion = current_layout.accordion_sidebar
+                        active_pid = self._get_active_project_id()
+                        if active_pid is not None:
+                            self.logger.info(f"Refreshing AccordionSidebar after scan (project={active_pid})")
+                            accordion.set_project(active_pid)
+                        elif hasattr(accordion, 'reload_all_sections'):
+                            accordion.reload_all_sections()
+                elif not sidebar_was_updated:
+                    # CurrentLayout sidebar — only reload if not already updated
+                    if hasattr(self.main, 'sidebar') and self.main.sidebar:
+                        if hasattr(self.main.sidebar, "reload"):
+                            self.main.sidebar.reload()
+                            self.logger.debug("Sidebar reload completed")
+            elif not sidebar_was_updated:
+                # Fallback: no layout manager
+                if hasattr(self.main, 'sidebar') and self.main.sidebar:
+                    if hasattr(self.main.sidebar, "reload"):
                         self.main.sidebar.reload()
-                        self.logger.debug("Sidebar reload completed (mode-aware)")
-                elif hasattr(self.main.sidebar, "reload"):
-                    # Fallback to old sidebar if layout manager not available
-                    self.main.sidebar.reload()
-                    self.logger.debug("Sidebar reload completed (fallback)")
-            elif sidebar_was_updated:
-                self.logger.debug("Skipping sidebar reload - already updated by set_project()")
 
             # Phase 3B: Duplicates section refresh is now handled by the
             # PostScanPipelineWorker's finished signal → _refresh_duplicates_section()

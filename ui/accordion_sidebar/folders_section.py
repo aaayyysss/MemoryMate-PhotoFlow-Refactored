@@ -87,20 +87,15 @@ class FoldersSection(BaseSection):
                     except Exception:
                         pass
 
-        # Run in thread
+        # Run in thread — always emit so _on_data_loaded resets _loading
         def on_complete():
             try:
                 rows = work()
-                # Only emit if generation still matches
-                if current_gen == self._generation:
-                    self.signals.loaded.emit(current_gen, rows)
-                else:
-                    logger.debug(f"[FoldersSection] Discarding stale data (gen {current_gen} vs {self._generation})")
+                self.signals.loaded.emit(current_gen, rows)
             except Exception as e:
                 logger.error(f"[FoldersSection] Error in worker thread: {e}")
                 traceback.print_exc()
-                if current_gen == self._generation:
-                    self.signals.error.emit(current_gen, str(e))
+                self.signals.error.emit(current_gen, str(e))
 
         threading.Thread(target=on_complete, daemon=True).start()
 
@@ -241,11 +236,15 @@ class FoldersSection(BaseSection):
 
     def _on_data_loaded(self, generation: int, rows: list):
         """Callback when folders data is loaded."""
+        # Always reset _loading — the background thread is done regardless
+        # of whether the data is stale.  Without this, a generation bump
+        # during loading leaves _loading=True permanently, blocking all
+        # future reloads of this section.
+        self._loading = False
+
         if generation != self._generation:
             logger.debug(f"[FoldersSection] Discarding stale data (gen {generation} vs {self._generation})")
             return
-
-        self._loading = False
 
         # Create widget (will be set by parent AccordionSidebar)
         widget = self.create_content_widget(rows)
@@ -256,8 +255,7 @@ class FoldersSection(BaseSection):
 
     def _on_error(self, generation: int, error_msg: str):
         """Callback when folders loading fails."""
+        self._loading = False
         if generation != self._generation:
             return
-
-        self._loading = False
         logger.error(f"[FoldersSection] Load failed: {error_msg}")
