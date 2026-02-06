@@ -201,20 +201,16 @@ class BaseSection(QObject, ABC, metaclass=QABCMeta):
         """
         Internal callback when data is loaded.
 
-        Args:
-            generation: Generation number when load started
-            data: Loaded data from database
-
-        Returns:
-            Widget if generation matches, None if stale
-
-        Checks generation and creates widget if data is still valid.
+        Always resets _loading (the background thread is done regardless of
+        whether the data is stale).  Without this, a generation bump during
+        loading permanently locks the section in ``is_loading() == True``.
         """
+        self._loading = False
+
         if generation != self._generation:
             logger.debug(f"[{self.get_section_id()}] Discarding stale data (gen {generation} vs {self._generation})")
             return None
 
-        self._loading = False
         return self.create_content_widget(data)
 
 

@@ -178,17 +178,11 @@ class PeopleSection(BaseSection):
         def on_complete():
             try:
                 rows = work()
-                if current_gen == self._generation:
-                    self.signals.loaded.emit(current_gen, rows)
-                else:
-                    logger.debug(
-                        f"[PeopleSection] Discarding stale data (gen {current_gen} vs {self._generation})"
-                    )
+                self.signals.loaded.emit(current_gen, rows)
             except Exception as e:
                 logger.error(f"[PeopleSection] Error in worker thread: {e}")
                 traceback.print_exc()
-                if current_gen == self._generation:
-                    self.signals.error.emit(current_gen, str(e))
+                self.signals.error.emit(current_gen, str(e))
 
         threading.Thread(target=on_complete, daemon=True).start()
 
@@ -432,9 +426,9 @@ class PeopleSection(BaseSection):
 
     def _on_error(self, generation: int, message: str):
         """Handle loading errors."""
+        self._loading = False
         if generation != self._generation:
             return
-        self._loading = False
         logger.error(f"[PeopleSection] Load error: {message}")
 
 class FlowLayout(QLayout):
