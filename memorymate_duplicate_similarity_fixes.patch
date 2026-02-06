@@ -1,0 +1,920 @@
+--- services/asset_service.py
++++ services/asset_service.py
+@@ -96,6 +96,31 @@
+     # HASH BACKFILL & ASSET LINKING
+     # =========================================================================
+ 
++    def compute_perceptual_hash(self, file_path: str) -> str | None:
++        """Compute a perceptual hash (dHash, 64-bit) for near-duplicate detection.
++
++        Returns a 16-hex-character string (64 bits) or None on failure.
++        Notes:
++        - Content hashes (SHA-256) catch byte-identical duplicates.
++        - Perceptual hashes catch re-encoded, resized, or metadata-changed near-duplicates.
++        """
++        try:
++            from PIL import Image
++            import numpy as np
++
++            with Image.open(file_path) as im:
++                im = im.convert("L").resize((9, 8), Image.Resampling.LANCZOS)  # 9x8 for horizontal gradient
++                pixels = np.asarray(im, dtype=np.int16)
++                diff = pixels[:, 1:] > pixels[:, :-1]  # 8x8 booleans
++                # Pack into 64-bit int, row-major
++                bits = diff.flatten()
++                val = 0
++                for b in bits:
++                    val = (val << 1) | int(bool(b))
++                return f"{val:016x}"
++        except Exception:
++            return None
++
+     def backfill_hashes_and_link_assets(
+         self,
+         project_id: int,
+@@ -190,6 +215,16 @@
+                         content_hash=content_hash,
+                         representative_photo_id=None  # Will be chosen later
+                     )
++
++            # Step 2b: Perceptual hash (near-duplicate detection)
++            # Stored on the media_asset, so we can find near-duplicates even when file bytes differ (re-encode, resize).
++            phash = self.compute_perceptual_hash(photo_path)
++            if phash:
++                try:
++                    self.asset_repo.set_perceptual_hash(project_id, asset_id, phash)
++                except Exception:
++                    # Non-fatal, keep pipeline moving
++                    pass
+ 
+                     # Step 3: Link media_instance
+                     self.asset_repo.link_instance(
+
+--- repository/asset_repository.py
++++ repository/asset_repository.py
+@@ -180,6 +180,23 @@
+                 (perceptual_hash, project_id, asset_id)
+             )
+             conn.commit()
++
++    def get_asset_id_for_photo_path(self, project_id: int, photo_path: str) -> int | None:
++        """Return media_asset.id for a given photo path in this project (via media_instance -> photo_metadata)."""
++        norm = (photo_path or "").replace('\\', '/').strip().lower()
++        if not norm:
++            return None
++        row = self.db.fetch_one(
++            """
++            SELECT mi.asset_id
++            FROM media_instance mi
++            JOIN photo_metadata pm ON pm.id = mi.photo_id
++            WHERE mi.project_id = ? AND lower(pm.path) = ?
++            LIMIT 1
++            """,
++            (project_id, norm),
++        )
++        return int(row[0]) if row else None
+ 
+     def list_duplicate_assets(self, project_id: int, min_instances: int = 2, limit: Optional[int] = None, offset: int = 0) -> List[Dict[str, Any]]:
+         """
+
+--- services/stack_generation_service.py
++++ services/stack_generation_service.py
+@@ -32,6 +32,8 @@
+     top_k: int = 30
+     similarity_threshold: float = 0.85  # Balanced threshold - high quality but not overly strict
+     candidate_limit_per_photo: int = 300
++    cross_date_similarity: bool = True  # Enable global similarity pass across all dates
++    cross_date_threshold: float = 0.90  # Higher threshold for cross-date (no time-proximity signal)
+ 
+ 
+ @dataclass(frozen=True)
+@@ -272,7 +274,29 @@
+                 for pid in cluster:
+                     photo_to_cluster[pid] = cluster_id
+ 
+-        self.logger.info(f"Found {len(all_clusters)} similar shot clusters")
++        self.logger.info(f"Found {len(all_clusters)} similar shot clusters (time-window pass)")
++
++        # Step 3b: Global similarity pass — find visually similar photos across ALL dates
++        if params.cross_date_similarity and preloaded_embeddings:
++            global_clusters = self._cluster_globally_by_similarity(
++                all_photos=all_photos,
++                preloaded_embeddings=preloaded_embeddings,
++                already_clustered=photo_to_cluster,
++                similarity_threshold=params.cross_date_threshold,
++                min_cluster_size=params.min_stack_size,
++            )
++            for cluster in global_clusters:
++                cluster_id = len(all_clusters)
++                all_clusters.append(cluster)
++                for pid in cluster:
++                    photo_to_cluster[pid] = cluster_id
++
++            self.logger.info(
++                f"Global cross-date pass found {len(global_clusters)} additional clusters "
++                f"(threshold={params.cross_date_threshold:.2f})"
++            )
++
++        self.logger.info(f"Total similar shot clusters: {len(all_clusters)}")
+ 
+         # Step 4: Create stacks in database
+         stacks_created = 0
+@@ -359,7 +383,8 @@
+         self,
+         project_id: int,
+         similarity_threshold: float = 0.85,
+-        time_window_seconds: int = 300
++        time_window_seconds: int = 300,
++        cross_date_similarity: bool = True
+     ) -> int:
+         """
+         Convenience method to generate similar shot stacks for all photos.
+@@ -370,13 +395,15 @@
+             project_id: Project ID
+             similarity_threshold: Minimum similarity (0.0-1.0)
+             time_window_seconds: Time window for candidates
++            cross_date_similarity: Enable global similarity across all dates
+ 
+         Returns:
+             Number of stacks created
+         """
+         params = StackGenParams(
+             similarity_threshold=similarity_threshold,
+-            time_window_seconds=time_window_seconds
++            time_window_seconds=time_window_seconds,
++            cross_date_similarity=cross_date_similarity,
+         )
+         stats = self.regenerate_similar_shot_stacks(project_id, params)
+         return stats.stacks_created
+@@ -503,7 +530,28 @@
+                 for pid in cluster:
+                     photo_to_cluster[pid] = cluster_id
+ 
+-        self.logger.info(f"Found {len(all_clusters)} similar shot clusters")
++        self.logger.info(f"Found {len(all_clusters)} similar shot clusters (time-window pass)")
++
++        # Global cross-date pass for selected photos
++        if preloaded_embeddings:
++            global_clusters = self._cluster_globally_by_similarity(
++                all_photos=selected_photos,
++                preloaded_embeddings=preloaded_embeddings,
++                already_clustered=photo_to_cluster,
++                similarity_threshold=max(similarity_threshold, 0.90),
++                min_cluster_size=params.min_stack_size,
++            )
++            for cluster in global_clusters:
++                cluster_id = len(all_clusters)
++                all_clusters.append(cluster)
++                for pid in cluster:
++                    photo_to_cluster[pid] = cluster_id
++
++            self.logger.info(
++                f"Global cross-date pass found {len(global_clusters)} additional clusters"
++            )
++
++        self.logger.info(f"Total similar shot clusters: {len(all_clusters)}")
+ 
+         # Create stacks in database
+         stacks_created = 0
+@@ -758,6 +806,96 @@
+                 clusters.append(cluster)
+                 self.logger.debug(
+                     f"Created cluster of {len(cluster)} photos "
++                    f"(all-pairs similarity >= {similarity_threshold:.2f})"
++                )
++
++        return clusters
++
++    def _cluster_globally_by_similarity(
++        self,
++        all_photos: List[Dict[str, Any]],
++        preloaded_embeddings: Dict[int, Any],
++        already_clustered: Dict[int, int],
++        similarity_threshold: float,
++        min_cluster_size: int,
++    ) -> List[List[int]]:
++        """
++        Global similarity pass: find visually similar photos across ALL dates.
++
++        Uses vectorized numpy matrix multiplication for efficient pairwise
++        cosine similarity computation. Only considers photos NOT already
++        assigned to a cluster by the time-window pass.
++
++        Args:
++            all_photos: All photos in the project
++            preloaded_embeddings: Pre-loaded embeddings dict (photo_id -> embedding)
++            already_clustered: Dict of photo_id -> cluster_id from time-window pass
++            similarity_threshold: Minimum cosine similarity for grouping
++            min_cluster_size: Minimum photos per cluster
++
++        Returns:
++            List of new clusters (each cluster is a list of photo_ids)
++        """
++        import numpy as np
++
++        # Collect unclustered photos that have embeddings
++        unclustered_ids = []
++        unclustered_embeddings = []
++        for photo in all_photos:
++            pid = photo["id"]
++            if pid in already_clustered:
++                continue
++            emb = preloaded_embeddings.get(pid)
++            if emb is not None:
++                norm = np.linalg.norm(emb)
++                if norm > 0:
++                    unclustered_ids.append(pid)
++                    unclustered_embeddings.append(emb / norm)
++
++        if len(unclustered_ids) < min_cluster_size:
++            return []
++
++        self.logger.info(
++            f"Global similarity pass: {len(unclustered_ids)} unclustered photos with embeddings"
++        )
++
++        # Build embedding matrix and compute pairwise cosine similarity
++        emb_matrix = np.stack(unclustered_embeddings)  # shape: (N, D)
++        # Cosine similarity matrix via matrix multiplication (embeddings already normalized)
++        sim_matrix = emb_matrix @ emb_matrix.T  # shape: (N, N)
++
++        # Complete-linkage clustering on the similarity matrix
++        n = len(unclustered_ids)
++        assigned = set()
++        clusters = []
++
++        for i in range(n):
++            if i in assigned:
++                continue
++
++            cluster_indices = [i]
++            assigned.add(i)
++
++            for j in range(i + 1, n):
++                if j in assigned:
++                    continue
++
++                # Check similarity with ALL current cluster members
++                is_similar_to_all = True
++                for ci in cluster_indices:
++                    if sim_matrix[j, ci] < similarity_threshold:
++                        is_similar_to_all = False
++                        break
++
++                if is_similar_to_all:
++                    cluster_indices.append(j)
++                    assigned.add(j)
++
++            if len(cluster_indices) >= min_cluster_size:
++                cluster_photo_ids = [unclustered_ids[idx] for idx in cluster_indices]
++                clusters.append(cluster_photo_ids)
++                self.logger.debug(
++                    f"Global cluster: {len(cluster_photo_ids)} photos "
+                     f"(all-pairs similarity >= {similarity_threshold:.2f})"
+                 )
+ 
+
+--- ui/thumbnail_grid_qt.py
++++ ui/thumbnail_grid_qt.py
+@@ -822,6 +822,7 @@
+ 
+ 
+ class ThumbnailGridQt(QWidget):
++    duplicatesRequested = Signal(str)  # open duplicates dialog focused on this photo path
+     # inside class ThumbnailGridQt(QWidget):
+     selectionChanged = Signal(int)# count of selected items
+     deleteRequested = Signal(list)# list[str] paths to delete
+@@ -1354,7 +1355,8 @@
+         tag_map = {}
+         try:
+             tag_map = self.db.get_tags_for_paths(self._paths, self.project_id)
+-            print(f"[GRID] Fetched tags for {len(self._paths)} paths ({content_type}), got {len(tag_map)} paths with tags")
++            paths_with_tags = sum(1 for v in tag_map.values() if v)
++            print(f"[GRID] Queried tags for {len(self._paths)} paths ({content_type}), {paths_with_tags} have tags")
+         except Exception as e:
+             print(f"[GRID] Warning: Could not fetch tags: {e}")
+ 
+@@ -1703,6 +1705,15 @@
+             act_paste_location = m.addAction(paste_text)
+ 
+         m.addSeparator()
++
++        # Edit Metadata action - opens metadata editor dock for this photo
++        act_edit_metadata = m.addAction("✏️ Edit Metadata")
++        # Show Duplicates for this photo (opens duplicates dialog focused on the clicked item)
++        act_show_duplicates = None
++        if len(paths) == 1:
++            act_show_duplicates = m.addAction("🔁 Show Duplicates (this photo)")
++
++        m.addSeparator()
+         act_export = m.addAction(tr('context_menu.export'))
+         act_delete = m.addAction(tr('context_menu.delete'))
+ 
+@@ -1714,6 +1725,10 @@
+         if chosen is act_open:
+             self.openRequested.emit(paths[-1])
+ 
++
++        elif act_show_duplicates is not None and chosen is act_show_duplicates:
++            # Delegate to MainWindow to open duplicates dialog focused on this photo
++            self.duplicatesRequested.emit(paths[-1])
+         elif chosen is act_reveal:
+             try:
+                 import os
+@@ -1727,6 +1742,10 @@
+ 
+         elif chosen is act_delete:
+             self.deleteRequested.emit(paths)
++
++        elif chosen is act_edit_metadata:
++            # Open metadata editor dock for the first selected photo
++            self._show_metadata_editor_for_photo(paths[0] if paths else None)
+ 
+         elif chosen is act_fav:
+             # Check if any photos are selected
+@@ -1963,6 +1982,54 @@
+         elif act_paste_location and chosen is act_paste_location:
+             self._paste_location(paths)
+ 
++
++    def _show_metadata_editor_for_photo(self, path: str):
++        """Show the metadata editor dock for a specific photo (triggered from right-click menu)."""
++        print(f"[ThumbnailGrid] Opening metadata editor for: {path}")
++        if not path:
++            print("[ThumbnailGrid] ⚠️ Cannot open metadata editor: path is empty")
++            return
++        try:
++            main_window = self.window()
++            if not main_window:
++                print("[ThumbnailGrid] ⚠️ Cannot open metadata editor: window() returned None")
++                return
++            dock = getattr(main_window, 'metadata_editor_dock', None)
++            if not dock:
++                print("[ThumbnailGrid] ⚠️ Cannot open metadata editor: metadata_editor_dock not found on main window")
++                return
++
++            # Look up photo_id from database
++            from reference_db import ReferenceDB
++            db = ReferenceDB()
++            with db.get_connection() as conn:
++                cursor = conn.execute(
++                    "SELECT id FROM photo_metadata WHERE path = ? AND project_id = ?",
++                    (path, self.project_id))
++                row = cursor.fetchone()
++                photo_id = row['id'] if row else None
++
++            if not photo_id:
++                # Try case-insensitive match as fallback
++                with db.get_connection() as conn:
++                    cursor = conn.execute(
++                        "SELECT id FROM photo_metadata WHERE LOWER(path) = LOWER(?) AND project_id = ?",
++                        (path, self.project_id))
++                    row = cursor.fetchone()
++                    photo_id = row['id'] if row else None
++                if photo_id:
++                    print(f"[ThumbnailGrid] Found photo_id via case-insensitive match")
++
++            if not photo_id:
++                print(f"[ThumbnailGrid] ⚠️ Cannot open metadata editor: no photo_id found for path: {path}")
++                return
++
++            print(f"[ThumbnailGrid] ✓ Opening metadata editor for photo_id={photo_id}")
++            main_window.show_metadata_for_photo(photo_id, path)
++        except Exception as e:
++            print(f"[ThumbnailGrid] Error opening metadata editor: {e}")
++            import traceback
++            traceback.print_exc()
+ 
+     def _edit_photo_location(self, path: str):
+         """
+@@ -3169,7 +3236,8 @@
+         # Paths from get_images_by_branch are already in DB format
+         # get_tags_for_paths will normalize them internally to match photo_metadata table
+         tag_map = self.db.get_tags_for_paths(self._paths, self.project_id)
+-        print(f"[GRID] Fetched tags for {len(self._paths)} paths, got {len(tag_map)} paths with tags")
++        paths_with_tags = sum(1 for v in tag_map.values() if v)
++        print(f"[GRID] Queried tags for {len(self._paths)} paths, {paths_with_tags} have tags")
+         
+         # 📅 Grouping: fetch date_taken and sort descending
+         import os, time
+
+--- main_window_qt.py
++++ main_window_qt.py
+@@ -106,6 +106,7 @@
+ from ui.widgets.backfill_indicator import CompactBackfillIndicator
+ from ui.widgets.selection_toolbar import SelectionToolbar
+ from ui.activity_center import ActivityCenter
++from ui.metadata_editor_dock import MetadataEditorDock
+ from ui.ui_builder import UIBuilder
+ 
+ # Phase 2 Refactoring: Extracted services
+@@ -1056,6 +1057,8 @@
+         # Thumbnail grid
+         self.grid = ThumbnailGridQt(project_id=default_pid)
+         grid_layout.addWidget(self.grid)
++        # Open Duplicates dialog focused on a clicked photo from grid context menu
++        self.grid.duplicatesRequested.connect(self._open_duplicates_for_path)
+ 
+         # 🎬 Phase 4.4: Video player panel (hidden by default)
+         self.video_player = VideoPlayerPanel(self)
+@@ -1119,6 +1122,20 @@
+         except Exception as e:
+             print(f"[MainWindow] Could not create activity center: {e}")
+             self.activity_center = None
++
++        # --- Metadata Editor Dock (QDockWidget, right-side, Lightroom-style info panel)
++        try:
++            self.metadata_editor_dock = MetadataEditorDock(self)
++            self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea,
++                               self.metadata_editor_dock)
++            # Connect metadata changes to refresh UI if needed
++            self.metadata_editor_dock.metadataChanged.connect(
++                self._on_metadata_changed)
++            # Start hidden; toggle via View menu or toolbar button
++            self.metadata_editor_dock.hide()
++        except Exception as e:
++            print(f"[MainWindow] Could not create metadata editor dock: {e}")
++            self.metadata_editor_dock = None
+ 
+         # --- Wire toolbar actions
+         act_select_all.triggered.connect(self.grid.list_view.selectAll)
+@@ -1243,15 +1260,9 @@
+             import traceback
+             traceback.print_exc()
+ 
+-        # === Initialize database schema at startup ===
+-        try:
+-            from repository.base_repository import DatabaseConnection
+-            db_conn = DatabaseConnection("reference_data.db", auto_init=True)
+-            print("[Startup] Database schema initialized successfully")
+-        except Exception as e:
+-            print(f"[Startup] ⚠️ Database initialization failed: {e}")
+-            import traceback
+-            traceback.print_exc()
++        # NOTE: Database schema initialization is now handled in splash_qt.py startup worker
++        # to avoid duplicate initialization. ReferenceDB() calls DatabaseConnection(auto_init=True)
++        # which handles schema creation and migrations.
+ 
+         # CRITICAL FIX: Defer heavy initialization to avoid blocking UI thread
+         # Schedule heavy operations to run after window is shown
+@@ -1265,30 +1276,167 @@
+     def _deferred_initialization(self):
+         """
+         CRITICAL FIX: Perform heavy initialization operations after window is shown.
+-        This prevents the UI from freezing during startup.
++
++        v9.3.0 FIX: Moved heavy DB operations (backfill, index optimization) to
++        background jobs. Only minimal DB handle creation happens in GUI thread.
++
++        This follows Material Design principle: App should be responsive immediately,
++        heavy work happens visibly in the background via Activity Center.
+         """
+         print("[MainWindow] Starting deferred initialization...")
+-        
+-        try:
+-            # Initialize database and sidebar (was previously in __init__)
+-            self._init_db_and_sidebar()
+-            print("[MainWindow] ✅ Database and sidebar initialized")
+-            
+-            # Restore session state (was previously in __init__)
++
++        try:
++            # Step 1: Fast - create minimal DB handle (no heavy operations)
++            self._init_minimal_db_handle()
++            print("[MainWindow] ✅ Database handle initialized (fast)")
++
++            # Step 2: Restore session state
+             QTimer.singleShot(300, self._restore_session_state)
+             print("[MainWindow] ✅ Session state restoration scheduled")
+-            
+-            # Update status bar
++
++            # Step 3: Update status bar
+             self._update_status_bar()
+             print("[MainWindow] ✅ Status bar updated")
+-            
++
++            # Step 4: Enqueue heavy DB maintenance as background job
++            # This runs visibly in Activity Center, doesn't block UI
++            self._enqueue_startup_maintenance_job()
++            print("[MainWindow] ✅ Database maintenance job enqueued")
++
++            # Step 5: Warmup CLIP model in background
++            self._warmup_clip_in_background()
++            print("[MainWindow] ✅ CLIP warmup scheduled")
++
++            # Step 6 (FIX #6): Deferred thumbnail cache purge
++            # Moved here from splash_qt.py so startup isn't blocked.
++            self._deferred_cache_purge()
++            print("[MainWindow] ✅ Cache purge scheduled")
++
+             print("[MainWindow] ✅ Deferred initialization completed successfully")
+-            
++
+         except Exception as e:
+             print(f"[MainWindow] ⚠️ Deferred initialization error: {e}")
+             import traceback
+             traceback.print_exc()
++
++    def _init_minimal_db_handle(self):
++        """
++        Fast DB initialization - only creates handle, no heavy operations.
++
++        Heavy operations (backfill, index optimization) are moved to
++        _enqueue_startup_maintenance_job() which runs in background.
++        """
++        from reference_db import ReferenceDB
++        self.db = ReferenceDB()
++
++        # Reload sidebar date tree (fast operation, uses cached data)
++        try:
++            if hasattr(self, 'sidebar') and hasattr(self.sidebar, 'reload_date_tree'):
++                self.sidebar.reload_date_tree()
++                print("[Sidebar] Date tree reloaded.")
++        except Exception as e:
++            print(f"[Sidebar] Failed to reload date tree: {e}")
++
++    def _enqueue_startup_maintenance_job(self):
++        """
++        Enqueue heavy DB maintenance as a tracked background job.
++
++        Uses the global JobManager singleton so the job always appears in the
++        Activity Center.  The worker thread gets its own ReferenceDB connection
++        (per-thread pool) and never touches Qt widgets.
++        """
++        import threading
++        try:
++            from services.job_manager import get_job_manager
++            jm = get_job_manager()
++
++            job_id = jm.register_tracked_job(
++                job_type="maintenance",
++                description="Database maintenance (backfill & index)",
++            )
++            print(f"[MainWindow] Maintenance job registered: job_id={job_id}")
++
++            def _maintenance():
++                try:
++                    from reference_db import ReferenceDB
++                    db = ReferenceDB()
++                    db.single_pass_backfill_created_fields()
++                    db.optimize_indexes()
++                    jm.complete_tracked_job(job_id, success=True)
++                    print("[MainWindow] Background maintenance completed")
++                except Exception as e:
++                    jm.complete_tracked_job(job_id, success=False, error=str(e))
++                    print(f"[MainWindow] Background maintenance failed: {e}")
++
++            thread = threading.Thread(target=_maintenance, name="startup_maintenance", daemon=True)
++            thread.start()
++
++        except Exception as e:
++            print(f"[MainWindow] Failed to enqueue maintenance job: {e}")
++            # Non-fatal — app can continue without optimization
++
++    def _warmup_clip_in_background(self):
++        """
++        Warm up CLIP model in a background thread after UI is shown.
++
++        This gives the best UX: UI appears immediately, and CLIP loads quietly
++        in the background while the user starts working. First semantic search
++        will be fast because model is already loaded.
++        """
++        try:
++            from settings_manager_qt import SettingsManager
++            settings = SettingsManager()
++
++            # Only warmup if semantic embeddings are enabled
++            if not settings.get("enable_semantic_embeddings", True):
++                print("[MainWindow] CLIP warmup skipped (semantic embeddings disabled)")
++                return
++
++            import threading
++
++            def _warmup():
++                try:
++                    from services.semantic_embedding_service import get_semantic_embedding_service
++                    svc = get_semantic_embedding_service()
++                    svc._load_model()  # Intentionally warm cache, tokenizer, weights
++                    print("[MainWindow] ✅ CLIP model warmed up in background")
++                except Exception as e:
++                    # Non-fatal - model will load on first use if warmup fails
++                    print(f"[MainWindow] ⚠️ CLIP background warmup failed (non-fatal): {e}")
++
++            # Run in daemon thread so it doesn't block app shutdown
++            thread = threading.Thread(target=_warmup, name="clip_warmup", daemon=True)
++            thread.start()
++            print("[MainWindow] 🧠 CLIP background warmup started")
++
++        except Exception as e:
++            print(f"[MainWindow] ⚠️ Could not start CLIP warmup: {e}")
+     
++    def _deferred_cache_purge(self):
++        """FIX #6: Run thumbnail cache purge in a background thread after startup."""
++        try:
++            from settings_manager_qt import SettingsManager
++            settings = SettingsManager()
++            if not settings.get("cache_auto_cleanup", True):
++                print("[MainWindow] Cache auto-cleanup disabled, skipping purge")
++                return
++
++            import threading
++
++            def _purge():
++                try:
++                    from thumb_cache_db import get_cache
++                    cache = get_cache()
++                    cache.purge_stale(max_age_days=7)
++                    print("[MainWindow] Deferred cache purge completed")
++                except Exception as e:
++                    print(f"[MainWindow] Cache purge error (non-fatal): {e}")
++
++            thread = threading.Thread(target=_purge, name="cache_purge", daemon=True)
++            thread.start()
++        except Exception as e:
++            print(f"[MainWindow] Could not start cache purge: {e}")
++
+     def ensureOnScreen(self):
+         """
+         CRITICAL FIX: Ensure window is positioned on a visible screen.
+@@ -1330,45 +1478,9 @@
+             print(f"[MainWindow] ✓ Window is on-screen (center at {window_center_x}, {window_center_y})")
+ 
+ 
+-# =========================
+-    def _init_db_and_sidebar(self):
+-        """
+-        Initialize database schema, ensure created_* date fields, backfill if needed,
+-        optimize indexes, and reload the sidebar date tree.
+-
+-        Runs on app startup to make sure the date navigation works immediately.
+-        """
+-        from reference_db import ReferenceDB
+-        self.db = ReferenceDB()
+-
+-        # NOTE: Schema creation and migrations are now handled automatically
+-        # by repository layer during ReferenceDB initialization.
+-        # created_* columns are added via migration system (v1.5.0 migration).
+-
+-        # 🕰 Backfill if needed (populate data in existing columns)
+-        try:
+-            updated_rows = self.db.single_pass_backfill_created_fields()
+-            if updated_rows:
+-                print(f"[DB] Backfilled {updated_rows} legacy rows with created_* fields.")
+-        except Exception as e:
+-            print(f"[DB] Backfill failed (possibly empty DB): {e}")
+-
+-        # ⚡ Optimize indexes (important for large photo libraries)
+-        try:
+-            self.db.optimize_indexes()
+-        except Exception as e:
+-            print(f"[DB] optimize_indexes failed: {e}")
+-
+-        # 🌳 Reload sidebar date tree
+-        try:
+-            # Check if method exists before calling
+-            if hasattr(self.sidebar, 'reload_date_tree'):
+-                self.sidebar.reload_date_tree()
+-                print("[Sidebar] Date tree reloaded.")
+-            else:
+-                print("[Sidebar] reload_date_tree() method not available - skipping")
+-        except Exception as e:
+-            print(f"[Sidebar] Failed to reload date tree: {e}")
++    # _init_db_and_sidebar() removed in v9.3.0 - replaced by:
++    # - _init_minimal_db_handle() for fast DB handle creation
++    # - _enqueue_startup_maintenance_job() for background heavy work
+   
+     # ============================================================
+     # 🏷️ Tag filter handler
+@@ -1421,8 +1533,8 @@
+     def _on_quick_search(self, query: str):
+         """Handle quick search from search bar."""
+         try:
+-            from services import SearchService
+-            search_service = SearchService()
++            from app_services import get_search_service
++            search_service = get_search_service()
+             paths = search_service.quick_search(query, limit=100)
+ 
+             # Display results in grid
+@@ -1444,8 +1556,8 @@
+             if dialog.exec() == QDialog.Accepted:
+                 criteria = dialog.get_search_criteria()
+ 
+-                from services import SearchService
+-                search_service = SearchService()
++                from app_services import get_search_service
++                search_service = get_search_service()
+                 result = search_service.search(criteria)
+ 
+                 if result.paths:
+@@ -2711,62 +2823,55 @@
+ 
+     def _on_project_changed_by_id(self, project_id: int):
+         """
+-        Phase 2: Switch to a project by ID (used by breadcrumb navigation).
+-        Updates the sidebar and grid to show the selected project.
++        Switch to a project by ID.
++
++        Delegates to the **active layout** via BaseLayout.set_project() so
++        that GooglePhotosLayout refreshes its AccordionSidebar while
++        CurrentLayout refreshes SidebarQt + grid.  MainWindow no longer
++        pokes hidden/dead widgets directly.
+         """
+         print(f"\n[MainWindow] ========== _on_project_changed_by_id({project_id}) STARTED ==========")
+         try:
+-            # CRITICAL: Check if already on this project to prevent redundant reloads and crashes
++            # Already on this project?
+             current_project_id = getattr(self.grid, 'project_id', None) if hasattr(self, 'grid') else None
+-            print(f"[MainWindow] Current project_id: {current_project_id}")
+-            
+             if current_project_id == project_id:
+                 print(f"[MainWindow] Already on project {project_id}, skipping switch")
+                 return
+ 
+-            # PHASE 1: Save project_id to session state
++            # 1. Persist to session state
+             from session_state_manager import get_session_state
+             get_session_state().set_project(project_id)
+-            print(f"[MainWindow] PHASE 1: Saved project_id={project_id} to session state")
+-
+-            print(f"[MainWindow] Step 1: Updating grid.project_id...")
+-            # CRITICAL ORDER: Update grid FIRST before sidebar to prevent race condition
+-            # Sidebar.set_project() triggers callbacks that reload grid, so grid.project_id
+-            # must be set BEFORE those callbacks fire
+-            if hasattr(self, "grid") and self.grid:
+-                self.grid.project_id = project_id
+-                print(f"[MainWindow] Step 1: ✓ Set grid.project_id = {project_id}")
++
++            # 2. Delegate to the active layout (the layout owns its sidebar)
++            layout = None
++            if hasattr(self, 'layout_manager') and self.layout_manager:
++                layout = self.layout_manager.get_current_layout()
++
++            if layout is not None:
++                layout.set_project(project_id)
++                print(f"[MainWindow] Delegated to {type(layout).__name__}.set_project({project_id})")
+             else:
+-                print(f"[MainWindow] Step 1: ✗ Grid not available!")
+-
+-            print(f"[MainWindow] Step 2: Updating sidebar...")
+-            # Now update sidebar (this triggers reload which will use the new grid.project_id)
+-            if hasattr(self, "sidebar") and self.sidebar:
+-                self.sidebar.set_project(project_id)
+-                print(f"[MainWindow] Step 2: ✓ Sidebar.set_project({project_id}) completed")
+-            else:
+-                print(f"[MainWindow] Step 2: ✗ Sidebar not available!")
+-
+-            print(f"[MainWindow] Step 3: Reloading grid to 'all' branch...")
+-            # Finally, explicitly reload grid to show all photos
+-            if hasattr(self, "grid") and self.grid:
+-                self.grid.set_branch("all")  # Reset to show all photos
+-                print(f"[MainWindow] Step 3: ✓ Grid.set_branch('all') completed")
+-            else:
+-                print(f"[MainWindow] Step 3: ✗ Grid not available for set_branch!")
+-
+-            # CRITICAL FIX: Removed duplicate breadcrumb update!
+-            # The gridReloaded signal (line 3392) already triggers _update_breadcrumb()
+-            # Scheduling a second update here causes a race condition crash!
+-            print(f"[MainWindow] Step 4: Breadcrumb will auto-update via gridReloaded signal")
+-
+-            print(f"[MainWindow] Step 5: ✓✓✓ Switched to project ID: {project_id}")
++                # Fallback: no layout manager yet (very early startup)
++                if hasattr(self, "grid") and self.grid:
++                    self.grid.project_id = project_id
++                if hasattr(self, "sidebar") and self.sidebar:
++                    self.sidebar.set_project(project_id)
++
++            # 3. Reset grid branch to "all" for CurrentLayout's grid
++            #    (Google layout handles its own reload inside set_project)
++            layout_id = ""
++            if hasattr(self, 'layout_manager') and self.layout_manager:
++                layout_id = self.layout_manager.get_current_layout_id() or ""
++            if layout_id != "google":
++                if hasattr(self, "grid") and self.grid:
++                    self.grid.set_branch("all")
++
++            # Breadcrumb auto-updates via gridReloaded signal
+             print(f"[MainWindow] ========== _on_project_changed_by_id({project_id}) COMPLETED ==========\n")
+         except Exception as e:
+-            print(f"[MainWindow] ✗✗✗ ERROR switching project: {e}")
++            print(f"[MainWindow] ERROR switching project: {e}")
+             import traceback
+             traceback.print_exc()
+-            print(f"[MainWindow] ========== _on_project_changed_by_id({project_id}) FAILED ==========\n")
+ 
+     def _refresh_project_list(self):
+         """
+@@ -3127,6 +3232,22 @@
+             print(f"[Menu] Opened URL: {url}")
+         except Exception as e:
+             QMessageBox.warning(self, "Error", f"Could not open URL:\n{url}\n\nError: {e}")
++
++    def _open_duplicates_for_path(self, path: str):
++        """Open the duplicates dialog focused on the given photo path."""
++        try:
++            from layouts.google_components.duplicates_dialog import DuplicatesDialog
++        except Exception:
++            return
++
++        project_id = getattr(self.grid, 'project_id', None)
++        if not project_id and hasattr(self, 'google_layout'):
++            project_id = getattr(self.google_layout, 'project_id', None)
++        if not project_id:
++            return
++
++        dlg = DuplicatesDialog(project_id=project_id, focus_path=path, parent=self)
++        dlg.exec()
+ 
+     def _open_lightbox_from_selection(self):
+         """Open the last selected image in lightbox."""
+@@ -3810,6 +3931,48 @@
+         if act and act.isChecked() != visible:
+             act.setChecked(visible)
+ 
++    # ------------------------------------------------------------------
++    # Metadata Editor Dock
++    # ------------------------------------------------------------------
++    def _toggle_metadata_editor(self, checked: bool = None):
++        """Toggle the Metadata Editor dock widget visibility."""
++        dock = getattr(self, "metadata_editor_dock", None)
++        if not dock:
++            return
++        if checked is None:
++            checked = not dock.isVisible()
++        dock.setVisible(checked)
++        # Sync the View menu checkbox
++        act = getattr(self, "_act_toggle_metadata_editor", None)
++        if act and act.isChecked() != checked:
++            act.setChecked(checked)
++
++    def _on_metadata_changed(self, photo_id: int, field: str, value):
++        """Handle metadata field changes from the dock editor."""
++        print(f"[MainWindow] Metadata changed: photo={photo_id}, {field}={value}")
++        # Refresh grid if rating/flag changed (may affect visual indicators)
++        if field in ("rating", "flag"):
++            grid = getattr(self, "grid", None)
++            if grid and hasattr(grid, "refresh_thumbnail"):
++                grid.refresh_thumbnail(photo_id)
++
++    def show_metadata_for_photo(self, photo_id: int, photo_path: str, metadata: dict = None):
++        """
++        Show the metadata editor dock for a specific photo.
++
++        Called from lightbox or grid when user wants to edit metadata.
++
++        Args:
++            photo_id: Database photo ID
++            photo_path: File path
++            metadata: Optional pre-loaded metadata dict
++        """
++        dock = getattr(self, "metadata_editor_dock", None)
++        if dock:
++            dock.load_photo(photo_id, photo_path, metadata)
++            if not dock.isVisible():
++                dock.show()
++
+     def _init_embedding_status_indicator(self):
+         """
+         Initialize the embedding coverage status bar indicator.
+
+--- layouts/google_components/duplicates_dialog.py
++++ layouts/google_components/duplicates_dialog.py
+@@ -231,7 +231,7 @@
+     # Signals
+     duplicate_action_taken = Signal(str, int)  # action, asset_id
+ 
+-    def __init__(self, project_id: int, parent=None):
++    def __init__(self, project_id: int, focus_path: str | None = None, parent=None):
+         """
+         Initialize DuplicatesDialog.
+             
+@@ -240,6 +240,14 @@
+             parent: Parent widget
+         """
+         super().__init__(parent)
++        self._pending_focus_asset_id: int | None = None
++        if focus_path:
++            try:
++                asset_repo = AssetRepository(self.db)
++                self._pending_focus_asset_id = asset_repo.get_asset_id_for_photo_path(project_id, focus_path)
++            except Exception:
++                self._pending_focus_asset_id = None
++
+         self.project_id = project_id
+         self.duplicates = []
+         self.selected_asset_id = None
+@@ -1057,6 +1065,13 @@
+         if 0 <= idx < len(self.duplicates):
+             # Select in list widget
+             self.assets_list.setCurrentRow(idx)
++        # If dialog was opened for a specific photo, focus the matching duplicate group
++        if self._pending_focus_asset_id is not None:
++            for row in range(self.assets_list.count()):
++                it = self.assets_list.item(row)
++                if it and it.data(Qt.UserRole) == self._pending_focus_asset_id:
++                    self.assets_list.setCurrentRow(row)
++                    break
+             # Trigger selection handler
+             item = self.assets_list.item(idx)
+             if item:
