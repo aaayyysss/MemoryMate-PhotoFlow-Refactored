@@ -455,13 +455,6 @@ class GooglePhotosLayout(BaseLayout):
         self.btn_similar.clicked.connect(self._open_similar_photos_dialog)
         toolbar.addWidget(self.btn_similar)
 
-        # Info/Metadata button - Toggle metadata editor dock (Lightroom-style)
-        self.btn_info = QPushButton("ℹ️ Info")
-        self.btn_info.setToolTip("Show/hide the Info Panel for editing metadata (Ctrl+I)")
-        self.btn_info.setCheckable(True)
-        self.btn_info.clicked.connect(self._toggle_info_panel)
-        toolbar.addWidget(self.btn_info)
-
         toolbar.addSeparator()
 
         # Zoom controls (Google Photos style - +/- buttons with slider)
@@ -7066,6 +7059,11 @@ class GooglePhotosLayout(BaseLayout):
 
             menu.addSeparator()
 
+            # Edit Metadata action - opens metadata editor dock for this photo
+            edit_metadata_action = QAction("✏️ Edit Metadata", parent=menu)
+            edit_metadata_action.triggered.connect(lambda: self._show_metadata_editor_for_photo(path))
+            menu.addAction(edit_metadata_action)
+
             # Properties action
             properties_action = QAction("ℹ️ Properties", parent=menu)
             properties_action.triggered.connect(lambda: self._show_photo_properties(path))
@@ -9325,7 +9323,7 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
 
         # If showing and a photo is selected, load its metadata
         if checked:
-            selected_paths = self._get_selected_photo_paths()
+            selected_paths = self.get_selected_paths()
             if selected_paths:
                 path = selected_paths[0]
                 photo_id = self._get_photo_id_for_path(path)
@@ -9346,6 +9344,20 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
                 return row['id'] if row else None
         except Exception:
             return None
+
+    def _show_metadata_editor_for_photo(self, path: str):
+        """Show the metadata editor dock for a specific photo (triggered from right-click menu)."""
+        main_window = getattr(self, 'main_window', None)
+        if not main_window:
+            return
+
+        dock = getattr(main_window, 'metadata_editor_dock', None)
+        if not dock:
+            return
+
+        photo_id = self._get_photo_id_for_path(path)
+        if photo_id:
+            main_window.show_metadata_for_photo(photo_id, path)
 
     def _on_duplicate_action_taken(self, action: str, asset_id: int):
         """

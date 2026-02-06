@@ -1704,6 +1704,11 @@ class ThumbnailGridQt(QWidget):
             act_paste_location = m.addAction(paste_text)
 
         m.addSeparator()
+
+        # Edit Metadata action - opens metadata editor dock for this photo
+        act_edit_metadata = m.addAction("✏️ Edit Metadata")
+
+        m.addSeparator()
         act_export = m.addAction(tr('context_menu.export'))
         act_delete = m.addAction(tr('context_menu.delete'))
 
@@ -1728,6 +1733,10 @@ class ThumbnailGridQt(QWidget):
 
         elif chosen is act_delete:
             self.deleteRequested.emit(paths)
+
+        elif chosen is act_edit_metadata:
+            # Open metadata editor dock for the first selected photo
+            self._show_metadata_editor_for_photo(paths[0] if paths else None)
 
         elif chosen is act_fav:
             # Check if any photos are selected
@@ -1964,6 +1973,33 @@ class ThumbnailGridQt(QWidget):
         elif act_paste_location and chosen is act_paste_location:
             self._paste_location(paths)
 
+
+    def _show_metadata_editor_for_photo(self, path: str):
+        """Show the metadata editor dock for a specific photo (triggered from right-click menu)."""
+        if not path:
+            return
+        try:
+            main_window = self.window()
+            if not main_window:
+                return
+            dock = getattr(main_window, 'metadata_editor_dock', None)
+            if not dock:
+                return
+
+            # Look up photo_id from database
+            from reference_db import ReferenceDB
+            db = ReferenceDB()
+            with db.get_connection() as conn:
+                cursor = conn.execute(
+                    "SELECT id FROM photo_metadata WHERE path = ? AND project_id = ?",
+                    (path, self.project_id))
+                row = cursor.fetchone()
+                photo_id = row['id'] if row else None
+
+            if photo_id and hasattr(main_window, 'show_metadata_for_photo'):
+                main_window.show_metadata_for_photo(photo_id, path)
+        except Exception as e:
+            print(f"[ThumbnailGrid] Error opening metadata editor: {e}")
 
     def _edit_photo_location(self, path: str):
         """
