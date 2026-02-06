@@ -1976,14 +1976,18 @@ class ThumbnailGridQt(QWidget):
 
     def _show_metadata_editor_for_photo(self, path: str):
         """Show the metadata editor dock for a specific photo (triggered from right-click menu)."""
+        print(f"[ThumbnailGrid] Opening metadata editor for: {path}")
         if not path:
+            print("[ThumbnailGrid] ⚠️ Cannot open metadata editor: path is empty")
             return
         try:
             main_window = self.window()
             if not main_window:
+                print("[ThumbnailGrid] ⚠️ Cannot open metadata editor: window() returned None")
                 return
             dock = getattr(main_window, 'metadata_editor_dock', None)
             if not dock:
+                print("[ThumbnailGrid] ⚠️ Cannot open metadata editor: metadata_editor_dock not found on main window")
                 return
 
             # Look up photo_id from database
@@ -1996,10 +2000,27 @@ class ThumbnailGridQt(QWidget):
                 row = cursor.fetchone()
                 photo_id = row['id'] if row else None
 
-            if photo_id and hasattr(main_window, 'show_metadata_for_photo'):
-                main_window.show_metadata_for_photo(photo_id, path)
+            if not photo_id:
+                # Try case-insensitive match as fallback
+                with db.get_connection() as conn:
+                    cursor = conn.execute(
+                        "SELECT id FROM photo_metadata WHERE LOWER(path) = LOWER(?) AND project_id = ?",
+                        (path, self.project_id))
+                    row = cursor.fetchone()
+                    photo_id = row['id'] if row else None
+                if photo_id:
+                    print(f"[ThumbnailGrid] Found photo_id via case-insensitive match")
+
+            if not photo_id:
+                print(f"[ThumbnailGrid] ⚠️ Cannot open metadata editor: no photo_id found for path: {path}")
+                return
+
+            print(f"[ThumbnailGrid] ✓ Opening metadata editor for photo_id={photo_id}")
+            main_window.show_metadata_for_photo(photo_id, path)
         except Exception as e:
             print(f"[ThumbnailGrid] Error opening metadata editor: {e}")
+            import traceback
+            traceback.print_exc()
 
     def _edit_photo_location(self, path: str):
         """
