@@ -486,7 +486,16 @@ class ReferenceDB:
         except Exception:
             conn.rollback()  # Auto-rollback on exception
             raise
-    
+
+    def get_connection(self):
+        """Compatibility shim — delegates to _connect().
+
+        102+ callers across the codebase use ``db.get_connection()`` as a
+        context-manager.  The real implementation lives in ``_connect()``;
+        this thin wrapper keeps every call-site working without renaming.
+        """
+        return self._connect()
+
     @classmethod
     def close_all_connections(cls):
         """
