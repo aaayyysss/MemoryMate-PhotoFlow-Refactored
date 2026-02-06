@@ -245,6 +245,12 @@ class ReferenceDB:
         c.execute("CREATE INDEX IF NOT EXISTS idx_face_crops_proj_branch ON face_crops(project_id, branch_key)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_face_crops_proj_rep ON face_crops(project_id, is_representative)")
 
+        # FIX #5: Prevent duplicate face detections for the same bounding box
+        # on the same photo.  Without this, re-running detection can double
+        # the face_crops rows and cause the "20 detected but 30 loaded" drift.
+        c.execute("""CREATE UNIQUE INDEX IF NOT EXISTS idx_face_crops_unique_bbox
+                     ON face_crops(project_id, image_path, bbox_x, bbox_y, bbox_w, bbox_h)""")
+
         # --- NEW: reps table you already upsert into elsewhere ---
         
         c.execute('''

@@ -33,7 +33,8 @@ class SearchBarWidget(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.search_service = SearchService()
+        from app_services import get_search_service
+        self.search_service = get_search_service()
         self._setup_ui()
         self._setup_autocomplete()
 

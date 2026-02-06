@@ -109,8 +109,8 @@ class StartupWorker(QThread):
             self.progress.emit(65, "Initializing search service…")
             self.emit_detail("🔎 Initializing search service...")
             try:
-                from services import SearchService
-                search_service = SearchService()
+                from app_services import get_search_service
+                search_service = get_search_service()
                 print("[Startup] SearchService initialized")
                 self.emit_detail("✓ Search service ready")
             except Exception as e:
