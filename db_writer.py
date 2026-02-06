@@ -265,66 +265,37 @@ class DBWriter(QObject):
                 updated_at= excluded.updated_at
         """
 
-        conn = None
         try:
-            conn = db._connect()
-            has_created = self._photo_metadata_has_created_cols(conn)
+            with db.get_connection() as conn:
+                has_created = self._photo_metadata_has_created_cols(conn)
 
-            cur = conn.cursor()
-            if has_created:
-                try:
-                    cur.executemany(sql_with_created, params_with_created)
-                    conn.commit()
+                cur = conn.cursor()
+                if has_created:
                     try:
+                        cur.executemany(sql_with_created, params_with_created)
                         logger.info(f"Committed {len(params_with_created)} rows (with created_* fields)")
-                        self.committed.emit(len(params_with_created))   # ✅ notify main thread
-                    except Exception:
-                        pass
-                    return
-                except Exception as e:
-                    # fallback to legacy if schema changed unexpectedly
-                    tb = traceback.format_exc()
-                    logger.warning(f"Upsert with created_* fields failed, falling back to legacy: {e}")
-                    try:
+                        self.committed.emit(len(params_with_created))
+                        return
+                    except Exception as e:
+                        tb = traceback.format_exc()
+                        logger.warning(f"Upsert with created_* fields failed, falling back to legacy: {e}")
                         conn.rollback()
-                    except Exception:
-                        pass
-                    # fall through to legacy attempt
-            # legacy attempt
-            try:
-                cur.executemany(sql_legacy, params_legacy)
-                conn.commit()
+                        # fall through to legacy attempt
+                # legacy attempt
                 try:
+                    cur.executemany(sql_legacy, params_legacy)
                     logger.info(f"Committed {len(params_legacy)} rows (legacy mode)")
-                    self.committed.emit(len(params_legacy))   # ✅ Fixed: emit correct count
-                except Exception:
-                    pass
-                return
-            except Exception as e:
-                tb = traceback.format_exc()
-                logger.error(f"Legacy upsert failed: {e}", exc_info=True)
-                try:
+                    self.committed.emit(len(params_legacy))
+                except Exception as e:
+                    tb = traceback.format_exc()
+                    logger.error(f"Legacy upsert failed: {e}", exc_info=True)
                     conn.rollback()
-                except Exception:
-                    pass
-                # emit error
-                self.error.emit(f"DBWriter upsert failed: {e}\n{tb}")
+                    self.error.emit(f"DBWriter upsert failed: {e}\n{tb}")
 
         except Exception as e:
             tb = traceback.format_exc()
             logger.critical(f"Unexpected error during upsert: {e}", exc_info=True)
             self.error.emit(f"DBWriter upsert failed: {e}\n{tb}")
-            try:
-                if conn:
-                    conn.rollback()
-            except Exception:
-                pass
-        finally:
-            try:
-                if conn:
-                    conn.close()
-            except Exception:
-                pass
 
     def shutdown(self, wait: bool = True, timeout_ms: int = 5000):
         """

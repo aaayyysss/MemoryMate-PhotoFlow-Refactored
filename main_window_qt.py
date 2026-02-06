@@ -1337,54 +1337,41 @@ class MainWindow(QMainWindow):
 
     def _enqueue_startup_maintenance_job(self):
         """
-        Enqueue heavy DB maintenance as a background job.
+        Enqueue heavy DB maintenance as a tracked background job.
 
-        Operations performed in background:
-        - Backfill created_* fields for legacy photos
-        - Optimize database indexes
-
-        This prevents UI freeze during startup while keeping user informed
-        via Activity Center progress indicator.
+        Uses the global JobManager singleton so the job always appears in the
+        Activity Center.  The worker thread gets its own ReferenceDB connection
+        (per-thread pool) and never touches Qt widgets.
         """
+        import threading
         try:
-            # Check if job manager is available
-            if not hasattr(self, 'job_manager') or self.job_manager is None:
-                # Fallback: run in simple background thread if no job manager
-                print("[MainWindow] No job manager, running maintenance in simple thread")
-                import threading
+            from services.job_manager import get_job_manager
+            jm = get_job_manager()
 
-                def _maintenance():
-                    try:
-                        from reference_db import ReferenceDB
-                        db = ReferenceDB()
-                        db.single_pass_backfill_created_fields()
-                        db.optimize_indexes()
-                        print("[MainWindow] Background maintenance completed")
-                    except Exception as e:
-                        print(f"[MainWindow] Background maintenance failed: {e}")
-
-                thread = threading.Thread(target=_maintenance, name="startup_maintenance", daemon=True)
-                thread.start()
-                return
-
-            # Use job manager for proper tracking and UI feedback
-            from workers.startup_maintenance_worker import StartupMaintenanceWorker
-
-            worker = StartupMaintenanceWorker(db_path=self.db.db_file if hasattr(self, 'db') else None)
-
-            # Submit as tracked job (shows in Activity Center)
-            self.job_manager.submit_tracked(
+            job_id = jm.register_tracked_job(
                 job_type="maintenance",
-                title="Database maintenance",
-                worker=worker,
-                cancellable=False,
-                show_progress=True,
+                description="Database maintenance (backfill & index)",
             )
-            print("[MainWindow] Database maintenance job submitted to Activity Center")
+            print(f"[MainWindow] Maintenance job registered: job_id={job_id}")
+
+            def _maintenance():
+                try:
+                    from reference_db import ReferenceDB
+                    db = ReferenceDB()
+                    db.single_pass_backfill_created_fields()
+                    db.optimize_indexes()
+                    jm.complete_tracked_job(job_id, success=True)
+                    print("[MainWindow] Background maintenance completed")
+                except Exception as e:
+                    jm.complete_tracked_job(job_id, success=False, error=str(e))
+                    print(f"[MainWindow] Background maintenance failed: {e}")
+
+            thread = threading.Thread(target=_maintenance, name="startup_maintenance", daemon=True)
+            thread.start()
 
         except Exception as e:
             print(f"[MainWindow] Failed to enqueue maintenance job: {e}")
-            # Non-fatal - app can continue without optimization
+            # Non-fatal — app can continue without optimization
 
     def _warmup_clip_in_background(self):
         """
@@ -3952,10 +3939,11 @@ class MainWindow(QMainWindow):
     def _on_metadata_changed(self, photo_id: int, field: str, value):
         """Handle metadata field changes from the dock editor."""
         print(f"[MainWindow] Metadata changed: photo={photo_id}, {field}={value}")
-        # Refresh thumbnail if rating/flag changed (may affect visual indicators)
+        # Refresh grid if rating/flag changed (may affect visual indicators)
         if field in ("rating", "flag"):
-            if hasattr(self, "grid") and self.grid:
-                self.grid.refresh_thumbnail(photo_id)
+            grid = getattr(self, "grid", None)
+            if grid and hasattr(grid, "refresh_thumbnail"):
+                grid.refresh_thumbnail(photo_id)
 
     def show_metadata_for_photo(self, photo_id: int, photo_path: str, metadata: dict = None):
         """

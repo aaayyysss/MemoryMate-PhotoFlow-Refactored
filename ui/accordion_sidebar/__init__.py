@@ -286,7 +286,8 @@ class AccordionSidebar(QWidget):
             try:
                 from reference_db import ReferenceDB
                 db = ReferenceDB()
-                row = db._connect().execute("SELECT name FROM photo_folders WHERE id = ?", (folder_id,)).fetchone()
+                with db.get_connection() as _conn:
+                    row = _conn.execute("SELECT name FROM photo_folders WHERE id = ?", (folder_id,)).fetchone()
                 if row:
                     folder_name = row[0]
             except:
