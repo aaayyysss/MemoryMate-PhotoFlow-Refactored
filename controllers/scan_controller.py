@@ -62,6 +62,29 @@ class ScanController(QObject):
         self._scan_refresh_scheduled = False
         self._scan_result_cached = None  # Cache scan results for final refresh
 
+    # ------------------------------------------------------------------
+    # Helper: resolve project_id from the *active* layout, not from the
+    # hidden CurrentLayout grid/sidebar which may still have project_id=None
+    # when Google Layout is active.
+    # ------------------------------------------------------------------
+    def _get_active_project_id(self):
+        """Return project_id from the active layout, grid, or DB default."""
+        # 1. Active layout (works for both Google and Current)
+        if hasattr(self.main, 'layout_manager') and self.main.layout_manager:
+            layout = self.main.layout_manager.get_current_layout()
+            if layout and hasattr(layout, 'get_current_project'):
+                pid = layout.get_current_project()
+                if pid is not None:
+                    return pid
+        # 2. Grid fallback
+        if hasattr(self.main, 'grid') and self.main.grid:
+            pid = getattr(self.main.grid, 'project_id', None)
+            if pid is not None:
+                return pid
+        # 3. DB default
+        from app_services import get_default_project_id
+        return get_default_project_id()
+
     def _test_progress_slot(self, pct: int, msg: str):
         """Test slot to verify Qt signal delivery is working."""
         # Removed verbose debug logging - signal delivery confirmed working
@@ -173,16 +196,11 @@ class ScanController(QObject):
             self.main.statusBar().showMessage(f"Database connection failed: {e}")
             return
 
-        # Get current project_id
-        current_project_id = self.main.grid.project_id
+        # Get current project_id from the active layout (not the hidden grid)
+        current_project_id = self._get_active_project_id()
         if current_project_id is None:
-            # Fallback to default project if grid doesn't have a project yet
-            from app_services import get_default_project_id
-            current_project_id = get_default_project_id()
-            if current_project_id is None:
-                # No projects exist - will be created during scan
-                current_project_id = 1  # Default to first project
-            self.logger.debug(f"Using project_id: {current_project_id}")
+            current_project_id = 1  # Default to first project (may be created during scan)
+        self.logger.debug(f"Using project_id: {current_project_id}")
 
         # Scan worker
         try:
@@ -472,11 +490,10 @@ class ScanController(QObject):
             from app_services import get_default_project_id
             db = ReferenceDB()
 
-            # CRITICAL FIX: Get current project_id to associate scanned photos with correct project
-            # Without this, all photos go to project_id=1 regardless of which project is active
-            current_project_id = self.main.grid.project_id
+            # Get project_id from the active layout (not the hidden CurrentLayout grid)
+            current_project_id = self._get_active_project_id()
             if current_project_id is None:
-                self.logger.warning("Grid project_id is None, using default project")
+                self.logger.warning("No active project_id found, using DB default")
                 current_project_id = get_default_project_id()
 
             if current_project_id is None:
@@ -769,25 +786,33 @@ class ScanController(QObject):
             except Exception as e:
                 self.logger.error("Face detection setup error: %s", e, exc_info=True)
 
-            # CRITICAL: Update sidebar project_id if it was None (fresh database)
-            # The scan creates the first project, so we need to tell the sidebar about it
-            if self.main.sidebar.project_id is None:
-                self.logger.info("Sidebar project_id was None, updating to default project")
+            # Delegate project_id propagation to the active layout instead
+            # of directly poking hidden sidebar/grid widgets that may belong
+            # to an inactive layout (e.g. CurrentLayout sidebar when Google is active).
+            active_pid = self._get_active_project_id()
+            if active_pid is None:
                 from app_services import get_default_project_id
-                default_pid = get_default_project_id()
-                self.logger.debug(f"Setting sidebar project_id to {default_pid}")
-                self.main.sidebar.set_project(default_pid)
-                if hasattr(self.main.sidebar, "tabs_controller"):
-                    self.main.sidebar.tabs_controller.project_id = default_pid
-                sidebar_was_updated = True
+                active_pid = get_default_project_id()
 
-            # CRITICAL: Also update grid's project_id if it was None
-            if self.main.grid.project_id is None:
-                self.logger.info("Grid project_id was None, updating to default project")
-                from app_services import get_default_project_id
-                default_pid = get_default_project_id()
-                self.logger.debug(f"Setting grid project_id to {default_pid}")
-                self.main.grid.project_id = default_pid
+            if active_pid is not None:
+                if hasattr(self.main, 'layout_manager') and self.main.layout_manager:
+                    layout = self.main.layout_manager.get_current_layout()
+                    if layout:
+                        cur = layout.get_current_project() if hasattr(layout, 'get_current_project') else None
+                        if cur is None:
+                            layout.set_project(active_pid)
+                            self.logger.info(f"Propagated project_id={active_pid} to active layout")
+                            sidebar_was_updated = True
+
+                # Also ensure CurrentLayout's grid/sidebar are in sync
+                # (they may still be None if Google Layout was active at startup)
+                if hasattr(self.main, 'grid') and self.main.grid:
+                    if getattr(self.main.grid, 'project_id', None) is None:
+                        self.main.grid.project_id = active_pid
+                if hasattr(self.main, 'sidebar') and self.main.sidebar:
+                    if getattr(self.main.sidebar, 'project_id', None) is None:
+                        self.main.sidebar.set_project(active_pid)
+                        sidebar_was_updated = True
         except Exception as e:
             self.logger.error(f"Error building date branches: {e}", exc_info=True)
 
@@ -857,9 +882,9 @@ class ScanController(QObject):
                         if hasattr(accordion, 'reload_section'):
                             accordion.reload_section("duplicates")
                             self.logger.debug("Refreshed accordion duplicates section after pipeline")
-                elif hasattr(self.main.sidebar, "tabs_controller"):
-                    tabs = self.main.sidebar.tabs_controller
-                    if hasattr(tabs, 'refresh_tab'):
+                elif hasattr(self.main, 'sidebar') and self.main.sidebar:
+                    tabs = getattr(self.main.sidebar, 'tabs_controller', None)
+                    if tabs is not None and hasattr(tabs, 'refresh_tab'):
                         tabs.refresh_tab("duplicates")
                         self.logger.debug("Refreshed sidebar duplicates tab after pipeline")
         except Exception as e:
@@ -908,16 +933,14 @@ class ScanController(QObject):
                         current_layout = self.main.layout_manager._current_layout
                         if current_layout and hasattr(current_layout, 'accordion_sidebar'):
                             self.logger.debug("Reloading AccordionSidebar for Google Layout...")
-                            # CRITICAL FIX: Call set_project() to propagate project_id to ALL sections
-                            # Simply setting accordion_sidebar.project_id is not enough - must call
-                            # set_project() which updates all individual section modules
-                            # This ensures that when sections are expanded later, they have valid project_id
-                            if hasattr(self.main.grid, 'project_id') and self.main.grid.project_id is not None:
-                                self.logger.debug(f"Setting accordion_sidebar project_id to {self.main.grid.project_id}")
-                                current_layout.accordion_sidebar.set_project(self.main.grid.project_id)
+                            # Get project_id from active layout (not hidden CurrentLayout grid)
+                            active_pid = self._get_active_project_id()
+                            if active_pid is not None:
+                                self.logger.debug(f"Setting accordion_sidebar project_id to {active_pid}")
+                                current_layout.accordion_sidebar.set_project(active_pid)
                                 self.logger.debug("AccordionSidebar project_id propagated to all sections")
                             else:
-                                self.logger.warning("Cannot set accordion_sidebar project_id - grid.project_id is None")
+                                self.logger.warning("Cannot set accordion_sidebar project_id - no active project")
                     elif hasattr(self.main.sidebar, "reload"):
                         # Current Layout uses old SidebarQt
                         self.main.sidebar.reload()
@@ -935,11 +958,13 @@ class ScanController(QObject):
         except Exception as e:
             self.logger.error(f"Error reloading sidebar: {e}", exc_info=True)
 
-        # CRITICAL FIX: Always reload grid - needed for Current layout even if Google is active
+        # Reload CurrentLayout grid only if it has a valid project_id
+        # (avoids "project_id is None, skipping reload" warning when Google Layout is active)
         try:
-            if hasattr(self.main.grid, "reload"):
-                self.main.grid.reload()
-                self.logger.debug("Grid reload completed")
+            if hasattr(self.main, 'grid') and self.main.grid and hasattr(self.main.grid, "reload"):
+                if getattr(self.main.grid, 'project_id', None) is not None:
+                    self.main.grid.reload()
+                    self.logger.debug("Grid reload completed")
         except Exception as e:
             self.logger.error(f"Error reloading grid: {e}", exc_info=True)
 
@@ -1021,21 +1046,17 @@ class ScanController(QObject):
                     current_layout.refresh_after_scan()
                     self.logger.info("✓ Layout refreshed with updated stack data")
                 else:
-                    # Fallback: refresh sidebar and grid directly
+                    # Fallback: refresh sidebar and grid directly (only if they have a project)
                     self.logger.info("Refreshing sidebar and grid to update stack badges...")
-                    if hasattr(self.main.sidebar, "reload"):
-                        self.main.sidebar.reload()
-                    if hasattr(self.main.grid, "reload"):
-                        self.main.grid.reload()
-                    self.logger.info("✓ Sidebar and grid refreshed with updated stack data")
+                    if hasattr(self.main, 'sidebar') and self.main.sidebar:
+                        if self.main.sidebar.isVisible() and hasattr(self.main.sidebar, "reload"):
+                            self.main.sidebar.reload()
+                    if hasattr(self.main, 'grid') and self.main.grid:
+                        if getattr(self.main.grid, 'project_id', None) is not None and hasattr(self.main.grid, "reload"):
+                            self.main.grid.reload()
+                    self.logger.info("Sidebar and grid refreshed with updated stack data")
             else:
-                # Legacy fallback
-                self.logger.info("Refreshing legacy components to update stack badges...")
-                if hasattr(self.main.sidebar, "reload"):
-                    self.main.sidebar.reload()
-                if hasattr(self.main.grid, "reload"):
-                    self.main.grid.reload()
-                self.logger.info("✓ Legacy components refreshed with updated stack data")
+                self.logger.debug("No layout manager, skipping stack refresh")
                 
         except Exception as e:
             self.logger.error(f"Error refreshing UI after stack updates: {e}", exc_info=True)
