@@ -3951,7 +3951,7 @@ class MainWindow(QMainWindow):
 
     def _on_metadata_changed(self, photo_id: int, field: str, value):
         """Handle metadata field changes from the dock editor."""
-        self.logger.debug(f"[MainWindow] Metadata changed: photo={photo_id}, {field}={value}")
+        print(f"[MainWindow] Metadata changed: photo={photo_id}, {field}={value}")
         # Refresh thumbnail if rating/flag changed (may affect visual indicators)
         if field in ("rating", "flag"):
             if hasattr(self, "grid") and self.grid:

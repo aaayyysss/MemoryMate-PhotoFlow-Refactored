@@ -115,6 +115,10 @@ class SemanticEmbeddingService:
         self._load_error = None
         self._load_lock = threading.Lock()
 
+        # TTL cache for stale-embeddings query (avoids re-querying every 30s)
+        self._stale_cache = {}       # {project_id: (timestamp, result_list)}
+        self._stale_cache_ttl = 300  # seconds (5 minutes)
+
         # Defer heavy imports to _load_model(); just probe availability here
         self._available = False
         self._torch = None
@@ -1162,28 +1166,33 @@ class SemanticEmbeddingService:
             logger.warning(f"[SemanticEmbeddingService] Error checking staleness for photo {photo_id}: {e}")
             return False
 
-    def get_stale_embeddings_for_project(self, project_id: int) -> list:
+    def get_stale_embeddings_for_project(self, project_id: int, force: bool = False) -> list:
         """
         Get list of photo IDs with stale embeddings in a project.
 
         v9.3.0: Uses pixel-based detection via perceptual hash (dHash).
-        Efficiently finds stale embeddings in a single SQL query by comparing
-        stored source_photo_hash against current image_content_hash.
+        Results are cached with a 5-minute TTL to avoid hammering the DB
+        from the 30-second status-bar timer.  Pass ``force=True`` (or call
+        ``invalidate_stale_cache``) to bypass the cache after a scan.
 
         Args:
             project_id: Project ID
+            force: Skip cache and re-query the database
 
         Returns:
             List of (photo_id, file_path) tuples for photos with stale embeddings
         """
+        import time
+
+        # --- TTL cache check ---
+        if not force and project_id in self._stale_cache:
+            ts, cached = self._stale_cache[project_id]
+            if (time.time() - ts) < self._stale_cache_ttl:
+                return cached
+
         stale_photos = []
 
         with self.db.get_connection() as conn:
-            # Single efficient query: Find embeddings where hash doesn't match
-            # This includes:
-            # 1. source_photo_hash IS NULL (legacy embedding)
-            # 2. image_content_hash IS NULL (legacy scan, needs rescan)
-            # 3. source_photo_hash != image_content_hash (actual pixel change)
             query = """
                 SELECT se.photo_id, p.path, se.source_photo_hash, p.image_content_hash
                 FROM semantic_embeddings se
@@ -1203,12 +1212,22 @@ class SemanticEmbeddingService:
                 file_path = row['path']
                 stale_photos.append((photo_id, file_path))
 
+        # Store in cache
+        self._stale_cache[project_id] = (time.time(), stale_photos)
+
         if stale_photos:
             logger.info(f"[SemanticEmbeddingService] Found {len(stale_photos)} stale embeddings in project {project_id} (pixel-hash based)")
         else:
             logger.debug(f"[SemanticEmbeddingService] No stale embeddings in project {project_id}")
 
         return stale_photos
+
+    def invalidate_stale_cache(self, project_id: int = None):
+        """Clear the stale-embeddings TTL cache (call after a scan or asset change)."""
+        if project_id is not None:
+            self._stale_cache.pop(project_id, None)
+        else:
+            self._stale_cache.clear()
 
     def invalidate_stale_embeddings(self, project_id: int) -> int:
         """
@@ -1238,6 +1257,8 @@ class SemanticEmbeddingService:
             conn.commit()
 
         logger.info(f"[SemanticEmbeddingService] Invalidated {len(photo_ids)} stale embeddings")
+        # Bust TTL cache since we just deleted rows
+        self.invalidate_stale_cache(project_id)
         return len(photo_ids)
 
     def get_staleness_stats(self, project_id: int) -> dict:
