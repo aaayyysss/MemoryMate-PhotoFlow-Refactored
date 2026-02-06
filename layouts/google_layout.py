@@ -1163,6 +1163,12 @@ class GooglePhotosLayout(BaseLayout):
         """
         Load photos from database and populate timeline.
 
+        STALE-WHILE-REVALIDATE PATTERN (v9.3.0):
+        - Keeps existing content visible while loading new data
+        - Shows subtle "refreshing" indicator instead of blank screen
+        - Only clears timeline when new data is ready to display
+        - Provides perceived performance improvement
+
         Args:
             thumb_size: Thumbnail size in pixels (default 200)
             filter_year: Optional year filter (e.g., 2024)
@@ -1204,69 +1210,35 @@ class GooglePhotosLayout(BaseLayout):
         has_filters = filter_year is not None or filter_month is not None or filter_day is not None or filter_folder is not None or filter_person is not None or filter_paths is not None
         self.btn_clear_filter.setVisible(has_filters)
 
-        # === PROGRESS: Clearing existing timeline ===
-        print(f"[GooglePhotosLayout] 🔄 Clearing existing timeline and thumbnail cache...")
+        # ═══════════════════════════════════════════════════════════════════
+        # STALE-WHILE-REVALIDATE: Don't clear existing content!
+        # Keep showing current thumbnails while new data loads in background.
+        # Only clear when new data is ready (in _display_photos_in_timeline)
+        # ═══════════════════════════════════════════════════════════════════
 
-        # Clear existing timeline and thumbnail cache
-        try:
-            while self.timeline_layout.count():
-                child = self.timeline_layout.takeAt(0)
-                if child.widget():
-                    child.widget().deleteLater()
+        # Show subtle "refreshing" indicator OVER existing content
+        self._show_refresh_indicator()
 
-            # Clear thumbnail button cache and reset load counter
-            self.thumbnail_buttons.clear()
-            self.thumbnail_load_count = 0  # Reset counter for new photo set
-            self._thumb_inflight.clear()  # Reset inflight guard on reload
-
-            # CRITICAL FIX: Only clear trees when NOT filtering
-            # When filtering, we want to keep the tree structure visible
-            # so users can see all available years/months/folders/people and switch between them
-            # NOTE: With AccordionSidebar, clearing is handled internally - no action needed here
-            pass
-        except Exception as e:
-            print(f"[GooglePhotosLayout] ⚠️ Error in _load_photos setup: {e}")
-            # Continue anyway
+        # Reset inflight tracking for new load
+        self._thumb_inflight.clear()
 
         # PHASE 2 Task 2.1: Increment generation (discard stale results)
         self._photo_load_generation += 1
         current_gen = self._photo_load_generation
         self._photo_load_in_progress = True
 
-        print(f"[GooglePhotosLayout] 🔍 Starting async photo load (generation {current_gen})...")
-
-        # PHASE 2 Task 2.1: Recreate loading indicator if it was deleted during timeline clear
-        try:
-            if self._loading_indicator:
-                self._loading_indicator.show()
-        except RuntimeError:
-            # C++ object was deleted - recreate it
-            self._loading_indicator = QLabel("Loading photos...")
-            self._loading_indicator.setAlignment(Qt.AlignCenter)
-            self._loading_indicator.setStyleSheet("""
-                QLabel {
-                    font-size: 14pt;
-                    color: #666;
-                    padding: 60px;
-                    background: white;
-                }
-            """)
-            self.timeline_layout.addWidget(self._loading_indicator)
-            self._loading_indicator.show()
+        print(f"[GooglePhotosLayout] 🔍 Starting async photo load (generation {current_gen}) - existing content preserved...")
 
         # CRITICAL: Check if we have a valid project
         if self.project_id is None:
             # No project - show empty state with instructions
+            self._hide_refresh_indicator()
+            self._clear_timeline_for_new_content()
             empty_label = QLabel("📂 No project selected\n\nClick '➕ New Project' to create your first project")
             empty_label.setAlignment(Qt.AlignCenter)
             empty_label.setStyleSheet("font-size: 12pt; color: #888; padding: 60px;")
             self.timeline_layout.addWidget(empty_label)
             print("[GooglePhotosLayout] ⚠️ No project selected")
-            try:
-                if self._loading_indicator:
-                    self._loading_indicator.hide()
-            except RuntimeError:
-                pass  # Already deleted
             return
 
         # Build filter params (legacy format for PhotoLoadWorker)
@@ -1330,6 +1302,58 @@ class GooglePhotosLayout(BaseLayout):
             )
             QThreadPool.globalInstance().start(worker)
             print(f"[GooglePhotosLayout] Paged load started (generation {current_gen}, page_size={self._page_size})")
+
+    def _show_refresh_indicator(self):
+        """Show subtle refresh indicator over existing content."""
+        try:
+            if not hasattr(self, '_refresh_overlay') or self._refresh_overlay is None:
+                self._refresh_overlay = QLabel("↻ Refreshing...")
+                self._refresh_overlay.setAlignment(Qt.AlignCenter)
+                self._refresh_overlay.setStyleSheet("""
+                    QLabel {
+                        background: rgba(255, 255, 255, 0.9);
+                        color: #1976D2;
+                        font-size: 12px;
+                        padding: 8px 16px;
+                        border-radius: 16px;
+                        border: 1px solid #e0e0e0;
+                    }
+                """)
+                self._refresh_overlay.setFixedSize(120, 36)
+
+            # Position at top center of timeline
+            if hasattr(self, 'scroll_area') and self.scroll_area:
+                self._refresh_overlay.setParent(self.scroll_area)
+                self._refresh_overlay.move(
+                    (self.scroll_area.width() - 120) // 2,
+                    10
+                )
+                self._refresh_overlay.raise_()
+                self._refresh_overlay.show()
+        except Exception as e:
+            logger.debug(f"[GooglePhotosLayout] Could not show refresh indicator: {e}")
+
+    def _hide_refresh_indicator(self):
+        """Hide the refresh indicator."""
+        try:
+            if hasattr(self, '_refresh_overlay') and self._refresh_overlay:
+                self._refresh_overlay.hide()
+        except Exception:
+            pass
+
+    def _clear_timeline_for_new_content(self):
+        """Clear timeline only when new content is ready to display."""
+        try:
+            while self.timeline_layout.count():
+                child = self.timeline_layout.takeAt(0)
+                if child.widget():
+                    child.widget().deleteLater()
+
+            # Clear thumbnail button cache and reset load counter
+            self.thumbnail_buttons.clear()
+            self.thumbnail_load_count = 0
+        except Exception as e:
+            print(f"[GooglePhotosLayout] ⚠️ Error clearing timeline: {e}")
 
     def _group_photos_by_date(self, rows) -> Dict[str, List[Tuple]]:
         """
@@ -5480,6 +5504,8 @@ class GooglePhotosLayout(BaseLayout):
         """
         Callback when async photo database query completes.
         Only display results if generation matches (discard stale results).
+
+        STALE-WHILE-REVALIDATE: Now clears old content only when new data arrives.
         """
         logger.info(f"Photo query complete: generation={generation}, current={self._photo_load_generation}, rows={len(rows)}")
 
@@ -5491,12 +5517,18 @@ class GooglePhotosLayout(BaseLayout):
         # Clear loading state
         self._photo_load_in_progress = False
 
+        # Hide refresh indicator (stale-while-revalidate)
+        self._hide_refresh_indicator()
+
         # Hide loading indicator
         try:
             if self._loading_indicator:
                 self._loading_indicator.hide()
         except RuntimeError:
             pass  # Already deleted
+
+        # STALE-WHILE-REVALIDATE: Clear old content NOW, right before displaying new
+        self._clear_timeline_for_new_content()
 
         # Display photos in timeline
         self._display_photos_in_timeline(rows)
@@ -5514,12 +5546,18 @@ class GooglePhotosLayout(BaseLayout):
         # Clear loading state
         self._photo_load_in_progress = False
 
+        # Hide refresh indicator (stale-while-revalidate)
+        self._hide_refresh_indicator()
+
         # Hide loading indicator
         try:
             if self._loading_indicator:
                 self._loading_indicator.hide()
         except RuntimeError:
             pass  # Already deleted
+
+        # Clear timeline for error display
+        self._clear_timeline_for_new_content()
 
         # Show error in timeline
         error_label = QLabel(
@@ -5552,6 +5590,8 @@ class GooglePhotosLayout(BaseLayout):
 
         First page (offset==0): full timeline rebuild.
         Subsequent pages: incremental merge into existing date groups.
+
+        STALE-WHILE-REVALIDATE: First page clears old content, subsequent pages merge.
         """
         if generation != self._photo_load_generation:
             logger.debug("[GoogleLayout] Discarding stale page gen=%d", generation)
@@ -5575,7 +5615,11 @@ class GooglePhotosLayout(BaseLayout):
         )
 
         if offset == 0:
-            # First page → full timeline build (same path as legacy)
+            # First page → full timeline build
+            # STALE-WHILE-REVALIDATE: Hide refresh indicator and clear old content NOW
+            self._hide_refresh_indicator()
+            self._clear_timeline_for_new_content()
+
             self._paging_all_rows = list(tuples)
             self._photo_load_in_progress = False
             try:
@@ -5585,7 +5629,7 @@ class GooglePhotosLayout(BaseLayout):
                 pass
             self._display_photos_in_timeline(tuples)
         else:
-            # Subsequent pages → incremental merge
+            # Subsequent pages → incremental merge (no clearing needed)
             self._paging_all_rows.extend(tuples)
             self._merge_page_into_timeline(tuples)
 

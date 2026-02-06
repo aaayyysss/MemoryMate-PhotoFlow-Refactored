@@ -408,6 +408,7 @@ hiddenimports = [
     'ui.hash_backfill_progress_dialog',
     'ui.location_editor_dialog',
     'ui.location_editor_integration',
+    'ui.metadata_editor_dock',
     'ui.mtp_deep_scan_dialog',
     'ui.mtp_import_dialog',
     'ui.people_list_view',
