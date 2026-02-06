@@ -2577,12 +2577,6 @@ class ReferenceDB:
             cur.execute("SELECT COUNT(*) FROM project_images WHERE project_id = ?", (project_id,))
             count = cur.fetchone()[0]
             print(f"[build_date_branches] project_images table has {count} rows for project {project_id}")
-        # ✅ Ensure outer connection also flushes
-        try:
-            self._connect().commit()
-        except Exception:
-            pass
-
         return n_total
 
     def build_video_date_branches(self, project_id: int):
@@ -2692,12 +2686,6 @@ class ReferenceDB:
             cur.execute("SELECT COUNT(*) FROM project_videos WHERE project_id = ?", (project_id,))
             count = cur.fetchone()[0]
             print(f"[build_video_date_branches] project_videos table has {count} rows for project {project_id}")
-
-        # Ensure outer connection also flushes
-        try:
-            self._connect().commit()
-        except Exception:
-            pass
 
         return n_total
 

@@ -219,6 +219,15 @@ class MetadataEditorDock(QDockWidget):
         self._loading = False
         self._dirty_fields: set = set()
 
+        # Debounce timer for text fields (title, caption, tags).
+        # Saves happen 500ms after the last keystroke instead of per-character.
+        from PySide6.QtCore import QTimer
+        self._save_timer = QTimer(self)
+        self._save_timer.setSingleShot(True)
+        self._save_timer.setInterval(500)
+        self._save_timer.timeout.connect(self._flush_pending_save)
+        self._pending_save: dict | None = None  # {"field": ..., "value": ...}
+
         self._setup_ui()
 
     def _setup_ui(self):
@@ -586,7 +595,12 @@ class MetadataEditorDock(QDockWidget):
             self.lbl_no_people.show()
 
     def _on_field_changed(self, field: str, value):
-        """Handle field value changes."""
+        """Handle field value changes.
+
+        Text fields (title, caption, tags) are debounced — the DB write
+        happens 500 ms after the last keystroke.  Discrete fields (rating,
+        flag) are saved immediately.
+        """
         if self._loading:
             return
 
@@ -594,13 +608,32 @@ class MetadataEditorDock(QDockWidget):
             return
 
         self._dirty_fields.add(field)
-        self._save_field_to_db(field, value)
-        self.metadataChanged.emit(self._current_photo_id, field, value)
 
-        # Show save feedback
+        if field in ("title", "caption", "tags"):
+            # Debounced save — restart timer on every keystroke
+            self._pending_save = {"field": field, "value": value}
+            self._save_timer.start()
+            self.lbl_save_status.setText("…")
+        else:
+            # Discrete fields — save immediately
+            self._save_field_to_db(field, value)
+            self.metadataChanged.emit(self._current_photo_id, field, value)
+            self.lbl_save_status.setText("✓ Saved")
+            from PySide6.QtCore import QTimer as _QT
+            _QT.singleShot(2000, lambda: self.lbl_save_status.setText(""))
+
+    def _flush_pending_save(self):
+        """Timer callback — write the last pending text-field value to DB."""
+        pending = self._pending_save
+        if pending is None:
+            return
+        self._pending_save = None
+        self._save_field_to_db(pending["field"], pending["value"])
+        if self._current_photo_id is not None:
+            self.metadataChanged.emit(self._current_photo_id, pending["field"], pending["value"])
         self.lbl_save_status.setText("✓ Saved")
-        from PySide6.QtCore import QTimer
-        QTimer.singleShot(2000, lambda: self.lbl_save_status.setText(""))
+        from PySide6.QtCore import QTimer as _QT
+        _QT.singleShot(2000, lambda: self.lbl_save_status.setText(""))
 
     def _save_field_to_db(self, field: str, value):
         """Save a single field to database (DB-first approach)."""
