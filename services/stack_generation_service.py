@@ -33,7 +33,7 @@ class StackGenParams:
     similarity_threshold: float = 0.85  # Balanced threshold - high quality but not overly strict
     candidate_limit_per_photo: int = 300
     cross_date_similarity: bool = True  # Enable global similarity pass across all dates
-    cross_date_threshold: float = 0.90  # Higher threshold for cross-date (no time-proximity signal)
+    cross_date_threshold: float = 0.85  # Cross-date threshold (was 0.90, lowered for real-world CLIP embeddings)
 
 
 @dataclass(frozen=True)
@@ -164,21 +164,22 @@ class StackGenerationService:
                 f"stack badges should be refreshed to prevent 'Stack not found' errors."
             )
 
-#        # Step 2: Get all photos with embeddings
-        # Step 2: Get all photos with timestamps
+        # Step 2: Get ALL photos (including those without timestamps)
+        # The time-window pass will skip dateless photos, but the global
+        # cross-date pass needs them to detect visually similar photos
+        # regardless of metadata availability.
         # Policy: Prefer asset representatives only, to prevent exact duplicates appearing in Similar stacks
         representative_ids = self._get_representative_photo_ids(project_id)
 
-
         # Note: For large projects, might need pagination
         all_photos = self.photo_repo.find_all(
-            where_clause="project_id = ? AND created_ts IS NOT NULL",
+            where_clause="project_id = ?",
             params=(project_id,),
-            order_by="created_ts ASC"
+            order_by="COALESCE(created_ts, 9999999999) ASC"
         )
 
         if not all_photos:
-            self.logger.info("No photos with timestamps found")
+            self.logger.info("No photos found in project")
             return StackGenStats(
                 photos_considered=0,
                 stacks_created=0,
@@ -193,7 +194,8 @@ class StackGenerationService:
                 f"Representative-only mode enabled: {before} → {len(all_photos)} photos considered"
             )
 
-        self.logger.info(f"Found {len(all_photos)} photos with timestamps")
+        timestamped = sum(1 for p in all_photos if p.get("created_ts") is not None)
+        self.logger.info(f"Found {len(all_photos)} photos ({timestamped} with timestamps, {len(all_photos) - timestamped} without)")
 
         # Step 2.5: PERFORMANCE OPTIMIZATION - Batch load all embeddings at once
         # This reduces N database queries to just 1 query
@@ -413,7 +415,9 @@ class StackGenerationService:
         project_id: int,
         photo_ids: List[int],
         similarity_threshold: float = 0.85,
-        time_window_seconds: int = 300
+        time_window_seconds: int = 300,
+        cross_date_similarity: bool = True,
+        cross_date_threshold: float = 0.85,
     ) -> int:
         """
         Generate similar shot stacks for a specific subset of photos.
@@ -425,6 +429,8 @@ class StackGenerationService:
             photo_ids: List of photo IDs to consider for stacking
             similarity_threshold: Minimum similarity (0.0-1.0)
             time_window_seconds: Time window for candidates
+            cross_date_similarity: Enable global similarity across all dates
+            cross_date_threshold: Threshold for cross-date similarity pass
 
         Returns:
             Number of stacks created
@@ -443,7 +449,9 @@ class StackGenerationService:
 
         params = StackGenParams(
             similarity_threshold=similarity_threshold,
-            time_window_seconds=time_window_seconds
+            time_window_seconds=time_window_seconds,
+            cross_date_similarity=cross_date_similarity,
+            cross_date_threshold=cross_date_threshold,
         )
 
         # Clear existing stacks for this rule version
@@ -455,22 +463,25 @@ class StackGenerationService:
         if cleared > 0:
             self.logger.info(f"Cleared {cleared} existing similar shot stacks")
 
-        # Get photos with timestamps from the selected set
+        # Get ALL photos from the selected set (including those without timestamps)
+        # The time-window pass will skip dateless photos, but the global
+        # cross-date pass needs them for visual similarity matching.
         photo_id_set = set(photo_ids)
         all_photos = self.photo_repo.find_all(
-            where_clause="project_id = ? AND created_ts IS NOT NULL",
+            where_clause="project_id = ?",
             params=(project_id,),
-            order_by="created_ts ASC"
+            order_by="COALESCE(created_ts, 9999999999) ASC"
         )
 
         # Filter to only selected photos
         selected_photos = [p for p in all_photos if p.get("id") in photo_id_set]
 
         if not selected_photos:
-            self.logger.info("No selected photos with timestamps found")
+            self.logger.info("No selected photos found")
             return 0
 
-        self.logger.info(f"Processing {len(selected_photos)} photos with timestamps")
+        timestamped = sum(1 for p in selected_photos if p.get("created_ts") is not None)
+        self.logger.info(f"Processing {len(selected_photos)} photos ({timestamped} with timestamps)")
 
         # Batch load embeddings for efficiency
         preloaded_embeddings: Dict[int, Any] = {}
@@ -533,12 +544,12 @@ class StackGenerationService:
         self.logger.info(f"Found {len(all_clusters)} similar shot clusters (time-window pass)")
 
         # Global cross-date pass for selected photos
-        if preloaded_embeddings:
+        if params.cross_date_similarity and preloaded_embeddings:
             global_clusters = self._cluster_globally_by_similarity(
                 all_photos=selected_photos,
                 preloaded_embeddings=preloaded_embeddings,
                 already_clustered=photo_to_cluster,
-                similarity_threshold=max(similarity_threshold, 0.90),
+                similarity_threshold=params.cross_date_threshold,
                 min_cluster_size=params.min_stack_size,
             )
             for cluster in global_clusters:
