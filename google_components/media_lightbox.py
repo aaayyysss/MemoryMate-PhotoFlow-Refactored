@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QDialog, QSlider, QFrame, QGraphicsOpacityEffect, QSizePolicy,
     QScrollArea, QGridLayout, QStackedWidget, QMessageBox, QSpinBox,
-    QTextEdit, QRadioButton, QButtonGroup
+    QTextEdit, QRadioButton, QButtonGroup, QLineEdit, QGroupBox, QToolButton
 )
 from PySide6.QtCore import (
     Qt, Signal, QSize, QEvent, QRunnable, QThreadPool, QObject, QTimer,
@@ -5223,11 +5223,13 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         """)
 
         # Create tabs with scrollable content
+        self.edit_tab_content = self._create_metadata_edit_tab()
         self.basic_tab_content = self._create_scrollable_tab()
         self.camera_tab_content = self._create_scrollable_tab()
         self.location_tab_content = self._create_scrollable_tab()
         self.technical_tab_content = self._create_scrollable_tab()
 
+        self.metadata_tabs.addTab(self.edit_tab_content['scroll'], "✏️ Edit")
         self.metadata_tabs.addTab(self.basic_tab_content['scroll'], "📄 Basic")
         self.metadata_tabs.addTab(self.camera_tab_content['scroll'], "📷 Camera")
         self.metadata_tabs.addTab(self.location_tab_content['scroll'], "🌍 Location")
@@ -5258,6 +5260,317 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         scroll.setWidget(widget)
 
         return {'scroll': scroll, 'widget': widget, 'layout': layout}
+
+    def _create_metadata_edit_tab(self) -> dict:
+        """Create the metadata editing tab with rating, flag, title, caption, keywords."""
+        scroll = QScrollArea()
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setWidgetResizable(True)
+        scroll.setStyleSheet("background: transparent; border: none;")
+
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(8)
+        layout.setAlignment(Qt.AlignTop)
+
+        # Dark theme style for labels and inputs inside the lightbox
+        label_style = "color: rgba(255,255,255,0.7); font-size: 9pt; font-weight: bold; background: transparent;"
+        input_style = """
+            color: white;
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 4px;
+            padding: 4px 6px;
+            font-size: 9pt;
+        """
+
+        # === Rating ===
+        rating_label = QLabel("Rating")
+        rating_label.setStyleSheet(label_style)
+        layout.addWidget(rating_label)
+
+        rating_row = QHBoxLayout()
+        rating_row.setSpacing(2)
+        self._lb_rating_buttons = []
+        self._lb_current_rating = 0
+        for i in range(5):
+            btn = QToolButton()
+            btn.setFixedSize(28, 28)
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.setStyleSheet("""
+                QToolButton {
+                    border: none;
+                    background: transparent;
+                    font-size: 16px;
+                    color: rgba(255,255,255,0.3);
+                }
+                QToolButton:hover {
+                    background: rgba(255, 193, 7, 0.2);
+                    border-radius: 4px;
+                }
+            """)
+            btn.setText("☆")
+            btn.clicked.connect(lambda checked, idx=i: self._on_lb_star_clicked(idx))
+            self._lb_rating_buttons.append(btn)
+            rating_row.addWidget(btn)
+
+        clear_rating_btn = QToolButton()
+        clear_rating_btn.setText("✕")
+        clear_rating_btn.setToolTip("Clear rating")
+        clear_rating_btn.setFixedSize(20, 20)
+        clear_rating_btn.setCursor(Qt.PointingHandCursor)
+        clear_rating_btn.setStyleSheet("""
+            QToolButton { border: none; color: rgba(255,255,255,0.4); font-size: 12px; background: transparent; }
+            QToolButton:hover { color: white; }
+        """)
+        clear_rating_btn.clicked.connect(lambda: self._on_lb_set_rating(0))
+        rating_row.addWidget(clear_rating_btn)
+        rating_row.addStretch()
+        layout.addLayout(rating_row)
+
+        # === Flag ===
+        flag_label = QLabel("Flag")
+        flag_label.setStyleSheet(label_style)
+        layout.addWidget(flag_label)
+
+        flag_row = QHBoxLayout()
+        flag_row.setSpacing(4)
+        self._lb_current_flag = "none"
+
+        flag_btn_style = """
+            QPushButton {{
+                border: 1px solid rgba(255,255,255,0.15);
+                border-radius: 4px;
+                padding: 4px 10px;
+                font-size: 9pt;
+                color: rgba(255,255,255,0.7);
+                background: rgba(255,255,255,0.05);
+            }}
+            QPushButton:hover {{
+                background: rgba(255,255,255,0.12);
+            }}
+            QPushButton:checked {{
+                background: {bg};
+                color: {fg};
+                border-color: {fg};
+            }}
+        """
+
+        self._lb_flag_pick = QPushButton("⬆ Pick")
+        self._lb_flag_pick.setCheckable(True)
+        self._lb_flag_pick.setStyleSheet(flag_btn_style.format(bg="rgba(76,175,80,0.3)", fg="#4CAF50"))
+        self._lb_flag_pick.clicked.connect(lambda: self._on_lb_flag_clicked("pick"))
+        flag_row.addWidget(self._lb_flag_pick)
+
+        self._lb_flag_reject = QPushButton("⬇ Reject")
+        self._lb_flag_reject.setCheckable(True)
+        self._lb_flag_reject.setStyleSheet(flag_btn_style.format(bg="rgba(244,67,54,0.3)", fg="#F44336"))
+        self._lb_flag_reject.clicked.connect(lambda: self._on_lb_flag_clicked("reject"))
+        flag_row.addWidget(self._lb_flag_reject)
+
+        flag_row.addStretch()
+        layout.addLayout(flag_row)
+
+        # === Title ===
+        title_label = QLabel("Title")
+        title_label.setStyleSheet(label_style)
+        layout.addWidget(title_label)
+
+        self._lb_edit_title = QLineEdit()
+        self._lb_edit_title.setPlaceholderText("Add a title...")
+        self._lb_edit_title.setStyleSheet(input_style)
+        self._lb_edit_title.editingFinished.connect(
+            lambda: self._on_lb_metadata_changed("title", self._lb_edit_title.text()))
+        layout.addWidget(self._lb_edit_title)
+
+        # === Caption ===
+        caption_label = QLabel("Caption")
+        caption_label.setStyleSheet(label_style)
+        layout.addWidget(caption_label)
+
+        self._lb_edit_caption = QTextEdit()
+        self._lb_edit_caption.setPlaceholderText("Add a description...")
+        self._lb_edit_caption.setMaximumHeight(70)
+        self._lb_edit_caption.setStyleSheet(input_style + " QTextEdit { min-height: 50px; }")
+        self._lb_edit_caption.textChanged.connect(
+            lambda: self._on_lb_metadata_changed("caption", self._lb_edit_caption.toPlainText()))
+        layout.addWidget(self._lb_edit_caption)
+
+        # === Keywords ===
+        keywords_label = QLabel("Keywords")
+        keywords_label.setStyleSheet(label_style)
+        layout.addWidget(keywords_label)
+
+        self._lb_edit_tags = QLineEdit()
+        self._lb_edit_tags.setPlaceholderText("tag1, tag2, tag3...")
+        self._lb_edit_tags.setStyleSheet(input_style)
+        self._lb_edit_tags.editingFinished.connect(
+            lambda: self._on_lb_metadata_changed("tags", self._lb_edit_tags.text()))
+        layout.addWidget(self._lb_edit_tags)
+
+        # === Save status ===
+        self._lb_save_status = QLabel("")
+        self._lb_save_status.setStyleSheet("color: #4CAF50; font-size: 9pt; background: transparent;")
+        self._lb_save_status.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self._lb_save_status)
+
+        layout.addStretch()
+
+        scroll.setWidget(widget)
+        return {'scroll': scroll, 'widget': widget, 'layout': layout}
+
+    # ---- Lightbox metadata editing helpers ----
+
+    def _get_photo_id_for_path(self, path: str):
+        """Get photo ID from database for a given path."""
+        try:
+            from reference_db import ReferenceDB
+            db = ReferenceDB()
+            with db.get_connection() as conn:
+                cursor = conn.execute(
+                    "SELECT id FROM photo_metadata WHERE path = ?", (path,))
+                row = cursor.fetchone()
+                return row['id'] if row else None
+        except Exception:
+            return None
+
+    def _load_editable_metadata(self):
+        """Load editable metadata fields for the current media into the Edit tab."""
+        self._lb_loading = True
+        try:
+            photo_id = self._get_photo_id_for_path(self.media_path)
+            self._lb_current_photo_id = photo_id
+
+            if photo_id is None:
+                # No DB record - clear fields
+                self._on_lb_set_rating(0)
+                self._on_lb_set_flag("none")
+                self._lb_edit_title.clear()
+                self._lb_edit_caption.clear()
+                self._lb_edit_tags.clear()
+                self._lb_save_status.setText("")
+                self._lb_loading = False
+                return
+
+            # Load from DB
+            from reference_db import ReferenceDB
+            db = ReferenceDB()
+            with db.get_connection() as conn:
+                cursor = conn.execute("""
+                    SELECT rating, flag, title, caption, tags
+                    FROM photo_metadata WHERE id = ?
+                """, (photo_id,))
+                row = cursor.fetchone()
+
+            if row:
+                self._on_lb_set_rating(row['rating'] or 0)
+                self._on_lb_set_flag(row['flag'] or 'none')
+                self._lb_edit_title.setText(row['title'] or '')
+                self._lb_edit_caption.setPlainText(row['caption'] or '')
+                self._lb_edit_tags.setText(row['tags'] or '')
+            else:
+                self._on_lb_set_rating(0)
+                self._on_lb_set_flag("none")
+                self._lb_edit_title.clear()
+                self._lb_edit_caption.clear()
+                self._lb_edit_tags.clear()
+
+            self._lb_save_status.setText("")
+        except Exception as e:
+            print(f"[MediaLightbox] Error loading editable metadata: {e}")
+        finally:
+            self._lb_loading = False
+
+    def _on_lb_star_clicked(self, idx: int):
+        """Handle star click in lightbox rating widget."""
+        new_rating = idx + 1
+        if self._lb_current_rating == new_rating:
+            new_rating = 0  # Toggle off if clicking same star
+        self._on_lb_set_rating(new_rating)
+        if not getattr(self, '_lb_loading', False):
+            self._on_lb_metadata_changed("rating", new_rating)
+
+    def _on_lb_set_rating(self, rating: int):
+        """Set the rating display in lightbox."""
+        self._lb_current_rating = rating
+        for i, btn in enumerate(self._lb_rating_buttons):
+            if i < rating:
+                btn.setText("★")
+                btn.setStyleSheet("""
+                    QToolButton {
+                        border: none; background: transparent;
+                        font-size: 16px; color: #FFC107;
+                    }
+                    QToolButton:hover { background: rgba(255,193,7,0.2); border-radius: 4px; }
+                """)
+            else:
+                btn.setText("☆")
+                btn.setStyleSheet("""
+                    QToolButton {
+                        border: none; background: transparent;
+                        font-size: 16px; color: rgba(255,255,255,0.3);
+                    }
+                    QToolButton:hover { background: rgba(255,193,7,0.2); border-radius: 4px; }
+                """)
+
+    def _on_lb_flag_clicked(self, flag: str):
+        """Handle flag button click in lightbox."""
+        if self._lb_current_flag == flag:
+            flag = "none"  # Toggle off
+        self._on_lb_set_flag(flag)
+        if not getattr(self, '_lb_loading', False):
+            self._on_lb_metadata_changed("flag", flag)
+
+    def _on_lb_set_flag(self, flag: str):
+        """Set the flag display in lightbox."""
+        self._lb_current_flag = flag
+        self._lb_flag_pick.setChecked(flag == "pick")
+        self._lb_flag_reject.setChecked(flag == "reject")
+
+    def _on_lb_metadata_changed(self, field: str, value):
+        """Handle metadata field change - save to database."""
+        if getattr(self, '_lb_loading', False):
+            return
+        photo_id = getattr(self, '_lb_current_photo_id', None)
+        if photo_id is None:
+            return
+
+        try:
+            from reference_db import ReferenceDB
+            db = ReferenceDB()
+
+            column_map = {
+                "rating": "rating",
+                "flag": "flag",
+                "title": "title",
+                "caption": "caption",
+                "tags": "tags",
+            }
+            column = column_map.get(field)
+            if column is None:
+                return
+
+            with db.get_connection() as conn:
+                # Ensure column exists
+                cursor = conn.execute("PRAGMA table_info(photo_metadata)")
+                existing_cols = {r["name"] for r in cursor.fetchall()}
+                if column not in existing_cols:
+                    col_type = "INTEGER" if field == "rating" else "TEXT"
+                    conn.execute(f"ALTER TABLE photo_metadata ADD COLUMN {column} {col_type}")
+
+                conn.execute(f"""
+                    UPDATE photo_metadata SET {column} = ?, updated_at = datetime('now')
+                    WHERE id = ?
+                """, (value, photo_id))
+                conn.commit()
+
+            self._lb_save_status.setText("✓ Saved")
+            QTimer.singleShot(2000, lambda: self._lb_save_status.setText("")
+                              if hasattr(self, '_lb_save_status') else None)
+        except Exception as e:
+            print(f"[MediaLightbox] Error saving metadata field {field}: {e}")
+            self._lb_save_status.setText("⚠ Save failed")
 
     def _create_enhance_panel(self) -> QWidget:
         panel = QWidget()
@@ -6167,6 +6480,12 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             import traceback
             traceback.print_exc()
             self._add_metadata_field("⚠️ Error", str(e))
+
+        # Load editable metadata into the Edit tab
+        try:
+            self._load_editable_metadata()
+        except Exception as e:
+            print(f"[MediaLightbox] Error loading editable metadata: {e}")
 
     def _load_photo_metadata(self):
         """Load comprehensive photo metadata into all tabs."""

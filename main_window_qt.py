@@ -566,17 +566,6 @@ class MainWindow(QMainWindow):
             self._toggle_activity_center)
         menu_view.addAction(self._act_toggle_activity)
 
-        # Metadata Editor toggle
-        self._act_toggle_metadata_editor = QAction("Info Panel", self)
-        self._act_toggle_metadata_editor.setShortcut("Ctrl+I")
-        self._act_toggle_metadata_editor.setCheckable(True)
-        self._act_toggle_metadata_editor.setChecked(False)
-        self._act_toggle_metadata_editor.setToolTip(
-            "Show/hide the Info Panel for editing metadata (Lightroom-style)")
-        self._act_toggle_metadata_editor.triggered.connect(
-            self._toggle_metadata_editor)
-        menu_view.addAction(self._act_toggle_metadata_editor)
-
         # ========== FILTERS MENU ==========
         menu_filters = menu_bar.addMenu("Filters")
 
