@@ -402,6 +402,10 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         self.is_motion_photo = False  # Current media is motion photo
         self.motion_video_path = None  # Path to paired video
 
+        # Metadata editing state (for Edit tab in info panel)
+        self._lb_loading = False  # Prevents saving during metadata population
+        self._lb_current_photo_id = None  # Current photo's database ID
+
         # ============================================================
         # RESPONSIVE DESIGN: Debounce timers for performance
         # ============================================================
@@ -1994,6 +1998,12 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             self.info_panel_visible = not self.info_panel_visible
             if hasattr(self, 'info_panel') and self.info_panel:
                 self.info_panel.setVisible(self.info_panel_visible)
+                # When showing, refresh editable metadata for current photo
+                if self.info_panel_visible:
+                    try:
+                        self._load_editable_metadata()
+                    except Exception:
+                        pass
         except Exception as e:
             print(f"[InfoPanel] Toggle error: {e}")
 
@@ -5431,8 +5441,19 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 cursor = conn.execute(
                     "SELECT id FROM photo_metadata WHERE path = ?", (path,))
                 row = cursor.fetchone()
-                return row['id'] if row else None
-        except Exception:
+                if row:
+                    return row['id']
+                # Try case-insensitive match as fallback
+                cursor = conn.execute(
+                    "SELECT id FROM photo_metadata WHERE LOWER(path) = LOWER(?)", (path,))
+                row = cursor.fetchone()
+                if row:
+                    print(f"[MediaLightbox] Found photo_id via case-insensitive match for: {os.path.basename(path)}")
+                    return row['id']
+                print(f"[MediaLightbox] ⚠️ No photo_metadata row found for: {os.path.basename(path)}")
+                return None
+        except Exception as e:
+            print(f"[MediaLightbox] Error getting photo ID: {e}")
             return None
 
     def _load_editable_metadata(self):

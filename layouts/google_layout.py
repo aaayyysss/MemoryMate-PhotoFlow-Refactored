@@ -9341,23 +9341,42 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
                     SELECT id FROM photo_metadata WHERE path = ? AND project_id = ?
                 """, (path, self.project_id))
                 row = cursor.fetchone()
-                return row['id'] if row else None
-        except Exception:
+                if row:
+                    return row['id']
+                # Try case-insensitive match as fallback
+                cursor = conn.execute("""
+                    SELECT id FROM photo_metadata WHERE LOWER(path) = LOWER(?) AND project_id = ?
+                """, (path, self.project_id))
+                row = cursor.fetchone()
+                if row:
+                    print(f"[GooglePhotosLayout] Found photo_id via case-insensitive match for: {path}")
+                    return row['id']
+                print(f"[GooglePhotosLayout] ⚠️ No photo_metadata row found for path: {path}")
+                return None
+        except Exception as e:
+            print(f"[GooglePhotosLayout] ⚠️ Error getting photo ID for {path}: {e}")
             return None
 
     def _show_metadata_editor_for_photo(self, path: str):
         """Show the metadata editor dock for a specific photo (triggered from right-click menu)."""
+        print(f"[GooglePhotosLayout] Opening metadata editor for: {path}")
         main_window = getattr(self, 'main_window', None)
         if not main_window:
+            print("[GooglePhotosLayout] ⚠️ Cannot open metadata editor: main_window not found")
             return
 
         dock = getattr(main_window, 'metadata_editor_dock', None)
         if not dock:
+            print("[GooglePhotosLayout] ⚠️ Cannot open metadata editor: metadata_editor_dock not found")
             return
 
         photo_id = self._get_photo_id_for_path(path)
-        if photo_id:
-            main_window.show_metadata_for_photo(photo_id, path)
+        if not photo_id:
+            print(f"[GooglePhotosLayout] ⚠️ Cannot open metadata editor: no photo_id found for path: {path}")
+            return
+
+        print(f"[GooglePhotosLayout] ✓ Opening metadata editor for photo_id={photo_id}")
+        main_window.show_metadata_for_photo(photo_id, path)
 
     def _on_duplicate_action_taken(self, action: str, asset_id: int):
         """
