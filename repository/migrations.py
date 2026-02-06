@@ -412,6 +412,23 @@ VALUES ('9.3.0', 'Add image_content_hash for pixel-based embedding staleness det
 )
 
 
+# Migration to v9.4.0 (Add metadata editing fields for Lightroom-style workflow)
+MIGRATION_9_4_0 = Migration(
+    version="9.4.0",
+    description="Add rating, flag, title, caption for Lightroom-style metadata editing",
+    sql="""
+-- Migration v9.4.0: Add user-editable metadata fields
+-- These fields enable non-destructive editing (DB-first approach)
+-- Optional XMP sidecar export supported via MetadataEditorDock
+-- Note: ALTER TABLE is handled in _add_metadata_editing_columns_if_missing()
+
+INSERT OR REPLACE INTO schema_version (version, description, applied_at)
+VALUES ('9.4.0', 'Add rating, flag, title, caption for Lightroom-style metadata editing', CURRENT_TIMESTAMP);
+""",
+    rollback_sql=""
+)
+
+
 # Ordered list of all migrations
 ALL_MIGRATIONS = [
     MIGRATION_1_5_0,
@@ -425,6 +442,7 @@ ALL_MIGRATIONS = [
     MIGRATION_9_1_0,
     MIGRATION_9_2_0,
     MIGRATION_9_3_0,
+    MIGRATION_9_4_0,
 ]
 
 
@@ -610,6 +628,9 @@ class MigrationManager:
                 elif migration.version == "9.3.0":
                     # Apply migration v9.3: add image_content_hash column
                     self._add_image_content_hash_column_if_missing(conn)
+                elif migration.version == "9.4.0":
+                    # Apply migration v9.4: add metadata editing columns
+                    self._add_metadata_editing_columns_if_missing(conn)
 
                 # Execute migration SQL (version tracking)
                 conn.executescript(migration.sql)
@@ -1051,6 +1072,43 @@ class MigrationManager:
             self.logger.info("✓ image_content_hash column added successfully")
         else:
             self.logger.info("✓ image_content_hash column already exists")
+
+    def _add_metadata_editing_columns_if_missing(self, conn: sqlite3.Connection):
+        """
+        Add Lightroom-style metadata editing columns to photo_metadata.
+
+        This is the core of the v9.4.0 migration - adds rating, flag, title, caption
+        for non-destructive metadata editing (DB-first approach).
+
+        Columns added:
+        - rating (INTEGER): 0-5 star rating
+        - flag (TEXT): 'pick', 'reject', or 'none'
+        - title (TEXT): User-defined title
+        - caption (TEXT): User-defined description/caption
+
+        Args:
+            conn: Database connection
+        """
+        cur = conn.cursor()
+
+        # Check photo_metadata columns
+        cur.execute("PRAGMA table_info(photo_metadata)")
+        metadata_columns = {row['name'] for row in cur.fetchall()}
+
+        columns_to_add = [
+            ('rating', 'INTEGER DEFAULT 0'),
+            ('flag', "TEXT DEFAULT 'none'"),
+            ('title', 'TEXT'),
+            ('caption', 'TEXT'),
+        ]
+
+        for col_name, col_def in columns_to_add:
+            if col_name not in metadata_columns:
+                self.logger.info(f"Adding column photo_metadata.{col_name}")
+                cur.execute(f"ALTER TABLE photo_metadata ADD COLUMN {col_name} {col_def}")
+
+        conn.commit()
+        self.logger.info("✓ Metadata editing columns (rating, flag, title, caption) added successfully")
 
 
 def get_migration_status(db_connection) -> Dict[str, Any]:

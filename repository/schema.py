@@ -19,7 +19,7 @@ Schema Version: 2.0.0
 - Adds schema_version tracking table
 """
 
-SCHEMA_VERSION = "9.3.0"
+SCHEMA_VERSION = "9.4.0"
 
 # Complete schema SQL - executed as a script for new databases
 SCHEMA_SQL = """
@@ -227,6 +227,11 @@ CREATE TABLE IF NOT EXISTS photo_metadata (
     -- Perceptual hash for pixel-based embedding staleness detection (v9.3.0)
     -- Uses dHash (difference hash) which is resilient to metadata-only changes
     image_content_hash TEXT,
+    -- User-editable metadata fields (v9.4.0 - Lightroom-style editing)
+    rating INTEGER DEFAULT 0,        -- 0-5 star rating
+    flag TEXT DEFAULT 'none',        -- 'pick', 'reject', 'none'
+    title TEXT,                      -- User-defined title
+    caption TEXT,                    -- User-defined description/caption
     FOREIGN KEY(folder_id) REFERENCES photo_folders(id),
     FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
     UNIQUE(path, project_id)
