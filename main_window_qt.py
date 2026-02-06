@@ -106,6 +106,7 @@ from ui.widgets.breadcrumb_navigation import BreadcrumbNavigation
 from ui.widgets.backfill_indicator import CompactBackfillIndicator
 from ui.widgets.selection_toolbar import SelectionToolbar
 from ui.activity_center import ActivityCenter
+from ui.metadata_editor_dock import MetadataEditorDock
 from ui.ui_builder import UIBuilder
 
 # Phase 2 Refactoring: Extracted services
@@ -564,6 +565,17 @@ class MainWindow(QMainWindow):
         self._act_toggle_activity.triggered.connect(
             self._toggle_activity_center)
         menu_view.addAction(self._act_toggle_activity)
+
+        # Metadata Editor toggle
+        self._act_toggle_metadata_editor = QAction("Info Panel", self)
+        self._act_toggle_metadata_editor.setShortcut("Ctrl+I")
+        self._act_toggle_metadata_editor.setCheckable(True)
+        self._act_toggle_metadata_editor.setChecked(False)
+        self._act_toggle_metadata_editor.setToolTip(
+            "Show/hide the Info Panel for editing metadata (Lightroom-style)")
+        self._act_toggle_metadata_editor.triggered.connect(
+            self._toggle_metadata_editor)
+        menu_view.addAction(self._act_toggle_metadata_editor)
 
         # ========== FILTERS MENU ==========
         menu_filters = menu_bar.addMenu("Filters")
@@ -1119,6 +1131,20 @@ class MainWindow(QMainWindow):
         except Exception as e:
             print(f"[MainWindow] Could not create activity center: {e}")
             self.activity_center = None
+
+        # --- Metadata Editor Dock (QDockWidget, right-side, Lightroom-style info panel)
+        try:
+            self.metadata_editor_dock = MetadataEditorDock(self)
+            self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea,
+                               self.metadata_editor_dock)
+            # Connect metadata changes to refresh UI if needed
+            self.metadata_editor_dock.metadataChanged.connect(
+                self._on_metadata_changed)
+            # Start hidden; toggle via View menu or toolbar button
+            self.metadata_editor_dock.hide()
+        except Exception as e:
+            print(f"[MainWindow] Could not create metadata editor dock: {e}")
+            self.metadata_editor_dock = None
 
         # --- Wire toolbar actions
         act_select_all.triggered.connect(self.grid.list_view.selectAll)
@@ -3887,6 +3913,47 @@ class MainWindow(QMainWindow):
         act = getattr(self, "_act_toggle_activity", None)
         if act and act.isChecked() != visible:
             act.setChecked(visible)
+
+    # ------------------------------------------------------------------
+    # Metadata Editor Dock
+    # ------------------------------------------------------------------
+    def _toggle_metadata_editor(self, checked: bool = None):
+        """Toggle the Metadata Editor dock widget visibility."""
+        dock = getattr(self, "metadata_editor_dock", None)
+        if not dock:
+            return
+        if checked is None:
+            checked = not dock.isVisible()
+        dock.setVisible(checked)
+        # Sync the View menu checkbox
+        act = getattr(self, "_act_toggle_metadata_editor", None)
+        if act and act.isChecked() != checked:
+            act.setChecked(checked)
+
+    def _on_metadata_changed(self, photo_id: int, field: str, value):
+        """Handle metadata field changes from the dock editor."""
+        self.logger.debug(f"[MainWindow] Metadata changed: photo={photo_id}, {field}={value}")
+        # Refresh thumbnail if rating/flag changed (may affect visual indicators)
+        if field in ("rating", "flag"):
+            if hasattr(self, "grid") and self.grid:
+                self.grid.refresh_thumbnail(photo_id)
+
+    def show_metadata_for_photo(self, photo_id: int, photo_path: str, metadata: dict = None):
+        """
+        Show the metadata editor dock for a specific photo.
+
+        Called from lightbox or grid when user wants to edit metadata.
+
+        Args:
+            photo_id: Database photo ID
+            photo_path: File path
+            metadata: Optional pre-loaded metadata dict
+        """
+        dock = getattr(self, "metadata_editor_dock", None)
+        if dock:
+            dock.load_photo(photo_id, photo_path, metadata)
+            if not dock.isVisible():
+                dock.show()
 
     def _init_embedding_status_indicator(self):
         """

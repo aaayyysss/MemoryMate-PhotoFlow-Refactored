@@ -455,6 +455,13 @@ class GooglePhotosLayout(BaseLayout):
         self.btn_similar.clicked.connect(self._open_similar_photos_dialog)
         toolbar.addWidget(self.btn_similar)
 
+        # Info/Metadata button - Toggle metadata editor dock (Lightroom-style)
+        self.btn_info = QPushButton("ℹ️ Info")
+        self.btn_info.setToolTip("Show/hide the Info Panel for editing metadata (Ctrl+I)")
+        self.btn_info.setCheckable(True)
+        self.btn_info.clicked.connect(self._toggle_info_panel)
+        toolbar.addWidget(self.btn_info)
+
         toolbar.addSeparator()
 
         # Zoom controls (Google Photos style - +/- buttons with slider)
@@ -9283,6 +9290,62 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
                 "Error Opening Similar Photos",
                 f"Failed to open similar photos dialog:\n{e}"
             )
+
+    def _toggle_info_panel(self, checked: bool = None):
+        """
+        Toggle the Metadata Editor dock panel (Lightroom-style Info panel).
+
+        This provides access to:
+        - Rating (0-5 stars)
+        - Flag (Pick/Reject)
+        - Title and Caption
+        - Keywords (Tags)
+        - Date/Location (read-only with override)
+        - File Info
+
+        Changes are stored in database first (non-destructive).
+        Optional XMP sidecar export available.
+        """
+        main_window = getattr(self, 'main_window', None)
+        if not main_window:
+            return
+
+        dock = getattr(main_window, 'metadata_editor_dock', None)
+        if not dock:
+            return
+
+        if checked is None:
+            checked = not dock.isVisible()
+
+        dock.setVisible(checked)
+
+        # Sync button state
+        if hasattr(self, 'btn_info') and self.btn_info.isChecked() != checked:
+            self.btn_info.setChecked(checked)
+
+        # If showing and a photo is selected, load its metadata
+        if checked:
+            selected_paths = self._get_selected_photo_paths()
+            if selected_paths:
+                path = selected_paths[0]
+                photo_id = self._get_photo_id_for_path(path)
+                if photo_id:
+                    main_window.show_metadata_for_photo(photo_id, path)
+
+    def _get_photo_id_for_path(self, path: str) -> int:
+        """Get photo ID from database for a given path."""
+        try:
+            from reference_db import ReferenceDB
+            db = ReferenceDB()
+
+            with db.get_connection() as conn:
+                cursor = conn.execute("""
+                    SELECT id FROM photo_metadata WHERE path = ? AND project_id = ?
+                """, (path, self.project_id))
+                row = cursor.fetchone()
+                return row['id'] if row else None
+        except Exception:
+            return None
 
     def _on_duplicate_action_taken(self, action: str, asset_id: int):
         """
