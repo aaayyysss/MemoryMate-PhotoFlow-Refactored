@@ -2840,13 +2840,27 @@ class AccordionSidebar(QWidget):
         self.refresh_all(force=True)
 
     def refresh_all(self, force=False):
-        """Refresh all sections (reload content)."""
+        """Refresh all sections, but only reload the expanded one eagerly.
+
+        Non-visible sections are marked stale (generation bumped) and will
+        reload the next time the user expands them, avoiding the reload
+        storm that made duplicates/people load 3-4 times consecutively.
+        """
         self._dbg(f"Refreshing all sections (force={force})")
 
-        # CRITICAL FIX: Reload ALL sections, not just the expanded one
-        # This ensures all sections have fresh data after project changes
-        for section_id in self.sections.keys():
-            self._load_section_content(section_id)
+        # Bump generation for every section (marks all as stale)
+        for section_id in self._reload_generations:
+            self._reload_generations[section_id] = (
+                self._reload_generations[section_id] + 1
+            ) % 1_000_000
+
+        # Only reload the currently visible section eagerly
+        if self.expanded_section_id and self.expanded_section_id in self.sections:
+            self._load_section_content(self.expanded_section_id)
+        else:
+            # No section expanded — reload "quick" (lightweight) as fallback
+            if "quick" in self.sections:
+                self._load_section_content("quick")
 
     def get_section(self, section_id: str) -> AccordionSection:
         """Get a specific section by ID."""

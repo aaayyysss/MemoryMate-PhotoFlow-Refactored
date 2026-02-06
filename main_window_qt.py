@@ -1531,8 +1531,8 @@ class MainWindow(QMainWindow):
     def _on_quick_search(self, query: str):
         """Handle quick search from search bar."""
         try:
-            from services import SearchService
-            search_service = SearchService()
+            from app_services import get_search_service
+            search_service = get_search_service()
             paths = search_service.quick_search(query, limit=100)
 
             # Display results in grid
@@ -1554,8 +1554,8 @@ class MainWindow(QMainWindow):
             if dialog.exec() == QDialog.Accepted:
                 criteria = dialog.get_search_criteria()
 
-                from services import SearchService
-                search_service = SearchService()
+                from app_services import get_search_service
+                search_service = get_search_service()
                 result = search_service.search(criteria)
 
                 if result.paths:
@@ -2821,62 +2821,55 @@ class MainWindow(QMainWindow):
 
     def _on_project_changed_by_id(self, project_id: int):
         """
-        Phase 2: Switch to a project by ID (used by breadcrumb navigation).
-        Updates the sidebar and grid to show the selected project.
+        Switch to a project by ID.
+
+        Delegates to the **active layout** via BaseLayout.set_project() so
+        that GooglePhotosLayout refreshes its AccordionSidebar while
+        CurrentLayout refreshes SidebarQt + grid.  MainWindow no longer
+        pokes hidden/dead widgets directly.
         """
         print(f"\n[MainWindow] ========== _on_project_changed_by_id({project_id}) STARTED ==========")
         try:
-            # CRITICAL: Check if already on this project to prevent redundant reloads and crashes
+            # Already on this project?
             current_project_id = getattr(self.grid, 'project_id', None) if hasattr(self, 'grid') else None
-            print(f"[MainWindow] Current project_id: {current_project_id}")
-            
             if current_project_id == project_id:
                 print(f"[MainWindow] Already on project {project_id}, skipping switch")
                 return
 
-            # PHASE 1: Save project_id to session state
+            # 1. Persist to session state
             from session_state_manager import get_session_state
             get_session_state().set_project(project_id)
-            print(f"[MainWindow] PHASE 1: Saved project_id={project_id} to session state")
 
-            print(f"[MainWindow] Step 1: Updating grid.project_id...")
-            # CRITICAL ORDER: Update grid FIRST before sidebar to prevent race condition
-            # Sidebar.set_project() triggers callbacks that reload grid, so grid.project_id
-            # must be set BEFORE those callbacks fire
-            if hasattr(self, "grid") and self.grid:
-                self.grid.project_id = project_id
-                print(f"[MainWindow] Step 1: ✓ Set grid.project_id = {project_id}")
+            # 2. Delegate to the active layout (the layout owns its sidebar)
+            layout = None
+            if hasattr(self, 'layout_manager') and self.layout_manager:
+                layout = self.layout_manager.get_current_layout()
+
+            if layout is not None:
+                layout.set_project(project_id)
+                print(f"[MainWindow] Delegated to {type(layout).__name__}.set_project({project_id})")
             else:
-                print(f"[MainWindow] Step 1: ✗ Grid not available!")
+                # Fallback: no layout manager yet (very early startup)
+                if hasattr(self, "grid") and self.grid:
+                    self.grid.project_id = project_id
+                if hasattr(self, "sidebar") and self.sidebar:
+                    self.sidebar.set_project(project_id)
 
-            print(f"[MainWindow] Step 2: Updating sidebar...")
-            # Now update sidebar (this triggers reload which will use the new grid.project_id)
-            if hasattr(self, "sidebar") and self.sidebar:
-                self.sidebar.set_project(project_id)
-                print(f"[MainWindow] Step 2: ✓ Sidebar.set_project({project_id}) completed")
-            else:
-                print(f"[MainWindow] Step 2: ✗ Sidebar not available!")
+            # 3. Reset grid branch to "all" for CurrentLayout's grid
+            #    (Google layout handles its own reload inside set_project)
+            layout_id = ""
+            if hasattr(self, 'layout_manager') and self.layout_manager:
+                layout_id = self.layout_manager.get_current_layout_id() or ""
+            if layout_id != "google":
+                if hasattr(self, "grid") and self.grid:
+                    self.grid.set_branch("all")
 
-            print(f"[MainWindow] Step 3: Reloading grid to 'all' branch...")
-            # Finally, explicitly reload grid to show all photos
-            if hasattr(self, "grid") and self.grid:
-                self.grid.set_branch("all")  # Reset to show all photos
-                print(f"[MainWindow] Step 3: ✓ Grid.set_branch('all') completed")
-            else:
-                print(f"[MainWindow] Step 3: ✗ Grid not available for set_branch!")
-
-            # CRITICAL FIX: Removed duplicate breadcrumb update!
-            # The gridReloaded signal (line 3392) already triggers _update_breadcrumb()
-            # Scheduling a second update here causes a race condition crash!
-            print(f"[MainWindow] Step 4: Breadcrumb will auto-update via gridReloaded signal")
-
-            print(f"[MainWindow] Step 5: ✓✓✓ Switched to project ID: {project_id}")
+            # Breadcrumb auto-updates via gridReloaded signal
             print(f"[MainWindow] ========== _on_project_changed_by_id({project_id}) COMPLETED ==========\n")
         except Exception as e:
-            print(f"[MainWindow] ✗✗✗ ERROR switching project: {e}")
+            print(f"[MainWindow] ERROR switching project: {e}")
             import traceback
             traceback.print_exc()
-            print(f"[MainWindow] ========== _on_project_changed_by_id({project_id}) FAILED ==========\n")
 
     def _refresh_project_list(self):
         """

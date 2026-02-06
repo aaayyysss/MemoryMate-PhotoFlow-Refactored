@@ -32,6 +32,8 @@ class StackGenParams:
     top_k: int = 30
     similarity_threshold: float = 0.85  # Balanced threshold - high quality but not overly strict
     candidate_limit_per_photo: int = 300
+    cross_date_similarity: bool = True  # Enable global similarity pass across all dates
+    cross_date_threshold: float = 0.90  # Higher threshold for cross-date (no time-proximity signal)
 
 
 @dataclass(frozen=True)
@@ -272,7 +274,29 @@ class StackGenerationService:
                 for pid in cluster:
                     photo_to_cluster[pid] = cluster_id
 
-        self.logger.info(f"Found {len(all_clusters)} similar shot clusters")
+        self.logger.info(f"Found {len(all_clusters)} similar shot clusters (time-window pass)")
+
+        # Step 3b: Global similarity pass — find visually similar photos across ALL dates
+        if params.cross_date_similarity and preloaded_embeddings:
+            global_clusters = self._cluster_globally_by_similarity(
+                all_photos=all_photos,
+                preloaded_embeddings=preloaded_embeddings,
+                already_clustered=photo_to_cluster,
+                similarity_threshold=params.cross_date_threshold,
+                min_cluster_size=params.min_stack_size,
+            )
+            for cluster in global_clusters:
+                cluster_id = len(all_clusters)
+                all_clusters.append(cluster)
+                for pid in cluster:
+                    photo_to_cluster[pid] = cluster_id
+
+            self.logger.info(
+                f"Global cross-date pass found {len(global_clusters)} additional clusters "
+                f"(threshold={params.cross_date_threshold:.2f})"
+            )
+
+        self.logger.info(f"Total similar shot clusters: {len(all_clusters)}")
 
         # Step 4: Create stacks in database
         stacks_created = 0
@@ -359,7 +383,8 @@ class StackGenerationService:
         self,
         project_id: int,
         similarity_threshold: float = 0.85,
-        time_window_seconds: int = 300
+        time_window_seconds: int = 300,
+        cross_date_similarity: bool = True
     ) -> int:
         """
         Convenience method to generate similar shot stacks for all photos.
@@ -370,13 +395,15 @@ class StackGenerationService:
             project_id: Project ID
             similarity_threshold: Minimum similarity (0.0-1.0)
             time_window_seconds: Time window for candidates
+            cross_date_similarity: Enable global similarity across all dates
 
         Returns:
             Number of stacks created
         """
         params = StackGenParams(
             similarity_threshold=similarity_threshold,
-            time_window_seconds=time_window_seconds
+            time_window_seconds=time_window_seconds,
+            cross_date_similarity=cross_date_similarity,
         )
         stats = self.regenerate_similar_shot_stacks(project_id, params)
         return stats.stacks_created
@@ -503,7 +530,28 @@ class StackGenerationService:
                 for pid in cluster:
                     photo_to_cluster[pid] = cluster_id
 
-        self.logger.info(f"Found {len(all_clusters)} similar shot clusters")
+        self.logger.info(f"Found {len(all_clusters)} similar shot clusters (time-window pass)")
+
+        # Global cross-date pass for selected photos
+        if preloaded_embeddings:
+            global_clusters = self._cluster_globally_by_similarity(
+                all_photos=selected_photos,
+                preloaded_embeddings=preloaded_embeddings,
+                already_clustered=photo_to_cluster,
+                similarity_threshold=max(similarity_threshold, 0.90),
+                min_cluster_size=params.min_stack_size,
+            )
+            for cluster in global_clusters:
+                cluster_id = len(all_clusters)
+                all_clusters.append(cluster)
+                for pid in cluster:
+                    photo_to_cluster[pid] = cluster_id
+
+            self.logger.info(
+                f"Global cross-date pass found {len(global_clusters)} additional clusters"
+            )
+
+        self.logger.info(f"Total similar shot clusters: {len(all_clusters)}")
 
         # Create stacks in database
         stacks_created = 0
@@ -758,6 +806,96 @@ class StackGenerationService:
                 clusters.append(cluster)
                 self.logger.debug(
                     f"Created cluster of {len(cluster)} photos "
+                    f"(all-pairs similarity >= {similarity_threshold:.2f})"
+                )
+
+        return clusters
+
+    def _cluster_globally_by_similarity(
+        self,
+        all_photos: List[Dict[str, Any]],
+        preloaded_embeddings: Dict[int, Any],
+        already_clustered: Dict[int, int],
+        similarity_threshold: float,
+        min_cluster_size: int,
+    ) -> List[List[int]]:
+        """
+        Global similarity pass: find visually similar photos across ALL dates.
+
+        Uses vectorized numpy matrix multiplication for efficient pairwise
+        cosine similarity computation. Only considers photos NOT already
+        assigned to a cluster by the time-window pass.
+
+        Args:
+            all_photos: All photos in the project
+            preloaded_embeddings: Pre-loaded embeddings dict (photo_id -> embedding)
+            already_clustered: Dict of photo_id -> cluster_id from time-window pass
+            similarity_threshold: Minimum cosine similarity for grouping
+            min_cluster_size: Minimum photos per cluster
+
+        Returns:
+            List of new clusters (each cluster is a list of photo_ids)
+        """
+        import numpy as np
+
+        # Collect unclustered photos that have embeddings
+        unclustered_ids = []
+        unclustered_embeddings = []
+        for photo in all_photos:
+            pid = photo["id"]
+            if pid in already_clustered:
+                continue
+            emb = preloaded_embeddings.get(pid)
+            if emb is not None:
+                norm = np.linalg.norm(emb)
+                if norm > 0:
+                    unclustered_ids.append(pid)
+                    unclustered_embeddings.append(emb / norm)
+
+        if len(unclustered_ids) < min_cluster_size:
+            return []
+
+        self.logger.info(
+            f"Global similarity pass: {len(unclustered_ids)} unclustered photos with embeddings"
+        )
+
+        # Build embedding matrix and compute pairwise cosine similarity
+        emb_matrix = np.stack(unclustered_embeddings)  # shape: (N, D)
+        # Cosine similarity matrix via matrix multiplication (embeddings already normalized)
+        sim_matrix = emb_matrix @ emb_matrix.T  # shape: (N, N)
+
+        # Complete-linkage clustering on the similarity matrix
+        n = len(unclustered_ids)
+        assigned = set()
+        clusters = []
+
+        for i in range(n):
+            if i in assigned:
+                continue
+
+            cluster_indices = [i]
+            assigned.add(i)
+
+            for j in range(i + 1, n):
+                if j in assigned:
+                    continue
+
+                # Check similarity with ALL current cluster members
+                is_similar_to_all = True
+                for ci in cluster_indices:
+                    if sim_matrix[j, ci] < similarity_threshold:
+                        is_similar_to_all = False
+                        break
+
+                if is_similar_to_all:
+                    cluster_indices.append(j)
+                    assigned.add(j)
+
+            if len(cluster_indices) >= min_cluster_size:
+                cluster_photo_ids = [unclustered_ids[idx] for idx in cluster_indices]
+                clusters.append(cluster_photo_ids)
+                self.logger.debug(
+                    f"Global cluster: {len(cluster_photo_ids)} photos "
                     f"(all-pairs similarity >= {similarity_threshold:.2f})"
                 )
 

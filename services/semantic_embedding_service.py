@@ -453,9 +453,14 @@ class SemanticEmbeddingService:
             # STEP 4: Load model from local path (offline mode)
             try:
                 logger.info(f"[SemanticEmbeddingService] Loading from local path (offline mode): {local_model_path}")
+                # FIX #4: Pin use_fast=False for reproducible embeddings.
+                # HF transformers v4.52+ will default to the fast tokenizer
+                # which can produce slightly different tokens → different
+                # embeddings.  Pinning prevents silent drift across installs.
                 self._processor = self._CLIPProcessor.from_pretrained(
                     local_model_path,
-                    local_files_only=True
+                    local_files_only=True,
+                    use_fast=False,
                 )
                 self._model = self._CLIPModel.from_pretrained(
                     local_model_path,

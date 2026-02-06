@@ -125,6 +125,18 @@ def _extract_image_metadata_with_timeout(file_path, timeout=2.0):
 
 _db = ReferenceDB()
 
+# ── Service singletons (Fix #2: AppContext) ──────────────────────
+# All singleton services live here so they are created exactly once.
+_search_service = None
+
+def get_search_service():
+    """Return a shared SearchService singleton."""
+    global _search_service
+    if _search_service is None:
+        from services.search_service import SearchService
+        _search_service = SearchService()
+    return _search_service
+
 # Toggle for thumbnail caching
 _enable_thumbnail_cache = True
 
