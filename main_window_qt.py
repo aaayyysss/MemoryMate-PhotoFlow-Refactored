@@ -1259,26 +1259,36 @@ class MainWindow(QMainWindow):
     def _deferred_initialization(self):
         """
         CRITICAL FIX: Perform heavy initialization operations after window is shown.
-        This prevents the UI from freezing during startup.
+
+        v9.3.0 FIX: Moved heavy DB operations (backfill, index optimization) to
+        background jobs. Only minimal DB handle creation happens in GUI thread.
+
+        This follows Material Design principle: App should be responsive immediately,
+        heavy work happens visibly in the background via Activity Center.
         """
         print("[MainWindow] Starting deferred initialization...")
-        
+
         try:
-            # Initialize database and sidebar (was previously in __init__)
-            self._init_db_and_sidebar()
-            print("[MainWindow] ✅ Database and sidebar initialized")
-            
-            # Restore session state (was previously in __init__)
+            # Step 1: Fast - create minimal DB handle (no heavy operations)
+            self._init_minimal_db_handle()
+            print("[MainWindow] ✅ Database handle initialized (fast)")
+
+            # Step 2: Restore session state
             QTimer.singleShot(300, self._restore_session_state)
             print("[MainWindow] ✅ Session state restoration scheduled")
-            
-            # Update status bar
+
+            # Step 3: Update status bar
             self._update_status_bar()
             print("[MainWindow] ✅ Status bar updated")
 
-            # Warmup CLIP model in background (after UI is visible)
-            # This prevents blocking startup while still pre-loading the model
+            # Step 4: Enqueue heavy DB maintenance as background job
+            # This runs visibly in Activity Center, doesn't block UI
+            self._enqueue_startup_maintenance_job()
+            print("[MainWindow] ✅ Database maintenance job enqueued")
+
+            # Step 5: Warmup CLIP model in background
             self._warmup_clip_in_background()
+            print("[MainWindow] ✅ CLIP warmup scheduled")
 
             print("[MainWindow] ✅ Deferred initialization completed successfully")
 
@@ -1286,6 +1296,75 @@ class MainWindow(QMainWindow):
             print(f"[MainWindow] ⚠️ Deferred initialization error: {e}")
             import traceback
             traceback.print_exc()
+
+    def _init_minimal_db_handle(self):
+        """
+        Fast DB initialization - only creates handle, no heavy operations.
+
+        Heavy operations (backfill, index optimization) are moved to
+        _enqueue_startup_maintenance_job() which runs in background.
+        """
+        from reference_db import ReferenceDB
+        self.db = ReferenceDB()
+
+        # Reload sidebar date tree (fast operation, uses cached data)
+        try:
+            if hasattr(self, 'sidebar') and hasattr(self.sidebar, 'reload_date_tree'):
+                self.sidebar.reload_date_tree()
+                print("[Sidebar] Date tree reloaded.")
+        except Exception as e:
+            print(f"[Sidebar] Failed to reload date tree: {e}")
+
+    def _enqueue_startup_maintenance_job(self):
+        """
+        Enqueue heavy DB maintenance as a background job.
+
+        Operations performed in background:
+        - Backfill created_* fields for legacy photos
+        - Optimize database indexes
+
+        This prevents UI freeze during startup while keeping user informed
+        via Activity Center progress indicator.
+        """
+        try:
+            # Check if job manager is available
+            if not hasattr(self, 'job_manager') or self.job_manager is None:
+                # Fallback: run in simple background thread if no job manager
+                print("[MainWindow] No job manager, running maintenance in simple thread")
+                import threading
+
+                def _maintenance():
+                    try:
+                        from reference_db import ReferenceDB
+                        db = ReferenceDB()
+                        db.single_pass_backfill_created_fields()
+                        db.optimize_indexes()
+                        print("[MainWindow] Background maintenance completed")
+                    except Exception as e:
+                        print(f"[MainWindow] Background maintenance failed: {e}")
+
+                thread = threading.Thread(target=_maintenance, name="startup_maintenance", daemon=True)
+                thread.start()
+                return
+
+            # Use job manager for proper tracking and UI feedback
+            from workers.startup_maintenance_worker import StartupMaintenanceWorker
+
+            worker = StartupMaintenanceWorker(db_path=self.db.db_file if hasattr(self, 'db') else None)
+
+            # Submit as tracked job (shows in Activity Center)
+            self.job_manager.submit_tracked(
+                job_type="maintenance",
+                title="Database maintenance",
+                worker=worker,
+                cancellable=False,
+                show_progress=True,
+            )
+            print("[MainWindow] Database maintenance job submitted to Activity Center")
+
+        except Exception as e:
+            print(f"[MainWindow] Failed to enqueue maintenance job: {e}")
+            # Non-fatal - app can continue without optimization
 
     def _warmup_clip_in_background(self):
         """
@@ -1365,45 +1444,9 @@ class MainWindow(QMainWindow):
             print(f"[MainWindow] ✓ Window is on-screen (center at {window_center_x}, {window_center_y})")
 
 
-# =========================
-    def _init_db_and_sidebar(self):
-        """
-        Initialize database schema, ensure created_* date fields, backfill if needed,
-        optimize indexes, and reload the sidebar date tree.
-
-        Runs on app startup to make sure the date navigation works immediately.
-        """
-        from reference_db import ReferenceDB
-        self.db = ReferenceDB()
-
-        # NOTE: Schema creation and migrations are now handled automatically
-        # by repository layer during ReferenceDB initialization.
-        # created_* columns are added via migration system (v1.5.0 migration).
-
-        # 🕰 Backfill if needed (populate data in existing columns)
-        try:
-            updated_rows = self.db.single_pass_backfill_created_fields()
-            if updated_rows:
-                print(f"[DB] Backfilled {updated_rows} legacy rows with created_* fields.")
-        except Exception as e:
-            print(f"[DB] Backfill failed (possibly empty DB): {e}")
-
-        # ⚡ Optimize indexes (important for large photo libraries)
-        try:
-            self.db.optimize_indexes()
-        except Exception as e:
-            print(f"[DB] optimize_indexes failed: {e}")
-
-        # 🌳 Reload sidebar date tree
-        try:
-            # Check if method exists before calling
-            if hasattr(self.sidebar, 'reload_date_tree'):
-                self.sidebar.reload_date_tree()
-                print("[Sidebar] Date tree reloaded.")
-            else:
-                print("[Sidebar] reload_date_tree() method not available - skipping")
-        except Exception as e:
-            print(f"[Sidebar] Failed to reload date tree: {e}")
+    # _init_db_and_sidebar() removed in v9.3.0 - replaced by:
+    # - _init_minimal_db_handle() for fast DB handle creation
+    # - _enqueue_startup_maintenance_job() for background heavy work
   
     # ============================================================
     # 🏷️ Tag filter handler

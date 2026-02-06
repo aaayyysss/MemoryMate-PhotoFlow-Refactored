@@ -382,6 +382,7 @@ hiddenimports = [
     'workers.similar_shot_stack_worker',
     'workers.video_metadata_worker',
     'workers.video_thumbnail_worker',
+    'workers.startup_maintenance_worker',
 
     # --- ui (comprehensive — includes all 35+ modules) ---
     'ui',

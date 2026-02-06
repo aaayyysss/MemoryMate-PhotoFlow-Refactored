@@ -491,7 +491,7 @@ class ReferenceDB:
     def close_all_connections(cls):
         """
         Close all pooled connections for graceful shutdown.
-        
+
         Call this method when the application is shutting down to ensure
         all database connections are properly closed.
         """
@@ -504,6 +504,34 @@ class ReferenceDB:
                     print(f"[ReferenceDB] Warning: Failed to close connection for thread {thread_id}: {e}")
             cls._connection_pool.clear()
             print(f"[ReferenceDB] All {len(cls._connection_pool)} connections closed")
+
+    def close(self):
+        """
+        Close this instance's resources (for worker cleanup).
+
+        For singleton ReferenceDB, this closes the current thread's pooled connection.
+        Use close_all_connections() for full shutdown.
+        """
+        import threading
+        thread_id = threading.current_thread().ident
+
+        with self._pool_lock:
+            if thread_id in self._connection_pool:
+                try:
+                    self._connection_pool[thread_id].close()
+                    del self._connection_pool[thread_id]
+                    print(f"[ReferenceDB] Closed connection for thread {thread_id}")
+                except Exception as e:
+                    print(f"[ReferenceDB] Warning: Failed to close connection: {e}")
+
+    def __enter__(self):
+        """Context manager entry for 'with ReferenceDB() as db:' pattern."""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit - closes current thread's connection."""
+        self.close()
+        return False  # Don't suppress exceptions
         
 
     # ---- New lightweight helpers for UI (fast SQL-backed) ----

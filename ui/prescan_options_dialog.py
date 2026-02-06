@@ -12,9 +12,11 @@ Shows options before starting a repository scan:
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QCheckBox, QGroupBox, QSpinBox, QDoubleSpinBox, QRadioButton,
-    QButtonGroup, QFrame, QFormLayout
+    QButtonGroup, QFrame, QFormLayout, QScrollArea, QWidget,
+    QToolButton, QSizePolicy
 )
 from PySide6.QtCore import Qt, Signal, QThread
+from PySide6.QtGui import QGuiApplication
 from typing import Optional
 
 
@@ -83,31 +85,99 @@ class PreScanOptionsDialog(QDialog):
 
         self.setWindowTitle("Scan Options")
         self.setModal(True)
-        self.setMinimumWidth(500)
+        self.setSizeGripEnabled(True)  # Allow resize
 
         self._build_ui()
         self._apply_styles()
         self._connect_signals()
+        self._fit_to_screen()  # Adaptive sizing
+
+    def _fit_to_screen(self):
+        """
+        Ensure dialog fits on screen and is reasonably sized.
+
+        UX Fix: Prevents buttons being hidden on small screens or high DPI.
+        """
+        # Get available screen geometry
+        screen = None
+        if self.parent():
+            screen = self.parent().screen()
+        if screen is None:
+            screen = QGuiApplication.primaryScreen()
+        if screen is None:
+            self.resize(600, 700)
+            return
+
+        avail = screen.availableGeometry()
+
+        # Size to 80% of screen, with reasonable limits
+        target_w = min(700, max(500, int(avail.width() * 0.5)))
+        target_h = min(800, max(500, int(avail.height() * 0.8)))
+
+        self.resize(target_w, target_h)
 
     def _build_ui(self):
-        """Build dialog UI."""
-        layout = QVBoxLayout(self)
+        """
+        Build dialog UI with scrollable content and sticky header.
+
+        UX Fix v9.3.0: Uses QScrollArea so content is always accessible
+        on small screens. Header with primary action stays visible.
+        """
+        root_layout = QVBoxLayout(self)
+        root_layout.setSpacing(0)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+
+        # ══════════════════════════════════════════════════════════════
+        # STICKY HEADER BAR (always visible, contains primary action)
+        # ══════════════════════════════════════════════════════════════
+        header_bar = QFrame()
+        header_bar.setObjectName("header_bar")
+        header_bar.setStyleSheet("""
+            #header_bar {
+                background-color: #f8f9fa;
+                border-bottom: 1px solid #dee2e6;
+                padding: 12px 16px;
+            }
+        """)
+        header_layout = QHBoxLayout(header_bar)
+        header_layout.setContentsMargins(16, 12, 16, 12)
+
+        # Title
+        header_title = QLabel("<b style='font-size: 16px;'>Scan Repository</b>")
+        header_layout.addWidget(header_title)
+        header_layout.addStretch(1)
+
+        # Cancel button (secondary)
+        btn_cancel = QPushButton("Cancel")
+        btn_cancel.clicked.connect(self.reject)
+        header_layout.addWidget(btn_cancel)
+
+        # Start button (primary) - ALWAYS visible in header
+        self.btn_start = QPushButton("Start Scan")
+        self.btn_start.setDefault(True)
+        self.btn_start.clicked.connect(self._on_start_clicked)
+        self.btn_start.setObjectName("btn_start")
+        header_layout.addWidget(self.btn_start)
+
+        root_layout.addWidget(header_bar)
+
+        # ══════════════════════════════════════════════════════════════
+        # SCROLLABLE CONTENT AREA
+        # ══════════════════════════════════════════════════════════════
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+
+        content = QWidget()
+        layout = QVBoxLayout(content)
         layout.setSpacing(16)
-        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setContentsMargins(20, 16, 20, 20)
 
-        # Header
-        header = QLabel("<h2>Scan Repository</h2>")
-        layout.addWidget(header)
-
+        # Info text
         info = QLabel("Configure scanning options before starting the scan.")
         info.setStyleSheet("color: #666; margin-bottom: 8px;")
         layout.addWidget(info)
-
-        # Separator
-        sep1 = QFrame()
-        sep1.setFrameShape(QFrame.HLine)
-        sep1.setFrameShadow(QFrame.Sunken)
-        layout.addWidget(sep1)
 
         # ── Quick Statistics section ──────────────────────────────
         self._stats_box = QGroupBox("Quick Statistics")
@@ -269,21 +339,12 @@ class PreScanOptionsDialog(QDialog):
 
         layout.addWidget(info_frame)
 
-        # Buttons
+        # Add stretch at end of scroll content
         layout.addStretch(1)
-        button_layout = QHBoxLayout()
-        button_layout.addStretch(1)
 
-        btn_cancel = QPushButton("Cancel")
-        btn_cancel.clicked.connect(self.reject)
-        button_layout.addWidget(btn_cancel)
-
-        self.btn_start = QPushButton("Start Scan")
-        self.btn_start.setDefault(True)
-        self.btn_start.clicked.connect(self._on_start_clicked)
-        button_layout.addWidget(self.btn_start)
-
-        layout.addLayout(button_layout)
+        # Set content widget and add scroll area to root layout
+        scroll.setWidget(content)
+        root_layout.addWidget(scroll, 1)  # stretch=1 so scroll takes remaining space
 
     def _apply_styles(self):
         """Apply custom styles."""
