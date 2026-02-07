@@ -317,9 +317,9 @@ if __name__ == "__main__":
                 
                 # Create and configure worker
                 worker = FFmpegDetectionWorker()
-                gen = int(getattr(main_window, "_ui_generation", 0))
-                connect_guarded(worker.signals.detection_complete, main_window, on_detection_complete, generation=gen)
-                connect_guarded(worker.signals.error, main_window, on_detection_error, generation=gen)
+                gen = int(getattr(win, "_ui_generation", 0))
+                connect_guarded(worker.signals.detection_complete, win, on_detection_complete, generation=gen)
+                connect_guarded(worker.signals.error, win, on_detection_error, generation=gen)
                 
                 # Launch in thread pool
                 thread_pool = QThreadPool.globalInstance()
