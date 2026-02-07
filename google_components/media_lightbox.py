@@ -1,5 +1,5 @@
-# media_lightbox.py
-# Version 10.01.01.04 dated 20260122
+# google_components/media_lightbox.py
+# Version 10.01.01.05 dated 20260207
 
 """
 Google Photos Layout - Media Lightbox Component
@@ -3447,6 +3447,41 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         qpix = QPixmap()
         qpix.loadFromData(buffer.read())
         return qpix
+
+    def _to_pixmap(self, image):
+        """Normalize worker outputs to QPixmap.
+
+        Workers may emit QImage (preferred for cross-thread safety) or QPixmap.
+        This helper converts supported inputs to a QPixmap, returning a null pixmap on failure.
+        """
+        try:
+            from PySide6.QtGui import QPixmap, QImage
+        except Exception:
+            return None
+
+        if image is None:
+            return QPixmap()
+
+        # Already a pixmap
+        if isinstance(image, QPixmap):
+            return image
+
+        # QImage from worker thread
+        if isinstance(image, QImage):
+            if image.isNull():
+                return QPixmap()
+            return QPixmap.fromImage(image)
+
+        # PIL Image
+        try:
+            from PIL import Image as PILImage  # type: ignore
+            if isinstance(image, PILImage.Image):
+                return self._pil_to_qpixmap(image)
+        except Exception:
+            pass
+
+        # Unknown type
+        return QPixmap()
 
     def _render_histogram_image(self, img, width=360, height=120):
         """Render an RGB histogram image using Pillow and return PIL.Image (smoothed, with clipping markers)."""
