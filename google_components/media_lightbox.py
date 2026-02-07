@@ -38,7 +38,7 @@ import os
 
 class PreloadImageSignals(QObject):
     """Signals for async image preloading."""
-    loaded = Signal(str, object)  # (path, pixmap or None)
+    loaded = Signal(str, object)  # (path, QImage or None)
 
 
 class PreloadImageWorker(QRunnable):
@@ -53,11 +53,11 @@ class PreloadImageWorker(QRunnable):
         self.signals = signals
 
     def run(self):
-        """Load image in background thread."""
+        """Load image in background thread — emits QImage (thread-safe)."""
         try:
             from PIL import Image, ImageOps
             import io
-            from PySide6.QtGui import QPixmap
+            from PySide6.QtGui import QImage
 
             # Load with PIL for EXIF orientation
             pil_image = Image.open(self.path)
@@ -72,16 +72,16 @@ class PreloadImageWorker(QRunnable):
             pil_image.save(buffer, format='PNG')
             buffer.seek(0)
 
-            # Load QPixmap from buffer
-            pixmap = QPixmap()
-            pixmap.loadFromData(buffer.read())
+            # Load QImage (thread-safe, unlike QPixmap)
+            qimage = QImage()
+            qimage.loadFromData(buffer.read())
 
             # Cleanup
             pil_image.close()
             buffer.close()
 
-            # Emit loaded signal
-            self.signals.loaded.emit(self.path, pixmap)
+            # Emit loaded signal with QImage
+            self.signals.loaded.emit(self.path, qimage)
             print(f"[PreloadImageWorker] ✓ Preloaded: {os.path.basename(self.path)}")
 
         except Exception as e:
@@ -89,9 +89,9 @@ class PreloadImageWorker(QRunnable):
             self.signals.loaded.emit(self.path, None)
 
 class ProgressiveImageSignals(QObject):
-    """Signals for progressive image loading."""
-    thumbnail_loaded = Signal(object)  # QPixmap
-    full_loaded = Signal(object)  # QPixmap
+    """Signals for progressive image loading (generation token + QImage)."""
+    thumbnail_loaded = Signal(int, object)  # (generation, QImage)
+    full_loaded = Signal(int, object)  # (generation, QImage)
 
 
 class ProgressiveImageWorker(QRunnable):
@@ -99,20 +99,21 @@ class ProgressiveImageWorker(QRunnable):
     PHASE A #2: Progressive image loader.
 
     Loads thumbnail-quality first (instant), then full resolution in background.
+    Emits QImage (thread-safe) with generation token for staleness detection.
     """
-    def __init__(self, path: str, signals: ProgressiveImageSignals, viewport_size):
+    def __init__(self, path: str, signals: ProgressiveImageSignals, viewport_size, generation: int):
         super().__init__()
         self.path = path
         self.signals = signals
         self.viewport_size = viewport_size
+        self.generation = generation
 
     def run(self):
-        """Load image progressively: thumbnail → full quality."""
+        """Load image progressively: thumbnail → full quality (emits QImage)."""
         try:
             from PIL import Image, ImageOps
             import io
-            from PySide6.QtGui import QPixmap
-            from PySide6.QtCore import Qt
+            from PySide6.QtGui import QImage
 
             # Load with PIL for EXIF orientation
             pil_image = Image.open(self.path)
@@ -123,26 +124,24 @@ class ProgressiveImageWorker(QRunnable):
                 pil_image = pil_image.convert('RGB')
 
             # STEP 1: Create thumbnail-quality version (fast!)
-            # Calculate thumbnail size (1/4 of viewport)
             thumb_width = self.viewport_size.width() // 4
             thumb_height = self.viewport_size.height() // 4
 
-            # Create thumbnail
             thumb_image = pil_image.copy()
             thumb_image.thumbnail((thumb_width, thumb_height), Image.Resampling.LANCZOS)
 
-            # Convert to QPixmap
+            # Convert to QImage (thread-safe, unlike QPixmap)
             buffer = io.BytesIO()
             thumb_image.save(buffer, format='JPEG', quality=70)
             buffer.seek(0)
 
-            thumb_pixmap = QPixmap()
-            thumb_pixmap.loadFromData(buffer.read())
+            thumb_qimage = QImage()
+            thumb_qimage.loadFromData(buffer.read())
             buffer.close()
             thumb_image.close()
 
-            # Emit thumbnail (instant display!)
-            self.signals.thumbnail_loaded.emit(thumb_pixmap)
+            # Emit thumbnail with generation token
+            self.signals.thumbnail_loaded.emit(self.generation, thumb_qimage)
             print(f"[ProgressiveImageWorker] ✓ Thumbnail loaded: {os.path.basename(self.path)}")
 
             # STEP 2: Load full resolution (background)
@@ -150,15 +149,15 @@ class ProgressiveImageWorker(QRunnable):
             pil_image.save(buffer, format='PNG')
             buffer.seek(0)
 
-            full_pixmap = QPixmap()
-            full_pixmap.loadFromData(buffer.read())
+            full_qimage = QImage()
+            full_qimage.loadFromData(buffer.read())
 
             # Cleanup
             pil_image.close()
             buffer.close()
 
-            # Emit full quality
-            self.signals.full_loaded.emit(full_pixmap)
+            # Emit full quality with generation token
+            self.signals.full_loaded.emit(self.generation, full_qimage)
             print(f"[ProgressiveImageWorker] ✓ Full quality loaded: {os.path.basename(self.path)}")
 
         except Exception as e:
@@ -166,38 +165,34 @@ class ProgressiveImageWorker(QRunnable):
             import traceback
             traceback.print_exc()
 
-            # FALLBACK: Create "broken image" placeholder pixmap
-            from PySide6.QtGui import QPixmap, QPainter, QColor, QFont
+            # FALLBACK: Create "broken image" placeholder as QImage
+            from PySide6.QtGui import QImage, QPainter, QColor, QFont
             from PySide6.QtCore import Qt
 
-            # Create a placeholder pixmap (400x400 gray box with error icon)
-            placeholder = QPixmap(400, 400)
-            placeholder.fill(QColor(240, 240, 240))  # Light gray background
+            placeholder = QImage(400, 400, QImage.Format_RGB32)
+            placeholder.fill(QColor(240, 240, 240))
 
             painter = QPainter(placeholder)
             painter.setRenderHint(QPainter.Antialiasing)
 
-            # Draw red border
-            painter.setPen(QColor(220, 53, 69))  # Bootstrap danger red
+            painter.setPen(QColor(220, 53, 69))
             painter.drawRect(0, 0, 399, 399)
 
-            # Draw error icon (❌) and text
             painter.setPen(QColor(100, 100, 100))
             font = QFont()
             font.setPointSize(48)
             painter.setFont(font)
-            painter.drawText(placeholder.rect(), Qt.AlignCenter, "❌\n\nImage Error")
+            painter.drawText(placeholder.rect(), Qt.AlignCenter, "Image Error")
 
-            # Draw filename at bottom
             font.setPointSize(10)
             painter.setFont(font)
             painter.drawText(10, 380, os.path.basename(self.path)[:50])
 
             painter.end()
 
-            # Emit placeholder for both thumbnail and full quality
-            self.signals.thumbnail_loaded.emit(placeholder)
-            self.signals.full_loaded.emit(placeholder)
+            # Emit placeholder for both stages with generation token
+            self.signals.thumbnail_loaded.emit(self.generation, placeholder)
+            self.signals.full_loaded.emit(self.generation, placeholder)
             print(f"[ProgressiveImageWorker] ✓ Emitted error placeholder for: {os.path.basename(self.path)}")
 
 class MediaLightbox(QDialog, VideoEditorMixin):
@@ -268,6 +263,7 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         self.thumbnail_quality_loaded = False  # Track if thumbnail loaded
         self.full_quality_loaded = False  # Track if full quality loaded
         self.progressive_load_worker = None  # Current progressive load worker
+        self._lb_media_generation = 0  # Generation token: bumped each navigation, stale workers discarded
         self.progressive_signals = ProgressiveImageSignals()
         self.progressive_signals.thumbnail_loaded.connect(self._on_thumbnail_loaded)
         self.progressive_signals.full_loaded.connect(self._on_full_quality_loaded)
@@ -6308,6 +6304,10 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             elif self.progressive_loading:
                 print(f"[MediaLightbox] Starting progressive load...")
 
+                # Bump generation — any in-flight worker with an older
+                # generation will have its results silently discarded.
+                self._lb_media_generation += 1
+
                 # Reset progressive load state
                 self.thumbnail_quality_loaded = False
                 self.full_quality_loaded = False
@@ -6315,12 +6315,13 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 # PHASE A #4: Show loading indicator
                 self._show_loading_indicator("⏳ Loading...")
 
-                # Start progressive load worker
+                # Start progressive load worker with current generation
                 viewport_size = self.scroll_area.viewport().size()
                 worker = ProgressiveImageWorker(
                     self.media_path,
                     self.progressive_signals,
-                    viewport_size
+                    viewport_size,
+                    self._lb_media_generation
                 )
                 self.preload_thread_pool.start(worker)
 
@@ -8172,11 +8173,13 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             self.preload_thread_pool.start(worker)
             print(f"[MediaLightbox] Preloading: {os.path.basename(next_path)}")
 
-    def _on_preload_complete(self, path: str, pixmap):
-        """PHASE A #1: Handle preload completion."""
-        if pixmap and not pixmap.isNull():
-            # Add to cache with timestamp
+    def _on_preload_complete(self, path: str, qimage):
+        """PHASE A #1: Handle preload completion — promotes QImage→QPixmap on main thread."""
+        if qimage and not qimage.isNull():
+            from PySide6.QtGui import QPixmap
             from PySide6.QtCore import QDateTime
+            # Convert QImage → QPixmap on the main thread (the only safe place)
+            pixmap = QPixmap.fromImage(qimage)
             self.preload_cache[path] = {
                 'pixmap': pixmap,
                 'timestamp': QDateTime.currentMSecsSinceEpoch()
@@ -8204,24 +8207,36 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             del self.preload_cache[path]
             print(f"[MediaLightbox] Removed from cache: {os.path.basename(path)}")
 
-    def _on_thumbnail_loaded(self, pixmap):
-        """PHASE A #2: Handle progressive loading - thumbnail quality loaded."""
-        print(f"[SIGNAL] _on_thumbnail_loaded called, pixmap={'valid' if pixmap and not pixmap.isNull() else 'NULL'}")
+    def _on_thumbnail_loaded(self, generation: int, qimage):
+        """PHASE A #2: Handle progressive loading - thumbnail quality loaded.
 
-        if not pixmap or pixmap.isNull():
-            print(f"[ERROR] ⚠️ Thumbnail pixmap is null or invalid! Photo won't display.")
-            self._hide_loading_indicator()  # Hide loading indicator on error
+        Discards stale results from previous navigations via generation check.
+        Promotes QImage→QPixmap on the main thread (Qt requirement).
+        """
+        # Generation guard: discard if user has already navigated away
+        if generation != self._lb_media_generation:
+            print(f"[SIGNAL] _on_thumbnail_loaded: discarding stale result (gen {generation} != {self._lb_media_generation})")
+            return
+
+        print(f"[SIGNAL] _on_thumbnail_loaded called, qimage={'valid' if qimage and not qimage.isNull() else 'NULL'}")
+
+        if not qimage or qimage.isNull():
+            print(f"[ERROR] ⚠️ Thumbnail QImage is null or invalid! Photo won't display.")
+            self._hide_loading_indicator()
             return
 
         from PySide6.QtCore import Qt
+        from PySide6.QtGui import QPixmap
 
         try:
+            # Convert QImage → QPixmap on main thread
+            pixmap = QPixmap.fromImage(qimage)
+
             # Store as original for zoom operations
             self.original_pixmap = pixmap
 
             # Scale to fit viewport
             viewport_size = self.scroll_area.viewport().size()
-            print(f"[SIGNAL] Viewport size: {viewport_size.width()}x{viewport_size.height()}")
             scaled_pixmap = pixmap.scaled(
                 viewport_size,
                 Qt.KeepAspectRatio,
@@ -8236,7 +8251,7 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             self.thumbnail_quality_loaded = True
 
             # Update status
-            self._show_loading_indicator("📥 Loading full resolution...")
+            self._show_loading_indicator("Loading full resolution...")
 
             print(f"[MediaLightbox] ✓ Thumbnail displayed (progressive load)")
         except Exception as e:
@@ -8245,18 +8260,31 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             traceback.print_exc()
             self._hide_loading_indicator()
 
-    def _on_full_quality_loaded(self, pixmap):
-        """PHASE A #2: Handle progressive loading - full quality loaded."""
-        print(f"[SIGNAL] _on_full_quality_loaded called, pixmap={'valid' if pixmap and not pixmap.isNull() else 'NULL'}")
+    def _on_full_quality_loaded(self, generation: int, qimage):
+        """PHASE A #2: Handle progressive loading - full quality loaded.
 
-        if not pixmap or pixmap.isNull():
-            print(f"[ERROR] ⚠️ Full quality pixmap is null or invalid!")
-            self._hide_loading_indicator()  # Hide loading indicator on error
+        Discards stale results from previous navigations via generation check.
+        Promotes QImage→QPixmap on the main thread (Qt requirement).
+        """
+        # Generation guard: discard if user has already navigated away
+        if generation != self._lb_media_generation:
+            print(f"[SIGNAL] _on_full_quality_loaded: discarding stale result (gen {generation} != {self._lb_media_generation})")
+            return
+
+        print(f"[SIGNAL] _on_full_quality_loaded called, qimage={'valid' if qimage and not qimage.isNull() else 'NULL'}")
+
+        if not qimage or qimage.isNull():
+            print(f"[ERROR] ⚠️ Full quality QImage is null or invalid!")
+            self._hide_loading_indicator()
             return
 
         from PySide6.QtCore import Qt
+        from PySide6.QtGui import QPixmap
 
         try:
+            # Convert QImage → QPixmap on main thread
+            pixmap = QPixmap.fromImage(qimage)
+
             # Store as original for zoom operations
             self.original_pixmap = pixmap
 
@@ -8295,6 +8323,11 @@ class MediaLightbox(QDialog, VideoEditorMixin):
 
             self.full_quality_loaded = True
 
+            # Calculate zoom level
+            self.zoom_level = scaled_pixmap.width() / pixmap.width()
+            self.fit_zoom_level = self.zoom_level
+            self.zoom_mode = "fit"
+
             # Hide loading indicator
             self._hide_loading_indicator()
 
@@ -8304,13 +8337,6 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             import traceback
             traceback.print_exc()
             self._hide_loading_indicator()
-
-        # Calculate zoom level
-        self.zoom_level = scaled_pixmap.width() / pixmap.width()
-        self.fit_zoom_level = self.zoom_level
-        self.zoom_mode = "fit"
-
-        print(f"[MediaLightbox] ✓ Full quality displayed (progressive load complete)")
 
     def _calculate_zoom_scroll_adjustment(self, old_zoom: float, new_zoom: float):
         """
