@@ -22,6 +22,7 @@ from services.tag_service import get_tag_service
 from services.device_monitor import get_device_monitor  # OPTIMIZATION: Windows device change detection
 from ui.people_list_view import PeopleListView, make_circular_pixmap
 from translation_manager import tr
+from utils.qt_guards import connect_guarded
 
 import threading
 import traceback
@@ -1463,14 +1464,16 @@ class SidebarTabs(QWidget):
                             f"Try clicking 🔁 Re-Cluster to retry."
                         )
 
-                    cluster_worker.signals.progress.connect(on_cluster_progress)
-                    cluster_worker.signals.finished.connect(on_cluster_finished)
-                    cluster_worker.signals.error.connect(on_cluster_error)
+                    gen0 = int(getattr(self.window(), "_ui_generation", 0))
+                    connect_guarded(cluster_worker.signals.progress, self, on_cluster_progress, generation=gen0)
+                    connect_guarded(cluster_worker.signals.finished, self, on_cluster_finished, generation=gen0)
+                    connect_guarded(cluster_worker.signals.error, self, on_cluster_error, generation=gen0)
 
                     QThreadPool.globalInstance().start(cluster_worker)
 
-                detection_worker.signals.progress.connect(on_detection_progress)
-                detection_worker.signals.finished.connect(on_detection_finished)
+                gen0 = int(getattr(self.window(), "_ui_generation", 0))
+                connect_guarded(detection_worker.signals.progress, self, on_detection_progress, generation=gen0)
+                connect_guarded(detection_worker.signals.finished, self, on_detection_finished, generation=gen0)
 
                 # Start detection worker
                 QThreadPool.globalInstance().start(detection_worker)
@@ -1587,9 +1590,10 @@ class SidebarTabs(QWidget):
                 def on_cancel():
                     worker.cancel()
 
-                worker.signals.progress.connect(on_progress)
-                worker.signals.finished.connect(on_finished)
-                worker.signals.error.connect(on_error)
+                gen2 = int(getattr(self.window(), "_ui_generation", 0))
+                connect_guarded(worker.signals.progress, self, on_progress, generation=gen2)
+                connect_guarded(worker.signals.finished, self, on_finished, generation=gen2)
+                connect_guarded(worker.signals.error, self, on_error, generation=gen2)
                 progress.canceled.connect(on_cancel)
 
                 # Start worker

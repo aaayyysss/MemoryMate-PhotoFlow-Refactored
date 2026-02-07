@@ -33,6 +33,7 @@ from PySide6.QtCore import (
     Slot,
     QTimer,
 )
+from utils.qt_guards import connect_guarded
 from PySide6.QtGui import QFont, QIcon, QColor, QPixmap, QPainter, QPainterPath, QDrag, QImage
 from datetime import datetime
 from typing import Optional
@@ -821,6 +822,7 @@ class AccordionSidebar(QWidget):
 
     def __init__(self, project_id: int | None, parent=None):
         super().__init__(parent)
+        self._ui_generation: int = 0
         self._disposed = False  # Lifecycle flag: True after cleanup()
         self.project_id = project_id
         self.sections = {}  # section_id -> AccordionSection
@@ -1590,8 +1592,9 @@ class AccordionSidebar(QWidget):
             QMessageBox.critical(None, failure_title, f"❌ {error_msg}")
             cleanup()
 
-        worker.signals.finished.connect(handle_success, Qt.QueuedConnection)
-        worker.signals.error.connect(handle_error, Qt.QueuedConnection)
+        gen = int(getattr(getattr(self, "_main", None) or self.window(), "_ui_generation", self._ui_generation))
+        connect_guarded(worker.signals.finished, self, handle_success, generation=gen)
+        connect_guarded(worker.signals.error, self, handle_error, generation=gen)
         self.thread_pool.start(worker)
 
     def _load_dates_section(self):

@@ -315,6 +315,11 @@ class MainWindow(QMainWindow):
         self._closing = False
         self._restart_requested = False
 
+        # Generation token for guarding worker -> UI callbacks.
+        # Increment via bump_ui_generation() when the UI is logically
+        # restarted/replaced so stale signals are silently dropped.
+        self._ui_generation: int = 0
+
         # keep rest of initializer logic, but ensure some attributes exist
         self.settings = SettingsManager()
         self._committed_total = 0
@@ -3673,11 +3678,22 @@ class MainWindow(QMainWindow):
 
     def ui_generation(self) -> int:
         """Monotonic generation used to ignore stale callbacks from workers."""
+        return self._ui_generation
+
+    def bump_ui_generation(self) -> int:
+        """Increment and return the current UI generation token.
+
+        Called during shutdown/restart so that in-flight worker signals
+        see a stale generation and silently drop themselves.
+        """
+        self._ui_generation += 1
+        # Also bump JobManager's generation for consistency.
         try:
             from services.job_manager import get_job_manager
-            return int(get_job_manager().current_generation())
+            get_job_manager().bump_generation()
         except Exception:
-            return 0
+            pass
+        return self._ui_generation
 
     def _shutdown_barrier(self, *, timeout_ms: int = 10_000) -> None:
         """Best-effort barrier: cancel jobs, wait for pools, invalidate stale callbacks.
@@ -3687,7 +3703,8 @@ class MainWindow(QMainWindow):
         if self._closing:
             return
         self._closing = True
-        print("[Shutdown] _closing flag set, beginning teardown...")
+        self.bump_ui_generation()
+        print("[Shutdown] _closing flag set, ui_generation bumped, beginning teardown...")
 
         # 1. Use JobManager's coordinated shutdown (cancel + bump generation + drain)
         try:

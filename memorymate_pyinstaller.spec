@@ -459,6 +459,7 @@ hiddenimports = [
     'utils.test_insightface_models', # InsightFace model tests (used by preferences_dialog)
     'utils.translation_manager',
     'utils.ui_safety',               # Shutdown/generation guards (used by scan_controller)
+    'utils.qt_guards',               # Guarded signal connects (used by 10+ modules)
 
     # --- Core database/migration modules ---
     'apply_migrations',

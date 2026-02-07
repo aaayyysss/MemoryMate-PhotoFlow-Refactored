@@ -54,6 +54,7 @@ os.environ['QT_QUICK_BACKEND'] = 'software'  # Force software backend for Qt Qui
 
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import Qt, QTimer
+from utils.qt_guards import connect_guarded
 from main_window_qt import MainWindow
 
 # ✅ Logging setup (must be first!)
@@ -316,8 +317,9 @@ if __name__ == "__main__":
                 
                 # Create and configure worker
                 worker = FFmpegDetectionWorker()
-                worker.signals.detection_complete.connect(on_detection_complete)
-                worker.signals.error.connect(on_detection_error)
+                gen = int(getattr(main_window, "_ui_generation", 0))
+                connect_guarded(worker.signals.detection_complete, main_window, on_detection_complete, generation=gen)
+                connect_guarded(worker.signals.error, main_window, on_detection_error, generation=gen)
                 
                 # Launch in thread pool
                 thread_pool = QThreadPool.globalInstance()
