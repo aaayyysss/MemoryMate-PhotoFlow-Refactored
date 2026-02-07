@@ -1249,6 +1249,35 @@ class JobManager(QObject):
                 progress.message
             )
 
+    # ------------------------------------------------------------------
+    # Startup Throttle (Guardrail 2)
+    # ------------------------------------------------------------------
+    def enable_startup_throttle(self, max_threads: int = 1) -> None:
+        """Temporarily reduce shared thread pool concurrency during startup.
+
+        Prevents background jobs (maintenance, embedding warmups, etc.) from
+        competing with initial layout stabilization and first paint.
+        """
+        try:
+            if not hasattr(self, "_startup_throttle_prev"):
+                self._startup_throttle_prev = self._thread_pool.maxThreadCount()
+            self._thread_pool.setMaxThreadCount(max(1, int(max_threads)))
+            logger.info(f"[JobManager] Startup throttle enabled (max_threads={max_threads})")
+        except Exception as e:
+            logger.warning(f"[JobManager] Failed to enable startup throttle: {e}")
+
+    def disable_startup_throttle(self) -> None:
+        """Restore shared thread pool concurrency after startup."""
+        try:
+            prev = getattr(self, "_startup_throttle_prev", None)
+            if prev is None:
+                return
+            self._thread_pool.setMaxThreadCount(int(prev))
+            delattr(self, "_startup_throttle_prev")
+            logger.info(f"[JobManager] Startup throttle disabled (restored max_threads={prev})")
+        except Exception as e:
+            logger.warning(f"[JobManager] Failed to disable startup throttle: {e}")
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Singleton Accessor
