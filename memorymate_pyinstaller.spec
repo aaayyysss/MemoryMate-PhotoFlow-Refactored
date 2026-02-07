@@ -211,6 +211,7 @@ hiddenimports = [
     'PySide6.QtWebEngineCore',
     'PySide6.QtWebChannel',
     'PySide6.QtSvg',
+    'shiboken6',  # C++ wrapper validation (used by utils.ui_safety)
 
     # === Windows COM / pywin32 ===
     'win32com',
@@ -449,11 +450,15 @@ hiddenimports = [
 
     # --- utils ---
     'utils',
+    'utils.clip_check',              # CLIP model availability checks (used by 6+ modules)
     'utils.clip_model_registry',
     'utils.dpi_helper',
     'utils.face_detection_logger',
+    'utils.insightface_check',       # InsightFace status (used by main_qt, preferences_dialog)
     'utils.model_selection_helper',
+    'utils.test_insightface_models', # InsightFace model tests (used by preferences_dialog)
     'utils.translation_manager',
+    'utils.ui_safety',               # Shutdown/generation guards (used by scan_controller)
 
     # --- Core database/migration modules ---
     'apply_migrations',
@@ -507,13 +512,13 @@ a = Analysis(
         'PySide2',
 
         # Debug / diagnostic utilities (not needed at runtime)
-        'utils.test_insightface_models',
+        # NOTE: insightface_check, clip_check, test_insightface_models are NOT
+        # excluded — they are imported at runtime by main_qt.py, preferences_dialog,
+        # embedding_worker, model_selection_helper, and others.
         'utils.diagnose_insightface',
-        'utils.insightface_check',
         'utils.ffmpeg_check',
         'utils.cleanup_face_crops',
         'utils.fix_missing_project_images',
-        'utils.clip_check',
         'IPython',
         'jupyter',
     ],
