@@ -310,9 +310,10 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("MemoryMate - PhotoFlow")
 
-        # Lifecycle flag — set True in closeEvent before teardown.
-        # Every worker callback must check this before touching widgets.
+        # Lifecycle flags — set True in closeEvent/request_restart before teardown.
+        # Every worker callback must check _closing before touching widgets.
         self._closing = False
+        self._restart_requested = False
 
         # keep rest of initializer logic, but ensure some attributes exist
         self.settings = SettingsManager()
@@ -1349,11 +1350,13 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(2000, self._enqueue_startup_maintenance_job)
             print("[MainWindow] Database maintenance job scheduled (2s delay)")
 
-            # Step 5: Warmup CLIP model in background (delayed 15s)
-            # Heavy imports + HuggingFace cache I/O can starve UI via GIL.
-            # 15s gives initial layout, paging, and grouping time to complete.
-            QTimer.singleShot(15000, self._warmup_clip_in_background)
-            print("[MainWindow] CLIP warmup scheduled (15s delay)")
+            # Step 5: CLIP model warmup — DISABLED
+            # Heavy imports (torch, transformers) hold the GIL extensively and
+            # starve the UI thread even when run in a daemon thread.  With a
+            # pre-populated DB this causes a visible multi-second freeze.
+            # The model now loads lazily on the first semantic search instead.
+            # QTimer.singleShot(15000, self._warmup_clip_in_background)
+            print("[MainWindow] CLIP warmup disabled (lazy load on first search)")
 
             # Step 6: Deferred thumbnail cache purge (delayed 5s)
             QTimer.singleShot(5000, self._deferred_cache_purge)
@@ -3668,24 +3671,30 @@ class MainWindow(QMainWindow):
             pass
 
 
-    def closeEvent(self, event):
-        """Controlled shutdown barrier — ensures all background work stops
-        before Qt tears down widgets.  Without this, worker callbacks can
-        touch deleted C++ objects and cause native crashes with no traceback.
+    def ui_generation(self) -> int:
+        """Monotonic generation used to ignore stale callbacks from workers."""
+        try:
+            from services.job_manager import get_job_manager
+            return int(get_job_manager().current_generation())
+        except Exception:
+            return 0
+
+    def _shutdown_barrier(self, *, timeout_ms: int = 10_000) -> None:
+        """Best-effort barrier: cancel jobs, wait for pools, invalidate stale callbacks.
+
+        Idempotent — safe to call from both closeEvent and request_restart.
         """
-        # Set the closing flag FIRST — every worker callback should check this.
+        if self._closing:
+            return
         self._closing = True
         print("[Shutdown] _closing flag set, beginning teardown...")
 
-        # 1. Cancel all tracked/managed jobs (face pipeline, scan, etc.)
+        # 1. Use JobManager's coordinated shutdown (cancel + bump generation + drain)
         try:
             from services.job_manager import get_job_manager
             jm = get_job_manager()
-            jm.cancel_all()
-            # Wait briefly for workers to acknowledge cancellation
-            if hasattr(jm, '_thread_pool'):
-                jm._thread_pool.waitForDone(3000)  # 3s timeout
-            print("[Shutdown] JobManager jobs canceled and pool drained.")
+            drained = jm.shutdown_barrier(timeout_ms=timeout_ms)
+            print(f"[Shutdown] JobManager barrier complete (drained={drained}).")
         except Exception as e:
             print(f"[Shutdown] JobManager shutdown error: {e}")
 
@@ -3730,7 +3739,48 @@ class MainWindow(QMainWindow):
         except Exception as e:
             print(f"[Shutdown] DB close error: {e}")
 
-        print("[Shutdown] Teardown complete, passing to Qt.")
+        print("[Shutdown] Teardown complete.")
+
+    def request_restart(self) -> None:
+        """Relaunch the app in a detached process, then shutdown current instance.
+
+        Called from PreferencesDialog when a restart-requiring setting changes.
+        Starts the new process BEFORE quitting so a crash during shutdown
+        does not prevent relaunch.
+        """
+        if self._restart_requested:
+            return
+        self._restart_requested = True
+
+        # Start detached BEFORE quitting
+        try:
+            import sys
+            exe = sys.executable
+            args = sys.argv[:]
+            cwd = os.getcwd()
+            from PySide6.QtCore import QProcess
+            ok = QProcess.startDetached(exe, args, cwd)
+            if not ok:
+                QMessageBox.critical(self, "Restart failed",
+                                     "Could not relaunch the application process.")
+                self._restart_requested = False
+                return
+        except Exception as e:
+            QMessageBox.critical(self, "Restart failed",
+                                 f"Could not relaunch the application process.\n\n{e}")
+            self._restart_requested = False
+            return
+
+        # Barrier, then quit.
+        self._shutdown_barrier(timeout_ms=15_000)
+        from PySide6.QtCore import QCoreApplication
+        QCoreApplication.quit()
+
+    def closeEvent(self, event):
+        """Controlled shutdown barrier — ensures all background work stops
+        before Qt tears down widgets.
+        """
+        self._shutdown_barrier(timeout_ms=10_000)
         super().closeEvent(event)
 
     def _update_breadcrumb(self):

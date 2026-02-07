@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
     QMessageBox, QDialog, QApplication
 )
 from translation_manager import tr
+from utils.ui_safety import is_alive, generation_ok
 
 
 class ScanController(QObject):
@@ -47,6 +48,7 @@ class ScanController(QObject):
         self.worker = None
         self.db_writer = None
         self.cancel_requested = False
+        self._expected_generation = None
         self.logger = logging.getLogger(__name__)
 
         # CRITICAL FIX: Progress dialog threshold to prevent UI freeze on tiny scans
@@ -97,6 +99,9 @@ class ScanController(QObject):
 
         Can be called from any thread - automatically marshals to main thread if needed.
         """
+        if not is_alive(self.main) or not generation_ok(self.main, self._expected_generation):
+            return
+
         from PySide6.QtCore import QThread, QMetaObject, Qt
         from PySide6.QtWidgets import QApplication
 
@@ -116,6 +121,8 @@ class ScanController(QObject):
     @Slot(int, str)
     def _on_progress_main_thread(self, pct: int, msg: str):
         """Helper to ensure we're in main thread when calling _on_progress."""
+        if not is_alive(self.main) or not generation_ok(self.main, self._expected_generation):
+            return
         self._on_progress(pct, msg)
 
     def start_scan(self, folder, incremental: bool):
@@ -152,6 +159,8 @@ class ScanController(QObject):
         self._min_stack_size = scan_options.min_stack_size
 
         self.cancel_requested = False
+        # Capture generation at scan start so callbacks can detect stale results
+        self._expected_generation = self.main.ui_generation() if hasattr(self.main, 'ui_generation') else None
         self.main.statusBar().showMessage(f"📸 Scanning repository: {folder} (incremental={incremental})")
         self.main._committed_total = 0
 
@@ -313,6 +322,8 @@ class ScanController(QObject):
         self.main.act_cancel_scan.setEnabled(False)
 
     def _on_committed(self, n: int):
+        if not is_alive(self.main) or not generation_ok(self.main, self._expected_generation):
+            return
         self.main._committed_total += n
         self._maybe_refresh_grid_incremental()
 
@@ -351,6 +362,8 @@ class ScanController(QObject):
         Uses throttling (80 ms) to avoid flooding the event loop with
         status-bar repaints while still showing crisp 0 % / 100 % updates.
         """
+        if not is_alive(self.main) or not generation_ok(self.main, self._expected_generation):
+            return
         now = time.time()
         last = getattr(self, "_last_progress_ui_ts", 0.0)
 
@@ -384,6 +397,8 @@ class ScanController(QObject):
                 pass
 
     def _on_finished(self, folders, photos, videos=0):
+        if not is_alive(self.main) or not generation_ok(self.main, self._expected_generation):
+            return
         self.logger.info(f"Scan finished: {folders} folders, {photos} photos, {videos} videos")
         self.main._scan_result = (folders, photos, videos)
 
@@ -407,6 +422,8 @@ class ScanController(QObject):
             pass
 
     def _on_error(self, err_text: str):
+        if not is_alive(self.main) or not generation_ok(self.main, self._expected_generation):
+            return
         self.logger.error(f"Scan error: {err_text}")
         if self._scan_job_id is not None:
             try:
