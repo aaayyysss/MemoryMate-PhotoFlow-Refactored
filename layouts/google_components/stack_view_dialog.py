@@ -1046,6 +1046,9 @@ class StackBrowserDialog(QDialog):
         # Store current thumb size for responsive grid
         self._current_thumb_size = 200
 
+        # UI generation counter for stale update prevention
+        self._ui_generation = 0
+
         logger.debug("[__INIT__] Starting _init_ui()")
         self._init_ui()
         logger.debug("[__INIT__] Finished _init_ui(), starting _load_current_mode_data()")
