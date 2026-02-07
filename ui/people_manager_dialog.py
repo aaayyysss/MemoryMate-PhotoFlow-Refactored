@@ -35,6 +35,7 @@ from PySide6.QtGui import QDrag
 
 from reference_db import ReferenceDB
 from translation_manager import tr
+from utils.qt_guards import connect_guarded
 
 
 class FaceClusterCard(QFrame):
@@ -329,6 +330,7 @@ class PeopleManagerDialog(QDialog):
 
     def __init__(self, project_id: int, parent=None):
         super().__init__(parent)
+        self._ui_generation: int = 0
         self.project_id = project_id
         self.db = ReferenceDB()
         self.clusters: List[Dict[str, Any]] = []
@@ -1054,10 +1056,11 @@ class PeopleManagerDialog(QDialog):
                 photo_paths=selected_paths  # FEATURE #1: Pass selected paths
             )
 
-            # Connect signals for progress tracking
-            self.face_detection_worker.signals.progress.connect(self._on_face_detection_progress)
-            self.face_detection_worker.signals.finished.connect(self._on_face_detection_finished)
-            self.face_detection_worker.signals.error.connect(self._on_face_detection_error)
+            # Connect signals for progress tracking (guarded against teardown)
+            gen = int(getattr(self.parent() or self.window(), "_ui_generation", self._ui_generation))
+            connect_guarded(self.face_detection_worker.signals.progress, self, self._on_face_detection_progress, generation=gen)
+            connect_guarded(self.face_detection_worker.signals.finished, self, self._on_face_detection_finished, generation=gen)
+            connect_guarded(self.face_detection_worker.signals.error, self, self._on_face_detection_error, generation=gen)
 
             # Create progress dialog
             self.face_detection_progress_dialog = QProgressDialog(

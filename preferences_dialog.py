@@ -25,6 +25,7 @@ import sys
 from pathlib import Path
 
 from translation_manager import get_translation_manager, tr
+from utils.qt_guards import connect_guarded
 from config.face_detection_config import get_face_config
 
 
@@ -1488,10 +1489,11 @@ class PreferencesDialog(QDialog):
                 batch_size=500
             )
 
-            # Connect worker signals to progress dialog
-            worker.signals.progress.connect(progress_dialog.update_progress)
-            worker.signals.finished.connect(progress_dialog.on_finished)
-            worker.signals.error.connect(progress_dialog.on_error)
+            # Connect worker signals to progress dialog (guarded against teardown)
+            gen = int(getattr(self.parent() or self.window(), "_ui_generation", 0))
+            connect_guarded(worker.signals.progress, self.parent() or self.window(), progress_dialog.update_progress, generation=gen, extra_valid=[progress_dialog])
+            connect_guarded(worker.signals.finished, self.parent() or self.window(), progress_dialog.on_finished, generation=gen, extra_valid=[progress_dialog])
+            connect_guarded(worker.signals.error, self.parent() or self.window(), progress_dialog.on_error, generation=gen, extra_valid=[progress_dialog])
 
             # Connect dialog cancel to worker (if needed - not implemented in worker yet)
             # progress_dialog.cancelled.connect(worker.cancel)
@@ -1619,10 +1621,11 @@ class PreferencesDialog(QDialog):
                 rule_version="1"
             )
 
-            # Connect worker signals to progress dialog
-            worker.signals.progress.connect(progress_dialog.update_progress)
-            worker.signals.finished.connect(progress_dialog.on_finished)
-            worker.signals.error.connect(progress_dialog.on_error)
+            # Connect worker signals to progress dialog (guarded against teardown)
+            gen = int(getattr(self.parent() or self.window(), "_ui_generation", 0))
+            connect_guarded(worker.signals.progress, self.parent() or self.window(), progress_dialog.update_progress, generation=gen, extra_valid=[progress_dialog])
+            connect_guarded(worker.signals.finished, self.parent() or self.window(), progress_dialog.on_finished, generation=gen, extra_valid=[progress_dialog])
+            connect_guarded(worker.signals.error, self.parent() or self.window(), progress_dialog.on_error, generation=gen, extra_valid=[progress_dialog])
 
             # Start worker
             QThreadPool.globalInstance().start(worker)

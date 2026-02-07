@@ -23,6 +23,7 @@ from PySide6.QtGui import QFont, QColor, QPixmap
 from typing import Optional, List, Dict, Any
 from pathlib import Path
 from logging_config import get_logger
+from utils.qt_guards import connect_guarded
 
 logger = get_logger(__name__)
 
@@ -256,9 +257,10 @@ class StackMemberWidget(QWidget):
                                 }
                             """)
 
-                self._thumbnail_loader.signals.finished.connect(on_loaded)
-                self._thumbnail_loader.signals.error.connect(on_error)
-                logger.debug(f"[MEMBER_WIDGET] Signals connected, starting loader in thread pool")
+                gen = int(getattr(self.parent() or self.window(), "_ui_generation", self._ui_generation))
+                connect_guarded(self._thumbnail_loader.signals.finished, self, on_loaded, generation=gen)
+                connect_guarded(self._thumbnail_loader.signals.error, self, on_error, generation=gen)
+                logger.debug(f"[MEMBER_WIDGET] Signals connected (guarded), starting loader in thread pool")
 
                 # Start async loading
                 QThreadPool.globalInstance().start(self._thumbnail_loader)
@@ -312,6 +314,7 @@ class StackViewDialog(QDialog):
             parent: Parent widget
         """
         super().__init__(parent)
+        self._ui_generation: int = 0
         self.project_id = project_id
         self.stack_id = stack_id
         self.stack = None
@@ -1627,8 +1630,9 @@ class StackBrowserDialog(QDialog):
                             if label == thumbnail_label:
                                 label.setText(error_msg)
 
-                        card._thumbnail_loader.signals.finished.connect(on_thumbnail_loaded)
-                        card._thumbnail_loader.signals.error.connect(on_thumbnail_error)
+                        gen2 = int(getattr(self.parent() or self.window(), "_ui_generation", self._ui_generation))
+                        connect_guarded(card._thumbnail_loader.signals.finished, self, on_thumbnail_loaded, generation=gen2)
+                        connect_guarded(card._thumbnail_loader.signals.error, self, on_thumbnail_error, generation=gen2)
 
                         # Submit to thread pool (non-blocking)
                         QThreadPool.globalInstance().start(card._thumbnail_loader)
