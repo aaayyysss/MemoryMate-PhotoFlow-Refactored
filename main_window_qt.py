@@ -309,8 +309,11 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("MemoryMate - PhotoFlow")
-        
-        # keep rest of initializer logic, but ensure some attributes exist
+
+        # Lifecycle flag — set True in closeEvent before teardown.
+        # Every worker callback must check this before touching widgets.
+        self._closing = False
+
         # keep rest of initializer logic, but ensure some attributes exist
         self.settings = SettingsManager()
         self._committed_total = 0
@@ -1001,18 +1004,25 @@ class MainWindow(QMainWindow):
         try:
             from services.face_pipeline_service import FacePipelineService
             _face_svc = FacePipelineService.instance()
-            # Progress → status bar
+            # Progress → status bar (guarded against shutdown)
             _face_svc.progress.connect(
-                lambda step, msg, pid: self.statusBar().showMessage(msg, 0)
+                lambda step, msg, pid: (
+                    self.statusBar().showMessage(msg, 0)
+                    if not self._closing else None
+                )
             )
             # Incremental batch commits → People refresh via mediator
             _face_svc.batch_committed.connect(
-                lambda proc, total, faces, pid: self._ui_refresh_mediator.request_refresh(
-                    {"people"}, "faces_batch", pid
+                lambda proc, total, faces, pid: (
+                    self._ui_refresh_mediator.request_refresh(
+                        {"people"}, "faces_batch", pid
+                    ) if not self._closing else None
                 )
             )
             # Finished → final People refresh + status bar
             def _on_face_svc_finished(results, pid):
+                if self._closing:
+                    return
                 faces = results.get("faces_detected", 0)
                 clusters = results.get("clusters_created", 0)
                 if faces > 0:
@@ -1025,9 +1035,12 @@ class MainWindow(QMainWindow):
                     )
                 self._ui_refresh_mediator.request_refresh({"people"}, "pipeline_done", pid)
             _face_svc.finished.connect(_on_face_svc_finished)
-            # Error → status bar
+            # Error → status bar (guarded against shutdown)
             _face_svc.error.connect(
-                lambda msg, pid: self.statusBar().showMessage(f"Face pipeline error: {msg}", 8000)
+                lambda msg, pid: (
+                    self.statusBar().showMessage(f"Face pipeline error: {msg}", 8000)
+                    if not self._closing else None
+                )
             )
         except Exception as e:
             print(f"[MainWindow] FacePipelineService wiring failed: {e}")
@@ -1313,6 +1326,8 @@ class MainWindow(QMainWindow):
         This follows Material Design principle: App should be responsive immediately,
         heavy work happens visibly in the background via Activity Center.
         """
+        if self._closing:
+            return
         print("[MainWindow] Starting deferred initialization...")
 
         try:
@@ -1377,6 +1392,8 @@ class MainWindow(QMainWindow):
         Activity Center.  The worker thread gets its own ReferenceDB connection
         (per-thread pool) and never touches Qt widgets.
         """
+        if self._closing:
+            return
         import threading
         try:
             from services.job_manager import get_job_manager
@@ -1415,6 +1432,8 @@ class MainWindow(QMainWindow):
         in the background while the user starts working. First semantic search
         will be fast because model is already loaded.
         """
+        if self._closing:
+            return
         try:
             from settings_manager_qt import SettingsManager
             settings = SettingsManager()
@@ -1446,6 +1465,8 @@ class MainWindow(QMainWindow):
     
     def _deferred_cache_purge(self):
         """FIX #6: Run thumbnail cache purge in a background thread after startup."""
+        if self._closing:
+            return
         try:
             from settings_manager_qt import SettingsManager
             settings = SettingsManager()
@@ -3402,12 +3423,16 @@ class MainWindow(QMainWindow):
             worker = FaceClusterWorker(project_id=project_id)
 
             def on_progress(current, total, message):
+                if self._closing:
+                    return
                 try:
                     self.statusBar().showMessage(f"[Clustering] {message}", 0)
                 except Exception:
                     pass
 
             def on_finished(cluster_count, total_faces):
+                if self._closing:
+                    return
                 self.statusBar().showMessage(
                     f"Clustering complete: {total_faces} faces into {cluster_count} groups", 8000
                 )
@@ -3418,6 +3443,8 @@ class MainWindow(QMainWindow):
                     )
 
             def on_error(error_msg):
+                if self._closing:
+                    return
                 self.statusBar().showMessage(f"Clustering failed: {error_msg}", 8000)
 
             worker.signals.progress.connect(on_progress)
@@ -3594,6 +3621,8 @@ class MainWindow(QMainWindow):
         Handle video player close event.
         🎬 Phase 4.4: Return to grid view when player closes
         """
+        if self._closing:
+            return
         self.video_player.hide()
         self.grid.show()
         print("[VideoPlayer] Closed, returning to grid")
@@ -3640,7 +3669,27 @@ class MainWindow(QMainWindow):
 
 
     def closeEvent(self, event):
-        """Ensure thumbnail threads and caches are closed before app exit."""
+        """Controlled shutdown barrier — ensures all background work stops
+        before Qt tears down widgets.  Without this, worker callbacks can
+        touch deleted C++ objects and cause native crashes with no traceback.
+        """
+        # Set the closing flag FIRST — every worker callback should check this.
+        self._closing = True
+        print("[Shutdown] _closing flag set, beginning teardown...")
+
+        # 1. Cancel all tracked/managed jobs (face pipeline, scan, etc.)
+        try:
+            from services.job_manager import get_job_manager
+            jm = get_job_manager()
+            jm.cancel_all()
+            # Wait briefly for workers to acknowledge cancellation
+            if hasattr(jm, '_thread_pool'):
+                jm._thread_pool.waitForDone(3000)  # 3s timeout
+            print("[Shutdown] JobManager jobs canceled and pool drained.")
+        except Exception as e:
+            print(f"[Shutdown] JobManager shutdown error: {e}")
+
+        # 2. Shut down thumbnail/grid thread pools
         try:
             if hasattr(self, "grid") and hasattr(self.grid, "shutdown_threads"):
                 self.grid.shutdown_threads()
@@ -3655,6 +3704,16 @@ class MainWindow(QMainWindow):
         except Exception as e:
             print(f"[Shutdown] ThumbnailManager shutdown error: {e}")
 
+        # 3. Stop any pending QTimers from firing into deleted widgets
+        try:
+            for timer_attr in ('_fade_out_animation', '_fade_in_animation'):
+                timer = getattr(self, timer_attr, None)
+                if timer and hasattr(timer, 'stop'):
+                    timer.stop()
+        except Exception:
+            pass
+
+        # 4. Clear thumbnail cache
         try:
             if hasattr(self, "thumb_cache"):
                 self.thumb_cache.clear()
@@ -3662,6 +3721,16 @@ class MainWindow(QMainWindow):
         except Exception as e:
             print(f"[Shutdown] Thumb cache clear error: {e}")
 
+        # 5. Close DB connections
+        try:
+            db = getattr(self, "db", None)
+            if db and hasattr(db, "close"):
+                db.close()
+                print("[Shutdown] Database connections closed.")
+        except Exception as e:
+            print(f"[Shutdown] DB close error: {e}")
+
+        print("[Shutdown] Teardown complete, passing to Qt.")
         super().closeEvent(event)
 
     def _update_breadcrumb(self):
@@ -3965,6 +4034,8 @@ class MainWindow(QMainWindow):
 
     def _on_metadata_changed(self, photo_id: int, field: str, value):
         """Handle metadata field changes from the dock editor."""
+        if self._closing:
+            return
         print(f"[MainWindow] Metadata changed: photo={photo_id}, {field}={value}")
         # Refresh grid if rating/flag changed (may affect visual indicators)
         if field in ("rating", "flag"):

@@ -91,6 +91,17 @@ from splash_qt import SplashScreen, StartupWorker
 import traceback
 import datetime
 import atexit
+import faulthandler
+
+# Enable faulthandler to write native crash info (segfaults, aborts) to stderr
+# and to a persistent crash log.  This makes Qt/onnxruntime/InsightFace native
+# crashes visible — they kill the process without a Python traceback.
+try:
+    _fault_log = open("crash_fault.log", "a", encoding="utf-8")
+    faulthandler.enable(file=_fault_log, all_threads=True)
+    faulthandler.enable(file=sys.stderr, all_threads=True)
+except Exception:
+    faulthandler.enable()  # fallback to stderr only
 
 def exception_hook(exctype, value, tb):
     """Global exception handler to catch and log unhandled exceptions"""

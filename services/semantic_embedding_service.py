@@ -224,17 +224,21 @@ class SemanticEmbeddingService:
                         logger.debug(f"[SemanticEmbeddingService] Resolving relative path: {clip_path} → {clip_path_obj}")
 
                     # Validate model path
-#                    if clip_path_obj.exists() and (clip_path_obj / 'config.json').exists():
-                    if clip_path_obj.exists() and _has_model_weights(str(clip_path_obj)):    
+                    if clip_path_obj.exists() and _has_model_weights(str(clip_path_obj)):
                         local_model_path = str(clip_path_obj)
                         logger.info(f"[SemanticEmbeddingService] ✓ Using stored preference: {local_model_path}")
                     else:
                         logger.warning(
-                            f"[SemanticEmbeddingService] Stored preference path invalid:\n"
+                            f"[SemanticEmbeddingService] Stored preference path invalid, clearing setting:\n"
                             f"  Path: {clip_path_obj}\n"
                             f"  Exists: {clip_path_obj.exists()}\n"
-                            f"  Has config.json: {(clip_path_obj / 'config.json').exists() if clip_path_obj.exists() else False}"
+                            f"  Has model weights: {_has_model_weights(str(clip_path_obj)) if clip_path_obj.exists() else False}"
                         )
+                        # Clear the invalid path so it won't be retried on every startup
+                        try:
+                            settings.set("clip_model_path", "")
+                        except Exception:
+                            pass
             except Exception as e:
                 logger.warning(f"[SemanticEmbeddingService] Could not check stored preference: {e}")
 
