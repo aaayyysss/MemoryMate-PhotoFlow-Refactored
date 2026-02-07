@@ -1262,14 +1262,46 @@ class MainWindow(QMainWindow):
         # to avoid duplicate initialization. ReferenceDB() calls DatabaseConnection(auto_init=True)
         # which handles schema creation and migrations.
 
-        # CRITICAL FIX: Defer heavy initialization to avoid blocking UI thread
-        # Schedule heavy operations to run after window is shown
-        QTimer.singleShot(100, self._deferred_initialization)
-        
+        # Deferred init is now triggered by showEvent → _after_first_paint,
+        # NOT by a blind QTimer in __init__.  This guarantees the window has
+        # painted at least once before any heavy background work starts.
+
         # DIAGNOSTIC: Confirm __init__() is completing
-        print("[MainWindow] ✅ ✅ ✅ __init__() COMPLETED - returning to main_qt.py")
+        print("[MainWindow] __init__() COMPLETED - returning to main_qt.py")
         print(f"[MainWindow] Window object: {self}")
         print(f"[MainWindow] Window valid: {self.isValid() if hasattr(self, 'isValid') else 'N/A'}")
+
+    # ------------------------------------------------------------------
+    # Guardrail 1: First-render gate
+    # ------------------------------------------------------------------
+    def showEvent(self, event):
+        """Never start deferred init before the window is shown and has painted."""
+        super().showEvent(event)
+        if getattr(self, "_startup_after_show_scheduled", False):
+            return
+        self._startup_after_show_scheduled = True
+        # Let Qt complete a paint cycle, then start deferred work.
+        QTimer.singleShot(0, self._after_first_paint)
+
+    def _after_first_paint(self):
+        """Runs right after the first paint — schedules heavy background work."""
+        if getattr(self, "_deferred_init_started", False):
+            return
+        self._deferred_init_started = True
+
+        # Guardrail 2: throttle shared background workers during layout stabilization.
+        try:
+            from services.job_manager import get_job_manager
+            jm = get_job_manager()
+            if hasattr(jm, "enable_startup_throttle"):
+                jm.enable_startup_throttle(max_threads=1)
+                # Restore after layout has stabilized and initial thumbnails are queued.
+                QTimer.singleShot(5000, jm.disable_startup_throttle)
+        except Exception:
+            pass  # Throttle is best-effort, never block startup for it.
+
+        # Start deferred init after a short delay to let initial render settle.
+        QTimer.singleShot(250, self._deferred_initialization)
 
     def _deferred_initialization(self):
         """
@@ -1296,19 +1328,21 @@ class MainWindow(QMainWindow):
             self._update_status_bar()
             print("[MainWindow] ✅ Status bar updated")
 
-            # Step 4: Enqueue heavy DB maintenance as background job
-            # This runs visibly in Activity Center, doesn't block UI
-            self._enqueue_startup_maintenance_job()
-            print("[MainWindow] ✅ Database maintenance job enqueued")
+            # Step 4: Enqueue heavy DB maintenance as background job (delayed 2s)
+            # This runs visibly in Activity Center, doesn't block UI.
+            # The 2s delay lets initial thumbnails and grouping finish first.
+            QTimer.singleShot(2000, self._enqueue_startup_maintenance_job)
+            print("[MainWindow] Database maintenance job scheduled (2s delay)")
 
-            # Step 5: Warmup CLIP model in background
-            self._warmup_clip_in_background()
-            print("[MainWindow] ✅ CLIP warmup scheduled")
+            # Step 5: Warmup CLIP model in background (delayed 15s)
+            # Heavy imports + HuggingFace cache I/O can starve UI via GIL.
+            # 15s gives initial layout, paging, and grouping time to complete.
+            QTimer.singleShot(15000, self._warmup_clip_in_background)
+            print("[MainWindow] CLIP warmup scheduled (15s delay)")
 
-            # Step 6 (FIX #6): Deferred thumbnail cache purge
-            # Moved here from splash_qt.py so startup isn't blocked.
-            self._deferred_cache_purge()
-            print("[MainWindow] ✅ Cache purge scheduled")
+            # Step 6: Deferred thumbnail cache purge (delayed 5s)
+            QTimer.singleShot(5000, self._deferred_cache_purge)
+            print("[MainWindow] Cache purge scheduled (5s delay)")
 
             print("[MainWindow] ✅ Deferred initialization completed successfully")
 
