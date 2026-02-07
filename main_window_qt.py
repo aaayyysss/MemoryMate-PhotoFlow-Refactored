@@ -105,8 +105,6 @@ from controllers import ScanController, SidebarController, ProjectController, Ph
 from ui.widgets.breadcrumb_navigation import BreadcrumbNavigation
 from ui.widgets.backfill_indicator import CompactBackfillIndicator
 from ui.widgets.selection_toolbar import SelectionToolbar
-from ui.activity_center import ActivityCenter
-from ui.metadata_editor_dock import MetadataEditorDock
 from ui.ui_builder import UIBuilder
 
 # Phase 2 Refactoring: Extracted services
@@ -1125,34 +1123,9 @@ class MainWindow(QMainWindow):
 
         main_layout.addWidget(self.splitter, 1)
 
-        # --- Activity Center (QDockWidget, non-modal, shows all background jobs)
-        try:
-            self.activity_center = ActivityCenter(self)
-            self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea,
-                               self.activity_center)
-            # Sync the View > Activity Center checkbox when user closes
-            # the dock via its own ✕ button
-            self.activity_center.visibilityChanged.connect(
-                self._on_activity_center_visibility_changed)
-            # Start hidden; auto-shows when a job is registered
-            self.activity_center.hide()
-        except Exception as e:
-            print(f"[MainWindow] Could not create activity center: {e}")
-            self.activity_center = None
-
-        # --- Metadata Editor Dock (QDockWidget, right-side, Lightroom-style info panel)
-        try:
-            self.metadata_editor_dock = MetadataEditorDock(self)
-            self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea,
-                               self.metadata_editor_dock)
-            # Connect metadata changes to refresh UI if needed
-            self.metadata_editor_dock.metadataChanged.connect(
-                self._on_metadata_changed)
-            # Start hidden; toggle via View menu or toolbar button
-            self.metadata_editor_dock.hide()
-        except Exception as e:
-            print(f"[MainWindow] Could not create metadata editor dock: {e}")
-            self.metadata_editor_dock = None
+        # NOTE: Background Activity Panel removed - was too bulky and ate photo grid space
+        # Background jobs run silently via JobManager with progress in status bar
+        self.activity_panel = None
 
         # --- Wire toolbar actions
         act_select_all.triggered.connect(self.grid.list_view.selectAll)
