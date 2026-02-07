@@ -1,5 +1,5 @@
-# media_lightbox.py
-# Version 10.01.01.04 dated 20260122
+# google_components/media_lightbox.py
+# Version 10.01.01.05 dated 20260207
 
 """
 Google Photos Layout - Media Lightbox Component
@@ -89,9 +89,9 @@ class PreloadImageWorker(QRunnable):
             self.signals.loaded.emit(self.path, None)
 
 class ProgressiveImageSignals(QObject):
-    """Signals for progressive image loading."""
-    thumbnail_loaded = Signal(object)  # QPixmap
-    full_loaded = Signal(object)  # QPixmap
+    """Signals for progressive image loading."""    
+    thumbnail_loaded = Signal(object)  # QImage
+    full_loaded = Signal(object)  # QImage
 
 
 class ProgressiveImageWorker(QRunnable):
@@ -136,13 +136,15 @@ class ProgressiveImageWorker(QRunnable):
             thumb_image.save(buffer, format='JPEG', quality=70)
             buffer.seek(0)
 
-            thumb_pixmap = QPixmap()
-            thumb_pixmap.loadFromData(buffer.read())
+            thumb_qimage = QImage()
+            thumb_qimage.loadFromData(buffer.read())            
+            
             buffer.close()
             thumb_image.close()
 
             # Emit thumbnail (instant display!)
-            self.signals.thumbnail_loaded.emit(thumb_pixmap)
+            self.signals.thumbnail_loaded.emit(thumb_qimage)
+            
             print(f"[ProgressiveImageWorker] ✓ Thumbnail loaded: {os.path.basename(self.path)}")
 
             # STEP 2: Load full resolution (background)
@@ -150,15 +152,15 @@ class ProgressiveImageWorker(QRunnable):
             pil_image.save(buffer, format='PNG')
             buffer.seek(0)
 
-            full_pixmap = QPixmap()
-            full_pixmap.loadFromData(buffer.read())
+            full_qimage = QImage()
+            full_qimage.loadFromData(buffer.read())
 
             # Cleanup
             pil_image.close()
             buffer.close()
 
             # Emit full quality
-            self.signals.full_loaded.emit(full_pixmap)
+            self.signals.full_loaded.emit(full_qimage)
             print(f"[ProgressiveImageWorker] ✓ Full quality loaded: {os.path.basename(self.path)}")
 
         except Exception as e:
@@ -3451,6 +3453,41 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         qpix = QPixmap()
         qpix.loadFromData(buffer.read())
         return qpix
+
+    def _to_pixmap(self, image):
+        """Normalize worker outputs to QPixmap.
+
+        Workers may emit QImage (preferred for cross-thread safety) or QPixmap.
+        This helper converts supported inputs to a QPixmap, returning a null pixmap on failure.
+        """
+        try:
+            from PySide6.QtGui import QPixmap, QImage
+        except Exception:
+            return None
+
+        if image is None:
+            return QPixmap()
+
+        # Already a pixmap
+        if isinstance(image, QPixmap):
+            return image
+
+        # QImage from worker thread
+        if isinstance(image, QImage):
+            if image.isNull():
+                return QPixmap()
+            return QPixmap.fromImage(image)
+
+        # PIL Image
+        try:
+            from PIL import Image as PILImage  # type: ignore
+            if isinstance(image, PILImage.Image):
+                return self._pil_to_qpixmap(image)
+        except Exception:
+            pass
+
+        # Unknown type
+        return QPixmap()
 
     def _render_histogram_image(self, img, width=360, height=120):
         """Render an RGB histogram image using Pillow and return PIL.Image (smoothed, with clipping markers)."""
@@ -8204,8 +8241,10 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             del self.preload_cache[path]
             print(f"[MediaLightbox] Removed from cache: {os.path.basename(path)}")
 
-    def _on_thumbnail_loaded(self, pixmap):
+    def _on_thumbnail_loaded(self, image):
         """PHASE A #2: Handle progressive loading - thumbnail quality loaded."""
+        pixmap = self._to_pixmap(image)
+        pixmap = self._to_pixmap(image)        
         print(f"[SIGNAL] _on_thumbnail_loaded called, pixmap={'valid' if pixmap and not pixmap.isNull() else 'NULL'}")
 
         if not pixmap or pixmap.isNull():
@@ -8245,8 +8284,10 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             traceback.print_exc()
             self._hide_loading_indicator()
 
-    def _on_full_quality_loaded(self, pixmap):
+    def _on_full_quality_loaded(self, image):
         """PHASE A #2: Handle progressive loading - full quality loaded."""
+        pixmap = self._to_pixmap(image)
+        pixmap = self._to_pixmap(image)        
         print(f"[SIGNAL] _on_full_quality_loaded called, pixmap={'valid' if pixmap and not pixmap.isNull() else 'NULL'}")
 
         if not pixmap or pixmap.isNull():
