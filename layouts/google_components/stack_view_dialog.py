@@ -117,6 +117,7 @@ class StackMemberWidget(QWidget):
         self.similarity_score = similarity_score
         self.rank = rank
         self.is_representative = is_representative
+        self._ui_generation = 0  # For stale update prevention
 
         self._init_ui()
         self._load_thumbnail()
