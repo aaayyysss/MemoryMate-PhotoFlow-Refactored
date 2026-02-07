@@ -1892,6 +1892,15 @@ class PreferencesDialog(QDialog):
             if reply == QMessageBox.Yes:
                 self.accept()
                 print("🔄 Restarting application...")
+                # Use centralized restart with proper shutdown barrier
+                try:
+                    w = self.window()
+                    if hasattr(w, "request_restart"):
+                        w.request_restart()
+                        return
+                except Exception:
+                    pass
+                # Fallback if MainWindow.request_restart not available
                 QProcess.startDetached(sys.executable, sys.argv)
                 QGuiApplication.quit()
                 return
