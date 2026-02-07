@@ -403,6 +403,13 @@ class PhotoScanService:
             all_files = self._discover_files(root_path, ignore_set)
             all_videos = self._discover_videos(root_path, ignore_set)
 
+            # De-duplicate by resolved canonical path.
+            # Without this, symlinks, junctions, or case-insensitive paths
+            # (Windows) can cause the same file to appear twice, leading to
+            # duplicate DB rows, doubled folder_ids, and extra background work.
+            all_files = self._deduplicate_paths(all_files)
+            all_videos = self._deduplicate_paths(all_videos)
+
             total_files = len(all_files)
             total_videos = len(all_videos)
             self._total_photos = total_files
@@ -621,6 +628,29 @@ class PhotoScanService:
         """Request cancellation of current scan."""
         self._cancelled = True
         logger.info("Scan cancellation requested")
+
+    def _deduplicate_paths(self, paths: List[Path]) -> List[Path]:
+        """Remove duplicate paths that resolve to the same canonical file.
+
+        Symlinks, NTFS junctions, and case-insensitive filesystems (Windows)
+        can make os.walk() yield the same physical file under different paths.
+        This causes doubled DB rows and wasted background work.
+        """
+        seen: set = set()
+        unique: List[Path] = []
+        for p in paths:
+            try:
+                canonical = str(p.resolve()).lower()
+            except OSError:
+                # resolve() can fail for broken symlinks — keep the path
+                canonical = str(p).lower()
+            if canonical not in seen:
+                seen.add(canonical)
+                unique.append(p)
+        removed = len(paths) - len(unique)
+        if removed > 0:
+            logger.info(f"De-duplicated {removed} duplicate path(s) from {len(paths)} candidates")
+        return unique
 
     def _discover_files(self, root_path: Path, ignore_folders: Set[str]) -> List[Path]:
         """
