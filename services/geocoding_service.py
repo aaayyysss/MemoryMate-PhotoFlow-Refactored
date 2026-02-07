@@ -55,6 +55,10 @@ class GeocodingService:
     # User-Agent for API requests (required by Nominatim)
     USER_AGENT = "MemoryMate-PhotoFlow/1.0 (Photo Management Application)"
 
+    # Offline mode backoff settings
+    OFFLINE_BACKOFF_INITIAL_SECONDS = 30.0  # Initial backoff after first failure
+    OFFLINE_BACKOFF_MAX_SECONDS = 300.0      # Max backoff (5 minutes)
+
     def __init__(self, use_cache: bool = True):
         """
         Initialize geocoding service.
@@ -65,6 +69,11 @@ class GeocodingService:
         self.use_cache = use_cache
         self._last_request_time = 0.0
         self._rate_limit_lock = Lock()
+
+        # Offline mode state (graceful degradation)
+        self._offline_until = 0.0  # Time until which we're in offline backoff
+        self._offline_failures = 0  # Consecutive failure count for exponential backoff
+        self._offline_lock = Lock()
 
         logger.info("[GeocodingService] Initialized with cache=%s", use_cache)
 
@@ -166,6 +175,11 @@ class GeocodingService:
             logger.warning("[GeocodingService] Empty location name provided")
             return []
 
+        # Check offline mode (skip API call during backoff)
+        if self._is_offline():
+            logger.debug("[GeocodingService] Skipping forward geocode (offline mode)")
+            return []
+
         # Auto-detect language from app settings if not specified
         if language is None:
             try:
@@ -222,16 +236,22 @@ class GeocodingService:
                 return results
 
         except urllib.error.HTTPError as e:
-            logger.error(f"[GeocodingService] HTTP error {e.code}: {e.reason}")
+            logger.warning(f"[GeocodingService] HTTP error {e.code}: {e.reason}")
             return []
         except urllib.error.URLError as e:
-            logger.error(f"[GeocodingService] URL error: {e.reason}")
+            # Network/DNS errors - enter offline mode with backoff
+            self._enter_offline_mode(str(e.reason))
             return []
         except json.JSONDecodeError as e:
-            logger.error(f"[GeocodingService] JSON decode error: {e}")
+            logger.warning(f"[GeocodingService] JSON decode error: {e}")
             return []
         except Exception as e:
-            logger.exception(f"[GeocodingService] Unexpected error during forward geocoding: {e}")
+            # Check if network-related
+            error_str = str(e).lower()
+            if 'network' in error_str or 'connection' in error_str or 'dns' in error_str:
+                self._enter_offline_mode(str(e))
+            else:
+                logger.warning(f"[GeocodingService] Unexpected error during forward geocoding: {e}")
             return []
 
     def _format_search_result(self, item: dict) -> str:
@@ -345,6 +365,11 @@ class GeocodingService:
         """
         Fetch location name from Nominatim API with rate limiting.
 
+        Includes offline mode handling:
+        - Skips request if in offline backoff mode
+        - Enters offline mode on network errors (with exponential backoff)
+        - Exits offline mode on successful request
+
         Args:
             latitude: Latitude in decimal degrees
             longitude: Longitude in decimal degrees
@@ -353,6 +378,14 @@ class GeocodingService:
         Returns:
             Formatted location name in requested language or None if request fails
         """
+        # Check offline mode (skip API call during backoff)
+        if self._is_offline():
+            logger.debug(
+                "[GeocodingService] Skipping API request (offline mode): (%s, %s)",
+                latitude, longitude
+            )
+            return None
+
         # Rate limiting
         self._wait_for_rate_limit()
 
@@ -378,20 +411,31 @@ class GeocodingService:
                 data = json.loads(response.read().decode('utf-8'))
                 location_name = self._format_location_name(data)
 
+                # Success - exit offline mode if we were in backoff
+                self._exit_offline_mode()
+
                 logger.info(f"[GeocodingService] API response: ({latitude:.4f}, {longitude:.4f}) → {location_name}")
                 return location_name
 
         except urllib.error.HTTPError as e:
-            logger.error(f"[GeocodingService] HTTP error {e.code}: {e.reason}")
+            # Server errors - don't enter offline mode (server is reachable)
+            logger.warning(f"[GeocodingService] HTTP error {e.code}: {e.reason}")
             return None
         except urllib.error.URLError as e:
-            logger.error(f"[GeocodingService] URL error: {e.reason}")
+            # Network/DNS errors - enter offline mode with backoff
+            self._enter_offline_mode(str(e.reason))
             return None
         except json.JSONDecodeError as e:
-            logger.error(f"[GeocodingService] JSON decode error: {e}")
+            # Data parsing error - don't enter offline mode
+            logger.warning(f"[GeocodingService] JSON decode error: {e}")
             return None
         except Exception as e:
-            logger.exception(f"[GeocodingService] Unexpected error: {e}")
+            # Unexpected errors - check if network-related
+            error_str = str(e).lower()
+            if 'network' in error_str or 'connection' in error_str or 'dns' in error_str:
+                self._enter_offline_mode(str(e))
+            else:
+                logger.warning(f"[GeocodingService] Unexpected error: {e}")
             return None
 
     def _format_location_name(self, data: dict) -> str:
@@ -514,6 +558,85 @@ class GeocodingService:
             return False
 
         return -90 <= latitude <= 90 and -180 <= longitude <= 180
+
+    def _is_offline(self) -> bool:
+        """
+        Check if we're currently in offline backoff mode.
+
+        Returns:
+            True if in offline mode and backoff hasn't expired
+        """
+        with self._offline_lock:
+            if self._offline_until == 0.0:
+                return False
+            if time.time() >= self._offline_until:
+                # Backoff expired, reset state
+                self._offline_until = 0.0
+                logger.debug("[GeocodingService] Offline backoff expired, will retry API")
+                return False
+            return True
+
+    def _enter_offline_mode(self, error_msg: str):
+        """
+        Enter offline backoff mode after network failure.
+
+        Uses exponential backoff: 30s, 60s, 120s, 240s, 300s (capped)
+
+        Args:
+            error_msg: Error message from the failed request
+        """
+        with self._offline_lock:
+            self._offline_failures += 1
+            backoff = min(
+                self.OFFLINE_BACKOFF_INITIAL_SECONDS * (2 ** (self._offline_failures - 1)),
+                self.OFFLINE_BACKOFF_MAX_SECONDS
+            )
+            self._offline_until = time.time() + backoff
+
+            # First failure: WARNING, subsequent: DEBUG
+            if self._offline_failures == 1:
+                logger.warning(
+                    "[GeocodingService] Network unavailable, entering offline mode "
+                    "(backoff %.0fs): %s", backoff, error_msg
+                )
+            else:
+                logger.debug(
+                    "[GeocodingService] Network still unavailable, extending offline mode "
+                    "(backoff %.0fs, failure #%d)", backoff, self._offline_failures
+                )
+
+    def _exit_offline_mode(self):
+        """Exit offline mode after successful API request."""
+        with self._offline_lock:
+            if self._offline_failures > 0:
+                logger.info("[GeocodingService] Network restored, exiting offline mode")
+            self._offline_failures = 0
+            self._offline_until = 0.0
+
+    def is_online(self) -> bool:
+        """
+        Check if geocoding service is currently online.
+
+        Returns:
+            True if online (not in backoff), False if in offline mode
+        """
+        return not self._is_offline()
+
+    def get_offline_status(self) -> dict:
+        """
+        Get current offline status for UI display.
+
+        Returns:
+            Dict with 'online', 'backoff_remaining', 'failure_count'
+        """
+        with self._offline_lock:
+            online = self._offline_until == 0.0 or time.time() >= self._offline_until
+            backoff_remaining = max(0, self._offline_until - time.time()) if not online else 0
+            return {
+                'online': online,
+                'backoff_remaining': backoff_remaining,
+                'failure_count': self._offline_failures
+            }
 
 
 # Singleton instance for convenience

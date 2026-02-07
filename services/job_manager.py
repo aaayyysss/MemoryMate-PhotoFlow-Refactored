@@ -51,6 +51,7 @@ import os
 import time
 import uuid
 import json
+import functools
 from enum import IntEnum
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -60,6 +61,7 @@ from threading import Lock
 from PySide6.QtCore import QObject, Signal, QThreadPool, QTimer, QRunnable, Slot
 
 from services.job_service import get_job_service, Job
+from repository.job_history_repository import JobHistoryRepository
 from logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -80,12 +82,15 @@ class JobPriority(IntEnum):
 
 class JobType:
     """Job type constants."""
+    SCAN = 'scan'
     FACE_SCAN = 'face_scan'
     FACE_EMBED = 'face_embed'
     FACE_CLUSTER = 'face_cluster'
+    FACE_PIPELINE = 'face_pipeline'
     EMBEDDING = 'embedding'
     DUPLICATE_HASH = 'duplicate_hash'
     DUPLICATE_GROUP = 'duplicate_group'
+    POST_SCAN = 'post_scan'
 
 
 class JobStatus:
@@ -138,6 +143,8 @@ class ActiveJob:
     total: int = 0
     paused: bool = False
     cancel_requested: bool = False
+    # Stored (signal, slot) pairs for deterministic disconnect on cleanup
+    _connections: List[tuple] = field(default_factory=list)
 
 
 class JobManagerSignals(QObject):
@@ -169,6 +176,9 @@ class JobManagerSignals(QObject):
 
     # job_resumed(job_id, job_type)
     job_resumed = Signal(int, str)
+
+    # job_log(job_id, job_type, message) — log line for Activity Center
+    job_log = Signal(int, str, str)
 
     # all_jobs_completed()
     all_jobs_completed = Signal()
@@ -207,6 +217,10 @@ class JobManager(QObject):
 
         # Worker pool (bounded concurrency)
         self._thread_pool = QThreadPool.globalInstance()
+        # Generation counter used to ignore stale worker callbacks after restart/shutdown.
+        self._generation: int = 0
+        # Set during application shutdown to prevent new job scheduling.
+        self._shutdown_requested: bool = False
         self._max_workers = min(4, self._thread_pool.maxThreadCount())
 
         # Active jobs tracking
@@ -241,6 +255,19 @@ class JobManager(QObject):
         # Pending progress updates (debounced)
         self._pending_progress: Dict[int, JobProgress] = {}
         self._progress_lock = Lock()
+
+        # Tracked (externally-managed) jobs use negative IDs
+        self._tracked_counter = 0
+        self._tracked_cancel_callbacks: Dict[int, Callable] = {}
+        self._tracked_descriptions: Dict[int, str] = {}
+
+        # Persistent job history (graceful fallback if DB init fails)
+        self._history_repo: Optional[JobHistoryRepository] = None
+        self._last_hist_progress_write: Dict[int, float] = {}
+        try:
+            self._history_repo = JobHistoryRepository()
+        except Exception as e:
+            logger.warning(f"[JobManager] Job history disabled (DB init failed): {e}")
 
         self._initialized = True
         logger.info(f"[JobManager] Initialized with max {self._max_workers} workers")
@@ -380,6 +407,31 @@ class JobManager(QObject):
         Returns:
             bool: True if canceled
         """
+        # Handle tracked (externally-managed) jobs — negative IDs have no DB record
+        if job_id < 0:
+            cb = self._tracked_cancel_callbacks.pop(job_id, None)
+            if cb:
+                try:
+                    cb()
+                except Exception as e:
+                    logger.warning(
+                        f"[JobManager] Cancel callback error for tracked job {job_id}: {e}")
+            with self._jobs_lock:
+                active = self._active_jobs.pop(job_id, None)
+            self._tracked_descriptions.pop(job_id, None)
+            if active:
+                logger.info(f"[JobManager] Canceled tracked job {job_id}")
+                if self._history_repo:
+                    try:
+                        self._history_repo.finish(
+                            job_id=str(job_id), status='canceled', canceled=1)
+                    except Exception:
+                        pass
+                self._last_hist_progress_write.pop(job_id, None)
+                self.signals.job_canceled.emit(job_id, active.job_type)
+                self.signals.active_jobs_changed.emit(len(self._active_jobs))
+            return True
+
         # Mark in database
         self._job_service.cancel_job(job_id)
 
@@ -395,13 +447,28 @@ class JobManager(QObject):
                 if hasattr(active.worker, 'cancel'):
                     active.worker.cancel()
 
+                # Disconnect worker signals
+                self._disconnect_worker(job_id, active)
+
                 logger.info(f"[JobManager] Canceled running job {job_id}")
+                if self._history_repo:
+                    try:
+                        self._history_repo.finish(
+                            job_id=str(job_id), status='canceled', canceled=1)
+                    except Exception:
+                        pass
                 self.signals.job_canceled.emit(job_id, active.job_type)
             else:
                 logger.info(f"[JobManager] Canceled queued job {job_id}")
                 # Get job type from database
                 job = self._job_service.get_job(job_id)
                 job_type = job.kind if job else 'unknown'
+                if self._history_repo:
+                    try:
+                        self._history_repo.finish(
+                            job_id=str(job_id), status='canceled', canceled=1)
+                    except Exception:
+                        pass
                 self.signals.job_canceled.emit(job_id, job_type)
 
         return True
@@ -450,6 +517,214 @@ class JobManager(QObject):
             f"[JobManager] Canceled {len(jobs_to_cancel)} jobs"
             + (f" for project {project_id}" if project_id else "")
         )
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Public API: Tracked (Externally-Managed) Jobs
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def register_tracked_job(
+        self,
+        job_type: str,
+        project_id: int = 0,
+        total: int = 0,
+        description: str = "",
+        cancel_callback: Optional[Callable] = None,
+    ) -> int:
+        """
+        Register an externally-managed job for unified signal flow.
+
+        Use this for jobs whose threads/workers are managed outside JobManager
+        (e.g. ScanController's QThread, FacePipelineService).  The job appears
+        in the Activity Center and status bar like any other managed job.
+
+        Returns a negative job_id to avoid clashing with DB auto-increment IDs.
+
+        Args:
+            job_type:         Category key (scan, face_pipeline, post_scan, …)
+            project_id:       Project this job belongs to (informational)
+            total:            Expected total work items (0 = indeterminate)
+            description:      Human-readable label for the Activity Center card
+            cancel_callback:  Called if the user clicks Cancel on this job
+
+        Returns:
+            int: Negative job_id
+        """
+        with self._jobs_lock:
+            self._tracked_counter -= 1
+            job_id = self._tracked_counter
+
+        active = ActiveJob(
+            job_id=job_id,
+            job_type=job_type,
+            project_id=project_id,
+            worker=None,
+            started_at=time.time(),
+            total=total,
+        )
+
+        with self._jobs_lock:
+            self._active_jobs[job_id] = active
+
+        if cancel_callback:
+            self._tracked_cancel_callbacks[job_id] = cancel_callback
+        if description:
+            self._tracked_descriptions[job_id] = description
+
+        if self._history_repo:
+            try:
+                self._history_repo.upsert_start(
+                    job_id=str(job_id), job_type=job_type, title=description)
+            except Exception as e:
+                logger.debug(f"[JobManager] Failed to persist job start {job_id}: {e}")
+
+        logger.info(f"[JobManager] Registered tracked job {job_id}: {job_type} — {description}")
+        self.signals.job_started.emit(job_id, job_type, total)
+        self.signals.active_jobs_changed.emit(len(self._active_jobs))
+        return job_id
+
+    def report_progress(self, job_id: int, current: int, total: int, message: str = ""):
+        """
+        Report progress for a tracked (or managed) job.
+
+        Progress flows through the same 250 ms debounce as managed jobs.
+
+        Args:
+            job_id:  Job ID (negative for tracked, positive for managed)
+            current: Items processed so far
+            total:   Total items expected
+            message: One-line status message
+        """
+        with self._jobs_lock:
+            active = self._active_jobs.get(job_id)
+            if not active:
+                return
+            active.processed = current
+            active.total = total
+
+            elapsed = time.time() - active.started_at
+            rate = current / elapsed if elapsed > 0 else 0
+            remaining = total - current
+            eta = remaining / rate if rate > 0 else 0
+
+        with self._progress_lock:
+            self._pending_progress[job_id] = JobProgress(
+                job_id=job_id,
+                job_type=active.job_type,
+                processed=current,
+                total=total,
+                rate=rate,
+                eta_seconds=eta,
+                message=message,
+                started_at=active.started_at,
+            )
+
+        # Throttled persistence (at most once per second per job)
+        if self._history_repo:
+            try:
+                frac = float(current) / float(total) if total else 0.0
+                now = time.time()
+                last = self._last_hist_progress_write.get(job_id, 0.0)
+                if now - last >= 1.0 or (total and current >= total):
+                    self._history_repo.update_progress(
+                        job_id=str(job_id), progress=frac)
+                    self._last_hist_progress_write[job_id] = now
+            except Exception:
+                pass
+
+    def report_log(self, job_id: int, message: str):
+        """
+        Emit a log line for any job (tracked or managed).
+
+        The Activity Center picks this up and appends it to the
+        job's expandable log viewer.
+
+        Args:
+            job_id:  Job ID
+            message: Log line text
+        """
+        with self._jobs_lock:
+            active = self._active_jobs.get(job_id)
+            if not active:
+                return
+            job_type = active.job_type
+        self.signals.job_log.emit(job_id, job_type, message)
+
+    def complete_tracked_job(
+        self,
+        job_id: int,
+        success: bool = True,
+        stats: Optional[Dict[str, Any]] = None,
+        error: str = "",
+    ):
+        """
+        Complete a tracked (externally-managed) job.
+
+        Emits ``job_completed`` (success) or ``job_failed``, then removes the
+        job from the active set.
+
+        Args:
+            job_id:  Negative job ID returned by ``register_tracked_job``
+            success: True if job succeeded
+            stats:   Optional stats dict (serialised to JSON in signal)
+            error:   Error message (used when success=False)
+        """
+        with self._jobs_lock:
+            active = self._active_jobs.pop(job_id, None)
+        self._tracked_cancel_callbacks.pop(job_id, None)
+        self._tracked_descriptions.pop(job_id, None)
+
+        if not active:
+            logger.warning(f"[JobManager] complete_tracked_job: job {job_id} not found")
+            return
+
+        stats_json = json.dumps(stats or {})
+
+        # Persist to history DB
+        if self._history_repo:
+            try:
+                if success:
+                    self._history_repo.finish(
+                        job_id=str(job_id), status='succeeded', result=stats or {})
+                else:
+                    self._history_repo.finish(
+                        job_id=str(job_id), status='failed', error=error or 'error')
+            except Exception:
+                pass
+        self._last_hist_progress_write.pop(job_id, None)
+
+        if success:
+            logger.info(f"[JobManager] Tracked job {job_id} ({active.job_type}) completed: {stats}")
+            self.signals.job_completed.emit(job_id, active.job_type, True, stats_json)
+        else:
+            logger.info(f"[JobManager] Tracked job {job_id} ({active.job_type}) failed: {error}")
+            self.signals.job_failed.emit(job_id, active.job_type, error)
+
+        self.signals.active_jobs_changed.emit(len(self._active_jobs))
+
+        if len(self._active_jobs) == 0:
+            self.signals.all_jobs_completed.emit()
+
+    def get_job_description(self, job_id: int) -> str:
+        """Return the human-readable description for a tracked job, or ``""``."""
+        return self._tracked_descriptions.get(job_id, "")
+
+    def get_history(self, limit: int = 200):
+        """Return recent tracked-job runs from persistent history, most recent first."""
+        if not self._history_repo:
+            return []
+        try:
+            return self._history_repo.list_recent(limit=limit)
+        except Exception:
+            return []
+
+    def clear_history(self) -> None:
+        """Clear persisted job history."""
+        if not self._history_repo:
+            return
+        try:
+            self._history_repo.clear_all()
+        except Exception:
+            pass
 
     def notify_user_active(self):
         """
@@ -721,6 +996,15 @@ class JobManager(QObject):
         # Start worker
         self._thread_pool.start(worker)
 
+        # Persist to job history
+        if self._history_repo:
+            try:
+                desc = job.kind.replace('_', ' ').title()
+                self._history_repo.upsert_start(
+                    job_id=str(job.job_id), job_type=job.kind, title=desc)
+            except Exception:
+                pass
+
         logger.info(f"[JobManager] Started job {job.job_id}: {job.kind}")
         self.signals.job_started.emit(job.job_id, job.kind, active.total)
         self.signals.active_jobs_changed.emit(len(self._active_jobs))
@@ -761,37 +1045,65 @@ class JobManager(QObject):
         return None
 
     def _connect_worker_signals(self, job_id: int, worker: QRunnable):
-        """Connect worker signals to job manager handlers."""
-        if hasattr(worker, 'signals'):
-            signals = worker.signals
+        """Connect worker signals to job manager handlers.
 
-            # Progress signal
-            if hasattr(signals, 'progress'):
-                signals.progress.connect(
-                    lambda cur, total, msg, jid=job_id: self._on_worker_progress(jid, cur, total, msg)
-                )
+        Uses functools.partial instead of lambdas so slots are storable,
+        disconnectable, and don't accidentally capture mutable state.
+        All connections use Qt.QueuedConnection because workers fire
+        from the QThreadPool, and downstream code may touch UI state.
+        """
+        if not hasattr(worker, 'signals'):
+            return
 
-            # Finished signal
-            if hasattr(signals, 'finished'):
-                # Handle different signal signatures
-                try:
-                    signals.finished.connect(
-                        lambda *args, jid=job_id: self._on_worker_finished(jid, True, args)
-                    )
-                except Exception:
-                    pass
+        signals = worker.signals
+        conn_type = Qt.ConnectionType.QueuedConnection
 
-            # Error signal
-            if hasattr(signals, 'error'):
-                signals.error.connect(
-                    lambda *args, jid=job_id: self._on_worker_error(jid, args)
-                )
+        with self._jobs_lock:
+            active = self._active_jobs.get(job_id)
+        if not active:
+            return
 
-            # Face detected signal (for partial results)
-            if hasattr(signals, 'face_detected'):
-                signals.face_detected.connect(
-                    lambda path, count, jid=job_id: self._on_face_detected(jid, path, count)
-                )
+        def _store(sig, slot):
+            """Connect and remember (signal, slot) for deterministic disconnect."""
+            sig.connect(slot, conn_type)
+            active._connections.append((sig, slot))
+
+        # Progress signal
+        if hasattr(signals, 'progress'):
+            _store(signals.progress,
+                   functools.partial(self._on_worker_progress, job_id))
+
+        # Finished signal
+        if hasattr(signals, 'finished'):
+            _store(signals.finished,
+                   functools.partial(self._on_worker_finished_adapter, job_id))
+
+        # Error signal
+        if hasattr(signals, 'error'):
+            _store(signals.error,
+                   functools.partial(self._on_worker_error_adapter, job_id))
+
+        # Face detected signal (partial results)
+        if hasattr(signals, 'face_detected'):
+            _store(signals.face_detected,
+                   functools.partial(self._on_face_detected, job_id))
+
+    def _on_worker_finished_adapter(self, job_id: int, *args):
+        """Adapter for worker.signals.finished which may emit varying arg counts."""
+        self._on_worker_finished(job_id, True, args)
+
+    def _on_worker_error_adapter(self, job_id: int, *args):
+        """Adapter for worker.signals.error which may emit varying arg counts."""
+        self._on_worker_error(job_id, args)
+
+    def _disconnect_worker(self, job_id: int, active: 'ActiveJob'):
+        """Deterministically disconnect all worker signal connections for a job."""
+        for sig, slot in active._connections:
+            try:
+                sig.disconnect(slot)
+            except (RuntimeError, TypeError):
+                pass  # already disconnected or object deleted
+        active._connections.clear()
 
     def _on_worker_progress(self, job_id: int, current: int, total: int, message: str):
         """Handle worker progress update."""
@@ -832,6 +1144,9 @@ class JobManager(QObject):
             active = self._active_jobs.pop(job_id, None)
 
         if active:
+            # Deterministic disconnect before anything else
+            self._disconnect_worker(job_id, active)
+
             # Complete in database
             self._job_service.complete_job(job_id, success=success)
 
@@ -843,6 +1158,15 @@ class JobManager(QObject):
                     'failed_count': args[1],
                     'total_count': args[2]
                 }
+
+            # Persist to job history (managed jobs, positive IDs)
+            if self._history_repo:
+                try:
+                    self._history_repo.finish(
+                        job_id=str(job_id), status='succeeded' if success else 'failed',
+                        result=stats if stats else None)
+                except Exception:
+                    pass
 
             logger.info(f"[JobManager] Job {job_id} completed: {stats}")
             self.signals.job_completed.emit(job_id, active.job_type, success, json.dumps(stats))
@@ -863,7 +1187,19 @@ class JobManager(QObject):
             active = self._active_jobs.pop(job_id, None)
 
         if active:
+            # Deterministic disconnect before anything else
+            self._disconnect_worker(job_id, active)
+
             self._job_service.complete_job(job_id, success=False, error=error_msg)
+
+            # Persist to job history
+            if self._history_repo:
+                try:
+                    self._history_repo.finish(
+                        job_id=str(job_id), status='failed', error=error_msg)
+                except Exception:
+                    pass
+
             logger.error(f"[JobManager] Job {job_id} failed: {error_msg}")
             self.signals.job_failed.emit(job_id, active.job_type, error_msg)
             self.signals.active_jobs_changed.emit(len(self._active_jobs))
@@ -895,6 +1231,8 @@ class JobManager(QObject):
         """Send heartbeats for all active jobs."""
         with self._jobs_lock:
             for job_id, active in self._active_jobs.items():
+                if job_id < 0:
+                    continue  # tracked jobs have no DB record
                 if not active.paused:
                     progress = active.processed / active.total if active.total > 0 else 0
                     self._job_service.heartbeat(job_id, progress)
@@ -915,6 +1253,82 @@ class JobManager(QObject):
                 progress.message
             )
 
+    # ------------------------------------------------------------------
+    # Startup Throttle (Guardrail 2)
+    # ------------------------------------------------------------------
+    def enable_startup_throttle(self, max_threads: int = 1) -> None:
+        """Temporarily reduce shared thread pool concurrency during startup.
+
+        Prevents background jobs (maintenance, embedding warmups, etc.) from
+        competing with initial layout stabilization and first paint.
+        """
+        try:
+            if not hasattr(self, "_startup_throttle_prev"):
+                self._startup_throttle_prev = self._thread_pool.maxThreadCount()
+            self._thread_pool.setMaxThreadCount(max(1, int(max_threads)))
+            logger.info(f"[JobManager] Startup throttle enabled (max_threads={max_threads})")
+        except Exception as e:
+            logger.warning(f"[JobManager] Failed to enable startup throttle: {e}")
+
+    def disable_startup_throttle(self) -> None:
+        """Restore shared thread pool concurrency after startup."""
+        try:
+            prev = getattr(self, "_startup_throttle_prev", None)
+            if prev is None:
+                return
+            self._thread_pool.setMaxThreadCount(int(prev))
+            delattr(self, "_startup_throttle_prev")
+            logger.info(f"[JobManager] Startup throttle disabled (restored max_threads={prev})")
+        except Exception as e:
+            logger.warning(f"[JobManager] Failed to disable startup throttle: {e}")
+
+
+    # --- Shutdown, restart, generation guards ---
+    def current_generation(self) -> int:
+        """Return the current generation counter."""
+        return self._generation
+
+    def bump_generation(self) -> int:
+        """Increment generation and return new value.
+
+        Any UI callback from long-running workers should compare against this
+        generation to avoid touching deleted Qt objects after restart/shutdown.
+        """
+        self._generation += 1
+        return self._generation
+
+    def request_shutdown(self) -> None:
+        """Prevent new jobs from being scheduled."""
+        self._shutdown_requested = True
+
+    def can_schedule(self) -> bool:
+        """Return False once shutdown has been requested."""
+        return not self._shutdown_requested
+
+    def shutdown_barrier(self, *, timeout_ms: int = 10_000) -> bool:
+        """Best-effort barrier to stop accepting new jobs, request cancellation, and wait.
+
+        Returns True if the thread pool drained before timeout, else False.
+        """
+        # Stop future jobs and invalidate callbacks.
+        self.request_shutdown()
+        self.bump_generation()
+        # Ask running jobs to cancel.
+        try:
+            self.cancel_all(reason="shutdown")
+        except TypeError:
+            # Older signature without reason kwarg.
+            try:
+                self.cancel_all()
+            except Exception:
+                pass
+        except Exception:
+            pass
+        # Drain QThreadPool. QRunnables must cooperate with cancel flags.
+        try:
+            return bool(self._thread_pool.waitForDone(timeout_ms))
+        except Exception:
+            return False
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Singleton Accessor

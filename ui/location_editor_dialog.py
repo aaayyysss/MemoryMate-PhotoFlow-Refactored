@@ -887,6 +887,16 @@ class LocationEditorDialog(QDialog):
             lat = float(lat_text)
             lon = float(lon_text)
 
+            # Reject null-island (0, 0) — almost certainly a default / uninitialised value
+            if lat == 0.0 and lon == 0.0:
+                QMessageBox.warning(
+                    self, "Invalid Location",
+                    "Coordinates (0, 0) point to 'Null Island' in the Atlantic Ocean "
+                    "and are almost certainly not a real location.\n\n"
+                    "Please select a valid location on the map or enter real coordinates.",
+                )
+                return
+
             # Validate range
             if not (-90 <= lat <= 90):
                 QMessageBox.warning(self, "Invalid Latitude",

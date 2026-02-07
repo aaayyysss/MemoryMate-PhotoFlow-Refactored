@@ -1,5 +1,5 @@
 # main_window_qt.py
-# Version 10.01.01.05 dated 20260122
+# Version 10.01.01.06 dated 20260202
 # Added PhotoDeletionService with comprehensive delete functionality
 # Enhanced repositories with utility methods for future migrations
 # Current LOC: ~2,640 (added photo deletion feature)
@@ -307,8 +307,17 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("MemoryMate - PhotoFlow")
-        
-        # keep rest of initializer logic, but ensure some attributes exist
+
+        # Lifecycle flags — set True in closeEvent/request_restart before teardown.
+        # Every worker callback must check _closing before touching widgets.
+        self._closing = False
+        self._restart_requested = False
+
+        # Generation token for guarding worker -> UI callbacks.
+        # Increment via bump_ui_generation() when the UI is logically
+        # restarted/replaced so stale signals are silently dropped.
+        self._ui_generation: int = 0
+
         # keep rest of initializer logic, but ensure some attributes exist
         self.settings = SettingsManager()
         self._committed_total = 0
@@ -551,6 +560,19 @@ class MainWindow(QMainWindow):
             self.layout_action_group.addAction(action)
             menu_layout.addAction(action)
 
+        menu_view.addSeparator()
+
+        # Activity Center toggle
+        self._act_toggle_activity = QAction("Activity Center", self)
+        self._act_toggle_activity.setShortcut("Ctrl+Shift+A")
+        self._act_toggle_activity.setCheckable(True)
+        self._act_toggle_activity.setChecked(False)
+        self._act_toggle_activity.setToolTip(
+            "Show/hide the Activity Center panel (background jobs)")
+        self._act_toggle_activity.triggered.connect(
+            self._toggle_activity_center)
+        menu_view.addAction(self._act_toggle_activity)
+
         # ========== FILTERS MENU ==========
         menu_filters = menu_bar.addMenu("Filters")
 
@@ -563,7 +585,7 @@ class MainWindow(QMainWindow):
         self.btn_fav.setCheckable(True)
         menu_filters.addAction(self.btn_fav)
 
-        self.btn_faces = QAction(tr("sidebar.people"), self)
+        self.btn_faces = QAction(tr("sidebar.people_label"), self)
         self.btn_faces.setCheckable(True)
         menu_filters.addAction(self.btn_faces)
 
@@ -798,6 +820,15 @@ class MainWindow(QMainWindow):
         )
         self.act_cancel_scan.setEnabled(False)
 
+        # Activity Center toggle in main toolbar
+        self.act_toolbar_activity = ui.action(
+            "Activity",
+            icon=None,
+            tooltip="Show/hide Activity Center (background jobs) (Ctrl+Shift+A)",
+            handler=self._toggle_activity_center,
+        )
+        tb.addAction(self.act_toolbar_activity)
+
         # Incremental vs full scan
         self.chk_incremental = ui.checkbox(tr('toolbar.incremental'), checked=True)
         ui.separator()
@@ -913,6 +944,20 @@ class MainWindow(QMainWindow):
         session_state = get_session_state()
 
         default_pid = session_state.get_project_id()  # Try session state first
+
+        # Validate stored project_id against DB (prevents stale references)
+        if default_pid is not None:
+            try:
+                from repository.project_repository import ProjectRepository
+                from repository.base_repository import DatabaseConnection
+                _proj = ProjectRepository(DatabaseConnection()).find_by_id(default_pid)
+                if _proj is None:
+                    print(f"[MainWindow] PHASE 1: Session project_id={default_pid} not in DB, clearing")
+                    session_state.set_project(None)
+                    default_pid = None
+            except Exception:
+                default_pid = None
+
         if default_pid is None:
             default_pid = get_default_project_id()  # Fall back to default
         if default_pid is None and self._projects:
@@ -955,6 +1000,55 @@ class MainWindow(QMainWindow):
         self.project_controller = ProjectController(self)
         self.photo_ops_controller = PhotoOperationsController(self)  # Phase 3
 
+        # === UI Refresh Mediator (debounced, visibility-safe) ===
+        from services.ui_refresh_mediator import UIRefreshMediator
+        self._ui_refresh_mediator = UIRefreshMediator(self, parent=self)
+
+        # === Central Face Pipeline Service wiring ===
+        try:
+            from services.face_pipeline_service import FacePipelineService
+            _face_svc = FacePipelineService.instance()
+            # Progress → status bar (guarded against shutdown)
+            _face_svc.progress.connect(
+                lambda step, msg, pid: (
+                    self.statusBar().showMessage(msg, 0)
+                    if not self._closing else None
+                )
+            )
+            # Incremental batch commits → People refresh via mediator
+            _face_svc.batch_committed.connect(
+                lambda proc, total, faces, pid: (
+                    self._ui_refresh_mediator.request_refresh(
+                        {"people"}, "faces_batch", pid
+                    ) if not self._closing else None
+                )
+            )
+            # Finished → final People refresh + status bar
+            def _on_face_svc_finished(results, pid):
+                if self._closing:
+                    return
+                faces = results.get("faces_detected", 0)
+                clusters = results.get("clusters_created", 0)
+                if faces > 0:
+                    self.statusBar().showMessage(
+                        f"Face pipeline complete: {faces} faces, {clusters} clusters", 8000
+                    )
+                else:
+                    self.statusBar().showMessage(
+                        "Face pipeline complete — no faces detected", 5000
+                    )
+                self._ui_refresh_mediator.request_refresh({"people"}, "pipeline_done", pid)
+            _face_svc.finished.connect(_on_face_svc_finished)
+            # Error → status bar (guarded against shutdown)
+            _face_svc.error.connect(
+                lambda msg, pid: (
+                    self.statusBar().showMessage(f"Face pipeline error: {msg}", 8000)
+                    if not self._closing else None
+                )
+            )
+        except Exception as e:
+            print(f"[MainWindow] FacePipelineService wiring failed: {e}")
+
         self.sidebar.on_branch_selected = self.sidebar_controller.on_branch_selected
         self.sidebar.folderSelected.connect(self.sidebar_controller.on_folder_selected)
         # 🎬 Phase 4: Videos support
@@ -972,26 +1066,6 @@ class MainWindow(QMainWindow):
         grid_layout = QVBoxLayout(self.grid_container)
         grid_layout.setContentsMargins(0, 0, 0, 0)
         grid_layout.setSpacing(4)
-
-        # Chip filter bar
-        chip_bar = QWidget()
-        chip_layout = QHBoxLayout(chip_bar)
-        chip_layout.setContentsMargins(8, 6, 8, 6)
-        chip_layout.setSpacing(8)
-        def make_chip(text, cb):
-            b = QPushButton(text)
-            b.setStyleSheet("QPushButton{border:1px solid #ccc; border-radius:14px; padding:4px 10px; background:#f7f7f7;} QPushButton:hover{background:#eaeaea;}")
-            if cb: b.clicked.connect(cb)
-            return b
-        chip_layout.addWidget(make_chip(tr('toolbar.favorites'), lambda: self._apply_tag_filter("favorite")))
-        chip_layout.addWidget(make_chip(tr('toolbar.people'), lambda: self._apply_tag_filter("face")))
-        chip_layout.addWidget(make_chip(tr('toolbar.videos'), lambda: self.grid.set_context("videos", None)))
-        chip_layout.addSpacing(12)
-        chip_layout.addWidget(make_chip(tr('toolbar.today'), lambda: self.grid.set_context("date", "today")))
-        chip_layout.addWidget(make_chip(tr('toolbar.this_week'), lambda: self.grid.set_context("date", "this-week")))
-        chip_layout.addWidget(make_chip(tr('toolbar.this_month'), lambda: self.grid.set_context("date", "this-month")))
-        chip_layout.addStretch()
-        grid_layout.addWidget(chip_bar)
 
         # Selection toolbar (hidden by default, shows when items selected)
         self.selection_toolbar = SelectionToolbar(self)
@@ -1176,52 +1250,227 @@ class MainWindow(QMainWindow):
             import traceback
             traceback.print_exc()
 
-        # === Initialize database schema at startup ===
-        try:
-            from repository.base_repository import DatabaseConnection
-            db_conn = DatabaseConnection("reference_data.db", auto_init=True)
-            print("[Startup] Database schema initialized successfully")
-        except Exception as e:
-            print(f"[Startup] ⚠️ Database initialization failed: {e}")
-            import traceback
-            traceback.print_exc()
+        # NOTE: Database schema initialization is now handled in splash_qt.py startup worker
+        # to avoid duplicate initialization. ReferenceDB() calls DatabaseConnection(auto_init=True)
+        # which handles schema creation and migrations.
 
-        # CRITICAL FIX: Defer heavy initialization to avoid blocking UI thread
-        # Schedule heavy operations to run after window is shown
-        QTimer.singleShot(100, self._deferred_initialization)
-        
+        # Deferred init is now triggered by showEvent → _after_first_paint,
+        # NOT by a blind QTimer in __init__.  This guarantees the window has
+        # painted at least once before any heavy background work starts.
+
         # DIAGNOSTIC: Confirm __init__() is completing
-        print("[MainWindow] ✅ ✅ ✅ __init__() COMPLETED - returning to main_qt.py")
+        print("[MainWindow] __init__() COMPLETED - returning to main_qt.py")
         print(f"[MainWindow] Window object: {self}")
         print(f"[MainWindow] Window valid: {self.isValid() if hasattr(self, 'isValid') else 'N/A'}")
+
+    # ------------------------------------------------------------------
+    # Guardrail 1: First-render gate
+    # ------------------------------------------------------------------
+    def showEvent(self, event):
+        """Never start deferred init before the window is shown and has painted."""
+        super().showEvent(event)
+        if getattr(self, "_startup_after_show_scheduled", False):
+            return
+        self._startup_after_show_scheduled = True
+        # Let Qt complete a paint cycle, then start deferred work.
+        QTimer.singleShot(0, self._after_first_paint)
+
+    def _after_first_paint(self):
+        """Runs right after the first paint — schedules heavy background work."""
+        if getattr(self, "_deferred_init_started", False):
+            return
+        self._deferred_init_started = True
+
+        # Guardrail 2: throttle shared background workers during layout stabilization.
+        try:
+            from services.job_manager import get_job_manager
+            jm = get_job_manager()
+            if hasattr(jm, "enable_startup_throttle"):
+                jm.enable_startup_throttle(max_threads=1)
+                # Restore after layout has stabilized and initial thumbnails are queued.
+                QTimer.singleShot(5000, jm.disable_startup_throttle)
+        except Exception:
+            pass  # Throttle is best-effort, never block startup for it.
+
+        # Start deferred init after a short delay to let initial render settle.
+        QTimer.singleShot(250, self._deferred_initialization)
 
     def _deferred_initialization(self):
         """
         CRITICAL FIX: Perform heavy initialization operations after window is shown.
-        This prevents the UI from freezing during startup.
+
+        v9.3.0 FIX: Moved heavy DB operations (backfill, index optimization) to
+        background jobs. Only minimal DB handle creation happens in GUI thread.
+
+        This follows Material Design principle: App should be responsive immediately,
+        heavy work happens visibly in the background via Activity Center.
         """
+        if self._closing:
+            return
         print("[MainWindow] Starting deferred initialization...")
-        
+
         try:
-            # Initialize database and sidebar (was previously in __init__)
-            self._init_db_and_sidebar()
-            print("[MainWindow] ✅ Database and sidebar initialized")
-            
-            # Restore session state (was previously in __init__)
+            # Step 1: Fast - create minimal DB handle (no heavy operations)
+            self._init_minimal_db_handle()
+            print("[MainWindow] ✅ Database handle initialized (fast)")
+
+            # Step 2: Restore session state
             QTimer.singleShot(300, self._restore_session_state)
             print("[MainWindow] ✅ Session state restoration scheduled")
-            
-            # Update status bar
+
+            # Step 3: Update status bar
             self._update_status_bar()
             print("[MainWindow] ✅ Status bar updated")
-            
+
+            # Step 4: Enqueue heavy DB maintenance as background job (delayed 2s)
+            # This runs visibly in Activity Center, doesn't block UI.
+            # The 2s delay lets initial thumbnails and grouping finish first.
+            QTimer.singleShot(2000, self._enqueue_startup_maintenance_job)
+            print("[MainWindow] Database maintenance job scheduled (2s delay)")
+
+            # Step 5: CLIP model warmup — DISABLED
+            # Heavy imports (torch, transformers) hold the GIL extensively and
+            # starve the UI thread even when run in a daemon thread.  With a
+            # pre-populated DB this causes a visible multi-second freeze.
+            # The model now loads lazily on the first semantic search instead.
+            # QTimer.singleShot(15000, self._warmup_clip_in_background)
+            print("[MainWindow] CLIP warmup disabled (lazy load on first search)")
+
+            # Step 6: Deferred thumbnail cache purge (delayed 5s)
+            QTimer.singleShot(5000, self._deferred_cache_purge)
+            print("[MainWindow] Cache purge scheduled (5s delay)")
+
             print("[MainWindow] ✅ Deferred initialization completed successfully")
-            
+
         except Exception as e:
             print(f"[MainWindow] ⚠️ Deferred initialization error: {e}")
             import traceback
             traceback.print_exc()
+
+    def _init_minimal_db_handle(self):
+        """
+        Fast DB initialization - only creates handle, no heavy operations.
+
+        Heavy operations (backfill, index optimization) are moved to
+        _enqueue_startup_maintenance_job() which runs in background.
+        """
+        from reference_db import ReferenceDB
+        self.db = ReferenceDB()
+
+        # Reload sidebar date tree (fast operation, uses cached data)
+        try:
+            if hasattr(self, 'sidebar') and hasattr(self.sidebar, 'reload_date_tree'):
+                self.sidebar.reload_date_tree()
+                print("[Sidebar] Date tree reloaded.")
+        except Exception as e:
+            print(f"[Sidebar] Failed to reload date tree: {e}")
+
+    def _enqueue_startup_maintenance_job(self):
+        """
+        Enqueue heavy DB maintenance as a tracked background job.
+
+        Uses the global JobManager singleton so the job always appears in the
+        Activity Center.  The worker thread gets its own ReferenceDB connection
+        (per-thread pool) and never touches Qt widgets.
+        """
+        if self._closing:
+            return
+        import threading
+        try:
+            from services.job_manager import get_job_manager
+            jm = get_job_manager()
+
+            job_id = jm.register_tracked_job(
+                job_type="maintenance",
+                description="Database maintenance (backfill & index)",
+            )
+            print(f"[MainWindow] Maintenance job registered: job_id={job_id}")
+
+            def _maintenance():
+                try:
+                    from reference_db import ReferenceDB
+                    db = ReferenceDB()
+                    db.single_pass_backfill_created_fields()
+                    db.optimize_indexes()
+                    jm.complete_tracked_job(job_id, success=True)
+                    print("[MainWindow] Background maintenance completed")
+                except Exception as e:
+                    jm.complete_tracked_job(job_id, success=False, error=str(e))
+                    print(f"[MainWindow] Background maintenance failed: {e}")
+
+            thread = threading.Thread(target=_maintenance, name="startup_maintenance", daemon=True)
+            thread.start()
+
+        except Exception as e:
+            print(f"[MainWindow] Failed to enqueue maintenance job: {e}")
+            # Non-fatal — app can continue without optimization
+
+    def _warmup_clip_in_background(self):
+        """
+        Warm up CLIP model in a background thread after UI is shown.
+
+        This gives the best UX: UI appears immediately, and CLIP loads quietly
+        in the background while the user starts working. First semantic search
+        will be fast because model is already loaded.
+        """
+        if self._closing:
+            return
+        try:
+            from settings_manager_qt import SettingsManager
+            settings = SettingsManager()
+
+            # Only warmup if semantic embeddings are enabled
+            if not settings.get("enable_semantic_embeddings", True):
+                print("[MainWindow] CLIP warmup skipped (semantic embeddings disabled)")
+                return
+
+            import threading
+
+            def _warmup():
+                try:
+                    from services.semantic_embedding_service import get_semantic_embedding_service
+                    svc = get_semantic_embedding_service()
+                    svc._load_model()  # Intentionally warm cache, tokenizer, weights
+                    print("[MainWindow] ✅ CLIP model warmed up in background")
+                except Exception as e:
+                    # Non-fatal - model will load on first use if warmup fails
+                    print(f"[MainWindow] ⚠️ CLIP background warmup failed (non-fatal): {e}")
+
+            # Run in daemon thread so it doesn't block app shutdown
+            thread = threading.Thread(target=_warmup, name="clip_warmup", daemon=True)
+            thread.start()
+            print("[MainWindow] 🧠 CLIP background warmup started")
+
+        except Exception as e:
+            print(f"[MainWindow] ⚠️ Could not start CLIP warmup: {e}")
     
+    def _deferred_cache_purge(self):
+        """FIX #6: Run thumbnail cache purge in a background thread after startup."""
+        if self._closing:
+            return
+        try:
+            from settings_manager_qt import SettingsManager
+            settings = SettingsManager()
+            if not settings.get("cache_auto_cleanup", True):
+                print("[MainWindow] Cache auto-cleanup disabled, skipping purge")
+                return
+
+            import threading
+
+            def _purge():
+                try:
+                    from thumb_cache_db import get_cache
+                    cache = get_cache()
+                    cache.purge_stale(max_age_days=7)
+                    print("[MainWindow] Deferred cache purge completed")
+                except Exception as e:
+                    print(f"[MainWindow] Cache purge error (non-fatal): {e}")
+
+            thread = threading.Thread(target=_purge, name="cache_purge", daemon=True)
+            thread.start()
+        except Exception as e:
+            print(f"[MainWindow] Could not start cache purge: {e}")
+
     def ensureOnScreen(self):
         """
         CRITICAL FIX: Ensure window is positioned on a visible screen.
@@ -1263,45 +1512,9 @@ class MainWindow(QMainWindow):
             print(f"[MainWindow] ✓ Window is on-screen (center at {window_center_x}, {window_center_y})")
 
 
-# =========================
-    def _init_db_and_sidebar(self):
-        """
-        Initialize database schema, ensure created_* date fields, backfill if needed,
-        optimize indexes, and reload the sidebar date tree.
-
-        Runs on app startup to make sure the date navigation works immediately.
-        """
-        from reference_db import ReferenceDB
-        self.db = ReferenceDB()
-
-        # NOTE: Schema creation and migrations are now handled automatically
-        # by repository layer during ReferenceDB initialization.
-        # created_* columns are added via migration system (v1.5.0 migration).
-
-        # 🕰 Backfill if needed (populate data in existing columns)
-        try:
-            updated_rows = self.db.single_pass_backfill_created_fields()
-            if updated_rows:
-                print(f"[DB] Backfilled {updated_rows} legacy rows with created_* fields.")
-        except Exception as e:
-            print(f"[DB] Backfill failed (possibly empty DB): {e}")
-
-        # ⚡ Optimize indexes (important for large photo libraries)
-        try:
-            self.db.optimize_indexes()
-        except Exception as e:
-            print(f"[DB] optimize_indexes failed: {e}")
-
-        # 🌳 Reload sidebar date tree
-        try:
-            # Check if method exists before calling
-            if hasattr(self.sidebar, 'reload_date_tree'):
-                self.sidebar.reload_date_tree()
-                print("[Sidebar] Date tree reloaded.")
-            else:
-                print("[Sidebar] reload_date_tree() method not available - skipping")
-        except Exception as e:
-            print(f"[Sidebar] Failed to reload date tree: {e}")
+    # _init_db_and_sidebar() removed in v9.3.0 - replaced by:
+    # - _init_minimal_db_handle() for fast DB handle creation
+    # - _enqueue_startup_maintenance_job() for background heavy work
   
     # ============================================================
     # 🏷️ Tag filter handler
@@ -1354,8 +1567,8 @@ class MainWindow(QMainWindow):
     def _on_quick_search(self, query: str):
         """Handle quick search from search bar."""
         try:
-            from services import SearchService
-            search_service = SearchService()
+            from app_services import get_search_service
+            search_service = get_search_service()
             paths = search_service.quick_search(query, limit=100)
 
             # Display results in grid
@@ -1377,8 +1590,8 @@ class MainWindow(QMainWindow):
             if dialog.exec() == QDialog.Accepted:
                 criteria = dialog.get_search_criteria()
 
-                from services import SearchService
-                search_service = SearchService()
+                from app_services import get_search_service
+                search_service = get_search_service()
                 result = search_service.search(criteria)
 
                 if result.paths:
@@ -2644,62 +2857,55 @@ class MainWindow(QMainWindow):
 
     def _on_project_changed_by_id(self, project_id: int):
         """
-        Phase 2: Switch to a project by ID (used by breadcrumb navigation).
-        Updates the sidebar and grid to show the selected project.
+        Switch to a project by ID.
+
+        Delegates to the **active layout** via BaseLayout.set_project() so
+        that GooglePhotosLayout refreshes its AccordionSidebar while
+        CurrentLayout refreshes SidebarQt + grid.  MainWindow no longer
+        pokes hidden/dead widgets directly.
         """
         print(f"\n[MainWindow] ========== _on_project_changed_by_id({project_id}) STARTED ==========")
         try:
-            # CRITICAL: Check if already on this project to prevent redundant reloads and crashes
+            # Already on this project?
             current_project_id = getattr(self.grid, 'project_id', None) if hasattr(self, 'grid') else None
-            print(f"[MainWindow] Current project_id: {current_project_id}")
-            
             if current_project_id == project_id:
                 print(f"[MainWindow] Already on project {project_id}, skipping switch")
                 return
 
-            # PHASE 1: Save project_id to session state
+            # 1. Persist to session state
             from session_state_manager import get_session_state
             get_session_state().set_project(project_id)
-            print(f"[MainWindow] PHASE 1: Saved project_id={project_id} to session state")
 
-            print(f"[MainWindow] Step 1: Updating grid.project_id...")
-            # CRITICAL ORDER: Update grid FIRST before sidebar to prevent race condition
-            # Sidebar.set_project() triggers callbacks that reload grid, so grid.project_id
-            # must be set BEFORE those callbacks fire
-            if hasattr(self, "grid") and self.grid:
-                self.grid.project_id = project_id
-                print(f"[MainWindow] Step 1: ✓ Set grid.project_id = {project_id}")
+            # 2. Delegate to the active layout (the layout owns its sidebar)
+            layout = None
+            if hasattr(self, 'layout_manager') and self.layout_manager:
+                layout = self.layout_manager.get_current_layout()
+
+            if layout is not None:
+                layout.set_project(project_id)
+                print(f"[MainWindow] Delegated to {type(layout).__name__}.set_project({project_id})")
             else:
-                print(f"[MainWindow] Step 1: ✗ Grid not available!")
+                # Fallback: no layout manager yet (very early startup)
+                if hasattr(self, "grid") and self.grid:
+                    self.grid.project_id = project_id
+                if hasattr(self, "sidebar") and self.sidebar:
+                    self.sidebar.set_project(project_id)
 
-            print(f"[MainWindow] Step 2: Updating sidebar...")
-            # Now update sidebar (this triggers reload which will use the new grid.project_id)
-            if hasattr(self, "sidebar") and self.sidebar:
-                self.sidebar.set_project(project_id)
-                print(f"[MainWindow] Step 2: ✓ Sidebar.set_project({project_id}) completed")
-            else:
-                print(f"[MainWindow] Step 2: ✗ Sidebar not available!")
+            # 3. Reset grid branch to "all" for CurrentLayout's grid
+            #    (Google layout handles its own reload inside set_project)
+            layout_id = ""
+            if hasattr(self, 'layout_manager') and self.layout_manager:
+                layout_id = self.layout_manager.get_current_layout_id() or ""
+            if layout_id != "google":
+                if hasattr(self, "grid") and self.grid:
+                    self.grid.set_branch("all")
 
-            print(f"[MainWindow] Step 3: Reloading grid to 'all' branch...")
-            # Finally, explicitly reload grid to show all photos
-            if hasattr(self, "grid") and self.grid:
-                self.grid.set_branch("all")  # Reset to show all photos
-                print(f"[MainWindow] Step 3: ✓ Grid.set_branch('all') completed")
-            else:
-                print(f"[MainWindow] Step 3: ✗ Grid not available for set_branch!")
-
-            # CRITICAL FIX: Removed duplicate breadcrumb update!
-            # The gridReloaded signal (line 3392) already triggers _update_breadcrumb()
-            # Scheduling a second update here causes a race condition crash!
-            print(f"[MainWindow] Step 4: Breadcrumb will auto-update via gridReloaded signal")
-
-            print(f"[MainWindow] Step 5: ✓✓✓ Switched to project ID: {project_id}")
+            # Breadcrumb auto-updates via gridReloaded signal
             print(f"[MainWindow] ========== _on_project_changed_by_id({project_id}) COMPLETED ==========\n")
         except Exception as e:
-            print(f"[MainWindow] ✗✗✗ ERROR switching project: {e}")
+            print(f"[MainWindow] ERROR switching project: {e}")
             import traceback
             traceback.print_exc()
-            print(f"[MainWindow] ========== _on_project_changed_by_id({project_id}) FAILED ==========\n")
 
     def _refresh_project_list(self):
         """
@@ -2718,6 +2924,11 @@ class MainWindow(QMainWindow):
         PHASE 2 & 3: Restore last browsing state (section expansion + selection).
         Called after UI is fully loaded via QTimer.singleShot.
         """
+        # One-shot guard: this may be scheduled from multiple init paths
+        if getattr(self, '_session_restored', False):
+            return
+        self._session_restored = True
+
         try:
             from session_state_manager import get_session_state
             session_state = get_session_state()
@@ -3094,207 +3305,56 @@ class MainWindow(QMainWindow):
 
     def _on_detect_and_group_faces(self):
         """
-        Launch automatic face grouping pipeline.
+        Launch automatic face grouping pipeline via FacePipelineService.
 
-        Pipeline: Detection → Clustering → UI Refresh
-        - Detection: Scans photos, detects faces, generates embeddings
-        - Clustering: Groups similar faces using DBSCAN
-        - Refresh: Auto-updates People tab with results
-
-        User sees: Single button click → Automatic results ✅
+        Pipeline: Detection -> Clustering -> UI Refresh (all background).
+        Progress shown in status bar.  No modal dialogs.
         """
         try:
-            from PySide6.QtCore import QThreadPool
-            from PySide6.QtWidgets import QMessageBox, QProgressBar, QVBoxLayout, QDialog, QLabel, QPushButton
-            from workers.face_detection_worker import FaceDetectionWorker
-            from workers.face_cluster_worker import FaceClusterWorker
+            from PySide6.QtWidgets import QMessageBox, QDialog
 
             # Get current project ID
             project_id = getattr(self.grid, "project_id", None)
             if not project_id:
-                QMessageBox.warning(
-                    self,
-                    "No Project",
-                    "Please select a project first."
-                )
+                QMessageBox.warning(self, "No Project", "Please select a project first.")
                 return
 
-            # FEATURE #1: Show scope selection dialog to choose which photos to process
+            # Scope selection dialog (user-initiated, OK to be modal)
             from ui.face_detection_scope_dialog import FaceDetectionScopeDialog
-
             scope_dialog = FaceDetectionScopeDialog(project_id, parent=self)
-
-            # Connect scope selection signal
             selected_paths = []
+
             def on_scope_selected(paths):
                 nonlocal selected_paths
                 selected_paths = paths
 
             scope_dialog.scopeSelected.connect(on_scope_selected)
-
-            # Show dialog and wait for user selection
             if scope_dialog.exec() != QDialog.Accepted or not selected_paths:
-                # User canceled or no photos selected
                 return
 
-            print(f"[MainWindow] Launching automatic face grouping pipeline for project {project_id}")
-            print(f"[MainWindow] User selected {len(selected_paths)} photos for detection")
+            # Launch via central service (no modal progress, no inline workers)
+            from services.face_pipeline_service import FacePipelineService
+            svc = FacePipelineService.instance()
 
-            # Create progress dialog
-            progress_dialog = QDialog(self)
-            progress_dialog.setWindowTitle("Grouping Faces")
-            progress_dialog.setModal(True)
-            progress_dialog.setMinimumWidth(500)
+            if svc.is_running(project_id):
+                self.statusBar().showMessage("Face pipeline already running for this project", 5000)
+                return
 
-            layout = QVBoxLayout()
-            status_label = QLabel("Starting face detection...")
-            progress_bar = QProgressBar()
-            progress_bar.setRange(0, 100)
-            progress_bar.setValue(0)
-
-            cancel_btn = QPushButton("Cancel")
-            cancel_btn.setStyleSheet("QPushButton{padding:5px 15px;}")
-
-            layout.addWidget(status_label)
-            layout.addWidget(progress_bar)
-            layout.addWidget(cancel_btn)
-            progress_dialog.setLayout(layout)
-
-            # Worker references (for cancellation)
-            current_detection_worker = None
-            current_cluster_worker = None
-
-            def cancel_pipeline():
-                """Cancel the entire pipeline."""
-                if current_detection_worker:
-                    current_detection_worker.cancel()
-                if current_cluster_worker:
-                    current_cluster_worker.cancel()
-                progress_dialog.close()
-                print("[MainWindow] Face grouping pipeline cancelled by user")
-
-            cancel_btn.clicked.connect(cancel_pipeline)
-
-            # Step 1: Start detection worker with scope-selected photos
-            # FEATURE #1: Pass selected photo paths to worker
-            detection_worker = FaceDetectionWorker(
+            started = svc.start(
                 project_id=project_id,
-                photo_paths=selected_paths  # FEATURE #1: Use scope-selected photos
+                photo_paths=selected_paths,
             )
-            current_detection_worker = detection_worker
-
-            def on_detection_progress(current, total, message):
-                """Update progress during detection (0-50%)."""
-                pct = int((current / total) * 50) if total > 0 else 0
-                progress_bar.setValue(pct)
-                status_label.setText(f"[1/2] {message}")
-                print(f"[FaceDetection] [{current}/{total}] {message}")
-
-            def on_detection_finished(success, failed, total_faces):
-                """Detection complete → Auto-start clustering."""
-                print(f"[FaceDetection] Complete: {success} photos, {total_faces} faces detected")
-
-                if total_faces == 0:
-                    progress_dialog.close()
-                    QMessageBox.information(
-                        self,
-                        "No Faces Found",
-                        f"No faces detected in {success} photos.\n\n"
-                        f"Try photos with clear, front-facing faces for best results."
-                    )
-                    return
-
-                # Step 2: Auto-start clustering worker
-                nonlocal current_cluster_worker
-                cluster_worker = FaceClusterWorker(project_id=project_id)
-                current_cluster_worker = cluster_worker
-
-                def on_cluster_progress(current, total, message):
-                    """Update progress during clustering (50-100%)."""
-                    pct = int(50 + (current / total) * 50) if total > 0 else 50
-                    progress_bar.setValue(pct)
-                    status_label.setText(f"[2/2] {message}")
-                    print(f"[FaceCluster] {message}")
-
-                def on_cluster_finished(cluster_count, total_clustered):
-                    """Clustering complete → Auto-refresh UI."""
-                    progress_dialog.close()
-                    print(f"[FaceCluster] Complete: {cluster_count} person groups created")
-
-                    # Refresh the sidebar to show new People clusters
-                    if hasattr(self, "sidebar"):
-                        self.sidebar.reload()
-
-                    # CRITICAL FIX: Also refresh Google Photos layout people section
-                    if hasattr(self.grid, "_build_people_tree"):
-                        print("[MainWindow] Refreshing Google Photos layout people section...")
-                        self.grid._build_people_tree()
-                        # Prompt quick naming for unnamed clusters
-                        if hasattr(self.grid, "_prompt_quick_name_dialog"):
-                            self.grid._prompt_quick_name_dialog()
-
-                    # Show success notification
-                    QMessageBox.information(
-                        self,
-                        "Face Grouping Complete",
-                        f"✅ Found {cluster_count} people in your photos!\n\n"
-                        f"Grouped {total_clustered} faces from {success} photos.\n\n"
-                        f"View results in the People section of the sidebar."
-                    )
-
-                def on_cluster_error(error_msg):
-                    """Handle clustering errors."""
-                    progress_dialog.close()
-                    QMessageBox.warning(
-                        self,
-                        "Clustering Failed",
-                        f"Face detection succeeded ({total_faces} faces found),\n"
-                        f"but clustering failed:\n\n{error_msg}\n\n"
-                        f"Try clicking 🔁 Re-Cluster to retry."
-                    )
-
-                cluster_worker.signals.progress.connect(on_cluster_progress)
-                cluster_worker.signals.finished.connect(on_cluster_finished)
-                cluster_worker.signals.error.connect(on_cluster_error)
-
-                QThreadPool.globalInstance().start(cluster_worker)
-
-            detection_worker.signals.progress.connect(on_detection_progress)
-            detection_worker.signals.finished.connect(on_detection_finished)
-
-            # Start detection worker
-            QThreadPool.globalInstance().start(detection_worker)
-
-            # Show progress dialog
-            progress_dialog.show()
-
-            # CRITICAL FIX: Explicitly center face detection progress dialog on main window
-            # This ensures the dialog appears in the center of the application geometry
-            try:
-                # Ensure dialog geometry is calculated
-                progress_dialog.adjustSize()
-                from PySide6.QtWidgets import QApplication
-                QApplication.processEvents()
-
-                # Get geometries
-                parent_rect = self.geometry()
-                dialog_rect = progress_dialog.geometry()
-
-                # Calculate center position
-                center_x = parent_rect.x() + (parent_rect.width() - dialog_rect.width()) // 2
-                center_y = parent_rect.y() + (parent_rect.height() - dialog_rect.height()) // 2
-
-                # Move dialog to center
-                progress_dialog.move(center_x, center_y)
-                print(f"[MainWindow] Face detection progress dialog centered at ({center_x}, {center_y})")
-            except Exception as e:
-                print(f"[MainWindow] Could not center face detection progress dialog: {e}")
+            if started:
+                self.statusBar().showMessage(
+                    f"Face pipeline started: processing {len(selected_paths)} photos...", 0
+                )
+            else:
+                self.statusBar().showMessage("Failed to start face pipeline", 5000)
 
         except ImportError as e:
             from PySide6.QtWidgets import QMessageBox
             QMessageBox.critical(
-                self,
-                "Missing Library",
+                self, "Missing Library",
                 f"InsightFace library not installed.\n\n"
                 f"Install with:\npip install insightface onnxruntime\n\n"
                 f"Error: {e}"
@@ -3307,106 +3367,76 @@ class MainWindow(QMainWindow):
 
     def _on_recluster_faces(self):
         """
-        Manually re-run clustering on existing face detections.
+        Re-run clustering on existing face detections (no re-detection).
 
-        Use case: User wants to re-group faces without re-detecting
-        (e.g., after adjusting clustering parameters, or if auto-clustering failed)
+        Non-blocking: dispatches to QThreadPool, progress via status bar,
+        People refresh via UIRefreshMediator.
         """
         try:
             from PySide6.QtCore import QThreadPool
-            from PySide6.QtWidgets import QMessageBox, QProgressDialog
+            from PySide6.QtWidgets import QMessageBox
             from workers.face_cluster_worker import FaceClusterWorker
             from reference_db import ReferenceDB
 
-            # Get current project ID
             project_id = getattr(self.grid, "project_id", None)
             if not project_id:
-                QMessageBox.warning(
-                    self,
-                    "No Project",
-                    "Please select a project first."
-                )
+                QMessageBox.warning(self, "No Project", "Please select a project first.")
                 return
 
-            # Check if faces exist
+            # Quick validation — are there faces to cluster?
             db = ReferenceDB()
             with db._connect() as conn:
-                cur = conn.execute("SELECT COUNT(*) FROM face_crops WHERE project_id = ?", (project_id,))
+                cur = conn.execute(
+                    "SELECT COUNT(*) FROM face_crops WHERE project_id = ?", (project_id,)
+                )
                 face_count = cur.fetchone()[0]
 
             if face_count == 0:
                 QMessageBox.warning(
-                    self,
-                    "No Faces Detected",
+                    self, "No Faces Detected",
                     "No faces have been detected yet.\n\n"
-                    f"Click ⚡ Detect & Group Faces first to scan your photos."
+                    "Click Detect & Group Faces first to scan your photos."
                 )
                 return
 
-            print(f"[MainWindow] Launching clustering worker for {face_count} detected faces")
+            self.statusBar().showMessage(f"Re-clustering {face_count} faces...", 0)
 
-            # Create progress dialog
-            progress = QProgressDialog("Grouping faces...", "Cancel", 0, 100, self)
-            progress.setWindowTitle("Re-Clustering Faces")
-            progress.setWindowModality(Qt.WindowModal)
-            progress.setMinimumDuration(0)
-            progress.setValue(0)
-
-            # Create worker
             worker = FaceClusterWorker(project_id=project_id)
 
             def on_progress(current, total, message):
-                progress.setLabelText(message)
-                progress.setValue(current)
-                print(f"[FaceCluster] {message}")
+                if self._closing:
+                    return
+                try:
+                    self.statusBar().showMessage(f"[Clustering] {message}", 0)
+                except Exception:
+                    pass
 
             def on_finished(cluster_count, total_faces):
-                progress.close()
-                print(f"[FaceCluster] Complete: {cluster_count} person groups created")
-
-                # Refresh sidebar to show new clusters
-                if hasattr(self, "sidebar"):
-                    self.sidebar.reload()
-
-                # CRITICAL FIX: Also refresh Google Photos layout people section
-                if hasattr(self.grid, "_build_people_tree"):
-                    print("[MainWindow] Refreshing Google Photos layout people section...")
-                    self.grid._build_people_tree()
-                    # Prompt quick naming for unnamed clusters
-                    if hasattr(self.grid, "_prompt_quick_name_dialog"):
-                        self.grid._prompt_quick_name_dialog()
-
-                QMessageBox.information(
-                    self,
-                    "Clustering Complete",
-                    f"✅ Grouped {total_faces} faces into {cluster_count} person albums.\n\n"
-                    f"View results in the People section of the sidebar."
+                if self._closing:
+                    return
+                self.statusBar().showMessage(
+                    f"Clustering complete: {total_faces} faces into {cluster_count} groups", 8000
                 )
+                # Refresh People section via mediator
+                if hasattr(self, '_ui_refresh_mediator'):
+                    self._ui_refresh_mediator.request_refresh(
+                        {"people"}, "recluster_done", project_id
+                    )
 
             def on_error(error_msg):
-                progress.close()
-                QMessageBox.critical(
-                    self,
-                    "Clustering Failed",
-                    f"Failed to cluster faces:\n\n{error_msg}"
-                )
-
-            def on_cancel():
-                worker.cancel()
+                if self._closing:
+                    return
+                self.statusBar().showMessage(f"Clustering failed: {error_msg}", 8000)
 
             worker.signals.progress.connect(on_progress)
             worker.signals.finished.connect(on_finished)
             worker.signals.error.connect(on_error)
-            progress.canceled.connect(on_cancel)
-
-            # Start worker
             QThreadPool.globalInstance().start(worker)
 
         except Exception as e:
             import traceback
             traceback.print_exc()
             from PySide6.QtWidgets import QMessageBox
-
             QMessageBox.critical(self, "Re-Cluster Failed", str(e))
 
     def _request_delete_from_selection(self):
@@ -3572,6 +3602,8 @@ class MainWindow(QMainWindow):
         Handle video player close event.
         🎬 Phase 4.4: Return to grid view when player closes
         """
+        if self._closing:
+            return
         self.video_player.hide()
         self.grid.show()
         print("[VideoPlayer] Closed, returning to grid")
@@ -3617,8 +3649,46 @@ class MainWindow(QMainWindow):
             pass
 
 
-    def closeEvent(self, event):
-        """Ensure thumbnail threads and caches are closed before app exit."""
+    def ui_generation(self) -> int:
+        """Monotonic generation used to ignore stale callbacks from workers."""
+        return self._ui_generation
+
+    def bump_ui_generation(self) -> int:
+        """Increment and return the current UI generation token.
+
+        Called during shutdown/restart so that in-flight worker signals
+        see a stale generation and silently drop themselves.
+        """
+        self._ui_generation += 1
+        # Also bump JobManager's generation for consistency.
+        try:
+            from services.job_manager import get_job_manager
+            get_job_manager().bump_generation()
+        except Exception:
+            pass
+        return self._ui_generation
+
+    def _shutdown_barrier(self, *, timeout_ms: int = 10_000) -> None:
+        """Best-effort barrier: cancel jobs, wait for pools, invalidate stale callbacks.
+
+        Idempotent — safe to call from both closeEvent and request_restart.
+        """
+        if self._closing:
+            return
+        self._closing = True
+        self.bump_ui_generation()
+        print("[Shutdown] _closing flag set, ui_generation bumped, beginning teardown...")
+
+        # 1. Use JobManager's coordinated shutdown (cancel + bump generation + drain)
+        try:
+            from services.job_manager import get_job_manager
+            jm = get_job_manager()
+            drained = jm.shutdown_barrier(timeout_ms=timeout_ms)
+            print(f"[Shutdown] JobManager barrier complete (drained={drained}).")
+        except Exception as e:
+            print(f"[Shutdown] JobManager shutdown error: {e}")
+
+        # 2. Shut down thumbnail/grid thread pools
         try:
             if hasattr(self, "grid") and hasattr(self.grid, "shutdown_threads"):
                 self.grid.shutdown_threads()
@@ -3633,6 +3703,16 @@ class MainWindow(QMainWindow):
         except Exception as e:
             print(f"[Shutdown] ThumbnailManager shutdown error: {e}")
 
+        # 3. Stop any pending QTimers from firing into deleted widgets
+        try:
+            for timer_attr in ('_fade_out_animation', '_fade_in_animation'):
+                timer = getattr(self, timer_attr, None)
+                if timer and hasattr(timer, 'stop'):
+                    timer.stop()
+        except Exception:
+            pass
+
+        # 4. Clear thumbnail cache
         try:
             if hasattr(self, "thumb_cache"):
                 self.thumb_cache.clear()
@@ -3640,6 +3720,57 @@ class MainWindow(QMainWindow):
         except Exception as e:
             print(f"[Shutdown] Thumb cache clear error: {e}")
 
+        # 5. Close DB connections
+        try:
+            db = getattr(self, "db", None)
+            if db and hasattr(db, "close"):
+                db.close()
+                print("[Shutdown] Database connections closed.")
+        except Exception as e:
+            print(f"[Shutdown] DB close error: {e}")
+
+        print("[Shutdown] Teardown complete.")
+
+    def request_restart(self) -> None:
+        """Relaunch the app in a detached process, then shutdown current instance.
+
+        Called from PreferencesDialog when a restart-requiring setting changes.
+        Starts the new process BEFORE quitting so a crash during shutdown
+        does not prevent relaunch.
+        """
+        if self._restart_requested:
+            return
+        self._restart_requested = True
+
+        # Start detached BEFORE quitting
+        try:
+            import sys
+            exe = sys.executable
+            args = sys.argv[:]
+            cwd = os.getcwd()
+            from PySide6.QtCore import QProcess
+            ok = QProcess.startDetached(exe, args, cwd)
+            if not ok:
+                QMessageBox.critical(self, "Restart failed",
+                                     "Could not relaunch the application process.")
+                self._restart_requested = False
+                return
+        except Exception as e:
+            QMessageBox.critical(self, "Restart failed",
+                                 f"Could not relaunch the application process.\n\n{e}")
+            self._restart_requested = False
+            return
+
+        # Barrier, then quit.
+        self._shutdown_barrier(timeout_ms=15_000)
+        from PySide6.QtCore import QCoreApplication
+        QCoreApplication.quit()
+
+    def closeEvent(self, event):
+        """Controlled shutdown barrier — ensures all background work stops
+        before Qt tears down widgets.
+        """
+        self._shutdown_barrier(timeout_ms=10_000)
         super().closeEvent(event)
 
     def _update_breadcrumb(self):
@@ -3703,10 +3834,40 @@ class MainWindow(QMainWindow):
                 segments.append(("Timeline", partial(self.grid.set_branch, "all")))
                 segments.append((date_key, None))
                 print(f"[Breadcrumb] Added date segments: Timeline > {date_key}")
+            elif self.grid.navigation_mode == "people" and hasattr(self.grid, "navigation_key"):
+                # For people/face mode, show person name
+                face_key = str(self.grid.navigation_key or "")
+                person_label = face_key
+                # Try to resolve a display name from DB
+                try:
+                    with self.db._connect() as conn:
+                        cur = conn.cursor()
+                        cur.execute(
+                            "SELECT COALESCE(label, branch_key) FROM face_branch_reps WHERE branch_key = ? AND project_id = ?",
+                            (face_key, self.grid.project_id),
+                        )
+                        row = cur.fetchone()
+                        if row and row[0]:
+                            person_label = row[0]
+                        elif face_key == "face_unidentified":
+                            person_label = "Unidentified"
+                except Exception:
+                    pass
+                from functools import partial
+                segments.append(("People", partial(self.grid.set_branch, "all")))
+                segments.append((person_label, None))
+                print(f"[Breadcrumb] Added people segments: People > {person_label}")
             elif self.grid.navigation_mode == "branch":
-                # For branch mode, show "All Photos"
-                segments.append(("All Photos", None))
-                print(f"[Breadcrumb] Added branch segment: All Photos")
+                # For branch mode, show branch label
+                branch_key = getattr(self.grid, "navigation_key", "all")
+                if branch_key and branch_key != "all":
+                    from functools import partial
+                    segments.append(("All Photos", partial(self.grid.set_branch, "all")))
+                    segments.append((str(branch_key), None))
+                    print(f"[Breadcrumb] Added branch segment: All Photos > {branch_key}")
+                else:
+                    segments.append(("All Photos", None))
+                    print(f"[Breadcrumb] Added branch segment: All Photos")
             elif hasattr(self.grid, "active_tag_filter") and self.grid.active_tag_filter:
                 # Tag filter mode
                 tag = self.grid.active_tag_filter
@@ -3811,6 +3972,133 @@ class MainWindow(QMainWindow):
         self.backfill_timer = QTimer(self)
         self.backfill_timer.timeout.connect(self._poll_backfill_status)
         self.backfill_timer.start(2000)
+
+    # ------------------------------------------------------------------
+    # Scan progress widgets (non-modal, in status bar)
+    # ------------------------------------------------------------------
+    def _ensure_scan_status_widgets(self):
+        """Lazily create the permanent status-bar widgets for scan progress."""
+        if getattr(self, "_scan_progress_bar", None) is not None:
+            return
+
+        from PySide6.QtWidgets import QProgressBar, QLabel
+
+        self._scan_status_label = QLabel("")
+        self._scan_progress_bar = QProgressBar()
+        self._scan_progress_bar.setRange(0, 100)
+        self._scan_progress_bar.setValue(0)
+        self._scan_progress_bar.setTextVisible(False)
+        self._scan_progress_bar.setFixedWidth(160)
+        self._scan_progress_bar.setFixedHeight(14)
+        self._scan_progress_bar.setStyleSheet("""
+            QProgressBar {
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                background: #f0f0f0;
+            }
+            QProgressBar::chunk {
+                background: #1a73e8;
+                border-radius: 3px;
+            }
+        """)
+        self._scan_progress_bar.hide()
+
+        sb = self.statusBar()
+        sb.addPermanentWidget(self._scan_status_label)
+        sb.addPermanentWidget(self._scan_progress_bar)
+
+    def scan_ui_begin(self, text: str = "Scanning..."):
+        """Show the non-modal scan progress indicator in the status bar."""
+        self._ensure_scan_status_widgets()
+        self._scan_status_label.setText(text)
+        self._scan_progress_bar.setValue(0)
+        self._scan_progress_bar.show()
+
+    def scan_ui_update(self, percent: int, text: str | None = None):
+        """Update scan progress (called from main thread via QueuedConnection)."""
+        self._ensure_scan_status_widgets()
+        if text:
+            self._scan_status_label.setText(text)
+        self._scan_progress_bar.setValue(max(0, min(100, int(percent))))
+
+    def scan_ui_finish(self, text: str = "Scan complete", timeout_ms: int = 4000):
+        """Mark scan complete, auto-hide after *timeout_ms*."""
+        self._ensure_scan_status_widgets()
+        self._scan_status_label.setText(text)
+        self._scan_progress_bar.setValue(100)
+
+        def _hide():
+            if getattr(self, "_scan_progress_bar", None):
+                self._scan_progress_bar.hide()
+                self._scan_status_label.setText("")
+
+        QTimer.singleShot(timeout_ms, _hide)
+
+    # ------------------------------------------------------------------
+    # Activity Center toggle
+    # ------------------------------------------------------------------
+    def _toggle_activity_center(self, checked: bool = None):
+        """Toggle the Activity Center dock widget visibility."""
+        ac = getattr(self, "activity_center", None)
+        if not ac:
+            return
+        if checked is None:
+            checked = not ac.isVisible()
+        ac.setVisible(checked)
+        # Sync the View menu checkbox
+        act = getattr(self, "_act_toggle_activity", None)
+        if act and act.isChecked() != checked:
+            act.setChecked(checked)
+
+    def _on_activity_center_visibility_changed(self, visible: bool):
+        """Keep the View > Activity Center menu checkbox in sync."""
+        act = getattr(self, "_act_toggle_activity", None)
+        if act and act.isChecked() != visible:
+            act.setChecked(visible)
+
+    # ------------------------------------------------------------------
+    # Metadata Editor Dock
+    # ------------------------------------------------------------------
+    def _toggle_metadata_editor(self, checked: bool = None):
+        """Toggle the Metadata Editor dock widget visibility."""
+        dock = getattr(self, "metadata_editor_dock", None)
+        if not dock:
+            return
+        if checked is None:
+            checked = not dock.isVisible()
+        dock.setVisible(checked)
+        # Sync the View menu checkbox
+        act = getattr(self, "_act_toggle_metadata_editor", None)
+        if act and act.isChecked() != checked:
+            act.setChecked(checked)
+
+    def _on_metadata_changed(self, photo_id: int, field: str, value):
+        """Handle metadata field changes from the dock editor."""
+        if self._closing:
+            return
+        print(f"[MainWindow] Metadata changed: photo={photo_id}, {field}={value}")
+        # Refresh grid if rating/flag changed (may affect visual indicators)
+        if field in ("rating", "flag"):
+            grid = getattr(self, "grid", None)
+            if grid and hasattr(grid, "refresh_thumbnail"):
+                grid.refresh_thumbnail(photo_id)
+
+    def show_metadata_for_photo(self, photo_id: int, photo_path: str, metadata: dict = None):
+        """
+        Show the metadata editor dock for a specific photo.
+
+        Called from lightbox or grid when user wants to edit metadata.
+
+        Args:
+            photo_id: Database photo ID
+            photo_path: File path
+            metadata: Optional pre-loaded metadata dict
+        """
+        dock = getattr(self, "metadata_editor_dock", None)
+        if dock:
+            dock.load_photo(photo_id, photo_path, metadata)
+            if not dock.isVisible():
+                dock.show()
 
     def _init_embedding_status_indicator(self):
         """

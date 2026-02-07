@@ -97,9 +97,11 @@ class StartupWorker(QThread):
             stats = cache.get_stats()
             print(f"[Cache] {stats}")
             self.emit_detail(f"✓ Cache: {stats.get('entries', 0)} entries, {stats.get('size_mb', 0):.1f} MB")
+            # FIX #6: Defer purge_stale to after the main window is shown.
+            # Purging can take hundreds of ms on large caches and blocks the
+            # startup sequence.  The cache's own background worker handles it.
             if self.settings.get("cache_auto_cleanup", True):
-                cache.purge_stale(max_age_days=7)
-                self.emit_detail("✓ Stale cache entries purged")
+                self.emit_detail("✓ Cache cleanup deferred to post-startup")
             if self._cancel:
                 return
 
@@ -107,8 +109,8 @@ class StartupWorker(QThread):
             self.progress.emit(65, "Initializing search service…")
             self.emit_detail("🔎 Initializing search service...")
             try:
-                from services import SearchService
-                search_service = SearchService()
+                from app_services import get_search_service
+                search_service = get_search_service()
                 print("[Startup] SearchService initialized")
                 self.emit_detail("✓ Search service ready")
             except Exception as e:
@@ -162,23 +164,11 @@ class StartupWorker(QThread):
             if self._cancel:
                 return
 
-            # STEP 10 — Warm up CLIP model for semantic embeddings (92%)
-            # This pre-loads the model into memory so first "Find Similar" is fast
-            if self.settings.get("enable_semantic_embeddings", True):
-                self.progress.emit(92, "Warming up CLIP model…")
-                self.emit_detail("🧠 Warming up CLIP model for similar photo detection...")
-                try:
-                    from services.semantic_embedding_service import get_semantic_embedding_service
-                    service = get_semantic_embedding_service()
-                    # Trigger lazy model loading (this is the expensive part)
-                    service._load_model()
-                    self.emit_detail("✓ CLIP model loaded and ready")
-                except Exception as e:
-                    # Non-fatal - model will load on first use if warmup fails
-                    self.emit_detail(f"⚠ CLIP model warmup skipped: {str(e)[:50]}")
-                    print(f"[Startup] CLIP model warmup failed (non-fatal): {e}")
-            else:
-                self.emit_detail("⚠ Semantic embeddings disabled in settings")
+            # STEP 10 — CLIP model warmup REMOVED (was blocking startup)
+            # CLIP now loads lazily on first use, or via background warmup in MainWindow
+            # This gives ~1-2 seconds faster perceived startup
+            self.progress.emit(92, "Finalizing...")
+            self.emit_detail("🧠 CLIP model will load on first semantic search (lazy)")
             if self._cancel:
                 return
 

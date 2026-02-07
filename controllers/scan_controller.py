@@ -18,15 +18,16 @@ Version: 10.01.01.03
 """
 
 import logging
+import os
+import time
 from datetime import datetime
 from typing import List
 from PySide6.QtCore import QThread, Qt, QTimer, QThreadPool, Slot, QObject, Signal
 from PySide6.QtWidgets import (
-    QProgressDialog, QMessageBox, QDialog, QVBoxLayout,
-    QLabel, QProgressBar, QApplication
+    QMessageBox, QDialog, QApplication
 )
-#from translations import tr
 from translation_manager import tr
+from utils.ui_safety import is_alive, generation_ok
 
 
 class ScanController(QObject):
@@ -47,6 +48,7 @@ class ScanController(QObject):
         self.worker = None
         self.db_writer = None
         self.cancel_requested = False
+        self._expected_generation = None
         self.logger = logging.getLogger(__name__)
 
         # CRITICAL FIX: Progress dialog threshold to prevent UI freeze on tiny scans
@@ -62,6 +64,29 @@ class ScanController(QObject):
         self._scan_refresh_scheduled = False
         self._scan_result_cached = None  # Cache scan results for final refresh
 
+    # ------------------------------------------------------------------
+    # Helper: resolve project_id from the *active* layout, not from the
+    # hidden CurrentLayout grid/sidebar which may still have project_id=None
+    # when Google Layout is active.
+    # ------------------------------------------------------------------
+    def _get_active_project_id(self):
+        """Return project_id from the active layout, grid, or DB default."""
+        # 1. Active layout (works for both Google and Current)
+        if hasattr(self.main, 'layout_manager') and self.main.layout_manager:
+            layout = self.main.layout_manager.get_current_layout()
+            if layout and hasattr(layout, 'get_current_project'):
+                pid = layout.get_current_project()
+                if pid is not None:
+                    return pid
+        # 2. Grid fallback
+        if hasattr(self.main, 'grid') and self.main.grid:
+            pid = getattr(self.main.grid, 'project_id', None)
+            if pid is not None:
+                return pid
+        # 3. DB default
+        from app_services import get_default_project_id
+        return get_default_project_id()
+
     def _test_progress_slot(self, pct: int, msg: str):
         """Test slot to verify Qt signal delivery is working."""
         # Removed verbose debug logging - signal delivery confirmed working
@@ -74,6 +99,9 @@ class ScanController(QObject):
 
         Can be called from any thread - automatically marshals to main thread if needed.
         """
+        if not is_alive(self.main) or not generation_ok(self.main, self._expected_generation):
+            return
+
         from PySide6.QtCore import QThread, QMetaObject, Qt
         from PySide6.QtWidgets import QApplication
 
@@ -93,14 +121,25 @@ class ScanController(QObject):
     @Slot(int, str)
     def _on_progress_main_thread(self, pct: int, msg: str):
         """Helper to ensure we're in main thread when calling _on_progress."""
+        if not is_alive(self.main) or not generation_ok(self.main, self._expected_generation):
+            return
         self._on_progress(pct, msg)
 
     def start_scan(self, folder, incremental: bool):
         """Entry point called from MainWindow toolbar action."""
-        # Phase 3B: Show pre-scan options dialog
+        # Phase 3B: Show pre-scan options dialog with quick stats
         from ui.prescan_options_dialog import PreScanOptionsDialog
+        from services.photo_scan_service import PhotoScanService
 
-        options_dialog = PreScanOptionsDialog(parent=self.main, default_incremental=incremental)
+        scan_service = PhotoScanService()
+        options_dialog = PreScanOptionsDialog(
+            parent=self.main,
+            default_incremental=incremental,
+            scan_service=scan_service,
+        )
+        # Kick off background file-count while user reviews options
+        options_dialog.start_stats_count(folder)
+
         if options_dialog.exec() != QDialog.Accepted:
             # User cancelled
             self.main.statusBar().showMessage("Scan cancelled")
@@ -120,6 +159,8 @@ class ScanController(QObject):
         self._min_stack_size = scan_options.min_stack_size
 
         self.cancel_requested = False
+        # Capture generation at scan start so callbacks can detect stale results
+        self._expected_generation = self.main.ui_generation() if hasattr(self.main, 'ui_generation') else None
         self.main.statusBar().showMessage(f"📸 Scanning repository: {folder} (incremental={incremental})")
         self.main._committed_total = 0
 
@@ -130,69 +171,21 @@ class ScanController(QObject):
         self._scan_result_cached = None
         self._progress_events = []
 
-        # Progress dialog - REVERT TO OLD WORKING VERSION
-        # Create and show dialog IMMEDIATELY (no threshold, no lazy creation)
-        # This is simpler and avoids Qt threading issues
-        from translation_manager import tr
-        self.main._scan_progress = QProgressDialog(
-            tr("messages.scan_preparing"),
-            tr("messages.scan_cancel_button"),
-            0, 100, self.main
-        )
-        self.main._scan_progress.setWindowTitle(tr("messages.scan_dialog_title"))
-        self.main._scan_progress.setWindowModality(Qt.WindowModal)
-        self.main._scan_progress.setAutoClose(False)
-        self.main._scan_progress.setAutoReset(False)
-        self.main._scan_progress.setMinimumDuration(0)  # CRITICAL: Show immediately, no timer delay (prevents Qt timer thread errors)
-        self.main._scan_progress.setMinimumWidth(520)
+        # Non-modal progress via status-bar widgets (replaces old QProgressDialog)
+        self.main.scan_ui_begin(tr("messages.scan_preparing"))
+        self._last_progress_ui_ts = 0.0
 
-        # CRITICAL FIX: Calculate maximum height based on available screen geometry
-        # This prevents Qt geometry warnings when dialog is too tall for screen
+        # Register scan with JobManager as a tracked job
+        self._scan_job_id = None
         try:
-            from PySide6.QtWidgets import QApplication
-            screen = QApplication.primaryScreen()
-            screen_geometry = screen.availableGeometry()
-            # Use 80% of available height as maximum, with 50px margin for safety
-            max_height = int(screen_geometry.height() * 0.8 - 50)
-            if max_height > 0:
-                self.main._scan_progress.setMaximumHeight(max_height)
-                self.logger.debug(f"Progress dialog max height set to {max_height}px (screen: {screen_geometry.height()}px)")
+            from services.job_manager import get_job_manager
+            self._scan_job_id = get_job_manager().register_tracked_job(
+                job_type='scan',
+                description=f"Scanning {os.path.basename(folder)}",
+                cancel_callback=self.cancel,
+            )
         except Exception as e:
-            self.logger.warning(f"Could not set progress dialog max height: {e}")
-
-        self.main._scan_progress.show()
-
-        # CRITICAL FIX: Explicitly center progress dialog on main window
-        # Qt's automatic centering may fail in some cases (minimized window, multi-monitor, etc.)
-        try:
-            # More robust centering with retries
-            def center_dialog(dialog):
-                """Center dialog with retry mechanism"""
-                # Ensure dialog geometry is calculated
-                dialog.adjustSize()
-                QApplication.processEvents()
-                
-                # Get geometries
-                parent_rect = self.main.geometry()
-                dialog_rect = dialog.geometry()
-                
-                # Calculate center position
-                center_x = parent_rect.x() + (parent_rect.width() - dialog_rect.width()) // 2
-                center_y = parent_rect.y() + (parent_rect.height() - dialog_rect.height()) // 2
-                
-                # Move dialog to center
-                dialog.move(center_x, center_y)
-                return center_x, center_y
-            
-            # Initial centering attempt
-            center_x, center_y = center_dialog(self.main._scan_progress)
-            self.logger.debug(f"Progress dialog initially centered at ({center_x}, {center_y})")
-            
-            # Additional centering after a brief delay to ensure layout is complete
-            QTimer.singleShot(50, lambda: center_dialog(self.main._scan_progress))
-            
-        except Exception as e:
-            self.logger.warning(f"Could not center progress dialog: {e}")
+            self.logger.debug(f"JobManager tracked-job registration failed: {e}")
 
         # DB writer
         # NOTE: Schema creation handled automatically by repository layer
@@ -202,27 +195,21 @@ class ScanController(QObject):
         self.db_writer.committed.connect(self._on_committed)
         self.db_writer.start()
 
-        # CRITICAL: Initialize database schema before starting scan
-        # This ensures the repository layer has created all necessary tables
+        # Verify database connection (schema already initialized at startup)
         try:
             from repository.base_repository import DatabaseConnection
-            db_conn = DatabaseConnection("reference_data.db", auto_init=True)
-            self.logger.info("Database schema initialized successfully")
+            db_conn = DatabaseConnection("reference_data.db", auto_init=False)
+            self.logger.info("Database connection verified for scan")
         except Exception as e:
-            self.logger.error(f"Failed to initialize database schema: {e}", exc_info=True)
-            self.main.statusBar().showMessage(f"❌ Database initialization failed: {e}")
+            self.logger.error(f"Failed to verify database connection: {e}", exc_info=True)
+            self.main.statusBar().showMessage(f"Database connection failed: {e}")
             return
 
-        # Get current project_id
-        current_project_id = self.main.grid.project_id
+        # Get current project_id from the active layout (not the hidden grid)
+        current_project_id = self._get_active_project_id()
         if current_project_id is None:
-            # Fallback to default project if grid doesn't have a project yet
-            from app_services import get_default_project_id
-            current_project_id = get_default_project_id()
-            if current_project_id is None:
-                # No projects exist - will be created during scan
-                current_project_id = 1  # Default to first project
-            self.logger.debug(f"Using project_id: {current_project_id}")
+            current_project_id = 1  # Default to first project (may be created during scan)
+        self.logger.debug(f"Using project_id: {current_project_id}")
 
         # Scan worker
         try:
@@ -318,8 +305,6 @@ class ScanController(QObject):
             self.main.statusBar().showMessage(f"❌ Failed to create scan worker: {e}")
 #            from translations import tr
 
-            from translation_manager import tr
-
             QMessageBox.critical(self.main, tr("messages.scan_error"), tr("messages.scan_error_worker", error=str(e)))
             return
 
@@ -333,19 +318,31 @@ class ScanController(QObject):
                 pass
 #        from translations import tr
 
-        from translation_manager import tr
-
         self.main.statusBar().showMessage(tr('status_messages.scan_cancel_requested'))
         self.main.act_cancel_scan.setEnabled(False)
 
     def _on_committed(self, n: int):
+        if not is_alive(self.main) or not generation_ok(self.main, self._expected_generation):
+            return
         self.main._committed_total += n
+        self._maybe_refresh_grid_incremental()
+
+    def _maybe_refresh_grid_incremental(self):
+        """Trigger a lightweight grid reload at most once every 1.2 s so the
+        user sees thumbnails filling in while the scan is still running."""
+        now = time.time()
+        last = getattr(self, "_last_incremental_refresh_ts", 0.0)
+        if now - last < 1.2:
+            return
+        self._last_incremental_refresh_ts = now
+
         try:
-            if self.main._scan_progress:
-                cur = self.main._scan_progress.labelText() or ""
-                self.main._scan_progress.setLabelText(f"{cur}\nCommitted: {self.main._committed_total} rows")
+            if hasattr(self.main.grid, "_schedule_reload"):
+                self.main.grid._schedule_reload()
+            elif hasattr(self.main.grid, "reload"):
+                self.main.grid.reload()
         except Exception:
-            pass
+            pass  # grid may not be ready yet
 
     def _log_progress_event(self, message: str) -> str:
         """Track recent progress lines so the dialog can show contextual history."""
@@ -360,70 +357,89 @@ class ScanController(QObject):
         return "\n".join(self._progress_events)
 
     def _on_progress(self, pct: int, msg: str):
-        """
-        Handle progress updates from scan worker thread.
+        """Handle progress updates from scan worker thread.
 
-        REVERT TO OLD WORKING VERSION - Simple and reliable.
+        Uses throttling (80 ms) to avoid flooding the event loop with
+        status-bar repaints while still showing crisp 0 % / 100 % updates.
         """
-        if not self.main._scan_progress:
+        if not is_alive(self.main) or not generation_ok(self.main, self._expected_generation):
             return
+        now = time.time()
+        last = getattr(self, "_last_progress_ui_ts", 0.0)
 
         pct_i = max(0, min(100, int(pct or 0)))
-        self.main._scan_progress.setValue(pct_i)
+
+        # Throttle intermediate updates to ~12 fps
+        if now - last < 0.08 and pct_i not in (0, 100):
+            return
+        self._last_progress_ui_ts = now
 
         if msg:
-            # Enhanced progress display with file details
-            history = self._log_progress_event(msg)
-            label = f"{history}\nCommitted: {self.main._committed_total} rows"
-        else:
-            history = self._log_progress_event("")
-            label = f"Progress: {pct_i}%\n{history}\nCommitted: {self.main._committed_total} rows"
+            self._log_progress_event(msg)
 
-        self.main._scan_progress.setLabelText(label)
-        self.main._scan_progress.setWindowTitle(f"{tr('messages.scan_dialog_title')} ({pct_i}%)")
-        QApplication.processEvents()
+        committed = getattr(self.main, "_committed_total", 0)
+        short_msg = msg or f"Scanning... {pct_i}%"
+        # Keep status-bar text compact
+        if committed:
+            short_msg = f"{short_msg}  ({committed} rows)"
 
-        # Check for cancellation
-        if self.main._scan_progress.wasCanceled():
-            self.cancel()
+        self.main.scan_ui_update(pct_i, short_msg)
+
+        # Report to JobManager (routes to Activity Center & status bar)
+        if self._scan_job_id is not None:
+            try:
+                from services.job_manager import get_job_manager
+                mgr = get_job_manager()
+                mgr.report_progress(self._scan_job_id, pct_i, 100, short_msg)
+                if msg:
+                    mgr.report_log(self._scan_job_id, msg)
+            except Exception:
+                pass
 
     def _on_finished(self, folders, photos, videos=0):
+        if not is_alive(self.main) or not generation_ok(self.main, self._expected_generation):
+            return
         self.logger.info(f"Scan finished: {folders} folders, {photos} photos, {videos} videos")
         self.main._scan_result = (folders, photos, videos)
-        summary = (
-            f"Scan complete.\n"
-            f"Folders: {folders}\n"
-            f"Photos: {photos}\n"
-            f"Videos: {videos}\n"
-            f"Committed rows: {getattr(self.main, '_committed_total', 0)}"
-        )
 
-        try:
-            if self.main._scan_progress:
-                self.main._scan_progress.setValue(100)
-                self.main._scan_progress.setLabelText(summary)
-                self.main._scan_progress.setWindowTitle(f"{tr('messages.scan_dialog_title')} (100%)")
-        except Exception:
-            pass
+        if self._scan_job_id is not None:
+            try:
+                from services.job_manager import get_job_manager
+                get_job_manager().report_log(
+                    self._scan_job_id,
+                    f"Scan finished: {folders} folders, {photos} photos, {videos} videos",
+                )
+            except Exception:
+                pass
 
+        # Update status bar progress to 100 %
         try:
-            title = tr("messages.scan_complete") if callable(tr) else "Scan complete"
-            QMessageBox.information(self.main, title, summary)
+            self.main.scan_ui_update(
+                100,
+                f"Indexed {photos} photos, {videos} videos in {folders} folders",
+            )
         except Exception:
             pass
 
     def _on_error(self, err_text: str):
+        if not is_alive(self.main) or not generation_ok(self.main, self._expected_generation):
+            return
         self.logger.error(f"Scan error: {err_text}")
+        if self._scan_job_id is not None:
+            try:
+                from services.job_manager import get_job_manager
+                get_job_manager().complete_tracked_job(
+                    self._scan_job_id, success=False, error=err_text[:80],
+                )
+            except Exception:
+                pass
+            self._scan_job_id = None
         try:
-#            from translations import tr
-
-            from translation_manager import tr
-
             QMessageBox.critical(self.main, tr("messages.scan_error"), err_text)
         except Exception:
             QMessageBox.critical(self.main, "Scan Error", err_text)
         if self.thread and self.thread.isRunning():
-            self.threa_manager.quit()
+            self.thread.quit()
 
     def _cleanup(self):
         """
@@ -444,108 +460,57 @@ class ScanController(QObject):
         """Actual cleanup implementation - must run in main thread."""
         try:
             self.main.act_cancel_scan.setEnabled(False)
-            if self.main._scan_progress:
-                self.main._scan_progress.setValue(100)
-                self.main._scan_progress.close()
             if self.db_writer:
-                self.db_writer.shutdown(wait=True)
+                # FIX #1: Never block the UI thread waiting for the writer
+                # to drain.  The signal-driven _check_and_trigger_final_refresh
+                # path handles post-scan coordination asynchronously.
+                self.db_writer.shutdown(wait=False)
         except Exception as e:
             self.logger.error(f"Cleanup error: {e}", exc_info=True)
 
         # Get scan results BEFORE heavy operations
         f, p, v = self.main._scan_result if len(self.main._scan_result) == 3 else (*self.main._scan_result, 0)
 
-        # Show completion message IMMEDIATELY (before heavy operations)
-        # This prevents UI freeze perception and gives user feedback
-        msg = f"Indexed {p} photos"
-        if v > 0:
-            msg += f" and {v} videos"
-        msg += f" in {f} folders.\n\n"
-        msg += "📊 Processing metadata and updating views...\nThis may take a few seconds."
+        # Report post-scan progress via status bar (no modal dialogs)
+        self.main._scan_complete_msgbox = None  # no blocking msgbox
+        self.main.statusBar().showMessage(tr("messages.progress_building_branches"), 0)
 
-        # CRITICAL FIX: Create and show message box explicitly, then close it properly
-        # Using QMessageBox.information() can cause issues with multiple scans
-        #from translations import tr
-        
-        from translation_manager import tr
-        
-        msgbox = QMessageBox(self.main)
-        msgbox.setWindowTitle(tr("messages.scan_complete_title"))
-        msgbox.setText(msg)
-        msgbox.setIcon(QMessageBox.Information)
-        msgbox.setStandardButtons(QMessageBox.Ok)
-        msgbox.setModal(True)
-        msgbox.show()
-        QApplication.processEvents()
+        # Lightweight progress tracker (no dialog — just a counter for _finalize_scan_refresh)
+        class _ProgressStub:
+            """Minimal stub so downstream code that calls progress.setValue/setLabelText/close
+            still works but routes everything to the status bar."""
+            def __init__(self, status_bar, logger):
+                self._bar = status_bar
+                self._log = logger
+            def setValue(self, v):
+                pass
+            def setLabelText(self, text):
+                try:
+                    self._bar.showMessage(text, 0)
+                except Exception:
+                    pass
+            def close(self):
+                pass
+            def show(self):
+                pass
 
-        # Store reference to close it later
-        self.main._scan_complete_msgbox = msgbox
-
-        # Show progress indicator for post-scan processing
-        progress = QProgressDialog(tr("messages.progress_building_branches"), None, 0, 4, self.main)
-        progress.setWindowTitle(tr("messages.progress_processing"))
-        progress.setWindowModality(Qt.WindowModal)
-        progress.setAutoClose(True)
-        progress.setValue(0)
-
-        # CRITICAL FIX: Calculate maximum height based on available screen geometry
-        try:
-            screen = QApplication.primaryScreen()
-            screen_geometry = screen.availableGeometry()
-            max_height = int(screen_geometry.height() * 0.8 - 50)
-            if max_height > 0:
-                progress.setMaximumHeight(max_height)
-        except Exception as e:
-            self.logger.warning(f"Could not set progress dialog max height: {e}")
-
-        progress.show()
-
-        # CRITICAL FIX: Explicitly center progress dialog on main window
-        try:
-            # More robust centering with retries
-            def center_dialog(dialog):
-                """Center dialog with retry mechanism"""
-                dialog.adjustSize()
-                QApplication.processEvents()
-                
-                parent_rect = self.main.geometry()
-                dialog_rect = dialog.geometry()
-                
-                center_x = parent_rect.x() + (parent_rect.width() - dialog_rect.width()) // 2
-                center_y = parent_rect.y() + (parent_rect.height() - dialog_rect.height()) // 2
-                
-                dialog.move(center_x, center_y)
-                return center_x, center_y
-            
-            # Initial centering attempt
-            center_x, center_y = center_dialog(progress)
-            self.logger.debug(f"Post-scan progress dialog centered at ({center_x}, {center_y})")
-            
-            # Additional centering after a brief delay
-            QTimer.singleShot(50, lambda: center_dialog(progress))
-            
-        except Exception as e:
-            self.logger.warning(f"Could not center post-scan progress dialog: {e}")
-
-        QApplication.processEvents()
+        progress = _ProgressStub(self.main.statusBar(), self.logger)
 
         # Build date branches after scan completes
         sidebar_was_updated = False
         try:
             progress.setLabelText(tr("messages.progress_building_photo_branches"))
             progress.setValue(1)
-            QApplication.processEvents()
 
             self.logger.info("Building date branches...")
             from reference_db import ReferenceDB
             from app_services import get_default_project_id
             db = ReferenceDB()
 
-            # CRITICAL FIX: Get current project_id to associate scanned photos with correct project
-            # Without this, all photos go to project_id=1 regardless of which project is active
-            current_project_id = self.main.grid.project_id
+            # Get project_id from the active layout (not the hidden CurrentLayout grid)
+            current_project_id = self._get_active_project_id()
             if current_project_id is None:
-                self.logger.warning("Grid project_id is None, using default project")
+                self.logger.warning("No active project_id found, using DB default")
                 current_project_id = get_default_project_id()
 
             if current_project_id is None:
@@ -563,7 +528,6 @@ class ScanController(QObject):
 
             progress.setLabelText(tr("messages.progress_backfilling_metadata"))
             progress.setValue(2)
-            QApplication.processEvents()
 
             # CRITICAL: Backfill created_date field immediately after scan
             # This populates created_date from date_taken so get_date_hierarchy() works
@@ -579,506 +543,293 @@ class ScanController(QObject):
             if video_backfilled:
                 self.logger.info(f"Backfilled {video_backfilled} video rows with created_date")
 
-            # PHASE 3B: Duplicate Detection Integration (Optional Post-Scan Step)
-            duplicate_stats = {"exact": 0, "similar": 0, "total": 0}
+            # PHASE 3B: Duplicate Detection — dispatched to background thread
+            # Instead of blocking the UI with QEventLoop / QProgressDialog,
+            # we fire a PostScanPipelineWorker and let it run asynchronously.
             if hasattr(self, '_duplicate_detection_enabled') and self._duplicate_detection_enabled:
-                self.logger.info("Duplicate detection is enabled - starting duplicate detection...")
+                self._scan_operations_pending.add("post_scan_pipeline")
+                self.logger.info("Enqueueing duplicate detection pipeline as background job...")
 
                 try:
-                    # Step 0: Run hash backfill FIRST (required for exact duplicate detection)
-                    if hasattr(self, '_detect_exact') and self._detect_exact:
-                        progress.setLabelText("📝 Computing photo hashes...")
-                        progress.setValue(2)
-                        QApplication.processEvents()
+                    from workers.post_scan_pipeline_worker import PostScanPipelineWorker
 
-                        self.logger.info("Running hash backfill before duplicate detection...")
-                        from services.asset_service import AssetService
-                        from repository.photo_repository import PhotoRepository
-                        from repository.asset_repository import AssetRepository
-                        from repository.base_repository import DatabaseConnection
+                    pipeline_options = {
+                        "detect_exact": getattr(self, '_detect_exact', False),
+                        "detect_similar": getattr(self, '_detect_similar', False),
+                        "generate_embeddings": getattr(self, '_generate_embeddings', False),
+                        "time_window_seconds": getattr(self, '_time_window_seconds', None),
+                        "similarity_threshold": getattr(self, '_similarity_threshold', None),
+                        "min_stack_size": getattr(self, '_min_stack_size', None),
+                    }
 
-                        db_conn = DatabaseConnection()
-                        photo_repo = PhotoRepository(db_conn)
-                        asset_repo = AssetRepository(db_conn)
-                        asset_service = AssetService(photo_repo, asset_repo)
-
-                        # Run hash backfill synchronously
-                        self.logger.info("Starting hash backfill and asset linking...")
-                        backfill_stats = asset_service.backfill_hashes_and_link_assets(current_project_id)
-                        self.logger.info(f"Hash backfill complete: {backfill_stats.scanned} scanned, {backfill_stats.hashed} hashed, {backfill_stats.linked} linked")
-
-                    # Step 1: Exact Duplicate Detection (Hash-based)
-                    if hasattr(self, '_detect_exact') and self._detect_exact:
-                        progress.setLabelText("🔍 Detecting exact duplicates...")
-                        progress.setValue(2)
-                        QApplication.processEvents()
-
-                        self.logger.info("Running exact duplicate detection...")
-                        from repository.asset_repository import AssetRepository
-                        from repository.base_repository import DatabaseConnection
-
-                        db_conn = DatabaseConnection()
-                        asset_repo = AssetRepository(db_conn)
-
-                        # Get exact duplicates (assets with 2+ instances)
-                        exact_assets = asset_repo.list_duplicate_assets(current_project_id, min_instances=2)
-                        duplicate_stats["exact"] = len(exact_assets)
-                        duplicate_stats["total"] += duplicate_stats["exact"]
-
-                        self.logger.info(f"Found {duplicate_stats['exact']} exact duplicate groups")
-
-                    # Step 1.5: Generate Embeddings (if enabled and similar detection requested)
-                    if hasattr(self, '_generate_embeddings') and self._generate_embeddings and \
-                       hasattr(self, '_detect_similar') and self._detect_similar:
-                        progress.setLabelText("🤖 Queueing AI embeddings for similar detection...")
-                        progress.setValue(3)
-                        QApplication.processEvents()
-
-                        self.logger.info("Queueing embeddings for newly scanned photos...")
-
-                        from repository.photo_repository import PhotoRepository
-                        from services.semantic_embedding_service import SemanticEmbeddingService
-                        from repository.base_repository import DatabaseConnection
-
-                        db_conn = DatabaseConnection()
-                        photo_repo = PhotoRepository(db_conn)
-                        embedding_service = SemanticEmbeddingService(db_connection=db_conn)
-
-                        # Get all photos in project that don't have embeddings
-                        all_photos = photo_repo.find_all(
-                            where_clause="project_id = ?",
-                            params=(current_project_id,)
-                        )
-                        photos_needing_embeddings = []
-
-                        for photo in all_photos:
-                            photo_id = photo.get('id')
-                            if not embedding_service.has_embedding(photo_id):
-                                photos_needing_embeddings.append(photo_id)
-
-                        if photos_needing_embeddings:
-                            self.logger.info(f"Found {len(photos_needing_embeddings)} photos needing embeddings - processing synchronously for similar detection")
-
-                            # Use SemanticEmbeddingWorker for batch processing
-                            # CRITICAL: Must wait for completion before similar shot detection
-                            from workers.semantic_embedding_worker import SemanticEmbeddingWorker
-                            from PySide6.QtCore import QThreadPool, QEventLoop
-
-                            # Create worker
-                            worker = SemanticEmbeddingWorker(
-                                photo_ids=photos_needing_embeddings,
-                                model_name="clip-vit-b32",
-                                force_recompute=False,
-                                project_id=current_project_id
-                            )
-
-                            # Create event loop to wait for worker completion
-                            embedding_loop = QEventLoop()
-                            embedding_completed = [False]  # Use list to allow modification in nested function
-
-                            # Track progress (keep UI responsive while waiting)
-                            def on_progress(current, total, message):
-                                """Update progress dialog."""
-                                progress_percent = int((current / total) * 100) if total > 0 else 0
-                                progress.setLabelText(f"🤖 Generating embeddings: {current}/{total} - {message}")
-                                # Map embedding progress (0-100%) to progress bar range (3-50%)
-                                progress_value = 3 + int(progress_percent * 0.47)
-                                progress.setValue(progress_value)
-                                QApplication.processEvents()  # Keep UI responsive
-
-                            def on_finished(stats):
-                                """Handle completion and exit wait loop."""
-                                self.logger.info(f"Embedding generation complete: {stats}")
-                                embedding_completed[0] = True
-                                # Update progress to show completion
-                                progress.setLabelText("✅ Embedding generation complete")
-                                progress.setValue(50)
-                                QApplication.processEvents()
-                                # Exit the event loop to continue processing
-                                embedding_loop.quit()
-
-                            def on_error(error_msg):
-                                """Handle error and exit wait loop."""
-                                self.logger.error(f"Embedding generation error: {error_msg}")
-                                embedding_completed[0] = True  # Still mark as done to proceed
-                                progress.setLabelText(f"❌ Embedding error: {error_msg}")
-                                QApplication.processEvents()
-                                # Exit the event loop to continue processing
-                                embedding_loop.quit()
-
-                            # Connect signals
-                            worker.signals.progress.connect(on_progress)
-                            worker.signals.finished.connect(on_finished)
-                            worker.signals.error.connect(on_error)
-
-                            # Start worker in thread pool
-                            progress.setLabelText("🤖 Starting embedding generation...")
-                            progress.setValue(5)
-                            QApplication.processEvents()
-                            QThreadPool.globalInstance().start(worker)
-
-                            # CRITICAL FIX: Wait for embedding worker to complete before similar shot detection
-                            # This ensures embeddings are available for similarity comparison
-                            self.logger.info("Waiting for embedding generation to complete before similar shot detection...")
-                            embedding_loop.exec()
-                            self.logger.info("Embedding generation finished, proceeding to similar shot detection")
-                        else:
-                            self.logger.info("All photos already have embeddings")
-                            progress.setLabelText("✅ All photos already have embeddings")
-                            progress.setValue(50)
-                            QApplication.processEvents()
-
-                    # Step 2: Similar Shot Detection (Embedding-based)
-                    if hasattr(self, '_detect_similar') and self._detect_similar:
-                        progress.setLabelText("📸 Detecting similar shots...")
-                        progress.setValue(55)
-                        QApplication.processEvents()
-
-                        self.logger.info("Running similar shot detection...")
-
-                        # Check if embeddings exist
-                        from services.semantic_embedding_service import SemanticEmbeddingService
-                        from repository.base_repository import DatabaseConnection
-
-                        db_conn = DatabaseConnection()
-                        embedding_service = SemanticEmbeddingService(db_connection=db_conn)
-                        embedding_count = embedding_service.get_embedding_count()
-
-                        if embedding_count == 0:
-                            self.logger.warning("No embeddings found - skipping similar shot detection")
-                            # Show warning to user (embeddings should have been generated in Step 1.5)
-                            QMessageBox.warning(
-                                self.main,
-                                "Similar Shot Detection",
-                                "No image embeddings found.\n\n"
-                                "Embedding generation may have failed.\n"
-                                "Check the application logs for errors."
-                            )
-                        else:
-                            # Run similar shot stack generation
-                            from services.stack_generation_service import StackGenerationService, StackGenParams
-                            from repository.stack_repository import StackRepository
-                            from repository.photo_repository import PhotoRepository
-
-                            photo_repo = PhotoRepository(db_conn)
-                            stack_repo = StackRepository(db_conn)
-                            stack_gen_service = StackGenerationService(
-                                photo_repo=photo_repo,
-                                stack_repo=stack_repo,
-                                similarity_service=embedding_service
-                            )
-
-                            # Use unified SimilarityConfig for consistent parameters
-                            from config.similarity_config import SimilarityConfig
-                            from dataclasses import replace
-                            params = SimilarityConfig.get_params()
-
-                            # Allow instance attribute overrides for backwards compatibility
-                            # Use dataclasses.replace() since StackGenParams is frozen
-                            overrides = {}
-                            if hasattr(self, '_time_window_seconds') and self._time_window_seconds:
-                                overrides['time_window_seconds'] = self._time_window_seconds
-                            if hasattr(self, '_similarity_threshold') and self._similarity_threshold:
-                                overrides['similarity_threshold'] = self._similarity_threshold
-                            if hasattr(self, '_min_stack_size') and self._min_stack_size:
-                                overrides['min_stack_size'] = self._min_stack_size
-
-                            if overrides:
-                                params = replace(params, **overrides)
-
-                            stats = stack_gen_service.regenerate_similar_shot_stacks(current_project_id, params)
-                            duplicate_stats["similar"] = stats.stacks_created
-                            duplicate_stats["total"] += duplicate_stats["similar"]
-
-                            self.logger.info(f"Created {duplicate_stats['similar']} similar shot stacks")
-
-                except Exception as e:
-                    self.logger.error(f"Duplicate detection failed: {e}", exc_info=True)
-                    QMessageBox.warning(
-                        self.main,
-                        "Duplicate Detection Error",
-                        f"Duplicate detection failed:\n{str(e)}\n\nThe scan completed successfully, but duplicates were not detected."
+                    self._post_scan_worker = PostScanPipelineWorker(
+                        project_id=current_project_id,
+                        options=pipeline_options,
                     )
 
-                # Update message box with duplicate stats if any were found
-                if duplicate_stats["total"] > 0:
+                    # Register with JobManager as tracked job
+                    self._pspl_job_id = None
                     try:
-                        if hasattr(self.main, '_scan_complete_msgbox') and self.main._scan_complete_msgbox:
-                            current_text = self.main._scan_complete_msgbox.text()
-                            dup_text = f"\n\n📊 Duplicates found:\n"
-                            if duplicate_stats["exact"] > 0:
-                                dup_text += f"• {duplicate_stats['exact']} exact duplicate groups\n"
-                            if duplicate_stats["similar"] > 0:
-                                dup_text += f"• {duplicate_stats['similar']} similar shot stacks"
-                            self.main._scan_complete_msgbox.setText(current_text + dup_text)
-                    except Exception as e:
-                        self.logger.warning(f"Failed to update scan complete message: {e}")
+                        from services.job_manager import get_job_manager
+                        self._pspl_job_id = get_job_manager().register_tracked_job(
+                            job_type='post_scan',
+                            project_id=current_project_id,
+                            description="Duplicate Detection",
+                            cancel_callback=lambda: (
+                                self._post_scan_worker.cancel()
+                                if hasattr(self._post_scan_worker, "cancel") else None),
+                        )
+                    except Exception:
+                        pass
 
-            # PHASE 3: Face Detection Integration (Optional Post-Scan Step)
-            # Check if face detection is enabled in configuration
+                    # Progress updates go to status bar + JobManager
+                    def _on_pipeline_progress(step_name, step_num, total, message):
+                        try:
+                            self.main.statusBar().showMessage(
+                                f"[{step_num}/{total}] {message}", 0
+                            )
+                        except Exception:
+                            pass
+                        if self._pspl_job_id is not None:
+                            try:
+                                from services.job_manager import get_job_manager
+                                mgr = get_job_manager()
+                                mgr.report_progress(self._pspl_job_id, step_num, total,
+                                                    f"[{step_num}/{total}] {message}")
+                                mgr.report_log(self._pspl_job_id, message)
+                            except Exception:
+                                pass
+
+                    def _on_pipeline_finished(results):
+                        errors = results.get("errors", [])
+                        exact = results.get("exact_duplicates", 0)
+                        similar = results.get("similar_stacks", 0)
+                        total = exact + similar
+
+                        if total > 0:
+                            parts = []
+                            if exact > 0:
+                                parts.append(f"{exact} exact duplicate groups")
+                            if similar > 0:
+                                parts.append(f"{similar} similar shot stacks")
+                            summary = f"Found {', '.join(parts)}"
+                            self.main.statusBar().showMessage(
+                                f"Duplicate detection complete: {', '.join(parts)}", 8000
+                            )
+                        else:
+                            summary = "No duplicates found"
+                            self.main.statusBar().showMessage(
+                                "Duplicate detection complete — no duplicates found", 5000
+                            )
+
+                        if errors:
+                            self.logger.warning("Pipeline completed with errors: %s", errors)
+
+                        if self._pspl_job_id is not None:
+                            try:
+                                from services.job_manager import get_job_manager
+                                get_job_manager().complete_tracked_job(
+                                    self._pspl_job_id, success=True,
+                                    stats={"exact": exact, "similar": similar},
+                                )
+                            except Exception:
+                                pass
+                            self._pspl_job_id = None
+
+                        # Refresh duplicates section in sidebar
+                        self._refresh_duplicates_section()
+
+                        # Mark post-scan pipeline complete and check final refresh
+                        self._scan_operations_pending.discard("post_scan_pipeline")
+                        self.logger.info(f"Post-scan pipeline complete. Remaining: {self._scan_operations_pending}")
+                        self._check_and_trigger_final_refresh()
+
+                    def _on_pipeline_error(msg):
+                        self.logger.error("Post-scan pipeline error: %s", msg)
+                        self.main.statusBar().showMessage(
+                            f"Duplicate detection failed: {msg}", 8000
+                        )
+                        if self._pspl_job_id is not None:
+                            try:
+                                from services.job_manager import get_job_manager
+                                get_job_manager().complete_tracked_job(
+                                    self._pspl_job_id, success=False,
+                                    error=str(msg)[:80],
+                                )
+                            except Exception:
+                                pass
+                            self._pspl_job_id = None
+                        # Still mark complete on error so final refresh isn't blocked
+                        self._scan_operations_pending.discard("post_scan_pipeline")
+                        self._check_and_trigger_final_refresh()
+
+                    self._post_scan_worker.signals.progress.connect(_on_pipeline_progress)
+                    self._post_scan_worker.signals.finished.connect(_on_pipeline_finished)
+                    self._post_scan_worker.signals.error.connect(_on_pipeline_error)
+
+                    QThreadPool.globalInstance().start(self._post_scan_worker)
+                    self.logger.info("Post-scan pipeline dispatched to background thread pool")
+
+                except Exception as e:
+                    self.logger.error(f"Failed to start post-scan pipeline: {e}", exc_info=True)
+                    self._scan_operations_pending.discard("post_scan_pipeline")
+
+            # PHASE 3: Face Detection — via central FacePipelineService
+            # The service validates project_id, prevents duplicate runs,
+            # and the UIRefreshMediator handles incremental People refresh.
             try:
-                # NOTE: QMessageBox is already imported at module level (line 64)
-                # Do NOT re-import here as it makes QMessageBox a local variable
                 from config.face_detection_config import get_face_config
                 face_config = get_face_config()
 
                 if face_config.is_enabled() and face_config.get("auto_cluster_after_scan", True):
-                    self.logger.info("Face detection is enabled - starting face detection worker...")
-
-                    # Check if backend is available
                     from services.face_detection_service import FaceDetectionService
                     availability = FaceDetectionService.check_backend_availability()
                     backend = face_config.get_backend()
 
                     if availability.get(backend, False):
-                        # Ask user for confirmation if required
-                        if face_config.get("require_confirmation", True):
-                            reply = QMessageBox.question(
-                                self.main,
-                                "Face Detection",
-                                f"Scan completed!\n\nWould you like to detect faces in the scanned images?\n\n"
-                                f"Backend: {backend}\n"
-                                f"This may take a few minutes depending on the number of images.",
-                                QMessageBox.Yes | QMessageBox.No,
-                                QMessageBox.Yes
+                        self.logger.info("Enqueueing face pipeline via FacePipelineService (backend=%s)...", backend)
+                        from services.face_pipeline_service import FacePipelineService
+                        svc = FacePipelineService.instance()
+
+                        # Track face pipeline in pending operations
+                        self._scan_operations_pending.add("face_pipeline")
+
+                        # Register with JobManager as tracked job
+                        self._face_job_id = None
+                        try:
+                            from services.job_manager import get_job_manager
+                            self._face_job_id = get_job_manager().register_tracked_job(
+                                job_type='face_pipeline',
+                                project_id=current_project_id,
+                                description="Face Detection & Clustering",
+                                cancel_callback=lambda: svc.cancel(current_project_id),
                             )
+                        except Exception:
+                            pass
 
-                            if reply != QMessageBox.Yes:
-                                self.logger.info("User declined face detection")
-                                face_detection_enabled = False
-                            else:
-                                face_detection_enabled = True
-                        else:
-                            face_detection_enabled = True
-
-                        if face_detection_enabled:
-                            self.logger.info(f"Starting face detection with backend: {backend}")
-
-                            # CRITICAL FIX: Show progress dialog to prevent frozen UI appearance
-                            # Create non-modal progress dialog
-                            # Note: All required widgets already imported at module level
-
-                            progress_dialog = QDialog(self.main)
-                            progress_dialog.setWindowTitle(tr("messages.progress_processing_photos"))
-                            progress_dialog.setModal(False)  # Non-modal allows UI to stay responsive
-                            progress_dialog.setMinimumWidth(500)
-                            progress_dialog.setWindowFlags(
-                                progress_dialog.windowFlags() & ~Qt.WindowCloseButtonHint
-                            )
-
-                            layout = QVBoxLayout()
-                            status_label = QLabel("Initializing face detection...")
-                            status_label.setStyleSheet("font-weight: bold; font-size: 12pt;")
-                            progress_bar = QProgressBar()
-                            progress_bar.setMinimum(0)
-                            progress_bar.setMaximum(100)
-                            progress_bar.setValue(0)
-                            detail_label = QLabel("Please wait...")
-                            detail_label.setWordWrap(True)
-
-                            layout.addWidget(status_label)
-                            layout.addWidget(progress_bar)
-                            layout.addWidget(detail_label)
-                            progress_dialog.setLayout(layout)
-
-                            # Show dialog immediately
-                            progress_dialog.show()
-                            QApplication.processEvents()  # Force UI update
-
-                            # CRITICAL FIX: Explicitly center face detection progress dialog on main window
-                            # This ensures the dialog appears in the center of the application geometry
-                            try:
-                                # More robust centering with retries
-                                def center_dialog(dialog):
-                                    """Center dialog with retry mechanism"""
-                                    dialog.adjustSize()
-                                    QApplication.processEvents()
-                                    
-                                    parent_rect = self.main.geometry()
-                                    dialog_rect = dialog.geometry()
-                                    
-                                    center_x = parent_rect.x() + (parent_rect.width() - dialog_rect.width()) // 2
-                                    center_y = parent_rect.y() + (parent_rect.height() - dialog_rect.height()) // 2
-                                    
-                                    dialog.move(center_x, center_y)
-                                    return center_x, center_y
-                                
-                                # Initial centering attempt
-                                center_x, center_y = center_dialog(progress_dialog)
-                                self.logger.debug(f"Face detection progress dialog centered at ({center_x}, {center_y})")
-                                
-                                # Additional centering after a brief delay
-                                QTimer.singleShot(50, lambda: center_dialog(progress_dialog))
-                                
-                            except Exception as e:
-                                self.logger.warning(f"Could not center face detection progress dialog: {e}")
-
-                            # Run face detection worker
-                            from workers.face_detection_worker import FaceDetectionWorker
-                            face_worker = FaceDetectionWorker(current_project_id)
-
-                            # Connect progress signals to update dialog
-                            def update_progress(current, total, filename):
-                                percent = int((current / total) * 80) if total > 0 else 0  # 80% for detection
-                                progress_bar.setValue(percent)
-                                status_label.setText(tr("messages.progress_detecting_faces", current=current, total=total))
-                                detail_label.setText(tr("messages.progress_processing_file", filename=filename))
-                                QApplication.processEvents()
-
-                            face_worker.signals.progress.connect(update_progress)
-
-                            # Update initial status
-                            status_label.setText(tr("messages.progress_loading_models"))
-                            detail_label.setText(tr("messages.progress_models_first_run"))
-                            QApplication.processEvents()
-
-                            # CRITICAL FIX: Run face detection asynchronously using QThreadPool
-                            # DO NOT call face_worker.run() directly - it blocks the main thread!
-
-                            def on_face_detection_finished(success_count, failed_count, total_faces):
-                                """Handle face detection completion"""
+                        # Wire FacePipelineService progress to JobManager
+                        def _on_face_progress(step_name, message, pid):
+                            if self._face_job_id is not None:
                                 try:
-                                    self.logger.info(f"Face detection completed: {total_faces} faces detected in {success_count} images")
+                                    from services.job_manager import get_job_manager
+                                    mgr = get_job_manager()
+                                    mgr.report_progress(self._face_job_id, 50, 100,
+                                                        f"{step_name}: {message}")
+                                    mgr.report_log(self._face_job_id, message)
+                                except Exception:
+                                    pass
 
-                                    # Update for clustering phase
-                                    if face_config.get("clustering_enabled", True) and total_faces > 0:
-                                        progress_bar.setValue(85)
-                                        status_label.setText(tr("messages.progress_grouping_faces"))
-                                        detail_label.setText(tr("messages.progress_clustering_faces", total_faces=total_faces))
-                                        QApplication.processEvents()
+                        if self._face_job_id is not None:
+                            try:
+                                svc.progress.connect(_on_face_progress)
+                            except Exception:
+                                pass
 
-                                        self.logger.info("Starting face clustering...")
+                        def _on_face_pipeline_done(results, pid):
+                            # Disconnect to prevent accumulation across scans
+                            try:
+                                svc.finished.disconnect(_on_face_pipeline_done)
+                                svc.error.disconnect(_on_face_pipeline_error)
+                            except (RuntimeError, TypeError):
+                                pass
+                            try:
+                                svc.progress.disconnect(_on_face_progress)
+                            except (RuntimeError, TypeError):
+                                pass
+                            self._scan_operations_pending.discard("face_pipeline")
+                            self.logger.info(f"Face pipeline complete for project {pid}. Remaining: {self._scan_operations_pending}")
 
-                                        from workers.face_cluster_worker import cluster_faces
-                                        cluster_params = face_config.get_clustering_params()
+                            faces = results.get("faces_detected", 0) if isinstance(results, dict) else 0
+                            clusters = results.get("clusters_created", 0) if isinstance(results, dict) else 0
+                            if self._face_job_id is not None:
+                                try:
+                                    from services.job_manager import get_job_manager
+                                    get_job_manager().complete_tracked_job(
+                                        self._face_job_id, success=True,
+                                        stats={"faces": faces, "clusters": clusters},
+                                    )
+                                except Exception:
+                                    pass
+                                self._face_job_id = None
 
-                                        # CRITICAL FIX: Run clustering asynchronously to avoid UI freeze
-                                        # DO NOT call cluster_faces() directly - it blocks during DBSCAN computation!
+                            self._safe_refresh_people_section()
+                            self._check_and_trigger_final_refresh()
 
-                                        def run_clustering_async():
-                                            """Run clustering in background thread"""
-                                            try:
-                                                cluster_faces(
-                                                    current_project_id,
-                                                    eps=cluster_params["eps"],
-                                                    min_samples=cluster_params["min_samples"]
-                                                )
-                                                self.logger.info("Face clustering completed")
-                                            except Exception as e:
-                                                self.logger.error(f"Error during clustering: {e}", exc_info=True)
+                        def _on_face_pipeline_error(msg, pid):
+                            try:
+                                svc.finished.disconnect(_on_face_pipeline_done)
+                                svc.error.disconnect(_on_face_pipeline_error)
+                            except (RuntimeError, TypeError):
+                                pass
+                            try:
+                                svc.progress.disconnect(_on_face_progress)
+                            except (RuntimeError, TypeError):
+                                pass
+                            self._scan_operations_pending.discard("face_pipeline")
+                            self.logger.error(f"Face pipeline error for project {pid}: {msg}")
+                            if self._face_job_id is not None:
+                                try:
+                                    from services.job_manager import get_job_manager
+                                    get_job_manager().complete_tracked_job(
+                                        self._face_job_id, success=False,
+                                        error=str(msg)[:80],
+                                    )
+                                except Exception:
+                                    pass
+                                self._face_job_id = None
+                            self._check_and_trigger_final_refresh()
 
-                                        def on_clustering_finished():
-                                            """Handle clustering completion on main thread"""
-                                            try:
-                                                # Final update
-                                                progress_bar.setValue(100)
-                                                status_label.setText(tr("messages.progress_complete"))
-                                                detail_label.setText(tr("messages.progress_faces_found", total_faces=total_faces, success_count=success_count))
-                                                QApplication.processEvents()
+                        svc.finished.connect(_on_face_pipeline_done)
+                        svc.error.connect(_on_face_pipeline_error)
 
-                                                # CRITICAL FIX: Refresh Google Photos layout People grid after clustering
-                                                # Without this, user must manually toggle layouts to see faces
-                                                self.logger.info("Refreshing People grid after face clustering...")
-                                                try:
-                                                    if hasattr(self.main, 'layout_manager') and self.main.layout_manager:
-                                                        current_layout_id = self.main.layout_manager._current_layout_id
-                                                        if current_layout_id == "google":
-                                                            current_layout = self.main.layout_manager._current_layout
-                                                            if current_layout and hasattr(current_layout, '_build_people_tree'):
-                                                                # Refresh People grid with newly clustered faces
-                                                                current_layout._build_people_tree()
-                                                                self.logger.info("✓ People grid refreshed with detected faces")
-
-                                                                # CRITICAL FIX: Also refresh People section in accordion sidebar
-                                                                # Without this, sidebar doesn't update until user toggles layouts
-                                                                if hasattr(current_layout, 'accordion_sidebar'):
-                                                                    self.logger.info("Refreshing People section in sidebar...")
-                                                                    current_layout.accordion_sidebar.reload_people_section()
-                                                                    self.logger.info("✓ People section in sidebar refreshed")
-                                                except Exception as refresh_err:
-                                                    self.logger.error(f"Failed to refresh People grid: {refresh_err}", exc_info=True)
-
-                                                # Close dialog after short delay
-                                                QTimer.singleShot(1500, progress_dialog.accept)
-                                            except Exception as e:
-                                                self.logger.error(f"Error in clustering completion handler: {e}", exc_info=True)
-                                                progress_dialog.accept()
-
-                                        # Run clustering in thread pool (NON-BLOCKING!)
-                                        from PySide6.QtCore import QRunnable, QThreadPool, pyqtSignal, QObject
-
-                                        class ClusterSignals(QObject):
-                                            finished = pyqtSignal()
-
-                                        class ClusterRunnable(QRunnable):
-                                            def __init__(self, cluster_func):
-                                                super().__init__()
-                                                self.cluster_func = cluster_func
-                                                self.signals = ClusterSignals()
-
-                                            def run(self):
-                                                self.cluster_func()
-                                                self.signals.finished.emit()
-
-                                        cluster_runnable = ClusterRunnable(run_clustering_async)
-                                        cluster_runnable.signals.finished.connect(on_clustering_finished)
-                                        QThreadPool.globalInstance().start(cluster_runnable)
-
-                                    else:
-                                        # No clustering needed, finish immediately
-                                        progress_bar.setValue(100)
-                                        status_label.setText(tr("messages.progress_complete"))
-                                        detail_label.setText(tr("messages.progress_faces_found", total_faces=total_faces, success_count=success_count))
-                                        QApplication.processEvents()
-
-                                        # Close dialog after short delay
-                                        QTimer.singleShot(1500, progress_dialog.accept)
-
-                                except Exception as e:
-                                    self.logger.error(f"Error in face detection completion handler: {e}", exc_info=True)
-                                    progress_dialog.accept()
-
-                            # Connect finished signal
-                            face_worker.signals.finished.connect(on_face_detection_finished)
-
-                            # Run asynchronously in background thread (NON-BLOCKING!)
-                            QThreadPool.globalInstance().start(face_worker)
+                        started = svc.start(
+                            project_id=current_project_id,
+                            model=face_config.get("model", "buffalo_l"),
+                        )
+                        if started:
+                            self.logger.info("Face pipeline dispatched via FacePipelineService")
+                        else:
+                            # Pipeline didn't start (already running or invalid)
+                            self._scan_operations_pending.discard("face_pipeline")
+                            self.logger.info("Face pipeline already running or project invalid")
                     else:
-                        self.logger.warning(f"Face detection backend '{backend}' is not available")
-                        self.logger.warning(f"Available backends: {[k for k, v in availability.items() if v]}")
+                        self.logger.warning("Face backend '%s' not available (available: %s)",
+                                            backend, [k for k, v in availability.items() if v])
                 else:
-                    self.logger.debug("Face detection is disabled or auto-clustering is off")
+                    self.logger.debug("Face detection disabled or auto-clustering off")
 
             except ImportError as e:
-                self.logger.debug(f"Face detection modules not available: {e}")
+                self.logger.debug("Face detection modules not available: %s", e)
             except Exception as e:
-                self.logger.error(f"Face detection error: {e}", exc_info=True)
-                # Don't fail the entire scan if face detection fails
-                QMessageBox.warning(
-                    self.main,
-                    "Face Detection Error",
-                    f"Face detection failed:\n{str(e)}\n\nThe scan completed successfully, but faces were not detected."
-                )
+                self.logger.error("Face detection setup error: %s", e, exc_info=True)
 
-            # CRITICAL: Update sidebar project_id if it was None (fresh database)
-            # The scan creates the first project, so we need to tell the sidebar about it
-            if self.main.sidebar.project_id is None:
-                self.logger.info("Sidebar project_id was None, updating to default project")
+            # Delegate project_id propagation to the active layout instead
+            # of directly poking hidden sidebar/grid widgets that may belong
+            # to an inactive layout (e.g. CurrentLayout sidebar when Google is active).
+            active_pid = self._get_active_project_id()
+            if active_pid is None:
                 from app_services import get_default_project_id
-                default_pid = get_default_project_id()
-                self.logger.debug(f"Setting sidebar project_id to {default_pid}")
-                self.main.sidebar.set_project(default_pid)
-                if hasattr(self.main.sidebar, "tabs_controller"):
-                    self.main.sidebar.tabs_controller.project_id = default_pid
-                sidebar_was_updated = True
+                active_pid = get_default_project_id()
 
-            # CRITICAL: Also update grid's project_id if it was None
-            if self.main.grid.project_id is None:
-                self.logger.info("Grid project_id was None, updating to default project")
-                from app_services import get_default_project_id
-                default_pid = get_default_project_id()
-                self.logger.debug(f"Setting grid project_id to {default_pid}")
-                self.main.grid.project_id = default_pid
+            if active_pid is not None:
+                if hasattr(self.main, 'layout_manager') and self.main.layout_manager:
+                    layout = self.main.layout_manager.get_current_layout()
+                    if layout:
+                        cur = layout.get_current_project() if hasattr(layout, 'get_current_project') else None
+                        if cur is None:
+                            layout.set_project(active_pid)
+                            self.logger.info(f"Propagated project_id={active_pid} to active layout")
+                            sidebar_was_updated = True
+
+                # Also ensure CurrentLayout's grid/sidebar are in sync
+                # (they may still be None if Google Layout was active at startup)
+                if hasattr(self.main, 'grid') and self.main.grid:
+                    if getattr(self.main.grid, 'project_id', None) is None:
+                        self.main.grid.project_id = active_pid
+                if hasattr(self.main, 'sidebar') and self.main.sidebar:
+                    if getattr(self.main.sidebar, 'project_id', None) is None:
+                        self.main.sidebar.set_project(active_pid)
+                        sidebar_was_updated = True
         except Exception as e:
             self.logger.error(f"Error building date branches: {e}", exc_info=True)
 
@@ -1092,6 +843,69 @@ class ScanController(QObject):
 
         # PHASE 2 Task 2.2: OLD refresh_ui() moved to _finalize_scan_refresh()
         # This ensures only ONE refresh happens after ALL async operations complete
+
+    def _safe_refresh_people_section(self):
+        """Safely refresh the People section after face pipeline completes.
+
+        Uses try/except to handle cases where widgets may have been
+        destroyed since the background job started.
+        """
+        try:
+            # Guard: check main window is still alive
+            if not self.main or not hasattr(self.main, 'layout_manager'):
+                return
+
+            lm = self.main.layout_manager
+            if not lm:
+                return
+
+            current_layout_id = lm._current_layout_id
+            if current_layout_id == "google":
+                current_layout = lm._current_layout
+                if current_layout and hasattr(current_layout, 'accordion_sidebar'):
+                    accordion = current_layout.accordion_sidebar
+                    if getattr(accordion, '_disposed', False):
+                        self.logger.debug("Accordion disposed, skipping people refresh")
+                        return
+                    if hasattr(accordion, 'reload_people_section'):
+                        accordion.reload_people_section()
+                        self.logger.info("Refreshed people section after face pipeline")
+                    if hasattr(current_layout, '_build_people_tree'):
+                        current_layout._build_people_tree()
+                        self.logger.debug("Refreshed people grid after face pipeline")
+            elif hasattr(self.main, 'sidebar') and self.main.sidebar:
+                try:
+                    if getattr(self.main.sidebar, '_disposed', False):
+                        self.logger.debug("Sidebar disposed, skipping refresh")
+                        return
+                    if self.main.sidebar.isVisible() and hasattr(self.main.sidebar, 'reload'):
+                        self.main.sidebar.reload()
+                        self.logger.debug("Refreshed sidebar after face pipeline")
+                except RuntimeError:
+                    # Widget was deleted — safe to ignore
+                    self.logger.debug("Sidebar widget deleted, skipping refresh")
+        except Exception as e:
+            self.logger.warning("Failed to refresh people section: %s", e)
+
+    def _refresh_duplicates_section(self):
+        """Refresh the duplicates section/tab in the sidebar after background pipeline completes."""
+        try:
+            if hasattr(self.main, 'layout_manager') and self.main.layout_manager:
+                current_layout_id = self.main.layout_manager._current_layout_id
+                if current_layout_id == "google":
+                    current_layout = self.main.layout_manager._current_layout
+                    if current_layout and hasattr(current_layout, 'accordion_sidebar'):
+                        accordion = current_layout.accordion_sidebar
+                        if hasattr(accordion, 'reload_section'):
+                            accordion.reload_section("duplicates")
+                            self.logger.debug("Refreshed accordion duplicates section after pipeline")
+                elif hasattr(self.main, 'sidebar') and self.main.sidebar:
+                    tabs = getattr(self.main.sidebar, 'tabs_controller', None)
+                    if tabs is not None and hasattr(tabs, 'refresh_tab'):
+                        tabs.refresh_tab("duplicates")
+                        self.logger.debug("Refreshed sidebar duplicates tab after pipeline")
+        except Exception as e:
+            self.logger.warning(f"Failed to refresh duplicates section after pipeline: {e}")
 
     def _check_and_trigger_final_refresh(self):
         """
@@ -1123,80 +937,57 @@ class ScanController(QObject):
         try:
             progress.setLabelText(tr("messages.progress_refreshing_sidebar"))
             progress.setValue(3)
-            QApplication.processEvents()
 
             self.logger.info("Reloading sidebar after date branches built...")
-            # CRITICAL FIX: Only reload sidebar if it wasn't just updated via set_project()
-            # set_project() already calls reload(), so reloading again causes double refresh crash
-            if not sidebar_was_updated:
-                # Check which layout is active and reload appropriate sidebar
-                if hasattr(self.main, 'layout_manager') and self.main.layout_manager:
-                    current_layout_id = self.main.layout_manager._current_layout_id
-                    if current_layout_id == "google":
-                        # Google Layout uses AccordionSidebar
-                        current_layout = self.main.layout_manager._current_layout
-                        if current_layout and hasattr(current_layout, 'accordion_sidebar'):
-                            self.logger.debug("Reloading AccordionSidebar for Google Layout...")
-                            # CRITICAL FIX: Call set_project() to propagate project_id to ALL sections
-                            # Simply setting accordion_sidebar.project_id is not enough - must call
-                            # set_project() which updates all individual section modules
-                            # This ensures that when sections are expanded later, they have valid project_id
-                            if hasattr(self.main.grid, 'project_id') and self.main.grid.project_id is not None:
-                                self.logger.debug(f"Setting accordion_sidebar project_id to {self.main.grid.project_id}")
-                                current_layout.accordion_sidebar.set_project(self.main.grid.project_id)
-                                self.logger.debug("AccordionSidebar project_id propagated to all sections")
-                            else:
-                                self.logger.warning("Cannot set accordion_sidebar project_id - grid.project_id is None")
-                    elif hasattr(self.main.sidebar, "reload"):
-                        # Current Layout uses old SidebarQt
+            # Refresh the correct sidebar for the active layout.
+            # IMPORTANT: Google Layout's AccordionSidebar must ALWAYS be
+            # refreshed after scan (new folders/dates/etc exist in DB).
+            # The sidebar_was_updated flag only applies to CurrentLayout's
+            # SidebarQt, not the accordion.
+            if hasattr(self.main, 'layout_manager') and self.main.layout_manager:
+                current_layout_id = self.main.layout_manager._current_layout_id
+                if current_layout_id == "google":
+                    # Always reload accordion after scan — sections have new data
+                    current_layout = self.main.layout_manager._current_layout
+                    if current_layout and hasattr(current_layout, 'accordion_sidebar'):
+                        accordion = current_layout.accordion_sidebar
+                        active_pid = self._get_active_project_id()
+                        if active_pid is not None:
+                            self.logger.info(f"Refreshing AccordionSidebar after scan (project={active_pid})")
+                            accordion.set_project(active_pid)
+                        elif hasattr(accordion, 'reload_all_sections'):
+                            accordion.reload_all_sections()
+                elif not sidebar_was_updated:
+                    # CurrentLayout sidebar — only reload if not already updated
+                    if hasattr(self.main, 'sidebar') and self.main.sidebar:
+                        if hasattr(self.main.sidebar, "reload"):
+                            self.main.sidebar.reload()
+                            self.logger.debug("Sidebar reload completed")
+            elif not sidebar_was_updated:
+                # Fallback: no layout manager
+                if hasattr(self.main, 'sidebar') and self.main.sidebar:
+                    if hasattr(self.main.sidebar, "reload"):
                         self.main.sidebar.reload()
-                        self.logger.debug("Sidebar reload completed (mode-aware)")
-                elif hasattr(self.main.sidebar, "reload"):
-                    # Fallback to old sidebar if layout manager not available
-                    self.main.sidebar.reload()
-                    self.logger.debug("Sidebar reload completed (fallback)")
-            elif sidebar_was_updated:
-                self.logger.debug("Skipping sidebar reload - already updated by set_project()")
 
-            # Phase 3B: Refresh duplicates section/tab after scan if duplicate detection was enabled
-            if hasattr(self, '_duplicate_detection_enabled') and self._duplicate_detection_enabled:
-                self.logger.info("Refreshing duplicates section after scan...")
-                try:
-                    # Check which layout is active
-                    if hasattr(self.main, 'layout_manager') and self.main.layout_manager:
-                        current_layout_id = self.main.layout_manager._current_layout_id
-                        if current_layout_id == "google":
-                            # Google Layout: Refresh AccordionSidebar duplicates section
-                            current_layout = self.main.layout_manager._current_layout
-                            if current_layout and hasattr(current_layout, 'accordion_sidebar'):
-                                accordion = current_layout.accordion_sidebar
-                                if hasattr(accordion, 'reload_section'):
-                                    accordion.reload_section("duplicates")
-                                    self.logger.debug("✓ AccordionSidebar duplicates section refreshed")
-                        elif hasattr(self.main.sidebar, "tabs_controller"):
-                            # Current Layout: Refresh SidebarTabs duplicates tab
-                            tabs = self.main.sidebar.tabs_controller
-                            if hasattr(tabs, 'refresh_tab'):
-                                tabs.refresh_tab("duplicates")
-                                self.logger.debug("✓ SidebarTabs duplicates tab refreshed")
-                except Exception as e:
-                    self.logger.warning(f"Failed to refresh duplicates section: {e}")
+            # Phase 3B: Duplicates section refresh is now handled by the
+            # PostScanPipelineWorker's finished signal → _refresh_duplicates_section()
 
         except Exception as e:
             self.logger.error(f"Error reloading sidebar: {e}", exc_info=True)
 
-        # CRITICAL FIX: Always reload grid - needed for Current layout even if Google is active
+        # Reload CurrentLayout grid only if it has a valid project_id
+        # (avoids "project_id is None, skipping reload" warning when Google Layout is active)
         try:
-            if hasattr(self.main.grid, "reload"):
-                self.main.grid.reload()
-                self.logger.debug("Grid reload completed")
+            if hasattr(self.main, 'grid') and self.main.grid and hasattr(self.main.grid, "reload"):
+                if getattr(self.main.grid, 'project_id', None) is not None:
+                    self.main.grid.reload()
+                    self.logger.debug("Grid reload completed")
         except Exception as e:
             self.logger.error(f"Error reloading grid: {e}", exc_info=True)
 
         try:
             progress.setLabelText(tr("messages.progress_loading_thumbnails"))
             progress.setValue(4)
-            QApplication.processEvents()
 
             # reload thumbnails after scan
             if self.main.thumbnails and hasattr(self.main.grid, "get_visible_paths"):
@@ -1220,24 +1011,27 @@ class ScanController(QObject):
             self.logger.error(f"Error refreshing Google Photos layout: {e}", exc_info=True)
             # Don't let layout refresh errors break scan completion
 
-        # CRITICAL FIX: Close scan completion message box if still open
-        try:
-            if hasattr(self.main, '_scan_complete_msgbox') and self.main._scan_complete_msgbox:
-                self.main._scan_complete_msgbox.close()
-                self.main._scan_complete_msgbox.deleteLater()
-                self.main._scan_complete_msgbox = None
-        except Exception as e:
-            self.logger.error(f"Error closing scan message box: {e}")
-
-        # Close progress dialog
+        # Close progress stub / status bar
         try:
             progress.close()
         except Exception as e:
             self.logger.error(f"Error closing progress dialog: {e}")
 
-        # Final status message
-        self.main.statusBar().showMessage(f"✓ Scan complete: {p} photos, {v} videos indexed", 5000)
-        self.logger.info(f"✅ Final refresh complete: {p} photos, {v} videos")
+        # Final status message — auto-hides after 5 s
+        self.main.scan_ui_finish(f"Scan complete: {p} photos, {v} videos indexed", 5000)
+        self.logger.info(f"Final refresh complete: {p} photos, {v} videos")
+
+        # Mark scan complete via JobManager
+        if self._scan_job_id is not None:
+            try:
+                from services.job_manager import get_job_manager
+                get_job_manager().complete_tracked_job(
+                    self._scan_job_id, success=True,
+                    stats={"photos": p, "videos": v},
+                )
+            except Exception:
+                pass
+            self._scan_job_id = None
 
         # PHASE 2 Task 2.2: Reset state for next scan
         self._scan_refresh_scheduled = False
@@ -1269,21 +1063,17 @@ class ScanController(QObject):
                     current_layout.refresh_after_scan()
                     self.logger.info("✓ Layout refreshed with updated stack data")
                 else:
-                    # Fallback: refresh sidebar and grid directly
+                    # Fallback: refresh sidebar and grid directly (only if they have a project)
                     self.logger.info("Refreshing sidebar and grid to update stack badges...")
-                    if hasattr(self.main.sidebar, "reload"):
-                        self.main.sidebar.reload()
-                    if hasattr(self.main.grid, "reload"):
-                        self.main.grid.reload()
-                    self.logger.info("✓ Sidebar and grid refreshed with updated stack data")
+                    if hasattr(self.main, 'sidebar') and self.main.sidebar:
+                        if self.main.sidebar.isVisible() and hasattr(self.main.sidebar, "reload"):
+                            self.main.sidebar.reload()
+                    if hasattr(self.main, 'grid') and self.main.grid:
+                        if getattr(self.main.grid, 'project_id', None) is not None and hasattr(self.main.grid, "reload"):
+                            self.main.grid.reload()
+                    self.logger.info("Sidebar and grid refreshed with updated stack data")
             else:
-                # Legacy fallback
-                self.logger.info("Refreshing legacy components to update stack badges...")
-                if hasattr(self.main.sidebar, "reload"):
-                    self.main.sidebar.reload()
-                if hasattr(self.main.grid, "reload"):
-                    self.main.grid.reload()
-                self.logger.info("✓ Legacy components refreshed with updated stack data")
+                self.logger.debug("No layout manager, skipping stack refresh")
                 
         except Exception as e:
             self.logger.error(f"Error refreshing UI after stack updates: {e}", exc_info=True)

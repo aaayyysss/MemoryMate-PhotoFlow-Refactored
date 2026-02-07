@@ -1,0 +1,58 @@
+--- services/photo_scan_service.py
++++ services/photo_scan_service.py
+@@ -403,6 +403,9 @@
+             all_files = self._discover_files(root_path, ignore_set)
+             all_videos = self._discover_videos(root_path, ignore_set)
+ 
++            all_files = self._dedup_paths(all_files)
++            all_videos = self._dedup_paths(all_videos)
++
+             total_files = len(all_files)
+             total_videos = len(all_videos)
+             self._total_photos = total_files
+@@ -622,6 +625,27 @@
+         self._cancelled = True
+         logger.info("Scan cancellation requested")
+ 
++
++    def _dedup_paths(self, paths):
++        """De-duplicate candidate paths while preserving order.
++
++        Rationale: scanning multiple roots, symlink-like mounts, or case-insensitive paths can
++        yield duplicates, which wastes IO and can create subtle UI issues (double counts,
++        duplicate DB writes).
++        """
++        seen = set()
++        out = []
++        for p in paths or []:
++            try:
++                key = os.path.normcase(str(p.resolve()))
++            except Exception:
++                key = os.path.normcase(str(p))
++            if key in seen:
++                continue
++            seen.add(key)
++            out.append(p)
++        return out
++
+     def _discover_files(self, root_path: Path, ignore_folders: Set[str]) -> List[Path]:
+         """
+         Discover all image files in directory tree.
+@@ -652,6 +676,8 @@
+                 if ext in self.IMAGE_EXTENSIONS:  # CRITICAL FIX: Use IMAGE_EXTENSIONS, not SUPPORTED_EXTENSIONS
+                     image_files.append(Path(dirpath) / filename)
+ 
++        image_files = self._dedup_paths(image_files)
++
+         return image_files
+ 
+     def _discover_videos(self, root_path: Path, ignore_folders: Set[str]) -> List[Path]:
+@@ -683,6 +709,8 @@
+                 ext = Path(filename).suffix.lower()
+                 if ext in self.VIDEO_EXTENSIONS:
+                     video_files.append(Path(dirpath) / filename)
++
++        video_files = self._dedup_paths(video_files)
+ 
+         return video_files
+ 

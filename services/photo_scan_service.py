@@ -264,10 +264,6 @@ class PhotoScanService:
             current_file=str(file_path)
         )
 
-        # DEBUG: Verify message content
-        print(f"[SCAN] 🔍 Emitting progress: percent={percentage}, message='{status_line}'")
-        sys.stdout.flush()
-
         try:
             progress_callback(progress)
             if update_last_emit:
@@ -276,6 +272,72 @@ class PhotoScanService:
             logger.error(f"Progress callback error: {e}", exc_info=True)
             print(f"[SCAN] ⚠️ Progress callback failed: {e}")
             sys.stdout.flush()
+
+    # ------------------------------------------------------------------
+    # Quick pre-scan statistics (no metadata, no hashes — just counting)
+    # ------------------------------------------------------------------
+    def estimate_repository_stats(
+        self,
+        root_folder: str,
+        options: dict | None = None,
+        should_cancel=None,
+    ) -> dict:
+        """Walk *root_folder* and return fast file-count statistics.
+
+        This is intentionally "dumb but fast" — no EXIF, no hashes, only
+        ``os.walk`` + ``os.stat``.  Used by the PreScanOptionsDialog to show
+        a quick preflight summary before the real scan starts.
+        """
+        options = options or {}
+        ignore_hidden = bool(options.get("ignore_hidden", True))
+
+        photo_ext = {
+            ".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif",
+            ".tif", ".tiff", ".bmp", ".gif",
+        }
+        video_ext = {".mp4", ".mov", ".mkv", ".avi", ".m4v", ".wmv"}
+
+        photos = 0
+        videos = 0
+        folders = 0
+        bytes_total = 0
+
+        for dirpath, dirnames, filenames in os.walk(root_folder):
+            if should_cancel and should_cancel():
+                break
+
+            if ignore_hidden and os.path.basename(dirpath).startswith("."):
+                dirnames.clear()  # prune hidden subtrees
+                continue
+
+            folders += 1
+
+            for fn in filenames:
+                if should_cancel and should_cancel():
+                    break
+
+                if ignore_hidden and fn.startswith("."):
+                    continue
+
+                ext = os.path.splitext(fn)[1].lower()
+                full = os.path.join(dirpath, fn)
+
+                try:
+                    bytes_total += os.stat(full).st_size
+                except OSError:
+                    pass
+
+                if ext in photo_ext:
+                    photos += 1
+                elif ext in video_ext:
+                    videos += 1
+
+        return {
+            "photos": photos,
+            "videos": videos,
+            "folders": folders,
+            "bytes": bytes_total,
+        }
 
     def scan_repository(self,
                        root_folder: str,
@@ -340,6 +402,13 @@ class PhotoScanService:
 
             all_files = self._discover_files(root_path, ignore_set)
             all_videos = self._discover_videos(root_path, ignore_set)
+
+            # De-duplicate by resolved canonical path.
+            # Without this, symlinks, junctions, or case-insensitive paths
+            # (Windows) can cause the same file to appear twice, leading to
+            # duplicate DB rows, doubled folder_ids, and extra background work.
+            all_files = self._deduplicate_paths(all_files)
+            all_videos = self._deduplicate_paths(all_videos)
 
             total_files = len(all_files)
             total_videos = len(all_videos)
@@ -413,27 +482,15 @@ class PhotoScanService:
                         logger.info("Scan cancelled by user")
                         break
 
-                    # DIAGNOSTIC: Log which file we're about to process
-                    print(f"[SCAN] Starting file {i}/{total_files}: {file_path.name}")
-                    logger.info(f"[Scan] File {i}/{total_files}: {file_path.name}")
-
-                    # Update progress details for UI - mark as starting
+                    # Update progress details for UI — mark as starting
                     self._last_file_details['filename'] = file_path.name
                     self._last_file_details['status'] = 'starting'
                     self._last_file_details['width'] = None
                     self._last_file_details['height'] = None
                     self._last_file_details['date_taken'] = None
 
-                    # Emit immediate progress update so dialog shows starting message before processing
-                    if progress_callback:
-                        self._emit_progress_event(
-                            progress_callback=progress_callback,
-                            file_path=file_path,
-                            file_index=i,
-                            total_files=total_files,
-                            row=None,
-                            update_last_emit=False
-                        )
+                    # NOTE: Removed per-file "starting" emit to prevent UI stutter.
+                    # The main throttled emit below (every 0.35 s / 25 files) is sufficient.
 
                     try:
                         # Process file
@@ -460,17 +517,11 @@ class PhotoScanService:
                     folders_seen.add(folder_path)
 
                     batch_rows.append(row)
-                    print(f"[SCAN] Added to batch: {file_path.name} [batch size: {len(batch_rows)}/{self.batch_size}]")
-                    sys.stdout.flush()  # Force log output immediately
 
                     # Flush batch if needed
                     if len(batch_rows) >= self.batch_size:
-                        print(f"[SCAN] ⚡ Writing batch to database: {len(batch_rows)} photos")
-                        sys.stdout.flush()
                         logger.info(f"Writing batch of {len(batch_rows)} photos to database")
                         self._write_batch(batch_rows, project_id)
-                        print(f"[SCAN] ✓ Batch write complete")
-                        sys.stdout.flush()
                         batch_rows.clear()
 
                     self._photos_processed = i
@@ -578,6 +629,32 @@ class PhotoScanService:
         self._cancelled = True
         logger.info("Scan cancellation requested")
 
+    def _deduplicate_paths(self, paths: List[Path]) -> List[Path]:
+        """De-duplicate candidate paths while preserving order.
+
+        Symlinks, NTFS junctions, and case-insensitive filesystems can make
+        os.walk() yield the same physical file under different paths, causing
+        doubled DB rows and wasted background work.
+
+        Uses os.path.normcase (platform-aware) instead of .lower() so the
+        behaviour is correct on both Windows (case-insensitive) and Linux
+        (case-sensitive).
+        """
+        seen: set = set()
+        unique: List[Path] = []
+        for p in paths or []:
+            try:
+                key = os.path.normcase(str(p.resolve()))
+            except OSError:
+                key = os.path.normcase(str(p))
+            if key not in seen:
+                seen.add(key)
+                unique.append(p)
+        removed = len(paths) - len(unique)
+        if removed > 0:
+            logger.info(f"De-duplicated {removed} duplicate path(s) from {len(paths)} candidates")
+        return unique
+
     def _discover_files(self, root_path: Path, ignore_folders: Set[str]) -> List[Path]:
         """
         Discover all image files in directory tree.
@@ -608,7 +685,7 @@ class PhotoScanService:
                 if ext in self.IMAGE_EXTENSIONS:  # CRITICAL FIX: Use IMAGE_EXTENSIONS, not SUPPORTED_EXTENSIONS
                     image_files.append(Path(dirpath) / filename)
 
-        return image_files
+        return self._deduplicate_paths(image_files)
 
     def _discover_videos(self, root_path: Path, ignore_folders: Set[str]) -> List[Path]:
         """
@@ -640,7 +717,7 @@ class PhotoScanService:
                 if ext in self.VIDEO_EXTENSIONS:
                     video_files.append(Path(dirpath) / filename)
 
-        return video_files
+        return self._deduplicate_paths(video_files)
 
     def _get_ignore_folders_from_settings(self) -> Set[str]:
         """
@@ -908,7 +985,7 @@ class PhotoScanService:
                 self._last_file_details['status'] = 'extracting'
 
                 future = executor.submit(self.metadata_service.extract_basic_metadata, str(file_path))
-                width, height, date_taken, gps_lat, gps_lon = future.result(timeout=metadata_timeout)
+                width, height, date_taken, gps_lat, gps_lon, image_content_hash = future.result(timeout=metadata_timeout)
 
                 # Store extracted metadata for progress updates
                 self._last_file_details['width'] = width
@@ -938,7 +1015,7 @@ class PhotoScanService:
             # Just get dimensions without EXIF (with timeout)
             try:
                 future = executor.submit(self.metadata_service.extract_basic_metadata, str(file_path))
-                width, height, _, gps_lat, gps_lon = future.result(timeout=metadata_timeout)
+                width, height, _, gps_lat, gps_lon, image_content_hash = future.result(timeout=metadata_timeout)
             except FuturesTimeoutError:
                 logger.warning(f"Dimension extraction timeout for {path_str} (5s limit)")
                 try:
@@ -988,10 +1065,11 @@ class PhotoScanService:
         # Return row tuple for batch insert
         # BUG FIX #7: Include created_ts, created_date, created_year for date hierarchy
         # LONG-TERM FIX (2026-01-08): Include gps_latitude, gps_longitude for Locations section
+        # v9.3.0: Include image_content_hash for pixel-based embedding staleness detection
         # (path, folder_id, size_kb, modified, width, height, date_taken, tags,
-        #  created_ts, created_date, created_year, gps_latitude, gps_longitude)
+        #  created_ts, created_date, created_year, gps_latitude, gps_longitude, image_content_hash)
         return (path_str, folder_id, size_kb, mtime, width, height, date_taken, None,
-                created_ts, created_date, created_year, gps_lat, gps_lon)
+                created_ts, created_date, created_year, gps_lat, gps_lon, image_content_hash)
 
     def _ensure_folder_hierarchy(self, folder_path: Path, root_path: Path, project_id: int) -> int:
         """
@@ -1052,7 +1130,8 @@ class PhotoScanService:
 
         Args:
             rows: List of tuples (path, folder_id, size_kb, modified, width, height, date_taken, tags,
-                                   created_ts, created_date, created_year, gps_latitude, gps_longitude)
+                                   created_ts, created_date, created_year, gps_latitude, gps_longitude,
+                                   image_content_hash)
             project_id: Project ID for photo ownership
         """
         if not rows:
@@ -1078,10 +1157,11 @@ class PhotoScanService:
                 try:
                     # BUG FIX #7: Unpack row with created_* fields
                     # LONG-TERM FIX (2026-01-08): Include GPS coordinates
-                    path, folder_id, size_kb, modified, width, height, date_taken, tags, created_ts, created_date, created_year, gps_lat, gps_lon = row
+                    # v9.3.0: Include image_content_hash for pixel-based staleness
+                    path, folder_id, size_kb, modified, width, height, date_taken, tags, created_ts, created_date, created_year, gps_lat, gps_lon, image_content_hash = row
                     print(f"[SCAN] Writing individual photo {idx}/{len(rows)}: {os.path.basename(path)}")
                     self.photo_repo.upsert(path, folder_id, project_id, size_kb, modified, width, height,
-                                          date_taken, tags, created_ts, created_date, created_year, gps_lat, gps_lon)
+                                          date_taken, tags, created_ts, created_date, created_year, gps_lat, gps_lon, image_content_hash)
                 except Exception as e2:
                     print(f"[SCAN] ⚠️ Failed to write photo {idx}/{len(rows)}: {e2}")
                     logger.error(f"Failed to write individual photo {row[0]}: {e2}")

@@ -77,16 +77,11 @@ class VideosSection(BaseSection):
         def on_complete():
             try:
                 videos = work()
-                # Only emit if generation still matches
-                if current_gen == self._generation:
-                    self.signals.loaded.emit(current_gen, videos)
-                else:
-                    logger.debug(f"[VideosSection] Discarding stale data (gen {current_gen} vs {self._generation})")
+                self.signals.loaded.emit(current_gen, videos)
             except Exception as e:
                 logger.error(f"[VideosSection] Error in worker thread: {e}")
                 traceback.print_exc()
-                if current_gen == self._generation:
-                    self.signals.error.emit(current_gen, str(e))
+                self.signals.error.emit(current_gen, str(e))
 
         threading.Thread(target=on_complete, daemon=True).start()
 
@@ -353,17 +348,15 @@ class VideosSection(BaseSection):
 
     def _on_data_loaded(self, generation: int, videos: list):
         """Callback when videos data is loaded."""
+        self._loading = False
         if generation != self._generation:
             logger.debug(f"[VideosSection] Discarding stale data (gen {generation} vs {self._generation})")
             return
-
-        self._loading = False
         logger.info(f"[VideosSection] Data loaded successfully (gen {generation}, {len(videos)} videos)")
 
     def _on_error(self, generation: int, error_msg: str):
         """Callback when videos loading fails."""
+        self._loading = False
         if generation != self._generation:
             return
-
-        self._loading = False
         logger.error(f"[VideosSection] Load failed: {error_msg}")

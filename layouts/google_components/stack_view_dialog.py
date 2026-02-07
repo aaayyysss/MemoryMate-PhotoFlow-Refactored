@@ -1,5 +1,5 @@
 # layouts/google_components/stack_view_dialog.py
-# Version 01.02.00.00 dated 20260122
+# Version 01.02.00.02 dated 20260201
 # Stack comparison dialog for Google Layout
 
 """
@@ -23,6 +23,7 @@ from PySide6.QtGui import QFont, QColor, QPixmap
 from typing import Optional, List, Dict, Any
 from pathlib import Path
 from logging_config import get_logger
+from utils.qt_guards import connect_guarded
 
 logger = get_logger(__name__)
 
@@ -121,14 +122,24 @@ class StackMemberWidget(QWidget):
         self._load_thumbnail()
 
     def _init_ui(self):
+#        """Initialize UI components - compact layout."""
+#        layout = QVBoxLayout(self)
+#        layout.setSpacing(4)
+#        layout.setContentsMargins(6, 6, 6, 6)
+#
+#        # Thumbnail (compact size)
+#        self.thumbnail_label = QLabel()
+#        self.thumbnail_label.setFixedSize(160, 160)  # Reduced from 180
+
         """Initialize UI components - compact layout with fixed height."""
         layout = QVBoxLayout(self)
         layout.setSpacing(2)  # Minimal spacing
         layout.setContentsMargins(4, 4, 4, 4)
-
+ 
         # Thumbnail (compact size)
         self.thumbnail_label = QLabel()
         self.thumbnail_label.setFixedSize(160, 160)
+
         self.thumbnail_label.setAlignment(Qt.AlignCenter)
         self.thumbnail_label.setStyleSheet("""
             QLabel {
@@ -183,7 +194,7 @@ class StackMemberWidget(QWidget):
         logger.debug(f"[CHECKBOX_INIT] Connected clicked signal for photo_id={self.photo_id}, enabled={self.checkbox.isEnabled()}, isCheckable={self.checkbox.isCheckable()}")
         layout.addWidget(self.checkbox)
 
-        # Style and size policy - prevent vertical stretching in grid layout
+        # Style
         border_color = "#FFA500" if self.is_representative else "#e0e0e0"
         self.setStyleSheet(f"""
             StackMemberWidget {{
@@ -192,11 +203,12 @@ class StackMemberWidget(QWidget):
                 border-radius: 6px;
             }}
         """)
+        
         # Fix vertical stretching: set maximum height based on content
         # 160 (thumb) + 4*2 (margins) + 3*2 (spacing) + ~50 (labels+checkbox)
         self.setMaximumHeight(230)
         from PySide6.QtWidgets import QSizePolicy
-        self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
+        self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)        
 
     def _load_thumbnail(self):
         """Load thumbnail asynchronously (Phase 3: Progressive Loading)."""
@@ -221,7 +233,7 @@ class StackMemberWidget(QWidget):
                         # Google Photos style: center-crop to fill square
                         scaled = pixmap.scaled(
                             size, size,
-                            Qt.KeepAspectRatioByExpanding,
+                            Qt.KeepAspectRatio,
                             Qt.SmoothTransformation
                         )
                         # Center-crop to exact square
@@ -245,9 +257,10 @@ class StackMemberWidget(QWidget):
                                 }
                             """)
 
-                self._thumbnail_loader.signals.finished.connect(on_loaded)
-                self._thumbnail_loader.signals.error.connect(on_error)
-                logger.debug(f"[MEMBER_WIDGET] Signals connected, starting loader in thread pool")
+                gen = int(getattr(self.parent() or self.window(), "_ui_generation", self._ui_generation))
+                connect_guarded(self._thumbnail_loader.signals.finished, self, on_loaded, generation=gen)
+                connect_guarded(self._thumbnail_loader.signals.error, self, on_error, generation=gen)
+                logger.debug(f"[MEMBER_WIDGET] Signals connected (guarded), starting loader in thread pool")
 
                 # Start async loading
                 QThreadPool.globalInstance().start(self._thumbnail_loader)
@@ -301,6 +314,7 @@ class StackViewDialog(QDialog):
             parent: Parent widget
         """
         super().__init__(parent)
+        self._ui_generation: int = 0
         self.project_id = project_id
         self.stack_id = stack_id
         self.stack = None
@@ -359,6 +373,7 @@ class StackViewDialog(QDialog):
         scroll.setWidget(self.members_container)
         layout.addWidget(scroll, stretch=3)
 
+
         # Comparison table (collapsible, hidden by default for more thumbnail space)
         table_header = QHBoxLayout()
         table_header.setContentsMargins(0, 2, 0, 0)
@@ -387,6 +402,10 @@ class StackViewDialog(QDialog):
         table_header.addStretch(1)
         layout.addLayout(table_header)
 
+
+
+
+
         self.comparison_table = QTableWidget()
         self.comparison_table.setStyleSheet("""
             QTableWidget {
@@ -400,8 +419,11 @@ class StackViewDialog(QDialog):
                 font-size: 10px;
             }
         """)
+        
         self.comparison_table.setMaximumHeight(120)  # Compact height when shown
-        self.comparison_table.hide()  # Hidden by default
+        self.comparison_table.hide()  # Hidden by default        
+        
+#        self.comparison_table.setMaximumHeight(150)  # Limit table height
         layout.addWidget(self.comparison_table)
 
         # Action buttons (compact)
@@ -554,8 +576,11 @@ class StackViewDialog(QDialog):
 
             row = idx // 3
             col = idx % 3
+
             # Use AlignTop to prevent vertical stretching
             self.members_grid.addWidget(widget, row, col, Qt.AlignTop)
+            
+#            self.members_grid.addWidget(widget, row, col)
 
         # Populate comparison table
         self._populate_comparison_table()
@@ -640,7 +665,7 @@ class StackViewDialog(QDialog):
         self.comparison_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
         for col in range(1, len(headers)):
             self.comparison_table.horizontalHeader().setSectionResizeMode(col, QHeaderView.ResizeToContents)
-
+            
     def _toggle_comparison_table(self, checked: bool):
         """Toggle visibility of comparison table."""
         if checked:
@@ -649,6 +674,7 @@ class StackViewDialog(QDialog):
         else:
             self.comparison_table.hide()
             self.table_toggle_btn.setText("📊 Show Comparison Table")
+            
 
     @Slot(int, bool)
     def _on_member_selection_changed(self, photo_id: int, is_selected: bool):
@@ -1590,7 +1616,7 @@ class StackBrowserDialog(QDialog):
                                 # Google Photos style: center-crop to fill square
                                 scaled = pixmap.scaled(
                                     size, size,
-                                    Qt.KeepAspectRatioByExpanding,
+                                    Qt.KeepAspectRatio,
                                     Qt.SmoothTransformation
                                 )
                                 # Center-crop to exact square
@@ -1604,8 +1630,9 @@ class StackBrowserDialog(QDialog):
                             if label == thumbnail_label:
                                 label.setText(error_msg)
 
-                        card._thumbnail_loader.signals.finished.connect(on_thumbnail_loaded)
-                        card._thumbnail_loader.signals.error.connect(on_thumbnail_error)
+                        gen2 = int(getattr(self.parent() or self.window(), "_ui_generation", self._ui_generation))
+                        connect_guarded(card._thumbnail_loader.signals.finished, self, on_thumbnail_loaded, generation=gen2)
+                        connect_guarded(card._thumbnail_loader.signals.error, self, on_thumbnail_error, generation=gen2)
 
                         # Submit to thread pool (non-blocking)
                         QThreadPool.globalInstance().start(card._thumbnail_loader)
@@ -1960,7 +1987,7 @@ class StackBrowserDialog(QDialog):
                     # Google Photos style: center-crop to fill square
                     scaled = pixmap.scaled(
                         thumb_size, thumb_size,
-                        Qt.KeepAspectRatioByExpanding,
+                        Qt.KeepAspectRatio,
                         Qt.SmoothTransformation
                     )
                     # Center-crop to exact square

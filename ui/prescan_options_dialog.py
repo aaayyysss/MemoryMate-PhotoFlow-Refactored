@@ -6,15 +6,47 @@ Shows options before starting a repository scan:
 - Scan type (incremental vs full)
 - Duplicate detection toggle
 - Similar shot detection settings
+- Quick pre-scan statistics (photo/video/folder counts)
 """
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QCheckBox, QGroupBox, QSpinBox, QDoubleSpinBox, QRadioButton,
-    QButtonGroup, QFrame
+    QButtonGroup, QFrame, QFormLayout, QScrollArea, QWidget,
+    QToolButton, QSizePolicy
 )
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QThread
+from PySide6.QtGui import QGuiApplication
 from typing import Optional
+
+
+# ---------------------------------------------------------------------------
+# Background worker: fast file-count scan (no metadata, no hashes)
+# ---------------------------------------------------------------------------
+class RepoStatsWorker(QThread):
+    statsReady = Signal(dict)
+    statsError = Signal(str)
+
+    def __init__(self, scan_service, root_folder: str, options: dict):
+        super().__init__()
+        self._scan_service = scan_service
+        self._root_folder = root_folder
+        self._options = options
+        self._stop = False
+
+    def request_stop(self):
+        self._stop = True
+
+    def run(self):
+        try:
+            stats = self._scan_service.estimate_repository_stats(
+                self._root_folder,
+                options=self._options,
+                should_cancel=lambda: self._stop,
+            )
+            self.statsReady.emit(stats)
+        except Exception as e:
+            self.statsError.emit(str(e))
 
 
 class PreScanOptions:
@@ -38,40 +70,132 @@ class PreScanOptionsDialog(QDialog):
     - Scan mode (incremental vs full)
     - Duplicate detection settings
     - Similar shot detection parameters
+
+    Optionally runs a quick background file-count so the user sees how many
+    photos / videos are about to be processed before clicking Start.
     """
 
-    def __init__(self, parent=None, default_incremental: bool = True):
+    def __init__(self, parent=None, default_incremental: bool = True,
+                 scan_service=None):
         super().__init__(parent)
         self.options = PreScanOptions()
         self.options.incremental = default_incremental
+        self._scan_service = scan_service  # may be None
+        self._stats_worker = None
 
         self.setWindowTitle("Scan Options")
         self.setModal(True)
-        self.setMinimumWidth(500)
+        self.setSizeGripEnabled(True)  # Allow resize
 
         self._build_ui()
         self._apply_styles()
         self._connect_signals()
+        self._fit_to_screen()  # Adaptive sizing
+
+    def _fit_to_screen(self):
+        """
+        Ensure dialog fits on screen and is reasonably sized.
+
+        UX Fix: Prevents buttons being hidden on small screens or high DPI.
+        """
+        # Get available screen geometry
+        screen = None
+        if self.parent():
+            screen = self.parent().screen()
+        if screen is None:
+            screen = QGuiApplication.primaryScreen()
+        if screen is None:
+            self.resize(600, 700)
+            return
+
+        avail = screen.availableGeometry()
+
+        # Size to 80% of screen, with reasonable limits
+        target_w = min(700, max(500, int(avail.width() * 0.5)))
+        target_h = min(800, max(500, int(avail.height() * 0.8)))
+
+        self.resize(target_w, target_h)
 
     def _build_ui(self):
-        """Build dialog UI."""
-        layout = QVBoxLayout(self)
+        """
+        Build dialog UI with scrollable content and sticky header.
+
+        UX Fix v9.3.0: Uses QScrollArea so content is always accessible
+        on small screens. Header with primary action stays visible.
+        """
+        root_layout = QVBoxLayout(self)
+        root_layout.setSpacing(0)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+
+        # ══════════════════════════════════════════════════════════════
+        # STICKY HEADER BAR (always visible, contains primary action)
+        # ══════════════════════════════════════════════════════════════
+        header_bar = QFrame()
+        header_bar.setObjectName("header_bar")
+        header_bar.setStyleSheet("""
+            #header_bar {
+                background-color: #f8f9fa;
+                border-bottom: 1px solid #dee2e6;
+                padding: 12px 16px;
+            }
+        """)
+        header_layout = QHBoxLayout(header_bar)
+        header_layout.setContentsMargins(16, 12, 16, 12)
+
+        # Title
+        header_title = QLabel("<b style='font-size: 16px;'>Scan Repository</b>")
+        header_layout.addWidget(header_title)
+        header_layout.addStretch(1)
+
+        # Cancel button (secondary)
+        btn_cancel = QPushButton("Cancel")
+        btn_cancel.clicked.connect(self.reject)
+        header_layout.addWidget(btn_cancel)
+
+        # Start button (primary) - ALWAYS visible in header
+        self.btn_start = QPushButton("Start Scan")
+        self.btn_start.setDefault(True)
+        self.btn_start.clicked.connect(self._on_start_clicked)
+        self.btn_start.setObjectName("btn_start")
+        header_layout.addWidget(self.btn_start)
+
+        root_layout.addWidget(header_bar)
+
+        # ══════════════════════════════════════════════════════════════
+        # SCROLLABLE CONTENT AREA
+        # ══════════════════════════════════════════════════════════════
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+
+        content = QWidget()
+        layout = QVBoxLayout(content)
         layout.setSpacing(16)
-        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setContentsMargins(20, 16, 20, 20)
 
-        # Header
-        header = QLabel("<h2>📸 Scan Repository</h2>")
-        layout.addWidget(header)
-
+        # Info text
         info = QLabel("Configure scanning options before starting the scan.")
         info.setStyleSheet("color: #666; margin-bottom: 8px;")
         layout.addWidget(info)
 
-        # Separator
-        sep1 = QFrame()
-        sep1.setFrameShape(QFrame.HLine)
-        sep1.setFrameShadow(QFrame.Sunken)
-        layout.addWidget(sep1)
+        # ── Quick Statistics section ──────────────────────────────
+        self._stats_box = QGroupBox("Quick Statistics")
+        self._stats_form = QFormLayout(self._stats_box)
+
+        self._lbl_photos = QLabel("--")
+        self._lbl_videos = QLabel("--")
+        self._lbl_folders = QLabel("--")
+        self._lbl_total = QLabel("--")
+        self._lbl_size = QLabel("--")
+
+        self._stats_form.addRow("Photos:", self._lbl_photos)
+        self._stats_form.addRow("Videos:", self._lbl_videos)
+        self._stats_form.addRow("Folders:", self._lbl_folders)
+        self._stats_form.addRow("Total media:", self._lbl_total)
+        self._stats_form.addRow("Estimated size:", self._lbl_size)
+
+        layout.addWidget(self._stats_box)
 
         # Scan Mode Section
         scan_mode_group = QGroupBox("Scan Mode")
@@ -115,18 +239,18 @@ class PreScanOptionsDialog(QDialog):
         dup_types_layout.setContentsMargins(24, 8, 0, 0)
         dup_types_layout.setSpacing(8)
 
-        self.chk_exact = QCheckBox("🔍 Exact duplicates (identical content)")
+        self.chk_exact = QCheckBox("Exact duplicates (identical content)")
         self.chk_exact.setToolTip("Detect photos with identical file content (SHA256)")
         self.chk_exact.setChecked(self.options.detect_exact)
         dup_types_layout.addWidget(self.chk_exact)
 
-        self.chk_similar = QCheckBox("📸 Similar shots (burst photos, series)")
+        self.chk_similar = QCheckBox("Similar shots (burst photos, series)")
         self.chk_similar.setToolTip("Detect visually similar photos using AI")
         self.chk_similar.setChecked(self.options.detect_similar)
         dup_types_layout.addWidget(self.chk_similar)
 
         # Embedding generation option (indented)
-        self.chk_generate_embeddings = QCheckBox("🤖 Generate AI embeddings (required for similar detection)")
+        self.chk_generate_embeddings = QCheckBox("Generate AI embeddings (required for similar detection)")
         self.chk_generate_embeddings.setToolTip(
             "Extract visual embeddings using CLIP model.\n"
             "Required for similar shot detection.\n"
@@ -200,7 +324,7 @@ class PreScanOptionsDialog(QDialog):
         info_layout = QVBoxLayout(info_frame)
         info_layout.setSpacing(4)
 
-        info_title = QLabel("💡 Note:")
+        info_title = QLabel("Note:")
         info_title.setStyleSheet("font-weight: bold; color: #1a73e8;")
         info_layout.addWidget(info_title)
 
@@ -215,21 +339,12 @@ class PreScanOptionsDialog(QDialog):
 
         layout.addWidget(info_frame)
 
-        # Buttons
+        # Add stretch at end of scroll content
         layout.addStretch(1)
-        button_layout = QHBoxLayout()
-        button_layout.addStretch(1)
 
-        btn_cancel = QPushButton("Cancel")
-        btn_cancel.clicked.connect(self.reject)
-        button_layout.addWidget(btn_cancel)
-
-        self.btn_start = QPushButton("Start Scan")
-        self.btn_start.setDefault(True)
-        self.btn_start.clicked.connect(self._on_start_clicked)
-        button_layout.addWidget(self.btn_start)
-
-        layout.addLayout(button_layout)
+        # Set content widget and add scroll area to root layout
+        scroll.setWidget(content)
+        root_layout.addWidget(scroll, 1)  # stretch=1 so scroll takes remaining space
 
     def _apply_styles(self):
         """Apply custom styles."""
@@ -286,6 +401,13 @@ class PreScanOptionsDialog(QDialog):
 
     def _on_start_clicked(self):
         """Handle start button click."""
+        # Stop any running stats worker
+        if self._stats_worker is not None:
+            try:
+                self._stats_worker.request_stop()
+            except Exception:
+                pass
+
         # Save options
         self.options.incremental = self.radio_incremental.isChecked()
         self.options.detect_duplicates = self.chk_detect_duplicates.isChecked()
@@ -301,3 +423,70 @@ class PreScanOptionsDialog(QDialog):
     def get_options(self) -> PreScanOptions:
         """Get the configured options."""
         return self.options
+
+    # ------------------------------------------------------------------
+    # Quick Statistics helpers
+    # ------------------------------------------------------------------
+    def _set_stats_loading(self, text: str = "Counting..."):
+        self._lbl_photos.setText(text)
+        self._lbl_videos.setText(text)
+        self._lbl_folders.setText(text)
+        self._lbl_total.setText(text)
+        self._lbl_size.setText(text)
+
+    @staticmethod
+    def _format_bytes(n: int) -> str:
+        if not n:
+            return "0 B"
+        units = ["B", "KB", "MB", "GB", "TB"]
+        size = float(n)
+        idx = 0
+        while size >= 1024.0 and idx < len(units) - 1:
+            size /= 1024.0
+            idx += 1
+        return f"{size:.1f} {units[idx]}"
+
+    def start_stats_count(self, root_folder: str):
+        """Kick off a background file-count for *root_folder*.
+
+        Safe to call multiple times (cancels previous worker).
+        Requires a *scan_service* that implements
+        ``estimate_repository_stats(root, options, should_cancel)``.
+        """
+        if not root_folder or self._scan_service is None:
+            return
+
+        # Cancel any previous run
+        if self._stats_worker is not None:
+            try:
+                self._stats_worker.request_stop()
+            except Exception:
+                pass
+
+        self._set_stats_loading()
+
+        options = {
+            "ignore_hidden": True,
+        }
+        self._stats_worker = RepoStatsWorker(
+            self._scan_service, root_folder, options,
+        )
+        self._stats_worker.statsReady.connect(self._on_stats_ready)
+        self._stats_worker.statsError.connect(self._on_stats_error)
+        self._stats_worker.start()
+
+    def _on_stats_ready(self, stats: dict):
+        photos = int(stats.get("photos", 0))
+        videos = int(stats.get("videos", 0))
+        folders = int(stats.get("folders", 0))
+        total = photos + videos
+        size_b = int(stats.get("bytes", 0))
+
+        self._lbl_photos.setText(f"{photos:,}")
+        self._lbl_videos.setText(f"{videos:,}")
+        self._lbl_folders.setText(f"{folders:,}")
+        self._lbl_total.setText(f"{total:,}")
+        self._lbl_size.setText(self._format_bytes(size_b))
+
+    def _on_stats_error(self, msg: str):
+        self._set_stats_loading("Error")

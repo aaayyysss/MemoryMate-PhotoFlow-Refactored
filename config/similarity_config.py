@@ -50,6 +50,10 @@ class SimilarityDefaults:
     # Rule version for stack regeneration
     RULE_VERSION: str = "1"
 
+    # Cross-date similarity detection (global pass)
+    CROSS_DATE_SIMILARITY: bool = True
+    CROSS_DATE_THRESHOLD: float = 0.85
+
 
 class SimilarityConfig:
     """
@@ -74,13 +78,18 @@ class SimilarityConfig:
         time_window = cls.get_time_window_seconds()
         min_stack_size = cls.get_min_stack_size()
 
+        cross_date_similarity = cls.get_cross_date_similarity()
+        cross_date_threshold = cls.get_cross_date_threshold()
+
         return StackGenParams(
             rule_version=SimilarityDefaults.RULE_VERSION,
             time_window_seconds=time_window,
             min_stack_size=min_stack_size,
             top_k=SimilarityDefaults.TOP_K,
             similarity_threshold=similarity_threshold,
-            candidate_limit_per_photo=SimilarityDefaults.CANDIDATE_LIMIT_PER_PHOTO
+            candidate_limit_per_photo=SimilarityDefaults.CANDIDATE_LIMIT_PER_PHOTO,
+            cross_date_similarity=cross_date_similarity,
+            cross_date_threshold=cross_date_threshold,
         )
 
     @classmethod
@@ -133,6 +142,36 @@ class SimilarityConfig:
             logger.debug(f"[SimilarityConfig] Could not read settings: {e}")
 
         return SimilarityDefaults.MIN_STACK_SIZE
+
+    @classmethod
+    def get_cross_date_similarity(cls) -> bool:
+        """Get cross-date similarity enabled flag from settings or default."""
+        try:
+            from settings_manager_qt import SettingsManager
+            settings = SettingsManager()
+            value = settings.get("cross_date_similarity", None)
+            if value is not None:
+                return bool(value)
+        except Exception as e:
+            logger.debug(f"[SimilarityConfig] Could not read settings: {e}")
+
+        return SimilarityDefaults.CROSS_DATE_SIMILARITY
+
+    @classmethod
+    def get_cross_date_threshold(cls) -> float:
+        """Get cross-date similarity threshold from settings or default."""
+        try:
+            from settings_manager_qt import SettingsManager
+            settings = SettingsManager()
+            value = settings.get("cross_date_threshold", None)
+            if value is not None:
+                threshold = float(value)
+                if 0.0 <= threshold <= 1.0:
+                    return threshold
+        except Exception as e:
+            logger.debug(f"[SimilarityConfig] Could not read settings: {e}")
+
+        return SimilarityDefaults.CROSS_DATE_THRESHOLD
 
     @classmethod
     def set_similarity_threshold(cls, threshold: float) -> bool:

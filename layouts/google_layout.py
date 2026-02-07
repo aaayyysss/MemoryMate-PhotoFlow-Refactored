@@ -1,4 +1,5 @@
 # layouts/google_layout.py
+# Version 10.01.01.10 dated 20260202
 # Google Photos-style layout - Timeline-based, date-grouped, minimalist design
 
 from PySide6.QtWidgets import (
@@ -19,6 +20,8 @@ from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from .base_layout import BaseLayout
 from logging_config import get_logger
+
+from PySide6.QtWidgets import QApplication
 
 logger = get_logger(__name__)
 from .video_editor_mixin import VideoEditorMixin
@@ -46,12 +49,11 @@ import os
 import subprocess
 from translation_manager import tr as t
 
-# Background Jobs UI (best-practice non-blocking background operations)
-try:
-    from ui.background_activity_panel import BackgroundActivityPanel
-    HAS_ACTIVITY_PANEL = True
-except ImportError:
-    HAS_ACTIVITY_PANEL = False
+# Activity Center is now a QDockWidget managed by MainWindow.
+# Google layout no longer creates its own activity panel.
+
+
+
 
 
 class GooglePhotosLayout(BaseLayout):
@@ -99,6 +101,9 @@ class GooglePhotosLayout(BaseLayout):
         """
         Create Google Photos-style layout.
         """
+        self._ensure_tooltip_style()
+
+        
         # Face merge undo/redo stacks (CRITICAL FIX 2026-01-07)
         self.redo_stack = []  # Stack for redo operations after undo
 
@@ -121,6 +126,7 @@ class GooglePhotosLayout(BaseLayout):
         # QUICK WIN #1: Track unloaded thumbnails for scroll-triggered loading
         self.unloaded_thumbnails = {}  # Map path -> (button, size) for lazy loading
         self.initial_load_limit = 50  # Load first 50 immediately (increased from 30)
+        self._thumb_inflight = set()  # Paths currently being loaded — prevents re-queuing
 
         # QUICK WIN #3: Virtual scrolling - render only visible date groups
         self.date_groups_metadata = []  # List of {date_str, photos, thumb_size, index}
@@ -172,6 +178,27 @@ class GooglePhotosLayout(BaseLayout):
         self._photo_load_generation = 0
         self._photo_load_in_progress = False
         self._loading_indicator = None  # Will be created in _create_timeline()
+
+        # ── Paged loading state ──────────────────────────────────
+        from workers.photo_page_worker import PhotoPageSignals
+        from services.photo_query_service import (
+            SMALL_THRESHOLD, PAGE_SIZE, PREFETCH_PAGES, MAX_IN_MEMORY_ROWS,
+        )
+        self._page_signals = PhotoPageSignals()
+        self._page_signals.count_ready.connect(self._on_page_count_ready)
+        self._page_signals.page_ready.connect(self._on_page_ready)
+        self._page_signals.error.connect(self._on_page_error)
+        self._paging_total = 0          # total rows from count query
+        self._paging_loaded = 0         # rows received so far
+        self._paging_offset = 0         # next offset to fetch
+        self._paging_active = False     # True while paged loading is in progress
+        self._paging_fetching = False   # True while a page worker is running
+        self._paging_all_rows = []      # accumulated rows for incremental merge
+        self._paging_filters = {}       # current filter dict for paged loading
+        self._page_size = PAGE_SIZE
+        self._small_threshold = SMALL_THRESHOLD
+        self._prefetch_pages = PREFETCH_PAGES
+        self._max_in_memory = MAX_IN_MEMORY_ROWS
 
         # Get current project ID (CRITICAL: Photos are organized by project)
         from app_services import get_default_project_id, list_projects
@@ -228,21 +255,6 @@ class GooglePhotosLayout(BaseLayout):
         self.view_tabs.currentChanged.connect(self._on_view_tab_changed)
         main_layout.addWidget(self.view_tabs)
 
-        # Photos mode switcher (Grid / Timeline / Single)
-        self.photos_mode_bar = QToolBar()
-        self.photos_mode_bar.setMovable(False)
-        self.btn_mode_grid = QPushButton("Grid")
-        self.btn_mode_timeline = QPushButton("Timeline")
-        self.btn_mode_single = QPushButton("Single")
-        self.btn_mode_grid.clicked.connect(self._show_grid_view)
-        self.btn_mode_timeline.clicked.connect(self._show_timeline_view)
-        self.btn_mode_single.clicked.connect(self._show_single_view)
-        self.photos_mode_bar.addWidget(self.btn_mode_grid)
-        self.photos_mode_bar.addWidget(self.btn_mode_timeline)
-        self.photos_mode_bar.addWidget(self.btn_mode_single)
-        main_layout.addWidget(self.photos_mode_bar)
-        self.photos_mode_bar.setVisible(True)
-
         # Create horizontal splitter (Sidebar | Timeline)
         self.splitter = QSplitter(Qt.Horizontal)
         self.splitter.setHandleWidth(3)
@@ -273,16 +285,9 @@ class GooglePhotosLayout(BaseLayout):
         main_layout.addWidget(self.splitter)
 
         # Background Activity Panel - shows background job progress (face detection, embeddings, etc.)
-        # Non-intrusive panel at bottom, collapsible, with pause/resume/cancel controls
-        if HAS_ACTIVITY_PANEL:
-            try:
-                self.activity_panel = BackgroundActivityPanel(main_widget)
-                main_layout.addWidget(self.activity_panel)
-            except Exception as e:
-                logger.warning(f"[GooglePhotosLayout] Could not create activity panel: {e}")
-                self.activity_panel = None
-        else:
-            self.activity_panel = None
+        # Activity Center is now a QDockWidget owned by MainWindow;
+        # no per-layout activity panel needed.
+        self.activity_panel = None
 
         # QUICK WIN #6: Create floating selection toolbar (initially hidden)
         self.floating_toolbar = self._create_floating_toolbar(main_widget)
@@ -296,6 +301,28 @@ class GooglePhotosLayout(BaseLayout):
         self._load_photos()
 
         return main_widget
+
+    
+
+    def _ensure_tooltip_style(self):
+        app = QApplication.instance()
+        if not app:
+            return
+        # Prevent duplicating the stylesheet if layouts are switched repeatedly
+        if getattr(app, "_mm_tooltip_style_applied", False):
+            return
+
+        app.setStyleSheet((app.styleSheet() or "") + """
+        QToolTip {
+            background-color: #000000;
+            color: #ffffff;
+            border: 1px solid #444444;
+            padding: 6px;
+            border-radius: 4px;
+            font-size: 10pt;
+        }
+        """)
+        app._mm_tooltip_style_applied = True
 
     def _create_toolbar(self) -> QToolBar:
         """
@@ -573,6 +600,29 @@ class GooglePhotosLayout(BaseLayout):
             }
         """)
         toolbar.addWidget(self.btn_settings)
+
+        # Activity Center toggle button
+        self.btn_activity = QPushButton("Activity")
+        self.btn_activity.setToolTip("Show/hide background tasks (Ctrl+Shift+A)")
+        self.btn_activity.setFixedHeight(28)
+        self.btn_activity.setStyleSheet("""
+            QPushButton {
+                background: transparent;
+                border: 1px solid transparent;
+                border-radius: 4px;
+                padding: 2px 8px;
+                font-size: 11px;
+                color: #5f6368;
+            }
+            QPushButton:hover {
+                background: #f1f3f4;
+            }
+            QPushButton:pressed {
+                background: #e8eaed;
+            }
+        """)
+        self.btn_activity.clicked.connect(self._on_toggle_activity_center)
+        toolbar.addWidget(self.btn_activity)
 
         # Spacer (push remaining items to the right)
         spacer = QWidget()
@@ -1113,6 +1163,12 @@ class GooglePhotosLayout(BaseLayout):
         """
         Load photos from database and populate timeline.
 
+        STALE-WHILE-REVALIDATE PATTERN (v9.3.0):
+        - Keeps existing content visible while loading new data
+        - Shows subtle "refreshing" indicator instead of blank screen
+        - Only clears timeline when new data is ready to display
+        - Provides perceived performance improvement
+
         Args:
             thumb_size: Thumbnail size in pixels (default 200)
             filter_year: Optional year filter (e.g., 2024)
@@ -1154,71 +1210,38 @@ class GooglePhotosLayout(BaseLayout):
         has_filters = filter_year is not None or filter_month is not None or filter_day is not None or filter_folder is not None or filter_person is not None or filter_paths is not None
         self.btn_clear_filter.setVisible(has_filters)
 
-        # === PROGRESS: Clearing existing timeline ===
-        print(f"[GooglePhotosLayout] 🔄 Clearing existing timeline and thumbnail cache...")
+        # ═══════════════════════════════════════════════════════════════════
+        # STALE-WHILE-REVALIDATE: Don't clear existing content!
+        # Keep showing current thumbnails while new data loads in background.
+        # Only clear when new data is ready (in _display_photos_in_timeline)
+        # ═══════════════════════════════════════════════════════════════════
 
-        # Clear existing timeline and thumbnail cache
-        try:
-            while self.timeline_layout.count():
-                child = self.timeline_layout.takeAt(0)
-                if child.widget():
-                    child.widget().deleteLater()
+        # Show subtle "refreshing" indicator OVER existing content
+        self._show_refresh_indicator()
 
-            # Clear thumbnail button cache and reset load counter
-            self.thumbnail_buttons.clear()
-            self.thumbnail_load_count = 0  # Reset counter for new photo set
-
-            # CRITICAL FIX: Only clear trees when NOT filtering
-            # When filtering, we want to keep the tree structure visible
-            # so users can see all available years/months/folders/people and switch between them
-            # NOTE: With AccordionSidebar, clearing is handled internally - no action needed here
-            pass
-        except Exception as e:
-            print(f"[GooglePhotosLayout] ⚠️ Error in _load_photos setup: {e}")
-            # Continue anyway
+        # Reset inflight tracking for new load
+        self._thumb_inflight.clear()
 
         # PHASE 2 Task 2.1: Increment generation (discard stale results)
         self._photo_load_generation += 1
         current_gen = self._photo_load_generation
         self._photo_load_in_progress = True
 
-        print(f"[GooglePhotosLayout] 🔍 Starting async photo load (generation {current_gen})...")
-
-        # PHASE 2 Task 2.1: Recreate loading indicator if it was deleted during timeline clear
-        try:
-            if self._loading_indicator:
-                self._loading_indicator.show()
-        except RuntimeError:
-            # C++ object was deleted - recreate it
-            self._loading_indicator = QLabel("Loading photos...")
-            self._loading_indicator.setAlignment(Qt.AlignCenter)
-            self._loading_indicator.setStyleSheet("""
-                QLabel {
-                    font-size: 14pt;
-                    color: #666;
-                    padding: 60px;
-                    background: white;
-                }
-            """)
-            self.timeline_layout.addWidget(self._loading_indicator)
-            self._loading_indicator.show()
+        print(f"[GooglePhotosLayout] 🔍 Starting async photo load (generation {current_gen}) - existing content preserved...")
 
         # CRITICAL: Check if we have a valid project
         if self.project_id is None:
             # No project - show empty state with instructions
+            self._hide_refresh_indicator()
+            self._clear_timeline_for_new_content()
             empty_label = QLabel("📂 No project selected\n\nClick '➕ New Project' to create your first project")
             empty_label.setAlignment(Qt.AlignCenter)
             empty_label.setStyleSheet("font-size: 12pt; color: #888; padding: 60px;")
             self.timeline_layout.addWidget(empty_label)
             print("[GooglePhotosLayout] ⚠️ No project selected")
-            try:
-                if self._loading_indicator:
-                    self._loading_indicator.hide()
-            except RuntimeError:
-                pass  # Already deleted
             return
 
-        # Build filter params
+        # Build filter params (legacy format for PhotoLoadWorker)
         filter_params = {
             'year': filter_year,
             'month': filter_month,
@@ -1228,18 +1251,109 @@ class GooglePhotosLayout(BaseLayout):
             'paths': filter_paths
         }
 
-        # PHASE 2 Task 2.1: Start async worker (non-blocking)
-        worker = PhotoLoadWorker(
-            project_id=self.project_id,
-            filter_params=filter_params,
-            generation=current_gen,
-            signals=self.photo_load_signals
-        )
+        # ── Decide: paged loading vs legacy single-query ──────────
+        # filter_paths (location filter) is not supported by PhotoQueryService
+        # so fall back to the legacy all-at-once PhotoLoadWorker for that case.
+        if filter_paths is not None:
+            # Legacy path: load everything in one shot
+            worker = PhotoLoadWorker(
+                project_id=self.project_id,
+                filter_params=filter_params,
+                generation=current_gen,
+                signals=self.photo_load_signals
+            )
+            QThreadPool.globalInstance().start(worker)
+            print(f"[GooglePhotosLayout] Photo load worker started (generation {current_gen}, legacy/paths)")
+        else:
+            # Paged loading path via PhotoPageWorker + PhotoQueryService
+            from workers.photo_page_worker import PhotoPageWorker
 
-        # Run worker in thread pool
-        QThreadPool.globalInstance().start(worker)
+            # Map filter names → PhotoQueryService filter dict
+            pq_filters = {}
+            if filter_year is not None:
+                pq_filters["year"] = filter_year
+            if filter_month is not None:
+                pq_filters["month"] = filter_month
+            if filter_day is not None:
+                pq_filters["day"] = filter_day
+            if filter_folder is not None:
+                pq_filters["folder"] = filter_folder
+            if filter_person is not None:
+                pq_filters["person_branch_key"] = filter_person
 
-        print(f"[GooglePhotosLayout] ✅ Photo load worker started (generation {current_gen})")
+            # Reset paging state
+            self._paging_total = 0
+            self._paging_loaded = 0
+            self._paging_offset = 0
+            self._paging_active = True
+            self._paging_fetching = True
+            self._paging_all_rows = []
+            self._paging_filters = pq_filters
+
+            # Dispatch first page with count
+            worker = PhotoPageWorker(
+                project_id=self.project_id,
+                generation=current_gen,
+                offset=0,
+                limit=self._page_size,
+                filters=pq_filters,
+                signals=self._page_signals,
+                include_count=True,
+            )
+            QThreadPool.globalInstance().start(worker)
+            print(f"[GooglePhotosLayout] Paged load started (generation {current_gen}, page_size={self._page_size})")
+
+    def _show_refresh_indicator(self):
+        """Show subtle refresh indicator over existing content."""
+        try:
+            if not hasattr(self, '_refresh_overlay') or self._refresh_overlay is None:
+                self._refresh_overlay = QLabel("↻ Refreshing...")
+                self._refresh_overlay.setAlignment(Qt.AlignCenter)
+                self._refresh_overlay.setStyleSheet("""
+                    QLabel {
+                        background: rgba(255, 255, 255, 0.9);
+                        color: #1976D2;
+                        font-size: 12px;
+                        padding: 8px 16px;
+                        border-radius: 16px;
+                        border: 1px solid #e0e0e0;
+                    }
+                """)
+                self._refresh_overlay.setFixedSize(120, 36)
+
+            # Position at top center of timeline
+            if hasattr(self, 'scroll_area') and self.scroll_area:
+                self._refresh_overlay.setParent(self.scroll_area)
+                self._refresh_overlay.move(
+                    (self.scroll_area.width() - 120) // 2,
+                    10
+                )
+                self._refresh_overlay.raise_()
+                self._refresh_overlay.show()
+        except Exception as e:
+            logger.debug(f"[GooglePhotosLayout] Could not show refresh indicator: {e}")
+
+    def _hide_refresh_indicator(self):
+        """Hide the refresh indicator."""
+        try:
+            if hasattr(self, '_refresh_overlay') and self._refresh_overlay:
+                self._refresh_overlay.hide()
+        except Exception:
+            pass
+
+    def _clear_timeline_for_new_content(self):
+        """Clear timeline only when new content is ready to display."""
+        try:
+            while self.timeline_layout.count():
+                child = self.timeline_layout.takeAt(0)
+                if child.widget():
+                    child.widget().deleteLater()
+
+            # Clear thumbnail button cache and reset load counter
+            self.thumbnail_buttons.clear()
+            self.thumbnail_load_count = 0
+        except Exception as e:
+            print(f"[GooglePhotosLayout] ⚠️ Error clearing timeline: {e}")
 
     def _group_photos_by_date(self, rows) -> Dict[str, List[Tuple]]:
         """
@@ -4664,10 +4778,16 @@ class GooglePhotosLayout(BaseLayout):
         video_path = video.get('path', '')
 
         try:
-            # Try to load video thumbnail from video thumbnail service
             from services.video_thumbnail_service import get_video_thumbnail_service
             thumb_service = get_video_thumbnail_service()
-            thumb_path = thumb_service.get_thumbnail_path(video_path)
+
+            # Try existing thumbnail first, then generate
+            if thumb_service.thumbnail_exists(video_path):
+                thumb_path = str(thumb_service.get_thumbnail_path(video_path))
+            else:
+                thumb_path = thumb_service.generate_thumbnail(
+                    video_path, width=200, height=200,
+                )
 
             if thumb_path and os.path.exists(thumb_path):
                 pixmap = QPixmap(str(thumb_path))
@@ -4687,20 +4807,69 @@ class GooglePhotosLayout(BaseLayout):
                         by = thumb_widget.height() - badge.height() - 6
                         badge.move(bx, by)
                         badge.raise_()
-                else:
-                    thumb_widget.setText("🎬\nVideo")
-                    thumb_widget.setStyleSheet("color: white;")
-            else:
-                thumb_widget.setText("🎬\nVideo")
+                    return thumb_widget
+
+            # Fallback: styled placeholder with play triangle
+            self._apply_video_placeholder(thumb_widget, video)
         except Exception as e:
             print(f"[GoogleLayout] Error loading video thumbnail for {video_path}: {e}")
-            thumb_widget.setText("🎬\nVideo")
+            self._apply_video_placeholder(thumb_widget, video)
 
         # FIXED: Open lightbox instead of video player directly
-        # This allows browsing through mixed photos and videos
         thumb_widget.mousePressEvent = lambda event: self._open_photo_lightbox(video_path)
 
         return thumb_widget
+
+    def _apply_video_placeholder(self, widget: QLabel, video: dict):
+        """Apply a proper styled video placeholder with play triangle."""
+        from PySide6.QtGui import QPainter, QBrush, QPolygonF, QPen, QFont as QFontG
+        from PySide6.QtCore import QPointF, QRectF
+
+        sz = 200
+        pixmap = QPixmap(sz, sz)
+        pixmap.fill(QColor(38, 38, 38))
+
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing)
+
+        # Play triangle
+        tri = sz * 0.30
+        cx, cy = sz / 2.0, sz / 2.0 - 10
+        triangle = QPolygonF([
+            QPointF(cx - tri * 0.4, cy - tri * 0.5),
+            QPointF(cx + tri * 0.5, cy),
+            QPointF(cx - tri * 0.4, cy + tri * 0.5),
+        ])
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QBrush(QColor(255, 255, 255, 200)))
+        painter.drawPolygon(triangle)
+
+        # Filename label
+        fname = os.path.basename(video.get("path", ""))
+        if len(fname) > 24:
+            fname = fname[:21] + "..."
+        painter.setPen(QPen(QColor(180, 180, 180)))
+        font = QFontG()
+        font.setPixelSize(11)
+        painter.setFont(font)
+        painter.drawText(QRectF(4, sz - 28, sz - 8, 24), Qt.AlignHCenter | Qt.AlignBottom, fname)
+
+        # Duration badge if available
+        dur = video.get("duration_seconds")
+        if dur:
+            mins, secs = int(dur) // 60, int(dur) % 60
+            dur_text = f"{mins}:{secs:02d}"
+            painter.setBrush(QBrush(QColor(0, 0, 0, 160)))
+            painter.setPen(Qt.NoPen)
+            painter.drawRoundedRect(QRectF(sz - 52, 6, 46, 20), 4, 4)
+            painter.setPen(QPen(QColor(255, 255, 255)))
+            font.setPixelSize(10)
+            font.setBold(True)
+            painter.setFont(font)
+            painter.drawText(QRectF(sz - 52, 6, 46, 20), Qt.AlignCenter, dur_text)
+
+        painter.end()
+        widget.setPixmap(pixmap)
 
     def _open_video_player(self, video_path: str):
         """
@@ -5289,6 +5458,9 @@ class GooglePhotosLayout(BaseLayout):
         Phase 3 #1: Added smooth fade-in animation for loaded thumbnails.
         Phase 3 #2: Stops pulsing animation and shows cached thumbnail.
         """
+        # Clear inflight guard so this path isn't blocked on future reloads
+        self._thumb_inflight.discard(path)
+
         # Find the button for this path
         button = self.thumbnail_buttons.get(path)
         if not button:
@@ -5332,6 +5504,8 @@ class GooglePhotosLayout(BaseLayout):
         """
         Callback when async photo database query completes.
         Only display results if generation matches (discard stale results).
+
+        STALE-WHILE-REVALIDATE: Now clears old content only when new data arrives.
         """
         logger.info(f"Photo query complete: generation={generation}, current={self._photo_load_generation}, rows={len(rows)}")
 
@@ -5343,12 +5517,18 @@ class GooglePhotosLayout(BaseLayout):
         # Clear loading state
         self._photo_load_in_progress = False
 
+        # Hide refresh indicator (stale-while-revalidate)
+        self._hide_refresh_indicator()
+
         # Hide loading indicator
         try:
             if self._loading_indicator:
                 self._loading_indicator.hide()
         except RuntimeError:
             pass  # Already deleted
+
+        # STALE-WHILE-REVALIDATE: Clear old content NOW, right before displaying new
+        self._clear_timeline_for_new_content()
 
         # Display photos in timeline
         self._display_photos_in_timeline(rows)
@@ -5366,12 +5546,18 @@ class GooglePhotosLayout(BaseLayout):
         # Clear loading state
         self._photo_load_in_progress = False
 
+        # Hide refresh indicator (stale-while-revalidate)
+        self._hide_refresh_indicator()
+
         # Hide loading indicator
         try:
             if self._loading_indicator:
                 self._loading_indicator.hide()
         except RuntimeError:
             pass  # Already deleted
+
+        # Clear timeline for error display
+        self._clear_timeline_for_new_content()
 
         # Show error in timeline
         error_label = QLabel(
@@ -5386,16 +5572,232 @@ class GooglePhotosLayout(BaseLayout):
         error_label.setStyleSheet("font-size: 11pt; color: #d32f2f; padding: 40px;")
         self.timeline_layout.addWidget(error_label)
 
+    # ── Paged-loading handlers ────────────────────────────────────────
+
+    def _on_page_count_ready(self, generation: int, total: int):
+        """Receives total count from the first PhotoPageWorker."""
+        if generation != self._photo_load_generation:
+            return
+        self._paging_total = total
+        logger.info(
+            "[GoogleLayout] Page count ready: gen=%d total=%d (threshold=%d)",
+            generation, total, self._small_threshold,
+        )
+
+    def _on_page_ready(self, generation: int, offset: int, rows: list):
+        """
+        Receives a page of rows from PhotoPageWorker.
+
+        First page (offset==0): full timeline rebuild.
+        Subsequent pages: incremental merge into existing date groups.
+
+        STALE-WHILE-REVALIDATE: First page clears old content, subsequent pages merge.
+        """
+        if generation != self._photo_load_generation:
+            logger.debug("[GoogleLayout] Discarding stale page gen=%d", generation)
+            return
+
+        self._paging_fetching = False
+
+        # Convert list[dict] → list[tuple] for compatibility with display code
+        tuples = [
+            (r["path"], r["date_taken"], r.get("width", 0), r.get("height", 0))
+            for r in rows
+        ]
+
+        page_count = len(tuples)
+        self._paging_loaded += page_count
+        self._paging_offset = offset + page_count
+
+        logger.info(
+            "[GoogleLayout] Page ready: gen=%d offset=%d rows=%d loaded=%d/%d",
+            generation, offset, page_count, self._paging_loaded, self._paging_total,
+        )
+
+        if offset == 0:
+            # First page → full timeline build
+            # STALE-WHILE-REVALIDATE: Hide refresh indicator and clear old content NOW
+            self._hide_refresh_indicator()
+            self._clear_timeline_for_new_content()
+
+            self._paging_all_rows = list(tuples)
+            self._photo_load_in_progress = False
+            try:
+                if self._loading_indicator:
+                    self._loading_indicator.hide()
+            except RuntimeError:
+                pass
+            self._display_photos_in_timeline(tuples)
+        else:
+            # Subsequent pages → incremental merge (no clearing needed)
+            self._paging_all_rows.extend(tuples)
+            self._merge_page_into_timeline(tuples)
+
+        # If we got fewer rows than page_size, we've reached the end
+        all_loaded = page_count < self._page_size
+        if all_loaded:
+            self._paging_active = False
+            logger.info(
+                "[GoogleLayout] All pages loaded: %d rows total", self._paging_loaded,
+            )
+        else:
+            # Auto-prefetch next pages if within prefetch window
+            self._maybe_prefetch_next_page()
+
+    def _on_page_error(self, generation: int, error_msg: str):
+        """Handle paged loading error — delegates to existing error handler."""
+        self._paging_fetching = False
+        self._paging_active = False
+        self._on_photos_load_error(generation, error_msg)
+
+    def _merge_page_into_timeline(self, new_rows: list):
+        """
+        Incrementally add *new_rows* (tuples) into the existing timeline.
+
+        Rows arrive sorted by date_taken DESC, so new rows may extend the
+        last existing date group and/or introduce entirely new (older) groups.
+        """
+        if not new_rows:
+            return
+
+        new_groups = self._group_photos_by_date(new_rows)
+
+        # Remove trailing stretch so we can append
+        last_idx = self.timeline_layout.count() - 1
+        if last_idx >= 0:
+            last_item = self.timeline_layout.itemAt(last_idx)
+            if last_item and last_item.spacerItem():
+                self.timeline_layout.removeItem(last_item)
+
+        # Track all displayed paths for selection
+        for photos in new_groups.values():
+            for p in photos:
+                self.all_displayed_paths.append(p[0])
+
+        # Update section count
+        try:
+            if hasattr(self, 'timeline_section'):
+                self.timeline_section.update_count(len(self.all_displayed_paths))
+        except Exception:
+            pass
+
+        for date_str, photos in new_groups.items():
+            # Check if this date group already exists
+            existing_idx = None
+            for i, meta in enumerate(self.date_groups_metadata):
+                if meta['date_str'] == date_str:
+                    existing_idx = i
+                    break
+
+            if existing_idx is not None:
+                # Extend existing date group
+                self.date_groups_metadata[existing_idx]['photos'].extend(photos)
+                widget = self.date_group_widgets.get(existing_idx)
+                if widget and existing_idx in self.rendered_date_groups:
+                    # Re-render the group with all photos
+                    try:
+                        new_widget = self._create_date_group(
+                            date_str,
+                            self.date_groups_metadata[existing_idx]['photos'],
+                            self.current_thumb_size,
+                        )
+                        idx_in_layout = self.timeline_layout.indexOf(widget)
+                        if idx_in_layout >= 0:
+                            self.timeline_layout.removeWidget(widget)
+                            widget.deleteLater()
+                            self.timeline_layout.insertWidget(idx_in_layout, new_widget)
+                        else:
+                            self.timeline_layout.addWidget(new_widget)
+                        self.date_group_widgets[existing_idx] = new_widget
+                    except RuntimeError:
+                        pass  # Widget deleted during re-render
+            else:
+                # New date group — append at end
+                new_idx = len(self.date_groups_metadata)
+                self.date_groups_metadata.append({
+                    'index': new_idx,
+                    'date_str': date_str,
+                    'photos': photos,
+                    'thumb_size': self.current_thumb_size,
+                })
+
+                if self.virtual_scroll_enabled and new_idx >= self.initial_render_count:
+                    widget = self._create_date_group_placeholder(
+                        self.date_groups_metadata[-1]
+                    )
+                else:
+                    widget = self._create_date_group(
+                        date_str, photos, self.current_thumb_size,
+                    )
+                    self.rendered_date_groups.add(new_idx)
+
+                self.date_group_widgets[new_idx] = widget
+                self.timeline_layout.addWidget(widget)
+
+        # Re-add bottom stretch
+        self.timeline_layout.addStretch()
+
+        logger.debug(
+            "[GoogleLayout] Merged %d rows into timeline (%d date groups now)",
+            len(new_rows), len(self.date_groups_metadata),
+        )
+
+    def _maybe_prefetch_next_page(self):
+        """Dispatch the next page if within the prefetch window."""
+        if not self._paging_active or self._paging_fetching:
+            return
+        if self._paging_loaded >= self._max_in_memory:
+            logger.info("[GoogleLayout] Max in-memory cap reached (%d)", self._max_in_memory)
+            self._paging_active = False
+            return
+
+        from workers.photo_page_worker import PhotoPageWorker
+
+        self._paging_fetching = True
+        worker = PhotoPageWorker(
+            project_id=self.project_id,
+            generation=self._photo_load_generation,
+            offset=self._paging_offset,
+            limit=self._page_size,
+            filters=self._paging_filters,
+            signals=self._page_signals,
+        )
+        QThreadPool.globalInstance().start(worker)
+        logger.debug(
+            "[GoogleLayout] Prefetch page offset=%d", self._paging_offset,
+        )
+
+    # ── FIX #5 helpers: background grouping + chunked widget creation ──
+
+    class _GroupingSignals(QObject):
+        """Signals for the background grouping worker."""
+        done = Signal(int, dict, list)  # (generation, photos_by_date, rows)
+
+    class _GroupingWorker(QRunnable):
+        """Runs _group_photos_by_date off the UI thread."""
+        def __init__(self, rows, generation, group_fn, signals):
+            super().__init__()
+            self.setAutoDelete(True)
+            self._rows = rows
+            self._gen = generation
+            self._group_fn = group_fn
+            self._signals = signals
+
+        def run(self):
+            grouped = self._group_fn(self._rows)
+            self._signals.done.emit(self._gen, grouped, self._rows)
+
     def _display_photos_in_timeline(self, rows: list):
         """
         PHASE 2 Task 2.1: Display photos in timeline after async query completes.
-        This method contains the UI update logic extracted from _load_photos().
+
+        FIX #5: Grouping runs in a background QRunnable, and widget creation
+        is chunked via QTimer.singleShot(0, ...) to keep the UI responsive.
 
         Args:
             rows: List of (path, date_taken, width, height) tuples from database
         """
         if not rows:
-            # PHASE 2 #7: Enhanced empty state with friendly illustration
             empty_widget = self._create_empty_state(
                 icon="📷",
                 title="No photos yet",
@@ -5406,15 +5808,27 @@ class GooglePhotosLayout(BaseLayout):
             print(f"[GooglePhotosLayout] No photos found in project {self.project_id}")
             return
 
-        # === PROGRESS: Grouping photos by date ===
-        print(f"[GooglePhotosLayout] 📅 Grouping {len(rows)} photos by date...")
+        print(f"[GooglePhotosLayout] Dispatching {len(rows)} photos to background grouping worker...")
 
-        # Group photos by date
-        photos_by_date = self._group_photos_by_date(rows)
+        # Bump generation so stale results are discarded
+        gen = self._photo_load_generation
 
-        print(f"[GooglePhotosLayout] ✅ Grouped into {len(photos_by_date)} date groups")
+        if not hasattr(self, '_grouping_signals'):
+            self._grouping_signals = self._GroupingSignals()
+            self._grouping_signals.done.connect(self._on_grouping_done)
 
-        # Update section counts: timeline and videos
+        worker = self._GroupingWorker(rows, gen, self._group_photos_by_date, self._grouping_signals)
+        QThreadPool.globalInstance().start(worker)
+
+    def _on_grouping_done(self, generation: int, photos_by_date: dict, rows: list):
+        """Slot: background grouping finished — build metadata, then chunk widgets."""
+        if generation != self._photo_load_generation:
+            print(f"[GooglePhotosLayout] Discarding stale grouping result (gen {generation})")
+            return
+
+        print(f"[GooglePhotosLayout] Grouped into {len(photos_by_date)} date groups")
+
+        # Update section counts
         try:
             if hasattr(self, 'timeline_section'):
                 self.timeline_section.update_count(len(rows))
@@ -5429,15 +5843,11 @@ class GooglePhotosLayout(BaseLayout):
         self.all_displayed_paths = [photo[0] for photos_list in photos_by_date.values() for photo in photos_list]
         print(f"[GooglePhotosLayout] Tracking {len(self.all_displayed_paths)} paths for multi-selection")
 
-        # === PROGRESS: Virtual scrolling setup ===
-        print(f"[GooglePhotosLayout] 🚀 Setting up virtual scrolling for {len(photos_by_date)} date groups...")
-
-        # QUICK WIN #3: Virtual scrolling - create date groups with lazy rendering
+        # Build metadata list for virtual scrolling
         self.date_groups_metadata.clear()
         self.date_group_widgets.clear()
         self.rendered_date_groups.clear()
 
-        # Store metadata for all date groups
         for index, (date_str, photos) in enumerate(photos_by_date.items()):
             self.date_groups_metadata.append({
                 'index': index,
@@ -5446,44 +5856,68 @@ class GooglePhotosLayout(BaseLayout):
                 'thumb_size': self.current_thumb_size
             })
 
-        # Create widgets (placeholders or rendered) for each group
-        for metadata in self.date_groups_metadata:
-            index = metadata['index']
+        # Chunk widget creation: process CHUNK_SIZE groups per event-loop tick
+        self._widget_chunk_idx = 0
+        self._widget_chunk_gen = generation
+        self._widget_chunk_total = len(self.date_groups_metadata)
+        self._widget_chunk_photos_by_date = photos_by_date
+        self._widget_chunk_rows = rows
+        self._process_widget_chunk()
 
-            # Render first N groups immediately, placeholders for the rest
+    _WIDGET_CHUNK_SIZE = 30  # groups per tick — tune for responsiveness
+
+    def _process_widget_chunk(self):
+        """Create the next batch of date-group widgets, then yield to the event loop."""
+        if self._widget_chunk_gen != self._photo_load_generation:
+            return  # stale
+
+        start = self._widget_chunk_idx
+        end = min(start + self._WIDGET_CHUNK_SIZE, self._widget_chunk_total)
+
+        for metadata in self.date_groups_metadata[start:end]:
+            index = metadata['index']
             if self.virtual_scroll_enabled and index >= self.initial_render_count:
-                # Create placeholder for off-screen groups
                 widget = self._create_date_group_placeholder(metadata)
             else:
-                # Render initial groups
                 widget = self._create_date_group(
                     metadata['date_str'],
                     metadata['photos'],
                     metadata['thumb_size']
                 )
                 self.rendered_date_groups.add(index)
-
             self.date_group_widgets[index] = widget
             self.timeline_layout.addWidget(widget)
 
-        # Add spacer at bottom
+        self._widget_chunk_idx = end
+
+        if end < self._widget_chunk_total:
+            # Yield to event loop, then continue
+            QTimer.singleShot(0, self._process_widget_chunk)
+        else:
+            # All chunks done — finalize
+            self._finalize_timeline_display()
+
+    def _finalize_timeline_display(self):
+        """Called after all widget chunks are created."""
+        photos_by_date = self._widget_chunk_photos_by_date
+        rows = self._widget_chunk_rows
+
         self.timeline_layout.addStretch()
 
-        # Restore pending scroll position (e.g., after zoom/aspect change)
+        # Restore pending scroll position
         if self._pending_scroll_restore is not None:
             pct = self._pending_scroll_restore
             self._pending_scroll_restore = None
             QTimer.singleShot(0, lambda: self._restore_scroll_percentage(pct))
 
-        # === PROGRESS: Rendering complete ===
         if self.virtual_scroll_enabled:
-            print(f"[GooglePhotosLayout] ✅ Virtual scrolling enabled: {len(photos_by_date)} total date groups")
-            print(f"[GooglePhotosLayout] 📊 Rendered: {len(self.rendered_date_groups)} groups | Placeholders: {len(photos_by_date) - len(self.rendered_date_groups)} groups")
+            print(f"[GooglePhotosLayout] Virtual scrolling enabled: {len(photos_by_date)} total date groups")
+            print(f"[GooglePhotosLayout] Rendered: {len(self.rendered_date_groups)} groups | Placeholders: {len(photos_by_date) - len(self.rendered_date_groups)} groups")
         else:
-            print(f"[GooglePhotosLayout] ✅ Loaded {len(rows)} photos in {len(photos_by_date)} date groups")
+            print(f"[GooglePhotosLayout] Loaded {len(rows)} photos in {len(photos_by_date)} date groups")
 
-        print(f"[GooglePhotosLayout] 🖼️ Queued {self.thumbnail_load_count} thumbnails for loading (initial limit: {self.initial_load_limit})")
-        print(f"[GooglePhotosLayout] ✅ Photo loading complete! Thumbnails will load progressively.")
+        print(f"[GooglePhotosLayout] Queued {self.thumbnail_load_count} thumbnails for loading (initial limit: {self.initial_load_limit})")
+        print(f"[GooglePhotosLayout] Photo loading complete! Thumbnails will load progressively.")
 
     def _on_timeline_scrolled(self):
         """
@@ -5625,9 +6059,10 @@ class GooglePhotosLayout(BaseLayout):
 
         This is called 150ms after scrolling stops/slows down.
 
-        Two functions:
+        Three functions:
         1. Load thumbnails that are now visible (Quick Win #1)
         2. Render date groups that entered viewport (Quick Win #3)
+        3. Prefetch next page when near bottom of scroll area
         """
         # Get viewport rectangle
         viewport = self.timeline_scroll.viewport()
@@ -5636,6 +6071,15 @@ class GooglePhotosLayout(BaseLayout):
         # QUICK WIN #3: Virtual scrolling - render date groups that entered viewport
         if self.virtual_scroll_enabled and self.date_groups_metadata:
             self._render_visible_date_groups(viewport, viewport_rect)
+
+        # Paged loading: prefetch when scrolled near bottom
+        if self._paging_active and not self._paging_fetching:
+            scroll_bar = self.timeline_scroll.verticalScrollBar()
+            if scroll_bar and scroll_bar.maximum() > 0:
+                remaining = scroll_bar.maximum() - scroll_bar.value()
+                threshold = viewport_rect.height() * self._prefetch_pages
+                if remaining < threshold:
+                    self._maybe_prefetch_next_page()
 
         # QUICK WIN #1: Lazy thumbnail loading
         if not self.unloaded_thumbnails:
@@ -5665,16 +6109,22 @@ class GooglePhotosLayout(BaseLayout):
                 # Button might have been deleted
                 continue
 
-        # Load visible thumbnails
+        # Load visible thumbnails (with inflight guard)
         if paths_to_load:
-            logger.debug(f"Scroll detected, loading {len(paths_to_load)} visible thumbnails...")
+            actually_queued = 0
             for path in paths_to_load:
-                button, size = self.unloaded_thumbnails.pop(path)
-                # Queue async loading
+                if path in self._thumb_inflight:
+                    continue  # Already being loaded
+                button, size = self.unloaded_thumbnails.pop(path, (None, None))
+                if button is None:
+                    continue
+                self._thumb_inflight.add(path)
                 loader = ThumbnailLoader(path, size, self.thumbnail_signals)
                 self.thumbnail_thread_pool.start(loader)
+                actually_queued += 1
 
-            logger.debug(f"Loaded {len(paths_to_load)} thumbnails, {len(self.unloaded_thumbnails)} remaining")
+            if actually_queued > 0:
+                print(f"[GooglePhotosLayout] 📜 Queued {actually_queued} thumbnails, {len(self.unloaded_thumbnails)} remaining")
 
     def _create_thumbnail(self, path: str, size: int) -> QWidget:
         """
@@ -6662,6 +7112,11 @@ class GooglePhotosLayout(BaseLayout):
 
             menu.addSeparator()
 
+            # Edit Metadata action - opens metadata editor dock for this photo
+            edit_metadata_action = QAction("✏️ Edit Metadata", parent=menu)
+            edit_metadata_action.triggered.connect(lambda: self._show_metadata_editor_for_photo(path))
+            menu.addAction(edit_metadata_action)
+
             # Properties action
             properties_action = QAction("ℹ️ Properties", parent=menu)
             properties_action.triggered.connect(lambda: self._show_photo_properties(path))
@@ -7505,6 +7960,14 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
         # Call existing batch edit method (reuses Sprint 1 implementation)
         print(f"[GooglePhotosLayout] 📍 Batch location edit triggered from toolbar for {len(self.selected_photos)} photos")
         self._edit_photos_location_batch(list(self.selected_photos))
+
+    def _on_toggle_activity_center(self):
+        """Toggle the Activity Center dock widget from the layout toolbar."""
+        try:
+            if hasattr(self.main_window, "_toggle_activity_center"):
+                self.main_window._toggle_activity_center()
+        except Exception:
+            pass
 
     def _on_delete_selected(self):
         """
@@ -8879,6 +9342,95 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
                 f"Failed to open similar photos dialog:\n{e}"
             )
 
+    def _toggle_info_panel(self, checked: bool = None):
+        """
+        Toggle the Metadata Editor dock panel (Lightroom-style Info panel).
+
+        This provides access to:
+        - Rating (0-5 stars)
+        - Flag (Pick/Reject)
+        - Title and Caption
+        - Keywords (Tags)
+        - Date/Location (read-only with override)
+        - File Info
+
+        Changes are stored in database first (non-destructive).
+        Optional XMP sidecar export available.
+        """
+        main_window = getattr(self, 'main_window', None)
+        if not main_window:
+            return
+
+        dock = getattr(main_window, 'metadata_editor_dock', None)
+        if not dock:
+            return
+
+        if checked is None:
+            checked = not dock.isVisible()
+
+        dock.setVisible(checked)
+
+        # Sync button state
+        if hasattr(self, 'btn_info') and self.btn_info.isChecked() != checked:
+            self.btn_info.setChecked(checked)
+
+        # If showing and a photo is selected, load its metadata
+        if checked:
+            selected_paths = self.get_selected_paths()
+            if selected_paths:
+                path = selected_paths[0]
+                photo_id = self._get_photo_id_for_path(path)
+                if photo_id:
+                    main_window.show_metadata_for_photo(photo_id, path)
+
+    def _get_photo_id_for_path(self, path: str) -> int:
+        """Get photo ID from database for a given path."""
+        try:
+            from reference_db import ReferenceDB
+            db = ReferenceDB()
+
+            with db.get_connection() as conn:
+                cursor = conn.execute("""
+                    SELECT id FROM photo_metadata WHERE path = ? AND project_id = ?
+                """, (path, self.project_id))
+                row = cursor.fetchone()
+                if row:
+                    return row['id']
+                # Try case-insensitive match as fallback
+                cursor = conn.execute("""
+                    SELECT id FROM photo_metadata WHERE LOWER(path) = LOWER(?) AND project_id = ?
+                """, (path, self.project_id))
+                row = cursor.fetchone()
+                if row:
+                    print(f"[GooglePhotosLayout] Found photo_id via case-insensitive match for: {path}")
+                    return row['id']
+                print(f"[GooglePhotosLayout] ⚠️ No photo_metadata row found for path: {path}")
+                return None
+        except Exception as e:
+            print(f"[GooglePhotosLayout] ⚠️ Error getting photo ID for {path}: {e}")
+            return None
+
+    def _show_metadata_editor_for_photo(self, path: str):
+        """Show the metadata editor dock for a specific photo (triggered from right-click menu)."""
+        print(f"[GooglePhotosLayout] Opening metadata editor for: {path}")
+        main_window = getattr(self, 'main_window', None)
+        if not main_window:
+            print("[GooglePhotosLayout] ⚠️ Cannot open metadata editor: main_window not found")
+            return
+
+        dock = getattr(main_window, 'metadata_editor_dock', None)
+        if not dock:
+            print("[GooglePhotosLayout] ⚠️ Cannot open metadata editor: metadata_editor_dock not found")
+            return
+
+        photo_id = self._get_photo_id_for_path(path)
+        if not photo_id:
+            print(f"[GooglePhotosLayout] ⚠️ Cannot open metadata editor: no photo_id found for path: {path}")
+            return
+
+        print(f"[GooglePhotosLayout] ✓ Opening metadata editor for photo_id={photo_id}")
+        main_window.show_metadata_for_photo(photo_id, path)
+
     def _on_duplicate_action_taken(self, action: str, asset_id: int):
         """
         Handle actions taken in DuplicatesDialog.
@@ -9023,14 +9575,8 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
     def _on_view_tab_changed(self, index: int):
         tab_text = self.view_tabs.tabText(index)
         if "Photos" in tab_text:
-            if hasattr(self, 'photos_mode_bar'):
-                self.photos_mode_bar.setVisible(True)
             self._show_timeline_view()
         else:
-            if hasattr(self, 'photos_mode_bar'):
-                self.photos_mode_bar.setVisible(False)
-            # Old sidebar navigation - no longer needed with AccordionSidebar
-            # AccordionSidebar handles section expansion internally
             if "Favorites" in tab_text:
                 self._filter_by_tag("favorite")
 
@@ -9081,17 +9627,47 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
             print(f"[GooglePhotosLayout] ⚠️ Error opening single view: {e}")
     def on_layout_activated(self):
         """Called when this layout becomes active."""
-        print("[GooglePhotosLayout] 📍 Layout activated")
+        print("[GooglePhotosLayout] Layout activated")
 
         # Store main_window method references for Settings menu
-        # (btn_scan and btn_faces removed from toolbar, now in Settings menu)
         if hasattr(self.main_window, '_on_scan_repository'):
             self._scan_repository_handler = self.main_window._on_scan_repository
-            print("[GooglePhotosLayout] ✓ Stored Scan Repository handler")
 
         if hasattr(self.main_window, '_on_detect_and_group_faces'):
             self._detect_faces_handler = self.main_window._on_detect_and_group_faces
-            print("[GooglePhotosLayout] ✓ Stored Detect Faces handler")
+
+        # Flush any pending UI refresh requests that were deferred while this
+        # layout was hidden (e.g. face detection finished during layout switch)
+        mediator = getattr(self.main_window, '_ui_refresh_mediator', None)
+        if mediator:
+            mediator.on_layout_activated("google")
+
+        # Recompute grid columns after the widget geometry has settled.
+        # During create_layout() the viewport is narrow (not yet shown);
+        # by the time the event loop returns here the true width is known.
+        QTimer.singleShot(0, self._recheck_column_count)
+
+    def _recheck_column_count(self):
+        """Recompute columns now that the viewport has its real width.
+
+        If the column count changed from what was used during the initial
+        _load_photos() call (widget not yet visible), re-trigger the load
+        so grids are laid out correctly.
+        """
+        thumb_size = getattr(self, 'current_thumb_size', 200)
+        old_cols = getattr(self, '_last_column_count', None)
+        new_cols = self._calculate_responsive_columns(thumb_size)
+        if old_cols is not None and new_cols != old_cols:
+            print(f"[GooglePhotosLayout] Column count changed {old_cols} -> {new_cols}, refreshing grid")
+            self._load_photos(
+                thumb_size=thumb_size,
+                filter_year=getattr(self, 'current_filter_year', None),
+                filter_month=getattr(self, 'current_filter_month', None),
+                filter_day=getattr(self, 'current_filter_day', None),
+                filter_folder=getattr(self, 'current_filter_folder', None),
+                filter_person=getattr(self, 'current_filter_person', None),
+                filter_paths=getattr(self, 'current_filter_paths', None),
+            )
 
     def on_layout_deactivated(self):
         """
@@ -9114,6 +9690,11 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
         - Issue #7: Unbounded pixmap cache
         """
         print("[GooglePhotosLayout] Cleaning up resources...")
+
+        # 0. Mark accordion sidebar as disposed so background workers skip stale refreshes
+        if hasattr(self, 'accordion_sidebar') and self.accordion_sidebar:
+            if hasattr(self.accordion_sidebar, 'cleanup'):
+                self.accordion_sidebar.cleanup()
 
         # 1. Disconnect all signals (CRITICAL - prevents 173 connection leak)
         self._disconnect_all_signals()
@@ -9313,6 +9894,10 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
         from app_services import get_default_project_id
         self.project_id = get_default_project_id()
         print(f"[GooglePhotosLayout] Updated project_id: {self.project_id}")
+
+        # Update accordion sidebar immediately (prevents empty sidebar glitch)
+        if hasattr(self, 'accordion_sidebar') and self.project_id is not None:
+            self.accordion_sidebar.set_project(self.project_id)
 
         # Refresh project selector and layout
         self._populate_project_selector()

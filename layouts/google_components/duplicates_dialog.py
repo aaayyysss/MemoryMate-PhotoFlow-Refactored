@@ -1,5 +1,5 @@
 # layouts/google_components/duplicates_dialog.py
-# Version 02.01.00.00 dated 20260122
+# Version 02.01.00.01 dated 20260126
 # Duplicate review and management dialog for Google Layout
 
 """
@@ -142,7 +142,7 @@ class PhotoInstanceWidget(QWidget):
                     # Google Photos style: center-crop to fill square
                     scaled = pixmap.scaled(
                         self.thumb_size, self.thumb_size,
-                        Qt.KeepAspectRatioByExpanding,
+                        Qt.KeepAspectRatio,
                         Qt.SmoothTransformation
                     )
                     # Center-crop to exact square
@@ -150,6 +150,8 @@ class PhotoInstanceWidget(QWidget):
                     y = (scaled.height() - self.thumb_size) // 2
                     cropped = scaled.copy(x, y, self.thumb_size, self.thumb_size)
                     self.thumbnail_label.setPixmap(cropped)
+                    
+#                    self.thumbnail_label.setPixmap(scaled)
                 else:
                     self.thumbnail_label.setText("No preview")
             else:
@@ -184,7 +186,7 @@ class PhotoInstanceWidget(QWidget):
                     # Google Photos style: center-crop to fill square
                     scaled = pixmap.scaled(
                         size, size,
-                        Qt.KeepAspectRatioByExpanding,
+                        Qt.KeepAspectRatio,
                         Qt.SmoothTransformation
                     )
                     # Center-crop to exact square
@@ -192,6 +194,8 @@ class PhotoInstanceWidget(QWidget):
                     y = (scaled.height() - size) // 2
                     cropped = scaled.copy(x, y, size, size)
                     self.thumbnail_label.setPixmap(cropped)
+                    
+#                    self.thumbnail_label.setPixmap(scaled)
         except Exception:
             pass
 

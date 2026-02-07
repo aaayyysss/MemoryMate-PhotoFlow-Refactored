@@ -117,15 +117,11 @@ class DatesSection(BaseSection):
         def on_complete():
             try:
                 result = work()
-                if current_gen == self._generation:
-                    self.signals.loaded.emit(current_gen, result)
-                else:
-                    logger.debug(f"[DatesSection] Discarding stale data (gen {current_gen} vs {self._generation})")
+                self.signals.loaded.emit(current_gen, result)
             except Exception as e:
                 logger.error(f"[DatesSection] Error in worker thread: {e}")
                 traceback.print_exc()
-                if current_gen == self._generation:
-                    self.signals.error.emit(current_gen, str(e))
+                self.signals.error.emit(current_gen, str(e))
 
         threading.Thread(target=on_complete, daemon=True).start()
 
@@ -223,17 +219,15 @@ class DatesSection(BaseSection):
 
     def _on_data_loaded(self, generation: int, data: dict):
         """Callback when dates data is loaded."""
+        self._loading = False
         if generation != self._generation:
             logger.debug(f"[DatesSection] Discarding stale data (gen {generation} vs {self._generation})")
             return
-
-        self._loading = False
         logger.info(f"[DatesSection] Data loaded successfully (gen {generation})")
 
     def _on_error(self, generation: int, error_msg: str):
         """Callback when dates loading fails."""
+        self._loading = False
         if generation != self._generation:
             return
-
-        self._loading = False
         logger.error(f"[DatesSection] Load failed: {error_msg}")

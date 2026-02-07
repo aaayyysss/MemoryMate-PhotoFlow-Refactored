@@ -855,6 +855,13 @@ class ThumbnailGridQt(QWidget):
         self.date_key = None               # 'YYYY' or 'YYYY-MM-DD'
         self.branch_key = None
         
+        # --- Reload debounce timer (coalesces rapid navigation clicks) ---
+        self._reload_debounce_timer = QTimer(self)
+        self._reload_debounce_timer.setSingleShot(True)
+        self._reload_debounce_timer.setInterval(150)  # 150ms window
+        self._reload_debounce_timer.timeout.connect(self._debounced_reload)
+        self._pending_reload = False
+
         # --- Thumbnail pipeline safety ---
         self._reload_token = uuid.uuid4()
         # NOTE: _thumb_cache kept for backward compatibility but no longer used
@@ -1009,6 +1016,18 @@ class ThumbnailGridQt(QWidget):
         self._rv_timer = QTimer(self)
         self._rv_timer.setSingleShot(True)
         self._rv_timer.timeout.connect(self.request_visible_thumbnails)
+
+        # ── Batched model population ──────────────────────────────
+        from services.photo_query_service import (
+            SMALL_THRESHOLD as _SVC_SMALL_THRESHOLD,
+            PAGE_SIZE as _SVC_PAGE_SIZE,
+        )
+        self._grid_small_threshold = _SVC_SMALL_THRESHOLD
+        self._grid_page_size = _SVC_PAGE_SIZE
+        self._grid_batch_state = None   # dict with remaining batch data
+        self._grid_batch_timer = QTimer(self)
+        self._grid_batch_timer.setSingleShot(True)
+        self._grid_batch_timer.timeout.connect(self._process_grid_batch)
         
 
         # 🔁 Hook scrollbars AFTER timer exists (debounced incremental scheduling)
@@ -1016,6 +1035,13 @@ class ThumbnailGridQt(QWidget):
             self._rv_timer.start(50)
             # PHASE 4: Save scroll position to session state (debounced)
             self._save_scroll_position()
+            # Batched population: trigger next batch when near bottom
+            if self._grid_batch_state and not self._grid_batch_timer.isActive():
+                sb = self.list_view.verticalScrollBar()
+                if sb and sb.maximum() > 0:
+                    remaining = sb.maximum() - sb.value()
+                    if remaining < self.list_view.viewport().height() * 2:
+                        self._grid_batch_timer.start(0)
 
         self.list_view.verticalScrollBar().valueChanged.connect(_on_scroll)
         self.list_view.horizontalScrollBar().valueChanged.connect(_on_scroll)
@@ -1328,7 +1354,8 @@ class ThumbnailGridQt(QWidget):
         tag_map = {}
         try:
             tag_map = self.db.get_tags_for_paths(self._paths, self.project_id)
-            print(f"[GRID] Fetched tags for {len(self._paths)} paths ({content_type}), got {len(tag_map)} entries")
+            paths_with_tags = sum(1 for v in tag_map.values() if v)
+            print(f"[GRID] Queried tags for {len(self._paths)} paths ({content_type}), {paths_with_tags} have tags")
         except Exception as e:
             print(f"[GRID] Warning: Could not fetch tags: {e}")
 
@@ -1677,6 +1704,11 @@ class ThumbnailGridQt(QWidget):
             act_paste_location = m.addAction(paste_text)
 
         m.addSeparator()
+
+        # Edit Metadata action - opens metadata editor dock for this photo
+        act_edit_metadata = m.addAction("✏️ Edit Metadata")
+
+        m.addSeparator()
         act_export = m.addAction(tr('context_menu.export'))
         act_delete = m.addAction(tr('context_menu.delete'))
 
@@ -1701,6 +1733,10 @@ class ThumbnailGridQt(QWidget):
 
         elif chosen is act_delete:
             self.deleteRequested.emit(paths)
+
+        elif chosen is act_edit_metadata:
+            # Open metadata editor dock for the first selected photo
+            self._show_metadata_editor_for_photo(paths[0] if paths else None)
 
         elif chosen is act_fav:
             # Check if any photos are selected
@@ -1937,6 +1973,54 @@ class ThumbnailGridQt(QWidget):
         elif act_paste_location and chosen is act_paste_location:
             self._paste_location(paths)
 
+
+    def _show_metadata_editor_for_photo(self, path: str):
+        """Show the metadata editor dock for a specific photo (triggered from right-click menu)."""
+        print(f"[ThumbnailGrid] Opening metadata editor for: {path}")
+        if not path:
+            print("[ThumbnailGrid] ⚠️ Cannot open metadata editor: path is empty")
+            return
+        try:
+            main_window = self.window()
+            if not main_window:
+                print("[ThumbnailGrid] ⚠️ Cannot open metadata editor: window() returned None")
+                return
+            dock = getattr(main_window, 'metadata_editor_dock', None)
+            if not dock:
+                print("[ThumbnailGrid] ⚠️ Cannot open metadata editor: metadata_editor_dock not found on main window")
+                return
+
+            # Look up photo_id from database
+            from reference_db import ReferenceDB
+            db = ReferenceDB()
+            with db.get_connection() as conn:
+                cursor = conn.execute(
+                    "SELECT id FROM photo_metadata WHERE path = ? AND project_id = ?",
+                    (path, self.project_id))
+                row = cursor.fetchone()
+                photo_id = row['id'] if row else None
+
+            if not photo_id:
+                # Try case-insensitive match as fallback
+                with db.get_connection() as conn:
+                    cursor = conn.execute(
+                        "SELECT id FROM photo_metadata WHERE LOWER(path) = LOWER(?) AND project_id = ?",
+                        (path, self.project_id))
+                    row = cursor.fetchone()
+                    photo_id = row['id'] if row else None
+                if photo_id:
+                    print(f"[ThumbnailGrid] Found photo_id via case-insensitive match")
+
+            if not photo_id:
+                print(f"[ThumbnailGrid] ⚠️ Cannot open metadata editor: no photo_id found for path: {path}")
+                return
+
+            print(f"[ThumbnailGrid] ✓ Opening metadata editor for photo_id={photo_id}")
+            main_window.show_metadata_for_photo(photo_id, path)
+        except Exception as e:
+            print(f"[ThumbnailGrid] Error opening metadata editor: {e}")
+            import traceback
+            traceback.print_exc()
 
     def _edit_photo_location(self, path: str):
         """
@@ -2258,7 +2342,7 @@ class ThumbnailGridQt(QWidget):
             # Use TagService for proper layered architecture
             tag_service = get_tag_service()
             tags_map = tag_service.get_tags_for_paths(paths, self.project_id)
-            print(f"[TagCache] Refreshing tags for {len(paths)} paths, got {len(tags_map)} entries")
+            print(f"[TagCache] Refreshing tags for {len(paths)} paths, got {len(tags_map)} paths with tags")
         except Exception as e:
             print(f"[TagCache] ❌ Failed to fetch tags: {e}")
             return
@@ -2675,7 +2759,7 @@ class ThumbnailGridQt(QWidget):
 
         self.load_mode = "folder"
         self.current_folder_id = folder_id
-        self.reload()
+        self._schedule_reload()
         
         self._apply_zoom_geometry()
         
@@ -2684,7 +2768,7 @@ class ThumbnailGridQt(QWidget):
         """Called when a branch node is clicked."""
         print(f"\n[GRID] >>>>>> set_branch('{branch_key}') CALLED")
         print(f"[GRID]   Current state: project_id={self.project_id}, load_mode={self.load_mode}")
-        
+
         try:
             self.navigation_mode = "branch"
             self.navigation_key = branch_key
@@ -2692,8 +2776,8 @@ class ThumbnailGridQt(QWidget):
 
             self.load_mode = "branch"
             self.branch_key = branch_key
-            print(f"[GRID]   State updated, calling reload()...")
-            self.reload()
+            print(f"[GRID]   State updated, scheduling debounced reload...")
+            self._schedule_reload()
             print(f"[GRID] <<<<<< set_branch('{branch_key}') COMPLETED\n")
         except Exception as e:
             print(f"[GRID] !!!!! set_branch('{branch_key}') CRASHED: {e}")
@@ -2710,19 +2794,18 @@ class ThumbnailGridQt(QWidget):
 
         self.load_mode = "date"
         self.date_key = date_key
-        self.reload()
+        self._schedule_reload()
 
     def set_videos(self):
         """
         Called when Videos tab is selected - show all videos for current project.
-        🎬 Phase 4.3: Video support
         """
         self.navigation_mode = "videos"
         self.navigation_key = None
         self.active_tag_filter = None
 
         self.load_mode = "videos"
-        self.reload()
+        self._schedule_reload()
 
     def load_paths(self, paths: list[str]):
         """
@@ -2896,12 +2979,29 @@ class ThumbnailGridQt(QWidget):
         print(f"[GRID] Reloaded {len(self._paths)} thumbnails in {self.load_mode}-mode.")
  
     # ============================================================
+    # 🔄 Debounced reload helpers
+    # ============================================================
+    def _schedule_reload(self):
+        """Schedule a debounced reload.  Rapid calls within the 150 ms window
+        are coalesced so only the *last* navigation request fires a reload."""
+        self._pending_reload = True
+        self._reload_debounce_timer.start()  # (re)starts the 150 ms timer
+
+    def _debounced_reload(self):
+        """Executed when the debounce timer fires."""
+        if self._pending_reload:
+            self._pending_reload = False
+            self.reload()
+
+    # ============================================================
     # 🌍 Context-driven navigation & reload (Enhanced with user feedback)
     # ============================================================
     def set_context(self, mode: str, key: str | int | None):
         """
-        Sets navigation context (folder, branch, or date) and triggers reload.
+        Sets navigation context (folder, branch, date, people, videos) and triggers reload.
         Clears any active tag overlay.
+        Also syncs the legacy navigation_mode / navigation_key fields so that
+        breadcrumb and other code that reads those stays in sync.
         """
         self.context = getattr(self, "context", {
             "mode": None, "key": None, "tag_filter": None
@@ -2909,7 +3009,12 @@ class ThumbnailGridQt(QWidget):
         self.context["mode"] = mode
         self.context["key"] = key
         self.context["tag_filter"] = None
-        self.reload()
+
+        # Sync legacy fields used by breadcrumb and status bar
+        self.navigation_mode = mode
+        self.navigation_key = key
+
+        self._schedule_reload()
 
     # ============================================================
     def apply_tag_filter(self, tag: str | None):
@@ -2920,7 +3025,7 @@ class ThumbnailGridQt(QWidget):
         if not hasattr(self, "context"):
             self.context = {"mode": None, "key": None, "tag_filter": None}
         self.context["tag_filter"] = tag if tag not in (None, "", "all") else None
-        self.reload()
+        self._schedule_reload()
 
     # ============================================================
     def reload(self):
@@ -3025,7 +3130,17 @@ class ThumbnailGridQt(QWidget):
                         print(f"[GRID] Failed to load videos: {e}")
                         paths = []
                 else:
-                    paths = []
+                    # Default: show all photos for current project (branch='all')
+                    paths = db.get_images_by_branch(self.project_id, 'all')
+                    if not paths:
+                        # Fallback: get all unique images regardless of branch
+                        paths = db.get_project_images(self.project_id)
+                    if paths:
+                        ctx["mode"] = "branch"
+                        ctx["key"] = "all"
+                        self.context = ctx
+                        self.load_mode = "branch"
+                        print(f"[GRID] Default view: loaded {len(paths)} photos (mode=None -> branch/all)")
 
             final_count = len(paths)
             base_count = final_count  # For status message compatibility
@@ -3112,7 +3227,8 @@ class ThumbnailGridQt(QWidget):
         # Paths from get_images_by_branch are already in DB format
         # get_tags_for_paths will normalize them internally to match photo_metadata table
         tag_map = self.db.get_tags_for_paths(self._paths, self.project_id)
-        print(f"[GRID] Fetched tags for {len(self._paths)} paths, got {len(tag_map)} entries")
+        paths_with_tags = sum(1 for v in tag_map.values() if v)
+        print(f"[GRID] Queried tags for {len(self._paths)} paths, {paths_with_tags} have tags")
         
         # 📅 Grouping: fetch date_taken and sort descending
         import os, time
@@ -3188,38 +3304,119 @@ class ThumbnailGridQt(QWidget):
             self._placeholder_cache[cache_key] = placeholder_pix
         
         token = self._reload_token
-        for i, p in enumerate(sorted_paths):
+
+        # ── Batched model population for large datasets ───────────
+        # For > SMALL_THRESHOLD paths, process first batch immediately
+        # and schedule remaining batches via QTimer to keep UI responsive.
+        total_paths = len(sorted_paths)
+        if total_paths > self._grid_small_threshold:
+            first_batch = sorted_paths[:self._grid_page_size]
+            self._grid_batch_state = {
+                'sorted_paths': sorted_paths,
+                'tag_map': tag_map,
+                'date_map': date_map,
+                'use_date_headers': use_date_headers,
+                'token': token,
+                'placeholder_size': placeholder_size,
+                'placeholder_pix': placeholder_pix,
+                'group_label': _group_label,
+                'next_start': self._grid_page_size,
+            }
+            paths_to_process = first_batch
+            print(f"[GRID] Large dataset ({total_paths} paths) — batching: first {len(first_batch)}")
+        else:
+            self._grid_batch_state = None
+            paths_to_process = sorted_paths
+
+        self._populate_model_items(
+            paths_to_process, 0, sorted_paths,
+            tag_map, date_map, use_date_headers,
+            token, placeholder_size, placeholder_pix, _group_label,
+        )
+
+        # Force layout cycle
+        self._apply_zoom_geometry()
+        self.list_view.doItemsLayout()
+
+        def _force_geometry_update():
+            self.list_view.setSpacing(self._spacing)
+            self.list_view.updateGeometry()
+            self.list_view.doItemsLayout()
+            self.list_view.repaint()
+
+        QTimer.singleShot(100, _force_geometry_update)
+        QTimer.singleShot(200, _force_geometry_update)
+
+        self.list_view.viewport().update()
+
+        loaded_label = f"{len(paths_to_process)}/{total_paths}" if self._grid_batch_state else str(total_paths)
+        print(f"[GRID] Loaded {loaded_label} thumbnails.")
+
+        # Kick the incremental thumbnail scheduler
+        QTimer.singleShot(50, self.request_visible_thumbnails)
+
+        # Schedule remaining batches (if batching)
+        if self._grid_batch_state:
+            self._grid_batch_timer.start(16)  # ~1 frame delay
+
+        # Optional next-folder/date prefetch
+        try:
+            if hasattr(self.window(), "sidebar") and hasattr(self.window().sidebar, "get_next_branch_paths"):
+                next_paths = self.window().sidebar.get_next_branch_paths(self.navigation_mode, self.navigation_key)
+                if next_paths:
+                    self.preload_cache_warmup(next_paths[:50])
+        except Exception as e:
+            print(f"[WarmUp] Prefetch skipped: {e}")
+
+    # ============================================================
+    # ⚙️  Batched model population helpers
+    # ============================================================
+
+    def _populate_model_items(
+        self, paths_batch, global_offset, all_sorted_paths,
+        tag_map, date_map, use_date_headers,
+        token, placeholder_size, placeholder_pix, group_label_fn,
+    ):
+        """
+        Create QStandardItem entries for *paths_batch* and append to model.
+
+        *global_offset* is the index of the first element of paths_batch
+        within *all_sorted_paths*.  This is used for date-header boundary
+        detection across batches.
+        """
+        from PySide6.QtCore import QSize, Qt
+        from PySide6.QtGui import QStandardItem, QIcon
+
+        for local_i, p in enumerate(paths_batch):
+            i = global_offset + local_i  # index within all_sorted_paths
             item = QStandardItem()
             item.setEditable(False)
 
-            # normalize once and keep both
             np = self._norm_path(p)
-
-            # 🧾 store data
             item.setData(np, Qt.UserRole)           # normalized model key
-            item.setData(p,  Qt.UserRole + 6)       # real on-disk path (for stat/open)
+            item.setData(p,  Qt.UserRole + 6)       # real on-disk path
 
-            # 🏷️ CRITICAL FIX: tag_map is keyed by original path, not normalized!
             item.setData(tag_map.get(p, []), Qt.UserRole + 2)
             item.setToolTip(", ".join([t for t in (tag_map.get(p, []) or []) if t]))
-            # Group header label for first item in each date group
+
+            # Date-group header boundary
             if use_date_headers:
                 try:
                     ts = date_map.get(p, 0.0)
-                    lbl = _group_label(ts) if ts else None
+                    lbl = group_label_fn(ts) if ts else None
                 except Exception:
                     lbl = None
-                # determine boundary vs previous
                 if i == 0:
                     header_label = lbl
                 else:
-                    prev_ts = date_map.get(sorted_paths[i-1], 0.0)
-                    prev_lbl = _group_label(prev_ts) if prev_ts else None
+                    prev_ts = date_map.get(all_sorted_paths[i - 1], 0.0)
+                    prev_lbl = group_label_fn(prev_ts) if prev_ts else None
                     header_label = lbl if (lbl != prev_lbl) else None
             else:
                 header_label = None
             item.setData(header_label, Qt.UserRole + 10)
-            # Set initial aspect ratio using image header to stabilize layout
+
+            # Aspect ratio from image header
             try:
                 from PIL import Image
                 with Image.open(p) as im:
@@ -3229,164 +3426,94 @@ class ThumbnailGridQt(QWidget):
             item.setData(initial_aspect, Qt.UserRole + 1)
             item.setData(False, Qt.UserRole + 5)   # not scheduled yet
 
-            # Use initial aspect for placeholder size to avoid reflow later
             size0 = self._thumb_size_for_aspect(initial_aspect)
             if use_date_headers and header_label:
-                from PySide6.QtCore import QSize
                 size0 = QSize(size0.width(), size0.height() + 24)
             item.setSizeHint(size0)
 
-            # 🎬 Phase 4.3: Store video metadata if this is a video file
+            # Video metadata
             if is_video_file(p):
-                try:
-                    # CRITICAL FIX: Validate project_id before querying video metadata
-                    if self.project_id is None:
-                        item.setData(None, Qt.UserRole + 3)
-                        item.setData('unknown', Qt.UserRole + 7)
-                        item.setData('unknown', Qt.UserRole + 8)
-                        item.setToolTip(f"🎬 {os.path.basename(p)}<br>⚠️ No project selected")
-                    else:
-                        # Try to get metadata from video_metadata table
-                        video_meta = self.db.get_video_by_path(p, self.project_id)
-                        if video_meta:
-                            # Duration for badge
-                            if 'duration_seconds' in video_meta:
-                                item.setData(video_meta['duration_seconds'], Qt.UserRole + 3)
+                self._populate_video_metadata(item, p)
 
-                            # Phase 3: Status indicators for UI feedback
-                            metadata_status = video_meta.get('metadata_status', 'pending')
-                            thumbnail_status = video_meta.get('thumbnail_status', 'pending')
-                            item.setData(metadata_status, Qt.UserRole + 7)
-                            item.setData(thumbnail_status, Qt.UserRole + 8)
-
-                            # Phase 4: Rich tooltip with video metadata details
-                            tooltip_parts = [f"🎬 <b>{os.path.basename(p)}</b>"]
-
-                            # Duration
-                            if video_meta.get('duration_seconds'):
-                                duration_str = format_duration(video_meta['duration_seconds'])
-                                tooltip_parts.append(f"⏱️ Duration: {duration_str}")
-
-                            # Resolution
-                            width = video_meta.get('width')
-                            height = video_meta.get('height')
-                            if width and height:
-                                # Determine quality label
-                                if height >= 2160:
-                                    quality = "4K UHD"
-                                elif height >= 1080:
-                                    quality = "Full HD"
-                                elif height >= 720:
-                                    quality = "HD"
-                                else:
-                                    quality = "SD"
-                                tooltip_parts.append(f"📺 Resolution: {width}x{height} ({quality})")
-
-                            # Frame rate
-                            if video_meta.get('fps'):
-                                tooltip_parts.append(f"🎞️ Frame Rate: {video_meta['fps']:.1f} fps")
-
-                            # Codec
-                            if video_meta.get('codec'):
-                                tooltip_parts.append(f"🎞️ Codec: {video_meta['codec']}")
-
-                            # Bitrate
-                            if video_meta.get('bitrate'):
-                                bitrate_mbps = video_meta['bitrate'] / 1_000_000
-                                tooltip_parts.append(f"📊 Bitrate: {bitrate_mbps:.1f} Mbps")
-
-                            # File size
-                            if video_meta.get('size_kb'):
-                                size_mb = video_meta['size_kb'] / 1024
-                                if size_mb >= 1024:
-                                    size_str = f"{size_mb / 1024:.1f} GB"
-                                else:
-                                    size_str = f"{size_mb:.1f} MB"
-                                tooltip_parts.append(f"📦 Size: {size_str}")
-
-                            # Date taken
-                            if video_meta.get('date_taken'):
-                                tooltip_parts.append(f"📅 Date: {video_meta['date_taken']}")
-
-                            # Processing status
-                            if metadata_status != 'ok' or thumbnail_status != 'ok':
-                                status_parts = []
-                                if metadata_status != 'ok':
-                                    status_parts.append(f"Metadata: {metadata_status}")
-                                if thumbnail_status != 'ok':
-                                    status_parts.append(f"Thumbnail: {thumbnail_status}")
-                                tooltip_parts.append(f"⚠️ Status: {', '.join(status_parts)}")
-
-                            item.setToolTip("<br>".join(tooltip_parts))
-                        else:
-                            # No video record found
-                            item.setData(None, Qt.UserRole + 3)
-                            item.setData('unknown', Qt.UserRole + 7)
-                            item.setData('unknown', Qt.UserRole + 8)
-                            item.setToolTip(f"🎬 {os.path.basename(p)}<br>⚠️ No metadata available")
-                except Exception as e:
-                    # If query fails, set defaults
-                    item.setData(None, Qt.UserRole + 3)
-                    item.setData('error', Qt.UserRole + 7)
-                    item.setData('error', Qt.UserRole + 8)
-                    item.setToolTip(f"🎬 {os.path.basename(p)}<br>❌ Error loading metadata: {str(e)}")
-
-            # 🖼 initial placeholder size & icon
+            # Placeholder icon
             item.setSizeHint(placeholder_size)
             item.setIcon(QIcon(placeholder_pix))
 
             self.model.appendRow(item)
 
-            # ⚡ PERFORMANCE FIX: Don't start workers for all photos upfront!
-            # Let request_visible_thumbnails() handle viewport-based loading
-            # This prevents flooding the thread pool with 10,000+ workers
+    def _populate_video_metadata(self, item, p):
+        """Set video-specific data roles on *item* for path *p*."""
+        from PySide6.QtCore import Qt
+        try:
+            if self.project_id is None:
+                item.setData(None, Qt.UserRole + 3)
+                item.setData('unknown', Qt.UserRole + 7)
+                item.setData('unknown', Qt.UserRole + 8)
+                return
+            video_meta = self.db.get_video_by_path(p, self.project_id)
+            if video_meta:
+                if 'duration_seconds' in video_meta:
+                    item.setData(video_meta['duration_seconds'], Qt.UserRole + 3)
+                item.setData(video_meta.get('metadata_status', 'pending'), Qt.UserRole + 7)
+                item.setData(video_meta.get('thumbnail_status', 'pending'), Qt.UserRole + 8)
+                tooltip_parts = [f"<b>{os.path.basename(p)}</b>"]
+                if video_meta.get('duration_seconds'):
+                    tooltip_parts.append(f"Duration: {format_duration(video_meta['duration_seconds'])}")
+                w, h = video_meta.get('width'), video_meta.get('height')
+                if w and h:
+                    tooltip_parts.append(f"Resolution: {w}x{h}")
+                if video_meta.get('fps'):
+                    tooltip_parts.append(f"Frame Rate: {video_meta['fps']:.1f} fps")
+                item.setToolTip("<br>".join(tooltip_parts))
+            else:
+                item.setData(None, Qt.UserRole + 3)
+                item.setData('unknown', Qt.UserRole + 7)
+                item.setData('unknown', Qt.UserRole + 8)
+        except Exception:
+            item.setData(None, Qt.UserRole + 3)
+            item.setData('error', Qt.UserRole + 7)
+            item.setData('error', Qt.UserRole + 8)
 
-            # OLD CODE (removed):
-            # thumb_h = int(self._thumb_base * self._zoom_factor)
-            # np = self._norm_path(p)
-            # self.thread_pool.start(
-            #     ThumbWorker(p, np, thumb_h, i, self.thumb_signal, self._thumb_cache, token, placeholder_pix)
-            # )
+    def _process_grid_batch(self):
+        """Process the next batch of paths from _grid_batch_state."""
+        state = self._grid_batch_state
+        if not state:
+            return
 
+        sorted_paths = state['sorted_paths']
+        start = state['next_start']
+        end = min(start + self._grid_page_size, len(sorted_paths))
 
-        # 🧭 CRITICAL FIX: Force complete layout cycle before requesting thumbnails
-        # This ensures viewport geometry is correct for visibility calculations
-        self._apply_zoom_geometry()
+        if start >= len(sorted_paths):
+            # All batches processed
+            self._grid_batch_state = None
+            print(f"[GRID] All batches processed ({len(sorted_paths)} items)")
+            return
+
+        batch = sorted_paths[start:end]
+
+        self._populate_model_items(
+            batch, start, sorted_paths,
+            state['tag_map'], state['date_map'], state['use_date_headers'],
+            state['token'], state['placeholder_size'], state['placeholder_pix'],
+            state['group_label'],
+        )
+
+        state['next_start'] = end
+        remaining = len(sorted_paths) - end
+        print(f"[GRID] Batch {start}-{end} added ({remaining} remaining)")
+
+        if remaining > 0:
+            # Schedule next batch
+            self._grid_batch_timer.start(16)
+        else:
+            self._grid_batch_state = None
+            print(f"[GRID] All batches processed ({len(sorted_paths)} items)")
+
+        # Update layout and trigger visible thumbnail loading
         self.list_view.doItemsLayout()
-        
-        # 🔧 FIX: Force complete geometry update after initial layout
-        # Qt caches layout geometry, so we need the full update sequence
-        # Increase delay to ensure Qt view is fully initialized
-        def _force_geometry_update():
-            self.list_view.setSpacing(self._spacing)
-            self.list_view.updateGeometry()
-            self.list_view.doItemsLayout()
-            self.list_view.repaint()
-        
-        QTimer.singleShot(100, _force_geometry_update)  # Wait for view initialization
-        QTimer.singleShot(200, _force_geometry_update)  # Second pass for reliability
-        
-        # CRITICAL: Process pending layout events to ensure viewport is ready
-        QApplication.processEvents()
-        
-        # Force view to repaint with placeholders first
-        self.list_view.viewport().update()
-        
-        print(f"[GRID] Loaded {len(self._paths)} thumbnails.")
-
-        # kick the incremental scheduler with delay to ensure layout is complete
         QTimer.singleShot(50, self.request_visible_thumbnails)
 
-        # === 🔥 Optional next-folder/date prefetch ===
-        try:
-            # Find next sibling in sidebar (if available)
-            if hasattr(self.window(), "sidebar") and hasattr(self.window().sidebar, "get_next_branch_paths"):
-                next_paths = self.window().sidebar.get_next_branch_paths(self.navigation_mode, self.navigation_key)
-                if next_paths:
-                    self.preload_cache_warmup(next_paths[:50])  # prefetch only first 50
-        except Exception as e:
-            print(f"[WarmUp] Prefetch skipped: {e}")        
-        
     # ============================================================
     # ⚙️  Optional Cache Warm-Up Prefetcher
     # ============================================================

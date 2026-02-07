@@ -125,6 +125,18 @@ def _extract_image_metadata_with_timeout(file_path, timeout=2.0):
 
 _db = ReferenceDB()
 
+# ── Service singletons (Fix #2: AppContext) ──────────────────────
+# All singleton services live here so they are created exactly once.
+_search_service = None
+
+def get_search_service():
+    """Return a shared SearchService singleton."""
+    global _search_service
+    if _search_service is None:
+        from services.search_service import SearchService
+        _search_service = SearchService()
+    return _search_service
+
 # Toggle for thumbnail caching
 _enable_thumbnail_cache = True
 
@@ -608,8 +620,10 @@ def scan_repository(root_folder, incremental=False, cancel_callback=None):
                 on_metadata_finished(success, failed)
 
             # CRITICAL: Connect callbacks BEFORE starting worker to avoid race condition
-            metadata_worker.signals.progress.connect(on_video_progress)
-            metadata_worker.signals.finished.connect(on_metadata_finished_with_dialog)
+            from utils.qt_guards import connect_guarded
+            gen = int(getattr(main_window, "_ui_generation", 0))
+            connect_guarded(metadata_worker.signals.progress, main_window, on_video_progress, generation=gen)
+            connect_guarded(metadata_worker.signals.finished, main_window, on_metadata_finished_with_dialog, generation=gen)
             print("[SCAN] ✓ Connected metadata finished callback for date branch rebuild")
 
             QThreadPool.globalInstance().start(metadata_worker)
@@ -619,12 +633,12 @@ def scan_repository(root_folder, incremental=False, cancel_callback=None):
             thumbnail_worker = VideoThumbnailWorker(project_id=project_id, thumbnail_height=200)
 
             # CRITICAL: Connect callbacks BEFORE starting worker to avoid race condition
-            thumbnail_worker.signals.progress.connect(
-                lambda curr, total, path: print(f"[SCAN] Thumbnail progress: {curr}/{total}")
-            )
-            thumbnail_worker.signals.finished.connect(
-                lambda success, failed: print(f"[SCAN] ✓ Thumbnails complete: {success} successful, {failed} failed")
-            )
+            connect_guarded(thumbnail_worker.signals.progress, main_window,
+                lambda curr, total, path: print(f"[SCAN] Thumbnail progress: {curr}/{total}"),
+                generation=gen)
+            connect_guarded(thumbnail_worker.signals.finished, main_window,
+                lambda success, failed: print(f"[SCAN] ✓ Thumbnails complete: {success} successful, {failed} failed"),
+                generation=gen)
             print("[SCAN] ✓ Connected thumbnail worker callbacks")
 
             QThreadPool.globalInstance().start(thumbnail_worker)

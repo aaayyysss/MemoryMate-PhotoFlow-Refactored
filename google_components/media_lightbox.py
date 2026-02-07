@@ -1,5 +1,5 @@
-# media_lightbox.py
-# Version 10.01.01.04 dated 20260122
+# google_components/media_lightbox.py
+# Version 10.01.01.05 dated 20260207
 
 """
 Google Photos Layout - Media Lightbox Component
@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QDialog, QSlider, QFrame, QGraphicsOpacityEffect, QSizePolicy,
     QScrollArea, QGridLayout, QStackedWidget, QMessageBox, QSpinBox,
-    QTextEdit, QRadioButton, QButtonGroup
+    QTextEdit, QRadioButton, QButtonGroup, QLineEdit, QGroupBox, QToolButton
 )
 from PySide6.QtCore import (
     Qt, Signal, QSize, QEvent, QRunnable, QThreadPool, QObject, QTimer,
@@ -38,7 +38,7 @@ import os
 
 class PreloadImageSignals(QObject):
     """Signals for async image preloading."""
-    loaded = Signal(str, object)  # (path, pixmap or None)
+    loaded = Signal(str, object)  # (path, QImage or None)
 
 
 class PreloadImageWorker(QRunnable):
@@ -53,11 +53,11 @@ class PreloadImageWorker(QRunnable):
         self.signals = signals
 
     def run(self):
-        """Load image in background thread."""
+        """Load image in background thread — emits QImage (thread-safe)."""
         try:
             from PIL import Image, ImageOps
             import io
-            from PySide6.QtGui import QPixmap
+            from PySide6.QtGui import QImage
 
             # Load with PIL for EXIF orientation
             pil_image = Image.open(self.path)
@@ -72,16 +72,16 @@ class PreloadImageWorker(QRunnable):
             pil_image.save(buffer, format='PNG')
             buffer.seek(0)
 
-            # Load QPixmap from buffer
-            pixmap = QPixmap()
-            pixmap.loadFromData(buffer.read())
+            # Load QImage (thread-safe, unlike QPixmap)
+            qimage = QImage()
+            qimage.loadFromData(buffer.read())
 
             # Cleanup
             pil_image.close()
             buffer.close()
 
-            # Emit loaded signal
-            self.signals.loaded.emit(self.path, pixmap)
+            # Emit loaded signal with QImage
+            self.signals.loaded.emit(self.path, qimage)
             print(f"[PreloadImageWorker] ✓ Preloaded: {os.path.basename(self.path)}")
 
         except Exception as e:
@@ -89,9 +89,9 @@ class PreloadImageWorker(QRunnable):
             self.signals.loaded.emit(self.path, None)
 
 class ProgressiveImageSignals(QObject):
-    """Signals for progressive image loading."""
-    thumbnail_loaded = Signal(object)  # QPixmap
-    full_loaded = Signal(object)  # QPixmap
+    """Signals for progressive image loading (generation token + QImage)."""
+    thumbnail_loaded = Signal(int, object)  # (generation, QImage)
+    full_loaded = Signal(int, object)  # (generation, QImage)
 
 
 class ProgressiveImageWorker(QRunnable):
@@ -99,20 +99,21 @@ class ProgressiveImageWorker(QRunnable):
     PHASE A #2: Progressive image loader.
 
     Loads thumbnail-quality first (instant), then full resolution in background.
+    Emits QImage (thread-safe) with generation token for staleness detection.
     """
-    def __init__(self, path: str, signals: ProgressiveImageSignals, viewport_size):
+    def __init__(self, path: str, signals: ProgressiveImageSignals, viewport_size, generation: int):
         super().__init__()
         self.path = path
         self.signals = signals
         self.viewport_size = viewport_size
+        self.generation = generation
 
     def run(self):
-        """Load image progressively: thumbnail → full quality."""
+        """Load image progressively: thumbnail → full quality (emits QImage)."""
         try:
             from PIL import Image, ImageOps
             import io
-            from PySide6.QtGui import QPixmap
-            from PySide6.QtCore import Qt
+            from PySide6.QtGui import QImage
 
             # Load with PIL for EXIF orientation
             pil_image = Image.open(self.path)
@@ -123,26 +124,24 @@ class ProgressiveImageWorker(QRunnable):
                 pil_image = pil_image.convert('RGB')
 
             # STEP 1: Create thumbnail-quality version (fast!)
-            # Calculate thumbnail size (1/4 of viewport)
             thumb_width = self.viewport_size.width() // 4
             thumb_height = self.viewport_size.height() // 4
 
-            # Create thumbnail
             thumb_image = pil_image.copy()
             thumb_image.thumbnail((thumb_width, thumb_height), Image.Resampling.LANCZOS)
 
-            # Convert to QPixmap
+            # Convert to QImage (thread-safe, unlike QPixmap)
             buffer = io.BytesIO()
             thumb_image.save(buffer, format='JPEG', quality=70)
             buffer.seek(0)
 
-            thumb_pixmap = QPixmap()
-            thumb_pixmap.loadFromData(buffer.read())
+            thumb_qimage = QImage()
+            thumb_qimage.loadFromData(buffer.read())
             buffer.close()
             thumb_image.close()
 
-            # Emit thumbnail (instant display!)
-            self.signals.thumbnail_loaded.emit(thumb_pixmap)
+            # Emit thumbnail with generation token
+            self.signals.thumbnail_loaded.emit(self.generation, thumb_qimage)
             print(f"[ProgressiveImageWorker] ✓ Thumbnail loaded: {os.path.basename(self.path)}")
 
             # STEP 2: Load full resolution (background)
@@ -150,15 +149,15 @@ class ProgressiveImageWorker(QRunnable):
             pil_image.save(buffer, format='PNG')
             buffer.seek(0)
 
-            full_pixmap = QPixmap()
-            full_pixmap.loadFromData(buffer.read())
+            full_qimage = QImage()
+            full_qimage.loadFromData(buffer.read())
 
             # Cleanup
             pil_image.close()
             buffer.close()
 
-            # Emit full quality
-            self.signals.full_loaded.emit(full_pixmap)
+            # Emit full quality with generation token
+            self.signals.full_loaded.emit(self.generation, full_qimage)
             print(f"[ProgressiveImageWorker] ✓ Full quality loaded: {os.path.basename(self.path)}")
 
         except Exception as e:
@@ -166,38 +165,34 @@ class ProgressiveImageWorker(QRunnable):
             import traceback
             traceback.print_exc()
 
-            # FALLBACK: Create "broken image" placeholder pixmap
-            from PySide6.QtGui import QPixmap, QPainter, QColor, QFont
+            # FALLBACK: Create "broken image" placeholder as QImage
+            from PySide6.QtGui import QImage, QPainter, QColor, QFont
             from PySide6.QtCore import Qt
 
-            # Create a placeholder pixmap (400x400 gray box with error icon)
-            placeholder = QPixmap(400, 400)
-            placeholder.fill(QColor(240, 240, 240))  # Light gray background
+            placeholder = QImage(400, 400, QImage.Format_RGB32)
+            placeholder.fill(QColor(240, 240, 240))
 
             painter = QPainter(placeholder)
             painter.setRenderHint(QPainter.Antialiasing)
 
-            # Draw red border
-            painter.setPen(QColor(220, 53, 69))  # Bootstrap danger red
+            painter.setPen(QColor(220, 53, 69))
             painter.drawRect(0, 0, 399, 399)
 
-            # Draw error icon (❌) and text
             painter.setPen(QColor(100, 100, 100))
             font = QFont()
             font.setPointSize(48)
             painter.setFont(font)
-            painter.drawText(placeholder.rect(), Qt.AlignCenter, "❌\n\nImage Error")
+            painter.drawText(placeholder.rect(), Qt.AlignCenter, "Image Error")
 
-            # Draw filename at bottom
             font.setPointSize(10)
             painter.setFont(font)
             painter.drawText(10, 380, os.path.basename(self.path)[:50])
 
             painter.end()
 
-            # Emit placeholder for both thumbnail and full quality
-            self.signals.thumbnail_loaded.emit(placeholder)
-            self.signals.full_loaded.emit(placeholder)
+            # Emit placeholder for both stages with generation token
+            self.signals.thumbnail_loaded.emit(self.generation, placeholder)
+            self.signals.full_loaded.emit(self.generation, placeholder)
             print(f"[ProgressiveImageWorker] ✓ Emitted error placeholder for: {os.path.basename(self.path)}")
 
 class MediaLightbox(QDialog, VideoEditorMixin):
@@ -268,6 +263,7 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         self.thumbnail_quality_loaded = False  # Track if thumbnail loaded
         self.full_quality_loaded = False  # Track if full quality loaded
         self.progressive_load_worker = None  # Current progressive load worker
+        self._lb_media_generation = 0  # Generation token: bumped each navigation, stale workers discarded
         self.progressive_signals = ProgressiveImageSignals()
         self.progressive_signals.thumbnail_loaded.connect(self._on_thumbnail_loaded)
         self.progressive_signals.full_loaded.connect(self._on_full_quality_loaded)
@@ -401,6 +397,10 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         self.motion_photo_enabled = True  # Enable motion photo detection
         self.is_motion_photo = False  # Current media is motion photo
         self.motion_video_path = None  # Path to paired video
+
+        # Metadata editing state (for Edit tab in info panel)
+        self._lb_loading = False  # Prevents saving during metadata population
+        self._lb_current_photo_id = None  # Current photo's database ID
 
         # ============================================================
         # RESPONSIVE DESIGN: Debounce timers for performance
@@ -1994,6 +1994,12 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             self.info_panel_visible = not self.info_panel_visible
             if hasattr(self, 'info_panel') and self.info_panel:
                 self.info_panel.setVisible(self.info_panel_visible)
+                # When showing, refresh editable metadata for current photo
+                if self.info_panel_visible:
+                    try:
+                        self._load_editable_metadata()
+                    except Exception:
+                        pass
         except Exception as e:
             print(f"[InfoPanel] Toggle error: {e}")
 
@@ -3441,6 +3447,41 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         qpix = QPixmap()
         qpix.loadFromData(buffer.read())
         return qpix
+
+    def _to_pixmap(self, image):
+        """Normalize worker outputs to QPixmap.
+
+        Workers may emit QImage (preferred for cross-thread safety) or QPixmap.
+        This helper converts supported inputs to a QPixmap, returning a null pixmap on failure.
+        """
+        try:
+            from PySide6.QtGui import QPixmap, QImage
+        except Exception:
+            return None
+
+        if image is None:
+            return QPixmap()
+
+        # Already a pixmap
+        if isinstance(image, QPixmap):
+            return image
+
+        # QImage from worker thread
+        if isinstance(image, QImage):
+            if image.isNull():
+                return QPixmap()
+            return QPixmap.fromImage(image)
+
+        # PIL Image
+        try:
+            from PIL import Image as PILImage  # type: ignore
+            if isinstance(image, PILImage.Image):
+                return self._pil_to_qpixmap(image)
+        except Exception:
+            pass
+
+        # Unknown type
+        return QPixmap()
 
     def _render_histogram_image(self, img, width=360, height=120):
         """Render an RGB histogram image using Pillow and return PIL.Image (smoothed, with clipping markers)."""
@@ -5223,11 +5264,13 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         """)
 
         # Create tabs with scrollable content
+        self.edit_tab_content = self._create_metadata_edit_tab()
         self.basic_tab_content = self._create_scrollable_tab()
         self.camera_tab_content = self._create_scrollable_tab()
         self.location_tab_content = self._create_scrollable_tab()
         self.technical_tab_content = self._create_scrollable_tab()
 
+        self.metadata_tabs.addTab(self.edit_tab_content['scroll'], "✏️ Edit")
         self.metadata_tabs.addTab(self.basic_tab_content['scroll'], "📄 Basic")
         self.metadata_tabs.addTab(self.camera_tab_content['scroll'], "📷 Camera")
         self.metadata_tabs.addTab(self.location_tab_content['scroll'], "🌍 Location")
@@ -5258,6 +5301,328 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         scroll.setWidget(widget)
 
         return {'scroll': scroll, 'widget': widget, 'layout': layout}
+
+    def _create_metadata_edit_tab(self) -> dict:
+        """Create the metadata editing tab with rating, flag, title, caption, keywords."""
+        scroll = QScrollArea()
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setWidgetResizable(True)
+        scroll.setStyleSheet("background: transparent; border: none;")
+
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(8)
+        layout.setAlignment(Qt.AlignTop)
+
+        # Dark theme style for labels and inputs inside the lightbox
+        label_style = "color: rgba(255,255,255,0.7); font-size: 9pt; font-weight: bold; background: transparent;"
+        input_style = """
+            color: white;
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 4px;
+            padding: 4px 6px;
+            font-size: 9pt;
+        """
+
+        # === Rating ===
+        rating_label = QLabel("Rating")
+        rating_label.setStyleSheet(label_style)
+        layout.addWidget(rating_label)
+
+        rating_row = QHBoxLayout()
+        rating_row.setSpacing(2)
+        self._lb_rating_buttons = []
+        self._lb_current_rating = 0
+        for i in range(5):
+            btn = QToolButton()
+            btn.setFixedSize(28, 28)
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.setStyleSheet("""
+                QToolButton {
+                    border: none;
+                    background: transparent;
+                    font-size: 16px;
+                    color: rgba(255,255,255,0.3);
+                }
+                QToolButton:hover {
+                    background: rgba(255, 193, 7, 0.2);
+                    border-radius: 4px;
+                }
+            """)
+            btn.setText("☆")
+            btn.clicked.connect(lambda checked, idx=i: self._on_lb_star_clicked(idx))
+            self._lb_rating_buttons.append(btn)
+            rating_row.addWidget(btn)
+
+        clear_rating_btn = QToolButton()
+        clear_rating_btn.setText("✕")
+        clear_rating_btn.setToolTip("Clear rating")
+        clear_rating_btn.setFixedSize(20, 20)
+        clear_rating_btn.setCursor(Qt.PointingHandCursor)
+        clear_rating_btn.setStyleSheet("""
+            QToolButton { border: none; color: rgba(255,255,255,0.4); font-size: 12px; background: transparent; }
+            QToolButton:hover { color: white; }
+        """)
+        clear_rating_btn.clicked.connect(lambda: self._on_lb_set_rating(0))
+        rating_row.addWidget(clear_rating_btn)
+        rating_row.addStretch()
+        layout.addLayout(rating_row)
+
+        # === Flag ===
+        flag_label = QLabel("Flag")
+        flag_label.setStyleSheet(label_style)
+        layout.addWidget(flag_label)
+
+        flag_row = QHBoxLayout()
+        flag_row.setSpacing(4)
+        self._lb_current_flag = "none"
+
+        flag_btn_style = """
+            QPushButton {{
+                border: 1px solid rgba(255,255,255,0.15);
+                border-radius: 4px;
+                padding: 4px 10px;
+                font-size: 9pt;
+                color: rgba(255,255,255,0.7);
+                background: rgba(255,255,255,0.05);
+            }}
+            QPushButton:hover {{
+                background: rgba(255,255,255,0.12);
+            }}
+            QPushButton:checked {{
+                background: {bg};
+                color: {fg};
+                border-color: {fg};
+            }}
+        """
+
+        self._lb_flag_pick = QPushButton("⬆ Pick")
+        self._lb_flag_pick.setCheckable(True)
+        self._lb_flag_pick.setStyleSheet(flag_btn_style.format(bg="rgba(76,175,80,0.3)", fg="#4CAF50"))
+        self._lb_flag_pick.clicked.connect(lambda: self._on_lb_flag_clicked("pick"))
+        flag_row.addWidget(self._lb_flag_pick)
+
+        self._lb_flag_reject = QPushButton("⬇ Reject")
+        self._lb_flag_reject.setCheckable(True)
+        self._lb_flag_reject.setStyleSheet(flag_btn_style.format(bg="rgba(244,67,54,0.3)", fg="#F44336"))
+        self._lb_flag_reject.clicked.connect(lambda: self._on_lb_flag_clicked("reject"))
+        flag_row.addWidget(self._lb_flag_reject)
+
+        flag_row.addStretch()
+        layout.addLayout(flag_row)
+
+        # === Title ===
+        title_label = QLabel("Title")
+        title_label.setStyleSheet(label_style)
+        layout.addWidget(title_label)
+
+        self._lb_edit_title = QLineEdit()
+        self._lb_edit_title.setPlaceholderText("Add a title...")
+        self._lb_edit_title.setStyleSheet(input_style)
+        self._lb_edit_title.editingFinished.connect(
+            lambda: self._on_lb_metadata_changed("title", self._lb_edit_title.text()))
+        layout.addWidget(self._lb_edit_title)
+
+        # === Caption ===
+        caption_label = QLabel("Caption")
+        caption_label.setStyleSheet(label_style)
+        layout.addWidget(caption_label)
+
+        self._lb_edit_caption = QTextEdit()
+        self._lb_edit_caption.setPlaceholderText("Add a description...")
+        self._lb_edit_caption.setMaximumHeight(70)
+        self._lb_edit_caption.setStyleSheet(input_style + " QTextEdit { min-height: 50px; }")
+        self._lb_edit_caption.textChanged.connect(
+            lambda: self._on_lb_metadata_changed("caption", self._lb_edit_caption.toPlainText()))
+        layout.addWidget(self._lb_edit_caption)
+
+        # === Keywords ===
+        keywords_label = QLabel("Keywords")
+        keywords_label.setStyleSheet(label_style)
+        layout.addWidget(keywords_label)
+
+        self._lb_edit_tags = QLineEdit()
+        self._lb_edit_tags.setPlaceholderText("tag1, tag2, tag3...")
+        self._lb_edit_tags.setStyleSheet(input_style)
+        self._lb_edit_tags.editingFinished.connect(
+            lambda: self._on_lb_metadata_changed("tags", self._lb_edit_tags.text()))
+        layout.addWidget(self._lb_edit_tags)
+
+        # === Save status ===
+        self._lb_save_status = QLabel("")
+        self._lb_save_status.setStyleSheet("color: #4CAF50; font-size: 9pt; background: transparent;")
+        self._lb_save_status.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self._lb_save_status)
+
+        layout.addStretch()
+
+        scroll.setWidget(widget)
+        return {'scroll': scroll, 'widget': widget, 'layout': layout}
+
+    # ---- Lightbox metadata editing helpers ----
+
+    def _get_photo_id_for_path(self, path: str):
+        """Get photo ID from database for a given path."""
+        try:
+            from reference_db import ReferenceDB
+            db = ReferenceDB()
+            with db.get_connection() as conn:
+                cursor = conn.execute(
+                    "SELECT id FROM photo_metadata WHERE path = ?", (path,))
+                row = cursor.fetchone()
+                if row:
+                    return row['id']
+                # Try case-insensitive match as fallback
+                cursor = conn.execute(
+                    "SELECT id FROM photo_metadata WHERE LOWER(path) = LOWER(?)", (path,))
+                row = cursor.fetchone()
+                if row:
+                    print(f"[MediaLightbox] Found photo_id via case-insensitive match for: {os.path.basename(path)}")
+                    return row['id']
+                print(f"[MediaLightbox] ⚠️ No photo_metadata row found for: {os.path.basename(path)}")
+                return None
+        except Exception as e:
+            print(f"[MediaLightbox] Error getting photo ID: {e}")
+            return None
+
+    def _load_editable_metadata(self):
+        """Load editable metadata fields for the current media into the Edit tab."""
+        self._lb_loading = True
+        try:
+            photo_id = self._get_photo_id_for_path(self.media_path)
+            self._lb_current_photo_id = photo_id
+
+            if photo_id is None:
+                # No DB record - clear fields
+                self._on_lb_set_rating(0)
+                self._on_lb_set_flag("none")
+                self._lb_edit_title.clear()
+                self._lb_edit_caption.clear()
+                self._lb_edit_tags.clear()
+                self._lb_save_status.setText("")
+                self._lb_loading = False
+                return
+
+            # Load from DB
+            from reference_db import ReferenceDB
+            db = ReferenceDB()
+            with db.get_connection() as conn:
+                cursor = conn.execute("""
+                    SELECT rating, flag, title, caption, tags
+                    FROM photo_metadata WHERE id = ?
+                """, (photo_id,))
+                row = cursor.fetchone()
+
+            if row:
+                self._on_lb_set_rating(row['rating'] or 0)
+                self._on_lb_set_flag(row['flag'] or 'none')
+                self._lb_edit_title.setText(row['title'] or '')
+                self._lb_edit_caption.setPlainText(row['caption'] or '')
+                self._lb_edit_tags.setText(row['tags'] or '')
+            else:
+                self._on_lb_set_rating(0)
+                self._on_lb_set_flag("none")
+                self._lb_edit_title.clear()
+                self._lb_edit_caption.clear()
+                self._lb_edit_tags.clear()
+
+            self._lb_save_status.setText("")
+        except Exception as e:
+            print(f"[MediaLightbox] Error loading editable metadata: {e}")
+        finally:
+            self._lb_loading = False
+
+    def _on_lb_star_clicked(self, idx: int):
+        """Handle star click in lightbox rating widget."""
+        new_rating = idx + 1
+        if self._lb_current_rating == new_rating:
+            new_rating = 0  # Toggle off if clicking same star
+        self._on_lb_set_rating(new_rating)
+        if not getattr(self, '_lb_loading', False):
+            self._on_lb_metadata_changed("rating", new_rating)
+
+    def _on_lb_set_rating(self, rating: int):
+        """Set the rating display in lightbox."""
+        self._lb_current_rating = rating
+        for i, btn in enumerate(self._lb_rating_buttons):
+            if i < rating:
+                btn.setText("★")
+                btn.setStyleSheet("""
+                    QToolButton {
+                        border: none; background: transparent;
+                        font-size: 16px; color: #FFC107;
+                    }
+                    QToolButton:hover { background: rgba(255,193,7,0.2); border-radius: 4px; }
+                """)
+            else:
+                btn.setText("☆")
+                btn.setStyleSheet("""
+                    QToolButton {
+                        border: none; background: transparent;
+                        font-size: 16px; color: rgba(255,255,255,0.3);
+                    }
+                    QToolButton:hover { background: rgba(255,193,7,0.2); border-radius: 4px; }
+                """)
+
+    def _on_lb_flag_clicked(self, flag: str):
+        """Handle flag button click in lightbox."""
+        if self._lb_current_flag == flag:
+            flag = "none"  # Toggle off
+        self._on_lb_set_flag(flag)
+        if not getattr(self, '_lb_loading', False):
+            self._on_lb_metadata_changed("flag", flag)
+
+    def _on_lb_set_flag(self, flag: str):
+        """Set the flag display in lightbox."""
+        self._lb_current_flag = flag
+        self._lb_flag_pick.setChecked(flag == "pick")
+        self._lb_flag_reject.setChecked(flag == "reject")
+
+    def _on_lb_metadata_changed(self, field: str, value):
+        """Handle metadata field change - save to database."""
+        if getattr(self, '_lb_loading', False):
+            return
+        photo_id = getattr(self, '_lb_current_photo_id', None)
+        if photo_id is None:
+            return
+
+        try:
+            from reference_db import ReferenceDB
+            db = ReferenceDB()
+
+            column_map = {
+                "rating": "rating",
+                "flag": "flag",
+                "title": "title",
+                "caption": "caption",
+                "tags": "tags",
+            }
+            column = column_map.get(field)
+            if column is None:
+                return
+
+            with db.get_connection() as conn:
+                # Ensure column exists
+                cursor = conn.execute("PRAGMA table_info(photo_metadata)")
+                existing_cols = {r["name"] for r in cursor.fetchall()}
+                if column not in existing_cols:
+                    col_type = "INTEGER" if field == "rating" else "TEXT"
+                    conn.execute(f"ALTER TABLE photo_metadata ADD COLUMN {column} {col_type}")
+
+                conn.execute(f"""
+                    UPDATE photo_metadata SET {column} = ?, updated_at = datetime('now')
+                    WHERE id = ?
+                """, (value, photo_id))
+                conn.commit()
+
+            self._lb_save_status.setText("✓ Saved")
+            QTimer.singleShot(2000, lambda: self._lb_save_status.setText("")
+                              if hasattr(self, '_lb_save_status') else None)
+        except Exception as e:
+            print(f"[MediaLightbox] Error saving metadata field {field}: {e}")
+            self._lb_save_status.setText("⚠ Save failed")
 
     def _create_enhance_panel(self) -> QWidget:
         panel = QWidget()
@@ -5974,6 +6339,10 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             elif self.progressive_loading:
                 print(f"[MediaLightbox] Starting progressive load...")
 
+                # Bump generation — any in-flight worker with an older
+                # generation will have its results silently discarded.
+                self._lb_media_generation += 1
+
                 # Reset progressive load state
                 self.thumbnail_quality_loaded = False
                 self.full_quality_loaded = False
@@ -5981,12 +6350,13 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 # PHASE A #4: Show loading indicator
                 self._show_loading_indicator("⏳ Loading...")
 
-                # Start progressive load worker
+                # Start progressive load worker with current generation
                 viewport_size = self.scroll_area.viewport().size()
                 worker = ProgressiveImageWorker(
                     self.media_path,
                     self.progressive_signals,
-                    viewport_size
+                    viewport_size,
+                    self._lb_media_generation
                 )
                 self.preload_thread_pool.start(worker)
 
@@ -6167,6 +6537,12 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             import traceback
             traceback.print_exc()
             self._add_metadata_field("⚠️ Error", str(e))
+
+        # Load editable metadata into the Edit tab
+        try:
+            self._load_editable_metadata()
+        except Exception as e:
+            print(f"[MediaLightbox] Error loading editable metadata: {e}")
 
     def _load_photo_metadata(self):
         """Load comprehensive photo metadata into all tabs."""
@@ -7832,11 +8208,13 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             self.preload_thread_pool.start(worker)
             print(f"[MediaLightbox] Preloading: {os.path.basename(next_path)}")
 
-    def _on_preload_complete(self, path: str, pixmap):
-        """PHASE A #1: Handle preload completion."""
-        if pixmap and not pixmap.isNull():
-            # Add to cache with timestamp
+    def _on_preload_complete(self, path: str, qimage):
+        """PHASE A #1: Handle preload completion — promotes QImage→QPixmap on main thread."""
+        if qimage and not qimage.isNull():
+            from PySide6.QtGui import QPixmap
             from PySide6.QtCore import QDateTime
+            # Convert QImage → QPixmap on the main thread (the only safe place)
+            pixmap = QPixmap.fromImage(qimage)
             self.preload_cache[path] = {
                 'pixmap': pixmap,
                 'timestamp': QDateTime.currentMSecsSinceEpoch()
@@ -7864,24 +8242,36 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             del self.preload_cache[path]
             print(f"[MediaLightbox] Removed from cache: {os.path.basename(path)}")
 
-    def _on_thumbnail_loaded(self, pixmap):
-        """PHASE A #2: Handle progressive loading - thumbnail quality loaded."""
-        print(f"[SIGNAL] _on_thumbnail_loaded called, pixmap={'valid' if pixmap and not pixmap.isNull() else 'NULL'}")
+    def _on_thumbnail_loaded(self, generation: int, qimage):
+        """PHASE A #2: Handle progressive loading - thumbnail quality loaded.
 
-        if not pixmap or pixmap.isNull():
-            print(f"[ERROR] ⚠️ Thumbnail pixmap is null or invalid! Photo won't display.")
-            self._hide_loading_indicator()  # Hide loading indicator on error
+        Discards stale results from previous navigations via generation check.
+        Promotes QImage→QPixmap on the main thread (Qt requirement).
+        """
+        # Generation guard: discard if user has already navigated away
+        if generation != self._lb_media_generation:
+            print(f"[SIGNAL] _on_thumbnail_loaded: discarding stale result (gen {generation} != {self._lb_media_generation})")
+            return
+
+        print(f"[SIGNAL] _on_thumbnail_loaded called, qimage={'valid' if qimage and not qimage.isNull() else 'NULL'}")
+
+        if not qimage or qimage.isNull():
+            print(f"[ERROR] ⚠️ Thumbnail QImage is null or invalid! Photo won't display.")
+            self._hide_loading_indicator()
             return
 
         from PySide6.QtCore import Qt
+        from PySide6.QtGui import QPixmap
 
         try:
+            # Convert QImage → QPixmap on main thread
+            pixmap = QPixmap.fromImage(qimage)
+
             # Store as original for zoom operations
             self.original_pixmap = pixmap
 
             # Scale to fit viewport
             viewport_size = self.scroll_area.viewport().size()
-            print(f"[SIGNAL] Viewport size: {viewport_size.width()}x{viewport_size.height()}")
             scaled_pixmap = pixmap.scaled(
                 viewport_size,
                 Qt.KeepAspectRatio,
@@ -7896,7 +8286,7 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             self.thumbnail_quality_loaded = True
 
             # Update status
-            self._show_loading_indicator("📥 Loading full resolution...")
+            self._show_loading_indicator("Loading full resolution...")
 
             print(f"[MediaLightbox] ✓ Thumbnail displayed (progressive load)")
         except Exception as e:
@@ -7905,18 +8295,31 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             traceback.print_exc()
             self._hide_loading_indicator()
 
-    def _on_full_quality_loaded(self, pixmap):
-        """PHASE A #2: Handle progressive loading - full quality loaded."""
-        print(f"[SIGNAL] _on_full_quality_loaded called, pixmap={'valid' if pixmap and not pixmap.isNull() else 'NULL'}")
+    def _on_full_quality_loaded(self, generation: int, qimage):
+        """PHASE A #2: Handle progressive loading - full quality loaded.
 
-        if not pixmap or pixmap.isNull():
-            print(f"[ERROR] ⚠️ Full quality pixmap is null or invalid!")
-            self._hide_loading_indicator()  # Hide loading indicator on error
+        Discards stale results from previous navigations via generation check.
+        Promotes QImage→QPixmap on the main thread (Qt requirement).
+        """
+        # Generation guard: discard if user has already navigated away
+        if generation != self._lb_media_generation:
+            print(f"[SIGNAL] _on_full_quality_loaded: discarding stale result (gen {generation} != {self._lb_media_generation})")
+            return
+
+        print(f"[SIGNAL] _on_full_quality_loaded called, qimage={'valid' if qimage and not qimage.isNull() else 'NULL'}")
+
+        if not qimage or qimage.isNull():
+            print(f"[ERROR] ⚠️ Full quality QImage is null or invalid!")
+            self._hide_loading_indicator()
             return
 
         from PySide6.QtCore import Qt
+        from PySide6.QtGui import QPixmap
 
         try:
+            # Convert QImage → QPixmap on main thread
+            pixmap = QPixmap.fromImage(qimage)
+
             # Store as original for zoom operations
             self.original_pixmap = pixmap
 
@@ -7955,6 +8358,11 @@ class MediaLightbox(QDialog, VideoEditorMixin):
 
             self.full_quality_loaded = True
 
+            # Calculate zoom level
+            self.zoom_level = scaled_pixmap.width() / pixmap.width()
+            self.fit_zoom_level = self.zoom_level
+            self.zoom_mode = "fit"
+
             # Hide loading indicator
             self._hide_loading_indicator()
 
@@ -7964,13 +8372,6 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             import traceback
             traceback.print_exc()
             self._hide_loading_indicator()
-
-        # Calculate zoom level
-        self.zoom_level = scaled_pixmap.width() / pixmap.width()
-        self.fit_zoom_level = self.zoom_level
-        self.zoom_mode = "fit"
-
-        print(f"[MediaLightbox] ✓ Full quality displayed (progressive load complete)")
 
     def _calculate_zoom_scroll_adjustment(self, old_zoom: float, new_zoom: float):
         """

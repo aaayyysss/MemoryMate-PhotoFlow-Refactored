@@ -1,0 +1,16 @@
+--- preferences_dialog.py
++++ preferences_dialog.py
+@@ -1892,6 +1892,13 @@
+             if reply == QMessageBox.Yes:
+                 self.accept()
+                 print("🔄 Restarting application...")
++                try:
++                    w = self.window()
++                    if hasattr(w, "request_restart"):
++                        w.request_restart()
++                        return
++                except Exception:
++                    pass
+                 QProcess.startDetached(sys.executable, sys.argv)
+                 QGuiApplication.quit()
+                 return

@@ -58,6 +58,21 @@ except ImportError:
     logger.debug("[SemanticEmbeddingService] FAISS not installed - using numpy fallback for similarity search")
 
 
+def _has_model_weights(model_dir: str) -> bool:
+    """Check if a local model directory contains valid weight files."""
+    p = Path(model_dir)
+    if not (p / "config.json").exists():
+        return False
+    weight_candidates = [
+        p / "model.safetensors",
+        p / "pytorch_model.bin",
+        p / "pytorch_model.bin.index.json",
+        p / "tf_model.h5",
+        p / "flax_model.msgpack",
+    ]
+    return any(x.exists() for x in weight_candidates)
+
+
 class SemanticEmbeddingService:
     """
     Service for semantic visual embeddings (CLIP/SigLIP).
@@ -73,37 +88,48 @@ class SemanticEmbeddingService:
     """
 
     def __init__(self,
-                 model_name: str = "clip-vit-b32",
+                 model_name: str = "openai/clip-vit-base-patch32",
                  db_connection: Optional[DatabaseConnection] = None):
         """
         Initialize semantic embedding service.
 
+        IMPORTANT: Always use get_semantic_embedding_service() instead of
+        instantiating directly. Direct instantiation bypasses the per-model
+        cache and can create duplicate instances.
+
         Args:
-            model_name: CLIP/SigLIP model variant
-                       'clip-vit-b32', 'clip-vit-b16', 'clip-vit-l14'
+            model_name: CLIP/SigLIP model variant (canonical HuggingFace ID preferred)
+                       Default: "openai/clip-vit-base-patch32"
             db_connection: Optional database connection
         """
-        self.model_name = model_name
+        from utils.clip_model_registry import normalize_model_id, all_aliases_for
+        self.model_name = normalize_model_id(model_name)
+        self._model_aliases = all_aliases_for(self.model_name)
         self.db = db_connection or DatabaseConnection()
 
-        # Model cache (lazy loading)
+        # Model cache (lazy loading — torch/transformers imported on first use)
         self._model = None
         self._processor = None
         self._device = None
-        self._load_attempted = False  # Track if we've tried to load (prevents retrying on every photo)
-        self._load_error = None  # Store error if loading failed
-        self._load_lock = threading.Lock()  # Thread-safe model loading
+        self._load_attempted = False
+        self._load_error = None
+        self._load_lock = threading.Lock()
 
-        # Try to import dependencies
+        # TTL cache for stale-embeddings query (avoids re-querying every 30s)
+        self._stale_cache = {}       # {project_id: (timestamp, result_list)}
+        self._stale_cache_ttl = 300  # seconds (5 minutes)
+
+        # Defer heavy imports to _load_model(); just probe availability here
         self._available = False
+        self._torch = None
+        self._CLIPProcessor = None
+        self._CLIPModel = None
         try:
-            import torch
-            from transformers import CLIPProcessor, CLIPModel
-            self._torch = torch
-            self._CLIPProcessor = CLIPProcessor
-            self._CLIPModel = CLIPModel
+            import importlib
+            importlib.import_module("torch")
+            importlib.import_module("transformers")
             self._available = True
-            logger.info(f"[SemanticEmbeddingService] Initialized with model={model_name}")
+            logger.info(f"[SemanticEmbeddingService] Initialized (lazy) with model={model_name}")
         except ImportError:
             logger.warning("[SemanticEmbeddingService] PyTorch/Transformers not available")
 
@@ -111,21 +137,6 @@ class SemanticEmbeddingService:
     def available(self) -> bool:
         """Check if service is available."""
         return self._available
-
-    def _has_model_weights(model_dir: str) -> bool:
-        from pathlib import Path
-        p = Path(model_dir)
-        if not (p / "config.json").exists():
-            return False
-        # At least one of these must exist for transformers models
-        weight_candidates = [
-            p / "model.safetensors",
-            p / "pytorch_model.bin",
-            p / "pytorch_model.bin.index.json",
-            p / "tf_model.h5",
-            p / "flax_model.msgpack",
-        ]
-        return any(x.exists() for x in weight_candidates)
 
 
     def _load_model(self):
@@ -168,6 +179,14 @@ class SemanticEmbeddingService:
                 self._load_error = error
                 raise error
 
+            # Import heavy dependencies now (deferred from __init__)
+            if self._torch is None:
+                import torch
+                from transformers import CLIPProcessor, CLIPModel
+                self._torch = torch
+                self._CLIPProcessor = CLIPProcessor
+                self._CLIPModel = CLIPModel
+
             logger.info(f"[SemanticEmbeddingService] Loading model: {self.model_name}")
 
             # Detect device
@@ -181,13 +200,9 @@ class SemanticEmbeddingService:
                 self._device = self._torch.device("cpu")
                 logger.info("[SemanticEmbeddingService] Using CPU")
 
-            # Map model name to HuggingFace ID
-            model_map = {
-                'clip-vit-b32': 'openai/clip-vit-base-patch32',
-                'clip-vit-b16': 'openai/clip-vit-base-patch16',
-                'clip-vit-l14': 'openai/clip-vit-large-patch14',
-            }
-            hf_model = model_map.get(self.model_name, self.model_name)
+            # model_name is already a canonical HuggingFace ID
+            # (normalized in __init__ via clip_model_registry)
+            hf_model = self.model_name
 
             # STEP 1: Check for stored preference first
             local_model_path = None
@@ -209,17 +224,21 @@ class SemanticEmbeddingService:
                         logger.debug(f"[SemanticEmbeddingService] Resolving relative path: {clip_path} → {clip_path_obj}")
 
                     # Validate model path
-#                    if clip_path_obj.exists() and (clip_path_obj / 'config.json').exists():
-                    if clip_path_obj.exists() and _has_model_weights(str(clip_path_obj)):    
+                    if clip_path_obj.exists() and _has_model_weights(str(clip_path_obj)):
                         local_model_path = str(clip_path_obj)
                         logger.info(f"[SemanticEmbeddingService] ✓ Using stored preference: {local_model_path}")
                     else:
                         logger.warning(
-                            f"[SemanticEmbeddingService] Stored preference path invalid:\n"
+                            f"[SemanticEmbeddingService] Stored preference path invalid, clearing setting:\n"
                             f"  Path: {clip_path_obj}\n"
                             f"  Exists: {clip_path_obj.exists()}\n"
-                            f"  Has config.json: {(clip_path_obj / 'config.json').exists() if clip_path_obj.exists() else False}"
+                            f"  Has model weights: {_has_model_weights(str(clip_path_obj)) if clip_path_obj.exists() else False}"
                         )
+                        # Clear the invalid path so it won't be retried on every startup
+                        try:
+                            settings.set("clip_model_path", "")
+                        except Exception:
+                            pass
             except Exception as e:
                 logger.warning(f"[SemanticEmbeddingService] Could not check stored preference: {e}")
 
@@ -438,9 +457,14 @@ class SemanticEmbeddingService:
             # STEP 4: Load model from local path (offline mode)
             try:
                 logger.info(f"[SemanticEmbeddingService] Loading from local path (offline mode): {local_model_path}")
+                # FIX #4: Pin use_fast=False for reproducible embeddings.
+                # HF transformers v4.52+ will default to the fast tokenizer
+                # which can produce slightly different tokens → different
+                # embeddings.  Pinning prevents silent drift across installs.
                 self._processor = self._CLIPProcessor.from_pretrained(
                     local_model_path,
-                    local_files_only=True
+                    local_files_only=True,
+                    use_fast=False,
                 )
                 self._model = self._CLIPModel.from_pretrained(
                     local_model_path,
@@ -916,11 +940,14 @@ class SemanticEmbeddingService:
             Embedding vector (float32) or None if not found
         """
         with self.db.get_connection() as conn:
-            cursor = conn.execute("""
+            # Query all known aliases for backward compatibility
+            # (old rows may use short key 'clip-vit-b32', new rows use HF name)
+            placeholders = ",".join("?" for _ in self._model_aliases)
+            cursor = conn.execute(f"""
                 SELECT embedding, dim
                 FROM semantic_embeddings
-                WHERE photo_id = ? AND model = ?
-            """, (photo_id, self.model_name))
+                WHERE photo_id = ? AND model IN ({placeholders})
+            """, (photo_id, *self._model_aliases))
 
             row = cursor.fetchone()
             if row is None:
@@ -957,11 +984,12 @@ class SemanticEmbeddingService:
     def has_embedding(self, photo_id: int) -> bool:
         """Check if photo has semantic embedding."""
         with self.db.get_connection() as conn:
-            cursor = conn.execute("""
+            placeholders = ",".join("?" for _ in self._model_aliases)
+            cursor = conn.execute(f"""
                 SELECT 1 FROM semantic_embeddings
-                WHERE photo_id = ? AND model = ?
+                WHERE photo_id = ? AND model IN ({placeholders})
                 LIMIT 1
-            """, (photo_id, self.model_name))
+            """, (photo_id, *self._model_aliases))
 
             return cursor.fetchone() is not None
 
@@ -988,13 +1016,15 @@ class SemanticEmbeddingService:
 
         with self.db.get_connection() as conn:
             # Use parameterized query with IN clause
-            placeholders = ','.join('?' * len(photo_ids))
+            # Include all model aliases for backward compatibility
+            id_ph = ','.join('?' * len(photo_ids))
+            model_ph = ','.join('?' * len(self._model_aliases))
             query = f"""
                 SELECT photo_id, embedding, dim
                 FROM semantic_embeddings
-                WHERE photo_id IN ({placeholders}) AND model = ?
+                WHERE photo_id IN ({id_ph}) AND model IN ({model_ph})
             """
-            params = list(photo_ids) + [self.model_name]
+            params = list(photo_ids) + list(self._model_aliases)
 
             cursor = conn.execute(query, params)
 
@@ -1078,35 +1108,41 @@ class SemanticEmbeddingService:
         return embeddings
 
     # =========================================================================
-    # STALENESS DETECTION
+    # STALENESS DETECTION (v9.3.0: Pixel-based using dHash)
     # =========================================================================
 
     def is_embedding_stale(self, photo_id: int, file_path: str) -> bool:
         """
-        Check if an embedding is stale (source file has changed).
+        Check if an embedding is stale (source image pixels have changed).
 
-        Compares the stored mtime against the current file mtime.
+        v9.3.0: Uses pixel-based detection via perceptual hash (dHash).
+        Compares the stored source_photo_hash against the current image_content_hash.
+
         An embedding is stale if:
-        - The file has been modified since the embedding was computed
-        - The stored mtime is missing (legacy embedding)
+        - The image pixels have changed (different content hash)
+        - The stored hash is missing (legacy embedding)
+        - The current content hash is missing (legacy scan)
+
+        CRITICAL ADVANTAGE over mtime-based detection:
+        - EXIF-only edits (rating, tags, GPS) do NOT cause false-positive staleness
+        - Only actual pixel changes trigger re-embedding
+        - Saves compute and storage by avoiding unnecessary re-processing
 
         Args:
             photo_id: Photo ID
-            file_path: Current path to the photo file
+            file_path: Current path to the photo file (unused but kept for API compatibility)
 
         Returns:
             True if embedding is stale and needs regeneration
         """
-        import os
-        from pathlib import Path
-
         try:
-            # Get stored mtime from database
             with self.db.get_connection() as conn:
+                # Get stored embedding hash AND current image content hash in single query
                 cursor = conn.execute("""
-                    SELECT source_photo_mtime
-                    FROM semantic_embeddings
-                    WHERE photo_id = ? AND model = ?
+                    SELECT se.source_photo_hash, pm.image_content_hash
+                    FROM semantic_embeddings se
+                    LEFT JOIN photo_metadata pm ON se.photo_id = pm.id
+                    WHERE se.photo_id = ? AND se.model = ?
                 """, (photo_id, self.model_name))
 
                 row = cursor.fetchone()
@@ -1114,25 +1150,24 @@ class SemanticEmbeddingService:
                     # No embedding exists - not stale, just missing
                     return False
 
-                stored_mtime = row['source_photo_mtime']
+                stored_hash = row['source_photo_hash']
+                current_hash = row['image_content_hash']
 
-            # If no mtime was stored (legacy), consider it stale
-            if stored_mtime is None:
-                logger.debug(f"[SemanticEmbeddingService] Photo {photo_id} has no stored mtime - marking stale")
+            # If no stored hash (legacy embedding), consider it stale
+            if stored_hash is None:
+                logger.debug(f"[SemanticEmbeddingService] Photo {photo_id} has no stored hash - marking stale (legacy)")
                 return True
 
-            # Get current file mtime
-            path = Path(file_path)
-            if not path.exists():
-                logger.warning(f"[SemanticEmbeddingService] File not found for staleness check: {file_path}")
-                return False  # Can't regenerate if file doesn't exist
+            # If no current content hash (legacy scan), consider it stale
+            # This will trigger re-scan which will compute the hash
+            if current_hash is None:
+                logger.debug(f"[SemanticEmbeddingService] Photo {photo_id} has no content hash in metadata - marking stale (needs rescan)")
+                return True
 
-            current_mtime = str(path.stat().st_mtime)
-
-            # Compare mtimes
-            is_stale = stored_mtime != current_mtime
+            # Compare content hashes
+            is_stale = stored_hash != current_hash
             if is_stale:
-                logger.debug(f"[SemanticEmbeddingService] Photo {photo_id} is stale: stored={stored_mtime}, current={current_mtime}")
+                logger.debug(f"[SemanticEmbeddingService] Photo {photo_id} is stale: stored_hash={stored_hash[:8]}..., current_hash={current_hash[:8]}...")
 
             return is_stale
 
@@ -1140,31 +1175,43 @@ class SemanticEmbeddingService:
             logger.warning(f"[SemanticEmbeddingService] Error checking staleness for photo {photo_id}: {e}")
             return False
 
-    def get_stale_embeddings_for_project(self, project_id: int) -> list:
+    def get_stale_embeddings_for_project(self, project_id: int, force: bool = False) -> list:
         """
         Get list of photo IDs with stale embeddings in a project.
 
-        Efficiently checks all embeddings in one query and compares against
-        current file mtimes.
+        v9.3.0: Uses pixel-based detection via perceptual hash (dHash).
+        Results are cached with a 5-minute TTL to avoid hammering the DB
+        from the 30-second status-bar timer.  Pass ``force=True`` (or call
+        ``invalidate_stale_cache``) to bypass the cache after a scan.
 
         Args:
             project_id: Project ID
+            force: Skip cache and re-query the database
 
         Returns:
             List of (photo_id, file_path) tuples for photos with stale embeddings
         """
-        import os
-        from pathlib import Path
+        import time
+
+        # --- TTL cache check ---
+        if not force and project_id in self._stale_cache:
+            ts, cached = self._stale_cache[project_id]
+            if (time.time() - ts) < self._stale_cache_ttl:
+                return cached
 
         stale_photos = []
 
         with self.db.get_connection() as conn:
-            # Get all embeddings with their stored mtimes and file paths
             query = """
-                SELECT se.photo_id, p.path, se.source_photo_mtime
+                SELECT se.photo_id, p.path, se.source_photo_hash, p.image_content_hash
                 FROM semantic_embeddings se
                 JOIN photo_metadata p ON se.photo_id = p.id
                 WHERE p.project_id = ? AND se.model = ?
+                AND (
+                    se.source_photo_hash IS NULL
+                    OR p.image_content_hash IS NULL
+                    OR se.source_photo_hash != p.image_content_hash
+                )
             """
 
             cursor = conn.execute(query, (project_id, self.model_name))
@@ -1172,29 +1219,24 @@ class SemanticEmbeddingService:
             for row in cursor.fetchall():
                 photo_id = row['photo_id']
                 file_path = row['path']
-                stored_mtime = row['source_photo_mtime']
+                stale_photos.append((photo_id, file_path))
 
-                # Legacy embedding with no mtime - mark as stale
-                if stored_mtime is None:
-                    stale_photos.append((photo_id, file_path))
-                    continue
-
-                # Check if file still exists and compare mtime
-                try:
-                    path = Path(file_path)
-                    if path.exists():
-                        current_mtime = str(path.stat().st_mtime)
-                        if stored_mtime != current_mtime:
-                            stale_photos.append((photo_id, file_path))
-                except Exception as e:
-                    logger.warning(f"[SemanticEmbeddingService] Error checking mtime for {file_path}: {e}")
+        # Store in cache
+        self._stale_cache[project_id] = (time.time(), stale_photos)
 
         if stale_photos:
-            logger.info(f"[SemanticEmbeddingService] Found {len(stale_photos)} stale embeddings in project {project_id}")
+            logger.info(f"[SemanticEmbeddingService] Found {len(stale_photos)} stale embeddings in project {project_id} (pixel-hash based)")
         else:
             logger.debug(f"[SemanticEmbeddingService] No stale embeddings in project {project_id}")
 
         return stale_photos
+
+    def invalidate_stale_cache(self, project_id: int = None):
+        """Clear the stale-embeddings TTL cache (call after a scan or asset change)."""
+        if project_id is not None:
+            self._stale_cache.pop(project_id, None)
+        else:
+            self._stale_cache.clear()
 
     def invalidate_stale_embeddings(self, project_id: int) -> int:
         """
@@ -1224,26 +1266,28 @@ class SemanticEmbeddingService:
             conn.commit()
 
         logger.info(f"[SemanticEmbeddingService] Invalidated {len(photo_ids)} stale embeddings")
+        # Bust TTL cache since we just deleted rows
+        self.invalidate_stale_cache(project_id)
         return len(photo_ids)
 
     def get_staleness_stats(self, project_id: int) -> dict:
         """
         Get statistics about embedding staleness for a project.
 
+        v9.3.0: Uses pixel-based detection via perceptual hash (dHash).
+
         Args:
             project_id: Project ID
 
         Returns:
-            Dictionary with stats: total, fresh, stale, missing_mtime
+            Dictionary with stats: total, fresh, stale, missing_hash (legacy embeddings)
         """
         stats = {
             'total': 0,
             'fresh': 0,
             'stale': 0,
-            'missing_mtime': 0
+            'missing_hash': 0  # Renamed from missing_mtime for v9.3.0
         }
-
-        stale_photos = self.get_stale_embeddings_for_project(project_id)
 
         with self.db.get_connection() as conn:
             # Count total embeddings
@@ -1255,16 +1299,18 @@ class SemanticEmbeddingService:
             """, (project_id, self.model_name))
             stats['total'] = cursor.fetchone()['count']
 
-            # Count embeddings without mtime
+            # Count embeddings without source hash (legacy)
             cursor = conn.execute("""
                 SELECT COUNT(*) as count
                 FROM semantic_embeddings se
                 JOIN photo_metadata p ON se.photo_id = p.id
                 WHERE p.project_id = ? AND se.model = ?
-                AND se.source_photo_mtime IS NULL
+                AND se.source_photo_hash IS NULL
             """, (project_id, self.model_name))
-            stats['missing_mtime'] = cursor.fetchone()['count']
+            stats['missing_hash'] = cursor.fetchone()['count']
 
+        # Get staleness info using the efficient query
+        stale_photos = self.get_stale_embeddings_for_project(project_id)
         stats['stale'] = len(stale_photos)
         stats['fresh'] = stats['total'] - stats['stale']
 
@@ -1414,10 +1460,10 @@ class SemanticEmbeddingService:
             'photos_without_embeddings': 0,
             'coverage_percent': 0.0,
 
-            # Staleness
+            # Staleness (v9.3.0: pixel-hash based)
             'fresh_embeddings': 0,
             'stale_embeddings': 0,
-            'missing_mtime': 0,
+            'missing_hash': 0,
 
             # Storage
             'storage_bytes': 0,
@@ -1492,15 +1538,15 @@ class SemanticEmbeddingService:
                 saved = float32_equivalent - stats['storage_bytes']
                 stats['space_saved_percent'] = (saved / float32_equivalent) * 100
 
-            # Get embeddings without mtime (legacy)
+            # Get embeddings without source hash (legacy - v9.3.0)
             cursor = conn.execute("""
                 SELECT COUNT(*) as count
                 FROM semantic_embeddings se
                 JOIN photo_metadata p ON se.photo_id = p.id
                 WHERE p.project_id = ? AND se.model = ?
-                AND se.source_photo_mtime IS NULL
+                AND se.source_photo_hash IS NULL
             """, (project_id, self.model_name))
-            stats['missing_mtime'] = cursor.fetchone()['count']
+            stats['missing_hash'] = cursor.fetchone()['count']
 
         # Get staleness info (may be slow for large projects)
         try:
@@ -1768,13 +1814,14 @@ class SemanticEmbeddingService:
         return _faiss_available
 
     def get_embedding_count(self) -> int:
-        """Get total number of semantic embeddings for this model."""
+        """Get total number of semantic embeddings for this model (including aliases)."""
         with self.db.get_connection() as conn:
-            cursor = conn.execute("""
+            placeholders = ",".join("?" for _ in self._model_aliases)
+            cursor = conn.execute(f"""
                 SELECT COUNT(*) as count
                 FROM semantic_embeddings
-                WHERE model = ?
-            """, (self.model_name,))
+                WHERE model IN ({placeholders})
+            """, tuple(self._model_aliases))
 
             return cursor.fetchone()['count']
 
@@ -1983,32 +2030,41 @@ class SemanticEmbeddingService:
         return progress is not None and progress['status'] == 'in_progress'
 
 
-# Singleton instance
-_semantic_embedding_service = None
+# Per-model service cache (singleton per model, not global singleton)
+# This prevents model mismatch bugs when different code paths request different models
+_semantic_services: Dict[str, SemanticEmbeddingService] = {}
 
 
-def get_semantic_embedding_service(model_name: str = "clip-vit-b32") -> SemanticEmbeddingService:
+def get_semantic_embedding_service(model_name: str = "openai/clip-vit-base-patch32") -> SemanticEmbeddingService:
     """
-    Get singleton semantic embedding service (thread-safe).
+    Get semantic embedding service for a specific model (thread-safe).
 
-    Uses double-checked locking pattern for thread safety without
-    acquiring lock on every call.
+    Uses per-model caching: each model gets its own singleton instance.
+    This is safer than a global singleton because:
+    - Different code paths can use different models without conflict
+    - The model_name parameter is actually respected
+    - Prevents subtle bugs where first caller "wins" with their model choice
 
     Args:
-        model_name: CLIP/SigLIP model variant
+        model_name: CLIP/SigLIP model variant (canonical HuggingFace ID or short alias)
+                   Default: "openai/clip-vit-base-patch32" (canonical ID for CLIP ViT-B/32)
 
     Returns:
-        SemanticEmbeddingService instance
+        SemanticEmbeddingService instance for the specified model
     """
-    global _semantic_embedding_service
+    global _semantic_services
 
-    # Fast path: check without lock (most common case)
-    if _semantic_embedding_service is not None:
-        return _semantic_embedding_service
+    # Normalize to canonical model ID for consistent cache keys
+    from utils.clip_model_registry import normalize_model_id
+    canonical_key = normalize_model_id(model_name)
+
+    # Fast path: check without lock
+    if canonical_key in _semantic_services:
+        return _semantic_services[canonical_key]
 
     # Slow path: acquire lock and double-check
     with _service_lock:
-        # Another thread may have created instance while we waited for lock
-        if _semantic_embedding_service is None:
-            _semantic_embedding_service = SemanticEmbeddingService(model_name=model_name)
-        return _semantic_embedding_service
+        if canonical_key not in _semantic_services:
+            logger.info(f"[SemanticEmbeddingService] Creating service for model: {canonical_key}")
+            _semantic_services[canonical_key] = SemanticEmbeddingService(model_name=canonical_key)
+        return _semantic_services[canonical_key]

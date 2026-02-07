@@ -27,6 +27,7 @@ from PySide6.QtGui import QPixmap, QImage, QIcon
 
 from pathlib import Path
 from typing import List, Optional
+from utils.qt_guards import connect_guarded
 
 from services.device_import_service import (
     DeviceImportService, DeviceMediaFile, DeviceImportWorker
@@ -233,6 +234,7 @@ class DeviceImportDialog(QDialog):
         root_path: Optional[str] = None       # Phase 2: For folder extraction
     ):
         super().__init__(parent)
+        self._ui_generation: int = 0
         self.db = db
         self.project_id = project_id
         self.device_folder_path = device_folder_path
@@ -589,10 +591,11 @@ class DeviceImportDialog(QDialog):
             destination_folder_id=None  # Import to root
         )
 
-        # Connect signals
-        worker.signals.progress.connect(self._on_import_progress)
-        worker.signals.finished.connect(self._on_import_finished)
-        worker.signals.error.connect(self._on_import_error)
+        # Connect signals (guarded against shutdown/teardown)
+        gen = int(getattr(self.parent() or self.window(), "_ui_generation", self._ui_generation))
+        connect_guarded(worker.signals.progress, self, self._on_import_progress, generation=gen)
+        connect_guarded(worker.signals.finished, self, self._on_import_finished, generation=gen)
+        connect_guarded(worker.signals.error, self, self._on_import_error, generation=gen)
 
         # Start import in background
         QThreadPool.globalInstance().start(worker)

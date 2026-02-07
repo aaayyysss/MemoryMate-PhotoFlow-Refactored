@@ -245,6 +245,12 @@ class ReferenceDB:
         c.execute("CREATE INDEX IF NOT EXISTS idx_face_crops_proj_branch ON face_crops(project_id, branch_key)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_face_crops_proj_rep ON face_crops(project_id, is_representative)")
 
+        # FIX #5: Prevent duplicate face detections for the same bounding box
+        # on the same photo.  Without this, re-running detection can double
+        # the face_crops rows and cause the "20 detected but 30 loaded" drift.
+        c.execute("""CREATE UNIQUE INDEX IF NOT EXISTS idx_face_crops_unique_bbox
+                     ON face_crops(project_id, image_path, bbox_x, bbox_y, bbox_w, bbox_h)""")
+
         # --- NEW: reps table you already upsert into elsewhere ---
         
         c.execute('''
@@ -486,12 +492,21 @@ class ReferenceDB:
         except Exception:
             conn.rollback()  # Auto-rollback on exception
             raise
-    
+
+    def get_connection(self):
+        """Compatibility shim — delegates to _connect().
+
+        102+ callers across the codebase use ``db.get_connection()`` as a
+        context-manager.  The real implementation lives in ``_connect()``;
+        this thin wrapper keeps every call-site working without renaming.
+        """
+        return self._connect()
+
     @classmethod
     def close_all_connections(cls):
         """
         Close all pooled connections for graceful shutdown.
-        
+
         Call this method when the application is shutting down to ensure
         all database connections are properly closed.
         """
@@ -504,6 +519,34 @@ class ReferenceDB:
                     print(f"[ReferenceDB] Warning: Failed to close connection for thread {thread_id}: {e}")
             cls._connection_pool.clear()
             print(f"[ReferenceDB] All {len(cls._connection_pool)} connections closed")
+
+    def close(self):
+        """
+        Close this instance's resources (for worker cleanup).
+
+        For singleton ReferenceDB, this closes the current thread's pooled connection.
+        Use close_all_connections() for full shutdown.
+        """
+        import threading
+        thread_id = threading.current_thread().ident
+
+        with self._pool_lock:
+            if thread_id in self._connection_pool:
+                try:
+                    self._connection_pool[thread_id].close()
+                    del self._connection_pool[thread_id]
+                    print(f"[ReferenceDB] Closed connection for thread {thread_id}")
+                except Exception as e:
+                    print(f"[ReferenceDB] Warning: Failed to close connection: {e}")
+
+    def __enter__(self):
+        """Context manager entry for 'with ReferenceDB() as db:' pattern."""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit - closes current thread's connection."""
+        self.close()
+        return False  # Don't suppress exceptions
         
 
     # ---- New lightweight helpers for UI (fast SQL-backed) ----
@@ -2540,12 +2583,6 @@ class ReferenceDB:
             cur.execute("SELECT COUNT(*) FROM project_images WHERE project_id = ?", (project_id,))
             count = cur.fetchone()[0]
             print(f"[build_date_branches] project_images table has {count} rows for project {project_id}")
-        # ✅ Ensure outer connection also flushes
-        try:
-            self._connect().commit()
-        except Exception:
-            pass
-
         return n_total
 
     def build_video_date_branches(self, project_id: int):
@@ -2655,12 +2692,6 @@ class ReferenceDB:
             cur.execute("SELECT COUNT(*) FROM project_videos WHERE project_id = ?", (project_id,))
             count = cur.fetchone()[0]
             print(f"[build_video_date_branches] project_videos table has {count} rows for project {project_id}")
-
-        # Ensure outer connection also flushes
-        try:
-            self._connect().commit()
-        except Exception:
-            pass
 
         return n_total
 
@@ -3482,10 +3513,11 @@ class ReferenceDB:
                 """, (project_id,))
             else:
                 cur.execute("""
-                    SELECT path, gps_latitude, gps_longitude, location_name, folder_path
-                    FROM photo_metadata
-                    WHERE gps_latitude IS NOT NULL AND gps_longitude IS NOT NULL
-                    ORDER BY gps_latitude, gps_longitude
+                    SELECT p.path, p.gps_latitude, p.gps_longitude, p.location_name, f.path as folder_path
+                    FROM photo_metadata p
+                    JOIN photo_folders f ON f.id = p.folder_id
+                    WHERE p.gps_latitude IS NOT NULL AND p.gps_longitude IS NOT NULL
+                    ORDER BY p.gps_latitude, p.gps_longitude
                 """)
             
             rows = cur.fetchall()
@@ -4117,7 +4149,7 @@ class ReferenceDB:
                             print(f"  Available keys: {list(nmap.keys())[:2]}...")
         
         paths_with_tags = sum(1 for v in out.values() if v)
-        print(f"[DB_TAGS] Retrieved {tags_found} tags for {paths_with_tags}/{len(orig_paths)} paths (project_id={project_id})")
+        print(f"[DB_TAGS] Retrieved {tags_found} tag assignments across {paths_with_tags}/{len(orig_paths)} paths (project_id={project_id})")
         return out
     # <<< FIX 1
 

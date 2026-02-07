@@ -19,7 +19,7 @@ Schema Version: 2.0.0
 - Adds schema_version tracking table
 """
 
-SCHEMA_VERSION = "9.1.0"
+SCHEMA_VERSION = "9.4.0"
 
 # Complete schema SQL - executed as a script for new databases
 SCHEMA_SQL = """
@@ -56,6 +56,12 @@ VALUES ('8.0.0', 'Asset-centric duplicates model + stacks: media_asset, media_in
 
 INSERT OR IGNORE INTO schema_version (version, description)
 VALUES ('9.1.0', 'Project canonical semantic model: projects.semantic_model for embedding consistency');
+
+INSERT OR IGNORE INTO schema_version (version, description)
+VALUES ('9.2.0', 'Add GPS columns to photo_metadata for location-based browsing');
+
+INSERT OR IGNORE INTO schema_version (version, description)
+VALUES ('9.3.0', 'Add image_content_hash for pixel-based embedding staleness detection');
 
 -- ============================================================================
 -- FACE RECOGNITION TABLES
@@ -214,6 +220,18 @@ CREATE TABLE IF NOT EXISTS photo_metadata (
     created_date TEXT,
     created_year INTEGER,
     file_hash TEXT,
+    -- GPS coordinates for location-based browsing (v9.2.0)
+    gps_latitude REAL,
+    gps_longitude REAL,
+    location_name TEXT,  -- Reverse-geocoded location name
+    -- Perceptual hash for pixel-based embedding staleness detection (v9.3.0)
+    -- Uses dHash (difference hash) which is resilient to metadata-only changes
+    image_content_hash TEXT,
+    -- User-editable metadata fields (v9.4.0 - Lightroom-style editing)
+    rating INTEGER DEFAULT 0,        -- 0-5 star rating
+    flag TEXT DEFAULT 'none',        -- 'pick', 'reject', 'none'
+    title TEXT,                      -- User-defined title
+    caption TEXT,                    -- User-defined description/caption
     FOREIGN KEY(folder_id) REFERENCES photo_folders(id),
     FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
     UNIQUE(path, project_id)
@@ -552,6 +570,10 @@ CREATE INDEX IF NOT EXISTS idx_photo_created_ts ON photo_metadata(created_ts);
 -- Photo metadata indexes (file_hash for duplicate detection during imports)
 CREATE INDEX IF NOT EXISTS idx_photo_metadata_hash ON photo_metadata(file_hash);
 
+-- Photo metadata indexes (GPS for location-based browsing v9.2.0)
+CREATE INDEX IF NOT EXISTS idx_photo_metadata_gps ON photo_metadata(project_id, gps_latitude, gps_longitude)
+    WHERE gps_latitude IS NOT NULL AND gps_longitude IS NOT NULL;
+
 -- Tag indexes (v3.1.0: Added project_id indexes)
 CREATE INDEX IF NOT EXISTS idx_tags_name ON tags(name);
 CREATE INDEX IF NOT EXISTS idx_tags_project ON tags(project_id);
@@ -745,6 +767,7 @@ def get_expected_indexes() -> list[str]:
         # Compound indexes (v3.3.0)
         "idx_photo_metadata_project_folder",
         "idx_photo_metadata_project_date",
+        "idx_photo_metadata_gps",
         "idx_video_metadata_project_folder",
         "idx_video_metadata_project_date",
         "idx_project_images_project_branch",
@@ -801,8 +824,43 @@ MIGRATIONS = {
     "3.0.0": {
         "description": "Added project_id to photo_folders and photo_metadata for clean project isolation",
         "sql": SCHEMA_SQL
+    },
+    "9.2.0": {
+        "description": "Add GPS columns to photo_metadata for location-based browsing",
+        "sql": """
+-- v9.2.0: Add GPS columns if they don't exist
+-- SQLite requires checking column existence before ALTER TABLE
+-- This is idempotent - safe to run multiple times
+
+-- Add gps_latitude column if it doesn't exist
+-- (SQLite doesn't support ADD COLUMN IF NOT EXISTS, so we use a try-ignore pattern)
+
+INSERT OR IGNORE INTO schema_version (version, description)
+VALUES ('9.2.0', 'Add GPS columns to photo_metadata for location-based browsing');
+
+-- Create partial index for GPS queries (fast location lookups)
+CREATE INDEX IF NOT EXISTS idx_photo_metadata_gps ON photo_metadata(project_id, gps_latitude, gps_longitude)
+    WHERE gps_latitude IS NOT NULL AND gps_longitude IS NOT NULL;
+"""
+    },
+    "9.3.0": {
+        "description": "Add image_content_hash for pixel-based embedding staleness detection",
+        "sql": """
+-- v9.3.0: Add image_content_hash column for pixel-based staleness detection
+-- This uses perceptual hash (dHash) which is resilient to metadata-only changes like GPS edits
+-- Replaces mtime-based staleness detection that caused unnecessary re-embedding on EXIF edits
+
+INSERT OR IGNORE INTO schema_version (version, description)
+VALUES ('9.3.0', 'Add image_content_hash for pixel-based embedding staleness detection');
+"""
     }
 }
+
+# GPS column migration SQL (run separately since ALTER TABLE can't be conditional)
+GPS_MIGRATION_SQL = """
+ALTER TABLE photo_metadata ADD COLUMN gps_latitude REAL;
+ALTER TABLE photo_metadata ADD COLUMN gps_longitude REAL;
+"""
 
 
 def get_migration(from_version: str, to_version: str) -> str | None:
@@ -821,3 +879,57 @@ def get_migration(from_version: str, to_version: str) -> str | None:
     if to_version in MIGRATIONS:
         return MIGRATIONS[to_version]["sql"]
     return None
+
+
+def ensure_gps_columns(conn) -> bool:
+    """
+    Ensure GPS columns exist in photo_metadata table.
+
+    This is called at app startup to migrate existing databases.
+    Safe to call multiple times (idempotent).
+
+    Args:
+        conn: SQLite connection object
+
+    Returns:
+        bool: True if columns were added, False if already existed
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    cur = conn.cursor()
+
+    # Check existing columns
+    existing_cols = {r[1] for r in cur.execute("PRAGMA table_info(photo_metadata)")}
+
+    columns_added = False
+
+    if 'gps_latitude' not in existing_cols:
+        logger.info("[Schema] Adding gps_latitude column to photo_metadata")
+        cur.execute("ALTER TABLE photo_metadata ADD COLUMN gps_latitude REAL")
+        columns_added = True
+
+    if 'gps_longitude' not in existing_cols:
+        logger.info("[Schema] Adding gps_longitude column to photo_metadata")
+        cur.execute("ALTER TABLE photo_metadata ADD COLUMN gps_longitude REAL")
+        columns_added = True
+
+    # Create GPS index if needed
+    cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_photo_metadata_gps
+        ON photo_metadata(project_id, gps_latitude, gps_longitude)
+        WHERE gps_latitude IS NOT NULL AND gps_longitude IS NOT NULL
+    """)
+
+    # Update schema version
+    cur.execute("""
+        INSERT OR IGNORE INTO schema_version (version, description)
+        VALUES ('9.2.0', 'Add GPS columns to photo_metadata for location-based browsing')
+    """)
+
+    conn.commit()
+
+    if columns_added:
+        logger.info("[Schema] GPS columns migration complete")
+
+    return columns_added

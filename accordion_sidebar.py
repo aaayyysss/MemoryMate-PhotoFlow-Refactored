@@ -33,6 +33,7 @@ from PySide6.QtCore import (
     Slot,
     QTimer,
 )
+from utils.qt_guards import connect_guarded
 from PySide6.QtGui import QFont, QIcon, QColor, QPixmap, QPainter, QPainterPath, QDrag, QImage
 from datetime import datetime
 from typing import Optional
@@ -821,6 +822,8 @@ class AccordionSidebar(QWidget):
 
     def __init__(self, project_id: int | None, parent=None):
         super().__init__(parent)
+        self._ui_generation: int = 0
+        self._disposed = False  # Lifecycle flag: True after cleanup()
         self.project_id = project_id
         self.sections = {}  # section_id -> AccordionSection
         self.expanded_section_id = None
@@ -1057,6 +1060,8 @@ class AccordionSidebar(QWidget):
 
     def _load_section_content(self, section_id: str):
         """Load content for the specified section."""
+        if self._disposed:
+            return
         self._dbg(f"Loading content for section: {section_id}")
 
         if section_id == "people":
@@ -1085,6 +1090,13 @@ class AccordionSidebar(QWidget):
             placeholder.setStyleSheet("padding: 20px; color: #666;")
             section.set_content_widget(placeholder)
 
+    def cleanup(self):
+        """Mark widget as disposed so background workers skip stale refreshes."""
+        if self._disposed:
+            return
+        self._disposed = True
+        self._dbg("cleanup() — marked as disposed")
+
     def reload_section(self, section_id: str):
         """
         Public method to reload a specific section's content.
@@ -1098,6 +1110,8 @@ class AccordionSidebar(QWidget):
         Args:
             section_id: Section to reload ("people", "dates", "folders", "tags", "branches", "quick")
         """
+        if self._disposed:
+            return
         self._dbg(f"Reloading section: {section_id}")
         if section_id in self.sections:
             self._load_section_content(section_id)
@@ -1111,6 +1125,8 @@ class AccordionSidebar(QWidget):
         This is useful for refreshing the entire sidebar after major operations
         like bulk photo imports or database migrations.
         """
+        if self._disposed:
+            return
         self._dbg("Reloading all sections...")
         for section_id in self.sections.keys():
             self._load_section_content(section_id)
@@ -1167,6 +1183,8 @@ class AccordionSidebar(QWidget):
 
     def _build_people_grid(self, rows: list):
         """Build people grid from loaded data (runs on main thread via signal)."""
+        if self._disposed:
+            return
         section = self.sections.get("people")
         if not section:
             return
@@ -1275,7 +1293,7 @@ class AccordionSidebar(QWidget):
     def _on_person_clicked(self, branch_key: str):
         """Handle person card click - emit signal to filter grid."""
         self._dbg(f"Person clicked: {branch_key}")
-        self.selectBranch.emit(f"branch:{branch_key}")
+        self.selectBranch.emit(branch_key)
 
     def _on_person_context_menu(self, branch_key: str, action: str):
         """Handle person context menu actions."""
@@ -1520,7 +1538,7 @@ class AccordionSidebar(QWidget):
         """Handle person click - emit signal to filter grid."""
         self._dbg(f"Person activated: {branch_key}")
         # Emit branch selection signal for grid filtering
-        self.selectBranch.emit(f"branch:{branch_key}")
+        self.selectBranch.emit(branch_key)
 
     def _set_people_busy(self, busy: bool, message: str = ""):
         if self._people_grid:
@@ -1574,8 +1592,9 @@ class AccordionSidebar(QWidget):
             QMessageBox.critical(None, failure_title, f"❌ {error_msg}")
             cleanup()
 
-        worker.signals.finished.connect(handle_success, Qt.QueuedConnection)
-        worker.signals.error.connect(handle_error, Qt.QueuedConnection)
+        gen = int(getattr(getattr(self, "_main", None) or self.window(), "_ui_generation", self._ui_generation))
+        connect_guarded(worker.signals.finished, self, handle_success, generation=gen)
+        connect_guarded(worker.signals.error, self, handle_error, generation=gen)
         self.thread_pool.start(worker)
 
     def _load_dates_section(self):
@@ -2824,13 +2843,27 @@ class AccordionSidebar(QWidget):
         self.refresh_all(force=True)
 
     def refresh_all(self, force=False):
-        """Refresh all sections (reload content)."""
+        """Refresh all sections, but only reload the expanded one eagerly.
+
+        Non-visible sections are marked stale (generation bumped) and will
+        reload the next time the user expands them, avoiding the reload
+        storm that made duplicates/people load 3-4 times consecutively.
+        """
         self._dbg(f"Refreshing all sections (force={force})")
 
-        # CRITICAL FIX: Reload ALL sections, not just the expanded one
-        # This ensures all sections have fresh data after project changes
-        for section_id in self.sections.keys():
-            self._load_section_content(section_id)
+        # Bump generation for every section (marks all as stale)
+        for section_id in self._reload_generations:
+            self._reload_generations[section_id] = (
+                self._reload_generations[section_id] + 1
+            ) % 1_000_000
+
+        # Only reload the currently visible section eagerly
+        if self.expanded_section_id and self.expanded_section_id in self.sections:
+            self._load_section_content(self.expanded_section_id)
+        else:
+            # No section expanded — reload "quick" (lightweight) as fallback
+            if "quick" in self.sections:
+                self._load_section_content("quick")
 
     def get_section(self, section_id: str) -> AccordionSection:
         """Get a specific section by ID."""

@@ -25,6 +25,7 @@ import sys
 from pathlib import Path
 
 from translation_manager import get_translation_manager, tr
+from utils.qt_guards import connect_guarded
 from config.face_detection_config import get_face_config
 
 
@@ -1488,10 +1489,11 @@ class PreferencesDialog(QDialog):
                 batch_size=500
             )
 
-            # Connect worker signals to progress dialog
-            worker.signals.progress.connect(progress_dialog.update_progress)
-            worker.signals.finished.connect(progress_dialog.on_finished)
-            worker.signals.error.connect(progress_dialog.on_error)
+            # Connect worker signals to progress dialog (guarded against teardown)
+            gen = int(getattr(self.parent() or self.window(), "_ui_generation", 0))
+            connect_guarded(worker.signals.progress, self.parent() or self.window(), progress_dialog.update_progress, generation=gen, extra_valid=[progress_dialog])
+            connect_guarded(worker.signals.finished, self.parent() or self.window(), progress_dialog.on_finished, generation=gen, extra_valid=[progress_dialog])
+            connect_guarded(worker.signals.error, self.parent() or self.window(), progress_dialog.on_error, generation=gen, extra_valid=[progress_dialog])
 
             # Connect dialog cancel to worker (if needed - not implemented in worker yet)
             # progress_dialog.cancelled.connect(worker.cancel)
@@ -1529,7 +1531,7 @@ class PreferencesDialog(QDialog):
         try:
             # Import required modules
             from services.job_service import get_job_service
-            from services.semantic_embedding_service import SemanticEmbeddingService
+            from services.semantic_embedding_service import get_semantic_embedding_service
             from repository.stack_repository import StackRepository
             from repository.base_repository import DatabaseConnection
             from workers.similar_shot_stack_worker import create_similar_shot_stack_worker
@@ -1543,9 +1545,9 @@ class PreferencesDialog(QDialog):
             elif hasattr(self.parent(), 'grid') and hasattr(self.parent().grid, 'project_id'):
                 project_id = self.parent().grid.project_id
 
-            # Check prerequisites
+            # Check prerequisites - use getter to avoid duplicate instances
             db_conn = DatabaseConnection()
-            embedding_service = SemanticEmbeddingService(db_connection=db_conn)
+            embedding_service = get_semantic_embedding_service()
             stack_repo = StackRepository(db_conn)
 
             # Check if embeddings exist
@@ -1619,10 +1621,11 @@ class PreferencesDialog(QDialog):
                 rule_version="1"
             )
 
-            # Connect worker signals to progress dialog
-            worker.signals.progress.connect(progress_dialog.update_progress)
-            worker.signals.finished.connect(progress_dialog.on_finished)
-            worker.signals.error.connect(progress_dialog.on_error)
+            # Connect worker signals to progress dialog (guarded against teardown)
+            gen = int(getattr(self.parent() or self.window(), "_ui_generation", 0))
+            connect_guarded(worker.signals.progress, self.parent() or self.window(), progress_dialog.update_progress, generation=gen, extra_valid=[progress_dialog])
+            connect_guarded(worker.signals.finished, self.parent() or self.window(), progress_dialog.on_finished, generation=gen, extra_valid=[progress_dialog])
+            connect_guarded(worker.signals.error, self.parent() or self.window(), progress_dialog.on_error, generation=gen, extra_valid=[progress_dialog])
 
             # Start worker
             QThreadPool.globalInstance().start(worker)
@@ -1658,7 +1661,7 @@ class PreferencesDialog(QDialog):
         try:
             from repository.stack_repository import StackRepository
             from repository.base_repository import DatabaseConnection
-            from services.semantic_embedding_service import SemanticEmbeddingService
+            from services.semantic_embedding_service import get_semantic_embedding_service
 
             # Get current project_id
             project_id = 1
@@ -1667,10 +1670,10 @@ class PreferencesDialog(QDialog):
             elif hasattr(self.parent(), 'grid') and hasattr(self.parent().grid, 'project_id'):
                 project_id = self.parent().grid.project_id
 
-            # Check status
+            # Check status - use getter to avoid duplicate instances
             db_conn = DatabaseConnection()
             stack_repo = StackRepository(db_conn)
-            embedding_service = SemanticEmbeddingService(db_connection=db_conn)
+            embedding_service = get_semantic_embedding_service()
 
             embedding_count = embedding_service.get_embedding_count()
             similar_stacks = stack_repo.count_stacks(project_id, stack_type="similar")
@@ -1892,6 +1895,15 @@ class PreferencesDialog(QDialog):
             if reply == QMessageBox.Yes:
                 self.accept()
                 print("🔄 Restarting application...")
+                # Use centralized restart with proper shutdown barrier
+                try:
+                    w = self.window()
+                    if hasattr(w, "request_restart"):
+                        w.request_restart()
+                        return
+                except Exception:
+                    pass
+                # Fallback if MainWindow.request_restart not available
                 QProcess.startDetached(sys.executable, sys.argv)
                 QGuiApplication.quit()
                 return

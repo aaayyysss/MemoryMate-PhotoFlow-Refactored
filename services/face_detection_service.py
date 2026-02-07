@@ -261,11 +261,24 @@ def _get_insightface_app():
                     sig = inspect.signature(FaceAnalysis.__init__)
                     supports_providers = 'providers' in sig.parameters
 
-                    # Initialize FaceAnalysis with version-appropriate parameters
-                    # RESTORED FROM WORKING VERSION: Pass BOTH name and root parameters
-                    # buffalo_dir IS the buffalo_l directory (not parent), pass it as root
-                    # This matches the proven working pattern from previous version
-                    init_params = {'name': 'buffalo_l', 'root': buffalo_dir}
+                    # Initialize FaceAnalysis with version-appropriate root path.
+                    # FaceAnalysis resolves models at {root}/models/{name}/.
+                    #
+                    # Newer InsightFace (has 'providers' param):
+                    #   root = grandparent of buffalo_dir so it finds
+                    #   {app_root}/models/buffalo_l directly.
+                    #
+                    # Older InsightFace (v0.2.x, no 'providers' param):
+                    #   root = buffalo_dir (the original working value).
+                    #   v0.2.x's model_zoo cannot parse newer ONNX files at
+                    #   buffalo_dir; instead it resolves its own compatible
+                    #   model cache at {buffalo_dir}/models/buffalo_l/.
+                    if supports_providers:
+                        root_dir = os.path.dirname(os.path.dirname(buffalo_dir))
+                    else:
+                        root_dir = buffalo_dir
+                    init_params = {'name': 'buffalo_l', 'root': root_dir}
+                    logger.info(f"✓ Root dir for FaceAnalysis: {root_dir}")
 
                     if supports_providers:
                         # NEWER VERSION: Pass providers for optimal performance
@@ -306,7 +319,7 @@ def _get_insightface_app():
                             try:
                                 _insightface_app = FaceAnalysis(
                                     name='buffalo_l',
-                                    root=buffalo_dir,
+                                    root=root_dir,
                                     allowed_modules=['detection', 'recognition'],
                                     providers=providers
                                 )
@@ -346,7 +359,7 @@ def _get_insightface_app():
                             try:
                                 _insightface_app = FaceAnalysis(
                                     name='buffalo_l',
-                                    root=buffalo_dir,
+                                    root=root_dir,
                                     allowed_modules=['detection', 'recognition']
                                 )
                                 _insightface_app.prepare(ctx_id=ctx_id, det_size=(640, 640))
@@ -853,15 +866,20 @@ class FaceDetectionService:
                             import os as os_module
                             original_home = os_module.environ.get('INSIGHTFACE_HOME')
                             try:
-                                # Point InsightFace to parent of buffalo_l directory
-                                parent_dir = os.path.dirname(_buffalo_dir_path)
-                                os_module.environ['INSIGHTFACE_HOME'] = parent_dir
-                                logger.debug(f"[INSIGHTFACE] Temporarily set INSIGHTFACE_HOME to: {parent_dir}")
-
                                 # Version detection: Check if FaceAnalysis supports providers parameter
                                 import inspect
                                 sig = inspect.signature(FaceAnalysis.__init__)
                                 supports_providers = 'providers' in sig.parameters
+
+                                # Same version-conditional root as main init:
+                                # newer → grandparent so {root}/models/{name} resolves;
+                                # older (v0.2.x) → buffalo_dir itself.
+                                if supports_providers:
+                                    parent_dir = os.path.dirname(os.path.dirname(_buffalo_dir_path))
+                                else:
+                                    parent_dir = _buffalo_dir_path
+                                os_module.environ['INSIGHTFACE_HOME'] = parent_dir
+                                logger.debug(f"[INSIGHTFACE] Temporarily set INSIGHTFACE_HOME to: {parent_dir}")
 
                                 # Initialize fallback app with version-appropriate parameters
                                 if supports_providers:

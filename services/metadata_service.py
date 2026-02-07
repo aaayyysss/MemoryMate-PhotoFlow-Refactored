@@ -46,6 +46,10 @@ class ImageMetadata:
     created_date: Optional[str] = None  # "YYYY-MM-DD"
     created_year: Optional[int] = None
 
+    # Perceptual hash for pixel-based staleness detection (v9.3.0)
+    # Uses dHash (difference hash) which is resilient to metadata-only changes
+    image_content_hash: Optional[str] = None
+
     # Status
     success: bool = False
     error_message: Optional[str] = None
@@ -126,19 +130,20 @@ class MetadataService:
 
         return metadata
 
-    def extract_basic_metadata(self, file_path: str) -> Tuple[Optional[int], Optional[int], Optional[str], Optional[float], Optional[float]]:
+    def extract_basic_metadata(self, file_path: str) -> Tuple[Optional[int], Optional[int], Optional[str], Optional[float], Optional[float], Optional[str]]:
         """
-        Fast extraction of dimensions, date, and GPS coordinates (for scanning).
+        Fast extraction of dimensions, date, GPS coordinates, and content hash (for scanning).
 
         This method is optimized for photo scanning performance while extracting
-        essential metadata including GPS location data.
+        essential metadata including GPS location data and perceptual hash for
+        embedding staleness detection.
 
         Args:
             file_path: Path to image file
 
         Returns:
-            Tuple of (width, height, date_taken, gps_latitude, gps_longitude)
-            Returns (None, None, None, None, None) on failure
+            Tuple of (width, height, date_taken, gps_latitude, gps_longitude, image_content_hash)
+            Returns (None, None, None, None, None, None) on failure
         """
         try:
             with Image.open(file_path) as img:
@@ -149,10 +154,14 @@ class MetadataService:
                 # Automatically extract GPS during photo scanning for Locations section
                 gps_lat, gps_lon = self._get_exif_gps(img)
 
-                return (int(width), int(height), date_taken, gps_lat, gps_lon)
+                # Compute perceptual hash for pixel-based staleness detection (v9.3.0)
+                # This is resilient to EXIF metadata changes that don't affect pixels
+                content_hash = self._compute_dhash(img)
+
+                return (int(width), int(height), date_taken, gps_lat, gps_lon, content_hash)
         except Exception as e:
             logger.debug(f"Failed basic metadata extraction for {file_path}: {e}")
-            return (None, None, None, None, None)
+            return (None, None, None, None, None, None)
 
     def _extract_file_metadata(self, file_path: str, metadata: ImageMetadata):
         """Extract file system metadata (size, modified time)."""
@@ -328,6 +337,8 @@ class MetadataService:
         Extracts latitude and longitude coordinates from photo EXIF GPS tags.
         This enables automatic population of the Locations section during photo scanning.
 
+        Uses Pillow's get_ifd(0x8825) for robust GPS IFD access (Pillow 9.2+).
+
         Args:
             img: PIL Image object
 
@@ -343,22 +354,30 @@ class MetadataService:
             if not exif:
                 return (None, None)
 
-            # Find GPS IFD tag (0x8825)
+            # ── Primary method: use get_ifd(0x8825) for GPS sub-IFD (Pillow 9.2+) ──
             gps_ifd = None
-            for tag_id, value in exif.items():
-                tag_name = ExifTags.TAGS.get(tag_id, tag_id)
-                if tag_name == 'GPSInfo':
-                    gps_ifd = value
-                    break
+            try:
+                gps_ifd = exif.get_ifd(0x8825)  # GPS IFD tag
+            except (AttributeError, KeyError):
+                # Pillow version doesn't support get_ifd or no GPS IFD
+                pass
+
+            # ── Fallback: iterate main IFD for embedded GPS dict (older Pillow) ──
+            if not gps_ifd:
+                for tag_id, value in exif.items():
+                    tag_name = ExifTags.TAGS.get(tag_id, tag_id)
+                    if tag_name == 'GPSInfo' and isinstance(value, dict):
+                        gps_ifd = value
+                        break
 
             if not gps_ifd:
                 return (None, None)
 
-            # Convert GPS IFD to readable dictionary
+            # Convert GPS IFD to readable dictionary with string keys
             gps_data = {}
-            for tag_id in gps_ifd:
+            for tag_id, value in gps_ifd.items():
                 tag_name = GPSTAGS.get(tag_id, tag_id)
-                gps_data[tag_name] = gps_ifd[tag_id]
+                gps_data[tag_name] = value
 
             # Extract and convert coordinates
             if 'GPSLatitude' in gps_data and 'GPSLongitude' in gps_data:
@@ -374,6 +393,7 @@ class MetadataService:
                 # Validate coordinates
                 if lat is not None and lon is not None:
                     if -90 <= lat <= 90 and -180 <= lon <= 180:
+                        logger.debug(f"GPS extracted: lat={lat}, lon={lon}")
                         return (lat, lon)
 
             return (None, None)
@@ -386,6 +406,11 @@ class MetadataService:
         """
         Convert GPS coordinates from degrees/minutes/seconds to decimal degrees.
 
+        Handles multiple Pillow formats:
+        - Tuples of floats: (52.0, 30.0, 0.0)
+        - Tuples of IFDRational: each with numerator/denominator
+        - Mixed formats from different camera manufacturers
+
         Args:
             gps_coord: GPS coordinate in DMS format (degrees, minutes, seconds)
             ref: Reference direction ('N', 'S', 'E', 'W')
@@ -394,9 +419,24 @@ class MetadataService:
             Decimal degrees or None if conversion fails
         """
         try:
-            degrees = float(gps_coord[0])
-            minutes = float(gps_coord[1])
-            seconds = float(gps_coord[2])
+            def _to_float(val) -> float:
+                """Convert various Pillow value types to float."""
+                # IFDRational has numerator/denominator attributes
+                if hasattr(val, 'numerator') and hasattr(val, 'denominator'):
+                    if val.denominator == 0:
+                        return 0.0
+                    return float(val.numerator) / float(val.denominator)
+                # Tuple format (numerator, denominator) from older Pillow
+                if isinstance(val, tuple) and len(val) == 2:
+                    if val[1] == 0:
+                        return 0.0
+                    return float(val[0]) / float(val[1])
+                # Already a number
+                return float(val)
+
+            degrees = _to_float(gps_coord[0])
+            minutes = _to_float(gps_coord[1])
+            seconds = _to_float(gps_coord[2])
 
             decimal = degrees + (minutes / 60.0) + (seconds / 3600.0)
 
@@ -406,8 +446,88 @@ class MetadataService:
 
             return decimal
 
-        except (IndexError, TypeError, ValueError) as e:
+        except (IndexError, TypeError, ValueError, ZeroDivisionError) as e:
             logger.debug(f"GPS coordinate conversion failed: {e}")
+            return None
+
+    def _compute_dhash(self, img: Image.Image, hash_size: int = 8) -> Optional[str]:
+        """
+        Compute difference hash (dHash) of image for pixel-based staleness detection.
+
+        dHash is a perceptual hash that is:
+        - Fast to compute (simple resize + compare)
+        - Resilient to metadata changes (GPS, EXIF edits don't affect it)
+        - Resilient to minor compression artifacts
+        - Stable across image format conversions (JPEG→PNG, etc.)
+
+        How it works:
+        1. Resize image to (hash_size+1) x hash_size grayscale
+        2. Compare adjacent horizontal pixels
+        3. If left pixel > right pixel, that bit is 1
+        4. Produces hash_size² bits (default: 64 bits = 16 hex chars)
+
+        Args:
+            img: PIL Image object (already opened)
+            hash_size: Size of hash in bits per dimension (default: 8 → 64-bit hash)
+
+        Returns:
+            Hex string of dHash (16 characters for 64-bit hash)
+            Returns None if hashing fails
+        """
+        try:
+            # Resize to (hash_size + 1) x hash_size for horizontal gradient
+            # We need one extra column to compute differences
+            resized = img.convert('L').resize(
+                (hash_size + 1, hash_size),
+                Image.Resampling.LANCZOS
+            )
+
+            # Get pixel data as flat list
+            pixels = list(resized.getdata())
+
+            # Compute difference hash
+            # Compare each pixel to its right neighbor
+            diff_bits = []
+            for row in range(hash_size):
+                for col in range(hash_size):
+                    idx = row * (hash_size + 1) + col
+                    # 1 if left pixel is brighter than right pixel
+                    diff_bits.append(1 if pixels[idx] > pixels[idx + 1] else 0)
+
+            # Convert bits to hex string
+            # Group bits into bytes (8 bits each)
+            hash_int = 0
+            for bit in diff_bits:
+                hash_int = (hash_int << 1) | bit
+
+            # Convert to hex string with leading zeros
+            hex_length = hash_size * hash_size // 4  # 64 bits = 16 hex chars
+            dhash_hex = format(hash_int, f'0{hex_length}x')
+
+            logger.debug(f"Computed dHash: {dhash_hex}")
+            return dhash_hex
+
+        except Exception as e:
+            logger.debug(f"dHash computation failed: {e}")
+            return None
+
+    def compute_dhash_for_file(self, file_path: str) -> Optional[str]:
+        """
+        Compute dHash for an image file (standalone method for re-hashing).
+
+        Use this to compute hash for existing photos that don't have one.
+
+        Args:
+            file_path: Path to image file
+
+        Returns:
+            Hex string of dHash or None if failed
+        """
+        try:
+            with Image.open(file_path) as img:
+                return self._compute_dhash(img)
+        except Exception as e:
+            logger.debug(f"Failed to compute dHash for {file_path}: {e}")
             return None
 
     def _compute_created_fields(self, metadata: ImageMetadata):

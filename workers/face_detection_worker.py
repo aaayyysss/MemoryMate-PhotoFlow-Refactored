@@ -30,6 +30,10 @@ class FaceDetectionSignals(QObject):
     # face_detected(image_path, face_count)
     face_detected = Signal(str, int)
 
+    # Emitted after each batch DB commit so the UI can refresh incrementally
+    # (processed, total, faces_so_far, project_id)
+    batch_committed = Signal(int, int, int, int)
+
     # finished(success_count, failed_count, total_faces)
     finished = Signal(int, int, int)
 
@@ -105,7 +109,14 @@ class FaceDetectionWorker(QRunnable):
     @Slot()
     def run(self):
         """Main worker execution."""
-        logger.info(f"[FaceDetectionWorker] Starting face detection for project {self.project_id}")
+        import threading
+        _thread = threading.current_thread()
+        _is_main = _thread is threading.main_thread()
+        logger.info(
+            "[FaceDetectionWorker] Starting face detection for project %d "
+            "(thread=%s, is_main=%s)",
+            self.project_id, _thread.name, _is_main,
+        )
         self.start_time = time.time()
 
         # Initialize performance monitoring
@@ -241,6 +252,21 @@ class FaceDetectionWorker(QRunnable):
         total_photos = len(photos)
         pending_rows = []  # Accumulate face rows for batch insert
 
+        # Throttle progress emissions — at most every 0.25 s or every 5 photos
+        _PROGRESS_INTERVAL_S = 0.25
+        _PROGRESS_INTERVAL_N = 5
+        _last_progress_t = 0.0
+
+        def _should_emit_progress(idx):
+            nonlocal _last_progress_t
+            now = time.time()
+            if (now - _last_progress_t >= _PROGRESS_INTERVAL_S
+                    or idx % _PROGRESS_INTERVAL_N == 0
+                    or idx == total_photos):
+                _last_progress_t = now
+                return True
+            return False
+
         # Keep single connection open for all batches
         with db._connect() as conn:
             for idx, photo in enumerate(photos, 1):
@@ -255,17 +281,6 @@ class FaceDetectionWorker(QRunnable):
                 photo_path = photo['path']
                 photo_filename = os.path.basename(photo_path)
 
-                # Calculate percentage
-                percentage = int((idx / total_photos) * 100)
-
-                # Emit progress with rich information
-                progress_msg = (
-                    f"[{idx}/{total_photos}] ({percentage}%) "
-                    f"Detecting faces: {photo_filename} | "
-                    f"Found: {self._stats['faces_detected']} faces so far"
-                )
-                self.signals.progress.emit(idx, total_photos, progress_msg)
-
                 # Detect faces
                 photo_start_time = time.time()
                 try:
@@ -275,10 +290,6 @@ class FaceDetectionWorker(QRunnable):
                     if not faces:
                         self._stats['photos_processed'] += 1
                         structured_logger.log_photo_processed(photo_path, 0, photo_duration_ms, success=True)
-                        self.signals.progress.emit(
-                            idx, total_photos,
-                            f"[{idx}/{total_photos}] ({percentage}%) {photo_filename}: No faces found | Total: {self._stats['faces_detected']} faces"
-                        )
                     else:
                         # Limit faces per photo
                         if len(faces) > self.max_faces_per_photo:
@@ -304,13 +315,7 @@ class FaceDetectionWorker(QRunnable):
 
                         self.signals.face_detected.emit(photo_path, faces_saved)
                         structured_logger.log_photo_processed(photo_path, faces_saved, photo_duration_ms, success=True)
-
-                        self.signals.progress.emit(
-                            idx, total_photos,
-                            f"[{idx}/{total_photos}] ({percentage}%) {photo_filename}: Found {faces_saved} face(s) | Total: {self._stats['faces_detected']} faces"
-                        )
-
-                        logger.info(f"[FaceDetectionWorker] ✓ {photo_path}: {faces_saved} faces")
+                        logger.debug(f"[FaceDetectionWorker] {photo_path}: {faces_saved} faces")
 
                 except Exception as e:
                     self._stats['photos_failed'] += 1
@@ -326,12 +331,17 @@ class FaceDetectionWorker(QRunnable):
                         traceback_str
                     )
 
-                    logger.error(f"[FaceDetectionWorker] ✗ {photo_path}: {error_msg}")
+                    logger.error(f"[FaceDetectionWorker] {photo_path}: {error_msg}")
                     self.signals.error.emit(photo_path, error_msg)
 
+                # Throttled progress emission (max every 0.25 s / 5 photos)
+                if _should_emit_progress(idx):
+                    percentage = int((idx / total_photos) * 100)
                     self.signals.progress.emit(
                         idx, total_photos,
-                        f"[{idx}/{total_photos}] ({percentage}%) {photo_filename}: ERROR - {error_msg[:50]}..."
+                        f"[{idx}/{total_photos}] ({percentage}%) "
+                        f"Detecting faces: {photo_filename} | "
+                        f"Found: {self._stats['faces_detected']} faces"
                     )
 
                 # Batch commit every N photos (not every face!)
@@ -339,11 +349,9 @@ class FaceDetectionWorker(QRunnable):
                     saved = self._save_faces_batch(conn, pending_rows)
                     logger.debug(f"[FaceDetectionWorker] Batch commit: {saved} faces saved")
                     pending_rows.clear()
-
-                    # Emit progress after batch commit (UI sees incremental results)
-                    self.signals.progress.emit(
-                        idx, total_photos,
-                        f"[{idx}/{total_photos}] ({percentage}%) Batch saved | Total: {self._stats['faces_detected']} faces"
+                    # Signal for incremental UI refresh
+                    self.signals.batch_committed.emit(
+                        idx, total_photos, self._stats['faces_detected'], self.project_id
                     )
 
                 # Micro-yield for UI responsiveness (prevents UI freeze on CPU-heavy workloads)
@@ -354,6 +362,9 @@ class FaceDetectionWorker(QRunnable):
             if pending_rows:
                 saved = self._save_faces_batch(conn, pending_rows)
                 logger.debug(f"[FaceDetectionWorker] Final batch commit: {saved} faces saved")
+                self.signals.batch_committed.emit(
+                    total_photos, total_photos, self._stats['faces_detected'], self.project_id
+                )
 
     def _process_photos_batch(self, photos, face_service, db, face_crops_dir,
                              structured_logger, monitor, batch_size):
