@@ -1,0 +1,62 @@
+--- main_window_qt.py
++++ main_window_qt.py
+@@ -313,6 +313,8 @@
+         # keep rest of initializer logic, but ensure some attributes exist
+         # keep rest of initializer logic, but ensure some attributes exist
+         self.settings = SettingsManager()
++        self._closing: bool = False
++        self._restart_requested: bool = False
+         self._committed_total = 0
+         self._scan_result = (0, 0)  # folders, photos
+ 
+@@ -3637,6 +3639,50 @@
+                     pass
+         except Exception:
+             pass
++
++    def ui_generation(self) -> int:
++        """Monotonic generation used to ignore stale callbacks from workers."""
++        try:
++            from services.job_manager import get_job_manager
++            return int(get_job_manager().current_generation())
++        except Exception:
++            return 0
++
++    def _shutdown_barrier(self, *, timeout_ms: int = 10_000) -> None:
++        """Best-effort barrier: cancel jobs, wait for pools, invalidate stale callbacks."""
++        if self._closing:
++            return
++        self._closing = True
++        try:
++            from services.job_manager import get_job_manager
++            jm = get_job_manager()
++            jm.shutdown_barrier(timeout_ms=timeout_ms)
++        except Exception:
++            pass
++
++    def request_restart(self) -> None:
++        """Relaunch the app in a detached process, then shutdown current instance."""
++        if self._restart_requested:
++            return
++        self._restart_requested = True
++
++        # Start detached BEFORE quitting, so a crash during shutdown does not prevent relaunch.
++        try:
++            exe = sys.executable
++            args = sys.argv[:]  # preserve argv
++            cwd = os.getcwd()
++            ok = QProcess.startDetached(exe, args, cwd)
++            if not ok:
++                QMessageBox.critical(self, "Restart failed", "Could not relaunch the application process.")
++                self._restart_requested = False
++                return
++        except Exception as e:
++            QMessageBox.critical(self, "Restart failed", f"Could not relaunch the application process.\\n\\n{e}")
++
++        # Barrier, then quit.
++        self._shutdown_barrier(timeout_ms=15_000)
++        QCoreApplication.quit()
++
+ 
+ 
+     def closeEvent(self, event):
