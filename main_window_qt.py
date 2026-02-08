@@ -4171,14 +4171,30 @@ class MainWindow(QMainWindow):
                 self.embedding_status_label.setToolTip("No project selected")
                 return
 
-            # Get stats from service
-            from services.semantic_embedding_service import get_semantic_embedding_service
-            service = get_semantic_embedding_service()
-            stats = service.get_project_embedding_stats(project_id)
+            # FIX 2026-02-08: Use lightweight DB query instead of SemanticEmbeddingService
+            # This prevents creating the embedding service singleton (which loads torch/transformers)
+            # just to check stats. The model should only be loaded when actually needed for search.
+            from reference_db import ReferenceDB
+            db = ReferenceDB()
 
-            coverage = stats.get('coverage_percent', 0)
-            total = stats.get('total_photos', 0)
-            with_emb = stats.get('photos_with_embeddings', 0)
+            with db.get_connection() as conn:
+                # Get total photos
+                cursor = conn.execute(
+                    "SELECT COUNT(*) as count FROM photo_metadata WHERE project_id = ?",
+                    (project_id,)
+                )
+                total = cursor.fetchone()['count']
+
+                # Get photos with embeddings
+                cursor = conn.execute("""
+                    SELECT COUNT(DISTINCT pm.id) as count
+                    FROM photo_metadata pm
+                    JOIN semantic_embeddings se ON pm.id = se.photo_id
+                    WHERE pm.project_id = ?
+                """, (project_id,))
+                with_emb = cursor.fetchone()['count']
+
+            coverage = (with_emb / total * 100) if total > 0 else 0
 
             # Update label
             if coverage >= 100:
