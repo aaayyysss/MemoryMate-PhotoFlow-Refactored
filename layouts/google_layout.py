@@ -151,6 +151,13 @@ class GooglePhotosLayout(BaseLayout):
         self.date_indicator_hide_timer.timeout.connect(self._hide_date_indicator)
         self.date_indicator_delay = 800  # ms - hide after scrolling stops
 
+        # FIX 2026-02-08: Folder click debounce timer (prevent double-loads)
+        self._folder_click_debounce_timer = QTimer()
+        self._folder_click_debounce_timer.setSingleShot(True)
+        self._folder_click_debounce_timer.timeout.connect(self._execute_folder_click)
+        self._folder_click_debounce_delay = 250  # ms - debounce folder clicks
+        self._pending_folder_id = None  # Pending folder ID for debounced click
+
         # PHASE 2 #5: Thumbnail aspect ratio mode
         self.thumbnail_aspect_ratio = "square"  # "square", "original", "16:9"
 
@@ -1793,13 +1800,41 @@ class GooglePhotosLayout(BaseLayout):
 
     def _on_accordion_folder_clicked(self, folder_id: int):
         """
-        Handle accordion sidebar folder selection.
+        Handle accordion sidebar folder selection with debouncing.
+
+        FIX 2026-02-08: Added debouncing to prevent double-clicks from triggering
+        multiple expensive _load_photos() calls.
 
         Args:
             folder_id: Folder ID from database
         """
+        # Skip if same folder already pending or currently displayed
+        if self._pending_folder_id == folder_id:
+            print(f"[GooglePhotosLayout] Folder {folder_id} already pending, skipping")
+            return
+
         print(f"[GooglePhotosLayout] ========================================")
-        print(f"[GooglePhotosLayout] Accordion folder clicked: folder_id={folder_id}")
+        print(f"[GooglePhotosLayout] Accordion folder clicked: folder_id={folder_id} (debouncing...)")
+
+        # Store pending folder and start debounce timer
+        self._pending_folder_id = folder_id
+
+        # Cancel any pending timer and restart
+        if self._folder_click_debounce_timer.isActive():
+            self._folder_click_debounce_timer.stop()
+        self._folder_click_debounce_timer.start(self._folder_click_debounce_delay)
+
+    def _execute_folder_click(self):
+        """
+        Execute the actual folder load after debounce delay.
+
+        FIX 2026-02-08: Separated from _on_accordion_folder_clicked for debouncing.
+        """
+        folder_id = self._pending_folder_id
+        if folder_id is None:
+            return
+
+        print(f"[GooglePhotosLayout] Executing debounced folder click: folder_id={folder_id}")
 
         # Get folder path from database
         try:

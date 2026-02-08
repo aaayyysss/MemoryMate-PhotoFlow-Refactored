@@ -169,12 +169,14 @@ class ModelWarmupWorker(QRunnable):
                 logger.info(f"[ModelWarmupWorker] Cancelled after imports")
                 return
 
-            # Step 3: Get embedding service (this caches the instance)
-            self.signals.progress.emit("Initializing embedding service...")
-            from services.embedding_service import get_embedding_service
-            embedding_service = get_embedding_service(device=self.device)
+            # Step 3: Get semantic embedding service (this caches the instance)
+            # FIX 2026-02-08: Use semantic_embedding_service.py (the canonical service)
+            # instead of legacy embedding_service.py
+            self.signals.progress.emit("Initializing semantic embedding service...")
+            from services.semantic_embedding_service import get_semantic_embedding_service
+            embedding_service = get_semantic_embedding_service(model_name=self.model_variant)
 
-            if not embedding_service.available:
+            if not embedding_service._available:
                 error_msg = "Embedding service not available (missing dependencies)"
                 logger.error(f"[ModelWarmupWorker] {error_msg}")
                 self.signals.error.emit(error_msg)
@@ -188,15 +190,20 @@ class ModelWarmupWorker(QRunnable):
             self.signals.progress.emit(f"Loading {self.model_variant}...")
             logger.info(f"[ModelWarmupWorker] Loading CLIP model: {self.model_variant}")
 
-            model_id = embedding_service.load_clip_model(self.model_variant)
+            # FIX 2026-02-08: Use _load_model() method from SemanticEmbeddingService
+            embedding_service._load_model()
+
+            # Verify model is loaded
+            if embedding_service._model is None:
+                raise RuntimeError("Model failed to load (model is None after _load_model)")
 
             logger.info(
                 f"[ModelWarmupWorker] Model loaded successfully: "
-                f"model_id={model_id}, variant={self.model_variant}"
+                f"variant={self.model_variant}, device={embedding_service._device}"
             )
 
-            # Emit success signal
-            self.signals.finished.emit(model_id, self.model_variant)
+            # Emit success signal (model_id is 0 for SemanticEmbeddingService as it doesn't use model IDs)
+            self.signals.finished.emit(0, self.model_variant)
 
         except Exception as e:
             error_msg = f"Model loading failed: {e}"
