@@ -91,6 +91,7 @@ class JobType:
     DUPLICATE_HASH = 'duplicate_hash'
     DUPLICATE_GROUP = 'duplicate_group'
     POST_SCAN = 'post_scan'
+    MODEL_WARMUP = 'model_warmup'  # FIX 2026-02-08: Async model loading to prevent UI freeze
 
 
 class JobStatus:

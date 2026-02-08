@@ -43,7 +43,8 @@ except ImportError:
     CACHING_AVAILABLE = False
     logger = None  # Will be set below
 
-from services.embedding_service import get_embedding_service
+# FIX 2026-02-08: Removed direct get_embedding_service import to prevent UI-thread blocking
+# Now uses ModelWarmupWorker for async model loading
 from services.search_history_service import get_search_history_service
 from repository.photo_repository import PhotoRepository
 from logging_config import get_logger
@@ -172,6 +173,15 @@ class SemanticSearchWidget(QWidget):
         self._min_similarity = 0.30  # Default similarity threshold (raised from 0.25 for better quality)
         self._slider_debounce_timer = None  # Timer for debouncing slider changes
 
+        # FIX 2026-02-08: Async model loading state
+        self._model_loading = False  # True while background worker is loading model
+        self._model_ready = False  # True when model is loaded and ready for search
+        self._model_id = None  # ID of loaded model
+        self._model_variant = None  # Variant name of loaded model
+        self._warmup_worker = None  # Reference to active ModelWarmupWorker
+        self._pending_search = None  # Queued search request while model is loading
+        self._pending_image_path = None  # Queued image upload path while model is loading
+
         # Result caching (Phase 1 improvement)
         if CACHING_AVAILABLE:
             self._result_cache = TTLCache(maxsize=100, ttl=300)  # 100 queries, 5 min TTL
@@ -210,8 +220,18 @@ class SemanticSearchWidget(QWidget):
                     f"cleared result cache"
                 )
 
-            # Clear embedding service to force reload with new project model
+            # Clear embedding service and model state to force reload with new project model
             self.embedding_service = None
+            self._model_ready = False
+            self._model_loading = False
+            self._model_id = None
+            self._model_variant = None
+            self._pending_search = None
+
+            # Cancel any in-progress warmup worker
+            if self._warmup_worker is not None:
+                self._warmup_worker.cancel()
+                self._warmup_worker = None
 
             logger.info(f"[SemanticSearch] Project context set to: {project_id}")
 
@@ -296,6 +316,150 @@ class SemanticSearchWidget(QWidget):
                 )
         except Exception as e:
             logger.warning(f"[SemanticSearch] Could not check available models: {e}")
+
+    def _start_model_loading(self, pending_action: Optional[str] = None):
+        """
+        Start async model loading in background thread.
+
+        FIX 2026-02-08: Replaced UI-thread blocking model loading with background worker.
+
+        Args:
+            pending_action: Action to perform when model is ready ('search' or 'upload_image')
+        """
+        if self._model_loading:
+            logger.info("[SemanticSearch] Model already loading, waiting...")
+            return
+
+        if self._model_ready and self.embedding_service is not None:
+            logger.info("[SemanticSearch] Model already loaded, executing action immediately")
+            self._execute_pending_action(pending_action)
+            return
+
+        logger.info("[SemanticSearch] Starting async model loading...")
+        self._model_loading = True
+        self._pending_search = pending_action
+
+        # Update UI to show loading state
+        self.search_btn.setEnabled(False)
+        self.search_btn.setText("Loading...")
+        self.image_btn.setEnabled(False)
+        self.status_label.setText("Loading AI model in background...")
+        self.status_label.setVisible(True)
+
+        # Launch background worker
+        from workers.model_warmup_worker import ModelWarmupWorker
+        from PySide6.QtCore import QThreadPool
+
+        variant = self._resolve_clip_variant()
+
+        self._warmup_worker = ModelWarmupWorker(
+            model_variant=variant,
+            device='auto',
+            project_id=self._project_id
+        )
+
+        # Connect signals
+        self._warmup_worker.signals.finished.connect(self._on_model_loaded)
+        self._warmup_worker.signals.progress.connect(self._on_model_progress)
+        self._warmup_worker.signals.error.connect(self._on_model_error)
+
+        QThreadPool.globalInstance().start(self._warmup_worker)
+
+    def _on_model_loaded(self, model_id: int, model_variant: str):
+        """
+        Handle model loaded signal from background worker.
+
+        Args:
+            model_id: ID of loaded model
+            model_variant: Variant name of loaded model
+        """
+        logger.info(f"[SemanticSearch] Model loaded: {model_variant} (id={model_id})")
+
+        self._model_loading = False
+        self._model_ready = True
+        self._model_id = model_id
+        self._model_variant = model_variant
+        self._warmup_worker = None
+
+        # Get embedding service (model already loaded, this is fast)
+        from services.embedding_service import get_embedding_service
+        self.embedding_service = get_embedding_service()
+
+        # Update UI
+        self.search_btn.setEnabled(True)
+        self.search_btn.setText("Search")
+        self.image_btn.setEnabled(True)
+        self.status_label.setText("AI model ready")
+        self.status_label.setVisible(True)
+
+        # Hide status after a moment
+        QTimer.singleShot(2000, lambda: self.status_label.setVisible(False) if not self._last_query else None)
+
+        # Execute pending action
+        pending = self._pending_search
+        self._pending_search = None
+        self._execute_pending_action(pending)
+
+    def _on_model_progress(self, message: str):
+        """Handle progress updates from model warmup worker."""
+        logger.debug(f"[SemanticSearch] Model loading: {message}")
+        self.status_label.setText(message)
+
+    def _on_model_error(self, error_message: str):
+        """Handle error from model warmup worker."""
+        logger.error(f"[SemanticSearch] Model loading failed: {error_message}")
+
+        self._model_loading = False
+        self._warmup_worker = None
+
+        # Update UI
+        self.search_btn.setEnabled(True)
+        self.search_btn.setText("Search")
+        self.image_btn.setEnabled(True)
+        self.status_label.setText("Model loading failed")
+        self.status_label.setStyleSheet("color: #cc0000; font-style: italic; font-size: 9pt;")
+        self.status_label.setVisible(True)
+
+        # Show error dialog
+        QMessageBox.critical(
+            self,
+            "Model Loading Failed",
+            f"Failed to load AI model:\n{error_message}\n\n"
+            "Check console for details."
+        )
+
+        # Reset status style
+        QTimer.singleShot(3000, lambda: self.status_label.setStyleSheet("color: #666; font-style: italic; font-size: 9pt;"))
+
+        self.errorOccurred.emit(error_message)
+
+    def _execute_pending_action(self, action: Optional[str]):
+        """Execute the pending action after model is loaded."""
+        if action == 'search':
+            self._on_search()
+        elif action == 'upload_image':
+            # Process the pending image path
+            if hasattr(self, '_pending_image_path') and self._pending_image_path:
+                file_path = self._pending_image_path
+                self._pending_image_path = None
+                self._process_uploaded_image(file_path)
+
+    def _ensure_model_ready(self, pending_action: str) -> bool:
+        """
+        Ensure model is ready for use. Starts async loading if needed.
+
+        Args:
+            pending_action: Action to perform when ready ('search' or 'upload_image')
+
+        Returns:
+            True if model is ready NOW, False if loading was started
+        """
+        if self._model_ready and self.embedding_service is not None:
+            return True
+
+        # Start async loading
+        self._start_model_loading(pending_action)
+        return False
 
     def _setup_ui(self):
         """Setup the semantic search UI with 2-row layout for better organization."""
@@ -554,12 +718,34 @@ class SemanticSearchWidget(QWidget):
         if not file_path:
             return
 
+        # Store the file path for later processing
+        self._pending_image_path = file_path
+
+        # FIX 2026-02-08: Use async model loading instead of blocking UI thread
+        if not self._ensure_model_ready('upload_image'):
+            # Model is loading, _pending_image_path will be processed when ready
+            logger.info(f"[SemanticSearch] Model loading, will process image when ready: {file_path}")
+            return
+
+        # Model is ready, process the image immediately
+        self._process_uploaded_image(file_path)
+
+    def _process_uploaded_image(self, file_path: str):
+        """
+        Process an uploaded image after model is ready.
+
+        FIX 2026-02-08: Extracted from _on_upload_image to support async model loading.
+
+        Args:
+            file_path: Path to the uploaded image
+        """
         try:
             logger.info(f"[SemanticSearch] Loading query image: {file_path}")
 
-            # Check if embedding service is available
-            if self.embedding_service is None:
-                self.embedding_service = get_embedding_service()
+            # Model should already be loaded at this point
+            if self.embedding_service is None or not self._model_ready:
+                logger.error("[SemanticSearch] _process_uploaded_image called but model not ready")
+                return
 
             if not self.embedding_service.available:
                 QMessageBox.warning(
@@ -570,34 +756,6 @@ class SemanticSearchWidget(QWidget):
                     "pip install torch transformers pillow"
                 )
                 return
-
-            # Load model if needed
-            if self.embedding_service._clip_model is None:
-                from utils.clip_check import MODEL_CONFIGS
-                variant = self._resolve_clip_variant()
-                config = MODEL_CONFIGS.get(variant, {})
-
-                progress = QProgressDialog(
-                    f"Loading {config.get('description', 'CLIP model')}...",
-                    None,
-                    0, 0,
-                    self
-                )
-                progress.setWindowTitle("Loading AI Model")
-                progress.setWindowModality(Qt.WindowModal)
-                progress.show()
-
-                try:
-                    self.embedding_service.load_clip_model(variant)
-                    progress.close()
-                except Exception as e:
-                    progress.close()
-                    QMessageBox.critical(
-                        self,
-                        "Model Loading Failed",
-                        f"Failed to load CLIP model ({variant}):\n{e}"
-                    )
-                    return
 
             # Extract embedding from image
             self._query_image_embedding = self.embedding_service.extract_image_embedding(
@@ -658,15 +816,24 @@ class SemanticSearchWidget(QWidget):
         if has_image:
             query_desc.append(f"image: {Path(self._query_image_path).name}")
         logger.info(f"[SemanticSearch] Searching for: {', '.join(query_desc)}")
+
+        # FIX 2026-02-08: Use async model loading instead of blocking UI thread
+        if not self._ensure_model_ready('search'):
+            # Model is loading, search will be triggered when ready
+            logger.info("[SemanticSearch] Model loading, will search when ready")
+            # Store query for logging later but don't update _last_query yet
+            return
+
         self._last_query = query
 
         # Start timing
         self._search_start_time = time.time()
 
         try:
-            # Check if embedding service is available
-            if self.embedding_service is None:
-                self.embedding_service = get_embedding_service()
+            # Model should already be loaded at this point
+            if self.embedding_service is None or not self._model_ready:
+                logger.error("[SemanticSearch] _on_search called but model not ready")
+                return
 
             if not self.embedding_service.available:
                 QMessageBox.warning(
@@ -679,46 +846,9 @@ class SemanticSearchWidget(QWidget):
                 self.errorOccurred.emit("Dependencies not available")
                 return
 
-            # Check if model is loaded
-            if self.embedding_service._clip_model is None:
-                from utils.clip_check import MODEL_CONFIGS
-                variant = self._resolve_clip_variant()
-                config = MODEL_CONFIGS.get(variant, {})
-
-                logger.info(
-                    f"[SemanticSearch] Auto-selected CLIP variant: {variant} "
-                    f"({config.get('description', 'unknown')})"
-                )
-
-                # Show loading dialog
-                progress = QProgressDialog(
-                    f"Loading {config.get('description', 'CLIP model')} for first-time search...\n"
-                    f"({config.get('dimension', '???')}-D embeddings, {config.get('size_mb', '???')}MB)",
-                    None,  # No cancel button
-                    0, 0,  # Indeterminate
-                    self
-                )
-                progress.setWindowTitle("Loading AI Model")
-                progress.setWindowModality(Qt.WindowModal)
-                progress.show()
-
-                try:
-                    self.embedding_service.load_clip_model(variant)
-                    progress.close()
-                except Exception as e:
-                    progress.close()
-                    QMessageBox.critical(
-                        self,
-                        "Model Loading Failed",
-                        f"Failed to load CLIP model ({variant}):\n{e}\n\n"
-                        "Check console for details."
-                    )
-                    self.errorOccurred.emit(str(e))
-                    return
-            else:
-                # Model already loaded - log which one is in use
-                model_variant = getattr(self.embedding_service, '_clip_variant', 'unknown')
-                logger.info(f"[SemanticSearch] Using cached CLIP model: {model_variant}")
+            # Log which model is in use
+            model_variant = getattr(self.embedding_service, '_clip_variant', self._model_variant or 'unknown')
+            logger.info(f"[SemanticSearch] Using CLIP model: {model_variant}")
 
             # Apply query expansion for better CLIP matching
             expanded_query = query
@@ -800,12 +930,11 @@ class SemanticSearchWidget(QWidget):
                         progress_dialog.setWindowModality(Qt.WindowModal)
                         progress_dialog.show()
 
+                        # FIX 2026-02-08: Removed processEvents() call - modal dialog handles its own events
+                        # Using processEvents() causes re-entrancy risks
                         def on_progress(current, total, message):
                             progress_dialog.setValue(current)
                             progress_dialog.setLabelText(message)
-                            # Process events to keep UI responsive
-                            from PySide6.QtWidgets import QApplication
-                            QApplication.processEvents()
 
                         results = self.embedding_service.search_similar(
                             query_embedding,
@@ -851,12 +980,11 @@ class SemanticSearchWidget(QWidget):
                     progress_dialog.setWindowModality(Qt.WindowModal)
                     progress_dialog.show()
 
+                    # FIX 2026-02-08: Removed processEvents() call - modal dialog handles its own events
+                    # Using processEvents() causes re-entrancy risks
                     def on_progress(current, total, message):
                         progress_dialog.setValue(current)
                         progress_dialog.setLabelText(message)
-                        # Process events to keep UI responsive
-                        from PySide6.QtWidgets import QApplication
-                        QApplication.processEvents()
 
                     results = self.embedding_service.search_similar(
                         query_embedding,
