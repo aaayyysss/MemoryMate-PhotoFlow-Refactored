@@ -23,6 +23,12 @@ logger = get_logger(__name__)
 # Global flag to track if message handler is installed
 _qt_message_handler_installed = False
 
+# FIX 2026-02-08: Global lock to serialize PIL image decode operations
+# PIL is not fully thread-safe when multiple threads call img.load() simultaneously,
+# especially on large images. This can cause "access violation" crashes on Windows.
+# This lock ensures only one thread decodes an image at a time.
+_pil_decode_lock = threading.Lock()
+
 # Formats that should always use PIL (not Qt) due to compatibility issues
 PIL_PREFERRED_FORMATS = {
     '.tif', '.tiff',  # TIFF with various compressions (JPEG, LZW, etc.)
@@ -571,6 +577,14 @@ class ThumbnailService:
                 logger.warning(f"File is empty (0 bytes): {path}")
                 return QPixmap()
 
+            # FIX 2026-02-08: Skip extremely large files to prevent memory/crash issues
+            # 100 MB is the threshold - such files are likely ultra-high-res photos
+            # that could cause memory exhaustion or access violations when decoded
+            if file_size > 100 * 1024 * 1024:  # 100 MB
+                logger.warning(f"File too large ({file_size / 1024 / 1024:.1f}MB), skipping: {path}")
+                self._add_failed_image(self._normalize_path(path))
+                return QPixmap()
+
             start = time.time()
 
             # P2-34 FIX: Skip separate verify() step to eliminate double disk read
@@ -600,8 +614,16 @@ class ThumbnailService:
                     return QPixmap()
 
                 # Load image data (forces actual file read)
+                # FIX 2026-02-08: Use lock to serialize PIL decode operations
+                # This prevents "access violation" crashes on Windows when multiple threads
+                # try to decode large images simultaneously
                 try:
-                    img.load()
+                    with _pil_decode_lock:
+                        img.load()
+                except MemoryError:
+                    logger.error(f"Out of memory loading image: {path}")
+                    self._add_failed_image(self._normalize_path(path))
+                    return QPixmap()
                 except Exception as e:
                     logger.warning(f"PIL failed to load image data for {path}: {e}")
                     # Mark as failed to prevent retries

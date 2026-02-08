@@ -24,7 +24,6 @@ from pathlib import Path
 # SPECPATH is provided by PyInstaller and points to the spec directory.
 project_root = Path(SPECPATH).resolve()
 insightface_models_dir = project_root / 'models' / 'buffalo_l'
-clip_models_dir = project_root / 'models'  # CLIP models (clip-vit-base-patch32, clip-vit-large-patch14, etc.)
 
 # --------------------------------------------------------------------------
 # Collect InsightFace model files
@@ -61,35 +60,13 @@ else:
     print("  Please run face detection once to download models before packaging")
 
 # --------------------------------------------------------------------------
-# Collect CLIP model files (for semantic search)
+# CLIP Model Bundling - DISABLED
 # --------------------------------------------------------------------------
-# CLIP models are downloaded to models/clip-vit-base-patch32, models/clip-vit-large-patch14, etc.
-# These are required for semantic search functionality.
+# CLIP models are NOT bundled to keep the package size small.
+# Transfer CLIP models separately to the target machine.
+# Models should be placed in: models/clip-vit-base-patch32, etc.
+# Run: python download_clip_large.py on the target machine if needed.
 # --------------------------------------------------------------------------
-clip_model_datas = []
-clip_model_variants = [
-    'clip-vit-base-patch32',
-    'clip-vit-large-patch14',
-    'clip-vit-base-patch16',
-]
-
-for variant in clip_model_variants:
-    variant_dir = clip_models_dir / variant
-    if variant_dir.exists():
-        for root, dirs, files in os.walk(variant_dir):
-            for file in files:
-                src = os.path.join(root, file)
-                rel_path = os.path.relpath(src, str(project_root))
-                dst = os.path.dirname(rel_path)
-                clip_model_datas.append((src, dst))
-        print(f"✓ Found CLIP model: {variant} ({len([f for r,d,fs in os.walk(variant_dir) for f in fs])} files)")
-
-if clip_model_datas:
-    print(f"✓ Total CLIP model files to bundle: {len(clip_model_datas)}")
-else:
-    print("⚠ WARNING: No CLIP models found in models/ directory")
-    print("  Semantic search will not work until models are downloaded.")
-    print("  Run: python download_clip_large.py")
 
 # --------------------------------------------------------------------------
 # Additional data files
@@ -135,8 +112,7 @@ datas = [
 # Append InsightFace model files
 datas.extend(model_datas)
 
-# Append CLIP model files (for semantic search)
-datas.extend(clip_model_datas)
+# NOTE: CLIP models are NOT bundled (user transfers them separately)
 
 # --------------------------------------------------------------------------
 # Bundle FFmpeg / FFprobe binaries (optional — for video support)

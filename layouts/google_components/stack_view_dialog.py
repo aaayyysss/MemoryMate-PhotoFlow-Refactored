@@ -22,10 +22,16 @@ from PySide6.QtCore import Signal, Qt, Slot, QRunnable, QThreadPool, QObject, QT
 from PySide6.QtGui import QFont, QColor, QPixmap
 from typing import Optional, List, Dict, Any
 from pathlib import Path
+import threading
+import os
 from logging_config import get_logger
 from utils.qt_guards import connect_guarded
 
 logger = get_logger(__name__)
+
+# FIX 2026-02-08: Global lock to serialize thumbnail loading in stack dialogs
+# This prevents "access violation" crashes when multiple threads load large images simultaneously
+_thumbnail_load_lock = threading.Lock()
 
 
 # ============================================================================
@@ -58,25 +64,63 @@ class ThumbnailLoader(QRunnable):
         self.signals = ThumbnailLoadSignals()
 
     def run(self):
-        """Load thumbnail in background thread."""
+        """
+        Load thumbnail in background thread.
+
+        FIX 2026-02-08: Added thread-safety improvements to prevent access violations:
+        - Global lock to serialize thumbnail loading (prevents PIL thread-safety issues)
+        - File size check to skip extremely large images
+        - Better exception handling for system-level errors
+        """
         logger.debug(f"[THUMBNAIL_LOADER] Starting thumbnail load for: {self.photo_path}")
         try:
-            from app_services import get_thumbnail
+            # Check if path exists first (outside of lock for efficiency)
+            if not self.photo_path:
+                logger.warning(f"[THUMBNAIL_LOADER] Empty photo path")
+                self.signals.error.emit("No Path", self.thumbnail_label)
+                return
 
-            if self.photo_path and Path(self.photo_path).exists():
-                logger.debug(f"[THUMBNAIL_LOADER] File exists, loading thumbnail...")
+            photo_path = Path(self.photo_path)
+
+            # FIX 2026-02-08: Check file existence with error handling for Unicode paths
+            try:
+                if not photo_path.exists():
+                    logger.warning(f"[THUMBNAIL_LOADER] File not found: {self.photo_path}")
+                    self.signals.error.emit("File Not Found", self.thumbnail_label)
+                    return
+            except OSError as e:
+                logger.warning(f"[THUMBNAIL_LOADER] Cannot access path {self.photo_path}: {e}")
+                self.signals.error.emit("Path Error", self.thumbnail_label)
+                return
+
+            # FIX 2026-02-08: Skip extremely large files (> 100MB) to prevent memory issues
+            try:
+                file_size = photo_path.stat().st_size
+                if file_size > 100 * 1024 * 1024:  # 100 MB
+                    logger.warning(f"[THUMBNAIL_LOADER] File too large ({file_size / 1024 / 1024:.1f}MB): {self.photo_path}")
+                    self.signals.error.emit("File Too Large", self.thumbnail_label)
+                    return
+            except OSError:
+                pass  # If we can't stat, try to load anyway
+
+            # FIX 2026-02-08: Use lock to serialize thumbnail loading
+            # This prevents access violations when multiple threads call PIL.load() simultaneously
+            with _thumbnail_load_lock:
+                logger.debug(f"[THUMBNAIL_LOADER] Acquired lock, loading thumbnail...")
+                from app_services import get_thumbnail
+
                 pixmap = get_thumbnail(self.photo_path, self.size)
+
                 if pixmap and not pixmap.isNull():
-                    # Signal success with pixmap
                     logger.debug(f"[THUMBNAIL_LOADER] Thumbnail loaded successfully, emitting signal")
                     self.signals.finished.emit(pixmap, self.thumbnail_label)
                 else:
                     logger.warning(f"[THUMBNAIL_LOADER] get_thumbnail returned None or null pixmap")
                     self.signals.error.emit("No Preview", self.thumbnail_label)
-            else:
-                logger.warning(f"[THUMBNAIL_LOADER] File not found: {self.photo_path}")
-                self.signals.error.emit("File Not Found", self.thumbnail_label)
 
+        except MemoryError:
+            logger.error(f"[THUMBNAIL_LOADER] Out of memory loading: {self.photo_path}")
+            self.signals.error.emit("Memory Error", self.thumbnail_label)
         except Exception as e:
             logger.error(f"[THUMBNAIL_LOADER] Exception during thumbnail load: {e}", exc_info=True)
             self.signals.error.emit("Error", self.thumbnail_label)
