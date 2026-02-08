@@ -24,6 +24,7 @@ from pathlib import Path
 # SPECPATH is provided by PyInstaller and points to the spec directory.
 project_root = Path(SPECPATH).resolve()
 insightface_models_dir = project_root / 'models' / 'buffalo_l'
+clip_models_dir = project_root / 'models'  # CLIP models (clip-vit-base-patch32, clip-vit-large-patch14, etc.)
 
 # --------------------------------------------------------------------------
 # Collect InsightFace model files
@@ -58,6 +59,37 @@ if insightface_models_dir.exists():
 else:
     print(f"⚠ WARNING: InsightFace models not found at {insightface_models_dir}")
     print("  Please run face detection once to download models before packaging")
+
+# --------------------------------------------------------------------------
+# Collect CLIP model files (for semantic search)
+# --------------------------------------------------------------------------
+# CLIP models are downloaded to models/clip-vit-base-patch32, models/clip-vit-large-patch14, etc.
+# These are required for semantic search functionality.
+# --------------------------------------------------------------------------
+clip_model_datas = []
+clip_model_variants = [
+    'clip-vit-base-patch32',
+    'clip-vit-large-patch14',
+    'clip-vit-base-patch16',
+]
+
+for variant in clip_model_variants:
+    variant_dir = clip_models_dir / variant
+    if variant_dir.exists():
+        for root, dirs, files in os.walk(variant_dir):
+            for file in files:
+                src = os.path.join(root, file)
+                rel_path = os.path.relpath(src, str(project_root))
+                dst = os.path.dirname(rel_path)
+                clip_model_datas.append((src, dst))
+        print(f"✓ Found CLIP model: {variant} ({len([f for r,d,fs in os.walk(variant_dir) for f in fs])} files)")
+
+if clip_model_datas:
+    print(f"✓ Total CLIP model files to bundle: {len(clip_model_datas)}")
+else:
+    print("⚠ WARNING: No CLIP models found in models/ directory")
+    print("  Semantic search will not work until models are downloaded.")
+    print("  Run: python download_clip_large.py")
 
 # --------------------------------------------------------------------------
 # Additional data files
@@ -100,8 +132,11 @@ datas = [
     # They are created automatically on first run.
 ]
 
-# Append model files
+# Append InsightFace model files
 datas.extend(model_datas)
+
+# Append CLIP model files (for semantic search)
+datas.extend(clip_model_datas)
 
 # --------------------------------------------------------------------------
 # Bundle FFmpeg / FFprobe binaries (optional — for video support)
@@ -166,8 +201,11 @@ hiddenimports = [
     'torch.cuda',
     'torch.backends',
     'torch.backends.cudnn',
+    'torch.backends.mps',             # Apple Metal support
     'torch.utils',
     'torch.utils.data',
+    'torch._C',
+    'torch._C._distributed_c10d',
     'transformers',
     'transformers.models',
     'transformers.models.clip',
@@ -180,12 +218,20 @@ hiddenimports = [
     'transformers.processing_utils',
     'transformers.feature_extraction_utils',
     'transformers.image_processing_utils',
+    'transformers.image_utils',
     'transformers.tokenization_utils',
     'transformers.tokenization_utils_base',
     'transformers.tokenization_utils_fast',
     'transformers.utils',
     'transformers.utils.hub',
+    'transformers.dynamic_module_utils',
     'tokenizers',
+    'safetensors',                    # Modern model format
+    'safetensors.torch',
+    'filelock',                       # Transformers file locking
+    'regex',                          # Tokenizer dependency
+    'packaging',                      # Version checking
+    'packaging.version',
 
     # === RAW image support (DSLR: CR2, NEF, ARW, DNG) ===
     'rawpy',
@@ -364,7 +410,7 @@ hiddenimports = [
     'services.video_service',
     'services.video_thumbnail_service',
 
-    # --- workers (comprehensive — includes all 18 modules) ---
+    # --- workers (comprehensive — includes all 21 modules) ---
     'workers',
     'workers.duplicate_loading_worker',
     'workers.embedding_worker',
@@ -375,15 +421,17 @@ hiddenimports = [
     'workers.hash_backfill_worker',
     'workers.meta_backfill_pool',
     'workers.meta_backfill_single',
+    'workers.model_warmup_worker',       # NEW 2026-02-08: Async CLIP model loading
     'workers.mtp_copy_worker',
     'workers.photo_page_worker',
     'workers.post_scan_pipeline_worker',
     'workers.progress_writer',
     'workers.semantic_embedding_worker',
+    'workers.semantic_search_worker',    # NEW 2026-02-08: Async semantic search
     'workers.similar_shot_stack_worker',
+    'workers.startup_maintenance_worker',
     'workers.video_metadata_worker',
     'workers.video_thumbnail_worker',
-    'workers.startup_maintenance_worker',
 
     # --- ui (comprehensive — includes all 35+ modules) ---
     'ui',
