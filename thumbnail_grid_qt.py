@@ -253,7 +253,8 @@ class ThumbWorker(QRunnable):
                 return
 
         except Exception as e:
-            print(f"[ThumbWorker] Error for {self.path}: {e}")
+            # FIX: Use self.real_path (self.path doesn't exist)
+            print(f"[ThumbWorker] Error for {self.real_path}: {e}")
 
 
 def is_video_file(path: str) -> bool:
@@ -1359,6 +1360,15 @@ class ThumbnailGridQt(QWidget):
         except Exception as e:
             print(f"[GRID] Warning: Could not fetch tags: {e}")
 
+        # FIX (2026-02-08): Preload aspect ratios from DB instead of PIL.Image.open on UI thread
+        # This prevents UI freezes when loading thumbnails (Google Photos best practice)
+        aspect_map = {}
+        try:
+            if hasattr(self.db, 'get_aspect_ratios_for_paths'):
+                aspect_map = self.db.get_aspect_ratios_for_paths(self._paths, self.project_id)
+        except Exception as e:
+            print(f"[GRID] Warning: Could not fetch aspect ratios: {e}")
+
         # Use current reload token snapshot so workers can be tied to this load
         token = self._reload_token
 
@@ -1416,13 +1426,9 @@ class ThumbnailGridQt(QWidget):
                 header_label = None
             item.setData(header_label, Qt.UserRole + 10)
 
-            # --- Set placeholder size based on actual aspect ratio from header if possible
-            try:
-                from PIL import Image
-                with Image.open(p) as im:
-                    aspect_ratio = (im.width / im.height) if im and im.height else 1.5
-            except Exception:
-                aspect_ratio = 1.5
+            # --- Set placeholder size based on DB-stored aspect ratio (no UI-thread I/O)
+            # FIX (2026-02-08): Use preloaded aspect_map instead of PIL.Image.open
+            aspect_ratio = aspect_map.get(p, 1.5)
             item.setData(aspect_ratio, Qt.UserRole + 1)
             
             size0 = self._thumb_size_for_aspect(aspect_ratio)
@@ -1509,13 +1515,15 @@ class ThumbnailGridQt(QWidget):
         # rebuild
         self.model.clear()
         token = self._reload_token
-        for i, p in enumerate(sorted_paths):
+        thumb_h = int(self._thumb_base * self._zoom_factor) if hasattr(self, '_thumb_base') else self.thumb_height
+        for i, p in enumerate(self._paths):
             item = QStandardItem()
             item.setEditable(False)
             item.setData(p, Qt.UserRole)
             item.setSizeHint(QSize(self.thumb_height, self.thumb_height + self._spacing))
             self.model.appendRow(item)
-            worker = ThumbWorker(p, self.thumb_height, i, self.thumb_signal, self._thumb_cache, token, self._placeholder_pixmap)
+            # FIX: ThumbWorker requires 8 args: real_path, norm_path, height, row, signal_obj, cache, reload_token, placeholder
+            worker = ThumbWorker(p, p, thumb_h, i, self.thumb_signal, self._thumb_cache, token, self._placeholder_pixmap)
             self.thread_pool.start(worker)
 
 
@@ -2959,17 +2967,19 @@ class ThumbnailGridQt(QWidget):
 
         # --- Build items
         token = self._reload_token
-        for i, p in enumerate(sorted_paths):
+        thumb_h = int(self._thumb_base * self._zoom_factor) if hasattr(self, '_thumb_base') else self.thumb_height
+        for i, p in enumerate(self._paths):
             item = QStandardItem()
             item.setEditable(False)
             item.setData(p, Qt.UserRole)
             item.setData(tag_map.get(p, []), Qt.UserRole + 2)  # store tags list
-            
+
             # initial placeholder size (consistent with default aspect)
             item.setSizeHint(self._thumb_size_for_aspect(1.5))
             self.model.appendRow(item)
 
-            worker = ThumbWorker(p, self.thumb_height, i, self.thumb_signal, self._thumb_cache, token, self._placeholder_pixmap)
+            # FIX: ThumbWorker requires 8 args: real_path, norm_path, height, row, signal_obj, cache, reload_token, placeholder
+            worker = ThumbWorker(p, p, thumb_h, i, self.thumb_signal, self._thumb_cache, token, self._placeholder_pixmap)
             self.thread_pool.start(worker)
 
         # --- Trigger UI update
@@ -3229,7 +3239,16 @@ class ThumbnailGridQt(QWidget):
         tag_map = self.db.get_tags_for_paths(self._paths, self.project_id)
         paths_with_tags = sum(1 for v in tag_map.values() if v)
         print(f"[GRID] Queried tags for {len(self._paths)} paths, {paths_with_tags} have tags")
-        
+
+        # FIX (2026-02-08): Preload aspect ratios from DB instead of PIL.Image.open on UI thread
+        # This prevents UI freezes when loading thumbnails (Google Photos best practice)
+        aspect_map = {}
+        try:
+            if hasattr(self.db, 'get_aspect_ratios_for_paths'):
+                aspect_map = self.db.get_aspect_ratios_for_paths(self._paths, self.project_id)
+        except Exception as e:
+            print(f"[GRID] Warning: Could not fetch aspect ratios: {e}")
+
         # 📅 Grouping: fetch date_taken and sort descending
         import os, time
         from datetime import datetime
@@ -3315,6 +3334,7 @@ class ThumbnailGridQt(QWidget):
                 'sorted_paths': sorted_paths,
                 'tag_map': tag_map,
                 'date_map': date_map,
+                'aspect_map': aspect_map,  # FIX: Add aspect ratios for batched loading
                 'use_date_headers': use_date_headers,
                 'token': token,
                 'placeholder_size': placeholder_size,
@@ -3330,7 +3350,7 @@ class ThumbnailGridQt(QWidget):
 
         self._populate_model_items(
             paths_to_process, 0, sorted_paths,
-            tag_map, date_map, use_date_headers,
+            tag_map, date_map, aspect_map, use_date_headers,
             token, placeholder_size, placeholder_pix, _group_label,
         )
 
@@ -3374,7 +3394,7 @@ class ThumbnailGridQt(QWidget):
 
     def _populate_model_items(
         self, paths_batch, global_offset, all_sorted_paths,
-        tag_map, date_map, use_date_headers,
+        tag_map, date_map, aspect_map, use_date_headers,
         token, placeholder_size, placeholder_pix, group_label_fn,
     ):
         """
@@ -3383,6 +3403,9 @@ class ThumbnailGridQt(QWidget):
         *global_offset* is the index of the first element of paths_batch
         within *all_sorted_paths*.  This is used for date-header boundary
         detection across batches.
+
+        FIX (2026-02-08): Added aspect_map parameter to use DB-stored dimensions
+        instead of PIL.Image.open on UI thread (Google Photos best practice).
         """
         from PySide6.QtCore import QSize, Qt
         from PySide6.QtGui import QStandardItem, QIcon
@@ -3416,13 +3439,9 @@ class ThumbnailGridQt(QWidget):
                 header_label = None
             item.setData(header_label, Qt.UserRole + 10)
 
-            # Aspect ratio from image header
-            try:
-                from PIL import Image
-                with Image.open(p) as im:
-                    initial_aspect = (im.width / im.height) if im and im.height else 1.5
-            except Exception:
-                initial_aspect = 1.5
+            # FIX (2026-02-08): Use preloaded aspect_map instead of PIL.Image.open
+            # This prevents UI freezes (Google Photos/iOS Photos best practice)
+            initial_aspect = aspect_map.get(p, 1.5)
             item.setData(initial_aspect, Qt.UserRole + 1)
             item.setData(False, Qt.UserRole + 5)   # not scheduled yet
 
@@ -3492,9 +3511,11 @@ class ThumbnailGridQt(QWidget):
 
         batch = sorted_paths[start:end]
 
+        # FIX (2026-02-08): Pass aspect_map to avoid PIL.Image.open on UI thread
         self._populate_model_items(
             batch, start, sorted_paths,
-            state['tag_map'], state['date_map'], state['use_date_headers'],
+            state['tag_map'], state['date_map'], state.get('aspect_map', {}),
+            state['use_date_headers'],
             state['token'], state['placeholder_size'], state['placeholder_pix'],
             state['group_label'],
         )
