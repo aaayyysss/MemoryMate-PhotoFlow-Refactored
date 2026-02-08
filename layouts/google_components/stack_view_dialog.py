@@ -1,6 +1,7 @@
 # layouts/google_components/stack_view_dialog.py
-# Version 01.02.00.02 dated 20260201
+# Version 01.03.00.00 dated 20260208
 # Stack comparison dialog for Google Layout
+# FIX 2026-02-08: Thread-safe thumbnail loading (QImage in workers, QPixmap on UI thread)
 
 """
 StackViewDialog - Compare and manage stack members
@@ -19,19 +20,19 @@ from PySide6.QtWidgets import (
     QGroupBox, QSlider, QTabWidget
 )
 from PySide6.QtCore import Signal, Qt, Slot, QRunnable, QThreadPool, QObject, QTimer
-from PySide6.QtGui import QFont, QColor, QPixmap
+from PySide6.QtGui import QFont, QColor, QPixmap, QImage
 from typing import Optional, List, Dict, Any
 from pathlib import Path
-import threading
 import os
 from logging_config import get_logger
 from utils.qt_guards import connect_guarded
 
 logger = get_logger(__name__)
 
-# FIX 2026-02-08: Global lock to serialize thumbnail loading in stack dialogs
-# This prevents "access violation" crashes when multiple threads load large images simultaneously
-_thumbnail_load_lock = threading.Lock()
+# FIX 2026-02-08: Removed global lock - using semaphore in thumbnail_service instead
+# The lock was insufficient because QPixmap creation in worker threads is fundamentally
+# not thread-safe on Windows. The fix is to use QImage (thread-safe) in workers,
+# and only convert to QPixmap on the UI thread.
 
 
 # ============================================================================
@@ -39,8 +40,14 @@ _thumbnail_load_lock = threading.Lock()
 # ============================================================================
 
 class ThumbnailLoadSignals(QObject):
-    """Signals for async thumbnail loading (Qt cross-thread communication)."""
-    finished = Signal(object, object)  # pixmap, thumbnail_label
+    """
+    Signals for async thumbnail loading (Qt cross-thread communication).
+
+    FIX 2026-02-08: Changed to emit QImage instead of QPixmap.
+    QImage is CPU-backed and thread-safe, QPixmap is GPU-backed and NOT thread-safe.
+    The UI thread callback converts QImage -> QPixmap.
+    """
+    finished = Signal(object, object)  # QImage (not QPixmap!), thumbnail_label
     error = Signal(str, object)  # error_msg, thumbnail_label
 
 
@@ -48,12 +55,17 @@ class ThumbnailLoader(QRunnable):
     """
     Runnable task to load thumbnail in background thread.
 
+    FIX 2026-02-08: CRITICAL THREAD-SAFETY FIX
+    - Workers now use get_thumbnail_image() which returns QImage (thread-safe)
+    - The signal emits QImage, NOT QPixmap
+    - The UI thread callback converts QImage -> QPixmap
+    - This follows Google Photos / Apple Photos best practice
+
     Based on iPhone Photos / Google Photos best practice:
     - Load thumbnails asynchronously to avoid UI freezing
     - Show placeholder immediately, load actual image in background
     - Update UI when thumbnail is ready
-
-    This prevents the app from freezing when loading large photo libraries.
+    - IMPORTANT: Only create QPixmap on UI thread!
     """
 
     def __init__(self, photo_path: str, thumbnail_label: QLabel, size: int = 200):
@@ -67,14 +79,14 @@ class ThumbnailLoader(QRunnable):
         """
         Load thumbnail in background thread.
 
-        FIX 2026-02-08: Added thread-safety improvements to prevent access violations:
-        - Global lock to serialize thumbnail loading (prevents PIL thread-safety issues)
-        - File size check to skip extremely large images
-        - Better exception handling for system-level errors
+        FIX 2026-02-08: Complete rewrite for thread-safety:
+        - Uses get_thumbnail_image() which returns QImage (thread-safe)
+        - Emits QImage via signal (not QPixmap!)
+        - UI thread converts QImage -> QPixmap in the callback
         """
         logger.debug(f"[THUMBNAIL_LOADER] Starting thumbnail load for: {self.photo_path}")
         try:
-            # Check if path exists first (outside of lock for efficiency)
+            # Check if path exists first
             if not self.photo_path:
                 logger.warning(f"[THUMBNAIL_LOADER] Empty photo path")
                 self.signals.error.emit("No Path", self.thumbnail_label)
@@ -82,7 +94,7 @@ class ThumbnailLoader(QRunnable):
 
             photo_path = Path(self.photo_path)
 
-            # FIX 2026-02-08: Check file existence with error handling for Unicode paths
+            # Check file existence with error handling for Unicode paths
             try:
                 if not photo_path.exists():
                     logger.warning(f"[THUMBNAIL_LOADER] File not found: {self.photo_path}")
@@ -93,7 +105,7 @@ class ThumbnailLoader(QRunnable):
                 self.signals.error.emit("Path Error", self.thumbnail_label)
                 return
 
-            # FIX 2026-02-08: Skip extremely large files (> 100MB) to prevent memory issues
+            # Skip extremely large files (> 100MB) to prevent memory issues
             try:
                 file_size = photo_path.stat().st_size
                 if file_size > 100 * 1024 * 1024:  # 100 MB
@@ -103,20 +115,21 @@ class ThumbnailLoader(QRunnable):
             except OSError:
                 pass  # If we can't stat, try to load anyway
 
-            # FIX 2026-02-08: Use lock to serialize thumbnail loading
-            # This prevents access violations when multiple threads call PIL.load() simultaneously
-            with _thumbnail_load_lock:
-                logger.debug(f"[THUMBNAIL_LOADER] Acquired lock, loading thumbnail...")
-                from app_services import get_thumbnail
+            # FIX 2026-02-08: Use get_thumbnail_image() which returns QImage (thread-safe!)
+            # This is the key fix - QPixmap was being created in worker thread (NOT safe)
+            # Now we get QImage and convert to QPixmap only on UI thread
+            logger.debug(f"[THUMBNAIL_LOADER] Loading thumbnail as QImage (thread-safe)...")
+            from app_services import get_thumbnail_image
 
-                pixmap = get_thumbnail(self.photo_path, self.size)
+            qimage = get_thumbnail_image(self.photo_path, self.size, timeout=5.0)
 
-                if pixmap and not pixmap.isNull():
-                    logger.debug(f"[THUMBNAIL_LOADER] Thumbnail loaded successfully, emitting signal")
-                    self.signals.finished.emit(pixmap, self.thumbnail_label)
-                else:
-                    logger.warning(f"[THUMBNAIL_LOADER] get_thumbnail returned None or null pixmap")
-                    self.signals.error.emit("No Preview", self.thumbnail_label)
+            if qimage and not qimage.isNull():
+                logger.debug(f"[THUMBNAIL_LOADER] QImage loaded successfully, emitting signal")
+                # Emit QImage (thread-safe) - UI thread will convert to QPixmap
+                self.signals.finished.emit(qimage, self.thumbnail_label)
+            else:
+                logger.warning(f"[THUMBNAIL_LOADER] get_thumbnail_image returned None or null")
+                self.signals.error.emit("No Preview", self.thumbnail_label)
 
         except MemoryError:
             logger.error(f"[THUMBNAIL_LOADER] Out of memory loading: {self.photo_path}")
@@ -256,7 +269,13 @@ class StackMemberWidget(QWidget):
         self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)        
 
     def _load_thumbnail(self):
-        """Load thumbnail asynchronously (Phase 3: Progressive Loading)."""
+        """
+        Load thumbnail asynchronously (Phase 3: Progressive Loading).
+
+        FIX 2026-02-08: Updated to receive QImage from worker thread and convert
+        to QPixmap on the UI thread. This fixes the access violation crash on Windows
+        caused by creating QPixmap in worker threads.
+        """
         logger.debug(f"[MEMBER_WIDGET] _load_thumbnail called for photo_id={self.photo_id}")
         try:
             path = self.photo.get('path', '')
@@ -270,11 +289,21 @@ class StackMemberWidget(QWidget):
                 thumb_size = 160  # Match the label size
                 self._thumbnail_loader = ThumbnailLoader(path, self.thumbnail_label, size=thumb_size)
 
-                # Connect signals with center-crop scaling
-                def on_loaded(pixmap, label, size=thumb_size):
+                # FIX 2026-02-08: Callback now receives QImage (thread-safe) and converts
+                # to QPixmap here on the UI thread. This is the key fix!
+                def on_loaded(qimage, label, size=thumb_size):
+                    """
+                    Process loaded QImage on UI thread.
+
+                    FIX 2026-02-08: The worker now emits QImage (thread-safe), not QPixmap.
+                    We convert to QPixmap here on the UI thread where it's safe.
+                    """
                     logger.debug(f"[MEMBER_WIDGET] on_loaded callback: label={label}, self.thumbnail_label={self.thumbnail_label}")
                     if label == self.thumbnail_label:
-                        logger.debug(f"[MEMBER_WIDGET] Setting pixmap on label with center-crop")
+                        logger.debug(f"[MEMBER_WIDGET] Converting QImage to QPixmap on UI thread")
+                        # FIX 2026-02-08: Convert QImage -> QPixmap on UI thread (safe!)
+                        pixmap = QPixmap.fromImage(qimage)
+
                         # Google Photos style: center-crop to fill square
                         scaled = pixmap.scaled(
                             size, size,
@@ -1657,10 +1686,13 @@ class StackBrowserDialog(QDialog):
                         # CRITICAL: Attach loader to card to prevent garbage collection
                         card._thumbnail_loader = ThumbnailLoader(path, thumbnail_label, size=thumb_size)
 
-                        # Connect signals for when thumbnail loads - with center-crop scaling
-                        def on_thumbnail_loaded(pixmap, label, size=thumb_size):
+                        # FIX 2026-02-08: Callback now receives QImage and converts to QPixmap on UI thread
+                        def on_thumbnail_loaded(qimage, label, size=thumb_size):
+                            """Convert QImage to QPixmap on UI thread (thread-safe)."""
                             logger.debug(f"[STACK_CARD] Thumbnail loaded for label {label}")
                             if label == thumbnail_label:
+                                # FIX 2026-02-08: Convert QImage -> QPixmap on UI thread (safe!)
+                                pixmap = QPixmap.fromImage(qimage)
                                 # Google Photos style: center-crop to fill square
                                 scaled = pixmap.scaled(
                                     size, size,
