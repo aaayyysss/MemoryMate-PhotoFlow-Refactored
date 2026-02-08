@@ -469,6 +469,11 @@ class AccordionSidebar(QWidget):
 
     def set_project(self, project_id: int):
         """Update all sections for new project."""
+        # FIX 2026-02-08: Skip if already on this project to prevent duplicate work
+        if self.project_id == project_id:
+            logger.debug(f"[AccordionSidebar] Already on project {project_id}, skipping switch")
+            return
+
         logger.info(f"[AccordionSidebar] Switching project: {self.project_id} → {project_id}")
 
         self.project_id = project_id
