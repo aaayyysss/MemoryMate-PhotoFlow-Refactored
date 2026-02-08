@@ -4153,6 +4153,73 @@ class ReferenceDB:
         return out
     # <<< FIX 1
 
+    def get_aspect_ratios_for_paths(self, paths: list[str], project_id: int | None = None) -> dict[str, float]:
+        """
+        Get aspect ratios (width/height) for multiple paths from database.
+
+        FIX (2026-02-08): Prevents UI-thread blocking by using DB-stored dimensions
+        instead of PIL.Image.open() calls. This follows Google Photos/iOS Photos
+        best practice of never opening image files on the UI thread.
+
+        Args:
+            paths: List of image file paths
+            project_id: Optional project ID filter
+
+        Returns:
+            Dict mapping path -> aspect_ratio (defaults to 1.5 if not found)
+        """
+        if not paths:
+            return {}
+        import os
+
+        def norm(p: str) -> str:
+            try:
+                normalized = os.path.normcase(os.path.abspath(os.path.normpath(p.strip())))
+                return normalized.replace('\\', '/')
+            except Exception:
+                return str(p).strip().lower()
+
+        orig_paths = [str(p) for p in paths]
+        nmap = {norm(p): p for p in orig_paths}
+        npaths = list(nmap.keys())
+
+        # Default aspect ratio for missing metadata
+        DEFAULT_ASPECT = 1.5
+        out: dict[str, float] = {p: DEFAULT_ASPECT for p in orig_paths}
+
+        CHUNK = 400
+        with self._connect() as conn:
+            cur = conn.cursor()
+            for i in range(0, len(npaths), CHUNK):
+                chunk = npaths[i:i+CHUNK]
+
+                if project_id is not None:
+                    # Query with project filter for photos
+                    q_photos = f"""
+                        SELECT path, width, height FROM photo_metadata
+                        WHERE path IN ({','.join(['?']*len(chunk))})
+                          AND project_id = ?
+                          AND width IS NOT NULL AND height IS NOT NULL
+                          AND height > 0
+                    """
+                    cur.execute(q_photos, chunk + [project_id])
+                else:
+                    q_photos = f"""
+                        SELECT path, width, height FROM photo_metadata
+                        WHERE path IN ({','.join(['?']*len(chunk))})
+                          AND width IS NOT NULL AND height IS NOT NULL
+                          AND height > 0
+                    """
+                    cur.execute(q_photos, chunk)
+
+                rows = cur.fetchall()
+                for row in rows:
+                    db_path, w, h = row[0], row[1], row[2]
+                    original = nmap.get(norm(db_path))
+                    if original and w and h and h > 0:
+                        out[original] = float(w) / float(h)
+
+        return out
 
     def get_image_paths_for_tag(self, tag_name: str, project_id: int | None = None) -> list[str]:
         """
