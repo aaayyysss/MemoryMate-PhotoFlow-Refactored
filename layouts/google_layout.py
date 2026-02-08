@@ -5486,9 +5486,13 @@ class GooglePhotosLayout(BaseLayout):
 
         return cols
 
-    def _on_thumbnail_loaded(self, path: str, pixmap: QPixmap, size: int):
+    def _on_thumbnail_loaded(self, path: str, qimage, size: int):
         """
         Callback when async thumbnail loading completes.
+
+        FIX 2026-02-08: Changed parameter from QPixmap to QImage for thread safety.
+        The worker now emits QImage (thread-safe), and we convert to QPixmap here
+        on the UI thread where it's safe to do so.
 
         Phase 3 #1: Added smooth fade-in animation for loaded thumbnails.
         Phase 3 #2: Stops pulsing animation and shows cached thumbnail.
@@ -5502,8 +5506,10 @@ class GooglePhotosLayout(BaseLayout):
             return  # Button was destroyed (e.g., during reload)
 
         try:
-            # Update button with loaded thumbnail
-            if pixmap and not pixmap.isNull():
+            # FIX 2026-02-08: Convert QImage -> QPixmap on UI thread (safe!)
+            if qimage and not qimage.isNull():
+                # Convert QImage to QPixmap on UI thread
+                pixmap = QPixmap.fromImage(qimage)
                 scaled = pixmap.scaled(size, size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
                 button.setIcon(QIcon(scaled))
                 button.setIconSize(QSize(size - 4, size - 4))

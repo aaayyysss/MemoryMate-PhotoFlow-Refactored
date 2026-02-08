@@ -208,6 +208,9 @@ def get_thumbnail(path: str, height: int, use_disk_cache: bool = True) -> "QPixm
     """
     Get thumbnail for an image or video file.
 
+    WARNING: This returns QPixmap which is GPU-backed and NOT thread-safe.
+    Only call this from the UI thread! For worker threads, use get_thumbnail_image().
+
     For images: Uses ThumbnailService with unified L1 (memory) + L2 (database) caching.
     For videos: Loads pre-generated thumbnail from .thumb_cache directory.
 
@@ -267,6 +270,44 @@ def get_thumbnail(path: str, height: int, use_disk_cache: bool = True) -> "QPixm
 
     # Use ThumbnailService which handles L1 (memory) + L2 (database) caching
     return svc.get_thumbnail(path, height)
+
+
+def get_thumbnail_image(path: str, height: int, timeout: float = 5.0) -> "QImage":
+    """
+    Get thumbnail as QImage (THREAD-SAFE) for an image file.
+
+    FIX 2026-02-08: New function for thread-safe thumbnail generation.
+    Use this from worker threads instead of get_thumbnail().
+
+    Based on Google Photos / Apple Photos best practice:
+    - Worker threads generate QImage (CPU-backed, thread-safe)
+    - UI thread converts QImage -> QPixmap (GPU-backed, UI-thread only)
+
+    Args:
+        path: Image file path
+        height: Target thumbnail height in pixels
+        timeout: Maximum decode time in seconds (default 5.0)
+
+    Returns:
+        QImage thumbnail (thread-safe, can be passed via signals)
+    """
+    from PySide6.QtGui import QImage
+
+    if not path:
+        return QImage()
+
+    # Check if this is a video file - return empty QImage (videos need special handling)
+    from thumbnail_grid_qt import is_video_file
+    if is_video_file(path):
+        # Videos are not supported in this function
+        # The UI should use get_thumbnail() for videos from the UI thread
+        return QImage()
+
+    # Use ThumbnailService for thread-safe QImage generation
+    from services import get_thumbnail_service
+    svc = get_thumbnail_service(l1_capacity=500)
+
+    return svc.get_thumbnail_image(path, height, timeout)
 
 
 def get_project_images(project_id: int, branch_key: Optional[str]):
