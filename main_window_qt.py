@@ -1083,6 +1083,19 @@ class MainWindow(QMainWindow):
 
         self.splitter.addWidget(self.grid_container)
 
+        # === Metadata Editor Dock (FIX 2026-02-08) ===
+        # Initialize metadata editor dock for photo metadata viewing/editing
+        try:
+            from ui.metadata_editor_dock import MetadataEditorDock
+            self.metadata_editor_dock = MetadataEditorDock(self)
+            self.metadata_editor_dock.metadataChanged.connect(self._on_metadata_changed)
+            self.addDockWidget(Qt.RightDockWidgetArea, self.metadata_editor_dock)
+            self.metadata_editor_dock.hide()  # Hidden by default
+            print("[MainWindow] ✓ MetadataEditorDock initialized")
+        except Exception as e:
+            print(f"[MainWindow] ⚠️ MetadataEditorDock init failed: {e}")
+            self.metadata_editor_dock = None
+
         # 🔗 Now that grid exists — connect toolbar actions safely
         act_select_all.triggered.connect(self.grid.list_view.selectAll)
         act_clear_sel.triggered.connect(self.grid.list_view.clearSelection)
