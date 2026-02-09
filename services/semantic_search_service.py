@@ -202,17 +202,29 @@ class SemanticSearchService:
 
     def _get_all_embeddings(self) -> List[tuple]:
         """
-        Get all photo embeddings.
+        Get all photo embeddings for the current project (if set).
 
         Returns:
             List of (photo_id, embedding) tuples
         """
         with self.db.get_connection() as conn:
-            cursor = conn.execute("""
-                SELECT photo_id, embedding, dim
-                FROM semantic_embeddings
-                WHERE model = ?
-            """, (self.model_name,))
+            # CRITICAL FIX: Filter by project_id when set
+            # Without this, search returns photos from ALL projects!
+            if self.project_id is not None:
+                cursor = conn.execute("""
+                    SELECT se.photo_id, se.embedding, se.dim
+                    FROM semantic_embeddings se
+                    JOIN photo_metadata pm ON se.photo_id = pm.id
+                    WHERE se.model = ?
+                      AND pm.project_id = ?
+                """, (self.model_name, self.project_id))
+            else:
+                # Legacy behavior for non-project-aware callers
+                cursor = conn.execute("""
+                    SELECT photo_id, embedding, dim
+                    FROM semantic_embeddings
+                    WHERE model = ?
+                """, (self.model_name,))
 
             results = []
             for row in cursor.fetchall():
@@ -276,23 +288,41 @@ class SemanticSearchService:
 
     def get_search_statistics(self) -> dict:
         """
-        Get search readiness statistics.
+        Get search readiness statistics for the current project (if set).
 
         Returns:
-            Dict with total_photos, embedded_photos, coverage_percent, model
+            Dict with total_photos, embedded_photos, coverage_percent, model, project_id
         """
         with self.db.get_connection() as conn:
-            # Total photos
-            cursor = conn.execute("SELECT COUNT(*) as count FROM photo_metadata")
-            total_photos = cursor.fetchone()['count']
+            # CRITICAL FIX: Filter by project_id when set
+            if self.project_id is not None:
+                # Total photos in project
+                cursor = conn.execute(
+                    "SELECT COUNT(*) as count FROM photo_metadata WHERE project_id = ?",
+                    (self.project_id,)
+                )
+                total_photos = cursor.fetchone()['count']
 
-            # Embedded photos
-            cursor = conn.execute("""
-                SELECT COUNT(*) as count
-                FROM semantic_embeddings
-                WHERE model = ?
-            """, (self.model_name,))
-            embedded_photos = cursor.fetchone()['count']
+                # Embedded photos in project
+                cursor = conn.execute("""
+                    SELECT COUNT(*) as count
+                    FROM semantic_embeddings se
+                    JOIN photo_metadata pm ON se.photo_id = pm.id
+                    WHERE se.model = ?
+                      AND pm.project_id = ?
+                """, (self.model_name, self.project_id))
+                embedded_photos = cursor.fetchone()['count']
+            else:
+                # Legacy behavior for non-project-aware callers
+                cursor = conn.execute("SELECT COUNT(*) as count FROM photo_metadata")
+                total_photos = cursor.fetchone()['count']
+
+                cursor = conn.execute("""
+                    SELECT COUNT(*) as count
+                    FROM semantic_embeddings
+                    WHERE model = ?
+                """, (self.model_name,))
+                embedded_photos = cursor.fetchone()['count']
 
             coverage_percent = (embedded_photos / total_photos * 100) if total_photos > 0 else 0.0
 
@@ -301,6 +331,7 @@ class SemanticSearchService:
                 'embedded_photos': embedded_photos,
                 'coverage_percent': coverage_percent,
                 'model': self.model_name,
+                'project_id': self.project_id,
                 'search_ready': embedded_photos > 0
             }
 
