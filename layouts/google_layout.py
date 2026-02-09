@@ -2355,6 +2355,7 @@ class GooglePhotosLayout(BaseLayout):
 
                 elif filter_type == "resolution":
                     # Filter by resolution: sd, hd, fhd, 4k
+                    # Use MAX(width, height) to match sidebar bucketing logic (handles portrait/landscape videos)
                     with db._connect() as conn:
                         cur = conn.cursor()
                         if filter_value == "sd":
@@ -2362,7 +2363,10 @@ class GooglePhotosLayout(BaseLayout):
                                 SELECT DISTINCT vm.path, vm.created_date as date_taken, vm.width, vm.height
                                 FROM video_metadata vm
                                 JOIN project_videos pv ON vm.path = pv.video_path
-                                WHERE pv.project_id = ? AND vm.height > 0 AND vm.height < 720
+                                WHERE pv.project_id = ?
+                                  AND COALESCE(vm.width, 0) > 0
+                                  AND COALESCE(vm.height, 0) > 0
+                                  AND MAX(COALESCE(vm.width, 0), COALESCE(vm.height, 0)) < 720
                                 ORDER BY vm.created_date DESC
                             """, (self.project_id,))
                         elif filter_value == "hd":
@@ -2370,7 +2374,9 @@ class GooglePhotosLayout(BaseLayout):
                                 SELECT DISTINCT vm.path, vm.created_date as date_taken, vm.width, vm.height
                                 FROM video_metadata vm
                                 JOIN project_videos pv ON vm.path = pv.video_path
-                                WHERE pv.project_id = ? AND vm.height >= 720 AND vm.height < 1080
+                                WHERE pv.project_id = ?
+                                  AND MAX(COALESCE(vm.width, 0), COALESCE(vm.height, 0)) >= 720
+                                  AND MAX(COALESCE(vm.width, 0), COALESCE(vm.height, 0)) < 1080
                                 ORDER BY vm.created_date DESC
                             """, (self.project_id,))
                         elif filter_value == "fhd":
@@ -2378,7 +2384,9 @@ class GooglePhotosLayout(BaseLayout):
                                 SELECT DISTINCT vm.path, vm.created_date as date_taken, vm.width, vm.height
                                 FROM video_metadata vm
                                 JOIN project_videos pv ON vm.path = pv.video_path
-                                WHERE pv.project_id = ? AND vm.height >= 1080 AND vm.height < 2160
+                                WHERE pv.project_id = ?
+                                  AND MAX(COALESCE(vm.width, 0), COALESCE(vm.height, 0)) >= 1080
+                                  AND MAX(COALESCE(vm.width, 0), COALESCE(vm.height, 0)) < 2160
                                 ORDER BY vm.created_date DESC
                             """, (self.project_id,))
                         elif filter_value == "4k":
@@ -2386,10 +2394,21 @@ class GooglePhotosLayout(BaseLayout):
                                 SELECT DISTINCT vm.path, vm.created_date as date_taken, vm.width, vm.height
                                 FROM video_metadata vm
                                 JOIN project_videos pv ON vm.path = pv.video_path
-                                WHERE pv.project_id = ? AND vm.height >= 2160
+                                WHERE pv.project_id = ?
+                                  AND MAX(COALESCE(vm.width, 0), COALESCE(vm.height, 0)) >= 2160
                                 ORDER BY vm.created_date DESC
                             """, (self.project_id,))
                         video_rows = cur.fetchall()
+                        # Debug: Log resolution filter results with dimensions
+                        if video_rows:
+                            for row in video_rows[:5]:  # Log first 5 for debugging
+                                path, _, w, h = row
+                                max_dim = max(w or 0, h or 0)
+                                import os
+                                fname = os.path.basename(path)
+                                print(f"[GooglePhotosLayout] 📐 {filter_value.upper()}: {fname} ({w}x{h}, max={max_dim})")
+                            if len(video_rows) > 5:
+                                print(f"[GooglePhotosLayout] 📐 ... and {len(video_rows) - 5} more {filter_value.upper()} videos")
 
                 elif filter_type == "codec":
                     # NEW: Filter by codec: h264, hevc, vp9, av1, mpeg4
