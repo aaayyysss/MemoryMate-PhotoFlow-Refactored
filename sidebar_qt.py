@@ -3526,10 +3526,12 @@ class SidebarQt(QWidget):
                     res_parent.setData("all", Qt.UserRole + 1)
 
                     # Count videos by resolution (require both width and height metadata)
-                    sd_videos = [v for v in videos if v.get('width') and v.get('height') and v['height'] < 720]
-                    hd_videos = [v for v in videos if v.get('width') and v.get('height') and 720 <= v['height'] < 1080]
-                    fhd_videos = [v for v in videos if v.get('width') and v.get('height') and 1080 <= v['height'] < 2160]
-                    uhd_videos = [v for v in videos if v.get('width') and v.get('height') and v['height'] >= 2160]
+                    # Use max(width, height) to handle portrait/landscape videos consistently
+                    # This matches videos_section.py and video_service.py bucketing logic
+                    sd_videos = [v for v in videos if v.get('width') and v.get('height') and max(v['width'], v['height']) < 720]
+                    hd_videos = [v for v in videos if v.get('width') and v.get('height') and 720 <= max(v['width'], v['height']) < 1080]
+                    fhd_videos = [v for v in videos if v.get('width') and v.get('height') and 1080 <= max(v['width'], v['height']) < 2160]
+                    uhd_videos = [v for v in videos if v.get('width') and v.get('height') and max(v['width'], v['height']) >= 2160]
 
                     # CRITICAL FIX: Show sum count for Resolution section
                     total_res_videos = len(sd_videos) + len(hd_videos) + len(fhd_videos) + len(uhd_videos)

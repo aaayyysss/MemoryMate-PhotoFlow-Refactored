@@ -810,6 +810,9 @@ class VideoService:
         """
         Filter videos by resolution range key.
 
+        Uses max(width, height) to handle both portrait and landscape videos correctly.
+        This matches the sidebar bucketing logic in videos_section.py.
+
         Args:
             videos: List of video metadata dicts
             resolution_key: Resolution key ('sd', 'hd', 'fhd', '4k', '8k')
@@ -817,11 +820,12 @@ class VideoService:
         Returns:
             Filtered list of videos
         """
-        # Resolution definitions (height in pixels)
+        # Resolution definitions (max dimension in pixels)
+        # Uses max(width, height) to handle portrait/landscape videos
         resolutions = {
             'sd': (0, 720),         # < 720p
-            'hd': (720, 1080),      # 720p
-            'fhd': (1080, 2160),    # 1080p (Full HD)
+            'hd': (720, 1080),      # 720p - 1079p
+            'fhd': (1080, 2160),    # 1080p - 2159p (Full HD)
             '4k': (2160, 4320),     # 4K (2160p)
             '8k': (4320, None)      # 8K+ (4320p+)
         }
@@ -830,23 +834,27 @@ class VideoService:
             self.logger.warning(f"Unknown resolution key: {resolution_key}")
             return videos
 
-        min_height, max_height = resolutions[resolution_key]
+        min_res, max_res = resolutions[resolution_key]
 
         filtered = []
         for video in videos:
-            height = video.get('height')
-            if height is None:
+            width = video.get('width') or 0
+            height = video.get('height') or 0
+            # Use max dimension to handle portrait/landscape videos
+            resolution = max(width, height)
+
+            if resolution <= 0:
                 continue
 
-            if min_height is not None and height < min_height:
+            if min_res is not None and resolution < min_res:
                 continue
-            if max_height is not None and height >= max_height:
+            if max_res is not None and resolution >= max_res:
                 continue
 
             filtered.append(video)
 
         # 🐞 DEBUG: Log filter results
-        self.logger.debug(f"Resolution filter '{resolution_key}': {len(filtered)}/{len(videos)} videos (height: {min_height}-{max_height}px)")
+        self.logger.debug(f"Resolution filter '{resolution_key}': {len(filtered)}/{len(videos)} videos (max_dim: {min_res}-{max_res}px)")
         return filtered
 
     def filter_by_codec_key(self, videos: List[Dict[str, Any]], codec_key: str) -> List[Dict[str, Any]]:
