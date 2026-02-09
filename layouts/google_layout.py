@@ -5849,7 +5849,7 @@ class GooglePhotosLayout(BaseLayout):
             print(f"[GooglePhotosLayout] No photos found in project {self.project_id}")
             return
 
-        print(f"[GooglePhotosLayout] Dispatching {len(rows)} photos to background grouping worker...")
+        print(f"[GooglePhotosLayout] Dispatching {len(rows)} assets (photos+videos) to background grouping worker...")
 
         # Bump generation so stale results are discarded
         gen = self._photo_load_generation

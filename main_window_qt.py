@@ -3691,6 +3691,14 @@ class MainWindow(QMainWindow):
         self._closing = True
         self.bump_ui_generation()
         print("[Shutdown] _closing flag set, ui_generation bumped, beginning teardown...")
+        self._do_shutdown_teardown(timeout_ms=timeout_ms)
+
+    def _do_shutdown_teardown(self, *, timeout_ms: int = 10_000) -> None:
+        """Perform actual teardown work. Called by _shutdown_barrier and request_restart.
+
+        This is separated from _shutdown_barrier so that request_restart can
+        set _closing=True and bump generation FIRST, then call teardown.
+        """
 
         # 1. Use JobManager's coordinated shutdown (cancel + bump generation + drain)
         try:
@@ -3700,6 +3708,14 @@ class MainWindow(QMainWindow):
             print(f"[Shutdown] JobManager barrier complete (drained={drained}).")
         except Exception as e:
             print(f"[Shutdown] JobManager shutdown error: {e}")
+
+        # 1b. ScanController barrier (scan thread, db_writer)
+        try:
+            if hasattr(self, "scan_controller") and self.scan_controller:
+                self.scan_controller.shutdown_barrier(timeout_ms=timeout_ms // 2)
+                print("[Shutdown] ScanController barrier complete.")
+        except Exception as e:
+            print(f"[Shutdown] ScanController shutdown error: {e}")
 
         # 2. Shut down thumbnail/grid thread pools
         try:
@@ -3748,14 +3764,26 @@ class MainWindow(QMainWindow):
         """Relaunch the app in a detached process, then shutdown current instance.
 
         Called from PreferencesDialog when a restart-requiring setting changes.
-        Starts the new process BEFORE quitting so a crash during shutdown
-        does not prevent relaunch.
+
+        CRITICAL: Generation is bumped IMMEDIATELY when restart is requested,
+        BEFORE starting the detached process. This ensures:
+        1. All worker callbacks see stale generation and drop themselves
+        2. No state mutations can occur between "restart requested" and "exit"
+        3. Deterministic restart semantics (Chrome/Lightroom pattern)
         """
         if self._restart_requested:
             return
         self._restart_requested = True
 
-        # Start detached BEFORE quitting
+        # CRITICAL FIX: Bump generation IMMEDIATELY to freeze state transitions.
+        # This must happen BEFORE starting the detached process so that any
+        # in-flight worker signals are blocked from mutating UI state.
+        print("[Restart] Requested — bumping generation to freeze state transitions...")
+        self.bump_ui_generation()
+        self._closing = True
+        print(f"[Restart] Generation bumped to {self._ui_generation}, _closing=True")
+
+        # Start detached process AFTER generation bump
         try:
             import sys
             exe = sys.executable
@@ -3767,6 +3795,7 @@ class MainWindow(QMainWindow):
                 QMessageBox.critical(self, "Restart failed",
                                      "Could not relaunch the application process.")
                 self._restart_requested = False
+                # Don't reset _closing — we're in an inconsistent state anyway
                 return
         except Exception as e:
             QMessageBox.critical(self, "Restart failed",
@@ -3774,8 +3803,8 @@ class MainWindow(QMainWindow):
             self._restart_requested = False
             return
 
-        # Barrier, then quit.
-        self._shutdown_barrier(timeout_ms=15_000)
+        # Perform teardown (barrier already set _closing=True, so this does cleanup only)
+        self._do_shutdown_teardown(timeout_ms=15_000)
         from PySide6.QtCore import QCoreApplication
         QCoreApplication.quit()
 
