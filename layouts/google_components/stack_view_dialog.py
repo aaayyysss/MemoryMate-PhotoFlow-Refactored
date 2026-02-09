@@ -194,9 +194,9 @@ class StackMemberWidget(QWidget):
         layout.setSpacing(2)  # Minimal spacing
         layout.setContentsMargins(4, 4, 4, 4)
  
-        # Thumbnail (compact size)
+        # Thumbnail - FIX 2026-02-09: Increased from 160 to 200 for better quality
         self.thumbnail_label = QLabel()
-        self.thumbnail_label.setFixedSize(160, 160)
+        self.thumbnail_label.setFixedSize(200, 200)
 
         self.thumbnail_label.setAlignment(Qt.AlignCenter)
         self.thumbnail_label.setStyleSheet("""
@@ -263,8 +263,8 @@ class StackMemberWidget(QWidget):
         """)
         
         # Fix vertical stretching: set maximum height based on content
-        # 160 (thumb) + 4*2 (margins) + 3*2 (spacing) + ~50 (labels+checkbox)
-        self.setMaximumHeight(230)
+        # 200 (thumb) + 4*2 (margins) + 3*2 (spacing) + ~50 (labels+checkbox)
+        self.setMaximumHeight(270)
         from PySide6.QtWidgets import QSizePolicy
         self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)        
 
@@ -286,7 +286,8 @@ class StackMemberWidget(QWidget):
                 logger.debug(f"[MEMBER_WIDGET] Creating ThumbnailLoader for {path}")
 
                 # CRITICAL: Keep reference to prevent garbage collection
-                thumb_size = 160  # Match the label size
+                # FIX 2026-02-09: Increased from 160 to 200 for better quality (same as photo grid)
+                thumb_size = 200  # Higher quality thumbnails
                 self._thumbnail_loader = ThumbnailLoader(path, self.thumbnail_label, size=thumb_size)
 
                 # FIX 2026-02-08: Callback now receives QImage (thread-safe) and converts
