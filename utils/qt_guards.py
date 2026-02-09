@@ -100,8 +100,18 @@ def make_guarded_slot(
     *,
     generation: Optional[int] = None,
     extra_valid: Optional[Iterable[Any]] = None,
+    name: Optional[str] = None,
 ) -> Callable[..., Any]:
-    """Wrap *slot* with validity and generation checks."""
+    """Wrap *slot* with validity and generation checks.
+
+    Parameters
+    ----------
+    owner : QObject whose lifetime gates delivery
+    slot : callable to invoke when conditions pass
+    generation : expected ``owner._ui_generation`` value (None = skip check)
+    extra_valid : additional QObjects that must still be valid
+    name : optional debug name for logging blocked callbacks
+    """
 
     owner_ref = weakref.ref(owner)
     extra = list(extra_valid or [])
@@ -138,9 +148,11 @@ def connect_guarded(
     slot: Callable[..., Any],
     *,
     generation: Optional[int] = None,
+    generation_getter: Optional[Callable[[], int]] = None,
     extra_valid: Optional[Iterable[Any]] = None,
     also_check: Optional[Iterable[Any]] = None,
     connection_type: Qt.ConnectionType = Qt.QueuedConnection,
+    name: Optional[str] = None,
 ) -> None:
     """Connect *signal* to *slot* using a guarded wrapper.
 
@@ -150,11 +162,73 @@ def connect_guarded(
     owner : QObject whose lifetime gates delivery
     slot : callable to invoke when the signal fires
     generation : expected ``owner._ui_generation`` value (None = skip check)
+    generation_getter : callable that returns the current UI generation (for dynamic checking)
     extra_valid / also_check : additional QObjects that must still be valid
     connection_type : defaults to ``Qt.QueuedConnection``
+    name : optional debug name for logging blocked callbacks
     """
     merged = list(extra_valid or []) + list(also_check or [])
+
+    # If generation_getter is provided, capture generation at connect time
+    # and use that for comparison at callback time
+    if generation_getter is not None and generation is None:
+        try:
+            generation = generation_getter()
+        except Exception:
+            generation = None
+
     wrapped = make_guarded_slot(
-        owner, slot, generation=generation, extra_valid=merged or None,
+        owner, slot, generation=generation, extra_valid=merged or None, name=name,
     )
     signal.connect(wrapped, connection_type)
+
+
+def connect_guarded_dynamic(
+    signal: Any,
+    slot: Callable[..., Any],
+    generation_getter: Callable[[], int],
+    *,
+    connection_type: Qt.ConnectionType = Qt.QueuedConnection,
+    name: Optional[str] = None,
+) -> None:
+    """Connect *signal* to *slot* with dynamic generation checking.
+
+    Unlike connect_guarded(), this captures the generation at connection time
+    and compares against the current generation at callback time via the getter.
+    This is useful when you don't have an owner QObject but do have a way to
+    get the current UI generation.
+
+    Parameters
+    ----------
+    signal : PySide6 Signal
+    slot : callable to invoke when the signal fires
+    generation_getter : callable returning current UI generation (called at connect AND callback)
+    connection_type : defaults to ``Qt.QueuedConnection``
+    name : optional debug name for logging
+    """
+    # Capture generation at connect time
+    try:
+        expected_gen = generation_getter()
+    except Exception:
+        expected_gen = 0
+
+    def _wrapped(*args: Any, **kwargs: Any) -> Any:
+        # Check generation at callback time
+        try:
+            current_gen = generation_getter()
+        except Exception:
+            GUARD_STATS.blocked_invalid += 1
+            return None
+
+        if current_gen != expected_gen:
+            GUARD_STATS.blocked_generation += 1
+            return None
+
+        try:
+            GUARD_STATS.passed += 1
+            return slot(*args, **kwargs)
+        except RuntimeError:
+            GUARD_STATS.blocked_invalid += 1
+            return None
+
+    signal.connect(_wrapped, connection_type)

@@ -42,7 +42,15 @@ class ScanController(QObject):
         super().__init__()  # CRITICAL: Initialize QObject
         self.main = main
 
+        # Helper to get current UI generation for guarded callbacks
+        # Returns 0 if main doesn't have ui_generation (defensive)
+        self._get_ui_generation = lambda: (
+            main.ui_generation() if hasattr(main, 'ui_generation') else 0
+        )
+
         # Connect signal to handler with QueuedConnection for thread safety
+        # Note: Generation checking happens inside _on_progress via _expected_generation
+        # which is captured at scan START time, not at connect time
         self.progress_update_signal.connect(self._on_progress, Qt.ConnectionType.QueuedConnection)
         self.thread = None
         self.worker = None
