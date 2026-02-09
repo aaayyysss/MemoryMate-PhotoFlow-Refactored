@@ -56,17 +56,33 @@ class PhotoQueryService:
         project_id: int,
         filters: Optional[Dict[str, Any]] = None,
     ) -> int:
-        """Return total matching photo+video count for *project_id* + *filters*."""
+        """Return total matching asset count (photos + videos) for *project_id* + *filters*.
+
+        Note: Despite the name, this returns the count of ALL assets (photos and videos).
+        The name is kept for backwards compatibility. Use count_assets() for clarity.
+        """
         filters = filters or {}
         sql, params = self._build_count_sql(project_id, filters)
         with self.db._connect() as conn:
             row = conn.execute(sql, params).fetchone()
             total = row[0] if row else 0
         logger.debug(
-            "[PhotoQueryService] count_photos pid=%d filters=%s -> %d",
+            "[PhotoQueryService] count_assets (photos+videos) pid=%d filters=%s -> %d",
             project_id, filters, total,
         )
         return total
+
+    def count_assets(
+        self,
+        project_id: int,
+        filters: Optional[Dict[str, Any]] = None,
+    ) -> int:
+        """Alias for count_photos() — returns total photos + videos.
+
+        This is the preferred API for clarity. The returned count includes
+        both photos and videos matching the filters.
+        """
+        return self.count_photos(project_id, filters)
 
     def fetch_page(
         self,
@@ -76,9 +92,10 @@ class PhotoQueryService:
         limit: int = PAGE_SIZE,
     ) -> List[Dict[str, Any]]:
         """
-        Fetch a page of rows sorted by date_taken DESC, path DESC.
+        Fetch a page of assets (photos + videos) sorted by date_taken DESC, path DESC.
 
         Returns list of dicts: {path, date_taken, width, height, media_type}.
+        Each row has 'media_type' = 'photo' or 'video' to distinguish them.
         """
         filters = filters or {}
         sql, params = self._build_page_sql(project_id, filters, offset, limit)
@@ -87,10 +104,23 @@ class PhotoQueryService:
             columns = [d[0] for d in cur.description]
             rows = [dict(zip(columns, r)) for r in cur.fetchall()]
         logger.debug(
-            "[PhotoQueryService] fetch_page pid=%d offset=%d limit=%d -> %d rows",
+            "[PhotoQueryService] fetch_assets pid=%d offset=%d limit=%d -> %d rows",
             project_id, offset, limit, len(rows),
         )
         return rows
+
+    def fetch_assets(
+        self,
+        project_id: int,
+        filters: Optional[Dict[str, Any]] = None,
+        offset: int = 0,
+        limit: int = PAGE_SIZE,
+    ) -> List[Dict[str, Any]]:
+        """Alias for fetch_page() — returns photos + videos together.
+
+        This is the preferred API for clarity.
+        """
+        return self.fetch_page(project_id, filters, offset, limit)
 
     def should_page(self, total: int) -> bool:
         """Return True if the result set is large enough to warrant paging."""

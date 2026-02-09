@@ -321,6 +321,53 @@ class ScanController(QObject):
         self.main.statusBar().showMessage(tr('status_messages.scan_cancel_requested'))
         self.main.act_cancel_scan.setEnabled(False)
 
+    def shutdown_barrier(self, timeout_ms: int = 5000) -> bool:
+        """Stop scan thread and DBWriter, waiting up to timeout_ms.
+
+        Called by MainWindow._do_shutdown_teardown() to ensure scan workers
+        are cleanly stopped before the app exits.
+
+        Returns True if all workers drained within the timeout.
+        """
+        drained = True
+        self.cancel_requested = True
+
+        # 1. Stop worker if running
+        if self.worker:
+            try:
+                self.worker.stop()
+            except Exception as e:
+                self.logger.warning(f"[ScanController] Worker stop error: {e}")
+
+        # 2. Quit and wait for QThread
+        if self.thread and self.thread.isRunning():
+            try:
+                self.thread.quit()
+                if not self.thread.wait(timeout_ms):
+                    self.logger.warning(f"[ScanController] Thread did not finish in {timeout_ms}ms")
+                    drained = False
+                else:
+                    self.logger.info("[ScanController] Scan thread stopped")
+            except Exception as e:
+                self.logger.warning(f"[ScanController] Thread wait error: {e}")
+                drained = False
+
+        # 3. Shutdown DBWriter
+        if self.db_writer:
+            try:
+                self.db_writer.shutdown(wait=True)
+                self.logger.info("[ScanController] DBWriter shut down")
+            except Exception as e:
+                self.logger.warning(f"[ScanController] DBWriter shutdown error: {e}")
+                drained = False
+
+        # 4. Clear pending operations
+        self._scan_operations_pending.clear()
+        self._scan_refresh_scheduled = False
+
+        self.logger.info(f"[ScanController] Shutdown barrier complete (drained={drained})")
+        return drained
+
     def _on_committed(self, n: int):
         if not is_alive(self.main) or not generation_ok(self.main, self._expected_generation):
             return
