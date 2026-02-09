@@ -188,7 +188,13 @@ class ThumbnailLoader(QRunnable):
         """
         try:
             # Check if it's a video
-            video_extensions = {'.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v', '.3gp'}
+            # CRITICAL FIX: Include ALL video extensions (was missing .wmv, .flv, .mpg, .mpeg)
+            # Must match _is_video_file() in media_lightbox.py for consistent behavior
+            video_extensions = {
+                '.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v', '.3gp',
+                '.flv', '.wmv', '.mpg', '.mpeg', '.mts', '.m2ts', '.ts',
+                '.vob', '.ogv', '.divx', '.asf', '.rm', '.rmvb'
+            }
             is_video = os.path.splitext(self.path)[1].lower() in video_extensions
 
             if is_video:

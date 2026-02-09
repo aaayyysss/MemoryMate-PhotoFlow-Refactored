@@ -2475,6 +2475,29 @@ class GooglePhotosLayout(BaseLayout):
                             """, (self.project_id,))
                         video_rows = cur.fetchall()
 
+                elif filter_type == "date":
+                    # Filter by year: extract year from created_date
+                    with db._connect() as conn:
+                        cur = conn.cursor()
+                        try:
+                            year = int(filter_value)
+                            # Match videos where created_date starts with the year
+                            # created_date format is typically YYYY-MM-DD HH:MM:SS or YYYY-MM-DD
+                            cur.execute("""
+                                SELECT DISTINCT vm.path, vm.created_date as date_taken, vm.width, vm.height
+                                FROM video_metadata vm
+                                JOIN project_videos pv ON vm.path = pv.video_path
+                                WHERE pv.project_id = ? AND (
+                                    CAST(SUBSTR(vm.created_date, 1, 4) AS INTEGER) = ?
+                                    OR CAST(vm.created_year AS INTEGER) = ?
+                                )
+                                ORDER BY vm.created_date DESC
+                            """, (self.project_id, year, year))
+                            video_rows = cur.fetchall()
+                        except ValueError:
+                            # Invalid year value, show all videos
+                            print(f"[GooglePhotosLayout] ⚠️ Invalid year filter: {filter_value}")
+
             # Rebuild timeline with video results
             self._rebuild_timeline_with_results(video_rows, f"Videos: {filter_spec}")
 
