@@ -48,6 +48,7 @@ from datetime import datetime
 import os
 import subprocess
 from translation_manager import tr as t
+from utils.qt_guards import connect_guarded_dynamic
 
 # Activity Center is now a QDockWidget managed by MainWindow.
 # Google layout no longer creates its own activity panel.
@@ -191,9 +192,25 @@ class GooglePhotosLayout(BaseLayout):
         from services.photo_query_service import (
             SMALL_THRESHOLD, PAGE_SIZE, PREFETCH_PAGES, MAX_IN_MEMORY_ROWS,
         )
+
+        # Helper to get MainWindow's UI generation for guarded callbacks.
+        # Protects against callbacks arriving after shutdown/restart.
+        self._get_ui_generation = lambda: (
+            self.main_window.ui_generation()
+            if hasattr(self.main_window, 'ui_generation') else 0
+        )
+
         self._page_signals = PhotoPageSignals()
         self._page_signals.count_ready.connect(self._on_page_count_ready)
-        self._page_signals.page_ready.connect(self._on_page_ready)
+        # Guard page_ready with MainWindow generation to prevent stale callbacks
+        # after app restart. Note: handler also checks _photo_load_generation
+        # for load-level staleness.
+        connect_guarded_dynamic(
+            self._page_signals.page_ready,
+            self._on_page_ready,
+            self._get_ui_generation,
+            name='page_ready',
+        )
         self._page_signals.error.connect(self._on_page_error)
         self._paging_total = 0          # total rows from count query
         self._paging_loaded = 0         # rows received so far

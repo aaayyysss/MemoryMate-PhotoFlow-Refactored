@@ -3666,13 +3666,19 @@ class MainWindow(QMainWindow):
         """Monotonic generation used to ignore stale callbacks from workers."""
         return self._ui_generation
 
-    def bump_ui_generation(self) -> int:
+    def bump_ui_generation(self, reason: str = "") -> int:
         """Increment and return the current UI generation token.
 
         Called during shutdown/restart so that in-flight worker signals
         see a stale generation and silently drop themselves.
+
+        Args:
+            reason: Optional debug string explaining why generation was bumped
         """
+        old_gen = self._ui_generation
         self._ui_generation += 1
+        if reason:
+            print(f"[UI] Generation bumped {old_gen} -> {self._ui_generation}: {reason}")
         # Also bump JobManager's generation for consistency.
         try:
             from services.job_manager import get_job_manager
@@ -3689,8 +3695,8 @@ class MainWindow(QMainWindow):
         if self._closing:
             return
         self._closing = True
-        self.bump_ui_generation()
-        print("[Shutdown] _closing flag set, ui_generation bumped, beginning teardown...")
+        self.bump_ui_generation(reason="shutdown barrier")
+        print(f"[Shutdown] _closing flag set, ui_generation={self._ui_generation}, beginning teardown...")
         self._do_shutdown_teardown(timeout_ms=timeout_ms)
 
     def _do_shutdown_teardown(self, *, timeout_ms: int = 10_000) -> None:
@@ -3778,12 +3784,15 @@ class MainWindow(QMainWindow):
         # CRITICAL FIX: Bump generation IMMEDIATELY to freeze state transitions.
         # This must happen BEFORE starting the detached process so that any
         # in-flight worker signals are blocked from mutating UI state.
-        print("[Restart] Requested — bumping generation to freeze state transitions...")
-        self.bump_ui_generation()
-        self._closing = True
-        print(f"[Restart] Generation bumped to {self._ui_generation}, _closing=True")
+        print("[Restart] Requested — setting _closing flag and bumping generation...")
 
-        # Start detached process AFTER generation bump
+        # Early generation bump BEFORE process spawn (prevents late callbacks
+        # from old UI running while new process is being spawned)
+        self._closing = True
+        self.bump_ui_generation(reason="restart requested (pre-spawn)")
+        print(f"[Restart] _closing=True, generation={self._ui_generation}, spawning new process...")
+
+        # Start detached process AFTER generation bump and _closing flag
         try:
             import sys
             exe = sys.executable
