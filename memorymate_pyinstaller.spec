@@ -485,6 +485,10 @@ hiddenimports = [
     'utils.ui_safety',               # Shutdown/generation guards (used by scan_controller)
     'utils.qt_guards',               # Guarded signal connects (used by 10+ modules)
 
+    # --- Core architecture modules ---
+    'core',                           # Core package
+    'core.state_bus',                 # ProjectState store, actions, Qt bridge
+
     # --- Core database/migration modules ---
     'apply_migrations',
     'apply_performance_optimizations',

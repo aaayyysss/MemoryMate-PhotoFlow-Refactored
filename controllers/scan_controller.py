@@ -30,6 +30,15 @@ from translation_manager import tr
 from utils.ui_safety import is_alive, generation_ok
 
 
+def _dispatch_store_action(action):
+    """Best-effort dispatch to ProjectState store (no-op if store not initialized)."""
+    try:
+        from core.state_bus import get_bridge
+        get_bridge().dispatch_async(action)
+    except Exception:
+        pass  # Store not initialized yet or shutting down
+
+
 class ScanController(QObject):
     """
     Wraps scan orchestration: start, cancel, cleanup, progress wiring.
@@ -194,6 +203,15 @@ class ScanController(QObject):
             )
         except Exception as e:
             self.logger.debug(f"JobManager tracked-job registration failed: {e}")
+
+        # Dispatch ScanStarted to ProjectState store
+        from core.state_bus import ActionMeta, ScanStarted
+        _dispatch_store_action(ScanStarted(
+            meta=ActionMeta(source="scan_controller"),
+            job_id=self._scan_job_id or -1,
+            folder_path=str(folder),
+            incremental=incremental,
+        ))
 
         # DB writer
         # NOTE: Schema creation handled automatically by repository layer
@@ -476,6 +494,15 @@ class ScanController(QObject):
         except Exception:
             pass
 
+        # Dispatch ScanCompleted to ProjectState store
+        from core.state_bus import ActionMeta, ScanCompleted as ScanCompletedAction
+        _dispatch_store_action(ScanCompletedAction(
+            meta=ActionMeta(source="scan_controller"),
+            job_id=self._scan_job_id or -1,
+            photos_indexed=photos,
+            videos_indexed=videos,
+        ))
+
     def _on_error(self, err_text: str):
         if not is_alive(self.main) or not generation_ok(self.main, self._expected_generation):
             return
@@ -691,6 +718,15 @@ class ScanController(QObject):
                                 pass
                             self._pspl_job_id = None
 
+                        # Dispatch DuplicatesCompleted to ProjectState store
+                        from core.state_bus import ActionMeta, DuplicatesCompleted as DupAction
+                        _dispatch_store_action(DupAction(
+                            meta=ActionMeta(source="post_scan_pipeline"),
+                            job_id=self._pspl_job_id or -1,
+                            exact_groups=exact,
+                            similar_stacks=similar,
+                        ))
+
                         # Refresh duplicates section in sidebar
                         self._refresh_duplicates_section()
 
@@ -806,6 +842,15 @@ class ScanController(QObject):
                                 except Exception:
                                     pass
                                 self._face_job_id = None
+
+                            # Dispatch FacesCompleted to ProjectState store
+                            from core.state_bus import ActionMeta, FacesCompleted as FacesAction
+                            _dispatch_store_action(FacesAction(
+                                meta=ActionMeta(source="face_pipeline"),
+                                job_id=self._face_job_id or -1,
+                                detected=faces,
+                                clustered=clusters,
+                            ))
 
                             self._safe_refresh_people_section()
                             self._check_and_trigger_final_refresh()
