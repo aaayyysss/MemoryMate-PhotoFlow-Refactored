@@ -3706,6 +3706,15 @@ class MainWindow(QMainWindow):
         self.bump_ui_generation()
         print("[Shutdown] _closing flag set, ui_generation bumped, beginning teardown...")
 
+        # Dispatch ShutdownRequested to ProjectState store
+        try:
+            from core.state_bus import get_store, ShutdownRequested, ActionMeta
+            get_store().dispatch(ShutdownRequested(
+                meta=ActionMeta(source="main_window"),
+            ))
+        except Exception:
+            pass
+
         # 1. Use JobManager's coordinated shutdown (cancel + bump generation + drain)
         try:
             from services.job_manager import get_job_manager

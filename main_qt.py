@@ -183,6 +183,11 @@ if __name__ == "__main__":
     install_qt_message_handler()
     logger.info("Qt message handler installed to suppress TIFF warnings")
 
+    # Initialize ProjectState store (before any widgets or workers)
+    from core.state_bus import init_store, init_bridge, get_store
+    store = init_store()
+    logger.info("[Startup] ProjectState store initialized")
+
     # 1️: Show splash screen immediately
     splash = SplashScreen()
     splash.show()
@@ -223,6 +228,12 @@ if __name__ == "__main__":
         print("[Startup] ✅ MainWindow instance created successfully")
         print(f"[Startup] MainWindow type: {type(win)}")
         print(f"[Startup] MainWindow is valid: {win is not None}")
+
+        # Initialize Qt action bridge (requires QObject parent on GUI thread)
+        bridge = init_bridge(store, parent=win)
+        win._store = store
+        win._bridge = bridge
+        logger.info("[Startup] QtActionBridge attached to MainWindow")
 
         # Update progress while MainWindow initializes
         print("[Startup] Updating splash progress to 95%...")
