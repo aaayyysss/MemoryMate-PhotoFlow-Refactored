@@ -324,6 +324,31 @@ class GooglePhotosLayout(BaseLayout):
         # Load photos from database
         self._load_photos()
 
+        # Subscribe to ProjectState store for version-based refresh
+        self._store_unsub = None
+        try:
+            from core.state_bus import get_store, VersionedPanelMixin
+            store = get_store()
+            # Inline version tracker (avoids complex mixin with BaseLayout)
+            self._store_versions = {}
+            def _on_state_changed(state, action):
+                if getattr(self, '_disposed', False):
+                    return
+                old_mv = self._store_versions.get("media_v")
+                new_mv = state.media_v
+                if old_mv is not None and old_mv != new_mv:
+                    self.refresh_after_scan()
+                self._store_versions["media_v"] = new_mv
+                self._store_versions["people_v"] = state.people_v
+                self._store_versions["duplicates_v"] = state.duplicates_v
+            self._store_callback = _on_state_changed  # prevent GC (weakref store)
+            self._store_unsub = store.subscribe(_on_state_changed)
+            # Seed with current versions so first dispatch doesn't trigger spurious refresh
+            s = store.state
+            self._store_versions = {"media_v": s.media_v, "people_v": s.people_v, "duplicates_v": s.duplicates_v}
+        except Exception:
+            pass  # Store not initialized (e.g. unit tests)
+
         return main_widget
 
     
@@ -9791,7 +9816,12 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
         """
         print("[GooglePhotosLayout] Cleaning up resources...")
 
-        # 0. Mark accordion sidebar as disposed so background workers skip stale refreshes
+        # 0a. Unsubscribe from ProjectState store
+        if hasattr(self, '_store_unsub') and self._store_unsub:
+            self._store_unsub()
+            self._store_unsub = None
+
+        # 0b. Mark accordion sidebar as disposed so background workers skip stale refreshes
         if hasattr(self, 'accordion_sidebar') and self.accordion_sidebar:
             if hasattr(self.accordion_sidebar, 'cleanup'):
                 self.accordion_sidebar.cleanup()

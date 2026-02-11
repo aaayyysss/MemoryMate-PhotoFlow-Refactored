@@ -4025,13 +4025,24 @@ class MainWindow(QMainWindow):
 
 
     def _init_progress_pollers(self):
-        self.cluster_timer = QTimer(self)
-        self.cluster_timer.timeout.connect(self._poll_cluster_status)
-        self.cluster_timer.start(2000)  # every 2 seconds
-
-        self.backfill_timer = QTimer(self)
-        self.backfill_timer.timeout.connect(self._poll_backfill_status)
-        self.backfill_timer.start(2000)
+        # Replaced 2s polling timers with event-driven QFileSystemWatcher.
+        # cluster_timer removed — FaceClusterWorker already reports progress
+        # via Qt signals (progress/finished). JSON polling was legacy.
+        # backfill_timer replaced — subprocess writes JSON, watcher triggers
+        # read only when the file actually changes.
+        from PySide6.QtCore import QFileSystemWatcher
+        self._status_watcher = QFileSystemWatcher(self)
+        status_dir = os.path.join(self.app_root, "status")
+        # Watch the directory so we catch file creation/deletion
+        if os.path.isdir(status_dir):
+            self._status_watcher.addPath(status_dir)
+        # Also watch individual files if they already exist
+        for fname in ("backfill_status.json", "cluster_status.json"):
+            fpath = os.path.join(status_dir, fname)
+            if os.path.exists(fpath):
+                self._status_watcher.addPath(fpath)
+        self._status_watcher.fileChanged.connect(self._on_status_file_changed)
+        self._status_watcher.directoryChanged.connect(self._on_status_dir_changed)
 
     # ------------------------------------------------------------------
     # Scan progress widgets (non-modal, in status bar)
@@ -4191,10 +4202,27 @@ class MainWindow(QMainWindow):
         # Add to status bar as permanent widget (right side)
         self.statusBar().addPermanentWidget(self.embedding_status_label)
 
-        # Start periodic updates (every 30 seconds)
-        self.embedding_status_timer = QTimer(self)
-        self.embedding_status_timer.timeout.connect(self._update_embedding_status_bar)
-        self.embedding_status_timer.start(30000)  # 30 seconds
+        # Subscribe to store embeddings_v changes instead of 30s polling timer.
+        # The status updates reactively when embeddings are generated.
+        self._emb_status_unsub = None
+        try:
+            from core.state_bus import get_store
+            store = get_store()
+            self._emb_status_versions = {"embeddings_v": store.state.embeddings_v}
+
+            def _on_embeddings_changed(state, action):
+                if getattr(self, '_closing', False):
+                    return
+                old_v = self._emb_status_versions.get("embeddings_v")
+                new_v = state.embeddings_v
+                if old_v is not None and old_v != new_v:
+                    self._update_embedding_status_bar()
+                self._emb_status_versions["embeddings_v"] = new_v
+
+            self._emb_status_callback = _on_embeddings_changed  # prevent GC (weakref store)
+            self._emb_status_unsub = store.subscribe(_on_embeddings_changed)
+        except Exception:
+            pass  # Store not initialized
 
         # Initial update after short delay
         QTimer.singleShot(2000, self._update_embedding_status_bar)
@@ -4306,6 +4334,27 @@ class MainWindow(QMainWindow):
             # Silently fail - don't spam console with errors
             self.embedding_status_label.setText("🧠 —%")
             self.embedding_status_label.setToolTip(f"Could not load stats: {str(e)[:30]}")
+
+    def _on_status_file_changed(self, path: str):
+        """Event-driven handler: a status JSON file was modified."""
+        fname = os.path.basename(path)
+        if fname == "cluster_status.json":
+            self._poll_cluster_status()
+        elif fname == "backfill_status.json":
+            self._poll_backfill_status()
+        # QFileSystemWatcher may drop the watch after file replacement;
+        # re-add if the file still exists.
+        if os.path.exists(path) and path not in self._status_watcher.files():
+            self._status_watcher.addPath(path)
+
+    def _on_status_dir_changed(self, dir_path: str):
+        """Event-driven handler: a file was created/deleted in status dir."""
+        for fname in ("backfill_status.json", "cluster_status.json"):
+            fpath = os.path.join(dir_path, fname)
+            if os.path.exists(fpath) and fpath not in self._status_watcher.files():
+                self._status_watcher.addPath(fpath)
+                # Read immediately since the file was just created
+                self._on_status_file_changed(fpath)
 
     def _poll_cluster_status(self):
         path = os.path.join(self.app_root, "status", "cluster_status.json")

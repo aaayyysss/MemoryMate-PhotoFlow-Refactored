@@ -718,8 +718,19 @@ class ScanController(QObject):
                                 pass
                             self._pspl_job_id = None
 
-                        # Dispatch DuplicatesCompleted to ProjectState store
-                        from core.state_bus import ActionMeta, DuplicatesCompleted as DupAction
+                        # Dispatch EmbeddingsCompleted + DuplicatesCompleted to ProjectState store
+                        from core.state_bus import (
+                            ActionMeta,
+                            DuplicatesCompleted as DupAction,
+                            EmbeddingsCompleted as EmbAction,
+                        )
+                        emb_count = results.get("embeddings_generated", 0)
+                        if emb_count > 0:
+                            _dispatch_store_action(EmbAction(
+                                meta=ActionMeta(source="post_scan_pipeline"),
+                                job_id=self._pspl_job_id or -1,
+                                generated=emb_count,
+                            ))
                         _dispatch_store_action(DupAction(
                             meta=ActionMeta(source="post_scan_pipeline"),
                             job_id=self._pspl_job_id or -1,
@@ -727,8 +738,8 @@ class ScanController(QObject):
                             similar_stacks=similar,
                         ))
 
-                        # Refresh duplicates section in sidebar
-                        self._refresh_duplicates_section()
+                        # Duplicates section now self-refreshes via AccordionSidebar's
+                        # store subscription (duplicates_v change → reload_section).
 
                         # Mark post-scan pipeline complete and check final refresh
                         self._scan_operations_pending.discard("post_scan_pipeline")
@@ -852,7 +863,8 @@ class ScanController(QObject):
                                 clustered=clusters,
                             ))
 
-                            self._safe_refresh_people_section()
+                            # People section now self-refreshes via AccordionSidebar's
+                            # store subscription (people_v change → reload_section).
                             self._check_and_trigger_final_refresh()
 
                         def _on_face_pipeline_error(msg, pid):
@@ -1039,25 +1051,12 @@ class ScanController(QObject):
             progress.setValue(3)
 
             self.logger.info("Reloading sidebar after date branches built...")
-            # Refresh the correct sidebar for the active layout.
-            # IMPORTANT: Google Layout's AccordionSidebar must ALWAYS be
-            # refreshed after scan (new folders/dates/etc exist in DB).
-            # The sidebar_was_updated flag only applies to CurrentLayout's
-            # SidebarQt, not the accordion.
+            # Google Layout's AccordionSidebar now self-refreshes via
+            # store subscription (media_v change → refresh_after_scan).
+            # Only CurrentLayout's SidebarQt still needs direct refresh.
             if hasattr(self.main, 'layout_manager') and self.main.layout_manager:
                 current_layout_id = self.main.layout_manager._current_layout_id
-                if current_layout_id == "google":
-                    # Always reload accordion after scan — sections have new data
-                    current_layout = self.main.layout_manager._current_layout
-                    if current_layout and hasattr(current_layout, 'accordion_sidebar'):
-                        accordion = current_layout.accordion_sidebar
-                        active_pid = self._get_active_project_id()
-                        if active_pid is not None:
-                            self.logger.info(f"Refreshing AccordionSidebar after scan (project={active_pid})")
-                            accordion.set_project(active_pid)
-                        elif hasattr(accordion, 'reload_all_sections'):
-                            accordion.reload_all_sections()
-                elif not sidebar_was_updated:
+                if current_layout_id != "google" and not sidebar_was_updated:
                     # CurrentLayout sidebar — only reload if not already updated
                     if hasattr(self.main, 'sidebar') and self.main.sidebar:
                         if hasattr(self.main.sidebar, "reload"):
@@ -1068,9 +1067,6 @@ class ScanController(QObject):
                 if hasattr(self.main, 'sidebar') and self.main.sidebar:
                     if hasattr(self.main.sidebar, "reload"):
                         self.main.sidebar.reload()
-
-            # Phase 3B: Duplicates section refresh is now handled by the
-            # PostScanPipelineWorker's finished signal → _refresh_duplicates_section()
 
         except Exception as e:
             self.logger.error(f"Error reloading sidebar: {e}", exc_info=True)
@@ -1093,23 +1089,11 @@ class ScanController(QObject):
             if self.main.thumbnails and hasattr(self.main.grid, "get_visible_paths"):
                 self.main.thumbnails.load_thumbnails(self.main.grid.get_visible_paths())
 
-            # CRITICAL FIX: Also refresh Google Photos layout if active
-            # This is IN ADDITION to refreshing Current layout above
-            # Both layouts are kept in sync after scan
-            if hasattr(self.main, 'layout_manager') and self.main.layout_manager:
-                current_layout_id = self.main.layout_manager._current_layout_id
-                if current_layout_id == "google":
-                    self.logger.info("Refreshing Google Photos layout after scan...")
-                    current_layout = self.main.layout_manager._current_layout
-                    if current_layout and hasattr(current_layout, '_load_photos'):
-                        # PHASE 2 Task 2.2: Call directly instead of QTimer.singleShot
-                        # All async operations already complete, no need for additional delay
-                        current_layout._load_photos()
-                        self.logger.info("✓ Google Photos layout refreshed")
+            # Google Photos layout now self-refreshes via ProjectState store
+            # subscription (media_v change → refresh_after_scan).
+            # Only CurrentLayout grid needs explicit refresh here.
         except Exception as e:
-            # CRITICAL: Catch ALL exceptions to prevent scan cleanup from failing
-            self.logger.error(f"Error refreshing Google Photos layout: {e}", exc_info=True)
-            # Don't let layout refresh errors break scan completion
+            self.logger.error(f"Error refreshing layout after scan: {e}", exc_info=True)
 
         # Close progress stub / status bar
         try:

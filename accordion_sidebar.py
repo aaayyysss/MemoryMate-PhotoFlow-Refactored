@@ -900,6 +900,37 @@ class AccordionSidebar(QWidget):
         # Expand default section (People)
         self.expand_section("people")
 
+        # Subscribe to ProjectState store for version-based section refresh
+        self._store_unsub = None
+        try:
+            from core.state_bus import get_store
+            store = get_store()
+            self._store_versions = {
+                "duplicates_v": store.state.duplicates_v,
+                "people_v": store.state.people_v,
+            }
+
+            def _on_state_changed(state, action):
+                if self._disposed:
+                    return
+                old_dup = self._store_versions.get("duplicates_v")
+                old_ppl = self._store_versions.get("people_v")
+                new_dup = state.duplicates_v
+                new_ppl = state.people_v
+                self._store_versions["duplicates_v"] = new_dup
+                self._store_versions["people_v"] = new_ppl
+                if old_dup is not None and old_dup != new_dup:
+                    self._dbg(f"Store: duplicates_v {old_dup}→{new_dup}, reloading duplicates section")
+                    self.reload_section("duplicates")
+                if old_ppl is not None and old_ppl != new_ppl:
+                    self._dbg(f"Store: people_v {old_ppl}→{new_ppl}, reloading people section")
+                    self.reload_section("people")
+
+            self._store_callback = _on_state_changed  # prevent GC (weakref store)
+            self._store_unsub = store.subscribe(_on_state_changed)
+        except Exception:
+            pass  # Store not initialized (e.g. unit tests)
+
         self._dbg("AccordionSidebar __init__ completed")
 
     def _dbg(self, msg):
@@ -1095,6 +1126,10 @@ class AccordionSidebar(QWidget):
         if self._disposed:
             return
         self._disposed = True
+        # Unsubscribe from ProjectState store
+        if hasattr(self, '_store_unsub') and self._store_unsub:
+            self._store_unsub()
+            self._store_unsub = None
         self._dbg("cleanup() — marked as disposed")
 
     def reload_section(self, section_id: str):
