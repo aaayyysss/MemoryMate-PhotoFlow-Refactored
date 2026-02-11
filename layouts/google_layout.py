@@ -300,28 +300,34 @@ class GooglePhotosLayout(BaseLayout):
         # Load photos from database
         self._load_photos()
 
-        # Subscribe to ProjectState store for version-based refresh
+        # Subscribe to ProjectState store for version-based refresh.
+        # media_v  → full photo grid reload (scan completed)
+        # stacks_v → photo grid reload (stack badges changed)
         self._store_unsub = None
         try:
-            from core.state_bus import get_store, VersionedPanelMixin
+            from core.state_bus import get_store
             store = get_store()
-            # Inline version tracker (avoids complex mixin with BaseLayout)
-            self._store_versions = {}
+            s = store.state
+            self._store_versions = {
+                "media_v": s.media_v,
+                "stacks_v": s.stacks_v,
+            }
+
             def _on_state_changed(state, action):
                 if getattr(self, '_disposed', False):
                     return
-                old_mv = self._store_versions.get("media_v")
-                new_mv = state.media_v
-                if old_mv is not None and old_mv != new_mv:
+                need_refresh = False
+                for v_key in ("media_v", "stacks_v"):
+                    old_v = self._store_versions.get(v_key)
+                    new_v = getattr(state, v_key)
+                    if old_v is not None and old_v != new_v:
+                        need_refresh = True
+                    self._store_versions[v_key] = new_v
+                if need_refresh:
                     self.refresh_after_scan()
-                self._store_versions["media_v"] = new_mv
-                self._store_versions["people_v"] = state.people_v
-                self._store_versions["duplicates_v"] = state.duplicates_v
+
             self._store_callback = _on_state_changed  # prevent GC (weakref store)
             self._store_unsub = store.subscribe(_on_state_changed)
-            # Seed with current versions so first dispatch doesn't trigger spurious refresh
-            s = store.state
-            self._store_versions = {"media_v": s.media_v, "people_v": s.people_v, "duplicates_v": s.duplicates_v}
         except Exception:
             pass  # Store not initialized (e.g. unit tests)
 
@@ -10075,10 +10081,11 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
 
     def refresh_after_scan(self) -> None:
         """
-        Reload data after scan completes.
+        Reload photos after scan completes.
 
-        Called by ScanController after photo scan, video metadata extraction,
-        or face detection finishes.
+        Called via store subscription when media_v changes.
+        AccordionSidebar handles its own section reloads via
+        its own store subscription (media_v, duplicates_v, people_v).
         """
         # Reload photos with current filters
         self._load_photos(
@@ -10089,10 +10096,6 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
             filter_folder=self.current_filter_folder,
             filter_person=self.current_filter_person
         )
-
-        # Reload accordion sidebar sections
-        if hasattr(self, 'accordion_sidebar'):
-            self.accordion_sidebar.reload_all_sections()
 
     def refresh_thumbnails(self) -> None:
         """
