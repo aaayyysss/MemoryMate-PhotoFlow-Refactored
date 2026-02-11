@@ -1249,6 +1249,12 @@ class MainWindow(QMainWindow):
         except Exception as e:
             print(f"[MainWindow] ⚠️ Embedding status indicator init failed: {e}")
 
+        # === Store subscription for CurrentLayout grid/sidebar refresh ===
+        try:
+            self._init_current_layout_store_sub()
+        except Exception as e:
+            print(f"[MainWindow] ⚠️ CurrentLayout store subscription init failed: {e}")
+
         # Phase 2: Initialize breadcrumb navigation
         QTimer.singleShot(100, self._update_breadcrumb)
 
@@ -4023,6 +4029,73 @@ class MainWindow(QMainWindow):
             # Fallback to simple message
             self.statusBar().showMessage(tr('status_messages.ready'))
 
+
+    def _init_current_layout_store_sub(self):
+        """Subscribe to store so CurrentLayout grid/sidebar refresh on version changes.
+
+        This replaces the direct widget calls in _finalize_scan_refresh().
+        Google Layout has its own subscription; this handles CurrentLayout only.
+        Tracked versions: media_v (scan done), stacks_v (stack badges changed).
+        """
+        self._cl_store_unsub = None
+        try:
+            from core.state_bus import get_store
+            store = get_store()
+            s = store.state
+            self._cl_store_versions = {
+                "media_v": s.media_v,
+                "stacks_v": s.stacks_v,
+            }
+
+            def _on_current_layout_state(state, action):
+                if getattr(self, '_closing', False):
+                    return
+                need_refresh = False
+                for v_key in ("media_v", "stacks_v"):
+                    old_v = self._cl_store_versions.get(v_key)
+                    new_v = getattr(state, v_key)
+                    if old_v is not None and old_v != new_v:
+                        need_refresh = True
+                    self._cl_store_versions[v_key] = new_v
+                if need_refresh:
+                    self._refresh_current_layout_from_store()
+
+            self._cl_store_callback = _on_current_layout_state
+            self._cl_store_unsub = store.subscribe(_on_current_layout_state)
+        except Exception:
+            pass
+
+    def _refresh_current_layout_from_store(self):
+        """Refresh CurrentLayout grid and sidebar when media_v changes.
+
+        Only acts when the active layout is NOT google (Google Layout
+        handles its own refresh via its own store subscription).
+        """
+        if getattr(self, '_closing', False):
+            return
+        try:
+            lm = getattr(self, 'layout_manager', None)
+            if lm and getattr(lm, '_current_layout_id', None) == "google":
+                return  # Google layout handles its own refresh
+
+            # Sidebar
+            sidebar = getattr(self, 'sidebar', None)
+            if sidebar and not getattr(sidebar, '_disposed', False):
+                if hasattr(sidebar, 'reload') and sidebar.isVisible():
+                    sidebar.reload()
+
+            # Grid
+            grid = getattr(self, 'grid', None)
+            if grid and getattr(grid, 'project_id', None) is not None:
+                if hasattr(grid, 'reload'):
+                    grid.reload()
+
+            # Thumbnails
+            thumbnails = getattr(self, 'thumbnails', None)
+            if thumbnails and grid and hasattr(grid, 'get_visible_paths'):
+                thumbnails.load_thumbnails(grid.get_visible_paths())
+        except Exception as e:
+            print(f"[MainWindow] CurrentLayout store refresh error: {e}")
 
     def _init_progress_pollers(self):
         # Replaced 2s polling timers with event-driven QFileSystemWatcher.
