@@ -33,17 +33,23 @@ class VideoRepository(BaseRepository):
         """
         Normalize path for consistent storage and querying.
 
-        On Windows, paths are case-insensitive, so we lowercase them.
+        On Windows, paths are case-insensitive, so we lowercase them
+        AND convert backslashes to forward slashes for consistent keys.
+        This matches photo path normalization exactly, preventing join
+        mismatches between photos and videos in tags, duplicates, and stacks.
+
         On Unix, paths are case-sensitive, so we keep them as-is.
 
         Args:
             path: File path
 
         Returns:
-            Normalized path
+            Normalized path (forward slashes, lowercase on Windows)
         """
         if platform.system() == 'Windows':
-            return path.lower()
+            # CRITICAL: Replace backslashes THEN lowercase to match photo normalization
+            # Without this, C:\foo\bar.mp4 and c:/foo/bar.mp4 are different DB keys
+            return path.replace('\\', '/').lower()
         return path
 
     # ========================================================================

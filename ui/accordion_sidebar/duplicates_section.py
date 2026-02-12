@@ -19,11 +19,16 @@ Signals:
 
 import logging
 import threading
+import time
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QFrame
 from PySide6.QtCore import Signal, Qt, QObject
 from .base_section import BaseSection
 
 logger = logging.getLogger(__name__)
+
+# FIX 2026-02-08: Debounce dialog opening to prevent accidental double-clicks
+_last_dialog_open_time = 0
+_DIALOG_DEBOUNCE_MS = 500  # 500ms debounce
 
 
 class DuplicatesSectionSignals(QObject):
@@ -266,9 +271,25 @@ class DuplicatesSection(BaseSection):
         return card
 
     def _on_card_clicked(self, duplicate_type: str, has_duplicates: bool):
-        """Handle click on duplicate card."""
+        """
+        Handle click on duplicate card.
+
+        FIX 2026-02-08: Added debouncing and changed from exec() to show().
+        - Debouncing prevents accidental double-clicks from opening multiple dialogs
+        - show() is non-blocking, allowing the UI to remain responsive
+        - Dialog's finished signal triggers section refresh
+        """
+        global _last_dialog_open_time
+
         if not has_duplicates:
             return
+
+        # FIX 2026-02-08: Debounce to prevent rapid double-clicks
+        current_time = time.time() * 1000  # Convert to milliseconds
+        if current_time - _last_dialog_open_time < _DIALOG_DEBOUNCE_MS:
+            logger.debug("[DuplicatesSection] Ignoring click - debounce active")
+            return
+        _last_dialog_open_time = current_time
 
         # Get main window through parent chain
         main_window = None
@@ -291,7 +312,10 @@ class DuplicatesSection(BaseSection):
                 parent=main_window
             )
 
-            dialog.exec()
+            # FIX 2026-02-08: Use show() instead of exec() for non-blocking UI
+            # Connect finished signal to refresh section when dialog closes
+            dialog.finished.connect(lambda: self.load_section())
+            dialog.show()
 
         elif duplicate_type == "similar":
             # Import StackBrowserDialog for similar shots
@@ -304,10 +328,10 @@ class DuplicatesSection(BaseSection):
                 parent=main_window
             )
 
-            dialog.exec()
-
-        # Refresh counts after dialog closes
-        self.load_section()
+            # FIX 2026-02-08: Use show() instead of exec() for non-blocking UI
+            # Connect finished signal to refresh section when dialog closes
+            dialog.finished.connect(lambda: self.load_section())
+            dialog.show()
 
     def _on_refresh_clicked(self):
         """Handle refresh button click."""

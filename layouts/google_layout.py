@@ -48,6 +48,7 @@ from datetime import datetime
 import os
 import subprocess
 from translation_manager import tr as t
+from utils.qt_guards import connect_guarded_dynamic
 
 # Activity Center is now a QDockWidget managed by MainWindow.
 # Google layout no longer creates its own activity panel.
@@ -151,6 +152,13 @@ class GooglePhotosLayout(BaseLayout):
         self.date_indicator_hide_timer.timeout.connect(self._hide_date_indicator)
         self.date_indicator_delay = 800  # ms - hide after scrolling stops
 
+        # FIX 2026-02-08: Folder click debounce timer (prevent double-loads)
+        self._folder_click_debounce_timer = QTimer()
+        self._folder_click_debounce_timer.setSingleShot(True)
+        self._folder_click_debounce_timer.timeout.connect(self._execute_folder_click)
+        self._folder_click_debounce_delay = 250  # ms - debounce folder clicks
+        self._pending_folder_id = None  # Pending folder ID for debounced click
+
         # PHASE 2 #5: Thumbnail aspect ratio mode
         self.thumbnail_aspect_ratio = "square"  # "square", "original", "16:9"
 
@@ -184,9 +192,25 @@ class GooglePhotosLayout(BaseLayout):
         from services.photo_query_service import (
             SMALL_THRESHOLD, PAGE_SIZE, PREFETCH_PAGES, MAX_IN_MEMORY_ROWS,
         )
+
+        # Helper to get MainWindow's UI generation for guarded callbacks.
+        # Protects against callbacks arriving after shutdown/restart.
+        self._get_ui_generation = lambda: (
+            self.main_window.ui_generation()
+            if hasattr(self.main_window, 'ui_generation') else 0
+        )
+
         self._page_signals = PhotoPageSignals()
         self._page_signals.count_ready.connect(self._on_page_count_ready)
-        self._page_signals.page_ready.connect(self._on_page_ready)
+        # Guard page_ready with MainWindow generation to prevent stale callbacks
+        # after app restart. Note: handler also checks _photo_load_generation
+        # for load-level staleness.
+        connect_guarded_dynamic(
+            self._page_signals.page_ready,
+            self._on_page_ready,
+            self._get_ui_generation,
+            name='page_ready',
+        )
         self._page_signals.error.connect(self._on_page_error)
         self._paging_total = 0          # total rows from count query
         self._paging_loaded = 0         # rows received so far
@@ -1824,13 +1848,41 @@ class GooglePhotosLayout(BaseLayout):
 
     def _on_accordion_folder_clicked(self, folder_id: int):
         """
-        Handle accordion sidebar folder selection.
+        Handle accordion sidebar folder selection with debouncing.
+
+        FIX 2026-02-08: Added debouncing to prevent double-clicks from triggering
+        multiple expensive _load_photos() calls.
 
         Args:
             folder_id: Folder ID from database
         """
+        # Skip if same folder already pending or currently displayed
+        if self._pending_folder_id == folder_id:
+            print(f"[GooglePhotosLayout] Folder {folder_id} already pending, skipping")
+            return
+
         print(f"[GooglePhotosLayout] ========================================")
-        print(f"[GooglePhotosLayout] Accordion folder clicked: folder_id={folder_id}")
+        print(f"[GooglePhotosLayout] Accordion folder clicked: folder_id={folder_id} (debouncing...)")
+
+        # Store pending folder and start debounce timer
+        self._pending_folder_id = folder_id
+
+        # Cancel any pending timer and restart
+        if self._folder_click_debounce_timer.isActive():
+            self._folder_click_debounce_timer.stop()
+        self._folder_click_debounce_timer.start(self._folder_click_debounce_delay)
+
+    def _execute_folder_click(self):
+        """
+        Execute the actual folder load after debounce delay.
+
+        FIX 2026-02-08: Separated from _on_accordion_folder_clicked for debouncing.
+        """
+        folder_id = self._pending_folder_id
+        if folder_id is None:
+            return
+
+        print(f"[GooglePhotosLayout] Executing debounced folder click: folder_id={folder_id}")
 
         # Get folder path from database
         try:
@@ -2351,6 +2403,7 @@ class GooglePhotosLayout(BaseLayout):
 
                 elif filter_type == "resolution":
                     # Filter by resolution: sd, hd, fhd, 4k
+                    # Use MAX(width, height) to match sidebar bucketing logic (handles portrait/landscape videos)
                     with db._connect() as conn:
                         cur = conn.cursor()
                         if filter_value == "sd":
@@ -2358,7 +2411,10 @@ class GooglePhotosLayout(BaseLayout):
                                 SELECT DISTINCT vm.path, vm.created_date as date_taken, vm.width, vm.height
                                 FROM video_metadata vm
                                 JOIN project_videos pv ON vm.path = pv.video_path
-                                WHERE pv.project_id = ? AND vm.height > 0 AND vm.height < 720
+                                WHERE pv.project_id = ?
+                                  AND COALESCE(vm.width, 0) > 0
+                                  AND COALESCE(vm.height, 0) > 0
+                                  AND MAX(COALESCE(vm.width, 0), COALESCE(vm.height, 0)) < 720
                                 ORDER BY vm.created_date DESC
                             """, (self.project_id,))
                         elif filter_value == "hd":
@@ -2366,7 +2422,9 @@ class GooglePhotosLayout(BaseLayout):
                                 SELECT DISTINCT vm.path, vm.created_date as date_taken, vm.width, vm.height
                                 FROM video_metadata vm
                                 JOIN project_videos pv ON vm.path = pv.video_path
-                                WHERE pv.project_id = ? AND vm.height >= 720 AND vm.height < 1080
+                                WHERE pv.project_id = ?
+                                  AND MAX(COALESCE(vm.width, 0), COALESCE(vm.height, 0)) >= 720
+                                  AND MAX(COALESCE(vm.width, 0), COALESCE(vm.height, 0)) < 1080
                                 ORDER BY vm.created_date DESC
                             """, (self.project_id,))
                         elif filter_value == "fhd":
@@ -2374,7 +2432,9 @@ class GooglePhotosLayout(BaseLayout):
                                 SELECT DISTINCT vm.path, vm.created_date as date_taken, vm.width, vm.height
                                 FROM video_metadata vm
                                 JOIN project_videos pv ON vm.path = pv.video_path
-                                WHERE pv.project_id = ? AND vm.height >= 1080 AND vm.height < 2160
+                                WHERE pv.project_id = ?
+                                  AND MAX(COALESCE(vm.width, 0), COALESCE(vm.height, 0)) >= 1080
+                                  AND MAX(COALESCE(vm.width, 0), COALESCE(vm.height, 0)) < 2160
                                 ORDER BY vm.created_date DESC
                             """, (self.project_id,))
                         elif filter_value == "4k":
@@ -2382,10 +2442,21 @@ class GooglePhotosLayout(BaseLayout):
                                 SELECT DISTINCT vm.path, vm.created_date as date_taken, vm.width, vm.height
                                 FROM video_metadata vm
                                 JOIN project_videos pv ON vm.path = pv.video_path
-                                WHERE pv.project_id = ? AND vm.height >= 2160
+                                WHERE pv.project_id = ?
+                                  AND MAX(COALESCE(vm.width, 0), COALESCE(vm.height, 0)) >= 2160
                                 ORDER BY vm.created_date DESC
                             """, (self.project_id,))
                         video_rows = cur.fetchall()
+                        # Debug: Log resolution filter results with dimensions
+                        if video_rows:
+                            for row in video_rows[:5]:  # Log first 5 for debugging
+                                path, _, w, h = row
+                                max_dim = max(w or 0, h or 0)
+                                import os
+                                fname = os.path.basename(path)
+                                print(f"[GooglePhotosLayout] 📐 {filter_value.upper()}: {fname} ({w}x{h}, max={max_dim})")
+                            if len(video_rows) > 5:
+                                print(f"[GooglePhotosLayout] 📐 ... and {len(video_rows) - 5} more {filter_value.upper()} videos")
 
                 elif filter_type == "codec":
                     # NEW: Filter by codec: h264, hevc, vp9, av1, mpeg4
@@ -2470,6 +2541,29 @@ class GooglePhotosLayout(BaseLayout):
                                 ORDER BY vm.created_date DESC
                             """, (self.project_id,))
                         video_rows = cur.fetchall()
+
+                elif filter_type == "date":
+                    # Filter by year: extract year from created_date
+                    with db._connect() as conn:
+                        cur = conn.cursor()
+                        try:
+                            year = int(filter_value)
+                            # Match videos where created_date starts with the year
+                            # created_date format is typically YYYY-MM-DD HH:MM:SS or YYYY-MM-DD
+                            cur.execute("""
+                                SELECT DISTINCT vm.path, vm.created_date as date_taken, vm.width, vm.height
+                                FROM video_metadata vm
+                                JOIN project_videos pv ON vm.path = pv.video_path
+                                WHERE pv.project_id = ? AND (
+                                    CAST(SUBSTR(vm.created_date, 1, 4) AS INTEGER) = ?
+                                    OR CAST(vm.created_year AS INTEGER) = ?
+                                )
+                                ORDER BY vm.created_date DESC
+                            """, (self.project_id, year, year))
+                            video_rows = cur.fetchall()
+                        except ValueError:
+                            # Invalid year value, show all videos
+                            print(f"[GooglePhotosLayout] ⚠️ Invalid year filter: {filter_value}")
 
             # Rebuild timeline with video results
             self._rebuild_timeline_with_results(video_rows, f"Videos: {filter_spec}")
@@ -5482,9 +5576,13 @@ class GooglePhotosLayout(BaseLayout):
 
         return cols
 
-    def _on_thumbnail_loaded(self, path: str, pixmap: QPixmap, size: int):
+    def _on_thumbnail_loaded(self, path: str, qimage, size: int):
         """
         Callback when async thumbnail loading completes.
+
+        FIX 2026-02-08: Changed parameter from QPixmap to QImage for thread safety.
+        The worker now emits QImage (thread-safe), and we convert to QPixmap here
+        on the UI thread where it's safe to do so.
 
         Phase 3 #1: Added smooth fade-in animation for loaded thumbnails.
         Phase 3 #2: Stops pulsing animation and shows cached thumbnail.
@@ -5498,8 +5596,10 @@ class GooglePhotosLayout(BaseLayout):
             return  # Button was destroyed (e.g., during reload)
 
         try:
-            # Update button with loaded thumbnail
-            if pixmap and not pixmap.isNull():
+            # FIX 2026-02-08: Convert QImage -> QPixmap on UI thread (safe!)
+            if qimage and not qimage.isNull():
+                # Convert QImage to QPixmap on UI thread
+                pixmap = QPixmap.fromImage(qimage)
                 scaled = pixmap.scaled(size, size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
                 button.setIcon(QIcon(scaled))
                 button.setIconSize(QSize(size - 4, size - 4))
@@ -5839,7 +5939,7 @@ class GooglePhotosLayout(BaseLayout):
             print(f"[GooglePhotosLayout] No photos found in project {self.project_id}")
             return
 
-        print(f"[GooglePhotosLayout] Dispatching {len(rows)} photos to background grouping worker...")
+        print(f"[GooglePhotosLayout] Dispatching {len(rows)} assets (photos+videos) to background grouping worker...")
 
         # Bump generation so stale results are discarded
         gen = self._photo_load_generation

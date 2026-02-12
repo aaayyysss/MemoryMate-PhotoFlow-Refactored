@@ -1,11 +1,15 @@
 # services/stack_generation_service.py
-# Version 01.01.00.00 dated 20260130
+# Version 01.02.00.00 dated 20260208
 # Similar-shot and near-duplicate stack generation service
 #
 # Part of the asset-centric duplicate management system.
 # Generates materialized stacks for:
 # - Similar shots (burst, series, pose variations)
 # - Near-duplicates (pHash-based detection - future)
+#
+# FIX 20260208: Cross-date similarity now works correctly. Previously, photos
+# clustered in time-window pass were excluded from global cross-date pass,
+# preventing visually similar photos from different dates from being grouped.
 
 from __future__ import annotations
 from dataclasses import dataclass
@@ -279,6 +283,7 @@ class StackGenerationService:
         self.logger.info(f"Found {len(all_clusters)} similar shot clusters (time-window pass)")
 
         # Step 3b: Global similarity pass — find visually similar photos across ALL dates
+        # FIX (2026-02-08): Now considers ALL photos with embeddings to enable cross-date grouping
         if params.cross_date_similarity and preloaded_embeddings:
             global_clusters = self._cluster_globally_by_similarity(
                 all_photos=all_photos,
@@ -287,6 +292,35 @@ class StackGenerationService:
                 similarity_threshold=params.cross_date_threshold,
                 min_cluster_size=params.min_stack_size,
             )
+
+            # Track which time-window clusters are subsumed by global clusters
+            subsumed_cluster_ids = set()
+
+            for cluster in global_clusters:
+                # Find which time-window clusters are fully contained in this global cluster
+                cluster_set = set(cluster)
+                for tw_cluster_id, tw_cluster in enumerate(all_clusters):
+                    tw_cluster_set = set(tw_cluster)
+                    if tw_cluster_set.issubset(cluster_set) and len(tw_cluster_set) < len(cluster_set):
+                        # This time-window cluster is subsumed by the global cluster
+                        subsumed_cluster_ids.add(tw_cluster_id)
+
+            # Remove subsumed time-window clusters (they'll be replaced by larger global clusters)
+            if subsumed_cluster_ids:
+                self.logger.info(
+                    f"Removing {len(subsumed_cluster_ids)} time-window clusters subsumed by global clusters"
+                )
+                all_clusters = [
+                    c for i, c in enumerate(all_clusters)
+                    if i not in subsumed_cluster_ids
+                ]
+                # Rebuild photo_to_cluster mapping
+                photo_to_cluster.clear()
+                for cluster_id, cluster in enumerate(all_clusters):
+                    for pid in cluster:
+                        photo_to_cluster[pid] = cluster_id
+
+            # Add global clusters
             for cluster in global_clusters:
                 cluster_id = len(all_clusters)
                 all_clusters.append(cluster)
@@ -544,6 +578,7 @@ class StackGenerationService:
         self.logger.info(f"Found {len(all_clusters)} similar shot clusters (time-window pass)")
 
         # Global cross-date pass for selected photos
+        # FIX (2026-02-08): Now considers ALL photos with embeddings to enable cross-date grouping
         if params.cross_date_similarity and preloaded_embeddings:
             global_clusters = self._cluster_globally_by_similarity(
                 all_photos=selected_photos,
@@ -552,6 +587,35 @@ class StackGenerationService:
                 similarity_threshold=params.cross_date_threshold,
                 min_cluster_size=params.min_stack_size,
             )
+
+            # Track which time-window clusters are subsumed by global clusters
+            subsumed_cluster_ids = set()
+
+            for cluster in global_clusters:
+                # Find which time-window clusters are fully contained in this global cluster
+                cluster_set = set(cluster)
+                for tw_cluster_id, tw_cluster in enumerate(all_clusters):
+                    tw_cluster_set = set(tw_cluster)
+                    if tw_cluster_set.issubset(cluster_set) and len(tw_cluster_set) < len(cluster_set):
+                        # This time-window cluster is subsumed by the global cluster
+                        subsumed_cluster_ids.add(tw_cluster_id)
+
+            # Remove subsumed time-window clusters (they'll be replaced by larger global clusters)
+            if subsumed_cluster_ids:
+                self.logger.info(
+                    f"Removing {len(subsumed_cluster_ids)} time-window clusters subsumed by global clusters"
+                )
+                all_clusters = [
+                    c for i, c in enumerate(all_clusters)
+                    if i not in subsumed_cluster_ids
+                ]
+                # Rebuild photo_to_cluster mapping
+                photo_to_cluster.clear()
+                for cluster_id, cluster in enumerate(all_clusters):
+                    for pid in cluster:
+                        photo_to_cluster[pid] = cluster_id
+
+            # Add global clusters
             for cluster in global_clusters:
                 cluster_id = len(all_clusters)
                 all_clusters.append(cluster)
@@ -834,13 +898,19 @@ class StackGenerationService:
         Global similarity pass: find visually similar photos across ALL dates.
 
         Uses vectorized numpy matrix multiplication for efficient pairwise
-        cosine similarity computation. Only considers photos NOT already
-        assigned to a cluster by the time-window pass.
+        cosine similarity computation. Considers ALL photos with embeddings
+        to enable cross-date grouping, even for photos already in time-window
+        clusters.
+
+        IMPORTANT FIX (2026-02-08): Previously skipped photos in already_clustered,
+        which prevented cross-date grouping. Now considers all photos with embeddings
+        to find visually similar photos across different dates/time-window clusters.
 
         Args:
             all_photos: All photos in the project
             preloaded_embeddings: Pre-loaded embeddings dict (photo_id -> embedding)
             already_clustered: Dict of photo_id -> cluster_id from time-window pass
+                              (used for tracking, not filtering)
             similarity_threshold: Minimum cosine similarity for grouping
             min_cluster_size: Minimum photos per cluster
 
@@ -849,36 +919,39 @@ class StackGenerationService:
         """
         import numpy as np
 
-        # Collect unclustered photos that have embeddings
-        unclustered_ids = []
-        unclustered_embeddings = []
+        # Collect ALL photos with embeddings (including already-clustered ones)
+        # This enables cross-date grouping: photos from different time-window
+        # clusters can still be grouped if visually similar
+        candidate_ids = []
+        candidate_embeddings = []
         for photo in all_photos:
             pid = photo["id"]
-            if pid in already_clustered:
-                continue
+            # FIX: Don't skip already-clustered photos - we need to find
+            # cross-date similarity even for photos in time-window clusters
             emb = preloaded_embeddings.get(pid)
             if emb is not None:
                 norm = np.linalg.norm(emb)
                 if norm > 0:
-                    unclustered_ids.append(pid)
-                    unclustered_embeddings.append(emb / norm)
+                    candidate_ids.append(pid)
+                    candidate_embeddings.append(emb / norm)
 
-        if len(unclustered_ids) < min_cluster_size:
+        if len(candidate_ids) < min_cluster_size:
             return []
 
         self.logger.info(
-            f"Global similarity pass: {len(unclustered_ids)} unclustered photos with embeddings"
+            f"Global similarity pass: {len(candidate_ids)} photos with embeddings "
+            f"({len(already_clustered)} already in time-window clusters)"
         )
 
         # Build embedding matrix and compute pairwise cosine similarity
-        emb_matrix = np.stack(unclustered_embeddings)  # shape: (N, D)
+        emb_matrix = np.stack(candidate_embeddings)  # shape: (N, D)
         # Cosine similarity matrix via matrix multiplication (embeddings already normalized)
         sim_matrix = emb_matrix @ emb_matrix.T  # shape: (N, N)
 
         # Complete-linkage clustering on the similarity matrix
-        n = len(unclustered_ids)
+        n = len(candidate_ids)
         assigned = set()
-        clusters = []
+        raw_clusters = []
 
         for i in range(n):
             if i in assigned:
@@ -903,11 +976,36 @@ class StackGenerationService:
                     assigned.add(j)
 
             if len(cluster_indices) >= min_cluster_size:
-                cluster_photo_ids = [unclustered_ids[idx] for idx in cluster_indices]
-                clusters.append(cluster_photo_ids)
+                cluster_photo_ids = [candidate_ids[idx] for idx in cluster_indices]
+                raw_clusters.append(cluster_photo_ids)
+
+        # Deduplicate: only keep clusters that span multiple time-window clusters
+        # or contain photos not in any time-window cluster (true cross-date groups)
+        clusters = []
+        for cluster in raw_clusters:
+            # Check how many different time-window clusters this global cluster spans
+            time_window_cluster_ids = set()
+            unclustered_count = 0
+            for pid in cluster:
+                if pid in already_clustered:
+                    time_window_cluster_ids.add(already_clustered[pid])
+                else:
+                    unclustered_count += 1
+
+            # Keep this cluster if:
+            # 1. It spans multiple time-window clusters (true cross-date match), OR
+            # 2. It contains unclustered photos mixed with time-window photos, OR
+            # 3. It's entirely unclustered photos (would have been found before, but safety check)
+            is_cross_date = len(time_window_cluster_ids) > 1
+            is_mixed = len(time_window_cluster_ids) > 0 and unclustered_count > 0
+            is_new_unclustered = unclustered_count >= min_cluster_size and len(time_window_cluster_ids) == 0
+
+            if is_cross_date or is_mixed or is_new_unclustered:
+                clusters.append(cluster)
                 self.logger.debug(
-                    f"Global cluster: {len(cluster_photo_ids)} photos "
-                    f"(all-pairs similarity >= {similarity_threshold:.2f})"
+                    f"Global cluster: {len(cluster)} photos "
+                    f"(spans {len(time_window_cluster_ids)} time-window clusters, "
+                    f"{unclustered_count} unclustered, similarity >= {similarity_threshold:.2f})"
                 )
 
         return clusters

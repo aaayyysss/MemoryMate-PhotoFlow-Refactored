@@ -164,6 +164,37 @@ def load_thumbnail_safe(path: str, height: int, cache: dict, timeout: float, pla
         print(f"[ThumbnailSafe] Failed to load {path}: {e}")
         return placeholder
 
+
+def load_thumbnail_image_safe(path: str, height: int, timeout: float, placeholder_image: QImage = None):
+    """
+    Safe thumbnail loader that returns QImage (THREAD-SAFE).
+
+    FIX 2026-02-08: New function for thread-safe thumbnail loading.
+    Use this from worker threads instead of load_thumbnail_safe().
+
+    Args:
+        path: Image file path
+        height: Target thumbnail height
+        timeout: Decode timeout in seconds
+        placeholder_image: Fallback QImage on error (optional)
+
+    Returns:
+        QImage thumbnail (thread-safe)
+    """
+    try:
+        # Use ThumbnailService's thread-safe get_thumbnail_image method
+        thumb_service = get_thumbnail_service()
+        qimage = thumb_service.get_thumbnail_image(path, height, timeout=timeout)
+
+        if qimage and not qimage.isNull():
+            return qimage
+
+        return placeholder_image or QImage()
+
+    except Exception as e:
+        print(f"[ThumbnailImageSafe] Failed to load {path}: {e}")
+        return placeholder_image or QImage()
+
 # --- Worker signal bridge ---
 def get_thumbnail_safe(path, height, use_disk_cache=True):
     pm = get_thumbnail(path, height, use_disk_cache=True)
@@ -186,13 +217,23 @@ def get_thumbnail_safe(path, height, use_disk_cache=True):
 
 # --- Worker signal bridge ---
 class ThumbSignal(QObject):
-    preview = Signal(str, QPixmap, int)  # quick low-res
-    loaded = Signal(str, QPixmap, int)  # path, pixmap, row index
+    # FIX 2026-02-08: Changed from QPixmap to object (QImage) for thread-safety
+    # QImage is CPU-backed and thread-safe, QPixmap is GPU-backed and NOT thread-safe
+    preview = Signal(str, object, int)  # quick low-res QImage
+    loaded = Signal(str, object, int)  # path, QImage, row index
 
 
 # --- Worker for background thumbnail loading ---
 
 class ThumbWorker(QRunnable):
+    """
+    Background worker for thumbnail loading.
+
+    FIX 2026-02-08: CRITICAL THREAD-SAFETY FIX
+    - Now uses QImage (thread-safe) instead of QPixmap (NOT thread-safe on Windows)
+    - Emits QImage via signals, UI thread converts to QPixmap
+    - Uses get_thumbnail_image() instead of get_thumbnail()
+    """
     def __init__(self, real_path, norm_path, height, row, signal_obj, cache, reload_token, placeholder):
         super().__init__()
         # real_path = on-disk path to open; norm_path = unified key used in model/cache
@@ -204,56 +245,61 @@ class ThumbWorker(QRunnable):
         self.cache = cache
         self.reload_token = reload_token
         self.placeholder = placeholder
+        # FIX 2026-02-08: Convert placeholder QPixmap to QImage for thread-safety
+        self.placeholder_image = placeholder.toImage() if placeholder and not placeholder.isNull() else QImage()
 
     def run(self):
+        """
+        Load thumbnail in background thread.
+
+        FIX 2026-02-08: Emits QImage (thread-safe) instead of QPixmap.
+        """
         try:
             quick_h = max(64, min(128, max(32, self.height // 2)))
-            pm_preview = None
+            img_preview = None
             try:
-                # Try QImageReader fast scaled read first
+                # Try QImageReader fast scaled read first - already returns QImage (thread-safe!)
                 try:
-#                    reader = QImageReader(self.path)
                     reader = QImageReader(self.real_path)
                     reader.setAutoTransform(True)
                     reader.setScaledSize(QSize(quick_h, quick_h))
                     img = reader.read()
                     if img is not None and not img.isNull():
-                        pm_preview = QPixmap.fromImage(img)
+                        # FIX 2026-02-08: Keep as QImage, don't convert to QPixmap
+                        img_preview = img
                 except Exception:
-                    pm_preview = None
-                if pm_preview is None:
-#                    pm_preview = load_thumbnail_safe(self.path, quick_h, self.cache, timeout=2.0, placeholder=self.placeholder)
-                    pm_preview = load_thumbnail_safe(self.real_path, quick_h, self.cache, timeout=2.0, placeholder=self.placeholder)
+                    img_preview = None
+                if img_preview is None:
+                    # FIX 2026-02-08: Use thread-safe image loader
+                    img_preview = load_thumbnail_image_safe(self.real_path, quick_h, timeout=2.0, placeholder_image=self.placeholder_image)
             except Exception as e:
-#                print(f"[ThumbWorker] preview failed {self.path}: {e}")
                 print(f"[ThumbWorker] preview failed {self.real_path}: {e}")
-                pm_preview = self.placeholder
+                img_preview = self.placeholder_image
 
             try:
-#                self.signals.preview.emit(self.path, pm_preview, self.row)
-                # emit with normalized key so the grid can always match the item
-                self.signals.preview.emit(self.norm_path, pm_preview, self.row)
+                # FIX 2026-02-08: Emit QImage (thread-safe)
+                self.signals.preview.emit(self.norm_path, img_preview, self.row)
             except Exception:
                 return
 
-            # full
+            # Full quality thumbnail
             try:
-#                pm_full = get_thumbnail(self.path, self.height, use_disk_cache=True)
-                pm_full = get_thumbnail(self.real_path, self.height, use_disk_cache=True)
-                if pm_full is None or pm_full.isNull():
-#                    pm_full = load_thumbnail_safe(self.path, self.height, self.cache, timeout=5.0, placeholder=self.placeholder)
-                    pm_full = load_thumbnail_safe(self.real_path, self.height, self.cache, timeout=5.0, placeholder=self.placeholder)
+                # FIX 2026-02-08: Use get_thumbnail_image() which returns QImage (thread-safe!)
+                from app_services import get_thumbnail_image
+                img_full = get_thumbnail_image(self.real_path, self.height, timeout=5.0)
+                if img_full is None or img_full.isNull():
+                    img_full = load_thumbnail_image_safe(self.real_path, self.height, timeout=5.0, placeholder_image=self.placeholder_image)
             except Exception:
-                pm_full = self.placeholder
+                img_full = self.placeholder_image
 
             try:
-#                self.signals.loaded.emit(self.path, pm_full, self.row)
-                self.signals.loaded.emit(self.norm_path, pm_full, self.row)
+                # FIX 2026-02-08: Emit QImage (thread-safe)
+                self.signals.loaded.emit(self.norm_path, img_full, self.row)
             except Exception:
                 return
 
         except Exception as e:
-            print(f"[ThumbWorker] Error for {self.path}: {e}")
+            print(f"[ThumbWorker] Error for {self.real_path}: {e}")
 
 
 def is_video_file(path: str) -> bool:
@@ -1359,6 +1405,15 @@ class ThumbnailGridQt(QWidget):
         except Exception as e:
             print(f"[GRID] Warning: Could not fetch tags: {e}")
 
+        # FIX (2026-02-08): Preload aspect ratios from DB instead of PIL.Image.open on UI thread
+        # This prevents UI freezes when loading thumbnails (Google Photos best practice)
+        aspect_map = {}
+        try:
+            if hasattr(self.db, 'get_aspect_ratios_for_paths'):
+                aspect_map = self.db.get_aspect_ratios_for_paths(self._paths, self.project_id)
+        except Exception as e:
+            print(f"[GRID] Warning: Could not fetch aspect ratios: {e}")
+
         # Use current reload token snapshot so workers can be tied to this load
         token = self._reload_token
 
@@ -1416,13 +1471,9 @@ class ThumbnailGridQt(QWidget):
                 header_label = None
             item.setData(header_label, Qt.UserRole + 10)
 
-            # --- Set placeholder size based on actual aspect ratio from header if possible
-            try:
-                from PIL import Image
-                with Image.open(p) as im:
-                    aspect_ratio = (im.width / im.height) if im and im.height else 1.5
-            except Exception:
-                aspect_ratio = 1.5
+            # --- Set placeholder size based on DB-stored aspect ratio (no UI-thread I/O)
+            # FIX (2026-02-08): Use preloaded aspect_map instead of PIL.Image.open
+            aspect_ratio = aspect_map.get(p, 1.5)
             item.setData(aspect_ratio, Qt.UserRole + 1)
             
             size0 = self._thumb_size_for_aspect(aspect_ratio)
@@ -1509,39 +1560,29 @@ class ThumbnailGridQt(QWidget):
         # rebuild
         self.model.clear()
         token = self._reload_token
-        for i, p in enumerate(sorted_paths):
+        thumb_h = int(self._thumb_base * self._zoom_factor) if hasattr(self, '_thumb_base') else self.thumb_height
+        for i, p in enumerate(self._paths):
             item = QStandardItem()
             item.setEditable(False)
             item.setData(p, Qt.UserRole)
             item.setSizeHint(QSize(self.thumb_height, self.thumb_height + self._spacing))
             self.model.appendRow(item)
-            worker = ThumbWorker(p, self.thumb_height, i, self.thumb_signal, self._thumb_cache, token, self._placeholder_pixmap)
+            # FIX: ThumbWorker requires 8 args: real_path, norm_path, height, row, signal_obj, cache, reload_token, placeholder
+            worker = ThumbWorker(p, p, thumb_h, i, self.thumb_signal, self._thumb_cache, token, self._placeholder_pixmap)
             self.thread_pool.start(worker)
 
 
-    def _on_thumb_loaded(self, path: str, pixmap: QPixmap, row: int):
-        """Called asynchronously when a thumbnail has been loaded."""
+    def _on_thumb_loaded(self, path: str, qimage, row: int):
+        """
+        Called asynchronously when a thumbnail has been loaded.
+
+        FIX 2026-02-08: Now receives QImage (thread-safe) and converts to QPixmap
+        on the UI thread where it's safe to do so.
+        """
         # --- Token safety check ---
         if getattr(self, "_current_reload_token", None) != self._reload_token:
             print(f"[GRID] Discarded stale thumbnail: {path}")
             return
-
-#        item = None
-#        try:
-#            item = self.model.item(row)
-#        except Exception:
-#            item = None
-#
-#        if not item or item.data(Qt.UserRole) != path:
-#            # The model may have changed (re-ordered); attempt to find by path instead
-#            found = None
-#            for r in range(self.model.rowCount()):
-#                it = self.model.item(r)
-#                if it and it.data(Qt.UserRole) == path:
-#                    found = it
-#                    break
-#            item = found
-
 
         # path here is ALWAYS normalized; match by key
         item = self.model.item(row) if (0 <= row < self.model.rowCount()) else None
@@ -1556,27 +1597,25 @@ class ThumbnailGridQt(QWidget):
         if not item:
             return
 
-        # 🧠 Use cached pixmap if invalid
-        if pixmap is None or pixmap.isNull():
-#            pm = load_thumbnail_safe(
-#                path, int(self._thumb_base * self._zoom_factor),
-#                self._thumb_cache, self._decode_timeout, self._placeholder_pixmap
-#            )
+        # FIX 2026-02-08: Convert QImage to QPixmap on UI thread (safe!)
+        # The worker now sends QImage which is thread-safe
+        pm = None
+        if qimage is not None and not qimage.isNull():
+            pm = QPixmap.fromImage(qimage)
 
+        # 🧠 Use cached pixmap if invalid
+        if pm is None or pm.isNull():
             real_path = item.data(Qt.UserRole + 6) or path
             pm = load_thumbnail_safe(real_path,
                                      int(self._thumb_base * self._zoom_factor),
                                      self._thumb_cache, self._decode_timeout, self._placeholder_pixmap)
-
-        else:
-            pm = pixmap
 
         # 🧮 Update metadata and UI
         aspect_ratio = pm.width() / pm.height() if pm and pm.height() > 0 else 1.5
         item.setData(aspect_ratio, Qt.UserRole + 1)
         item.setSizeHint(self._thumb_size_for_aspect(aspect_ratio))
         item.setIcon(QIcon(pm))
-        
+
         item.setData(False, Qt.UserRole + 5)   # allow future requeue   
         
         # allow future rescheduling after zoom/scroll
@@ -2960,17 +2999,19 @@ class ThumbnailGridQt(QWidget):
 
         # --- Build items
         token = self._reload_token
-        for i, p in enumerate(sorted_paths):
+        thumb_h = int(self._thumb_base * self._zoom_factor) if hasattr(self, '_thumb_base') else self.thumb_height
+        for i, p in enumerate(self._paths):
             item = QStandardItem()
             item.setEditable(False)
             item.setData(p, Qt.UserRole)
             item.setData(tag_map.get(p, []), Qt.UserRole + 2)  # store tags list
-            
+
             # initial placeholder size (consistent with default aspect)
             item.setSizeHint(self._thumb_size_for_aspect(1.5))
             self.model.appendRow(item)
 
-            worker = ThumbWorker(p, self.thumb_height, i, self.thumb_signal, self._thumb_cache, token, self._placeholder_pixmap)
+            # FIX: ThumbWorker requires 8 args: real_path, norm_path, height, row, signal_obj, cache, reload_token, placeholder
+            worker = ThumbWorker(p, p, thumb_h, i, self.thumb_signal, self._thumb_cache, token, self._placeholder_pixmap)
             self.thread_pool.start(worker)
 
         # --- Trigger UI update
@@ -3336,6 +3377,7 @@ class ThumbnailGridQt(QWidget):
                 'sorted_paths': sorted_paths,
                 'tag_map': tag_map,
                 'date_map': date_map,
+                'aspect_map': aspect_map,  # FIX: Add aspect ratios for batched loading
                 'use_date_headers': use_date_headers,
                 'token': token,
                 'placeholder_size': placeholder_size,
@@ -3351,7 +3393,7 @@ class ThumbnailGridQt(QWidget):
 
         self._populate_model_items(
             paths_to_process, 0, sorted_paths,
-            tag_map, date_map, use_date_headers,
+            tag_map, date_map, aspect_map, use_date_headers,
             token, placeholder_size, placeholder_pix, _group_label,
         )
 
@@ -3395,7 +3437,7 @@ class ThumbnailGridQt(QWidget):
 
     def _populate_model_items(
         self, paths_batch, global_offset, all_sorted_paths,
-        tag_map, date_map, use_date_headers,
+        tag_map, date_map, aspect_map, use_date_headers,
         token, placeholder_size, placeholder_pix, group_label_fn,
     ):
         """
@@ -3404,6 +3446,9 @@ class ThumbnailGridQt(QWidget):
         *global_offset* is the index of the first element of paths_batch
         within *all_sorted_paths*.  This is used for date-header boundary
         detection across batches.
+
+        FIX (2026-02-08): Added aspect_map parameter to use DB-stored dimensions
+        instead of PIL.Image.open on UI thread (Google Photos best practice).
         """
         from PySide6.QtCore import QSize, Qt
         from PySide6.QtGui import QStandardItem, QIcon
@@ -3437,13 +3482,9 @@ class ThumbnailGridQt(QWidget):
                 header_label = None
             item.setData(header_label, Qt.UserRole + 10)
 
-            # Aspect ratio from image header
-            try:
-                from PIL import Image
-                with Image.open(p) as im:
-                    initial_aspect = (im.width / im.height) if im and im.height else 1.5
-            except Exception:
-                initial_aspect = 1.5
+            # FIX (2026-02-08): Use preloaded aspect_map instead of PIL.Image.open
+            # This prevents UI freezes (Google Photos/iOS Photos best practice)
+            initial_aspect = aspect_map.get(p, 1.5)
             item.setData(initial_aspect, Qt.UserRole + 1)
             item.setData(False, Qt.UserRole + 5)   # not scheduled yet
 
@@ -3513,9 +3554,11 @@ class ThumbnailGridQt(QWidget):
 
         batch = sorted_paths[start:end]
 
+        # FIX (2026-02-08): Pass aspect_map to avoid PIL.Image.open on UI thread
         self._populate_model_items(
             batch, start, sorted_paths,
-            state['tag_map'], state['date_map'], state['use_date_headers'],
+            state['tag_map'], state['date_map'], state.get('aspect_map', {}),
+            state['use_date_headers'],
             state['token'], state['placeholder_size'], state['placeholder_pix'],
             state['group_label'],
         )

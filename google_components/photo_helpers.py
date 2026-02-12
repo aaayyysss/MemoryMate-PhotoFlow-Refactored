@@ -14,7 +14,7 @@ Phase 3D extraction - Photo Workers & Helper Classes
 
 from PySide6.QtWidgets import QPushButton
 from PySide6.QtCore import QObject, Signal, QRunnable, QThreadPool, QEvent, Qt
-from PySide6.QtGui import QPixmap, QColor
+from PySide6.QtGui import QPixmap, QColor, QImage
 import os
 
 
@@ -150,12 +150,29 @@ class PhotoButton(QPushButton):
 
 
 class ThumbnailSignals(QObject):
-    """Signals for async thumbnail loading (shared by all workers)."""
-    loaded = Signal(str, QPixmap, int)  # (path, pixmap, size)
+    """
+    Signals for async thumbnail loading (shared by all workers).
+
+    FIX 2026-02-08: Changed to emit QImage instead of QPixmap.
+    QImage is thread-safe, QPixmap is NOT thread-safe on Windows.
+    The UI thread callback must convert QImage -> QPixmap.
+    """
+    loaded = Signal(str, object, int)  # (path, QImage, size) - use 'object' for QImage
 
 
 class ThumbnailLoader(QRunnable):
-    """Async thumbnail loader using QThreadPool (copied from Current Layout pattern)."""
+    """
+    Async thumbnail loader using QThreadPool.
+
+    FIX 2026-02-08: CRITICAL THREAD-SAFETY FIX
+    - Now uses get_thumbnail_image() which returns QImage (thread-safe)
+    - Emits QImage via signal, NOT QPixmap
+    - The UI thread callback must convert QImage -> QPixmap
+
+    Based on Google Photos / Apple Photos best practice:
+    - Worker threads generate QImage (CPU-backed, thread-safe)
+    - UI thread converts QImage -> QPixmap (GPU-backed, UI-thread only)
+    """
 
     def __init__(self, path: str, size: int, signals: ThumbnailSignals):
         super().__init__()
@@ -164,17 +181,28 @@ class ThumbnailLoader(QRunnable):
         self.signals = signals  # Use shared signal object
 
     def run(self):
-        """Load thumbnail in background thread."""
+        """
+        Load thumbnail in background thread.
+
+        FIX 2026-02-08: Uses get_thumbnail_image() which returns QImage (thread-safe).
+        """
         try:
             # Check if it's a video
-            video_extensions = {'.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v', '.3gp'}
+            # CRITICAL FIX: Include ALL video extensions (was missing .wmv, .flv, .mpg, .mpeg)
+            # Must match _is_video_file() in media_lightbox.py for consistent behavior
+            video_extensions = {
+                '.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v', '.3gp',
+                '.flv', '.wmv', '.mpg', '.mpeg', '.mts', '.m2ts', '.ts',
+                '.vob', '.ogv', '.divx', '.asf', '.rm', '.rmvb'
+            }
             is_video = os.path.splitext(self.path)[1].lower() in video_extensions
 
             if is_video:
                 # Generate or load video thumbnail using VideoThumbnailService
+                # FIX 2026-02-08: Load as QImage for thread safety
                 try:
                     from services.video_thumbnail_service import get_video_thumbnail_service
-                    from PySide6.QtGui import QPixmap
+                    from PySide6.QtGui import QImageReader
                     from PySide6.QtCore import Qt
 
                     service = get_video_thumbnail_service()
@@ -186,9 +214,12 @@ class ThumbnailLoader(QRunnable):
                         thumb_path = service.generate_thumbnail(self.path, width=self.size, height=self.size)
 
                     if thumb_path and os.path.exists(thumb_path):
-                        pixmap = QPixmap(str(thumb_path))
-                        if not pixmap.isNull():
-                            scaled = pixmap.scaled(self.size, self.size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                        # FIX 2026-02-08: Use QImageReader to get QImage (thread-safe)
+                        reader = QImageReader(str(thumb_path))
+                        qimage = reader.read()
+                        if not qimage.isNull():
+                            scaled = qimage.scaled(self.size, self.size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                            # Emit QImage (thread-safe) - UI thread will convert to QPixmap
                             self.signals.loaded.emit(self.path, scaled, self.size)
                             print(f"[ThumbnailLoader] ✓ Video thumbnail: {os.path.basename(self.path)}")
                         else:
@@ -202,12 +233,13 @@ class ThumbnailLoader(QRunnable):
                     self._emit_video_placeholder()
             else:
                 # Regular photo thumbnail
-                from app_services import get_thumbnail
-                pixmap = get_thumbnail(self.path, self.size)
+                # FIX 2026-02-08: Use get_thumbnail_image() which returns QImage (thread-safe)
+                from app_services import get_thumbnail_image
+                qimage = get_thumbnail_image(self.path, self.size, timeout=5.0)
 
-                if pixmap and not pixmap.isNull():
-                    # Emit to shared signal (connected in GooglePhotosLayout)
-                    self.signals.loaded.emit(self.path, pixmap, self.size)
+                if qimage and not qimage.isNull():
+                    # Emit QImage (thread-safe) - UI thread will convert to QPixmap
+                    self.signals.loaded.emit(self.path, qimage, self.size)
         except Exception as e:
             print(f"[ThumbnailLoader] Error loading {self.path}: {e}")
 
@@ -216,15 +248,19 @@ class ThumbnailLoader(QRunnable):
 
         Draws a dark background with a centered play-triangle and a
         "VIDEO" label.  Does NOT rely on emoji (unreliable cross-platform).
+
+        FIX 2026-02-08: Now emits QImage (thread-safe) instead of QPixmap.
         """
         from PySide6.QtGui import QPainter, QFont, QPen, QBrush, QPolygonF
         from PySide6.QtCore import Qt, QPointF, QRectF
 
         sz = self.size
-        pixmap = QPixmap(sz, sz)
-        pixmap.fill(QColor(38, 38, 38))  # dark background
+        # FIX 2026-02-08: Create QImage instead of QPixmap (thread-safe)
+        # QImage.Format_ARGB32 is the standard format for 32-bit images
+        qimage = QImage(sz, sz, QImage.Format_ARGB32)
+        qimage.fill(QColor(38, 38, 38))  # dark background
 
-        painter = QPainter(pixmap)
+        painter = QPainter(qimage)
         painter.setRenderHint(QPainter.Antialiasing)
 
         # --- play triangle (centred, white, 40 % of size) ---
@@ -253,7 +289,8 @@ class ThumbnailLoader(QRunnable):
         painter.drawText(label_rect, Qt.AlignHCenter | Qt.AlignTop, "VIDEO")
 
         painter.end()
-        self.signals.loaded.emit(self.path, pixmap, self.size)
+        # FIX 2026-02-08: Emit QImage (thread-safe) - UI thread will convert to QPixmap
+        self.signals.loaded.emit(self.path, qimage, self.size)
 
 
 # PHASE 2 Task 2.1: Photo loading worker (move database queries off GUI thread)

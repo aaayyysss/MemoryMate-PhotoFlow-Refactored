@@ -105,8 +105,6 @@ from controllers import ScanController, SidebarController, ProjectController, Ph
 from ui.widgets.breadcrumb_navigation import BreadcrumbNavigation
 from ui.widgets.backfill_indicator import CompactBackfillIndicator
 from ui.widgets.selection_toolbar import SelectionToolbar
-from ui.activity_center import ActivityCenter
-from ui.metadata_editor_dock import MetadataEditorDock
 from ui.ui_builder import UIBuilder
 
 # Phase 2 Refactoring: Extracted services
@@ -1085,6 +1083,19 @@ class MainWindow(QMainWindow):
 
         self.splitter.addWidget(self.grid_container)
 
+        # === Metadata Editor Dock (FIX 2026-02-08) ===
+        # Initialize metadata editor dock for photo metadata viewing/editing
+        try:
+            from ui.metadata_editor_dock import MetadataEditorDock
+            self.metadata_editor_dock = MetadataEditorDock(self)
+            self.metadata_editor_dock.metadataChanged.connect(self._on_metadata_changed)
+            self.addDockWidget(Qt.RightDockWidgetArea, self.metadata_editor_dock)
+            self.metadata_editor_dock.hide()  # Hidden by default
+            print("[MainWindow] ✓ MetadataEditorDock initialized")
+        except Exception as e:
+            print(f"[MainWindow] ⚠️ MetadataEditorDock init failed: {e}")
+            self.metadata_editor_dock = None
+
         # 🔗 Now that grid exists — connect toolbar actions safely
         act_select_all.triggered.connect(self.grid.list_view.selectAll)
         act_clear_sel.triggered.connect(self.grid.list_view.clearSelection)
@@ -1125,34 +1136,9 @@ class MainWindow(QMainWindow):
 
         main_layout.addWidget(self.splitter, 1)
 
-        # --- Activity Center (QDockWidget, non-modal, shows all background jobs)
-        try:
-            self.activity_center = ActivityCenter(self)
-            self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea,
-                               self.activity_center)
-            # Sync the View > Activity Center checkbox when user closes
-            # the dock via its own ✕ button
-            self.activity_center.visibilityChanged.connect(
-                self._on_activity_center_visibility_changed)
-            # Start hidden; auto-shows when a job is registered
-            self.activity_center.hide()
-        except Exception as e:
-            print(f"[MainWindow] Could not create activity center: {e}")
-            self.activity_center = None
-
-        # --- Metadata Editor Dock (QDockWidget, right-side, Lightroom-style info panel)
-        try:
-            self.metadata_editor_dock = MetadataEditorDock(self)
-            self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea,
-                               self.metadata_editor_dock)
-            # Connect metadata changes to refresh UI if needed
-            self.metadata_editor_dock.metadataChanged.connect(
-                self._on_metadata_changed)
-            # Start hidden; toggle via View menu or toolbar button
-            self.metadata_editor_dock.hide()
-        except Exception as e:
-            print(f"[MainWindow] Could not create metadata editor dock: {e}")
-            self.metadata_editor_dock = None
+        # NOTE: Background Activity Panel removed - was too bulky and ate photo grid space
+        # Background jobs run silently via JobManager with progress in status bar
+        self.activity_panel = None
 
         # --- Wire toolbar actions
         act_select_all.triggered.connect(self.grid.list_view.selectAll)
@@ -3686,13 +3672,19 @@ class MainWindow(QMainWindow):
         """Monotonic generation used to ignore stale callbacks from workers."""
         return self._ui_generation
 
-    def bump_ui_generation(self) -> int:
+    def bump_ui_generation(self, reason: str = "") -> int:
         """Increment and return the current UI generation token.
 
         Called during shutdown/restart so that in-flight worker signals
         see a stale generation and silently drop themselves.
+
+        Args:
+            reason: Optional debug string explaining why generation was bumped
         """
+        old_gen = self._ui_generation
         self._ui_generation += 1
+        if reason:
+            print(f"[UI] Generation bumped {old_gen} -> {self._ui_generation}: {reason}")
         # Also bump JobManager's generation for consistency.
         try:
             from services.job_manager import get_job_manager
@@ -3709,8 +3701,16 @@ class MainWindow(QMainWindow):
         if self._closing:
             return
         self._closing = True
-        self.bump_ui_generation()
-        print("[Shutdown] _closing flag set, ui_generation bumped, beginning teardown...")
+        self.bump_ui_generation(reason="shutdown barrier")
+        print(f"[Shutdown] _closing flag set, ui_generation={self._ui_generation}, beginning teardown...")
+        self._do_shutdown_teardown(timeout_ms=timeout_ms)
+
+    def _do_shutdown_teardown(self, *, timeout_ms: int = 10_000) -> None:
+        """Perform actual teardown work. Called by _shutdown_barrier and request_restart.
+
+        This is separated from _shutdown_barrier so that request_restart can
+        set _closing=True and bump generation FIRST, then call teardown.
+        """
 
         # Dispatch ShutdownRequested to ProjectState store
         try:
@@ -3729,6 +3729,14 @@ class MainWindow(QMainWindow):
             print(f"[Shutdown] JobManager barrier complete (drained={drained}).")
         except Exception as e:
             print(f"[Shutdown] JobManager shutdown error: {e}")
+
+        # 1b. ScanController barrier (scan thread, db_writer)
+        try:
+            if hasattr(self, "scan_controller") and self.scan_controller:
+                self.scan_controller.shutdown_barrier(timeout_ms=timeout_ms // 2)
+                print("[Shutdown] ScanController barrier complete.")
+        except Exception as e:
+            print(f"[Shutdown] ScanController shutdown error: {e}")
 
         # 2. Shut down thumbnail/grid thread pools
         try:
@@ -3787,14 +3795,29 @@ class MainWindow(QMainWindow):
         """Relaunch the app in a detached process, then shutdown current instance.
 
         Called from PreferencesDialog when a restart-requiring setting changes.
-        Starts the new process BEFORE quitting so a crash during shutdown
-        does not prevent relaunch.
+
+        CRITICAL: Generation is bumped IMMEDIATELY when restart is requested,
+        BEFORE starting the detached process. This ensures:
+        1. All worker callbacks see stale generation and drop themselves
+        2. No state mutations can occur between "restart requested" and "exit"
+        3. Deterministic restart semantics (Chrome/Lightroom pattern)
         """
         if self._restart_requested:
             return
         self._restart_requested = True
 
-        # Start detached BEFORE quitting
+        # CRITICAL FIX: Bump generation IMMEDIATELY to freeze state transitions.
+        # This must happen BEFORE starting the detached process so that any
+        # in-flight worker signals are blocked from mutating UI state.
+        print("[Restart] Requested — setting _closing flag and bumping generation...")
+
+        # Early generation bump BEFORE process spawn (prevents late callbacks
+        # from old UI running while new process is being spawned)
+        self._closing = True
+        self.bump_ui_generation(reason="restart requested (pre-spawn)")
+        print(f"[Restart] _closing=True, generation={self._ui_generation}, spawning new process...")
+
+        # Start detached process AFTER generation bump and _closing flag
         try:
             import sys
             exe = sys.executable
@@ -3806,6 +3829,7 @@ class MainWindow(QMainWindow):
                 QMessageBox.critical(self, "Restart failed",
                                      "Could not relaunch the application process.")
                 self._restart_requested = False
+                # Don't reset _closing — we're in an inconsistent state anyway
                 return
         except Exception as e:
             QMessageBox.critical(self, "Restart failed",
@@ -3813,8 +3837,8 @@ class MainWindow(QMainWindow):
             self._restart_requested = False
             return
 
-        # Barrier, then quit.
-        self._shutdown_barrier(timeout_ms=15_000)
+        # Perform teardown (barrier already set _closing=True, so this does cleanup only)
+        self._do_shutdown_teardown(timeout_ms=15_000)
         from PySide6.QtCore import QCoreApplication
         QCoreApplication.quit()
 
@@ -4309,14 +4333,30 @@ class MainWindow(QMainWindow):
                 self.embedding_status_label.setToolTip("No project selected")
                 return
 
-            # Get stats from service
-            from services.semantic_embedding_service import get_semantic_embedding_service
-            service = get_semantic_embedding_service()
-            stats = service.get_project_embedding_stats(project_id)
+            # FIX 2026-02-08: Use lightweight DB query instead of SemanticEmbeddingService
+            # This prevents creating the embedding service singleton (which loads torch/transformers)
+            # just to check stats. The model should only be loaded when actually needed for search.
+            from reference_db import ReferenceDB
+            db = ReferenceDB()
 
-            coverage = stats.get('coverage_percent', 0)
-            total = stats.get('total_photos', 0)
-            with_emb = stats.get('photos_with_embeddings', 0)
+            with db.get_connection() as conn:
+                # Get total photos
+                cursor = conn.execute(
+                    "SELECT COUNT(*) as count FROM photo_metadata WHERE project_id = ?",
+                    (project_id,)
+                )
+                total = cursor.fetchone()['count']
+
+                # Get photos with embeddings
+                cursor = conn.execute("""
+                    SELECT COUNT(DISTINCT pm.id) as count
+                    FROM photo_metadata pm
+                    JOIN semantic_embeddings se ON pm.id = se.photo_id
+                    WHERE pm.project_id = ?
+                """, (project_id,))
+                with_emb = cursor.fetchone()['count']
+
+            coverage = (with_emb / total * 100) if total > 0 else 0
 
             # Update label
             if coverage >= 100:

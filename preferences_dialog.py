@@ -1896,16 +1896,23 @@ class PreferencesDialog(QDialog):
                 self.accept()
                 print("🔄 Restarting application...")
                 # Use centralized restart with proper shutdown barrier
+                # CRITICAL: Always use MainWindow.request_restart() to ensure:
+                #   1. Generation is bumped BEFORE detached process starts
+                #   2. Shutdown barrier drains all workers properly
+                #   3. No stale callbacks can mutate UI state
                 try:
                     w = self.window()
                     if hasattr(w, "request_restart"):
                         w.request_restart()
                         return
-                except Exception:
-                    pass
-                # Fallback if MainWindow.request_restart not available
-                QProcess.startDetached(sys.executable, sys.argv)
-                QGuiApplication.quit()
+                    else:
+                        print("[Preferences] ERROR: MainWindow.request_restart not available!")
+                        # Still try to quit gracefully without unsafe fallback
+                        QGuiApplication.quit()
+                        return
+                except Exception as e:
+                    print(f"[Preferences] ERROR: Restart failed: {e}")
+                    QGuiApplication.quit()
                 return
 
         # Advanced

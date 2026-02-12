@@ -60,6 +60,15 @@ else:
     print("  Please run face detection once to download models before packaging")
 
 # --------------------------------------------------------------------------
+# CLIP Model Bundling - DISABLED
+# --------------------------------------------------------------------------
+# CLIP models are NOT bundled to keep the package size small.
+# Transfer CLIP models separately to the target machine.
+# Models should be placed in: models/clip-vit-base-patch32, etc.
+# Run: python download_clip_large.py on the target machine if needed.
+# --------------------------------------------------------------------------
+
+# --------------------------------------------------------------------------
 # Additional data files
 # --------------------------------------------------------------------------
 datas = [
@@ -100,8 +109,10 @@ datas = [
     # They are created automatically on first run.
 ]
 
-# Append model files
+# Append InsightFace model files
 datas.extend(model_datas)
+
+# NOTE: CLIP models are NOT bundled (user transfers them separately)
 
 # --------------------------------------------------------------------------
 # Bundle FFmpeg / FFprobe binaries (optional — for video support)
@@ -166,8 +177,11 @@ hiddenimports = [
     'torch.cuda',
     'torch.backends',
     'torch.backends.cudnn',
+    'torch.backends.mps',             # Apple Metal support
     'torch.utils',
     'torch.utils.data',
+    'torch._C',
+    'torch._C._distributed_c10d',
     'transformers',
     'transformers.models',
     'transformers.models.clip',
@@ -180,12 +194,20 @@ hiddenimports = [
     'transformers.processing_utils',
     'transformers.feature_extraction_utils',
     'transformers.image_processing_utils',
+    'transformers.image_utils',
     'transformers.tokenization_utils',
     'transformers.tokenization_utils_base',
     'transformers.tokenization_utils_fast',
     'transformers.utils',
     'transformers.utils.hub',
+    'transformers.dynamic_module_utils',
     'tokenizers',
+    'safetensors',                    # Modern model format
+    'safetensors.torch',
+    'filelock',                       # Transformers file locking
+    'regex',                          # Tokenizer dependency
+    'packaging',                      # Version checking
+    'packaging.version',
 
     # === RAW image support (DSLR: CR2, NEF, ARW, DNG) ===
     'rawpy',
@@ -364,7 +386,7 @@ hiddenimports = [
     'services.video_service',
     'services.video_thumbnail_service',
 
-    # --- workers (comprehensive — includes all 18 modules) ---
+    # --- workers (comprehensive — includes all 21 modules) ---
     'workers',
     'workers.duplicate_loading_worker',
     'workers.embedding_worker',
@@ -375,15 +397,17 @@ hiddenimports = [
     'workers.hash_backfill_worker',
     'workers.meta_backfill_pool',
     'workers.meta_backfill_single',
+    'workers.model_warmup_worker',       # NEW 2026-02-08: Async CLIP model loading
     'workers.mtp_copy_worker',
     'workers.photo_page_worker',
     'workers.post_scan_pipeline_worker',
     'workers.progress_writer',
     'workers.semantic_embedding_worker',
+    'workers.semantic_search_worker',    # NEW 2026-02-08: Async semantic search
     'workers.similar_shot_stack_worker',
+    'workers.startup_maintenance_worker',
     'workers.video_metadata_worker',
     'workers.video_thumbnail_worker',
-    'workers.startup_maintenance_worker',
 
     # --- ui (comprehensive — includes all 35+ modules) ---
     'ui',

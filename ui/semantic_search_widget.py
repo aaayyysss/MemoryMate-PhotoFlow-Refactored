@@ -43,7 +43,8 @@ except ImportError:
     CACHING_AVAILABLE = False
     logger = None  # Will be set below
 
-from services.embedding_service import get_embedding_service
+# FIX 2026-02-08: Removed direct get_embedding_service import to prevent UI-thread blocking
+# Now uses ModelWarmupWorker for async model loading
 from services.search_history_service import get_search_history_service
 from repository.photo_repository import PhotoRepository
 from logging_config import get_logger
@@ -161,7 +162,8 @@ class SemanticSearchWidget(QWidget):
             project_id: Optional project ID for canonical model context
         """
         super().__init__(parent)
-        self.embedding_service = None
+        self.embedding_service = None  # Legacy service for multi-modal search
+        self.semantic_service = None   # New service for async text search
         self.photo_repo = PhotoRepository()
         self.search_history_service = get_search_history_service()
         self._project_id = project_id
@@ -171,6 +173,19 @@ class SemanticSearchWidget(QWidget):
         self._search_start_time = None  # For timing searches
         self._min_similarity = 0.30  # Default similarity threshold (raised from 0.25 for better quality)
         self._slider_debounce_timer = None  # Timer for debouncing slider changes
+
+        # FIX 2026-02-08: Async model loading state
+        self._model_loading = False  # True while background worker is loading model
+        self._model_ready = False  # True when model is loaded and ready for search
+        self._model_id = None  # ID of loaded model
+        self._model_variant = None  # Variant name of loaded model
+        self._warmup_worker = None  # Reference to active ModelWarmupWorker
+        self._pending_search = None  # Queued search request while model is loading
+        self._pending_image_path = None  # Queued image upload path while model is loading
+
+        # FIX 2026-02-08: Async search state (Google Photos-style debounced, cancellable search)
+        self._active_search_worker = None  # Reference to active SemanticSearchWorker
+        self._search_debounce_timer = None  # Timer for debouncing text input (250ms)
 
         # Result caching (Phase 1 improvement)
         if CACHING_AVAILABLE:
@@ -210,8 +225,24 @@ class SemanticSearchWidget(QWidget):
                     f"cleared result cache"
                 )
 
-            # Clear embedding service to force reload with new project model
+            # Clear embedding services and model state to force reload with new project model
             self.embedding_service = None
+            self.semantic_service = None
+            self._model_ready = False
+            self._model_loading = False
+            self._model_id = None
+            self._model_variant = None
+            self._pending_search = None
+
+            # Cancel any in-progress warmup worker
+            if self._warmup_worker is not None:
+                self._warmup_worker.cancel()
+                self._warmup_worker = None
+
+            # Cancel any in-progress search worker
+            if self._active_search_worker is not None:
+                self._active_search_worker.cancel()
+                self._active_search_worker = None
 
             logger.info(f"[SemanticSearch] Project context set to: {project_id}")
 
@@ -296,6 +327,153 @@ class SemanticSearchWidget(QWidget):
                 )
         except Exception as e:
             logger.warning(f"[SemanticSearch] Could not check available models: {e}")
+
+    def _start_model_loading(self, pending_action: Optional[str] = None):
+        """
+        Start async model loading in background thread.
+
+        FIX 2026-02-08: Replaced UI-thread blocking model loading with background worker.
+
+        Args:
+            pending_action: Action to perform when model is ready ('search' or 'upload_image')
+        """
+        if self._model_loading:
+            logger.info("[SemanticSearch] Model already loading, waiting...")
+            return
+
+        if self._model_ready and self.embedding_service is not None:
+            logger.info("[SemanticSearch] Model already loaded, executing action immediately")
+            self._execute_pending_action(pending_action)
+            return
+
+        logger.info("[SemanticSearch] Starting async model loading...")
+        self._model_loading = True
+        self._pending_search = pending_action
+
+        # Update UI to show loading state
+        self.search_btn.setEnabled(False)
+        self.search_btn.setText("Loading...")
+        self.image_btn.setEnabled(False)
+        self.status_label.setText("Loading AI model in background...")
+        self.status_label.setVisible(True)
+
+        # Launch background worker
+        from workers.model_warmup_worker import ModelWarmupWorker
+        from PySide6.QtCore import QThreadPool
+
+        variant = self._resolve_clip_variant()
+
+        self._warmup_worker = ModelWarmupWorker(
+            model_variant=variant,
+            device='auto',
+            project_id=self._project_id
+        )
+
+        # Connect signals
+        self._warmup_worker.signals.finished.connect(self._on_model_loaded)
+        self._warmup_worker.signals.progress.connect(self._on_model_progress)
+        self._warmup_worker.signals.error.connect(self._on_model_error)
+
+        QThreadPool.globalInstance().start(self._warmup_worker)
+
+    def _on_model_loaded(self, model_id: int, model_variant: str):
+        """
+        Handle model loaded signal from background worker.
+
+        Args:
+            model_id: ID of loaded model
+            model_variant: Variant name of loaded model
+        """
+        logger.info(f"[SemanticSearch] Model loaded: {model_variant} (id={model_id})")
+
+        self._model_loading = False
+        self._model_ready = True
+        self._model_id = model_id
+        self._model_variant = model_variant
+        self._warmup_worker = None
+
+        # FIX 2026-02-08: Use semantic_embedding_service for async text search
+        # Keep embedding_service for legacy multi-modal (image + text) search path
+        from services.semantic_embedding_service import get_semantic_embedding_service
+        from services.embedding_service import get_embedding_service
+        self.semantic_service = get_semantic_embedding_service(model_name=model_variant)
+        self.embedding_service = get_embedding_service()  # For multi-modal sync path
+
+        # Update UI
+        self.search_btn.setEnabled(True)
+        self.search_btn.setText("Search")
+        self.image_btn.setEnabled(True)
+        self.status_label.setText("AI model ready")
+        self.status_label.setVisible(True)
+
+        # Hide status after a moment
+        QTimer.singleShot(2000, lambda: self.status_label.setVisible(False) if not self._last_query else None)
+
+        # Execute pending action
+        pending = self._pending_search
+        self._pending_search = None
+        self._execute_pending_action(pending)
+
+    def _on_model_progress(self, message: str):
+        """Handle progress updates from model warmup worker."""
+        logger.debug(f"[SemanticSearch] Model loading: {message}")
+        self.status_label.setText(message)
+
+    def _on_model_error(self, error_message: str):
+        """Handle error from model warmup worker."""
+        logger.error(f"[SemanticSearch] Model loading failed: {error_message}")
+
+        self._model_loading = False
+        self._warmup_worker = None
+
+        # Update UI
+        self.search_btn.setEnabled(True)
+        self.search_btn.setText("Search")
+        self.image_btn.setEnabled(True)
+        self.status_label.setText("Model loading failed")
+        self.status_label.setStyleSheet("color: #cc0000; font-style: italic; font-size: 9pt;")
+        self.status_label.setVisible(True)
+
+        # Show error dialog
+        QMessageBox.critical(
+            self,
+            "Model Loading Failed",
+            f"Failed to load AI model:\n{error_message}\n\n"
+            "Check console for details."
+        )
+
+        # Reset status style
+        QTimer.singleShot(3000, lambda: self.status_label.setStyleSheet("color: #666; font-style: italic; font-size: 9pt;"))
+
+        self.errorOccurred.emit(error_message)
+
+    def _execute_pending_action(self, action: Optional[str]):
+        """Execute the pending action after model is loaded."""
+        if action == 'search':
+            self._on_search()
+        elif action == 'upload_image':
+            # Process the pending image path
+            if hasattr(self, '_pending_image_path') and self._pending_image_path:
+                file_path = self._pending_image_path
+                self._pending_image_path = None
+                self._process_uploaded_image(file_path)
+
+    def _ensure_model_ready(self, pending_action: str) -> bool:
+        """
+        Ensure model is ready for use. Starts async loading if needed.
+
+        Args:
+            pending_action: Action to perform when ready ('search' or 'upload_image')
+
+        Returns:
+            True if model is ready NOW, False if loading was started
+        """
+        if self._model_ready and self.embedding_service is not None:
+            return True
+
+        # Start async loading
+        self._start_model_loading(pending_action)
+        return False
 
     def _setup_ui(self):
         """Setup the semantic search UI with 2-row layout for better organization."""
@@ -429,6 +607,12 @@ class SemanticSearchWidget(QWidget):
         self.search_timer.setSingleShot(True)
         self.search_timer.timeout.connect(self._on_search)
 
+        # FIX 2026-02-08: Search debounce timer (Google Photos-style 300ms delay)
+        self._search_debounce_timer = QTimer()
+        self._search_debounce_timer.setSingleShot(True)
+        self._search_debounce_timer.setInterval(300)  # 300ms debounce like Google Photos
+        self._search_debounce_timer.timeout.connect(self._start_async_search)
+
         # Debounce timer for slider changes
         self._slider_debounce_timer = QTimer()
         self._slider_debounce_timer.setSingleShot(True)
@@ -444,10 +628,207 @@ class SemanticSearchWidget(QWidget):
         return QSize(600, 90)  # width, height
 
     def _on_text_changed(self, text: str):
-        """Handle text change - can enable live search if desired."""
-        # Disable live search for now (too expensive with embeddings)
-        # User must press Enter or click Search button
-        pass
+        """
+        Handle text change with debounced async search.
+
+        FIX 2026-02-08: Implement Google Photos-style live search with:
+        - 300ms debounce to avoid excessive API calls
+        - Cancel any in-progress search when user types
+        - Clear results if query too short
+        """
+        query = text.strip()
+
+        # Cancel any pending debounce timer
+        if self._search_debounce_timer and self._search_debounce_timer.isActive():
+            self._search_debounce_timer.stop()
+
+        # Query too short - clear and cancel
+        if len(query) < 2:
+            # Cancel any active search worker
+            if self._active_search_worker is not None:
+                logger.debug("[SemanticSearch] Cancelling search - query too short")
+                self._active_search_worker.cancel()
+                self._active_search_worker = None
+
+            # Clear status but don't emit searchCleared (user is still typing)
+            if query == "":
+                self.status_label.setVisible(False)
+            return
+
+        # Start debounce timer (will trigger _start_async_search after 300ms)
+        self._search_debounce_timer.start()
+
+    def _start_async_search(self):
+        """
+        Start async search using SemanticSearchWorker.
+
+        FIX 2026-02-08: Implements Google Photos-style async, cancellable search:
+        - Runs search in background QThread
+        - Cancels previous search if still running
+        - Reports progress via signals
+        - Integrates with JobManager for visibility
+        """
+        query = self.search_input.text().strip()
+
+        # Validate query
+        if len(query) < 2:
+            return
+
+        # Skip if same query (no image query)
+        if query == self._last_query and self._query_image_embedding is None:
+            logger.debug(f"[SemanticSearch] Same query, skipping async search: {query}")
+            return
+
+        # Cancel any active search worker
+        if self._active_search_worker is not None:
+            logger.info(f"[SemanticSearch] Cancelling previous search for new query")
+            self._active_search_worker.cancel()
+            self._active_search_worker.wait(500)  # Wait up to 500ms for graceful stop
+            self._active_search_worker = None
+
+        # Check project context
+        if self._project_id is None:
+            logger.warning("[SemanticSearch] No project context set, cannot search")
+            return
+
+        logger.info(f"[SemanticSearch] Starting async search: '{query}' (project={self._project_id})")
+
+        # Show searching state
+        self.status_label.setText("Searching...")
+        self.status_label.setVisible(True)
+
+        # Create and start worker
+        from workers.semantic_search_worker import SemanticSearchWorker
+
+        self._active_search_worker = SemanticSearchWorker(
+            project_id=self._project_id,
+            query=query,
+            limit=100,
+            threshold=self._min_similarity,
+            model_name=self._resolve_clip_variant()
+        )
+
+        # Connect signals
+        self._active_search_worker.signals.status.connect(self._on_search_status)
+        self._active_search_worker.signals.results_ready.connect(self._on_search_results)
+        self._active_search_worker.signals.error.connect(self._on_search_error)
+        self._active_search_worker.signals.finished.connect(self._on_search_finished)
+        self._active_search_worker.signals.progress.connect(self._on_search_progress)
+
+        # Start the worker
+        self._active_search_worker.start()
+
+    def _on_search_status(self, message: str):
+        """Handle status updates from search worker."""
+        self.status_label.setText(message)
+
+    def _on_search_progress(self, percent: int, message: str):
+        """Handle progress updates from search worker."""
+        self.status_label.setText(f"{message} ({percent}%)")
+
+    def _on_search_results(self, response):
+        """
+        Handle search results from async worker.
+
+        Args:
+            response: SearchResponse from SemanticSearchWorker
+        """
+        from workers.semantic_search_worker import SearchResponse
+
+        if not isinstance(response, SearchResponse):
+            logger.warning(f"[SemanticSearch] Unexpected response type: {type(response)}")
+            return
+
+        query = response.query
+        results = response.results
+        stats = response.stats
+
+        # Check for no-embeddings state
+        if stats.get('no_embeddings'):
+            self.status_label.setText(stats.get('message', 'No embeddings found'))
+            self.status_label.setStyleSheet("color: #FF9800; font-style: italic; font-size: 9pt;")
+            self.status_label.setVisible(True)
+            # Reset style after delay
+            QTimer.singleShot(5000, lambda: self.status_label.setStyleSheet("color: #666; font-style: italic; font-size: 9pt;"))
+            return
+
+        # Update last query
+        self._last_query = query
+
+        if response.is_empty:
+            self.status_label.setText(f"No results ≥{self._min_similarity:.0%}")
+            self.status_label.setVisible(True)
+            return
+
+        # Extract photo IDs and scores
+        photo_ids = [r.photo_id for r in results]
+        scores = [r.score for r in results]
+        score_tuples = [(r.photo_id, r.score) for r in results]
+
+        # Calculate score statistics
+        top_score = scores[0] if scores else 0
+        avg_score = sum(scores) / len(scores) if scores else 0
+
+        logger.info(
+            f"[SemanticSearch] Async search complete: '{query}' → {len(results)} results "
+            f"(top={top_score:.3f}, avg={avg_score:.3f}, time={stats.get('query_time_ms', 0)}ms)"
+        )
+
+        # Update UI state
+        self.clear_btn.setVisible(True)
+
+        # Create detailed status message
+        status_parts = [
+            f"Found {len(results)} matches ≥{self._min_similarity:.0%}",
+            f"Top: {top_score:.1%}",
+            f"Avg: {avg_score:.1%}"
+        ]
+
+        # Add quality indicator
+        if top_score >= 0.40:
+            status_parts.append("🟢 Excellent")
+        elif top_score >= 0.30:
+            status_parts.append("🟡 Good")
+        elif top_score >= 0.20:
+            status_parts.append("🟠 Fair")
+        else:
+            status_parts.append("🔴 Weak")
+
+        self.status_label.setText(" | ".join(status_parts))
+        self.status_label.setVisible(True)
+
+        # Record in search history
+        try:
+            self.search_history_service.record_search(
+                query_type='semantic_text',
+                query_text=query,
+                result_count=len(results),
+                top_photo_ids=photo_ids[:10],
+                execution_time_ms=stats.get('query_time_ms', 0),
+                model_id=0  # Async worker doesn't track model ID
+            )
+        except Exception as e:
+            logger.warning(f"[SemanticSearch] Failed to record search history: {e}")
+
+        # Emit signal with results
+        self.searchTriggered.emit(photo_ids, query, score_tuples)
+
+    def _on_search_error(self, error_message: str):
+        """Handle error from search worker."""
+        logger.error(f"[SemanticSearch] Async search error: {error_message}")
+        self.status_label.setText(f"Search error: {error_message[:50]}...")
+        self.status_label.setStyleSheet("color: #cc0000; font-style: italic; font-size: 9pt;")
+        self.status_label.setVisible(True)
+
+        # Reset style after delay
+        QTimer.singleShot(3000, lambda: self.status_label.setStyleSheet("color: #666; font-style: italic; font-size: 9pt;"))
+
+        self.errorOccurred.emit(error_message)
+
+    def _on_search_finished(self):
+        """Handle search worker completion."""
+        logger.debug("[SemanticSearch] Async search worker finished")
+        # Don't clear _active_search_worker here - it may be reused
 
     def _on_threshold_changed(self, value: int):
         """Handle similarity threshold slider change with debouncing."""
@@ -554,14 +935,37 @@ class SemanticSearchWidget(QWidget):
         if not file_path:
             return
 
+        # Store the file path for later processing
+        self._pending_image_path = file_path
+
+        # FIX 2026-02-08: Use async model loading instead of blocking UI thread
+        if not self._ensure_model_ready('upload_image'):
+            # Model is loading, _pending_image_path will be processed when ready
+            logger.info(f"[SemanticSearch] Model loading, will process image when ready: {file_path}")
+            return
+
+        # Model is ready, process the image immediately
+        self._process_uploaded_image(file_path)
+
+    def _process_uploaded_image(self, file_path: str):
+        """
+        Process an uploaded image after model is ready.
+
+        FIX 2026-02-08: Extracted from _on_upload_image to support async model loading.
+
+        Args:
+            file_path: Path to the uploaded image
+        """
         try:
             logger.info(f"[SemanticSearch] Loading query image: {file_path}")
 
-            # Check if embedding service is available
-            if self.embedding_service is None:
-                self.embedding_service = get_embedding_service()
+            # Model should already be loaded at this point
+            if self.semantic_service is None or not self._model_ready:
+                logger.error("[SemanticSearch] _process_uploaded_image called but model not ready")
+                return
 
-            if not self.embedding_service.available:
+            # FIX 2026-02-08: Use semantic_embedding_service API
+            if not self.semantic_service._available:
                 QMessageBox.warning(
                     self,
                     "Feature Unavailable",
@@ -571,36 +975,8 @@ class SemanticSearchWidget(QWidget):
                 )
                 return
 
-            # Load model if needed
-            if self.embedding_service._clip_model is None:
-                from utils.clip_check import MODEL_CONFIGS
-                variant = self._resolve_clip_variant()
-                config = MODEL_CONFIGS.get(variant, {})
-
-                progress = QProgressDialog(
-                    f"Loading {config.get('description', 'CLIP model')}...",
-                    None,
-                    0, 0,
-                    self
-                )
-                progress.setWindowTitle("Loading AI Model")
-                progress.setWindowModality(Qt.WindowModal)
-                progress.show()
-
-                try:
-                    self.embedding_service.load_clip_model(variant)
-                    progress.close()
-                except Exception as e:
-                    progress.close()
-                    QMessageBox.critical(
-                        self,
-                        "Model Loading Failed",
-                        f"Failed to load CLIP model ({variant}):\n{e}"
-                    )
-                    return
-
-            # Extract embedding from image
-            self._query_image_embedding = self.embedding_service.extract_image_embedding(
+            # Extract embedding from image using semantic_embedding_service API
+            self._query_image_embedding = self.semantic_service.encode_image(
                 file_path
             )
             self._query_image_path = file_path
@@ -658,15 +1034,31 @@ class SemanticSearchWidget(QWidget):
         if has_image:
             query_desc.append(f"image: {Path(self._query_image_path).name}")
         logger.info(f"[SemanticSearch] Searching for: {', '.join(query_desc)}")
+
+        # FIX 2026-02-08: Use async search for text-only queries
+        # Multi-modal (image) queries still use sync path since SemanticSearchWorker
+        # doesn't support image embeddings
+        if has_text and not has_image:
+            self._start_async_search()
+            return
+
+        # FIX 2026-02-08: Use async model loading instead of blocking UI thread
+        if not self._ensure_model_ready('search'):
+            # Model is loading, search will be triggered when ready
+            logger.info("[SemanticSearch] Model loading, will search when ready")
+            # Store query for logging later but don't update _last_query yet
+            return
+
         self._last_query = query
 
         # Start timing
         self._search_start_time = time.time()
 
         try:
-            # Check if embedding service is available
-            if self.embedding_service is None:
-                self.embedding_service = get_embedding_service()
+            # Model should already be loaded at this point
+            if self.embedding_service is None or not self._model_ready:
+                logger.error("[SemanticSearch] _on_search called but model not ready")
+                return
 
             if not self.embedding_service.available:
                 QMessageBox.warning(
@@ -679,46 +1071,9 @@ class SemanticSearchWidget(QWidget):
                 self.errorOccurred.emit("Dependencies not available")
                 return
 
-            # Check if model is loaded
-            if self.embedding_service._clip_model is None:
-                from utils.clip_check import MODEL_CONFIGS
-                variant = self._resolve_clip_variant()
-                config = MODEL_CONFIGS.get(variant, {})
-
-                logger.info(
-                    f"[SemanticSearch] Auto-selected CLIP variant: {variant} "
-                    f"({config.get('description', 'unknown')})"
-                )
-
-                # Show loading dialog
-                progress = QProgressDialog(
-                    f"Loading {config.get('description', 'CLIP model')} for first-time search...\n"
-                    f"({config.get('dimension', '???')}-D embeddings, {config.get('size_mb', '???')}MB)",
-                    None,  # No cancel button
-                    0, 0,  # Indeterminate
-                    self
-                )
-                progress.setWindowTitle("Loading AI Model")
-                progress.setWindowModality(Qt.WindowModal)
-                progress.show()
-
-                try:
-                    self.embedding_service.load_clip_model(variant)
-                    progress.close()
-                except Exception as e:
-                    progress.close()
-                    QMessageBox.critical(
-                        self,
-                        "Model Loading Failed",
-                        f"Failed to load CLIP model ({variant}):\n{e}\n\n"
-                        "Check console for details."
-                    )
-                    self.errorOccurred.emit(str(e))
-                    return
-            else:
-                # Model already loaded - log which one is in use
-                model_variant = getattr(self.embedding_service, '_clip_variant', 'unknown')
-                logger.info(f"[SemanticSearch] Using cached CLIP model: {model_variant}")
+            # Log which model is in use
+            model_variant = getattr(self.embedding_service, '_clip_variant', self._model_variant or 'unknown')
+            logger.info(f"[SemanticSearch] Using CLIP model: {model_variant}")
 
             # Apply query expansion for better CLIP matching
             expanded_query = query
@@ -800,12 +1155,11 @@ class SemanticSearchWidget(QWidget):
                         progress_dialog.setWindowModality(Qt.WindowModal)
                         progress_dialog.show()
 
+                        # FIX 2026-02-08: Removed processEvents() call - modal dialog handles its own events
+                        # Using processEvents() causes re-entrancy risks
                         def on_progress(current, total, message):
                             progress_dialog.setValue(current)
                             progress_dialog.setLabelText(message)
-                            # Process events to keep UI responsive
-                            from PySide6.QtWidgets import QApplication
-                            QApplication.processEvents()
 
                         results = self.embedding_service.search_similar(
                             query_embedding,
@@ -851,12 +1205,11 @@ class SemanticSearchWidget(QWidget):
                     progress_dialog.setWindowModality(Qt.WindowModal)
                     progress_dialog.show()
 
+                    # FIX 2026-02-08: Removed processEvents() call - modal dialog handles its own events
+                    # Using processEvents() causes re-entrancy risks
                     def on_progress(current, total, message):
                         progress_dialog.setValue(current)
                         progress_dialog.setLabelText(message)
-                        # Process events to keep UI responsive
-                        from PySide6.QtWidgets import QApplication
-                        QApplication.processEvents()
 
                     results = self.embedding_service.search_similar(
                         query_embedding,
@@ -1014,6 +1367,15 @@ class SemanticSearchWidget(QWidget):
         self._last_query = ""
         self._query_image_path = None
         self._query_image_embedding = None
+
+        # Cancel any pending debounce timer
+        if self._search_debounce_timer and self._search_debounce_timer.isActive():
+            self._search_debounce_timer.stop()
+
+        # Cancel any active search worker
+        if self._active_search_worker is not None:
+            self._active_search_worker.cancel()
+            self._active_search_worker = None
 
         # Reset image button
         self.image_btn.setText("📷 +Image")

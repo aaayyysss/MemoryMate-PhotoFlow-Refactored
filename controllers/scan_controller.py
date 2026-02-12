@@ -51,7 +51,15 @@ class ScanController(QObject):
         super().__init__()  # CRITICAL: Initialize QObject
         self.main = main
 
+        # Helper to get current UI generation for guarded callbacks
+        # Returns 0 if main doesn't have ui_generation (defensive)
+        self._get_ui_generation = lambda: (
+            main.ui_generation() if hasattr(main, 'ui_generation') else 0
+        )
+
         # Connect signal to handler with QueuedConnection for thread safety
+        # Note: Generation checking happens inside _on_progress via _expected_generation
+        # which is captured at scan START time, not at connect time
         self.progress_update_signal.connect(self._on_progress, Qt.ConnectionType.QueuedConnection)
         self.thread = None
         self.worker = None
@@ -338,6 +346,53 @@ class ScanController(QObject):
 
         self.main.statusBar().showMessage(tr('status_messages.scan_cancel_requested'))
         self.main.act_cancel_scan.setEnabled(False)
+
+    def shutdown_barrier(self, timeout_ms: int = 5000) -> bool:
+        """Stop scan thread and DBWriter, waiting up to timeout_ms.
+
+        Called by MainWindow._do_shutdown_teardown() to ensure scan workers
+        are cleanly stopped before the app exits.
+
+        Returns True if all workers drained within the timeout.
+        """
+        drained = True
+        self.cancel_requested = True
+
+        # 1. Stop worker if running
+        if self.worker:
+            try:
+                self.worker.stop()
+            except Exception as e:
+                self.logger.warning(f"[ScanController] Worker stop error: {e}")
+
+        # 2. Quit and wait for QThread
+        if self.thread and self.thread.isRunning():
+            try:
+                self.thread.quit()
+                if not self.thread.wait(timeout_ms):
+                    self.logger.warning(f"[ScanController] Thread did not finish in {timeout_ms}ms")
+                    drained = False
+                else:
+                    self.logger.info("[ScanController] Scan thread stopped")
+            except Exception as e:
+                self.logger.warning(f"[ScanController] Thread wait error: {e}")
+                drained = False
+
+        # 3. Shutdown DBWriter
+        if self.db_writer:
+            try:
+                self.db_writer.shutdown(wait=True)
+                self.logger.info("[ScanController] DBWriter shut down")
+            except Exception as e:
+                self.logger.warning(f"[ScanController] DBWriter shutdown error: {e}")
+                drained = False
+
+        # 4. Clear pending operations
+        self._scan_operations_pending.clear()
+        self._scan_refresh_scheduled = False
+
+        self.logger.info(f"[ScanController] Shutdown barrier complete (drained={drained})")
+        return drained
 
     def _on_committed(self, n: int):
         if not is_alive(self.main) or not generation_ok(self.main, self._expected_generation):
