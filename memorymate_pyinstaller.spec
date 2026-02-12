@@ -13,7 +13,7 @@ PREREQUISITES:
     3. Optionally install FFmpeg and add to PATH (for video features)
 
 OUTPUT:
-    dist/MemoryMate-PhotoFlow-v9.3.0/  (ONEDIR bundle)
+    dist/MemoryMate-PhotoFlow-11.01.01.03-12/  (ONEDIR bundle)
 """
 
 import os
@@ -85,6 +85,9 @@ datas = [
     # SQL / Python migration files
     ('migrations', 'migrations'),
 
+    # Core architecture (state_bus, actions)
+    ('core', 'core'),
+
     # Python package directories (required for dynamic imports)
     ('controllers', 'controllers'),
     ('repository', 'repository'),
@@ -134,7 +137,7 @@ else:
 # --------------------------------------------------------------------------
 # Hidden imports
 # --------------------------------------------------------------------------
-# Comprehensive audit: 2026-02-05
+# Comprehensive audit: 2026-02-12
 # Covers all project modules + third-party libraries that are lazy-loaded,
 # dynamically imported, or otherwise invisible to PyInstaller's analysis.
 # --------------------------------------------------------------------------
@@ -202,6 +205,8 @@ hiddenimports = [
     'transformers.utils.hub',
     'transformers.dynamic_module_utils',
     'tokenizers',
+    'huggingface_hub',                # Required by transformers for .from_pretrained()
+    'huggingface_hub.utils',
     'safetensors',                    # Modern model format
     'safetensors.torch',
     'filelock',                       # Transformers file locking
@@ -572,7 +577,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='MemoryMate-PhotoFlow-v9.3.0',
+    name='MemoryMate-PhotoFlow-11.01.01.03-12',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -599,5 +604,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='MemoryMate-PhotoFlow-v9.3.0',
+    name='MemoryMate-PhotoFlow-11.01.01.03-12',
 )
