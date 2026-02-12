@@ -2784,6 +2784,7 @@ class ThumbnailGridQt(QWidget):
 
     def set_project(self, project_id: int):
         self.project_id = project_id
+        self._project_has_tags = None  # invalidate tag cache on project switch
         self.clear()
 
 
@@ -3264,22 +3265,33 @@ class ThumbnailGridQt(QWidget):
 
         self._paths = [str(p) for p in paths]
         
-        # 🏷️ CRITICAL FIX: DO NOT normalize paths here!
-        # Paths from get_images_by_branch are already in DB format
-        # get_tags_for_paths will normalize them internally to match photo_metadata table
-        tag_map = self.db.get_tags_for_paths(self._paths, self.project_id)
-        paths_with_tags = sum(1 for v in tag_map.values() if v)
-        print(f"[GRID] Queried tags for {len(self._paths)} paths, {paths_with_tags} have tags")
+        # 🏷️ Tag query — skip the expensive JOIN when project has no tags.
+        # Cache the "project has tags" boolean; invalidated on set_project().
+        _has_tags = getattr(self, '_project_has_tags', None)
+        if _has_tags is None:
+            # One-time lightweight check: does ANY tag assignment exist?
+            try:
+                with self.db._connect() as _tc:
+                    _tcur = _tc.cursor()
+                    _tcur.execute(
+                        "SELECT 1 FROM photo_tags pt "
+                        "JOIN photo_metadata pm ON pm.id = pt.photo_id "
+                        "WHERE pm.project_id = ? LIMIT 1",
+                        (self.project_id,),
+                    )
+                    _has_tags = _tcur.fetchone() is not None
+                self._project_has_tags = _has_tags
+            except Exception:
+                _has_tags = True  # safe fallback: query tags
 
-        # FIX (2026-02-08): Preload aspect ratios from DB instead of PIL.Image.open on UI thread
-        # This prevents UI freezes when loading thumbnails (Google Photos best practice)
-        aspect_map = {}
-        try:
-            if hasattr(self.db, 'get_aspect_ratios_for_paths'):
-                aspect_map = self.db.get_aspect_ratios_for_paths(self._paths, self.project_id)
-        except Exception as e:
-            print(f"[GRID] Warning: Could not fetch aspect ratios: {e}")
-
+        if _has_tags:
+            tag_map = self.db.get_tags_for_paths(self._paths, self.project_id)
+            paths_with_tags = sum(1 for v in tag_map.values() if v)
+            print(f"[GRID] Queried tags for {len(self._paths)} paths, {paths_with_tags} have tags")
+        else:
+            tag_map = {p: [] for p in self._paths}
+            print(f"[GRID] Skipped tag query — project has no tags")
+        
         # 📅 Grouping: fetch date_taken and sort descending
         import os, time
         from datetime import datetime
