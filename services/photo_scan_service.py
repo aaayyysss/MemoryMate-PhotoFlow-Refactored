@@ -400,15 +400,10 @@ class PhotoScanService:
                 # Check settings for custom exclusions
                 ignore_set = self._get_ignore_folders_from_settings()
 
+            # _discover_files/_discover_videos already dedup internally
+            # via _deduplicate_paths() using resolved canonical paths.
             all_files = self._discover_files(root_path, ignore_set)
             all_videos = self._discover_videos(root_path, ignore_set)
-
-            # De-duplicate by resolved canonical path.
-            # Without this, symlinks, junctions, or case-insensitive paths
-            # (Windows) can cause the same file to appear twice, leading to
-            # duplicate DB rows, doubled folder_ids, and extra background work.
-            all_files = self._deduplicate_paths(all_files)
-            all_videos = self._deduplicate_paths(all_videos)
 
             total_files = len(all_files)
             total_videos = len(all_videos)
@@ -914,7 +909,7 @@ class PhotoScanService:
             return None
 
         path_str = str(file_path)
-        print(f"[SCAN] _process_file started for: {os.path.basename(path_str)}")
+        print(f"[SCAN] _process_file started for: {path_str}")
         sys.stdout.flush()
 
         # Step 1: Get file stats with timeout protection

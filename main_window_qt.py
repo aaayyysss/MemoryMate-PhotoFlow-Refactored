@@ -4070,10 +4070,14 @@ class MainWindow(QMainWindow):
                 if hasattr(sidebar, 'reload') and sidebar.isVisible():
                     sidebar.reload()
 
-            # Grid
+            # Grid — use debounced _schedule_reload() to coalesce rapid
+            # store changes (media_v + stacks_v can bump within ms of each
+            # other, causing redundant full reloads + thumbnail re-queues)
             grid = getattr(self, 'grid', None)
             if grid and getattr(grid, 'project_id', None) is not None:
-                if hasattr(grid, 'reload'):
+                if hasattr(grid, '_schedule_reload'):
+                    grid._schedule_reload()
+                elif hasattr(grid, 'reload'):
                     grid.reload()
 
             # Thumbnails
