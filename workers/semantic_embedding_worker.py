@@ -302,8 +302,10 @@ class SemanticEmbeddingWorker(QRunnable):
             self.failed_count += 1
             return
 
-        # Compute hash for freshness tracking
-        source_hash = self._compute_hash(file_path)
+        # Freshness tracking: use the photo's image_content_hash (dHash)
+        # so the stale check (source_photo_hash == image_content_hash) compares
+        # the same hash type.  Fall back to SHA256 only if dHash is missing.
+        source_hash = photo.get('image_content_hash') or self._compute_hash(file_path)
         source_mtime = str(Path(file_path).stat().st_mtime)
 
         # Extract embedding

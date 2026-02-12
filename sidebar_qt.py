@@ -4033,8 +4033,14 @@ class SidebarQt(QWidget):
                 try:
                     from services.device_sources import scan_mobile_devices
 
-                    # Use cached scan results (TTL 300s) — avoids heavy COM scan on every sidebar reload
-                    mobile_devices = scan_mobile_devices(db=self.db, register_devices=True)
+                    # Skip the actual device scan when auto-detection is disabled.
+                    # The scan enumerates drives and COM devices, which is slow on
+                    # systems with mapped drives, corporate policies, or VPNs.
+                    if not getattr(self, '_device_auto_refresh_enabled', False):
+                        mobile_devices = []
+                    else:
+                        # Use cached scan results (TTL 300s) — avoids heavy COM scan on every sidebar reload
+                        mobile_devices = scan_mobile_devices(db=self.db, register_devices=True)
                     if mobile_devices:
                         print(f"[Sidebar] Device scan: {len(mobile_devices)} device(s) found")
 

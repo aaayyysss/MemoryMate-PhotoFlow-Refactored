@@ -1895,19 +1895,21 @@ class PreferencesDialog(QDialog):
             if reply == QMessageBox.Yes:
                 self.accept()
                 print("🔄 Restarting application...")
-                # Use centralized restart with proper shutdown barrier
-                # CRITICAL: Always use MainWindow.request_restart() to ensure:
-                #   1. Generation is bumped BEFORE detached process starts
-                #   2. Shutdown barrier drains all workers properly
-                #   3. No stale callbacks can mutate UI state
+                # Use centralized restart with proper shutdown barrier.
+                # self.window() returns the dialog itself (it's top-level),
+                # so walk QApplication.topLevelWidgets() to find MainWindow.
                 try:
-                    w = self.window()
-                    if hasattr(w, "request_restart"):
-                        w.request_restart()
+                    from PySide6.QtWidgets import QApplication
+                    main_win = None
+                    for w in QApplication.topLevelWidgets():
+                        if hasattr(w, "request_restart"):
+                            main_win = w
+                            break
+                    if main_win is not None:
+                        main_win.request_restart()
                         return
                     else:
                         print("[Preferences] ERROR: MainWindow.request_restart not available!")
-                        # Still try to quit gracefully without unsafe fallback
                         QGuiApplication.quit()
                         return
                 except Exception as e:
