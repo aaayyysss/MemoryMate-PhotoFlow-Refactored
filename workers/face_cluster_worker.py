@@ -181,24 +181,44 @@ class FaceClusterWorker(QRunnable):
                 # This caused count mismatch: face_branch_reps showed 14 but grid only showed 12
                 self.signals.progress.emit(0, 100, "Loading face embeddings...")
 
+                # Use EXISTS instead of JOIN on project_images to prevent
+                # cartesian product: project_images is a many-to-many membership
+                # table (same photo in "all", date, folder branches), so a JOIN
+                # duplicates face rows for every branch the photo belongs to.
                 cur.execute("""
                     SELECT fc.id, fc.crop_path, fc.image_path, fc.embedding,
                            fc.confidence, fc.bbox_x, fc.bbox_y, fc.bbox_w, fc.bbox_h,
                            pm.width, pm.height
                     FROM face_crops fc
                     JOIN photo_metadata pm ON fc.image_path = pm.path
-                    JOIN project_images pi ON fc.image_path = pi.image_path AND pi.project_id = fc.project_id
                     WHERE fc.project_id=? AND fc.embedding IS NOT NULL
+                      AND EXISTS (
+                          SELECT 1 FROM project_images pi
+                          WHERE pi.image_path = fc.image_path
+                            AND pi.project_id = fc.project_id
+                      )
                 """, (self.project_id,))
                 rows = cur.fetchall()
 
-                # Log if we're skipping orphaned face_crops entries
+                # ── Invariant check: embeddings_loaded == faces_in_db ──
                 cur.execute("SELECT COUNT(*) FROM face_crops WHERE project_id=? AND embedding IS NOT NULL", (self.project_id,))
                 total_faces_in_db = cur.fetchone()[0]
-                if len(rows) < total_faces_in_db:
-                    skipped = total_faces_in_db - len(rows)
-                    logger.warning(f"[FaceClusterWorker] Skipped {skipped} orphaned face_crops (photos not in photo_metadata/project_images)")
-                    logger.warning(f"[FaceClusterWorker] Run cleanup_face_crops.py utility to remove orphaned entries")
+
+                if len(rows) != total_faces_in_db:
+                    delta = total_faces_in_db - len(rows)
+                    if delta > 0:
+                        logger.warning(
+                            f"[FaceClusterWorker] INVARIANT: {delta} orphaned face_crops "
+                            f"(in DB but not in photo_metadata/project_images). "
+                            f"Loaded {len(rows)}/{total_faces_in_db}. "
+                            f"Run cleanup_face_crops.py to remove orphans."
+                        )
+                    else:
+                        # More loaded than in DB should never happen with EXISTS
+                        logger.error(
+                            f"[FaceClusterWorker] INVARIANT VIOLATION: loaded {len(rows)} "
+                            f"but only {total_faces_in_db} in face_crops — possible query bug"
+                        )
 
                 if not rows:
                     logger.warning(f"[FaceClusterWorker] No embeddings found for project {self.project_id}")

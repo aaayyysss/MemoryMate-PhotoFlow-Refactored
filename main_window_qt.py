@@ -3754,6 +3754,16 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
 
+        # 3a. Close any lingering QProgressDialog children to prevent
+        # "External WM_DESTROY" warnings on Windows during shutdown
+        try:
+            from PySide6.QtWidgets import QProgressDialog
+            for dlg in self.findChildren(QProgressDialog):
+                dlg.close()
+                dlg.deleteLater()
+        except Exception:
+            pass
+
         # 4. Clear thumbnail cache
         try:
             if hasattr(self, "thumb_cache"):
