@@ -169,13 +169,25 @@ class MediaThumbnailWidget(QFrame):
             """)
 
     def _load_thumbnail(self):
-        """Load thumbnail preview"""
+        """Load thumbnail preview via SafeImageLoader (capped at 256px, never full resolution)."""
         try:
-            # Try to load image directly
-            pixmap = QPixmap(self.media_file.path)
+            from services.safe_image_loader import safe_decode_qimage
 
-            if not pixmap.isNull():
-                # Scale to fit thumbnail
+            # Check for video files first (SafeImageLoader doesn't handle video)
+            if self.media_file.path.lower().endswith(('.mp4', '.mov', '.avi', '.mkv',
+                                                       '.webm', '.flv', '.wmv', '.m4v')):
+                self.thumbnail_label.setText("🎬\nVideo")
+                return
+
+            # Decode at capped size — never full resolution for a preview thumbnail
+            qimage = safe_decode_qimage(
+                self.media_file.path,
+                max_dim=256,
+                enable_retry_ladder=True,
+            )
+
+            if not qimage.isNull():
+                pixmap = QPixmap.fromImage(qimage)
                 scaled = pixmap.scaled(
                     120, 120,
                     Qt.KeepAspectRatio,
@@ -183,11 +195,7 @@ class MediaThumbnailWidget(QFrame):
                 )
                 self.thumbnail_label.setPixmap(scaled)
             else:
-                # Show placeholder for videos
-                if self.media_file.path.lower().endswith(('.mp4', '.mov', '.avi', '.mkv')):
-                    self.thumbnail_label.setText("🎬\nVideo")
-                else:
-                    self.thumbnail_label.setText("📷\nPhoto")
+                self.thumbnail_label.setText("📷\nPhoto")
 
         except Exception as e:
             print(f"[ImportDialog] Failed to load thumbnail for {self.media_file.filename}: {e}")

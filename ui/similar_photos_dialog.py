@@ -1,21 +1,26 @@
 """
 SimilarPhotosDialog - Visual Similarity Browser
 
-Version: 1.0.1
-Date: 2026-01-29
+Version: 2.0.0
+Date: 2026-02-12
 
 Show visually similar photos with threshold control.
 
+v2.0.0 Changes:
+- Uses SafeImageLoader for memory-safe, capped-size thumbnail loading
+- Grid thumbnails capped at 256px max edge (never full resolution)
+- Prevents RAM blow-up from decoding 20+ full-res images simultaneously
+- Follows Google Photos / Lightroom pattern: thumbnails only in grid
+
 Features:
-- Grid view of similar photos
+- Grid view of similar photos (256px thumbnails)
 - Similarity score display
 - Threshold slider (0.0 to 1.0)
 - Real-time filtering
 - Double-click to open photo
-- Project-aware canonical model support (v1.0.1)
+- Project-aware canonical model support
 
 Usage:
-    # RECOMMENDED: Use with project_id for correct canonical model
     dialog = SimilarPhotosDialog(
         reference_photo_id=123,
         project_id=current_project_id,
@@ -46,12 +51,21 @@ from logging_config import get_logger
 
 logger = get_logger(__name__)
 
+# Hard cap for grid thumbnails — NEVER decode full resolution for a grid cell
+GRID_THUMBNAIL_MAX_DIM = 256
+
+# Display size for thumbnail widget
+THUMBNAIL_DISPLAY_SIZE = 150
+
 
 class PhotoThumbnail(QFrame):
     """
     Thumbnail widget for similar photo.
 
     Shows thumbnail, similarity score, and handles click events.
+
+    IMPORTANT: Uses SafeImageLoader to decode at GRID_THUMBNAIL_MAX_DIM max,
+    preventing RAM blow-up from full-resolution decodes.
     """
 
     clicked = Signal(int)  # photo_id
@@ -72,17 +86,34 @@ class PhotoThumbnail(QFrame):
         # Thumbnail
         self.thumbnail_label = QLabel()
         self.thumbnail_label.setAlignment(Qt.AlignCenter)
-        self.thumbnail_label.setFixedSize(150, 150)
+        self.thumbnail_label.setFixedSize(THUMBNAIL_DISPLAY_SIZE, THUMBNAIL_DISPLAY_SIZE)
         self.thumbnail_label.setStyleSheet("background-color: #f0f0f0;")
 
-        # Load thumbnail
-        if similar_photo.thumbnail_path and Path(similar_photo.thumbnail_path).exists():
-            pixmap = QPixmap(similar_photo.thumbnail_path)
-            if not pixmap.isNull():
-                pixmap = pixmap.scaled(150, 150, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-                self.thumbnail_label.setPixmap(pixmap)
-            else:
-                self.thumbnail_label.setText("No Preview")
+        # Load thumbnail via SafeImageLoader (capped at 256px, never full resolution)
+        image_path = similar_photo.thumbnail_path or similar_photo.file_path
+        if image_path and Path(image_path).exists():
+            try:
+                from services.safe_image_loader import safe_decode_qimage
+
+                # Decode at capped size — this is the key RAM saver
+                qimage = safe_decode_qimage(
+                    str(image_path),
+                    max_dim=GRID_THUMBNAIL_MAX_DIM,
+                    enable_retry_ladder=True,
+                )
+
+                if not qimage.isNull():
+                    pixmap = QPixmap.fromImage(qimage)
+                    pixmap = pixmap.scaled(
+                        THUMBNAIL_DISPLAY_SIZE, THUMBNAIL_DISPLAY_SIZE,
+                        Qt.KeepAspectRatio, Qt.SmoothTransformation
+                    )
+                    self.thumbnail_label.setPixmap(pixmap)
+                else:
+                    self.thumbnail_label.setText("No Preview")
+            except Exception as e:
+                logger.warning(f"[PhotoThumbnail] Failed to load thumbnail: {e}")
+                self.thumbnail_label.setText("Load Error")
         else:
             self.thumbnail_label.setText("No Thumbnail")
 
@@ -118,6 +149,11 @@ class SimilarPhotosDialog(QDialog):
     Dialog for browsing visually similar photos.
 
     Shows grid of similar photos with threshold control.
+
+    DESIGN RULE (Google Photos / Lightroom pattern):
+    - Grid uses thumbnails only (256px max edge), never full resolution
+    - Full resolution decode is NEVER allowed for UI display in this dialog
+    - This prevents the dialog from decoding 20+ full-res images at once
 
     IMPORTANT: Always provide project_id to ensure correct canonical model is used.
     Without project_id, the dialog falls back to default model which may not match
@@ -306,7 +342,7 @@ class SimilarPhotosDialog(QDialog):
         # Update results label
         self.results_label.setText(
             f"Showing {len(filtered_results)} similar photos "
-            f"(threshold ≥ {int(self.current_threshold * 100)}%)"
+            f"(threshold >= {int(self.current_threshold * 100)}%)"
         )
 
         if not filtered_results:
@@ -329,6 +365,3 @@ class SimilarPhotosDialog(QDialog):
         """Handle photo thumbnail click."""
         self.photo_clicked.emit(photo_id)
         logger.info(f"[SimilarPhotosDialog] Photo {photo_id} clicked")
-
-        # Optionally: Open photo in main window or show details
-        # For now, just emit signal

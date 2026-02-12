@@ -73,13 +73,19 @@ class ResultThumbnail(QFrame):
         self.thumbnail_label.setFixedSize(150, 150)
         self.thumbnail_label.setStyleSheet("background-color: #f0f0f0;")
 
-        # Load thumbnail
-        if result.thumbnail_path and Path(result.thumbnail_path).exists():
-            pixmap = QPixmap(result.thumbnail_path)
-            if not pixmap.isNull():
-                pixmap = pixmap.scaled(150, 150, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-                self.thumbnail_label.setPixmap(pixmap)
-            else:
+        # Load thumbnail via SafeImageLoader (capped at 256px, never full resolution)
+        image_path = result.thumbnail_path or getattr(result, 'file_path', None)
+        if image_path and Path(image_path).exists():
+            try:
+                from services.safe_image_loader import safe_decode_qimage
+                qimage = safe_decode_qimage(str(image_path), max_dim=256)
+                if not qimage.isNull():
+                    pixmap = QPixmap.fromImage(qimage)
+                    pixmap = pixmap.scaled(150, 150, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                    self.thumbnail_label.setPixmap(pixmap)
+                else:
+                    self.thumbnail_label.setText("No Preview")
+            except Exception:
                 self.thumbnail_label.setText("No Preview")
         else:
             self.thumbnail_label.setText("No Thumbnail")
