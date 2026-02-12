@@ -885,7 +885,12 @@ class ScanController(QObject):
                         self.main.grid.project_id = active_pid
                 if hasattr(self.main, 'sidebar') and self.main.sidebar:
                     if getattr(self.main.sidebar, 'project_id', None) is None:
-                        self.main.sidebar.set_project(active_pid)
+                        # Only set the attribute — avoid triggering a full
+                        # reload when Google Layout is active (the sidebar
+                        # widget may be hidden, causing a "blocked" warning).
+                        # Store subscriptions handle the actual reload when
+                        # the user switches back to CurrentLayout.
+                        self.main.sidebar.project_id = active_pid
                         sidebar_was_updated = True
         except Exception as e:
             self.logger.error(f"Error building date branches: {e}", exc_info=True)

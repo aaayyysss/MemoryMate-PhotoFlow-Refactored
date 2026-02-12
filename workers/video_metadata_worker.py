@@ -191,7 +191,8 @@ class VideoMetadataWorker(QRunnable):
             # ffprobe is I/O bound (waiting for subprocess), so threads work well
             from concurrent.futures import ThreadPoolExecutor, as_completed
 
-            max_workers = 8  # Process 8 videos concurrently
+            import os as _os
+            max_workers = min(4, _os.cpu_count() or 4)
             logger.info(f"[VideoMetadataWorker] Processing with {max_workers} parallel workers")
 
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
