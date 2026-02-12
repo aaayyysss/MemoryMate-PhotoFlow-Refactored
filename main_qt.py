@@ -52,6 +52,21 @@ os.environ['QSG_RENDER_LOOP'] = 'basic'  # Use basic render loop to avoid OpenGL
 os.environ['QT_OPENGL'] = 'software'  # Force software OpenGL rendering
 os.environ['QT_QUICK_BACKEND'] = 'software'  # Force software backend for Qt Quick
 
+# ========================================================================
+# Cap ML library native thread pools to prevent silent oversubscription.
+# NumPy/SciPy (via OpenBLAS/MKL), ONNX Runtime, and OpenMP each spawn
+# their own thread pools. Without caps, a single InsightFace call can
+# create 8-16 native threads on top of our Python thread pools.
+# Must be set BEFORE importing numpy/torch/onnxruntime.
+# ========================================================================
+_ml_threads = str(min(4, os.cpu_count() or 4))
+os.environ.setdefault('OMP_NUM_THREADS', _ml_threads)
+os.environ.setdefault('MKL_NUM_THREADS', _ml_threads)
+os.environ.setdefault('OPENBLAS_NUM_THREADS', _ml_threads)
+os.environ.setdefault('VECLIB_MAXIMUM_THREADS', _ml_threads)
+os.environ.setdefault('NUMEXPR_NUM_THREADS', _ml_threads)
+os.environ.setdefault('ONNXRUNTIME_SESSION_THREAD_POOL_SIZE', _ml_threads)
+
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import Qt, QTimer
 from utils.qt_guards import connect_guarded
