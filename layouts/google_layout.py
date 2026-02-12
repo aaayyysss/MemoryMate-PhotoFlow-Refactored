@@ -7661,10 +7661,16 @@ class GooglePhotosLayout(BaseLayout):
             stat = os.stat(path)
             file_size = stat.st_size / (1024 * 1024)  # MB
 
-            # Try to get image dimensions
+            # Get image dimensions WITHOUT loading full image into RAM
             try:
-                img = QImage(path)
-                dimensions = f"{img.width()} × {img.height()}px"
+                from PySide6.QtGui import QImageReader
+                reader = QImageReader(path)
+                reader.setAutoTransform(True)
+                size = reader.size()
+                if size.isValid():
+                    dimensions = f"{size.width()} × {size.height()}px"
+                else:
+                    dimensions = "Unknown"
             except:
                 dimensions = "Unknown"
 

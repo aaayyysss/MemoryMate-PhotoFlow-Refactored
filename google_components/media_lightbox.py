@@ -46,7 +46,11 @@ class PreloadImageWorker(QRunnable):
     PHASE A #1: Background worker for preloading images.
 
     Preloads next 2 photos in background for instant navigation.
+    Uses SafeImageLoader for memory-safe, capped-size decoding.
     """
+    # Max dimension for preloaded images (screen-fit quality, not full resolution)
+    PRELOAD_MAX_DIM = 2560
+
     def __init__(self, path: str, signals: PreloadImageSignals):
         super().__init__()
         self.path = path
@@ -55,34 +59,19 @@ class PreloadImageWorker(QRunnable):
     def run(self):
         """Load image in background thread — emits QImage (thread-safe)."""
         try:
-            from PIL import Image, ImageOps
-            import io
-            from PySide6.QtGui import QImage
+            from services.safe_image_loader import safe_decode_qimage
 
-            # Load with PIL for EXIF orientation
-            pil_image = Image.open(self.path)
-            pil_image = ImageOps.exif_transpose(pil_image)
+            # Decode at capped size — never full resolution
+            qimage = safe_decode_qimage(
+                self.path,
+                max_dim=self.PRELOAD_MAX_DIM,
+                enable_retry_ladder=True,
+            )
 
-            # Convert to RGB if needed
-            if pil_image.mode != 'RGB':
-                pil_image = pil_image.convert('RGB')
-
-            # Save to buffer
-            buffer = io.BytesIO()
-            pil_image.save(buffer, format='PNG')
-            buffer.seek(0)
-
-            # Load QImage (thread-safe, unlike QPixmap)
-            qimage = QImage()
-            qimage.loadFromData(buffer.read())
-
-            # Cleanup
-            pil_image.close()
-            buffer.close()
-
-            # Emit loaded signal with QImage
+            # Emit loaded signal with QImage (always non-null from safe_decode)
             self.signals.loaded.emit(self.path, qimage)
-            print(f"[PreloadImageWorker] ✓ Preloaded: {os.path.basename(self.path)}")
+            print(f"[PreloadImageWorker] ✓ Preloaded: {os.path.basename(self.path)} "
+                  f"({qimage.width()}x{qimage.height()})")
 
         except Exception as e:
             print(f"[PreloadImageWorker] ⚠️ Error preloading {self.path}: {e}")
@@ -98,9 +87,17 @@ class ProgressiveImageWorker(QRunnable):
     """
     PHASE A #2: Progressive image loader.
 
-    Loads thumbnail-quality first (instant), then full resolution in background.
+    Loads thumbnail-quality first (instant), then viewport-fit quality in background.
+    Uses SafeImageLoader for memory-safe, capped-size decoding.
     Emits QImage (thread-safe) with generation token for staleness detection.
+
+    IMPORTANT: "Full quality" means "full quality for the current viewport",
+    NOT "decode the original 8000x6000 into RAM". This is how Google Photos
+    and Lightroom handle large photos — they never decode full resolution for display.
     """
+    # Max edge for "full quality" viewport display (not raw resolution)
+    FULL_QUALITY_MAX_DIM = 2560
+
     def __init__(self, path: str, signals: ProgressiveImageSignals, viewport_size, generation: int):
         super().__init__()
         self.path = path
@@ -109,86 +106,54 @@ class ProgressiveImageWorker(QRunnable):
         self.generation = generation
 
     def run(self):
-        """Load image progressively: thumbnail → full quality (emits QImage)."""
+        """Load image progressively: thumbnail → viewport-fit quality (emits QImage)."""
         try:
-            from PIL import Image, ImageOps
-            import io
-            from PySide6.QtGui import QImage
+            from services.safe_image_loader import safe_decode_qimage, create_placeholder
 
-            # Load with PIL for EXIF orientation
-            pil_image = Image.open(self.path)
-            pil_image = ImageOps.exif_transpose(pil_image)
-
-            # Convert to RGB if needed
-            if pil_image.mode != 'RGB':
-                pil_image = pil_image.convert('RGB')
-
-            # STEP 1: Create thumbnail-quality version (fast!)
-            thumb_width = self.viewport_size.width() // 4
-            thumb_height = self.viewport_size.height() // 4
-
-            thumb_image = pil_image.copy()
-            thumb_image.thumbnail((thumb_width, thumb_height), Image.Resampling.LANCZOS)
-
-            # Convert to QImage (thread-safe, unlike QPixmap)
-            buffer = io.BytesIO()
-            thumb_image.save(buffer, format='JPEG', quality=70)
-            buffer.seek(0)
-
-            thumb_qimage = QImage()
-            thumb_qimage.loadFromData(buffer.read())
-            buffer.close()
-            thumb_image.close()
+            # STEP 1: Quick thumbnail decode (small size = fast)
+            thumb_max_dim = max(
+                self.viewport_size.width() // 4,
+                self.viewport_size.height() // 4,
+                400  # minimum useful thumbnail
+            )
+            thumb_qimage = safe_decode_qimage(
+                self.path,
+                max_dim=thumb_max_dim,
+                enable_retry_ladder=True,
+            )
 
             # Emit thumbnail with generation token
             self.signals.thumbnail_loaded.emit(self.generation, thumb_qimage)
-            print(f"[ProgressiveImageWorker] ✓ Thumbnail loaded: {os.path.basename(self.path)}")
+            print(f"[ProgressiveImageWorker] ✓ Thumbnail loaded: {os.path.basename(self.path)} "
+                  f"({thumb_qimage.width()}x{thumb_qimage.height()})")
 
-            # STEP 2: Load full resolution (background)
-            buffer = io.BytesIO()
-            pil_image.save(buffer, format='PNG')
-            buffer.seek(0)
+            # STEP 2: Viewport-fit "full quality" decode (capped, NOT raw resolution)
+            viewport_max = max(
+                self.viewport_size.width(),
+                self.viewport_size.height(),
+            )
+            # Cap at FULL_QUALITY_MAX_DIM — this is the key RAM saver
+            full_max_dim = min(viewport_max, self.FULL_QUALITY_MAX_DIM)
 
-            full_qimage = QImage()
-            full_qimage.loadFromData(buffer.read())
-
-            # Cleanup
-            pil_image.close()
-            buffer.close()
+            full_qimage = safe_decode_qimage(
+                self.path,
+                max_dim=full_max_dim,
+                enable_retry_ladder=True,
+            )
 
             # Emit full quality with generation token
             self.signals.full_loaded.emit(self.generation, full_qimage)
-            print(f"[ProgressiveImageWorker] ✓ Full quality loaded: {os.path.basename(self.path)}")
+            print(f"[ProgressiveImageWorker] ✓ Full quality loaded: {os.path.basename(self.path)} "
+                  f"({full_qimage.width()}x{full_qimage.height()})")
 
         except Exception as e:
             print(f"[ProgressiveImageWorker] ⚠️ Error loading {self.path}: {e}")
             import traceback
             traceback.print_exc()
 
-            # FALLBACK: Create "broken image" placeholder as QImage
-            from PySide6.QtGui import QImage, QPainter, QColor, QFont
-            from PySide6.QtCore import Qt
-
-            placeholder = QImage(400, 400, QImage.Format_RGB32)
-            placeholder.fill(QColor(240, 240, 240))
-
-            painter = QPainter(placeholder)
-            painter.setRenderHint(QPainter.Antialiasing)
-
-            painter.setPen(QColor(220, 53, 69))
-            painter.drawRect(0, 0, 399, 399)
-
-            painter.setPen(QColor(100, 100, 100))
-            font = QFont()
-            font.setPointSize(48)
-            painter.setFont(font)
-            painter.drawText(placeholder.rect(), Qt.AlignCenter, "Image Error")
-
-            font.setPointSize(10)
-            painter.setFont(font)
-            painter.drawText(10, 380, os.path.basename(self.path)[:50])
-
-            painter.end()
+            # FALLBACK: Create placeholder via SafeImageLoader (always non-null)
+            from services.safe_image_loader import create_placeholder
+            placeholder = create_placeholder(400, f"Image Error\n{os.path.basename(self.path)[:40]}")
 
             # Emit placeholder for both stages with generation token
             self.signals.thumbnail_loaded.emit(self.generation, placeholder)
@@ -6410,97 +6375,50 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         """
         Direct photo loading (fallback when progressive loading disabled).
 
-        Uses the original PIL-based loading method.
-        PHASE C #1: Added RAW file support using rawpy.
+        Uses SafeImageLoader for memory-safe, capped-size decoding.
+        Decodes at viewport-fit size (max 2560px), not full resolution.
+        PHASE C #1: RAW support handled by SafeImageLoader.
         """
-        from PIL import Image, ImageOps, ImageEnhance
-        import io
         from PySide6.QtCore import Qt
         from PySide6.QtGui import QPixmap
-
-        pil_image = None
-        pixmap = None
+        from services.safe_image_loader import safe_decode_qimage
 
         try:
-            # PHASE C #1: Check if file is RAW and try to load with rawpy
-            if self._is_raw(self.media_path) and self.raw_support_enabled:
-                try:
-                    import rawpy
-                    import numpy as np
+            # Calculate target size: viewport-fit, capped at 2560
+            viewport_size = self.scroll_area.viewport().size()
+            viewport_max = max(viewport_size.width(), viewport_size.height())
+            max_dim = min(viewport_max, 2560)
 
-                    print(f"[MediaLightbox] Loading RAW file with rawpy: {os.path.basename(self.media_path)}")
+            print(f"[MediaLightbox] Direct load via SafeImageLoader: "
+                  f"{os.path.basename(self.media_path)} (max_dim={max_dim})")
 
-                    # Load RAW file
-                    with rawpy.imread(self.media_path) as raw:
-                        # Process RAW to RGB with postprocessing
-                        rgb_array = raw.postprocess(
-                            use_camera_wb=True,  # Use camera white balance
-                            half_size=False,     # Full resolution
-                            no_auto_bright=False,  # Auto brightness
-                            output_bps=8         # 8-bit output
-                        )
+            # Memory-safe decode with retry ladder
+            qimage = safe_decode_qimage(
+                self.media_path,
+                max_dim=max_dim,
+                enable_retry_ladder=True,
+            )
 
-                        # Convert to PIL Image
-                        pil_image = Image.fromarray(rgb_array)
+            if qimage.isNull():
+                print(f"[MediaLightbox] ⚠️ SafeImageLoader returned null for direct load")
+                self.image_label.setText("❌ Cannot load image")
+                self.image_label.setStyleSheet("color: white; font-size: 12pt;")
+                return
 
-                        # Apply exposure adjustment if set
-                        if self.exposure_adjustment != 0.0:
-                            # Exposure: -2.0 to +2.0 -> brightness 0.25 to 4.0
-                            exposure_factor = 2 ** self.exposure_adjustment
-                            enhancer = ImageEnhance.Brightness(pil_image)
-                            pil_image = enhancer.enhance(exposure_factor)
-
-                        print(f"[MediaLightbox] ✓ RAW file loaded successfully (exposure: {self.exposure_adjustment:+.1f})")
-
-                except ImportError:
-                    print("[MediaLightbox] ⚠️ rawpy not available, falling back to PIL")
-                    # Fall through to regular PIL loading
-                    pil_image = Image.open(self.media_path)
-                    pil_image = ImageOps.exif_transpose(pil_image)
-                except Exception as e:
-                    print(f"[MediaLightbox] ⚠️ RAW loading failed: {e}, falling back to PIL")
-                    # Fall through to regular PIL loading
-                    pil_image = Image.open(self.media_path)
-                    pil_image = ImageOps.exif_transpose(pil_image)
-
-            # Regular image loading
-            if pil_image is None:
-                # Load with PIL and auto-rotate based on EXIF orientation
-                pil_image = Image.open(self.media_path)
-                pil_image = ImageOps.exif_transpose(pil_image)
-
-            if pil_image.mode != 'RGB':
-                pil_image = pil_image.convert('RGB')
-
-            # Save to bytes buffer
-            buffer = io.BytesIO()
-            pil_image.save(buffer, format='PNG')
-            buffer.seek(0)
-
-            # Load QPixmap from buffer
-            pixmap = QPixmap()
-            pixmap.loadFromData(buffer.read())
-
-            # Cleanup
-            pil_image.close()
-            buffer.close()
+            # Convert QImage → QPixmap on main thread
+            pixmap = QPixmap.fromImage(qimage)
 
         except Exception as e:
-            print(f"[MediaLightbox] PIL loading failed: {e}")
-            if pil_image:
-                try:
-                    pil_image.close()
-                except:
-                    pass
-            # Fallback to QPixmap
-            pixmap = QPixmap(self.media_path)
+            print(f"[MediaLightbox] Direct loading failed: {e}")
+            self.image_label.setText(f"❌ Error loading image\n\n{str(e)}")
+            self.image_label.setStyleSheet("color: white; font-size: 12pt;")
+            return
 
         if pixmap and not pixmap.isNull():
             # Store original
             self.original_pixmap = pixmap
 
             # Scale to fit
-            viewport_size = self.scroll_area.viewport().size()
             scaled_pixmap = pixmap.scaled(
                 viewport_size,
                 Qt.KeepAspectRatio,
@@ -6515,6 +6433,10 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             self.zoom_level = scaled_pixmap.width() / pixmap.width()
             self.fit_zoom_level = self.zoom_level
             self.zoom_mode = "fit"
+
+            print(f"[MediaLightbox] ✓ Direct load complete: "
+                  f"{pixmap.width()}x{pixmap.height()} -> "
+                  f"{scaled_pixmap.width()}x{scaled_pixmap.height()}")
 
     def _load_metadata(self):
         """Load and display comprehensive metadata in tabbed view."""
@@ -8984,16 +8906,21 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 from PySide6.QtGui import QPixmap, QPainter
                 from PySide6.QtCore import Qt
                 
-                # Load both pixmaps
-                base_pix = QPixmap(self.media_path)
-                cmp_pix = QPixmap(self.compare_media_path)
+                # Load both images via SafeImageLoader (capped, never full resolution)
+                from services.safe_image_loader import safe_decode_qimage
+                viewport = self.scroll_area.viewport().size()
+                compare_max_dim = min(max(viewport.width(), viewport.height()), 2560)
+
+                base_qimg = safe_decode_qimage(self.media_path, max_dim=compare_max_dim)
+                cmp_qimg = safe_decode_qimage(self.compare_media_path, max_dim=compare_max_dim)
+                base_pix = QPixmap.fromImage(base_qimg)
+                cmp_pix = QPixmap.fromImage(cmp_qimg)
                 if base_pix.isNull() or cmp_pix.isNull():
                     print("[MediaLightbox] Compare mode: failed to load pixmaps")
                     self.compare_mode_active = False
                     return
-                
+
                 # Determine viewport size
-                viewport = self.scroll_area.viewport().size()
                 target_h = viewport.height()
                 half_w = viewport.width() // 2
                 
