@@ -2785,6 +2785,8 @@ class ThumbnailGridQt(QWidget):
     def set_project(self, project_id: int):
         self.project_id = project_id
         self._project_has_tags = None  # invalidate tag cache on project switch
+        self._reload_disabled = False  # reset circuit breaker on project switch
+        self._reload_fail_count = 0
         self.clear()
 
 
@@ -3078,6 +3080,11 @@ class ThumbnailGridQt(QWidget):
         print(f"\n[GRID] ====== reload() CALLED ======")
         print(f"[GRID] project_id={self.project_id}, load_mode={self.load_mode}")
         
+        # Circuit breaker: stop exception loops from cascading reloads
+        if getattr(self, '_reload_disabled', False):
+            print("[GRID] reload() blocked — circuit breaker active (previous exceptions)")
+            return
+
         # CRITICAL: Prevent concurrent reloads that cause crashes
         # Similar to sidebar._refreshing flag pattern
         if getattr(self, '_reloading', False):
@@ -3230,13 +3237,19 @@ class ThumbnailGridQt(QWidget):
             # PHASE 4: Restore scroll position after photos are loaded (defer 200ms for layout)
             QTimer.singleShot(200, self.restore_scroll_position)
 
+            self._reload_fail_count = 0  # reset circuit breaker on success
             print(f"[GRID] ====== reload() COMPLETED SUCCESSFULLY ======\n")
         except Exception as reload_error:
             print(f"[GRID] ✗✗✗ EXCEPTION in reload(): {reload_error}")
             import traceback
             traceback.print_exc()
+            # Circuit breaker: after 3 consecutive failures, disable reload
+            # to prevent infinite exception loops from debounced retries.
+            self._reload_fail_count = getattr(self, '_reload_fail_count', 0) + 1
+            if self._reload_fail_count >= 3:
+                self._reload_disabled = True
+                print(f"[GRID] ⚠️ CIRCUIT BREAKER: reload disabled after {self._reload_fail_count} consecutive failures")
             print(f"[GRID] ====== reload() FAILED WITH EXCEPTION ======\n")
-            raise
         finally:
             # Always reset flag even if exception occurs
             print(f"[GRID] Finally block: Setting _reloading=False")
@@ -3340,6 +3353,22 @@ class ThumbnailGridQt(QWidget):
                 return datetime.fromtimestamp(ts).strftime("%B %Y")
             except Exception:
                 return "Earlier"
+
+        # 📏 Aspect ratios from metadata (cheap — no file I/O)
+        aspect_map = {}
+        try:
+            with self.db._connect() as _ac:
+                _acur = _ac.cursor()
+                for p in self._paths:
+                    _acur.execute(
+                        "SELECT width, height FROM photo_metadata WHERE path = ? LIMIT 1",
+                        (p,),
+                    )
+                    row = _acur.fetchone()
+                    if row and row[0] and row[1] and row[1] > 0:
+                        aspect_map[p] = row[0] / row[1]
+        except Exception:
+            pass  # aspect_map stays empty — placeholders use default_aspect
 
         # 📏 Default aspect ratio for placeholders
         default_aspect = 1.5
