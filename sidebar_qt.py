@@ -6776,9 +6776,12 @@ class SidebarQt(QWidget):
         if mode in ("folder", "branch", "date") and hasattr(mw, "_clear_tag_filter"):
             mw._clear_tag_filter()
 
-        # Normalize value: strip "branch:" prefix added by accordion/tabs
-        if mode == "branch" and isinstance(value, str) and value.startswith("branch:"):
-            value = value[7:]
+        # Normalize value: strip known prefixes added by accordion/tabs/people
+        if mode == "branch" and isinstance(value, str):
+            if value.startswith("branch:"):
+                value = value[7:]
+            elif value.startswith("facecluster:"):
+                value = value.split(":", 1)[1]
 
         if mode == "branch" and isinstance(value, str) and value.startswith("date:"):
             mw.grid.set_context("date", value.replace("date:", ""))
