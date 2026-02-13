@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, QRect
 from PySide6.QtGui import QPixmap, QColor, QPainter, QFont, QImageReader
+from services.safe_image_loader import safe_decode_qimage
 
 #from i18n import tr
 from translation_manager import tr
@@ -475,10 +476,8 @@ class DetailsPanel(QWidget):
                 except Exception:
                     pass
 
-            # --- Preview (safe; QImageReader honors EXIF orientation) ---
-            reader = QImageReader(path)
-            reader.setAutoTransform(True)
-            img = reader.read()
+            # --- Preview (memory-safe; SafeImageLoader caps decode size) ---
+            img = safe_decode_qimage(path, max_dim=512)
             if not img.isNull():
                 pm = QPixmap.fromImage(img).scaledToWidth(260, Qt.SmoothTransformation)
 

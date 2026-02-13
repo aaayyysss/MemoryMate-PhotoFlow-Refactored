@@ -215,9 +215,11 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         self.is_swiping = False
 
         # PHASE A #1: Image Preloading & Caching
-        self.preload_cache = {}  # Map path -> {pixmap, timestamp}
+        self.preload_cache = {}  # Map path -> {pixmap, timestamp, byte_est}
         self.preload_count = 2  # Preload next 2 photos
         self.cache_limit = 5  # Keep max 5 photos in cache
+        self.cache_byte_limit = 150 * 1024 * 1024  # 150 MB hard cap
+        self._cache_bytes_used = 0  # Running total of estimated bytes
         self.preload_thread_pool = QThreadPool()
         self.preload_thread_pool.setMaxThreadCount(2)  # 2 background threads for preloading
         self.preload_signals = PreloadImageSignals()
@@ -8130,6 +8132,11 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             self.preload_thread_pool.start(worker)
             print(f"[MediaLightbox] Preloading: {os.path.basename(next_path)}")
 
+    @staticmethod
+    def _estimate_pixmap_bytes(pixmap):
+        """Estimate memory footprint of a QPixmap (width * height * 4 bytes * 1.2 overhead)."""
+        return int(pixmap.width() * pixmap.height() * 4 * 1.2)
+
     def _on_preload_complete(self, path: str, qimage):
         """PHASE A #1: Handle preload completion — promotes QImage→QPixmap on main thread."""
         if qimage and not qimage.isNull():
@@ -8137,32 +8144,43 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             from PySide6.QtCore import QDateTime
             # Convert QImage → QPixmap on the main thread (the only safe place)
             pixmap = QPixmap.fromImage(qimage)
+            byte_est = self._estimate_pixmap_bytes(pixmap)
             self.preload_cache[path] = {
                 'pixmap': pixmap,
-                'timestamp': QDateTime.currentMSecsSinceEpoch()
+                'timestamp': QDateTime.currentMSecsSinceEpoch(),
+                'byte_est': byte_est,
             }
-            print(f"[MediaLightbox] ✓ Cached: {os.path.basename(path)} (cache size: {len(self.preload_cache)})")
+            self._cache_bytes_used += byte_est
+            mb_used = self._cache_bytes_used / (1024 * 1024)
+            print(f"[MediaLightbox] ✓ Cached: {os.path.basename(path)} "
+                  f"(~{byte_est // 1024}KB, cache: {len(self.preload_cache)} items / {mb_used:.1f}MB)")
 
-            # Clean cache if too large
+            # Clean cache if too large (count or byte budget)
             self._clean_preload_cache()
 
     def _clean_preload_cache(self):
-        """PHASE A #1: Clean preload cache (keep only 5 most recent)."""
-        if len(self.preload_cache) <= self.cache_limit:
-            return
-
-        # Sort by timestamp (oldest first)
+        """PHASE A #1: Clean preload cache (evict by count limit AND byte budget)."""
+        # Sort by timestamp (oldest first) for LRU eviction
         sorted_paths = sorted(
             self.preload_cache.keys(),
             key=lambda p: self.preload_cache[p]['timestamp']
         )
 
-        # Remove oldest entries
-        to_remove = len(self.preload_cache) - self.cache_limit
-        for i in range(to_remove):
-            path = sorted_paths[i]
-            del self.preload_cache[path]
-            print(f"[MediaLightbox] Removed from cache: {os.path.basename(path)}")
+        # Evict until both count and byte limits are satisfied
+        while (len(self.preload_cache) > self.cache_limit
+               or self._cache_bytes_used > self.cache_byte_limit):
+            if not sorted_paths:
+                break
+            path = sorted_paths.pop(0)
+            evicted = self.preload_cache.pop(path, None)
+            if evicted:
+                self._cache_bytes_used -= evicted.get('byte_est', 0)
+                print(f"[MediaLightbox] Evicted from cache: {os.path.basename(path)} "
+                      f"(~{evicted.get('byte_est', 0) // 1024}KB)")
+
+        # Safety: clamp to zero
+        if self._cache_bytes_used < 0:
+            self._cache_bytes_used = 0
 
     def _on_thumbnail_loaded(self, generation: int, qimage):
         """PHASE A #2: Handle progressive loading - thumbnail quality loaded.
@@ -8232,7 +8250,10 @@ class MediaLightbox(QDialog, VideoEditorMixin):
 
         if not qimage or qimage.isNull():
             print(f"[ERROR] ⚠️ Full quality QImage is null or invalid!")
-            self._hide_loading_indicator()
+            # Show brief non-modal toast: keep thumbnail visible, inform user
+            self._show_loading_indicator("Using optimized preview")
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(2500, self._hide_loading_indicator)
             return
 
         from PySide6.QtCore import Qt
