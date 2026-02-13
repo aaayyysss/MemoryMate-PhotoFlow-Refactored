@@ -159,6 +159,16 @@ class GooglePhotosLayout(BaseLayout):
         self._folder_click_debounce_delay = 250  # ms - debounce folder clicks
         self._pending_folder_id = None  # Pending folder ID for debounced click
 
+        # ── Reload coalescing + state signature dedupe ──────────
+        # Prevents redundant sequential reloads of identical state.
+        # All load requests funnel through _request_load() which sets
+        # _pending_load_params and starts a 50ms coalesce timer.
+        self._load_coalesce_timer = QTimer()
+        self._load_coalesce_timer.setSingleShot(True)
+        self._load_coalesce_timer.timeout.connect(self._execute_coalesced_load)
+        self._pending_load_params = None   # dict of params for next load
+        self._last_load_signature = None   # signature of last executed load
+
         # PHASE 2 #5: Thumbnail aspect ratio mode
         self.thumbnail_aspect_ratio = "square"  # "square", "original", "16:9"
 
@@ -180,6 +190,7 @@ class GooglePhotosLayout(BaseLayout):
         self.current_filter_day = None
         self.current_filter_folder = None
         self.current_filter_person = None
+        self.current_filter_paths = None
 
         # PHASE 2 Task 2.1: Async photo loading (move queries off GUI thread)
         # Generation counter prevents stale results from overwriting newer data
@@ -1239,6 +1250,59 @@ class GooglePhotosLayout(BaseLayout):
 
         return self.timeline_scroll
 
+    # ── Reload coalescing helpers ──────────────────────────────
+
+    def _compute_load_signature(self, params: dict) -> tuple:
+        """Compute a hashable signature for a set of load parameters.
+
+        If the signature matches the last executed load, the reload is
+        skipped (no work done).  This eliminates redundant sequential
+        reloads that occur during mode switches, accordion clicks, etc.
+        """
+        paths_sig = (
+            tuple(sorted(params['paths'])) if params.get('paths') else None
+        )
+        return (
+            self.project_id,
+            params.get('thumb_size'),
+            params.get('year'),
+            params.get('month'),
+            params.get('day'),
+            params.get('folder'),
+            params.get('person'),
+            paths_sig,
+        )
+
+    def _request_load(self, **params):
+        """Schedule a coalesced photo load.
+
+        Multiple rapid calls (e.g. accordion expand + tab switch) are
+        collapsed into a single load executed after a 50ms quiet period.
+        """
+        self._pending_load_params = params
+        self._load_coalesce_timer.start(50)
+
+    def _execute_coalesced_load(self):
+        """Fire the coalesced load if the state actually changed."""
+        params = self._pending_load_params
+        if params is None:
+            return
+        self._pending_load_params = None
+        sig = self._compute_load_signature(params)
+        if sig == self._last_load_signature:
+            print("[GooglePhotosLayout] Skipping redundant reload (same state signature)")
+            return
+        self._last_load_signature = sig
+        self._load_photos(
+            thumb_size=params.get('thumb_size', 200),
+            filter_year=params.get('year'),
+            filter_month=params.get('month'),
+            filter_day=params.get('day'),
+            filter_folder=params.get('folder'),
+            filter_person=params.get('person'),
+            filter_paths=params.get('paths'),
+        )
+
     def _load_photos(self, thumb_size: int = 200, filter_year: int = None, filter_month: int = None, filter_day: int = None, filter_folder: str = None, filter_person: str = None, filter_paths: list = None):
         """
         Load photos from database and populate timeline.
@@ -1861,14 +1925,10 @@ class GooglePhotosLayout(BaseLayout):
             except ValueError:
                 pass
 
-        # Filter by year, month, or day
-        self._load_photos(
+        # Filter by year, month, or day (coalesced)
+        self._request_load(
             thumb_size=self.current_thumb_size,
-            filter_year=year,
-            filter_month=month,
-            filter_day=day,
-            filter_folder=None,
-            filter_person=None
+            year=year, month=month, day=day,
         )
 
     def _on_accordion_folder_clicked(self, folder_id: int):
@@ -1964,14 +2024,10 @@ class GooglePhotosLayout(BaseLayout):
         elif branch_key.startswith("facecluster:"):
             branch_key = branch_key[12:]
 
-        # Filter by person/branch
-        self._load_photos(
+        # Filter by person/branch (coalesced)
+        self._request_load(
             thumb_size=self.current_thumb_size,
-            filter_year=None,
-            filter_month=None,
-            filter_day=None,
-            filter_folder=None,
-            filter_person=branch_key
+            person=branch_key,
         )
 
     def _on_accordion_person_clicked(self, person_branch_key: str):
@@ -1984,13 +2040,12 @@ class GooglePhotosLayout(BaseLayout):
         # Empty string signals clearing the active person filter (toggle off)
         if person_branch_key == "":
             logger.info("[GooglePhotosLayout] Clearing person filter from accordion toggle")
-            self._load_photos(
+            self._request_load(
                 thumb_size=self.current_thumb_size,
-                filter_year=self.current_filter_year,
-                filter_month=self.current_filter_month,
-                filter_day=self.current_filter_day,
-                filter_folder=self.current_filter_folder,
-                filter_person=None,
+                year=self.current_filter_year,
+                month=self.current_filter_month,
+                day=self.current_filter_day,
+                folder=self.current_filter_folder,
             )
             return
 
@@ -2001,13 +2056,9 @@ class GooglePhotosLayout(BaseLayout):
             "[GooglePhotosLayout] Accordion person clicked: %s", person_branch_key
         )
 
-        self._load_photos(
+        self._request_load(
             thumb_size=self.current_thumb_size,
-            filter_year=None,
-            filter_month=None,
-            filter_day=None,
-            filter_folder=None,
-            filter_person=person_branch_key,
+            person=person_branch_key,
         )
 
     def _on_accordion_location_clicked(self, location_data: dict):
@@ -2033,15 +2084,10 @@ class GooglePhotosLayout(BaseLayout):
             logger.warning("[GooglePhotosLayout] Location has no photos")
             return
 
-        # Load photos filtered by this location's paths
-        self._load_photos(
+        # Load photos filtered by this location's paths (coalesced)
+        self._request_load(
             thumb_size=self.current_thumb_size,
-            filter_year=None,
-            filter_month=None,
-            filter_day=None,
-            filter_folder=None,
-            filter_person=None,
-            filter_paths=paths
+            paths=paths,
         )
 
     def _on_accordion_person_merged(self, source_branch: str, target_branch: str):
@@ -6722,9 +6768,12 @@ class GooglePhotosLayout(BaseLayout):
 
         # Create and show lightbox dialog
         try:
-            lightbox = MediaLightbox(path, all_media, parent=self.main_window)
+            lightbox = MediaLightbox(
+                path, all_media, parent=self.main_window,
+                project_id=self.project_id,
+            )
             lightbox.exec()
-            print("[GooglePhotosLayout] ✓ MediaLightbox closed")
+            print("[GooglePhotosLayout] MediaLightbox closed")
             
             # PHASE 3: Refresh tag overlays after lightbox closes
             # (user may have favorited/unfavorited in lightbox)
@@ -9783,7 +9832,10 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
                 from PySide6.QtWidgets import QMessageBox
                 QMessageBox.information(self.main_window, "Single View", "No media available.")
                 return
-            lightbox = MediaLightbox(paths[0], paths, parent=self.main_window)
+            lightbox = MediaLightbox(
+                paths[0], paths, parent=self.main_window,
+                project_id=self.project_id,
+            )
             lightbox.exec()
         except Exception as e:
             print(f"[GooglePhotosLayout] ⚠️ Error opening single view: {e}")
@@ -10159,8 +10211,9 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
         if new_project_id is None or new_project_id == self.project_id:
             return
 
-        print(f"[GooglePhotosLayout] 📂 Project changed: {self.project_id} → {new_project_id}")
+        print(f"[GooglePhotosLayout] Project changed: {self.project_id} -> {new_project_id}")
         self.project_id = new_project_id
+        self._last_load_signature = None  # invalidate on project change
 
         # Update accordion sidebar with new project
         if hasattr(self, 'accordion_sidebar'):
@@ -10180,8 +10233,9 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
         if project_id is None or project_id == self.project_id:
             return
 
-        print(f"[GooglePhotosLayout] set_project() called: {self.project_id} → {project_id}")
+        print(f"[GooglePhotosLayout] set_project() called: {self.project_id} -> {project_id}")
         self.project_id = project_id
+        self._last_load_signature = None  # invalidate on project change
 
         # Update accordion sidebar with new project
         if hasattr(self, 'accordion_sidebar'):
@@ -10218,14 +10272,17 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
         AccordionSidebar handles its own section reloads via
         its own store subscription (media_v, duplicates_v, people_v).
         """
-        # Reload photos with current filters
+        # Invalidate signature so scan refresh always executes
+        self._last_load_signature = None
+        # Reload photos with ALL current filters (including filter_paths)
         self._load_photos(
             thumb_size=self.current_thumb_size,
             filter_year=self.current_filter_year,
             filter_month=self.current_filter_month,
             filter_day=self.current_filter_day,
             filter_folder=self.current_filter_folder,
-            filter_person=self.current_filter_person
+            filter_person=self.current_filter_person,
+            filter_paths=getattr(self, 'current_filter_paths', None),
         )
 
     def refresh_thumbnails(self) -> None:
