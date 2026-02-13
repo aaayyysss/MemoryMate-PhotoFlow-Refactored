@@ -321,8 +321,19 @@ class GooglePhotosLayout(BaseLayout):
         self.date_scroll_indicator = self._create_date_scroll_indicator(main_widget)
         self.date_scroll_indicator.hide()
 
-        # Load photos from database
-        self._load_photos()
+        # Defer initial photo load until MainWindow signals first paint is done.
+        # Previously _load_photos() fired here during __init__(), before show(),
+        # so the DB query + grouping + widget creation competed with first paint.
+        # MainWindow._after_first_paint() calls _on_startup_ready() to begin.
+        if getattr(self.main_window, '_deferred_init_started', False):
+            # Post-startup layout switch: first paint already done, load now.
+            self._startup_load_pending = False
+            self._load_photos()
+        else:
+            # Initial startup: defer until first paint completes.
+            self._startup_load_pending = True
+            if self._loading_indicator:
+                self._loading_indicator.show()
 
         # Subscribe to ProjectState store for version-based refresh.
         # media_v  → full photo grid reload (scan completed)
@@ -357,7 +368,21 @@ class GooglePhotosLayout(BaseLayout):
 
         return main_widget
 
-    
+    # ------------------------------------------------------------------
+    # Startup fence: called by MainWindow after first paint completes
+    # ------------------------------------------------------------------
+    def _on_startup_ready(self):
+        """Begin initial photo load after MainWindow's first paint.
+
+        This method is called by MainWindow._after_first_paint() so the
+        heavy DB query, grouping, and widget-chunk creation don't compete
+        with the first paint cycle.
+        """
+        if not getattr(self, '_startup_load_pending', False):
+            return
+        self._startup_load_pending = False
+        print("[GooglePhotosLayout] First paint done — starting initial photo load")
+        self._load_photos()
 
     def _ensure_tooltip_style(self):
         app = QApplication.instance()
