@@ -1318,22 +1318,20 @@ class LightboxDialog(QDialog):
         self._apply_theme("light")
         
         # --- Edit staging state (non-destructive editing) ---
-        # _orig_pil is set by _load_image; during edit we create _edit_base_pil
-        # which is the editable base (original copy preserved in _orig_pil).
-        # _working_pil is the last processed PIL image (preview).
+        # _orig_pil: preview-resolution PIL Image (max 2560px) for editing.
+        # _edit_base_pil: editable base (copy of _orig_pil).
+        # _working_pil: last processed PIL Image (preview).
+        # _orig_file_dimensions: original file dimensions for full-res save.
         self._orig_pil = None
         self._edit_base_pil = None
         self._working_pil = None
-        self._is_dirty = False  # true if there are unapplied edits
+        self._orig_file_dimensions = None
+        self._is_dirty = False
 
         # metadata cache + preload control
         self._meta_cache = {}
         self._meta_preloader = None
         self._preload_stop = False
-        
-        # processing state
-        self._orig_pil = None      # original PIL Image (RGBA)
-        self._working_pil = None   # last processed PIL Image
         self.adjustments = {       # slider values -100..100
             "brightness": 0,
             "exposure": 0,
@@ -1685,57 +1683,63 @@ class LightboxDialog(QDialog):
         except Exception as e:
             print(f"[toggle_right_editor_panel] error: {e}")    
 
-    def _apply_adjustments(self):
-        """Apply adjustments to the current edit-base (non-destructive) and update canvas preview."""
-        src = self._edit_base_pil or self._orig_pil
-        if src is None:
-            return
-        img = src.copy().convert("RGBA")
+    @staticmethod
+    def _apply_adjustment_pipeline(src_img, adjustments):
+        """Apply the full adjustment pipeline to a PIL image.
 
-        # apply exposure -> brightness -> contrast -> highlights/shadows -> saturation -> warmth -> vignette
-        exp = self.adjustments.get("exposure", 0)
+        Extracted so it can be reused for both preview (capped) and
+        full-resolution save/export.  All operations use Pillow's C
+        routines except vignette, which builds the mask at a small
+        fixed size and up-scales (O(1) in image resolution).
+
+        Args:
+            src_img: PIL Image (RGBA) to process.
+            adjustments: dict with keys brightness, exposure, contrast,
+                         highlights, shadows, saturation, warmth, vignette.
+
+        Returns:
+            Processed PIL Image (RGBA).
+        """
+        img = src_img.copy().convert("RGBA")
+
+        # Exposure
+        exp = adjustments.get("exposure", 0)
         if exp != 0:
-            exp_factor = 1.0 + (exp / 100.0) * 0.5
-            img = ImageEnhance.Brightness(img).enhance(exp_factor)
+            img = ImageEnhance.Brightness(img).enhance(1.0 + (exp / 100.0) * 0.5)
 
-        bri = self.adjustments.get("brightness", 0)
+        # Brightness
+        bri = adjustments.get("brightness", 0)
         if bri != 0:
-            bri_factor = 1.0 + (bri / 100.0) * 1.0
-            img = ImageEnhance.Brightness(img).enhance(bri_factor)
+            img = ImageEnhance.Brightness(img).enhance(1.0 + (bri / 100.0) * 1.0)
 
-        ctr = self.adjustments.get("contrast", 0)
+        # Contrast
+        ctr = adjustments.get("contrast", 0)
         if ctr != 0:
-            ctr_factor = 1.0 + (ctr / 100.0) * 1.2
-            img = ImageEnhance.Contrast(img).enhance(ctr_factor)
+            img = ImageEnhance.Contrast(img).enhance(1.0 + (ctr / 100.0) * 1.2)
 
-        # Highlights/shadows (approx)
+        # Highlights / Shadows
         try:
             luma = img.convert("L")
-            highlights_val = self.adjustments.get("highlights", 0)
+            highlights_val = adjustments.get("highlights", 0)
             if highlights_val != 0:
-                def high_map(v):
-                    return max(0, min(255, int((v - 128) * 2))) if v > 128 else 0
-                mask_h = luma.point(high_map)
-                h_factor = 1.0 + (highlights_val / 100.0) * 0.8
-                bright_img = ImageEnhance.Brightness(img).enhance(h_factor)
+                mask_h = luma.point(lambda v: max(0, min(255, int((v - 128) * 2))) if v > 128 else 0)
+                bright_img = ImageEnhance.Brightness(img).enhance(1.0 + (highlights_val / 100.0) * 0.8)
                 img = Image.composite(bright_img, img, mask_h)
-            shadows_val = self.adjustments.get("shadows", 0)
+            shadows_val = adjustments.get("shadows", 0)
             if shadows_val != 0:
-                def low_map(v):
-                    return max(0, min(255, int((128 - v) * 2))) if v < 128 else 0
-                mask_s = luma.point(low_map)
-                s_factor = 1.0 + (shadows_val / 100.0) * 0.6
-                dark_img = ImageEnhance.Brightness(img).enhance(s_factor)
+                mask_s = luma.point(lambda v: max(0, min(255, int((128 - v) * 2))) if v < 128 else 0)
+                dark_img = ImageEnhance.Brightness(img).enhance(1.0 + (shadows_val / 100.0) * 0.6)
                 img = Image.composite(dark_img, img, mask_s)
         except Exception:
             pass
 
-        sat = self.adjustments.get("saturation", 0)
+        # Saturation
+        sat = adjustments.get("saturation", 0)
         if sat != 0:
-            sat_factor = 1.0 + (sat / 100.0) * 1.5
-            img = ImageEnhance.Color(img).enhance(sat_factor)
+            img = ImageEnhance.Color(img).enhance(1.0 + (sat / 100.0) * 1.5)
 
-        warmth = self.adjustments.get("warmth", 0)
+        # Warmth
+        warmth = adjustments.get("warmth", 0)
         if warmth != 0:
             w = warmth / 100.0
             r_mult = 1.0 + (0.6 * w)
@@ -1748,22 +1752,38 @@ class LightboxDialog(QDialog):
             except Exception:
                 pass
 
-        vign = self.adjustments.get("vignette", 0)
+        # Vignette — build mask at small fixed size, upscale (fast at any resolution)
+        vign = adjustments.get("vignette", 0)
         if vign != 0:
             strength = abs(vign) / 100.0
-            w, h = img.size
-            mask = Image.new("L", (w, h), 0)
-            cx = w/2.0; cy = h/2.0
-            maxrad = ((cx*cx + cy*cy) ** 0.5)
-            pix = mask.load()
-            for yi in range(h):
-                for xi in range(w):
-                    dx = xi - cx; dy = yi - cy
-                    d = (dx*dx + dy*dy) ** 0.5
-                    v = int(255 * min(1.0, max(0.0, (d - (maxrad * (1.0 - 0.6*strength))) / (maxrad * (0.6*strength + 1e-6)))))
+            target_w, target_h = img.size
+            # Generate vignette mask at 256x256, then resize to image dims
+            ms = 256
+            mask_small = Image.new("L", (ms, ms), 0)
+            cx = ms / 2.0
+            cy = ms / 2.0
+            maxrad = (cx * cx + cy * cy) ** 0.5
+            pix = mask_small.load()
+            inner = maxrad * (1.0 - 0.6 * strength)
+            outer = maxrad * (0.6 * strength + 1e-6)
+            for yi in range(ms):
+                for xi in range(ms):
+                    d = ((xi - cx) ** 2 + (yi - cy) ** 2) ** 0.5
+                    v = int(255 * min(1.0, max(0.0, (d - inner) / outer)))
                     pix[xi, yi] = v
-            dark = Image.new("RGBA", img.size, (0,0,0,int(255 * 0.5 * strength)))
-            img = Image.composite(dark, img, mask.convert("L").point(lambda v: v))
+            mask = mask_small.resize((target_w, target_h), Image.BILINEAR)
+            dark = Image.new("RGBA", img.size, (0, 0, 0, int(255 * 0.5 * strength)))
+            img = Image.composite(dark, img, mask)
+
+        return img
+
+    def _apply_adjustments(self):
+        """Apply adjustments to the current edit-base (non-destructive) and update canvas preview."""
+        src = self._edit_base_pil or self._orig_pil
+        if src is None:
+            return
+
+        img = self._apply_adjustment_pipeline(src, self.adjustments)
 
         # store working preview and flag dirty if different from edit base
         self._working_pil = img
@@ -1783,7 +1803,7 @@ class LightboxDialog(QDialog):
             self._rotation_preview_base = None
             if hasattr(self, 'rotation_slider_widget'):
                 self.rotation_slider_widget.reset()
-            
+
             # PHASE 2: Deferred histogram update (debounced)
             if hasattr(self, '_hist_timer') and hasattr(self, 'histogram_widget') and self.histogram_widget:
                 try:
@@ -3218,26 +3238,49 @@ class LightboxDialog(QDialog):
             traceback.print_exc()
             QMessageBox.warning(self, "Load failed", f"Couldn't load video: {e}")
 
+    # Max dimension for preview decode — matches SafeImageLoader contract.
+    # Never decode full resolution into RAM; originals only at export/save time.
+    _PREVIEW_MAX_DIM = 2560
+
     def _load_photo(self, path: str):
-        """Load and display photo (renamed from _load_image for consistency)."""
+        """Load and display photo at capped preview resolution.
+
+        Follows the Smart Preview model (like Lightroom):
+        - Display/edit at capped resolution (2560px max edge)
+        - Original file only re-opened at full res for save/export
+        - Uses PIL draft() for JPEG pre-decode downscaling
+        """
         try:
-            print(f"[PhotoLoad] 🔍 DIAGNOSTIC: Loading photo from path: {path}")
+            print(f"[PhotoLoad] Loading photo: {path}")
             # Switch to image canvas page
             self.content_stack.setCurrentIndex(0)
 
             img = Image.open(path)
-            img = ImageOps.exif_transpose(img).convert("RGBA")
-            self._orig_pil = img.copy()
-            print(f"[PhotoLoad] ✅ DIAGNOSTIC: Successfully loaded photo, _orig_pil size: {self._orig_pil.size}")
+            orig_size = img.size
+
+            # Pre-decode downscale: tell JPEG decoder to output smaller
+            # (draft is a no-op for non-JPEG but never errors)
+            if max(orig_size) > self._PREVIEW_MAX_DIM:
+                try:
+                    img.draft('RGB', (self._PREVIEW_MAX_DIM, self._PREVIEW_MAX_DIM))
+                except Exception:
+                    pass
+
+            img = ImageOps.exif_transpose(img)
+
+            # Ensure final size is capped (draft gives approximate sizes)
+            if max(img.size) > self._PREVIEW_MAX_DIM:
+                img.thumbnail((self._PREVIEW_MAX_DIM, self._PREVIEW_MAX_DIM), Image.LANCZOS)
+
+            img = img.convert("RGBA")
+            self._orig_pil = img
+            self._orig_file_dimensions = orig_size  # track original for save
+
+            print(f"[PhotoLoad] Preview loaded: {self._orig_pil.size} "
+                  f"(original {orig_size[0]}x{orig_size[1]})")
+
             qimg = ImageQt.ImageQt(img)
             pm = QPixmap.fromImage(qimg)
-            # PHASE 2: Smarter caching — scale very large pixmaps for display to reduce memory
-            try:
-                max_w = 2560
-                if pm.width() > max_w:
-                    pm = pm.scaled(max_w, int(pm.height() * (max_w / pm.width())), Qt.KeepAspectRatio, Qt.SmoothTransformation)
-            except Exception:
-                pass
             self.canvas.set_pixmap(pm)
             self.canvas.set_before_pixmap(pm)
             self._update_info(pm)
@@ -3246,8 +3289,9 @@ class LightboxDialog(QDialog):
             if hasattr(self, 'rotation_slider_widget'):
                 self.rotation_slider_widget.reset()
         except Exception as e:
-            print(f"[PhotoLoad] ❌ DIAGNOSTIC: Failed to load photo: {e}")
-            self._orig_pil = None  # Ensure it's None on failure
+            print(f"[PhotoLoad] Failed to load photo: {e}")
+            self._orig_pil = None
+            self._orig_file_dimensions = None
             QMessageBox.warning(self, "Load failed", f"Couldn't load image: {e}")
 
     def _load_image(self, path: str):
@@ -4057,16 +4101,26 @@ class LightboxDialog(QDialog):
         """Switch UI to edit mode (reuse main canvas). Prepare edit staging but do not auto-open the panel."""
         print(f"[EditMode] 🔍 DIAGNOSTIC: Entering edit mode, _orig_pil={'exists' if self._orig_pil else 'None'}")
 
-        # CRITICAL FIX: If _orig_pil is None, try to reload from current path
+        # If _orig_pil is None, reload from current path at preview resolution
         if not self._orig_pil and hasattr(self, 'current_path') and self.current_path:
-            print(f"[EditMode] 🔄 DIAGNOSTIC: _orig_pil is None, attempting to reload from {self.current_path}")
+            print(f"[EditMode] _orig_pil is None, reloading from {self.current_path}")
             try:
                 img = Image.open(self.current_path)
-                img = ImageOps.exif_transpose(img).convert("RGBA")
-                self._orig_pil = img.copy()
-                print(f"[EditMode] ✅ DIAGNOSTIC: Successfully reloaded image, size: {self._orig_pil.size}")
+                orig_size = img.size
+                if max(orig_size) > self._PREVIEW_MAX_DIM:
+                    try:
+                        img.draft('RGB', (self._PREVIEW_MAX_DIM, self._PREVIEW_MAX_DIM))
+                    except Exception:
+                        pass
+                img = ImageOps.exif_transpose(img)
+                if max(img.size) > self._PREVIEW_MAX_DIM:
+                    img.thumbnail((self._PREVIEW_MAX_DIM, self._PREVIEW_MAX_DIM), Image.LANCZOS)
+                img = img.convert("RGBA")
+                self._orig_pil = img
+                self._orig_file_dimensions = orig_size
+                print(f"[EditMode] Reloaded at preview res: {self._orig_pil.size}")
             except Exception as e:
-                print(f"[EditMode] ❌ DIAGNOSTIC: Failed to reload image: {e}")
+                print(f"[EditMode] Failed to reload image: {e}")
                 QMessageBox.warning(self, "Edit Error", f"Cannot enter edit mode: Image not loaded.\n\nError: {e}")
                 return
 
@@ -4148,8 +4202,12 @@ class LightboxDialog(QDialog):
         self._image_list = list(image_list or [])
         self._current_index = max(0, min(start_index, len(self._image_list) - 1))
         if self._image_list:
-            self._path = self._image_list[self._current_index]
-            self._load_media(self._path)  # FIX: Use unified loader for videos and photos
+            new_path = self._image_list[self._current_index]
+            # Skip reload if already showing this path (prevents double-load on open)
+            if new_path == self._path and self._orig_pil is not None:
+                return
+            self._path = new_path
+            self._load_media(self._path)
 
     def _update_titles_and_meta(self):
         base = os.path.basename(self._path) if self._path else ""
@@ -4331,8 +4389,38 @@ class LightboxDialog(QDialog):
             QApplication.clipboard().setPixmap(self.canvas._pixmap)
             QMessageBox.information(self, "Copied", "Photo copied to clipboard.")
 
+    def _render_full_res_for_save(self):
+        """Re-open the original file at full resolution and apply current adjustments.
+
+        Smart Preview model: preview is capped at 2560px for responsiveness,
+        but saves re-process from the original for full quality output.
+        Returns the adjusted full-res PIL image, or falls back to _working_pil.
+        """
+        if not self._path or not os.path.isfile(self._path):
+            return self._working_pil
+
+        has_edits = any(v != 0 for v in self.adjustments.values())
+        orig_dims = getattr(self, '_orig_file_dimensions', None)
+        preview_is_smaller = (orig_dims and self._orig_pil and
+                              max(orig_dims) > max(self._orig_pil.size))
+
+        if not has_edits and not preview_is_smaller:
+            return self._working_pil
+
+        try:
+            print(f"[Save] Re-opening original at full resolution: {self._path}")
+            full_img = Image.open(self._path)
+            full_img = ImageOps.exif_transpose(full_img).convert("RGBA")
+            if has_edits:
+                full_img = self._apply_adjustment_pipeline(full_img, self.adjustments)
+            print(f"[Save] Full-res render complete: {full_img.size}")
+            return full_img
+        except Exception as e:
+            print(f"[Save] Full-res render failed, using preview: {e}")
+            return self._working_pil
+
     def _save_as_copy(self):
-        """Save working image as a new file (Save as copy)."""
+        """Save edited image as a new file at full resolution."""
         if not self._working_pil:
             QMessageBox.information(self, "Save as copy", "Nothing to save.")
             return
@@ -4340,9 +4428,9 @@ class LightboxDialog(QDialog):
         if not dest:
             return
         try:
-            self._working_pil.save(dest)
+            save_img = self._render_full_res_for_save()
+            save_img.save(dest)
             QMessageBox.information(self, "Saved", f"Saved copy to:\n{dest}")
-            # optional: keep edit open; do not overwrite original
             self._is_dirty = False
             if hasattr(self, "_save_action_overwrite") and self._save_action_overwrite:
                 self._save_action_overwrite.setEnabled(False)
@@ -4350,7 +4438,7 @@ class LightboxDialog(QDialog):
             QMessageBox.warning(self, "Save failed", f"Error: {e}")
 
     def _save_overwrite(self):
-        """Overwrite the original file with the working image (make edits permanent)."""
+        """Overwrite original file with edits applied at full resolution."""
         if not self._path:
             QMessageBox.warning(self, "Save", "No original path to save to.")
             return
@@ -4358,10 +4446,11 @@ class LightboxDialog(QDialog):
             QMessageBox.information(self, "Save", "Nothing to save.")
             return
         try:
-            self._working_pil.save(self._path)
-            # update original and edit base to reflect saved file
-            self._orig_pil = self._working_pil.copy()
-            self._edit_base_pil = self._orig_pil.copy()
+            save_img = self._render_full_res_for_save()
+            save_img.save(self._path)
+            # Reload the saved file as new preview-quality baseline
+            self._load_photo(self._path)
+            self._edit_base_pil = self._orig_pil.copy() if self._orig_pil else None
             self._is_dirty = False
             if hasattr(self, "_save_action_overwrite") and self._save_action_overwrite:
                 self._save_action_overwrite.setEnabled(False)

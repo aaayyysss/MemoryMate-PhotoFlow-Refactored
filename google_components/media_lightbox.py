@@ -177,7 +177,8 @@ class MediaLightbox(QDialog, VideoEditorMixin):
     - VIDEO EDITING: Trim, rotate, speed, adjustments, export
     """
 
-    def __init__(self, media_path: str, all_media: List[str], parent=None):
+    def __init__(self, media_path: str, all_media: List[str], parent=None,
+                 *, project_id: int = None):
         """
         Initialize media lightbox.
 
@@ -185,6 +186,7 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             media_path: Path to photo/video to display
             all_media: List of all media paths (photos + videos) in timeline order
             parent: Parent widget
+            project_id: Explicit project ID (preferred over parent introspection)
         """
         super().__init__(parent)
 
@@ -192,6 +194,7 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         self.all_media = all_media
         self.current_index = all_media.index(media_path) if media_path in all_media else 0
         self._media_loaded = False  # Track if media has been loaded
+        self._explicit_project_id = project_id  # Preferred source of project_id
 
         # Zoom state (for photos) - SMOOTH CONTINUOUS ZOOM
         # Like Current Layout's LightboxDialog - smooth zoom with mouse wheel
@@ -7876,24 +7879,27 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 """)
                 err.exec()
 
+    def _resolve_project_id(self):
+        """Resolve project_id: prefer explicit, fall back to parent introspection."""
+        if self._explicit_project_id is not None:
+            return self._explicit_project_id
+        # Legacy fallback for callers that don't pass project_id yet
+        if self.parent():
+            p = self.parent()
+            if hasattr(p, 'grid') and hasattr(p.grid, 'project_id'):
+                return p.grid.project_id
+            if hasattr(p, 'layout_manager'):
+                layout = p.layout_manager.get_active_layout()
+                if layout and hasattr(layout, 'project_id'):
+                    return layout.project_id
+        return None
+
     def _toggle_favorite(self):
         """Toggle favorite status of current media (DB-backed)."""
         try:
-            # Get project_id from parent window's grid or layout
-            project_id = None
-            if hasattr(self, 'parent') and self.parent():
-                parent = self.parent()
-                # Try to get project_id from grid (MainWindow has grid.project_id)
-                if hasattr(parent, 'grid') and hasattr(parent.grid, 'project_id'):
-                    project_id = parent.grid.project_id
-                # Fallback: try to get from layout manager's active layout
-                elif hasattr(parent, 'layout_manager'):
-                    layout = parent.layout_manager.get_active_layout()
-                    if layout and hasattr(layout, 'project_id'):
-                        project_id = layout.project_id
-            
+            project_id = self._resolve_project_id()
             if project_id is None:
-                print("[MediaLightbox] ⚠️ Cannot toggle favorite: project_id not available")
+                print("[MediaLightbox] Cannot toggle favorite: project_id not available")
                 return
             
             # Check current favorite status from database
