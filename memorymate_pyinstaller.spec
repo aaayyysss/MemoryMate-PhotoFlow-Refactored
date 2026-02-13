@@ -13,7 +13,7 @@ PREREQUISITES:
     3. Optionally install FFmpeg and add to PATH (for video features)
 
 OUTPUT:
-    dist/MemoryMate-PhotoFlow-11.01.01.03-12/  (ONEDIR bundle)
+    dist/MemoryMate-PhotoFlow-v-11_01.01.04-04/  (ONEDIR bundle)
 """
 
 import os
@@ -577,7 +577,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='MemoryMate-PhotoFlow-11.01.01.03-12',
+    name='MemoryMate-PhotoFlow-v-11_01.01.04-04',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -604,5 +604,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='MemoryMate-PhotoFlow-11.01.01.03-12',
+    name='MemoryMate-PhotoFlow-v-11_01.01.04-04',
 )
