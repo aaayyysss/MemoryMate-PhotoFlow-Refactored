@@ -133,6 +133,47 @@ class StartupWorker(QThread):
             if self._cancel:
                 return
 
+            # STEP 7b — Image format plugin self-test (80%)
+            self.progress.emit(80, "Checking image format support…")
+            self.emit_detail("🖼 Checking image format plugins...")
+            try:
+                from PySide6.QtGui import QImageReader
+                supported = set()
+                for fmt in QImageReader.supportedImageFormats():
+                    supported.add(bytes(fmt).decode('ascii', errors='ignore').lower())
+                expected = {'jpeg', 'png', 'gif', 'bmp'}
+                optional = {'webp', 'tiff', 'svg'}
+                missing_required = expected - supported
+                available_optional = optional & supported
+                missing_optional = optional - supported
+                if missing_required:
+                    self.emit_detail(f"⚠ Missing required Qt image plugins: {', '.join(sorted(missing_required))}")
+                    print(f"[Startup] WARNING: Missing required Qt image plugins: {missing_required}")
+                else:
+                    self.emit_detail("✓ Core image formats: JPEG, PNG, GIF, BMP")
+                if available_optional:
+                    self.emit_detail(f"✓ Optional formats: {', '.join(sorted(available_optional)).upper()}")
+                if missing_optional:
+                    self.emit_detail(f"  Optional not available (PIL fallback): {', '.join(sorted(missing_optional)).upper()}")
+                # HEIF check
+                try:
+                    import pillow_heif
+                    self.emit_detail(f"✓ HEIC/HEIF support: pillow_heif v{pillow_heif.__version__}")
+                except ImportError:
+                    self.emit_detail("⚠ HEIC/HEIF: pillow_heif not installed (iPhone photos may use file dates)")
+                # RAW check
+                try:
+                    import rawpy
+                    self.emit_detail(f"✓ RAW support: rawpy v{rawpy.__version__}")
+                except ImportError:
+                    self.emit_detail("⚠ RAW: rawpy not installed (CR2/NEF/ARW files unsupported)")
+                print(f"[Startup] Qt image plugins: {sorted(supported)}")
+            except Exception as e:
+                print(f"[Startup] Image format self-test error: {e}")
+                self.emit_detail(f"⚠ Image format check failed: {e}")
+            if self._cancel:
+                return
+
             # STEP 8 — Check FFmpeg (85%)
             self.progress.emit(85, "Checking video support…")
             self.emit_detail("🎬 Checking video support...")
