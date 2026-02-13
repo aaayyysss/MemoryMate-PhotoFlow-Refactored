@@ -362,6 +362,8 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         self._video_fit_timer.setSingleShot(True)
         self._video_fit_timer.setInterval(16)  # ~1 frame
         self._video_fit_timer.timeout.connect(self._do_fit_video_view)
+        self._video_fit_ready = False  # True after first valid fit — gates zoom
+        self._video_min_viewport_px = 160  # Minimum viewport size for valid fit
 
         # PHASE C #4: Compare Mode
         self.compare_mode_active = False  # Compare mode state
@@ -1914,6 +1916,14 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             )
             is_zoom_target = is_editor_canvas or is_video_view
 
+            # EVENT-DRIVEN VIDEO FIT: React to Show/Resize on video viewport
+            # This replaces timer-based guessing with proper Qt lifecycle events.
+            # When the video view becomes visible or gets resized, we schedule a fit.
+            # This is how Google Photos / Lightroom ensure the video fills the canvas.
+            if is_video_view and event.type() in (QEvent.Show, QEvent.Resize):
+                if getattr(self, 'is_video_file', False):
+                    self._fit_video_view()
+
             # Handle wheel zoom on any zoom target
             if is_zoom_target and event.type() == QEvent.Wheel:
                 # Check if in editor mode
@@ -2969,6 +2979,11 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                         self.video_widget.show()
                         print("[Editor] ✓ Video widget moved back to viewer page")
 
+                # Reparenting invalidates geometry — schedule refit
+                self._video_fit_ready = False
+                self._last_video_fit_sig = None
+                self._fit_video_view()
+
                 # Hide crop_toolbar when exiting video edit mode
                 if hasattr(self, 'crop_toolbar'):
                     self.crop_toolbar.hide()
@@ -3015,6 +3030,11 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                         container_layout.addWidget(self.video_widget)
                         self.video_widget.show()
                         print("[Editor] ✓ Video widget moved back to viewer page")
+
+                # Reparenting invalidates geometry — schedule refit
+                self._video_fit_ready = False
+                self._last_video_fit_sig = None
+                self._fit_video_view()
 
                 # Reset video edits
                 self.video_trim_start = 0
@@ -6073,11 +6093,16 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             # prevent GC of the closure
             self._native_size_callback = _on_native_size
 
-            # Show video widget — let layouts handle sizing
+            # CORE GEOMETRY FIX: Make scroll area auto-resize the container
+            # so video_graphics_view gets real geometry via its Expanding policy.
+            # Without this, the container stays tiny → viewport stays tiny → dot.
+            # (Restored to False in _load_photo for photo zoom/scroll behavior.)
+            if hasattr(self, 'scroll_area'):
+                self.scroll_area.setWidgetResizable(True)
+
+            # Show video widget with minimum size safety net
             if hasattr(self, 'video_widget'):
-                # Reset minimum sizes so the layout can shrink freely on resize
-                self.video_widget.setMinimumSize(0, 0)
-                self.media_container.setMinimumSize(0, 0)
+                self.video_widget.setMinimumSize(320, 240)
                 self.video_widget.show()
 
             # Show video controls in bottom toolbar
@@ -6097,10 +6122,14 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             if not os.path.exists(self.media_path):
                 raise FileNotFoundError(f"Video file not found: {self.media_path}")
 
-            # Reset zoom for new media load
+            # Reset zoom and fit state for new media load
             self.edit_zoom_level = 1.0
             self.zoom_mode = "fit"
             self._last_video_fit_sig = None  # Force re-fit for new video
+            self._video_fit_ready = False  # Block zoom until valid fit
+            # Reset transform to prevent stale "dot" scale from previous video
+            self.video_graphics_view.resetTransform()
+            self.video_base_scale = 1.0
 
             # Load and play video
             video_url = QUrl.fromLocalFile(self.media_path)
@@ -6189,11 +6218,13 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         """
         Fit video to view and calculate base scale for zoom operations.
 
-        Triggered by nativeSizeChanged (event-driven, not polling).
-        Does NOT reset edit_zoom_level — that is only done on media switch.
-
-        Guards against tiny viewport sizes (e.g. 6x16) that occur when Qt
-        layout hasn't settled yet — schedules a retry instead.
+        EVENT-DRIVEN DESIGN (Google Photos / Lightroom pattern):
+        - Triggered by nativeSizeChanged AND by Show/Resize events on the
+          video viewport (via eventFilter). No timer-based guessing.
+        - Does NOT retry via QTimer.singleShot — if the viewport is too small,
+          the next Resize/Show event will re-trigger us automatically.
+        - Sets _video_fit_ready=True on success, gating zoom operations.
+        - Does NOT reset edit_zoom_level — that is only done on media switch.
         """
         try:
             if not hasattr(self, 'video_item') or not hasattr(self, 'video_graphics_view'):
@@ -6203,6 +6234,10 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             if native_size.isEmpty() or native_size.width() <= 0 or native_size.height() <= 0:
                 return  # nativeSizeChanged will fire again when size becomes valid
 
+            # Only fit when the view is actually visible (not hidden in stacked widget)
+            if not self.video_graphics_view.isVisible():
+                return
+
             view_rect = self.video_graphics_view.viewport().rect()
             view_w = view_rect.width()
             view_h = view_rect.height()
@@ -6210,12 +6245,10 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             if view_w <= 0 or view_h <= 0:
                 return
 
-            # Guard: during initial show/layout, the viewport can briefly report
-            # tiny sizes (e.g. 6x16) which makes the video a dot. Retry after
-            # layout settles instead of computing a useless base_scale.
-            if view_w < 100 or view_h < 100:
-                QTimer.singleShot(0, self._fit_video_view)
-                QTimer.singleShot(50, self._fit_video_view)
+            # Guard: viewport must have real geometry (not a tiny interim size).
+            # No timer retry — the next Resize/Show event from Qt will call us again.
+            min_vp = getattr(self, '_video_min_viewport_px', 160)
+            if view_w < min_vp or view_h < min_vp:
                 return
 
             video_w = native_size.width()
@@ -6234,6 +6267,8 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             self.video_scene.setSceneRect(0, 0, video_w, video_h)
 
             # Apply the transform (uses current edit_zoom_level, preserving user zoom)
+            # _apply_video_zoom checks _video_fit_ready, so set it BEFORE calling
+            self._video_fit_ready = True
             self._apply_video_zoom()
 
             self.video_graphics_view.centerOn(self.video_item)
@@ -6288,6 +6323,14 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 if self.mode_stack.currentIndex() != 0:
                     print(f"[MediaLightbox] ⚠️ Mode stack was on page {self.mode_stack.currentIndex()}, switching to viewer (0)")
                     self.mode_stack.setCurrentIndex(0)
+
+            # Restore scroll area to non-resizable mode for photo zoom/scroll
+            # (Video mode sets widgetResizable=True for auto-geometry)
+            if hasattr(self, 'scroll_area'):
+                self.scroll_area.setWidgetResizable(False)
+
+            # Clear video fit state
+            self._video_fit_ready = False
 
             # Hide video widget and controls if they exist AND are not None
             if hasattr(self, 'video_widget') and self.video_widget is not None:
@@ -7396,6 +7439,10 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         if not is_video and not self.original_pixmap:
             return
 
+        # Block video zoom until a valid fit has established a real base_scale
+        if is_video and not getattr(self, '_video_fit_ready', False):
+            return
+
         # PHASE A #3: Store old zoom for cursor-centered calculation
         old_zoom = self.zoom_level
 
@@ -7496,9 +7543,17 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             self.scroll_area.setCursor(Qt.ArrowCursor)
 
     def _apply_video_zoom(self):
-        """Apply current zoom level to video preview using view transform."""
+        """Apply current zoom level to video preview using view transform.
+
+        GUARD: Blocked until _video_fit_ready is True. This prevents
+        multiplying a "dot" base_scale before a valid fit has happened,
+        which is the root cause of the "video appears as a dot" bug.
+        """
         try:
             if not hasattr(self, 'video_graphics_view') or not self.video_graphics_view:
+                return
+            # Block zoom until a valid fit has computed a real base_scale
+            if not getattr(self, '_video_fit_ready', False):
                 return
             # Clamp and apply using base fit scale
             self.edit_zoom_level = max(0.25, min(getattr(self, 'edit_zoom_level', 1.0), 4.0))
@@ -7522,6 +7577,7 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         if self._is_video(self.media_path):
             self.edit_zoom_level = 1.0
             self.zoom_mode = "fit"
+            self._last_video_fit_sig = None  # Force recompute through dedup
             self._do_fit_video_view()  # Recalculate base_scale for current viewport
             self._update_zoom_status()
             return
