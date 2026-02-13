@@ -6100,6 +6100,7 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             # Reset zoom for new media load
             self.edit_zoom_level = 1.0
             self.zoom_mode = "fit"
+            self._last_video_fit_sig = None  # Force re-fit for new video
 
             # Load and play video
             video_url = QUrl.fromLocalFile(self.media_path)
@@ -6190,6 +6191,9 @@ class MediaLightbox(QDialog, VideoEditorMixin):
 
         Triggered by nativeSizeChanged (event-driven, not polling).
         Does NOT reset edit_zoom_level — that is only done on media switch.
+
+        Guards against tiny viewport sizes (e.g. 6x16) that occur when Qt
+        layout hasn't settled yet — schedules a retry instead.
         """
         try:
             if not hasattr(self, 'video_item') or not hasattr(self, 'video_graphics_view'):
@@ -6206,8 +6210,22 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             if view_w <= 0 or view_h <= 0:
                 return
 
+            # Guard: during initial show/layout, the viewport can briefly report
+            # tiny sizes (e.g. 6x16) which makes the video a dot. Retry after
+            # layout settles instead of computing a useless base_scale.
+            if view_w < 100 or view_h < 100:
+                QTimer.singleShot(0, self._fit_video_view)
+                QTimer.singleShot(50, self._fit_video_view)
+                return
+
             video_w = native_size.width()
             video_h = native_size.height()
+
+            # Dedup: skip if geometry + zoom haven't changed (prevents micro-stutter)
+            fit_sig = (view_w, view_h, video_w, video_h, getattr(self, 'edit_zoom_level', 1.0))
+            if getattr(self, '_last_video_fit_sig', None) == fit_sig:
+                return
+            self._last_video_fit_sig = fit_sig
 
             scale_w = view_w / video_w
             scale_h = view_h / video_h
