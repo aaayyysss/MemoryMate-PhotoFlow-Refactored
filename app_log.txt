@@ -1,13 +1,13 @@
-C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.03-Photo-App\MemoryMate-PhotoFlow-Refactored-main-16>python main_qt.py
+C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.03-Photo-App\MemoryMate-PhotoFlow-Refactored-main-17>python main_qt.py
 [Startup] pillow_heif available — HEIC/HEIF support enabled.
 🔇 Decoder warnings suppressed per settings.
 🔇 Decoder warnings suppressed (Qt, Pillow, ICC).
-✅ Loaded en translations from C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.03-Photo-App\MemoryMate-PhotoFlow-Refactored-main-16\locales\en.json
+✅ Loaded en translations from C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.03-Photo-App\MemoryMate-PhotoFlow-Refactored-main-17\locales\en.json
 🌍 Language initialized: en
-2026-02-13 16:12:11,855 [INFO] ================================================================================
-2026-02-13 16:12:11,855 [INFO] MemoryMate-PhotoFlow logging initialized (level=INFO)
-2026-02-13 16:12:11,855 [INFO] Log file: C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.03-Photo-App\MemoryMate-PhotoFlow-Refactored-main-16\app_log.txt
-2026-02-13 16:12:11,855 [INFO] ================================================================================
+2026-02-13 17:13:27,746 [INFO] ================================================================================
+2026-02-13 17:13:27,746 [INFO] MemoryMate-PhotoFlow logging initialized (level=INFO)
+2026-02-13 17:13:27,746 [INFO] Log file: C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.03-Photo-App\MemoryMate-PhotoFlow-Refactored-main-17\app_log.txt
+2026-02-13 17:13:27,746 [INFO] ================================================================================
 ============================================================
 SCREEN INFORMATION (DPI-Aware)
 ============================================================
@@ -20,18 +20,18 @@ Taskbar Height:  48px
 Adaptive Margin: 60px
 Adaptive Icons:  24px
 ============================================================
-2026-02-13 16:12:11,977 [INFO] Installed Qt message handler to suppress TIFF warnings
-2026-02-13 16:12:11,977 [INFO] Qt message handler installed to suppress TIFF warnings
-2026-02-13 16:12:11,989 [INFO] [Store] Initialized (ui_epoch=0)
-2026-02-13 16:12:11,989 [INFO] [Startup] ProjectState store initialized
+2026-02-13 17:13:27,872 [INFO] Installed Qt message handler to suppress TIFF warnings
+2026-02-13 17:13:27,881 [INFO] Qt message handler installed to suppress TIFF warnings
+2026-02-13 17:13:27,900 [INFO] [Store] Initialized (ui_epoch=0)
+2026-02-13 17:13:27,900 [INFO] [Startup] ProjectState store initialized
 [Main] Starting Qt event loop...
 [Startup] Database schema initialized successfully
-[Cache] {'entries': 0, 'size_mb': 0.0, 'path': 'C:\\Users\\suleimaa\\Downloads\\Photo-Sorter\\11.01.01.03-Photo-App\\MemoryMate-PhotoFlow-Refactored-main-16\\thumbnails_cache.db', 'last_updated': '2026-02-13 16:12'}
-2026-02-13 16:12:18,228 [INFO] SearchService initialized
+[Cache] {'entries': 0, 'size_mb': 0.0, 'path': 'C:\\Users\\suleimaa\\Downloads\\Photo-Sorter\\11.01.01.03-Photo-App\\MemoryMate-PhotoFlow-Refactored-main-17\\thumbnails_cache.db', 'last_updated': '2026-02-13 17:13'}
+2026-02-13 17:13:33,821 [INFO] SearchService initialized
 [Startup] SearchService initialized
-2026-02-13 16:12:18,228 [INFO] LRUCache initialized with capacity=200, max_memory=100.0MB
-2026-02-13 16:12:18,228 [INFO] ThumbnailService initialized (L1 capacity=200, max_memory=100.0MB, timeout=5.0s)
-2026-02-13 16:12:18,228 [INFO] Global ThumbnailService created with Phase 1B memory limits
+2026-02-13 17:13:33,824 [INFO] LRUCache initialized with capacity=200, max_memory=100.0MB
+2026-02-13 17:13:33,824 [INFO] ThumbnailService initialized (L1 capacity=200, max_memory=100.0MB, timeout=5.0s)
+2026-02-13 17:13:33,824 [INFO] Global ThumbnailService created with Phase 1B memory limits
 [Startup] ThumbnailService initialized
 [Startup] Qt image plugins: ['bmp', 'cur', 'gif', 'icns', 'ico', 'jfif', 'jpeg', 'jpg', 'pbm', 'pdf', 'pgm', 'png', 'ppm', 'svg', 'svgz', 'tga', 'tif', 'tiff', 'wbmp', 'webp', 'xbm', 'xpm']
 [Startup] ⚠️ CREATING MainWindow instance...
@@ -48,20 +48,20 @@ Adaptive Icons:  24px
 [MainWindow] 📍 Window position: x=60, y=60
 [MainWindow] ✓ Window geometry: PySide6.QtCore.QRect(60, 60, 1800, 1032)
 🔇 Qt/Pillow decoder warnings silenced (per user settings).
-2026-02-13 16:12:18,330 [INFO] [SemanticSearch] Result caching ENABLED (cachetools available)
-2026-02-13 16:12:18,330 [INFO] [SearchHistory] Creating search history tables...
-2026-02-13 16:12:18,362 [INFO] [SearchHistory] Tables created successfully
-2026-02-13 16:12:18,362 [INFO] [SemanticSearch] Result cache initialized (100 entries, 5min TTL)
-2026-02-13 16:12:18,380 [INFO] [SemanticSearch] No project model set, using default: openai/clip-vit-base-patch32
-2026-02-13 16:12:18,380 [INFO] [SemanticSearch] 🔍 Available CLIP models found: 2
-2026-02-13 16:12:18,380 [INFO]   ✓ openai/clip-vit-base-patch32: Base model, fastest (512-D) (512-D, 600MB) ← WILL BE USED
-2026-02-13 16:12:18,380 [INFO]   ✓ openai/clip-vit-large-patch14: Large model, best quality (768-D) (768-D, 1700MB)
-2026-02-13 16:12:18,380 [INFO] [SemanticSearch] 🎯 Will use: openai/clip-vit-base-patch32 - Base model, fastest (512-D)
-2026-02-13 16:12:18,380 [WARNING] [SemanticSearch] ⚠️  Better model available but not being used!
+2026-02-13 17:13:33,911 [INFO] [SemanticSearch] Result caching ENABLED (cachetools available)
+2026-02-13 17:13:33,916 [INFO] [SearchHistory] Creating search history tables...
+2026-02-13 17:13:33,942 [INFO] [SearchHistory] Tables created successfully
+2026-02-13 17:13:33,944 [INFO] [SemanticSearch] Result cache initialized (100 entries, 5min TTL)
+2026-02-13 17:13:33,948 [INFO] [SemanticSearch] No project model set, using default: openai/clip-vit-base-patch32
+2026-02-13 17:13:33,948 [INFO] [SemanticSearch] 🔍 Available CLIP models found: 2
+2026-02-13 17:13:33,948 [INFO]   ✓ openai/clip-vit-base-patch32: Base model, fastest (512-D) (512-D, 600MB) ← WILL BE USED
+2026-02-13 17:13:33,948 [INFO]   ✓ openai/clip-vit-large-patch14: Large model, best quality (768-D) (768-D, 1700MB)
+2026-02-13 17:13:33,948 [INFO] [SemanticSearch] 🎯 Will use: openai/clip-vit-base-patch32 - Base model, fastest (512-D)
+2026-02-13 17:13:33,948 [WARNING] [SemanticSearch] ⚠️  Better model available but not being used!
   clip-vit-large-patch14 is installed but has embeddings from base-patch32.
   To use the large model: Tools → Extract Embeddings (will auto-use large model)
-2026-02-13 16:12:18,380 [INFO] [MainWindow] ✨ Semantic search widget added to toolbar - visible: False, size: PySide6.QtCore.QSize(100, 30)
-2026-02-13 16:12:18,409 [INFO] [SessionState] Loaded: section=locations, selection=None/None
+2026-02-13 17:13:33,961 [INFO] [MainWindow] ✨ Semantic search widget added to toolbar - visible: False, size: PySide6.QtCore.QSize(100, 30)
+2026-02-13 17:13:33,996 [INFO] [SessionState] Loaded: section=folders, selection=folder/1
 [MainWindow] PHASE 1: Session project_id=1 not in DB, clearing
 [MainWindow] PHASE 1: Restoring project_id=None from session state
 [Sidebar] Device auto-detection disabled (manual refresh only)
@@ -73,11 +73,11 @@ Adaptive Icons:  24px
 [SidebarQt] list_branches() returned 0 branches
 [Sidebar] Loading videos for project_id=None
 [Sidebar] Found 0 videos in project None
-2026-02-13 16:12:18,472 [INFO] [get_location_clusters] GPS columns exist: True
-2026-02-13 16:12:18,472 [INFO] [get_location_clusters] Found 0 photos with GPS data (project_id=None)
-2026-02-13 16:12:18,472 [WARNING] [get_location_clusters] No GPS data found. Total photos in DB: 0
-2026-02-13 16:12:18,472 [INFO] [get_location_clusters] get_photos_by_location returned 0 location groups
-2026-02-13 16:12:18,472 [INFO] [get_location_clusters] Returning 0 location clusters
+2026-02-13 17:13:34,060 [INFO] [get_location_clusters] GPS columns exist: True
+2026-02-13 17:13:34,060 [INFO] [get_location_clusters] Found 0 photos with GPS data (project_id=None)
+2026-02-13 17:13:34,060 [WARNING] [get_location_clusters] No GPS data found. Total photos in DB: 0
+2026-02-13 17:13:34,060 [INFO] [get_location_clusters] get_photos_by_location returned 0 location groups
+2026-02-13 17:13:34,061 [INFO] [get_location_clusters] Returning 0 location clusters
 [Sidebar] No mobile devices detected - added help message
 [SidebarQt] switch_display_mode(list) - canceling old workers
 [SidebarQt] Hiding tabs controller and accordion
@@ -93,11 +93,11 @@ Adaptive Icons:  24px
 [SidebarQt] list_branches() returned 0 branches
 [Sidebar] Loading videos for project_id=None
 [Sidebar] Found 0 videos in project None
-2026-02-13 16:12:18,516 [INFO] [get_location_clusters] GPS columns exist: True
-2026-02-13 16:12:18,517 [INFO] [get_location_clusters] Found 0 photos with GPS data (project_id=None)
-2026-02-13 16:12:18,517 [WARNING] [get_location_clusters] No GPS data found. Total photos in DB: 0
-2026-02-13 16:12:18,517 [INFO] [get_location_clusters] get_photos_by_location returned 0 location groups
-2026-02-13 16:12:18,518 [INFO] [get_location_clusters] Returning 0 location clusters
+2026-02-13 17:13:34,092 [INFO] [get_location_clusters] GPS columns exist: True
+2026-02-13 17:13:34,092 [INFO] [get_location_clusters] Found 0 photos with GPS data (project_id=None)
+2026-02-13 17:13:34,092 [WARNING] [get_location_clusters] No GPS data found. Total photos in DB: 0
+2026-02-13 17:13:34,092 [INFO] [get_location_clusters] get_photos_by_location returned 0 location groups
+2026-02-13 17:13:34,092 [INFO] [get_location_clusters] Returning 0 location clusters
 [Sidebar] No mobile devices detected - added help message
 [SidebarQt] _build_tree_model() completed
 [GRID] P2-26: Created dedicated thumbnail thread pool with 4 workers
@@ -110,24 +110,24 @@ Adaptive Icons:  24px
 [GooglePhotosLayout] ✓ Reusing existing semantic_search widget from main_window
 [GooglePhotosLayout] ✓ Semantic search widget visibility ensured
 [GooglePhotosLayout] ✓ Semantic search toolbar visibility ensured
-2026-02-13 16:12:19,216 [INFO] [AccordionSidebar] Initializing with project_id=None
-2026-02-13 16:12:19,226 [INFO] [AccordionSidebar] Created 8 sections
-2026-02-13 16:12:19,236 [INFO] [AccordionSidebar] Expanding section: folders
-2026-02-13 16:12:19,237 [WARNING] [FoldersSection] No project_id set
-2026-02-13 16:12:19,337 [INFO] [AccordionSidebar] Section folders loaded and displayed
+2026-02-13 17:13:34,851 [INFO] [AccordionSidebar] Initializing with project_id=None
+2026-02-13 17:13:34,867 [INFO] [AccordionSidebar] Created 8 sections
+2026-02-13 17:13:34,867 [INFO] [AccordionSidebar] Expanding section: folders
+2026-02-13 17:13:34,867 [WARNING] [FoldersSection] No project_id set
+2026-02-13 17:13:34,988 [INFO] [AccordionSidebar] Section folders loaded and displayed
 [GooglePhotosLayout] ✅ Scroll-triggered lazy loading enabled
 [LayoutManager] Setting new central widget: QWidget
 [GooglePhotosLayout] Layout activated
 [LayoutManager] Switched to: Google Photos Style
 [Startup] Layout system initialized successfully
 [MainWindow] __init__() COMPLETED - returning to main_qt.py
-[MainWindow] Window object: <main_window_qt.MainWindow(0x14d5f6c0fc0) at 0x0000014D102BBA40>
+[MainWindow] Window object: <main_window_qt.MainWindow(0x13bcc30d0c0) at 0x0000013BD50C8540>
 [MainWindow] Window valid: N/A
 [Startup] ✅ MainWindow instance created successfully
 [Startup] MainWindow type: <class 'main_window_qt.MainWindow'>
 [Startup] MainWindow is valid: True
-2026-02-13 16:12:19,401 [INFO] [Store] QtActionBridge initialized
-2026-02-13 16:12:19,402 [INFO] [Startup] QtActionBridge attached to MainWindow
+2026-02-13 17:13:35,048 [INFO] [Store] QtActionBridge initialized
+2026-02-13 17:13:35,048 [INFO] [Startup] QtActionBridge attached to MainWindow
 [Startup] Updating splash progress to 95%...
 [GooglePhotosLayout] 📐 Responsive grid: 2 columns (viewport: 397px, thumb: 200px)
 
@@ -156,10 +156,10 @@ Adaptive Icons:  24px
 [Startup] Window on screen: \\.\DISPLAY1
 [MainWindow] ✓ Window is on-screen (center at 959, 606)
 [Startup] Window raised and activated
-[Startup] _after_first_paint fired at 850327.839s
-2026-02-13 16:12:19,543 [INFO] JobService initialized
-2026-02-13 16:12:19,558 [INFO] [JobManager] Initialized with max 4 workers
-2026-02-13 16:12:19,559 [INFO] [JobManager] Startup throttle enabled (max_threads=1)
+[Startup] _after_first_paint fired at 854003.491s
+2026-02-13 17:13:35,211 [INFO] JobService initialized
+2026-02-13 17:13:35,211 [INFO] [JobManager] Initialized with max 4 workers
+2026-02-13 17:13:35,211 [INFO] [JobManager] Startup throttle enabled (max_threads=1)
 [Startup] Scheduled _on_startup_ready for GooglePhotosLayout
 [GooglePhotosLayout] First paint done — starting initial photo load
 [GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px)...
@@ -171,9 +171,9 @@ Adaptive Icons:  24px
 [Startup]   2. Window size: 1800x1032
 [Startup]   3. Screen geometry: PySide6.QtCore.QRect(0, 0, 1920, 1152)
 [Startup]   4. Check if window is off-screen or on disconnected monitor
-2026-02-13 16:12:19,778 [INFO] [Main] Async FFmpeg detection worker launched
-2026-02-13 16:12:19,783 [INFO] [FFmpegDetectionWorker] Starting async FFmpeg detection...
-2026-02-13 16:12:19,787 [INFO] [FFmpegDetectionWorker] Fresh detection completed in 0.00s
+2026-02-13 17:13:35,353 [INFO] [Main] Async FFmpeg detection worker launched
+2026-02-13 17:13:35,358 [INFO] [FFmpegDetectionWorker] Starting async FFmpeg detection...
+2026-02-13 17:13:35,358 [INFO] [FFmpegDetectionWorker] Fresh detection completed in 0.00s
 [MainWindow] Starting deferred initialization...
 [MainWindow] ✅ Database handle initialized (fast)
 [MainWindow] ✅ Session state restoration scheduled
@@ -183,16 +183,17 @@ Adaptive Icons:  24px
 [MainWindow] Cache purge scheduled (5s delay)
 [MainWindow] ✅ Deferred initialization completed successfully
 [MainWindow] PHASE 2: Using Current Layout (SidebarQt) - will restore via tree selection
-[MainWindow] PHASE 3 (SidebarQt): No selection to restore
-2026-02-13 16:12:21,832 [INFO] [JobManager] Registered tracked job -1: maintenance — Database maintenance (backfill & index)
+[MainWindow] PHASE 3 (SidebarQt): Restoring folder selection: Images (ID=1)
+[MainWindow] PHASE 3 (SidebarQt): Restored folder selection: Images (ID=1)
+2026-02-13 17:13:37,506 [INFO] [JobManager] Registered tracked job -1: maintenance — Database maintenance (backfill & index)
 [MainWindow] Maintenance job registered: job_id=-1
-2026-02-13 16:12:21,862 [INFO] [JobManager] Tracked job -1 (maintenance) completed: None
+2026-02-13 17:13:37,545 [INFO] [JobManager] Tracked job -1 (maintenance) completed: None
 [MainWindow] Background maintenance completed
 [Startup] Global QThreadPool restored to 1 threads
-2026-02-13 16:12:24,561 [INFO] [JobManager] Startup throttle disabled (restored max_threads=12)
+2026-02-13 17:13:40,203 [INFO] [JobManager] Startup throttle disabled (restored max_threads=12)
 [MainWindow] Deferred cache purge completed
 ✅ InsightFace detected with buffalo_l models
-   Location: C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.03-Photo-App\MemoryMate-PhotoFlow-Refactored-main-16\models\buffalo_l
+   Location: C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.03-Photo-App\MemoryMate-PhotoFlow-Refactored-main-17\models\buffalo_l
 [GooglePhotosLayout] ➕ New Project option selected
 [GooglePhotosLayout] 🆕🆕🆕 CREATE PROJECT BUTTON CLICKED! 🆕🆕🆕
 [GooglePhotosLayout] ✓ Calling breadcrumb_nav._create_new_project()...
@@ -200,8 +201,8 @@ Adaptive Icons:  24px
 
 [MainWindow] ========== _on_project_changed_by_id(1) STARTED ==========
 [GooglePhotosLayout] set_project() called: None -> 1
-2026-02-13 16:14:02,658 [INFO] [AccordionSidebar] Switching project: None → 1
-2026-02-13 16:14:02,659 [INFO] [FoldersSection] Loading folders (generation 3)...
+2026-02-13 17:13:51,603 [INFO] [AccordionSidebar] Switching project: None → 1
+2026-02-13 17:13:51,603 [INFO] [FoldersSection] Loading folders (generation 3)...
 [GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px)...
 [GooglePhotosLayout] 🔍 Starting async photo load (generation 2) - existing content preserved...
 [GooglePhotosLayout] Paged load started (generation 2, page_size=250)
@@ -217,333 +218,333 @@ Adaptive Icons:  24px
 [GooglePhotosLayout] 🔍 Starting async photo load (generation 3) - existing content preserved...
 [GooglePhotosLayout] Paged load started (generation 3, page_size=250)
 [GooglePhotosLayout] ✓ Layout refreshed after project creation
-2026-02-13 16:14:02,675 [INFO] [GoogleLayout] Page count ready: gen=3 total=0 (threshold=3000)
-2026-02-13 16:14:02,675 [INFO] [FoldersSection] Loaded 0 folders (gen 3)
-2026-02-13 16:14:02,675 [INFO] [GoogleLayout] Page ready: gen=3 offset=0 rows=0 loaded=0/0
-[ReferenceDB] Closed connection for thread 37152
+2026-02-13 17:13:51,622 [INFO] [FoldersSection] Loaded 0 folders (gen 3)
+2026-02-13 17:13:51,622 [INFO] [GoogleLayout] Page count ready: gen=3 total=0 (threshold=3000)
+[ReferenceDB] Closed connection for thread 45260
+2026-02-13 17:13:51,622 [INFO] [GoogleLayout] Page ready: gen=3 offset=0 rows=0 loaded=0/0
 [GooglePhotosLayout] No photos found in project 1
-2026-02-13 16:14:02,675 [INFO] [GoogleLayout] All pages loaded: 0 rows total
-2026-02-13 16:14:02,679 [INFO] [FoldersSection] Data loaded successfully (gen 3)
-2026-02-13 16:14:02,755 [INFO] [AccordionSidebar] Section folders loaded and displayed
-2026-02-13 16:14:31,892 [INFO] [JobManager] Registered tracked job -2: scan — Scanning Images
-2026-02-13 16:14:31,892 [INFO] Database connection verified for scan
-2026-02-13 16:14:31,902 [INFO] DBWriter timer started in worker thread
-2026-02-13 16:14:31,902 [INFO] [ScanWorkerAdapter] Starting scan of C:/Users/suleimaa/Downloads/Photo-Sorter/Images (thread=Dummy-7, is_main=False)
-2026-02-13 16:14:31,904 [INFO] [Store] ScanStarted job=-2 src=scan_controller deltas={'jobs_v': '0→1'}  →  3 subscriber(s)
-2026-02-13 16:14:31,904 [INFO] Starting scan: C:/Users/suleimaa/Downloads/Photo-Sorter/Images (incremental=True, skip_unchanged=True)
-2026-02-13 16:14:31,923 [INFO] Discovered 25 candidate image files and 2 video files
-2026-02-13 16:14:31,923 [INFO] Loading existing metadata for incremental scan...
-2026-02-13 16:14:31,923 [INFO] ✓ Loaded 0 existing photo records and 0 video records
+2026-02-13 17:13:51,622 [INFO] [GoogleLayout] All pages loaded: 0 rows total
+2026-02-13 17:13:51,628 [INFO] [FoldersSection] Data loaded successfully (gen 3)
+2026-02-13 17:13:51,696 [INFO] [AccordionSidebar] Section folders loaded and displayed
+2026-02-13 17:14:07,049 [INFO] [JobManager] Registered tracked job -2: scan — Scanning Images
+2026-02-13 17:14:07,050 [INFO] Database connection verified for scan
+2026-02-13 17:14:07,054 [INFO] DBWriter timer started in worker thread
+2026-02-13 17:14:07,054 [INFO] [ScanWorkerAdapter] Starting scan of C:/Users/suleimaa/Downloads/Photo-Sorter/Images (thread=Dummy-7, is_main=False)
+2026-02-13 17:14:07,054 [INFO] [Store] ScanStarted job=-2 src=scan_controller deltas={'jobs_v': '0→1'}  →  3 subscriber(s)
+2026-02-13 17:14:07,055 [INFO] Starting scan: C:/Users/suleimaa/Downloads/Photo-Sorter/Images (incremental=True, skip_unchanged=True)
+2026-02-13 17:14:07,074 [INFO] Discovered 25 candidate image files and 2 video files
+2026-02-13 17:14:07,074 [INFO] Loading existing metadata for incremental scan...
+2026-02-13 17:14:07,085 [INFO] ✓ Loaded 0 existing photo records and 0 video records
 [SCAN] Created single executor for scan (25 files)
 [SCAN] _process_file started for: C:\Users\suleimaa\Downloads\Photo-Sorter\Images\output6\Alya1_2_2_2.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2026-02-13 16:14:31,950 [INFO] 📷 Processing: Alya1_2_2_2.jpeg (345.2 KB)
+2026-02-13 17:14:07,105 [INFO] 📷 Processing: Alya1_2_2_2.jpeg (345.2 KB)
 [SCAN] Processing: Alya1_2_2_2.jpeg
 [SCAN] ✓ Metadata extracted: Alya1_2_2_2.jpeg [w=1440, h=2560, date=2024-11-29 17:04:13]
-2026-02-13 16:14:32,061 [INFO] [Scan] Metadata extracted successfully: Alya1_2_2_2.jpeg [w=1440, h=2560, date=2024-11-29 17:04:13]
+2026-02-13 17:14:07,216 [INFO] [Scan] Metadata extracted successfully: Alya1_2_2_2.jpeg [w=1440, h=2560, date=2024-11-29 17:04:13]
 [SCAN] Creating folder hierarchy for: Alya1_2_2_2.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=2
 [SCAN] ✓ File processed successfully: Alya1_2_2_2.jpeg
 [SCAN] _process_file started for: C:\Users\suleimaa\Downloads\Photo-Sorter\Images\output6\Alya1_3_2.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2026-02-13 16:14:32,083 [INFO] 📷 Processing: Alya1_3_2.jpeg (345.2 KB)
+2026-02-13 17:14:07,247 [INFO] 📷 Processing: Alya1_3_2.jpeg (345.2 KB)
 [SCAN] Processing: Alya1_3_2.jpeg
 [SCAN] ✓ Metadata extracted: Alya1_3_2.jpeg [w=1440, h=2560, date=2024-11-29 17:04:13]
-2026-02-13 16:14:32,110 [INFO] [Scan] Metadata extracted successfully: Alya1_3_2.jpeg [w=1440, h=2560, date=2024-11-29 17:04:13]
+2026-02-13 17:14:07,269 [INFO] [Scan] Metadata extracted successfully: Alya1_3_2.jpeg [w=1440, h=2560, date=2024-11-29 17:04:13]
 [SCAN] Creating folder hierarchy for: Alya1_3_2.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=2
 [SCAN] ✓ File processed successfully: Alya1_3_2.jpeg
 [SCAN] _process_file started for: C:\Users\suleimaa\Downloads\Photo-Sorter\Images\output6\Alya2_2_2_2_2.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2026-02-13 16:14:32,141 [INFO] 📷 Processing: Alya2_2_2_2_2.jpeg (107.1 KB)
+2026-02-13 17:14:07,314 [INFO] 📷 Processing: Alya2_2_2_2_2.jpeg (107.1 KB)
 [SCAN] Processing: Alya2_2_2_2_2.jpeg
-2026-02-13 16:14:32,150 [INFO] [Scan] ✓ GPS extracted: Alya2_2_2_2_2.jpeg (33.4475, 36.1634)
+2026-02-13 17:14:07,319 [INFO] [Scan] ✓ GPS extracted: Alya2_2_2_2_2.jpeg (33.4475, 36.1634)
 [SCAN] ✓ GPS: (33.4475, 36.1634)
 [SCAN] ✓ Metadata extracted: Alya2_2_2_2_2.jpeg [w=611, h=1081, date=2024-12-02 17:24:41]
-2026-02-13 16:14:32,150 [INFO] [Scan] Metadata extracted successfully: Alya2_2_2_2_2.jpeg [w=611, h=1081, date=2024-12-02 17:24:41]
+2026-02-13 17:14:07,319 [INFO] [Scan] Metadata extracted successfully: Alya2_2_2_2_2.jpeg [w=611, h=1081, date=2024-12-02 17:24:41]
 [SCAN] Creating folder hierarchy for: Alya2_2_2_2_2.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=2
 [SCAN] ✓ File processed successfully: Alya2_2_2_2_2.jpeg
 [SCAN] _process_file started for: C:\Users\suleimaa\Downloads\Photo-Sorter\Images\output6\Alya3_2_2_2_2.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2026-02-13 16:14:32,188 [INFO] 📷 Processing: Alya3_2_2_2_2.jpeg (97.2 KB)
+2026-02-13 17:14:07,354 [INFO] 📷 Processing: Alya3_2_2_2_2.jpeg (97.2 KB)
 [SCAN] Processing: Alya3_2_2_2_2.jpeg
 [SCAN] ✓ Metadata extracted: Alya3_2_2_2_2.jpeg [w=1080, h=810, date=None]
-2026-02-13 16:14:32,206 [INFO] [Scan] Metadata extracted successfully: Alya3_2_2_2_2.jpeg [w=1080, h=810, date=None]
+2026-02-13 17:14:07,356 [INFO] [Scan] Metadata extracted successfully: Alya3_2_2_2_2.jpeg [w=1080, h=810, date=None]
 [SCAN] Creating folder hierarchy for: Alya3_2_2_2_2.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=2
 [SCAN] ✓ File processed successfully: Alya3_2_2_2_2.jpeg
 [SCAN] _process_file started for: C:\Users\suleimaa\Downloads\Photo-Sorter\Images\output6\Alya_2_2.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2026-02-13 16:14:32,236 [INFO] 📷 Processing: Alya_2_2.jpeg (181.4 KB)
+2026-02-13 17:14:07,402 [INFO] 📷 Processing: Alya_2_2.jpeg (181.4 KB)
 [SCAN] Processing: Alya_2_2.jpeg
 [SCAN] ✓ Metadata extracted: Alya_2_2.jpeg [w=965, h=1240, date=None]
-2026-02-13 16:14:32,250 [INFO] [Scan] Metadata extracted successfully: Alya_2_2.jpeg [w=965, h=1240, date=None]
+2026-02-13 17:14:07,409 [INFO] [Scan] Metadata extracted successfully: Alya_2_2.jpeg [w=965, h=1240, date=None]
 [SCAN] Creating folder hierarchy for: Alya_2_2.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=2
 [SCAN] ✓ File processed successfully: Alya_2_2.jpeg
 [SCAN] _process_file started for: C:\Users\suleimaa\Downloads\Photo-Sorter\Images\output6\Alya_2_2_2_2.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2026-02-13 16:14:32,286 [INFO] 📷 Processing: Alya_2_2_2_2.jpeg (181.4 KB)
+2026-02-13 17:14:07,442 [INFO] 📷 Processing: Alya_2_2_2_2.jpeg (181.4 KB)
 [SCAN] Processing: Alya_2_2_2_2.jpeg
 [SCAN] ✓ Metadata extracted: Alya_2_2_2_2.jpeg [w=965, h=1240, date=None]
-2026-02-13 16:14:32,293 [INFO] [Scan] Metadata extracted successfully: Alya_2_2_2_2.jpeg [w=965, h=1240, date=None]
+2026-02-13 17:14:07,446 [INFO] [Scan] Metadata extracted successfully: Alya_2_2_2_2.jpeg [w=965, h=1240, date=None]
 [SCAN] Creating folder hierarchy for: Alya_2_2_2_2.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=2
 [SCAN] ✓ File processed successfully: Alya_2_2_2_2.jpeg
 [SCAN] _process_file started for: C:\Users\suleimaa\Downloads\Photo-Sorter\Images\output6\Ammar-Ref(1)_2_2.png
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2026-02-13 16:14:32,324 [INFO] 📷 Processing: Ammar-Ref(1)_2_2.png (800.9 KB)
+2026-02-13 17:14:07,479 [INFO] 📷 Processing: Ammar-Ref(1)_2_2.png (800.9 KB)
 [SCAN] Processing: Ammar-Ref(1)_2_2.png
 [SCAN] ✓ Metadata extracted: Ammar-Ref(1)_2_2.png [w=1140, h=791, date=None]
-2026-02-13 16:14:32,329 [INFO] [Scan] Metadata extracted successfully: Ammar-Ref(1)_2_2.png [w=1140, h=791, date=None]
+2026-02-13 17:14:07,489 [INFO] [Scan] Metadata extracted successfully: Ammar-Ref(1)_2_2.png [w=1140, h=791, date=None]
 [SCAN] Creating folder hierarchy for: Ammar-Ref(1)_2_2.png
 [SCAN] ✓ Folder hierarchy created: folder_id=2
 [SCAN] ✓ File processed successfully: Ammar-Ref(1)_2_2.png
 [SCAN] _process_file started for: C:\Users\suleimaa\Downloads\Photo-Sorter\Images\output6\Ammar-Ref_2_2_2.png
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2026-02-13 16:14:32,373 [INFO] 📷 Processing: Ammar-Ref_2_2_2.png (800.9 KB)
+2026-02-13 17:14:07,521 [INFO] 📷 Processing: Ammar-Ref_2_2_2.png (800.9 KB)
 [SCAN] Processing: Ammar-Ref_2_2_2.png
 [SCAN] ✓ Metadata extracted: Ammar-Ref_2_2_2.png [w=1140, h=791, date=None]
-2026-02-13 16:14:32,386 [INFO] [Scan] Metadata extracted successfully: Ammar-Ref_2_2_2.png [w=1140, h=791, date=None]
+2026-02-13 17:14:07,531 [INFO] [Scan] Metadata extracted successfully: Ammar-Ref_2_2_2.png [w=1140, h=791, date=None]
 [SCAN] Creating folder hierarchy for: Ammar-Ref_2_2_2.png
 [SCAN] ✓ Folder hierarchy created: folder_id=2
 [SCAN] ✓ File processed successfully: Ammar-Ref_2_2_2.png
 [SCAN] _process_file started for: C:\Users\suleimaa\Downloads\Photo-Sorter\Images\output6\Ammar-Ref_3_2.png
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2026-02-13 16:14:32,420 [INFO] 📷 Processing: Ammar-Ref_3_2.png (800.9 KB)
+2026-02-13 17:14:07,553 [INFO] 📷 Processing: Ammar-Ref_3_2.png (800.9 KB)
 [SCAN] Processing: Ammar-Ref_3_2.png
 [SCAN] ✓ Metadata extracted: Ammar-Ref_3_2.png [w=1140, h=791, date=None]
-2026-02-13 16:14:32,430 [INFO] [Scan] Metadata extracted successfully: Ammar-Ref_3_2.png [w=1140, h=791, date=None]
+2026-02-13 17:14:07,568 [INFO] [Scan] Metadata extracted successfully: Ammar-Ref_3_2.png [w=1140, h=791, date=None]
 [SCAN] Creating folder hierarchy for: Ammar-Ref_3_2.png
 [SCAN] ✓ Folder hierarchy created: folder_id=2
 [SCAN] ✓ File processed successfully: Ammar-Ref_3_2.png
 [SCAN] _process_file started for: C:\Users\suleimaa\Downloads\Photo-Sorter\Images\output6\Ammar1_2_2_2.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2026-02-13 16:14:32,463 [INFO] 📷 Processing: Ammar1_2_2_2.jpeg (4364.7 KB)
+2026-02-13 17:14:07,602 [INFO] 📷 Processing: Ammar1_2_2_2.jpeg (4364.7 KB)
 [SCAN] Processing: Ammar1_2_2_2.jpeg
 [SCAN] ✓ Metadata extracted: Ammar1_2_2_2.jpeg [w=4032, h=3024, date=2024-08-11 19:40:38]
-2026-02-13 16:14:32,557 [INFO] [Scan] Metadata extracted successfully: Ammar1_2_2_2.jpeg [w=4032, h=3024, date=2024-08-11 19:40:38]
+2026-02-13 17:14:07,694 [INFO] [Scan] Metadata extracted successfully: Ammar1_2_2_2.jpeg [w=4032, h=3024, date=2024-08-11 19:40:38]
 [SCAN] Creating folder hierarchy for: Ammar1_2_2_2.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=2
 [SCAN] ✓ File processed successfully: Ammar1_2_2_2.jpeg
 [SCAN] _process_file started for: C:\Users\suleimaa\Downloads\Photo-Sorter\Images\output6\Ammar2_2_2_2 - Kopie.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2026-02-13 16:14:32,588 [INFO] 📷 Processing: Ammar2_2_2_2 - Kopie.jpeg (2338.2 KB)
+2026-02-13 17:14:07,723 [INFO] 📷 Processing: Ammar2_2_2_2 - Kopie.jpeg (2338.2 KB)
 [SCAN] Processing: Ammar2_2_2_2 - Kopie.jpeg
 [SCAN] ✓ Metadata extracted: Ammar2_2_2_2 - Kopie.jpeg [w=3664, h=2062, date=2024-11-18 14:17:43]
-2026-02-13 16:14:32,627 [INFO] [Scan] Metadata extracted successfully: Ammar2_2_2_2 - Kopie.jpeg [w=3664, h=2062, date=2024-11-18 14:17:43]
+2026-02-13 17:14:07,766 [INFO] [Scan] Metadata extracted successfully: Ammar2_2_2_2 - Kopie.jpeg [w=3664, h=2062, date=2024-11-18 14:17:43]
 [SCAN] Creating folder hierarchy for: Ammar2_2_2_2 - Kopie.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=2
 [SCAN] ✓ File processed successfully: Ammar2_2_2_2 - Kopie.jpeg
 [SCAN] _process_file started for: C:\Users\suleimaa\Downloads\Photo-Sorter\Images\output6\Ammar2_2_2_2.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2026-02-13 16:14:32,669 [INFO] 📷 Processing: Ammar2_2_2_2.jpeg (2338.2 KB)
+2026-02-13 17:14:07,801 [INFO] 📷 Processing: Ammar2_2_2_2.jpeg (2338.2 KB)
 [SCAN] Processing: Ammar2_2_2_2.jpeg
 [SCAN] ✓ Metadata extracted: Ammar2_2_2_2.jpeg [w=3664, h=2062, date=2024-11-18 14:17:43]
-2026-02-13 16:14:32,708 [INFO] [Scan] Metadata extracted successfully: Ammar2_2_2_2.jpeg [w=3664, h=2062, date=2024-11-18 14:17:43]
+2026-02-13 17:14:07,841 [INFO] [Scan] Metadata extracted successfully: Ammar2_2_2_2.jpeg [w=3664, h=2062, date=2024-11-18 14:17:43]
 [SCAN] Creating folder hierarchy for: Ammar2_2_2_2.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=2
 [SCAN] ✓ File processed successfully: Ammar2_2_2_2.jpeg
 [SCAN] _process_file started for: C:\Users\suleimaa\Downloads\Photo-Sorter\Images\output6\Ammar3_2_2_2_2.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2026-02-13 16:14:32,755 [INFO] 📷 Processing: Ammar3_2_2_2_2.jpeg (171.0 KB)
+2026-02-13 17:14:07,882 [INFO] 📷 Processing: Ammar3_2_2_2_2.jpeg (171.0 KB)
 [SCAN] Processing: Ammar3_2_2_2_2.jpeg
 [SCAN] ✓ Metadata extracted: Ammar3_2_2_2_2.jpeg [w=1284, h=2778, date=None]
-2026-02-13 16:14:32,784 [INFO] [Scan] Metadata extracted successfully: Ammar3_2_2_2_2.jpeg [w=1284, h=2778, date=None]
+2026-02-13 17:14:07,904 [INFO] [Scan] Metadata extracted successfully: Ammar3_2_2_2_2.jpeg [w=1284, h=2778, date=None]
 [SCAN] Creating folder hierarchy for: Ammar3_2_2_2_2.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=2
 [SCAN] ✓ File processed successfully: Ammar3_2_2_2_2.jpeg
 [SCAN] _process_file started for: C:\Users\suleimaa\Downloads\Photo-Sorter\Images\output6\IMG_6850_2_2_2.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2026-02-13 16:14:32,813 [INFO] 📷 Processing: IMG_6850_2_2_2.jpeg (3027.8 KB)
+2026-02-13 17:14:07,937 [INFO] 📷 Processing: IMG_6850_2_2_2.jpeg (3027.8 KB)
 [SCAN] Processing: IMG_6850_2_2_2.jpeg
 [SCAN] ✓ Metadata extracted: IMG_6850_2_2_2.jpeg [w=4032, h=3024, date=2025-07-30 23:19:46]
-2026-02-13 16:14:32,877 [INFO] [Scan] Metadata extracted successfully: IMG_6850_2_2_2.jpeg [w=4032, h=3024, date=2025-07-30 23:19:46]
+2026-02-13 17:14:07,988 [INFO] [Scan] Metadata extracted successfully: IMG_6850_2_2_2.jpeg [w=4032, h=3024, date=2025-07-30 23:19:46]
 [SCAN] Creating folder hierarchy for: IMG_6850_2_2_2.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=2
 [SCAN] ✓ File processed successfully: IMG_6850_2_2_2.jpeg
 [SCAN] _process_file started for: C:\Users\suleimaa\Downloads\Photo-Sorter\Images\output6\IMG_6995_2_2_2.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2026-02-13 16:14:32,908 [INFO] 📷 Processing: IMG_6995_2_2_2.jpeg (4005.4 KB)
+2026-02-13 17:14:08,022 [INFO] 📷 Processing: IMG_6995_2_2_2.jpeg (4005.4 KB)
 [SCAN] Processing: IMG_6995_2_2_2.jpeg
-2026-02-13 16:14:32,987 [INFO] [Scan] ✓ GPS extracted: IMG_6995_2_2_2.jpeg (47.9016, 11.8213)
+2026-02-13 17:14:08,089 [INFO] [Scan] ✓ GPS extracted: IMG_6995_2_2_2.jpeg (47.9016, 11.8213)
 [SCAN] ✓ GPS: (47.9016, 11.8213)
 [SCAN] ✓ Metadata extracted: IMG_6995_2_2_2.jpeg [w=4032, h=3024, date=2025-08-09 13:06:18]
-2026-02-13 16:14:32,988 [INFO] [Scan] Metadata extracted successfully: IMG_6995_2_2_2.jpeg [w=4032, h=3024, date=2025-08-09 13:06:18]
+2026-02-13 17:14:08,089 [INFO] [Scan] Metadata extracted successfully: IMG_6995_2_2_2.jpeg [w=4032, h=3024, date=2025-08-09 13:06:18]
 [SCAN] Creating folder hierarchy for: IMG_6995_2_2_2.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=2
 [SCAN] ✓ File processed successfully: IMG_6995_2_2_2.jpeg
 [SCAN] _process_file started for: C:\Users\suleimaa\Downloads\Photo-Sorter\Images\output6\pexels-matreding-11363475 - Kopie (2).jpg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2026-02-13 16:14:33,013 [INFO] 📷 Processing: pexels-matreding-11363475 - Kopie (2).jpg (7378.6 KB)
+2026-02-13 17:14:08,117 [INFO] 📷 Processing: pexels-matreding-11363475 - Kopie (2).jpg (7378.6 KB)
 [SCAN] Processing: pexels-matreding-11363475 - Kopie (2).jpg
 [SCAN] ✓ Metadata extracted: pexels-matreding-11363475 - Kopie (2).jpg [w=8000, h=12000, date=None]
-2026-02-13 16:14:33,375 [INFO] [Scan] Metadata extracted successfully: pexels-matreding-11363475 - Kopie (2).jpg [w=8000, h=12000, date=None]
+2026-02-13 17:14:08,462 [INFO] [Scan] Metadata extracted successfully: pexels-matreding-11363475 - Kopie (2).jpg [w=8000, h=12000, date=None]
 [SCAN] Creating folder hierarchy for: pexels-matreding-11363475 - Kopie (2).jpg
 [SCAN] ✓ Folder hierarchy created: folder_id=2
 [SCAN] ✓ File processed successfully: pexels-matreding-11363475 - Kopie (2).jpg
 [SCAN] _process_file started for: C:\Users\suleimaa\Downloads\Photo-Sorter\Images\output6\pexels-matreding-11363475 - Kopie (3).jpg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2026-02-13 16:14:33,414 [INFO] 📷 Processing: pexels-matreding-11363475 - Kopie (3).jpg (7378.6 KB)
+2026-02-13 17:14:08,510 [INFO] 📷 Processing: pexels-matreding-11363475 - Kopie (3).jpg (7378.6 KB)
 [SCAN] Processing: pexels-matreding-11363475 - Kopie (3).jpg
 [SCAN] ✓ Metadata extracted: pexels-matreding-11363475 - Kopie (3).jpg [w=8000, h=12000, date=None]
-2026-02-13 16:14:33,797 [INFO] [Scan] Metadata extracted successfully: pexels-matreding-11363475 - Kopie (3).jpg [w=8000, h=12000, date=None]
+2026-02-13 17:14:08,850 [INFO] [Scan] Metadata extracted successfully: pexels-matreding-11363475 - Kopie (3).jpg [w=8000, h=12000, date=None]
 [SCAN] Creating folder hierarchy for: pexels-matreding-11363475 - Kopie (3).jpg
 [SCAN] ✓ Folder hierarchy created: folder_id=2
 [SCAN] ✓ File processed successfully: pexels-matreding-11363475 - Kopie (3).jpg
 [SCAN] _process_file started for: C:\Users\suleimaa\Downloads\Photo-Sorter\Images\output6\pexels-matreding-11363475 - Kopie.jpg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2026-02-13 16:14:33,828 [INFO] 📷 Processing: pexels-matreding-11363475 - Kopie.jpg (7378.6 KB)
+2026-02-13 17:14:08,920 [INFO] 📷 Processing: pexels-matreding-11363475 - Kopie.jpg (7378.6 KB)
 [SCAN] Processing: pexels-matreding-11363475 - Kopie.jpg
 [SCAN] ✓ Metadata extracted: pexels-matreding-11363475 - Kopie.jpg [w=8000, h=12000, date=None]
-2026-02-13 16:14:34,204 [INFO] [Scan] Metadata extracted successfully: pexels-matreding-11363475 - Kopie.jpg [w=8000, h=12000, date=None]
+2026-02-13 17:14:09,271 [INFO] [Scan] Metadata extracted successfully: pexels-matreding-11363475 - Kopie.jpg [w=8000, h=12000, date=None]
 [SCAN] Creating folder hierarchy for: pexels-matreding-11363475 - Kopie.jpg
 [SCAN] ✓ Folder hierarchy created: folder_id=2
 [SCAN] ✓ File processed successfully: pexels-matreding-11363475 - Kopie.jpg
 [SCAN] _process_file started for: C:\Users\suleimaa\Downloads\Photo-Sorter\Images\output6\pexels-matreding-11363475.jpg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2026-02-13 16:14:34,236 [INFO] 📷 Processing: pexels-matreding-11363475.jpg (7378.6 KB)
+2026-02-13 17:14:09,314 [INFO] 📷 Processing: pexels-matreding-11363475.jpg (7378.6 KB)
 [SCAN] Processing: pexels-matreding-11363475.jpg
 [SCAN] ✓ Metadata extracted: pexels-matreding-11363475.jpg [w=8000, h=12000, date=None]
-2026-02-13 16:14:34,609 [INFO] [Scan] Metadata extracted successfully: pexels-matreding-11363475.jpg [w=8000, h=12000, date=None]
+2026-02-13 17:14:09,647 [INFO] [Scan] Metadata extracted successfully: pexels-matreding-11363475.jpg [w=8000, h=12000, date=None]
 [SCAN] Creating folder hierarchy for: pexels-matreding-11363475.jpg
 [SCAN] ✓ Folder hierarchy created: folder_id=2
 [SCAN] ✓ File processed successfully: pexels-matreding-11363475.jpg
 [SCAN] _process_file started for: C:\Users\suleimaa\Downloads\Photo-Sorter\Images\output6\SuleimanAmmar - Kopie.jpg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2026-02-13 16:14:34,657 [INFO] 📷 Processing: SuleimanAmmar - Kopie.jpg (150.4 KB)
+2026-02-13 17:14:09,711 [INFO] 📷 Processing: SuleimanAmmar - Kopie.jpg (150.4 KB)
 [SCAN] Processing: SuleimanAmmar - Kopie.jpg
 [SCAN] ✓ Metadata extracted: SuleimanAmmar - Kopie.jpg [w=940, h=1218, date=None]
-2026-02-13 16:14:34,657 [INFO] [Scan] Metadata extracted successfully: SuleimanAmmar - Kopie.jpg [w=940, h=1218, date=None]
+2026-02-13 17:14:09,729 [INFO] [Scan] Metadata extracted successfully: SuleimanAmmar - Kopie.jpg [w=940, h=1218, date=None]
 [SCAN] Creating folder hierarchy for: SuleimanAmmar - Kopie.jpg
 [SCAN] ✓ Folder hierarchy created: folder_id=2
 [SCAN] ✓ File processed successfully: SuleimanAmmar - Kopie.jpg
 [SCAN] _process_file started for: C:\Users\suleimaa\Downloads\Photo-Sorter\Images\output6\SuleimanAmmar-Revised.jpg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2026-02-13 16:14:34,704 [INFO] 📷 Processing: SuleimanAmmar-Revised.jpg (89.3 KB)
+2026-02-13 17:14:09,746 [INFO] 📷 Processing: SuleimanAmmar-Revised.jpg (89.3 KB)
 [SCAN] Processing: SuleimanAmmar-Revised.jpg
 [SCAN] ✓ Metadata extracted: SuleimanAmmar-Revised.jpg [w=844, h=1135, date=None]
-2026-02-13 16:14:34,714 [INFO] [Scan] Metadata extracted successfully: SuleimanAmmar-Revised.jpg [w=844, h=1135, date=None]
+2026-02-13 17:14:09,761 [INFO] [Scan] Metadata extracted successfully: SuleimanAmmar-Revised.jpg [w=844, h=1135, date=None]
 [SCAN] Creating folder hierarchy for: SuleimanAmmar-Revised.jpg
 [SCAN] ✓ Folder hierarchy created: folder_id=2
 [SCAN] ✓ File processed successfully: SuleimanAmmar-Revised.jpg
 [SCAN] _process_file started for: C:\Users\suleimaa\Downloads\Photo-Sorter\Images\output6\SuleimanAmmar.jpg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2026-02-13 16:14:34,754 [INFO] 📷 Processing: SuleimanAmmar.jpg (150.4 KB)
+2026-02-13 17:14:09,793 [INFO] 📷 Processing: SuleimanAmmar.jpg (150.4 KB)
 [SCAN] Processing: SuleimanAmmar.jpg
 [SCAN] ✓ Metadata extracted: SuleimanAmmar.jpg [w=940, h=1218, date=None]
-2026-02-13 16:14:34,761 [INFO] [Scan] Metadata extracted successfully: SuleimanAmmar.jpg [w=940, h=1218, date=None]
+2026-02-13 17:14:09,801 [INFO] [Scan] Metadata extracted successfully: SuleimanAmmar.jpg [w=940, h=1218, date=None]
 [SCAN] Creating folder hierarchy for: SuleimanAmmar.jpg
 [SCAN] ✓ Folder hierarchy created: folder_id=2
 [SCAN] ✓ File processed successfully: SuleimanAmmar.jpg
 [SCAN] _process_file started for: C:\Users\suleimaa\Downloads\Photo-Sorter\Images\output6\Neuer Ordner\SuleimanAmmar - Kopie.jpg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2026-02-13 16:14:34,795 [INFO] 📷 Processing: SuleimanAmmar - Kopie.jpg (150.4 KB)
+2026-02-13 17:14:09,836 [INFO] 📷 Processing: SuleimanAmmar - Kopie.jpg (150.4 KB)
 [SCAN] Processing: SuleimanAmmar - Kopie.jpg
 [SCAN] ✓ Metadata extracted: SuleimanAmmar - Kopie.jpg [w=940, h=1218, date=None]
-2026-02-13 16:14:34,803 [INFO] [Scan] Metadata extracted successfully: SuleimanAmmar - Kopie.jpg [w=940, h=1218, date=None]
+2026-02-13 17:14:09,843 [INFO] [Scan] Metadata extracted successfully: SuleimanAmmar - Kopie.jpg [w=940, h=1218, date=None]
 [SCAN] Creating folder hierarchy for: SuleimanAmmar - Kopie.jpg
 [SCAN] ✓ Folder hierarchy created: folder_id=47
 [SCAN] ✓ File processed successfully: SuleimanAmmar - Kopie.jpg
 [SCAN] _process_file started for: C:\Users\suleimaa\Downloads\Photo-Sorter\Images\output6\Neuer Ordner\SuleimanAmmar-Revised.jpg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2026-02-13 16:14:34,854 [INFO] 📷 Processing: SuleimanAmmar-Revised.jpg (89.3 KB)
+2026-02-13 17:14:09,889 [INFO] 📷 Processing: SuleimanAmmar-Revised.jpg (89.3 KB)
 [SCAN] Processing: SuleimanAmmar-Revised.jpg
 [SCAN] ✓ Metadata extracted: SuleimanAmmar-Revised.jpg [w=844, h=1135, date=None]
-2026-02-13 16:14:34,860 [INFO] [Scan] Metadata extracted successfully: SuleimanAmmar-Revised.jpg [w=844, h=1135, date=None]
+2026-02-13 17:14:09,892 [INFO] [Scan] Metadata extracted successfully: SuleimanAmmar-Revised.jpg [w=844, h=1135, date=None]
 [SCAN] Creating folder hierarchy for: SuleimanAmmar-Revised.jpg
 [SCAN] ✓ Folder hierarchy created: folder_id=47
 [SCAN] ✓ File processed successfully: SuleimanAmmar-Revised.jpg
 [SCAN] _process_file started for: C:\Users\suleimaa\Downloads\Photo-Sorter\Images\output6\Neuer Ordner\SuleimanAmmar.jpg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2026-02-13 16:14:34,908 [INFO] 📷 Processing: SuleimanAmmar.jpg (150.4 KB)
+2026-02-13 17:14:09,939 [INFO] 📷 Processing: SuleimanAmmar.jpg (150.4 KB)
 [SCAN] Processing: SuleimanAmmar.jpg
 [SCAN] ✓ Metadata extracted: SuleimanAmmar.jpg [w=940, h=1218, date=None]
-2026-02-13 16:14:34,908 [INFO] [Scan] Metadata extracted successfully: SuleimanAmmar.jpg [w=940, h=1218, date=None]
+2026-02-13 17:14:09,945 [INFO] [Scan] Metadata extracted successfully: SuleimanAmmar.jpg [w=940, h=1218, date=None]
 [SCAN] Creating folder hierarchy for: SuleimanAmmar.jpg
 [SCAN] ✓ Folder hierarchy created: folder_id=47
 [SCAN] ✓ File processed successfully: SuleimanAmmar.jpg
 [SCAN] ⚡ Writing final batch to database: 25 photos
-2026-02-13 16:14:34,971 [INFO] Writing final batch of 25 photos to database
+2026-02-13 17:14:09,991 [INFO] Writing final batch of 25 photos to database
 [SCAN] 💾 Starting bulk_upsert for 25 photos...
-2026-02-13 16:14:34,971 [INFO] [DB] Starting bulk_upsert for 25 photos
-2026-02-13 16:14:34,988 [INFO] Bulk upserted 25 photos for project 1
+2026-02-13 17:14:09,991 [INFO] [DB] Starting bulk_upsert for 25 photos
+2026-02-13 17:14:10,015 [INFO] Bulk upserted 25 photos for project 1
 [SCAN] ✓ Bulk_upsert completed: 25 photos written
-2026-02-13 16:14:34,988 [INFO] [DB] Bulk_upsert completed: 25 photos written
+2026-02-13 17:14:10,016 [INFO] [DB] Bulk_upsert completed: 25 photos written
 [SCAN] ✓ Final batch write complete
 [SCAN] Shutting down executor
-2026-02-13 16:14:34,988 [INFO] Executor shutdown complete
+2026-02-13 17:14:10,016 [INFO] Executor shutdown complete
 
 [SCAN] === STEP 4: VIDEO PROCESSING ===
 [SCAN] total_videos=2
 [SCAN] self._cancelled=False
 [SCAN] Condition check: 2 > 0 and not False = True
 [SCAN] Condition TRUE - calling _process_videos()
-2026-02-13 16:14:34,988 [INFO] Processing 2 videos...
+2026-02-13 17:14:10,016 [INFO] Processing 2 videos...
 [VIDEO_INDEX] Attempting to index: Qouzleh_mitSubtitles-ezgif.com-resize-video.mp4
 [VIDEO_INDEX]   project_id=1, folder_id=1
 [VIDEO_INDEX]   size_kb=13086.185546875, modified=2025-05-06 18:38:04
 [VIDEO_INDEX]   created_ts=1746482400, created_date=2025-05-06, created_year=2025
-2026-02-13 16:14:35,063 [INFO] Indexed video C:\Users\suleimaa\Downloads\Photo-Sorter\Images\Qouzleh_mitSubtitles-ezgif.com-resize-video.mp4 (id=1, status=pending)
+2026-02-13 17:14:10,083 [INFO] Indexed video C:\Users\suleimaa\Downloads\Photo-Sorter\Images\Qouzleh_mitSubtitles-ezgif.com-resize-video.mp4 (id=1, status=pending)
 [VIDEO_INDEX] SUCCESS: video_id=1
 [VIDEO_INDEX] Attempting to index: Qouzleh_mitSubtitles.mp4
 [VIDEO_INDEX]   project_id=1, folder_id=1
 [VIDEO_INDEX]   size_kb=57665.9013671875, modified=2025-05-06 16:05:10
 [VIDEO_INDEX]   created_ts=1746482400, created_date=2025-05-06, created_year=2025
-2026-02-13 16:14:35,110 [INFO] Indexed video C:\Users\suleimaa\Downloads\Photo-Sorter\Images\Qouzleh_mitSubtitles.mp4 (id=2, status=pending)
+2026-02-13 17:14:10,111 [INFO] Indexed video C:\Users\suleimaa\Downloads\Photo-Sorter\Images\Qouzleh_mitSubtitles.mp4 (id=2, status=pending)
 [VIDEO_INDEX] SUCCESS: video_id=2
-2026-02-13 16:14:35,110 [INFO] Indexed 2 videos (metadata extraction pending)
-2026-02-13 16:14:35,142 [INFO] Launching background workers for 2 videos...
-2026-02-13 16:14:35,142 [INFO] Using ffprobe from settings: C:\ffmpeg\bin\ffprobe.exe
-2026-02-13 16:14:35,190 [INFO] ffprobe detected at 'C:\ffmpeg\bin\ffprobe.exe' - video metadata extraction enabled
-2026-02-13 16:14:35,190 [INFO] Connected metadata finished callback for sidebar refresh
-2026-02-13 16:14:35,190 [INFO] ✓ Video metadata extraction worker started
-2026-02-13 16:14:35,190 [INFO] [VideoThumbnailService] Using default thumbnail directory: C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.03-Photo-App\MemoryMate-PhotoFlow-Refactored-main-16\.thumb_cache
-2026-02-13 16:14:35,200 [INFO] Using ffmpeg from same directory as ffprobe: C:\ffmpeg\bin\ffmpeg.exe
-2026-02-13 16:14:35,200 [INFO] [VideoMetadataWorker] Starting for project_id=1
-2026-02-13 16:14:35,216 [INFO] [VideoMetadataWorker] Found 2 videos to process
-2026-02-13 16:14:35,226 [INFO] [VideoMetadataWorker] Processing with 4 parallel workers
-2026-02-13 16:14:35,238 [INFO] ffmpeg detected at 'C:\ffmpeg\bin\ffmpeg.exe' - video thumbnail generation enabled
-2026-02-13 16:14:35,247 [INFO] ✓ Video thumbnail generation worker started
-2026-02-13 16:14:35,247 [INFO] 🎬 Processing 2 videos in background (check logs for progress)
-2026-02-13 16:14:35,247 [INFO] Scan complete: 25 photos indexed, 2 videos indexed, 0 skipped, 0 failed in 3.3s
-2026-02-13 16:14:35,247 [INFO] Scan completed: 25 photos, 2 videos, 3 folders in 3.3s
-2026-02-13 16:14:35,249 [INFO] [VideoThumbnailWorker] Starting for project_id=1
-2026-02-13 16:14:35,250 [INFO] Scan finished: 3 folders, 25 photos, 2 videos
-2026-02-13 16:14:35,250 [INFO] Building date branches...
-2026-02-13 16:14:35,250 [INFO] Building date branches for project_id=1
+2026-02-13 17:14:10,118 [INFO] Indexed 2 videos (metadata extraction pending)
+2026-02-13 17:14:10,170 [INFO] Launching background workers for 2 videos...
+2026-02-13 17:14:10,170 [INFO] Using ffprobe from settings: C:\ffmpeg\bin\ffprobe.exe
+2026-02-13 17:14:10,213 [INFO] ffprobe detected at 'C:\ffmpeg\bin\ffprobe.exe' - video metadata extraction enabled
+2026-02-13 17:14:10,213 [INFO] Connected metadata finished callback for sidebar refresh
+2026-02-13 17:14:10,213 [INFO] ✓ Video metadata extraction worker started
+2026-02-13 17:14:10,213 [INFO] [VideoMetadataWorker] Starting for project_id=1
+2026-02-13 17:14:10,213 [INFO] [VideoThumbnailService] Using default thumbnail directory: C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.03-Photo-App\MemoryMate-PhotoFlow-Refactored-main-17\.thumb_cache
+2026-02-13 17:14:10,213 [INFO] Using ffmpeg from same directory as ffprobe: C:\ffmpeg\bin\ffmpeg.exe
+2026-02-13 17:14:10,229 [INFO] [VideoMetadataWorker] Found 2 videos to process
+2026-02-13 17:14:10,244 [INFO] [VideoMetadataWorker] Processing with 4 parallel workers
+2026-02-13 17:14:10,263 [INFO] ffmpeg detected at 'C:\ffmpeg\bin\ffmpeg.exe' - video thumbnail generation enabled
+2026-02-13 17:14:10,263 [INFO] ✓ Video thumbnail generation worker started
+2026-02-13 17:14:10,263 [INFO] [VideoThumbnailWorker] Starting for project_id=1
+2026-02-13 17:14:10,263 [INFO] 🎬 Processing 2 videos in background (check logs for progress)
+2026-02-13 17:14:10,265 [INFO] Scan complete: 25 photos indexed, 2 videos indexed, 0 skipped, 0 failed in 3.2s
+2026-02-13 17:14:10,265 [INFO] Scan completed: 25 photos, 2 videos, 3 folders in 3.2s
+2026-02-13 17:14:10,265 [INFO] [VideoThumbnailWorker] Found 2 videos to process
+2026-02-13 17:14:10,265 [INFO] Scan finished: 3 folders, 25 photos, 2 videos
+2026-02-13 17:14:10,265 [INFO] [VideoThumbnailWorker] Processing with 4 parallel workers
+2026-02-13 17:14:10,265 [INFO] Building date branches...
+2026-02-13 17:14:10,269 [INFO] Building date branches for project_id=1
 [build_date_branches] Using project_id=1
 [build_date_branches] Populating 'all' branch with 25 photos for project 1
-2026-02-13 16:14:35,254 [INFO] [VideoThumbnailWorker] Found 2 videos to process
 [build_date_branches] Inserted 25/25 photos into 'all' branch
 [build_date_branches] Found 6 unique dates for project 1
-2026-02-13 16:14:35,254 [INFO] [VideoThumbnailWorker] Processing with 4 parallel workers
 [build_date_branches] Date 2024-08-11: found 1 photos for project 1
 [build_date_branches] Sample path: c:/users/suleimaa/downloads/photo-sorter/images/output6/ammar1_2_2_2.jpeg
 [build_date_branches] Date 2024-08-11: inserted 1/1 into project_images (new)
@@ -564,8 +565,8 @@ Adaptive Icons:  24px
 [build_date_branches] Date 2025-08-09: inserted 1/1 into project_images (new)
 [build_date_branches] Total entries processed: 8
 [build_date_branches] project_images table has 33 rows for project 1
-2026-02-13 16:14:35,257 [INFO] Created 8 photo date branch entries for project 1
-2026-02-13 16:14:35,257 [INFO] Building video date branches for project_id=1
+2026-02-13 17:14:10,272 [INFO] Created 8 photo date branch entries for project 1
+2026-02-13 17:14:10,273 [INFO] Building video date branches for project_id=1
 [build_video_date_branches] Using project_id=1
 [build_video_date_branches] Found 2 videos with dates for project 1
 [build_video_date_branches] Inserted 2/2 videos into 'all' branch
@@ -573,115 +574,54 @@ Adaptive Icons:  24px
 [build_video_date_branches] Date 2025-05-06: inserted 2/2 (new)
 [build_video_date_branches] Total entries processed: 2
 [build_video_date_branches] project_videos table has 4 rows for project 1
-2026-02-13 16:14:35,258 [INFO] Created 2 video date branch entries for project 1
-2026-02-13 16:14:35,259 [INFO] Backfilling created_date fields for photos...
-2026-02-13 16:14:35,260 [INFO] Backfilled 17 photo rows with created_date
-2026-02-13 16:14:35,260 [INFO] Backfilling created_date fields for videos...
-2026-02-13 16:14:35,261 [INFO] Enqueueing duplicate detection pipeline as background job...
-2026-02-13 16:14:35,286 [INFO] [JobManager] Registered tracked job -3: post_scan — Duplicate Detection
-2026-02-13 16:14:35,287 [INFO] Post-scan pipeline dispatched to background thread pool
-2026-02-13 16:14:35,289 [INFO] Main scan operations complete. Remaining: {'post_scan_pipeline'}
-2026-02-13 16:14:35,289 [INFO] ⏳ Waiting for operations: {'post_scan_pipeline'}
-2026-02-13 16:14:35,290 [INFO] [PostScanPipelineWorker] Starting post-scan pipeline for project 1 (thread=Dummy-22, is_main=False)
-2026-02-13 16:14:35,290 [INFO] [Store] ScanCompleted job=-2 src=scan_controller deltas={'media_v': '0→1', 'videos_v': '0→1', 'jobs_v': '1→2'}  →  3 subscriber(s)
+2026-02-13 17:14:10,274 [INFO] Created 2 video date branch entries for project 1
+2026-02-13 17:14:10,274 [INFO] Backfilling created_date fields for photos...
+2026-02-13 17:14:10,276 [INFO] Backfilled 17 photo rows with created_date
+2026-02-13 17:14:10,276 [INFO] Backfilling created_date fields for videos...
+2026-02-13 17:14:10,276 [INFO] Enqueueing duplicate detection pipeline as background job...
+2026-02-13 17:14:10,300 [INFO] [JobManager] Registered tracked job -3: post_scan — Duplicate Detection
+2026-02-13 17:14:10,301 [INFO] Post-scan pipeline dispatched to background thread pool
+2026-02-13 17:14:10,302 [INFO] Main scan operations complete. Remaining: {'post_scan_pipeline'}
+2026-02-13 17:14:10,302 [INFO] ⏳ Waiting for operations: {'post_scan_pipeline'}
+2026-02-13 17:14:10,303 [INFO] [PostScanPipelineWorker] Starting post-scan pipeline for project 1 (thread=Dummy-21, is_main=False)
+2026-02-13 17:14:10,303 [INFO] [Store] ScanCompleted job=-2 src=scan_controller deltas={'media_v': '0→1', 'videos_v': '0→1', 'jobs_v': '1→2'}  →  3 subscriber(s)
 [GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px)...
 [GooglePhotosLayout] 🔍 Starting async photo load (generation 4) - existing content preserved...
 [GooglePhotosLayout] Paged load started (generation 4, page_size=250)
-2026-02-13 16:14:35,301 [INFO] Starting hash backfill and asset linking for project 1
-2026-02-13 16:14:35,301 [INFO] Starting hash backfill and asset linking for project 1
-2026-02-13 16:14:35,313 [INFO] Found 25 photos without instance links
-2026-02-13 16:14:35,313 [INFO] [GoogleLayout] Page count ready: gen=4 total=27 (threshold=3000)
-2026-02-13 16:14:35,313 [INFO] [VideoMetadataWorker] ✓ c:/users/suleimaa/downloads/photo-sorter/images/qouzleh_mitsubtitles-ezgif.com-resize-video.mp4
-2026-02-13 16:14:35,313 [INFO] [GoogleLayout] Page ready: gen=4 offset=0 rows=27 loaded=27/27
+2026-02-13 17:14:10,311 [INFO] Starting hash backfill and asset linking for project 1
+2026-02-13 17:14:10,311 [INFO] Starting hash backfill and asset linking for project 1
+2026-02-13 17:14:10,320 [INFO] Found 25 photos without instance links
+2026-02-13 17:14:10,320 [INFO] [GoogleLayout] Page count ready: gen=4 total=27 (threshold=3000)
+2026-02-13 17:14:10,320 [INFO] [GoogleLayout] Page ready: gen=4 offset=0 rows=27 loaded=27/27
 [GooglePhotosLayout] Dispatching 27 assets (photos+videos) to background grouping worker...
-2026-02-13 16:14:35,313 [INFO] [GoogleLayout] All pages loaded: 27 rows total
-2026-02-13 16:14:35,338 [INFO] [VideoMetadataWorker] ✓ c:/users/suleimaa/downloads/photo-sorter/images/qouzleh_mitsubtitles.mp4
-2026-02-13 16:14:35,338 [INFO] [VideoMetadataWorker] Finished: 2 success, 0 failed
+2026-02-13 17:14:10,320 [INFO] [GoogleLayout] All pages loaded: 27 rows total
 [GooglePhotosLayout] Grouped into 13 date groups
 [GooglePhotosLayout] Tracking 27 paths for multi-selection
-[GooglePhotosLayout] 📐 Responsive grid: 5 columns (viewport: 1067px, thumb: 200px)
-2026-02-13 16:14:35,398 [INFO] Generated thumbnail for c:/users/suleimaa/downloads/photo-sorter/images/qouzleh_mitsubtitles-ezgif.com-resize-video.mp4 at C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.03-Photo-App\MemoryMate-PhotoFlow-Refactored-main-16\.thumb_cache\qouzleh_mitsubtitles-ezgif.com-resize-video_mp4_thumb.jpg
-2026-02-13 16:14:35,409 [INFO] [VideoThumbnailWorker] ✓ c:/users/suleimaa/downloads/photo-sorter/images/qouzleh_mitsubtitles-ezgif.com-resize-video.mp4
-2026-02-13 16:14:35,427 [INFO] Generated thumbnail for c:/users/suleimaa/downloads/photo-sorter/images/qouzleh_mitsubtitles.mp4 at C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.03-Photo-App\MemoryMate-PhotoFlow-Refactored-main-16\.thumb_cache\qouzleh_mitsubtitles_mp4_thumb.jpg
-2026-02-13 16:14:35,441 [INFO] [VideoThumbnailWorker] ✓ c:/users/suleimaa/downloads/photo-sorter/images/qouzleh_mitsubtitles.mp4
-2026-02-13 16:14:35,441 [INFO] [VideoThumbnailWorker] Finished: 2 success, 0 failed
+[GooglePhotosLayout] 📐 Responsive grid: 5 columns (viewport: 1069px, thumb: 200px)
+2026-02-13 17:14:10,347 [INFO] [VideoMetadataWorker] ✓ c:/users/suleimaa/downloads/photo-sorter/images/qouzleh_mitsubtitles-ezgif.com-resize-video.mp4
+2026-02-13 17:14:10,352 [INFO] [VideoMetadataWorker] ✓ c:/users/suleimaa/downloads/photo-sorter/images/qouzleh_mitsubtitles.mp4
+2026-02-13 17:14:10,352 [INFO] [VideoMetadataWorker] Finished: 2 success, 0 failed
+2026-02-13 17:14:10,376 [INFO] Generated thumbnail for c:/users/suleimaa/downloads/photo-sorter/images/qouzleh_mitsubtitles-ezgif.com-resize-video.mp4 at C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.03-Photo-App\MemoryMate-PhotoFlow-Refactored-main-17\.thumb_cache\qouzleh_mitsubtitles-ezgif.com-resize-video_mp4_thumb.jpg
+2026-02-13 17:14:10,401 [INFO] [VideoThumbnailWorker] ✓ c:/users/suleimaa/downloads/photo-sorter/images/qouzleh_mitsubtitles-ezgif.com-resize-video.mp4
+2026-02-13 17:14:10,421 [INFO] Generated thumbnail for c:/users/suleimaa/downloads/photo-sorter/images/qouzleh_mitsubtitles.mp4 at C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.03-Photo-App\MemoryMate-PhotoFlow-Refactored-main-17\.thumb_cache\qouzleh_mitsubtitles_mp4_thumb.jpg
+2026-02-13 17:14:10,431 [INFO] [VideoThumbnailWorker] ✓ c:/users/suleimaa/downloads/photo-sorter/images/qouzleh_mitsubtitles.mp4
+2026-02-13 17:14:10,431 [INFO] [VideoThumbnailWorker] Finished: 2 success, 0 failed
 [GooglePhotosLayout] Virtual scrolling enabled: 13 total date groups
 [GooglePhotosLayout] Rendered: 5 groups | Placeholders: 8 groups
 [GooglePhotosLayout] Queued 10 thumbnails for loading (initial limit: 50)
 [GooglePhotosLayout] Photo loading complete! Thumbnails will load progressively.
-2026-02-13 16:14:36,830 [INFO] No more photos to process
-2026-02-13 16:14:36,830 [INFO] Backfill complete: AssetBackfillStats(scanned=25, hashed=25, linked=25, errors=0, skipped=0)
-2026-02-13 16:14:36,830 [INFO] Hash backfill complete: 25 scanned, 25 hashed, 25 linked
-2026-02-13 16:14:36,844 [INFO] Found 7 exact duplicate groups
-2026-02-13 16:15:00,273 [INFO] [SemanticEmbeddingService] Initialized (lazy) with model=openai/clip-vit-base-patch32
-2026-02-13 16:15:00,295 [INFO] Found 25 photos needing embeddings - generating in background
-2026-02-13 16:15:00,300 [INFO] [SemanticEmbeddingWorker] Using project canonical model: openai/clip-vit-base-patch32 (project_id=1)
-2026-02-13 16:15:00,300 [INFO] [SemanticEmbeddingWorker] Starting batch: 25 photos, model=openai/clip-vit-base-patch32, force=False, project=1
-2026-02-13 16:15:00,300 [INFO] [SemanticEmbeddingService] Creating service for model: openai/clip-vit-base-patch32
-2026-02-13 16:15:00,300 [INFO] [SemanticEmbeddingService] Initialized (lazy) with model=openai/clip-vit-base-patch32
-2026-02-13 16:15:03,116 [INFO] [SemanticEmbeddingService] Loading model: openai/clip-vit-base-patch32
-2026-02-13 16:15:03,116 [INFO] [SemanticEmbeddingService] Using CPU
-2026-02-13 16:15:03,123 [INFO] [SemanticEmbeddingService] Searching for offline model...
-2026-02-13 16:15:03,125 [INFO] [SemanticEmbeddingService]   App root: C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.03-Photo-App\MemoryMate-PhotoFlow-Refactored-main-16
-2026-02-13 16:15:03,125 [INFO] [SemanticEmbeddingService]   Looking for: openai--clip-vit-base-patch32
-2026-02-13 16:15:03,125 [INFO] [SemanticEmbeddingService]   Checking: C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.03-Photo-App\MemoryMate-PhotoFlow-Refactored-main-16\Model\openai--clip-vit-base-patch32
-2026-02-13 16:15:03,125 [INFO] [SemanticEmbeddingService]     → Exists: False
-2026-02-13 16:15:03,125 [INFO] [SemanticEmbeddingService]   Checking: C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.03-Photo-App\MemoryMate-PhotoFlow-Refactored-main-16\model\openai--clip-vit-base-patch32
-2026-02-13 16:15:03,125 [INFO] [SemanticEmbeddingService]     → Exists: False
-2026-02-13 16:15:03,125 [INFO] [SemanticEmbeddingService]   Checking: C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.03-Photo-App\MemoryMate-PhotoFlow-Refactored-main-16\models\openai--clip-vit-base-patch32
-2026-02-13 16:15:03,127 [INFO] [SemanticEmbeddingService]     → Exists: False
-2026-02-13 16:15:03,127 [INFO] [SemanticEmbeddingService]   Checking: C:\Users\suleimaa\.cache\huggingface\hub\models--openai--clip-vit-base-patch32
-2026-02-13 16:15:03,127 [INFO] [SemanticEmbeddingService]     → Exists: True
-2026-02-13 16:15:03,128 [INFO] [SemanticEmbeddingService]     → Has config.json: False
-2026-02-13 16:15:03,128 [INFO] [SemanticEmbeddingService]     → Has snapshots folder: True
-2026-02-13 16:15:03,129 [INFO] [SemanticEmbeddingService]     → Found 3 snapshot(s)
-2026-02-13 16:15:03,141 [INFO] [SemanticEmbeddingService]     → refs/main points to: 3d74acf9a28c67741b2f4f2ea7635f0aaf6f0268
-2026-02-13 16:15:03,141 [INFO] [SemanticEmbeddingService]     → Using snapshot: 3d74acf9a28c67741b2f4f2ea7635f0aaf6f0268
-2026-02-13 16:15:03,141 [INFO] [SemanticEmbeddingService]     → Snapshot has config.json: True
-2026-02-13 16:15:03,141 [INFO] [SemanticEmbeddingService]     → ✓ VALID MODEL FOUND in HF cache snapshot!
-2026-02-13 16:15:03,141 [INFO] [SemanticEmbeddingService] Loading from local path (offline mode): C:\Users\suleimaa\.cache\huggingface\hub\models--openai--clip-vit-base-patch32\snapshots\3d74acf9a28c67741b2f4f2ea7635f0aaf6f0268
-2026-02-13 16:15:03,906 [INFO] [SemanticEmbeddingService] Model loaded successfully: openai/clip-vit-base-patch32
-2026-02-13 16:15:03,922 [INFO] [SemanticEmbeddingService] Model ready on cpu
-2026-02-13 16:15:12,203 [INFO] [SemanticEmbeddingWorker] Batch complete: 25 success, 0 skipped, 0 failed in 11.9s
-2026-02-13 16:15:12,203 [INFO] Embedding generation complete: 25 generated
-2026-02-13 16:15:12,218 [INFO] [SemanticEmbeddingService] Initialized (lazy) with model=openai/clip-vit-base-patch32
-2026-02-13 16:15:12,253 [INFO] Starting similar shot stack generation for project 1
-2026-02-13 16:15:12,254 [INFO] Parameters: StackGenParams(rule_version='1', time_window_seconds=30, min_stack_size=2, top_k=30, similarity_threshold=0.5, candidate_limit_per_photo=300, cross_date_similarity=True, cross_date_threshold=0.85)
-2026-02-13 16:15:12,266 [INFO] Cleared 0 similar stacks (rule v1)
-2026-02-13 16:15:12,266 [INFO] Cleared 0 existing similar shot stacks for rule v1
-2026-02-13 16:15:12,266 [INFO] Representative-only mode enabled: 25 → 13 photos considered
-2026-02-13 16:15:12,266 [INFO] Found 13 photos (13 with timestamps, 0 without)
-2026-02-13 16:15:12,277 [INFO] [SemanticEmbeddingService] Loaded 25 embeddings for project 1
-2026-02-13 16:15:12,278 [INFO] Batch-loaded 25 embeddings for similarity comparison
-2026-02-13 16:15:12,300 [INFO] Found 6 similar shot clusters (time-window pass)
-2026-02-13 16:15:12,301 [INFO] Global similarity pass: 13 photos with embeddings (14 already in time-window clusters)
-2026-02-13 16:15:12,302 [INFO] Global cross-date pass found 1 additional clusters (threshold=0.85)
-2026-02-13 16:15:12,302 [INFO] Total similar shot clusters: 7
-2026-02-13 16:15:12,641 [INFO] Similar shot stack generation complete: 7 stacks, 16 memberships, 0 errors
-2026-02-13 16:15:12,641 [INFO] Created 7 similar shot stacks
-2026-02-13 16:15:12,672 [INFO] [JobManager] Tracked job -3 (post_scan) completed: {'exact': 7, 'similar': 7}
-2026-02-13 16:15:12,672 [INFO] Post-scan pipeline complete. Remaining: set()
-2026-02-13 16:15:12,672 [INFO] ✓ All scan operations complete. Triggering final refresh...
-2026-02-13 16:15:12,677 [INFO] [Store] EmbeddingsCompleted job=-1 src=post_scan_pipeline deltas={'embeddings_v': '0→1', 'jobs_v': '2→3'}  →  3 subscriber(s)
-2026-02-13 16:15:12,679 [INFO] [Store] DuplicatesCompleted job=-1 src=post_scan_pipeline deltas={'duplicates_v': '0→1', 'jobs_v': '3→4'}  →  3 subscriber(s)
-2026-02-13 16:15:12,780 [INFO] 🔄 Final scan bookkeeping (UI refresh handled by store subscribers)...
-2026-02-13 16:15:12,781 [INFO] Final refresh complete: 25 photos, 2 videos
-2026-02-13 16:15:12,804 [INFO] [JobManager] Tracked job -2 (scan) completed: {'photos': 25, 'videos': 2}
-2026-02-13 16:16:05,081 [INFO] [AccordionSidebar] Expanding section: duplicates
-2026-02-13 16:16:05,173 [INFO] [AccordionSidebar] Section duplicates loaded and displayed
-2026-02-13 16:16:10,026 [INFO] Loaded 7 similar stacks
-2026-02-13 16:16:10,044 [INFO] Loaded 7 similar stacks
-2026-02-13 16:16:11,360 [INFO] Loaded stack 1 with 2 members
-2026-02-13 16:16:16,332 [INFO] Loaded stack 6 with 4 members
-2026-02-13 16:16:19,233 [INFO] [AccordionSidebar] Section duplicates loaded and displayed
-2026-02-13 16:16:21,276 [INFO] [AccordionSidebar] Expanding section: folders
-2026-02-13 16:16:21,281 [INFO] [FoldersSection] Loading folders (generation 4)...
-2026-02-13 16:16:21,285 [INFO] [FoldersSection] Loaded 3 folders (gen 4)
-[ReferenceDB] Closed connection for thread 39264
-2026-02-13 16:16:21,287 [INFO] [FoldersSection] Tree built with 1 top-level folders
-2026-02-13 16:16:21,288 [INFO] [FoldersSection] Data loaded successfully (gen 4)
-2026-02-13 16:16:21,290 [INFO] [FoldersSection] Tree built with 1 top-level folders
-2026-02-13 16:16:21,359 [INFO] [AccordionSidebar] Section folders loaded and displayed
+2026-02-13 17:14:11,414 [INFO] [AccordionSidebar] Expanding section: folders
+2026-02-13 17:14:11,414 [INFO] [FoldersSection] Loading folders (generation 4)...
+2026-02-13 17:14:11,414 [INFO] [FoldersSection] Loaded 3 folders (gen 4)
+[ReferenceDB] Closed connection for thread 15588
+2026-02-13 17:14:11,431 [INFO] [FoldersSection] Tree built with 1 top-level folders
+2026-02-13 17:14:11,431 [INFO] [FoldersSection] Data loaded successfully (gen 4)
+2026-02-13 17:14:11,433 [INFO] [FoldersSection] Tree built with 1 top-level folders
+2026-02-13 17:14:11,504 [INFO] [AccordionSidebar] Section folders loaded and displayed
+2026-02-13 17:14:11,883 [INFO] No more photos to process
+2026-02-13 17:14:11,883 [INFO] Backfill complete: AssetBackfillStats(scanned=25, hashed=25, linked=25, errors=0, skipped=0)
+2026-02-13 17:14:11,883 [INFO] Hash backfill complete: 25 scanned, 25 hashed, 25 linked
+2026-02-13 17:14:11,889 [INFO] Found 7 exact duplicate groups
 [GooglePhotosLayout] ========================================
 [GooglePhotosLayout] Accordion folder clicked: folder_id=1 (debouncing...)
 [GooglePhotosLayout] Executing debounced folder click: folder_id=1
@@ -692,32 +632,113 @@ Adaptive Icons:  24px
 [GooglePhotosLayout] Paged load started (generation 5, page_size=250)
 [GooglePhotosLayout] _load_photos call completed
 [GooglePhotosLayout] ========================================
-2026-02-13 16:16:23,238 [INFO] [GoogleLayout] Page count ready: gen=5 total=27 (threshold=3000)
-2026-02-13 16:16:23,238 [INFO] [GoogleLayout] Page ready: gen=5 offset=0 rows=27 loaded=27/27
+2026-02-13 17:14:13,495 [INFO] [GoogleLayout] Page count ready: gen=5 total=27 (threshold=3000)
+2026-02-13 17:14:13,495 [INFO] [GoogleLayout] Page ready: gen=5 offset=0 rows=27 loaded=27/27
 [GooglePhotosLayout] Dispatching 27 assets (photos+videos) to background grouping worker...
-2026-02-13 16:16:23,238 [INFO] [GoogleLayout] All pages loaded: 27 rows total
+2026-02-13 17:14:13,495 [INFO] [GoogleLayout] All pages loaded: 27 rows total
 [GooglePhotosLayout] Grouped into 13 date groups
 [GooglePhotosLayout] Tracking 27 paths for multi-selection
 [GooglePhotosLayout] Virtual scrolling enabled: 13 total date groups
 [GooglePhotosLayout] Rendered: 5 groups | Placeholders: 8 groups
 [GooglePhotosLayout] Queued 10 thumbnails for loading (initial limit: 50)
 [GooglePhotosLayout] Photo loading complete! Thumbnails will load progressively.
-2026-02-13 16:16:29,860 [INFO] [VideoThumbnailService] Using default thumbnail directory: C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.03-Photo-App\MemoryMate-PhotoFlow-Refactored-main-16\.thumb_cache
-2026-02-13 16:16:29,860 [INFO] Using ffmpeg from same directory as ffprobe: C:\ffmpeg\bin\ffmpeg.exe
-2026-02-13 16:16:29,860 [INFO] [VideoThumbnailService] Using default thumbnail directory: C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.03-Photo-App\MemoryMate-PhotoFlow-Refactored-main-16\.thumb_cache
-2026-02-13 16:16:29,875 [INFO] Using ffmpeg from same directory as ffprobe: C:\ffmpeg\bin\ffmpeg.exe
-2026-02-13 16:16:29,907 [INFO] ffmpeg detected at 'C:\ffmpeg\bin\ffmpeg.exe' - video thumbnail generation enabled
-[ThumbnailLoader] ✓ Video thumbnail: qouzleh_mitsubtitles.mp4
-2026-02-13 16:16:29,916 [INFO] ffmpeg detected at 'C:\ffmpeg\bin\ffmpeg.exe' - video thumbnail generation enabled
+[GooglePhotosLayout] ========================================
+[GooglePhotosLayout] Accordion folder clicked: folder_id=2 (debouncing...)
+[GooglePhotosLayout] Executing debounced folder click: folder_id=2
+[GooglePhotosLayout] Found folder path: C:\Users\suleimaa\Downloads\Photo-Sorter\Images\output6
+[GooglePhotosLayout] Calling _load_photos with filter_folder=C:\Users\suleimaa\Downloads\Photo-Sorter\Images\output6
+[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px) [folder=C:\Users\suleimaa\Downloads\Photo-Sorter\Images\output6]...
+[GooglePhotosLayout] 🔍 Starting async photo load (generation 6) - existing content preserved...
+[GooglePhotosLayout] Paged load started (generation 6, page_size=250)
+[GooglePhotosLayout] _load_photos call completed
+[GooglePhotosLayout] ========================================
+2026-02-13 17:14:15,188 [INFO] [GoogleLayout] Page count ready: gen=6 total=25 (threshold=3000)
+2026-02-13 17:14:15,188 [INFO] [GoogleLayout] Page ready: gen=6 offset=0 rows=25 loaded=25/25
+[GooglePhotosLayout] Dispatching 25 assets (photos+videos) to background grouping worker...
+2026-02-13 17:14:15,188 [INFO] [GoogleLayout] All pages loaded: 25 rows total
+[GooglePhotosLayout] Grouped into 12 date groups
+[GooglePhotosLayout] Tracking 25 paths for multi-selection
+[GooglePhotosLayout] Virtual scrolling enabled: 12 total date groups
+[GooglePhotosLayout] Rendered: 5 groups | Placeholders: 7 groups
+[GooglePhotosLayout] Queued 10 thumbnails for loading (initial limit: 50)
+[GooglePhotosLayout] Photo loading complete! Thumbnails will load progressively.
+2026-02-13 17:14:25,648 [INFO] [AccordionSidebar] Expanding section: videos
+2026-02-13 17:14:25,654 [INFO] [VideosSection] Loading videos (generation 3)...
+2026-02-13 17:14:25,654 [INFO] [VideosSection] Loaded 2 videos (gen 3)
+2026-02-13 17:14:25,664 [INFO] [VideosSection] Data loaded successfully (gen 3, 2 videos)
+2026-02-13 17:14:25,665 [INFO] [VideosSection] Tree built with 2 videos
+2026-02-13 17:14:25,731 [INFO] [AccordionSidebar] Section videos loaded and displayed
+[GooglePhotosLayout] Accordion video clicked: all
+2026-02-13 17:14:27,111 [INFO] [VideoThumbnailService] Using default thumbnail directory: C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.03-Photo-App\MemoryMate-PhotoFlow-Refactored-main-17\.thumb_cache
+2026-02-13 17:14:27,111 [INFO] Using ffmpeg from same directory as ffprobe: C:\ffmpeg\bin\ffmpeg.exe
+2026-02-13 17:14:27,121 [INFO] [VideoThumbnailService] Using default thumbnail directory: C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.03-Photo-App\MemoryMate-PhotoFlow-Refactored-main-17\.thumb_cache
+2026-02-13 17:14:27,122 [INFO] Using ffmpeg from same directory as ffprobe: C:\ffmpeg\bin\ffmpeg.exe
+[GooglePhotosLayout] Search results: 2 photos in 1 dates
+2026-02-13 17:14:27,148 [INFO] ffmpeg detected at 'C:\ffmpeg\bin\ffmpeg.exe' - video thumbnail generation enabled
+2026-02-13 17:14:27,148 [INFO] ffmpeg detected at 'C:\ffmpeg\bin\ffmpeg.exe' - video thumbnail generation enabled
 [ThumbnailLoader] ✓ Video thumbnail: qouzleh_mitsubtitles-ezgif.com-resize-video.mp4
-2026-02-13 16:16:38,423 [INFO] Loaded stack 6 with 4 members
-2026-02-13 16:16:41,842 [INFO] [DuplicateBadge] Clicked, emitting asset_id=16
-[GooglePhotosLayout] Opening duplicates dialog for asset 16
-2026-02-13 16:16:41,874 [INFO] Started async duplicate loading (generation 1)
-2026-02-13 16:16:41,874 [INFO] Loaded 7 duplicate assets in background (limit=None, offset=0)
-2026-02-13 16:16:41,939 [INFO] Async duplicate loading complete: 7 groups loaded
-[GooglePhotosLayout] Photo clicked: c:/users/suleimaa/downloads/photo-sorter/images/output6/pexels-matreding-11363475.jpg
-[GooglePhotosLayout] 👁️ Opening lightbox for: c:/users/suleimaa/downloads/photo-sorter/images/output6/pexels-matreding-11363475.jpg
+[ThumbnailLoader] ✓ Video thumbnail: qouzleh_mitsubtitles.mp4
+2026-02-13 17:14:29,352 [INFO] [AccordionSidebar] Expanding section: folders
+2026-02-13 17:14:29,355 [INFO] [FoldersSection] Loading folders (generation 5)...
+2026-02-13 17:14:29,355 [INFO] [FoldersSection] Loaded 3 folders (gen 5)
+[ReferenceDB] Closed connection for thread 5136
+2026-02-13 17:14:29,369 [INFO] [FoldersSection] Tree built with 1 top-level folders
+2026-02-13 17:14:29,369 [INFO] [FoldersSection] Data loaded successfully (gen 5)
+2026-02-13 17:14:29,369 [INFO] [FoldersSection] Tree built with 1 top-level folders
+2026-02-13 17:14:29,448 [INFO] [AccordionSidebar] Section folders loaded and displayed
+[GooglePhotosLayout] ========================================
+[GooglePhotosLayout] Accordion folder clicked: folder_id=1 (debouncing...)
+[GooglePhotosLayout] Executing debounced folder click: folder_id=1
+[GooglePhotosLayout] Found folder path: C:\Users\suleimaa\Downloads\Photo-Sorter\Images
+[GooglePhotosLayout] Calling _load_photos with filter_folder=C:\Users\suleimaa\Downloads\Photo-Sorter\Images
+[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px) [folder=C:\Users\suleimaa\Downloads\Photo-Sorter\Images]...
+[GooglePhotosLayout] 🔍 Starting async photo load (generation 7) - existing content preserved...
+[GooglePhotosLayout] Paged load started (generation 7, page_size=250)
+[GooglePhotosLayout] _load_photos call completed
+[GooglePhotosLayout] ========================================
+2026-02-13 17:14:32,148 [INFO] [GoogleLayout] Page count ready: gen=7 total=27 (threshold=3000)
+2026-02-13 17:14:32,148 [INFO] [GoogleLayout] Page ready: gen=7 offset=0 rows=27 loaded=27/27
+[GooglePhotosLayout] Dispatching 27 assets (photos+videos) to background grouping worker...
+2026-02-13 17:14:32,148 [INFO] [GoogleLayout] All pages loaded: 27 rows total
+[GooglePhotosLayout] Grouped into 13 date groups
+[GooglePhotosLayout] Tracking 27 paths for multi-selection
+[GooglePhotosLayout] Virtual scrolling enabled: 13 total date groups
+[GooglePhotosLayout] Rendered: 5 groups | Placeholders: 8 groups
+[GooglePhotosLayout] Queued 10 thumbnails for loading (initial limit: 50)
+[GooglePhotosLayout] Photo loading complete! Thumbnails will load progressively.
+2026-02-13 17:14:36,389 [INFO] [SemanticEmbeddingService] Initialized (lazy) with model=openai/clip-vit-base-patch32
+2026-02-13 17:14:36,408 [INFO] Found 25 photos needing embeddings - generating in background
+2026-02-13 17:14:36,408 [INFO] [SemanticEmbeddingWorker] Using project canonical model: openai/clip-vit-base-patch32 (project_id=1)
+2026-02-13 17:14:36,408 [INFO] [SemanticEmbeddingWorker] Starting batch: 25 photos, model=openai/clip-vit-base-patch32, force=False, project=1
+2026-02-13 17:14:36,408 [INFO] [SemanticEmbeddingService] Creating service for model: openai/clip-vit-base-patch32
+2026-02-13 17:14:36,414 [INFO] [SemanticEmbeddingService] Initialized (lazy) with model=openai/clip-vit-base-patch32
+[ThumbnailLoader] ✓ Video thumbnail: qouzleh_mitsubtitles.mp4
+[ThumbnailLoader] ✓ Video thumbnail: qouzleh_mitsubtitles-ezgif.com-resize-video.mp4
+2026-02-13 17:14:39,477 [INFO] [SemanticEmbeddingService] Loading model: openai/clip-vit-base-patch32
+2026-02-13 17:14:39,477 [INFO] [SemanticEmbeddingService] Using CPU
+2026-02-13 17:14:39,483 [INFO] [SemanticEmbeddingService] Searching for offline model...
+2026-02-13 17:14:39,483 [INFO] [SemanticEmbeddingService]   App root: C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.03-Photo-App\MemoryMate-PhotoFlow-Refactored-main-17
+2026-02-13 17:14:39,483 [INFO] [SemanticEmbeddingService]   Looking for: openai--clip-vit-base-patch32
+2026-02-13 17:14:39,483 [INFO] [SemanticEmbeddingService]   Checking: C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.03-Photo-App\MemoryMate-PhotoFlow-Refactored-main-17\Model\openai--clip-vit-base-patch32
+2026-02-13 17:14:39,483 [INFO] [SemanticEmbeddingService]     → Exists: False
+2026-02-13 17:14:39,485 [INFO] [SemanticEmbeddingService]   Checking: C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.03-Photo-App\MemoryMate-PhotoFlow-Refactored-main-17\model\openai--clip-vit-base-patch32
+2026-02-13 17:14:39,485 [INFO] [SemanticEmbeddingService]     → Exists: False
+2026-02-13 17:14:39,485 [INFO] [SemanticEmbeddingService]   Checking: C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.03-Photo-App\MemoryMate-PhotoFlow-Refactored-main-17\models\openai--clip-vit-base-patch32
+2026-02-13 17:14:39,485 [INFO] [SemanticEmbeddingService]     → Exists: False
+2026-02-13 17:14:39,485 [INFO] [SemanticEmbeddingService]   Checking: C:\Users\suleimaa\.cache\huggingface\hub\models--openai--clip-vit-base-patch32
+2026-02-13 17:14:39,486 [INFO] [SemanticEmbeddingService]     → Exists: True
+2026-02-13 17:14:39,486 [INFO] [SemanticEmbeddingService]     → Has config.json: False
+2026-02-13 17:14:39,486 [INFO] [SemanticEmbeddingService]     → Has snapshots folder: True
+2026-02-13 17:14:39,487 [INFO] [SemanticEmbeddingService]     → Found 3 snapshot(s)
+2026-02-13 17:14:39,493 [INFO] [SemanticEmbeddingService]     → refs/main points to: 3d74acf9a28c67741b2f4f2ea7635f0aaf6f0268
+2026-02-13 17:14:39,493 [INFO] [SemanticEmbeddingService]     → Using snapshot: 3d74acf9a28c67741b2f4f2ea7635f0aaf6f0268
+2026-02-13 17:14:39,499 [INFO] [SemanticEmbeddingService]     → Snapshot has config.json: True
+2026-02-13 17:14:39,499 [INFO] [SemanticEmbeddingService]     → ✓ VALID MODEL FOUND in HF cache snapshot!
+2026-02-13 17:14:39,499 [INFO] [SemanticEmbeddingService] Loading from local path (offline mode): C:\Users\suleimaa\.cache\huggingface\hub\models--openai--clip-vit-base-patch32\snapshots\3d74acf9a28c67741b2f4f2ea7635f0aaf6f0268
+2026-02-13 17:14:40,349 [INFO] [SemanticEmbeddingService] Model loaded successfully: openai/clip-vit-base-patch32
+2026-02-13 17:14:40,365 [INFO] [SemanticEmbeddingService] Model ready on cpu
+[GooglePhotosLayout] Photo clicked: c:/users/suleimaa/downloads/photo-sorter/images/output6/pexels-matreding-11363475 - kopie.jpg
+[GooglePhotosLayout] 👁️ Opening lightbox for: c:/users/suleimaa/downloads/photo-sorter/images/output6/pexels-matreding-11363475 - kopie.jpg
 [MediaLightbox] Available: 1920x1152 (DPI: 1.0x)
 [MediaLightbox] Responsive Tier: FullHD Professional
 [MediaLightbox] Window: 1689x1013 (88% of available)
@@ -727,19 +748,19 @@ Adaptive Icons:  24px
 [MediaLightbox] ✓ Nav buttons positioned: left=8, right=608, y=284
 [MediaLightbox] Resize: 1689x1013
 [MediaLightbox] ✓ Nav buttons positioned: left=8, right=1657, y=522
-[MediaLightbox] _load_media called for: pexels-matreding-11363475.jpg
-[MediaLightbox] Loading photo: pexels-matreding-11363475.jpg
+[MediaLightbox] _load_media called for: pexels-matreding-11363475 - kopie.jpg
+[MediaLightbox] Loading photo: pexels-matreding-11363475 - kopie.jpg
 [MediaLightbox] Starting progressive load...
-2026-02-13 16:18:14,874 [INFO] [SafeImageLoader] OK pexels-matreding-11363475.jpg target=422px actual=281x422 file=7.2MB time=0.09s
-[ProgressiveImageWorker] ✓ Thumbnail loaded: pexels-matreding-11363475.jpg (281x422)
-2026-02-13 16:18:14,993 [INFO] [SafeImageLoader] OK pexels-matreding-11363475.jpg target=1689px actual=1126x1688 file=7.2MB time=0.12s
-[ProgressiveImageWorker] ✓ Full quality loaded: pexels-matreding-11363475.jpg (1126x1688)
-[MediaLightbox] Preloading: pexels-matreding-11363475 - kopie.jpg
+2026-02-13 17:14:43,099 [INFO] [SafeImageLoader] OK pexels-matreding-11363475 - kopie.jpg target=422px actual=281x422 file=7.2MB time=0.10s
+[ProgressiveImageWorker] ✓ Thumbnail loaded: pexels-matreding-11363475 - kopie.jpg (281x422)
+2026-02-13 17:14:43,261 [INFO] [SafeImageLoader] OK pexels-matreding-11363475 - kopie.jpg target=1689px actual=1126x1688 file=7.2MB time=0.16s
+[ProgressiveImageWorker] ✓ Full quality loaded: pexels-matreding-11363475 - kopie.jpg (1126x1688)
 [MediaLightbox] Preloading: pexels-matreding-11363475 - kopie (3).jpg
-[MediaLightbox] Filmstrip: Showing 14 thumbnails (range 13-27 of 27)
+[MediaLightbox] Preloading: pexels-matreding-11363475 - kopie (2).jpg
+[MediaLightbox] Filmstrip: Showing 13 thumbnails (range 14-27 of 27)
 [MediaLightbox] Zoom state restored: fit @ 100%
 [MediaLightbox] ✓ Nav buttons positioned: left=8, right=1657, y=522
-[MediaLightbox] Filmstrip: Showing 14 thumbnails (range 13-27 of 27)
+[MediaLightbox] Filmstrip: Showing 13 thumbnails (range 14-27 of 27)
 [MediaLightbox] 🔄 Responsive Tier Changed: FullHD Professional → HD
 [MediaLightbox]    New Scaling: Toolbar=68px, Buttons=48px
 [MediaLightbox] ✓ UI elements resized for tier: HD
@@ -748,321 +769,367 @@ Adaptive Icons:  24px
 [MediaLightbox] ✓ Thumbnail displayed (progressive load)
 [SIGNAL] _on_full_quality_loaded called, qimage=valid
 [MediaLightbox] ✓ Full quality displayed (progressive load complete)
-2026-02-13 16:18:15,357 [INFO] [SafeImageLoader] OK pexels-matreding-11363475 - kopie (3).jpg target=2560px actual=1706x2560 file=7.2MB time=0.13s
+2026-02-13 17:14:43,989 [INFO] [SafeImageLoader] OK pexels-matreding-11363475 - kopie (2).jpg target=2560px actual=1706x2560 file=7.2MB time=0.20s
+2026-02-13 17:14:44,002 [INFO] [SafeImageLoader] OK pexels-matreding-11363475 - kopie (3).jpg target=2560px actual=1706x2560 file=7.2MB time=0.22s
+[PreloadImageWorker] ✓ Preloaded: pexels-matreding-11363475 - kopie (2).jpg (1706x2560)
 [PreloadImageWorker] ✓ Preloaded: pexels-matreding-11363475 - kopie (3).jpg (1706x2560)
-[MediaLightbox] ✓ Cached: pexels-matreding-11363475 - kopie (3).jpg (~20472KB, cache: 1 items / 20.0MB)
-2026-02-13 16:18:15,387 [INFO] [SafeImageLoader] OK pexels-matreding-11363475 - kopie.jpg target=2560px actual=1706x2560 file=7.2MB time=0.14s
+[MediaLightbox] ✓ Cached: pexels-matreding-11363475 - kopie (2).jpg (~20472KB, cache: 1 items / 20.0MB)
+[MediaLightbox] ✓ Cached: pexels-matreding-11363475 - kopie (3).jpg (~20472KB, cache: 2 items / 40.0MB)
+2026-02-13 17:14:49,187 [INFO] [SemanticEmbeddingWorker] Batch complete: 25 success, 0 skipped, 0 failed in 12.8s
+2026-02-13 17:14:49,187 [INFO] Embedding generation complete: 25 generated
+2026-02-13 17:14:49,196 [INFO] [SemanticEmbeddingService] Initialized (lazy) with model=openai/clip-vit-base-patch32
+2026-02-13 17:14:49,235 [INFO] Starting similar shot stack generation for project 1
+2026-02-13 17:14:49,235 [INFO] Parameters: StackGenParams(rule_version='1', time_window_seconds=30, min_stack_size=2, top_k=30, similarity_threshold=0.5, candidate_limit_per_photo=300, cross_date_similarity=True, cross_date_threshold=0.85)
+2026-02-13 17:14:49,251 [INFO] Cleared 0 similar stacks (rule v1)
+2026-02-13 17:14:49,252 [INFO] Cleared 0 existing similar shot stacks for rule v1
+2026-02-13 17:14:49,255 [INFO] Representative-only mode enabled: 25 → 13 photos considered
+2026-02-13 17:14:49,256 [INFO] Found 13 photos (13 with timestamps, 0 without)
+2026-02-13 17:14:49,257 [INFO] [SemanticEmbeddingService] Loaded 25 embeddings for project 1
+2026-02-13 17:14:49,257 [INFO] Batch-loaded 25 embeddings for similarity comparison
+2026-02-13 17:14:49,275 [INFO] Found 6 similar shot clusters (time-window pass)
+2026-02-13 17:14:49,275 [INFO] Global similarity pass: 13 photos with embeddings (14 already in time-window clusters)
+2026-02-13 17:14:49,275 [INFO] Global cross-date pass found 1 additional clusters (threshold=0.85)
+2026-02-13 17:14:49,275 [INFO] Total similar shot clusters: 7
+2026-02-13 17:14:49,645 [INFO] Similar shot stack generation complete: 7 stacks, 16 memberships, 0 errors
+2026-02-13 17:14:49,647 [INFO] Created 7 similar shot stacks
+2026-02-13 17:14:49,677 [INFO] [JobManager] Tracked job -3 (post_scan) completed: {'exact': 7, 'similar': 7}
+2026-02-13 17:14:49,678 [INFO] Post-scan pipeline complete. Remaining: set()
+2026-02-13 17:14:49,678 [INFO] ✓ All scan operations complete. Triggering final refresh...
+2026-02-13 17:14:49,681 [INFO] [Store] EmbeddingsCompleted job=-1 src=post_scan_pipeline deltas={'embeddings_v': '0→1', 'jobs_v': '2→3'}  →  3 subscriber(s)
+2026-02-13 17:14:49,682 [INFO] [Store] DuplicatesCompleted job=-1 src=post_scan_pipeline deltas={'duplicates_v': '0→1', 'jobs_v': '3→4'}  →  3 subscriber(s)
+2026-02-13 17:14:49,783 [INFO] 🔄 Final scan bookkeeping (UI refresh handled by store subscribers)...
+2026-02-13 17:14:49,783 [INFO] Final refresh complete: 25 photos, 2 videos
+2026-02-13 17:14:49,801 [INFO] [JobManager] Tracked job -2 (scan) completed: {'photos': 25, 'videos': 2}
+[MediaLightbox] Prev clicked at index=24 of 27
+[MediaLightbox] Zoom state saved: custom @ 61%
+[MediaLightbox] → Loading previous: pexels-matreding-11363475.jpg (idx=23)
+[MediaLightbox] _load_media called for: pexels-matreding-11363475.jpg
+[MediaLightbox] Loading photo: pexels-matreding-11363475.jpg
+[MediaLightbox] Starting progressive load...
+2026-02-13 17:15:02,060 [INFO] [SafeImageLoader] OK pexels-matreding-11363475.jpg target=419px actual=279x419 file=7.2MB time=0.07s
+[ProgressiveImageWorker] ✓ Thumbnail loaded: pexels-matreding-11363475.jpg (279x419)
+2026-02-13 17:15:02,172 [INFO] [SafeImageLoader] OK pexels-matreding-11363475.jpg target=1677px actual=1118x1677 file=7.2MB time=0.11s
+[ProgressiveImageWorker] ✓ Full quality loaded: pexels-matreding-11363475.jpg (1118x1677)
+[MediaLightbox] Preloading: pexels-matreding-11363475 - kopie.jpg
+[MediaLightbox] Filmstrip: Showing 14 thumbnails (range 13-27 of 27)
+[MediaLightbox] Zoom state restored: custom @ 61%
+[SIGNAL] _on_thumbnail_loaded called, qimage=valid
+[MediaLightbox] ✓ Thumbnail displayed (progressive load)
+[SIGNAL] _on_full_quality_loaded called, qimage=valid
+[MediaLightbox] ✓ Full quality displayed (progressive load complete)
+2026-02-13 17:15:02,500 [INFO] [SafeImageLoader] OK pexels-matreding-11363475 - kopie.jpg target=2560px actual=1706x2560 file=7.2MB time=0.12s
 [PreloadImageWorker] ✓ Preloaded: pexels-matreding-11363475 - kopie.jpg (1706x2560)
-[MediaLightbox] ✓ Cached: pexels-matreding-11363475 - kopie.jpg (~20472KB, cache: 2 items / 40.0MB)
-[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1650, y=527
-[MediaLightbox] Resize: 1688x1013
-[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1643, y=527
-[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1630, y=527
-[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1612, y=527
-[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1588, y=527
-[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1567, y=527
-[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1521, y=527
-[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1477, y=527
-[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1443, y=527
+[MediaLightbox] ✓ Cached: pexels-matreding-11363475 - kopie.jpg (~20472KB, cache: 3 items / 60.0MB)
+[MediaLightbox] Prev clicked at index=23 of 27
+[MediaLightbox] Zoom state saved: fit @ 56%
+[MediaLightbox] → Loading previous: alya3_2_2_2_2.jpeg (idx=22)
+[MediaLightbox] _load_media called for: alya3_2_2_2_2.jpeg
+[MediaLightbox] Loading photo: alya3_2_2_2_2.jpeg
+[MediaLightbox] Starting progressive load...
+2026-02-13 17:15:03,244 [INFO] [SafeImageLoader] OK alya3_2_2_2_2.jpeg target=422px actual=422x316 file=0.1MB time=0.01s
+[ProgressiveImageWorker] ✓ Thumbnail loaded: alya3_2_2_2_2.jpeg (422x316)
+2026-02-13 17:15:03,258 [INFO] [SafeImageLoader] OK alya3_2_2_2_2.jpeg target=1689px actual=1080x810 file=0.1MB time=0.01s
+[ProgressiveImageWorker] ✓ Full quality loaded: alya3_2_2_2_2.jpeg (1080x810)
+[MediaLightbox] Preloading: pexels-matreding-11363475.jpg
+[MediaLightbox] Filmstrip: Showing 15 thumbnails (range 12-27 of 27)
+[MediaLightbox] Zoom state restored: fit @ 56%
+[SIGNAL] _on_thumbnail_loaded called, qimage=valid
+[MediaLightbox] ✓ Thumbnail displayed (progressive load)
+[SIGNAL] _on_full_quality_loaded called, qimage=valid
+[MediaLightbox] ✓ Full quality displayed (progressive load complete)
+2026-02-13 17:15:03,390 [INFO] [SafeImageLoader] OK pexels-matreding-11363475.jpg target=2560px actual=1706x2560 file=7.2MB time=0.11s
+[PreloadImageWorker] ✓ Preloaded: pexels-matreding-11363475.jpg (1706x2560)
+[MediaLightbox] ✓ Cached: pexels-matreding-11363475.jpg (~20472KB, cache: 4 items / 80.0MB)
+[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1649, y=527
+[MediaLightbox] Resize: 1687x1013
+[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1638, y=527
+[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1624, y=527
+[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1605, y=527
+[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1571, y=527
+[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1537, y=527
+[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1508, y=527
+[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1476, y=527
+[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1460, y=527
+[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1444, y=527
+[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1431, y=527
+[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1421, y=527
+[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1409, y=527
 [MediaLightbox] ✓ Nav buttons positioned: left=12, right=1389, y=527
-[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1341, y=527
-[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1314, y=527
-[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1278, y=527
-[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1260, y=527
-[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1244, y=527
-[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1224, y=527
-[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1204, y=527
-[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1166, y=527
-[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1145, y=527
-[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1124, y=527
-[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1103, y=527
-[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1072, y=527
-[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1054, y=527
-[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1042, y=527
-[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1018, y=527
-[MediaLightbox] Resize: 1056x1013
-[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1007, y=527
-[MediaLightbox] ✓ Nav buttons positioned: left=12, right=998, y=527
-[MediaLightbox] ✓ Nav buttons positioned: left=12, right=990, y=527
-[MediaLightbox] ✓ Nav buttons positioned: left=12, right=985, y=527
+[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1357, y=527
+[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1328, y=527
+[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1308, y=527
+[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1279, y=527
+[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1253, y=527
+[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1235, y=527
+[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1223, y=527
+[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1214, y=527
+[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1199, y=521
+[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1186, y=521
+[MediaLightbox] Resize: 1236x1013
+[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1176, y=521
+[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1164, y=521
+[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1156, y=521
+[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1143, y=521
+[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1134, y=521
+[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1129, y=521
+[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1125, y=521
+[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1121, y=521
+[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1118, y=521
+[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1112, y=521
+[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1106, y=521
+[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1101, y=521
+[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1096, y=521
+[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1089, y=521
+[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1087, y=521
+[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1085, y=521
+[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1084, y=521
+[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1083, y=521
+[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1079, y=521
+[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1075, y=521
+[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1073, y=521
+[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1072, y=521
 [MediaLightbox] 🔄 Responsive Tier Changed: HD → Small
 [MediaLightbox]    New Scaling: Toolbar=60px, Buttons=44px
 [MediaLightbox] ✓ UI elements resized for tier: Small
 [MediaLightbox] ✓ Responsive behavior update completed
-[MediaLightbox] ✓ Nav buttons positioned: left=8, right=990, y=524
-[MediaLightbox] ✓ Nav buttons positioned: left=8, right=971, y=524
-[MediaLightbox] ✓ Nav buttons positioned: left=8, right=942, y=524
-[MediaLightbox] ✓ Nav buttons positioned: left=8, right=916, y=524
-[MediaLightbox] ✓ Nav buttons positioned: left=8, right=908, y=524
-[MediaLightbox] ✓ Nav buttons positioned: left=8, right=907, y=524
-[MediaLightbox] ✓ Nav buttons positioned: left=8, right=906, y=524
-[MediaLightbox] ✓ Nav buttons positioned: left=8, right=903, y=524
-[MediaLightbox] ✓ Nav buttons positioned: left=8, right=899, y=524
-[MediaLightbox] ✓ Nav buttons positioned: left=8, right=898, y=524
-[MediaLightbox] Resize: 930x1013
-[MediaLightbox] ✓ Responsive behavior update completed
+[MediaLightbox] Prev clicked at index=22 of 27
+[MediaLightbox] Zoom state saved: fit @ 102%
+[MediaLightbox] → Loading previous: ammar-ref_3_2.png (idx=21)
+[MediaLightbox] _load_media called for: ammar-ref_3_2.png
+[MediaLightbox] Loading photo: ammar-ref_3_2.png
+[MediaLightbox] Starting progressive load...
+2026-02-13 17:15:08,749 [INFO] [SafeImageLoader] OK ammar-ref_3_2.png target=400px actual=400x277 file=0.8MB time=0.02s
+[ProgressiveImageWorker] ✓ Thumbnail loaded: ammar-ref_3_2.png (400x277)
+[MediaLightbox] Preloading: alya3_2_2_2_2.jpeg
+[MediaLightbox] Filmstrip: Showing 16 thumbnails (range 11-27 of 27)
+2026-02-13 17:15:08,766 [INFO] [SafeImageLoader] OK ammar-ref_3_2.png target=1122px actual=1122x778 file=0.8MB time=0.02s
+[ProgressiveImageWorker] ✓ Full quality loaded: ammar-ref_3_2.png (1122x778)
+[MediaLightbox] Zoom state restored: fit @ 102%
+2026-02-13 17:15:08,774 [INFO] [SafeImageLoader] OK alya3_2_2_2_2.jpeg target=2560px actual=1080x810 file=0.1MB time=0.01s
+[PreloadImageWorker] ✓ Preloaded: alya3_2_2_2_2.jpeg (1080x810)
+[SIGNAL] _on_thumbnail_loaded called, qimage=valid
+[MediaLightbox] ✓ Thumbnail displayed (progressive load)
+[SIGNAL] _on_full_quality_loaded called, qimage=valid
+[MediaLightbox] ✓ Full quality displayed (progressive load complete)
+[MediaLightbox] ✓ Cached: alya3_2_2_2_2.jpeg (~4100KB, cache: 5 items / 84.0MB)
+[MediaLightbox] Prev clicked at index=21 of 27
+[MediaLightbox] Zoom state saved: fit @ 100%
+[MediaLightbox] → Loading previous: alya_2_2.jpeg (idx=20)
+[MediaLightbox] _load_media called for: alya_2_2.jpeg
+[MediaLightbox] Loading photo: alya_2_2.jpeg
+[MediaLightbox] Starting progressive load...
+2026-02-13 17:15:09,671 [INFO] [SafeImageLoader] OK alya_2_2.jpeg target=400px actual=311x400 file=0.2MB time=0.00s
+[ProgressiveImageWorker] ✓ Thumbnail loaded: alya_2_2.jpeg (311x400)
+2026-02-13 17:15:09,681 [INFO] [SafeImageLoader] OK alya_2_2.jpeg target=1122px actual=873x1122 file=0.2MB time=0.01s
+[ProgressiveImageWorker] ✓ Full quality loaded: alya_2_2.jpeg (873x1122)
+[MediaLightbox] Preloading: ammar-ref_3_2.png
+[MediaLightbox] Filmstrip: Showing 17 thumbnails (range 10-27 of 27)
+[MediaLightbox] Zoom state restored: fit @ 100%
+2026-02-13 17:15:09,702 [INFO] [SafeImageLoader] OK ammar-ref_3_2.png target=2560px actual=1140x791 file=0.8MB time=0.01s
+[PreloadImageWorker] ✓ Preloaded: ammar-ref_3_2.png (1140x791)
+[SIGNAL] _on_thumbnail_loaded called, qimage=valid
+[MediaLightbox] ✓ Thumbnail displayed (progressive load)
+[SIGNAL] _on_full_quality_loaded called, qimage=valid
+[MediaLightbox] ✓ Full quality displayed (progressive load complete)
+[MediaLightbox] ✓ Cached: ammar-ref_3_2.png (~4226KB, cache: 6 items / 88.1MB)
+[MediaLightbox] Evicted from cache: pexels-matreding-11363475 - kopie (2).jpg (~20472KB)
+[MediaLightbox] Prev clicked at index=20 of 27
+[MediaLightbox] Zoom state saved: fit @ 84%
+[MediaLightbox] → Loading previous: alya_2_2_2_2.jpeg (idx=19)
+[MediaLightbox] _load_media called for: alya_2_2_2_2.jpeg
+[MediaLightbox] Loading photo: alya_2_2_2_2.jpeg
+[MediaLightbox] Starting progressive load...
+2026-02-13 17:15:13,047 [INFO] [SafeImageLoader] OK alya_2_2_2_2.jpeg target=400px actual=311x400 file=0.2MB time=0.00s
+[ProgressiveImageWorker] ✓ Thumbnail loaded: alya_2_2_2_2.jpeg (311x400)
+2026-02-13 17:15:13,058 [INFO] [SafeImageLoader] OK alya_2_2_2_2.jpeg target=953px actual=741x953 file=0.2MB time=0.01s
+[ProgressiveImageWorker] ✓ Full quality loaded: alya_2_2_2_2.jpeg (741x953)
+[MediaLightbox] Preloading: alya_2_2.jpeg
+[MediaLightbox] Filmstrip: Showing 18 thumbnails (range 9-27 of 27)
+2026-02-13 17:15:13,078 [INFO] [SafeImageLoader] OK alya_2_2.jpeg target=2560px actual=965x1240 file=0.2MB time=0.01s
+[PreloadImageWorker] ✓ Preloaded: alya_2_2.jpeg (965x1240)
+[MediaLightbox] Zoom state restored: fit @ 84%
+[SIGNAL] _on_thumbnail_loaded called, qimage=valid
+[MediaLightbox] ✓ Thumbnail displayed (progressive load)
+[SIGNAL] _on_full_quality_loaded called, qimage=valid
+[MediaLightbox] ✓ Full quality displayed (progressive load complete)
+[MediaLightbox] ✓ Cached: alya_2_2.jpeg (~5609KB, cache: 6 items / 73.6MB)
+[MediaLightbox] Evicted from cache: pexels-matreding-11363475 - kopie (3).jpg (~20472KB)
+[Editor] Using original: 741x953
+[Editor] ⚡ ULTRA-LOW preview: 398x512 (for smooth drag)
+[Editor] Starting fresh (no saved state)
+[Editor] Setting consistent display size: 741x953
+[EDITOR] ========================================
+[EDITOR] Event filter installed on editor canvas
+[EDITOR] Canvas has focus for wheel events
+[EDITOR]
+[EDITOR] KEYBOARD SHORTCUTS:
+[EDITOR]   E - Enter/Exit Editor Mode
+[EDITOR]   C - Toggle Crop Mode (in editor)
+[EDITOR]   Ctrl + Z - Undo
+[EDITOR]   Ctrl + Y - Redo
+[EDITOR]   Ctrl + Mouse Wheel - Zoom In/Out
+[EDITOR]
+[EDITOR] MOUSE CONTROLS:
+[EDITOR]   - Hold Ctrl + Mouse Wheel to zoom in/out
+[EDITOR]   - Drag crop handles (corners/edges) to resize
+[EDITOR]
+[EDITOR] BUTTONS:
+[EDITOR]   - Click '✂ Crop' button to toggle crop mode
+[EDITOR]   - Adjust sliders on right panel
+[EDITOR]   - Click '✔ Save' to apply, '✖ Cancel' to discard
+[EDITOR] ========================================
+[MediaLightbox] ✓ Nav buttons positioned: left=8, right=796, y=524
+[Editor] ✓ Edits cancelled and returned to viewer mode
+[MediaLightbox] Next clicked at index=19 of 27
+[MediaLightbox] Zoom state saved: fit @ 100%
+[MediaLightbox] → Loading next: alya_2_2.jpeg (idx=20)
+[MediaLightbox] _load_media called for: alya_2_2.jpeg
+[MediaLightbox] Loading photo: alya_2_2.jpeg
+[MediaLightbox] ✓ Loading from cache (INSTANT!)
+[MediaLightbox] ✓ Loaded from cache instantly!
+[MediaLightbox] Filmstrip: Showing 17 thumbnails (range 10-27 of 27)
+[MediaLightbox] Zoom state restored: fit @ 100%
+[MediaLightbox] Next clicked at index=20 of 27
+[MediaLightbox] Zoom state saved: fit @ 100%
+[MediaLightbox] → Loading next: ammar-ref_3_2.png (idx=21)
+[MediaLightbox] _load_media called for: ammar-ref_3_2.png
+[MediaLightbox] Loading photo: ammar-ref_3_2.png
+[MediaLightbox] ✓ Loading from cache (INSTANT!)
+[MediaLightbox] ✓ Loaded from cache instantly!
+[MediaLightbox] Filmstrip: Showing 16 thumbnails (range 11-27 of 27)
+[MediaLightbox] Zoom state restored: fit @ 100%
+[MediaLightbox] Prev clicked at index=21 of 27
+[MediaLightbox] Zoom state saved: fit @ 100%
+[MediaLightbox] → Loading previous: alya_2_2.jpeg (idx=20)
+[MediaLightbox] _load_media called for: alya_2_2.jpeg
+[MediaLightbox] Loading photo: alya_2_2.jpeg
+[MediaLightbox] ✓ Loading from cache (INSTANT!)
+[MediaLightbox] ✓ Loaded from cache instantly!
+[MediaLightbox] Filmstrip: Showing 17 thumbnails (range 10-27 of 27)
+[MediaLightbox] Zoom state restored: fit @ 100%
+[MediaLightbox] Next clicked at index=20 of 27
+[MediaLightbox] Zoom state saved: custom @ 80%
+[MediaLightbox] → Loading next: ammar-ref_3_2.png (idx=21)
+[MediaLightbox] _load_media called for: ammar-ref_3_2.png
+[MediaLightbox] Loading photo: ammar-ref_3_2.png
+[MediaLightbox] ✓ Loading from cache (INSTANT!)
+[MediaLightbox] ✓ Loaded from cache instantly!
+[MediaLightbox] Filmstrip: Showing 16 thumbnails (range 11-27 of 27)
+[MediaLightbox] Zoom state restored: custom @ 80%
+[MediaLightbox] Next clicked at index=21 of 27
+[MediaLightbox] Zoom state saved: custom @ 80%
+[MediaLightbox] → Loading next: alya3_2_2_2_2.jpeg (idx=22)
+[MediaLightbox] _load_media called for: alya3_2_2_2_2.jpeg
+[MediaLightbox] Loading photo: alya3_2_2_2_2.jpeg
+[MediaLightbox] ✓ Loading from cache (INSTANT!)
+[MediaLightbox] ✓ Loaded from cache instantly!
+[MediaLightbox] Filmstrip: Showing 15 thumbnails (range 12-27 of 27)
+[MediaLightbox] Zoom state restored: custom @ 80%
+[MediaLightbox] Next clicked at index=22 of 27
+[MediaLightbox] Zoom state saved: custom @ 80%
+[MediaLightbox] → Loading next: pexels-matreding-11363475.jpg (idx=23)
+[MediaLightbox] _load_media called for: pexels-matreding-11363475.jpg
+[MediaLightbox] Loading photo: pexels-matreding-11363475.jpg
+[MediaLightbox] ✓ Loading from cache (INSTANT!)
+[MediaLightbox] ✓ Loaded from cache instantly!
+[MediaLightbox] Preloading: pexels-matreding-11363475 - kopie (3).jpg
+[MediaLightbox] Filmstrip: Showing 14 thumbnails (range 13-27 of 27)
+[MediaLightbox] Zoom state restored: custom @ 80%
+2026-02-13 17:15:29,054 [INFO] [SafeImageLoader] OK pexels-matreding-11363475 - kopie (3).jpg target=2560px actual=1706x2560 file=7.2MB time=0.12s
+[PreloadImageWorker] ✓ Preloaded: pexels-matreding-11363475 - kopie (3).jpg (1706x2560)
+[MediaLightbox] ✓ Cached: pexels-matreding-11363475 - kopie (3).jpg (~20472KB, cache: 6 items / 73.6MB)
+[MediaLightbox] Evicted from cache: pexels-matreding-11363475 - kopie.jpg (~20472KB)
 [MediaLightbox] Next clicked at index=23 of 27
-[MediaLightbox] Zoom state saved: fit @ 56%
+[MediaLightbox] Zoom state saved: custom @ 80%
 [MediaLightbox] → Loading next: pexels-matreding-11363475 - kopie.jpg (idx=24)
 [MediaLightbox] _load_media called for: pexels-matreding-11363475 - kopie.jpg
 [MediaLightbox] Loading photo: pexels-matreding-11363475 - kopie.jpg
-[MediaLightbox] ✓ Loading from cache (INSTANT!)
-[MediaLightbox] ✓ Loaded from cache instantly!
+[MediaLightbox] Starting progressive load...
+2026-02-13 17:15:29,797 [INFO] [SafeImageLoader] OK pexels-matreding-11363475 - kopie.jpg target=400px actual=266x400 file=7.2MB time=0.07s
+[ProgressiveImageWorker] ✓ Thumbnail loaded: pexels-matreding-11363475 - kopie.jpg (266x400)
+2026-02-13 17:15:29,873 [INFO] [SafeImageLoader] OK pexels-matreding-11363475 - kopie.jpg target=941px actual=627x941 file=7.2MB time=0.07s
+[ProgressiveImageWorker] ✓ Full quality loaded: pexels-matreding-11363475 - kopie.jpg (627x941)
 [MediaLightbox] Preloading: pexels-matreding-11363475 - kopie (2).jpg
 [MediaLightbox] Filmstrip: Showing 13 thumbnails (range 14-27 of 27)
-[MediaLightbox] Zoom state restored: fit @ 56%
-2026-02-13 16:18:38,271 [INFO] [SafeImageLoader] OK pexels-matreding-11363475 - kopie (2).jpg target=2560px actual=1706x2560 file=7.2MB time=0.13s
+[MediaLightbox] Zoom state restored: custom @ 80%
+[SIGNAL] _on_thumbnail_loaded called, qimage=valid
+[MediaLightbox] ✓ Thumbnail displayed (progressive load)
+[SIGNAL] _on_full_quality_loaded called, qimage=valid
+[MediaLightbox] ✓ Full quality displayed (progressive load complete)
+2026-02-13 17:15:30,223 [INFO] [SafeImageLoader] OK pexels-matreding-11363475 - kopie (2).jpg target=2560px actual=1706x2560 file=7.2MB time=0.11s
 [PreloadImageWorker] ✓ Preloaded: pexels-matreding-11363475 - kopie (2).jpg (1706x2560)
-[MediaLightbox] ✓ Cached: pexels-matreding-11363475 - kopie (2).jpg (~20472KB, cache: 3 items / 60.0MB)
+[MediaLightbox] ✓ Cached: pexels-matreding-11363475 - kopie (2).jpg (~20472KB, cache: 6 items / 73.6MB)
+[MediaLightbox] Evicted from cache: pexels-matreding-11363475.jpg (~20472KB)
 [MediaLightbox] Next clicked at index=24 of 27
-[MediaLightbox] Zoom state saved: fit @ 56%
+[MediaLightbox] Zoom state saved: fit @ 100%
 [MediaLightbox] → Loading next: pexels-matreding-11363475 - kopie (3).jpg (idx=25)
 [MediaLightbox] _load_media called for: pexels-matreding-11363475 - kopie (3).jpg
 [MediaLightbox] Loading photo: pexels-matreding-11363475 - kopie (3).jpg
 [MediaLightbox] ✓ Loading from cache (INSTANT!)
 [MediaLightbox] ✓ Loaded from cache instantly!
 [MediaLightbox] Filmstrip: Showing 12 thumbnails (range 15-27 of 27)
-[MediaLightbox] Zoom state restored: fit @ 56%
+[MediaLightbox] Zoom state restored: fit @ 100%
+[MediaLightbox] Double-tap zoom: custom
+[MediaLightbox] Double-tap zoom: fit
 [MediaLightbox] Next clicked at index=25 of 27
-[MediaLightbox] Zoom state saved: fit @ 56%
+[MediaLightbox] Zoom state saved: fit @ 36%
 [MediaLightbox] → Loading next: pexels-matreding-11363475 - kopie (2).jpg (idx=26)
 [MediaLightbox] _load_media called for: pexels-matreding-11363475 - kopie (2).jpg
 [MediaLightbox] Loading photo: pexels-matreding-11363475 - kopie (2).jpg
 [MediaLightbox] ✓ Loading from cache (INSTANT!)
 [MediaLightbox] ✓ Loaded from cache instantly!
 [MediaLightbox] Filmstrip: Showing 11 thumbnails (range 16-27 of 27)
-[MediaLightbox] Zoom state restored: fit @ 56%
-[MediaLightbox] Prev clicked at index=26 of 27
-[MediaLightbox] Zoom state saved: fit @ 56%
-[MediaLightbox] → Loading previous: pexels-matreding-11363475 - kopie (3).jpg (idx=25)
-[MediaLightbox] _load_media called for: pexels-matreding-11363475 - kopie (3).jpg
-[MediaLightbox] Loading photo: pexels-matreding-11363475 - kopie (3).jpg
-[MediaLightbox] ✓ Loading from cache (INSTANT!)
-[MediaLightbox] ✓ Loaded from cache instantly!
-[MediaLightbox] Filmstrip: Showing 12 thumbnails (range 15-27 of 27)
-[MediaLightbox] Zoom state restored: fit @ 56%
-[MediaLightbox] Prev clicked at index=25 of 27
-[MediaLightbox] Zoom state saved: fit @ 56%
-[MediaLightbox] → Loading previous: pexels-matreding-11363475 - kopie.jpg (idx=24)
-[MediaLightbox] _load_media called for: pexels-matreding-11363475 - kopie.jpg
-[MediaLightbox] Loading photo: pexels-matreding-11363475 - kopie.jpg
-[MediaLightbox] ✓ Loading from cache (INSTANT!)
-[MediaLightbox] ✓ Loaded from cache instantly!
-[MediaLightbox] Filmstrip: Showing 13 thumbnails (range 14-27 of 27)
-[MediaLightbox] Zoom state restored: fit @ 56%
-[MediaLightbox] Prev clicked at index=24 of 27
-[MediaLightbox] Zoom state saved: fit @ 56%
-[MediaLightbox] → Loading previous: pexels-matreding-11363475.jpg (idx=23)
-[MediaLightbox] _load_media called for: pexels-matreding-11363475.jpg
-[MediaLightbox] Loading photo: pexels-matreding-11363475.jpg
-[MediaLightbox] Starting progressive load...
-2026-02-13 16:18:53,087 [INFO] [SafeImageLoader] OK pexels-matreding-11363475.jpg target=400px actual=266x400 file=7.2MB time=0.08s
-[ProgressiveImageWorker] ✓ Thumbnail loaded: pexels-matreding-11363475.jpg (266x400)
-2026-02-13 16:18:53,164 [INFO] [SafeImageLoader] OK pexels-matreding-11363475.jpg target=941px actual=627x941 file=7.2MB time=0.08s
-[ProgressiveImageWorker] ✓ Full quality loaded: pexels-matreding-11363475.jpg (627x941)
-[MediaLightbox] Filmstrip: Showing 14 thumbnails (range 13-27 of 27)
-[MediaLightbox] Zoom state restored: fit @ 56%
-[SIGNAL] _on_thumbnail_loaded called, qimage=valid
-[MediaLightbox] ✓ Thumbnail displayed (progressive load)
-[SIGNAL] _on_full_quality_loaded called, qimage=valid
-[MediaLightbox] ✓ Full quality displayed (progressive load complete)
-[MediaLightbox] Prev clicked at index=23 of 27
-[MediaLightbox] Zoom state saved: fit @ 100%
-[MediaLightbox] → Loading previous: alya3_2_2_2_2.jpeg (idx=22)
-[MediaLightbox] _load_media called for: alya3_2_2_2_2.jpeg
-[MediaLightbox] Loading photo: alya3_2_2_2_2.jpeg
-[MediaLightbox] Starting progressive load...
-2026-02-13 16:18:55,139 [INFO] [SafeImageLoader] OK alya3_2_2_2_2.jpeg target=400px actual=400x300 file=0.1MB time=0.01s
-[ProgressiveImageWorker] ✓ Thumbnail loaded: alya3_2_2_2_2.jpeg (400x300)
-2026-02-13 16:18:55,150 [INFO] [SafeImageLoader] OK alya3_2_2_2_2.jpeg target=953px actual=953x714 file=0.1MB time=0.01s
-[ProgressiveImageWorker] ✓ Full quality loaded: alya3_2_2_2_2.jpeg (953x714)
-[MediaLightbox] Preloading: pexels-matreding-11363475.jpg
-[MediaLightbox] Filmstrip: Showing 15 thumbnails (range 12-27 of 27)
-[MediaLightbox] Zoom state restored: fit @ 100%
-[SIGNAL] _on_thumbnail_loaded called, qimage=valid
-[MediaLightbox] ✓ Thumbnail displayed (progressive load)
-[SIGNAL] _on_full_quality_loaded called, qimage=valid
-[MediaLightbox] ✓ Full quality displayed (progressive load complete)
-2026-02-13 16:18:55,277 [INFO] [SafeImageLoader] OK pexels-matreding-11363475.jpg target=2560px actual=1706x2560 file=7.2MB time=0.11s
-[PreloadImageWorker] ✓ Preloaded: pexels-matreding-11363475.jpg (1706x2560)
-[MediaLightbox] ✓ Cached: pexels-matreding-11363475.jpg (~20472KB, cache: 4 items / 80.0MB)
-[MediaLightbox] Prev clicked at index=22 of 27
-[MediaLightbox] Zoom state saved: fit @ 68%
-[MediaLightbox] → Loading previous: ammar-ref_3_2.png (idx=21)
-[MediaLightbox] _load_media called for: ammar-ref_3_2.png
-[MediaLightbox] Loading photo: ammar-ref_3_2.png
-[MediaLightbox] Starting progressive load...
-2026-02-13 16:18:56,471 [INFO] [SafeImageLoader] OK ammar-ref_3_2.png target=400px actual=400x277 file=0.8MB time=0.01s
-[ProgressiveImageWorker] ✓ Thumbnail loaded: ammar-ref_3_2.png (400x277)
-2026-02-13 16:18:56,489 [INFO] [SafeImageLoader] OK ammar-ref_3_2.png target=953px actual=953x661 file=0.8MB time=0.02s
-[ProgressiveImageWorker] ✓ Full quality loaded: ammar-ref_3_2.png (953x661)
-[MediaLightbox] Preloading: alya3_2_2_2_2.jpeg
-[MediaLightbox] Filmstrip: Showing 16 thumbnails (range 11-27 of 27)
-[MediaLightbox] Zoom state restored: fit @ 68%
-[SIGNAL] _on_thumbnail_loaded called, qimage=valid
-2026-02-13 16:18:56,500 [INFO] [SafeImageLoader] OK alya3_2_2_2_2.jpeg target=2560px actual=1080x810 file=0.1MB time=0.01s
-[MediaLightbox] ✓ Thumbnail displayed (progressive load)
-[PreloadImageWorker] ✓ Preloaded: alya3_2_2_2_2.jpeg (1080x810)
-[SIGNAL] _on_full_quality_loaded called, qimage=valid
-[MediaLightbox] ✓ Full quality displayed (progressive load complete)
-[MediaLightbox] ✓ Cached: alya3_2_2_2_2.jpeg (~4100KB, cache: 5 items / 84.0MB)
-[MediaLightbox] Prev clicked at index=21 of 27
-[MediaLightbox] Zoom state saved: fit @ 68%
-[MediaLightbox] → Loading previous: alya_2_2.jpeg (idx=20)
-[MediaLightbox] _load_media called for: alya_2_2.jpeg
-[MediaLightbox] Loading photo: alya_2_2.jpeg
-[MediaLightbox] Starting progressive load...
-2026-02-13 16:18:57,411 [INFO] [SafeImageLoader] OK alya_2_2.jpeg target=400px actual=311x400 file=0.2MB time=0.00s
-[ProgressiveImageWorker] ✓ Thumbnail loaded: alya_2_2.jpeg (311x400)
-2026-02-13 16:18:57,422 [INFO] [SafeImageLoader] OK alya_2_2.jpeg target=953px actual=741x953 file=0.2MB time=0.01s
-[ProgressiveImageWorker] ✓ Full quality loaded: alya_2_2.jpeg (741x953)
-[MediaLightbox] Preloading: ammar-ref_3_2.png
-[MediaLightbox] Filmstrip: Showing 17 thumbnails (range 10-27 of 27)
-[MediaLightbox] Zoom state restored: fit @ 68%
-[SIGNAL] _on_thumbnail_loaded called, qimage=valid
-[MediaLightbox] ✓ Thumbnail displayed (progressive load)
-[SIGNAL] _on_full_quality_loaded called, qimage=valid
-2026-02-13 16:18:57,444 [INFO] [SafeImageLoader] OK ammar-ref_3_2.png target=2560px actual=1140x791 file=0.8MB time=0.01s
-[MediaLightbox] ✓ Full quality displayed (progressive load complete)
-[PreloadImageWorker] ✓ Preloaded: ammar-ref_3_2.png (1140x791)
-[MediaLightbox] ✓ Cached: ammar-ref_3_2.png (~4226KB, cache: 6 items / 88.1MB)
-[MediaLightbox] Evicted from cache: pexels-matreding-11363475 - kopie (3).jpg (~20472KB)
-[MediaLightbox] Prev clicked at index=20 of 27
-[MediaLightbox] Zoom state saved: fit @ 87%
-[MediaLightbox] → Loading previous: alya_2_2_2_2.jpeg (idx=19)
-[MediaLightbox] _load_media called for: alya_2_2_2_2.jpeg
-[MediaLightbox] Loading photo: alya_2_2_2_2.jpeg
-[MediaLightbox] Starting progressive load...
-2026-02-13 16:18:58,193 [INFO] [SafeImageLoader] OK alya_2_2_2_2.jpeg target=400px actual=311x400 file=0.2MB time=0.00s
-[ProgressiveImageWorker] ✓ Thumbnail loaded: alya_2_2_2_2.jpeg (311x400)
-2026-02-13 16:18:58,206 [INFO] [SafeImageLoader] OK alya_2_2_2_2.jpeg target=953px actual=741x953 file=0.2MB time=0.01s
-[ProgressiveImageWorker] ✓ Full quality loaded: alya_2_2_2_2.jpeg (741x953)
-[MediaLightbox] Preloading: alya_2_2.jpeg
-[MediaLightbox] Filmstrip: Showing 18 thumbnails (range 9-27 of 27)
-[MediaLightbox] Zoom state restored: fit @ 87%
-2026-02-13 16:18:58,222 [INFO] [SafeImageLoader] OK alya_2_2.jpeg target=2560px actual=965x1240 file=0.2MB time=0.01s
-[SIGNAL] _on_thumbnail_loaded called, qimage=valid
-[PreloadImageWorker] ✓ Preloaded: alya_2_2.jpeg (965x1240)
-[MediaLightbox] ✓ Thumbnail displayed (progressive load)
-[SIGNAL] _on_full_quality_loaded called, qimage=valid
-[MediaLightbox] ✓ Full quality displayed (progressive load complete)
-[MediaLightbox] ✓ Cached: alya_2_2.jpeg (~5609KB, cache: 6 items / 73.6MB)
-[MediaLightbox] Evicted from cache: pexels-matreding-11363475 - kopie.jpg (~20472KB)
-[MediaLightbox] Prev clicked at index=19 of 27
-[MediaLightbox] Zoom state saved: fit @ 87%
-[MediaLightbox] → Loading previous: ammar-ref(1)_2_2.png (idx=18)
-[MediaLightbox] _load_media called for: ammar-ref(1)_2_2.png
-[MediaLightbox] Loading photo: ammar-ref(1)_2_2.png
-[MediaLightbox] Starting progressive load...
-2026-02-13 16:18:58,925 [INFO] [SafeImageLoader] OK ammar-ref(1)_2_2.png target=400px actual=400x277 file=0.8MB time=0.01s
-[ProgressiveImageWorker] ✓ Thumbnail loaded: ammar-ref(1)_2_2.png (400x277)
-2026-02-13 16:18:58,941 [INFO] [SafeImageLoader] OK ammar-ref(1)_2_2.png target=953px actual=953x661 file=0.8MB time=0.02s
-[ProgressiveImageWorker] ✓ Full quality loaded: ammar-ref(1)_2_2.png (953x661)
-[MediaLightbox] Preloading: alya_2_2_2_2.jpeg
-[MediaLightbox] Filmstrip: Showing 19 thumbnails (range 8-27 of 27)
-[MediaLightbox] Zoom state restored: fit @ 87%
-2026-02-13 16:18:58,952 [INFO] [SafeImageLoader] OK alya_2_2_2_2.jpeg target=2560px actual=965x1240 file=0.2MB time=0.01s
-[PreloadImageWorker] ✓ Preloaded: alya_2_2_2_2.jpeg (965x1240)
-[SIGNAL] _on_thumbnail_loaded called, qimage=valid
-[MediaLightbox] ✓ Thumbnail displayed (progressive load)
-[SIGNAL] _on_full_quality_loaded called, qimage=valid
-[MediaLightbox] ✓ Full quality displayed (progressive load complete)
-[MediaLightbox] ✓ Cached: alya_2_2_2_2.jpeg (~5609KB, cache: 6 items / 59.1MB)
-[MediaLightbox] Evicted from cache: pexels-matreding-11363475 - kopie (2).jpg (~20472KB)
-[MediaLightbox] Prev clicked at index=18 of 27
-[MediaLightbox] Zoom state saved: fit @ 68%
-[MediaLightbox] → Loading previous: ammar-ref_2_2_2.png (idx=17)
-[MediaLightbox] _load_media called for: ammar-ref_2_2_2.png
-[MediaLightbox] Loading photo: ammar-ref_2_2_2.png
-[MediaLightbox] Starting progressive load...
-2026-02-13 16:18:59,657 [INFO] [SafeImageLoader] OK ammar-ref_2_2_2.png target=400px actual=400x277 file=0.8MB time=0.01s
-[ProgressiveImageWorker] ✓ Thumbnail loaded: ammar-ref_2_2_2.png (400x277)
-2026-02-13 16:18:59,671 [INFO] [SafeImageLoader] OK ammar-ref_2_2_2.png target=953px actual=953x661 file=0.8MB time=0.01s
-[ProgressiveImageWorker] ✓ Full quality loaded: ammar-ref_2_2_2.png (953x661)
-[MediaLightbox] Preloading: ammar-ref(1)_2_2.png
-[MediaLightbox] Filmstrip: Showing 20 thumbnails (range 7-27 of 27)
-[MediaLightbox] Zoom state restored: fit @ 68%
-2026-02-13 16:18:59,687 [INFO] [SafeImageLoader] OK ammar-ref(1)_2_2.png target=2560px actual=1140x791 file=0.8MB time=0.01s
-[PreloadImageWorker] ✓ Preloaded: ammar-ref(1)_2_2.png (1140x791)
-[SIGNAL] _on_thumbnail_loaded called, qimage=valid
-[MediaLightbox] ✓ Thumbnail displayed (progressive load)
-[SIGNAL] _on_full_quality_loaded called, qimage=valid
-[MediaLightbox] ✓ Full quality displayed (progressive load complete)
-[MediaLightbox] ✓ Cached: ammar-ref(1)_2_2.png (~4226KB, cache: 6 items / 43.2MB)
-[MediaLightbox] Evicted from cache: pexels-matreding-11363475.jpg (~20472KB)
-[MediaLightbox] Prev clicked at index=17 of 27
-[MediaLightbox] Zoom state saved: fit @ 68%
-[MediaLightbox] → Loading previous: ammar3_2_2_2_2.jpeg (idx=16)
-[MediaLightbox] _load_media called for: ammar3_2_2_2_2.jpeg
-[MediaLightbox] Loading photo: ammar3_2_2_2_2.jpeg
-[MediaLightbox] Starting progressive load...
-2026-02-13 16:19:00,287 [INFO] [SafeImageLoader] OK ammar3_2_2_2_2.jpeg target=400px actual=184x400 file=0.2MB time=0.02s
-[ProgressiveImageWorker] ✓ Thumbnail loaded: ammar3_2_2_2_2.jpeg (184x400)
-2026-02-13 16:19:00,304 [INFO] [SafeImageLoader] OK ammar3_2_2_2_2.jpeg target=953px actual=440x953 file=0.2MB time=0.02s
-[ProgressiveImageWorker] ✓ Full quality loaded: ammar3_2_2_2_2.jpeg (440x953)
-[MediaLightbox] Preloading: ammar-ref_2_2_2.png
-[MediaLightbox] Filmstrip: Showing 21 thumbnails (range 6-27 of 27)
-[MediaLightbox] Zoom state restored: fit @ 68%
-[SIGNAL] _on_thumbnail_loaded called, qimage=valid
-[MediaLightbox] ✓ Thumbnail displayed (progressive load)
-[SIGNAL] _on_full_quality_loaded called, qimage=valid
-2026-02-13 16:19:00,329 [INFO] [SafeImageLoader] OK ammar-ref_2_2_2.png target=2560px actual=1140x791 file=0.8MB time=0.01s
-[MediaLightbox] ✓ Full quality displayed (progressive load complete)
-[PreloadImageWorker] ✓ Preloaded: ammar-ref_2_2_2.png (1140x791)
-[MediaLightbox] ✓ Cached: ammar-ref_2_2_2.png (~4226KB, cache: 6 items / 27.3MB)
-[MediaLightbox] Evicted from cache: alya3_2_2_2_2.jpeg (~4100KB)
-[MediaLightbox] Prev clicked at index=16 of 27
-[MediaLightbox] Zoom state saved: fit @ 100%
-[MediaLightbox] → Loading previous: img_6995_2_2_2.jpeg (idx=15)
-[MediaLightbox] _load_media called for: img_6995_2_2_2.jpeg
-[MediaLightbox] Loading photo: img_6995_2_2_2.jpeg
-[MediaLightbox] Starting progressive load...
-[EXIFParser] GPSInfo is non-iterable type <class 'int'>, likely from piexif - skipping GPS parsing
-[MediaLightbox] Using GPS from database: (47.901614, 11.821283)
-2026-02-13 16:19:01,440 [INFO] [SafeImageLoader] OK img_6995_2_2_2.jpeg target=400px actual=400x300 file=3.9MB time=0.03s
-[ProgressiveImageWorker] ✓ Thumbnail loaded: img_6995_2_2_2.jpeg (400x300)
-2026-02-13 16:19:01,485 [INFO] [SafeImageLoader] OK img_6995_2_2_2.jpeg target=953px actual=953x714 file=3.9MB time=0.04s
-[ProgressiveImageWorker] ✓ Full quality loaded: img_6995_2_2_2.jpeg (953x714)
-[MediaLightbox] Preloading: ammar3_2_2_2_2.jpeg
-[MediaLightbox] Filmstrip: Showing 21 thumbnails (range 5-26 of 27)
-[MediaLightbox] Zoom state restored: fit @ 100%
-[SIGNAL] _on_thumbnail_loaded called, qimage=valid
-[MediaLightbox] ✓ Thumbnail displayed (progressive load)
-[SIGNAL] _on_full_quality_loaded called, qimage=valid
-[MediaLightbox] ✓ Full quality displayed (progressive load complete)
-2026-02-13 16:19:01,542 [INFO] [SafeImageLoader] OK ammar3_2_2_2_2.jpeg target=2560px actual=1183x2560 file=0.2MB time=0.03s
-[PreloadImageWorker] ✓ Preloaded: ammar3_2_2_2_2.jpeg (1183x2560)
-[MediaLightbox] ✓ Cached: ammar3_2_2_2_2.jpeg (~14196KB, cache: 6 items / 37.2MB)
-[MediaLightbox] Evicted from cache: ammar-ref_3_2.png (~4226KB)
-[MediaLightbox] Prev clicked at index=15 of 27
-[MediaLightbox] Zoom state saved: fit @ 68%
-[MediaLightbox] → Loading previous: img_6850_2_2_2.jpeg (idx=14)
-[MediaLightbox] _load_media called for: img_6850_2_2_2.jpeg
-[MediaLightbox] Loading photo: img_6850_2_2_2.jpeg
-[MediaLightbox] Starting progressive load...
-2026-02-13 16:19:02,235 [INFO] [SafeImageLoader] OK img_6850_2_2_2.jpeg target=400px actual=400x300 file=3.0MB time=0.02s
-[ProgressiveImageWorker] ✓ Thumbnail loaded: img_6850_2_2_2.jpeg (400x300)
-2026-02-13 16:19:02,268 [INFO] [SafeImageLoader] OK img_6850_2_2_2.jpeg target=953px actual=953x714 file=3.0MB time=0.03s
-[ProgressiveImageWorker] ✓ Full quality loaded: img_6850_2_2_2.jpeg (953x714)
-[MediaLightbox] Preloading: img_6995_2_2_2.jpeg
-[MediaLightbox] Filmstrip: Showing 21 thumbnails (range 4-25 of 27)
-[MediaLightbox] Zoom state restored: fit @ 68%
-[SIGNAL] _on_thumbnail_loaded called, qimage=valid
-[MediaLightbox] ✓ Thumbnail displayed (progressive load)
-[SIGNAL] _on_full_quality_loaded called, qimage=valid
-[MediaLightbox] ✓ Full quality displayed (progressive load complete)
-2026-02-13 16:19:02,363 [INFO] [SafeImageLoader] OK img_6995_2_2_2.jpeg target=2560px actual=2560x1920 file=3.9MB time=0.07s
-[PreloadImageWorker] ✓ Preloaded: img_6995_2_2_2.jpeg (2560x1920)
-[MediaLightbox] ✓ Cached: img_6995_2_2_2.jpeg (~23040KB, cache: 6 items / 55.6MB)
-[MediaLightbox] Evicted from cache: alya_2_2.jpeg (~5609KB)
-[MediaLightbox] Prev clicked at index=14 of 27
-[MediaLightbox] Zoom state saved: fit @ 68%
-[MediaLightbox] → Loading previous: qouzleh_mitsubtitles-ezgif.com-resize-video.mp4 (idx=13)
+[MediaLightbox] Zoom state restored: fit @ 36%
+[MediaLightbox] Closing - cleaning up resources...
+[MediaLightbox] ✓ Preload thread pool stopped
+[MediaLightbox] ✓ All resources cleaned up
+[GooglePhotosLayout] MediaLightbox closed
+[GooglePhotosLayout] ✓ Refreshed tag badges for 1 photos
+[GooglePhotosLayout] ========================================
+[GooglePhotosLayout] Accordion folder clicked: folder_id=2 (debouncing...)
+[GooglePhotosLayout] Executing debounced folder click: folder_id=2
+[GooglePhotosLayout] Found folder path: C:\Users\suleimaa\Downloads\Photo-Sorter\Images\output6
+[GooglePhotosLayout] Calling _load_photos with filter_folder=C:\Users\suleimaa\Downloads\Photo-Sorter\Images\output6
+[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px) [folder=C:\Users\suleimaa\Downloads\Photo-Sorter\Images\output6]...
+[GooglePhotosLayout] 🔍 Starting async photo load (generation 8) - existing content preserved...
+[GooglePhotosLayout] Paged load started (generation 8, page_size=250)
+[GooglePhotosLayout] _load_photos call completed
+[GooglePhotosLayout] ========================================
+2026-02-13 17:15:56,568 [INFO] [GoogleLayout] Page count ready: gen=8 total=25 (threshold=3000)
+2026-02-13 17:15:56,568 [INFO] [GoogleLayout] Page ready: gen=8 offset=0 rows=25 loaded=25/25
+[GooglePhotosLayout] Dispatching 25 assets (photos+videos) to background grouping worker...
+2026-02-13 17:15:56,568 [INFO] [GoogleLayout] All pages loaded: 25 rows total
+[GooglePhotosLayout] Grouped into 12 date groups
+[GooglePhotosLayout] Tracking 25 paths for multi-selection
+[GooglePhotosLayout] Virtual scrolling enabled: 12 total date groups
+[GooglePhotosLayout] Rendered: 5 groups | Placeholders: 7 groups
+[GooglePhotosLayout] Queued 10 thumbnails for loading (initial limit: 50)
+[GooglePhotosLayout] Photo loading complete! Thumbnails will load progressively.
+2026-02-13 17:16:09,088 [INFO] [AccordionSidebar] Expanding section: videos
+2026-02-13 17:16:09,088 [INFO] [VideosSection] Loading videos (generation 4)...
+2026-02-13 17:16:09,088 [INFO] [VideosSection] Loaded 2 videos (gen 4)
+2026-02-13 17:16:09,115 [INFO] [VideosSection] Data loaded successfully (gen 4, 2 videos)
+2026-02-13 17:16:09,115 [INFO] [VideosSection] Tree built with 2 videos
+2026-02-13 17:16:09,195 [INFO] [AccordionSidebar] Section videos loaded and displayed
+[GooglePhotosLayout] Accordion video clicked: all
+[ThumbnailLoader] ✓ Video thumbnail: qouzleh_mitsubtitles-ezgif.com-resize-video.mp4
+[ThumbnailLoader] ✓ Video thumbnail: qouzleh_mitsubtitles.mp4
+[GooglePhotosLayout] Search results: 2 photos in 1 dates
+[GooglePhotosLayout] Photo clicked: c:/users/suleimaa/downloads/photo-sorter/images/qouzleh_mitsubtitles-ezgif.com-resize-video.mp4
+[GooglePhotosLayout] 👁️ Opening lightbox for: c:/users/suleimaa/downloads/photo-sorter/images/qouzleh_mitsubtitles-ezgif.com-resize-video.mp4
+[MediaLightbox] Available: 1920x1152 (DPI: 1.0x)
+[MediaLightbox] Responsive Tier: FullHD Professional
+[MediaLightbox] Window: 1689x1013 (88% of available)
+[MediaLightbox] UI Scaling: Toolbar=56px, Buttons=44px, Margins=8px
+[MediaLightbox] Creating overlay navigation buttons...
+[MediaLightbox] ✓ Nav buttons created and shown
+[MediaLightbox] ✓ Nav buttons positioned: left=8, right=608, y=284
+[MediaLightbox] Resize: 1689x1013
+[MediaLightbox] ✓ Nav buttons positioned: left=8, right=1657, y=522
 [MediaLightbox] _load_media called for: qouzleh_mitsubtitles-ezgif.com-resize-video.mp4
 [MediaLightbox] Loading video: qouzleh_mitsubtitles-ezgif.com-resize-video.mp4
 [MediaLightbox] ✓ Video signals disconnected
-[MediaLightbox] ✓ Video signals connected
-[MediaLightbox] Video widget sized: 651x953
+[MediaLightbox] Video signals connected
 Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'c:/users/suleimaa/downloads/photo-sorter/images/qouzleh_mitsubtitles-ezgif.com-resize-video.mp4':
   Metadata:
     major_brand     : isom
@@ -1080,123 +1147,159 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'c:/users/suleimaa/downloads/photo-sorte
       Metadata:
         handler_name    : SoundHandler
         vendor_id       : [0][0][0][0]
-[MediaLightbox] ⚠️ No photo_metadata row found for: qouzleh_mitsubtitles-ezgif.com-resize-video.mp4
-[MediaLightbox] ✓ Video player started: qouzleh_mitsubtitles-ezgif.com-resize-video.mp4
-[MediaLightbox] Fit video to view after media loaded
+[MediaLightbox] No photo_metadata row for video: qouzleh_mitsubtitles-ezgif.com-resize-video.mp4 (expected)
+[MediaLightbox] Video player started: qouzleh_mitsubtitles-ezgif.com-resize-video.mp4
+[MediaLightbox] ✓ Nav buttons positioned: left=8, right=1657, y=492
+[MediaLightbox] Filmstrip: Showing 11 thumbnails (range 0-11 of 25)
+[MediaLightbox] Media ready (status=MediaStatus.LoadedMedia)
+[MediaLightbox] 🔄 Responsive Tier Changed: FullHD Professional → HD
+[MediaLightbox]    New Scaling: Toolbar=68px, Buttons=48px
+[MediaLightbox] ✓ UI elements resized for tier: HD
+[MediaLightbox] ✓ Responsive behavior update completed
+[MediaLightbox] Media ready (status=MediaStatus.BufferedMedia)
 [MediaLightbox] Video zoom applied: 100%
-[MediaLightbox] Video fitted: native=640.0x360.0, view=651x953, base_scale=0.97
-[MediaLightbox] Fit video to view after media loaded
-[MediaLightbox] Video zoom applied: 100%
-[MediaLightbox] Video fitted: native=640.0x360.0, view=651x953, base_scale=0.97
-[MediaLightbox] Video zoom applied: 100%
-[MediaLightbox] Video fitted: native=640.0x360.0, view=651x953, base_scale=0.97
-[MediaLightbox] Prev clicked at index=13 of 27
-[MediaLightbox] Zoom state saved: fit @ 100%
-[MediaLightbox] → Loading previous: qouzleh_mitsubtitles.mp4 (idx=12)
-[MediaLightbox] _load_media called for: qouzleh_mitsubtitles.mp4
-[MediaLightbox] Loading video: qouzleh_mitsubtitles.mp4
-[MediaLightbox] Stopping previous video...
-[MediaLightbox] Video zoom applied: 100%
-[MediaLightbox] Video fitted: native=640.0x360.0, view=651x953, base_scale=0.97
-[MediaLightbox] Fit video to view after media loaded
-[MediaLightbox] ✓ Previous video stopped and cleaned up
-[MediaLightbox] Video widget sized: 639x880
-Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'c:/users/suleimaa/downloads/photo-sorter/images/qouzleh_mitsubtitles.mp4':
-  Metadata:
-    major_brand     : isom
-    minor_version   : 512
-    compatible_brands: isomiso2avc1mp41
-    encoder         : Lavf61.7.100
-  Duration: 00:01:15.94, start: 0.000000, bitrate: 6220 kb/s
-  Stream #0:0[0x1](und): Audio: aac (LC) (mp4a / 0x6134706D), 44100 Hz, stereo, fltp, 224 kb/s (default)
-      Metadata:
-        handler_name    : SoundHandler
-        vendor_id       : [0][0][0][0]
-  Stream #0:1[0x2](und): Video: h264 (Main) (avc1 / 0x31637661), yuvj420p(pc, bt709, progressive), 1280x720 [SAR 1:1 DAR 16:9], 5986 kb/s, 30 fps, 30 tbr, 15360 tbn (default)
-      Metadata:
-        handler_name    : VideoHandler
-        vendor_id       : [0][0][0][0]
-[MediaLightbox] ⚠️ No photo_metadata row found for: qouzleh_mitsubtitles.mp4
-[MediaLightbox] ✓ Video player started: qouzleh_mitsubtitles.mp4
-[MediaLightbox] Video zoom applied: 100%
-[MediaLightbox] Video fitted: native=640.0x360.0, view=639x880, base_scale=0.95
-[MediaLightbox] Video zoom applied: 100%
-[MediaLightbox] Video fitted: native=640.0x360.0, view=639x880, base_scale=0.95
-[MediaLightbox] Fit video to view after media loaded
-[MediaLightbox] Video zoom applied: 100%
-[MediaLightbox] Video fitted: native=1280.0x720.0, view=639x880, base_scale=0.47
-[MediaLightbox] Fit video to view after media loaded
-[MediaLightbox] Prev clicked at index=12 of 27
-[MediaLightbox] Zoom state saved: fit @ 100%
-[MediaLightbox] → Loading previous: suleimanammar-revised.jpg (idx=11)
-[MediaLightbox] _load_media called for: suleimanammar-revised.jpg
-[MediaLightbox] Video zoom applied: 100%
-[MediaLightbox] Video fitted: native=1280.0x720.0, view=639x880, base_scale=0.47
-[MediaLightbox] Fit video to view after media loaded
-[MediaLightbox] Loading photo: suleimanammar-revised.jpg
+[MediaLightbox] Video fitted: native=640.0x360.0, view=6x16, base_scale=0.01
+[MediaLightbox] Video zoom applied: 103%
+[MediaLightbox] Video zoom applied: 106%
+[MediaLightbox] Video zoom applied: 108%
+[MediaLightbox] Video zoom applied: 112%
+[MediaLightbox] Video zoom applied: 114%
+[MediaLightbox] Video zoom applied: 117%
+[MediaLightbox] Video zoom applied: 119%
+[MediaLightbox] Video zoom applied: 121%
+[MediaLightbox] Video zoom applied: 124%
+[MediaLightbox] Video zoom applied: 128%
+[MediaLightbox] Video zoom applied: 131%
+[MediaLightbox] Video zoom applied: 133%
+[MediaLightbox] Video zoom applied: 135%
+[MediaLightbox] Video zoom applied: 139%
+[MediaLightbox] Video zoom applied: 143%
+[MediaLightbox] Video zoom applied: 146%
+[MediaLightbox] Video zoom applied: 149%
+[MediaLightbox] Video zoom applied: 151%
+[MediaLightbox] Video zoom applied: 152%
+[MediaLightbox] Video zoom applied: 153%
+[MediaLightbox] Video zoom applied: 154%
+[MediaLightbox] Video zoom applied: 155%
+[MediaLightbox] Video zoom applied: 155%
+[MediaLightbox] Video zoom applied: 155%
+[MediaLightbox] Video zoom applied: 155%
+[MediaLightbox] Video zoom applied: 155%
+[MediaLightbox] Video zoom applied: 161%
+[MediaLightbox] Video zoom applied: 166%
+[MediaLightbox] Video zoom applied: 171%
+[MediaLightbox] Video zoom applied: 177%
+[MediaLightbox] Video zoom applied: 182%
+[MediaLightbox] Video zoom applied: 188%
+[MediaLightbox] Video zoom applied: 194%
+[MediaLightbox] Video zoom applied: 199%
+[MediaLightbox] Video zoom applied: 204%
+[MediaLightbox] Video zoom applied: 207%
+[MediaLightbox] Video zoom applied: 210%
+[MediaLightbox] Video zoom applied: 212%
+[MediaLightbox] Video zoom applied: 214%
+[MediaLightbox] Video zoom applied: 215%
+[MediaLightbox] Video zoom applied: 216%
+[MediaLightbox] Video zoom applied: 216%
+[MediaLightbox] Video zoom applied: 216%
+[MediaLightbox] Video zoom applied: 216%
+[MediaLightbox] Video zoom applied: 216%
+[MediaLightbox] Video zoom applied: 224%
+[MediaLightbox] Video zoom applied: 231%
+[MediaLightbox] Video zoom applied: 240%
+[MediaLightbox] Video zoom applied: 246%
+[MediaLightbox] Video zoom applied: 255%
+[MediaLightbox] Video zoom applied: 262%
+[MediaLightbox] Video zoom applied: 268%
+[MediaLightbox] Video zoom applied: 272%
+[MediaLightbox] Video zoom applied: 275%
+[MediaLightbox] Video zoom applied: 278%
+[MediaLightbox] Video zoom applied: 280%
+[MediaLightbox] Video zoom applied: 282%
+[MediaLightbox] Video zoom applied: 283%
+[MediaLightbox] Video zoom applied: 283%
+[MediaLightbox] Video zoom applied: 283%
+[MediaLightbox] Video zoom applied: 283%
+[MediaLightbox] Video zoom applied: 283%
+[MediaLightbox] Video zoom applied: 287%
+[MediaLightbox] Video zoom applied: 290%
+[MediaLightbox] Video zoom applied: 292%
+[MediaLightbox] Video zoom applied: 294%
+[MediaLightbox] Video zoom applied: 295%
+[MediaLightbox] Video zoom applied: 296%
+[MediaLightbox] Video zoom applied: 297%
+[MediaLightbox] Video zoom applied: 298%
+[MediaLightbox] Video zoom applied: 298%
+[MediaLightbox] Video zoom applied: 299%
+[MediaLightbox] Video zoom applied: 299%
+[MediaLightbox] Video zoom applied: 299%
+[MediaLightbox] Video zoom applied: 299%
+[MediaLightbox] Video zoom applied: 299%
+[MediaLightbox] Video zoom applied: 299%
+[MediaLightbox] Video zoom applied: 300%
+[MediaLightbox] Video zoom applied: 291%
+[MediaLightbox] Video zoom applied: 283%
+[MediaLightbox] Video zoom applied: 274%
+[MediaLightbox] Video zoom applied: 266%
+[MediaLightbox] Video zoom applied: 259%
+[MediaLightbox] Video zoom applied: 251%
+[MediaLightbox] Video zoom applied: 245%
+[MediaLightbox] Video zoom applied: 240%
+[MediaLightbox] Video zoom applied: 236%
+[MediaLightbox] Video zoom applied: 232%
+[MediaLightbox] Video zoom applied: 230%
+[MediaLightbox] Video zoom applied: 228%
+[MediaLightbox] Video zoom applied: 227%
+[MediaLightbox] Video zoom applied: 226%
+[MediaLightbox] Video zoom applied: 225%
+[MediaLightbox] Video zoom applied: 225%
+[MediaLightbox] Video zoom applied: 225%
+[MediaLightbox] Video zoom applied: 225%
+[MediaLightbox] Next clicked at index=0 of 25
+[MediaLightbox] Zoom state saved: custom @ 225%
+[MediaLightbox] → Loading next: suleimanammar - kopie.jpg (idx=1)
+[MediaLightbox] _load_media called for: suleimanammar - kopie.jpg
+[MediaLightbox] Media ready (status=MediaStatus.LoadedMedia)
+[MediaLightbox] Loading photo: suleimanammar - kopie.jpg
 [MediaLightbox] Starting progressive load...
-2026-02-13 16:19:05,823 [INFO] [SafeImageLoader] OK suleimanammar-revised.jpg target=400px actual=297x400 file=0.1MB time=0.00s
-[ProgressiveImageWorker] ✓ Thumbnail loaded: suleimanammar-revised.jpg (297x400)
-2026-02-13 16:19:05,834 [INFO] [SafeImageLoader] OK suleimanammar-revised.jpg target=892px actual=663x892 file=0.1MB time=0.01s
-[ProgressiveImageWorker] ✓ Full quality loaded: suleimanammar-revised.jpg (663x892)
-[MediaLightbox] Filmstrip: Showing 21 thumbnails (range 1-22 of 27)
-[MediaLightbox] Zoom state restored: fit @ 100%
+2026-02-13 17:16:22,579 [INFO] [SafeImageLoader] OK suleimanammar - kopie.jpg target=422px actual=325x422 file=0.1MB time=0.00s
+[ProgressiveImageWorker] ✓ Thumbnail loaded: suleimanammar - kopie.jpg (325x422)
+2026-02-13 17:16:22,589 [INFO] [SafeImageLoader] OK suleimanammar - kopie.jpg target=1689px actual=940x1218 file=0.1MB time=0.01s
+[ProgressiveImageWorker] ✓ Full quality loaded: suleimanammar - kopie.jpg (940x1218)
+[MediaLightbox] Preloading: suleimanammar.jpg
+[MediaLightbox] Preloading: suleimanammar - kopie.jpg
+[MediaLightbox] Filmstrip: Showing 12 thumbnails (range 0-12 of 25)
+[MediaLightbox] Zoom state restored: custom @ 225%
+2026-02-13 17:16:22,601 [INFO] [SafeImageLoader] OK suleimanammar.jpg target=2560px actual=940x1218 file=0.1MB time=0.01s
+[PreloadImageWorker] ✓ Preloaded: suleimanammar.jpg (940x1218)
+2026-02-13 17:16:22,606 [INFO] [SafeImageLoader] OK suleimanammar - kopie.jpg target=2560px actual=940x1218 file=0.1MB time=0.01s
+[PreloadImageWorker] ✓ Preloaded: suleimanammar - kopie.jpg (940x1218)
 [SIGNAL] _on_thumbnail_loaded called, qimage=valid
 [MediaLightbox] ✓ Thumbnail displayed (progressive load)
 [SIGNAL] _on_full_quality_loaded called, qimage=valid
 [MediaLightbox] ✓ Full quality displayed (progressive load complete)
-[MediaLightbox] Next clicked at index=11 of 27
-[MediaLightbox] Zoom state saved: fit @ 98%
-[MediaLightbox] → Loading next: qouzleh_mitsubtitles.mp4 (idx=12)
-[MediaLightbox] _load_media called for: qouzleh_mitsubtitles.mp4
-[MediaLightbox] Loading video: qouzleh_mitsubtitles.mp4
-[MediaLightbox] Stopping previous video...
-[MediaLightbox] ✓ Previous video stopped and cleaned up
-[MediaLightbox] Video widget sized: 651x953
-Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'c:/users/suleimaa/downloads/photo-sorter/images/qouzleh_mitsubtitles.mp4':
-  Metadata:
-    major_brand     : isom
-    minor_version   : 512
-    compatible_brands: isomiso2avc1mp41
-    encoder         : Lavf61.7.100
-  Duration: 00:01:15.94, start: 0.000000, bitrate: 6220 kb/s
-  Stream #0:0[0x1](und): Audio: aac (LC) (mp4a / 0x6134706D), 44100 Hz, stereo, fltp, 224 kb/s (default)
-      Metadata:
-        handler_name    : SoundHandler
-        vendor_id       : [0][0][0][0]
-  Stream #0:1[0x2](und): Video: h264 (Main) (avc1 / 0x31637661), yuvj420p(pc, bt709, progressive), 1280x720 [SAR 1:1 DAR 16:9], 5986 kb/s, 30 fps, 30 tbr, 15360 tbn (default)
-      Metadata:
-        handler_name    : VideoHandler
-        vendor_id       : [0][0][0][0]
-[MediaLightbox] ⚠️ No photo_metadata row found for: qouzleh_mitsubtitles.mp4
-[MediaLightbox] ✓ Video player started: qouzleh_mitsubtitles.mp4
-[MediaLightbox] Video zoom applied: 100%
-[MediaLightbox] Video fitted: native=1280.0x720.0, view=651x953, base_scale=0.48
-[MediaLightbox] Video zoom applied: 100%
-[MediaLightbox] Video fitted: native=1280.0x720.0, view=651x953, base_scale=0.48
-[MediaLightbox] Fit video to view after media loaded
-[MediaLightbox] Video zoom applied: 100%
-[MediaLightbox] Video fitted: native=1280.0x720.0, view=651x953, base_scale=0.48
-[MediaLightbox] Fit video to view after media loaded
-[Editor] VIDEO file detected: qouzleh_mitsubtitles.mp4
-[Editor] Video tools shown on right panel
-[Editor] Video trim/rotate controls shown
-[MediaLightbox] Video zoom applied: 100%
-[MediaLightbox] Video fitted: native=1280.0x720.0, view=918x953, base_scale=0.68
-[Editor] ✓ Video widget reparented to editor canvas
-[Editor] ✓ Switched to editor page for video editing
-[Editor] Video edit mode active (video on editor page)
-[MediaLightbox] Video zoom applied: 100%
-[MediaLightbox] Video fitted: native=1280.0x720.0, view=710x953, base_scale=0.53
-[MediaLightbox] Fit video to view after media loaded
-[VideoEditor] Next frame: 00:00
-[VideoEditor] Next frame: 00:00
-[VideoEditor] Next frame: 00:00
-[VideoEditor] Next frame: 00:00
-[Editor] ✓ Video widget moved back to viewer page
-[Editor] ✓ Video edits cancelled and reset
-[MediaLightbox] ✓ Nav buttons positioned: left=8, right=886, y=494
-[Editor] ✓ Edits cancelled and returned to viewer mode
+[MediaLightbox] ✓ Cached: suleimanammar.jpg (~5366KB, cache: 1 items / 5.2MB)
+[MediaLightbox] ✓ Cached: suleimanammar - kopie.jpg (~5366KB, cache: 2 items / 10.5MB)
+[MediaLightbox] Prev clicked at index=1 of 25
+[MediaLightbox] Zoom state saved: fit @ 77%
+[MediaLightbox] → Loading previous: suleimanammar.jpg (idx=0)
+[MediaLightbox] _load_media called for: suleimanammar.jpg
+[MediaLightbox] Loading photo: suleimanammar.jpg
+[MediaLightbox] Starting progressive load...
+2026-02-13 17:16:24,857 [INFO] [SafeImageLoader] OK suleimanammar.jpg target=422px actual=325x422 file=0.1MB time=0.00s
+[ProgressiveImageWorker] ✓ Thumbnail loaded: suleimanammar.jpg (325x422)
+2026-02-13 17:16:24,864 [INFO] [SafeImageLoader] OK suleimanammar.jpg target=1689px actual=940x1218 file=0.1MB time=0.01s
+[ProgressiveImageWorker] ✓ Full quality loaded: suleimanammar.jpg (940x1218)
+[MediaLightbox] Preloading: suleimanammar - kopie.jpg
+[MediaLightbox] Filmstrip: Showing 11 thumbnails (range 0-11 of 25)
+[MediaLightbox] Zoom state restored: fit @ 77%
+[SIGNAL] _on_thumbnail_loaded called, qimage=valid
+[MediaLightbox] ✓ Thumbnail displayed (progressive load)
+[SIGNAL] _on_full_quality_loaded called, qimage=valid
+2026-02-13 17:16:24,881 [INFO] [SafeImageLoader] OK suleimanammar - kopie.jpg target=2560px actual=940x1218 file=0.1MB time=0.01s
+[MediaLightbox] ✓ Full quality displayed (progressive load complete)
+[PreloadImageWorker] ✓ Preloaded: suleimanammar - kopie.jpg (940x1218)
+[MediaLightbox] ✓ Cached: suleimanammar - kopie.jpg (~5366KB, cache: 3 items / 15.7MB)
 [MediaLightbox] Closing - cleaning up resources...
 [MediaLightbox] ✓ Video signals disconnected
 [MediaLightbox] ✓ Video player cleaned up
@@ -1205,387 +1308,8 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'c:/users/suleimaa/downloads/photo-sorte
 [MediaLightbox] ✓ All resources cleaned up
 [GooglePhotosLayout] MediaLightbox closed
 [GooglePhotosLayout] ✓ Refreshed tag badges for 1 photos
-[LayoutManager] Switching layout: google → current
-[GooglePhotosLayout] Cleaning up resources...
-2026-02-13 16:26:27,132 [INFO] [AccordionSidebar] Cleanup
-[ReferenceDB] Closed connection for thread 3312
-[GooglePhotosLayout]   ↳ Disconnecting signals...
-[GooglePhotosLayout]   ✓ Signals disconnected
-[GooglePhotosLayout]   ↳ Removing event filters...
-[GooglePhotosLayout]   ✓ Event filters removed
-[GooglePhotosLayout]   ↳ Stopping timers...
-[GooglePhotosLayout]   ✓ Timers stopped
-[GooglePhotosLayout]   ↳ Cleaning up thread pools...
-[GooglePhotosLayout]   ✓ Thread pools cleaned
-[GooglePhotosLayout]   ↳ Clearing caches...
-[GooglePhotosLayout]   ✓ Caches cleared
-[GooglePhotosLayout]   ↳ Stopping animations...
-[GooglePhotosLayout]   ✓ Animations stopped
-[LayoutManager] 🔄 Restoring original central widget: QWidget
-[CurrentLayout] Layout activated - scheduling deferred refresh
-[LayoutManager] Switched to: Current Layout
-[MainWindow] ✓ Switched to layout: current
-[CurrentLayout] Executing deferred reload...
-[CurrentLayout] Reloading sidebar...
-[SidebarQt] reload() called, display_mode=list, tabs_visible=False
-[SidebarQt] Calling _build_tree_model() instead of tabs refresh
-[SidebarQt] _build_tree_model() called with project_id=1
-[Sidebar] Detaching old model from tree view
-[Sidebar] Pending events processed (skipped explicit processEvents)
-[Sidebar] Creating fresh model (avoiding Qt segfault)
-[Sidebar] Attaching fresh model to tree view
-[SidebarQt] list_branches() returned 1 branches
-[SidebarQt] Sample branches: [{'branch_key': 'all', 'display_name': '📁 All Photos', 'count': 25}]
-[Sidebar] Loaded 3 folder counts in batch (performance optimization)
-[Sidebar] Loaded date counts in batch: 4 years, 9 months, 13 days
-[Sidebar] Loading videos for project_id=1
-[Sidebar] Found 2 videos in project 1
-[VideoDateHierarchy] Building: 1 years, 1 months, 2 videos
-[Sidebar] Added 🎬 Videos section with 2 videos and filters.
-2026-02-13 16:26:27,298 [INFO] [get_location_clusters] GPS columns exist: True
-2026-02-13 16:26:27,298 [INFO] [get_location_clusters] Found 2 photos with GPS data (project_id=1)
-2026-02-13 16:26:27,299 [INFO] [get_location_clusters] get_photos_by_location returned 2 location groups
-2026-02-13 16:26:27,299 [INFO] [get_location_clusters] Returning 2 location clusters
-[Sidebar] Added 🗺️ Locations section with 2 locations, 2 photos.
-[Sidebar] No mobile devices detected - added help message
-[Sidebar] starting async count population for 1 branch targets
-[Sidebar][counts worker gen=4] running for 1 targets...
-[CurrentLayout] ✓ Sidebar reload completed
-[CurrentLayout] Reloading grid...
-
-[GRID] ====== reload() CALLED ======
-[GRID] project_id=1, load_mode=None
-[GRID] Step 1: Setting _reloading=True
-[get_images_by_branch] project_id=1, branch_key='all'
-[get_images_by_branch] Found 25 photos
-[GRID] Default view: loaded 25 photos (mode=None -> branch/all)
-[GRID] Skipped tag query — project has no tags
-[Sidebar][counts worker gen=4] finished scanning targets, scheduling UI update
-[GRID] Loaded 25 thumbnails.
-[GRID] Reloaded 25 thumbnails in None-mode (base=25)
-[GRID] Step 5: Emitting gridReloaded signal...
-
-[Breadcrumb] _update_breadcrumb() CALLED
-[Breadcrumb] Grid state: navigation_mode=None, project_id=1
-[Breadcrumb] Looking for CURRENT project_id=1 in 1 projects
-[Breadcrumb] Found CURRENT project name: P01
-[Breadcrumb] Added project segment: P01
-[Breadcrumb] Added fallback segment: All Photos
-[Breadcrumb] Calling set_path() with 2 segments
-[BreadcrumbNav] set_path() called with 2 segments
-[BreadcrumbNav] Clearing 3 existing widgets
-[BreadcrumbNav] Cleared all existing widgets
-[BreadcrumbNav] Added segment 0: P01
-[BreadcrumbNav] Added segment 1: All Photos
-[BreadcrumbNav] set_path() completed - 2 segments added
-[Breadcrumb] set_path() completed successfully
-[Breadcrumb] _update_breadcrumb() COMPLETED
-
-[GRID] Step 5: ✓ gridReloaded signal emitted
-[GRID] ====== reload() COMPLETED SUCCESSFULLY ======
-
-[GRID] Finally block: Setting _reloading=False
-[CurrentLayout] ✓ Grid reload completed
-[Sidebar][counts applied] updated UI with counts
-[GRID] Using scroll-based start position: 0 (scroll: 0/39)
-[GRID] Loading viewport range: 0-24 of 25
-[GRID] Queued 25 new thumbnail workers
-[SidebarQt] switch_display_mode(tabs) - canceling old workers
-[SidebarQt] Canceled list workers (new gen=5)
-[SidebarQt] Hiding tree view and accordion
-[SidebarQt] Showing tabs controller
-[16:26:35.541] [Tabs] __init__ started
-[16:26:35.542] [Tabs] _build_tabs → building tab widgets
-[16:26:35.543] [Tabs] _on_tab_changed(idx=0)
-[16:26:35.543] [Tabs] _start_timeout idx=0 type=branches
-[16:26:35.543] [Tabs] _populate_tab(branches, idx=0, force=False)
-[16:26:35.543] [Tabs]   populated=False, loading=False
-[16:26:35.543] [Tabs]   Starting load for branches
-[16:26:35.543] [Tabs] _show_loading idx=0 label='Loading Branches…'
-[16:26:35.544] [Tabs] _clear_tab idx=0
-[16:26:35.544] [Tabs] _on_tab_changed → tab_type=branches
-[16:26:35.545] [Tabs] _build_tabs → added 7 tabs
-[16:26:35.545] [Tabs] __init__ completed
-[SidebarQt] Lazy-created SidebarTabs controller
-[SidebarQt] Calling tabs_controller.refresh_all(force=True) after mode switch
-[16:26:35.547] [Tabs] refresh_all(force=True) called
-[16:26:35.547] [Tabs] refresh_all: key=branches, idx=0, force=True
-[16:26:35.547] [Tabs] _populate_tab(branches, idx=0, force=True)
-[16:26:35.547] [Tabs]   populated=False, loading=False
-[16:26:35.547] [Tabs]   Starting load for branches
-[16:26:35.547] [Tabs] _show_loading idx=0 label='Loading Branches…'
-[16:26:35.547] [Tabs] _clear_tab idx=0
-[16:26:35.549] [Tabs] refresh_all: key=folders, idx=1, force=True
-[16:26:35.549] [Tabs] _populate_tab(folders, idx=1, force=True)
-[16:26:35.549] [Tabs]   populated=False, loading=False
-[16:26:35.549] [Tabs]   Starting load for folders
-[16:26:35.550] [Tabs] _show_loading idx=1 label='Loading Folders…'
-[16:26:35.550] [Tabs] _clear_tab idx=1
-[16:26:35.553] [Tabs] refresh_all: key=duplicates, idx=2, force=True
-[16:26:35.553] [Tabs] _populate_tab(duplicates, idx=2, force=True)
-[16:26:35.553] [Tabs]   populated=False, loading=False
-[16:26:35.553] [Tabs]   Starting load for duplicates
-[16:26:35.553] [Tabs] _show_loading idx=2 label='Loading Duplicates…'
-[16:26:35.553] [Tabs] _clear_tab idx=2
-[16:26:35.555] [Tabs] _load_folders → got 3 rows for project_id=1
-[16:26:35.555] [Tabs] refresh_all: key=dates, idx=3, force=True
-[16:26:35.555] [Tabs] _populate_tab(dates, idx=3, force=True)
-[16:26:35.556] [Tabs]   populated=False, loading=False
-[16:26:35.556] [Tabs]   Starting load for dates
-[16:26:35.556] [Tabs] _show_loading idx=3 label='Loading Dates…'
-[16:26:35.556] [Tabs] _clear_tab idx=3
-[16:26:35.557] [Tabs] refresh_all: key=tags, idx=4, force=True
-[16:26:35.557] [Tabs] _populate_tab(tags, idx=4, force=True)
-[16:26:35.557] [Tabs]   populated=False, loading=False
-[16:26:35.557] [Tabs]   Starting load for tags
-[16:26:35.557] [Tabs] _show_loading idx=4 label='Loading Tags…'
-[16:26:35.557] [Tabs] _clear_tab idx=4
-[16:26:35.559] [Tabs] refresh_all: key=quick, idx=6, force=True
-[16:26:35.559] [Tabs] _load_dates → got hierarchy data for project_id=1
-[16:26:35.559] [Tabs] _populate_tab(quick, idx=6, force=True)
-[16:26:35.559] [Tabs]   populated=False, loading=False
-[16:26:35.559] [Tabs]   Starting load for quick
-[16:26:35.559] [Tabs] _show_loading idx=6 label='Loading Quick Dates…'
-[16:26:35.559] [Tabs] _clear_tab idx=6
-[16:26:35.561] [Tabs] refresh_all(force=True) completed
-[16:26:35.561] [Tabs] _load_tags → got 0 rows for project_id=1
-[SidebarQt] tabs_controller.refresh_all() completed after mode switch
-[16:26:35.563] [Tabs] _load_quick → got 6 rows
-[16:26:35.563] [Tabs] _on_tab_changed(idx=0)
-[16:26:35.563] [Tabs] _start_timeout idx=0 type=branches
-[16:26:35.563] [Tabs] _populate_tab(branches, idx=0, force=False)
-[16:26:35.563] [Tabs]   populated=False, loading=True
-[16:26:35.563] [Tabs]   Skipping branches: already populated or loading
-[16:26:35.563] [Tabs] _on_tab_changed → tab_type=branches
-[16:26:35.564] [Tabs] _finish_branches (stale gen=1) — ignoring
-[16:26:35.565] [Tabs] _clear_tab idx=0
-[TAG FILTER] Cleared by navigation.
-
-[GRID] ====== reload() CALLED ======
-[GRID] project_id=1, load_mode=branch
-[GRID] Step 1: Setting _reloading=True
-[get_images_by_branch] project_id=1, branch_key='all'
-[get_images_by_branch] Found 25 photos
-[GRID] Skipped tag query — project has no tags
-[GRID] Loaded 25 thumbnails.
-[GRID] Reloaded 25 thumbnails in branch-mode (base=25)
-[GRID] Step 5: Emitting gridReloaded signal...
-
-[Breadcrumb] _update_breadcrumb() CALLED
-[Breadcrumb] Grid state: navigation_mode=None, project_id=1
-[Breadcrumb] Looking for CURRENT project_id=1 in 1 projects
-[Breadcrumb] Found CURRENT project name: P01
-[Breadcrumb] Added project segment: P01
-[Breadcrumb] Added fallback segment: All Photos
-[Breadcrumb] Calling set_path() with 2 segments
-[BreadcrumbNav] set_path() called with 2 segments
-[BreadcrumbNav] Clearing 3 existing widgets
-[BreadcrumbNav] Cleared all existing widgets
-[BreadcrumbNav] Added segment 0: P01
-[BreadcrumbNav] Added segment 1: All Photos
-[BreadcrumbNav] set_path() completed - 2 segments added
-[Breadcrumb] set_path() completed successfully
-[Breadcrumb] _update_breadcrumb() COMPLETED
-
-[GRID] Step 5: ✓ gridReloaded signal emitted
-[16:26:35.567] [Tabs] _load_duplicates → got counts: {'exact_photos': 19, 'exact_groups': 7, 'similar_photos': 16, 'similar_groups': 7}
-[GRID] ====== reload() COMPLETED SUCCESSFULLY ======
-
-[GRID] Finally block: Setting _reloading=False
-[16:26:35.567] [Tabs] _clear_tab idx=1
-[16:26:35.567] [Tabs] _clear_tab idx=3
-[16:26:35.567] [Tabs] _finish_tags called: idx=4, gen=1, rows_count=0
-[16:26:35.567] [Tabs] _clear_tab idx=4
-[16:26:35.582] [Tabs] _clear_tab idx=6
-[16:26:35.589] [Tabs] _clear_tab idx=2
-[16:26:35.589] [Tabs] _finish_duplicates completed: 14 groups
-[GRID] Loading viewport range: 0-24 of 25
-[GRID] Queued 25 new thumbnail workers
-
-[GRID] ====== reload() CALLED ======
-[GRID] project_id=1, load_mode=branch
-[GRID] Step 1: Setting _reloading=True
-[get_images_by_branch] project_id=1, branch_key='all'
-[get_images_by_branch] Found 25 photos
-[GRID] Skipped tag query — project has no tags
-[GRID] Loaded 25 thumbnails.
-[GRID] Reloaded 25 thumbnails in branch-mode (base=25)
-[GRID] Step 5: Emitting gridReloaded signal...
-
-[Breadcrumb] _update_breadcrumb() CALLED
-[Breadcrumb] Grid state: navigation_mode=branch, project_id=1
-[Breadcrumb] Looking for CURRENT project_id=1 in 1 projects
-[Breadcrumb] Found CURRENT project name: P01
-[Breadcrumb] Added project segment: P01
-[Breadcrumb] Added branch segment: All Photos
-[Breadcrumb] Calling set_path() with 2 segments
-[BreadcrumbNav] set_path() called with 2 segments
-[BreadcrumbNav] Clearing 3 existing widgets
-[BreadcrumbNav] Cleared all existing widgets
-[BreadcrumbNav] Added segment 0: P01
-[BreadcrumbNav] Added segment 1: All Photos
-[BreadcrumbNav] set_path() completed - 2 segments added
-[Breadcrumb] set_path() completed successfully
-[Breadcrumb] _update_breadcrumb() COMPLETED
-
-[GRID] Step 5: ✓ gridReloaded signal emitted
-[GRID] ====== reload() COMPLETED SUCCESSFULLY ======
-
-[GRID] Finally block: Setting _reloading=False
-[GRID] Loading viewport range: 0-24 of 25
-[GRID] Queued 25 new thumbnail workers
-[GRID] Using scroll-based start position: 5 (scroll: 39/39)
-[GRID] Loading viewport range: 0-24 of 25
-[GRID] Queued 25 new thumbnail workers
-[GRID] Loading viewport range: 0-24 of 25
-[GRID] Queued 25 new thumbnail workers
-[SidebarQt] switch_display_mode(accordion) - canceling old workers
-[SidebarQt] Canceled list workers (new gen=6)
-[SidebarQt] Hiding tree view and tabs
-[16:26:41.066] [Tabs] hide_tabs() called - canceling pending workers
-[SidebarQt] Showing accordion controller
-[16:26:41.105] [AccordionSidebar] AccordionSidebar __init__ started
-[16:26:41.105] [AccordionSidebar] Building accordion sections...
-[16:26:41.119] [AccordionSidebar] Created 8 sections with nav buttons
-[16:26:41.119] [AccordionSidebar] Expanding section: people
-[16:26:41.119] [AccordionSidebar] Loading content for section: people
-[16:26:41.119] [AccordionSidebar] Loading People section...
-[16:26:41.119] [AccordionSidebar] People reload generation: 1
-[16:26:41.119] [AccordionSidebar] ✓ Section expanded: people
-[16:26:41.119] [AccordionSidebar] AccordionSidebar __init__ completed
-[SidebarQt] Lazy-created AccordionSidebar controller
-[SidebarQt] Calling accordion_controller.refresh_all(force=True) after mode switch
-[16:26:41.119] [AccordionSidebar] Refreshing all sections (force=True)
-[16:26:41.119] [AccordionSidebar] Loading content for section: people
-[16:26:41.119] [AccordionSidebar] Loading People section...
-[16:26:41.130] [AccordionSidebar] People reload generation: 3
-[SidebarQt] accordion_controller.refresh_all() completed after mode switch
-[16:26:41.130] [AccordionSidebar] Loaded 0 face clusters (gen 1)
-[ReferenceDB] Closed connection for thread 44604
-[16:26:41.132] [AccordionSidebar] Discarding stale people data (gen 1 vs 3)
-[16:26:41.147] [AccordionSidebar] Loaded 0 face clusters (gen 3)
-[ReferenceDB] Closed connection for thread 42472
-[16:26:44.221] [AccordionSidebar] Expanding section: folders
-[16:26:44.222] [AccordionSidebar] Loading content for section: folders
-[16:26:44.222] [AccordionSidebar] Loading Folders section...
-[16:26:44.229] [AccordionSidebar] Folders reload generation: 2
-[16:26:44.230] [AccordionSidebar] ✓ Section expanded: folders
-[16:26:44.232] [AccordionSidebar] Loaded 3 folders (gen 2)
-[ReferenceDB] Closed connection for thread 47668
-[16:26:44.309] [AccordionSidebar] ✓ Folders section loaded with 3 folders
-[16:26:46.478] [AccordionSidebar] Expanding section: dates
-[16:26:46.485] [AccordionSidebar] Loading content for section: dates
-[16:26:46.486] [AccordionSidebar] Loading Dates section...
-[16:26:46.486] [AccordionSidebar] Dates reload generation: 2
-[16:26:46.487] [AccordionSidebar] ✓ Section expanded: dates
-[16:26:46.489] [AccordionSidebar] Loaded 4 years of date data (gen 2)
-[ReferenceDB] Closed connection for thread 45332
-[16:26:46.570] [AccordionSidebar] ✓ Dates section loaded with 4 years
-[16:26:49.089] [AccordionSidebar] Expanding section: duplicates
-[16:26:49.090] [AccordionSidebar] Loading content for section: duplicates
-[16:26:49.090] [AccordionSidebar] Loading Duplicates section...
-[16:26:49.090] [AccordionSidebar] Duplicates reload generation: 2
-[16:26:49.097] [AccordionSidebar] ✓ Section expanded: duplicates
-[16:26:49.100] [AccordionSidebar] Loaded duplicate counts: {'exact_photos': 19, 'exact_groups': 7, 'similar_photos': 16, 'similar_groups': 7} (gen 2)
-[16:26:49.183] [AccordionSidebar] Duplicates section loaded: 14 groups
-2026-02-13 16:26:50,481 [INFO] Started async duplicate loading (generation 1)
-2026-02-13 16:26:50,500 [INFO] Loaded 7 duplicate assets in background (limit=None, offset=0)
-2026-02-13 16:26:50,548 [INFO] Async duplicate loading complete: 7 groups loaded
-[16:26:52.131] [AccordionSidebar] Reloading section: duplicates
-[16:26:52.131] [AccordionSidebar] Loading content for section: duplicates
-[16:26:52.131] [AccordionSidebar] Loading Duplicates section...
-[16:26:52.131] [AccordionSidebar] Duplicates reload generation: 3
-[16:26:52.147] [AccordionSidebar] Loaded duplicate counts: {'exact_photos': 19, 'exact_groups': 7, 'similar_photos': 16, 'similar_groups': 7} (gen 3)
-[16:26:52.226] [AccordionSidebar] Duplicates section loaded: 14 groups
-2026-02-13 16:26:54,035 [INFO] Started async duplicate loading (generation 1)
-2026-02-13 16:26:54,037 [INFO] Loaded 7 duplicate assets in background (limit=None, offset=0)
-2026-02-13 16:26:54,091 [INFO] Async duplicate loading complete: 7 groups loaded
-2026-02-13 16:26:55,178 [INFO] Started async details loading for asset 20 (generation 1)
-2026-02-13 16:26:55,178 [INFO] Loaded details for asset 20 in background
-2026-02-13 16:26:55,195 [INFO] Async details loading complete for asset
-[16:26:57.111] [AccordionSidebar] Reloading section: duplicates
-[16:26:57.111] [AccordionSidebar] Loading content for section: duplicates
-[16:26:57.111] [AccordionSidebar] Loading Duplicates section...
-[16:26:57.111] [AccordionSidebar] Duplicates reload generation: 4
-[16:26:57.118] [AccordionSidebar] Loaded duplicate counts: {'exact_photos': 19, 'exact_groups': 7, 'similar_photos': 16, 'similar_groups': 7} (gen 4)
-[16:26:57.214] [AccordionSidebar] Duplicates section loaded: 14 groups
-2026-02-13 16:27:00,816 [INFO] [SafeImageLoader] OK img_6850_2_2_2.jpeg target=512px actual=512x384 file=3.0MB time=0.03s
-2026-02-13 16:27:01,848 [INFO] Added tag 1 to 1 photos (out of 1 requested)
-2026-02-13 16:27:01,848 [INFO] Bulk assigned tag 'favorite' to 1 photos
-[Sidebar] reload_tags_only → got 1 tags for project_id=1
-[HoverActions] Favorite added for c:\users\suleimaa\downloads\photo-sorter\images\output6\img_6850_2_2_2.jpeg
-[ThumbnailGridQt_on_double_clicked] index: <built-in method data of PySide6.QtCore.QModelIndex object at 0x0000014D2EBEF040>
-[open_lightbox] self.grid=<thumbnail_grid_qt.ThumbnailGridQt(0x14d5fb3c7e0) at 0x0000014D68269780>
-[open_lightbox] folder_id=None
-[open_lightbox] paths=[]
-[open_lightbox] branch_key=None
-[open_lightbox] date_key=None
-[open_lightbox] paths=[]
-[open_lightbox] context=visible_paths, total=25
-[open_lightbox] paths=['c:\\users\\suleimaa\\downloads\\photo-sorter\\images\\output6\\alya1_2_2_2.jpeg', 'c:\\users\\suleimaa\\downloads\\photo-sorter\\images\\output6\\alya1_3_2.jpeg', 'c:\\users\\suleimaa\\downloads\\photo-sorter\\images\\output6\\alya2_2_2_2_2.jpeg', 'c:\\users\\suleimaa\\downloads\\photo-sorter\\images\\output6\\alya3_2_2_2_2.jpeg', 'c:\\users\\suleimaa\\downloads\\photo-sorter\\images\\output6\\alya_2_2.jpeg', 'c:\\users\\suleimaa\\downloads\\photo-sorter\\images\\output6\\alya_2_2_2_2.jpeg', 'c:\\users\\suleimaa\\downloads\\photo-sorter\\images\\output6\\ammar-ref(1)_2_2.png', 'c:\\users\\suleimaa\\downloads\\photo-sorter\\images\\output6\\ammar-ref_2_2_2.png', 'c:\\users\\suleimaa\\downloads\\photo-sorter\\images\\output6\\ammar-ref_3_2.png', 'c:\\users\\suleimaa\\downloads\\photo-sorter\\images\\output6\\ammar1_2_2_2.jpeg', 'c:\\users\\suleimaa\\downloads\\photo-sorter\\images\\output6\\ammar2_2_2_2 - kopie.jpeg', 'c:\\users\\suleimaa\\downloads\\photo-sorter\\images\\output6\\ammar2_2_2_2.jpeg', 'c:\\users\\suleimaa\\downloads\\photo-sorter\\images\\output6\\ammar3_2_2_2_2.jpeg', 'c:\\users\\suleimaa\\downloads\\photo-sorter\\images\\output6\\img_6850_2_2_2.jpeg', 'c:\\users\\suleimaa\\downloads\\photo-sorter\\images\\output6\\img_6995_2_2_2.jpeg', 'c:\\users\\suleimaa\\downloads\\photo-sorter\\images\\output6\\neuer ordner\\suleimanammar - kopie.jpg', 'c:\\users\\suleimaa\\downloads\\photo-sorter\\images\\output6\\neuer ordner\\suleimanammar-revised.jpg', 'c:\\users\\suleimaa\\downloads\\photo-sorter\\images\\output6\\neuer ordner\\suleimanammar.jpg', 'c:\\users\\suleimaa\\downloads\\photo-sorter\\images\\output6\\pexels-matreding-11363475 - kopie (2).jpg', 'c:\\users\\suleimaa\\downloads\\photo-sorter\\images\\output6\\pexels-matreding-11363475 - kopie (3).jpg', 'c:\\users\\suleimaa\\downloads\\photo-sorter\\images\\output6\\pexels-matreding-11363475 - kopie.jpg', 'c:\\users\\suleimaa\\downloads\\photo-sorter\\images\\output6\\pexels-matreding-11363475.jpg', 'c:\\users\\suleimaa\\downloads\\photo-sorter\\images\\output6\\suleimanammar - kopie.jpg', 'c:\\users\\suleimaa\\downloads\\photo-sorter\\images\\output6\\suleimanammar-revised.jpg', 'c:\\users\\suleimaa\\downloads\\photo-sorter\\images\\output6\\suleimanammar.jpg']
-[open_lightbox] path=c:\users\suleimaa\downloads\photo-sorter\images\output6\img_6850_2_2_2.jpeg
-[UnifiedPreview] Opening media in unified dialog: c:\users\suleimaa\downloads\photo-sorter\images\output6\img_6850_2_2_2.jpeg
-[UnifiedPreview] Media type: photo
-2026-02-13 16:27:02,066 [INFO] [LightboxDialog.__init__] parent=<main_window_qt.MainWindow(0x14d5f6c0fc0) at 0x0000014D102BBA40>
-2026-02-13 16:27:02,071 [INFO] [LightboxDialog.__init__] parent type=MainWindow
-2026-02-13 16:27:02,071 [INFO] [LightboxDialog.__init__] parent.db exists: True
-2026-02-13 16:27:02,071 [INFO] [LightboxDialog.__init__] parent.reference_db exists: False
-2026-02-13 16:27:02,071 [INFO] [LightboxDialog.__init__] parent.project_id exists: False
-2026-02-13 16:27:02,071 [INFO] [LightboxDialog.__init__] Got db from parent.db: <reference_db.ReferenceDB object at 0x0000014D5EFC60D0>
-2026-02-13 16:27:02,071 [INFO] [LightboxDialog.__init__] Got project_id from parent.grid: 1
-[LightboxDialog] Video player signals connected successfully
-[PhotoLoad] Loading photo: c:\users\suleimaa\downloads\photo-sorter\images\output6\img_6850_2_2_2.jpeg
-[PhotoLoad] Preview loaded: (2560, 1920) (original 4032x3024)
-[PhotoLoad] Loading photo: c:\users\suleimaa\downloads\photo-sorter\images\output6\img_6995_2_2_2.jpeg
-[PhotoLoad] Preview loaded: (2560, 1920) (original 4032x3024)
-[LayoutManager] Switching layout: current → google
-[LayoutManager] 💾 Took ownership of original central widget: QWidget
-[GooglePhotosLayout] Using default project: 1
-[GooglePhotosLayout] Project selector populated with 1 projects (+ New Project option)
-[GooglePhotosLayout] ⚠️ semantic_search widget was deleted, creating new instance
-2026-02-13 16:27:11,909 [INFO] [SemanticSearch] Result cache initialized (100 entries, 5min TTL)
-2026-02-13 16:27:11,918 [INFO] [SemanticSearch] No project model set, using default: openai/clip-vit-base-patch32
-2026-02-13 16:27:11,918 [INFO] [SemanticSearch] 🔍 Available CLIP models found: 2
-2026-02-13 16:27:11,918 [INFO]   ✓ openai/clip-vit-base-patch32: Base model, fastest (512-D) (512-D, 600MB) ← WILL BE USED
-2026-02-13 16:27:11,918 [INFO]   ✓ openai/clip-vit-large-patch14: Large model, best quality (768-D) (768-D, 1700MB)
-2026-02-13 16:27:11,918 [INFO] [SemanticSearch] 🎯 Will use: openai/clip-vit-base-patch32 - Base model, fastest (512-D)
-2026-02-13 16:27:11,918 [WARNING] [SemanticSearch] ⚠️  Better model available but not being used!
-  clip-vit-large-patch14 is installed but has embeddings from base-patch32.
-  To use the large model: Tools → Extract Embeddings (will auto-use large model)
-[GooglePhotosLayout] ✓ Created new semantic_search widget
-[GooglePhotosLayout] ✓ Semantic search widget visibility ensured
-[GooglePhotosLayout] ✓ Semantic search toolbar visibility ensured
-2026-02-13 16:27:11,918 [INFO] [AccordionSidebar] Initializing with project_id=1
-2026-02-13 16:27:11,934 [INFO] [AccordionSidebar] Created 8 sections
-2026-02-13 16:27:11,934 [INFO] [AccordionSidebar] Expanding section: folders
-2026-02-13 16:27:11,941 [INFO] [FoldersSection] Loading folders (generation 2)...
-[GooglePhotosLayout] ✅ Scroll-triggered lazy loading enabled
-2026-02-13 16:27:11,957 [INFO] [FoldersSection] Loaded 3 folders (gen 2)
-[ReferenceDB] Closed connection for thread 47228
-[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px)...
-[GooglePhotosLayout] 🔍 Starting async photo load (generation 1) - existing content preserved...
-[GooglePhotosLayout] Paged load started (generation 1, page_size=250)
-[LayoutManager] Setting new central widget: QWidget
-[GooglePhotosLayout] Layout activated
-[LayoutManager] Switched to: Google Photos Style
-[MainWindow] ✓ Switched to layout: google
-2026-02-13 16:27:11,990 [INFO] [FoldersSection] Tree built with 1 top-level folders
-2026-02-13 16:27:11,990 [INFO] [FoldersSection] Data loaded successfully (gen 2)
-2026-02-13 16:27:11,996 [INFO] [FoldersSection] Tree built with 1 top-level folders
-2026-02-13 16:27:12,066 [INFO] [AccordionSidebar] Section folders loaded and displayed
-[GooglePhotosLayout] 📐 Responsive grid: 5 columns (viewport: 1067px, thumb: 200px)
-2026-02-13 16:27:12,066 [INFO] [GoogleLayout] Page count ready: gen=1 total=27 (threshold=3000)
-2026-02-13 16:27:12,066 [INFO] [GoogleLayout] Page ready: gen=1 offset=0 rows=27 loaded=27/27
-[GooglePhotosLayout] Dispatching 27 assets (photos+videos) to background grouping worker...
-2026-02-13 16:27:12,066 [INFO] [GoogleLayout] All pages loaded: 27 rows total
-[GooglePhotosLayout] Grouped into 13 date groups
-[GooglePhotosLayout] Tracking 27 paths for multi-selection
-[GooglePhotosLayout] Virtual scrolling enabled: 13 total date groups
-[GooglePhotosLayout] Rendered: 5 groups | Placeholders: 8 groups
-[GooglePhotosLayout] Queued 10 thumbnails for loading (initial limit: 50)
-[GooglePhotosLayout] Photo loading complete! Thumbnails will load progressively.
-[GooglePhotosLayout] Photo clicked: c:/users/suleimaa/downloads/photo-sorter/images/output6/neuer ordner/suleimanammar.jpg
-[GooglePhotosLayout] 👁️ Opening lightbox for: c:/users/suleimaa/downloads/photo-sorter/images/output6/neuer ordner/suleimanammar.jpg
+[GooglePhotosLayout] Photo clicked: c:/users/suleimaa/downloads/photo-sorter/images/qouzleh_mitsubtitles.mp4
+[GooglePhotosLayout] 👁️ Opening lightbox for: c:/users/suleimaa/downloads/photo-sorter/images/qouzleh_mitsubtitles.mp4
 [MediaLightbox] Available: 1920x1152 (DPI: 1.0x)
 [MediaLightbox] Responsive Tier: FullHD Professional
 [MediaLightbox] Window: 1689x1013 (88% of available)
@@ -1595,191 +1319,10 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'c:/users/suleimaa/downloads/photo-sorte
 [MediaLightbox] ✓ Nav buttons positioned: left=8, right=608, y=284
 [MediaLightbox] Resize: 1689x1013
 [MediaLightbox] ✓ Nav buttons positioned: left=8, right=1657, y=522
-[MediaLightbox] _load_media called for: suleimanammar.jpg
-[MediaLightbox] Loading photo: suleimanammar.jpg
-[MediaLightbox] Starting progressive load...
-2026-02-13 16:27:15,605 [INFO] [SafeImageLoader] OK suleimanammar.jpg target=422px actual=325x422 file=0.1MB time=0.00s
-[ProgressiveImageWorker] ✓ Thumbnail loaded: suleimanammar.jpg (325x422)
-2026-02-13 16:27:15,613 [INFO] [SafeImageLoader] OK suleimanammar.jpg target=1689px actual=940x1218 file=0.1MB time=0.01s
-[ProgressiveImageWorker] ✓ Full quality loaded: suleimanammar.jpg (940x1218)
-[MediaLightbox] Preloading: suleimanammar - kopie.jpg
-[MediaLightbox] Preloading: ammar1_2_2_2.jpeg
-[MediaLightbox] Filmstrip: Showing 13 thumbnails (range 0-13 of 27)
-2026-02-13 16:27:15,626 [INFO] [SafeImageLoader] OK suleimanammar - kopie.jpg target=2560px actual=940x1218 file=0.1MB time=0.01s
-[MediaLightbox] Zoom state restored: fit @ 100%
-[PreloadImageWorker] ✓ Preloaded: suleimanammar - kopie.jpg (940x1218)
-[MediaLightbox] ✓ Nav buttons positioned: left=8, right=1657, y=522
-[SIGNAL] _on_thumbnail_loaded called, qimage=valid
-[MediaLightbox] ✓ Thumbnail displayed (progressive load)
-[SIGNAL] _on_full_quality_loaded called, qimage=valid
-[MediaLightbox] ✓ Full quality displayed (progressive load complete)
-[MediaLightbox] ✓ Cached: suleimanammar - kopie.jpg (~5366KB, cache: 1 items / 5.2MB)
-[MediaLightbox] Filmstrip: Showing 13 thumbnails (range 0-13 of 27)
-2026-02-13 16:27:15,718 [INFO] [SafeImageLoader] OK ammar1_2_2_2.jpeg target=2560px actual=2560x1920 file=4.3MB time=0.10s
-[MediaLightbox] 🔄 Responsive Tier Changed: FullHD Professional → HD
-[MediaLightbox]    New Scaling: Toolbar=68px, Buttons=48px
-[MediaLightbox] ✓ UI elements resized for tier: HD
-[PreloadImageWorker] ✓ Preloaded: ammar1_2_2_2.jpeg (2560x1920)
-[MediaLightbox] ✓ Responsive behavior update completed
-[MediaLightbox] ✓ Cached: ammar1_2_2_2.jpeg (~23040KB, cache: 2 items / 27.7MB)
-[MediaLightbox] Next clicked at index=2 of 27
-[MediaLightbox] Zoom state saved: fit @ 78%
-[MediaLightbox] → Loading next: suleimanammar - kopie.jpg (idx=3)
-[MediaLightbox] _load_media called for: suleimanammar - kopie.jpg
-[MediaLightbox] Loading photo: suleimanammar - kopie.jpg
-[MediaLightbox] ✓ Loading from cache (INSTANT!)
-[MediaLightbox] ✓ Loaded from cache instantly!
-[MediaLightbox] Preloading: ammar2_2_2_2.jpeg
-[MediaLightbox] Filmstrip: Showing 14 thumbnails (range 0-14 of 27)
-[MediaLightbox] Zoom state restored: fit @ 78%
-2026-02-13 16:27:21,836 [INFO] [SafeImageLoader] OK ammar2_2_2_2.jpeg target=2560px actual=1440x2560 file=2.3MB time=0.10s
-[PreloadImageWorker] ✓ Preloaded: ammar2_2_2_2.jpeg (1440x2560)
-[MediaLightbox] ✓ Cached: ammar2_2_2_2.jpeg (~17280KB, cache: 3 items / 44.6MB)
-[MediaLightbox] Next clicked at index=3 of 27
-[MediaLightbox] Zoom state saved: fit @ 78%
-[MediaLightbox] → Loading next: ammar1_2_2_2.jpeg (idx=4)
-[MediaLightbox] _load_media called for: ammar1_2_2_2.jpeg
-[MediaLightbox] Loading photo: ammar1_2_2_2.jpeg
-[MediaLightbox] ✓ Loading from cache (INSTANT!)
-[MediaLightbox] ✓ Loaded from cache instantly!
-[MediaLightbox] Preloading: ammar2_2_2_2 - kopie.jpeg
-[MediaLightbox] Filmstrip: Showing 15 thumbnails (range 0-15 of 27)
-[MediaLightbox] Zoom state restored: fit @ 78%
-2026-02-13 16:27:22,646 [INFO] [SafeImageLoader] OK ammar2_2_2_2 - kopie.jpeg target=2560px actual=1440x2560 file=2.3MB time=0.10s
-[PreloadImageWorker] ✓ Preloaded: ammar2_2_2_2 - kopie.jpeg (1440x2560)
-[MediaLightbox] ✓ Cached: ammar2_2_2_2 - kopie.jpeg (~17280KB, cache: 4 items / 61.5MB)
-[MediaLightbox] Double-tap zoom: custom
-[MediaLightbox] Double-tap zoom: fit
-[MediaLightbox] Next clicked at index=4 of 27
-[MediaLightbox] Zoom state saved: fit @ 48%
-[MediaLightbox] → Loading next: ammar2_2_2_2.jpeg (idx=5)
-[MediaLightbox] _load_media called for: ammar2_2_2_2.jpeg
-[MediaLightbox] Loading photo: ammar2_2_2_2.jpeg
-[MediaLightbox] ✓ Loading from cache (INSTANT!)
-[MediaLightbox] ✓ Loaded from cache instantly!
-[MediaLightbox] Preloading: alya1_3_2.jpeg
-[MediaLightbox] Filmstrip: Showing 16 thumbnails (range 0-16 of 27)
-[MediaLightbox] Zoom state restored: fit @ 48%
-2026-02-13 16:27:28,827 [INFO] [SafeImageLoader] OK alya1_3_2.jpeg target=2560px actual=1440x2560 file=0.3MB time=0.04s
-[PreloadImageWorker] ✓ Preloaded: alya1_3_2.jpeg (1440x2560)
-[MediaLightbox] ✓ Cached: alya1_3_2.jpeg (~17280KB, cache: 5 items / 78.4MB)
-[MediaLightbox] Next clicked at index=5 of 27
-[MediaLightbox] Zoom state saved: fit @ 48%
-[MediaLightbox] → Loading next: ammar2_2_2_2 - kopie.jpeg (idx=6)
-[MediaLightbox] _load_media called for: ammar2_2_2_2 - kopie.jpeg
-[MediaLightbox] Loading photo: ammar2_2_2_2 - kopie.jpeg
-[MediaLightbox] ✓ Loading from cache (INSTANT!)
-[MediaLightbox] ✓ Loaded from cache instantly!
-[MediaLightbox] Preloading: alya1_2_2_2.jpeg
-[MediaLightbox] Filmstrip: Showing 17 thumbnails (range 0-17 of 27)
-[MediaLightbox] Zoom state restored: fit @ 48%
-2026-02-13 16:27:29,789 [INFO] [SafeImageLoader] OK alya1_2_2_2.jpeg target=2560px actual=1440x2560 file=0.3MB time=0.04s
-[PreloadImageWorker] ✓ Preloaded: alya1_2_2_2.jpeg (1440x2560)
-[MediaLightbox] ✓ Cached: alya1_2_2_2.jpeg (~17280KB, cache: 6 items / 95.2MB)
-[MediaLightbox] Evicted from cache: suleimanammar - kopie.jpg (~5366KB)
-[MediaLightbox] Next clicked at index=6 of 27
-[MediaLightbox] Zoom state saved: fit @ 48%
-[MediaLightbox] → Loading next: alya1_3_2.jpeg (idx=7)
-[MediaLightbox] _load_media called for: alya1_3_2.jpeg
-[MediaLightbox] Loading photo: alya1_3_2.jpeg
-[MediaLightbox] ✓ Loading from cache (INSTANT!)
-[MediaLightbox] ✓ Loaded from cache instantly!
-[MediaLightbox] Preloading: alya2_2_2_2_2.jpeg
-[MediaLightbox] Filmstrip: Showing 18 thumbnails (range 0-18 of 27)
-[MediaLightbox] Zoom state restored: fit @ 48%
-2026-02-13 16:27:30,506 [INFO] [SafeImageLoader] OK alya2_2_2_2_2.jpeg target=2560px actual=611x1081 file=0.1MB time=0.01s
-[PreloadImageWorker] ✓ Preloaded: alya2_2_2_2_2.jpeg (611x1081)
-[MediaLightbox] ✓ Cached: alya2_2_2_2_2.jpeg (~3096KB, cache: 6 items / 93.0MB)
-[MediaLightbox] Evicted from cache: ammar1_2_2_2.jpeg (~23040KB)
-[MediaLightbox] Next clicked at index=7 of 27
-[MediaLightbox] Zoom state saved: fit @ 48%
-[MediaLightbox] → Loading next: alya1_2_2_2.jpeg (idx=8)
-[MediaLightbox] _load_media called for: alya1_2_2_2.jpeg
-[MediaLightbox] Loading photo: alya1_2_2_2.jpeg
-[MediaLightbox] ✓ Loading from cache (INSTANT!)
-[MediaLightbox] ✓ Loaded from cache instantly!
-[MediaLightbox] Preloading: suleimanammar-revised.jpg
-[MediaLightbox] Filmstrip: Showing 19 thumbnails (range 0-19 of 27)
-2026-02-13 16:27:31,421 [INFO] [SafeImageLoader] OK suleimanammar-revised.jpg target=2560px actual=844x1135 file=0.1MB time=0.01s
-[PreloadImageWorker] ✓ Preloaded: suleimanammar-revised.jpg (844x1135)
-[MediaLightbox] Zoom state restored: fit @ 48%
-[MediaLightbox] ✓ Cached: suleimanammar-revised.jpg (~4490KB, cache: 6 items / 74.9MB)
-[MediaLightbox] Evicted from cache: ammar2_2_2_2.jpeg (~17280KB)
-[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1344, y=527
-[MediaLightbox] Resize: 1688x1013
-[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1339, y=527
-[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1324, y=527
-[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1298, y=527
-[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1259, y=527
-[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1215, y=527
-[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1170, y=527
-[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1115, y=527
-[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1034, y=527
-[MediaLightbox] ✓ Nav buttons positioned: left=12, right=980, y=527
-[MediaLightbox] ✓ Nav buttons positioned: left=12, right=939, y=527
-[MediaLightbox] ✓ Nav buttons positioned: left=12, right=906, y=527
-[MediaLightbox] ✓ Nav buttons positioned: left=12, right=880, y=527
-[MediaLightbox] ✓ Nav buttons positioned: left=12, right=873, y=527
-[MediaLightbox] ✓ Nav buttons positioned: left=12, right=871, y=527
-[MediaLightbox] ✓ Nav buttons positioned: left=12, right=870, y=527
-[MediaLightbox] ✓ Nav buttons positioned: left=12, right=866, y=527
-[MediaLightbox] Resize: 1210x1013
-[MediaLightbox] ✓ Nav buttons positioned: left=12, right=860, y=527
-[MediaLightbox] ✓ Nav buttons positioned: left=12, right=851, y=527
-[MediaLightbox] Auto-hidden info panel (window width: 1195px < 1200px)
-[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1140, y=527
-[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1132, y=527
-[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1124, y=527
-[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1116, y=527
-[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1105, y=527
-[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1100, y=527
-[MediaLightbox] ✓ Nav buttons positioned: left=12, right=1096, y=527
-[MediaLightbox] 🔄 Responsive Tier Changed: HD → Small
-[MediaLightbox]    New Scaling: Toolbar=60px, Buttons=44px
-[MediaLightbox] ✓ UI elements resized for tier: Small
-[MediaLightbox] ✓ Responsive behavior update completed
-[MediaLightbox] Next clicked at index=8 of 27
-[MediaLightbox] Zoom state saved: fit @ 36%
-[MediaLightbox] → Loading next: alya2_2_2_2_2.jpeg (idx=9)
-[MediaLightbox] _load_media called for: alya2_2_2_2_2.jpeg
-[MediaLightbox] Loading photo: alya2_2_2_2_2.jpeg
-[MediaLightbox] ✓ Loading from cache (INSTANT!)
-[MediaLightbox] ✓ Loaded from cache instantly!
-[EXIFParser] GPSInfo is non-iterable type <class 'int'>, likely from piexif - skipping GPS parsing
-[MediaLightbox] Using GPS from database: (33.447481, 36.163383)
-[MediaLightbox] Preloading: suleimanammar-revised.jpg
-[MediaLightbox] Filmstrip: Showing 20 thumbnails (range 0-20 of 27)
-2026-02-13 16:27:40,180 [INFO] [SafeImageLoader] OK suleimanammar-revised.jpg target=2560px actual=844x1135 file=0.1MB time=0.01s
-[PreloadImageWorker] ✓ Preloaded: suleimanammar-revised.jpg (844x1135)
-[MediaLightbox] Zoom state restored: fit @ 36%
-[MediaLightbox] ✓ Cached: suleimanammar-revised.jpg (~4490KB, cache: 6 items / 62.4MB)
-[MediaLightbox] Evicted from cache: ammar2_2_2_2 - kopie.jpeg (~17280KB)
-[MediaLightbox] Next clicked at index=9 of 27
-[MediaLightbox] Zoom state saved: fit @ 36%
-[MediaLightbox] → Loading next: suleimanammar-revised.jpg (idx=10)
-[MediaLightbox] _load_media called for: suleimanammar-revised.jpg
-[MediaLightbox] Loading photo: suleimanammar-revised.jpg
-[MediaLightbox] ✓ Loading from cache (INSTANT!)
-[MediaLightbox] ✓ Loaded from cache instantly!
-[MediaLightbox] Filmstrip: Showing 21 thumbnails (range 0-21 of 27)
-[MediaLightbox] Zoom state restored: fit @ 36%
-[MediaLightbox] Next clicked at index=10 of 27
-[MediaLightbox] Zoom state saved: fit @ 36%
-[MediaLightbox] → Loading next: suleimanammar-revised.jpg (idx=11)
-[MediaLightbox] _load_media called for: suleimanammar-revised.jpg
-[MediaLightbox] Loading photo: suleimanammar-revised.jpg
-[MediaLightbox] ✓ Loading from cache (INSTANT!)
-[MediaLightbox] ✓ Loaded from cache instantly!
-[MediaLightbox] Filmstrip: Showing 21 thumbnails (range 1-22 of 27)
-[MediaLightbox] Zoom state restored: fit @ 36%
-[MediaLightbox] Next clicked at index=11 of 27
-[MediaLightbox] Zoom state saved: fit @ 36%
-[MediaLightbox] → Loading next: qouzleh_mitsubtitles.mp4 (idx=12)
 [MediaLightbox] _load_media called for: qouzleh_mitsubtitles.mp4
 [MediaLightbox] Loading video: qouzleh_mitsubtitles.mp4
 [MediaLightbox] ✓ Video signals disconnected
-[MediaLightbox] ✓ Video signals connected
-[MediaLightbox] Video widget sized: 852x953
+[MediaLightbox] Video signals connected
 Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'c:/users/suleimaa/downloads/photo-sorter/images/qouzleh_mitsubtitles.mp4':
   Metadata:
     major_brand     : isom
@@ -1795,54 +1338,18 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'c:/users/suleimaa/downloads/photo-sorte
       Metadata:
         handler_name    : VideoHandler
         vendor_id       : [0][0][0][0]
-[MediaLightbox] ⚠️ No photo_metadata row found for: qouzleh_mitsubtitles.mp4
-[MediaLightbox] ✓ Video player started: qouzleh_mitsubtitles.mp4
-[MediaLightbox] Fit video to view after media loaded
+[MediaLightbox] No photo_metadata row for video: qouzleh_mitsubtitles.mp4 (expected)
+[MediaLightbox] Video player started: qouzleh_mitsubtitles.mp4
+[MediaLightbox] ✓ Nav buttons positioned: left=8, right=1657, y=492
+[MediaLightbox] Filmstrip: Showing 11 thumbnails (range 0-11 of 25)
+[MediaLightbox] Media ready (status=MediaStatus.LoadedMedia)
+[MediaLightbox] 🔄 Responsive Tier Changed: FullHD Professional → HD
+[MediaLightbox]    New Scaling: Toolbar=68px, Buttons=48px
+[MediaLightbox] ✓ UI elements resized for tier: HD
+[MediaLightbox] ✓ Responsive behavior update completed
+[MediaLightbox] Media ready (status=MediaStatus.BufferedMedia)
 [MediaLightbox] Video zoom applied: 100%
-[MediaLightbox] Video fitted: native=1280.0x720.0, view=852x953, base_scale=0.63
-[MediaLightbox] Video zoom applied: 100%
-[MediaLightbox] Video fitted: native=1280.0x720.0, view=852x953, base_scale=0.63
-[MediaLightbox] Video zoom applied: 100%
-[MediaLightbox] Video fitted: native=1280.0x720.0, view=852x953, base_scale=0.63
-[MediaLightbox] Fit video to view after media loaded
-[MediaLightbox] Next clicked at index=12 of 27
-[MediaLightbox] Zoom state saved: fit @ 100%
-[MediaLightbox] → Loading next: qouzleh_mitsubtitles-ezgif.com-resize-video.mp4 (idx=13)
-[MediaLightbox] _load_media called for: qouzleh_mitsubtitles-ezgif.com-resize-video.mp4
-[MediaLightbox] Loading video: qouzleh_mitsubtitles-ezgif.com-resize-video.mp4
-[MediaLightbox] Stopping previous video...
-[MediaLightbox] Video zoom applied: 100%
-[MediaLightbox] Video fitted: native=1280.0x720.0, view=852x953, base_scale=0.63
-[MediaLightbox] Fit video to view after media loaded
-[MediaLightbox] ✓ Previous video stopped and cleaned up
-[MediaLightbox] Video widget sized: 840x880
-Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'c:/users/suleimaa/downloads/photo-sorter/images/qouzleh_mitsubtitles-ezgif.com-resize-video.mp4':
-  Metadata:
-    major_brand     : isom
-    minor_version   : 512
-    compatible_brands: isomiso2avc1mp41
-    encoder         : Lavf60.16.100
-    comment         : MP4 resized with https://ezgif.com/resize-video
-  Duration: 00:01:15.95, start: 0.000000, bitrate: 1411 kb/s
-  Stream #0:0[0x1](und): Video: h264 (High) (avc1 / 0x31637661), yuvj420p(pc, bt709, progressive), 640x360 [SAR 1:1 DAR 16:9], 1274 kb/s, 30 fps, 30 tbr, 15360 tbn (default)
-      Metadata:
-        handler_name    : VideoHandler
-        vendor_id       : [0][0][0][0]
-        encoder         : Lavc60.31.102 libx264
-  Stream #0:1[0x2](und): Audio: aac (LC) (mp4a / 0x6134706D), 44100 Hz, stereo, fltp, 127 kb/s (default)
-      Metadata:
-        handler_name    : SoundHandler
-        vendor_id       : [0][0][0][0]
-[MediaLightbox] ⚠️ No photo_metadata row found for: qouzleh_mitsubtitles-ezgif.com-resize-video.mp4
-[MediaLightbox] ✓ Video player started: qouzleh_mitsubtitles-ezgif.com-resize-video.mp4
-[MediaLightbox] Video zoom applied: 100%
-[MediaLightbox] Video fitted: native=1280.0x720.0, view=840x880, base_scale=0.62
-[MediaLightbox] Video zoom applied: 100%
-[MediaLightbox] Video fitted: native=1280.0x720.0, view=840x880, base_scale=0.62
-[MediaLightbox] Fit video to view after media loaded
-[MediaLightbox] Video zoom applied: 100%
-[MediaLightbox] Video fitted: native=640.0x360.0, view=840x880, base_scale=1.25
-[MediaLightbox] Fit video to view after media loaded
+[MediaLightbox] Video fitted: native=1280.0x720.0, view=6x16, base_scale=0.00
 [MediaLightbox] Closing - cleaning up resources...
 [MediaLightbox] ✓ Video signals disconnected
 [MediaLightbox] ✓ Video player cleaned up
@@ -1853,24 +1360,25 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'c:/users/suleimaa/downloads/photo-sorte
 [GooglePhotosLayout] ✓ Refreshed tag badges for 1 photos
 [UI] Generation bumped 0 -> 1: shutdown barrier
 [Shutdown] _closing flag set, ui_generation=1, beginning teardown...
-2026-02-13 16:28:19,609 [INFO] [Store] ShutdownRequested src=main_window deltas={'ui_epoch': '0→1'}  →  4 subscriber(s)
-2026-02-13 16:28:19,609 [INFO] [JobManager] Canceled 0 jobs
+2026-02-13 17:17:21,249 [INFO] [Store] ShutdownRequested src=main_window deltas={'ui_epoch': '0→1'}  →  3 subscriber(s)
+2026-02-13 17:17:21,249 [INFO] [JobManager] Canceled 0 jobs
 [Shutdown] JobManager barrier complete (drained=True).
-2026-02-13 16:28:19,609 [INFO] Scan cancellation requested
-2026-02-13 16:28:19,609 [INFO] Scan stop requested via adapter
-2026-02-13 16:28:19,609 [INFO] [ScanController] DBWriter shut down
-2026-02-13 16:28:19,614 [INFO] [ScanController] Shutdown barrier complete (drained=True)
+2026-02-13 17:17:21,249 [INFO] Scan cancellation requested
+2026-02-13 17:17:21,249 [INFO] Scan stop requested via adapter
+2026-02-13 17:17:21,249 [INFO] [ScanController] DBWriter shut down
+2026-02-13 17:17:21,256 [INFO] [ScanController] Shutdown barrier complete (drained=True)
 [Shutdown] ScanController barrier complete.
 [Shutdown] Grid threads shut down.
 [ThumbnailManager] Thread pool shut down.
 [Shutdown] ThumbnailManager threads shut down.
 [Shutdown] Thumbnail cache cleared.
-[ReferenceDB] Closed connection for thread 3312
+[ReferenceDB] Closed connection for thread 18784
 [Shutdown] Database connections closed.
 [Shutdown] Teardown complete.
 [Main] Qt event loop exited with code: 0
 [ThumbCacheDB] Closing cache gracefully...
 [GooglePhotosLayout] Cleanup completed
 [GooglePhotosLayout] Cleanup completed
+[GooglePhotosLayout] Cleanup completed
 
-C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.03-Photo-App\MemoryMate-PhotoFlow-Refactored-main-16>
+C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.03-Photo-App\MemoryMate-PhotoFlow-Refactored-main-17>
