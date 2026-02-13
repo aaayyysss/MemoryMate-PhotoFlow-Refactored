@@ -1057,9 +1057,9 @@ class MainWindow(QMainWindow):
 
         self.splitter.addWidget(self.sidebar)
 
-        # PHASE 2: Restore last expanded section after UI is fully loaded
-        # Use QTimer to defer restoration until after event loop starts
-        QTimer.singleShot(100, self._restore_session_state)
+        # Session state restoration is handled by _deferred_initialization()
+        # (post first-paint). Removed early QTimer(100) that could fire before
+        # the window has painted and trigger sidebar expansion prematurely.
 
         # Phase 2.3: Grid container with selection toolbar
         self.grid_container = QWidget()
@@ -1299,17 +1299,55 @@ class MainWindow(QMainWindow):
         if getattr(self, "_deferred_init_started", False):
             return
         self._deferred_init_started = True
+        import time as _time
+        t0 = _time.perf_counter()
+        print(f"[Startup] _after_first_paint fired at {t0:.3f}s")
 
-        # Guardrail 2: throttle shared background workers during layout stabilization.
+        # ----------------------------------------------------------
+        # Guardrail 1 (startup scheduling gate): Throttle background
+        # workers so initial layout + thumbnails aren't starved.
+        # ----------------------------------------------------------
+
+        # 1a. Throttle JobManager's private thread pool.
         try:
             from services.job_manager import get_job_manager
             jm = get_job_manager()
             if hasattr(jm, "enable_startup_throttle"):
                 jm.enable_startup_throttle(max_threads=1)
-                # Restore after layout has stabilized and initial thumbnails are queued.
                 QTimer.singleShot(5000, jm.disable_startup_throttle)
         except Exception:
             pass  # Throttle is best-effort, never block startup for it.
+
+        # 1b. Throttle global QThreadPool (used by GoogleLayout's
+        #     PhotoPageWorker / GroupingWorker for initial photo load).
+        try:
+            pool = QThreadPool.globalInstance()
+            self._startup_global_pool_prev = pool.maxThreadCount()
+            pool.setMaxThreadCount(max(2, self._startup_global_pool_prev // 2))
+
+            def _restore_global_pool():
+                prev = getattr(self, '_startup_global_pool_prev', None)
+                if prev is not None:
+                    QThreadPool.globalInstance().setMaxThreadCount(prev)
+                    print(f"[Startup] Global QThreadPool restored to {prev} threads")
+
+            QTimer.singleShot(5000, _restore_global_pool)
+        except Exception:
+            pass
+
+        # ----------------------------------------------------------
+        # Guardrail 2 (first-render fence): Notify the active layout
+        # that first paint is done so it can start its initial load.
+        # A short 50 ms delay lets the event loop flush pending
+        # paint events before the load kicks in.
+        # ----------------------------------------------------------
+        try:
+            layout = self.layout_manager.get_current_layout() if hasattr(self, 'layout_manager') else None
+            if layout and hasattr(layout, '_on_startup_ready'):
+                QTimer.singleShot(50, layout._on_startup_ready)
+                print(f"[Startup] Scheduled _on_startup_ready for {type(layout).__name__}")
+        except Exception:
+            pass
 
         # Start deferred init after a short delay to let initial render settle.
         QTimer.singleShot(250, self._deferred_initialization)

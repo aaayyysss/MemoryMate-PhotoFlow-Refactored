@@ -153,6 +153,15 @@ class BaseLayout(ABC):
         """
         pass
 
+    def _on_startup_ready(self):
+        """Called by MainWindow after the first paint completes.
+
+        Layouts that defer heavy initialization (DB queries, thumbnail
+        loading) until after first paint should override this method.
+        Default implementation is a no-op.
+        """
+        pass
+
     # ========== PHASE 3 Task 3.1: Project Management ==========
 
     @abstractmethod
