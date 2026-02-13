@@ -17,6 +17,20 @@ class EXIFParser:
     def __init__(self):
         """Initialize EXIF parser with HEIC support"""
         self._heic_support_enabled = False
+        self._ffprobe_path = self._resolve_ffprobe()
+
+    @staticmethod
+    def _resolve_ffprobe() -> str:
+        """Resolve ffprobe path from settings, falling back to PATH."""
+        try:
+            from settings_manager_qt import SettingsManager
+            settings = SettingsManager()
+            saved = settings.get_setting('ffprobe_path', '')
+            if saved and Path(saved).exists():
+                return saved
+        except Exception:
+            pass
+        return 'ffprobe'
 
         # Try to enable HEIC support
         try:
@@ -156,7 +170,7 @@ class EXIFParser:
 
             # Run ffprobe to get video metadata
             cmd = [
-                'ffprobe',
+                self._ffprobe_path,
                 '-v', 'quiet',
                 '-print_format', 'json',
                 '-show_format',
@@ -568,7 +582,7 @@ class EXIFParser:
 
             # Use ffprobe to extract metadata
             cmd = [
-                'ffprobe',
+                self._ffprobe_path,
                 '-v', 'quiet',
                 '-print_format', 'json',
                 '-show_format',

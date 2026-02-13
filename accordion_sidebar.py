@@ -900,6 +900,62 @@ class AccordionSidebar(QWidget):
         # Expand default section (People)
         self.expand_section("people")
 
+        # Subscribe to ProjectState store for version-based section refresh.
+        # Each version counter maps to specific sidebar sections:
+        #   media_v     → dates, folders, branches, quick, videos, tags
+        #   duplicates_v → duplicates
+        #   people_v    → people
+        # Only the currently expanded section reloads eagerly; collapsed
+        # sections are marked stale and reload lazily on next expand.
+        self._store_unsub = None
+        # Track which store version each section last loaded at
+        self._section_store_v = {}
+        try:
+            from core.state_bus import get_store
+            store = get_store()
+            s = store.state
+            self._store_versions = {
+                "media_v": s.media_v,
+                "duplicates_v": s.duplicates_v,
+                "people_v": s.people_v,
+            }
+
+            # Map: version key → sections that depend on it
+            _VERSION_SECTIONS = {
+                "media_v": ("dates", "folders", "branches", "quick", "videos", "tags"),
+                "duplicates_v": ("duplicates",),
+                "people_v": ("people",),
+            }
+
+            def _on_state_changed(state, action):
+                if self._disposed:
+                    return
+                for v_key, sections in _VERSION_SECTIONS.items():
+                    old_v = self._store_versions.get(v_key)
+                    new_v = getattr(state, v_key)
+                    if old_v is not None and old_v != new_v:
+                        self._store_versions[v_key] = new_v
+                        for sid in sections:
+                            if sid not in self.sections:
+                                continue
+                            if sid == self.expanded_section_id:
+                                self._dbg(f"Store: {v_key} {old_v}→{new_v}, reloading {sid}")
+                                self._section_store_v[sid] = new_v
+                                self.reload_section(sid)
+                            else:
+                                # Mark stale: bump generation so lazy expand reloads
+                                self._dbg(f"Store: {v_key} {old_v}→{new_v}, marking {sid} stale")
+                                self._reload_generations[sid] = (
+                                    self._reload_generations.get(sid, 0) + 1
+                                ) % 1_000_000
+                    else:
+                        self._store_versions[v_key] = new_v
+
+            self._store_callback = _on_state_changed  # prevent GC (weakref store)
+            self._store_unsub = store.subscribe(_on_state_changed)
+        except Exception:
+            pass  # Store not initialized (e.g. unit tests)
+
         self._dbg("AccordionSidebar __init__ completed")
 
     def _dbg(self, msg):
@@ -1095,6 +1151,10 @@ class AccordionSidebar(QWidget):
         if self._disposed:
             return
         self._disposed = True
+        # Unsubscribe from ProjectState store
+        if hasattr(self, '_store_unsub') and self._store_unsub:
+            self._store_unsub()
+            self._store_unsub = None
         self._dbg("cleanup() — marked as disposed")
 
     def reload_section(self, section_id: str):

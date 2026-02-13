@@ -2784,6 +2784,9 @@ class ThumbnailGridQt(QWidget):
 
     def set_project(self, project_id: int):
         self.project_id = project_id
+        self._project_has_tags = None  # invalidate tag cache on project switch
+        self._reload_disabled = False  # reset circuit breaker on project switch
+        self._reload_fail_count = 0
         self.clear()
 
 
@@ -3077,6 +3080,11 @@ class ThumbnailGridQt(QWidget):
         print(f"\n[GRID] ====== reload() CALLED ======")
         print(f"[GRID] project_id={self.project_id}, load_mode={self.load_mode}")
         
+        # Circuit breaker: stop exception loops from cascading reloads
+        if getattr(self, '_reload_disabled', False):
+            print("[GRID] reload() blocked — circuit breaker active (previous exceptions)")
+            return
+
         # CRITICAL: Prevent concurrent reloads that cause crashes
         # Similar to sidebar._refreshing flag pattern
         if getattr(self, '_reloading', False):
@@ -3229,13 +3237,19 @@ class ThumbnailGridQt(QWidget):
             # PHASE 4: Restore scroll position after photos are loaded (defer 200ms for layout)
             QTimer.singleShot(200, self.restore_scroll_position)
 
+            self._reload_fail_count = 0  # reset circuit breaker on success
             print(f"[GRID] ====== reload() COMPLETED SUCCESSFULLY ======\n")
         except Exception as reload_error:
             print(f"[GRID] ✗✗✗ EXCEPTION in reload(): {reload_error}")
             import traceback
             traceback.print_exc()
+            # Circuit breaker: after 3 consecutive failures, disable reload
+            # to prevent infinite exception loops from debounced retries.
+            self._reload_fail_count = getattr(self, '_reload_fail_count', 0) + 1
+            if self._reload_fail_count >= 3:
+                self._reload_disabled = True
+                print(f"[GRID] ⚠️ CIRCUIT BREAKER: reload disabled after {self._reload_fail_count} consecutive failures")
             print(f"[GRID] ====== reload() FAILED WITH EXCEPTION ======\n")
-            raise
         finally:
             # Always reset flag even if exception occurs
             print(f"[GRID] Finally block: Setting _reloading=False")
@@ -3264,22 +3278,33 @@ class ThumbnailGridQt(QWidget):
 
         self._paths = [str(p) for p in paths]
         
-        # 🏷️ CRITICAL FIX: DO NOT normalize paths here!
-        # Paths from get_images_by_branch are already in DB format
-        # get_tags_for_paths will normalize them internally to match photo_metadata table
-        tag_map = self.db.get_tags_for_paths(self._paths, self.project_id)
-        paths_with_tags = sum(1 for v in tag_map.values() if v)
-        print(f"[GRID] Queried tags for {len(self._paths)} paths, {paths_with_tags} have tags")
+        # 🏷️ Tag query — skip the expensive JOIN when project has no tags.
+        # Cache the "project has tags" boolean; invalidated on set_project().
+        _has_tags = getattr(self, '_project_has_tags', None)
+        if _has_tags is None:
+            # One-time lightweight check: does ANY tag assignment exist?
+            try:
+                with self.db._connect() as _tc:
+                    _tcur = _tc.cursor()
+                    _tcur.execute(
+                        "SELECT 1 FROM photo_tags pt "
+                        "JOIN photo_metadata pm ON pm.id = pt.photo_id "
+                        "WHERE pm.project_id = ? LIMIT 1",
+                        (self.project_id,),
+                    )
+                    _has_tags = _tcur.fetchone() is not None
+                self._project_has_tags = _has_tags
+            except Exception:
+                _has_tags = True  # safe fallback: query tags
 
-        # FIX (2026-02-08): Preload aspect ratios from DB instead of PIL.Image.open on UI thread
-        # This prevents UI freezes when loading thumbnails (Google Photos best practice)
-        aspect_map = {}
-        try:
-            if hasattr(self.db, 'get_aspect_ratios_for_paths'):
-                aspect_map = self.db.get_aspect_ratios_for_paths(self._paths, self.project_id)
-        except Exception as e:
-            print(f"[GRID] Warning: Could not fetch aspect ratios: {e}")
-
+        if _has_tags:
+            tag_map = self.db.get_tags_for_paths(self._paths, self.project_id)
+            paths_with_tags = sum(1 for v in tag_map.values() if v)
+            print(f"[GRID] Queried tags for {len(self._paths)} paths, {paths_with_tags} have tags")
+        else:
+            tag_map = {p: [] for p in self._paths}
+            print(f"[GRID] Skipped tag query — project has no tags")
+        
         # 📅 Grouping: fetch date_taken and sort descending
         import os, time
         from datetime import datetime
@@ -3328,6 +3353,22 @@ class ThumbnailGridQt(QWidget):
                 return datetime.fromtimestamp(ts).strftime("%B %Y")
             except Exception:
                 return "Earlier"
+
+        # 📏 Aspect ratios from metadata (cheap — no file I/O)
+        aspect_map = {}
+        try:
+            with self.db._connect() as _ac:
+                _acur = _ac.cursor()
+                for p in self._paths:
+                    _acur.execute(
+                        "SELECT width, height FROM photo_metadata WHERE path = ? LIMIT 1",
+                        (p,),
+                    )
+                    row = _acur.fetchone()
+                    if row and row[0] and row[1] and row[1] > 0:
+                        aspect_map[p] = row[0] / row[1]
+        except Exception:
+            pass  # aspect_map stays empty — placeholders use default_aspect
 
         # 📏 Default aspect ratio for placeholders
         default_aspect = 1.5

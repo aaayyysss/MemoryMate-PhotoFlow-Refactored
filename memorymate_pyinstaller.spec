@@ -85,6 +85,9 @@ datas = [
     # SQL / Python migration files
     ('migrations', 'migrations'),
 
+    # Core architecture (state_bus, actions)
+    ('core', 'core'),
+
     # Python package directories (required for dynamic imports)
     ('controllers', 'controllers'),
     ('repository', 'repository'),
@@ -134,7 +137,7 @@ else:
 # --------------------------------------------------------------------------
 # Hidden imports
 # --------------------------------------------------------------------------
-# Comprehensive audit: 2026-02-05
+# Comprehensive audit: 2026-02-12
 # Covers all project modules + third-party libraries that are lazy-loaded,
 # dynamically imported, or otherwise invisible to PyInstaller's analysis.
 # --------------------------------------------------------------------------
@@ -202,6 +205,8 @@ hiddenimports = [
     'transformers.utils.hub',
     'transformers.dynamic_module_utils',
     'tokenizers',
+    'huggingface_hub',                # Required by transformers for .from_pretrained()
+    'huggingface_hub.utils',
     'safetensors',                    # Modern model format
     'safetensors.torch',
     'filelock',                       # Transformers file locking
@@ -484,6 +489,10 @@ hiddenimports = [
     'utils.translation_manager',
     'utils.ui_safety',               # Shutdown/generation guards (used by scan_controller)
     'utils.qt_guards',               # Guarded signal connects (used by 10+ modules)
+
+    # --- Core architecture modules ---
+    'core',                           # Core package
+    'core.state_bus',                 # ProjectState store, actions, Qt bridge
 
     # --- Core database/migration modules ---
     'apply_migrations',

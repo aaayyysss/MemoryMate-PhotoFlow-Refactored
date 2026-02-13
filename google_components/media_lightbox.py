@@ -46,7 +46,11 @@ class PreloadImageWorker(QRunnable):
     PHASE A #1: Background worker for preloading images.
 
     Preloads next 2 photos in background for instant navigation.
+    Uses SafeImageLoader for memory-safe, capped-size decoding.
     """
+    # Max dimension for preloaded images (screen-fit quality, not full resolution)
+    PRELOAD_MAX_DIM = 2560
+
     def __init__(self, path: str, signals: PreloadImageSignals):
         super().__init__()
         self.path = path
@@ -55,34 +59,19 @@ class PreloadImageWorker(QRunnable):
     def run(self):
         """Load image in background thread — emits QImage (thread-safe)."""
         try:
-            from PIL import Image, ImageOps
-            import io
-            from PySide6.QtGui import QImage
+            from services.safe_image_loader import safe_decode_qimage
 
-            # Load with PIL for EXIF orientation
-            pil_image = Image.open(self.path)
-            pil_image = ImageOps.exif_transpose(pil_image)
+            # Decode at capped size — never full resolution
+            qimage = safe_decode_qimage(
+                self.path,
+                max_dim=self.PRELOAD_MAX_DIM,
+                enable_retry_ladder=True,
+            )
 
-            # Convert to RGB if needed
-            if pil_image.mode != 'RGB':
-                pil_image = pil_image.convert('RGB')
-
-            # Save to buffer
-            buffer = io.BytesIO()
-            pil_image.save(buffer, format='PNG')
-            buffer.seek(0)
-
-            # Load QImage (thread-safe, unlike QPixmap)
-            qimage = QImage()
-            qimage.loadFromData(buffer.read())
-
-            # Cleanup
-            pil_image.close()
-            buffer.close()
-
-            # Emit loaded signal with QImage
+            # Emit loaded signal with QImage (always non-null from safe_decode)
             self.signals.loaded.emit(self.path, qimage)
-            print(f"[PreloadImageWorker] ✓ Preloaded: {os.path.basename(self.path)}")
+            print(f"[PreloadImageWorker] ✓ Preloaded: {os.path.basename(self.path)} "
+                  f"({qimage.width()}x{qimage.height()})")
 
         except Exception as e:
             print(f"[PreloadImageWorker] ⚠️ Error preloading {self.path}: {e}")
@@ -98,9 +87,17 @@ class ProgressiveImageWorker(QRunnable):
     """
     PHASE A #2: Progressive image loader.
 
-    Loads thumbnail-quality first (instant), then full resolution in background.
+    Loads thumbnail-quality first (instant), then viewport-fit quality in background.
+    Uses SafeImageLoader for memory-safe, capped-size decoding.
     Emits QImage (thread-safe) with generation token for staleness detection.
+
+    IMPORTANT: "Full quality" means "full quality for the current viewport",
+    NOT "decode the original 8000x6000 into RAM". This is how Google Photos
+    and Lightroom handle large photos — they never decode full resolution for display.
     """
+    # Max edge for "full quality" viewport display (not raw resolution)
+    FULL_QUALITY_MAX_DIM = 2560
+
     def __init__(self, path: str, signals: ProgressiveImageSignals, viewport_size, generation: int):
         super().__init__()
         self.path = path
@@ -109,86 +106,54 @@ class ProgressiveImageWorker(QRunnable):
         self.generation = generation
 
     def run(self):
-        """Load image progressively: thumbnail → full quality (emits QImage)."""
+        """Load image progressively: thumbnail → viewport-fit quality (emits QImage)."""
         try:
-            from PIL import Image, ImageOps
-            import io
-            from PySide6.QtGui import QImage
+            from services.safe_image_loader import safe_decode_qimage, create_placeholder
 
-            # Load with PIL for EXIF orientation
-            pil_image = Image.open(self.path)
-            pil_image = ImageOps.exif_transpose(pil_image)
-
-            # Convert to RGB if needed
-            if pil_image.mode != 'RGB':
-                pil_image = pil_image.convert('RGB')
-
-            # STEP 1: Create thumbnail-quality version (fast!)
-            thumb_width = self.viewport_size.width() // 4
-            thumb_height = self.viewport_size.height() // 4
-
-            thumb_image = pil_image.copy()
-            thumb_image.thumbnail((thumb_width, thumb_height), Image.Resampling.LANCZOS)
-
-            # Convert to QImage (thread-safe, unlike QPixmap)
-            buffer = io.BytesIO()
-            thumb_image.save(buffer, format='JPEG', quality=70)
-            buffer.seek(0)
-
-            thumb_qimage = QImage()
-            thumb_qimage.loadFromData(buffer.read())
-            buffer.close()
-            thumb_image.close()
+            # STEP 1: Quick thumbnail decode (small size = fast)
+            thumb_max_dim = max(
+                self.viewport_size.width() // 4,
+                self.viewport_size.height() // 4,
+                400  # minimum useful thumbnail
+            )
+            thumb_qimage = safe_decode_qimage(
+                self.path,
+                max_dim=thumb_max_dim,
+                enable_retry_ladder=True,
+            )
 
             # Emit thumbnail with generation token
             self.signals.thumbnail_loaded.emit(self.generation, thumb_qimage)
-            print(f"[ProgressiveImageWorker] ✓ Thumbnail loaded: {os.path.basename(self.path)}")
+            print(f"[ProgressiveImageWorker] ✓ Thumbnail loaded: {os.path.basename(self.path)} "
+                  f"({thumb_qimage.width()}x{thumb_qimage.height()})")
 
-            # STEP 2: Load full resolution (background)
-            buffer = io.BytesIO()
-            pil_image.save(buffer, format='PNG')
-            buffer.seek(0)
+            # STEP 2: Viewport-fit "full quality" decode (capped, NOT raw resolution)
+            viewport_max = max(
+                self.viewport_size.width(),
+                self.viewport_size.height(),
+            )
+            # Cap at FULL_QUALITY_MAX_DIM — this is the key RAM saver
+            full_max_dim = min(viewport_max, self.FULL_QUALITY_MAX_DIM)
 
-            full_qimage = QImage()
-            full_qimage.loadFromData(buffer.read())
-
-            # Cleanup
-            pil_image.close()
-            buffer.close()
+            full_qimage = safe_decode_qimage(
+                self.path,
+                max_dim=full_max_dim,
+                enable_retry_ladder=True,
+            )
 
             # Emit full quality with generation token
             self.signals.full_loaded.emit(self.generation, full_qimage)
-            print(f"[ProgressiveImageWorker] ✓ Full quality loaded: {os.path.basename(self.path)}")
+            print(f"[ProgressiveImageWorker] ✓ Full quality loaded: {os.path.basename(self.path)} "
+                  f"({full_qimage.width()}x{full_qimage.height()})")
 
         except Exception as e:
             print(f"[ProgressiveImageWorker] ⚠️ Error loading {self.path}: {e}")
             import traceback
             traceback.print_exc()
 
-            # FALLBACK: Create "broken image" placeholder as QImage
-            from PySide6.QtGui import QImage, QPainter, QColor, QFont
-            from PySide6.QtCore import Qt
-
-            placeholder = QImage(400, 400, QImage.Format_RGB32)
-            placeholder.fill(QColor(240, 240, 240))
-
-            painter = QPainter(placeholder)
-            painter.setRenderHint(QPainter.Antialiasing)
-
-            painter.setPen(QColor(220, 53, 69))
-            painter.drawRect(0, 0, 399, 399)
-
-            painter.setPen(QColor(100, 100, 100))
-            font = QFont()
-            font.setPointSize(48)
-            painter.setFont(font)
-            painter.drawText(placeholder.rect(), Qt.AlignCenter, "Image Error")
-
-            font.setPointSize(10)
-            painter.setFont(font)
-            painter.drawText(10, 380, os.path.basename(self.path)[:50])
-
-            painter.end()
+            # FALLBACK: Create placeholder via SafeImageLoader (always non-null)
+            from services.safe_image_loader import create_placeholder
+            placeholder = create_placeholder(400, f"Image Error\n{os.path.basename(self.path)[:40]}")
 
             # Emit placeholder for both stages with generation token
             self.signals.thumbnail_loaded.emit(self.generation, placeholder)
@@ -212,7 +177,8 @@ class MediaLightbox(QDialog, VideoEditorMixin):
     - VIDEO EDITING: Trim, rotate, speed, adjustments, export
     """
 
-    def __init__(self, media_path: str, all_media: List[str], parent=None):
+    def __init__(self, media_path: str, all_media: List[str], parent=None,
+                 *, project_id: int = None):
         """
         Initialize media lightbox.
 
@@ -220,6 +186,7 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             media_path: Path to photo/video to display
             all_media: List of all media paths (photos + videos) in timeline order
             parent: Parent widget
+            project_id: Explicit project ID (preferred over parent introspection)
         """
         super().__init__(parent)
 
@@ -227,6 +194,7 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         self.all_media = all_media
         self.current_index = all_media.index(media_path) if media_path in all_media else 0
         self._media_loaded = False  # Track if media has been loaded
+        self._explicit_project_id = project_id  # Preferred source of project_id
 
         # Zoom state (for photos) - SMOOTH CONTINUOUS ZOOM
         # Like Current Layout's LightboxDialog - smooth zoom with mouse wheel
@@ -250,9 +218,11 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         self.is_swiping = False
 
         # PHASE A #1: Image Preloading & Caching
-        self.preload_cache = {}  # Map path -> {pixmap, timestamp}
+        self.preload_cache = {}  # Map path -> {pixmap, timestamp, byte_est}
         self.preload_count = 2  # Preload next 2 photos
         self.cache_limit = 5  # Keep max 5 photos in cache
+        self.cache_byte_limit = 150 * 1024 * 1024  # 150 MB hard cap
+        self._cache_bytes_used = 0  # Running total of estimated bytes
         self.preload_thread_pool = QThreadPool()
         self.preload_thread_pool.setMaxThreadCount(2)  # 2 background threads for preloading
         self.preload_signals = PreloadImageSignals()
@@ -387,7 +357,13 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         self.video_playback_speed = 1.0  # Speed multiplier (0.5x, 1x, 2x)
         self.video_rotation_angle = 0  # Video rotation (0, 90, 180, 270)
         self._video_original_path = None  # Original video path for export
-
+        self._video_gen = 0  # Generation counter for discarding stale video callbacks
+        self._video_fit_timer = QTimer()  # Debounce timer for _fit_video_view
+        self._video_fit_timer.setSingleShot(True)
+        self._video_fit_timer.setInterval(16)  # ~1 frame
+        self._video_fit_timer.timeout.connect(self._do_fit_video_view)
+        self._video_fit_ready = False  # True after first valid fit — gates zoom
+        self._video_min_viewport_px = 160  # Minimum viewport size for valid fit
 
         # PHASE C #4: Compare Mode
         self.compare_mode_active = False  # Compare mode state
@@ -1107,9 +1083,13 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         print("[MediaLightbox] Closing - cleaning up resources...")
         
         try:
-            # PHASE 2 FIX: Disconnect video signals before cleanup
+            # Stop video fit debounce timer
+            if hasattr(self, '_video_fit_timer'):
+                self._video_fit_timer.stop()
+
+            # Disconnect video signals before cleanup
             self._disconnect_video_signals()
-            
+
             # Stop and cleanup video player
             if hasattr(self, 'video_player') and self.video_player is not None:
                 try:
@@ -1249,7 +1229,7 @@ class MediaLightbox(QDialog, VideoEditorMixin):
 
         # Throttled logging (every 500ms max) to avoid log spam
         import time
-        current_time = time.time()
+        current_time = time.perf_counter()
         if current_time - self._last_resize_log_time > 0.5:
             new_size = event.size()
             print(f"[MediaLightbox] Resize: {new_size.width()}x{new_size.height()}")
@@ -1494,12 +1474,17 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         # ============================================================
         # STEP 3: Adjust zoom mode if photo is loaded
         # ============================================================
-        if not self.is_video_file and self.zoom_mode in ["fit", "fill"]:
-            # Recalculate zoom for fit/fill modes after resize
-            if self.zoom_mode == "fit":
-                self._zoom_to_fit()
-            elif self.zoom_mode == "fill":
-                self._zoom_to_fill()
+        if self.zoom_mode in ["fit", "fill"]:
+            if self.is_video_file:
+                # Refit video to new viewport size (only in fit mode)
+                if self.zoom_mode == "fit":
+                    self._fit_video_view()
+            else:
+                # Recalculate zoom for fit/fill modes after resize
+                if self.zoom_mode == "fit":
+                    self._zoom_to_fit()
+                elif self.zoom_mode == "fill":
+                    self._zoom_to_fill()
 
         # ============================================================
         # STEP 4: Reposition filmstrip and motion indicator
@@ -1930,6 +1915,14 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 obj == self.video_graphics_view.viewport()
             )
             is_zoom_target = is_editor_canvas or is_video_view
+
+            # EVENT-DRIVEN VIDEO FIT: React to Show/Resize on video viewport
+            # This replaces timer-based guessing with proper Qt lifecycle events.
+            # When the video view becomes visible or gets resized, we schedule a fit.
+            # This is how Google Photos / Lightroom ensure the video fills the canvas.
+            if is_video_view and event.type() in (QEvent.Show, QEvent.Resize):
+                if getattr(self, 'is_video_file', False):
+                    self._fit_video_view()
 
             # Handle wheel zoom on any zoom target
             if is_zoom_target and event.type() == QEvent.Wheel:
@@ -2986,6 +2979,11 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                         self.video_widget.show()
                         print("[Editor] ✓ Video widget moved back to viewer page")
 
+                # Reparenting invalidates geometry — schedule refit
+                self._video_fit_ready = False
+                self._last_video_fit_sig = None
+                self._fit_video_view()
+
                 # Hide crop_toolbar when exiting video edit mode
                 if hasattr(self, 'crop_toolbar'):
                     self.crop_toolbar.hide()
@@ -3032,6 +3030,11 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                         container_layout.addWidget(self.video_widget)
                         self.video_widget.show()
                         print("[Editor] ✓ Video widget moved back to viewer page")
+
+                # Reparenting invalidates geometry — schedule refit
+                self._video_fit_ready = False
+                self._last_video_fit_sig = None
+                self._fit_video_view()
 
                 # Reset video edits
                 self.video_trim_start = 0
@@ -5481,7 +5484,10 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 if row:
                     print(f"[MediaLightbox] Found photo_id via case-insensitive match for: {os.path.basename(path)}")
                     return row['id']
-                print(f"[MediaLightbox] ⚠️ No photo_metadata row found for: {os.path.basename(path)}")
+                if self._is_video(path):
+                    print(f"[MediaLightbox] No photo_metadata row for video: {os.path.basename(path)} (expected)")
+                else:
+                    print(f"[MediaLightbox] No photo_metadata row found for: {os.path.basename(path)}")
                 return None
         except Exception as e:
             print(f"[MediaLightbox] Error getting photo ID: {e}")
@@ -5984,25 +5990,22 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             from PySide6.QtMultimediaWidgets import QVideoWidget
             from PySide6.QtCore import QUrl
 
-            # CRITICAL: Stop and cleanup previous video BEFORE loading new one
+            # Bump generation counter — stale nativeSizeChanged / fit callbacks are discarded
+            self._video_gen += 1
+            gen = self._video_gen
+
+            # Cancel any pending fit timer from previous video
+            self._video_fit_timer.stop()
+
+            # Stop and cleanup previous video BEFORE loading new one (non-blocking)
             if hasattr(self, 'video_player') and self.video_player is not None:
                 print(f"[MediaLightbox] Stopping previous video...")
                 try:
-                    # Stop playback
                     self.video_player.stop()
-                    
-                    # Stop position timer
                     if hasattr(self, 'position_timer') and self.position_timer:
                         self.position_timer.stop()
-                    
-                    # Clear source to release decoder resources
                     self.video_player.setSource(QUrl())
-                    
-                    # Small delay to allow decoder cleanup
-                    from PySide6.QtCore import QThread
-                    QThread.msleep(50)  # 50ms delay for GPU resource cleanup
-                    
-                    print(f"[MediaLightbox] ✓ Previous video stopped and cleaned up")
+                    print(f"[MediaLightbox] Previous video stopped and cleaned up")
                 except Exception as cleanup_err:
                     print(f"[MediaLightbox] Warning during video cleanup: {cleanup_err}")
 
@@ -6053,8 +6056,7 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                     container_layout.addWidget(self.video_graphics_view)
                     self.scroll_area.viewport().installEventFilter(self)
 
-                # PHASE 2 FIX: Disconnect old signals before connecting new ones
-                # This prevents signal accumulation when navigating through multiple videos
+                # Disconnect old signals before connecting new ones
                 self._disconnect_video_signals()
 
                 # Connect video player signals with error handling
@@ -6063,7 +6065,7 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                     self.video_player.positionChanged.connect(self._on_position_changed)
                     self.video_player.errorOccurred.connect(self._on_video_error)
                     self.video_player.mediaStatusChanged.connect(self._on_media_status_changed)
-                    print("[MediaLightbox] ✓ Video signals connected")
+                    print("[MediaLightbox] Video signals connected")
                 except Exception as signal_err:
                     print(f"[MediaLightbox] Warning: Could not connect video signals: {signal_err}")
 
@@ -6073,31 +6075,41 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                     self.position_timer.timeout.connect(self._update_video_position)
                     self.position_timer.setInterval(100)
 
-            # Show video widget and resize to fill scroll area
+            # Connect nativeSizeChanged with generation guard (reconnect each load)
+            try:
+                self.video_item.nativeSizeChanged.disconnect()
+            except (TypeError, RuntimeError):
+                pass
+
+            def _on_native_size(size, _gen=gen):
+                if _gen != self._video_gen:
+                    return  # Stale callback from previous video
+                if size.isEmpty() or size.width() <= 0 or size.height() <= 0:
+                    return
+                # Schedule a debounced fit (coalesces multiple signals)
+                self._fit_video_view()
+
+            self.video_item.nativeSizeChanged.connect(_on_native_size)
+            # prevent GC of the closure
+            self._native_size_callback = _on_native_size
+
+            # CORE GEOMETRY FIX: Make scroll area auto-resize the container
+            # so video_graphics_view gets real geometry via its Expanding policy.
+            # Without this, the container stays tiny → viewport stays tiny → dot.
+            # (Restored to False in _load_photo for photo zoom/scroll behavior.)
+            if hasattr(self, 'scroll_area'):
+                self.scroll_area.setWidgetResizable(True)
+
+            # Show video widget with minimum size safety net
             if hasattr(self, 'video_widget'):
-                # Get scroll area dimensions
-                viewport = self.scroll_area.viewport()
-                available_width = viewport.width()
-                available_height = viewport.height()
-                
-                # Set video widget to fill the available space
-                self.video_widget.setMinimumSize(available_width, available_height)
-                self.video_widget.resize(available_width, available_height)
-                
-                # Update container size to match
-                self.media_container.setMinimumSize(available_width, available_height)
-                self.media_container.resize(available_width, available_height)
-                
+                self.video_widget.setMinimumSize(320, 240)
                 self.video_widget.show()
-                print(f"[MediaLightbox] Video widget sized: {available_width}x{available_height}")
 
             # Show video controls in bottom toolbar
             if hasattr(self, 'video_controls_widget'):
                 self.video_controls_widget.show()
             if hasattr(self, 'bottom_toolbar'):
-                self.bottom_toolbar.show()  # Show bottom toolbar for video controls
-                # CRITICAL FIX: Set opacity to 1.0 to make controls visible
-                # Bug: opacity was initialized to 0.0 (line 965), causing invisible controls
+                self.bottom_toolbar.show()
                 if hasattr(self, 'bottom_toolbar_opacity'):
                     self.bottom_toolbar_opacity.setOpacity(1.0)
 
@@ -6109,6 +6121,15 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             # Verify file exists
             if not os.path.exists(self.media_path):
                 raise FileNotFoundError(f"Video file not found: {self.media_path}")
+
+            # Reset zoom and fit state for new media load
+            self.edit_zoom_level = 1.0
+            self.zoom_mode = "fit"
+            self._last_video_fit_sig = None  # Force re-fit for new video
+            self._video_fit_ready = False  # Block zoom until valid fit
+            # Reset transform to prevent stale "dot" scale from previous video
+            self.video_graphics_view.resetTransform()
+            self.video_base_scale = 1.0
 
             # Load and play video
             video_url = QUrl.fromLocalFile(self.media_path)
@@ -6134,20 +6155,17 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             # Load metadata
             self._load_metadata()
 
-            print(f"[MediaLightbox] ✓ Video player started: {os.path.basename(self.media_path)}")
+            print(f"[MediaLightbox] Video player started: {os.path.basename(self.media_path)}")
 
             # Apply preview rotation to QGraphicsVideoItem (if available)
             if hasattr(self, '_apply_preview_rotation'):
                 self._apply_preview_rotation()
-            # Fit video to view at initial load for consistent size
-            if hasattr(self, '_fit_video_view'):
-                self._fit_video_view()
-            
+
             # Update and show caption
             self._update_media_caption(os.path.basename(self.media_path))
 
         except Exception as e:
-            print(f"[MediaLightbox] ⚠️ Error loading video: {e}")
+            print(f"[MediaLightbox] Error loading video: {e}")
             import traceback
             traceback.print_exc()
 
@@ -6157,9 +6175,9 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 self.video_widget.hide()
             if hasattr(self, 'video_controls_widget'):
                 self.video_controls_widget.hide()
-            self.image_label.setText(f"🎬 VIDEO\n\n{os.path.basename(self.media_path)}\n\n⚠️ Playback error\n{str(e)}")
+            self.image_label.setText(f"VIDEO\n\n{os.path.basename(self.media_path)}\n\nPlayback error\n{str(e)}")
             self.image_label.setStyleSheet("color: white; font-size: 16pt; background: #2a2a2a; border-radius: 8px; padding: 40px;")
-            
+
             # Update counter even on error
             if hasattr(self, 'counter_label'):
                 self.counter_label.setText(f"{self.current_index + 1} of {len(self.all_media)}")
@@ -6187,27 +6205,39 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             self.video_controls_widget.hide()
 
     def _fit_video_view(self):
+        """Debounced scheduler — coalesces multiple fit requests into one frame."""
+        if not hasattr(self, '_video_fit_timer'):
+            # Fallback for edge case during init
+            self._do_fit_video_view()
+            return
+        # Restart the single-shot timer; only the last call within 16ms fires
+        self._video_fit_timer.stop()
+        self._video_fit_timer.start()
+
+    def _do_fit_video_view(self):
         """
         Fit video to view and calculate base scale for zoom operations.
 
-        This method:
-        1. Gets the native size of the video
-        2. Calculates scale to fit in the view
-        3. Sets video_base_scale for _apply_video_zoom to use
+        EVENT-DRIVEN DESIGN (Google Photos / Lightroom pattern):
+        - Triggered by nativeSizeChanged AND by Show/Resize events on the
+          video viewport (via eventFilter). No timer-based guessing.
+        - Does NOT retry via QTimer.singleShot — if the viewport is too small,
+          the next Resize/Show event will re-trigger us automatically.
+        - Sets _video_fit_ready=True on success, gating zoom operations.
+        - Does NOT reset edit_zoom_level — that is only done on media switch.
         """
         try:
             if not hasattr(self, 'video_item') or not hasattr(self, 'video_graphics_view'):
                 return
 
-            # Get native video size
             native_size = self.video_item.nativeSize()
             if native_size.isEmpty() or native_size.width() <= 0 or native_size.height() <= 0:
-                # Video size not yet available, try again later
-                from PySide6.QtCore import QTimer
-                QTimer.singleShot(100, self._fit_video_view)
+                return  # nativeSizeChanged will fire again when size becomes valid
+
+            # Only fit when the view is actually visible (not hidden in stacked widget)
+            if not self.video_graphics_view.isVisible():
                 return
 
-            # Get view size
             view_rect = self.video_graphics_view.viewport().rect()
             view_w = view_rect.width()
             view_h = view_rect.height()
@@ -6215,24 +6245,32 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             if view_w <= 0 or view_h <= 0:
                 return
 
-            # Calculate scale to fit video in view (with some padding)
+            # Guard: viewport must have real geometry (not a tiny interim size).
+            # No timer retry — the next Resize/Show event from Qt will call us again.
+            min_vp = getattr(self, '_video_min_viewport_px', 160)
+            if view_w < min_vp or view_h < min_vp:
+                return
+
             video_w = native_size.width()
             video_h = native_size.height()
+
+            # Dedup: skip if geometry + zoom haven't changed (prevents micro-stutter)
+            fit_sig = (view_w, view_h, video_w, video_h, getattr(self, 'edit_zoom_level', 1.0))
+            if getattr(self, '_last_video_fit_sig', None) == fit_sig:
+                return
+            self._last_video_fit_sig = fit_sig
 
             scale_w = view_w / video_w
             scale_h = view_h / video_h
             self.video_base_scale = min(scale_w, scale_h) * 0.95  # 5% padding
 
-            # Set scene rect to video native size
             self.video_scene.setSceneRect(0, 0, video_w, video_h)
 
-            # Reset edit zoom level
-            self.edit_zoom_level = 1.0
-
-            # Apply the transform (this centers and scales the video)
+            # Apply the transform (uses current edit_zoom_level, preserving user zoom)
+            # _apply_video_zoom checks _video_fit_ready, so set it BEFORE calling
+            self._video_fit_ready = True
             self._apply_video_zoom()
 
-            # Center the view on the video
             self.video_graphics_view.centerOn(self.video_item)
 
             print(f"[MediaLightbox] Video fitted: native={video_w}x{video_h}, view={view_w}x{view_h}, base_scale={self.video_base_scale:.2f}")
@@ -6286,14 +6324,24 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                     print(f"[MediaLightbox] ⚠️ Mode stack was on page {self.mode_stack.currentIndex()}, switching to viewer (0)")
                     self.mode_stack.setCurrentIndex(0)
 
-            # CRITICAL FIX: Hide video widget and controls if they exist AND are not None
-            # Bug: hasattr() returns True even if value is None, causing AttributeError
+            # Restore scroll area to non-resizable mode for photo zoom/scroll
+            # (Video mode sets widgetResizable=True for auto-geometry)
+            if hasattr(self, 'scroll_area'):
+                self.scroll_area.setWidgetResizable(False)
+
+            # Clear video fit state
+            self._video_fit_ready = False
+
+            # Hide video widget and controls if they exist AND are not None
             if hasattr(self, 'video_widget') and self.video_widget is not None:
                 self.video_widget.hide()
                 if hasattr(self, 'video_player') and self.video_player is not None:
                     self.video_player.stop()
                     if hasattr(self, 'position_timer') and self.position_timer is not None:
                         self.position_timer.stop()
+                    # Clear source to release decoder resources
+                    from PySide6.QtCore import QUrl
+                    self.video_player.setSource(QUrl())
 
             # Hide video controls
             if hasattr(self, 'video_controls_widget') and self.video_controls_widget is not None:
@@ -6410,97 +6458,50 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         """
         Direct photo loading (fallback when progressive loading disabled).
 
-        Uses the original PIL-based loading method.
-        PHASE C #1: Added RAW file support using rawpy.
+        Uses SafeImageLoader for memory-safe, capped-size decoding.
+        Decodes at viewport-fit size (max 2560px), not full resolution.
+        PHASE C #1: RAW support handled by SafeImageLoader.
         """
-        from PIL import Image, ImageOps, ImageEnhance
-        import io
         from PySide6.QtCore import Qt
         from PySide6.QtGui import QPixmap
-
-        pil_image = None
-        pixmap = None
+        from services.safe_image_loader import safe_decode_qimage
 
         try:
-            # PHASE C #1: Check if file is RAW and try to load with rawpy
-            if self._is_raw(self.media_path) and self.raw_support_enabled:
-                try:
-                    import rawpy
-                    import numpy as np
+            # Calculate target size: viewport-fit, capped at 2560
+            viewport_size = self.scroll_area.viewport().size()
+            viewport_max = max(viewport_size.width(), viewport_size.height())
+            max_dim = min(viewport_max, 2560)
 
-                    print(f"[MediaLightbox] Loading RAW file with rawpy: {os.path.basename(self.media_path)}")
+            print(f"[MediaLightbox] Direct load via SafeImageLoader: "
+                  f"{os.path.basename(self.media_path)} (max_dim={max_dim})")
 
-                    # Load RAW file
-                    with rawpy.imread(self.media_path) as raw:
-                        # Process RAW to RGB with postprocessing
-                        rgb_array = raw.postprocess(
-                            use_camera_wb=True,  # Use camera white balance
-                            half_size=False,     # Full resolution
-                            no_auto_bright=False,  # Auto brightness
-                            output_bps=8         # 8-bit output
-                        )
+            # Memory-safe decode with retry ladder
+            qimage = safe_decode_qimage(
+                self.media_path,
+                max_dim=max_dim,
+                enable_retry_ladder=True,
+            )
 
-                        # Convert to PIL Image
-                        pil_image = Image.fromarray(rgb_array)
+            if qimage.isNull():
+                print(f"[MediaLightbox] ⚠️ SafeImageLoader returned null for direct load")
+                self.image_label.setText("❌ Cannot load image")
+                self.image_label.setStyleSheet("color: white; font-size: 12pt;")
+                return
 
-                        # Apply exposure adjustment if set
-                        if self.exposure_adjustment != 0.0:
-                            # Exposure: -2.0 to +2.0 -> brightness 0.25 to 4.0
-                            exposure_factor = 2 ** self.exposure_adjustment
-                            enhancer = ImageEnhance.Brightness(pil_image)
-                            pil_image = enhancer.enhance(exposure_factor)
-
-                        print(f"[MediaLightbox] ✓ RAW file loaded successfully (exposure: {self.exposure_adjustment:+.1f})")
-
-                except ImportError:
-                    print("[MediaLightbox] ⚠️ rawpy not available, falling back to PIL")
-                    # Fall through to regular PIL loading
-                    pil_image = Image.open(self.media_path)
-                    pil_image = ImageOps.exif_transpose(pil_image)
-                except Exception as e:
-                    print(f"[MediaLightbox] ⚠️ RAW loading failed: {e}, falling back to PIL")
-                    # Fall through to regular PIL loading
-                    pil_image = Image.open(self.media_path)
-                    pil_image = ImageOps.exif_transpose(pil_image)
-
-            # Regular image loading
-            if pil_image is None:
-                # Load with PIL and auto-rotate based on EXIF orientation
-                pil_image = Image.open(self.media_path)
-                pil_image = ImageOps.exif_transpose(pil_image)
-
-            if pil_image.mode != 'RGB':
-                pil_image = pil_image.convert('RGB')
-
-            # Save to bytes buffer
-            buffer = io.BytesIO()
-            pil_image.save(buffer, format='PNG')
-            buffer.seek(0)
-
-            # Load QPixmap from buffer
-            pixmap = QPixmap()
-            pixmap.loadFromData(buffer.read())
-
-            # Cleanup
-            pil_image.close()
-            buffer.close()
+            # Convert QImage → QPixmap on main thread
+            pixmap = QPixmap.fromImage(qimage)
 
         except Exception as e:
-            print(f"[MediaLightbox] PIL loading failed: {e}")
-            if pil_image:
-                try:
-                    pil_image.close()
-                except:
-                    pass
-            # Fallback to QPixmap
-            pixmap = QPixmap(self.media_path)
+            print(f"[MediaLightbox] Direct loading failed: {e}")
+            self.image_label.setText(f"❌ Error loading image\n\n{str(e)}")
+            self.image_label.setStyleSheet("color: white; font-size: 12pt;")
+            return
 
         if pixmap and not pixmap.isNull():
             # Store original
             self.original_pixmap = pixmap
 
             # Scale to fit
-            viewport_size = self.scroll_area.viewport().size()
             scaled_pixmap = pixmap.scaled(
                 viewport_size,
                 Qt.KeepAspectRatio,
@@ -6515,6 +6516,10 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             self.zoom_level = scaled_pixmap.width() / pixmap.width()
             self.fit_zoom_level = self.zoom_level
             self.zoom_mode = "fit"
+
+            print(f"[MediaLightbox] ✓ Direct load complete: "
+                  f"{pixmap.width()}x{pixmap.height()} -> "
+                  f"{scaled_pixmap.width()}x{scaled_pixmap.height()}")
 
     def _load_metadata(self):
         """Load and display comprehensive metadata in tabbed view."""
@@ -7434,6 +7439,10 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         if not is_video and not self.original_pixmap:
             return
 
+        # Block video zoom until a valid fit has established a real base_scale
+        if is_video and not getattr(self, '_video_fit_ready', False):
+            return
+
         # PHASE A #3: Store old zoom for cursor-centered calculation
         old_zoom = self.zoom_level
 
@@ -7467,21 +7476,23 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         # Update zoom level during animation
         def update_zoom(value):
             self.zoom_level = value
-            # For video: keep edit_zoom_level in sync
             if self._is_video(self.media_path):
+                # For video: keep edit_zoom_level in sync
                 self.edit_zoom_level = self.zoom_level
-            # Switch to custom zoom mode if zooming from fit/fill (photos)
-            if not self._is_video(self.media_path) and self.zoom_level > self.fit_zoom_level * 1.01:
-                self.zoom_mode = "custom"
-            elif not self._is_video(self.media_path) and abs(self.zoom_level - self.fit_zoom_level) < 0.01:
-                self.zoom_mode = "fit"
-            
-            # Apply zoom based on media type
-            if self._is_video(self.media_path):
+                # Switch to custom zoom if user zoomed away from fit
+                if abs(self.edit_zoom_level - 1.0) > 0.01:
+                    self.zoom_mode = "custom"
+                else:
+                    self.zoom_mode = "fit"
                 self._apply_video_zoom()
             else:
+                # Switch to custom zoom mode if zooming from fit/fill (photos)
+                if self.zoom_level > self.fit_zoom_level * 1.01:
+                    self.zoom_mode = "custom"
+                elif abs(self.zoom_level - self.fit_zoom_level) < 0.01:
+                    self.zoom_mode = "fit"
                 self._apply_zoom()
-            
+
             self._update_zoom_status()
 
         self._zoom_animation.valueChanged.connect(update_zoom)
@@ -7532,9 +7543,17 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             self.scroll_area.setCursor(Qt.ArrowCursor)
 
     def _apply_video_zoom(self):
-        """Apply current zoom level to video preview using view transform."""
+        """Apply current zoom level to video preview using view transform.
+
+        GUARD: Blocked until _video_fit_ready is True. This prevents
+        multiplying a "dot" base_scale before a valid fit has happened,
+        which is the root cause of the "video appears as a dot" bug.
+        """
         try:
             if not hasattr(self, 'video_graphics_view') or not self.video_graphics_view:
+                return
+            # Block zoom until a valid fit has computed a real base_scale
+            if not getattr(self, '_video_fit_ready', False):
                 return
             # Clamp and apply using base fit scale
             self.edit_zoom_level = max(0.25, min(getattr(self, 'edit_zoom_level', 1.0), 4.0))
@@ -7557,7 +7576,9 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         """Zoom to fit window (Keyboard: 0) - Letterboxing if needed."""
         if self._is_video(self.media_path):
             self.edit_zoom_level = 1.0
-            self._apply_video_zoom()
+            self.zoom_mode = "fit"
+            self._last_video_fit_sig = None  # Force recompute through dedup
+            self._do_fit_video_view()  # Recalculate base_scale for current viewport
             self._update_zoom_status()
             return
 
@@ -7568,7 +7589,10 @@ class MediaLightbox(QDialog, VideoEditorMixin):
     def _zoom_to_actual(self):
         """Zoom to 100% actual size (Keyboard: 1) - 1:1 pixel mapping."""
         if self._is_video(self.media_path):
-            self.edit_zoom_level = 1.0
+            base = getattr(self, 'video_base_scale', 1.0)
+            # 1:1 pixel mapping: total scale should be 1.0, so edit_zoom = 1/base
+            self.edit_zoom_level = 1.0 / base if base > 0 else 1.0
+            self.zoom_mode = "actual"
             self._apply_video_zoom()
             self._update_zoom_status()
             return
@@ -7952,24 +7976,27 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 """)
                 err.exec()
 
+    def _resolve_project_id(self):
+        """Resolve project_id: prefer explicit, fall back to parent introspection."""
+        if self._explicit_project_id is not None:
+            return self._explicit_project_id
+        # Legacy fallback for callers that don't pass project_id yet
+        if self.parent():
+            p = self.parent()
+            if hasattr(p, 'grid') and hasattr(p.grid, 'project_id'):
+                return p.grid.project_id
+            if hasattr(p, 'layout_manager'):
+                layout = p.layout_manager.get_active_layout()
+                if layout and hasattr(layout, 'project_id'):
+                    return layout.project_id
+        return None
+
     def _toggle_favorite(self):
         """Toggle favorite status of current media (DB-backed)."""
         try:
-            # Get project_id from parent window's grid or layout
-            project_id = None
-            if hasattr(self, 'parent') and self.parent():
-                parent = self.parent()
-                # Try to get project_id from grid (MainWindow has grid.project_id)
-                if hasattr(parent, 'grid') and hasattr(parent.grid, 'project_id'):
-                    project_id = parent.grid.project_id
-                # Fallback: try to get from layout manager's active layout
-                elif hasattr(parent, 'layout_manager'):
-                    layout = parent.layout_manager.get_active_layout()
-                    if layout and hasattr(layout, 'project_id'):
-                        project_id = layout.project_id
-            
+            project_id = self._resolve_project_id()
             if project_id is None:
-                print("[MediaLightbox] ⚠️ Cannot toggle favorite: project_id not available")
+                print("[MediaLightbox] Cannot toggle favorite: project_id not available")
                 return
             
             # Check current favorite status from database
@@ -8208,6 +8235,11 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             self.preload_thread_pool.start(worker)
             print(f"[MediaLightbox] Preloading: {os.path.basename(next_path)}")
 
+    @staticmethod
+    def _estimate_pixmap_bytes(pixmap):
+        """Estimate memory footprint of a QPixmap (width * height * 4 bytes * 1.2 overhead)."""
+        return int(pixmap.width() * pixmap.height() * 4 * 1.2)
+
     def _on_preload_complete(self, path: str, qimage):
         """PHASE A #1: Handle preload completion — promotes QImage→QPixmap on main thread."""
         if qimage and not qimage.isNull():
@@ -8215,32 +8247,43 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             from PySide6.QtCore import QDateTime
             # Convert QImage → QPixmap on the main thread (the only safe place)
             pixmap = QPixmap.fromImage(qimage)
+            byte_est = self._estimate_pixmap_bytes(pixmap)
             self.preload_cache[path] = {
                 'pixmap': pixmap,
-                'timestamp': QDateTime.currentMSecsSinceEpoch()
+                'timestamp': QDateTime.currentMSecsSinceEpoch(),
+                'byte_est': byte_est,
             }
-            print(f"[MediaLightbox] ✓ Cached: {os.path.basename(path)} (cache size: {len(self.preload_cache)})")
+            self._cache_bytes_used += byte_est
+            mb_used = self._cache_bytes_used / (1024 * 1024)
+            print(f"[MediaLightbox] ✓ Cached: {os.path.basename(path)} "
+                  f"(~{byte_est // 1024}KB, cache: {len(self.preload_cache)} items / {mb_used:.1f}MB)")
 
-            # Clean cache if too large
+            # Clean cache if too large (count or byte budget)
             self._clean_preload_cache()
 
     def _clean_preload_cache(self):
-        """PHASE A #1: Clean preload cache (keep only 5 most recent)."""
-        if len(self.preload_cache) <= self.cache_limit:
-            return
-
-        # Sort by timestamp (oldest first)
+        """PHASE A #1: Clean preload cache (evict by count limit AND byte budget)."""
+        # Sort by timestamp (oldest first) for LRU eviction
         sorted_paths = sorted(
             self.preload_cache.keys(),
             key=lambda p: self.preload_cache[p]['timestamp']
         )
 
-        # Remove oldest entries
-        to_remove = len(self.preload_cache) - self.cache_limit
-        for i in range(to_remove):
-            path = sorted_paths[i]
-            del self.preload_cache[path]
-            print(f"[MediaLightbox] Removed from cache: {os.path.basename(path)}")
+        # Evict until both count and byte limits are satisfied
+        while (len(self.preload_cache) > self.cache_limit
+               or self._cache_bytes_used > self.cache_byte_limit):
+            if not sorted_paths:
+                break
+            path = sorted_paths.pop(0)
+            evicted = self.preload_cache.pop(path, None)
+            if evicted:
+                self._cache_bytes_used -= evicted.get('byte_est', 0)
+                print(f"[MediaLightbox] Evicted from cache: {os.path.basename(path)} "
+                      f"(~{evicted.get('byte_est', 0) // 1024}KB)")
+
+        # Safety: clamp to zero
+        if self._cache_bytes_used < 0:
+            self._cache_bytes_used = 0
 
     def _on_thumbnail_loaded(self, generation: int, qimage):
         """PHASE A #2: Handle progressive loading - thumbnail quality loaded.
@@ -8310,7 +8353,10 @@ class MediaLightbox(QDialog, VideoEditorMixin):
 
         if not qimage or qimage.isNull():
             print(f"[ERROR] ⚠️ Full quality QImage is null or invalid!")
-            self._hide_loading_indicator()
+            # Show brief non-modal toast: keep thumbnail visible, inform user
+            self._show_loading_indicator("Using optimized preview")
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(2500, self._hide_loading_indicator)
             return
 
         from PySide6.QtCore import Qt
@@ -8716,7 +8762,11 @@ class MediaLightbox(QDialog, VideoEditorMixin):
     # ==================== PHASE C IMPROVEMENTS ====================
 
     def _on_media_status_changed(self, status):
-        """Loop video when enabled and fit to view once loaded."""
+        """Handle media status changes — controls readiness and looping.
+
+        Geometry fitting is handled by nativeSizeChanged, NOT here.
+        This handler manages: looping, control enable/disable, loading indicators.
+        """
         try:
             from PySide6.QtMultimedia import QMediaPlayer
             # Looping behavior at end of media
@@ -8724,11 +8774,8 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 self.video_player.setPosition(0)
                 self.video_player.play()
                 print("[MediaLightbox] Looping video to start")
-            # Fit video to view when media becomes ready
             if status in (QMediaPlayer.LoadedMedia, QMediaPlayer.BufferedMedia):
-                if hasattr(self, '_fit_video_view'):
-                    self._fit_video_view()
-                    print("[MediaLightbox] Fit video to view after media loaded")
+                print(f"[MediaLightbox] Media ready (status={status})")
         except Exception as e:
             print(f"[MediaLightbox] mediaStatusChanged handler error: {e}")
 
@@ -8984,16 +9031,21 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 from PySide6.QtGui import QPixmap, QPainter
                 from PySide6.QtCore import Qt
                 
-                # Load both pixmaps
-                base_pix = QPixmap(self.media_path)
-                cmp_pix = QPixmap(self.compare_media_path)
+                # Load both images via SafeImageLoader (capped, never full resolution)
+                from services.safe_image_loader import safe_decode_qimage
+                viewport = self.scroll_area.viewport().size()
+                compare_max_dim = min(max(viewport.width(), viewport.height()), 2560)
+
+                base_qimg = safe_decode_qimage(self.media_path, max_dim=compare_max_dim)
+                cmp_qimg = safe_decode_qimage(self.compare_media_path, max_dim=compare_max_dim)
+                base_pix = QPixmap.fromImage(base_qimg)
+                cmp_pix = QPixmap.fromImage(cmp_qimg)
                 if base_pix.isNull() or cmp_pix.isNull():
                     print("[MediaLightbox] Compare mode: failed to load pixmaps")
                     self.compare_mode_active = False
                     return
-                
+
                 # Determine viewport size
-                viewport = self.scroll_area.viewport().size()
                 target_h = viewport.height()
                 half_w = viewport.width() // 2
                 

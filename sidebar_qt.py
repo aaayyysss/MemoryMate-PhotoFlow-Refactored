@@ -4033,8 +4033,14 @@ class SidebarQt(QWidget):
                 try:
                     from services.device_sources import scan_mobile_devices
 
-                    # Use cached scan results (TTL 300s) — avoids heavy COM scan on every sidebar reload
-                    mobile_devices = scan_mobile_devices(db=self.db, register_devices=True)
+                    # Skip the actual device scan when auto-detection is disabled.
+                    # The scan enumerates drives and COM devices, which is slow on
+                    # systems with mapped drives, corporate policies, or VPNs.
+                    if not getattr(self, '_device_auto_refresh_enabled', False):
+                        mobile_devices = []
+                    else:
+                        # Use cached scan results (TTL 300s) — avoids heavy COM scan on every sidebar reload
+                        mobile_devices = scan_mobile_devices(db=self.db, register_devices=True)
                     if mobile_devices:
                         print(f"[Sidebar] Device scan: {len(mobile_devices)} device(s) found")
 
@@ -6770,9 +6776,12 @@ class SidebarQt(QWidget):
         if mode in ("folder", "branch", "date") and hasattr(mw, "_clear_tag_filter"):
             mw._clear_tag_filter()
 
-        # Normalize value: strip "branch:" prefix added by accordion/tabs
-        if mode == "branch" and isinstance(value, str) and value.startswith("branch:"):
-            value = value[7:]
+        # Normalize value: strip known prefixes added by accordion/tabs/people
+        if mode == "branch" and isinstance(value, str):
+            if value.startswith("branch:"):
+                value = value[7:]
+            elif value.startswith("facecluster:"):
+                value = value.split(":", 1)[1]
 
         if mode == "branch" and isinstance(value, str) and value.startswith("date:"):
             mw.grid.set_context("date", value.replace("date:", ""))

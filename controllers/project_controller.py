@@ -37,9 +37,21 @@ class ProjectController:
         if self.main.thumbnails:
             self.main.thumbnails.clear()
 
-        # Update legacy sidebar and grid
-        self.main.sidebar.set_project(pid)
-        self.main.grid.set_project(pid)
+        # Update legacy sidebar and grid — only trigger full reload when
+        # they are actually visible (avoids "reload blocked" warning when
+        # Google Layout is active and these widgets are hidden).
+        lm = getattr(self.main, 'layout_manager', None)
+        is_google = lm and getattr(lm, '_current_layout_id', None) == "google"
+        if is_google:
+            # Just stash project_id; store subscriptions handle refresh
+            # when the user switches back to CurrentLayout.
+            if hasattr(self.main, 'sidebar') and self.main.sidebar:
+                self.main.sidebar.project_id = pid
+            if hasattr(self.main, 'grid') and self.main.grid:
+                self.main.grid.project_id = pid
+        else:
+            self.main.sidebar.set_project(pid)
+            self.main.grid.set_project(pid)
 
         # PHASE 3 Task 3.1: Type-safe layout update using BaseLayout interface
         if hasattr(self.main, 'layout_manager') and self.main.layout_manager:

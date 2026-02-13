@@ -52,6 +52,21 @@ os.environ['QSG_RENDER_LOOP'] = 'basic'  # Use basic render loop to avoid OpenGL
 os.environ['QT_OPENGL'] = 'software'  # Force software OpenGL rendering
 os.environ['QT_QUICK_BACKEND'] = 'software'  # Force software backend for Qt Quick
 
+# ========================================================================
+# Cap ML library native thread pools to prevent silent oversubscription.
+# NumPy/SciPy (via OpenBLAS/MKL), ONNX Runtime, and OpenMP each spawn
+# their own thread pools. Without caps, a single InsightFace call can
+# create 8-16 native threads on top of our Python thread pools.
+# Must be set BEFORE importing numpy/torch/onnxruntime.
+# ========================================================================
+_ml_threads = str(min(4, os.cpu_count() or 4))
+os.environ.setdefault('OMP_NUM_THREADS', _ml_threads)
+os.environ.setdefault('MKL_NUM_THREADS', _ml_threads)
+os.environ.setdefault('OPENBLAS_NUM_THREADS', _ml_threads)
+os.environ.setdefault('VECLIB_MAXIMUM_THREADS', _ml_threads)
+os.environ.setdefault('NUMEXPR_NUM_THREADS', _ml_threads)
+os.environ.setdefault('ONNXRUNTIME_SESSION_THREAD_POOL_SIZE', _ml_threads)
+
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import Qt, QTimer
 from utils.qt_guards import connect_guarded
@@ -183,6 +198,11 @@ if __name__ == "__main__":
     install_qt_message_handler()
     logger.info("Qt message handler installed to suppress TIFF warnings")
 
+    # Initialize ProjectState store (before any widgets or workers)
+    from core.state_bus import init_store, init_bridge, get_store
+    store = init_store()
+    logger.info("[Startup] ProjectState store initialized")
+
     # 1️: Show splash screen immediately
     splash = SplashScreen()
     splash.show()
@@ -223,6 +243,12 @@ if __name__ == "__main__":
         print("[Startup] ✅ MainWindow instance created successfully")
         print(f"[Startup] MainWindow type: {type(win)}")
         print(f"[Startup] MainWindow is valid: {win is not None}")
+
+        # Initialize Qt action bridge (requires QObject parent on GUI thread)
+        bridge = init_bridge(store, parent=win)
+        win._store = store
+        win._bridge = bridge
+        logger.info("[Startup] QtActionBridge attached to MainWindow")
 
         # Update progress while MainWindow initializes
         print("[Startup] Updating splash progress to 95%...")

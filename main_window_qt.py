@@ -1057,9 +1057,9 @@ class MainWindow(QMainWindow):
 
         self.splitter.addWidget(self.sidebar)
 
-        # PHASE 2: Restore last expanded section after UI is fully loaded
-        # Use QTimer to defer restoration until after event loop starts
-        QTimer.singleShot(100, self._restore_session_state)
+        # Session state restoration is handled by _deferred_initialization()
+        # (post first-paint). Removed early QTimer(100) that could fire before
+        # the window has painted and trigger sidebar expansion prematurely.
 
         # Phase 2.3: Grid container with selection toolbar
         self.grid_container = QWidget()
@@ -1249,6 +1249,12 @@ class MainWindow(QMainWindow):
         except Exception as e:
             print(f"[MainWindow] ⚠️ Embedding status indicator init failed: {e}")
 
+        # === Store subscription for CurrentLayout grid/sidebar refresh ===
+        try:
+            self._init_current_layout_store_sub()
+        except Exception as e:
+            print(f"[MainWindow] ⚠️ CurrentLayout store subscription init failed: {e}")
+
         # Phase 2: Initialize breadcrumb navigation
         QTimer.singleShot(100, self._update_breadcrumb)
 
@@ -1293,17 +1299,55 @@ class MainWindow(QMainWindow):
         if getattr(self, "_deferred_init_started", False):
             return
         self._deferred_init_started = True
+        import time as _time
+        t0 = _time.perf_counter()
+        print(f"[Startup] _after_first_paint fired at {t0:.3f}s")
 
-        # Guardrail 2: throttle shared background workers during layout stabilization.
+        # ----------------------------------------------------------
+        # Guardrail 1 (startup scheduling gate): Throttle background
+        # workers so initial layout + thumbnails aren't starved.
+        # ----------------------------------------------------------
+
+        # 1a. Throttle JobManager's private thread pool.
         try:
             from services.job_manager import get_job_manager
             jm = get_job_manager()
             if hasattr(jm, "enable_startup_throttle"):
                 jm.enable_startup_throttle(max_threads=1)
-                # Restore after layout has stabilized and initial thumbnails are queued.
                 QTimer.singleShot(5000, jm.disable_startup_throttle)
         except Exception:
             pass  # Throttle is best-effort, never block startup for it.
+
+        # 1b. Throttle global QThreadPool (used by GoogleLayout's
+        #     PhotoPageWorker / GroupingWorker for initial photo load).
+        try:
+            pool = QThreadPool.globalInstance()
+            self._startup_global_pool_prev = pool.maxThreadCount()
+            pool.setMaxThreadCount(max(2, self._startup_global_pool_prev // 2))
+
+            def _restore_global_pool():
+                prev = getattr(self, '_startup_global_pool_prev', None)
+                if prev is not None:
+                    QThreadPool.globalInstance().setMaxThreadCount(prev)
+                    print(f"[Startup] Global QThreadPool restored to {prev} threads")
+
+            QTimer.singleShot(5000, _restore_global_pool)
+        except Exception:
+            pass
+
+        # ----------------------------------------------------------
+        # Guardrail 2 (first-render fence): Notify the active layout
+        # that first paint is done so it can start its initial load.
+        # A short 50 ms delay lets the event loop flush pending
+        # paint events before the load kicks in.
+        # ----------------------------------------------------------
+        try:
+            layout = self.layout_manager.get_current_layout() if hasattr(self, 'layout_manager') else None
+            if layout and hasattr(layout, '_on_startup_ready'):
+                QTimer.singleShot(50, layout._on_startup_ready)
+                print(f"[Startup] Scheduled _on_startup_ready for {type(layout).__name__}")
+        except Exception:
+            pass
 
         # Start deferred init after a short delay to let initial render settle.
         QTimer.singleShot(250, self._deferred_initialization)
@@ -3706,6 +3750,15 @@ class MainWindow(QMainWindow):
         set _closing=True and bump generation FIRST, then call teardown.
         """
 
+        # Dispatch ShutdownRequested to ProjectState store
+        try:
+            from core.state_bus import get_store, ShutdownRequested, ActionMeta
+            get_store().dispatch(ShutdownRequested(
+                meta=ActionMeta(source="main_window"),
+            ))
+        except Exception:
+            pass
+
         # 1. Use JobManager's coordinated shutdown (cancel + bump generation + drain)
         try:
             from services.job_manager import get_job_manager
@@ -3744,6 +3797,16 @@ class MainWindow(QMainWindow):
                 timer = getattr(self, timer_attr, None)
                 if timer and hasattr(timer, 'stop'):
                     timer.stop()
+        except Exception:
+            pass
+
+        # 3a. Close any lingering QProgressDialog children to prevent
+        # "External WM_DESTROY" warnings on Windows during shutdown
+        try:
+            from PySide6.QtWidgets import QProgressDialog
+            for dlg in self.findChildren(QProgressDialog):
+                dlg.close()
+                dlg.deleteLater()
         except Exception:
             pass
 
@@ -4015,14 +4078,96 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage(tr('status_messages.ready'))
 
 
-    def _init_progress_pollers(self):
-        self.cluster_timer = QTimer(self)
-        self.cluster_timer.timeout.connect(self._poll_cluster_status)
-        self.cluster_timer.start(2000)  # every 2 seconds
+    def _init_current_layout_store_sub(self):
+        """Subscribe to store so CurrentLayout grid/sidebar refresh on version changes.
 
-        self.backfill_timer = QTimer(self)
-        self.backfill_timer.timeout.connect(self._poll_backfill_status)
-        self.backfill_timer.start(2000)
+        This replaces the direct widget calls in _finalize_scan_refresh().
+        Google Layout has its own subscription; this handles CurrentLayout only.
+        Tracked versions: media_v (scan done), stacks_v (stack badges changed).
+        """
+        self._cl_store_unsub = None
+        try:
+            from core.state_bus import get_store
+            store = get_store()
+            s = store.state
+            self._cl_store_versions = {
+                "media_v": s.media_v,
+                "stacks_v": s.stacks_v,
+            }
+
+            def _on_current_layout_state(state, action):
+                if getattr(self, '_closing', False):
+                    return
+                need_refresh = False
+                for v_key in ("media_v", "stacks_v"):
+                    old_v = self._cl_store_versions.get(v_key)
+                    new_v = getattr(state, v_key)
+                    if old_v is not None and old_v != new_v:
+                        need_refresh = True
+                    self._cl_store_versions[v_key] = new_v
+                if need_refresh:
+                    self._refresh_current_layout_from_store()
+
+            self._cl_store_callback = _on_current_layout_state
+            self._cl_store_unsub = store.subscribe(_on_current_layout_state)
+        except Exception:
+            pass
+
+    def _refresh_current_layout_from_store(self):
+        """Refresh CurrentLayout grid and sidebar when media_v changes.
+
+        Only acts when the active layout is NOT google (Google Layout
+        handles its own refresh via its own store subscription).
+        """
+        if getattr(self, '_closing', False):
+            return
+        try:
+            lm = getattr(self, 'layout_manager', None)
+            if lm and getattr(lm, '_current_layout_id', None) == "google":
+                return  # Google layout handles its own refresh
+
+            # Sidebar
+            sidebar = getattr(self, 'sidebar', None)
+            if sidebar and not getattr(sidebar, '_disposed', False):
+                if hasattr(sidebar, 'reload') and sidebar.isVisible():
+                    sidebar.reload()
+
+            # Grid — use debounced _schedule_reload() to coalesce rapid
+            # store changes (media_v + stacks_v can bump within ms of each
+            # other, causing redundant full reloads + thumbnail re-queues)
+            grid = getattr(self, 'grid', None)
+            if grid and getattr(grid, 'project_id', None) is not None:
+                if hasattr(grid, '_schedule_reload'):
+                    grid._schedule_reload()
+                elif hasattr(grid, 'reload'):
+                    grid.reload()
+
+            # Thumbnails
+            thumbnails = getattr(self, 'thumbnails', None)
+            if thumbnails and grid and hasattr(grid, 'get_visible_paths'):
+                thumbnails.load_thumbnails(grid.get_visible_paths())
+        except Exception as e:
+            print(f"[MainWindow] CurrentLayout store refresh error: {e}")
+
+    def _init_progress_pollers(self):
+        # Replaced 2s polling timers with event-driven QFileSystemWatcher.
+        # cluster_timer removed — FaceClusterWorker already reports progress
+        # via Qt signals (progress/finished). JSON polling was legacy.
+        # backfill_timer replaced — subprocess writes JSON, watcher triggers
+        # read only when the file actually changes.
+        from PySide6.QtCore import QFileSystemWatcher
+        self._status_watcher = QFileSystemWatcher(self)
+        status_dir = os.path.join(self.app_root, "status")
+        # Watch the directory so we catch file creation/deletion
+        if os.path.isdir(status_dir):
+            self._status_watcher.addPath(status_dir)
+        # Also watch individual files if they already exist
+        for fname in ("backfill_status.json", "cluster_status.json"):
+            fpath = os.path.join(status_dir, fname)
+            if os.path.exists(fpath):
+                self._status_watcher.addPath(fpath)
+        self._status_watcher.fileChanged.connect(self._on_status_file_changed)
+        self._status_watcher.directoryChanged.connect(self._on_status_dir_changed)
 
     # ------------------------------------------------------------------
     # Scan progress widgets (non-modal, in status bar)
@@ -4182,10 +4327,27 @@ class MainWindow(QMainWindow):
         # Add to status bar as permanent widget (right side)
         self.statusBar().addPermanentWidget(self.embedding_status_label)
 
-        # Start periodic updates (every 30 seconds)
-        self.embedding_status_timer = QTimer(self)
-        self.embedding_status_timer.timeout.connect(self._update_embedding_status_bar)
-        self.embedding_status_timer.start(30000)  # 30 seconds
+        # Subscribe to store embeddings_v changes instead of 30s polling timer.
+        # The status updates reactively when embeddings are generated.
+        self._emb_status_unsub = None
+        try:
+            from core.state_bus import get_store
+            store = get_store()
+            self._emb_status_versions = {"embeddings_v": store.state.embeddings_v}
+
+            def _on_embeddings_changed(state, action):
+                if getattr(self, '_closing', False):
+                    return
+                old_v = self._emb_status_versions.get("embeddings_v")
+                new_v = state.embeddings_v
+                if old_v is not None and old_v != new_v:
+                    self._update_embedding_status_bar()
+                self._emb_status_versions["embeddings_v"] = new_v
+
+            self._emb_status_callback = _on_embeddings_changed  # prevent GC (weakref store)
+            self._emb_status_unsub = store.subscribe(_on_embeddings_changed)
+        except Exception:
+            pass  # Store not initialized
 
         # Initial update after short delay
         QTimer.singleShot(2000, self._update_embedding_status_bar)
@@ -4297,6 +4459,27 @@ class MainWindow(QMainWindow):
             # Silently fail - don't spam console with errors
             self.embedding_status_label.setText("🧠 —%")
             self.embedding_status_label.setToolTip(f"Could not load stats: {str(e)[:30]}")
+
+    def _on_status_file_changed(self, path: str):
+        """Event-driven handler: a status JSON file was modified."""
+        fname = os.path.basename(path)
+        if fname == "cluster_status.json":
+            self._poll_cluster_status()
+        elif fname == "backfill_status.json":
+            self._poll_backfill_status()
+        # QFileSystemWatcher may drop the watch after file replacement;
+        # re-add if the file still exists.
+        if os.path.exists(path) and path not in self._status_watcher.files():
+            self._status_watcher.addPath(path)
+
+    def _on_status_dir_changed(self, dir_path: str):
+        """Event-driven handler: a file was created/deleted in status dir."""
+        for fname in ("backfill_status.json", "cluster_status.json"):
+            fpath = os.path.join(dir_path, fname)
+            if os.path.exists(fpath) and fpath not in self._status_watcher.files():
+                self._status_watcher.addPath(fpath)
+                # Read immediately since the file was just created
+                self._on_status_file_changed(fpath)
 
     def _poll_cluster_status(self):
         path = os.path.join(self.app_root, "status", "cluster_status.json")

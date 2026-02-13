@@ -212,6 +212,32 @@ class FacePipelineWorker(QRunnable):
                 results["faces_detected"], results["images_processed"],
             )
 
+            # ── Invariant check: faces_written_to_db == faces_detected ──
+            try:
+                from reference_db import ReferenceDB as _DB
+                _db = _DB()
+                with _db._connect() as _conn:
+                    _cur = _conn.cursor()
+                    _cur.execute(
+                        "SELECT COUNT(*) FROM face_crops "
+                        "WHERE project_id = ? AND embedding IS NOT NULL",
+                        (self.project_id,),
+                    )
+                    faces_in_db = _cur.fetchone()[0]
+                if faces_in_db != results["faces_detected"]:
+                    logger.warning(
+                        "[FacePipelineWorker] INVARIANT: faces_detected=%d but "
+                        "faces_in_db=%d — possible insert/skip mismatch",
+                        results["faces_detected"], faces_in_db,
+                    )
+                else:
+                    logger.info(
+                        "[FacePipelineWorker] INVARIANT OK: faces_detected == "
+                        "faces_in_db == %d", faces_in_db,
+                    )
+            except Exception as inv_err:
+                logger.debug("[FacePipelineWorker] Invariant check error: %s", inv_err)
+
         except Exception as e:
             logger.error("[FacePipelineWorker] Face detection failed: %s", e, exc_info=True)
             results["errors"].append(f"Detection: {e}")
