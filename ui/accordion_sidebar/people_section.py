@@ -430,7 +430,8 @@ class PeopleSection(BaseSection):
             groups_content_layout.setSpacing(8)
 
             # Create and embed GroupsSubSection
-            self._groups_section = GroupsSubSection(self.project_id, self)
+            # Note: parent must be a QWidget, not PeopleSection (which is QObject-based)
+            self._groups_section = GroupsSubSection(self.project_id, self._groups_content)
             self._groups_section.groupSelected.connect(self.groupSelected.emit)
             self._groups_section.editGroupRequested.connect(self.editGroupRequested.emit)
             self._groups_section.deleteGroupRequested.connect(self.deleteGroupRequested.emit)
