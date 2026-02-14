@@ -202,6 +202,7 @@ class PreferencesDialog(QDialog):
             ("preferences.nav.scanning", "📁"),
             ("preferences.nav.gps_location", "🗺️"),
             ("preferences.nav.face_detection", "👤"),
+            ("preferences.nav.groups", "👥"),
             ("preferences.nav.visual_embeddings", "🔍"),
             ("preferences.nav.video", "🎬"),
             ("preferences.nav.advanced", "🔧")
@@ -247,6 +248,7 @@ class PreferencesDialog(QDialog):
         self.content_stack.addWidget(self._create_scanning_panel())
         self.content_stack.addWidget(self._create_gps_location_panel())
         self.content_stack.addWidget(self._create_face_detection_panel())
+        self.content_stack.addWidget(self._create_groups_panel())
         self.content_stack.addWidget(self._create_visual_embeddings_panel())
         self.content_stack.addWidget(self._create_video_panel())
         self.content_stack.addWidget(self._create_advanced_panel())
@@ -786,6 +788,132 @@ class PreferencesDialog(QDialog):
         layout.addStretch()
 
         return self._create_scrollable_panel(widget)
+
+    def _create_groups_panel(self) -> QWidget:
+        """Create Person Groups settings panel.
+
+        Configures global defaults for the Groups feature:
+        - Default match scope (Same Photo vs Event Window)
+        - Auto-indexing behavior
+        - Cache/performance settings
+        """
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setAlignment(Qt.AlignTop)
+        layout.setSpacing(15)
+
+        # Title
+        title = QLabel(tr("preferences.groups.title"))
+        title.setStyleSheet("font-size: 18pt; font-weight: bold;")
+        layout.addWidget(title)
+
+        # Description
+        desc = QLabel(tr("preferences.groups.description"))
+        desc.setWordWrap(True)
+        desc.setStyleSheet("color: #666; margin-bottom: 10px;")
+        layout.addWidget(desc)
+
+        # Match Scope Settings
+        scope_group = QGroupBox(tr("preferences.groups.match_scope"))
+        scope_layout = QFormLayout(scope_group)
+        scope_layout.setSpacing(10)
+
+        self.cmb_group_match_scope = QComboBox()
+        self.cmb_group_match_scope.addItem(tr("preferences.groups.scope_same_photo"), "same_photo")
+        self.cmb_group_match_scope.addItem(tr("preferences.groups.scope_event_window"), "event_window")
+        self.cmb_group_match_scope.setToolTip(tr("preferences.groups.scope_tooltip"))
+        scope_layout.addRow(tr("preferences.groups.default_scope") + ":", self.cmb_group_match_scope)
+
+        self.spin_event_window_hours = QSpinBox()
+        self.spin_event_window_hours.setRange(1, 168)  # 1 hour to 1 week
+        self.spin_event_window_hours.setValue(24)
+        self.spin_event_window_hours.setSuffix(" hours")
+        self.spin_event_window_hours.setToolTip(tr("preferences.groups.event_window_tooltip"))
+        scope_layout.addRow(tr("preferences.groups.event_window_size") + ":", self.spin_event_window_hours)
+
+        layout.addWidget(scope_group)
+
+        # Indexing Settings
+        index_group = QGroupBox(tr("preferences.groups.indexing"))
+        index_layout = QFormLayout(index_group)
+        index_layout.setSpacing(10)
+
+        self.chk_auto_index_groups = QCheckBox(tr("preferences.groups.auto_index"))
+        self.chk_auto_index_groups.setToolTip(tr("preferences.groups.auto_index_tooltip"))
+        index_layout.addRow(self.chk_auto_index_groups)
+
+        self.chk_incremental_index = QCheckBox(tr("preferences.groups.incremental_index"))
+        self.chk_incremental_index.setToolTip(tr("preferences.groups.incremental_index_tooltip"))
+        index_layout.addRow(self.chk_incremental_index)
+
+        layout.addWidget(index_group)
+
+        # Display Settings
+        display_group = QGroupBox(tr("preferences.groups.display"))
+        display_layout = QFormLayout(display_group)
+        display_layout.setSpacing(10)
+
+        self.spin_group_avatar_count = QSpinBox()
+        self.spin_group_avatar_count.setRange(2, 6)
+        self.spin_group_avatar_count.setValue(4)
+        self.spin_group_avatar_count.setToolTip(tr("preferences.groups.avatar_count_tooltip"))
+        display_layout.addRow(tr("preferences.groups.max_avatars") + ":", self.spin_group_avatar_count)
+
+        self.chk_show_group_photo_count = QCheckBox(tr("preferences.groups.show_photo_count"))
+        self.chk_show_group_photo_count.setChecked(True)
+        display_layout.addRow(self.chk_show_group_photo_count)
+
+        layout.addWidget(display_group)
+
+        # Cache Settings
+        cache_group = QGroupBox(tr("preferences.groups.cache"))
+        cache_layout = QFormLayout(cache_group)
+        cache_layout.setSpacing(10)
+
+        self.chk_cache_group_matches = QCheckBox(tr("preferences.groups.cache_matches"))
+        self.chk_cache_group_matches.setChecked(True)
+        self.chk_cache_group_matches.setToolTip(tr("preferences.groups.cache_matches_tooltip"))
+        cache_layout.addRow(self.chk_cache_group_matches)
+
+        self.btn_clear_group_cache = QPushButton(tr("preferences.groups.clear_cache"))
+        self.btn_clear_group_cache.clicked.connect(self._on_clear_group_cache)
+        cache_layout.addRow(self.btn_clear_group_cache)
+
+        layout.addWidget(cache_group)
+
+        layout.addStretch()
+
+        return self._create_scrollable_panel(widget)
+
+    def _on_clear_group_cache(self):
+        """Clear the materialized group matches cache."""
+        from PySide6.QtWidgets import QMessageBox
+
+        reply = QMessageBox.question(
+            self,
+            tr("preferences.groups.clear_cache_confirm_title"),
+            tr("preferences.groups.clear_cache_confirm_message"),
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+
+        if reply == QMessageBox.Yes:
+            try:
+                from services.group_service import GroupService
+                service = GroupService.instance()
+                # Clear all cached matches (they'll be recomputed on next access)
+                service.clear_all_group_caches()
+                QMessageBox.information(
+                    self,
+                    tr("preferences.groups.cache_cleared_title"),
+                    tr("preferences.groups.cache_cleared_message")
+                )
+            except Exception as e:
+                QMessageBox.warning(
+                    self,
+                    tr("common.error"),
+                    f"Failed to clear cache: {e}"
+                )
 
     def _create_visual_embeddings_panel(self) -> QWidget:
         """Create Visual Embeddings / CLIP Model panel."""
@@ -1340,6 +1468,18 @@ class PreferencesDialog(QDialog):
         # InsightFace model path
         self.txt_model_path.setText(self.settings.get("insightface_model_path", ""))
 
+        # Groups settings
+        group_scope = self.settings.get("groups_default_scope", "same_photo")
+        scope_index = self.cmb_group_match_scope.findData(group_scope)
+        if scope_index >= 0:
+            self.cmb_group_match_scope.setCurrentIndex(scope_index)
+        self.spin_event_window_hours.setValue(self.settings.get("groups_event_window_hours", 24))
+        self.chk_auto_index_groups.setChecked(self.settings.get("groups_auto_index", True))
+        self.chk_incremental_index.setChecked(self.settings.get("groups_incremental_index", True))
+        self.spin_group_avatar_count.setValue(self.settings.get("groups_max_avatars", 4))
+        self.chk_show_group_photo_count.setChecked(self.settings.get("groups_show_photo_count", True))
+        self.chk_cache_group_matches.setChecked(self.settings.get("groups_cache_matches", True))
+
         # CLIP / Visual Embeddings
         clip_variant = self.settings.get("clip_model_variant", "openai/clip-vit-base-patch32")
         clip_index = self.cmb_clip_variant.findData(clip_variant)
@@ -1826,6 +1966,17 @@ class PreferencesDialog(QDialog):
         self.face_config.save()
         print(f"✅ Face detection settings saved: model={self.cmb_insightface_model.currentData()}, "
               f"eps={self.spin_cluster_eps.value()}%, min_samples={self.spin_min_samples.value()}")
+
+        # Groups settings
+        self.settings.set("groups_default_scope", self.cmb_group_match_scope.currentData())
+        self.settings.set("groups_event_window_hours", self.spin_event_window_hours.value())
+        self.settings.set("groups_auto_index", self.chk_auto_index_groups.isChecked())
+        self.settings.set("groups_incremental_index", self.chk_incremental_index.isChecked())
+        self.settings.set("groups_max_avatars", self.spin_group_avatar_count.value())
+        self.settings.set("groups_show_photo_count", self.chk_show_group_photo_count.isChecked())
+        self.settings.set("groups_cache_matches", self.chk_cache_group_matches.isChecked())
+        print(f"✅ Groups settings saved: scope={self.cmb_group_match_scope.currentData()}, "
+              f"auto_index={self.chk_auto_index_groups.isChecked()}")
 
         # InsightFace Model Path
         model_path = self.txt_model_path.text().strip()
