@@ -1191,6 +1191,12 @@ class GooglePhotosLayout(BaseLayout):
         sidebar.redoLastUndoRequested.connect(self._on_people_redo_requested)
         sidebar.peopleToolsRequested.connect(self._on_people_tools_requested)
 
+        # Groups sub-section signals (Person Groups feature)
+        sidebar.selectGroup.connect(self._on_accordion_group_clicked)
+        sidebar.createGroupRequested.connect(self._on_group_created)
+        sidebar.editGroupRequested.connect(self._on_group_edit_requested)
+        sidebar.deleteGroupRequested.connect(self._on_group_deleted)
+
         # FIX: Connect section expansion signal to hide search suggestions popup
         sidebar.sectionExpanding.connect(self._on_accordion_section_expanding)
 
@@ -2060,6 +2066,75 @@ class GooglePhotosLayout(BaseLayout):
             thumb_size=self.current_thumb_size,
             person=person_branch_key,
         )
+
+    # --- Groups sub-section handlers (Person Groups feature) ---
+
+    def _on_accordion_group_clicked(self, group_id: int):
+        """
+        Handle group selection from the Groups sub-section.
+
+        When user clicks a group, filters photos to show only photos
+        where ALL group members appear together (AND matching).
+
+        Args:
+            group_id: ID of the selected group
+        """
+        if not group_id:
+            return
+
+        logger.info(f"[GooglePhotosLayout] Group clicked: {group_id}")
+
+        try:
+            from services.group_service import GroupService
+            service = GroupService.instance()
+
+            # Get matching photo paths using "Together (AND)" query
+            paths = service.get_group_photos(self.project_id, group_id)
+
+            if not paths:
+                from PySide6.QtWidgets import QMessageBox
+                QMessageBox.information(
+                    self,
+                    "No Photos Found",
+                    "No photos found where all group members appear together.\n\n"
+                    "This group might need to be re-indexed."
+                )
+                return
+
+            logger.info(f"[GooglePhotosLayout] Group {group_id} has {len(paths)} matching photos")
+
+            # Load photos filtered by group paths
+            self._request_load(
+                thumb_size=self.current_thumb_size,
+                paths=paths,
+            )
+
+        except Exception as e:
+            logger.error(f"[GooglePhotosLayout] Failed to load group photos: {e}", exc_info=True)
+
+    def _on_group_created(self):
+        """Handle new group creation - refresh sidebar groups."""
+        logger.info("[GooglePhotosLayout] Group created, refreshing People section")
+        self._refresh_people_sidebar()
+
+    def _on_group_edit_requested(self, group_id: int):
+        """Handle group edit request - open edit dialog."""
+        logger.info(f"[GooglePhotosLayout] Edit group requested: {group_id}")
+
+        try:
+            from ui.create_group_dialog import CreateGroupDialog
+
+            dialog = CreateGroupDialog(self.project_id, group_id=group_id, parent=self)
+            if dialog.exec():
+                self._refresh_people_sidebar()
+                logger.info(f"[GooglePhotosLayout] Group {group_id} edited")
+        except Exception as e:
+            logger.error(f"[GooglePhotosLayout] Failed to open edit group dialog: {e}", exc_info=True)
+
+    def _on_group_deleted(self, group_id: int):
+        """Handle group deletion - clear filter if viewing deleted group."""
+        logger.info(f"[GooglePhotosLayout] Group deleted: {group_id}")
+        # Refresh sidebar is already handled in AccordionSidebar
 
     def _on_accordion_location_clicked(self, location_data: dict):
         """

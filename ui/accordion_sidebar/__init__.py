@@ -72,6 +72,12 @@ class AccordionSidebar(QWidget):
     redoLastUndoRequested = Signal()
     peopleToolsRequested = Signal()
 
+    # Groups sub-section signals (forwarded from PeopleSection)
+    selectGroup = Signal(int)            # group_id - filter grid to group photos
+    createGroupRequested = Signal()      # Open create group dialog
+    editGroupRequested = Signal(int)     # group_id - open edit dialog
+    deleteGroupRequested = Signal(int)   # group_id - delete confirmation
+
     # Section expansion signal
     sectionExpanding = Signal(str)  # section_id
 
@@ -251,6 +257,16 @@ class AccordionSidebar(QWidget):
         if people and hasattr(people, 'peopleToolsRequested'):
             people.peopleToolsRequested.connect(self.peopleToolsRequested.emit)
 
+        # Groups sub-section signals (forwarded from People section)
+        if people and hasattr(people, 'groupSelected'):
+            people.groupSelected.connect(self._on_group_selected)
+        if people and hasattr(people, 'createGroupRequested'):
+            people.createGroupRequested.connect(self._on_create_group_requested)
+        if people and hasattr(people, 'editGroupRequested'):
+            people.editGroupRequested.connect(self.editGroupRequested.emit)
+        if people and hasattr(people, 'deleteGroupRequested'):
+            people.deleteGroupRequested.connect(self._on_delete_group_requested)
+
         # Videos section
         videos = self.section_logic.get("videos")
         if videos and hasattr(videos, 'videoFilterSelected'):
@@ -368,6 +384,98 @@ class AccordionSidebar(QWidget):
 
         # Emit signal for grid update
         self.selectVideo.emit(filter_key)
+
+    # --- Groups sub-section handlers ---
+
+    def _on_group_selected(self, group_id: int):
+        """Handle group selection from Groups sub-section."""
+        logger.info(f"[AccordionSidebar] Group selected: {group_id}")
+
+        # PHASE 3: Save group selection to session state
+        try:
+            from session_state_manager import get_session_state
+            get_session_state().set_selection("group", group_id, f"Group #{group_id}")
+            logger.debug(f"[AccordionSidebar] PHASE 3: Saved group selection: {group_id}")
+        except Exception as e:
+            logger.warning(f"[AccordionSidebar] PHASE 3: Failed to save group selection: {e}")
+
+        # Emit to parent layout for grid filtering
+        self.selectGroup.emit(group_id)
+
+    def _on_create_group_requested(self):
+        """Handle create group request - open the create group dialog."""
+        logger.info("[AccordionSidebar] Create group requested")
+
+        try:
+            from ui.create_group_dialog import CreateGroupDialog
+
+            dialog = CreateGroupDialog(self.project_id, parent=self)
+            if dialog.exec():
+                # Reload people section to show new group
+                people = self.section_logic.get("people")
+                if people and hasattr(people, 'reload_groups'):
+                    people.reload_groups()
+
+                logger.info("[AccordionSidebar] Group created, reloading groups")
+
+                # Also emit signal so parent layout can update
+                self.createGroupRequested.emit()
+        except Exception as e:
+            logger.error(f"[AccordionSidebar] Failed to open create group dialog: {e}", exc_info=True)
+
+    def _on_delete_group_requested(self, group_id: int):
+        """Handle group deletion with confirmation."""
+        from PySide6.QtWidgets import QMessageBox
+
+        logger.info(f"[AccordionSidebar] Delete group requested: {group_id}")
+
+        try:
+            from services.group_service import GroupService
+            service = GroupService.instance()
+
+            # Get group name for confirmation
+            groups = service.get_groups(self.project_id)
+            group_name = f"Group #{group_id}"
+            for g in groups:
+                if g["id"] == group_id:
+                    group_name = g["name"]
+                    break
+
+            # Confirm deletion
+            reply = QMessageBox.question(
+                self,
+                "Delete Group",
+                f"🗑️ Delete '{group_name}'?\n\n"
+                f"This will remove the group but not the photos.",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No
+            )
+
+            if reply == QMessageBox.Yes:
+                service.delete_group(self.project_id, group_id)
+                logger.info(f"[AccordionSidebar] Deleted group: {group_name}")
+
+                # Reload groups sub-section
+                people = self.section_logic.get("people")
+                if people and hasattr(people, 'reload_groups'):
+                    people.reload_groups()
+
+                QMessageBox.information(
+                    self,
+                    "Group Deleted",
+                    f"✅ '{group_name}' has been deleted."
+                )
+
+                # Emit signal
+                self.deleteGroupRequested.emit(group_id)
+
+        except Exception as e:
+            logger.error(f"[AccordionSidebar] Failed to delete group: {e}", exc_info=True)
+            QMessageBox.critical(
+                self,
+                "Delete Failed",
+                f"❌ Error deleting group:\n\n{str(e)}"
+            )
 
     def _expand_section(self, section_id: str):
         """Expand specified section and collapse others."""
