@@ -215,6 +215,17 @@
       "empty": "No external devices detected right now.",
       "folder_count": "{0} items detected",
       "open": "Open"
+    },
+    "header_groups": "Groups",
+    "groups_actions": {
+      "create": "Create New Group",
+      "edit": "Edit Group",
+      "delete": "Delete Group"
+    },
+    "groups": {
+      "loading": "Loading groups...",
+      "empty": "No groups yet",
+      "hint": "Create a group to see photos where multiple people appear together"
     }
   },
   "preferences": {
@@ -632,7 +643,20 @@
     "merge_failed": "Merge failed",
     "merge_failed_message": "Could not merge people:\n{error}",
     "rename_person": "Rename person",
-    "new_name": "New name:"
+    "new_name": "New name:",
+    "cancel": "Cancel",
+    "create": "Create",
+    "save": "Save",
+    "create_group": {
+      "title": "Create Group",
+      "header": "Select 2 or more people to create a group",
+      "name": "Group name:",
+      "name_placeholder": "e.g., Family, Trip Buddies",
+      "pinned": "Pin this group"
+    },
+    "edit_group": {
+      "title": "Edit Group"
+    }
   },
   "google_layout": {
     "search_placeholder": "🔍 Search photos, people, places...",
