@@ -195,7 +195,7 @@ class CreateGroupDialog(QDialog):
 
     def _setup_ui(self):
         """Setup dialog UI."""
-        title = tr("dialog.edit_group.title") if self.is_edit_mode else tr("dialog.create_group.title")
+        title = tr("dialogs.edit_group.title") if self.is_edit_mode else tr("dialogs.create_group.title")
         title = title if callable(tr) else ("Edit Group" if self.is_edit_mode else "Create Group")
         self.setWindowTitle(title)
         self.setMinimumSize(500, 600)
@@ -207,7 +207,7 @@ class CreateGroupDialog(QDialog):
 
         # Header
         header_label = QLabel(
-            tr("dialog.create_group.header") if callable(tr)
+            tr("dialogs.create_group.header") if callable(tr)
             else "Select 2 or more people to create a group"
         )
         header_label.setStyleSheet("font-size: 13pt; color: #202124;")
@@ -219,13 +219,13 @@ class CreateGroupDialog(QDialog):
         name_layout.setContentsMargins(0, 0, 0, 0)
         name_layout.setSpacing(8)
 
-        name_label = QLabel(tr("dialog.create_group.name") if callable(tr) else "Group name:")
+        name_label = QLabel(tr("dialogs.create_group.name") if callable(tr) else "Group name:")
         name_label.setStyleSheet("font-size: 11pt;")
         name_layout.addWidget(name_label)
 
         self._name_input = QLineEdit()
         self._name_input.setPlaceholderText(
-            tr("dialog.create_group.name_placeholder") if callable(tr)
+            tr("dialogs.create_group.name_placeholder") if callable(tr)
             else "e.g., Family, Trip Buddies"
         )
         self._name_input.setStyleSheet("""
@@ -269,7 +269,7 @@ class CreateGroupDialog(QDialog):
         options_layout.setContentsMargins(0, 0, 0, 0)
 
         self._pinned_checkbox = QCheckBox(
-            tr("dialog.create_group.pinned") if callable(tr) else "Pin this group"
+            tr("dialogs.create_group.pinned") if callable(tr) else "Pin this group"
         )
         self._pinned_checkbox.setStyleSheet("font-size: 10pt;")
         options_layout.addWidget(self._pinned_checkbox)
@@ -285,7 +285,7 @@ class CreateGroupDialog(QDialog):
 
         button_layout.addStretch()
 
-        cancel_btn = QPushButton(tr("dialog.cancel") if callable(tr) else "Cancel")
+        cancel_btn = QPushButton(tr("dialogs.cancel") if callable(tr) else "Cancel")
         cancel_btn.setStyleSheet("""
             QPushButton {
                 padding: 10px 24px;
@@ -300,7 +300,7 @@ class CreateGroupDialog(QDialog):
         button_layout.addWidget(cancel_btn)
 
         self._create_btn = QPushButton(
-            tr("dialog.save") if self.is_edit_mode else tr("dialog.create")
+            tr("dialogs.save") if self.is_edit_mode else tr("dialogs.create")
             if callable(tr) else ("Save" if self.is_edit_mode else "Create Group")
         )
         self._create_btn.setEnabled(False)

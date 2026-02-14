@@ -465,7 +465,7 @@ class AccordionSidebar(QWidget):
             )
 
             if reply == QMessageBox.Yes:
-                service.delete_group(self.project_id, group_id)
+                service.delete_group(group_id)
                 logger.info(f"[AccordionSidebar] Deleted group: {group_name}")
 
                 # Reload groups sub-section

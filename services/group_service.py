@@ -494,28 +494,39 @@ class GroupService(QObject):
             db = self._get_db()
 
             with db._connect() as conn:
+                # Get project_id for proper filtering
+                cur = conn.execute(
+                    "SELECT project_id FROM person_groups WHERE id = ?",
+                    (group_id,)
+                )
+                row = cur.fetchone()
+                if not row:
+                    logger.warning(f"[GroupService] Group {group_id} not found")
+                    return {"group_id": group_id, "photo_ids": [], "total_count": 0}
+                project_id = row[0]
+
                 # Update last_used_at
                 conn.execute(
                     "UPDATE person_groups SET last_used_at = ? WHERE id = ?",
                     (int(time.time()), group_id)
                 )
 
-                # Get total count
+                # Get total count (with project_id filter for security)
                 cur = conn.execute("""
                     SELECT COUNT(*) FROM group_asset_matches
-                    WHERE group_id = ? AND scope = ?
-                """, (group_id, scope.value))
+                    WHERE project_id = ? AND group_id = ? AND scope = ?
+                """, (project_id, group_id, scope.value))
                 total_count = cur.fetchone()[0]
 
-                # Get paginated results
+                # Get paginated results (with project_id filter for security)
                 cur = conn.execute("""
                     SELECT gam.photo_id, pm.path
                     FROM group_asset_matches gam
                     JOIN photo_metadata pm ON pm.id = gam.photo_id
-                    WHERE gam.group_id = ? AND gam.scope = ?
+                    WHERE gam.project_id = ? AND gam.group_id = ? AND gam.scope = ?
                     ORDER BY pm.created_ts DESC
                     LIMIT ? OFFSET ?
-                """, (group_id, scope.value, page_size, page * page_size))
+                """, (project_id, group_id, scope.value, page_size, page * page_size))
 
                 photo_ids = []
                 photo_paths = []
