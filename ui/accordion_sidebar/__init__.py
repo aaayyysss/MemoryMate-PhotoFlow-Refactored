@@ -408,15 +408,28 @@ class AccordionSidebar(QWidget):
 
         try:
             from ui.create_group_dialog import CreateGroupDialog
+            from services.group_service import GroupService
 
             dialog = CreateGroupDialog(self.project_id, parent=self)
             if dialog.exec():
+                # Save the group to the database
+                service = GroupService.instance()
+                group_id = service.create_group(
+                    project_id=self.project_id,
+                    name=dialog.group_name,
+                    person_ids=dialog.selected_people,
+                    pinned=dialog.is_pinned
+                )
+
+                if group_id:
+                    logger.info(f"[AccordionSidebar] Group created with id={group_id}, reloading groups")
+                else:
+                    logger.warning("[AccordionSidebar] Group creation returned no id")
+
                 # Reload people section to show new group
                 people = self.section_logic.get("people")
                 if people and hasattr(people, 'reload_groups'):
                     people.reload_groups()
-
-                logger.info("[AccordionSidebar] Group created, reloading groups")
 
                 # Also emit signal so parent layout can update
                 self.createGroupRequested.emit()
