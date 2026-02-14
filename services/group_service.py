@@ -804,6 +804,37 @@ class GroupService(QObject):
             logger.error(f"[GroupService] Failed to get people: {e}", exc_info=True)
             return []
 
+    def clear_all_group_caches(self, project_id: int = None):
+        """
+        Clear all cached group match results.
+
+        This deletes all entries from group_asset_matches table,
+        forcing results to be recomputed on next access.
+
+        Args:
+            project_id: Optional project ID to clear caches for.
+                       If None, clears all caches globally.
+        """
+        try:
+            db = self._get_db()
+
+            with db._connect() as conn:
+                if project_id:
+                    conn.execute(
+                        "DELETE FROM group_asset_matches WHERE project_id = ?",
+                        (project_id,)
+                    )
+                    logger.info(f"[GroupService] Cleared group caches for project {project_id}")
+                else:
+                    conn.execute("DELETE FROM group_asset_matches")
+                    logger.info("[GroupService] Cleared all group caches globally")
+
+                conn.commit()
+
+        except Exception as e:
+            logger.error(f"[GroupService] Failed to clear group caches: {e}", exc_info=True)
+            raise
+
     def close(self):
         """Close database connection."""
         if self._db:

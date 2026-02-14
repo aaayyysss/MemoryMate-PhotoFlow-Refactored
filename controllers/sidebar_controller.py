@@ -62,3 +62,28 @@ class SidebarController:
         if self.main.thumbnails and hasattr(self.main.grid, "get_visible_paths"):
             self.main.thumbnails.clear()
             self.main.thumbnails.load_thumbnails(self.main.grid.get_visible_paths())
+
+    def on_group_selected(self, group_id: int):
+        """
+        Handle group selection - show photos where all group members appear together.
+
+        This implements the "Together (AND)" matching from the Groups feature.
+        Photos are filtered to show only those where ALL members of the group
+        are detected in the same image.
+
+        Args:
+            group_id: ID of the selected person group
+        """
+        if hasattr(self.main.grid, "set_group"):
+            self.main.grid.set_group(group_id)
+
+        # Clear any active tag filter for clean group view
+        if hasattr(self.main, "active_tag_filter"):
+            self.main.active_tag_filter = "all"
+
+        if hasattr(self.main.grid, "list_view"):
+            self.main.grid.list_view.scrollToTop()
+
+        if self.main.thumbnails and hasattr(self.main.grid, "get_visible_paths"):
+            self.main.thumbnails.clear()
+            self.main.thumbnails.load_thumbnails(self.main.grid.get_visible_paths())
