@@ -44,22 +44,38 @@ class ReferenceDB:
     def __new__(cls, db_file=None):
         """
         Thread-safe singleton implementation.
-        
+
         Returns the same ReferenceDB instance for the same db_file across all threads.
         This prevents connection proliferation and ensures thread safety.
         """
         if db_file is None:
             db_file = get_db_filename()
-        
+
         # Normalize path for consistent pool key
         db_file = os.path.abspath(db_file)
-        
+
         with cls._lock:
             if cls._instance is None:
                 cls._instance = super().__new__(cls)
                 cls._instance._initialized = False
-        
+
         return cls._instance
+
+    @classmethod
+    def instance(cls, db_file=None):
+        """
+        Get singleton ReferenceDB instance.
+
+        This is a convenience method for callers expecting an instance() pattern.
+        Equivalent to calling ReferenceDB(db_file).
+
+        Args:
+            db_file: Optional database file path (default: reference_data.db)
+
+        Returns:
+            ReferenceDB: The singleton instance
+        """
+        return cls(db_file)
     
     def __init__(self, db_file=DB_FILE):
         """

@@ -168,6 +168,9 @@ class PeopleGroupService:
                 """, (group_id,)).fetchone()
                 match_count = match_count_row[0] if match_count_row else 0
 
+                # A group is stale if it has no cached matches
+                is_stale = match_count == 0
+
                 return {
                     'id': row[0],
                     'name': row[1],
@@ -177,7 +180,8 @@ class PeopleGroupService:
                     'last_used_at': row[4],
                     'is_pinned': bool(row[5]),
                     'member_count': row[6],
-                    'result_count': match_count
+                    'result_count': match_count,
+                    'is_stale': is_stale
                 }
 
         except Exception as e:
@@ -222,6 +226,9 @@ class PeopleGroupService:
                     """, (group_id,)).fetchone()
                     match_count = match_count_row[0] if match_count_row else 0
 
+                    # A group is stale if it has no cached matches
+                    is_stale = match_count == 0
+
                     groups.append({
                         'id': group_id,
                         'name': row[1],
@@ -231,7 +238,8 @@ class PeopleGroupService:
                         'last_used_at': row[4],
                         'is_pinned': bool(row[5]),
                         'member_count': row[6],
-                        'result_count': match_count
+                        'result_count': match_count,
+                        'is_stale': is_stale
                     })
 
                 return groups
