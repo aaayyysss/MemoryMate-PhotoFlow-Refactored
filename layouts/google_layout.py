@@ -1191,9 +1191,8 @@ class GooglePhotosLayout(BaseLayout):
         sidebar.redoLastUndoRequested.connect(self._on_people_redo_requested)
         sidebar.peopleToolsRequested.connect(self._on_people_tools_requested)
 
-        # Groups sub-section signals (Person Groups feature)
+        # Groups section signals (Person Groups feature)
         sidebar.selectGroup.connect(self._on_accordion_group_clicked)
-        sidebar.createGroupRequested.connect(self._on_group_created)
         sidebar.editGroupRequested.connect(self._on_group_edit_requested)
         sidebar.deleteGroupRequested.connect(self._on_group_deleted)
 
