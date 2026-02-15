@@ -6504,7 +6504,7 @@ class ReferenceDB:
             cur = conn.execute("""
                 INSERT INTO person_groups (
                     project_id, name, created_at, updated_at,
-                    pinned, cover_photo_id
+                    is_pinned, cover_photo_id
                 ) VALUES (?, ?, ?, ?, ?, ?)
             """, (project_id, name, now, now, 1 if pinned else 0, cover_photo_id))
 
@@ -6544,7 +6544,7 @@ class ReferenceDB:
                 updates.append("name = ?")
                 params.append(name)
             if pinned is not None:
-                updates.append("pinned = ?")
+                updates.append("is_pinned = ?")
                 params.append(1 if pinned else 0)
             if cover_photo_id is not None:
                 updates.append("cover_photo_id = ?")
@@ -6607,13 +6607,13 @@ class ReferenceDB:
                     g.created_at,
                     g.updated_at,
                     g.last_used_at,
-                    g.pinned,
+                    g.is_pinned,
                     g.cover_photo_id,
                     (SELECT COUNT(*) FROM person_group_members WHERE group_id = g.id) AS member_count,
                     (SELECT COUNT(*) FROM group_asset_matches WHERE group_id = g.id AND scope = 'same_photo') AS photo_count
                 FROM person_groups g
                 WHERE g.project_id = ? AND g.is_deleted = 0
-                ORDER BY g.pinned DESC, g.last_used_at DESC NULLS LAST, g.name ASC
+                ORDER BY g.is_pinned DESC, g.last_used_at DESC NULLS LAST, g.name ASC
             """, (project_id,))
 
             groups = []

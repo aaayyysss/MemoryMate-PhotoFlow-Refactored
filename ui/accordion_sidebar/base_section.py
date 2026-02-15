@@ -204,6 +204,11 @@ class BaseSection(QObject, ABC, metaclass=QABCMeta):
         Always resets _loading (the background thread is done regardless of
         whether the data is stale).  Without this, a generation bump during
         loading permanently locks the section in ``is_loading() == True``.
+
+        NOTE: This method should NOT call create_content_widget() because
+        AccordionSidebar._on_section_loaded() already handles widget creation
+        when it receives the loaded signal. Calling it here would cause
+        duplicate widget creation (and double "Groups sub-section created" logs).
         """
         self._loading = False
 
@@ -211,7 +216,8 @@ class BaseSection(QObject, ABC, metaclass=QABCMeta):
             logger.debug(f"[{self.get_section_id()}] Discarding stale data (gen {generation} vs {self._generation})")
             return None
 
-        return self.create_content_widget(data)
+        # AccordionSidebar handles create_content_widget via _on_section_loaded
+        return data
 
 
 class SectionLoadSignals(QObject):

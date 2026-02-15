@@ -2124,7 +2124,7 @@ class GooglePhotosLayout(BaseLayout):
         try:
             from ui.create_group_dialog import CreateGroupDialog
 
-            dialog = CreateGroupDialog(self.project_id, group_id=group_id, parent=self)
+            dialog = CreateGroupDialog(self.project_id, edit_group_id=group_id, parent=self)
             if dialog.exec():
                 self._refresh_people_sidebar()
                 logger.info(f"[GooglePhotosLayout] Group {group_id} edited")
