@@ -1,4 +1,5 @@
 # core/state_bus.py
+# Version 01.01.01.02 dated 20260214
 # Canonical ProjectState Store with version-based UI invalidation.
 #
 # Design principles (revised from audit):
@@ -85,6 +86,7 @@ class ProjectState:
     embeddings_v: int = 0
     stacks_v: int = 0
     videos_v: int = 0
+    groups_v: int = 0
     settings_v: int = 0
     jobs_v: int = 0
 
@@ -198,6 +200,23 @@ class FacesCompleted:
 
 
 @dataclass
+class GroupsChanged:
+    """Dispatched when people groups are created, updated, deleted, or re-indexed."""
+    meta: ActionMeta
+    group_id: Optional[int] = None       # specific group, or None for all
+    reason: str = ""                      # "created", "updated", "deleted", "reindexed"
+ 
+ 
+@dataclass
+class GroupIndexCompleted:
+    """Dispatched when a group's materialized match cache finishes computing."""
+    meta: ActionMeta
+    group_id: int = 0
+    match_count: int = 0
+    scope: str = "same_photo"
+ 
+ 
+@dataclass
 class TagsChanged:
     meta: ActionMeta
     photo_ids: List[int] = field(default_factory=list)
@@ -247,7 +266,8 @@ AnyAction = (
     ShutdownRequested | AppRelaunchRequested | ProjectSelected
     | FolderSelected | ScanStarted | ScanProgress | ScanCompleted
     | EmbeddingsCompleted | StacksCompleted | DuplicatesCompleted
-    | FacesCompleted | TagsChanged | SettingsChanged
+    | FacesCompleted | GroupsChanged | GroupIndexCompleted
+    | TagsChanged | SettingsChanged
     | JobRegistered | JobProgress | JobFinished | ErrorRaised
 )
 
@@ -412,6 +432,7 @@ class Store:
             "embeddings_v": s.embeddings_v,
             "stacks_v": s.stacks_v,
             "videos_v": s.videos_v,
+            "groups_v": s.groups_v,
             "settings_v": s.settings_v,
             "jobs_v": s.jobs_v,
             "ui_epoch": s.ui_epoch,
@@ -480,6 +501,7 @@ def register_default_handlers(store: Store) -> None:
         state.embeddings_v += 1
         state.stacks_v += 1
         state.videos_v += 1
+        state.groups_v += 1
 
     @store.on(FolderSelected)
     def _(state: ProjectState, action: FolderSelected) -> None:
@@ -558,6 +580,15 @@ def register_default_handlers(store: Store) -> None:
         state.people_v += 1
         state.faces_v += 1
         state.jobs_v += 1
+
+    @store.on(GroupsChanged)
+    def _(state: ProjectState, action: GroupsChanged) -> None:
+        state.groups_v += 1
+ 
+    @store.on(GroupIndexCompleted)
+    def _(state: ProjectState, action: GroupIndexCompleted) -> None:
+        state.groups_v += 1
+ 
 
     @store.on(TagsChanged)
     def _(state: ProjectState, action: TagsChanged) -> None:
