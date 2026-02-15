@@ -119,6 +119,29 @@ class GroupServiceInstance:
         """Get count of cached matches."""
         return GroupService.get_cached_match_count(self.db, group_id, scope)
 
+    def get_group_photos(
+        self,
+        project_id: int,
+        group_id: int,
+        scope: str = "same_photo",
+    ) -> List[str]:
+        """
+        Get photo paths for a group.
+
+        This is the primary method for retrieving photos that match a group's
+        criteria (all members appearing together). Returns cached results if
+        available, otherwise performs a live query.
+
+        Args:
+            project_id: Project ID
+            group_id: Group ID
+            scope: Match scope (default "same_photo" for AND-matching)
+
+        Returns:
+            List of file paths for matching photos
+        """
+        return GroupService.get_cached_match_paths(self.db, project_id, group_id, scope)
+
     def reindex_all_groups(self, project_id: int) -> Dict[int, int]:
         """Recompute matches for all groups."""
         return GroupService.reindex_all_groups(self.db, project_id)
