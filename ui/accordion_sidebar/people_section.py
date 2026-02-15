@@ -1,5 +1,18 @@
 # ui/accordion_sidebar/people_section.py
-# People section - face clusters list
+# People section - face clusters list with Groups sub-section
+
+"""
+People Section with Groups Sub-Section
+
+Following Apple Photos / Google Photos / Lightroom patterns:
+- People (main section header)
+  - [Faces grid - detected face clusters]
+  - Groups (sub-section header)
+    - [Groups grid - user-defined groups]
+
+Groups appear as a collapsible sub-section within People,
+not as a separate top-level accordion section.
+"""
 
 import io
 import logging
@@ -12,6 +25,7 @@ from PySide6.QtCore import Signal, Qt, QObject, QSize, QRect, QPoint, QEvent
 from PySide6.QtGui import QPixmap, QImage
 from PySide6.QtWidgets import (
     QApplication,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QPushButton,
@@ -41,8 +55,19 @@ class PeopleSectionSignals(QObject):
 
 
 class PeopleSection(BaseSection):
-    """People section implementation showing detected face clusters."""
+    """
+    People section implementation showing detected face clusters
+    with Groups as an embedded sub-section.
 
+    Structure (following Apple Photos / Google Photos pattern):
+    - People (section header)
+      - [Search bar]
+      - [Face clusters grid]
+      - Groups (sub-section header, collapsible)
+        - [Groups grid with stacked avatars]
+    """
+
+    # Face cluster signals
     personSelected = Signal(str)  # person_branch_key
     contextMenuRequested = Signal(str, str)  # (branch_key, action)
     dragMergeRequested = Signal(str, str)  # (source_branch, target_branch)
@@ -50,6 +75,12 @@ class PeopleSection(BaseSection):
     undoMergeRequested = Signal()
     redoMergeRequested = Signal()
     peopleToolsRequested = Signal()
+
+    # Groups sub-section signals (forwarded from embedded GroupsSection)
+    groupSelected = Signal(int)          # group_id
+    createGroupRequested = Signal()      # Open create group dialog
+    editGroupRequested = Signal(int)     # group_id
+    deleteGroupRequested = Signal(int)   # group_id
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -65,6 +96,10 @@ class PeopleSection(BaseSection):
         self._all_data: List[Dict] = []  # Full list of people data
         self._search_text: str = ""
         self._count_label: Optional[QLabel] = None
+
+        # Groups sub-section state
+        self._groups_section: Optional["GroupsSubSection"] = None
+        self._groups_expanded: bool = True  # Default expanded
 
     def get_section_id(self) -> str:
         return "people"
@@ -285,8 +320,167 @@ class PeopleSection(BaseSection):
 
         main_layout.addWidget(scroll, 1)
 
-        logger.info(f"[PeopleSection] Grid built with {len(cards)} people (search enabled)")
+        # =====================================================================
+        # GROUPS SUB-SECTION (Apple Photos / Google Photos pattern)
+        # =====================================================================
+        groups_subsection = self._create_groups_subsection()
+        if groups_subsection:
+            main_layout.addWidget(groups_subsection)
+
+        logger.info(f"[PeopleSection] Grid built with {len(cards)} people + Groups sub-section")
         return main_container
+
+    def _create_groups_subsection(self) -> Optional[QWidget]:
+        """
+        Create the Groups sub-section with collapsible header.
+
+        Following Apple Photos pattern:
+        - "Groups" header with expand/collapse chevron
+        - Grid of group cards with stacked avatars
+        - "+ New Group" button
+        """
+        try:
+            container = QWidget()
+            container.setObjectName("GroupsSubSection")
+            layout = QVBoxLayout(container)
+            layout.setContentsMargins(0, 8, 0, 0)
+            layout.setSpacing(4)
+
+            # Separator line
+            separator = QFrame()
+            separator.setFrameShape(QFrame.HLine)
+            separator.setStyleSheet("background: #dadce0; max-height: 1px;")
+            layout.addWidget(separator)
+
+            # Sub-section header: "Groups" with chevron and + button
+            header = QWidget()
+            header.setStyleSheet("""
+                QWidget {
+                    background: transparent;
+                }
+                QWidget:hover {
+                    background: rgba(0, 0, 0, 0.03);
+                }
+            """)
+            header.setCursor(Qt.PointingHandCursor)
+            header_layout = QHBoxLayout(header)
+            header_layout.setContentsMargins(8, 6, 8, 6)
+            header_layout.setSpacing(8)
+
+            # Chevron for expand/collapse
+            self._groups_chevron = QLabel("▼" if self._groups_expanded else "▶")
+            self._groups_chevron.setStyleSheet("font-size: 10px; color: #5f6368;")
+            header_layout.addWidget(self._groups_chevron)
+
+            # "Groups" label with icon
+            groups_icon = QLabel("👨‍👩‍👧‍👦")
+            groups_icon.setStyleSheet("font-size: 14px;")
+            header_layout.addWidget(groups_icon)
+
+            groups_label = QLabel(tr("sidebar.header_groups") if callable(tr) else "Groups")
+            groups_label.setStyleSheet("font-weight: 600; font-size: 11pt; color: #202124;")
+            header_layout.addWidget(groups_label)
+
+            header_layout.addStretch()
+
+            # Groups count badge
+            self._groups_count_badge = QLabel("")
+            self._groups_count_badge.setStyleSheet("""
+                background: #e8f0fe;
+                color: #1a73e8;
+                font-size: 9pt;
+                font-weight: 600;
+                padding: 2px 8px;
+                border-radius: 10px;
+            """)
+            header_layout.addWidget(self._groups_count_badge)
+
+            # "+ New Group" button
+            new_group_btn = QToolButton()
+            new_group_btn.setText("+")
+            new_group_btn.setToolTip(tr("sidebar.groups_actions.create") if callable(tr) else "Create New Group")
+            new_group_btn.setCursor(Qt.PointingHandCursor)
+            new_group_btn.setAutoRaise(True)
+            new_group_btn.setFixedSize(24, 24)
+            new_group_btn.setStyleSheet("""
+                QToolButton {
+                    border: 1px solid #dadce0;
+                    border-radius: 6px;
+                    background: #fff;
+                    font-size: 14px;
+                    font-weight: 600;
+                    color: #1a73e8;
+                }
+                QToolButton:hover { background: #e8f0fe; }
+                QToolButton:pressed { background: #d2e3fc; }
+            """)
+            new_group_btn.clicked.connect(self._on_create_group_clicked)
+            header_layout.addWidget(new_group_btn)
+
+            # Make header clickable for expand/collapse
+            header.mousePressEvent = lambda e: self._toggle_groups_expanded()
+
+            layout.addWidget(header)
+
+            # Groups content container (collapsible)
+            self._groups_content = QWidget()
+            self._groups_content.setVisible(self._groups_expanded)
+            groups_content_layout = QVBoxLayout(self._groups_content)
+            groups_content_layout.setContentsMargins(8, 4, 8, 8)
+            groups_content_layout.setSpacing(8)
+
+            # Create and embed GroupsSubSection
+            # Note: parent must be a QWidget, not PeopleSection (which is QObject-based)
+            self._groups_section = GroupsSubSection(self.project_id, self._groups_content)
+            self._groups_section.groupSelected.connect(self.groupSelected.emit)
+            self._groups_section.editGroupRequested.connect(self.editGroupRequested.emit)
+            self._groups_section.deleteGroupRequested.connect(self.deleteGroupRequested.emit)
+            self._groups_section.groupsLoaded.connect(self._on_groups_loaded)
+
+            groups_content_layout.addWidget(self._groups_section)
+
+            layout.addWidget(self._groups_content)
+
+            # Load groups data
+            self._groups_section.load_groups()
+
+            logger.info("[PeopleSection] Groups sub-section created")
+            return container
+
+        except Exception as e:
+            logger.error(f"[PeopleSection] Failed to create Groups sub-section: {e}", exc_info=True)
+            return None
+
+    def _toggle_groups_expanded(self):
+        """Toggle the Groups sub-section expand/collapse state."""
+        self._groups_expanded = not self._groups_expanded
+
+        if hasattr(self, '_groups_chevron') and isValid(self._groups_chevron):
+            self._groups_chevron.setText("▼" if self._groups_expanded else "▶")
+
+        if hasattr(self, '_groups_content') and isValid(self._groups_content):
+            self._groups_content.setVisible(self._groups_expanded)
+
+        logger.debug(f"[PeopleSection] Groups sub-section {'expanded' if self._groups_expanded else 'collapsed'}")
+
+    def _on_groups_loaded(self, count: int):
+        """Update groups count badge when groups are loaded."""
+        if hasattr(self, '_groups_count_badge') and isValid(self._groups_count_badge):
+            if count > 0:
+                self._groups_count_badge.setText(str(count))
+                self._groups_count_badge.setVisible(True)
+            else:
+                self._groups_count_badge.setVisible(False)
+
+    def _on_create_group_clicked(self):
+        """Handle create group button click."""
+        logger.info("[PeopleSection] Create group requested")
+        self.createGroupRequested.emit()
+
+    def reload_groups(self):
+        """Public method to reload the Groups sub-section."""
+        if self._groups_section and isValid(self._groups_section):
+            self._groups_section.load_groups()
 
     # --- Search/Filter helpers ---
     def _on_search_changed(self, text: str):
@@ -774,4 +968,414 @@ class PersonCard(QWidget):
         self.setProperty("dragTarget", enabled)
         self.style().unpolish(self)
         self.style().polish(self)
+
+
+# =============================================================================
+# GROUPS SUB-SECTION (Embedded in People Section)
+# =============================================================================
+
+class GroupsSubSection(QWidget):
+    """
+    Embedded Groups sub-section widget for displaying user-defined groups
+    within the People section.
+
+    This follows the Apple Photos / Google Photos pattern where Groups
+    appears as a sub-section under People, not a separate sidebar section.
+
+    Features:
+    - Grid of group cards with stacked member avatars
+    - Search/filter functionality
+    - Context menu for edit/delete
+    - Signals for group selection and actions
+    """
+
+    # Signals
+    groupSelected = Signal(int)          # group_id
+    editGroupRequested = Signal(int)     # group_id
+    deleteGroupRequested = Signal(int)   # group_id
+    groupsLoaded = Signal(int)           # count of groups loaded
+
+    def __init__(self, project_id: Optional[int], parent=None):
+        super().__init__(parent)
+        self.project_id = project_id
+        self._cards: Dict[int, "GroupSubSectionCard"] = {}
+        self._all_groups: List[Dict] = []
+        self._search_text: str = ""
+
+        self._layout = QVBoxLayout(self)
+        self._layout.setContentsMargins(0, 0, 0, 0)
+        self._layout.setSpacing(8)
+
+        # Placeholder until data loads
+        self._content_widget: Optional[QWidget] = None
+        self._show_loading()
+
+    def _show_loading(self):
+        """Show loading placeholder."""
+        if self._content_widget:
+            self._content_widget.setParent(None)
+            self._content_widget.deleteLater()
+
+        loading = QLabel(tr("sidebar.groups.loading") if callable(tr) else "Loading groups...")
+        loading.setAlignment(Qt.AlignCenter)
+        loading.setStyleSheet("padding: 16px; color: #666; font-style: italic;")
+        self._layout.addWidget(loading)
+        self._content_widget = loading
+
+    def _show_empty_state(self):
+        """Show empty state with hint."""
+        if self._content_widget:
+            self._content_widget.setParent(None)
+            self._content_widget.deleteLater()
+
+        container = QWidget()
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setAlignment(Qt.AlignCenter)
+
+        empty_label = QLabel(tr("sidebar.groups.empty_hint") if callable(tr) else "No groups yet.\nCreate a group to find photos where people appear together.")
+        empty_label.setAlignment(Qt.AlignCenter)
+        empty_label.setWordWrap(True)
+        empty_label.setStyleSheet("color: #666; font-size: 10pt; padding: 8px;")
+        layout.addWidget(empty_label)
+
+        self._layout.addWidget(container)
+        self._content_widget = container
+
+    def load_groups(self):
+        """Load groups data from GroupService."""
+        if not self.project_id:
+            logger.warning("[GroupsSubSection] No project_id set")
+            self._show_empty_state()
+            self.groupsLoaded.emit(0)
+            return
+
+        def work():
+            try:
+                from services.group_service import GroupService
+                service = GroupService.instance()
+                groups = service.get_groups(self.project_id)
+                logger.info(f"[GroupsSubSection] Loaded {len(groups)} groups")
+                return groups
+            except Exception as e:
+                logger.error(f"[GroupsSubSection] Failed to load groups: {e}", exc_info=True)
+                return []
+
+        def on_complete():
+            try:
+                groups = work()
+                # Use QTimer to update UI on main thread
+                from PySide6.QtCore import QTimer
+                QTimer.singleShot(0, lambda: self._populate_groups(groups))
+            except Exception as e:
+                logger.error(f"[GroupsSubSection] Error in worker: {e}", exc_info=True)
+
+        threading.Thread(target=on_complete, daemon=True).start()
+
+    def _populate_groups(self, groups: List[Dict]):
+        """Populate the groups grid with data."""
+        self._all_groups = groups
+
+        if self._content_widget:
+            self._content_widget.setParent(None)
+            self._content_widget.deleteLater()
+            self._content_widget = None
+
+        # Clear cards cache
+        self._cards.clear()
+
+        if not groups:
+            self._show_empty_state()
+            self.groupsLoaded.emit(0)
+            return
+
+        # Main container
+        container = QWidget()
+        container_layout = QVBoxLayout(container)
+        container_layout.setContentsMargins(0, 0, 0, 0)
+        container_layout.setSpacing(8)
+
+        # Search bar if multiple groups
+        if len(groups) > 3:
+            search = QLineEdit()
+            search.setPlaceholderText("Search groups...")
+            search.setClearButtonEnabled(True)
+            search.setStyleSheet("""
+                QLineEdit {
+                    padding: 4px 8px;
+                    border: 1px solid #dadce0;
+                    border-radius: 4px;
+                    background: #fff;
+                    font-size: 9pt;
+                }
+                QLineEdit:focus {
+                    border: 1px solid #1a73e8;
+                }
+            """)
+            search.textChanged.connect(self._on_search_changed)
+            container_layout.addWidget(search)
+
+        # Groups grid
+        grid_widget = QWidget()
+        self._grid_layout = QGridLayout(grid_widget)
+        self._grid_layout.setContentsMargins(0, 0, 0, 0)
+        self._grid_layout.setHorizontalSpacing(8)
+        self._grid_layout.setVerticalSpacing(8)
+
+        # Create cards
+        for idx, group in enumerate(groups):
+            try:
+                group_id = group["id"]
+                name = group["name"]
+                photo_count = group.get("photo_count", 0)
+                members = group.get("members", [])
+                pinned = group.get("pinned", False)
+
+                # Get member thumbnails for stacked avatars
+                member_pixmaps = []
+                for member in members[:4]:
+                    thumb = member.get("rep_thumb_png")
+                    if thumb:
+                        pix = self._load_thumbnail(thumb)
+                        if pix:
+                            member_pixmaps.append(pix)
+
+                card = GroupSubSectionCard(
+                    group_id=group_id,
+                    name=name,
+                    photo_count=photo_count,
+                    member_count=len(members),
+                    member_pixmaps=member_pixmaps,
+                    pinned=pinned
+                )
+
+                card.clicked.connect(self.groupSelected.emit)
+                card.edit_requested.connect(self.editGroupRequested.emit)
+                card.delete_requested.connect(self.deleteGroupRequested.emit)
+
+                self._cards[group_id] = card
+
+                # 2 columns layout
+                row = idx // 2
+                col = idx % 2
+                self._grid_layout.addWidget(card, row, col)
+
+            except Exception as e:
+                logger.error(f"[GroupsSubSection] Failed to create card: {e}", exc_info=True)
+
+        container_layout.addWidget(grid_widget)
+
+        self._layout.addWidget(container)
+        self._content_widget = container
+
+        self.groupsLoaded.emit(len(groups))
+        logger.info(f"[GroupsSubSection] Displayed {len(self._cards)} group cards")
+
+    def _on_search_changed(self, text: str):
+        """Filter group cards by search text."""
+        self._search_text = text.strip().lower()
+        visible_count = 0
+
+        for group_id, card in self._cards.items():
+            name = card.name.lower()
+            is_match = self._search_text in name if self._search_text else True
+
+            if isValid(card):
+                card.setVisible(is_match)
+                if is_match:
+                    visible_count += 1
+
+    def _load_thumbnail(self, thumb_blob: bytes) -> Optional[QPixmap]:
+        """Load thumbnail from PNG blob."""
+        try:
+            from PIL import Image
+
+            image_data = io.BytesIO(thumb_blob)
+            with Image.open(image_data) as img:
+                img_rgb = img.convert("RGB")
+                data = img_rgb.tobytes("raw", "RGB")
+                qimg = QImage(data, img_rgb.width, img_rgb.height, img_rgb.width * 3, QImage.Format_RGB888)
+                if qimg.isNull():
+                    return None
+                pixmap = QPixmap.fromImage(qimg)
+                return pixmap.scaled(28, 28, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        except Exception as e:
+            logger.warning(f"[GroupsSubSection] Failed to load thumbnail: {e}")
+            return None
+
+
+class GroupSubSectionCard(QWidget):
+    """
+    Compact group card for the embedded Groups sub-section.
+
+    Smaller than the standalone GroupCard to fit within the People section.
+    """
+
+    clicked = Signal(int)           # group_id
+    edit_requested = Signal(int)    # group_id
+    delete_requested = Signal(int)  # group_id
+
+    def __init__(
+        self,
+        group_id: int,
+        name: str,
+        photo_count: int,
+        member_count: int,
+        member_pixmaps: List[QPixmap],
+        pinned: bool = False,
+        parent=None
+    ):
+        super().__init__(parent)
+        self.group_id = group_id
+        self.name = name
+        self.photo_count = photo_count
+        self.member_count = member_count
+        self.member_pixmaps = member_pixmaps
+        self.pinned = pinned
+
+        self.setFixedHeight(56)
+        self.setMinimumWidth(120)
+        self.setCursor(Qt.PointingHandCursor)
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(8, 6, 8, 6)
+        layout.setSpacing(8)
+
+        # Stacked avatars (smaller size)
+        avatar_stack = self._create_stacked_avatars()
+        layout.addWidget(avatar_stack)
+
+        # Text info
+        text_container = QWidget()
+        text_layout = QVBoxLayout(text_container)
+        text_layout.setContentsMargins(0, 0, 0, 0)
+        text_layout.setSpacing(2)
+
+        # Group name with pin indicator
+        name_text = f"{'📌 ' if pinned else ''}{name}"
+        name_label = QLabel(name_text)
+        name_label.setStyleSheet("font-weight: 600; font-size: 10px; color: #202124;")
+        name_label.setWordWrap(False)
+        text_layout.addWidget(name_label)
+
+        # Counts
+        counts_label = QLabel(f"{photo_count} photos · {member_count} people")
+        counts_label.setStyleSheet("color: #5f6368; font-size: 9px;")
+        text_layout.addWidget(counts_label)
+
+        layout.addWidget(text_container, 1)
+
+        self.setStyleSheet("""
+            GroupSubSectionCard {
+                background: #fff;
+                border: 1px solid #e8eaed;
+                border-radius: 8px;
+            }
+            GroupSubSectionCard:hover {
+                background: #f8f9fa;
+                border: 1px solid #dadce0;
+            }
+            GroupSubSectionCard[selected="true"] {
+                background: #e8f0fe;
+                border: 1px solid #1a73e8;
+            }
+        """)
+
+    def _create_stacked_avatars(self) -> QLabel:
+        """Create stacked circular avatars (compact version)."""
+        from PySide6.QtGui import QPainter, QPainterPath, QColor, QPen, QFont
+
+        AVATAR_SIZE = 24
+        OVERLAP = 8
+        MAX_AVATARS = 3
+
+        pixmaps = self.member_pixmaps[:MAX_AVATARS]
+        count = len(pixmaps)
+
+        if count == 0:
+            label = QLabel("👥")
+            label.setFixedSize(AVATAR_SIZE, AVATAR_SIZE)
+            label.setAlignment(Qt.AlignCenter)
+            label.setStyleSheet(f"""
+                background: #e8eaed;
+                border-radius: {AVATAR_SIZE // 2}px;
+                font-size: 14px;
+            """)
+            return label
+
+        total_width = AVATAR_SIZE + (count - 1) * (AVATAR_SIZE - OVERLAP)
+
+        result = QPixmap(total_width, AVATAR_SIZE)
+        result.fill(Qt.transparent)
+
+        painter = QPainter(result)
+        painter.setRenderHint(QPainter.Antialiasing)
+
+        for i, pixmap in enumerate(pixmaps):
+            x_offset = i * (AVATAR_SIZE - OVERLAP)
+
+            # White border
+            border_path = QPainterPath()
+            border_path.addEllipse(x_offset, 0, AVATAR_SIZE, AVATAR_SIZE)
+            painter.setPen(QPen(QColor("#ffffff"), 2))
+            painter.setBrush(QColor("#ffffff"))
+            painter.drawPath(border_path)
+
+            # Avatar
+            clip_path = QPainterPath()
+            clip_path.addEllipse(x_offset + 1, 1, AVATAR_SIZE - 2, AVATAR_SIZE - 2)
+            painter.setClipPath(clip_path)
+
+            scaled = pixmap.scaled(AVATAR_SIZE - 2, AVATAR_SIZE - 2, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+            painter.drawPixmap(x_offset + 1, 1, scaled)
+            painter.setClipping(False)
+
+        # Extra members badge
+        if self.member_count > MAX_AVATARS:
+            extra = self.member_count - MAX_AVATARS
+            badge_size = 12
+            badge_x = total_width - badge_size
+            badge_y = AVATAR_SIZE - badge_size
+
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(QColor("#5f6368"))
+            painter.drawEllipse(badge_x, badge_y, badge_size, badge_size)
+
+            painter.setPen(QColor("#ffffff"))
+            font = QFont()
+            font.setPixelSize(7)
+            font.setBold(True)
+            painter.setFont(font)
+            painter.drawText(QRect(badge_x, badge_y, badge_size, badge_size), Qt.AlignCenter, f"+{extra}")
+
+        painter.end()
+
+        label = QLabel()
+        label.setFixedSize(total_width, AVATAR_SIZE)
+        label.setPixmap(result)
+        return label
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.clicked.emit(self.group_id)
+        super().mousePressEvent(event)
+
+    def contextMenuEvent(self, event):
+        """Show context menu for edit/delete."""
+        from PySide6.QtWidgets import QMenu
+        from PySide6.QtGui import QAction
+
+        menu = QMenu(self)
+
+        edit_action = QAction("✏️ Edit Group", self)
+        edit_action.triggered.connect(lambda: self.edit_requested.emit(self.group_id))
+        menu.addAction(edit_action)
+
+        menu.addSeparator()
+
+        delete_action = QAction("🗑️ Delete Group", self)
+        delete_action.triggered.connect(lambda: self.delete_requested.emit(self.group_id))
+        menu.addAction(delete_action)
+
+        menu.exec_(event.globalPos())
 
