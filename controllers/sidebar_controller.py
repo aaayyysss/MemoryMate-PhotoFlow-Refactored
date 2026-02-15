@@ -1,3 +1,6 @@
+# controllers/sidebar_controller.py
+# Version 11.01.01.03-19 dated 20260214
+
 """
 SidebarController - Sidebar Navigation Event Handling
 
@@ -47,6 +50,38 @@ class SidebarController:
             self.main.thumbnails.clear()
             self.main.thumbnails.load_thumbnails(self.main.grid.get_visible_paths())
 
+    def on_group_selected(self, group_id: int):
+        """Handle group selection — filter grid to show only group match photos."""
+        try:
+            from services.group_service import GroupService
+            from reference_db import ReferenceDB
+ 
+            db = ReferenceDB()
+            paths = GroupService.get_cached_match_paths(
+                db, self.main.grid.project_id, group_id
+            )
+            # Touch last_used_at
+            GroupService.touch_group(db, group_id)
+            db.close()
+ 
+            if hasattr(self.main.grid, "set_custom_paths"):
+                self.main.grid.set_custom_paths(paths, navigation_mode="group")
+            elif hasattr(self.main.grid, "filter_by_paths"):
+                self.main.grid.filter_by_paths(paths)
+            else:
+                # Fallback: use branch "all" and log
+                print(f"[SidebarController] Grid does not support custom paths for group filter (group_id={group_id}, {len(paths)} matches)")
+ 
+            if hasattr(self.main.grid, "list_view"):
+                self.main.grid.list_view.scrollToTop()
+ 
+        except Exception as e:
+            print(f"[SidebarController] Group selection failed: {e}")
+            import traceback
+            traceback.print_exc()
+ 
+
+
     def on_videos_selected(self):
         """Handle videos tab selection - show all videos for current project"""
         # 🎬 Phase 4: Videos support
@@ -55,31 +90,6 @@ class SidebarController:
 
         if getattr(self.main, "active_tag_filter", "all") != "all":
             self.main._apply_tag_filter(self.main.active_tag_filter)
-
-        if hasattr(self.main.grid, "list_view"):
-            self.main.grid.list_view.scrollToTop()
-
-        if self.main.thumbnails and hasattr(self.main.grid, "get_visible_paths"):
-            self.main.thumbnails.clear()
-            self.main.thumbnails.load_thumbnails(self.main.grid.get_visible_paths())
-
-    def on_group_selected(self, group_id: int):
-        """
-        Handle group selection - show photos where all group members appear together.
-
-        This implements the "Together (AND)" matching from the Groups feature.
-        Photos are filtered to show only those where ALL members of the group
-        are detected in the same image.
-
-        Args:
-            group_id: ID of the selected person group
-        """
-        if hasattr(self.main.grid, "set_group"):
-            self.main.grid.set_group(group_id)
-
-        # Clear any active tag filter for clean group view
-        if hasattr(self.main, "active_tag_filter"):
-            self.main.active_tag_filter = "all"
 
         if hasattr(self.main.grid, "list_view"):
             self.main.grid.list_view.scrollToTop()
