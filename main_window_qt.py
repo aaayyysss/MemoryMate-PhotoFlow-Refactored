@@ -1,5 +1,5 @@
 # main_window_qt.py
-# Version 10.01.01.06 dated 20260202
+# Version 10.01.01.07 dated 20260214
 # Added PhotoDeletionService with comprehensive delete functionality
 # Enhanced repositories with utility methods for future migrations
 # Current LOC: ~2,640 (added photo deletion feature)
@@ -1051,6 +1051,11 @@ class MainWindow(QMainWindow):
 
         self.sidebar.on_branch_selected = self.sidebar_controller.on_branch_selected
         self.sidebar.folderSelected.connect(self.sidebar_controller.on_folder_selected)
+        
+        # People Groups: connect selectGroup signal
+        if hasattr(self.sidebar, 'selectGroup'):
+            self.sidebar.selectGroup.connect(self.sidebar_controller.on_group_selected)
+        
         # 🎬 Phase 4: Videos support
         if hasattr(self.sidebar, 'selectVideos'):
             self.sidebar.selectVideos.connect(self.sidebar_controller.on_videos_selected)
