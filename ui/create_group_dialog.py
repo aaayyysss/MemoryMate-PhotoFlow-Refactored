@@ -1,25 +1,25 @@
 # ui/create_group_dialog.py
-# Dialog for creating person groups
-# Version: 1.0.0
+# Dialog for creating/editing person groups
+# Version: 1.1.0
 
 """
 CreateGroupDialog - Create/Edit person groups
 
 Multi-select dialog for choosing people to include in a group:
-- Grid of people with circular thumbnails
-- Multi-selection with checkboxes
+- Grid of people with circular thumbnails and file-path fallback
+- Visual selection with blue ring + checkmark overlay (Google Photos style)
 - Group name input with auto-suggestion
+- Edit mode: loads existing members pre-selected, saves via update_group
 - Pinned option
-
-Based on Apple Photos "Add to Group" flow and existing PeopleManagerDialog patterns.
 """
 
 import io
 import logging
+import os
 from typing import Optional, List, Dict, Set
 
-from PySide6.QtCore import Signal, Qt, QSize
-from PySide6.QtGui import QPixmap, QImage, QPainter, QPainterPath
+from PySide6.QtCore import Signal, Qt, QSize, QRect
+from PySide6.QtGui import QPixmap, QImage, QPainter, QPainterPath, QColor, QPen, QFont, QBrush
 from PySide6.QtWidgets import (
     QDialog,
     QVBoxLayout,
@@ -39,16 +39,18 @@ from translation_manager import tr
 
 logger = logging.getLogger(__name__)
 
+AVATAR_SIZE = 64
+CARD_WIDTH = 100
+CARD_HEIGHT = 120
+
 
 class PersonSelectCard(QWidget):
     """
-    Selectable person card for group creation.
+    Selectable person card with circular avatar and checkmark overlay.
 
-    Features:
-    - Circular avatar thumbnail
-    - Person name
-    - Checkbox for selection
-    - Visual highlight when selected
+    Selection style follows Google Photos / Apple Photos pattern:
+    - Unselected: subtle border, neutral background
+    - Selected: blue ring around avatar, blue checkmark badge, tinted background
     """
 
     toggled = Signal(str, bool)  # (branch_key, is_selected)
@@ -65,85 +67,125 @@ class PersonSelectCard(QWidget):
         self.branch_key = branch_key
         self.display_name = display_name
         self._selected = selected
+        self._base_thumbnail = thumbnail  # keep original for re-rendering
 
-        self.setFixedSize(100, 110)
+        self.setFixedSize(CARD_WIDTH, CARD_HEIGHT)
         self.setCursor(Qt.PointingHandCursor)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(6, 6, 6, 6)
-        layout.setSpacing(4)
+        layout.setContentsMargins(6, 6, 6, 4)
+        layout.setSpacing(3)
         layout.setAlignment(Qt.AlignCenter)
 
-        # Checkbox (small, top-right overlay - handled via click on whole card)
-        # For simplicity, we make the whole card clickable
-
-        # Avatar
-        avatar = QLabel()
-        avatar.setFixedSize(56, 56)
-        avatar.setAlignment(Qt.AlignCenter)
-
-        if thumbnail and not thumbnail.isNull():
-            circular = self._make_circular(thumbnail, 56)
-            avatar.setPixmap(circular)
-        else:
-            avatar.setText("👤")
-            avatar.setStyleSheet("background: #e8eaed; border-radius: 28px; font-size: 24px;")
-
-        layout.addWidget(avatar, alignment=Qt.AlignCenter)
+        # Avatar container (holds the rendered circular pixmap + overlay)
+        self._avatar_label = QLabel()
+        self._avatar_label.setFixedSize(AVATAR_SIZE, AVATAR_SIZE)
+        self._avatar_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self._avatar_label, alignment=Qt.AlignCenter)
 
         # Name
         name_label = QLabel(display_name)
         name_label.setAlignment(Qt.AlignCenter)
         name_label.setWordWrap(True)
+        name_label.setMaximumHeight(32)
         name_label.setStyleSheet("font-size: 10px; color: #202124;")
         layout.addWidget(name_label)
 
-        # Selection indicator (checkmark overlay)
-        self._update_style()
+        self._render_avatar()
+        self._update_card_style()
 
-    def _make_circular(self, pixmap: QPixmap, size: int) -> QPixmap:
-        """Create circular version of pixmap."""
-        scaled = pixmap.scaled(size, size, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
-        mask = QPixmap(size, size)
-        mask.fill(Qt.transparent)
+    def _render_avatar(self):
+        """Render circular avatar with selection ring and checkmark."""
+        size = AVATAR_SIZE
+        result = QPixmap(size, size)
+        result.fill(Qt.transparent)
 
-        painter = QPainter(mask)
+        painter = QPainter(result)
         painter.setRenderHint(QPainter.Antialiasing)
-        path = QPainterPath()
-        path.addEllipse(0, 0, size, size)
-        painter.setClipPath(path)
-        painter.drawPixmap(0, 0, scaled)
+
+        if self._base_thumbnail and not self._base_thumbnail.isNull():
+            # Clip to circle and draw thumbnail
+            scaled = self._base_thumbnail.scaled(
+                size, size, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation
+            )
+            clip = QPainterPath()
+            clip.addEllipse(2, 2, size - 4, size - 4)
+            painter.setClipPath(clip)
+            # Center the scaled image
+            x_off = (scaled.width() - size) // 2
+            y_off = (scaled.height() - size) // 2
+            painter.drawPixmap(-x_off + 2, -y_off + 2, scaled)
+            painter.setClipping(False)
+        else:
+            # Placeholder circle
+            painter.setBrush(QColor("#e8eaed"))
+            painter.setPen(Qt.NoPen)
+            painter.drawEllipse(2, 2, size - 4, size - 4)
+            painter.setPen(QColor("#9aa0a6"))
+            font = QFont()
+            font.setPixelSize(28)
+            painter.setFont(font)
+            painter.drawText(QRect(0, 0, size, size), Qt.AlignCenter, "\U0001F464")
+
+        if self._selected:
+            # Blue selection ring
+            pen = QPen(QColor("#1a73e8"), 3)
+            painter.setPen(pen)
+            painter.setBrush(Qt.NoBrush)
+            painter.drawEllipse(1, 1, size - 2, size - 2)
+
+            # Checkmark badge (bottom-right)
+            badge_size = 20
+            badge_x = size - badge_size - 1
+            badge_y = size - badge_size - 1
+
+            # White circle behind badge
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(QColor("#ffffff"))
+            painter.drawEllipse(badge_x - 1, badge_y - 1, badge_size + 2, badge_size + 2)
+
+            # Blue circle
+            painter.setBrush(QColor("#1a73e8"))
+            painter.drawEllipse(badge_x, badge_y, badge_size, badge_size)
+
+            # White checkmark
+            painter.setPen(QPen(QColor("#ffffff"), 2.0))
+            cx = badge_x + badge_size // 2
+            cy = badge_y + badge_size // 2
+            painter.drawLine(cx - 4, cy, cx - 1, cy + 3)
+            painter.drawLine(cx - 1, cy + 3, cx + 5, cy - 3)
+
         painter.end()
+        self._avatar_label.setPixmap(result)
 
-        return mask
-
-    def _update_style(self):
-        """Update visual style based on selection state."""
+    def _update_card_style(self):
+        """Update card background based on selection state."""
         if self._selected:
             self.setStyleSheet("""
                 PersonSelectCard {
-                    background: rgba(26, 115, 232, 0.12);
+                    background: rgba(26, 115, 232, 0.08);
                     border: 2px solid #1a73e8;
-                    border-radius: 8px;
+                    border-radius: 10px;
                 }
             """)
         else:
             self.setStyleSheet("""
                 PersonSelectCard {
                     background: transparent;
-                    border: 1px solid #dadce0;
-                    border-radius: 8px;
+                    border: 1px solid transparent;
+                    border-radius: 10px;
                 }
                 PersonSelectCard:hover {
-                    background: rgba(26, 115, 232, 0.04);
-                    border: 1px solid #1a73e8;
+                    background: rgba(0, 0, 0, 0.04);
+                    border: 1px solid #dadce0;
                 }
             """)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
             self._selected = not self._selected
-            self._update_style()
+            self._render_avatar()
+            self._update_card_style()
             self.toggled.emit(self.branch_key, self._selected)
         super().mousePressEvent(event)
 
@@ -152,19 +194,16 @@ class PersonSelectCard(QWidget):
 
     def set_selected(self, selected: bool):
         self._selected = selected
-        self._update_style()
+        self._render_avatar()
+        self._update_card_style()
 
 
 class CreateGroupDialog(QDialog):
     """
     Dialog for creating or editing a person group.
 
-    Usage:
-        dialog = CreateGroupDialog(project_id, parent=main_window)
-        if dialog.exec() == QDialog.Accepted:
-            group_name = dialog.group_name
-            selected_people = dialog.selected_people
-            is_pinned = dialog.is_pinned
+    In edit mode, loads existing group data and saves changes via
+    GroupService.update_group() on accept.
     """
 
     def __init__(
@@ -178,7 +217,7 @@ class CreateGroupDialog(QDialog):
         self.edit_group_id = edit_group_id
         self.is_edit_mode = edit_group_id is not None
 
-        # Results
+        # Results (read by caller after exec)
         self.group_name: str = ""
         self.selected_people: List[str] = []
         self.is_pinned: bool = False
@@ -195,22 +234,21 @@ class CreateGroupDialog(QDialog):
 
     def _setup_ui(self):
         """Setup dialog UI."""
-        title = tr("dialogs.edit_group.title") if self.is_edit_mode else tr("dialogs.create_group.title")
-        title = title if callable(tr) else ("Edit Group" if self.is_edit_mode else "Create Group")
+        title = "Edit Group" if self.is_edit_mode else "Create Group"
         self.setWindowTitle(title)
-        self.setMinimumSize(500, 600)
-        self.resize(600, 700)
+        self.setMinimumSize(520, 600)
+        self.resize(620, 720)
 
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(16, 16, 16, 16)
-        main_layout.setSpacing(16)
+        main_layout.setContentsMargins(20, 20, 20, 20)
+        main_layout.setSpacing(14)
 
         # Header
         header_label = QLabel(
-            tr("dialogs.create_group.header") if callable(tr)
+            "Edit group members" if self.is_edit_mode
             else "Select 2 or more people to create a group"
         )
-        header_label.setStyleSheet("font-size: 13pt; color: #202124;")
+        header_label.setStyleSheet("font-size: 13pt; color: #202124; font-weight: 500;")
         main_layout.addWidget(header_label)
 
         # Group name input
@@ -219,15 +257,12 @@ class CreateGroupDialog(QDialog):
         name_layout.setContentsMargins(0, 0, 0, 0)
         name_layout.setSpacing(8)
 
-        name_label = QLabel(tr("dialogs.create_group.name") if callable(tr) else "Group name:")
+        name_label = QLabel("Group name:")
         name_label.setStyleSheet("font-size: 11pt;")
         name_layout.addWidget(name_label)
 
         self._name_input = QLineEdit()
-        self._name_input.setPlaceholderText(
-            tr("dialogs.create_group.name_placeholder") if callable(tr)
-            else "e.g., Family, Trip Buddies"
-        )
+        self._name_input.setPlaceholderText("e.g., Family, Trip Buddies")
         self._name_input.setStyleSheet("""
             QLineEdit {
                 padding: 8px 12px;
@@ -248,36 +283,34 @@ class CreateGroupDialog(QDialog):
         self._selection_label.setStyleSheet("color: #5f6368; font-size: 10pt;")
         main_layout.addWidget(self._selection_label)
 
-        # People grid
+        # People grid in scroll area
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         scroll.setFrameShape(QFrame.NoFrame)
-        scroll.setStyleSheet("background: #fafafa; border-radius: 8px;")
+        scroll.setStyleSheet("QScrollArea { background: #fafafa; border-radius: 8px; }")
 
         self._grid_container = QWidget()
         self._grid_layout = QGridLayout(self._grid_container)
-        self._grid_layout.setContentsMargins(8, 8, 8, 8)
-        self._grid_layout.setSpacing(10)
+        self._grid_layout.setContentsMargins(10, 10, 10, 10)
+        self._grid_layout.setSpacing(8)
 
         scroll.setWidget(self._grid_container)
         main_layout.addWidget(scroll, 1)
 
-        # Options
+        # Options row
         options_container = QWidget()
         options_layout = QHBoxLayout(options_container)
         options_layout.setContentsMargins(0, 0, 0, 0)
 
-        self._pinned_checkbox = QCheckBox(
-            tr("dialogs.create_group.pinned") if callable(tr) else "Pin this group"
-        )
+        self._pinned_checkbox = QCheckBox("Pin this group")
         self._pinned_checkbox.setStyleSheet("font-size: 10pt;")
         options_layout.addWidget(self._pinned_checkbox)
         options_layout.addStretch()
 
         main_layout.addWidget(options_container)
 
-        # Buttons
+        # Buttons row
         button_container = QWidget()
         button_layout = QHBoxLayout(button_container)
         button_layout.setContentsMargins(0, 0, 0, 0)
@@ -285,7 +318,7 @@ class CreateGroupDialog(QDialog):
 
         button_layout.addStretch()
 
-        cancel_btn = QPushButton(tr("dialogs.cancel") if callable(tr) else "Cancel")
+        cancel_btn = QPushButton("Cancel")
         cancel_btn.setStyleSheet("""
             QPushButton {
                 padding: 10px 24px;
@@ -299,10 +332,8 @@ class CreateGroupDialog(QDialog):
         cancel_btn.clicked.connect(self.reject)
         button_layout.addWidget(cancel_btn)
 
-        self._create_btn = QPushButton(
-            tr("dialogs.save") if self.is_edit_mode else tr("dialogs.create")
-            if callable(tr) else ("Save" if self.is_edit_mode else "Create Group")
-        )
+        btn_text = "Save" if self.is_edit_mode else "Create Group"
+        self._create_btn = QPushButton(btn_text)
         self._create_btn.setEnabled(False)
         self._create_btn.setStyleSheet("""
             QPushButton {
@@ -323,7 +354,7 @@ class CreateGroupDialog(QDialog):
         main_layout.addWidget(button_container)
 
     def _load_people(self):
-        """Load people from database."""
+        """Load people from database with thumbnail fallback to file path."""
         try:
             from services.group_service import GroupService
             service = GroupService.instance()
@@ -331,15 +362,19 @@ class CreateGroupDialog(QDialog):
 
             logger.info(f"[CreateGroupDialog] Loaded {len(people)} people")
 
-            columns = 4
+            columns = 5
             for idx, person in enumerate(people):
                 branch_key = person["branch_key"]
                 display_name = person["display_name"]
                 thumb_blob = person.get("rep_thumb_png")
+                rep_path = person.get("rep_path")
 
+                # Try BLOB first, then file path
                 thumbnail = None
                 if thumb_blob:
-                    thumbnail = self._load_thumbnail(thumb_blob)
+                    thumbnail = self._load_thumbnail_blob(thumb_blob)
+                if thumbnail is None and rep_path:
+                    thumbnail = self._load_thumbnail_file(rep_path)
 
                 card = PersonSelectCard(
                     branch_key=branch_key,
@@ -356,8 +391,8 @@ class CreateGroupDialog(QDialog):
         except Exception as e:
             logger.error(f"[CreateGroupDialog] Failed to load people: {e}", exc_info=True)
 
-    def _load_thumbnail(self, thumb_blob: bytes) -> Optional[QPixmap]:
-        """Load thumbnail from PNG blob."""
+    def _load_thumbnail_blob(self, thumb_blob: bytes) -> Optional[QPixmap]:
+        """Load thumbnail from in-DB PNG blob."""
         try:
             from PIL import Image
 
@@ -370,7 +405,31 @@ class CreateGroupDialog(QDialog):
                     return None
                 return QPixmap.fromImage(qimg)
         except Exception as e:
-            logger.warning(f"[CreateGroupDialog] Failed to load thumbnail: {e}")
+            logger.warning(f"[CreateGroupDialog] Failed to load thumbnail blob: {e}")
+            return None
+
+    def _load_thumbnail_file(self, rep_path: str) -> Optional[QPixmap]:
+        """Load thumbnail from file path (fallback when blob is unavailable)."""
+        try:
+            if not os.path.exists(rep_path):
+                return None
+
+            from PIL import Image
+
+            with Image.open(rep_path) as img:
+                img_rgb = img.convert("RGB")
+                # Resize large images to avoid memory issues
+                if img_rgb.width > 256 or img_rgb.height > 256:
+                    img_rgb.thumbnail((256, 256), Image.Resampling.LANCZOS)
+
+                data = img_rgb.tobytes("raw", "RGB")
+                stride = img_rgb.width * 3
+                qimg = QImage(data, img_rgb.width, img_rgb.height, stride, QImage.Format_RGB888)
+                if qimg.isNull():
+                    return None
+                return QPixmap.fromImage(qimg)
+        except Exception as e:
+            logger.warning(f"[CreateGroupDialog] Failed to load thumbnail file {rep_path}: {e}")
             return None
 
     def _load_existing_group(self):
@@ -387,11 +446,16 @@ class CreateGroupDialog(QDialog):
             self._name_input.setText(group.get("name", ""))
             self._pinned_checkbox.setChecked(group.get("is_pinned", False))
 
-            for member in group.get("members", []):
+            members = group.get("members", [])
+            logger.info(f"[CreateGroupDialog] Edit mode: group has {len(members)} members")
+
+            for member in members:
                 branch_key = member.get("branch_key", "")
                 if branch_key in self._people_cards:
                     self._people_cards[branch_key].set_selected(True)
                     self._selected_branch_keys.add(branch_key)
+                else:
+                    logger.warning(f"[CreateGroupDialog] Member {branch_key} not found in people cards")
 
             self._update_selection_ui()
 
@@ -419,9 +483,9 @@ class CreateGroupDialog(QDialog):
             self._selection_label.setStyleSheet("color: #ea4335; font-size: 10pt;")
         else:
             self._selection_label.setText(f"{count} people selected")
-            self._selection_label.setStyleSheet("color: #1a73e8; font-size: 10pt;")
+            self._selection_label.setStyleSheet("color: #1a73e8; font-size: 10pt; font-weight: 600;")
 
-        # Enable create button if >= 2 people selected
+        # Enable create/save button when >= 2 people selected
         self._create_btn.setEnabled(count >= 2)
 
         # Auto-suggest group name if empty
@@ -430,19 +494,16 @@ class CreateGroupDialog(QDialog):
             for branch_key in list(self._selected_branch_keys)[:3]:
                 if branch_key in self._people_cards:
                     names.append(self._people_cards[branch_key].display_name)
-
             suggested = " + ".join(names)
             if count > 3:
                 suggested += f" + {count - 3} more"
-
             self._name_input.setPlaceholderText(f"Suggested: {suggested}")
 
     def _on_create(self):
         """Handle create/save button click."""
-        # Get group name (use suggested if empty)
+        # Resolve group name
         name = self._name_input.text().strip()
         if not name:
-            # Use auto-suggested name
             names = []
             for branch_key in list(self._selected_branch_keys)[:3]:
                 if branch_key in self._people_cards:
@@ -454,5 +515,26 @@ class CreateGroupDialog(QDialog):
         self.group_name = name
         self.selected_people = list(self._selected_branch_keys)
         self.is_pinned = self._pinned_checkbox.isChecked()
+
+        # In edit mode, save changes immediately via service
+        if self.is_edit_mode:
+            try:
+                from services.group_service import GroupService
+                service = GroupService.instance()
+                service.update_group(
+                    group_id=self.edit_group_id,
+                    name=self.group_name,
+                    branch_keys=self.selected_people,
+                    is_pinned=self.is_pinned,
+                )
+                logger.info(
+                    f"[CreateGroupDialog] Updated group {self.edit_group_id}: "
+                    f"name='{self.group_name}', members={len(self.selected_people)}"
+                )
+            except Exception as e:
+                logger.error(f"[CreateGroupDialog] Failed to update group: {e}", exc_info=True)
+                from PySide6.QtWidgets import QMessageBox
+                QMessageBox.critical(self, "Update Failed", f"Failed to update group:\n{e}")
+                return
 
         self.accept()
