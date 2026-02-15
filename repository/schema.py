@@ -19,7 +19,7 @@ Schema Version: 2.0.0
 - Adds schema_version tracking table
 """
 
-SCHEMA_VERSION = "9.4.0"
+SCHEMA_VERSION = "9.5.0"
 
 # Complete schema SQL - executed as a script for new databases
 SCHEMA_SQL = """
@@ -62,6 +62,9 @@ VALUES ('9.2.0', 'Add GPS columns to photo_metadata for location-based browsing'
 
 INSERT OR IGNORE INTO schema_version (version, description)
 VALUES ('9.3.0', 'Add image_content_hash for pixel-based embedding staleness detection');
+
+INSERT OR IGNORE INTO schema_version (version, description)
+VALUES ('9.5.0', 'People Groups feature for finding photos where multiple people appear together');
 
 -- ============================================================================
 -- FACE RECOGNITION TABLES
@@ -651,6 +654,90 @@ CREATE INDEX IF NOT EXISTS idx_media_stack_member_stack_id ON media_stack_member
 CREATE INDEX IF NOT EXISTS idx_media_stack_member_photo_id ON media_stack_member(photo_id);
 
 CREATE INDEX IF NOT EXISTS idx_media_stack_meta_project_id ON media_stack_meta(project_id);
+
+-- ============================================================================
+-- PEOPLE GROUPS (v9.5.0: Groups of people for finding photos together)
+-- ============================================================================
+
+-- Person groups (user-defined collections of 2+ people)
+-- Scoped per project. Groups allow users to find photos where specific
+-- people appear together (AND mode) or within a time window (event mode).
+CREATE TABLE IF NOT EXISTS person_groups (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL,
+    group_key TEXT NOT NULL,        -- Unique identifier (e.g., "group_001")
+    display_name TEXT NOT NULL,     -- User-editable name
+    description TEXT,               -- Optional description
+    icon TEXT,                      -- Emoji or color code for visual identification
+    is_deleted INTEGER DEFAULT 0,   -- Soft delete flag
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+    UNIQUE(project_id, group_key)
+);
+
+-- Person group members (many-to-many: groups → people/face_clusters)
+-- Maps which people belong to each group
+CREATE TABLE IF NOT EXISTS person_group_members (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    group_id INTEGER NOT NULL,
+    project_id INTEGER NOT NULL,
+    branch_key TEXT NOT NULL,       -- References face_branch_reps.branch_key
+    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (group_id) REFERENCES person_groups(id) ON DELETE CASCADE,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+    UNIQUE(group_id, branch_key)
+);
+
+-- Person group matches (precomputed results for fast retrieval)
+-- Stores which photos/videos match each group's criteria
+-- Results are cached here to avoid expensive joins on every view
+CREATE TABLE IF NOT EXISTS person_group_matches (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    group_id INTEGER NOT NULL,
+    project_id INTEGER NOT NULL,
+    asset_type TEXT NOT NULL CHECK(asset_type IN ('photo', 'video')),
+    asset_id INTEGER NOT NULL,      -- References photo_metadata.id or video_metadata.id
+    asset_path TEXT NOT NULL,       -- Denormalized for fast grid display
+    match_mode TEXT NOT NULL CHECK(match_mode IN ('together', 'event_window')),
+    score REAL,                     -- Optional ranking score
+    matched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (group_id) REFERENCES person_groups(id) ON DELETE CASCADE,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+    UNIQUE(group_id, asset_type, asset_id, match_mode)
+);
+
+-- Person group state (tracks computation state and staleness)
+-- Allows UI to show "Stale" badge when results need refresh
+CREATE TABLE IF NOT EXISTS person_group_state (
+    group_id INTEGER PRIMARY KEY,
+    project_id INTEGER NOT NULL,
+    last_computed_at TIMESTAMP,
+    is_stale INTEGER DEFAULT 1,     -- 1 = needs (re)computation
+    match_mode TEXT DEFAULT 'together',  -- Last computed mode
+    member_count INTEGER DEFAULT 0,
+    result_count INTEGER DEFAULT 0,
+    params_json TEXT,               -- JSON: {window_seconds, min_confidence, include_videos}
+    error_message TEXT,             -- Last computation error if any
+    FOREIGN KEY (group_id) REFERENCES person_groups(id) ON DELETE CASCADE,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
+-- Person groups indexes (v9.5.0)
+CREATE INDEX IF NOT EXISTS idx_person_groups_project ON person_groups(project_id);
+CREATE INDEX IF NOT EXISTS idx_person_groups_project_deleted ON person_groups(project_id, is_deleted);
+CREATE INDEX IF NOT EXISTS idx_person_groups_key ON person_groups(project_id, group_key);
+
+CREATE INDEX IF NOT EXISTS idx_person_group_members_group ON person_group_members(group_id);
+CREATE INDEX IF NOT EXISTS idx_person_group_members_branch ON person_group_members(project_id, branch_key);
+CREATE INDEX IF NOT EXISTS idx_person_group_members_group_branch ON person_group_members(group_id, branch_key);
+
+CREATE INDEX IF NOT EXISTS idx_person_group_matches_group ON person_group_matches(group_id);
+CREATE INDEX IF NOT EXISTS idx_person_group_matches_group_mode ON person_group_matches(group_id, match_mode);
+CREATE INDEX IF NOT EXISTS idx_person_group_matches_project_asset ON person_group_matches(project_id, asset_type, asset_id);
+
+CREATE INDEX IF NOT EXISTS idx_person_group_state_project ON person_group_state(project_id);
+CREATE INDEX IF NOT EXISTS idx_person_group_state_stale ON person_group_state(project_id, is_stale);
 """
 
 
@@ -715,6 +802,11 @@ def get_expected_tables() -> list[str]:
         "media_stack_meta",
         # Face merge history (should have been included earlier)
         "face_merge_history",
+        # People Groups tables (v9.5.0)
+        "person_groups",
+        "person_group_members",
+        "person_group_matches",
+        "person_group_state",
     ]
 
 
@@ -808,6 +900,18 @@ def get_expected_indexes() -> list[str]:
         "idx_media_stack_member_stack_id",
         "idx_media_stack_member_photo_id",
         "idx_media_stack_meta_project_id",
+        # People Groups indexes (v9.5.0)
+        "idx_person_groups_project",
+        "idx_person_groups_project_deleted",
+        "idx_person_groups_key",
+        "idx_person_group_members_group",
+        "idx_person_group_members_branch",
+        "idx_person_group_members_group_branch",
+        "idx_person_group_matches_group",
+        "idx_person_group_matches_group_mode",
+        "idx_person_group_matches_project_asset",
+        "idx_person_group_state_project",
+        "idx_person_group_state_stale",
     ]
 
 
@@ -852,6 +956,85 @@ CREATE INDEX IF NOT EXISTS idx_photo_metadata_gps ON photo_metadata(project_id, 
 
 INSERT OR IGNORE INTO schema_version (version, description)
 VALUES ('9.3.0', 'Add image_content_hash for pixel-based embedding staleness detection');
+"""
+    },
+    "9.5.0": {
+        "description": "People Groups feature for finding photos where multiple people appear together",
+        "sql": """
+-- v9.5.0: People Groups feature
+-- Enables users to define groups of 2+ people and find photos where they appear together
+-- Supports two match modes: 'together' (same photo) and 'event_window' (same time window)
+
+INSERT OR IGNORE INTO schema_version (version, description)
+VALUES ('9.5.0', 'People Groups feature for finding photos where multiple people appear together');
+
+-- Person groups (user-defined collections of 2+ people)
+CREATE TABLE IF NOT EXISTS person_groups (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL,
+    group_key TEXT NOT NULL,
+    display_name TEXT NOT NULL,
+    description TEXT,
+    icon TEXT,
+    is_deleted INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+    UNIQUE(project_id, group_key)
+);
+
+CREATE TABLE IF NOT EXISTS person_group_members (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    group_id INTEGER NOT NULL,
+    project_id INTEGER NOT NULL,
+    branch_key TEXT NOT NULL,
+    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (group_id) REFERENCES person_groups(id) ON DELETE CASCADE,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+    UNIQUE(group_id, branch_key)
+);
+
+CREATE TABLE IF NOT EXISTS person_group_matches (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    group_id INTEGER NOT NULL,
+    project_id INTEGER NOT NULL,
+    asset_type TEXT NOT NULL CHECK(asset_type IN ('photo', 'video')),
+    asset_id INTEGER NOT NULL,
+    asset_path TEXT NOT NULL,
+    match_mode TEXT NOT NULL CHECK(match_mode IN ('together', 'event_window')),
+    score REAL,
+    matched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (group_id) REFERENCES person_groups(id) ON DELETE CASCADE,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+    UNIQUE(group_id, asset_type, asset_id, match_mode)
+);
+
+CREATE TABLE IF NOT EXISTS person_group_state (
+    group_id INTEGER PRIMARY KEY,
+    project_id INTEGER NOT NULL,
+    last_computed_at TIMESTAMP,
+    is_stale INTEGER DEFAULT 1,
+    match_mode TEXT DEFAULT 'together',
+    member_count INTEGER DEFAULT 0,
+    result_count INTEGER DEFAULT 0,
+    params_json TEXT,
+    error_message TEXT,
+    FOREIGN KEY (group_id) REFERENCES person_groups(id) ON DELETE CASCADE,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
+-- People Groups indexes
+CREATE INDEX IF NOT EXISTS idx_person_groups_project ON person_groups(project_id);
+CREATE INDEX IF NOT EXISTS idx_person_groups_project_deleted ON person_groups(project_id, is_deleted);
+CREATE INDEX IF NOT EXISTS idx_person_groups_key ON person_groups(project_id, group_key);
+CREATE INDEX IF NOT EXISTS idx_person_group_members_group ON person_group_members(group_id);
+CREATE INDEX IF NOT EXISTS idx_person_group_members_branch ON person_group_members(project_id, branch_key);
+CREATE INDEX IF NOT EXISTS idx_person_group_members_group_branch ON person_group_members(group_id, branch_key);
+CREATE INDEX IF NOT EXISTS idx_person_group_matches_group ON person_group_matches(group_id);
+CREATE INDEX IF NOT EXISTS idx_person_group_matches_group_mode ON person_group_matches(group_id, match_mode);
+CREATE INDEX IF NOT EXISTS idx_person_group_matches_project_asset ON person_group_matches(project_id, asset_type, asset_id);
+CREATE INDEX IF NOT EXISTS idx_person_group_state_project ON person_group_state(project_id);
+CREATE INDEX IF NOT EXISTS idx_person_group_state_stale ON person_group_state(project_id, is_stale);
 """
     }
 }

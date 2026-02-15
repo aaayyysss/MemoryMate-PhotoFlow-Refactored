@@ -630,6 +630,17 @@ class FaceClusterWorker(QRunnable):
             total_branches = cluster_count + (1 if noise_count > 0 else 0)
             logger.info(f"[FaceClusterWorker] Complete in {duration:.1f}s: {cluster_count} person clusters + {noise_count} unidentified faces")
 
+            # Mark all people groups as stale (v9.5.0)
+            # Group results need recomputation after face clustering changes
+            try:
+                from services.people_group_service import PeopleGroupService
+                group_service = PeopleGroupService(db)
+                stale_count = group_service.mark_all_groups_stale(self.project_id)
+                if stale_count > 0:
+                    logger.info(f"[FaceClusterWorker] Marked {stale_count} people groups as stale")
+            except Exception as group_error:
+                logger.warning(f"[FaceClusterWorker] Failed to mark groups stale: {group_error}")
+
             # Print performance summary
             print("\n")
             monitor.print_summary()

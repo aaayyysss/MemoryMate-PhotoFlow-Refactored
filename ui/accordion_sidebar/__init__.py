@@ -37,6 +37,7 @@ from .people_section import PeopleSection
 from .devices_section import DevicesSection
 from .quick_section import QuickSection
 from .locations_section import LocationsSection
+from .groups_section import GroupsSection
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +72,13 @@ class AccordionSidebar(QWidget):
     undoLastMergeRequested = Signal()
     redoLastUndoRequested = Signal()
     peopleToolsRequested = Signal()
+
+    # Groups section signals (v9.5.0)
+    selectGroup = Signal(int, str)  # (group_id, match_mode)
+    newGroupRequested = Signal()
+    editGroupRequested = Signal(int)  # group_id
+    deleteGroupRequested = Signal(int)  # group_id
+    recomputeGroupRequested = Signal(int, str)  # (group_id, match_mode)
 
     # Section expansion signal
     sectionExpanding = Signal(str)  # section_id
@@ -158,6 +166,7 @@ class AccordionSidebar(QWidget):
             "duplicates": DuplicatesSection(self),  # Phase 3A
             "videos": VideosSection(self),
             "people": PeopleSection(self),
+            "groups": GroupsSection(self),  # v9.5.0 People Groups
             "devices": DevicesSection(self),
             "locations": LocationsSection(self),
             "quick": QuickSection(self)
@@ -270,6 +279,20 @@ class AccordionSidebar(QWidget):
         quick = self.section_logic.get("quick")
         if quick and hasattr(quick, 'quickDateSelected'):
             quick.quickDateSelected.connect(self.selectDate.emit)
+
+        # Groups section (v9.5.0)
+        groups = self.section_logic.get("groups")
+        if groups:
+            if hasattr(groups, 'groupSelected'):
+                groups.groupSelected.connect(self._on_group_selected)
+            if hasattr(groups, 'newGroupRequested'):
+                groups.newGroupRequested.connect(self._on_new_group_requested)
+            if hasattr(groups, 'editGroupRequested'):
+                groups.editGroupRequested.connect(self.editGroupRequested.emit)
+            if hasattr(groups, 'deleteGroupRequested'):
+                groups.deleteGroupRequested.connect(self._on_delete_group_requested)
+            if hasattr(groups, 'recomputeRequested'):
+                groups.recomputeRequested.connect(self._on_recompute_group_requested)
 
     def _on_section_expand_requested(self, section_id: str):
         """Handle section expand request."""
@@ -773,6 +796,104 @@ class AccordionSidebar(QWidget):
             except Exception as e:
                 logger.exception(f"[AccordionSidebar] Delete failed: {e}")
                 QMessageBox.critical(None, "Delete Failed", f"Error: {e}")
+
+    # --- Groups Section Handlers (v9.5.0) ---
+
+    def _on_group_selected(self, group_id: int, match_mode: str):
+        """Handle group selection."""
+        logger.info(f"[AccordionSidebar] Group selected: {group_id} (mode={match_mode})")
+        self.selectGroup.emit(group_id, match_mode)
+
+    def _on_new_group_requested(self):
+        """Handle new group creation request."""
+        logger.info("[AccordionSidebar] New group requested")
+        try:
+            from ui.dialogs.new_group_dialog import NewGroupDialog
+
+            dialog = NewGroupDialog(project_id=self.project_id, db=self.db, parent=self)
+            dialog.groupCreated.connect(self._on_group_created)
+            dialog.exec_()
+
+        except Exception as e:
+            logger.error(f"[AccordionSidebar] Failed to show new group dialog: {e}")
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.critical(None, "Error", f"Failed to create group dialog:\n{str(e)}")
+
+    def _on_group_created(self, group_info: dict):
+        """Handle successful group creation."""
+        logger.info(f"[AccordionSidebar] Group created: {group_info}")
+
+        # Reload groups section
+        self._trigger_section_load("groups")
+
+        # Optionally trigger initial computation
+        group_id = group_info.get('id')
+        if group_id:
+            self._compute_group_matches(group_id, 'together')
+
+    def _on_delete_group_requested(self, group_id: int):
+        """Handle group deletion request."""
+        from PySide6.QtWidgets import QMessageBox
+
+        reply = QMessageBox.question(
+            None,
+            "Delete Group",
+            "Are you sure you want to delete this group?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+
+        if reply == QMessageBox.Yes:
+            try:
+                from services.people_group_service import PeopleGroupService
+                service = PeopleGroupService(self.db)
+                service.delete_group(self.project_id, group_id, soft_delete=False)
+
+                # Reload groups section
+                self._trigger_section_load("groups")
+
+                QMessageBox.information(None, "Deleted", "Group has been deleted.")
+
+            except Exception as e:
+                logger.error(f"[AccordionSidebar] Failed to delete group: {e}")
+                QMessageBox.critical(None, "Error", f"Failed to delete group:\n{str(e)}")
+
+    def _on_recompute_group_requested(self, group_id: int, match_mode: str):
+        """Handle group recomputation request."""
+        logger.info(f"[AccordionSidebar] Recompute requested for group {group_id} (mode={match_mode})")
+        self._compute_group_matches(group_id, match_mode)
+
+    def _compute_group_matches(self, group_id: int, match_mode: str):
+        """Run group match computation in background."""
+        try:
+            from PySide6.QtCore import QThreadPool
+            from workers.group_compute_worker import GroupComputeWorker
+            from PySide6.QtWidgets import QMessageBox
+
+            worker = GroupComputeWorker(
+                project_id=self.project_id,
+                group_id=group_id,
+                match_mode=match_mode
+            )
+
+            def on_finished(success, result):
+                # Reload groups section to update counts
+                self._trigger_section_load("groups")
+
+                if success:
+                    match_count = result.get('match_count', 0)
+                    logger.info(f"[AccordionSidebar] Group computation complete: {match_count} matches")
+                else:
+                    error = result.get('error', 'Unknown error')
+                    logger.error(f"[AccordionSidebar] Group computation failed: {error}")
+
+            worker.signals.finished.connect(on_finished)
+            QThreadPool.globalInstance().start(worker)
+
+            logger.info(f"[AccordionSidebar] Started group computation worker")
+
+        except Exception as e:
+            logger.error(f"[AccordionSidebar] Failed to start group computation: {e}")
 
     def cleanup(self):
         """Clean up resources before destruction."""

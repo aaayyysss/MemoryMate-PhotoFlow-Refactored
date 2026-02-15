@@ -45,6 +45,13 @@ DEFAULT_SETTINGS = {
 
     # --- Device Detection settings ---
     "device_auto_refresh": False,  # Auto-detect device connections (default: manual refresh only)
+
+    # --- People Groups settings (v9.5.0) ---
+    "groups_event_window_seconds": 30,  # Time window for "same event" mode (1-300 seconds)
+    "groups_min_confidence": 0.5,  # Minimum face detection confidence for group matching
+    "groups_include_videos": False,  # Include video frames in group results (future)
+    "groups_auto_recompute": True,  # Auto-recompute group results when face data changes
+    "groups_max_results": 1000,  # Max results per group (pagination)
 }
 
 

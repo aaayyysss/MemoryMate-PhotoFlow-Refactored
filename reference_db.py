@@ -5756,6 +5756,17 @@ class ReferenceDB:
             print(f"[merge_face_clusters] SUCCESS: Moved {moved_faces} faces, {deleted_duplicates} duplicates, {moved_images} unique photos")
             print(f"[merge_face_clusters] Final result: {total_photos} unique photos in '{target_branch}'")
 
+            # Mark affected groups as stale (v9.5.0 People Groups)
+            # Groups containing source or target branches need recomputation
+            try:
+                from services.people_group_service import PeopleGroupService
+                group_service = PeopleGroupService(self)
+                affected_branches = [target_branch] + src_list
+                for branch in affected_branches:
+                    group_service.mark_groups_stale_for_person(project_id, branch)
+            except Exception as group_error:
+                print(f"[merge_face_clusters] Failed to mark groups stale: {group_error}")
+
             return result
 
 

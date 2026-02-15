@@ -193,7 +193,33 @@
     "month_nov": "Nov",
     "month_dec": "Dec",
     "header_people": "People",
+    "header_groups": "Groups",
     "header_devices": "Devices",
+    "groups": {
+      "empty": "Create a group of people to find photos of them together.",
+      "new_group": "Create New Group",
+      "search": "Search groups...",
+      "count": "{0} groups",
+      "count_filtered": "{0} of {1} groups",
+      "together_mode": "Together",
+      "event_mode": "Same Event",
+      "stale_badge": "Stale",
+      "edit": "Edit Group",
+      "delete": "Delete Group",
+      "recompute": "Recompute Results",
+      "no_results": "No photos found. Try the 'Same Event' mode for photos taken near each other.",
+      "computing": "Computing group matches..."
+    },
+    "new_group_dialog": {
+      "title": "Create a Group of People",
+      "description": "Select 2 or more people to find photos where they appear together.",
+      "name_label": "Group Name",
+      "name_placeholder": "e.g., Family, Work Friends, etc.",
+      "selection_hint": "Select at least 2 people ({0} selected)",
+      "create_button": "Create Group",
+      "error_no_name": "Please enter a name for the group.",
+      "error_too_few": "Please select at least 2 people for the group."
+    },
     "people": {
       "empty": "No people detected yet. Add photos with faces to see them here."
     },
