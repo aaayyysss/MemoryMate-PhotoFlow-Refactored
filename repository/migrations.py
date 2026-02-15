@@ -429,6 +429,23 @@ VALUES ('9.4.0', 'Add rating, flag, title, caption for Lightroom-style metadata 
 )
 
 
+# Migration to v9.5.0 (People Groups feature)
+MIGRATION_9_5_0 = Migration(
+    version="9.5.0",
+    description="People Groups feature for finding photos where multiple people appear together",
+    sql="""
+-- Migration v9.5.0: People Groups feature
+-- Enables users to define groups of 2+ people and find photos where they appear together
+-- Supports two match modes: 'together' (same photo) and 'event_window' (same time window)
+-- Note: Table creation is handled in _create_people_groups_tables()
+
+INSERT OR REPLACE INTO schema_version (version, description, applied_at)
+VALUES ('9.5.0', 'People Groups feature for finding photos where multiple people appear together', CURRENT_TIMESTAMP);
+""",
+    rollback_sql=""
+)
+
+
 # Ordered list of all migrations
 ALL_MIGRATIONS = [
     MIGRATION_1_5_0,
@@ -443,6 +460,7 @@ ALL_MIGRATIONS = [
     MIGRATION_9_2_0,
     MIGRATION_9_3_0,
     MIGRATION_9_4_0,
+    MIGRATION_9_5_0,
 ]
 
 
@@ -631,6 +649,9 @@ class MigrationManager:
                 elif migration.version == "9.4.0":
                     # Apply migration v9.4: add metadata editing columns
                     self._add_metadata_editing_columns_if_missing(conn)
+                elif migration.version == "9.5.0":
+                    # Apply migration v9.5: create People Groups tables
+                    self._create_people_groups_tables(conn)
 
                 # Execute migration SQL (version tracking)
                 conn.executescript(migration.sql)
@@ -1109,6 +1130,134 @@ class MigrationManager:
 
         conn.commit()
         self.logger.info("✓ Metadata editing columns (rating, flag, title, caption) added successfully")
+
+    def _create_people_groups_tables(self, conn: sqlite3.Connection):
+        """
+        Create People Groups tables for v9.5.0 migration.
+
+        This migration adds tables for the People Groups feature which allows
+        users to define groups of 2+ people and find photos where they appear together.
+
+        Tables created:
+        - person_groups: User-defined groups of people
+        - person_group_members: Many-to-many mapping of people to groups
+        - person_group_matches: Cached results of group queries
+        - person_group_state: Computation state tracking
+
+        Args:
+            conn: Database connection
+        """
+        cur = conn.cursor()
+
+        self.logger.info("Creating People Groups tables (v9.5.0)...")
+
+        # Check if person_groups table already exists with incorrect schema
+        # (can happen from partial/failed previous runs)
+        cur.execute("""
+            SELECT name FROM sqlite_master
+            WHERE type='table' AND name='person_groups'
+        """)
+        table_exists = cur.fetchone() is not None
+
+        if table_exists:
+            # Check if group_key column exists
+            cur.execute("PRAGMA table_info(person_groups)")
+            existing_cols = {row['name'] for row in cur.fetchall()}
+
+            if 'group_key' not in existing_cols:
+                self.logger.warning("person_groups table exists but missing group_key column - dropping and recreating")
+                # Drop related tables in correct order (due to foreign keys)
+                cur.execute("DROP TABLE IF EXISTS person_group_state")
+                cur.execute("DROP TABLE IF EXISTS person_group_matches")
+                cur.execute("DROP TABLE IF EXISTS person_group_members")
+                cur.execute("DROP TABLE IF EXISTS person_groups")
+                conn.commit()
+
+        # Create person_groups table
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS person_groups (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL,
+                group_key TEXT NOT NULL,
+                display_name TEXT NOT NULL,
+                description TEXT,
+                icon TEXT,
+                is_deleted INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+                UNIQUE(project_id, group_key)
+            )
+        """)
+
+        # Create person_group_members table
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS person_group_members (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                group_id INTEGER NOT NULL,
+                project_id INTEGER NOT NULL,
+                branch_key TEXT NOT NULL,
+                added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (group_id) REFERENCES person_groups(id) ON DELETE CASCADE,
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+                UNIQUE(group_id, branch_key)
+            )
+        """)
+
+        # Create person_group_matches table
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS person_group_matches (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                group_id INTEGER NOT NULL,
+                project_id INTEGER NOT NULL,
+                asset_type TEXT NOT NULL CHECK(asset_type IN ('photo', 'video')),
+                asset_id INTEGER NOT NULL,
+                asset_path TEXT NOT NULL,
+                match_mode TEXT NOT NULL CHECK(match_mode IN ('together', 'event_window')),
+                score REAL,
+                matched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (group_id) REFERENCES person_groups(id) ON DELETE CASCADE,
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+                UNIQUE(group_id, asset_type, asset_id, match_mode)
+            )
+        """)
+
+        # Create person_group_state table
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS person_group_state (
+                group_id INTEGER PRIMARY KEY,
+                project_id INTEGER NOT NULL,
+                last_computed_at TIMESTAMP,
+                is_stale INTEGER DEFAULT 1,
+                match_mode TEXT DEFAULT 'together',
+                member_count INTEGER DEFAULT 0,
+                result_count INTEGER DEFAULT 0,
+                params_json TEXT,
+                error_message TEXT,
+                FOREIGN KEY (group_id) REFERENCES person_groups(id) ON DELETE CASCADE,
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+            )
+        """)
+
+        # Create indexes for People Groups
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_person_groups_project ON person_groups(project_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_person_groups_project_deleted ON person_groups(project_id, is_deleted)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_person_groups_key ON person_groups(project_id, group_key)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_person_group_members_group ON person_group_members(group_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_person_group_members_branch ON person_group_members(project_id, branch_key)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_person_group_members_group_branch ON person_group_members(group_id, branch_key)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_person_group_matches_group ON person_group_matches(group_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_person_group_matches_group_mode ON person_group_matches(group_id, match_mode)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_person_group_matches_project_asset ON person_group_matches(project_id, asset_type, asset_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_person_group_state_project ON person_group_state(project_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_person_group_state_stale ON person_group_state(project_id, is_stale)")
+
+        conn.commit()
+        self.logger.info("✓ People Groups tables created successfully")
+        self.logger.info("  - person_groups: Group definitions")
+        self.logger.info("  - person_group_members: Group memberships")
+        self.logger.info("  - person_group_matches: Cached match results")
+        self.logger.info("  - person_group_state: Computation state")
 
 
 def get_migration_status(db_connection) -> Dict[str, Any]:
