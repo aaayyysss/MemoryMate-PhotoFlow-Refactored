@@ -820,7 +820,6 @@ class AccordionSidebar(QWidget):
     _branchesLoaded = Signal(list) # Thread → UI: branches data ready
     _quickLoaded = Signal(list)    # Thread → UI: quick dates data ready
     _peopleLoaded = Signal(list)   # Thread → UI: people data ready (NEW)
-    selectGroup = Signal(int)      # group_id — emitted when user opens a group (NEW)
     _videosLoaded = Signal(list)   # Thread → UI: videos data ready (NEW)
 
     def __init__(self, project_id: int | None, parent=None):
@@ -1257,59 +1256,15 @@ class AccordionSidebar(QWidget):
             return
 
         try:
-            # ── Outer container with Individuals / Groups tab toggle ──
-            outer = QWidget()
-            outer_layout = QVBoxLayout(outer)
-            outer_layout.setContentsMargins(0, 0, 0, 0)
-            outer_layout.setSpacing(0)
- 
-            # Tab bar: [Individuals] [Groups]
-            tab_bar = QWidget()
-            tab_bar.setFixedHeight(36)
-            tab_layout = QHBoxLayout(tab_bar)
-            tab_layout.setContentsMargins(8, 4, 8, 0)
-            tab_layout.setSpacing(0)
- 
-            _TAB_ACTIVE = (
-                "QPushButton { border: none; border-bottom: 2px solid #1a73e8;"
-                " color: #1a73e8; font-weight: 600; font-size: 10pt;"
-                " padding: 4px 12px; background: transparent; }"
-            )
-            _TAB_INACTIVE = (
-                "QPushButton { border: none; border-bottom: 2px solid transparent;"
-                " color: #5f6368; font-size: 10pt;"
-                " padding: 4px 12px; background: transparent; }"
-                "QPushButton:hover { color: #202124; background: #f1f3f4;"
-                " border-radius: 4px 4px 0 0; }"
-            )
- 
-            btn_individuals = QPushButton("Individuals")
-            btn_individuals.setCursor(Qt.PointingHandCursor)
-            btn_individuals.setStyleSheet(_TAB_ACTIVE)
- 
-            btn_groups = QPushButton("Groups")
-            btn_groups.setCursor(Qt.PointingHandCursor)
-            btn_groups.setStyleSheet(_TAB_INACTIVE)
- 
-            tab_layout.addWidget(btn_individuals)
-            tab_layout.addWidget(btn_groups)
-            tab_layout.addStretch()
-            outer_layout.addWidget(tab_bar)
- 
-            # Stacked content area
-            from PySide6.QtWidgets import QStackedWidget
-            stack = QStackedWidget()
-            outer_layout.addWidget(stack, 1)
- 
-            # === Page 0: Individuals (existing people grid) ===
+            # People grid (direct, no sub-tabs)
             people_grid = PeopleGridView()
             self._people_grid = people_grid
- 
+
             # Connect signals
             people_grid.person_clicked.connect(self._on_person_clicked)
             people_grid.context_menu_requested.connect(self._on_person_context_menu)
             people_grid.drag_merge_requested.connect(self._on_person_drag_merge)
- 
+
             if len(rows) > 0:
                 for idx, row in enumerate(rows):
                     branch_key = row[0] if isinstance(row, tuple) else row.get("branch_key", f"cluster_{idx}")
@@ -1319,44 +1274,12 @@ class AccordionSidebar(QWidget):
                     rep_thumb_png = row[4] if isinstance(row, tuple) else row.get("rep_thumb_png")
                     face_pixmap = self._load_face_thumbnail(rep_path, rep_thumb_png)
                     people_grid.add_person(branch_key, display_name, face_pixmap, member_count)
- 
-            stack.addWidget(people_grid)  # index 0
- 
-            # === Page 1: Groups ===
-            from ui.accordion_sidebar.groups_section import GroupsSubsectionWidget
-            groups_widget = GroupsSubsectionWidget(self.project_id)
-            groups_widget.groupSelected.connect(self._on_group_selected)
-            groups_widget.groupCreated.connect(self._on_group_changed)
-            groups_widget.groupDeleted.connect(self._on_group_changed)
-            groups_widget.groupUpdated.connect(self._on_group_changed)
-            groups_widget.groupReindexRequested.connect(self._on_group_reindex_requested)
-            self._groups_widget = groups_widget
-            stack.addWidget(groups_widget)  # index 1
- 
-            # Tab switching logic
-            def _switch_to_individuals():
-                stack.setCurrentIndex(0)
-                btn_individuals.setStyleSheet(_TAB_ACTIVE)
-                btn_groups.setStyleSheet(_TAB_INACTIVE)
- 
-            def _switch_to_groups():
-                stack.setCurrentIndex(1)
-                btn_groups.setStyleSheet(_TAB_ACTIVE)
-                btn_individuals.setStyleSheet(_TAB_INACTIVE)
-                # Lazy-load groups on first switch
-                groups_widget.load_groups()
- 
-            btn_individuals.clicked.connect(_switch_to_individuals)
-            btn_groups.clicked.connect(_switch_to_groups)
-            # Keep strong refs to prevent GC of closures
-            self._people_tab_switch_individuals = _switch_to_individuals
-            self._people_tab_switch_groups = _switch_to_groups
- 
+
             # Update count badge
             section.set_count(len(rows))
-            section.set_content_widget(outer)
- 
-            self._dbg(f"✓ People section loaded with {len(rows)} clusters + Groups tab")
+            section.set_content_widget(people_grid)
+
+            self._dbg(f"✓ People section loaded with {len(rows)} clusters")
  
         except Exception as e:
             self._dbg(f"⚠️ Error building people grid: {e}")
@@ -1641,63 +1564,7 @@ class AccordionSidebar(QWidget):
                 failure_title="Delete Failed",
             )
 
-    # ------------------------------------------------------------------
-    # Groups signal handlers
-    # ------------------------------------------------------------------
- 
-    def _on_group_selected(self, group_id: int):
-        """Handle group card click — emit signal so main grid can filter."""
-        self._dbg(f"Group selected: {group_id}")
-        self.selectGroup.emit(group_id)
- 
-    def _on_group_changed(self, group_id: int):
-        """Handle group created/updated/deleted — dispatch store action."""
-        self._dbg(f"Group changed: {group_id}")
-        try:
-            from core.state_bus import get_store, GroupsChanged, ActionMeta
-            store = get_store()
-            store.dispatch(GroupsChanged(
-                meta=ActionMeta(source="sidebar"),
-                group_id=group_id,
-                reason="changed",
-            ))
-        except Exception:
-            pass
- 
-    def _on_group_reindex_requested(self, group_id: int):
-        """Recompute matches for a group in background."""
-        self._dbg(f"Group reindex requested: {group_id}")
- 
-        def work():
-            try:
-                from services.group_service import GroupService
-                db = ReferenceDB()
-                count = GroupService.compute_and_store_matches(
-                    db, self.project_id, group_id
-                )
-                db.close()
-                self._dbg(f"Group {group_id} reindexed: {count} matches")
- 
-                # Dispatch store event
-                try:
-                    from core.state_bus import get_bridge, GroupIndexCompleted, ActionMeta
-                    bridge = get_bridge()
-                    bridge.dispatch_async(GroupIndexCompleted(
-                        meta=ActionMeta(source="sidebar"),
-                        group_id=group_id,
-                        match_count=count,
-                    ))
-                except Exception:
-                    pass
- 
-                # Reload groups widget
-                if hasattr(self, '_groups_widget') and self._groups_widget:
-                    self._groups_widget.load_groups()
-            except Exception as e:
-                self._dbg(f"⚠️ Group reindex failed: {e}")
- 
-        import threading
-        threading.Thread(target=work, daemon=True).start()
+
  
 
     def _make_circular_pixmap(self, pixmap: QPixmap, size: int) -> QPixmap:

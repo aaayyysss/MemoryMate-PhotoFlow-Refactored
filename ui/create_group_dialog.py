@@ -376,32 +376,23 @@ class CreateGroupDialog(QDialog):
     def _load_existing_group(self):
         """Load existing group data for edit mode."""
         try:
-            from reference_db import ReferenceDB
-            db = ReferenceDB()
+            from services.group_service import GroupService
+            service = GroupService.instance()
+            group = service.get_group(self.edit_group_id, self.project_id)
 
-            with db._connect() as conn:
-                # Get group info
-                cur = conn.execute(
-                    "SELECT name, is_pinned FROM person_groups WHERE id = ?",
-                    (self.edit_group_id,)
-                )
-                row = cur.fetchone()
-                if row:
-                    self._name_input.setText(row[0])
-                    self._pinned_checkbox.setChecked(bool(row[1]))
+            if not group:
+                logger.warning(f"[CreateGroupDialog] Group {self.edit_group_id} not found")
+                return
 
-                # Get members
-                cur = conn.execute(
-                    "SELECT person_id FROM person_group_members WHERE group_id = ?",
-                    (self.edit_group_id,)
-                )
-                for row in cur.fetchall():
-                    branch_key = row[0]
-                    if branch_key in self._people_cards:
-                        self._people_cards[branch_key].set_selected(True)
-                        self._selected_branch_keys.add(branch_key)
+            self._name_input.setText(group.get("name", ""))
+            self._pinned_checkbox.setChecked(group.get("is_pinned", False))
 
-            db.close()
+            for member in group.get("members", []):
+                branch_key = member.get("branch_key", "")
+                if branch_key in self._people_cards:
+                    self._people_cards[branch_key].set_selected(True)
+                    self._selected_branch_keys.add(branch_key)
+
             self._update_selection_ui()
 
         except Exception as e:

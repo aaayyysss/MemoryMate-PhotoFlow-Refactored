@@ -146,6 +146,10 @@ class GroupServiceInstance:
         """Recompute matches for all groups."""
         return GroupService.reindex_all_groups(self.db, project_id)
 
+    def get_people_for_group_creation(self, project_id: int) -> List[Dict[str, Any]]:
+        """Get all people (face clusters) for group creation dialog."""
+        return GroupService.get_people_for_group_creation(self.db, project_id)
+
 
 class GroupService:
     """
@@ -625,7 +629,7 @@ class GroupService:
     def suggest_group_name(member_names: List[str]) -> str:
         """
         Generate a default group name from member display names.
- 
+
         Examples:
             ["Ammar", "Alya"] -> "Ammar + Alya"
             ["Mom", "Dad", "Sis"] -> "Mom + Dad + Sis"
@@ -636,4 +640,41 @@ class GroupService:
         if len(member_names) <= 3:
             return " + ".join(member_names)
         return f"{member_names[0]} + {member_names[1]} + {len(member_names) - 2} others"
+
+    # ------------------------------------------------------------------
+    # People list for group creation dialog
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def get_people_for_group_creation(db, project_id: int) -> List[Dict[str, Any]]:
+        """
+        Get all people (face clusters) available for group creation.
+
+        Returns a list of dicts with branch_key, display_name, and rep_thumb_png
+        for rendering in the CreateGroupDialog person selection grid.
+
+        Args:
+            db: ReferenceDB instance
+            project_id: Project ID to fetch people for
+
+        Returns:
+            List of dicts: [{"branch_key": str, "display_name": str, "rep_thumb_png": bytes|None}, ...]
+        """
+        try:
+            rows = db.get_face_branch_reps(project_id)
+            result = []
+            for row in rows:
+                branch_key = row.get("id", "")
+                label = row.get("name", branch_key)
+                thumb_png = row.get("rep_thumb_png")
+                result.append({
+                    "branch_key": branch_key,
+                    "display_name": label,
+                    "rep_thumb_png": thumb_png,
+                })
+            logger.info(f"[GroupService] get_people_for_group_creation: {len(result)} people for project {project_id}")
+            return result
+        except Exception as e:
+            logger.error(f"[GroupService] get_people_for_group_creation failed: {e}", exc_info=True)
+            return []
 		
