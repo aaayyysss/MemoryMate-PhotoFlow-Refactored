@@ -6455,6 +6455,381 @@ class ReferenceDB:
 
     # --- end new methods ---------------------------------------------------------
 
+    # =========================================================================
+    # PERSON GROUPS METHODS (v10.0.0)
+    # User-defined groups of people for "Together (AND)" matching
+    # =========================================================================
+
+    def create_person_group(
+        self,
+        project_id: int,
+        name: str,
+        person_ids: list,
+        pinned: bool = False,
+        cover_photo_id: int = None
+    ) -> int:
+        """
+        Create a new person group.
+
+        Args:
+            project_id: Project ID
+            name: Group name
+            person_ids: List of branch_keys (min 2)
+            pinned: Show at top of list
+            cover_photo_id: Optional cover photo
+
+        Returns:
+            group_id
+        """
+        import time
+        now = int(time.time())
+
+        with self._connect() as conn:
+            cur = conn.execute("""
+                INSERT INTO person_groups (
+                    project_id, name, created_at, updated_at,
+                    pinned, cover_photo_id
+                ) VALUES (?, ?, ?, ?, ?, ?)
+            """, (project_id, name, now, now, 1 if pinned else 0, cover_photo_id))
+
+            group_id = cur.lastrowid
+
+            for person_id in person_ids:
+                conn.execute("""
+                    INSERT INTO person_group_members (group_id, person_id, added_at)
+                    VALUES (?, ?, ?)
+                """, (group_id, person_id, now))
+
+            conn.commit()
+            return group_id
+
+    def update_person_group(
+        self,
+        group_id: int,
+        name: str = None,
+        person_ids: list = None,
+        pinned: bool = None,
+        cover_photo_id: int = None
+    ) -> bool:
+        """
+        Update an existing person group.
+
+        Returns:
+            True if successful
+        """
+        import time
+        now = int(time.time())
+
+        with self._connect() as conn:
+            updates = ["updated_at = ?"]
+            params = [now]
+
+            if name is not None:
+                updates.append("name = ?")
+                params.append(name)
+            if pinned is not None:
+                updates.append("pinned = ?")
+                params.append(1 if pinned else 0)
+            if cover_photo_id is not None:
+                updates.append("cover_photo_id = ?")
+                params.append(cover_photo_id)
+
+            params.append(group_id)
+            conn.execute(
+                f"UPDATE person_groups SET {', '.join(updates)} WHERE id = ?",
+                params
+            )
+
+            if person_ids is not None:
+                conn.execute(
+                    "DELETE FROM person_group_members WHERE group_id = ?",
+                    (group_id,)
+                )
+                for person_id in person_ids:
+                    conn.execute("""
+                        INSERT INTO person_group_members (group_id, person_id, added_at)
+                        VALUES (?, ?, ?)
+                    """, (group_id, person_id, now))
+
+                # Clear cached matches
+                conn.execute(
+                    "DELETE FROM group_asset_matches WHERE group_id = ?",
+                    (group_id,)
+                )
+
+            conn.commit()
+            return True
+
+    def delete_person_group(self, group_id: int) -> bool:
+        """
+        Delete a person group (soft delete).
+
+        Returns:
+            True if successful
+        """
+        import time
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE person_groups SET is_deleted = 1, updated_at = ? WHERE id = ?",
+                (int(time.time()), group_id)
+            )
+            conn.commit()
+            return True
+
+    def get_person_groups(self, project_id: int) -> list:
+        """
+        Get all person groups for a project.
+
+        Returns:
+            List of group dicts with member info
+        """
+        with self._connect() as conn:
+            cur = conn.execute("""
+                SELECT
+                    g.id,
+                    g.name,
+                    g.created_at,
+                    g.updated_at,
+                    g.last_used_at,
+                    g.pinned,
+                    g.cover_photo_id,
+                    (SELECT COUNT(*) FROM person_group_members WHERE group_id = g.id) AS member_count,
+                    (SELECT COUNT(*) FROM group_asset_matches WHERE group_id = g.id AND scope = 'same_photo') AS photo_count
+                FROM person_groups g
+                WHERE g.project_id = ? AND g.is_deleted = 0
+                ORDER BY g.pinned DESC, g.last_used_at DESC NULLS LAST, g.name ASC
+            """, (project_id,))
+
+            groups = []
+            for row in cur.fetchall():
+                group_id = row[0]
+
+                members_cur = conn.execute("""
+                    SELECT
+                        pgm.person_id,
+                        COALESCE(fbr.label, pgm.person_id) AS display_name,
+                        fbr.rep_thumb_png
+                    FROM person_group_members pgm
+                    LEFT JOIN face_branch_reps fbr
+                        ON fbr.project_id = ? AND fbr.branch_key = pgm.person_id
+                    WHERE pgm.group_id = ?
+                """, (project_id, group_id))
+
+                members = []
+                for m_row in members_cur.fetchall():
+                    members.append({
+                        "branch_key": m_row[0],
+                        "display_name": m_row[1],
+                        "rep_thumb_png": m_row[2]
+                    })
+
+                groups.append({
+                    "id": row[0],
+                    "name": row[1],
+                    "created_at": row[2],
+                    "updated_at": row[3],
+                    "last_used_at": row[4],
+                    "pinned": bool(row[5]),
+                    "cover_photo_id": row[6],
+                    "member_count": row[7],
+                    "photo_count": row[8],
+                    "members": members
+                })
+
+            return groups
+
+    def get_group_members(self, group_id: int) -> list:
+        """
+        Get member branch_keys for a group.
+
+        Returns:
+            List of branch_key strings
+        """
+        with self._connect() as conn:
+            cur = conn.execute(
+                "SELECT person_id FROM person_group_members WHERE group_id = ?",
+                (group_id,)
+            )
+            return [row[0] for row in cur.fetchall()]
+
+    def get_group_photos(
+        self,
+        group_id: int,
+        scope: str = "same_photo",
+        page: int = 0,
+        page_size: int = 100
+    ) -> dict:
+        """
+        Get photos matching a group (from cache).
+
+        Args:
+            group_id: Group to query
+            scope: "same_photo" or "event_window"
+            page: Page number (0-indexed)
+            page_size: Results per page
+
+        Returns:
+            Dict with photo_ids, paths, total_count
+        """
+        import time
+        with self._connect() as conn:
+            # Update last_used_at
+            conn.execute(
+                "UPDATE person_groups SET last_used_at = ? WHERE id = ?",
+                (int(time.time()), group_id)
+            )
+
+            # Get total count
+            cur = conn.execute("""
+                SELECT COUNT(*) FROM group_asset_matches
+                WHERE group_id = ? AND scope = ?
+            """, (group_id, scope))
+            total_count = cur.fetchone()[0]
+
+            # Get paginated results
+            cur = conn.execute("""
+                SELECT gam.photo_id, pm.path
+                FROM group_asset_matches gam
+                JOIN photo_metadata pm ON pm.id = gam.photo_id
+                WHERE gam.group_id = ? AND gam.scope = ?
+                ORDER BY pm.created_ts DESC
+                LIMIT ? OFFSET ?
+            """, (group_id, scope, page_size, page * page_size))
+
+            photo_ids = []
+            photo_paths = []
+            for row in cur.fetchall():
+                photo_ids.append(row[0])
+                photo_paths.append(row[1])
+
+            conn.commit()
+
+            return {
+                "group_id": group_id,
+                "scope": scope,
+                "photo_ids": photo_ids,
+                "photo_paths": photo_paths,
+                "total_count": total_count,
+                "page": page,
+                "page_size": page_size
+            }
+
+    def compute_group_matches(
+        self,
+        project_id: int,
+        group_id: int,
+        scope: str = "same_photo"
+    ) -> list:
+        """
+        Compute group matches using live query.
+
+        "Together (AND)" query: finds photos where all group members appear.
+
+        Args:
+            project_id: Project ID
+            group_id: Group to compute
+            scope: "same_photo" or "event_window"
+
+        Returns:
+            List of matching photo_ids
+        """
+        with self._connect() as conn:
+            cur = conn.execute(
+                "SELECT person_id FROM person_group_members WHERE group_id = ?",
+                (group_id,)
+            )
+            member_ids = [row[0] for row in cur.fetchall()]
+
+            if len(member_ids) < 2:
+                return []
+
+            member_count = len(member_ids)
+
+            if scope == "same_photo":
+                cur = conn.execute(f"""
+                    WITH members AS (
+                        SELECT person_id FROM person_group_members WHERE group_id = ?
+                    )
+                    SELECT pm.id
+                    FROM photo_metadata pm
+                    JOIN face_crops fc ON fc.image_path = pm.path AND fc.project_id = pm.project_id
+                    JOIN members m ON m.person_id = fc.branch_key
+                    WHERE pm.project_id = ?
+                    GROUP BY pm.id
+                    HAVING COUNT(DISTINCT fc.branch_key) = ?
+                    ORDER BY pm.created_ts DESC
+                """, (group_id, project_id, member_count))
+
+            elif scope == "event_window":
+                cur = conn.execute(f"""
+                    WITH members AS (
+                        SELECT person_id FROM person_group_members WHERE group_id = ?
+                    ),
+                    events_with_all_members AS (
+                        SELECT pe.event_id
+                        FROM face_crops fc
+                        JOIN photo_metadata pm ON pm.path = fc.image_path AND pm.project_id = fc.project_id
+                        JOIN photo_events pe ON pe.project_id = pm.project_id AND pe.photo_id = pm.id
+                        JOIN members m ON m.person_id = fc.branch_key
+                        WHERE fc.project_id = ?
+                        GROUP BY pe.event_id
+                        HAVING COUNT(DISTINCT fc.branch_key) = ?
+                    )
+                    SELECT pm.id
+                    FROM photo_events pe
+                    JOIN events_with_all_members e ON e.event_id = pe.event_id
+                    JOIN photo_metadata pm ON pm.id = pe.photo_id
+                    WHERE pe.project_id = ?
+                    ORDER BY pm.created_ts DESC
+                """, (group_id, project_id, member_count, project_id))
+
+            else:
+                return []
+
+            return [row[0] for row in cur.fetchall()]
+
+    def store_group_matches(
+        self,
+        project_id: int,
+        group_id: int,
+        photo_ids: list,
+        scope: str = "same_photo"
+    ) -> int:
+        """
+        Store computed group matches in cache.
+
+        Args:
+            project_id: Project ID
+            group_id: Group ID
+            photo_ids: List of matching photo IDs
+            scope: Match scope
+
+        Returns:
+            Number of matches stored
+        """
+        import time
+        now = int(time.time())
+
+        with self._connect() as conn:
+            # Clear old cache
+            conn.execute(
+                "DELETE FROM group_asset_matches WHERE group_id = ? AND scope = ?",
+                (group_id, scope)
+            )
+
+            # Insert new matches
+            for photo_id in photo_ids:
+                conn.execute("""
+                    INSERT INTO group_asset_matches (
+                        project_id, group_id, scope, photo_id, computed_at
+                    ) VALUES (?, ?, ?, ?, ?)
+                """, (project_id, group_id, scope, photo_id, now))
+
+            conn.commit()
+            return len(photo_ids)
+
+    # --- end person groups methods -----------------------------------------------
+
 
 # --- Compatibility shims for legacy imports ---
 _db = ReferenceDB()
