@@ -658,7 +658,7 @@ class GroupService:
             project_id: Project ID to fetch people for
 
         Returns:
-            List of dicts: [{"branch_key": str, "display_name": str, "rep_thumb_png": bytes|None}, ...]
+            List of dicts with branch_key, display_name, rep_thumb_png, and rep_path.
         """
         try:
             rows = db.get_face_branch_reps(project_id)
@@ -667,10 +667,12 @@ class GroupService:
                 branch_key = row.get("id", "")
                 label = row.get("name", branch_key)
                 thumb_png = row.get("rep_thumb_png")
+                rep_path = row.get("rep_path")
                 result.append({
                     "branch_key": branch_key,
                     "display_name": label,
                     "rep_thumb_png": thumb_png,
+                    "rep_path": rep_path,
                 })
             logger.info(f"[GroupService] get_people_for_group_creation: {len(result)} people for project {project_id}")
             return result
