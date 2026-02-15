@@ -435,7 +435,7 @@ MIGRATION_10_0_0 = Migration(
     sql="""
 -- Migration v10.0.0: People Groups - user-defined groups of people for co-occurrence browsing
 -- Enables "show me photos where Ammar + Alya appear together" workflow
- 
+
 CREATE TABLE IF NOT EXISTS person_groups (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     project_id INTEGER NOT NULL,
@@ -447,7 +447,7 @@ CREATE TABLE IF NOT EXISTS person_groups (
     is_deleted INTEGER NOT NULL DEFAULT 0,
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
 );
- 
+
 CREATE TABLE IF NOT EXISTS person_group_members (
     group_id INTEGER NOT NULL,
     branch_key TEXT NOT NULL,
@@ -455,7 +455,7 @@ CREATE TABLE IF NOT EXISTS person_group_members (
     PRIMARY KEY (group_id, branch_key),
     FOREIGN KEY (group_id) REFERENCES person_groups(id) ON DELETE CASCADE
 );
- 
+
 CREATE TABLE IF NOT EXISTS group_asset_matches (
     group_id INTEGER NOT NULL,
     scope TEXT NOT NULL DEFAULT 'same_photo',
@@ -466,7 +466,7 @@ CREATE TABLE IF NOT EXISTS group_asset_matches (
     FOREIGN KEY (group_id) REFERENCES person_groups(id) ON DELETE CASCADE,
     FOREIGN KEY (photo_id) REFERENCES photo_metadata(id) ON DELETE CASCADE
 );
- 
+
 CREATE INDEX IF NOT EXISTS idx_person_groups_project ON person_groups(project_id, is_deleted);
 CREATE INDEX IF NOT EXISTS idx_person_groups_last_used ON person_groups(project_id, last_used_at);
 CREATE INDEX IF NOT EXISTS idx_person_groups_pinned ON person_groups(project_id, is_pinned) WHERE is_pinned = 1;
@@ -474,14 +474,15 @@ CREATE INDEX IF NOT EXISTS idx_group_members_branch ON person_group_members(bran
 CREATE INDEX IF NOT EXISTS idx_group_asset_matches_group ON group_asset_matches(group_id, scope);
 CREATE INDEX IF NOT EXISTS idx_group_asset_matches_photo ON group_asset_matches(photo_id);
 CREATE INDEX IF NOT EXISTS idx_face_crops_person_photo ON face_crops(project_id, branch_key, image_path);
- 
+
 INSERT OR REPLACE INTO schema_version (version, description, applied_at)
 VALUES ('10.0.0', 'People Groups: person_groups, person_group_members, group_asset_matches', CURRENT_TIMESTAMP);
 """,
     rollback_sql=""
 )
- 
- 
+
+
+
 # Ordered list of all migrations
 ALL_MIGRATIONS = [
     MIGRATION_1_5_0,
@@ -496,7 +497,7 @@ ALL_MIGRATIONS = [
     MIGRATION_9_2_0,
     MIGRATION_9_3_0,
     MIGRATION_9_4_0,
-    MIGRATION_10_0_0,    
+    MIGRATION_10_0_0,
 ]
 
 
@@ -685,6 +686,7 @@ class MigrationManager:
                 elif migration.version == "9.4.0":
                     # Apply migration v9.4: add metadata editing columns
                     self._add_metadata_editing_columns_if_missing(conn)
+                # Note: v10.0.0 migration (People Groups) has table creation in SQL
 
                 # Execute migration SQL (version tracking)
                 conn.executescript(migration.sql)
