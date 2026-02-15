@@ -1,5 +1,5 @@
 # repository/migrations.py
-# Version 2.0.1 dated 20251103
+# Version 2.0.2 dated 20260214
 # Database migration system for schema upgrades
 # FIX: Check if DB file exists before opening in read-only mode (prevents error on fresh DB)
 #
@@ -429,6 +429,59 @@ VALUES ('9.4.0', 'Add rating, flag, title, caption for Lightroom-style metadata 
 )
 
 
+MIGRATION_10_0_0 = Migration(
+    version="10.0.0",
+    description="People Groups: person_groups, person_group_members, group_asset_matches",
+    sql="""
+-- Migration v10.0.0: People Groups - user-defined groups of people for co-occurrence browsing
+-- Enables "show me photos where Ammar + Alya appear together" workflow
+ 
+CREATE TABLE IF NOT EXISTS person_groups (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    last_used_at INTEGER,
+    is_pinned INTEGER NOT NULL DEFAULT 0,
+    is_deleted INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+ 
+CREATE TABLE IF NOT EXISTS person_group_members (
+    group_id INTEGER NOT NULL,
+    branch_key TEXT NOT NULL,
+    added_at INTEGER NOT NULL,
+    PRIMARY KEY (group_id, branch_key),
+    FOREIGN KEY (group_id) REFERENCES person_groups(id) ON DELETE CASCADE
+);
+ 
+CREATE TABLE IF NOT EXISTS group_asset_matches (
+    group_id INTEGER NOT NULL,
+    scope TEXT NOT NULL DEFAULT 'same_photo',
+    photo_id INTEGER NOT NULL,
+    event_id INTEGER,
+    computed_at INTEGER NOT NULL,
+    PRIMARY KEY (group_id, scope, photo_id),
+    FOREIGN KEY (group_id) REFERENCES person_groups(id) ON DELETE CASCADE,
+    FOREIGN KEY (photo_id) REFERENCES photo_metadata(id) ON DELETE CASCADE
+);
+ 
+CREATE INDEX IF NOT EXISTS idx_person_groups_project ON person_groups(project_id, is_deleted);
+CREATE INDEX IF NOT EXISTS idx_person_groups_last_used ON person_groups(project_id, last_used_at);
+CREATE INDEX IF NOT EXISTS idx_person_groups_pinned ON person_groups(project_id, is_pinned) WHERE is_pinned = 1;
+CREATE INDEX IF NOT EXISTS idx_group_members_branch ON person_group_members(branch_key, group_id);
+CREATE INDEX IF NOT EXISTS idx_group_asset_matches_group ON group_asset_matches(group_id, scope);
+CREATE INDEX IF NOT EXISTS idx_group_asset_matches_photo ON group_asset_matches(photo_id);
+CREATE INDEX IF NOT EXISTS idx_face_crops_person_photo ON face_crops(project_id, branch_key, image_path);
+ 
+INSERT OR REPLACE INTO schema_version (version, description, applied_at)
+VALUES ('10.0.0', 'People Groups: person_groups, person_group_members, group_asset_matches', CURRENT_TIMESTAMP);
+""",
+    rollback_sql=""
+)
+ 
+ 
 # Ordered list of all migrations
 ALL_MIGRATIONS = [
     MIGRATION_1_5_0,
@@ -443,6 +496,7 @@ ALL_MIGRATIONS = [
     MIGRATION_9_2_0,
     MIGRATION_9_3_0,
     MIGRATION_9_4_0,
+    MIGRATION_10_0_0,    
 ]
 
 
