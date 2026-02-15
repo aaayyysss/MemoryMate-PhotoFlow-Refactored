@@ -1,0 +1,388 @@
+Mini spec, People, Groups (project-scoped), with optional “same event window” mode
+
+You are about to add a feature that can quietly explode complexity if you do it naïvely. The trap is thinking “it is just an AND filter over faces”. In practice, you need: fast retrieval, stable caching, predictable UI state, and a clean separation between “definition of a group” and “computed matches”. Google Photos and Apple Photos feel instant because they precompute, cache, and keep UI states simple, they do not run heavy joins on every click.
+
+1) User goal and scope
+
+Goal: Inside People, add a Groups sub section where the user can define a group of 2+ people, then see photos that contain that group either:
+
+Together (AND), faces appear in the same photo (default always), or
+
+Same event window, people appear within a time window around one another, not necessarily in the same photo (optional mode).
+
+Scope rules (your answers applied):
+
+Per project only, group definitions and results are scoped to project_id.
+
+Default match mode is always Together (AND).
+
+Changing behavior is via Preferences, Groups tab, not per group remembered state.
+
+2) UI structure aligned to current People section
+2.1 Navigation placement
+
+People section tree gets a new child node:
+
+People
+
+All People
+
+Needs Review
+
+Groups (new)
+
+2.2 Groups main UI layout (panel)
+
+Three zones, keep it boring and predictable:
+
+Left rail, Groups list
+
+“+ New Group”
+
+List of saved groups (name, faces count, last computed time, match mode badge)
+
+Search box (filter group names)
+
+Top bar, Group definition summary
+
+Group name (editable)
+
+Members “chips” (face/person tiles)
+
+Controls: Add member, Remove member, Recompute, Delete group
+
+Main area, Results grid
+
+Date grouped grid, same as your Google layout grouping
+
+Toggle chips (global setting driven):
+
+Together (AND) [default selected, locked as default]
+
+Same event window (optional)
+
+Secondary filters: include videos, min faces in photo, confidence threshold
+
+2.3 Core UI states (finite and explicit)
+
+Keep these states visible in logs and predictable in UI:
+
+Empty Groups
+
+Show onboarding text: “Create a group of people to find photos of them together.”
+
+Group Selected, Not Computed
+
+Show “Compute results” button and explanation of the two modes.
+
+Computing
+
+Progress in Activity Center, non modal (you already learned this lesson).
+
+Show skeleton placeholders in grid.
+
+Computed, Has Results
+
+Grid populated, date groups.
+
+Computed, No Results
+
+Explain: either no co appearances, or try “same event window”.
+
+Stale Results
+
+Badge “Stale” when new faces are added to DB, group results need refresh.
+
+Offer “Recompute”.
+
+3) Events and behavior (what fires when)
+3.1 Group creation
+
+Event: Groups.NewClicked
+
+Action:
+
+Open lightweight picker dialog (non modal if possible, or at least not blocking the app)
+
+User selects 2+ people from existing People list
+
+Create group rows in DB (definition only)
+
+Mark results as not computed
+
+3.2 Group selection
+
+Event: Groups.Selected(group_id)
+
+Action:
+
+Load group definition (members)
+
+If cached results exist and not stale, show immediately
+
+If stale or missing, show “Compute results”
+
+3.3 Compute results
+
+Event: Groups.ComputeRequested(group_id, mode)
+
+Action:
+
+Dispatch background job
+
+Write results into a dedicated results table, do not keep recomputing on every scroll
+
+Emit store update to refresh the grid
+
+3.4 Photo database changes (scan, face pipeline, person merge)
+
+Event: Faces.IndexUpdated(project_id) or People.MergeCompleted(project_id)
+
+Action:
+
+Mark all group results for project as stale, or mark selectively by affected person ids.
+
+4) DB schema changes
+
+This is the minimal set that stays fast and avoids re running heavy joins.
+
+4.1 Group definition tables
+
+person_groups
+
+id (PK)
+
+project_id (FK)
+
+name (text)
+
+created_at, updated_at
+
+is_deleted (bool)
+
+config_json (json) [holds global default thresholds snapshot if you want]
+
+person_group_members
+
+group_id (FK)
+
+person_id (FK) [your existing “person” entity]
+
+role (text, optional) [future use]
+
+PK (group_id, person_id)
+
+4.2 Group results tables
+
+person_group_matches
+
+group_id
+
+asset_id (photo or video id unified, or separate columns)
+
+asset_type (‘photo’, ‘video’)
+
+match_mode (‘together’, ‘event_window’)
+
+score (float, optional ranking)
+
+matched_at (timestamp)
+
+PK (group_id, asset_type, asset_id, match_mode)
+
+person_group_state (optional but very useful)
+
+group_id
+
+last_computed_at
+
+is_stale (bool)
+
+last_params_json (json) [window seconds, thresholds]
+
+4.3 Required supporting indexes (critical)
+
+Assuming you already have a table mapping detected faces to assets, something like asset_faces(asset_id, person_id, confidence, ts):
+
+asset_faces(project_id, asset_id, person_id) composite index
+
+asset_faces(project_id, person_id, created_ts) composite index (for event window)
+
+person_group_members(group_id, person_id) index
+
+person_group_matches(group_id, match_mode, asset_type, asset_id) index
+
+person_group_matches(group_id, match_mode) index (for fast list)
+
+If you are missing created_ts normalization for assets, add it now or the event window mode will be slow and unreliable.
+
+5) Exact retrieval queries (together, event window)
+
+Below I assume:
+
+Photos are in photos(id, project_id, created_ts, ...)
+
+Videos are in videos(id, project_id, created_ts, ...)
+
+Faces are in asset_faces(project_id, asset_type, asset_id, person_id, confidence, ...)
+
+Group members are in person_group_members(group_id, person_id)
+
+5.1 Together (AND), same photo (default)
+
+Return photos where all group members are present.
+
+-- Together AND: photos
+WITH members AS (
+  SELECT person_id
+  FROM person_group_members
+  WHERE group_id = :group_id
+),
+hits AS (
+  SELECT af.asset_id
+  FROM asset_faces af
+  JOIN members m ON m.person_id = af.person_id
+  WHERE af.project_id = :project_id
+    AND af.asset_type = 'photo'
+    AND af.confidence >= :min_conf
+  GROUP BY af.asset_id
+  HAVING COUNT(DISTINCT af.person_id) = (SELECT COUNT(*) FROM members)
+)
+SELECT p.id AS asset_id, 'photo' AS asset_type, p.created_ts
+FROM photos p
+JOIN hits h ON h.asset_id = p.id
+WHERE p.project_id = :project_id
+ORDER BY p.created_ts DESC;
+
+
+Same for videos if you support face detection on video frames, or restrict groups to photos only for v1.
+
+5.2 Same event window mode (optional)
+
+Interpretation: find assets within a time window where each person appears at least once somewhere in that window.
+
+Algorithm:
+
+For each member, collect their asset timestamps.
+
+Merge into candidate windows, compute intersection where all members are covered.
+
+Emit all assets inside those windows.
+
+SQL can be done, but doing it purely in SQL gets ugly fast. Best practice is a two step approach:
+
+SQL to fetch (person_id, created_ts, asset_id) sorted,
+
+Python to compute windows and then query assets by time range.
+
+Step 1:
+
+SELECT af.person_id, a.created_ts, af.asset_type, af.asset_id
+FROM asset_faces af
+JOIN (
+  SELECT 'photo' AS asset_type, id AS asset_id, created_ts, project_id FROM photos
+  UNION ALL
+  SELECT 'video' AS asset_type, id AS asset_id, created_ts, project_id FROM videos
+) a
+  ON a.project_id = af.project_id
+ AND a.asset_type = af.asset_type
+ AND a.asset_id = af.asset_id
+WHERE af.project_id = :project_id
+  AND af.person_id IN (SELECT person_id FROM person_group_members WHERE group_id = :group_id)
+  AND a.created_ts IS NOT NULL
+  AND af.confidence >= :min_conf
+ORDER BY a.created_ts ASC;
+
+
+Step 2: Python windowing
+
+Input: sorted stream of events per person.
+
+Output: list of [start_ts, end_ts] windows where all persons are present at least once.
+
+Then query assets in those windows:
+
+SELECT 'photo' AS asset_type, id AS asset_id, created_ts
+FROM photos
+WHERE project_id = :project_id
+  AND created_ts BETWEEN :start_ts AND :end_ts
+UNION ALL
+SELECT 'video', id, created_ts
+FROM videos
+WHERE project_id = :project_id
+  AND created_ts BETWEEN :start_ts AND :end_ts
+ORDER BY created_ts DESC;
+
+
+This design gives you predictable performance and a clean place to tune heuristics later.
+
+6) Indexing plan (when to compute, what to cache)
+6.1 When results are computed
+
+On first view of a group, or on explicit “Compute”
+
+Recompute when:
+
+new scan adds assets, or
+
+face clustering changes, or
+
+person merge happens, or
+
+group membership changes
+
+6.2 What you store
+
+Store only asset_id, asset_type per group per mode, plus an optional score. This keeps the group page instant.
+
+6.3 Background jobs
+
+Add job types:
+
+group_compute_together
+
+group_compute_event_window
+
+Both should report:
+
+scanned assets count
+
+matched assets count
+
+runtime
+
+stale cleared
+
+7) Preferences, Groups tab (your requirement)
+
+A single place where user configures dynamic behavior:
+
+Event window seconds (default 30s, adjustable)
+
+Minimum confidence threshold
+
+Include videos in group results (on or off)
+
+Max results per group (pagination)
+
+Auto recompute on DB changes (on or off, default on)
+
+“Together (AND) is default” [hard rule, no per group memory]
+
+8) Non negotiable UX constraints (your blind spot to avoid)
+
+Do not make group retrieval a live join on every scroll, it will die at scale.
+
+Do not add modal dialogs for compute progress, it will turn into UX poison when scans, embeddings, duplicates, and group compute overlap.
+
+Precompute and cache group results, show instantly, recompute in background, this is how “feels instant” products behave.
+
+References (product and platform patterns)
+
+Apple Photos, People album guidance and People management patterns.
+
+Adobe Lightroom Classic, People view concepts (face grouping workflows).
+
+Qt fit and view scaling behavior, including fitInView behavior notes that matter for media viewers.
+
+Google Photos, people and face grouping related help content and behavior patterns.
