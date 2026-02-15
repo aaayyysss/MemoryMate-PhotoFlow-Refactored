@@ -37,8 +37,6 @@ from .people_section import PeopleSection
 from .devices_section import DevicesSection
 from .quick_section import QuickSection
 from .locations_section import LocationsSection
-from .groups_section import GroupsSection
-
 logger = logging.getLogger(__name__)
 
 
@@ -160,13 +158,13 @@ class AccordionSidebar(QWidget):
         """Create all section instances."""
 
         # Create section logic modules
+        # NOTE: Groups is embedded inside People as a tab, not a standalone section
         self.section_logic = {
             "folders": FoldersSection(self),
             "dates": DatesSection(self),
             "duplicates": DuplicatesSection(self),  # Phase 3A
             "videos": VideosSection(self),
             "people": PeopleSection(self),
-            "groups": GroupsSection(self),  # v9.5.0 People Groups
             "devices": DevicesSection(self),
             "locations": LocationsSection(self),
             "quick": QuickSection(self)
@@ -260,6 +258,18 @@ class AccordionSidebar(QWidget):
         if people and hasattr(people, 'peopleToolsRequested'):
             people.peopleToolsRequested.connect(self.peopleToolsRequested.emit)
 
+        # Groups signals (forwarded from People section's embedded Groups tab)
+        if people and hasattr(people, 'groupSelected'):
+            people.groupSelected.connect(self._on_group_selected)
+        if people and hasattr(people, 'newGroupRequested'):
+            people.newGroupRequested.connect(self._on_new_group_requested)
+        if people and hasattr(people, 'editGroupRequested'):
+            people.editGroupRequested.connect(self.editGroupRequested.emit)
+        if people and hasattr(people, 'deleteGroupRequested'):
+            people.deleteGroupRequested.connect(self._on_delete_group_requested)
+        if people and hasattr(people, 'recomputeGroupRequested'):
+            people.recomputeGroupRequested.connect(self._on_recompute_group_requested)
+
         # Videos section
         videos = self.section_logic.get("videos")
         if videos and hasattr(videos, 'videoFilterSelected'):
@@ -280,19 +290,7 @@ class AccordionSidebar(QWidget):
         if quick and hasattr(quick, 'quickDateSelected'):
             quick.quickDateSelected.connect(self.selectDate.emit)
 
-        # Groups section (v9.5.0)
-        groups = self.section_logic.get("groups")
-        if groups:
-            if hasattr(groups, 'groupSelected'):
-                groups.groupSelected.connect(self._on_group_selected)
-            if hasattr(groups, 'newGroupRequested'):
-                groups.newGroupRequested.connect(self._on_new_group_requested)
-            if hasattr(groups, 'editGroupRequested'):
-                groups.editGroupRequested.connect(self.editGroupRequested.emit)
-            if hasattr(groups, 'deleteGroupRequested'):
-                groups.deleteGroupRequested.connect(self._on_delete_group_requested)
-            if hasattr(groups, 'recomputeRequested'):
-                groups.recomputeRequested.connect(self._on_recompute_group_requested)
+        # (Groups signals are now connected via People section above)
 
     def _on_section_expand_requested(self, section_id: str):
         """Handle section expand request."""
@@ -838,8 +836,10 @@ class AccordionSidebar(QWidget):
         """Handle successful group creation."""
         logger.info(f"[AccordionSidebar] Group created: {group_info}")
 
-        # Reload groups section
-        self._trigger_section_load("groups")
+        # Reload groups tab inside People section
+        people = self.section_logic.get("people")
+        if people and hasattr(people, 'reload_groups'):
+            people.reload_groups()
 
         # Optionally trigger initial computation
         group_id = group_info.get('id')
@@ -864,8 +864,10 @@ class AccordionSidebar(QWidget):
                 service = PeopleGroupService(self.db)
                 service.delete_group(self.project_id, group_id, soft_delete=False)
 
-                # Reload groups section
-                self._trigger_section_load("groups")
+                # Reload groups tab inside People section
+                people = self.section_logic.get("people")
+                if people and hasattr(people, 'reload_groups'):
+                    people.reload_groups()
 
                 QMessageBox.information(None, "Deleted", "Group has been deleted.")
 
@@ -892,8 +894,10 @@ class AccordionSidebar(QWidget):
             )
 
             def on_finished(success, result):
-                # Reload groups section to update counts
-                self._trigger_section_load("groups")
+                # Reload groups tab inside People section
+                people = self.section_logic.get("people")
+                if people and hasattr(people, 'reload_groups'):
+                    people.reload_groups()
 
                 if success:
                     match_count = result.get('match_count', 0)
