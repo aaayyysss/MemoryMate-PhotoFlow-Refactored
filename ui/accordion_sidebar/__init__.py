@@ -76,6 +76,7 @@ class AccordionSidebar(QWidget):
     # Groups section signals (v9.5.0)
     selectGroup = Signal(int, str)  # (group_id, match_mode)
     newGroupRequested = Signal()
+    createGroupRequested = Signal()  # Open create group dialog (emitted after group creation)
     editGroupRequested = Signal(int)  # group_id
     deleteGroupRequested = Signal(int)  # group_id
     recomputeGroupRequested = Signal(int, str)  # (group_id, match_mode)
@@ -403,21 +404,6 @@ class AccordionSidebar(QWidget):
         self.selectVideo.emit(filter_key)
 
     # --- Groups sub-section handlers ---
-
-    def _on_group_selected(self, group_id: int):
-        """Handle group selection from Groups sub-section."""
-        logger.info(f"[AccordionSidebar] Group selected: {group_id}")
-
-        # PHASE 3: Save group selection to session state
-        try:
-            from session_state_manager import get_session_state
-            get_session_state().set_selection("group", group_id, f"Group #{group_id}")
-            logger.debug(f"[AccordionSidebar] PHASE 3: Saved group selection: {group_id}")
-        except Exception as e:
-            logger.warning(f"[AccordionSidebar] PHASE 3: Failed to save group selection: {e}")
-
-        # Emit to parent layout for grid filtering
-        self.selectGroup.emit(group_id)
 
     def _on_create_group_requested(self):
         """Handle create group request - open the create group dialog."""
@@ -914,9 +900,24 @@ class AccordionSidebar(QWidget):
 
     # --- Groups Section Handlers (v9.5.0) ---
 
-    def _on_group_selected(self, group_id: int, match_mode: str):
-        """Handle group selection."""
+    def _on_group_selected(self, group_id: int, match_mode: str = "together"):
+        """Handle group selection.
+
+        Args:
+            group_id: The ID of the selected group
+            match_mode: Match mode ('together', 'any', etc). Defaults to 'together'
+                        for compatibility with PeopleSection.groupSelected(int) signal.
+        """
         logger.info(f"[AccordionSidebar] Group selected: {group_id} (mode={match_mode})")
+
+        # PHASE 3: Save group selection to session state
+        try:
+            from session_state_manager import get_session_state
+            get_session_state().set_selection("group", group_id, f"Group #{group_id}")
+            logger.debug(f"[AccordionSidebar] PHASE 3: Saved group selection: {group_id}")
+        except Exception as e:
+            logger.warning(f"[AccordionSidebar] PHASE 3: Failed to save group selection: {e}")
+
         self.selectGroup.emit(group_id, match_mode)
 
     def _on_new_group_requested(self):
