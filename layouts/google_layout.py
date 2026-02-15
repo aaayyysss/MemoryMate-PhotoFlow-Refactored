@@ -2069,7 +2069,7 @@ class GooglePhotosLayout(BaseLayout):
 
     # --- Groups sub-section handlers (Person Groups feature) ---
 
-    def _on_accordion_group_clicked(self, group_id: int):
+    def _on_accordion_group_clicked(self, group_id: int, match_mode: str = "together"):
         """
         Handle group selection from the Groups sub-section.
 
@@ -2077,12 +2077,17 @@ class GooglePhotosLayout(BaseLayout):
         where ALL group members appear together (AND matching).
 
         Args:
-            group_id: ID of the selected group
+            group_id: ID of the selected group (-1 for deselection)
+            match_mode: Matching mode ('together', 'any', etc.). Defaults to 'together'.
         """
-        if not group_id:
+        # Handle invalid/deselection group IDs (None, 0, or negative values like -1)
+        if group_id is None or group_id < 1:
+            logger.info(f"[GooglePhotosLayout] Group deselected or invalid (group_id={group_id})")
+            # Clear group filter - reload all photos
+            self._request_load(thumb_size=self.current_thumb_size)
             return
 
-        logger.info(f"[GooglePhotosLayout] Group clicked: {group_id}")
+        logger.info(f"[GooglePhotosLayout] Group clicked: {group_id} (mode={match_mode})")
 
         try:
             from services.group_service import GroupService
@@ -2094,7 +2099,7 @@ class GooglePhotosLayout(BaseLayout):
             if not paths:
                 from PySide6.QtWidgets import QMessageBox
                 QMessageBox.information(
-                    self,
+                    self.main_window,
                     "No Photos Found",
                     "No photos found where all group members appear together.\n\n"
                     "This group might need to be re-indexed."
