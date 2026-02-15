@@ -1,9 +1,15 @@
 # services/people_group_service.py
-# Version 1.0.0 dated 20260215
+# Version 2.0.0 dated 20260215
 # Service for managing People Groups feature
 #
 # People Groups allow users to define groups of 2+ people and find photos
 # where those people appear together (AND mode) or within a time window.
+#
+# Fix 2026-02-15: Rewritten to use canonical schema from schema.py
+# - Removed non-existent columns: group_key, display_name, description, icon
+# - Removed non-existent tables: person_group_state, person_group_matches
+# - Uses group_asset_matches for match results
+# - Uses name instead of display_name
 
 """
 PeopleGroupService - Groups of people for finding photos together
@@ -13,19 +19,17 @@ Provides:
 - Group CRUD operations (create, read, update, delete)
 - Member management (add/remove people from groups)
 - Match computation (Together AND, Event Window modes)
-- Staleness detection and recomputation triggers
+- Results stored in group_asset_matches table
 
 Key Design Decisions:
 1. Per-project scoped groups (not global)
-2. Precomputed/cached results (no live joins on scroll)
+2. Precomputed/cached results in group_asset_matches
 3. Background computation with progress signals
-4. Staleness tracking for automatic refresh
 """
 
 from __future__ import annotations
 import json
 import time
-import uuid
 from datetime import datetime
 from typing import List, Dict, Any, Optional, Tuple
 from logging_config import get_logger
@@ -42,7 +46,7 @@ class PeopleGroupService:
     - Add/remove members from groups
     - Compute matches (Together AND mode)
     - Compute matches (Event Window mode)
-    - Track staleness and trigger recomputation
+    - Results cached in group_asset_matches table
     """
 
     def __init__(self, db):
@@ -61,72 +65,68 @@ class PeopleGroupService:
     def create_group(
         self,
         project_id: int,
-        display_name: str,
+        name: str,
         member_branch_keys: List[str],
-        description: Optional[str] = None,
-        icon: Optional[str] = None
+        display_name: Optional[str] = None,  # Alias for name (backwards compat)
+        description: Optional[str] = None,   # Ignored (not in schema)
+        icon: Optional[str] = None           # Ignored (not in schema)
     ) -> Dict[str, Any]:
         """
         Create a new people group.
 
         Args:
             project_id: Project ID
-            display_name: User-visible name for the group
+            name: User-visible name for the group
             member_branch_keys: List of branch_keys (face clusters) to include
-            description: Optional description
-            icon: Optional emoji/icon
+            display_name: Alias for name (backwards compatibility)
+            description: Ignored (not in canonical schema)
+            icon: Ignored (not in canonical schema)
 
         Returns:
-            Dict with group info including 'id' and 'group_key'
+            Dict with group info including 'id'
 
         Raises:
             ValueError: If fewer than 2 members provided
         """
+        # Support both 'name' and 'display_name' for backwards compat
+        group_name = name or display_name or "New Group"
+
         if len(member_branch_keys) < 2:
             raise ValueError("A group must have at least 2 members")
 
-        # Generate unique group key
-        group_key = f"group_{uuid.uuid4().hex[:8]}"
+        now = int(time.time())
 
         try:
             with self.db._connect() as conn:
                 cur = conn.cursor()
 
-                # Insert group
+                # Insert group using canonical schema columns
                 cur.execute("""
-                    INSERT INTO person_groups (project_id, group_key, display_name, description, icon)
-                    VALUES (?, ?, ?, ?, ?)
-                """, (project_id, group_key, display_name, description, icon))
+                    INSERT INTO person_groups
+                        (project_id, name, created_at, updated_at, last_used_at, is_pinned, is_deleted)
+                    VALUES (?, ?, ?, ?, ?, 0, 0)
+                """, (project_id, group_name, now, now, now))
 
                 group_id = cur.lastrowid
 
-                # Insert members
+                # Insert members (canonical schema: group_id, branch_key, added_at)
                 for branch_key in member_branch_keys:
                     cur.execute("""
-                        INSERT INTO person_group_members (group_id, project_id, branch_key)
+                        INSERT INTO person_group_members (group_id, branch_key, added_at)
                         VALUES (?, ?, ?)
-                    """, (group_id, project_id, branch_key))
-
-                # Initialize state as stale (needs computation)
-                cur.execute("""
-                    INSERT INTO person_group_state (group_id, project_id, is_stale, member_count)
-                    VALUES (?, ?, 1, ?)
-                """, (group_id, project_id, len(member_branch_keys)))
+                    """, (group_id, branch_key, now))
 
                 conn.commit()
 
-                logger.info(f"[PeopleGroupService] Created group '{display_name}' "
-                           f"(id={group_id}, key={group_key}) with {len(member_branch_keys)} members")
+                logger.info(f"[PeopleGroupService] Created group '{group_name}' "
+                           f"(id={group_id}) with {len(member_branch_keys)} members")
 
                 return {
                     'id': group_id,
-                    'group_key': group_key,
-                    'display_name': display_name,
-                    'description': description,
-                    'icon': icon,
+                    'name': group_name,
+                    'display_name': group_name,  # Backwards compat alias
                     'member_count': len(member_branch_keys),
-                    'is_stale': True,
-                    'result_count': 0
+                    'members': member_branch_keys
                 }
 
         except Exception as e:
@@ -148,39 +148,36 @@ class PeopleGroupService:
             with self.db._connect() as conn:
                 cur = conn.execute("""
                     SELECT
-                        g.id, g.group_key, g.display_name, g.description, g.icon,
-                        g.created_at, g.updated_at,
-                        COALESCE(s.is_stale, 1) as is_stale,
-                        COALESCE(s.member_count, 0) as member_count,
-                        COALESCE(s.result_count, 0) as result_count,
-                        s.last_computed_at,
-                        s.match_mode,
-                        s.params_json,
-                        s.error_message
+                        g.id, g.name, g.created_at, g.updated_at,
+                        g.last_used_at, g.is_pinned,
+                        COUNT(m.branch_key) as member_count
                     FROM person_groups g
-                    LEFT JOIN person_group_state s ON g.id = s.group_id
+                    LEFT JOIN person_group_members m ON g.id = m.group_id
                     WHERE g.project_id = ? AND g.id = ? AND g.is_deleted = 0
+                    GROUP BY g.id
                 """, (project_id, group_id))
 
                 row = cur.fetchone()
                 if not row:
                     return None
 
+                # Get match count from group_asset_matches
+                match_count_row = conn.execute("""
+                    SELECT COUNT(*) FROM group_asset_matches
+                    WHERE group_id = ?
+                """, (group_id,)).fetchone()
+                match_count = match_count_row[0] if match_count_row else 0
+
                 return {
                     'id': row[0],
-                    'group_key': row[1],
-                    'display_name': row[2],
-                    'description': row[3],
-                    'icon': row[4],
-                    'created_at': row[5],
-                    'updated_at': row[6],
-                    'is_stale': bool(row[7]),
-                    'member_count': row[8],
-                    'result_count': row[9],
-                    'last_computed_at': row[10],
-                    'match_mode': row[11] or 'together',
-                    'params_json': row[12],
-                    'error_message': row[13]
+                    'name': row[1],
+                    'display_name': row[1],  # Backwards compat alias
+                    'created_at': row[2],
+                    'updated_at': row[3],
+                    'last_used_at': row[4],
+                    'is_pinned': bool(row[5]),
+                    'member_count': row[6],
+                    'result_count': match_count
                 }
 
         except Exception as e:
@@ -204,34 +201,37 @@ class PeopleGroupService:
 
                 cur = conn.execute(f"""
                     SELECT
-                        g.id, g.group_key, g.display_name, g.description, g.icon,
-                        g.created_at, g.updated_at,
-                        COALESCE(s.is_stale, 1) as is_stale,
-                        COALESCE(s.member_count, 0) as member_count,
-                        COALESCE(s.result_count, 0) as result_count,
-                        s.last_computed_at,
-                        s.match_mode
+                        g.id, g.name, g.created_at, g.updated_at,
+                        g.last_used_at, g.is_pinned,
+                        COUNT(m.branch_key) as member_count
                     FROM person_groups g
-                    LEFT JOIN person_group_state s ON g.id = s.group_id
+                    LEFT JOIN person_group_members m ON g.id = m.group_id
                     WHERE g.project_id = ? {deleted_clause}
-                    ORDER BY g.display_name ASC
+                    GROUP BY g.id
+                    ORDER BY g.is_pinned DESC, g.last_used_at DESC, g.name ASC
                 """, (project_id,))
 
                 groups = []
                 for row in cur.fetchall():
+                    group_id = row[0]
+
+                    # Get match count from group_asset_matches
+                    match_count_row = conn.execute("""
+                        SELECT COUNT(*) FROM group_asset_matches
+                        WHERE group_id = ?
+                    """, (group_id,)).fetchone()
+                    match_count = match_count_row[0] if match_count_row else 0
+
                     groups.append({
-                        'id': row[0],
-                        'group_key': row[1],
-                        'display_name': row[2],
-                        'description': row[3],
-                        'icon': row[4],
-                        'created_at': row[5],
-                        'updated_at': row[6],
-                        'is_stale': bool(row[7]),
-                        'member_count': row[8],
-                        'result_count': row[9],
-                        'last_computed_at': row[10],
-                        'match_mode': row[11] or 'together'
+                        'id': group_id,
+                        'name': row[1],
+                        'display_name': row[1],  # Backwards compat alias
+                        'created_at': row[2],
+                        'updated_at': row[3],
+                        'last_used_at': row[4],
+                        'is_pinned': bool(row[5]),
+                        'member_count': row[6],
+                        'result_count': match_count
                     })
 
                 return groups
@@ -244,9 +244,10 @@ class PeopleGroupService:
         self,
         project_id: int,
         group_id: int,
-        display_name: Optional[str] = None,
-        description: Optional[str] = None,
-        icon: Optional[str] = None
+        name: Optional[str] = None,
+        display_name: Optional[str] = None,  # Alias for name (backwards compat)
+        description: Optional[str] = None,   # Ignored (not in schema)
+        icon: Optional[str] = None           # Ignored (not in schema)
     ) -> bool:
         """
         Update group metadata.
@@ -254,31 +255,31 @@ class PeopleGroupService:
         Args:
             project_id: Project ID
             group_id: Group ID
-            display_name: New name (or None to keep)
-            description: New description (or None to keep)
-            icon: New icon (or None to keep)
+            name: New name (or None to keep)
+            display_name: Alias for name (backwards compat)
+            description: Ignored (not in canonical schema)
+            icon: Ignored (not in canonical schema)
 
         Returns:
             True if updated successfully
         """
         try:
+            # Support both 'name' and 'display_name' for backwards compat
+            group_name = name or display_name
+
             updates = []
             params = []
 
-            if display_name is not None:
-                updates.append("display_name = ?")
-                params.append(display_name)
-            if description is not None:
-                updates.append("description = ?")
-                params.append(description)
-            if icon is not None:
-                updates.append("icon = ?")
-                params.append(icon)
+            if group_name is not None:
+                updates.append("name = ?")
+                params.append(group_name)
 
             if not updates:
                 return True  # Nothing to update
 
-            updates.append("updated_at = CURRENT_TIMESTAMP")
+            now = int(time.time())
+            updates.append("updated_at = ?")
+            params.append(now)
             params.extend([project_id, group_id])
 
             with self.db._connect() as conn:
@@ -309,15 +310,19 @@ class PeopleGroupService:
             True if deleted successfully
         """
         try:
+            now = int(time.time())
+
             with self.db._connect() as conn:
                 if soft_delete:
                     conn.execute("""
                         UPDATE person_groups
-                        SET is_deleted = 1, updated_at = CURRENT_TIMESTAMP
+                        SET is_deleted = 1, updated_at = ?
                         WHERE project_id = ? AND id = ?
-                    """, (project_id, group_id))
+                    """, (now, project_id, group_id))
                 else:
-                    # Hard delete cascades to members, matches, and state
+                    # Hard delete cascades via foreign keys
+                    conn.execute("DELETE FROM group_asset_matches WHERE group_id = ?", (group_id,))
+                    conn.execute("DELETE FROM person_group_members WHERE group_id = ?", (group_id,))
                     conn.execute("""
                         DELETE FROM person_groups
                         WHERE project_id = ? AND id = ?
@@ -359,10 +364,10 @@ class PeopleGroupService:
                         f.rep_thumb_png
                     FROM person_group_members m
                     LEFT JOIN face_branch_reps f
-                        ON f.project_id = m.project_id AND f.branch_key = m.branch_key
-                    WHERE m.group_id = ? AND m.project_id = ?
+                        ON f.project_id = ? AND f.branch_key = m.branch_key
+                    WHERE m.group_id = ?
                     ORDER BY display_name ASC
-                """, (group_id, project_id))
+                """, (project_id, group_id))
 
                 members = []
                 for row in cur.fetchall():
@@ -394,23 +399,21 @@ class PeopleGroupService:
             True if added successfully
         """
         try:
+            now = int(time.time())
+
             with self.db._connect() as conn:
                 conn.execute("""
-                    INSERT OR IGNORE INTO person_group_members (group_id, project_id, branch_key)
+                    INSERT OR IGNORE INTO person_group_members (group_id, branch_key, added_at)
                     VALUES (?, ?, ?)
-                """, (group_id, project_id, branch_key))
+                """, (group_id, branch_key, now))
 
-                # Mark group as stale (needs recomputation)
-                self._mark_group_stale(conn, group_id)
+                # Clear cached matches since group composition changed
+                conn.execute("DELETE FROM group_asset_matches WHERE group_id = ?", (group_id,))
 
-                # Update member count
+                # Update group timestamp
                 conn.execute("""
-                    UPDATE person_group_state
-                    SET member_count = (
-                        SELECT COUNT(*) FROM person_group_members WHERE group_id = ?
-                    )
-                    WHERE group_id = ?
-                """, (group_id, group_id))
+                    UPDATE person_groups SET updated_at = ? WHERE id = ?
+                """, (now, group_id))
 
                 conn.commit()
 
@@ -434,23 +437,21 @@ class PeopleGroupService:
             True if removed successfully
         """
         try:
+            now = int(time.time())
+
             with self.db._connect() as conn:
                 conn.execute("""
                     DELETE FROM person_group_members
-                    WHERE group_id = ? AND project_id = ? AND branch_key = ?
-                """, (group_id, project_id, branch_key))
+                    WHERE group_id = ? AND branch_key = ?
+                """, (group_id, branch_key))
 
-                # Mark group as stale
-                self._mark_group_stale(conn, group_id)
+                # Clear cached matches since group composition changed
+                conn.execute("DELETE FROM group_asset_matches WHERE group_id = ?", (group_id,))
 
-                # Update member count
+                # Update group timestamp
                 conn.execute("""
-                    UPDATE person_group_state
-                    SET member_count = (
-                        SELECT COUNT(*) FROM person_group_members WHERE group_id = ?
-                    )
-                    WHERE group_id = ?
-                """, (group_id, group_id))
+                    UPDATE person_groups SET updated_at = ? WHERE id = ?
+                """, (now, group_id))
 
                 conn.commit()
 
@@ -497,8 +498,8 @@ class PeopleGroupService:
                 # Get group members
                 cur.execute("""
                     SELECT branch_key FROM person_group_members
-                    WHERE group_id = ? AND project_id = ?
-                """, (group_id, project_id))
+                    WHERE group_id = ?
+                """, (group_id,))
                 members = [row[0] for row in cur.fetchall()]
 
                 if len(members) < 2:
@@ -514,8 +515,7 @@ class PeopleGroupService:
                     progress_callback(0, 100, f"Finding photos with {member_count} people together...")
 
                 # Find photos where ALL members appear
-                # This is the key AND query - count distinct persons per photo
-                # and only keep photos where count equals total members
+                # This is the key AND query
                 placeholders = ','.join(['?'] * len(members))
 
                 cur.execute(f"""
@@ -537,42 +537,30 @@ class PeopleGroupService:
                 if progress_callback:
                     progress_callback(50, 100, f"Found {len(matching_photos)} matching photos")
 
-                # Clear previous matches for this group/mode
+                # Clear previous matches for this group
                 cur.execute("""
-                    DELETE FROM person_group_matches
-                    WHERE group_id = ? AND match_mode = 'together'
+                    DELETE FROM group_asset_matches
+                    WHERE group_id = ? AND scope = 'same_photo'
                 """, (group_id,))
 
                 # Insert new matches
+                now = int(time.time())
                 match_count = 0
                 for image_path, photo_id, person_count in matching_photos:
                     cur.execute("""
-                        INSERT INTO person_group_matches
-                            (group_id, project_id, asset_type, asset_id, asset_path, match_mode)
-                        VALUES (?, ?, 'photo', ?, ?, 'together')
-                    """, (group_id, project_id, photo_id, image_path))
+                        INSERT INTO group_asset_matches
+                            (group_id, scope, photo_id, computed_at)
+                        VALUES (?, 'same_photo', ?, ?)
+                    """, (group_id, photo_id, now))
                     match_count += 1
 
                 if progress_callback:
                     progress_callback(90, 100, f"Saved {match_count} matches")
 
-                # Update state
-                params_json = json.dumps({
-                    'min_confidence': min_confidence,
-                    'include_videos': include_videos
-                })
-
+                # Update group last_used_at
                 cur.execute("""
-                    UPDATE person_group_state
-                    SET
-                        is_stale = 0,
-                        last_computed_at = CURRENT_TIMESTAMP,
-                        match_mode = 'together',
-                        result_count = ?,
-                        params_json = ?,
-                        error_message = NULL
-                    WHERE group_id = ?
-                """, (match_count, params_json, group_id))
+                    UPDATE person_groups SET last_used_at = ? WHERE id = ?
+                """, (now, group_id))
 
                 conn.commit()
 
@@ -593,19 +581,6 @@ class PeopleGroupService:
 
         except Exception as e:
             logger.error(f"[PeopleGroupService] Together match computation failed: {e}", exc_info=True)
-
-            # Record error in state
-            try:
-                with self.db._connect() as conn:
-                    conn.execute("""
-                        UPDATE person_group_state
-                        SET error_message = ?
-                        WHERE group_id = ?
-                    """, (str(e), group_id))
-                    conn.commit()
-            except:
-                pass
-
             return {
                 'success': False,
                 'error': str(e),
@@ -624,9 +599,6 @@ class PeopleGroupService:
         """
         Compute 'event_window' matches: photos taken within a time window
         where all group members appear somewhere in that window.
-
-        This mode finds photos from events where the group was together,
-        even if not all in the same photo.
 
         Args:
             project_id: Project ID
@@ -648,8 +620,8 @@ class PeopleGroupService:
                 # Get group members
                 cur.execute("""
                     SELECT branch_key FROM person_group_members
-                    WHERE group_id = ? AND project_id = ?
-                """, (group_id, project_id))
+                    WHERE group_id = ?
+                """, (group_id,))
                 members = [row[0] for row in cur.fetchall()]
 
                 if len(members) < 2:
@@ -664,8 +636,7 @@ class PeopleGroupService:
                 if progress_callback:
                     progress_callback(0, 100, f"Finding event windows with {member_count} people...")
 
-                # Step 1: Get all photo timestamps for each member
-                # Build a timeline of when each person appears
+                # Get all photo timestamps for each member
                 placeholders = ','.join(['?'] * len(members))
 
                 cur.execute(f"""
@@ -696,8 +667,7 @@ class PeopleGroupService:
                 if progress_callback:
                     progress_callback(20, 100, f"Analyzing {len(events)} photo events...")
 
-                # Step 2: Find event windows where all members appear
-                # Sliding window algorithm
+                # Find event windows where all members appear
                 matching_photos = set()
 
                 # Build person -> timestamp mapping
@@ -710,7 +680,7 @@ class PeopleGroupService:
                 for m in members:
                     person_times[m].sort(key=lambda x: x[0])
 
-                # Use the first member's timeline as anchor and check windows
+                # Use the first member's timeline as anchor
                 if not person_times[members[0]]:
                     return {
                         'success': True,
@@ -719,8 +689,6 @@ class PeopleGroupService:
                         'message': 'No photos found for anchor person'
                     }
 
-                # For each photo of the anchor person, check if all others
-                # appear within the window
                 anchor_member = members[0]
                 other_members = members[1:]
 
@@ -728,7 +696,6 @@ class PeopleGroupService:
                     window_start = anchor_ts - window_seconds
                     window_end = anchor_ts + window_seconds
 
-                    # Check if all other members appear in this window
                     all_present = True
                     window_photos = [(anchor_photo_id, anchor_path)]
 
@@ -745,50 +712,36 @@ class PeopleGroupService:
                             break
 
                     if all_present:
-                        # Add all photos in this window
                         for photo_id, path in window_photos:
                             matching_photos.add((photo_id, path))
 
                 if progress_callback:
                     progress_callback(70, 100, f"Found {len(matching_photos)} matching photos")
 
-                # Clear previous matches for this group/mode
+                # Clear previous event_window matches
                 cur.execute("""
-                    DELETE FROM person_group_matches
-                    WHERE group_id = ? AND match_mode = 'event_window'
+                    DELETE FROM group_asset_matches
+                    WHERE group_id = ? AND scope = 'event_window'
                 """, (group_id,))
 
                 # Insert new matches
+                now = int(time.time())
                 match_count = 0
                 for photo_id, path in matching_photos:
                     cur.execute("""
-                        INSERT OR IGNORE INTO person_group_matches
-                            (group_id, project_id, asset_type, asset_id, asset_path, match_mode)
-                        VALUES (?, ?, 'photo', ?, ?, 'event_window')
-                    """, (group_id, project_id, photo_id, path))
+                        INSERT OR IGNORE INTO group_asset_matches
+                            (group_id, scope, photo_id, computed_at)
+                        VALUES (?, 'event_window', ?, ?)
+                    """, (group_id, photo_id, now))
                     match_count += 1
 
                 if progress_callback:
                     progress_callback(90, 100, f"Saved {match_count} matches")
 
-                # Update state
-                params_json = json.dumps({
-                    'window_seconds': window_seconds,
-                    'min_confidence': min_confidence,
-                    'include_videos': include_videos
-                })
-
+                # Update group last_used_at
                 cur.execute("""
-                    UPDATE person_group_state
-                    SET
-                        is_stale = 0,
-                        last_computed_at = CURRENT_TIMESTAMP,
-                        match_mode = 'event_window',
-                        result_count = ?,
-                        params_json = ?,
-                        error_message = NULL
-                    WHERE group_id = ?
-                """, (match_count, params_json, group_id))
+                    UPDATE person_groups SET last_used_at = ? WHERE id = ?
+                """, (now, group_id))
 
                 conn.commit()
 
@@ -810,19 +763,6 @@ class PeopleGroupService:
 
         except Exception as e:
             logger.error(f"[PeopleGroupService] Event window computation failed: {e}", exc_info=True)
-
-            # Record error in state
-            try:
-                with self.db._connect() as conn:
-                    conn.execute("""
-                        UPDATE person_group_state
-                        SET error_message = ?
-                        WHERE group_id = ?
-                    """, (str(e), group_id))
-                    conn.commit()
-            except:
-                pass
-
             return {
                 'success': False,
                 'error': str(e),
@@ -851,37 +791,39 @@ class PeopleGroupService:
             List of match dicts with photo info
         """
         try:
+            # Map match_mode to scope
+            scope = 'same_photo' if match_mode == 'together' else match_mode
+
             with self.db._connect() as conn:
                 limit_clause = f"LIMIT {limit}" if limit else ""
                 offset_clause = f"OFFSET {offset}" if offset else ""
 
                 cur = conn.execute(f"""
                     SELECT
-                        m.asset_id,
-                        m.asset_path,
-                        m.asset_type,
-                        m.score,
-                        m.matched_at,
+                        gam.photo_id,
+                        pm.path,
+                        gam.scope,
+                        gam.computed_at,
                         pm.created_ts,
                         pm.created_date
-                    FROM person_group_matches m
-                    LEFT JOIN photo_metadata pm ON pm.id = m.asset_id AND m.asset_type = 'photo'
-                    WHERE m.group_id = ? AND m.project_id = ? AND m.match_mode = ?
+                    FROM group_asset_matches gam
+                    JOIN photo_metadata pm ON pm.id = gam.photo_id AND pm.project_id = ?
+                    WHERE gam.group_id = ? AND gam.scope = ?
                     ORDER BY pm.created_ts DESC
                     {limit_clause}
                     {offset_clause}
-                """, (group_id, project_id, match_mode))
+                """, (project_id, group_id, scope))
 
                 matches = []
                 for row in cur.fetchall():
                     matches.append({
                         'asset_id': row[0],
                         'asset_path': row[1],
-                        'asset_type': row[2],
-                        'score': row[3],
-                        'matched_at': row[4],
-                        'created_ts': row[5],
-                        'created_date': row[6]
+                        'asset_type': 'photo',
+                        'scope': row[2],
+                        'computed_at': row[3],
+                        'created_ts': row[4],
+                        'created_date': row[5]
                     })
 
                 return matches
@@ -891,20 +833,12 @@ class PeopleGroupService:
             return []
 
     # =========================================================================
-    # STALENESS MANAGEMENT
+    # STALENESS MANAGEMENT (simplified without person_group_state table)
     # =========================================================================
-
-    def _mark_group_stale(self, conn, group_id: int) -> None:
-        """Mark a group as needing recomputation."""
-        conn.execute("""
-            UPDATE person_group_state
-            SET is_stale = 1
-            WHERE group_id = ?
-        """, (group_id,))
 
     def mark_groups_stale_for_person(self, project_id: int, branch_key: str) -> int:
         """
-        Mark all groups containing a person as stale.
+        Clear cached matches for all groups containing a person.
 
         Called when:
         - Face clustering runs
@@ -916,25 +850,36 @@ class PeopleGroupService:
             branch_key: Person's branch_key
 
         Returns:
-            Number of groups marked stale
+            Number of groups affected
         """
         try:
             with self.db._connect() as conn:
+                # Get groups containing this person
                 cur = conn.execute("""
-                    UPDATE person_group_state
-                    SET is_stale = 1
-                    WHERE group_id IN (
-                        SELECT group_id FROM person_group_members
-                        WHERE project_id = ? AND branch_key = ?
-                    )
-                """, (project_id, branch_key))
+                    SELECT DISTINCT m.group_id
+                    FROM person_group_members m
+                    JOIN person_groups g ON g.id = m.group_id
+                    WHERE m.branch_key = ? AND g.project_id = ?
+                """, (branch_key, project_id))
 
-                affected = cur.rowcount
+                group_ids = [row[0] for row in cur.fetchall()]
+
+                if not group_ids:
+                    return 0
+
+                # Clear cached matches for these groups
+                placeholders = ','.join(['?'] * len(group_ids))
+                cur = conn.execute(f"""
+                    DELETE FROM group_asset_matches
+                    WHERE group_id IN ({placeholders})
+                """, group_ids)
+
+                affected = len(group_ids)
                 conn.commit()
 
                 if affected > 0:
-                    logger.info(f"[PeopleGroupService] Marked {affected} groups stale "
-                               f"for person {branch_key}")
+                    logger.info(f"[PeopleGroupService] Cleared matches for {affected} groups "
+                               f"affected by person {branch_key}")
 
                 return affected
 
@@ -944,7 +889,7 @@ class PeopleGroupService:
 
     def mark_all_groups_stale(self, project_id: int) -> int:
         """
-        Mark all groups in a project as stale.
+        Clear cached matches for all groups in a project.
 
         Called when:
         - Photo scan completes
@@ -954,21 +899,33 @@ class PeopleGroupService:
             project_id: Project ID
 
         Returns:
-            Number of groups marked stale
+            Number of groups affected
         """
         try:
             with self.db._connect() as conn:
+                # Get all groups for this project
                 cur = conn.execute("""
-                    UPDATE person_group_state
-                    SET is_stale = 1
-                    WHERE project_id = ?
+                    SELECT id FROM person_groups
+                    WHERE project_id = ? AND is_deleted = 0
                 """, (project_id,))
 
-                affected = cur.rowcount
+                group_ids = [row[0] for row in cur.fetchall()]
+
+                if not group_ids:
+                    return 0
+
+                # Clear cached matches
+                placeholders = ','.join(['?'] * len(group_ids))
+                conn.execute(f"""
+                    DELETE FROM group_asset_matches
+                    WHERE group_id IN ({placeholders})
+                """, group_ids)
+
+                affected = len(group_ids)
                 conn.commit()
 
                 if affected > 0:
-                    logger.info(f"[PeopleGroupService] Marked {affected} groups stale "
+                    logger.info(f"[PeopleGroupService] Cleared matches for {affected} groups "
                                f"in project {project_id}")
 
                 return affected
@@ -981,6 +938,8 @@ class PeopleGroupService:
         """
         Get list of group IDs that need recomputation.
 
+        A group is considered stale if it has no cached matches.
+
         Args:
             project_id: Project ID
 
@@ -990,8 +949,12 @@ class PeopleGroupService:
         try:
             with self.db._connect() as conn:
                 cur = conn.execute("""
-                    SELECT group_id FROM person_group_state
-                    WHERE project_id = ? AND is_stale = 1
+                    SELECT g.id
+                    FROM person_groups g
+                    LEFT JOIN group_asset_matches gam ON g.id = gam.group_id
+                    WHERE g.project_id = ? AND g.is_deleted = 0
+                    GROUP BY g.id
+                    HAVING COUNT(gam.photo_id) = 0
                 """, (project_id,))
 
                 return [row[0] for row in cur.fetchall()]

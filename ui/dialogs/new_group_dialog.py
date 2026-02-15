@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QMessageBox,
     QCheckBox,
+    QSizePolicy,
 )
 from shiboken6 import isValid
 
@@ -204,8 +205,8 @@ class NewGroupDialog(QDialog):
             # Add stretch to bottom
             if people:
                 spacer = QWidget()
-                spacer.setSizePolicy(spacer.sizePolicy().horizontalPolicy(),
-                                     spacer.sizePolicy().Expanding)
+                spacer.setSizePolicy(QSizePolicy.Policy.Preferred,
+                                     QSizePolicy.Policy.Expanding)
                 self.people_layout.addWidget(spacer, (len(people) // cols) + 1, 0, 1, cols)
 
         except Exception as e:
@@ -294,14 +295,23 @@ class NewGroupDialog(QDialog):
             return
 
         try:
-            from services.people_group_service import PeopleGroupService
-            service = PeopleGroupService(self.db)
+            from services.group_service import GroupService
 
-            result = service.create_group(
+            # Use GroupService with canonical schema
+            group_id = GroupService.create_group(
+                db=self.db,
                 project_id=self.project_id,
-                display_name=name,
-                member_branch_keys=list(self._selected_branch_keys)
+                name=name,
+                branch_keys=list(self._selected_branch_keys)
             )
+
+            # Build result dict for signal emission
+            result = {
+                'id': group_id,
+                'name': name,
+                'member_count': len(self._selected_branch_keys),
+                'members': list(self._selected_branch_keys)
+            }
 
             logger.info(f"[NewGroupDialog] Created group: {result}")
 

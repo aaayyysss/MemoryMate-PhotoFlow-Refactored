@@ -1,5 +1,5 @@
 # services/group_service.py
-# Version 01.01.01.01 dated 20260214
+# Version 01.01.02.00 dated 20260215
 # People Groups service - CRUD + co-occurrence retrieval
 #
 # Manages user-defined groups of people (face clusters) and computes
@@ -10,29 +10,158 @@
 #   - Members are linked via branch_key (same as face_branch_reps)
 #   - Match results are materialized in group_asset_matches for speed
 #   - Live queries are available for small groups / interactive use
- 
+#
+# Fix 2026-02-15: Added instance() singleton method for callers expecting
+#                 instance-based access pattern.
+
 from __future__ import annotations
- 
+
 import logging
 import time
-from typing import Any, Dict, List, Optional, Tuple
- 
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from reference_db import ReferenceDB
+
 logger = logging.getLogger(__name__)
- 
- 
+
+# Module-level singleton instance
+_group_service_instance: Optional["GroupServiceInstance"] = None
+
+
+class GroupServiceInstance:
+    """
+    Instance-based wrapper around GroupService static methods.
+
+    Provides an instance() pattern for callers that expect singleton access.
+    Automatically acquires ReferenceDB from the application context.
+    """
+
+    def __init__(self):
+        """Initialize with lazy db acquisition."""
+        self._db = None
+
+    @property
+    def db(self):
+        """Lazily acquire ReferenceDB instance."""
+        if self._db is None:
+            from reference_db import ReferenceDB
+            self._db = ReferenceDB.instance()
+        return self._db
+
+    def get_groups(self, project_id: int, include_deleted: bool = False) -> List[Dict[str, Any]]:
+        """Get all groups for a project."""
+        return GroupService.get_groups(self.db, project_id, include_deleted)
+
+    def get_group(self, group_id: int, project_id: int) -> Optional[Dict[str, Any]]:
+        """Get a single group by ID."""
+        return GroupService.get_group(self.db, group_id, project_id)
+
+    def create_group(
+        self,
+        project_id: int,
+        name: str,
+        branch_keys: List[str],
+        is_pinned: bool = False,
+    ) -> int:
+        """Create a new people group."""
+        return GroupService.create_group(self.db, project_id, name, branch_keys, is_pinned)
+
+    def update_group(
+        self,
+        group_id: int,
+        name: Optional[str] = None,
+        branch_keys: Optional[List[str]] = None,
+        is_pinned: Optional[bool] = None,
+    ) -> None:
+        """Update a group."""
+        return GroupService.update_group(self.db, group_id, name, branch_keys, is_pinned)
+
+    def delete_group(self, group_id: int) -> None:
+        """Soft-delete a group."""
+        return GroupService.delete_group(self.db, group_id)
+
+    def hard_delete_group(self, group_id: int) -> None:
+        """Permanently delete a group."""
+        return GroupService.hard_delete_group(self.db, group_id)
+
+    def touch_group(self, group_id: int) -> None:
+        """Update last_used_at timestamp."""
+        return GroupService.touch_group(self.db, group_id)
+
+    def query_same_photo_matches(self, project_id: int, group_id: int) -> List[int]:
+        """Live AND-match query returning photo IDs."""
+        return GroupService.query_same_photo_matches(self.db, project_id, group_id)
+
+    def query_same_photo_paths(self, project_id: int, group_id: int) -> List[str]:
+        """Live AND-match query returning file paths."""
+        return GroupService.query_same_photo_paths(self.db, project_id, group_id)
+
+    def compute_and_store_matches(
+        self,
+        project_id: int,
+        group_id: int,
+        scope: str = "same_photo",
+    ) -> int:
+        """Compute and cache group matches."""
+        return GroupService.compute_and_store_matches(self.db, project_id, group_id, scope)
+
+    def get_cached_match_paths(
+        self,
+        project_id: int,
+        group_id: int,
+        scope: str = "same_photo",
+    ) -> List[str]:
+        """Get cached match paths."""
+        return GroupService.get_cached_match_paths(self.db, project_id, group_id, scope)
+
+    def get_cached_match_count(self, group_id: int, scope: str = "same_photo") -> int:
+        """Get count of cached matches."""
+        return GroupService.get_cached_match_count(self.db, group_id, scope)
+
+    def reindex_all_groups(self, project_id: int) -> Dict[int, int]:
+        """Recompute matches for all groups."""
+        return GroupService.reindex_all_groups(self.db, project_id)
+
+
 class GroupService:
     """
     Service for People Groups CRUD and co-occurrence retrieval.
- 
+
     Thread safety:
         Each caller must pass its own ReferenceDB or sqlite3 connection.
         The service itself holds no mutable state.
+
+    Usage:
+        # Static method pattern (explicit db):
+        GroupService.get_groups(db, project_id)
+
+        # Singleton pattern (auto db acquisition):
+        service = GroupService.instance()
+        service.get_groups(project_id)
     """
- 
+
+    @classmethod
+    def instance(cls) -> GroupServiceInstance:
+        """
+        Get singleton GroupServiceInstance.
+
+        Returns an instance wrapper that automatically acquires
+        ReferenceDB and provides instance methods for all static methods.
+
+        Example:
+            service = GroupService.instance()
+            groups = service.get_groups(project_id)
+        """
+        global _group_service_instance
+        if _group_service_instance is None:
+            _group_service_instance = GroupServiceInstance()
+        return _group_service_instance
+
     # ------------------------------------------------------------------
     # CRUD
     # ------------------------------------------------------------------
- 
+
     @staticmethod
     def create_group(
         db,
