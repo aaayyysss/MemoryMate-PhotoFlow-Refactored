@@ -246,11 +246,9 @@ class FoldersSection(BaseSection):
             logger.debug(f"[FoldersSection] Discarding stale data (gen {generation} vs {self._generation})")
             return
 
-        # Create widget (will be set by parent AccordionSidebar)
-        widget = self.create_content_widget(rows)
-
-        # Emit to parent if needed (parent will call create_content_widget again)
-        # For now, just log success
+        # NOTE: Do NOT call create_content_widget here - AccordionSidebar._on_section_loaded
+        # handles widget creation when it receives the loaded signal. Calling it here
+        # would cause duplicate widget creation.
         logger.info(f"[FoldersSection] Data loaded successfully (gen {generation})")
 
     def _on_error(self, generation: int, error_msg: str):

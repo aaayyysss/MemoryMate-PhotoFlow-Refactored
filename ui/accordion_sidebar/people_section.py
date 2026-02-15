@@ -1129,7 +1129,8 @@ class GroupsSubSection(QWidget):
                 name = group["name"]
                 photo_count = group.get("photo_count", 0)
                 members = group.get("members", [])
-                pinned = group.get("pinned", False)
+                # Support both 'is_pinned' (GroupService) and 'pinned' (legacy ReferenceDB) keys
+                pinned = group.get("is_pinned", group.get("pinned", False))
 
                 # Get member thumbnails for stacked avatars
                 member_pixmaps = []

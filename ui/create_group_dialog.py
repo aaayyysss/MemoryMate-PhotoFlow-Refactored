@@ -382,7 +382,7 @@ class CreateGroupDialog(QDialog):
             with db._connect() as conn:
                 # Get group info
                 cur = conn.execute(
-                    "SELECT name, pinned FROM person_groups WHERE id = ?",
+                    "SELECT name, is_pinned FROM person_groups WHERE id = ?",
                     (self.edit_group_id,)
                 )
                 row = cur.fetchone()

@@ -420,8 +420,8 @@ class AccordionSidebar(QWidget):
                 group_id = service.create_group(
                     project_id=self.project_id,
                     name=dialog.group_name,
-                    person_ids=dialog.selected_people,
-                    pinned=dialog.is_pinned
+                    branch_keys=dialog.selected_people,
+                    is_pinned=dialog.is_pinned
                 )
 
                 if group_id:
