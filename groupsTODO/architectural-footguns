@@ -1,0 +1,392 @@
+the log shows the Groups feature basically works, but you still have 2 architectural footguns that will bite hard as the dataset grows.
+
+Also, I cannot fully “diff audit” the Groups implementation from the ZIP you attached, because the ZIP at /mnt/data/MemoryMate-PhotoFlow-Refactored-main.zip does not appear to contain the GroupService, GroupsSection, NewGroupDialog, PeopleGroupService, etc. referenced in your runtime log (I searched filenames and code symbols, they are not there). So below I audit what the log proves is happening, I point out the likely hidden bugs, and I give you precise, file level changes to apply in your actual codebase.
+
+What the log proves is correct
+
+Store and Qt bridge are alive, and you are dispatching state deltas like ScanStarted, ScanCompleted, EmbeddingsCompleted, DuplicatesCompleted, ShutdownRequested, with ui_epoch tagging and 3 subscribers. This is the right direction.
+
+Scan pipeline is incremental, and avoids UI blocking, post scan pipelines (duplicates, embeddings, similar stacks) run in background, then UI refresh is “handled by store subscribers”. That is the core architecture you want.
+
+Face pipeline on CPU is stable, clustering is fast enough at this scale, and your People section refresh mediator is working.
+
+Hidden bugs and design regressions I see in the log
+1) Your “state signature” optimization is wrong, it breaks UX correctness
+
+You have this line multiple times:
+
+[GooglePhotosLayout] Skipping redundant reload (same state signature)
+
+It triggers when you click different groups (3, 4, 5) that all happen to return 1 photo. You are likely hashing only the result set (paths, count, or query rows). That is a correctness bug, not just an optimization issue.
+
+Why it matters:
+
+Even if the result set is the same, the “view context” is different (group_id, mode, source label). Breadcrumb, header text, selection context, and future actions (export, review, delete, “show members”) depend on that context.
+
+This creates “UI lies”, where the app silently refuses to re render because “same photo set”, while the user believes they changed filters.
+
+Fix:
+
+Your signature must include view context keys, not only results.
+
+Minimum signature inputs: project_id, navigation_mode, group_id, group_mode, folder_id, date_key, person_id, search_query, plus pagination cursor. Then optionally include result hash.
+
+Where to change (exact):
+
+In layouts/google_layout.py, find the method that decides to skip reload, typically something like _state_signature() or _should_reload() or _reload_if_needed().
+
+Expand the signature to include context, not just paths.
+
+Example (drop in logic):
+
+sig = (
+    state.project_id,
+    state.view.mode,                # 'all', 'folder', 'date', 'person', 'group', 'search'
+    state.view.group_id,
+    state.view.group_mode,
+    state.view.folder_id,
+    state.view.date_key,
+    state.view.person_id,
+    state.view.search_query,
+    state.view.page_cursor,
+)
+if sig == self._last_sig:
+    return  # safe now
+self._last_sig = sig
+
+
+This single fix will remove a lot of “it feels broken” moments.
+
+2) You allow duplicate group names, and it will poison users and your DB
+
+Log shows you created group 3 and group 4 both named 2x-2. That is going to become unmanageable quickly.
+
+Fix options:
+
+Enforce UNIQUE(project_id, name) at DB level.
+
+Or auto suffix on conflict: "2x-2 (2)", "2x-2 (3)".
+
+Or include id in UI label: "2x-2 [#4]".
+
+Where to change:
+
+DB migration: add a unique index on groups table.
+
+GroupService.create_group(...): handle IntegrityError or pre check with SELECT 1.
+
+3) Queued delivery still needs “late events” protection, you are almost there
+
+Qt queued calls can still be delivered after disconnect, or after teardown, because they are already enqueued in the event loop. Qt for Python explicitly warns about this behavior.
+
+Your ui_epoch tagging is the correct antidote, but only if every UI entrypoint checks it.
+
+Hard rule:
+
+Every slot that processes store notifications or worker results must begin with: “if action.ui_epoch != store.ui_epoch, drop”.
+
+Where to change:
+
+Your QtActionBridge slot that receives actions, and any worker “done” callback lambdas connected to UI updates.
+
+This is also why your store architecture is the right direction: you can centralize the guard instead of sprinkling it in 50 panels.
+
+4) Large photo handling, you are still decoding too much, too early
+
+You scanned 8000x12000 JPEGs. The scan is fine, but “handling large photos smoothly” is mostly a thumbnail pipeline problem, not a scan problem.
+
+Typical causes of jank and crashes:
+
+decoding full resolution in UI thread (even once per thumbnail),
+
+not using downscaled decode paths,
+
+cache churn and repeated decoding.
+
+Best practice direction (Google Photos, iPhone Photos, Lightroom all do this):
+
+Never decode full size for grid thumbnails.
+
+Always decode at target size (or slightly above) and cache the result.
+
+If you use Qt for thumbnails:
+
+Prefer QImageReader, set scaled size before reading, and let Qt decode efficiently.
+
+Ensure you use queued delivery from loader threads to the UI thread.
+
+Qt thread model basics: Qt supports delivering slot invocations across threads via event loops, QThread has its own event loop if you run it.
+
+Concrete changes:
+
+In your thumbnail loader, ensure you do this pattern:
+
+worker thread reads thumbnail bytes and constructs QImage at scaled size,
+
+emits signal with image plus (path, generation, ui_epoch),
+
+UI slot checks generation and ui_epoch, then sets pixmap.
+
+5) Your Groups compute model will melt at scale if you do not add a job key and cancellation
+
+Right now each group selection triggers a reload and each creation triggers a compute worker. With 200 groups, you will end up with compute storms.
+
+Fix:
+
+Use your JobManager with a stable job key, like group_compute:{project_id}:{group_id}:{mode}.
+
+When starting a new compute for same key, cancel or supersede.
+
+Store the newest “request token” in ProjectState, ignore old completions.
+
+This is exactly the “Lightroom background chaos” failure mode you called out earlier, too many independent refreshers. Your store can fix it, but only if you push group compute through it.
+
+The next improvement I recommend (the one you are currently missing)
+
+You already have a Store, but Groups are still doing direct calls like:
+
+[GooglePhotosLayout] Group clicked: 3 ... -> load photos
+
+That is still “panel drives refresh”. It will keep leaking complexity.
+
+Make Groups selection a pure state change, and make data loading an effect.
+
+Target flow:
+
+UI emits Action(GroupSelected(group_id, mode)).
+
+Reducer updates ProjectState.view = ViewState(mode='group', group_id=..., group_mode=...).
+
+Effect sees view change, starts DB query in background.
+
+Effect dispatches Action(MediaQueryCompleted(rows, request_token)).
+
+Reducer stores visible_assets, increments media_v.
+
+Panels render based on state only, no panel triggered refresh timers.
+
+This is Redux’s “single source of truth” principle applied to a desktop app store.
+
+Once you do this for Groups, you will be able to do it for Folder, Date, Person, Search, Similar, Duplicates, and you will finally kill the multi refresher problem at the root.
+
+your log proves the Groups feature works, but your “state signature skip” is lying to you.
+
+What is actually happening (from your log)
+
+You click Group 4, then Group 3, then Group 5, and the layout prints:
+
+Group 4 has 1 matching photos
+
+Skipping redundant reload (same state signature)
+
+Group 3 has 1 matching photos
+
+Skipping redundant reload (same state signature)
+
+So your signature is not keyed by the group identity, it is keyed by something like “project_id + location + count(photos)” or “project_id + location paths hash that ends up identical”, so different groups that happen to return the same 1 photo collide, and the UI refuses to reload.
+
+That is a classic bug pattern when people implement “reload skip” before they formalize a canonical view state.
+
+Below is an exact, patchable set of changes for the files you listed. I am not pasting 5k+ lines, I am giving you surgical replace blocks with stable anchors so you can patch fast.
+
+1) core/state_bus.py, add canonical view state + action
+A) Add these fields to ProjectState (near your other state fields)
+
+Find your ProjectState dataclass and add:
+
+# --- VIEW CONTEXT (canonical, drives the grid) ---
+view_v: int = 0  # bump whenever the "what the grid should show" changes
+
+view_location: str = "all"  # examples: all, folder, date, person, group, search, duplicates, similar
+view_payload: dict = field(default_factory=dict)
+# payload examples:
+# {"folder_id": 123}
+# {"date_key": "2025-08-09"}
+# {"person_key": "face_000"}
+# {"group_id": 4, "mode": "together"}
+B) Add an Action type
+
+Add this next to your other Action dataclasses:
+
+@dataclass(frozen=True)
+class ViewChanged(Action):
+    location: str
+    payload: dict
+C) Handle it in the reducer
+
+In your reducer (where you handle actions), add:
+
+if isinstance(action, ViewChanged):
+    # If nothing changes, do not bump view_v.
+    if state.view_location == action.location and state.view_payload == action.payload:
+        return state
+    return replace(
+        state,
+        view_location=action.location,
+        view_payload=dict(action.payload),
+        view_v=state.view_v + 1,
+    )
+D) Include view_v in your delta logging snapshot
+
+In _snapshot_versions(), add:
+
+"view_v": s.view_v,
+
+Also add view_v to your ProjectState version fields list if you keep one in comments.
+
+Why this matters: it gives you one canonical “what should be shown” version counter, so your layout can skip reloads safely based on view_v, not on fragile heuristics.
+
+2) ui/accordion_sidebar/groups_section.py, dispatch view change on selection
+
+Find the place where you emit “group selected” (your log shows Group selected: 4 (mode=together) and then the layout is called).
+
+Replace the direct layout call (or add before it) with:
+
+from core.state_bus import ViewChanged
+
+# when user selects a group card:
+self.store.dispatch(
+    ViewChanged(
+        location="group",
+        payload={"group_id": int(group_id), "mode": str(mode)},
+    ),
+    source="groups_section",
+)
+
+If you currently call something like self.on_group_selected.emit(group_id, mode), keep it if other things depend on it, but the store dispatch must happen, because the grid should render from store state.
+
+3) ui/accordion_sidebar/people_section.py, do the same for person selection
+
+Where you handle “person clicked” (face cluster clicked), dispatch:
+
+from core.state_bus import ViewChanged
+
+self.store.dispatch(
+    ViewChanged(
+        location="person",
+        payload={"person_key": str(person_key)},
+    ),
+    source="people_section",
+)
+
+Do not let PeopleSection call the grid directly. The store is the contract.
+
+4) layouts/google_layout.py, fix signature skip logic properly
+
+You said “google_layout.py is where the signature skip logic is”. Your log confirms you have something like:
+
+Skipping redundant reload (same state signature)
+
+A) Add a signature builder that includes view_location + view_payload
+
+Inside GooglePhotosLayout, add:
+
+def _view_signature_from_store(self) -> tuple:
+    """
+    Canonical signature for whether the grid should reload.
+    Must include view identity, not just resulting row count.
+    """
+    s = self.store.get_state() if hasattr(self, "store") else None
+    if not s:
+        return ("no-store",)
+
+    # Important: include view_v so each view change is a strict reload boundary,
+    # and also include location and payload to be safe during development.
+    payload_items = tuple(sorted((s.view_payload or {}).items()))
+    return (s.project_id, s.view_v, s.view_location, payload_items)
+B) Replace your existing “skip redundant reload” gate
+
+Find your current guard that computes a signature and does:
+
+“if signature equals last_signature, skip”
+
+Replace that section with this:
+
+sig = self._view_signature_from_store()
+if getattr(self, "_last_view_signature", None) == sig:
+    self.logger.info("Skipping redundant reload (same view signature)")
+    return
+self._last_view_signature = sig
+C) Use store view state to decide what to load
+
+Where you currently load photos depending on folder, date, person, group, etc, change it to:
+
+s = self.store.get_state()
+location = s.view_location
+payload = s.view_payload or {}
+
+if location == "group":
+    group_id = int(payload.get("group_id"))
+    mode = payload.get("mode", "together")
+    paths = self.people_group_service.get_group_matching_paths(group_id, mode=mode)
+    return self.load_photos_by_paths(paths, reason=f"group:{group_id}:{mode}")
+
+elif location == "person":
+    person_key = str(payload.get("person_key"))
+    # existing person logic:
+    # paths = ...
+    return self.load_photos_by_person(person_key)
+
+elif location == "all":
+    return self.load_photos_for_project(s.project_id)
+
+# etc...
+
+This is the key discipline: the layout does not invent state, it renders it.
+
+5) services/people_group_service.py, ensure API returns stable, deterministic paths
+
+The skip bug is mostly your signature, but you should also make group results deterministic so the UI is stable.
+
+In your function that returns matching photos for a group (log shows Together matches for group X), ensure your SQL ends with an order:
+
+ORDER BY created_ts ASC, path ASC (or created_date, then path)
+
+So any time you compute results, the returned list is stable.
+
+Add this idea:
+
+# after computing paths:
+paths = sorted(set(paths), key=lambda p: p.lower())
+return paths
+
+This prevents “same content, different ordering” churn and makes caching sane.
+
+6) services/group_service.py, enforce uniqueness that your log hints is missing
+
+Your log shows you created group 3 named 2x-2 and later group 4 also named 2x-2.
+That might be intended, but usually it is a UX smell and it becomes a debugging nightmare.
+
+At minimum, enforce unique name per project, or auto-suffix:
+
+2x-2 [2]
+
+If you want strict uniqueness, do it here, not in UI.
+
+The hidden blind spot you are still carrying
+
+You added a Store, but your UI still behaves like “panels trigger side effects directly” and the store is just logging.
+
+If you do not make the grid load driven by ProjectState.view_location + view_payload, you will keep getting these edge bugs:
+
+different queries that produce same row counts
+
+different filters that produce same file sets
+
+“skipping reload” while the user expects a semantic change
+
+Your log is already telling you this happened.
+
+Next improvement that will immediately pay off (Google, Apple, Lightroom pattern)
+
+Add a single concept: GridQuery (a small immutable object) and make everything produce it.
+
+People click, Groups click, Folder click, Date click, Search submit, Duplicates view
+
+All dispatch ViewChanged(location, payload)
+
+One place converts that to a GridQuery
+
+One loader executes it, one cancels previous generations
+
+That is how you avoid “death by many background threads” long-term.
