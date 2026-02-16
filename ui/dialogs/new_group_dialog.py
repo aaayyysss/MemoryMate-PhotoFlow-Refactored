@@ -325,9 +325,16 @@ class NewGroupDialog(QDialog):
 
 
 class PersonSelectionCard(QWidget):
-    """Card for selecting a person to add to a group."""
+    """
+    Selectable person card with circular avatar, blue ring + checkmark badge.
+
+    Matches Google Photos / Apple Photos selection pattern used in
+    CreateGroupDialog for visual consistency.
+    """
 
     selectionChanged = Signal(str, bool)  # (branch_key, is_selected)
+
+    AVATAR_SIZE = 56
 
     def __init__(
         self,
@@ -340,31 +347,28 @@ class PersonSelectionCard(QWidget):
         super().__init__(parent)
         self.branch_key = branch_key
         self._is_selected = False
+        self._base_thumbnail = thumbnail
 
-        self.setFixedSize(140, 100)
+        self.setFixedSize(110, 120)
         self.setCursor(Qt.PointingHandCursor)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(4)
+        layout.setContentsMargins(6, 6, 6, 4)
+        layout.setSpacing(3)
         layout.setAlignment(Qt.AlignCenter)
 
-        # Thumbnail
-        avatar = QLabel()
-        avatar.setFixedSize(48, 48)
-        avatar.setAlignment(Qt.AlignCenter)
-        if thumbnail and not thumbnail.isNull():
-            avatar.setPixmap(self._make_circular(thumbnail, 48))
-        else:
-            avatar.setText("👤")
-            avatar.setStyleSheet("background: #e8eaed; border-radius: 24px; font-size: 20px;")
-        layout.addWidget(avatar, alignment=Qt.AlignCenter)
+        # Avatar (rendered with selection ring + checkmark)
+        self._avatar_label = QLabel()
+        self._avatar_label.setFixedSize(self.AVATAR_SIZE, self.AVATAR_SIZE)
+        self._avatar_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self._avatar_label, alignment=Qt.AlignCenter)
 
         # Name
         name_label = QLabel(display_name)
         name_label.setAlignment(Qt.AlignCenter)
         name_label.setStyleSheet("font-weight: 600; font-size: 10px; color: #202124;")
         name_label.setWordWrap(True)
+        name_label.setMaximumHeight(28)
         layout.addWidget(name_label)
 
         # Photo count
@@ -373,52 +377,97 @@ class PersonSelectionCard(QWidget):
         count_label.setStyleSheet("color: #5f6368; font-size: 9px;")
         layout.addWidget(count_label)
 
-        self._update_style()
+        self._render_avatar()
+        self._update_card_style()
 
-    def _make_circular(self, pixmap: QPixmap, size: int) -> QPixmap:
-        """Create circular pixmap."""
-        from PySide6.QtGui import QPainter, QPainterPath
+    def _render_avatar(self):
+        """Render circular avatar with optional selection ring and checkmark badge."""
+        from PySide6.QtGui import QPainter, QPainterPath, QColor, QPen, QFont
+        from PySide6.QtCore import QRect
 
-        scaled = pixmap.scaled(size, size, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
-        mask = QPixmap(size, size)
-        mask.fill(Qt.transparent)
+        size = self.AVATAR_SIZE
+        result = QPixmap(size, size)
+        result.fill(Qt.transparent)
 
-        painter = QPainter(mask)
+        painter = QPainter(result)
         painter.setRenderHint(QPainter.Antialiasing)
-        path = QPainterPath()
-        path.addEllipse(0, 0, size, size)
-        painter.setClipPath(path)
-        painter.drawPixmap(0, 0, scaled)
+
+        if self._base_thumbnail and not self._base_thumbnail.isNull():
+            scaled = self._base_thumbnail.scaled(
+                size, size, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation
+            )
+            clip = QPainterPath()
+            clip.addEllipse(2, 2, size - 4, size - 4)
+            painter.setClipPath(clip)
+            x_off = (scaled.width() - size) // 2
+            y_off = (scaled.height() - size) // 2
+            painter.drawPixmap(-x_off + 2, -y_off + 2, scaled)
+            painter.setClipping(False)
+        else:
+            painter.setBrush(QColor("#e8eaed"))
+            painter.setPen(Qt.NoPen)
+            painter.drawEllipse(2, 2, size - 4, size - 4)
+            painter.setPen(QColor("#9aa0a6"))
+            font = QFont()
+            font.setPixelSize(24)
+            painter.setFont(font)
+            painter.drawText(QRect(0, 0, size, size), Qt.AlignCenter, "\U0001F464")
+
+        if self._is_selected:
+            # Blue selection ring
+            pen = QPen(QColor("#1a73e8"), 3)
+            painter.setPen(pen)
+            painter.setBrush(Qt.NoBrush)
+            painter.drawEllipse(1, 1, size - 2, size - 2)
+
+            # Checkmark badge (bottom-right)
+            badge_size = 18
+            badge_x = size - badge_size - 1
+            badge_y = size - badge_size - 1
+
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(QColor("#ffffff"))
+            painter.drawEllipse(badge_x - 1, badge_y - 1, badge_size + 2, badge_size + 2)
+
+            painter.setBrush(QColor("#1a73e8"))
+            painter.drawEllipse(badge_x, badge_y, badge_size, badge_size)
+
+            painter.setPen(QPen(QColor("#ffffff"), 2.0))
+            cx = badge_x + badge_size // 2
+            cy = badge_y + badge_size // 2
+            painter.drawLine(cx - 4, cy, cx - 1, cy + 3)
+            painter.drawLine(cx - 1, cy + 3, cx + 4, cy - 3)
+
         painter.end()
+        self._avatar_label.setPixmap(result)
 
-        return mask
-
-    def _update_style(self):
-        """Update card style based on selection state."""
+    def _update_card_style(self):
+        """Update card background based on selection state."""
         if self._is_selected:
             self.setStyleSheet("""
                 PersonSelectionCard {
-                    background: #e8f0fe;
+                    background: rgba(26, 115, 232, 0.08);
                     border: 2px solid #1a73e8;
-                    border-radius: 8px;
+                    border-radius: 10px;
                 }
             """)
         else:
             self.setStyleSheet("""
                 PersonSelectionCard {
                     background: #fff;
-                    border: 1px solid #e8eaed;
-                    border-radius: 8px;
+                    border: 1px solid transparent;
+                    border-radius: 10px;
                 }
                 PersonSelectionCard:hover {
-                    background: #f8f9fa;
-                    border-color: #dadce0;
+                    background: rgba(0, 0, 0, 0.04);
+                    border: 1px solid #dadce0;
                 }
             """)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
             self._is_selected = not self._is_selected
-            self._update_style()
+            self._render_avatar()
+            self._update_card_style()
             self.selectionChanged.emit(self.branch_key, self._is_selected)
         super().mousePressEvent(event)
