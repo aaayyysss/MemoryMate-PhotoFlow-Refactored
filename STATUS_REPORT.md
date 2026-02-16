@@ -1,207 +1,201 @@
-# MemoryMate-PhotoFlow: Architecture Stabilization Status Report
+# MemoryMate-PhotoFlow: Groups Pipeline Status Report
 
-**Branch:** `claude/fix-metadata-editor-placement-8NC6v`
-**Date:** 2026-02-07
-**Commits:** 10 (2d88a03..54bf0d1) | 22 files changed, +829 / -469 lines
+**Branch:** `claude/fix-photos-layout-dispatch-mgYLL`
+**Date:** 2026-02-16
+**Last commit:** `d8a97eb` — fix: Add 'New Group' button to populated groups tab and fix reload_groups signal leak
 
 ---
 
 ## Executive Summary
 
-Over multiple sessions we identified and fixed **25+ bugs** spanning the full
-application stack: threading violations, stale-widget access, permanent UI locks,
-DB context-manager misuse, service lifecycle issues, and silent data exclusion in
-the similarity pipeline. The codebase is now architecturally sound. What remains
-is a focused startup-timing pass to ensure cold starts on large projects don't
-stutter.
+Over multiple sessions we built and polished the **Groups feature** — user-defined groups of 2+ people for finding photos where they appear together. The feature follows Google Photos / Apple Photos / Lightroom UX best practices. Groups is now embedded as a tab inside the People section (`[Individuals] [Groups]` toggle). We fixed **14+ bugs** including signal leaks, missing UI elements, schema mismatches, startup freezes, and stale state issues. The pipeline is stable and ready for feature extensions.
 
 ---
 
-## Completed Fixes (by commit)
+## Architecture Overview
 
-### Commit 1 — `2d88a03` Metadata Editor Placement
-- Moved metadata editing from main layout toolbar into MediaLightbox info panel
-- Added "Edit Metadata" right-click context menu to both Google + Current layouts
-- Fixed `_get_selected_photo_paths()` → `get_selected_paths()` API mismatch
-
-### Commit 2 — `f7ae625` Metadata Editor Silent Failures
-- Added case-insensitive DB path matching fallback for Windows path mismatches
-- Initialized `_lb_loading` / `_lb_current_photo_id` in MediaLightbox `__init__`
-- Added full metadata editing to Current Layout's LightboxDialog
-
-### Commit 3 — `f25a37d` 6 Critical Performance Issues
-- **ReferenceDB.get_connection() shim** — 102+ callers used `get_connection()` but only `_connect()` existed
-- **UI-thread blocking** — `db_writer.shutdown(wait=True)` → `wait=False`
-- **DeviceScanner gating** — wrong default `True→False`, prevented COM enumeration
-- **Sidebar lazy-init** — SidebarTabs/AccordionSidebar created on first use, not eagerly
-- **Background grouping** — `_group_photos_by_date` moved to QRunnable + chunked widget creation
-- **Deferred cache purge** — thumbnail `purge_stale()` moved from splash to daemon thread
-
-### Commit 4 — `69f610e` MainWindow.logger Crash + Stale Embeddings
-- `MainWindow._on_metadata_changed` used `self.logger` (doesn't exist) → `print()`
-- `get_stale_embeddings_for_project` now has 5-min TTL cache (was re-querying every 30s)
-
-### Commit 5 — `033b5f3` Crash Guards + DB Misuse + Debounce
-- **refresh_thumbnail crash** — `hasattr()` guard on `ThumbnailGridQt`
-- **JobManager wiring** — `get_job_manager()` singleton instead of never-assigned `self.job_manager`
-- **DB context-manager misuse** — Fixed 3 locations: `db_writer.py` (critical), `reference_db.py` (2x silent failures), `accordion_sidebar/__init__.py`
-- **Debounce saves** — MetadataEditorDock text fields debounced 500ms via QTimer
-
-### Commit 6 — `82e5935` 6 Architectural Issues
-- **Project switching** — `_on_project_changed_by_id` delegates to active layout via `layout_manager`
-- **SearchService singleton** — `get_search_service()` factory replaces 4 separate instantiations
-- **Refresh storms** — `AccordionSidebar.refresh_all()` only reloads expanded section; others bump generation
-- **CLIP tokenizer** — `use_fast=False` pinned for reproducible embeddings
-- **Face crops dedup** — `UNIQUE INDEX` on `(project_id, image_path, bbox_x, bbox_y, bbox_w, bbox_h)`
-- **Cross-date similarity** — Global embedding-similarity pass via vectorized numpy `emb_matrix @ emb_matrix.T`
-
-### Commit 7 — `00c9c9d` scan_controller Crash on Google Layout
-- **Root cause:** `scan_controller` directly poked `self.main.sidebar` / `self.main.grid` (CurrentLayout widgets) even when Google Layout was active
-- **3 crashes fixed:**
-  - `AttributeError: tabs_controller is None` (hasattr passed, value was None)
-  - `"Cannot set accordion_sidebar project_id"` (wrong grid's project_id)
-  - Grid reload aborted (hidden CurrentLayout grid had project_id=None)
-- **Added `_get_active_project_id()`** helper — resolves via layout_manager → grid → DB default
-- Refactored `_cleanup_impl` and `_finalize_scan_refresh` to delegate to active layout
-
-### Commit 8 — `d140c7a` Accordion Sidebar Permanent Loading Lock
-- **Bug 1: `_loading=True` never reset** — `set_project()` called twice in 4ms; second bumps generation while first thread runs; thread completes → generation mismatch → `_on_data_loaded` returns without `_loading=False` → section permanently stuck
-  - Fix: Reset `_loading=False` BEFORE generation check in all 6 section files + base
-  - Fix: Always emit loaded signal from `on_complete()` (removed thread-side generation guard)
-- **Bug 2: `sidebar_was_updated` flag blocked accordion** — Flag set when hidden SidebarQt updated, incorrectly prevented AccordionSidebar refresh
-  - Fix: Always refresh AccordionSidebar after scan; flag only gates CurrentLayout's SidebarQt
-
-### Commit 9 — `eb7b440` Similarity Detection Data Exclusion
-- **`created_ts IS NOT NULL` filter** excluded all dateless photos from similarity detection entirely (not just time-window pass, but also global cross-date pass)
-  - Fix: Removed filter; time-window pass naturally skips dateless photos; global pass now considers all photos with embeddings
-- **`cross_date_threshold` 0.90 → 0.85** — 0.90 too strict for real CLIP embeddings
-- **Hardcoded `max(threshold, 0.90)`** in `generate_stacks_for_photos()` → uses `params.cross_date_threshold`
-- **SimilarityConfig** now exposes `cross_date_similarity` and `cross_date_threshold` with settings persistence
-
-### Commit 10 — `54bf0d1` Lightbox Thread Safety
-- **Stale signal delivery** — Rapid Prev/Next spawns multiple `ProgressiveImageWorker`s; slow worker for photo N finishes after fast worker for photo N+2, overwriting display
-  - Fix: `_lb_media_generation` counter bumped per navigation, carried through workers, checked in signal handlers
-- **QPixmap in worker threads** — Qt documents QPixmap as GUI-only; both `PreloadImageWorker` and `ProgressiveImageWorker` created QPixmap in `run()` (background thread)
-  - Fix: Workers emit `QImage` (thread-safe); `QPixmap.fromImage()` conversion happens in signal handlers on main thread
-
----
-
-## Files Modified (22 total)
-
-| File | Changes | Category |
-|------|---------|----------|
-| `controllers/scan_controller.py` | +188 -113 | Layout-aware project propagation |
-| `services/stack_generation_service.py` | +185 -13 | Cross-date similarity, dateless photos |
-| `main_window_qt.py` | +183 -151 | Project switching delegation, logger fix |
-| `google_components/media_lightbox.py` | +158 -110 | Generation token, QImage thread safety |
-| `layouts/google_layout.py` | +109 -35 | Background grouping, context menus |
-| `sidebar_qt.py` | +108 -47 | Lazy initialization |
-| `db_writer.py` | +65 -48 | Context-manager fix |
-| `ui/metadata_editor_dock.py` | +45 -1 | Debounce, editing features |
-| `services/semantic_embedding_service.py` | +44 -12 | Stale cache, use_fast=False |
-| `config/similarity_config.py` | +41 -1 | Cross-date config params |
-| `reference_db.py` | +29 -13 | get_connection shim, bare commit fix |
-| `accordion_sidebar.py` | +24 -1 | Lazy refresh_all |
-| `ui/accordion_sidebar/folders_section.py` | +22 -12 | Loading lock fix |
-| `ui/accordion_sidebar/videos_section.py` | +15 -5 | Loading lock fix |
-| `ui/accordion_sidebar/base_section.py` | +14 -2 | Loading lock fix |
-| `ui/accordion_sidebar/dates_section.py` | +14 -2 | Loading lock fix |
-| `ui/accordion_sidebar/locations_section.py` | +14 -2 | Loading lock fix |
-| `ui/accordion_sidebar/people_section.py` | +12 -2 | Loading lock fix |
-| `app_services.py` | +12 -0 | SearchService singleton |
-| `splash_qt.py` | +10 -1 | Deferred cache purge |
-| `search_widget_qt.py` | +3 -1 | Singleton usage |
-| `ui/accordion_sidebar/__init__.py` | +3 -1 | DB context fix |
-
----
-
-## Patterns Established
-
-### Generation Token Pattern
-Used in AccordionSidebar sections and now MediaLightbox. Counter bumped on
-each state change; async results carry the generation and are discarded if stale.
+### Groups as Tab Inside People Section
 
 ```
-self._generation += 1
-current_gen = self._generation
-# ... spawn worker with current_gen ...
-# In handler:
-if generation != self._generation:
-    return  # discard stale result
+AccordionSidebar (ui/accordion_sidebar/__init__.py) — 8 sections
+  └── PeopleSection (people_section.py)
+       ├── Tab Bar: [Individuals] [Groups]
+       ├── Page 0: Individuals — face cluster grid (PeopleGrid + PersonCards)
+       └── Page 1: Groups — lazy-loaded GroupsSection content
+            └── GroupsSection (groups_section.py) — embedded, no standalone header
+                 ├── Empty state: icon + "Create New Group" button
+                 └── Populated state: search bar + "New Group" button + scrollable GroupCards
 ```
 
-### Layout Manager Delegation
-All cross-cutting code (scan_controller, main_window) now routes through
-`layout_manager.get_current_layout()` instead of directly touching
-`self.main.sidebar` / `self.main.grid`.
+### Signal Forwarding Chain
 
-### Thread-Safe Image Loading
-Workers emit `QImage` (thread-safe). Main-thread handlers convert to
-`QPixmap` via `QPixmap.fromImage()`. No GUI objects cross thread boundaries.
+```
+GroupsSection signals ─────→ PeopleSection signals ─────→ AccordionSidebar signals ─────→ GooglePhotosLayout handlers
+  groupSelected                groupSelected                selectGroup                     _on_accordion_group_clicked
+  newGroupRequested            newGroupRequested             newGroupRequested                _on_new_group_requested
+  editGroupRequested           editGroupRequested            editGroupRequested               _on_group_edit_requested
+  deleteGroupRequested         deleteGroupRequested          deleteGroupRequested             _on_group_deleted
+  recomputeRequested           recomputeGroupRequested       recomputeGroupRequested          _on_recompute_group_requested
+```
 
-### _loading Flag Discipline
-`_loading=False` is ALWAYS reset when a background thread completes,
-regardless of whether the result is stale. The generation check happens
-AFTER the flag reset.
+### Two Group Dialogs
 
----
+| Dialog | File | Purpose |
+|--------|------|---------|
+| `NewGroupDialog` | `ui/dialogs/new_group_dialog.py` | Create new group from Groups tab |
+| `CreateGroupDialog` | `ui/create_group_dialog.py` | Edit existing group (launched from GooglePhotosLayout) |
 
-## Current Architecture Health
+Both use Google Photos-style blue ring + checkmark badge for face selection highlighting.
 
-| Subsystem | Status | Notes |
-|-----------|--------|-------|
-| Metadata editing | **Stable** | In lightbox + context menus, debounced saves |
-| DB access layer | **Stable** | Context managers fixed, get_connection shim |
-| Scan pipeline | **Stable** | Layout-aware, proper project propagation |
-| Accordion sidebar | **Stable** | Loading locks fixed, lazy refresh |
-| Similarity detection | **Stable** | Includes dateless photos, cross-date pass |
-| Lightbox navigation | **Stable** | Generation token, QImage thread safety |
-| Service lifecycle | **Stable** | Singletons (SearchService, JobManager) |
-| Startup performance | **Needs work** | See "Tomorrow's Work" below |
+### Two Service Layers
 
----
+| Service | File | Pattern |
+|---------|------|---------|
+| `GroupService` | `services/group_service.py` | Static methods + `GroupServiceInstance` wrapper |
+| `PeopleGroupService` | `services/people_group_service.py` | Instance methods, used by GroupsSection for listing |
 
-## Tomorrow's Work: Startup Critical Path
-
-The remaining work is a focused timing pass, not structural changes.
-
-### 1. Reconstruct the Startup Critical Path
-Map frame-by-frame what happens between `QApplication.exec()` and first paint:
-- What MUST complete before first render (layout creation, initial project load)
-- What currently runs synchronously but should be deferred (grouping, sidebar population, maintenance)
-- Where background jobs and initial layout compete for the event loop
-
-### 2. Verify Paging and Grouping Handoff
-Specifically the moment where GoogleLayout dispatches:
-- `_group_photos_by_date` (now in QRunnable, but timing vs first paint?)
-- Thumbnail loading (progressive, but when does it start relative to layout stabilization?)
-- JobManager maintenance job (should not compete with initial paint)
-
-### 3. Add Two Guardrails
-- **First-render fence:** Ensure the initial layout always completes and paints before any background work begins (even on large datasets)
-- **Startup scheduling gate:** Prevent background jobs (maintenance, embedding updates, cache purge) from running until after layout stabilization
-
-### 4. Confirm MediaLightbox is Isolated
-From recent logs, lightbox behavior is correct and not involved in startup.
-Explicitly verify it has no startup-time side effects (preloading, signal connections, etc.)
-
-### Key Files to Examine
-- `main_window_qt.py` — startup sequence, `show()` timing, deferred init
-- `layouts/google_layout.py` — `set_project()`, `_group_photos_by_date`, initial load
-- `splash_qt.py` — what runs before main window, handoff timing
-- `controllers/scan_controller.py` — post-scan refresh timing (already fixed, verify)
+Both use `branch_key` column consistently (correct schema).
 
 ---
 
-## Known Non-Blockers (Future Consideration)
+## Key Files (4,400+ lines)
 
-These were identified in the external audit but are not blockers:
-
-- **Perceptual hashing (pHash/dHash)** — Pre-filter for near-duplicate detection before CLIP comparison; would reduce the O(n^2) embedding matrix
-- **Duplicate focus-on-photo UI** — Navigate to a photo in the grid from the duplicates dialog
-- **Path normalization** — Consistent path handling across Windows/Mac/Linux
-- **SQLite → PostgreSQL** — Not needed; SQLite is correct for a desktop app
+| File | Lines | Role |
+|------|-------|------|
+| `ui/accordion_sidebar/people_section.py` | 954 | Tab toggle, lazy-load, signal forwarding |
+| `ui/accordion_sidebar/groups_section.py` | 525 | Group cards, search, context menu, new group button |
+| `services/people_group_service.py` | 972 | CRUD, match computation queries |
+| `services/group_service.py` | 682 | Static API, group creation/update/delete |
+| `ui/create_group_dialog.py` | 540 | Edit group dialog with face selection |
+| `ui/dialogs/new_group_dialog.py` | 473 | New group dialog with face selection |
+| `workers/group_compute_worker.py` | 259 | Background match computation (QRunnable) |
+| `ui/accordion_sidebar/__init__.py` | ~940 | Orchestrator, group handlers, new group dialog launch |
 
 ---
 
-*Report generated from branch `claude/fix-metadata-editor-placement-8NC6v` at commit `54bf0d1`*
+## Completed Fixes (Chronological)
+
+### Session 1 — Initial Errors
+
+1. **`GroupServiceInstance` missing `get_people_for_group_creation`** (`services/group_service.py`)
+   - Added method to both `GroupServiceInstance` and `GroupService`, returning `branch_key`, `display_name`, `rep_thumb_png`, `rep_path`.
+
+2. **`no such column: person_id`** in `_load_existing_group` (`ui/create_group_dialog.py`)
+   - Table uses `branch_key` column. Fixed to use `GroupService.get_group()` instead of raw SQL.
+
+3. **Groups sub-section still visible in People** (`ui/accordion_sidebar/people_section.py`)
+   - Two sidebar implementations existed (monolithic `accordion_sidebar.py` + modularized `ui/accordion_sidebar/`). Fixed the active modularized version.
+
+### Session 2 — Startup Crash
+
+4. **`AccordionSidebar has no attribute createGroupRequested`** (`layouts/google_layout.py:1196`)
+   - Signal was deleted but reference remained. Removed the stale connection.
+
+### Session 3 — Edit Dialog Improvements
+
+5. **Edit dialog shows no faces** (`ui/create_group_dialog.py`)
+   - Added `rep_path` to service return data + file-path fallback for thumbnail loading.
+
+6. **Face selection not highlighted** (`ui/create_group_dialog.py`)
+   - Redesigned `PersonSelectCard` with Google Photos-style blue ring + checkmark badge via QPainter.
+
+### Session 4 — Groups as Tab in People
+
+7. **Embed Groups as tab inside People section** (`ui/accordion_sidebar/people_section.py`)
+   - Added `[Individuals] [Groups]` tab toggle using QStackedWidget.
+   - Removed Groups from standalone accordion sections (9 → 8 sections).
+   - Implemented lazy-loading with generation-based stale data prevention.
+
+### Session 5 — Polish
+
+8. **Preferences dialog freeze** (`preferences_dialog.py`)
+   - 3 synchronous blocking operations in `__init__`. Deferred via `QTimer.singleShot(50/100/150ms)`.
+
+9. **NewGroupDialog selection not highlighted** (`ui/dialogs/new_group_dialog.py`)
+   - Upgraded `PersonSelectionCard` with same blue ring + checkmark badge style.
+
+### Session 6 — State Bugs
+
+10. **Groups disappear on section switch** (`ui/accordion_sidebar/people_section.py`)
+    - `_groups_loaded_once` stayed `True` after `create_content_widget()` rebuilt QStackedWidget.
+    - Fixed by resetting `_groups_loaded_once = False` and `_groups_section = None` at top of method.
+
+### Session 7 — Missing Button + Signal Leak
+
+11. **Missing "Create New Group" button** (`ui/accordion_sidebar/groups_section.py`)
+    - Button only existed in empty state and standalone header (no longer rendered).
+    - Added `+ New Group` button to populated state content layout.
+
+12. **`reload_groups()` signal duplication & memory leak** (`ui/accordion_sidebar/people_section.py`)
+    - Every reload created a NEW `GroupsSection` with duplicate signal connections.
+    - Fixed to reuse existing instance, calling `load_section()` instead of recreating.
+
+---
+
+## Deep Audit Results
+
+| Area | Status | Notes |
+|------|--------|-------|
+| Signal chain end-to-end | OK | GroupsSection → PeopleSection → AccordionSidebar → GooglePhotosLayout |
+| `google_layout.py` sidebar import | OK | Uses modularized `ui.accordion_sidebar` (correct) |
+| `reference_db.py` dead code (`person_id`) | LATENT | Old methods never called; app uses services with `branch_key` |
+| `on_groups_loaded` closure lifecycle | OK | Safe across section rebuilds due to `_groups_section = None` reset |
+| `GroupsSection._on_data_loaded` | OK | No duplicate widget creation |
+| `workers/group_compute_worker.py` | OK | Properly structured QRunnable |
+| `create_content_widget` state reset | OK | Resets `_groups_loaded_once` and `_groups_section` |
+| Generation token staleness | OK | Stale data correctly discarded |
+
+---
+
+## Known Latent Issues (Non-Blocking)
+
+1. **`reference_db.py` dead code** — Methods `create_person_group()`, `update_person_group()` use `person_id` column but are never called. Clean up to avoid confusion.
+
+2. **Dual service layers** — `GroupService` and `PeopleGroupService` overlap. Could consolidate.
+
+3. **Migration SQL mismatch** — `repository/schema.py` uses `branch_key` (correct), but migration SQL in `reference_db.py` uses `person_id` (dead code, table created by `GroupService`).
+
+---
+
+## Suggested Next Steps / Features
+
+### Polish & UX
+- Add member face thumbnails to GroupCard (small circular avatars of group members)
+- Add group icon picker (emoji or custom icon per group)
+- Add group count badge on the "Groups" tab button
+- Add drag-and-drop reordering of groups
+- Animate tab transitions between Individuals/Groups
+
+### Functionality
+- Implement "Same Event" match mode (time-window based matching)
+- Add bulk group operations (multi-select, batch delete/recompute)
+- Add "Smart Groups" (auto-created based on frequently co-occurring people)
+- Add group sharing / export as collection
+
+### Technical Debt
+- Consolidate `GroupService` + `PeopleGroupService` into single service
+- Clean up dead `reference_db.py` group methods
+- Add unit tests for group CRUD and match computation
+- Remove old monolithic `accordion_sidebar.py` if fully replaced
+
+---
+
+## How to Resume
+
+```bash
+git checkout claude/fix-photos-layout-dispatch-mgYLL
+# All changes are committed and pushed to remote
+
+# Test checklist:
+# 1. Open People section → Groups tab
+# 2. Create a group → verify "New Group" button appears after creation
+# 3. Toggle between Individuals/Groups tabs → verify groups persist
+# 4. Switch to another section and back → verify groups reload correctly
+# 5. Edit a group → verify faces show with selection highlighting
+# 6. Delete a group → verify list updates
+# 7. Create/delete multiple groups → verify no duplicate signals in logs
+```
+
+---
+
+*Report generated from branch `claude/fix-photos-layout-dispatch-mgYLL` at commit `d8a97eb`*
