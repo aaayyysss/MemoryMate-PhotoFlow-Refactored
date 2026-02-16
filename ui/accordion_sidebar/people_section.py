@@ -231,6 +231,10 @@ class PeopleSection(BaseSection):
         rows: List[Dict] = data or []
         self._all_data = rows
 
+        # Reset groups state so it reloads when tab is clicked after rebuild
+        self._groups_loaded_once = False
+        self._groups_section = None
+
         # ── Outer container ──
         outer = QWidget()
         outer_layout = QVBoxLayout(outer)
