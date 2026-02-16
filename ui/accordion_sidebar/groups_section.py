@@ -255,6 +255,25 @@ class GroupsSection(BaseSection):
 
         main_layout.addWidget(search_container)
 
+        # "New Group" button (always visible when groups exist)
+        new_group_btn = QPushButton("+ New Group")
+        new_group_btn.setCursor(Qt.PointingHandCursor)
+        new_group_btn.setStyleSheet("""
+            QPushButton {
+                background: #1a73e8;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 8px 16px;
+                font-weight: 600;
+                font-size: 10pt;
+            }
+            QPushButton:hover { background: #1557b0; }
+            QPushButton:pressed { background: #104d97; }
+        """)
+        new_group_btn.clicked.connect(self.newGroupRequested.emit)
+        main_layout.addWidget(new_group_btn)
+
         # Scroll area for groups list
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)

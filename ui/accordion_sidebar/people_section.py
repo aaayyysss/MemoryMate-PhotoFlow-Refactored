@@ -444,11 +444,22 @@ class PeopleSection(BaseSection):
             logger.error(f"[PeopleSection] Failed to create groups tab: {e}", exc_info=True)
 
     def reload_groups(self):
-        """Public method to reload Groups tab content."""
-        if self._groups_section:
-            self._groups_loaded_once = False  # force rebuild
-            if self._stack:
-                self._ensure_groups_tab(self._stack)
+        """Public method to reload Groups tab content.
+
+        Reuses the existing GroupsSection instance to avoid duplicate
+        signal connections and memory leaks.  Only falls back to full
+        lazy-init if no GroupsSection has been created yet.
+        """
+        if self._groups_section and self._stack:
+            # Reuse existing GroupsSection – just re-trigger its data load.
+            # The on_groups_loaded closure from _ensure_groups_tab still holds
+            # the correct stack/gs references, so new data will replace the
+            # widget at index 1 automatically.
+            self._groups_section.load_section()
+        elif self._stack:
+            # Groups tab was never opened; do the full lazy-init
+            self._groups_loaded_once = False
+            self._ensure_groups_tab(self._stack)
 
     def set_db(self, db):
         """Store DB reference for passing to GroupsSection."""
