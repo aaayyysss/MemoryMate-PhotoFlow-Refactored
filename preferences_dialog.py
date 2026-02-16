@@ -173,14 +173,11 @@ class PreferencesDialog(QDialog):
         self._load_settings()
         self._apply_styling()
 
-        # Check InsightFace model status after UI is ready
-        self._check_model_status()
-
-        # Check hash backfill status
-        self._update_backfill_status()
-
-        # Check similar shot status
-        self._update_similar_shot_status()
+        # Defer blocking status checks to avoid freezing the UI on dialog open
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(50, self._check_model_status)
+        QTimer.singleShot(100, self._update_backfill_status)
+        QTimer.singleShot(150, self._update_similar_shot_status)
 
     def _setup_ui(self):
         """Create the main UI layout with sidebar navigation."""
