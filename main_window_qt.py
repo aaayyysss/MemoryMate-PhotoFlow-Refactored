@@ -1,5 +1,5 @@
 # main_window_qt.py
-# Version 10.01.01.07 dated 20260214
+# Version 10.01.01.08 dated 20260217
 # Added PhotoDeletionService with comprehensive delete functionality
 # Enhanced repositories with utility methods for future migrations
 # Current LOC: ~2,640 (added photo deletion feature)
@@ -545,13 +545,21 @@ class MainWindow(QMainWindow):
 
         # Get available layouts from manager and create menu actions
         available_layouts = self.layout_manager.get_available_layouts()
+        
+        preferred_layout = "current"
+        if hasattr(self, "settings") and self.settings:
+            preferred_layout = self.settings.get("current_layout", "current")
+        if preferred_layout not in available_layouts:
+            preferred_layout = "current"        
+        
         for layout_id, layout_name in available_layouts.items():
             action = QAction(layout_name, self)
             action.setCheckable(True)
             action.setData(layout_id)
+            
 
             # Set Current Layout as checked by default
-            if layout_id == "current":
+            if layout_id == preferred_layout:
                 action.setChecked(True)
 
             # Connect to layout switching handler
