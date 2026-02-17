@@ -1,5 +1,5 @@
 # layouts/google_layout.py
-# Version 10.01.01.10 dated 20260202
+# Version 10.01.01.11 dated 20260217
 # Google Photos-style layout - Timeline-based, date-grouped, minimalist design
 
 from PySide6.QtWidgets import (
@@ -1261,12 +1261,23 @@ class GooglePhotosLayout(BaseLayout):
         """Compute a hashable signature for a set of load parameters.
 
         If the signature matches the last executed load, the reload is
-        skipped (no work done).  This eliminates redundant sequential
+        skipped (no work done). This eliminates redundant sequential
         reloads that occur during mode switches, accordion clicks, etc.
+        
+        Important: include a view_context in the signature so two different
+        UI sources (for example different People Groups) that currently map
+        to the same set of paths still trigger a UI refresh.        
         """
         paths_sig = (
             tuple(sorted(params['paths'])) if params.get('paths') else None
         )
+
+        view_ctx = params.get('view_context')
+        if isinstance(view_ctx, dict):
+            view_ctx = tuple(sorted(view_ctx.items()))
+        elif isinstance(view_ctx, list):
+            view_ctx = tuple(view_ctx)
+        
         return (
             self.project_id,
             params.get('thumb_size'),
@@ -1276,6 +1287,7 @@ class GooglePhotosLayout(BaseLayout):
             params.get('folder'),
             params.get('person'),
             paths_sig,
+            view_ctx,
         )
 
     def _request_load(self, **params):
@@ -2111,6 +2123,7 @@ class GooglePhotosLayout(BaseLayout):
             self._request_load(
                 thumb_size=self.current_thumb_size,
                 paths=paths,
+                view_context=("group", int(group_id), str(match_mode)),
             )
 
         except Exception as e:
