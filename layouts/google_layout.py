@@ -1,5 +1,5 @@
 # layouts/google_layout.py
-# Version 10.01.01.11 dated 20260217
+# Version 10.01.01.12 dated 20260217
 # Google Photos-style layout - Timeline-based, date-grouped, minimalist design
 
 from PySide6.QtWidgets import (
@@ -1291,12 +1291,47 @@ class GooglePhotosLayout(BaseLayout):
         )
 
     def _request_load(self, **params):
-        """Schedule a coalesced photo load.
+        """Coalesce load requests.
 
-        Multiple rapid calls (e.g. accordion expand + tab switch) are
-        collapsed into a single load executed after a 50ms quiet period.
+        Important behavior:
+        - Callers often pass partial params (for example only thumb_size or only paths).
+          We must preserve the currently active filters unless the caller explicitly requests a reset.
+        - Use reset=True to clear all filters and reload the default "All Photos" view.
         """
-        self._pending_load_params = params
+        reset = bool(params.pop("reset", False))
+
+        if reset:
+            merged = {
+                "thumb_size": params.get("thumb_size", self.current_thumb_size),
+                "year": None,
+                "month": None,
+                "day": None,
+                "folder": None,
+                "person": None,
+                "paths": None,
+                "view_context": None,
+            }
+        else:
+            merged = {
+                "thumb_size": self.current_thumb_size,
+                "year": self.current_filter_year,
+                "month": self.current_filter_month,
+                "day": self.current_filter_day,
+                "folder": self.current_filter_folder,
+                "person": self.current_filter_person,
+                "paths": self.current_filter_paths,
+                "view_context": getattr(self, "current_view_context", None),
+            }
+
+        # Override with any explicitly provided params.
+        for k, v in params.items():
+            if k in merged:
+                merged[k] = v
+
+        # Optional, keep view_context mirrored in instance state for logging and skip logic
+        self.current_view_context = merged.get("view_context", None)
+
+        self._pending_load_params = merged
         self._load_coalesce_timer.start(50)
 
     def _execute_coalesced_load(self):
@@ -2113,17 +2148,24 @@ class GooglePhotosLayout(BaseLayout):
                     self.main_window,
                     "No Photos Found",
                     "No photos found where all group members appear together.\n\n"
-                    "This group might need to be re-indexed."
+                    "This group might need to be re-indexed."    
                 )
+                # optional, revert to All Photos if group has no results
+                self._request_load(thumb_size=self.current_thumb_size, reset=True, view_context=None)                    
                 return
 
             logger.info(f"[GooglePhotosLayout] Group {group_id} has {len(paths)} matching photos")
+            
+            # Track active group context for later refreshes and correct UI state
+            self.current_filter_group_id = int(group_id)
+            self.current_filter_group_mode = str(match_mode)            
 
             # Load photos filtered by group paths
             self._request_load(
                 thumb_size=self.current_thumb_size,
                 paths=paths,
                 view_context=("group", int(group_id), str(match_mode)),
+                reset=True,
             )
 
         except Exception as e:
@@ -2180,6 +2222,9 @@ class GooglePhotosLayout(BaseLayout):
         self._request_load(
             thumb_size=self.current_thumb_size,
             paths=paths,
+            reset=True,
+            view_context=("location", location_data.get("name"), int(location_data.get("count", 0))),
+            
         )
 
     def _on_accordion_person_merged(self, source_branch: str, target_branch: str):
@@ -9931,6 +9976,7 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
             lightbox.exec()
         except Exception as e:
             print(f"[GooglePhotosLayout] ⚠️ Error opening single view: {e}")
+            
     def on_layout_activated(self):
         """Called when this layout becomes active."""
         print("[GooglePhotosLayout] Layout activated")
