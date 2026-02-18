@@ -1,5 +1,5 @@
 # layouts/google_layout.py
-# Version 10.01.01.12 dated 20260217
+# Version 10.01.01.13 dated 20260218
 # Google Photos-style layout - Timeline-based, date-grouped, minimalist design
 
 from PySide6.QtWidgets import (
@@ -191,6 +191,10 @@ class GooglePhotosLayout(BaseLayout):
         self.current_filter_folder = None
         self.current_filter_person = None
         self.current_filter_paths = None
+
+        # --- Groups filter state ---
+        self.current_filter_group_id = None
+        self.current_filter_group_mode = None        
 
         # PHASE 2 Task 2.1: Async photo loading (move queries off GUI thread)
         # Generation counter prevents stale results from overwriting newer data
@@ -2129,9 +2133,19 @@ class GooglePhotosLayout(BaseLayout):
         # Handle invalid/deselection group IDs (None, 0, or negative values like -1)
         if group_id is None or group_id < 1:
             logger.info(f"[GooglePhotosLayout] Group deselected or invalid (group_id={group_id})")
-            # Clear group filter - reload all photos
-            self._request_load(thumb_size=self.current_thumb_size)
+
+            # Clear group state
+            self.current_filter_group_id = None
+            self.current_filter_group_mode = None
+
+            # Force reload to ALL photos context
+            self._request_load(
+                thumb_size=self.current_thumb_size,
+                reset=True,
+                view_context=None,
+            )
             return
+
 
         logger.info(f"[GooglePhotosLayout] Group clicked: {group_id} (mode={match_mode})")
 
@@ -2150,8 +2164,17 @@ class GooglePhotosLayout(BaseLayout):
                     "No photos found where all group members appear together.\n\n"
                     "This group might need to be re-indexed."    
                 )
+
+                # Reset group state
+                self.current_filter_group_id = None
+                self.current_filter_group_mode = None
+    
                 # optional, revert to All Photos if group has no results
-                self._request_load(thumb_size=self.current_thumb_size, reset=True, view_context=None)                    
+                self._request_load(
+                    thumb_size=self.current_thumb_size, 
+                    reset=True, 
+                    view_context=None
+                )                  
                 return
 
             logger.info(f"[GooglePhotosLayout] Group {group_id} has {len(paths)} matching photos")
@@ -2190,10 +2213,21 @@ class GooglePhotosLayout(BaseLayout):
         except Exception as e:
             logger.error(f"[GooglePhotosLayout] Failed to open edit group dialog: {e}", exc_info=True)
 
+
     def _on_group_deleted(self, group_id: int):
-        """Handle group deletion - clear filter if viewing deleted group."""
         logger.info(f"[GooglePhotosLayout] Group deleted: {group_id}")
-        # Refresh sidebar is already handled in AccordionSidebar
+
+        # If currently viewing this group, clear filter
+        if getattr(self, "current_filter_group_id", None) == group_id:
+            self.current_filter_group_id = None
+            self.current_filter_group_mode = None
+
+            self._request_load(
+                thumb_size=self.current_thumb_size,
+                reset=True,
+                view_context=None,
+            )
+
 
     def _on_accordion_location_clicked(self, location_data: dict):
         """
