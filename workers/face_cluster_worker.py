@@ -225,14 +225,21 @@ class FaceClusterWorker(QRunnable):
                     self.signals.finished.emit(0, 0)
                     return
 
-                # Parse embeddings
+                # Parse embeddings with size validation
                 ids, paths, image_paths, vecs = [], [], [], []
                 qualities = []  # Store (confidence, face_ratio, aspect_ratio) for quality filtering
                 bboxes = []  # Store bbox info for comprehensive quality analysis
+                _skipped_bad_size = 0
                 for rid, path, img_path, blob, conf, bx, by, bw, bh, img_w, img_h in rows:
                     try:
                         vec = np.frombuffer(blob, dtype=np.float32)
-                        if vec.size:
+                        if vec.size == 0:
+                            continue
+                        # Validate embedding dimension — must be 512 for ArcFace
+                        if vec.size != 512:
+                            _skipped_bad_size += 1
+                            continue
+                        if True:  # preserves indentation from original `if vec.size:`
                             ids.append(rid)
                             paths.append(path)
                             image_paths.append(img_path)
@@ -253,6 +260,12 @@ class FaceClusterWorker(QRunnable):
                             })
                     except Exception as e:
                         logger.warning(f"[FaceClusterWorker] Failed to parse embedding: {e}")
+
+                if _skipped_bad_size > 0:
+                    logger.warning(
+                        f"[FaceClusterWorker] Skipped {_skipped_bad_size} faces with "
+                        f"invalid embedding size (expected 512-dim float32)"
+                    )
 
                 if len(vecs) < 2:
                     logger.warning("[FaceClusterWorker] Not enough faces to cluster (need at least 2)")

@@ -1031,6 +1031,27 @@ class MainWindow(QMainWindow):
                     ) if not self._closing else None
                 )
             )
+            # Interim/final clustering passes → dispatch store action for People refresh
+            def _on_interim_clusters(cluster_count, total_faces, is_final, pid):
+                if self._closing:
+                    return
+                label = "final" if is_final else "interim"
+                self.statusBar().showMessage(
+                    f"Faces: {cluster_count} people found ({total_faces} faces, {label})",
+                    5000 if not is_final else 0,
+                )
+                try:
+                    from core.state_bus import get_bridge, FacesCompleted, ActionMeta
+                    bridge = get_bridge()
+                    bridge.dispatch_async(FacesCompleted(
+                        meta=ActionMeta(source="face_pipeline"),
+                        detected=total_faces,
+                        clustered=cluster_count,
+                    ))
+                except Exception:
+                    pass
+            _face_svc.interim_clusters_ready.connect(_on_interim_clusters)
+            self._on_interim_clusters = _on_interim_clusters  # prevent GC
             # Finished → final People refresh + status bar
             def _on_face_svc_finished(results, pid):
                 if self._closing:
@@ -1059,11 +1080,9 @@ class MainWindow(QMainWindow):
 
         self.sidebar.on_branch_selected = self.sidebar_controller.on_branch_selected
         self.sidebar.folderSelected.connect(self.sidebar_controller.on_folder_selected)
-        
         # People Groups: connect selectGroup signal
         if hasattr(self.sidebar, 'selectGroup'):
             self.sidebar.selectGroup.connect(self.sidebar_controller.on_group_selected)
-        
         # 🎬 Phase 4: Videos support
         if hasattr(self.sidebar, 'selectVideos'):
             self.sidebar.selectVideos.connect(self.sidebar_controller.on_videos_selected)

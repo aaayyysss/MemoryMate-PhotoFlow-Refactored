@@ -38,6 +38,11 @@ class FacePipelineService(QObject):
     # (processed: int, total: int, faces_so_far: int, project_id: int)
     batch_committed = Signal(int, int, int, int)
 
+    # (cluster_count: int, total_faces: int, is_final: bool, project_id: int)
+    # Emitted after each interim clustering pass and after the final cluster.
+    # is_final=False means detection is still running (partial results).
+    interim_clusters_ready = Signal(int, int, bool, int)
+
     # (results: dict, project_id: int)
     finished = Signal(dict, int)
 
@@ -194,9 +199,13 @@ class FacePipelineService(QObject):
                     pass
             self.error.emit(msg, project_id)
 
+        def _on_interim_clusters(cluster_count, total_faces, is_final):
+            self.interim_clusters_ready.emit(cluster_count, total_faces, is_final, project_id)
+
         worker.signals.progress.connect(_on_progress)
         worker.signals.finished.connect(_on_finished)
         worker.signals.error.connect(_on_error)
+        worker.signals.interim_clusters_ready.connect(_on_interim_clusters)
 
         with self._lock:
             self._running[project_id] = worker

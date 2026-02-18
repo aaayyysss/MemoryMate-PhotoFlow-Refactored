@@ -205,8 +205,8 @@ class GroupsChanged:
     meta: ActionMeta
     group_id: Optional[int] = None       # specific group, or None for all
     reason: str = ""                      # "created", "updated", "deleted", "reindexed"
- 
- 
+
+
 @dataclass
 class GroupIndexCompleted:
     """Dispatched when a group's materialized match cache finishes computing."""
@@ -214,8 +214,8 @@ class GroupIndexCompleted:
     group_id: int = 0
     match_count: int = 0
     scope: str = "same_photo"
- 
- 
+
+
 @dataclass
 class TagsChanged:
     meta: ActionMeta
@@ -584,11 +584,10 @@ def register_default_handlers(store: Store) -> None:
     @store.on(GroupsChanged)
     def _(state: ProjectState, action: GroupsChanged) -> None:
         state.groups_v += 1
- 
+
     @store.on(GroupIndexCompleted)
     def _(state: ProjectState, action: GroupIndexCompleted) -> None:
         state.groups_v += 1
- 
 
     @store.on(TagsChanged)
     def _(state: ProjectState, action: TagsChanged) -> None:

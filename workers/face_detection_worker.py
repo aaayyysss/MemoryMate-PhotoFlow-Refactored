@@ -618,6 +618,11 @@ class FaceDetectionWorker(QRunnable):
         BEST PRACTICE: Separates disk I/O from DB writes for batch efficiency.
         Called for each face, accumulates rows, then batch-commits to DB.
 
+        Quality gate: Rejects faces that are too small to produce useful
+        embeddings, reducing singleton clusters during DBSCAN.  Faces smaller
+        than MIN_FACE_AREA_PX (default 40x40 = 1600 px²) are skipped since
+        their embeddings carry insufficient signal for reliable clustering.
+
         Args:
             image_path: Original photo path
             face: Face dictionary with bbox and embedding
@@ -632,6 +637,41 @@ class FaceDetectionWorker(QRunnable):
             logger.warning(
                 f"⚠️  Skipping face for {os.path.basename(image_path)} face#{face_idx}: "
                 f"No embedding (detection-only mode)."
+            )
+            return None
+
+        # ── Quality gate: reject tiny / low-confidence faces ──────────
+        # Tiny faces produce noisy embeddings → DBSCAN singletons.
+        # Threshold: 40x40 px = 1600 px² (configurable).
+        MIN_FACE_AREA_PX = 1600  # 40x40 pixels minimum
+        MIN_EMBEDDING_CONFIDENCE = 0.50  # below this, embedding is unreliable
+
+        bbox_w = face.get('bbox_w', 0)
+        bbox_h = face.get('bbox_h', 0)
+        face_area = bbox_w * bbox_h
+        confidence = face.get('confidence', 0.0)
+
+        if face_area < MIN_FACE_AREA_PX:
+            logger.debug(
+                f"[FaceDetectionWorker] Skipping tiny face in {os.path.basename(image_path)} "
+                f"face#{face_idx}: {bbox_w}x{bbox_h}={face_area}px² < {MIN_FACE_AREA_PX}px²"
+            )
+            return None
+
+        if confidence < MIN_EMBEDDING_CONFIDENCE:
+            logger.debug(
+                f"[FaceDetectionWorker] Skipping low-confidence face in {os.path.basename(image_path)} "
+                f"face#{face_idx}: conf={confidence:.2f} < {MIN_EMBEDDING_CONFIDENCE}"
+            )
+            return None
+
+        # Validate embedding size (must be 512-dim float32 = 2048 bytes)
+        embedding = face.get('embedding')
+        if embedding is not None and hasattr(embedding, '__len__') and len(embedding) != 512:
+            logger.warning(
+                f"[FaceDetectionWorker] Skipping face with invalid embedding size in "
+                f"{os.path.basename(image_path)} face#{face_idx}: "
+                f"got {len(embedding)} dims, expected 512"
             )
             return None
 

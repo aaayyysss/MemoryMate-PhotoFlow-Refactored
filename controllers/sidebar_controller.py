@@ -51,36 +51,56 @@ class SidebarController:
             self.main.thumbnails.load_thumbnails(self.main.grid.get_visible_paths())
 
     def on_group_selected(self, group_id: int):
-        """Handle group selection — filter grid to show only group match photos."""
+        """Handle group selection — filter grid to show only group match photos.
+
+        Routes through the current layout's filter_by_paths (GooglePhotosLayout)
+        rather than the ThumbnailGridQt which does not support path filtering.
+        Paths are frozen (copied) at query time to prevent mutable-reference bugs
+        in the coalescing layer.
+        """
         try:
             from services.group_service import GroupService
             from reference_db import ReferenceDB
- 
+
+            # Resolve project_id from layout or grid
+            project_id = None
+            layout = None
+            if hasattr(self.main, 'layout_manager'):
+                layout = self.main.layout_manager.get_current_layout()
+                if layout and hasattr(layout, 'project_id'):
+                    project_id = layout.project_id
+            if project_id is None and hasattr(self.main, 'grid'):
+                project_id = getattr(self.main.grid, 'project_id', None)
+            if project_id is None:
+                print("[SidebarController] Cannot resolve project_id for group selection")
+                return
+
             db = ReferenceDB()
-            paths = GroupService.get_cached_match_paths(
-                db, self.main.grid.project_id, group_id
-            )
-            # Touch last_used_at
+            paths = GroupService.get_cached_match_paths(db, project_id, group_id)
+            paths = list(paths)  # freeze to avoid mutations while coalescing
             GroupService.touch_group(db, group_id)
             db.close()
- 
-            if hasattr(self.main.grid, "set_custom_paths"):
-                self.main.grid.set_custom_paths(paths, navigation_mode="group")
-            elif hasattr(self.main.grid, "filter_by_paths"):
-                self.main.grid.filter_by_paths(paths)
-            else:
-                # Fallback: use branch "all" and log
-                print(f"[SidebarController] Grid does not support custom paths for group filter (group_id={group_id}, {len(paths)} matches)")
- 
-            if hasattr(self.main.grid, "list_view"):
-                self.main.grid.list_view.scrollToTop()
- 
+
+            print(f"[SidebarController] Group {group_id} selected: {len(paths)} matching photos")
+
+            # Prefer layout-level filtering (GooglePhotosLayout has filter_by_paths)
+            routed = False
+            if layout and hasattr(layout, "filter_by_paths"):
+                layout.filter_by_paths(paths, navigation_mode="group")
+                routed = True
+            elif hasattr(self.main, 'grid'):
+                grid = self.main.grid
+                if hasattr(grid, "filter_by_paths"):
+                    grid.filter_by_paths(paths, navigation_mode="group")
+                    routed = True
+
+            if not routed:
+                print(f"[SidebarController] No filter_by_paths target found for group {group_id}")
+
         except Exception as e:
             print(f"[SidebarController] Group selection failed: {e}")
             import traceback
             traceback.print_exc()
- 
-
 
     def on_videos_selected(self):
         """Handle videos tab selection - show all videos for current project"""

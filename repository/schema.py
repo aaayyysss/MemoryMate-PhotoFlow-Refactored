@@ -177,7 +177,7 @@ CREATE TABLE IF NOT EXISTS face_merge_history (
 -- ============================================================================
 -- PEOPLE GROUPS (v10.0.0: User-defined groups of people for co-occurrence)
 -- ============================================================================
- 
+
 -- Person groups (named sets of people, e.g. "Family", "Ammar + Alya")
 CREATE TABLE IF NOT EXISTS person_groups (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -188,9 +188,10 @@ CREATE TABLE IF NOT EXISTS person_groups (
     last_used_at INTEGER,             -- for "recently used" sorting
     is_pinned INTEGER NOT NULL DEFAULT 0,
     is_deleted INTEGER NOT NULL DEFAULT 0,
+    cover_asset_path TEXT,            -- user-chosen cover photo (NULL = auto-derive)
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
 );
- 
+
 -- Person group members (links groups to people via branch_key)
 CREATE TABLE IF NOT EXISTS person_group_members (
     group_id INTEGER NOT NULL,
@@ -199,7 +200,7 @@ CREATE TABLE IF NOT EXISTS person_group_members (
     PRIMARY KEY (group_id, branch_key),
     FOREIGN KEY (group_id) REFERENCES person_groups(id) ON DELETE CASCADE
 );
- 
+
 -- Materialized group match results (precomputed photo matches per group)
 CREATE TABLE IF NOT EXISTS group_asset_matches (
     group_id INTEGER NOT NULL,
@@ -211,7 +212,6 @@ CREATE TABLE IF NOT EXISTS group_asset_matches (
     FOREIGN KEY (group_id) REFERENCES person_groups(id) ON DELETE CASCADE,
     FOREIGN KEY (photo_id) REFERENCES photo_metadata(id) ON DELETE CASCADE
 );
- 
 
 -- Export history (tracks photo export operations)
 CREATE TABLE IF NOT EXISTS export_history (
@@ -587,11 +587,9 @@ CREATE INDEX IF NOT EXISTS idx_person_groups_pinned ON person_groups(project_id,
 CREATE INDEX IF NOT EXISTS idx_group_members_branch ON person_group_members(branch_key, group_id);
 CREATE INDEX IF NOT EXISTS idx_group_asset_matches_group ON group_asset_matches(group_id, scope);
 CREATE INDEX IF NOT EXISTS idx_group_asset_matches_photo ON group_asset_matches(photo_id);
- 
+
 -- Face crops: person+photo compound index for AND matching (v10.0.0)
 CREATE INDEX IF NOT EXISTS idx_face_crops_person_photo ON face_crops(project_id, branch_key, image_path);
- 
-
 
 -- Branches indexes
 CREATE INDEX IF NOT EXISTS idx_branches_project ON branches(project_id);
@@ -770,7 +768,7 @@ def get_expected_tables() -> list[str]:
         "media_stack_meta",
         # Face merge history (should have been included earlier)
         "face_merge_history",
-        # People Groups tables (v10.0.0)
+        # People groups tables (v10.0.0)
         "person_groups",
         "person_group_members",
         "group_asset_matches",
@@ -854,7 +852,6 @@ def get_expected_indexes() -> list[str]:
         "idx_group_asset_matches_group",
         "idx_group_asset_matches_photo",
         "idx_face_crops_person_photo",
-        
         # Semantic embeddings indexes (v7.0.0)
         "idx_semantic_model",
         "idx_semantic_hash",
@@ -926,10 +923,6 @@ VALUES ('9.3.0', 'Add image_content_hash for pixel-based embedding staleness det
         "description": "People Groups: person_groups, person_group_members, group_asset_matches",
         "sql": """
 -- v10.0.0: People Groups - user-defined groups of people for co-occurrence browsing
--- Enables "show me photos where Ammar + Alya appear together" workflow
-
-INSERT OR IGNORE INTO schema_version (version, description)
-VALUES ('10.0.0', 'People Groups: person_groups, person_group_members, group_asset_matches');
 
 CREATE TABLE IF NOT EXISTS person_groups (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -940,6 +933,7 @@ CREATE TABLE IF NOT EXISTS person_groups (
     last_used_at INTEGER,
     is_pinned INTEGER NOT NULL DEFAULT 0,
     is_deleted INTEGER NOT NULL DEFAULT 0,
+    cover_asset_path TEXT,
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
 );
 
@@ -969,6 +963,9 @@ CREATE INDEX IF NOT EXISTS idx_group_members_branch ON person_group_members(bran
 CREATE INDEX IF NOT EXISTS idx_group_asset_matches_group ON group_asset_matches(group_id, scope);
 CREATE INDEX IF NOT EXISTS idx_group_asset_matches_photo ON group_asset_matches(photo_id);
 CREATE INDEX IF NOT EXISTS idx_face_crops_person_photo ON face_crops(project_id, branch_key, image_path);
+
+INSERT OR IGNORE INTO schema_version (version, description)
+VALUES ('10.0.0', 'People Groups: person_groups, person_group_members, group_asset_matches');
 """
     }
 }
@@ -1051,35 +1048,34 @@ def ensure_gps_columns(conn) -> bool:
 
     return columns_added
 
- 
- 
+
 def ensure_groups_tables(conn) -> bool:
     """
     Ensure People Groups tables exist (v10.0.0 migration).
- 
+
     Creates person_groups, person_group_members, and group_asset_matches
     tables if they don't already exist. Safe to call multiple times (idempotent).
- 
+
     Args:
         conn: SQLite connection object
- 
+
     Returns:
         bool: True if tables were created, False if already existed
     """
     import logging
     logger = logging.getLogger(__name__)
- 
+
     cur = conn.cursor()
- 
+
     # Check if tables already exist
     existing_tables = {
         r[0] for r in cur.execute(
             "SELECT name FROM sqlite_master WHERE type='table'"
         )
     }
- 
+
     tables_created = False
- 
+
     if 'person_groups' not in existing_tables:
         logger.info("[Schema] Creating person_groups table (v10.0.0)")
         cur.execute("""
@@ -1096,7 +1092,7 @@ def ensure_groups_tables(conn) -> bool:
             )
         """)
         tables_created = True
- 
+
     if 'person_group_members' not in existing_tables:
         logger.info("[Schema] Creating person_group_members table (v10.0.0)")
         cur.execute("""
@@ -1109,7 +1105,7 @@ def ensure_groups_tables(conn) -> bool:
             )
         """)
         tables_created = True
- 
+
     if 'group_asset_matches' not in existing_tables:
         logger.info("[Schema] Creating group_asset_matches table (v10.0.0)")
         cur.execute("""
@@ -1125,7 +1121,7 @@ def ensure_groups_tables(conn) -> bool:
             )
         """)
         tables_created = True
- 
+
     # Create indexes (idempotent)
     cur.execute("CREATE INDEX IF NOT EXISTS idx_person_groups_project ON person_groups(project_id, is_deleted)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_person_groups_last_used ON person_groups(project_id, last_used_at)")
@@ -1134,16 +1130,16 @@ def ensure_groups_tables(conn) -> bool:
     cur.execute("CREATE INDEX IF NOT EXISTS idx_group_asset_matches_group ON group_asset_matches(group_id, scope)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_group_asset_matches_photo ON group_asset_matches(photo_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_face_crops_person_photo ON face_crops(project_id, branch_key, image_path)")
- 
+
     # Update schema version
     cur.execute("""
         INSERT OR IGNORE INTO schema_version (version, description)
         VALUES ('10.0.0', 'People Groups: person_groups, person_group_members, group_asset_matches')
     """)
- 
+
     conn.commit()
- 
+
     if tables_created:
         logger.info("[Schema] People Groups migration complete (v10.0.0)")
- 
+
     return tables_created

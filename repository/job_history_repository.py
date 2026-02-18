@@ -96,13 +96,26 @@ class JobHistoryRepository:
             conn.commit()
 
     def update_progress(self, *, job_id: str, progress: float) -> None:
-        """Update the progress fraction (0.0 – 1.0) for a running job."""
-        with self._db.get_connection() as conn:
-            conn.execute(
-                "UPDATE job_history SET progress = ? WHERE job_id = ? AND status = 'running'",
-                (float(progress), job_id),
-            )
-            conn.commit()
+        """Update the progress fraction (0.0 – 1.0) for a running job.
+
+        Includes a single retry with short sleep to handle transient
+        'database is locked' errors under concurrent pipeline workloads.
+        """
+        import sqlite3 as _sqlite3
+        for attempt in range(2):
+            try:
+                with self._db.get_connection() as conn:
+                    conn.execute(
+                        "UPDATE job_history SET progress = ? WHERE job_id = ? AND status = 'running'",
+                        (float(progress), job_id),
+                    )
+                    conn.commit()
+                return
+            except _sqlite3.OperationalError:
+                if attempt == 0:
+                    import time as _time
+                    _time.sleep(0.1)
+                # Second attempt failure is swallowed by caller (JobManager)
 
     def finish(
         self,

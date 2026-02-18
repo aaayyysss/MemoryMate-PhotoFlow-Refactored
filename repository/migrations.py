@@ -445,6 +445,7 @@ CREATE TABLE IF NOT EXISTS person_groups (
     last_used_at INTEGER,
     is_pinned INTEGER NOT NULL DEFAULT 0,
     is_deleted INTEGER NOT NULL DEFAULT 0,
+    cover_asset_path TEXT,
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
 );
 
@@ -480,7 +481,6 @@ VALUES ('10.0.0', 'People Groups: person_groups, person_group_members, group_ass
 """,
     rollback_sql=""
 )
-
 
 
 # Ordered list of all migrations

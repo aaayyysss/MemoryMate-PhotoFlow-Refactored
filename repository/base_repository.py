@@ -499,6 +499,12 @@ class TransactionContext:
                                     timeout=10.0,
                                     check_same_thread=False)
         self.conn.execute("PRAGMA foreign_keys = ON")
+        self.conn.execute("PRAGMA busy_timeout = 5000")
+        # Match the journal mode used by DatabaseConnection.get_connection()
+        try:
+            self.conn.execute("PRAGMA journal_mode=WAL")
+        except sqlite3.OperationalError:
+            pass
         self.conn.row_factory = DatabaseConnection._dict_factory
         return self.conn
 
