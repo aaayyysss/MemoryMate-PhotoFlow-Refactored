@@ -1,3 +1,5 @@
+# accordion_sidebar.py
+# Version 11.01.01.03-19 dated 20260214
 """
 Google Photos-style Accordion Sidebar
 
@@ -921,7 +923,7 @@ class AccordionSidebar(QWidget):
                 "people_v": s.people_v,
                 "groups_v": s.groups_v,
             }
-
+ 
             # Map: version key → sections that depend on it
             _VERSION_SECTIONS = {
                 "media_v": ("dates", "folders", "branches", "quick", "videos", "tags"),

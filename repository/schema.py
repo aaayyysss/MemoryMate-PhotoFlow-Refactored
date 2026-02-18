@@ -1,5 +1,5 @@
 # repository/schema.py
-# Version 2.0.0 dated 20251103
+# Version 2.0.1 dated 20260214
 # Centralized database schema definition for repository layer
 #
 # This module provides the complete database schema for MemoryMate-PhotoFlow.

@@ -37,7 +37,6 @@ from .people_section import PeopleSection
 from .devices_section import DevicesSection
 from .quick_section import QuickSection
 from .locations_section import LocationsSection
-
 logger = logging.getLogger(__name__)
 
 
@@ -71,6 +70,13 @@ class AccordionSidebar(QWidget):
     undoLastMergeRequested = Signal()
     redoLastUndoRequested = Signal()
     peopleToolsRequested = Signal()
+
+    # Groups section signals (v9.5.0)
+    selectGroup = Signal(int, str)  # (group_id, match_mode)
+    newGroupRequested = Signal()
+    editGroupRequested = Signal(int)  # group_id
+    deleteGroupRequested = Signal(int)  # group_id
+    recomputeGroupRequested = Signal(int, str)  # (group_id, match_mode)
 
     # Section expansion signal
     sectionExpanding = Signal(str)  # section_id
@@ -152,6 +158,7 @@ class AccordionSidebar(QWidget):
         """Create all section instances."""
 
         # Create section logic modules
+        # NOTE: Groups is embedded inside People as a tab, not a standalone section
         self.section_logic = {
             "folders": FoldersSection(self),
             "dates": DatesSection(self),
@@ -251,6 +258,18 @@ class AccordionSidebar(QWidget):
         if people and hasattr(people, 'peopleToolsRequested'):
             people.peopleToolsRequested.connect(self.peopleToolsRequested.emit)
 
+        # Groups signals (forwarded from People section's embedded Groups tab)
+        if people and hasattr(people, 'groupSelected'):
+            people.groupSelected.connect(self._on_group_selected)
+        if people and hasattr(people, 'newGroupRequested'):
+            people.newGroupRequested.connect(self._on_new_group_requested)
+        if people and hasattr(people, 'editGroupRequested'):
+            people.editGroupRequested.connect(self.editGroupRequested.emit)
+        if people and hasattr(people, 'deleteGroupRequested'):
+            people.deleteGroupRequested.connect(self._on_delete_group_requested)
+        if people and hasattr(people, 'recomputeGroupRequested'):
+            people.recomputeGroupRequested.connect(self._on_recompute_group_requested)
+
         # Videos section
         videos = self.section_logic.get("videos")
         if videos and hasattr(videos, 'videoFilterSelected'):
@@ -270,6 +289,8 @@ class AccordionSidebar(QWidget):
         quick = self.section_logic.get("quick")
         if quick and hasattr(quick, 'quickDateSelected'):
             quick.quickDateSelected.connect(self.selectDate.emit)
+
+        # (Groups signals are now connected via People section above)
 
     def _on_section_expand_requested(self, section_id: str):
         """Handle section expand request."""
@@ -773,6 +794,125 @@ class AccordionSidebar(QWidget):
             except Exception as e:
                 logger.exception(f"[AccordionSidebar] Delete failed: {e}")
                 QMessageBox.critical(None, "Delete Failed", f"Error: {e}")
+
+    # --- Groups Section Handlers (v9.5.0) ---
+
+    def _on_group_selected(self, group_id: int, match_mode: str = "together"):
+        """Handle group selection.
+
+        Args:
+            group_id: The ID of the selected group
+            match_mode: Match mode ('together', 'any', etc). Defaults to 'together'
+                        for compatibility with PeopleSection.groupSelected(int) signal.
+        """
+        logger.info(f"[AccordionSidebar] Group selected: {group_id} (mode={match_mode})")
+
+        # PHASE 3: Save group selection to session state
+        try:
+            from session_state_manager import get_session_state
+            get_session_state().set_selection("group", group_id, f"Group #{group_id}")
+            logger.debug(f"[AccordionSidebar] PHASE 3: Saved group selection: {group_id}")
+        except Exception as e:
+            logger.warning(f"[AccordionSidebar] PHASE 3: Failed to save group selection: {e}")
+
+        self.selectGroup.emit(group_id, match_mode)
+
+    def _on_new_group_requested(self):
+        """Handle new group creation request."""
+        logger.info("[AccordionSidebar] New group requested")
+        try:
+            from ui.dialogs.new_group_dialog import NewGroupDialog
+
+            dialog = NewGroupDialog(project_id=self.project_id, db=self.db, parent=self)
+            dialog.groupCreated.connect(self._on_group_created)
+            dialog.exec_()
+
+        except Exception as e:
+            logger.error(f"[AccordionSidebar] Failed to show new group dialog: {e}")
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.critical(None, "Error", f"Failed to create group dialog:\n{str(e)}")
+
+    def _on_group_created(self, group_info: dict):
+        """Handle successful group creation."""
+        logger.info(f"[AccordionSidebar] Group created: {group_info}")
+
+        # Reload groups tab inside People section
+        people = self.section_logic.get("people")
+        if people and hasattr(people, 'reload_groups'):
+            people.reload_groups()
+
+        # Optionally trigger initial computation
+        group_id = group_info.get('id')
+        if group_id:
+            self._compute_group_matches(group_id, 'together')
+
+    def _on_delete_group_requested(self, group_id: int):
+        """Handle group deletion request."""
+        from PySide6.QtWidgets import QMessageBox
+
+        reply = QMessageBox.question(
+            None,
+            "Delete Group",
+            "Are you sure you want to delete this group?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+
+        if reply == QMessageBox.Yes:
+            try:
+                from services.people_group_service import PeopleGroupService
+                service = PeopleGroupService(self.db)
+                service.delete_group(self.project_id, group_id, soft_delete=False)
+
+                # Reload groups tab inside People section
+                people = self.section_logic.get("people")
+                if people and hasattr(people, 'reload_groups'):
+                    people.reload_groups()
+
+                QMessageBox.information(None, "Deleted", "Group has been deleted.")
+
+            except Exception as e:
+                logger.error(f"[AccordionSidebar] Failed to delete group: {e}")
+                QMessageBox.critical(None, "Error", f"Failed to delete group:\n{str(e)}")
+
+    def _on_recompute_group_requested(self, group_id: int, match_mode: str):
+        """Handle group recomputation request."""
+        logger.info(f"[AccordionSidebar] Recompute requested for group {group_id} (mode={match_mode})")
+        self._compute_group_matches(group_id, match_mode)
+
+    def _compute_group_matches(self, group_id: int, match_mode: str):
+        """Run group match computation in background."""
+        try:
+            from PySide6.QtCore import QThreadPool
+            from workers.group_compute_worker import GroupComputeWorker
+            from PySide6.QtWidgets import QMessageBox
+
+            worker = GroupComputeWorker(
+                project_id=self.project_id,
+                group_id=group_id,
+                match_mode=match_mode
+            )
+
+            def on_finished(success, result):
+                # Reload groups tab inside People section
+                people = self.section_logic.get("people")
+                if people and hasattr(people, 'reload_groups'):
+                    people.reload_groups()
+
+                if success:
+                    match_count = result.get('match_count', 0)
+                    logger.info(f"[AccordionSidebar] Group computation complete: {match_count} matches")
+                else:
+                    error = result.get('error', 'Unknown error')
+                    logger.error(f"[AccordionSidebar] Group computation failed: {error}")
+
+            worker.signals.finished.connect(on_finished)
+            QThreadPool.globalInstance().start(worker)
+
+            logger.info(f"[AccordionSidebar] Started group computation worker")
+
+        except Exception as e:
+            logger.error(f"[AccordionSidebar] Failed to start group computation: {e}")
 
     def cleanup(self):
         """Clean up resources before destruction."""

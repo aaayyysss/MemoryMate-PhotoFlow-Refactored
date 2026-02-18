@@ -1,5 +1,5 @@
 # repository/migrations.py
-# Version 2.0.1 dated 20251103
+# Version 2.0.2 dated 20260214
 # Database migration system for schema upgrades
 # FIX: Check if DB file exists before opening in read-only mode (prevents error on fresh DB)
 #
@@ -686,6 +686,7 @@ class MigrationManager:
                 elif migration.version == "9.4.0":
                     # Apply migration v9.4: add metadata editing columns
                     self._add_metadata_editing_columns_if_missing(conn)
+                # Note: v10.0.0 migration (People Groups) has table creation in SQL
 
                 # Execute migration SQL (version tracking)
                 conn.executescript(migration.sql)

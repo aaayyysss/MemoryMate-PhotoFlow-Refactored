@@ -1,5 +1,5 @@
 # layouts/google_layout.py
-# Version 10.01.01.10 dated 20260202
+# Version 10.01.01.13 dated 20260218
 # Google Photos-style layout - Timeline-based, date-grouped, minimalist design
 
 from PySide6.QtWidgets import (
@@ -191,6 +191,10 @@ class GooglePhotosLayout(BaseLayout):
         self.current_filter_folder = None
         self.current_filter_person = None
         self.current_filter_paths = None
+
+        # --- Groups filter state ---
+        self.current_filter_group_id = None
+        self.current_filter_group_mode = None        
 
         # PHASE 2 Task 2.1: Async photo loading (move queries off GUI thread)
         # Generation counter prevents stale results from overwriting newer data
@@ -1191,6 +1195,11 @@ class GooglePhotosLayout(BaseLayout):
         sidebar.redoLastUndoRequested.connect(self._on_people_redo_requested)
         sidebar.peopleToolsRequested.connect(self._on_people_tools_requested)
 
+        # Groups section signals (Person Groups feature)
+        sidebar.selectGroup.connect(self._on_accordion_group_clicked)
+        sidebar.editGroupRequested.connect(self._on_group_edit_requested)
+        sidebar.deleteGroupRequested.connect(self._on_group_deleted)
+
         # FIX: Connect section expansion signal to hide search suggestions popup
         sidebar.sectionExpanding.connect(self._on_accordion_section_expanding)
 
@@ -1256,12 +1265,23 @@ class GooglePhotosLayout(BaseLayout):
         """Compute a hashable signature for a set of load parameters.
 
         If the signature matches the last executed load, the reload is
-        skipped (no work done).  This eliminates redundant sequential
+        skipped (no work done). This eliminates redundant sequential
         reloads that occur during mode switches, accordion clicks, etc.
+        
+        Important: include a view_context in the signature so two different
+        UI sources (for example different People Groups) that currently map
+        to the same set of paths still trigger a UI refresh.        
         """
         paths_sig = (
             tuple(sorted(params['paths'])) if params.get('paths') else None
         )
+
+        view_ctx = params.get('view_context')
+        if isinstance(view_ctx, dict):
+            view_ctx = tuple(sorted(view_ctx.items()))
+        elif isinstance(view_ctx, list):
+            view_ctx = tuple(view_ctx)
+        
         return (
             self.project_id,
             params.get('thumb_size'),
@@ -1271,10 +1291,41 @@ class GooglePhotosLayout(BaseLayout):
             params.get('folder'),
             params.get('person'),
             paths_sig,
+            view_ctx,
         )
 
     def _request_load(self, **params):
-        """Schedule a coalesced photo load.
+        """Coalesce load requests.
+
+        Important behavior:
+        - Callers often pass partial params (for example only thumb_size or only paths).
+          We must preserve the currently active filters unless the caller explicitly requests a reset.
+        - Use reset=True to clear all filters and reload the default "All Photos" view.
+        """
+        reset = bool(params.pop("reset", False))
+
+        if reset:
+            merged = {
+                "thumb_size": params.get("thumb_size", self.current_thumb_size),
+                "year": None,
+                "month": None,
+                "day": None,
+                "folder": None,
+                "person": None,
+                "paths": None,
+                "view_context": None,
+            }
+        else:
+            merged = {
+                "thumb_size": self.current_thumb_size,
+                "year": self.current_filter_year,
+                "month": self.current_filter_month,
+                "day": self.current_filter_day,
+                "folder": self.current_filter_folder,
+                "person": self.current_filter_person,
+                "paths": self.current_filter_paths,
+                "view_context": getattr(self, "current_view_context", None),
+            }
 
         Multiple rapid calls (e.g. accordion expand + tab switch) are
         collapsed into a single load executed after a 50ms quiet period.
@@ -2067,6 +2118,118 @@ class GooglePhotosLayout(BaseLayout):
             person=person_branch_key,
         )
 
+    # --- Groups sub-section handlers (Person Groups feature) ---
+
+    def _on_accordion_group_clicked(self, group_id: int, match_mode: str = "together"):
+        """
+        Handle group selection from the Groups sub-section.
+
+        When user clicks a group, filters photos to show only photos
+        where ALL group members appear together (AND matching).
+
+        Args:
+            group_id: ID of the selected group (-1 for deselection)
+            match_mode: Matching mode ('together', 'any', etc.). Defaults to 'together'.
+        """
+        # Handle invalid/deselection group IDs (None, 0, or negative values like -1)
+        if group_id is None or group_id < 1:
+            logger.info(f"[GooglePhotosLayout] Group deselected or invalid (group_id={group_id})")
+
+            # Clear group state
+            self.current_filter_group_id = None
+            self.current_filter_group_mode = None
+
+            # Force reload to ALL photos context
+            self._request_load(
+                thumb_size=self.current_thumb_size,
+                reset=True,
+                view_context=None,
+            )
+            return
+
+
+        logger.info(f"[GooglePhotosLayout] Group clicked: {group_id} (mode={match_mode})")
+
+        try:
+            from services.group_service import GroupService
+            service = GroupService.instance()
+
+            # Get matching photo paths using "Together (AND)" query
+            paths = service.get_group_photos(self.project_id, group_id)
+
+            if not paths:
+                from PySide6.QtWidgets import QMessageBox
+                QMessageBox.information(
+                    self.main_window,
+                    "No Photos Found",
+                    "No photos found where all group members appear together.\n\n"
+                    "This group might need to be re-indexed."    
+                )
+
+                # Reset group state
+                self.current_filter_group_id = None
+                self.current_filter_group_mode = None
+    
+                # optional, revert to All Photos if group has no results
+                self._request_load(
+                    thumb_size=self.current_thumb_size, 
+                    reset=True, 
+                    view_context=None
+                )                  
+                return
+
+            logger.info(f"[GooglePhotosLayout] Group {group_id} has {len(paths)} matching photos")
+            
+            # Track active group context for later refreshes and correct UI state
+            self.current_filter_group_id = int(group_id)
+            self.current_filter_group_mode = str(match_mode)            
+
+            # Load photos filtered by group paths
+            self._request_load(
+                thumb_size=self.current_thumb_size,
+                paths=paths,
+                view_context=("group", int(group_id), str(match_mode)),
+                reset=True,
+            )
+
+        except Exception as e:
+            logger.error(f"[GooglePhotosLayout] Failed to load group photos: {e}", exc_info=True)
+
+    def _on_group_created(self):
+        """Handle new group creation - refresh sidebar groups."""
+        logger.info("[GooglePhotosLayout] Group created, refreshing People section")
+        self._refresh_people_sidebar()
+
+    def _on_group_edit_requested(self, group_id: int):
+        """Handle group edit request - open edit dialog."""
+        logger.info(f"[GooglePhotosLayout] Edit group requested: {group_id}")
+
+        try:
+            from ui.create_group_dialog import CreateGroupDialog
+
+            dialog = CreateGroupDialog(self.project_id, edit_group_id=group_id, parent=self.main_window)
+            if dialog.exec():
+                self._refresh_people_sidebar()
+                logger.info(f"[GooglePhotosLayout] Group {group_id} edited")
+        except Exception as e:
+            logger.error(f"[GooglePhotosLayout] Failed to open edit group dialog: {e}", exc_info=True)
+
+
+    def _on_group_deleted(self, group_id: int):
+        logger.info(f"[GooglePhotosLayout] Group deleted: {group_id}")
+
+        # If currently viewing this group, clear filter
+        if getattr(self, "current_filter_group_id", None) == group_id:
+            self.current_filter_group_id = None
+            self.current_filter_group_mode = None
+
+            self._request_load(
+                thumb_size=self.current_thumb_size,
+                reset=True,
+                view_context=None,
+            )
+
+
     def _on_accordion_location_clicked(self, location_data: dict):
         """
         Handle location selection from the accordion sidebar (GPS filtering).
@@ -2094,6 +2257,9 @@ class GooglePhotosLayout(BaseLayout):
         self._request_load(
             thumb_size=self.current_thumb_size,
             paths=paths,
+            reset=True,
+            view_context=("location", location_data.get("name"), int(location_data.get("count", 0))),
+            
         )
 
     def _on_accordion_person_merged(self, source_branch: str, target_branch: str):
@@ -9845,6 +10011,7 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
             lightbox.exec()
         except Exception as e:
             print(f"[GooglePhotosLayout] ⚠️ Error opening single view: {e}")
+            
     def on_layout_activated(self):
         """Called when this layout becomes active."""
         print("[GooglePhotosLayout] Layout activated")

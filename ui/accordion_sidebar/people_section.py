@@ -1,5 +1,16 @@
 # ui/accordion_sidebar/people_section.py
-# People section - face clusters list
+# People section - face clusters with Groups tab
+# Version: 2.0.0
+
+"""
+People Section with Individuals / Groups Tab Toggle
+
+Structure (following Google Photos / Apple Photos / Lightroom pattern):
+- People (accordion section header)
+  - [Individuals] [Groups]  ← tab toggle (QStackedWidget)
+  - Page 0: Individuals — existing face cluster grid
+  - Page 1: Groups — reuses GroupsSection for content + signals
+"""
 
 import io
 import logging
@@ -16,6 +27,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
     QScrollArea,
+    QStackedWidget,
     QWidget,
     QVBoxLayout,
     QLayout,
@@ -41,8 +53,14 @@ class PeopleSectionSignals(QObject):
 
 
 class PeopleSection(BaseSection):
-    """People section implementation showing detected face clusters."""
+    """
+    People section with Individuals / Groups tab toggle.
 
+    Individuals tab: existing face cluster grid
+    Groups tab: reuses GroupsSection content embedded via QStackedWidget
+    """
+
+    # Face cluster signals
     personSelected = Signal(str)  # person_branch_key
     contextMenuRequested = Signal(str, str)  # (branch_key, action)
     dragMergeRequested = Signal(str, str)  # (source_branch, target_branch)
@@ -50,6 +68,13 @@ class PeopleSection(BaseSection):
     undoMergeRequested = Signal()
     redoMergeRequested = Signal()
     peopleToolsRequested = Signal()
+
+    # Groups tab signals (forwarded from embedded GroupsSection)
+    groupSelected = Signal(int, str)       # (group_id, match_mode)
+    newGroupRequested = Signal()
+    editGroupRequested = Signal(int)       # group_id
+    deleteGroupRequested = Signal(int)     # group_id
+    recomputeGroupRequested = Signal(int, str)  # (group_id, match_mode)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -65,6 +90,13 @@ class PeopleSection(BaseSection):
         self._all_data: List[Dict] = []  # Full list of people data
         self._search_text: str = ""
         self._count_label: Optional[QLabel] = None
+
+        # Groups tab state
+        self._groups_section = None      # GroupsSection instance (lazy)
+        self._stack: Optional[QStackedWidget] = None
+        self._btn_individuals = None
+        self._btn_groups = None
+        self._groups_loaded_once = False  # lazy-load on first tab switch
 
     def get_section_id(self) -> str:
         return "people"
@@ -145,6 +177,14 @@ class PeopleSection(BaseSection):
             import traceback
             traceback.print_exc()
 
+    def set_project(self, project_id: int) -> None:
+        """Override to reset groups tab when project changes."""
+        super().set_project(project_id)
+        # Reset groups lazy-load flag so it reloads for new project
+        self._groups_loaded_once = False
+        if self._groups_section:
+            self._groups_section.set_project(project_id)
+
     def load_section(self) -> None:
         """Load people section data in a background thread."""
         if not self.project_id:
@@ -187,17 +227,103 @@ class PeopleSection(BaseSection):
         threading.Thread(target=on_complete, daemon=True).start()
 
     def create_content_widget(self, data):
-        """Create a flow-wrapped grid of faces (multi-row people view) with search."""
+        """Create tabbed layout: [Individuals] [Groups] with QStackedWidget."""
         rows: List[Dict] = data or []
-        self._all_data = rows  # Store full data for filtering
+        self._all_data = rows
 
+        # Reset groups state so it reloads when tab is clicked after rebuild
+        self._groups_loaded_once = False
+        self._groups_section = None
+
+        # ── Outer container ──
+        outer = QWidget()
+        outer_layout = QVBoxLayout(outer)
+        outer_layout.setContentsMargins(0, 0, 0, 0)
+        outer_layout.setSpacing(0)
+
+        # ── Tab bar: [Individuals] [Groups] ──
+        tab_bar = QWidget()
+        tab_bar.setFixedHeight(36)
+        tab_layout = QHBoxLayout(tab_bar)
+        tab_layout.setContentsMargins(8, 4, 8, 0)
+        tab_layout.setSpacing(0)
+
+        _TAB_ACTIVE = (
+            "QPushButton { border: none; border-bottom: 2px solid #1a73e8;"
+            " color: #1a73e8; font-weight: 600; font-size: 10pt;"
+            " padding: 4px 12px; background: transparent; }"
+        )
+        _TAB_INACTIVE = (
+            "QPushButton { border: none; border-bottom: 2px solid transparent;"
+            " color: #5f6368; font-size: 10pt;"
+            " padding: 4px 12px; background: transparent; }"
+            "QPushButton:hover { color: #202124; background: #f1f3f4;"
+            " border-radius: 4px 4px 0 0; }"
+        )
+
+        btn_individuals = QPushButton("Individuals")
+        btn_individuals.setCursor(Qt.PointingHandCursor)
+        btn_individuals.setStyleSheet(_TAB_ACTIVE)
+
+        btn_groups = QPushButton("Groups")
+        btn_groups.setCursor(Qt.PointingHandCursor)
+        btn_groups.setStyleSheet(_TAB_INACTIVE)
+
+        tab_layout.addWidget(btn_individuals)
+        tab_layout.addWidget(btn_groups)
+        tab_layout.addStretch()
+        outer_layout.addWidget(tab_bar)
+
+        # ── Stacked content area ──
+        stack = QStackedWidget()
+        outer_layout.addWidget(stack, 1)
+
+        # === Page 0: Individuals (face cluster grid) ===
+        individuals_page = self._build_individuals_page(rows)
+        stack.addWidget(individuals_page)  # index 0
+
+        # === Page 1: Groups (lazy-loaded from GroupsSection) ===
+        groups_placeholder = QWidget()  # will be replaced on first switch
+        stack.addWidget(groups_placeholder)  # index 1
+
+        # ── Tab switching logic ──
+        def _switch_to_individuals():
+            stack.setCurrentIndex(0)
+            btn_individuals.setStyleSheet(_TAB_ACTIVE)
+            btn_groups.setStyleSheet(_TAB_INACTIVE)
+
+        def _switch_to_groups():
+            stack.setCurrentIndex(1)
+            btn_groups.setStyleSheet(_TAB_ACTIVE)
+            btn_individuals.setStyleSheet(_TAB_INACTIVE)
+            # Lazy-load groups on first switch
+            self._ensure_groups_tab(stack)
+
+        btn_individuals.clicked.connect(_switch_to_individuals)
+        btn_groups.clicked.connect(_switch_to_groups)
+
+        # Store references
+        self._stack = stack
+        self._btn_individuals = btn_individuals
+        self._btn_groups = btn_groups
+        # Keep strong refs to prevent GC of closures
+        self._tab_switch_individuals = _switch_to_individuals
+        self._tab_switch_groups = _switch_to_groups
+
+        logger.info(f"[PeopleSection] Grid built with {len(self._cards)} people + Groups tab")
+        return outer
+
+    def _build_individuals_page(self, rows: List[Dict]) -> QWidget:
+        """Build the Individuals page (existing face grid)."""
         if not rows:
-            placeholder = QLabel(tr("sidebar.people.empty") if callable(tr) else "No people detected yet")
+            placeholder = QLabel(
+                tr("sidebar.people.empty") if callable(tr)
+                else "No people detected yet"
+            )
             placeholder.setAlignment(Qt.AlignCenter)
             placeholder.setStyleSheet("padding: 16px; color: #666;")
             return placeholder
 
-        # Main container with search and grid
         main_container = QWidget()
         main_layout = QVBoxLayout(main_container)
         main_layout.setContentsMargins(8, 8, 8, 8)
@@ -210,7 +336,7 @@ class PeopleSection(BaseSection):
         search_layout.setSpacing(8)
 
         search_input = QLineEdit()
-        search_input.setPlaceholderText("🔍 Search people...")
+        search_input.setPlaceholderText("Search people...")
         search_input.setClearButtonEnabled(True)
         search_input.setStyleSheet("""
             QLineEdit {
@@ -227,25 +353,22 @@ class PeopleSection(BaseSection):
         search_input.textChanged.connect(self._on_search_changed)
         search_layout.addWidget(search_input, 1)
 
-        # Count label
         self._count_label = QLabel(f"{len(rows)} people")
         self._count_label.setStyleSheet("color: #5f6368; font-size: 9pt; padding: 4px;")
         search_layout.addWidget(self._count_label)
 
         main_layout.addWidget(search_container)
 
-        # Scroll area for people grid (action buttons are in header widget)
+        # Scroll area for people grid
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         scroll.setFrameShape(QScrollArea.NoFrame)
 
-        # Reset cache of rendered cards
+        # Reset cache
         self._cards.clear()
-
         cards: List[PersonCard] = []
 
-        logger.debug(f"[PeopleSection] Creating {len(rows)} person cards...")
         for idx, row in enumerate(rows):
             try:
                 branch_key = row.get("branch_key") or f"cluster_{idx}"
@@ -254,39 +377,93 @@ class PeopleSection(BaseSection):
                 rep_path = row.get("rep_path")
                 rep_thumb = row.get("rep_thumb_png")
 
-                logger.debug(f"[PeopleSection] Creating card {idx+1}/{len(rows)}: {branch_key} ({display_name})")
-
-                # CRITICAL: Load thumbnail with robust error handling
                 pixmap = self._load_face_thumbnail(rep_path, rep_thumb)
-
-                logger.debug(f"[PeopleSection] Creating PersonCard widget for {branch_key}")
                 card = PersonCard(branch_key, display_name, member_count, pixmap)
 
-                logger.debug(f"[PeopleSection] Connecting signals for {branch_key}")
                 card.clicked.connect(self.personSelected.emit)
                 card.context_menu_requested.connect(self.contextMenuRequested.emit)
                 card.drag_merge_requested.connect(self.dragMergeRequested.emit)
 
                 cards.append(card)
                 self._cards[branch_key] = card
-                logger.debug(f"[PeopleSection] ✓ Card {idx+1}/{len(rows)} created successfully: {branch_key}")
             except Exception as card_err:
-                logger.error(f"[PeopleSection] Failed to create card for person {idx+1}/{len(rows)} (branch_key={row.get('branch_key')}): {card_err}", exc_info=True)
-                # Skip this person and continue with others to prevent app crash
-                logger.warning(f"[PeopleSection] Skipping card {idx+1}/{len(rows)} - continuing with remaining {len(rows)-idx-1} cards")
+                logger.error(
+                    f"[PeopleSection] Failed to create card {idx+1}: {card_err}",
+                    exc_info=True,
+                )
 
-        logger.debug(f"[PeopleSection] All cards created ({len(cards)}/{len(rows)} successful). Creating PeopleGrid...")
         container = PeopleGrid(cards)
-        logger.debug(f"[PeopleSection] PeopleGrid created. Attaching viewport...")
         container.attach_viewport(scroll.viewport())
-        logger.debug(f"[PeopleSection] Viewport attached. Setting scroll widget...")
         scroll.setWidget(container)
-        logger.debug(f"[PeopleSection] Scroll widget set successfully.")
-
         main_layout.addWidget(scroll, 1)
 
-        logger.info(f"[PeopleSection] Grid built with {len(cards)} people (search enabled)")
         return main_container
+
+    def _ensure_groups_tab(self, stack: QStackedWidget):
+        """Lazy-create and load the Groups tab content on first switch."""
+        if self._groups_loaded_once:
+            return
+
+        self._groups_loaded_once = True
+
+        try:
+            from .groups_section import GroupsSection
+
+            gs = GroupsSection(self.parent())
+            gs.set_project(self.project_id)
+            if hasattr(gs, 'set_db') and hasattr(self, '_parent_db'):
+                gs.set_db(self._parent_db)
+
+            # Forward GroupsSection signals through PeopleSection
+            gs.groupSelected.connect(self.groupSelected.emit)
+            gs.newGroupRequested.connect(self.newGroupRequested.emit)
+            gs.editGroupRequested.connect(self.editGroupRequested.emit)
+            gs.deleteGroupRequested.connect(self.deleteGroupRequested.emit)
+            gs.recomputeRequested.connect(self.recomputeGroupRequested.emit)
+
+            self._groups_section = gs
+
+            # Trigger data load; when loaded, build content and swap into stack
+            def on_groups_loaded(gen, data):
+                try:
+                    content = gs.create_content_widget(data)
+                    if content:
+                        old = stack.widget(1)
+                        stack.removeWidget(old)
+                        old.deleteLater()
+                        stack.insertWidget(1, content)
+                        stack.setCurrentIndex(1)
+                except Exception as e:
+                    logger.error(f"[PeopleSection] Failed to build groups content: {e}", exc_info=True)
+
+            gs.signals.loaded.connect(on_groups_loaded)
+            gs.load_section()
+
+            logger.info("[PeopleSection] Groups tab lazy-loaded")
+        except Exception as e:
+            logger.error(f"[PeopleSection] Failed to create groups tab: {e}", exc_info=True)
+
+    def reload_groups(self):
+        """Public method to reload Groups tab content.
+
+        Reuses the existing GroupsSection instance to avoid duplicate
+        signal connections and memory leaks.  Only falls back to full
+        lazy-init if no GroupsSection has been created yet.
+        """
+        if self._groups_section and self._stack:
+            # Reuse existing GroupsSection – just re-trigger its data load.
+            # The on_groups_loaded closure from _ensure_groups_tab still holds
+            # the correct stack/gs references, so new data will replace the
+            # widget at index 1 automatically.
+            self._groups_section.load_section()
+        elif self._stack:
+            # Groups tab was never opened; do the full lazy-init
+            self._groups_loaded_once = False
+            self._ensure_groups_tab(self._stack)
+
+    def set_db(self, db):
+        """Store DB reference for passing to GroupsSection."""
+        self._parent_db = db
 
     # --- Search/Filter helpers ---
     def _on_search_changed(self, text: str):

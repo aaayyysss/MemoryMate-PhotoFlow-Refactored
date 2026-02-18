@@ -2849,6 +2849,77 @@ class ThumbnailGridQt(QWidget):
         self.load_mode = "videos"
         self._schedule_reload()
 
+    def set_group(self, group_id: int, paths: list[str] = None):
+        """
+        Display photos for a person group (Together/AND matching).
+
+        When a user clicks a group in the Groups sub-section, this method
+        is called to show only photos where ALL group members appear together.
+
+        Args:
+            group_id: ID of the selected group
+            paths: Optional pre-computed list of photo paths. If not provided,
+                   paths will be fetched from GroupService.
+        """
+        print(f"\n[GRID] >>>>>> set_group({group_id}) CALLED")
+
+        self.navigation_mode = "group"
+        self.navigation_key = group_id
+        self.active_tag_filter = None
+        self.load_mode = "group"
+
+        # Store group context for potential re-filtering
+        self._current_group_id = group_id
+
+        # Get paths from GroupService if not provided
+        if paths is None:
+            try:
+                from services.group_service import GroupService
+                service = GroupService.instance()
+                paths = service.get_group_photos(self.project_id, group_id)
+                print(f"[GRID] Fetched {len(paths)} photos for group {group_id}")
+            except Exception as e:
+                print(f"[GRID] Error fetching group photos: {e}")
+                paths = []
+
+        if not paths:
+            print(f"[GRID] No photos found for group {group_id}")
+            self.clear()
+            return
+
+        # Load the paths using _load_paths (reuses existing batching logic)
+        self._load_paths(paths)
+
+        print(f"[GRID] <<<<<< set_group({group_id}) COMPLETED - {len(paths)} photos\n")
+
+    def set_custom_paths(self, paths: list[str], context_label: str = "Custom"):
+        """
+        Display a custom list of photo paths with optional context label.
+
+        This is a convenience method for group-based filtering and other
+        custom photo collections that don't fit standard navigation modes.
+
+        Args:
+            paths: List of photo file paths to display
+            context_label: Label for status bar display (e.g., "Group: Family")
+        """
+        print(f"\n[GRID] >>>>>> set_custom_paths() CALLED - {len(paths)} paths")
+
+        self.navigation_mode = "custom"
+        self.navigation_key = context_label
+        self.active_tag_filter = None
+        self.load_mode = "custom"
+
+        if not paths:
+            print(f"[GRID] No paths provided")
+            self.clear()
+            return
+
+        # Load using existing batched path loading
+        self._load_paths(paths)
+
+        print(f"[GRID] <<<<<< set_custom_paths() COMPLETED\n")
+
     def load_paths(self, paths: list[str]):
         """
         Load arbitrary list of photo paths (e.g., from search results).

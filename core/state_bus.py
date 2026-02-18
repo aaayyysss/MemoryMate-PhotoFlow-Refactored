@@ -1,4 +1,5 @@
 # core/state_bus.py
+# Version 01.01.01.02 dated 20260214
 # Canonical ProjectState Store with version-based UI invalidation.
 #
 # Design principles (revised from audit):

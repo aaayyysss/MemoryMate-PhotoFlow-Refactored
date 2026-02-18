@@ -1,3 +1,6 @@
+# controllers/sidebar_controller.py
+# Version 11.01.01.03-19 dated 20260214
+
 """
 SidebarController - Sidebar Navigation Event Handling
 

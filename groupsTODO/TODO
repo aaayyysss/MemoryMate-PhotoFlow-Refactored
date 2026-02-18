@@ -1,0 +1,2340 @@
+Step 1: Schema Migration - Add Groups Tables
+
+Updated schema.py with image content hash for embedding staleness detection
+Read
+/home/user/MemoryMate-PhotoFlow-Refactored/repository/schema.py
+10 Zeilen gelesen
+Edit
+/home/user/MemoryMate-PhotoFlow-Refactored/repository/schema.py
++1
+-1
+SCHEMA_VERSION = "9.4.0"
+SCHEMA_VERSION = "10.0.0"
+Edit
+/home/user/MemoryMate-PhotoFlow-Refactored/repository/schema.py
++9
+-6
+INSERT OR IGNORE INTO schema_version (version, description)
+VALUES ('9.3.0', 'Add image_content_hash for pixel-based embedding staleness detection');
+ 
+INSERT OR IGNORE INTO schema_version (version, description)
+VALUES ('10.0.0', 'People Groups: person_groups, person_group_members, group_asset_matches');
+ 
+-- ============================================================================
+-- FACE RECOGNITION TABLES
+-- ============================================================================
+
+Now add the Groups tables after the face tables section. Let me find the right insertion point.
+
+
+Updated database schema with export history table
+Edit
+/home/user/MemoryMate-PhotoFlow-Refactored/repository/schema.py
++40
+-2
+-- ============================================================================
+-- PEOPLE GROUPS (v10.0.0: User-defined groups of people for co-occurrence)
+-- ============================================================================
+ 
+-- Person groups (named sets of people, e.g. "Family", "Ammar + Alya")
+CREATE TABLE IF NOT EXISTS person_groups (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    created_at INTEGER NOT NULL,      -- unix epoch
+    updated_at INTEGER NOT NULL,      -- unix epoch
+    last_used_at INTEGER,             -- for "recently used" sorting
+    is_pinned INTEGER NOT NULL DEFAULT 0,
+    is_deleted INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+ 
+-- Person group members (links groups to people via branch_key)
+CREATE TABLE IF NOT EXISTS person_group_members (
+    group_id INTEGER NOT NULL,
+    branch_key TEXT NOT NULL,          -- references face_branch_reps.branch_key
+    added_at INTEGER NOT NULL,         -- unix epoch
+    PRIMARY KEY (group_id, branch_key),
+    FOREIGN KEY (group_id) REFERENCES person_groups(id) ON DELETE CASCADE
+);
+ 
+-- Materialized group match results (precomputed photo matches per group)
+CREATE TABLE IF NOT EXISTS group_asset_matches (
+    group_id INTEGER NOT NULL,
+    scope TEXT NOT NULL DEFAULT 'same_photo',  -- 'same_photo' or 'event_window'
+    photo_id INTEGER NOT NULL,
+    event_id INTEGER,                  -- filled for event_window matches
+    computed_at INTEGER NOT NULL,      -- unix epoch
+    PRIMARY KEY (group_id, scope, photo_id),
+    FOREIGN KEY (group_id) REFERENCES person_groups(id) ON DELETE CASCADE,
+    FOREIGN KEY (photo_id) REFERENCES photo_metadata(id) ON DELETE CASCADE
+);
+ 
+-- Export history (tracks photo export operations)
+CREATE TABLE IF NOT EXISTS export_history (
+
+Now add indexes for the new tables. Let me find the right place in the indexes section.
+
+
+Updated database schema with face branch reps indexes
+Read
+/home/user/MemoryMate-PhotoFlow-Refactored/repository/schema.py
+30 Zeilen gelesen
+Edit
+/home/user/MemoryMate-PhotoFlow-Refactored/repository/schema.py
++16
+-5
+CREATE INDEX IF NOT EXISTS idx_fbreps_proj ON face_branch_reps(project_id);
+CREATE INDEX IF NOT EXISTS idx_fbreps_proj_branch ON face_branch_reps(project_id, branch_key);
+ 
+-- People groups indexes (v10.0.0)
+CREATE INDEX IF NOT EXISTS idx_person_groups_project ON person_groups(project_id, is_deleted);
+CREATE INDEX IF NOT EXISTS idx_person_groups_last_used ON person_groups(project_id, last_used_at);
+CREATE INDEX IF NOT EXISTS idx_person_groups_pinned ON person_groups(project_id, is_pinned) WHERE is_pinned = 1;
+CREATE INDEX IF NOT EXISTS idx_group_members_branch ON person_group_members(branch_key, group_id);
+CREATE INDEX IF NOT EXISTS idx_group_asset_matches_group ON group_asset_matches(group_id, scope);
+CREATE INDEX IF NOT EXISTS idx_group_asset_matches_photo ON group_asset_matches(photo_id);
+ 
+-- Face crops: person+photo compound index for AND matching (v10.0.0)
+CREATE INDEX IF NOT EXISTS idx_face_crops_person_photo ON face_crops(project_id, branch_key, image_path);
+ 
+-- Branches indexes
+
+Now update get_expected_tables() and get_expected_indexes().
+
+
+Updated database schema indexes for people groups feature
+Edit
+/home/user/MemoryMate-PhotoFlow-Refactored/repository/schema.py
++7
+-3
+        # Face merge history (should have been included earlier)
+        "face_merge_history",
+        # People groups tables (v10.0.0)
+        "person_groups",
+        "person_group_members",
+        "group_asset_matches",
+    ]
+Edit
+/home/user/MemoryMate-PhotoFlow-Refactored/repository/schema.py
++10
+-2
+        # People groups indexes (v10.0.0)
+        "idx_person_groups_project",
+        "idx_person_groups_last_used",
+        "idx_person_groups_pinned",
+        "idx_group_members_branch",
+        "idx_group_asset_matches_group",
+        "idx_group_asset_matches_photo",
+        "idx_face_crops_person_photo",
+        # Semantic embeddings indexes (v7.0.0)
+        "idx_semantic_model",
+
+Now add the migration entry for v10.0.0 and the ensure_groups_tables migration function.
+
+
+Updated database schema with image content hash migration
+Edit
+/home/user/MemoryMate-PhotoFlow-Refactored/repository/schema.py
++60
+-12
+INSERT OR IGNORE INTO schema_version (version, description)
+VALUES ('9.3.0', 'Add image_content_hash for pixel-based embedding staleness detection');
+"""
+    },
+    "10.0.0": {
+        "description": "People Groups: person_groups, person_group_members, group_asset_matches",
+        "sql": """
+-- v10.0.0: People Groups - user-defined groups of people for co-occurrence browsing
+ 
+CREATE TABLE IF NOT EXISTS person_groups (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    last_used_at INTEGER,
+    is_pinned INTEGER NOT NULL DEFAULT 0,
+    is_deleted INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+ 
+CREATE TABLE IF NOT EXISTS person_group_members (
+    group_id INTEGER NOT NULL,
+    branch_key TEXT NOT NULL,
+    added_at INTEGER NOT NULL,
+    PRIMARY KEY (group_id, branch_key),
+    FOREIGN KEY (group_id) REFERENCES person_groups(id) ON DELETE CASCADE
+);
+ 
+CREATE TABLE IF NOT EXISTS group_asset_matches (
+    group_id INTEGER NOT NULL,
+    scope TEXT NOT NULL DEFAULT 'same_photo',
+    photo_id INTEGER NOT NULL,
+    event_id INTEGER,
+    computed_at INTEGER NOT NULL,
+    PRIMARY KEY (group_id, scope, photo_id),
+    FOREIGN KEY (group_id) REFERENCES person_groups(id) ON DELETE CASCADE,
+    FOREIGN KEY (photo_id) REFERENCES photo_metadata(id) ON DELETE CASCADE
+);
+ 
+CREATE INDEX IF NOT EXISTS idx_person_groups_project ON person_groups(project_id, is_deleted);
+CREATE INDEX IF NOT EXISTS idx_person_groups_last_used ON person_groups(project_id, last_used_at);
+CREATE INDEX IF NOT EXISTS idx_person_groups_pinned ON person_groups(project_id, is_pinned) WHERE is_pinned = 1;
+CREATE INDEX IF NOT EXISTS idx_group_members_branch ON person_group_members(branch_key, group_id);
+CREATE INDEX IF NOT EXISTS idx_group_asset_matches_group ON group_asset_matches(group_id, scope);
+CREATE INDEX IF NOT EXISTS idx_group_asset_matches_photo ON group_asset_matches(photo_id);
+CREATE INDEX IF NOT EXISTS idx_face_crops_person_photo ON face_crops(project_id, branch_key, image_path);
+ 
+INSERT OR IGNORE INTO schema_version (version, description)
+VALUES ('10.0.0', 'People Groups: person_groups, person_group_members, group_asset_matches');
+"""
+    }
+}
+
+Now add the ensure_groups_tables migration function (idempotent, like ensure_gps_columns).
+
+
+Modified GPS columns migration logging in schema.py
+Read
+/home/user/MemoryMate-PhotoFlow-Refactored/repository/schema.py
+60 Zeilen gelesen
+Read
+/home/user/MemoryMate-PhotoFlow-Refactored/repository/schema.py
+60 Zeilen gelesen
+Edit
+/home/user/MemoryMate-PhotoFlow-Refactored/repository/schema.py
++100
+-4
+        logger.info("[Schema] GPS columns migration complete")
+ 
+    return columns_added
+ 
+ 
+def ensure_groups_tables(conn) -> bool:
+    """
+    Ensure People Groups tables exist (v10.0.0 migration).
+ 
+    Creates person_groups, person_group_members, and group_asset_matches
+    tables if they don't already exist. Safe to call multiple times (idempotent).
+ 
+    Args:
+        conn: SQLite connection object
+ 
+    Returns:
+        bool: True if tables were created, False if already existed
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+ 
+    cur = conn.cursor()
+ 
+    # Check if tables already exist
+    existing_tables = {
+        r[0] for r in cur.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        )
+    }
+ 
+    tables_created = False
+ 
+    if 'person_groups' not in existing_tables:
+        logger.info("[Schema] Creating person_groups table (v10.0.0)")
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS person_groups (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                last_used_at INTEGER,
+                is_pinned INTEGER NOT NULL DEFAULT 0,
+                is_deleted INTEGER NOT NULL DEFAULT 0,
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+            )
+        """)
+        tables_created = True
+ 
+    if 'person_group_members' not in existing_tables:
+        logger.info("[Schema] Creating person_group_members table (v10.0.0)")
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS person_group_members (
+                group_id INTEGER NOT NULL,
+                branch_key TEXT NOT NULL,
+                added_at INTEGER NOT NULL,
+                PRIMARY KEY (group_id, branch_key),
+                FOREIGN KEY (group_id) REFERENCES person_groups(id) ON DELETE CASCADE
+            )
+        """)
+        tables_created = True
+ 
+    if 'group_asset_matches' not in existing_tables:
+        logger.info("[Schema] Creating group_asset_matches table (v10.0.0)")
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS group_asset_matches (
+                group_id INTEGER NOT NULL,
+                scope TEXT NOT NULL DEFAULT 'same_photo',
+                photo_id INTEGER NOT NULL,
+                event_id INTEGER,
+                computed_at INTEGER NOT NULL,
+                PRIMARY KEY (group_id, scope, photo_id),
+                FOREIGN KEY (group_id) REFERENCES person_groups(id) ON DELETE CASCADE,
+                FOREIGN KEY (photo_id) REFERENCES photo_metadata(id) ON DELETE CASCADE
+            )
+        """)
+        tables_created = True
+ 
+    # Create indexes (idempotent)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_person_groups_project ON person_groups(project_id, is_deleted)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_person_groups_last_used ON person_groups(project_id, last_used_at)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_person_groups_pinned ON person_groups(project_id, is_pinned) WHERE is_pinned = 1")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_group_members_branch ON person_group_members(branch_key, group_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_group_asset_matches_group ON group_asset_matches(group_id, scope)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_group_asset_matches_photo ON group_asset_matches(photo_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_face_crops_person_photo ON face_crops(project_id, branch_key, image_path)")
+ 
+    # Update schema version
+    cur.execute("""
+        INSERT OR IGNORE INTO schema_version (version, description)
+        VALUES ('10.0.0', 'People Groups: person_groups, person_group_members, group_asset_matches')
+    """)
+ 
+    conn.commit()
+ 
+    if tables_created:
+        logger.info("[Schema] People Groups migration complete (v10.0.0)")
+ 
+    return tables_created
+
+Now let me hook the migration into the app startup. Let me find where ensure_gps_columns is called.
+
+
+Examined database file path handling in reference_db.py
+Grep
+ensure_gps_columns
+repository/schema.py:996:def ensure_gps_columns(conn) -> bool:
+Grep
+ensure_gps|ensure_groups|ensure_schema|_run_migrations|_ensure_db|run_migrations
+10:# The _ensure_db() method is now deprecated. Schema creation and migrations
+102:            self._ensure_db()  # Legacy fallback
+112:    def _ensure_db(self):
+Mehr anzeigen
+Read
+/home/user/MemoryMate-PhotoFlow-Refactored/reference_db.py
+70 Zeilen gelesen
+
+Let me look at the base_repository.py to see how the repository layer handles migrations.
+
+
+Read base_repository.py database initialization code
+Grep
+ensure_gps|ensure_groups|migration|_apply_migrations|auto_init
+4:# UPDATED: Added schema initialization and migration support
+29:    def __new__(cls, db_path: str = "reference_data.db", auto_init: bool = True):
+41:    def __init__(self, db_path: str = "reference_data.db", auto_init: bool = True):
+Mehr anzeigen
+Read
+/home/user/MemoryMate-PhotoFlow-Refactored/repository/base_repository.py
+100 Zeilen gelesen
+
+Now let me check how migrations.py works to ensure our v10.0.0 migration is applied automatically.
+
+
+Reviewed migration script for v9.4.0 metadata fields
+Read
+/home/user/MemoryMate-PhotoFlow-Refactored/repository/migrations.py
+100 Zeilen gelesen
+Grep
+MIGRATION_\d|ALL_MIGRATIONS|ORDERED_MIGRATIONS
+71:MIGRATION_1_5_0 = Migration(
+100:MIGRATION_2_0_0 = Migration(
+255:MIGRATION_3_0_0 = Migration(
+Mehr anzeigen
+Read
+/home/user/MemoryMate-PhotoFlow-Refactored/repository/migrations.py
+40 Zeilen gelesen
+
+Now I need to add the v10.0.0 migration to the migrations list.
+
+
+Added Lightroom-style metadata fields to database migrations
+Edit
+/home/user/MemoryMate-PhotoFlow-Refactored/repository/migrations.py
++85
+-31
+)
+ 
+ 
+# Ordered list of all migrations
+ALL_MIGRATIONS = [
+    MIGRATION_1_5_0,
+    MIGRATION_2_0_0,
+    MIGRATION_3_0_0,
+    MIGRATION_4_0_0,
+    MIGRATION_6_0_0,
+    MIGRATION_7_0_0,
+    MIGRATION_8_0_0,
+    MIGRATION_9_0_0,
+    MIGRATION_9_1_0,
+    MIGRATION_9_2_0,
+    MIGRATION_9_3_0,
+    MIGRATION_9_4_0,
+MIGRATION_10_0_0 = Migration(
+    version="10.0.0",
+    description="People Groups: person_groups, person_group_members, group_asset_matches",
+    sql="""
+-- Migration v10.0.0: People Groups - user-defined groups of people for co-occurrence browsing
+-- Enables "show me photos where Ammar + Alya appear together" workflow
+ 
+CREATE TABLE IF NOT EXISTS person_groups (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    last_used_at INTEGER,
+    is_pinned INTEGER NOT NULL DEFAULT 0,
+    is_deleted INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+ 
+CREATE TABLE IF NOT EXISTS person_group_members (
+    group_id INTEGER NOT NULL,
+    branch_key TEXT NOT NULL,
+    added_at INTEGER NOT NULL,
+    PRIMARY KEY (group_id, branch_key),
+    FOREIGN KEY (group_id) REFERENCES person_groups(id) ON DELETE CASCADE
+);
+ 
+CREATE TABLE IF NOT EXISTS group_asset_matches (
+    group_id INTEGER NOT NULL,
+    scope TEXT NOT NULL DEFAULT 'same_photo',
+    photo_id INTEGER NOT NULL,
+    event_id INTEGER,
+    computed_at INTEGER NOT NULL,
+    PRIMARY KEY (group_id, scope, photo_id),
+    FOREIGN KEY (group_id) REFERENCES person_groups(id) ON DELETE CASCADE,
+    FOREIGN KEY (photo_id) REFERENCES photo_metadata(id) ON DELETE CASCADE
+);
+ 
+CREATE INDEX IF NOT EXISTS idx_person_groups_project ON person_groups(project_id, is_deleted);
+CREATE INDEX IF NOT EXISTS idx_person_groups_last_used ON person_groups(project_id, last_used_at);
+CREATE INDEX IF NOT EXISTS idx_person_groups_pinned ON person_groups(project_id, is_pinned) WHERE is_pinned = 1;
+CREATE INDEX IF NOT EXISTS idx_group_members_branch ON person_group_members(branch_key, group_id);
+CREATE INDEX IF NOT EXISTS idx_group_asset_matches_group ON group_asset_matches(group_id, scope);
+CREATE INDEX IF NOT EXISTS idx_group_asset_matches_photo ON group_asset_matches(photo_id);
+CREATE INDEX IF NOT EXISTS idx_face_crops_person_photo ON face_crops(project_id, branch_key, image_path);
+ 
+INSERT OR REPLACE INTO schema_version (version, description, applied_at)
+VALUES ('10.0.0', 'People Groups: person_groups, person_group_members, group_asset_matches', CURRENT_TIMESTAMP);
+""",
+    rollback_sql=""
+)
+ 
+ 
+# Ordered list of all migrations
+ALL_MIGRATIONS = [
+    MIGRATION_1_5_0,
+    MIGRATION_2_0_0,
+    MIGRATION_3_0_0,
+    MIGRATION_4_0_0,
+    MIGRATION_6_0_0,
+    MIGRATION_7_0_0,
+    MIGRATION_8_0_0,
+    MIGRATION_9_0_0,
+    MIGRATION_9_1_0,
+    MIGRATION_9_2_0,
+    MIGRATION_9_3_0,
+    MIGRATION_9_4_0,
+    MIGRATION_10_0_0,
+]
+
+Schema migration is complete. Now let's move to the Store events.
+
+
+Updated todo list tracking progress on codebase exploration and database migrations
+Update Todos
+ Explore current People section UI, face tables, store events, and naming conventions
+ Implement SQLite migration script for Groups tables
+ Adding Store event contracts for Groups
+ Build GroupService in services/
+ Build Groups UI widget tree (GroupsSection, CreateGroupDialog, GroupResultsView)
+ Wire Groups into AccordionSidebar People section
+ Wire Groups into Store subscriptions and refresh logic
+ Add Preferences tab for Groups settings
+ Add group index worker for materialized match computation
+ Commit and push to feature branch
+
+Step 2: Store Event Contracts
+
+Renamed TagsChanged event to GroupsChanged in state bus
+Edit
+/home/user/MemoryMate-PhotoFlow-Refactored/core/state_bus.py
++21
+-4
+@dataclass
+class GroupsChanged:
+    """Dispatched when people groups are created, updated, deleted, or re-indexed."""
+    meta: ActionMeta
+    group_id: Optional[int] = None       # specific group, or None for all
+    reason: str = ""                      # "created", "updated", "deleted", "reindexed"
+ 
+ 
+@dataclass
+class GroupIndexCompleted:
+    """Dispatched when a group's materialized match cache finishes computing."""
+    meta: ActionMeta
+    group_id: int = 0
+    match_count: int = 0
+    scope: str = "same_photo"
+ 
+ 
+@dataclass
+class TagsChanged:
+    meta: ActionMeta
+    photo_ids: List[int] = field(default_factory=list)
+
+Now add groups_v to the ProjectState and update AnyAction union.
+
+
+Updated state bus type definitions with new action types
+Edit
+/home/user/MemoryMate-PhotoFlow-Refactored/core/state_bus.py
++4
+-3
+    stacks_v: int = 0
+    videos_v: int = 0
+    groups_v: int = 0
+    settings_v: int = 0
+Edit
+/home/user/MemoryMate-PhotoFlow-Refactored/core/state_bus.py
++8
+-7
+    ShutdownRequested | AppRelaunchRequested | ProjectSelected
+    | FolderSelected | ScanStarted | ScanProgress | ScanCompleted
+    | EmbeddingsCompleted | StacksCompleted | DuplicatesCompleted
+    | FacesCompleted | TagsChanged | SettingsChanged
+    | FacesCompleted | GroupsChanged | GroupIndexCompleted
+    | TagsChanged | SettingsChanged
+    | JobRegistered | JobProgress | JobFinished | ErrorRaised
+)
+
+Now add the groups_v to the snapshot and add default handlers for the new actions.
+
+
+Updated state serialization in state_bus.py
+Edit
+/home/user/MemoryMate-PhotoFlow-Refactored/core/state_bus.py
++4
+-3
+            "stacks_v": s.stacks_v,
+            "videos_v": s.videos_v,
+            "groups_v": s.groups_v,
+            "settings_v": s.settings_v,
+
+Now add handlers for GroupsChanged and GroupIndexCompleted in the register_default_handlers function.
+
+
+Updated state bus handler from TagsChanged to GroupsChanged event
+Edit
+/home/user/MemoryMate-PhotoFlow-Refactored/core/state_bus.py
++11
+-3
+    @store.on(GroupsChanged)
+    def _(state: ProjectState, action: GroupsChanged) -> None:
+        state.groups_v += 1
+ 
+    @store.on(GroupIndexCompleted)
+    def _(state: ProjectState, action: GroupIndexCompleted) -> None:
+        state.groups_v += 1
+ 
+    @store.on(TagsChanged)
+    def _(state: ProjectState, action: TagsChanged) -> None:
+        state.tags_v += 1
+
+Also bump groups_v on ProjectSelected (fresh project load).
+
+
+Updated project task list and tracked progress
+Edit
+/home/user/MemoryMate-PhotoFlow-Refactored/core/state_bus.py
++3
+-2
+        state.stacks_v += 1
+        state.videos_v += 1
+        state.groups_v += 1
+Update Todos
+ Explore current People section UI, face tables, store events, and naming conventions
+ Implement SQLite migration script for Groups tables
+ Add Store event contracts (ActionTypes, payloads) for Groups
+ Building GroupService
+ Build Groups UI widget tree (GroupsSection, CreateGroupDialog, GroupResultsView)
+ Wire Groups into AccordionSidebar People section
+ Wire Groups into Store subscriptions and refresh logic
+ Add Preferences tab for Groups settings
+ Add group index worker for materialized match computation
+ Commit and push to feature branch
+
+Step 3: Build GroupService
+
+Updated task list tracking codebase exploration and migration progress
+Write
+/home/user/MemoryMate-PhotoFlow-Refactored/services/group_service.py
+# services/group_service.py
+# People Groups service - CRUD + co-occurrence retrieval
+#
+# Manages user-defined groups of people (face clusters) and computes
+# which photos contain all group members together (AND matching).
+#
+# Design:
+#   - Groups are per-project, identified by person_groups.id
+#   - Members are linked via branch_key (same as face_branch_reps)
+#   - Match results are materialized in group_asset_matches for speed
+#   - Live queries are available for small groups / interactive use
+ 
+from __future__ import annotations
+ 
+import logging
+import time
+from typing import Any, Dict, List, Optional, Tuple
+ 
+logger = logging.getLogger(__name__)
+ 
+ 
+class GroupService:
+    """
+    Service for People Groups CRUD and co-occurrence retrieval.
+ 
+    Thread safety:
+        Each caller must pass its own ReferenceDB or sqlite3 connection.
+        The service itself holds no mutable state.
+    """
+ 
+    # ------------------------------------------------------------------
+    # CRUD
+    # ------------------------------------------------------------------
+ 
+    @staticmethod
+    def create_group(
+        db,
+        project_id: int,
+        name: str,
+        branch_keys: List[str],
+        is_pinned: bool = False,
+    ) -> int:
+        """
+        Create a new people group.
+ 
+        Args:
+            db: ReferenceDB instance
+            project_id: Project this group belongs to
+            name: Display name (e.g. "Family", "Ammar + Alya")
+            branch_keys: List of face branch_keys (min 2)
+            is_pinned: Pin group to top of list
+ 
+        Returns:
+            int: The new group ID
+ 
+        Raises:
+            ValueError: If fewer than 2 branch_keys are provided
+        """
+        if len(branch_keys) < 2:
+            raise ValueError("A group requires at least 2 members")
+ 
+        now = int(time.time())
+ 
+        with db.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                INSERT INTO person_groups
+                    (project_id, name, created_at, updated_at, last_used_at, is_pinned)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (project_id, name, now, now, now, int(is_pinned)),
+            )
+            group_id = cur.lastrowid
+ 
+            member_rows = [
+                (group_id, bk, now) for bk in branch_keys
+            ]
+            cur.executemany(
+                "INSERT INTO person_group_members (group_id, branch_key, added_at) VALUES (?, ?, ?)",
+                member_rows,
+            )
+            conn.commit()
+ 
+        logger.info(
+            "[GroupService] Created group %d '%s' with %d members (project %d)",
+            group_id, name, len(branch_keys), project_id,
+        )
+        return group_id
+ 
+    @staticmethod
+    def update_group(
+        db,
+        group_id: int,
+        name: Optional[str] = None,
+        branch_keys: Optional[List[str]] = None,
+        is_pinned: Optional[bool] = None,
+    ) -> None:
+        """
+        Update an existing group's name, members, or pinned state.
+ 
+        If branch_keys is provided, replaces all members (and clears cached matches).
+        """
+        now = int(time.time())
+ 
+        with db.get_connection() as conn:
+            cur = conn.cursor()
+ 
+            updates = ["updated_at = ?"]
+            params: list = [now]
+ 
+            if name is not None:
+                updates.append("name = ?")
+                params.append(name)
+            if is_pinned is not None:
+                updates.append("is_pinned = ?")
+                params.append(int(is_pinned))
+ 
+            params.append(group_id)
+            cur.execute(
+                f"UPDATE person_groups SET {', '.join(updates)} WHERE id = ?",
+                params,
+            )
+ 
+            if branch_keys is not None:
+                if len(branch_keys) < 2:
+                    raise ValueError("A group requires at least 2 members")
+ 
+                # Replace members
+                cur.execute("DELETE FROM person_group_members WHERE group_id = ?", (group_id,))
+                member_rows = [(group_id, bk, now) for bk in branch_keys]
+                cur.executemany(
+                    "INSERT INTO person_group_members (group_id, branch_key, added_at) VALUES (?, ?, ?)",
+                    member_rows,
+                )
+                # Clear stale match cache
+                cur.execute("DELETE FROM group_asset_matches WHERE group_id = ?", (group_id,))
+ 
+            conn.commit()
+ 
+        logger.info("[GroupService] Updated group %d", group_id)
+ 
+    @staticmethod
+    def delete_group(db, group_id: int) -> None:
+        """Soft-delete a group (sets is_deleted=1)."""
+        now = int(time.time())
+        with db.get_connection() as conn:
+            conn.execute(
+                "UPDATE person_groups SET is_deleted = 1, updated_at = ? WHERE id = ?",
+                (now, group_id),
+            )
+            conn.commit()
+        logger.info("[GroupService] Soft-deleted group %d", group_id)
+ 
+    @staticmethod
+    def hard_delete_group(db, group_id: int) -> None:
+        """Permanently delete a group and all its members + cached matches."""
+        with db.get_connection() as conn:
+            conn.execute("DELETE FROM group_asset_matches WHERE group_id = ?", (group_id,))
+            conn.execute("DELETE FROM person_group_members WHERE group_id = ?", (group_id,))
+            conn.execute("DELETE FROM person_groups WHERE id = ?", (group_id,))
+            conn.commit()
+        logger.info("[GroupService] Hard-deleted group %d", group_id)
+ 
+    @staticmethod
+    def get_groups(db, project_id: int, include_deleted: bool = False) -> List[Dict[str, Any]]:
+        """
+        Get all groups for a project.
+ 
+        Returns list of dicts with keys:
+            id, name, created_at, updated_at, last_used_at, is_pinned,
+            member_count, members (list of {branch_key, label})
+        """
+        with db.get_connection() as conn:
+            cur = conn.cursor()
+ 
+            deleted_filter = "" if include_deleted else "AND g.is_deleted = 0"
+            cur.execute(
+                f"""
+                SELECT g.id, g.name, g.created_at, g.updated_at,
+                       g.last_used_at, g.is_pinned,
+                       COUNT(m.branch_key) AS member_count
+                FROM person_groups g
+                LEFT JOIN person_group_members m ON m.group_id = g.id
+                WHERE g.project_id = ? {deleted_filter}
+                GROUP BY g.id
+                ORDER BY g.is_pinned DESC, g.last_used_at DESC NULLS LAST, g.name ASC
+                """,
+                (project_id,),
+            )
+            groups = []
+            for row in cur.fetchall():
+                groups.append({
+                    "id": row[0],
+                    "name": row[1],
+                    "created_at": row[2],
+                    "updated_at": row[3],
+                    "last_used_at": row[4],
+                    "is_pinned": bool(row[5]),
+                    "member_count": row[6],
+                })
+ 
+            # Load members for each group
+            for g in groups:
+                cur.execute(
+                    """
+                    SELECT m.branch_key,
+                           COALESCE(r.label, m.branch_key) AS display_name,
+                           r.rep_thumb_png
+                    FROM person_group_members m
+                    LEFT JOIN face_branch_reps r
+                        ON r.branch_key = m.branch_key AND r.project_id = ?
+                    WHERE m.group_id = ?
+                    ORDER BY m.added_at ASC
+                    """,
+                    (project_id, g["id"]),
+                )
+                g["members"] = [
+                    {"branch_key": r[0], "display_name": r[1], "rep_thumb_png": r[2]}
+                    for r in cur.fetchall()
+                ]
+ 
+        return groups
+ 
+    @staticmethod
+    def get_group(db, group_id: int, project_id: int) -> Optional[Dict[str, Any]]:
+        """Get a single group by ID with members."""
+        with db.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                SELECT id, name, created_at, updated_at, last_used_at, is_pinned
+                FROM person_groups
+                WHERE id = ? AND project_id = ? AND is_deleted = 0
+                """,
+                (group_id, project_id),
+            )
+            row = cur.fetchone()
+            if not row:
+                return None
+ 
+            group = {
+                "id": row[0],
+                "name": row[1],
+                "created_at": row[2],
+                "updated_at": row[3],
+                "last_used_at": row[4],
+                "is_pinned": bool(row[5]),
+            }
+ 
+            cur.execute(
+                """
+                SELECT m.branch_key,
+                       COALESCE(r.label, m.branch_key) AS display_name,
+                       r.rep_thumb_png
+                FROM person_group_members m
+                LEFT JOIN face_branch_reps r
+                    ON r.branch_key = m.branch_key AND r.project_id = ?
+                WHERE m.group_id = ?
+                ORDER BY m.added_at ASC
+                """,
+                (project_id, group_id),
+            )
+            group["members"] = [
+                {"branch_key": r[0], "display_name": r[1], "rep_thumb_png": r[2]}
+                for r in cur.fetchall()
+            ]
+            return group
+ 
+    @staticmethod
+    def touch_group(db, group_id: int) -> None:
+        """Update last_used_at timestamp (called when user opens a group)."""
+        now = int(time.time())
+        with db.get_connection() as conn:
+            conn.execute(
+                "UPDATE person_groups SET last_used_at = ? WHERE id = ?",
+                (now, group_id),
+            )
+            conn.commit()
+ 
+    # ------------------------------------------------------------------
+    # Co-occurrence queries (live, no materialization)
+    # ------------------------------------------------------------------
+ 
+    @staticmethod
+    def query_same_photo_matches(
+        db,
+        project_id: int,
+        group_id: int,
+    ) -> List[int]:
+        """
+        Live AND-match: photos where ALL group members appear together.
+ 
+        Uses face_crops (not project_images) for accurate face-level matching.
+        Returns list of photo_metadata.id values.
+        """
+        with db.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                WITH members AS (
+                    SELECT branch_key
+                    FROM person_group_members
+                    WHERE group_id = ?
+                ),
+                member_count AS (
+                    SELECT COUNT(*) AS n FROM members
+                )
+                SELECT pm.id
+                FROM face_crops fc
+                JOIN members m ON m.branch_key = fc.branch_key
+                JOIN photo_metadata pm ON pm.path = fc.image_path AND pm.project_id = fc.project_id
+                WHERE fc.project_id = ?
+                GROUP BY pm.id
+                HAVING COUNT(DISTINCT fc.branch_key) = (SELECT n FROM member_count)
+                ORDER BY pm.created_ts DESC, pm.id DESC
+                """,
+                (group_id, project_id),
+            )
+            return [row[0] for row in cur.fetchall()]
+ 
+    @staticmethod
+    def query_same_photo_paths(
+        db,
+        project_id: int,
+        group_id: int,
+    ) -> List[str]:
+        """
+        Live AND-match returning file paths instead of IDs.
+        Useful for grid display that works with paths.
+        """
+        with db.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                WITH members AS (
+                    SELECT branch_key
+                    FROM person_group_members
+                    WHERE group_id = ?
+                ),
+                member_count AS (
+                    SELECT COUNT(*) AS n FROM members
+                )
+                SELECT fc.image_path
+                FROM face_crops fc
+                JOIN members m ON m.branch_key = fc.branch_key
+                WHERE fc.project_id = ?
+                GROUP BY fc.image_path
+                HAVING COUNT(DISTINCT fc.branch_key) = (SELECT n FROM member_count)
+                ORDER BY fc.image_path
+                """,
+                (group_id, project_id),
+            )
+            return [row[0] for row in cur.fetchall()]
+ 
+    # ------------------------------------------------------------------
+    # Materialized match management
+    # ------------------------------------------------------------------
+ 
+    @staticmethod
+    def compute_and_store_matches(
+        db,
+        project_id: int,
+        group_id: int,
+        scope: str = "same_photo",
+    ) -> int:
+        """
+        Compute group matches and store in group_asset_matches.
+ 
+        Returns number of matched photos.
+        """
+        now = int(time.time())
+        photo_ids = GroupService.query_same_photo_matches(db, project_id, group_id)
+ 
+        with db.get_connection() as conn:
+            cur = conn.cursor()
+            # Clear old matches for this group+scope
+            cur.execute(
+                "DELETE FROM group_asset_matches WHERE group_id = ? AND scope = ?",
+                (group_id, scope),
+            )
+            if photo_ids:
+                rows = [(group_id, scope, pid, now) for pid in photo_ids]
+                cur.executemany(
+                    "INSERT INTO group_asset_matches (group_id, scope, photo_id, computed_at) VALUES (?, ?, ?, ?)",
+                    rows,
+                )
+            conn.commit()
+ 
+        logger.info(
+            "[GroupService] Computed %d matches for group %d scope=%s",
+            len(photo_ids), group_id, scope,
+        )
+        return len(photo_ids)
+ 
+    @staticmethod
+    def get_cached_match_paths(
+        db,
+        project_id: int,
+        group_id: int,
+        scope: str = "same_photo",
+    ) -> List[str]:
+        """
+        Get cached match paths from group_asset_matches.
+ 
+        Falls back to live query if no cached results.
+        """
+        with db.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                SELECT pm.path
+                FROM group_asset_matches gam
+                JOIN photo_metadata pm ON pm.id = gam.photo_id AND pm.project_id = ?
+                WHERE gam.group_id = ? AND gam.scope = ?
+                ORDER BY pm.created_ts DESC, pm.id DESC
+                """,
+                (project_id, group_id, scope),
+            )
+            paths = [row[0] for row in cur.fetchall()]
+ 
+        if not paths:
+            # Fallback to live query
+            paths = GroupService.query_same_photo_paths(db, project_id, group_id)
+ 
+        return paths
+ 
+    @staticmethod
+    def get_cached_match_count(
+        db,
+        group_id: int,
+        scope: str = "same_photo",
+    ) -> int:
+        """Get count of cached matches for a group."""
+        with db.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT COUNT(*) FROM group_asset_matches WHERE group_id = ? AND scope = ?",
+                (group_id, scope),
+            )
+            return cur.fetchone()[0]
+ 
+    # ------------------------------------------------------------------
+    # Bulk operations
+    # ------------------------------------------------------------------
+ 
+    @staticmethod
+    def reindex_all_groups(db, project_id: int) -> Dict[int, int]:
+        """
+        Recompute matches for all active groups in a project.
+ 
+        Returns dict of {group_id: match_count}.
+        """
+        groups = GroupService.get_groups(db, project_id)
+        results = {}
+        for g in groups:
+            count = GroupService.compute_and_store_matches(
+                db, project_id, g["id"], scope="same_photo"
+            )
+            results[g["id"]] = count
+        logger.info(
+            "[GroupService] Reindexed %d groups for project %d",
+            len(results), project_id,
+        )
+        return results
+ 
+    # ------------------------------------------------------------------
+    # Smart name suggestion
+    # ------------------------------------------------------------------
+ 
+    @staticmethod
+    def suggest_group_name(member_names: List[str]) -> str:
+        """
+        Generate a default group name from member display names.
+ 
+        Examples:
+            ["Ammar", "Alya"] -> "Ammar + Alya"
+            ["Mom", "Dad", "Sis"] -> "Mom + Dad + Sis"
+            More than 3: "Mom + Dad + 2 others"
+        """
+        if not member_names:
+            return "New Group"
+        if len(member_names) <= 3:
+            return " + ".join(member_names)
+        return f"{member_names[0]} + {member_names[1]} + {len(member_names) - 2} others"
+ 
+Update Todos
+ Explore current People section UI, face tables, store events, and naming conventions
+ Implement SQLite migration script for Groups tables
+ Add Store event contracts (ActionTypes, payloads) for Groups
+ Build GroupService in services/
+ Building Groups UI widget tree
+ Wire Groups into AccordionSidebar People section
+ Wire Groups into Store subscriptions and refresh logic
+ Add Preferences tab for Groups settings
+ Add group index worker for materialized match computation
+ Commit and push to feature branch
+
+Step 4: Build Groups UI widget tree
+Now I'll create the groups_section.py following the exact pattern of PeopleSection.
+
+
+Updated todo list tracking codebase exploration and SQLite migration progress
+Write
+/home/user/MemoryMate-PhotoFlow-Refactored/ui/accordion_sidebar/groups_section.py
+# ui/accordion_sidebar/groups_section.py
+# Groups sub-section under People - user-defined groups of face clusters
+#
+# Follows the same widget patterns as PeopleSection (PersonCard, PeopleGrid)
+# but displays group tiles instead of individual person cards.
+ 
+import io
+import logging
+import threading
+import time
+from typing import Optional, List, Dict, Any
+ 
+from PySide6.QtCore import Signal, Qt, QObject, QSize, QPoint, QEvent
+from PySide6.QtGui import QPixmap, QImage, QPainter, QPainterPath, QPen, QColor, QFont
+from PySide6.QtWidgets import (
+    QApplication,
+    QDialog,
+    QGridLayout,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
+    QPushButton,
+    QScrollArea,
+    QSizePolicy,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
+)
+from shiboken6 import isValid
+ 
+from reference_db import ReferenceDB
+from translation_manager import tr
+ 
+logger = logging.getLogger(__name__)
+ 
+ 
+# ======================================================================
+# Signals for async loading
+# ======================================================================
+ 
+class GroupsSectionSignals(QObject):
+    """Signals for async groups loading."""
+    loaded = Signal(int, list)   # (generation, groups_list)
+    error = Signal(int, str)     # (generation, error_message)
+ 
+ 
+# ======================================================================
+# GroupCard — tile widget for a single group
+# ======================================================================
+ 
+class GroupCard(QWidget):
+    """
+    Compact card for a people group.
+ 
+    Displays stacked circular avatars of members, group name,
+    and a photo count badge.
+    """
+ 
+    clicked = Signal(int)                      # group_id
+    context_menu_requested = Signal(int, str)  # (group_id, action)
+ 
+    def __init__(
+        self,
+        group_id: int,
+        name: str,
+        member_count: int,
+        match_count: int,
+        member_pixmaps: List[QPixmap],
+        parent: Optional[QWidget] = None,
+    ):
+        super().__init__(parent)
+        self.group_id = group_id
+        self.group_name = name
+        self.setFixedSize(110, 120)
+        self.setCursor(Qt.PointingHandCursor)
+ 
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(6, 8, 6, 6)
+        layout.setSpacing(4)
+        layout.setAlignment(Qt.AlignCenter)
+ 
+        # Stacked avatars area
+        avatar_container = QWidget()
+        avatar_container.setFixedSize(80, 48)
+        self._draw_stacked_avatars(avatar_container, member_pixmaps, member_count)
+        layout.addWidget(avatar_container, alignment=Qt.AlignCenter)
+ 
+        # Group name
+        name_label = QLabel(name)
+        name_label.setAlignment(Qt.AlignCenter)
+        name_label.setWordWrap(True)
+        name_label.setMaximumHeight(30)
+        name_label.setStyleSheet("font-weight:600; font-size:11px; color:#202124;")
+        layout.addWidget(name_label)
+ 
+        # Match count
+        count_text = f"{match_count} photos" if match_count >= 0 else "..."
+        count_label = QLabel(count_text)
+        count_label.setAlignment(Qt.AlignCenter)
+        count_label.setStyleSheet("color:#5f6368; font-size:10px;")
+        layout.addWidget(count_label)
+ 
+        self.setStyleSheet(
+            """
+            GroupCard { background: transparent; border-radius: 8px; }
+            GroupCard:hover { background: rgba(26,115,232,0.08); }
+            GroupCard[selected="true"] { background: rgba(26,115,232,0.12); border: 1px solid #1a73e8; }
+            """
+        )
+ 
+    def _draw_stacked_avatars(
+        self, container: QWidget, pixmaps: List[QPixmap], total: int
+    ) -> None:
+        """Draw overlapping circular avatars (like Apple Photos Groups)."""
+        label = QLabel(container)
+        label.setFixedSize(container.size())
+ 
+        avatar_size = 36
+        overlap = 14  # pixels of overlap
+        max_show = min(len(pixmaps), 3)
+ 
+        canvas = QPixmap(container.width(), container.height())
+        canvas.fill(Qt.transparent)
+        painter = QPainter(canvas)
+        painter.setRenderHint(QPainter.Antialiasing)
+ 
+        for i in range(max_show):
+            x = i * (avatar_size - overlap)
+            y = (container.height() - avatar_size) // 2
+ 
+            # Draw circular avatar
+            if i < len(pixmaps) and pixmaps[i] and not pixmaps[i].isNull():
+                scaled = pixmaps[i].scaled(
+                    avatar_size, avatar_size,
+                    Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation,
+                )
+                # Clip to circle
+                path = QPainterPath()
+                path.addEllipse(x, y, avatar_size, avatar_size)
+                painter.setClipPath(path)
+                painter.drawPixmap(x, y, scaled)
+                painter.setClipping(False)
+            else:
+                # Placeholder circle
+                painter.setBrush(QColor("#e8eaed"))
+                painter.setPen(QPen(QColor("#dadce0"), 1))
+                painter.drawEllipse(x, y, avatar_size, avatar_size)
+                painter.setPen(QColor("#5f6368"))
+                painter.setFont(QFont("", 14))
+                painter.drawText(x, y, avatar_size, avatar_size, Qt.AlignCenter, "👤")
+ 
+            # White border between overlapping avatars
+            painter.setPen(QPen(QColor("white"), 2))
+            painter.setBrush(Qt.NoBrush)
+            painter.drawEllipse(x, y, avatar_size, avatar_size)
+ 
+        # Badge showing total member count
+        if total > 0:
+            badge_x = max_show * (avatar_size - overlap) + 2
+            badge_y = (container.height() - 20) // 2
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(QColor("#1a73e8"))
+            painter.drawRoundedRect(badge_x, badge_y, 22, 20, 10, 10)
+            painter.setPen(QColor("white"))
+            painter.setFont(QFont("", 9, QFont.Bold))
+            painter.drawText(badge_x, badge_y, 22, 20, Qt.AlignCenter, str(total))
+ 
+        painter.end()
+        label.setPixmap(canvas)
+ 
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.clicked.emit(self.group_id)
+        super().mouseReleaseEvent(event)
+ 
+    def contextMenuEvent(self, event):
+        from PySide6.QtWidgets import QMenu
+        from PySide6.QtGui import QAction
+ 
+        menu = QMenu(self)
+ 
+        rename_action = QAction("✏️ Rename Group", self)
+        rename_action.triggered.connect(lambda: self.context_menu_requested.emit(self.group_id, "rename"))
+        menu.addAction(rename_action)
+ 
+        pin_action = QAction("📌 Pin / Unpin", self)
+        pin_action.triggered.connect(lambda: self.context_menu_requested.emit(self.group_id, "toggle_pin"))
+        menu.addAction(pin_action)
+ 
+        edit_action = QAction("👥 Edit Members", self)
+        edit_action.triggered.connect(lambda: self.context_menu_requested.emit(self.group_id, "edit_members"))
+        menu.addAction(edit_action)
+ 
+        menu.addSeparator()
+ 
+        reindex_action = QAction("🔄 Recompute Matches", self)
+        reindex_action.triggered.connect(lambda: self.context_menu_requested.emit(self.group_id, "reindex"))
+        menu.addAction(reindex_action)
+ 
+        menu.addSeparator()
+ 
+        delete_action = QAction("🗑️ Delete Group", self)
+        delete_action.triggered.connect(lambda: self.context_menu_requested.emit(self.group_id, "delete"))
+        menu.addAction(delete_action)
+ 
+        menu.exec_(event.globalPos())
+ 
+ 
+# ======================================================================
+# GroupsGrid — responsive grid of GroupCards
+# ======================================================================
+ 
+class GroupsGrid(QWidget):
+    """Grid that automatically recalculates columns based on available width."""
+ 
+    def __init__(self, cards: List[GroupCard], parent: Optional[QWidget] = None):
+        super().__init__(parent)
+        self.cards = cards
+        self._card_width = cards[0].sizeHint().width() if cards else 110
+        self._columns = 0
+        self._viewport = None
+        self._layout = QGridLayout(self)
+        self._layout.setContentsMargins(6, 6, 6, 6)
+        self._layout.setHorizontalSpacing(8)
+        self._layout.setVerticalSpacing(8)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self._relayout(force=True)
+ 
+    def attach_viewport(self, viewport: QWidget) -> None:
+        if not viewport:
+            return
+        self._viewport = viewport
+        viewport.installEventFilter(self)
+        self._relayout(force=True)
+ 
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._relayout()
+ 
+    def eventFilter(self, obj, event):
+        if obj is self._viewport and event.type() == QEvent.Resize:
+            self._relayout(force=True)
+        return super().eventFilter(obj, event)
+ 
+    def _relayout(self, force: bool = False):
+        margins = self._layout.contentsMargins()
+        base_width = self._viewport.width() if self._viewport else self.width()
+        available_width = max(base_width - margins.left() - margins.right(), 0)
+        spacing = self._layout.horizontalSpacing() or 0
+        columns = max(1, int(available_width / (self._card_width + spacing)) if (self._card_width + spacing) > 0 else 1)
+ 
+        if not force and columns == self._columns:
+            return
+ 
+        self._columns = columns
+ 
+        while self._layout.count():
+            self._layout.takeAt(0)
+ 
+        for idx, card in enumerate(self.cards):
+            row = idx // columns
+            col = idx % columns
+            self._layout.addWidget(card, row, col)
+ 
+ 
+# ======================================================================
+# CreateGroupDialog — modal for creating/editing a group
+# ======================================================================
+ 
+class CreateGroupDialog(QDialog):
+    """
+    Dialog for creating or editing a people group.
+ 
+    Shows a searchable list of all people in the project.
+    User selects 2+ people, enters a name, and saves.
+    """
+ 
+    def __init__(
+        self,
+        project_id: int,
+        existing_group: Optional[Dict[str, Any]] = None,
+        parent: Optional[QWidget] = None,
+    ):
+        super().__init__(parent)
+        self.project_id = project_id
+        self.existing_group = existing_group
+        self._selected_branch_keys: List[str] = []
+        self._people_data: List[Dict] = []
+ 
+        self.setWindowTitle("Edit Group" if existing_group else "Create Group")
+        self.setMinimumSize(400, 500)
+        self.setModal(True)
+ 
+        self._setup_ui()
+        self._load_people()
+ 
+        if existing_group:
+            self._populate_existing()
+ 
+    def _setup_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setSpacing(12)
+        layout.setContentsMargins(16, 16, 16, 16)
+ 
+        # Group name
+        name_group = QWidget()
+        name_layout = QHBoxLayout(name_group)
+        name_layout.setContentsMargins(0, 0, 0, 0)
+        name_label = QLabel("Group name:")
+        name_label.setStyleSheet("font-weight: 600;")
+        self._name_input = QLineEdit()
+        self._name_input.setPlaceholderText("e.g. Family, Travel Buddies...")
+        self._name_input.setStyleSheet("""
+            QLineEdit {
+                padding: 8px 12px; border: 1px solid #dadce0;
+                border-radius: 6px; font-size: 11pt;
+            }
+            QLineEdit:focus { border-color: #1a73e8; }
+        """)
+        name_layout.addWidget(name_label)
+        name_layout.addWidget(self._name_input, 1)
+        layout.addWidget(name_group)
+ 
+        # Selected members chip area
+        self._chips_label = QLabel("Selected: (none)")
+        self._chips_label.setWordWrap(True)
+        self._chips_label.setStyleSheet("color: #1a73e8; font-size: 10pt; padding: 4px;")
+        layout.addWidget(self._chips_label)
+ 
+        # Search people
+        self._search_input = QLineEdit()
+        self._search_input.setPlaceholderText("🔍 Search people to add...")
+        self._search_input.setClearButtonEnabled(True)
+        self._search_input.setStyleSheet("""
+            QLineEdit {
+                padding: 6px 10px; border: 1px solid #dadce0;
+                border-radius: 6px; font-size: 10pt;
+            }
+            QLineEdit:focus { border-color: #1a73e8; }
+        """)
+        self._search_input.textChanged.connect(self._filter_people)
+        layout.addWidget(self._search_input)
+ 
+        # People list (multi-select)
+        self._people_list = QListWidget()
+        self._people_list.setSelectionMode(QListWidget.MultiSelection)
+        self._people_list.setStyleSheet("""
+            QListWidget {
+                border: 1px solid #dadce0; border-radius: 6px;
+                font-size: 10pt; padding: 4px;
+            }
+            QListWidget::item { padding: 6px 8px; border-radius: 4px; }
+            QListWidget::item:selected { background: #e8f0fe; color: #1a73e8; }
+            QListWidget::item:hover { background: #f1f3f4; }
+        """)
+        self._people_list.itemSelectionChanged.connect(self._on_selection_changed)
+        layout.addWidget(self._people_list, 1)
+ 
+        # Buttons
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+ 
+        self._btn_cancel = QPushButton("Cancel")
+        self._btn_cancel.setStyleSheet("""
+            QPushButton {
+                padding: 8px 20px; border: 1px solid #dadce0;
+                border-radius: 6px; background: white;
+            }
+            QPushButton:hover { background: #f1f3f4; }
+        """)
+        self._btn_cancel.clicked.connect(self.reject)
+        btn_layout.addWidget(self._btn_cancel)
+ 
+        self._btn_save = QPushButton("Create Group" if not self.existing_group else "Save Changes")
+        self._btn_save.setEnabled(False)
+        self._btn_save.setStyleSheet("""
+            QPushButton {
+                padding: 8px 20px; border: none; border-radius: 6px;
+                background: #1a73e8; color: white; font-weight: 600;
+            }
+            QPushButton:hover { background: #1557b0; }
+            QPushButton:disabled { background: #dadce0; color: #80868b; }
+        """)
+        self._btn_save.clicked.connect(self.accept)
+        btn_layout.addWidget(self._btn_save)
+ 
+        layout.addLayout(btn_layout)
+ 
+    def _load_people(self):
+        """Load all people from the database."""
+        try:
+            db = ReferenceDB()
+            rows = db.get_face_clusters(self.project_id) or []
+            db.close()
+ 
+            self._people_data = []
+            for row in rows:
+                if isinstance(row, dict):
+                    bk = row.get("branch_key", "")
+                    name = row.get("display_name", bk)
+                    count = row.get("member_count", 0)
+                else:
+                    bk = row[0] if len(row) > 0 else ""
+                    name = row[1] if len(row) > 1 else bk
+                    count = row[2] if len(row) > 2 else 0
+ 
+                # Skip unidentified cluster
+                if bk == "face_unidentified":
+                    continue
+ 
+                self._people_data.append({
+                    "branch_key": bk,
+                    "display_name": name,
+                    "count": count,
+                })
+ 
+            self._populate_list()
+        except Exception as e:
+            logger.error(f"[CreateGroupDialog] Failed to load people: {e}")
+ 
+    def _populate_list(self, filter_text: str = ""):
+        """Populate the list widget with people data."""
+        self._people_list.clear()
+        ft = filter_text.strip().lower()
+ 
+        for p in self._people_data:
+            name = p["display_name"]
+            if ft and ft not in name.lower():
+                continue
+ 
+            item = QListWidgetItem(f"{name}  ({p['count']} photos)")
+            item.setData(Qt.UserRole, p["branch_key"])
+            self._people_list.addItem(item)
+ 
+            # Re-select if was selected
+            if p["branch_key"] in self._selected_branch_keys:
+                item.setSelected(True)
+ 
+    def _populate_existing(self):
+        """Pre-fill dialog with existing group data."""
+        if not self.existing_group:
+            return
+        self._name_input.setText(self.existing_group.get("name", ""))
+        self._selected_branch_keys = [
+            m["branch_key"] for m in self.existing_group.get("members", [])
+        ]
+        self._populate_list()
+        self._update_chips()
+ 
+    def _filter_people(self, text: str):
+        self._populate_list(text)
+ 
+    def _on_selection_changed(self):
+        self._selected_branch_keys = []
+        for item in self._people_list.selectedItems():
+            bk = item.data(Qt.UserRole)
+            if bk:
+                self._selected_branch_keys.append(bk)
+        self._update_chips()
+ 
+    def _update_chips(self):
+        """Update the selected members display and save button state."""
+        if not self._selected_branch_keys:
+            self._chips_label.setText("Selected: (none)")
+            self._btn_save.setEnabled(False)
+            return
+ 
+        names = []
+        for bk in self._selected_branch_keys:
+            for p in self._people_data:
+                if p["branch_key"] == bk:
+                    names.append(p["display_name"])
+                    break
+ 
+        self._chips_label.setText(f"Selected ({len(names)}): {', '.join(names)}")
+        self._btn_save.setEnabled(len(self._selected_branch_keys) >= 2)
+ 
+        # Auto-suggest name if empty
+        if not self._name_input.text().strip() and names:
+            from services.group_service import GroupService
+            self._name_input.setPlaceholderText(GroupService.suggest_group_name(names))
+ 
+    def get_result(self) -> Dict[str, Any]:
+        """Get the dialog result after accept."""
+        name = self._name_input.text().strip()
+        if not name:
+            # Use auto-suggested name
+            names = []
+            for bk in self._selected_branch_keys:
+                for p in self._people_data:
+                    if p["branch_key"] == bk:
+                        names.append(p["display_name"])
+                        break
+            from services.group_service import GroupService
+            name = GroupService.suggest_group_name(names)
+ 
+        return {
+            "name": name,
+            "branch_keys": list(self._selected_branch_keys),
+        }
+ 
+ 
+# ======================================================================
+# GroupsSubsectionWidget — the main widget shown under People > Groups
+# ======================================================================
+ 
+class GroupsSubsectionWidget(QWidget):
+    """
+    Widget displayed when the user switches to the Groups tab
+    within the People section.
+ 
+    Provides:
+    - "+ New Group" button
+    - List/grid of existing groups
+    - Search filter
+    - Click → emits groupSelected(group_id)
+    """
+ 
+    groupSelected = Signal(int)             # group_id
+    groupCreated = Signal(int)              # new group_id
+    groupDeleted = Signal(int)              # deleted group_id
+    groupUpdated = Signal(int)              # updated group_id
+    groupReindexRequested = Signal(int)     # group_id to reindex
+ 
+    def __init__(self, project_id: int, parent: Optional[QWidget] = None):
+        super().__init__(parent)
+        self.project_id = project_id
+        self._groups_data: List[Dict] = []
+        self._cards: Dict[int, GroupCard] = {}
+        self._signals = GroupsSectionSignals()
+        self._signals.loaded.connect(self._on_groups_loaded)
+        self._generation = 0
+ 
+        self._setup_ui()
+ 
+    def _setup_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(8)
+ 
+        # Header row: "+ New Group" button + count
+        header = QWidget()
+        header_layout = QHBoxLayout(header)
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setSpacing(8)
+ 
+        btn_new = QPushButton("+ New Group")
+        btn_new.setCursor(Qt.PointingHandCursor)
+        btn_new.setStyleSheet("""
+            QPushButton {
+                padding: 6px 14px; border: 1px solid #1a73e8;
+                border-radius: 6px; background: #1a73e8;
+                color: white; font-weight: 600; font-size: 10pt;
+            }
+            QPushButton:hover { background: #1557b0; }
+        """)
+        btn_new.clicked.connect(self._on_create_group)
+        header_layout.addWidget(btn_new)
+ 
+        header_layout.addStretch()
+ 
+        self._count_label = QLabel("0 groups")
+        self._count_label.setStyleSheet("color: #5f6368; font-size: 9pt;")
+        header_layout.addWidget(self._count_label)
+ 
+        layout.addWidget(header)
+ 
+        # Scroll area for group grid
+        self._scroll = QScrollArea()
+        self._scroll.setWidgetResizable(True)
+        self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._scroll.setFrameShape(QScrollArea.NoFrame)
+ 
+        # Empty state placeholder
+        self._empty_label = QLabel("No groups yet.\nCreate a group to see photos where people appear together.")
+        self._empty_label.setAlignment(Qt.AlignCenter)
+        self._empty_label.setWordWrap(True)
+        self._empty_label.setStyleSheet("padding: 32px; color: #5f6368; font-size: 10pt;")
+        self._scroll.setWidget(self._empty_label)
+ 
+        layout.addWidget(self._scroll, 1)
+ 
+    def load_groups(self):
+        """Load groups data in background thread."""
+        if not self.project_id:
+            return
+ 
+        self._generation += 1
+        current_gen = self._generation
+ 
+        def work():
+            try:
+                from services.group_service import GroupService
+                db = ReferenceDB()
+                groups = GroupService.get_groups(db, self.project_id)
+ 
+                # Get match counts for each group
+                for g in groups:
+                    g["match_count"] = GroupService.get_cached_match_count(db, g["id"])
+ 
+                db.close()
+                self._signals.loaded.emit(current_gen, groups)
+            except Exception as e:
+                logger.error(f"[GroupsSubsection] Failed to load groups: {e}")
+                self._signals.error.emit(current_gen, str(e))
+ 
+        threading.Thread(target=work, daemon=True).start()
+ 
+    def _on_groups_loaded(self, generation: int, groups: list):
+        if generation != self._generation:
+            return
+ 
+        self._groups_data = groups
+        self._count_label.setText(f"{len(groups)} group{'s' if len(groups) != 1 else ''}")
+ 
+        if not groups:
+            self._empty_label.setVisible(True)
+            self._scroll.setWidget(self._empty_label)
+            return
+ 
+        # Build group cards
+        self._cards.clear()
+        cards = []
+ 
+        for g in groups:
+            # Load member thumbnails
+            member_pixmaps = []
+            for member in g.get("members", [])[:3]:
+                pm = self._load_member_thumb(member.get("rep_thumb_png"))
+                member_pixmaps.append(pm)
+ 
+            card = GroupCard(
+                group_id=g["id"],
+                name=g["name"],
+                member_count=g["member_count"],
+                match_count=g.get("match_count", -1),
+                member_pixmaps=member_pixmaps,
+            )
+            card.clicked.connect(self._on_group_clicked)
+            card.context_menu_requested.connect(self._on_group_context_menu)
+            cards.append(card)
+            self._cards[g["id"]] = card
+ 
+        grid = GroupsGrid(cards)
+        grid.attach_viewport(self._scroll.viewport())
+        self._scroll.setWidget(grid)
+ 
+    def _load_member_thumb(self, rep_thumb_png: Optional[bytes]) -> Optional[QPixmap]:
+        """Load a small face thumbnail from BLOB."""
+        if not rep_thumb_png:
+            return None
+        try:
+            from PIL import Image
+            img_data = io.BytesIO(rep_thumb_png)
+            with Image.open(img_data) as img:
+                img_rgb = img.convert("RGB")
+                data = img_rgb.tobytes("raw", "RGB")
+                qimg = QImage(data, img_rgb.width, img_rgb.height, img_rgb.width * 3, QImage.Format_RGB888)
+                if qimg.isNull():
+                    return None
+                return QPixmap.fromImage(qimg).scaled(
+                    48, 48, Qt.KeepAspectRatio, Qt.SmoothTransformation
+                )
+        except Exception:
+            return None
+ 
+    def _on_group_clicked(self, group_id: int):
+        self.groupSelected.emit(group_id)
+ 
+    def _on_group_context_menu(self, group_id: int, action: str):
+        if action == "rename":
+            self._rename_group(group_id)
+        elif action == "toggle_pin":
+            self._toggle_pin(group_id)
+        elif action == "edit_members":
+            self._edit_group(group_id)
+        elif action == "reindex":
+            self.groupReindexRequested.emit(group_id)
+        elif action == "delete":
+            self._delete_group(group_id)
+ 
+    def _on_create_group(self):
+        """Open CreateGroupDialog."""
+        dialog = CreateGroupDialog(self.project_id, parent=self)
+        if dialog.exec() == QDialog.Accepted:
+            result = dialog.get_result()
+            try:
+                from services.group_service import GroupService
+                db = ReferenceDB()
+                group_id = GroupService.create_group(
+                    db, self.project_id, result["name"], result["branch_keys"]
+                )
+                # Compute initial matches
+                GroupService.compute_and_store_matches(db, self.project_id, group_id)
+                db.close()
+ 
+                self.groupCreated.emit(group_id)
+                self.load_groups()  # Refresh list
+            except Exception as e:
+                logger.error(f"[GroupsSubsection] Failed to create group: {e}")
+ 
+    def _rename_group(self, group_id: int):
+        """Rename a group via input dialog."""
+        from PySide6.QtWidgets import QInputDialog
+ 
+        current_name = ""
+        for g in self._groups_data:
+            if g["id"] == group_id:
+                current_name = g["name"]
+                break
+ 
+        new_name, ok = QInputDialog.getText(
+            self, "Rename Group", "New name:", text=current_name
+        )
+        if ok and new_name.strip():
+            try:
+                from services.group_service import GroupService
+                db = ReferenceDB()
+                GroupService.update_group(db, group_id, name=new_name.strip())
+                db.close()
+                self.groupUpdated.emit(group_id)
+                self.load_groups()
+            except Exception as e:
+                logger.error(f"[GroupsSubsection] Failed to rename group: {e}")
+ 
+    def _toggle_pin(self, group_id: int):
+        """Toggle pinned state."""
+        try:
+            from services.group_service import GroupService
+            current_pinned = False
+            for g in self._groups_data:
+                if g["id"] == group_id:
+                    current_pinned = g.get("is_pinned", False)
+                    break
+ 
+            db = ReferenceDB()
+            GroupService.update_group(db, group_id, is_pinned=not current_pinned)
+            db.close()
+            self.groupUpdated.emit(group_id)
+            self.load_groups()
+        except Exception as e:
+            logger.error(f"[GroupsSubsection] Failed to toggle pin: {e}")
+ 
+    def _edit_group(self, group_id: int):
+        """Edit group members via dialog."""
+        try:
+            from services.group_service import GroupService
+            db = ReferenceDB()
+            group = GroupService.get_group(db, group_id, self.project_id)
+            db.close()
+ 
+            if not group:
+                return
+ 
+            dialog = CreateGroupDialog(self.project_id, existing_group=group, parent=self)
+            if dialog.exec() == QDialog.Accepted:
+                result = dialog.get_result()
+                db = ReferenceDB()
+                GroupService.update_group(
+                    db, group_id,
+                    name=result["name"],
+                    branch_keys=result["branch_keys"],
+                )
+                GroupService.compute_and_store_matches(db, self.project_id, group_id)
+                db.close()
+                self.groupUpdated.emit(group_id)
+                self.load_groups()
+        except Exception as e:
+            logger.error(f"[GroupsSubsection] Failed to edit group: {e}")
+ 
+    def _delete_group(self, group_id: int):
+        """Delete a group with confirmation."""
+        from PySide6.QtWidgets import QMessageBox
+ 
+        reply = QMessageBox.question(
+            self,
+            "Delete Group",
+            "Are you sure you want to delete this group?\nThe people themselves won't be affected.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if reply == QMessageBox.Yes:
+            try:
+                from services.group_service import GroupService
+                db = ReferenceDB()
+                GroupService.delete_group(db, group_id)
+                db.close()
+                self.groupDeleted.emit(group_id)
+                self.load_groups()
+            except Exception as e:
+                logger.error(f"[GroupsSubsection] Failed to delete group: {e}")
+ 
+    def set_project(self, project_id: int):
+        """Update project and reload."""
+        self.project_id = project_id
+        self._generation += 1
+        self.load_groups()
+ 
+Update Todos
+ Explore current People section UI, face tables, store events, and naming conventions
+ Implement SQLite migration script for Groups tables
+ Add Store event contracts (ActionTypes, payloads) for Groups
+ Build GroupService in services/
+ Build Groups UI widget tree (GroupsSection, CreateGroupDialog, GroupResultsView)
+ Wiring Groups into AccordionSidebar
+ Wire Groups into Store subscriptions and refresh logic
+ Add Preferences tab for Groups settings
+ Add group index worker for materialized match computation
+ Commit and push to feature branch
+
+Step 5: Wire Groups into AccordionSidebar
+Now I need to add a "People" / "Groups" tab toggle within the People section. Let me look at how the People section currently integrates with the accordion sidebar to find the best integration point.
+
+
+Read section of accordion_sidebar.py people grid builder
+Read
+/home/user/MemoryMate-PhotoFlow-Refactored/accordion_sidebar.py
+120 Zeilen gelesen
+
+Now I need to modify the _build_people_grid method to add a tab header (Individuals | Groups) above the existing people grid. Let me see the full structure better.
+
+
+Read accordion_sidebar.py signal definitions section
+Read
+/home/user/MemoryMate-PhotoFlow-Refactored/accordion_sidebar.py
+30 Zeilen gelesen
+Read
+/home/user/MemoryMate-PhotoFlow-Refactored/accordion_sidebar.py
+80 Zeilen gelesen
+
+Now I understand the full pattern. The AccordionSidebar._build_people_grid creates the widget that gets set as the content of the "people" section. I need to wrap the existing people content and the new groups content with a tab-like toggle. Let me modify _build_people_grid to add a "Individuals | Groups" tab header.
+
+
+Added signal definition to accordion_sidebar.py for group selection
+Edit
+/home/user/MemoryMate-PhotoFlow-Refactored/accordion_sidebar.py
++2
+-1
+    _peopleLoaded = Signal(list)   # Thread → UI: people data ready (NEW)
+    selectGroup = Signal(int)      # group_id — emitted when user opens a group
+
+Now I need to modify _build_people_grid to wrap the people grid with a tab header. Let me read the full method to understand the complete flow.
+
+
+Fixed people grid display in accordion sidebar component
+Edit
+/home/user/MemoryMate-PhotoFlow-Refactored/accordion_sidebar.py
++119
+-57
+            return
+ 
+        try:
+            # Create PeopleGridView
+            people_grid = PeopleGridView()
+            self._people_grid = people_grid
+ 
+            # Connect signals
+            people_grid.person_clicked.connect(self._on_person_clicked)
+            people_grid.context_menu_requested.connect(self._on_person_context_menu)
+            people_grid.drag_merge_requested.connect(self._on_person_drag_merge)
+ 
+            if len(rows) == 0:
+                # Empty state is handled by PeopleGridView
+                section.set_content_widget(people_grid)
+                section.set_count(0)
+                return
+ 
+            # Add each person to the grid
+            for idx, row in enumerate(rows):
+                # CRITICAL FIX: Use correct column names from database
+                branch_key = row[0] if isinstance(row, tuple) else row.get("branch_key", f"cluster_{idx}")
+                display_name = row[1] if isinstance(row, tuple) else row.get("display_name", f"Person {idx + 1}")
+                member_count = row[2] if isinstance(row, tuple) else row.get("member_count", 1)
+                rep_path = row[3] if isinstance(row, tuple) else row.get("rep_path")
+                rep_thumb_png = row[4] if isinstance(row, tuple) else row.get("rep_thumb_png")
+ 
+                # Load face thumbnail
+                face_pixmap = self._load_face_thumbnail(rep_path, rep_thumb_png)
+ 
+                # Add to grid
+                people_grid.add_person(branch_key, display_name, face_pixmap, member_count)
+ 
+            # Update count badge
+            section.set_count(len(rows))
+ 
+            # Set as content widget
+            section.set_content_widget(people_grid)
+ 
+            self._dbg(f"✓ People section loaded with {len(rows)} clusters")
+ 
+        except Exception as e:
+            self._dbg(f"⚠️ Error building people grid: {e}")
+            import traceback
+            traceback.print_exc()
+ 
+            # Show error placeholder
+            # ── Outer container with Individuals / Groups tab toggle ──
+            outer = QWidget()
+            outer_layout = QVBoxLayout(outer)
+            outer_layout.setContentsMargins(0, 0, 0, 0)
+            outer_layout.setSpacing(0)
+ 
+            # Tab bar: [Individuals] [Groups]
+            tab_bar = QWidget()
+            tab_bar.setFixedHeight(36)
+            tab_layout = QHBoxLayout(tab_bar)
+            tab_layout.setContentsMargins(8, 4, 8, 0)
+            tab_layout.setSpacing(0)
+ 
+            _TAB_ACTIVE = (
+                "QPushButton { border: none; border-bottom: 2px solid #1a73e8;"
+                " color: #1a73e8; font-weight: 600; font-size: 10pt;"
+                " padding: 4px 12px; background: transparent; }"
+            )
+            _TAB_INACTIVE = (
+                "QPushButton { border: none; border-bottom: 2px solid transparent;"
+                " color: #5f6368; font-size: 10pt;"
+                " padding: 4px 12px; background: transparent; }"
+                "QPushButton:hover { color: #202124; background: #f1f3f4;"
+                " border-radius: 4px 4px 0 0; }"
+            )
+ 
+            btn_individuals = QPushButton("Individuals")
+            btn_individuals.setCursor(Qt.PointingHandCursor)
+            btn_individuals.setStyleSheet(_TAB_ACTIVE)
+ 
+            btn_groups = QPushButton("Groups")
+            btn_groups.setCursor(Qt.PointingHandCursor)
+            btn_groups.setStyleSheet(_TAB_INACTIVE)
+ 
+            tab_layout.addWidget(btn_individuals)
+            tab_layout.addWidget(btn_groups)
+            tab_layout.addStretch()
+            outer_layout.addWidget(tab_bar)
+ 
+            # Stacked content area
+            from PySide6.QtWidgets import QStackedWidget
+            stack = QStackedWidget()
+            outer_layout.addWidget(stack, 1)
+ 
+            # === Page 0: Individuals (existing people grid) ===
+            people_grid = PeopleGridView()
+            self._people_grid = people_grid
+ 
+            # Connect signals
+            people_grid.person_clicked.connect(self._on_person_clicked)
+            people_grid.context_menu_requested.connect(self._on_person_context_menu)
+            people_grid.drag_merge_requested.connect(self._on_person_drag_merge)
+ 
+            if len(rows) > 0:
+                for idx, row in enumerate(rows):
+                    branch_key = row[0] if isinstance(row, tuple) else row.get("branch_key", f"cluster_{idx}")
+                    display_name = row[1] if isinstance(row, tuple) else row.get("display_name", f"Person {idx + 1}")
+                    member_count = row[2] if isinstance(row, tuple) else row.get("member_count", 1)
+                    rep_path = row[3] if isinstance(row, tuple) else row.get("rep_path")
+                    rep_thumb_png = row[4] if isinstance(row, tuple) else row.get("rep_thumb_png")
+                    face_pixmap = self._load_face_thumbnail(rep_path, rep_thumb_png)
+                    people_grid.add_person(branch_key, display_name, face_pixmap, member_count)
+ 
+            stack.addWidget(people_grid)  # index 0
+ 
+            # === Page 1: Groups ===
+            from ui.accordion_sidebar.groups_section import GroupsSubsectionWidget
+            groups_widget = GroupsSubsectionWidget(self.project_id)
+            groups_widget.groupSelected.connect(self._on_group_selected)
+            groups_widget.groupCreated.connect(self._on_group_changed)
+            groups_widget.groupDeleted.connect(self._on_group_changed)
+            groups_widget.groupUpdated.connect(self._on_group_changed)
+            groups_widget.groupReindexRequested.connect(self._on_group_reindex_requested)
+            self._groups_widget = groups_widget
+            stack.addWidget(groups_widget)  # index 1
+ 
+            # Tab switching logic
+            def _switch_to_individuals():
+                stack.setCurrentIndex(0)
+                btn_individuals.setStyleSheet(_TAB_ACTIVE)
+                btn_groups.setStyleSheet(_TAB_INACTIVE)
+ 
+            def _switch_to_groups():
+                stack.setCurrentIndex(1)
+                btn_groups.setStyleSheet(_TAB_ACTIVE)
+                btn_individuals.setStyleSheet(_TAB_INACTIVE)
+                # Lazy-load groups on first switch
+                groups_widget.load_groups()
+ 
+            btn_individuals.clicked.connect(_switch_to_individuals)
+            btn_groups.clicked.connect(_switch_to_groups)
+            # Keep strong refs to prevent GC of closures
+            self._people_tab_switch_individuals = _switch_to_individuals
+            self._people_tab_switch_groups = _switch_to_groups
+ 
+            # Update count badge
+            section.set_count(len(rows))
+            section.set_content_widget(outer)
+ 
+            self._dbg(f"✓ People section loaded with {len(rows)} clusters + Groups tab")
+ 
+        except Exception as e:
+            self._dbg(f"⚠️ Error building people grid: {e}")
+            import traceback
+            traceback.print_exc()
+ 
+            error_label.setAlignment(Qt.AlignCenter)
+            error_label.setStyleSheet("padding: 20px; color: #ff0000;")
+            section.set_content_widget(error_label)
+
+Now add the group signal handlers. Let me find a good place after the existing person handlers.
+
+
+Modified accordion sidebar component with circular pixmap functionality
+Grep
+def _on_person_drag_merge|def _handle_rename_person|def _handle_delete_person
+1435:    def _on_person_drag_merge(self, source_branch: str, target_branch: str):
+1511:    def _handle_rename_person(self, branch_key: str):
+1591:    def _handle_delete_person(self, branch_key: str):
+Read
+/home/user/MemoryMate-PhotoFlow-Refactored/accordion_sidebar.py
+50 Zeilen gelesen
+Edit
+/home/user/MemoryMate-PhotoFlow-Refactored/accordion_sidebar.py
++59
+-1
+    # ------------------------------------------------------------------
+    # Groups signal handlers
+    # ------------------------------------------------------------------
+ 
+    def _on_group_selected(self, group_id: int):
+        """Handle group card click — emit signal so main grid can filter."""
+        self._dbg(f"Group selected: {group_id}")
+        self.selectGroup.emit(group_id)
+ 
+    def _on_group_changed(self, group_id: int):
+        """Handle group created/updated/deleted — dispatch store action."""
+        self._dbg(f"Group changed: {group_id}")
+        try:
+            from core.state_bus import get_store, GroupsChanged, ActionMeta
+            store = get_store()
+            store.dispatch(GroupsChanged(
+                meta=ActionMeta(source="sidebar"),
+                group_id=group_id,
+                reason="changed",
+            ))
+        except Exception:
+            pass
+ 
+    def _on_group_reindex_requested(self, group_id: int):
+        """Recompute matches for a group in background."""
+        self._dbg(f"Group reindex requested: {group_id}")
+ 
+        def work():
+            try:
+                from services.group_service import GroupService
+                db = ReferenceDB()
+                count = GroupService.compute_and_store_matches(
+                    db, self.project_id, group_id
+                )
+                db.close()
+                self._dbg(f"Group {group_id} reindexed: {count} matches")
+ 
+                # Dispatch store event
+                try:
+                    from core.state_bus import get_bridge, GroupIndexCompleted, ActionMeta
+                    bridge = get_bridge()
+                    bridge.dispatch_async(GroupIndexCompleted(
+                        meta=ActionMeta(source="sidebar"),
+                        group_id=group_id,
+                        match_count=count,
+                    ))
+                except Exception:
+                    pass
+ 
+                # Reload groups widget
+                if hasattr(self, '_groups_widget') and self._groups_widget:
+                    self._groups_widget.load_groups()
+            except Exception as e:
+                self._dbg(f"⚠️ Group reindex failed: {e}")
+ 
+        import threading
+        threading.Thread(target=work, daemon=True).start()
+ 
+    def _make_circular_pixmap(self, pixmap: QPixmap, size: int) -> QPixmap:
+
+Now add groups_v to the store version subscriptions so the groups tab refreshes when groups change.
+
+
+Updated task tracking list with completed exploration and migration items
+Edit
+/home/user/MemoryMate-PhotoFlow-Refactored/accordion_sidebar.py
++14
+-12
+                "media_v": s.media_v,
+                "duplicates_v": s.duplicates_v,
+                "people_v": s.people_v,
+            }
+ 
+            # Map: version key → sections that depend on it
+            _VERSION_SECTIONS = {
+                "media_v": ("dates", "folders", "branches", "quick", "videos", "tags"),
+                "duplicates_v": ("duplicates",),
+                "people_v": ("people",),
+                "groups_v": s.groups_v,
+            }
+ 
+            # Map: version key → sections that depend on it
+            _VERSION_SECTIONS = {
+                "media_v": ("dates", "folders", "branches", "quick", "videos", "tags"),
+                "duplicates_v": ("duplicates",),
+                "people_v": ("people",),
+                "groups_v": ("people",),  # groups live inside people section
+            }
+Update Todos
+ Explore current People section UI, face tables, store events, and naming conventions
+ Implement SQLite migration script for Groups tables
+ Add Store event contracts (ActionTypes, payloads) for Groups
+ Build GroupService in services/
+ Build Groups UI widget tree (GroupsSection, CreateGroupDialog, GroupResultsView)
+ Wire Groups into AccordionSidebar People section
+ Wiring Groups into Store subscriptions
+ Add Preferences tab for Groups settings
+ Add group index worker for materialized match computation
+ Commit and push to feature branch
+
+Step 6: Wire Groups into MainWindow / GoogleLayout
+Now I need to handle the selectGroup signal in the main window to filter the grid. Let me find where selectPerson is connected.
+
+
+Read face service signal connections in main_window_qt.py
+Grep
+selectPerson\.connect|selectBranch\.connect|selectGroup
+No matches found
+Grep
+selectPerson|selectBranch|sidebar.*connect|accordion.*connect
+725:        act_toggle_sidebar.toggled.connect(self._on_toggle_sidebar_visibility)
+726:        # act_toggle_sidebar_mode connection happens later (line ~2430)
+995:        act_toggle_sidebar_mode.triggered.connect(_on_toggle_sidebar_mode)
+Mehr anzeigen
+Read
+/home/user/MemoryMate-PhotoFlow-Refactored/main_window_qt.py
+40 Zeilen gelesen
+
+Let me find on_branch_selected and the sidebar controller to understand how selections flow to the grid.
+
+
+Examined sidebar controller for navigation event handling logic
+Grep
+class SidebarController|on_branch_selected|on_person_selected
+1052:        self.sidebar.on_branch_selected = self.sidebar_controller.on_branch_selected
+3163:    def _on_branch_selected(self, branch_key: str):
+3165:        self.sidebar_controller.on_branch_selected(branch_key)
+Weniger anzeigen
+[Showing results with pagination = limit: 20, offset: 0]
+Grep
+class SidebarController
+Found 1 file
+controllers/sidebar_controller.py
+Read
+/home/user/MemoryMate-PhotoFlow-Refactored/controllers/sidebar_controller.py
+120 Zeilen gelesen
+
+Now I need to add group selection handling. The pattern is: sidebar emits signal → controller or main_window handles it → tells grid to filter. I'll add a on_group_selected method to the sidebar controller.
+
+
+Refactored sidebar controller to handle group selection functionality
+Edit
+/home/user/MemoryMate-PhotoFlow-Refactored/controllers/sidebar_controller.py
++31
+-1
+    def on_group_selected(self, group_id: int):
+        """Handle group selection — filter grid to show only group match photos."""
+        try:
+            from services.group_service import GroupService
+            from reference_db import ReferenceDB
+ 
+            db = ReferenceDB()
+            paths = GroupService.get_cached_match_paths(
+                db, self.main.grid.project_id, group_id
+            )
+            # Touch last_used_at
+            GroupService.touch_group(db, group_id)
+            db.close()
+ 
+            if hasattr(self.main.grid, "set_custom_paths"):
+                self.main.grid.set_custom_paths(paths, navigation_mode="group")
+            elif hasattr(self.main.grid, "filter_by_paths"):
+                self.main.grid.filter_by_paths(paths)
+            else:
+                # Fallback: use branch "all" and log
+                print(f"[SidebarController] Grid does not support custom paths for group filter (group_id={group_id}, {len(paths)} matches)")
+ 
+            if hasattr(self.main.grid, "list_view"):
+                self.main.grid.list_view.scrollToTop()
+ 
+        except Exception as e:
+            print(f"[SidebarController] Group selection failed: {e}")
+            import traceback
+            traceback.print_exc()
+ 
+    def on_videos_selected(self):
+
+Now connect the selectGroup signal in main_window_qt.py where the sidebar is wired up.
+
+
+Updated main window signal connections in Qt application
+Edit
+/home/user/MemoryMate-PhotoFlow-Refactored/main_window_qt.py
++5
+-2
+        self.sidebar.on_branch_selected = self.sidebar_controller.on_branch_selected
+        self.sidebar.folderSelected.connect(self.sidebar_controller.on_folder_selected)
+        # People Groups: connect selectGroup signal
+        if hasattr(self.sidebar, 'selectGroup'):
+            self.sidebar.selectGroup.connect(self.sidebar_controller.on_group_selected)
+Read
+/home/user/MemoryMate-PhotoFlow-Refactored/main_window_qt.py
+15 Zeilen gelesen
+Edit
+/home/user/MemoryMate-PhotoFlow-Refactored/main_window_qt.py
++8
+-5
+        self.sidebar.on_branch_selected = self.sidebar_controller.on_branch_selected
+        self.sidebar.folderSelected.connect(self.sidebar_controller.on_folder_selected)
+        # People Groups: connect selectGroup signal
+        if hasattr(self.sidebar, 'selectGroup'):
+            self.sidebar.selectGroup.connect(self.sidebar_controller.on_group_selected)
+        # 🎬 Phase 4: Videos support
+        if hasattr(self.sidebar, 'selectVideos'):
+            self.sidebar.selectVideos.connect(self.sidebar_controller.on_videos_selected)
+
+Now let me add the set_custom_paths method to the ThumbnailGridQt so the group filter can work. Let me check the grid's existing API.
+
+
+Searched for navigation mode methods in thumbnail grid component
+Grep
+def set_branch|def set_folder|def filter_by_paths|def set_custom_paths|navigation_mode
+890:        self.navigation_mode = None        # 'folder', 'date', 'branch'
+2796:    def set_folder(self, folder_id: int):
+2798:        self.navigation_mode = "folder"
+Weniger anzeigen
+2809:    def set_branch(self, branch_key: str):
+2815:            self.navigation_mode = "branch"
+2833:        self.navigation_mode = "date"
+2845:        self.navigation_mode = "videos"
+2862:        self.navigation_mode = "custom"
+3047:        Also syncs the legacy navigation_mode / navigation_key fields so that
+3058:        self.navigation_mode = mode
+3457:                next_paths = self.window().sidebar.get_next_branch_paths(self.navigation_mode, self.navigation_key)
+[Showing results with pagination = limit: 20, offset: 0]
+
+
+
+Let me commit and push the current work before continuing.
