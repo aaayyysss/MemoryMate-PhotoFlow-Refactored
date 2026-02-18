@@ -1,16 +1,23 @@
 # workers/face_pipeline_worker.py
-# Version 02.00.00.00 dated 20260202
+# Version 03.00.00.00 dated 20260218
 #
 # Background pipeline worker that chains face detection + clustering
 # as a single non-blocking job.  No modal dialogs, no UI coupling.
 #
 # Steps:
 #   1. Face detection (InsightFace on all unprocessed photos)
-#   2. Face clustering (DBSCAN on ArcFace embeddings)
+#      - After each batch commit, if enough new faces accumulated,
+#        trigger a lightweight interim clustering pass so the UI can
+#        show partial People results immediately (progressive UX).
+#   2. Final face clustering (DBSCAN on all embeddings)
 #
-# Incremental batch_committed events are forwarded so the UI can
-# refresh People progressively while detection is still running.
+# Progressive clustering pattern (Google Photos / Apple Photos style):
+#   - First interim cluster at 50+ detected faces
+#   - Subsequent interim clusters every 200 additional faces
+#   - Full recluster at pipeline completion for final accuracy
+#   - UI shows "Indexing faces..." banner during progressive phase
 
+import time
 import threading
 
 from PySide6.QtCore import QRunnable, QObject, Signal
@@ -18,6 +25,11 @@ from PySide6.QtCore import QRunnable, QObject, Signal
 from logging_config import get_logger
 
 logger = get_logger(__name__)
+
+# ── Progressive clustering thresholds ─────────────────────────────
+_FIRST_INTERIM_THRESHOLD = 50    # faces before first interim cluster
+_SUBSEQUENT_INTERVAL = 200       # faces between subsequent interim clusters
+_MIN_INTERIM_GAP_S = 10.0        # minimum seconds between interim clusters
 
 
 class FacePipelineSignals(QObject):
@@ -27,6 +39,9 @@ class FacePipelineSignals(QObject):
     # Forwarded from FaceDetectionWorker after each DB batch commit
     # (processed, total, faces_so_far, project_id)
     batch_committed = Signal(int, int, int, int)
+    # Emitted after each interim clustering pass completes
+    # (cluster_count, total_faces, is_final)
+    interim_clusters_ready = Signal(int, int, bool)
     # Emitted when pipeline finishes: {faces_detected, clusters_created, errors}
     finished = Signal(dict)
     # Fatal error
@@ -37,6 +52,10 @@ class FacePipelineWorker(QRunnable):
     """
     Background worker that runs face detection then clustering
     entirely off the UI thread.
+
+    Supports progressive clustering: interim cluster passes run during
+    detection so the user sees partial People results without waiting
+    for the full dataset to finish.
 
     Usage:
         worker = FacePipelineWorker(project_id=1)
@@ -54,6 +73,11 @@ class FacePipelineWorker(QRunnable):
         self._cancelled = False
         # Optional: scoped photo paths (set by FacePipelineService)
         self._scoped_photo_paths = None
+
+        # Progressive clustering state
+        self._faces_at_last_interim = 0
+        self._last_interim_time = 0.0
+        self._interim_cluster_count = 0
 
     def cancel(self):
         self._cancelled = True
@@ -121,9 +145,93 @@ class FacePipelineWorker(QRunnable):
         finally:
             db.close()
 
+    # ── Progressive clustering ────────────────────────────────────
+
+    def _should_run_interim_cluster(self, faces_so_far: int) -> bool:
+        """Decide whether to trigger an interim clustering pass.
+
+        Thresholds mirror the approach used by Google Photos and Apple Photos:
+        show something useful early, then refine as more data arrives.
+        """
+        if faces_so_far < _FIRST_INTERIM_THRESHOLD:
+            return False
+
+        faces_since_last = faces_so_far - self._faces_at_last_interim
+        now = time.perf_counter()
+        elapsed = now - self._last_interim_time
+
+        # First interim pass
+        if self._faces_at_last_interim == 0:
+            return True
+
+        # Subsequent passes: enough new faces AND enough time elapsed
+        if faces_since_last >= _SUBSEQUENT_INTERVAL and elapsed >= _MIN_INTERIM_GAP_S:
+            return True
+
+        return False
+
+    def _run_interim_clustering(self, faces_so_far: int):
+        """Run a lightweight clustering pass on faces detected so far.
+
+        This is NOT the final cluster — it gives the user approximate People
+        results while detection continues.  The final recluster at pipeline
+        end produces the authoritative grouping.
+        """
+        try:
+            from config.face_detection_config import get_face_config
+            from workers.face_cluster_worker import FaceClusterWorker
+
+            face_config = get_face_config()
+            cluster_params = face_config.get_clustering_params()
+
+            cluster_worker = FaceClusterWorker(
+                project_id=self.project_id,
+                eps=cluster_params["eps"],
+                min_samples=cluster_params["min_samples"],
+                auto_tune=True,
+            )
+
+            interim_result = {}
+
+            def _on_interim_finished(cluster_count, total_faces):
+                interim_result["cluster_count"] = cluster_count
+                interim_result["total_faces"] = total_faces
+
+            cluster_worker.signals.finished.connect(_on_interim_finished)
+
+            logger.info(
+                "[FacePipelineWorker] Running interim clustering "
+                "(%d faces so far, pass #%d)",
+                faces_so_far, self._interim_cluster_count + 1,
+            )
+
+            cluster_worker.run()
+
+            self._interim_cluster_count += 1
+            self._faces_at_last_interim = faces_so_far
+            self._last_interim_time = time.perf_counter()
+
+            cc = interim_result.get("cluster_count", 0)
+            logger.info(
+                "[FacePipelineWorker] Interim clustering #%d complete: "
+                "%d clusters from %d faces",
+                self._interim_cluster_count, cc, faces_so_far,
+            )
+
+            # Signal UI to refresh People section (is_final=False)
+            self.signals.interim_clusters_ready.emit(
+                cc, faces_so_far, False,
+            )
+
+        except Exception as e:
+            logger.warning(
+                "[FacePipelineWorker] Interim clustering failed (non-fatal): %s", e
+            )
+
+    # ── Main pipeline ─────────────────────────────────────────────
+
     def run(self):
         """Execute face detection + clustering sequentially in background thread."""
-        import threading
         _thread = threading.current_thread()
         _is_main = _thread is threading.main_thread()
         logger.info(
@@ -136,13 +244,11 @@ class FacePipelineWorker(QRunnable):
             "faces_detected": 0,
             "images_processed": 0,
             "clusters_created": 0,
+            "interim_passes": 0,
             "errors": [],
         }
 
         # ── Step 0: Clear stale face data from previous runs ──────
-        # This prevents accumulating old faces that would pollute clustering.
-        # We clear derived artifacts (clusters, face_crops embeddings) but keep
-        # user-curated data if any exists.
         if self._cancelled:
             self.signals.finished.emit(results)
             return
@@ -153,7 +259,6 @@ class FacePipelineWorker(QRunnable):
             logger.info("[FacePipelineWorker] Cleared stale face data for project %d", self.project_id)
         except Exception as e:
             logger.warning("[FacePipelineWorker] Cleanup warning (continuing): %s", e)
-            # Don't fail the whole pipeline on cleanup error
 
         # ── Step 1: Face Detection ────────────────────────────────
         if self._cancelled:
@@ -187,6 +292,19 @@ class FacePipelineWorker(QRunnable):
                 # Forward to pipeline-level signal for incremental UI refresh
                 self.signals.batch_committed.emit(processed, total, faces_so_far, pid)
 
+                # ── Progressive clustering check ──
+                if not self._cancelled and self._should_run_interim_cluster(faces_so_far):
+                    self.signals.progress.emit(
+                        "interim_clustering",
+                        f"Quick-clustering {faces_so_far} faces (partial results)...",
+                    )
+                    self._run_interim_clustering(faces_so_far)
+                    # Resume detection progress message
+                    self.signals.progress.emit(
+                        "face_detection",
+                        f"Detecting faces: {processed}/{total} — resuming...",
+                    )
+
             def _on_detect_finished(success, failed, total_faces):
                 detection_results["success"] = success
                 detection_results["failed"] = failed
@@ -206,10 +324,13 @@ class FacePipelineWorker(QRunnable):
             # Collect results (signals fire synchronously in same thread)
             results["faces_detected"] = detection_results.get("total_faces", 0)
             results["images_processed"] = detection_results.get("success", 0)
+            results["interim_passes"] = self._interim_cluster_count
 
             logger.info(
-                "[FacePipelineWorker] Detection complete: %d faces in %d images",
+                "[FacePipelineWorker] Detection complete: %d faces in %d images "
+                "(%d interim cluster passes)",
                 results["faces_detected"], results["images_processed"],
+                self._interim_cluster_count,
             )
 
             # ── Invariant check: faces_written_to_db == faces_detected ──
@@ -242,14 +363,14 @@ class FacePipelineWorker(QRunnable):
             logger.error("[FacePipelineWorker] Face detection failed: %s", e, exc_info=True)
             results["errors"].append(f"Detection: {e}")
 
-        # ── Step 2: Face Clustering ───────────────────────────────
+        # ── Step 2: Final Face Clustering ─────────────────────────
         if self._cancelled or results["faces_detected"] == 0:
             if results["faces_detected"] == 0:
                 logger.info("[FacePipelineWorker] No faces detected, skipping clustering")
             self.signals.finished.emit(results)
             return
 
-        self.signals.progress.emit("face_clustering", "Clustering detected faces...")
+        self.signals.progress.emit("face_clustering", "Final clustering of all detected faces...")
 
         try:
             from config.face_detection_config import get_face_config
@@ -290,9 +411,16 @@ class FacePipelineWorker(QRunnable):
             results["clusters_created"] = cluster_results.get("cluster_count", 0)
 
             logger.info(
-                "[FacePipelineWorker] Clustering complete: %d clusters from %d faces",
+                "[FacePipelineWorker] Final clustering complete: %d clusters from %d faces",
                 results["clusters_created"],
                 cluster_results.get("total_faces", 0),
+            )
+
+            # Signal UI that final clusters are ready
+            self.signals.interim_clusters_ready.emit(
+                results["clusters_created"],
+                results["faces_detected"],
+                True,  # is_final=True
             )
 
         except Exception as e:

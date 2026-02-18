@@ -1279,6 +1279,11 @@ class GooglePhotosLayout(BaseLayout):
         Multiple rapid calls (e.g. accordion expand + tab switch) are
         collapsed into a single load executed after a 50ms quiet period.
         """
+        # Freeze mutable collections at request time to prevent the
+        # coalescing signature from collapsing when the caller mutates
+        # the original list before _execute_coalesced_load fires.
+        if params.get("paths") is not None:
+            params["paths"] = list(params["paths"])
         self._pending_load_params = params
         self._load_coalesce_timer.start(50)
 
@@ -1331,7 +1336,8 @@ class GooglePhotosLayout(BaseLayout):
         self.current_filter_day = filter_day
         self.current_filter_folder = filter_folder
         self.current_filter_person = filter_person
-        self.current_filter_paths = filter_paths
+        # Freeze to avoid mutations from callers while worker is running
+        self.current_filter_paths = list(filter_paths) if filter_paths else None
 
         filter_desc = []
         if filter_year:
@@ -1345,7 +1351,7 @@ class GooglePhotosLayout(BaseLayout):
         if filter_person:
             filter_desc.append(f"person={filter_person}")
         if filter_paths:
-            filter_desc.append(f"location={len(filter_paths)} photos")
+            filter_desc.append(f"paths={len(filter_paths)} photos")
 
         filter_str = f" [{', '.join(filter_desc)}]" if filter_desc else ""
         print(f"[GooglePhotosLayout] 📷 Loading photos from database (thumb size: {thumb_size}px){filter_str}...")
@@ -10348,6 +10354,17 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
             filter_folder=None,
             filter_person=person_branch_key
         )
+
+    def filter_by_paths(self, paths: list, navigation_mode: str = "group") -> None:
+        """Filter the grid to show only the given photo paths.
+
+        Used by SidebarController.on_group_selected() to display group
+        match photos in the main grid.
+        """
+        if not paths:
+            self._clear_filter()
+            return
+        self._request_load(paths=paths)
 
     def clear_filters(self) -> None:
         """

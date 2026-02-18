@@ -19,7 +19,7 @@ Schema Version: 2.0.0
 - Adds schema_version tracking table
 """
 
-SCHEMA_VERSION = "9.4.0"
+SCHEMA_VERSION = "10.0.0"
 
 # Complete schema SQL - executed as a script for new databases
 SCHEMA_SQL = """
@@ -62,6 +62,9 @@ VALUES ('9.2.0', 'Add GPS columns to photo_metadata for location-based browsing'
 
 INSERT OR IGNORE INTO schema_version (version, description)
 VALUES ('9.3.0', 'Add image_content_hash for pixel-based embedding staleness detection');
+
+INSERT OR IGNORE INTO schema_version (version, description)
+VALUES ('10.0.0', 'People Groups: person_groups, person_group_members, group_asset_matches');
 
 -- ============================================================================
 -- FACE RECOGNITION TABLES
@@ -169,6 +172,45 @@ CREATE TABLE IF NOT EXISTS face_merge_history (
     snapshot TEXT NOT NULL,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
+-- ============================================================================
+-- PEOPLE GROUPS (v10.0.0: User-defined groups of people for co-occurrence)
+-- ============================================================================
+
+-- Person groups (named sets of people, e.g. "Family", "Ammar + Alya")
+CREATE TABLE IF NOT EXISTS person_groups (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    created_at INTEGER NOT NULL,      -- unix epoch
+    updated_at INTEGER NOT NULL,      -- unix epoch
+    last_used_at INTEGER,             -- for "recently used" sorting
+    is_pinned INTEGER NOT NULL DEFAULT 0,
+    is_deleted INTEGER NOT NULL DEFAULT 0,
+    cover_asset_path TEXT,            -- user-chosen cover photo (NULL = auto-derive)
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
+-- Person group members (links groups to people via branch_key)
+CREATE TABLE IF NOT EXISTS person_group_members (
+    group_id INTEGER NOT NULL,
+    branch_key TEXT NOT NULL,          -- references face_branch_reps.branch_key
+    added_at INTEGER NOT NULL,         -- unix epoch
+    PRIMARY KEY (group_id, branch_key),
+    FOREIGN KEY (group_id) REFERENCES person_groups(id) ON DELETE CASCADE
+);
+
+-- Materialized group match results (precomputed photo matches per group)
+CREATE TABLE IF NOT EXISTS group_asset_matches (
+    group_id INTEGER NOT NULL,
+    scope TEXT NOT NULL DEFAULT 'same_photo',  -- 'same_photo' or 'event_window'
+    photo_id INTEGER NOT NULL,
+    event_id INTEGER,                  -- filled for event_window matches
+    computed_at INTEGER NOT NULL,      -- unix epoch
+    PRIMARY KEY (group_id, scope, photo_id),
+    FOREIGN KEY (group_id) REFERENCES person_groups(id) ON DELETE CASCADE,
+    FOREIGN KEY (photo_id) REFERENCES photo_metadata(id) ON DELETE CASCADE
 );
 
 -- Export history (tracks photo export operations)
@@ -538,6 +580,17 @@ CREATE INDEX IF NOT EXISTS idx_face_crops_proj_rep ON face_crops(project_id, is_
 CREATE INDEX IF NOT EXISTS idx_fbreps_proj ON face_branch_reps(project_id);
 CREATE INDEX IF NOT EXISTS idx_fbreps_proj_branch ON face_branch_reps(project_id, branch_key);
 
+-- People groups indexes (v10.0.0)
+CREATE INDEX IF NOT EXISTS idx_person_groups_project ON person_groups(project_id, is_deleted);
+CREATE INDEX IF NOT EXISTS idx_person_groups_last_used ON person_groups(project_id, last_used_at);
+CREATE INDEX IF NOT EXISTS idx_person_groups_pinned ON person_groups(project_id, is_pinned) WHERE is_pinned = 1;
+CREATE INDEX IF NOT EXISTS idx_group_members_branch ON person_group_members(branch_key, group_id);
+CREATE INDEX IF NOT EXISTS idx_group_asset_matches_group ON group_asset_matches(group_id, scope);
+CREATE INDEX IF NOT EXISTS idx_group_asset_matches_photo ON group_asset_matches(photo_id);
+
+-- Face crops: person+photo compound index for AND matching (v10.0.0)
+CREATE INDEX IF NOT EXISTS idx_face_crops_person_photo ON face_crops(project_id, branch_key, image_path);
+
 -- Branches indexes
 CREATE INDEX IF NOT EXISTS idx_branches_project ON branches(project_id);
 CREATE INDEX IF NOT EXISTS idx_branches_key ON branches(project_id, branch_key);
@@ -715,6 +768,10 @@ def get_expected_tables() -> list[str]:
         "media_stack_meta",
         # Face merge history (should have been included earlier)
         "face_merge_history",
+        # People groups tables (v10.0.0)
+        "person_groups",
+        "person_group_members",
+        "group_asset_matches",
     ]
 
 
@@ -787,6 +844,14 @@ def get_expected_indexes() -> list[str]:
         "idx_device_files_video",
         "idx_device_files_session",
         "idx_device_files_last_seen",
+        # People groups indexes (v10.0.0)
+        "idx_person_groups_project",
+        "idx_person_groups_last_used",
+        "idx_person_groups_pinned",
+        "idx_group_members_branch",
+        "idx_group_asset_matches_group",
+        "idx_group_asset_matches_photo",
+        "idx_face_crops_person_photo",
         # Semantic embeddings indexes (v7.0.0)
         "idx_semantic_model",
         "idx_semantic_hash",
@@ -852,6 +917,55 @@ CREATE INDEX IF NOT EXISTS idx_photo_metadata_gps ON photo_metadata(project_id, 
 
 INSERT OR IGNORE INTO schema_version (version, description)
 VALUES ('9.3.0', 'Add image_content_hash for pixel-based embedding staleness detection');
+"""
+    },
+    "10.0.0": {
+        "description": "People Groups: person_groups, person_group_members, group_asset_matches",
+        "sql": """
+-- v10.0.0: People Groups - user-defined groups of people for co-occurrence browsing
+
+CREATE TABLE IF NOT EXISTS person_groups (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    last_used_at INTEGER,
+    is_pinned INTEGER NOT NULL DEFAULT 0,
+    is_deleted INTEGER NOT NULL DEFAULT 0,
+    cover_asset_path TEXT,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS person_group_members (
+    group_id INTEGER NOT NULL,
+    branch_key TEXT NOT NULL,
+    added_at INTEGER NOT NULL,
+    PRIMARY KEY (group_id, branch_key),
+    FOREIGN KEY (group_id) REFERENCES person_groups(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS group_asset_matches (
+    group_id INTEGER NOT NULL,
+    scope TEXT NOT NULL DEFAULT 'same_photo',
+    photo_id INTEGER NOT NULL,
+    event_id INTEGER,
+    computed_at INTEGER NOT NULL,
+    PRIMARY KEY (group_id, scope, photo_id),
+    FOREIGN KEY (group_id) REFERENCES person_groups(id) ON DELETE CASCADE,
+    FOREIGN KEY (photo_id) REFERENCES photo_metadata(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_person_groups_project ON person_groups(project_id, is_deleted);
+CREATE INDEX IF NOT EXISTS idx_person_groups_last_used ON person_groups(project_id, last_used_at);
+CREATE INDEX IF NOT EXISTS idx_person_groups_pinned ON person_groups(project_id, is_pinned) WHERE is_pinned = 1;
+CREATE INDEX IF NOT EXISTS idx_group_members_branch ON person_group_members(branch_key, group_id);
+CREATE INDEX IF NOT EXISTS idx_group_asset_matches_group ON group_asset_matches(group_id, scope);
+CREATE INDEX IF NOT EXISTS idx_group_asset_matches_photo ON group_asset_matches(photo_id);
+CREATE INDEX IF NOT EXISTS idx_face_crops_person_photo ON face_crops(project_id, branch_key, image_path);
+
+INSERT OR IGNORE INTO schema_version (version, description)
+VALUES ('10.0.0', 'People Groups: person_groups, person_group_members, group_asset_matches');
 """
     }
 }
@@ -933,3 +1047,99 @@ def ensure_gps_columns(conn) -> bool:
         logger.info("[Schema] GPS columns migration complete")
 
     return columns_added
+
+
+def ensure_groups_tables(conn) -> bool:
+    """
+    Ensure People Groups tables exist (v10.0.0 migration).
+
+    Creates person_groups, person_group_members, and group_asset_matches
+    tables if they don't already exist. Safe to call multiple times (idempotent).
+
+    Args:
+        conn: SQLite connection object
+
+    Returns:
+        bool: True if tables were created, False if already existed
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    cur = conn.cursor()
+
+    # Check if tables already exist
+    existing_tables = {
+        r[0] for r in cur.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        )
+    }
+
+    tables_created = False
+
+    if 'person_groups' not in existing_tables:
+        logger.info("[Schema] Creating person_groups table (v10.0.0)")
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS person_groups (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                last_used_at INTEGER,
+                is_pinned INTEGER NOT NULL DEFAULT 0,
+                is_deleted INTEGER NOT NULL DEFAULT 0,
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+            )
+        """)
+        tables_created = True
+
+    if 'person_group_members' not in existing_tables:
+        logger.info("[Schema] Creating person_group_members table (v10.0.0)")
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS person_group_members (
+                group_id INTEGER NOT NULL,
+                branch_key TEXT NOT NULL,
+                added_at INTEGER NOT NULL,
+                PRIMARY KEY (group_id, branch_key),
+                FOREIGN KEY (group_id) REFERENCES person_groups(id) ON DELETE CASCADE
+            )
+        """)
+        tables_created = True
+
+    if 'group_asset_matches' not in existing_tables:
+        logger.info("[Schema] Creating group_asset_matches table (v10.0.0)")
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS group_asset_matches (
+                group_id INTEGER NOT NULL,
+                scope TEXT NOT NULL DEFAULT 'same_photo',
+                photo_id INTEGER NOT NULL,
+                event_id INTEGER,
+                computed_at INTEGER NOT NULL,
+                PRIMARY KEY (group_id, scope, photo_id),
+                FOREIGN KEY (group_id) REFERENCES person_groups(id) ON DELETE CASCADE,
+                FOREIGN KEY (photo_id) REFERENCES photo_metadata(id) ON DELETE CASCADE
+            )
+        """)
+        tables_created = True
+
+    # Create indexes (idempotent)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_person_groups_project ON person_groups(project_id, is_deleted)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_person_groups_last_used ON person_groups(project_id, last_used_at)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_person_groups_pinned ON person_groups(project_id, is_pinned) WHERE is_pinned = 1")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_group_members_branch ON person_group_members(branch_key, group_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_group_asset_matches_group ON group_asset_matches(group_id, scope)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_group_asset_matches_photo ON group_asset_matches(photo_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_face_crops_person_photo ON face_crops(project_id, branch_key, image_path)")
+
+    # Update schema version
+    cur.execute("""
+        INSERT OR IGNORE INTO schema_version (version, description)
+        VALUES ('10.0.0', 'People Groups: person_groups, person_group_members, group_asset_matches')
+    """)
+
+    conn.commit()
+
+    if tables_created:
+        logger.info("[Schema] People Groups migration complete (v10.0.0)")
+
+    return tables_created
