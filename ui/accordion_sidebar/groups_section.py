@@ -597,22 +597,48 @@ class GroupsSubsectionWidget(QWidget):
     - "+ New Group" button
     - List/grid of existing groups
     - Search filter
-    - Click → emits groupSelected(group_id)
+    - Click → emits groupSelected(group_id, match_mode)
+
+    Signal contract (consumed by PeopleSection._ensure_groups_tab):
+        groupSelected(int, str)      — (group_id, match_mode)
+        newGroupRequested()          — user clicked "+ New Group"
+        editGroupRequested(int)      — (group_id)
+        deleteGroupRequested(int)    — (group_id)
+        recomputeRequested(int, str) — (group_id, match_mode)
+
+    Legacy signals (consumed by accordion_sidebar.py _build_people_grid):
+        groupCreated(int)            — new group_id
+        groupDeleted(int)            — deleted group_id
+        groupUpdated(int)            — updated group_id
+        groupReindexRequested(int)   — group_id to reindex
     """
 
-    groupSelected = Signal(int)             # group_id
+    # Signals expected by PeopleSection._ensure_groups_tab
+    groupSelected = Signal(int, str)        # (group_id, match_mode)
+    newGroupRequested = Signal()            # user wants to create a group
+    editGroupRequested = Signal(int)        # (group_id)
+    deleteGroupRequested = Signal(int)      # (group_id)
+    recomputeRequested = Signal(int, str)   # (group_id, match_mode)
+
+    # Legacy signals for accordion_sidebar.py backward compat
     groupCreated = Signal(int)              # new group_id
     groupDeleted = Signal(int)              # deleted group_id
     groupUpdated = Signal(int)              # updated group_id
     groupReindexRequested = Signal(int)     # group_id to reindex
 
-    def __init__(self, project_id: int, parent: Optional[QWidget] = None):
+    def __init__(self, project_id=0, parent: Optional[QWidget] = None):
+        # Handle PeopleSection calling GroupsSection(self.parent()) — QWidget
+        # passed as first positional arg instead of project_id
+        if isinstance(project_id, QWidget):
+            parent = project_id
+            project_id = 0
         super().__init__(parent)
-        self.project_id = project_id
+        self.project_id = int(project_id) if project_id else 0
         self._groups_data: List[Dict] = []
         self._cards: Dict[int, GroupCard] = {}
-        self._signals = GroupsSectionSignals()
-        self._signals.loaded.connect(self._on_groups_loaded)
+        # Public signals attribute (PeopleSection accesses gs.signals.loaded)
+        self.signals = GroupsSectionSignals()
+        self.signals.loaded.connect(self._on_groups_loaded)
         self._generation = 0
 
         self._setup_ui()
@@ -664,6 +690,26 @@ class GroupsSubsectionWidget(QWidget):
 
         layout.addWidget(self._scroll, 1)
 
+    def set_db(self, db):
+        """Accept a DB reference (no-op — we create per-thread instances)."""
+        pass
+
+    def load_section(self):
+        """Load the groups section (alias for load_groups).
+
+        Called by PeopleSection._ensure_groups_tab.
+        """
+        self.load_groups()
+
+    def create_content_widget(self, data: list) -> "GroupsSubsectionWidget":
+        """Build internal UI from pre-loaded groups data and return self.
+
+        Called by PeopleSection.on_groups_loaded callback after signals.loaded
+        fires.  Our _on_groups_loaded already built the cards, so just return
+        ourselves as the content widget for the QStackedWidget.
+        """
+        return self
+
     def load_groups(self):
         """Load groups data in background thread."""
         if not self.project_id:
@@ -688,10 +734,10 @@ class GroupsSubsectionWidget(QWidget):
                         )
 
                 db.close()
-                self._signals.loaded.emit(current_gen, groups)
+                self.signals.loaded.emit(current_gen, groups)
             except Exception as e:
                 logger.error(f"[GroupsSubsection] Failed to load groups: {e}")
-                self._signals.error.emit(current_gen, str(e))
+                self.signals.error.emit(current_gen, str(e))
 
         threading.Thread(target=work, daemon=True).start()
 
@@ -785,7 +831,13 @@ class GroupsSubsectionWidget(QWidget):
             return None
 
     def _on_group_clicked(self, group_id: int):
-        self.groupSelected.emit(group_id)
+        # Resolve match_mode from group data (defaults to "together")
+        match_mode = "together"
+        for g in self._groups_data:
+            if g.get("id") == group_id:
+                match_mode = g.get("match_mode", "together")
+                break
+        self.groupSelected.emit(group_id, match_mode)
 
     def _on_group_context_menu(self, group_id: int, action: str):
         if action == "rename":
@@ -793,17 +845,21 @@ class GroupsSubsectionWidget(QWidget):
         elif action == "toggle_pin":
             self._toggle_pin(group_id)
         elif action in ("edit_members", "edit"):
+            self.editGroupRequested.emit(group_id)
             self._edit_group(group_id)
         elif action in ("reindex", "recompute_together"):
+            self.recomputeRequested.emit(group_id, "together")
             self.groupReindexRequested.emit(group_id)
         elif action == "recompute_event":
-            # TODO: event-window matching not yet implemented, fall back to together
+            self.recomputeRequested.emit(group_id, "event")
             self.groupReindexRequested.emit(group_id)
         elif action == "delete":
+            self.deleteGroupRequested.emit(group_id)
             self._delete_group(group_id)
 
     def _on_create_group(self):
         """Open CreateGroupDialog."""
+        self.newGroupRequested.emit()
         dialog = CreateGroupDialog(self.project_id, parent=self)
         if dialog.exec() == QDialog.Accepted:
             result = dialog.get_result()
