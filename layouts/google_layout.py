@@ -1,5 +1,5 @@
 # layouts/google_layout.py
-# Version 10.01.01.13 dated 20260218
+# Version 10.01.01.14 dated 20260219
 # Google Photos-style layout - Timeline-based, date-grouped, minimalist design
 
 from PySide6.QtWidgets import (
@@ -1295,37 +1295,7 @@ class GooglePhotosLayout(BaseLayout):
         )
 
     def _request_load(self, **params):
-        """Coalesce load requests.
-
-        Important behavior:
-        - Callers often pass partial params (for example only thumb_size or only paths).
-          We must preserve the currently active filters unless the caller explicitly requests a reset.
-        - Use reset=True to clear all filters and reload the default "All Photos" view.
-        """
-        reset = bool(params.pop("reset", False))
-
-        if reset:
-            merged = {
-                "thumb_size": params.get("thumb_size", self.current_thumb_size),
-                "year": None,
-                "month": None,
-                "day": None,
-                "folder": None,
-                "person": None,
-                "paths": None,
-                "view_context": None,
-            }
-        else:
-            merged = {
-                "thumb_size": self.current_thumb_size,
-                "year": self.current_filter_year,
-                "month": self.current_filter_month,
-                "day": self.current_filter_day,
-                "folder": self.current_filter_folder,
-                "person": self.current_filter_person,
-                "paths": self.current_filter_paths,
-                "view_context": getattr(self, "current_view_context", None),
-            }
+        """Schedule a coalesced photo load.
 
         Multiple rapid calls (e.g. accordion expand + tab switch) are
         collapsed into a single load executed after a 50ms quiet period.
