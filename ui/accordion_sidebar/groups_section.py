@@ -47,15 +47,19 @@ class GroupsSectionSignals(QObject):
 
 
 # ======================================================================
-# GroupCard — tile widget for a single group
+# GroupCard — card widget for a single group (horizontal info-dense layout)
 # ======================================================================
 
 class GroupCard(QWidget):
     """
-    Compact card for a people group.
+    Card widget representing a single group.
 
-    Displays stacked circular avatars of members, group name,
-    and a photo count badge.
+    Horizontal layout following Google Photos / Lightroom pattern:
+    - Left: Stacked circular face avatars (or fallback icon)
+    - Center: Group name + stats row (members, photos, match mode)
+    - Right: Context menu button (⋮)
+
+    Supports stale badge, match mode display, and full context menu.
     """
 
     clicked = Signal(int)                      # group_id
@@ -64,165 +68,226 @@ class GroupCard(QWidget):
     def __init__(
         self,
         group_id: int,
-        name: str,
+        display_name: str,
         member_count: int,
-        match_count: int,
-        member_pixmaps: List[QPixmap],
+        result_count: int,
+        is_stale: bool = False,
+        member_pixmaps: Optional[List[QPixmap]] = None,
+        icon: Optional[str] = None,
+        match_mode: str = "together",
+        is_pinned: bool = False,
         cover_pixmap: Optional[QPixmap] = None,
         parent: Optional[QWidget] = None,
     ):
         super().__init__(parent)
         self.group_id = group_id
-        self.group_name = name
-        self.setFixedSize(110, 140 if cover_pixmap else 120)
+        self.group_name = display_name
+        self.display_name = display_name
+        self.member_count = member_count
+        self.result_count = result_count
+        self.is_stale = is_stale
+        self.match_mode = match_mode
+        self.is_pinned = is_pinned
+
+        self.setMinimumHeight(60)
         self.setCursor(Qt.PointingHandCursor)
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(6, 4, 6, 4)
-        layout.setSpacing(3)
-        layout.setAlignment(Qt.AlignCenter)
+        # Main layout: icon/avatars | info | menu
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(12, 8, 12, 8)
+        layout.setSpacing(12)
 
-        # Cover thumbnail (if available)
-        if cover_pixmap and not cover_pixmap.isNull():
-            cover_label = QLabel()
-            scaled = cover_pixmap.scaled(
-                96, 48, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation
-            )
-            # Crop to center
-            if scaled.width() > 96 or scaled.height() > 48:
-                x = max(0, (scaled.width() - 96) // 2)
-                y = max(0, (scaled.height() - 48) // 2)
-                scaled = scaled.copy(x, y, min(96, scaled.width()), min(48, scaled.height()))
-            cover_label.setPixmap(scaled)
-            cover_label.setAlignment(Qt.AlignCenter)
-            cover_label.setStyleSheet("border-radius: 6px;")
-            layout.addWidget(cover_label, alignment=Qt.AlignCenter)
+        # ── Left: Face avatars or fallback icon ──
+        avatar_widget = self._build_avatar_area(member_pixmaps or [], icon)
+        layout.addWidget(avatar_widget)
+
+        # ── Center: Info column ──
+        info_layout = QVBoxLayout()
+        info_layout.setSpacing(2)
+
+        # Name row with optional badges
+        name_row = QHBoxLayout()
+        name_row.setSpacing(6)
+
+        name_label = QLabel(display_name)
+        name_label.setStyleSheet("font-weight: 600; font-size: 12px; color: #202124;")
+        name_row.addWidget(name_label)
+
+        if is_pinned:
+            pin_badge = QLabel("📌")
+            pin_badge.setStyleSheet("font-size: 10px;")
+            name_row.addWidget(pin_badge)
+
+        if is_stale:
+            stale_badge = QLabel("Stale")
+            stale_badge.setStyleSheet("""
+                background: #feefc3;
+                color: #b06000;
+                font-size: 9px;
+                font-weight: 600;
+                padding: 2px 6px;
+                border-radius: 4px;
+            """)
+            name_row.addWidget(stale_badge)
+
+        name_row.addStretch()
+        info_layout.addLayout(name_row)
+
+        # Stats row
+        mode_text = "Together" if match_mode == "together" else "Same Event"
+        stats_parts = []
+        if member_count > 0:
+            stats_parts.append(f"{member_count} people")
+        if result_count >= 0:
+            stats_parts.append(f"{result_count} photos")
         else:
-            # Stacked avatars area (fallback when no cover)
-            avatar_container = QWidget()
-            avatar_container.setFixedSize(80, 48)
-            self._draw_stacked_avatars(avatar_container, member_pixmaps, member_count)
-            layout.addWidget(avatar_container, alignment=Qt.AlignCenter)
+            stats_parts.append("...")
+        stats_parts.append(mode_text)
+        stats_label = QLabel(" · ".join(stats_parts))
+        stats_label.setStyleSheet("color: #5f6368; font-size: 10px;")
+        info_layout.addWidget(stats_label)
 
-        # Group name
-        name_label = QLabel(name)
-        name_label.setAlignment(Qt.AlignCenter)
-        name_label.setWordWrap(True)
-        name_label.setMaximumHeight(30)
-        name_label.setStyleSheet("font-weight:600; font-size:11px; color:#202124;")
-        layout.addWidget(name_label)
+        layout.addLayout(info_layout, 1)
 
-        # Match count
-        count_text = f"{match_count} photos" if match_count >= 0 else "..."
-        count_label = QLabel(count_text)
-        count_label.setAlignment(Qt.AlignCenter)
-        count_label.setStyleSheet("color:#5f6368; font-size:10px;")
-        layout.addWidget(count_label)
+        # ── Right: Menu button ──
+        menu_btn = QToolButton()
+        menu_btn.setText("⋮")
+        menu_btn.setAutoRaise(True)
+        menu_btn.setFixedSize(24, 24)
+        menu_btn.setStyleSheet("""
+            QToolButton {
+                color: #5f6368;
+                font-size: 16px;
+                border: none;
+            }
+            QToolButton:hover { background: #e8eaed; border-radius: 4px; }
+        """)
+        menu_btn.clicked.connect(self._show_context_menu)
+        layout.addWidget(menu_btn)
 
-        self.setStyleSheet(
-            """
-            GroupCard { background: transparent; border-radius: 8px; }
-            GroupCard:hover { background: rgba(26,115,232,0.08); }
-            GroupCard[selected="true"] { background: rgba(26,115,232,0.12); border: 1px solid #1a73e8; }
-            """
-        )
+        # Card styling
+        self.setStyleSheet("""
+            GroupCard {
+                background: #fff;
+                border: 1px solid #e8eaed;
+                border-radius: 8px;
+            }
+            GroupCard:hover {
+                background: #f8f9fa;
+                border-color: #dadce0;
+            }
+            GroupCard[selected="true"] {
+                background: #e8f0fe;
+                border-color: #1a73e8;
+            }
+        """)
 
-    def _draw_stacked_avatars(
-        self, container: QWidget, pixmaps: List[QPixmap], total: int
-    ) -> None:
-        """Draw overlapping circular avatars (like Apple Photos Groups)."""
-        label = QLabel(container)
-        label.setFixedSize(container.size())
+    def _build_avatar_area(
+        self, pixmaps: List[QPixmap], icon: Optional[str]
+    ) -> QWidget:
+        """Build the left area: stacked face avatars or fallback emoji icon."""
+        container = QWidget()
+        container.setFixedSize(56, 44)
 
-        avatar_size = 36
-        overlap = 14  # pixels of overlap
-        max_show = min(len(pixmaps), 3)
+        if pixmaps and any(p and not p.isNull() for p in pixmaps if p):
+            # Stacked circular face avatars (Apple Photos / Google Photos style)
+            label = QLabel(container)
+            label.setFixedSize(container.size())
 
-        canvas = QPixmap(container.width(), container.height())
-        canvas.fill(Qt.transparent)
-        painter = QPainter(canvas)
-        painter.setRenderHint(QPainter.Antialiasing)
+            avatar_size = 32
+            overlap = 10
+            max_show = min(len(pixmaps), 3)
 
-        for i in range(max_show):
-            x = i * (avatar_size - overlap)
-            y = (container.height() - avatar_size) // 2
+            canvas = QPixmap(container.width(), container.height())
+            canvas.fill(Qt.transparent)
+            painter = QPainter(canvas)
+            painter.setRenderHint(QPainter.Antialiasing)
 
-            # Draw circular avatar
-            if i < len(pixmaps) and pixmaps[i] and not pixmaps[i].isNull():
-                scaled = pixmaps[i].scaled(
-                    avatar_size, avatar_size,
-                    Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation,
-                )
-                # Clip to circle
-                path = QPainterPath()
-                path.addEllipse(x, y, avatar_size, avatar_size)
-                painter.setClipPath(path)
-                painter.drawPixmap(x, y, scaled)
-                painter.setClipping(False)
-            else:
-                # Placeholder circle
-                painter.setBrush(QColor("#e8eaed"))
-                painter.setPen(QPen(QColor("#dadce0"), 1))
+            for i in range(max_show):
+                x = i * (avatar_size - overlap)
+                y = (container.height() - avatar_size) // 2
+
+                if i < len(pixmaps) and pixmaps[i] and not pixmaps[i].isNull():
+                    scaled = pixmaps[i].scaled(
+                        avatar_size, avatar_size,
+                        Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation,
+                    )
+                    path = QPainterPath()
+                    path.addEllipse(x, y, avatar_size, avatar_size)
+                    painter.setClipPath(path)
+                    painter.drawPixmap(x, y, scaled)
+                    painter.setClipping(False)
+                else:
+                    painter.setBrush(QColor("#e8eaed"))
+                    painter.setPen(QPen(QColor("#dadce0"), 1))
+                    painter.drawEllipse(x, y, avatar_size, avatar_size)
+                    painter.setPen(QColor("#5f6368"))
+                    painter.setFont(QFont("", 12))
+                    painter.drawText(x, y, avatar_size, avatar_size, Qt.AlignCenter, "?")
+
+                # White border ring
+                painter.setPen(QPen(QColor("white"), 2))
+                painter.setBrush(Qt.NoBrush)
                 painter.drawEllipse(x, y, avatar_size, avatar_size)
-                painter.setPen(QColor("#5f6368"))
-                painter.setFont(QFont("", 14))
-                painter.drawText(x, y, avatar_size, avatar_size, Qt.AlignCenter, "👤")
 
-            # White border between overlapping avatars
-            painter.setPen(QPen(QColor("white"), 2))
-            painter.setBrush(Qt.NoBrush)
-            painter.drawEllipse(x, y, avatar_size, avatar_size)
+            painter.end()
+            label.setPixmap(canvas)
+        else:
+            # Fallback: emoji icon
+            icon_label = QLabel(icon or "👥", container)
+            icon_label.setStyleSheet("font-size: 24px;")
+            icon_label.setFixedSize(container.size())
+            icon_label.setAlignment(Qt.AlignCenter)
 
-        # Badge showing total member count
-        if total > 0:
-            badge_x = max_show * (avatar_size - overlap) + 2
-            badge_y = (container.height() - 20) // 2
-            painter.setPen(Qt.NoPen)
-            painter.setBrush(QColor("#1a73e8"))
-            painter.drawRoundedRect(badge_x, badge_y, 22, 20, 10, 10)
-            painter.setPen(QColor("white"))
-            painter.setFont(QFont("", 9, QFont.Bold))
-            painter.drawText(badge_x, badge_y, 22, 20, Qt.AlignCenter, str(total))
+        return container
 
-        painter.end()
-        label.setPixmap(canvas)
-
-    def mouseReleaseEvent(self, event):
+    def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
             self.clicked.emit(self.group_id)
-        super().mouseReleaseEvent(event)
+        super().mousePressEvent(event)
 
-    def contextMenuEvent(self, event):
+    def _show_context_menu(self):
+        """Show context menu for group actions."""
         from PySide6.QtWidgets import QMenu
-        from PySide6.QtGui import QAction
 
         menu = QMenu(self)
 
-        rename_action = QAction("✏️ Rename Group", self)
-        rename_action.triggered.connect(lambda: self.context_menu_requested.emit(self.group_id, "rename"))
-        menu.addAction(rename_action)
+        edit_action = menu.addAction("✏️ Edit Group")
+        edit_action.triggered.connect(
+            lambda: self.context_menu_requested.emit(self.group_id, "edit_members")
+        )
 
-        pin_action = QAction("📌 Pin / Unpin", self)
-        pin_action.triggered.connect(lambda: self.context_menu_requested.emit(self.group_id, "toggle_pin"))
-        menu.addAction(pin_action)
+        rename_action = menu.addAction("📝 Rename")
+        rename_action.triggered.connect(
+            lambda: self.context_menu_requested.emit(self.group_id, "rename")
+        )
 
-        edit_action = QAction("👥 Edit Members", self)
-        edit_action.triggered.connect(lambda: self.context_menu_requested.emit(self.group_id, "edit_members"))
-        menu.addAction(edit_action)
-
-        menu.addSeparator()
-
-        reindex_action = QAction("🔄 Recompute Matches", self)
-        reindex_action.triggered.connect(lambda: self.context_menu_requested.emit(self.group_id, "reindex"))
-        menu.addAction(reindex_action)
+        pin_text = "📌 Unpin" if self.is_pinned else "📌 Pin to Top"
+        pin_action = menu.addAction(pin_text)
+        pin_action.triggered.connect(
+            lambda: self.context_menu_requested.emit(self.group_id, "toggle_pin")
+        )
 
         menu.addSeparator()
 
-        delete_action = QAction("🗑️ Delete Group", self)
-        delete_action.triggered.connect(lambda: self.context_menu_requested.emit(self.group_id, "delete"))
-        menu.addAction(delete_action)
+        recompute_together = menu.addAction("🔄 Recompute (Together)")
+        recompute_together.triggered.connect(
+            lambda: self.context_menu_requested.emit(self.group_id, "recompute_together")
+        )
 
-        menu.exec_(event.globalPos())
+        recompute_event = menu.addAction("🔄 Recompute (Same Event)")
+        recompute_event.triggered.connect(
+            lambda: self.context_menu_requested.emit(self.group_id, "recompute_event")
+        )
+
+        menu.addSeparator()
+
+        delete_action = menu.addAction("🗑️ Delete Group")
+        delete_action.triggered.connect(
+            lambda: self.context_menu_requested.emit(self.group_id, "delete")
+        )
+
+        menu.exec_(self.mapToGlobal(self.rect().bottomRight()))
 
 
 # ======================================================================
@@ -644,10 +709,13 @@ class GroupsSubsectionWidget(QWidget):
 
         # Build group cards
         self._cards.clear()
-        cards = []
+        scroll_content = QWidget()
+        scroll_layout = QVBoxLayout(scroll_content)
+        scroll_layout.setContentsMargins(4, 4, 4, 4)
+        scroll_layout.setSpacing(6)
 
         for g in groups:
-            # Load member thumbnails
+            # Load member face thumbnails (up to 3)
             member_pixmaps = []
             for member in g.get("members", [])[:3]:
                 pm = self._load_member_thumb(member.get("rep_thumb_png"))
@@ -656,22 +724,30 @@ class GroupsSubsectionWidget(QWidget):
             # Load cover thumbnail if available
             cover_pixmap = self._load_cover_thumb(g.get("cover_asset_path"))
 
+            # Build display name from member labels
+            member_names = [
+                m.get("display_name", m.get("branch_key", "?"))
+                for m in g.get("members", [])
+            ]
+
             card = GroupCard(
                 group_id=g["id"],
-                name=g["name"],
+                display_name=g["name"],
                 member_count=g["member_count"],
-                match_count=g.get("match_count", -1),
+                result_count=g.get("match_count", -1),
+                is_stale=False,
                 member_pixmaps=member_pixmaps,
+                match_mode="together",
+                is_pinned=g.get("is_pinned", False),
                 cover_pixmap=cover_pixmap,
             )
             card.clicked.connect(self._on_group_clicked)
             card.context_menu_requested.connect(self._on_group_context_menu)
-            cards.append(card)
+            scroll_layout.addWidget(card)
             self._cards[g["id"]] = card
 
-        grid = GroupsGrid(cards)
-        grid.attach_viewport(self._scroll.viewport())
-        self._scroll.setWidget(grid)
+        scroll_layout.addStretch()
+        self._scroll.setWidget(scroll_content)
 
     def _load_member_thumb(self, rep_thumb_png: Optional[bytes]) -> Optional[QPixmap]:
         """Load a small face thumbnail from BLOB."""
@@ -716,9 +792,12 @@ class GroupsSubsectionWidget(QWidget):
             self._rename_group(group_id)
         elif action == "toggle_pin":
             self._toggle_pin(group_id)
-        elif action == "edit_members":
+        elif action in ("edit_members", "edit"):
             self._edit_group(group_id)
-        elif action == "reindex":
+        elif action in ("reindex", "recompute_together"):
+            self.groupReindexRequested.emit(group_id)
+        elif action == "recompute_event":
+            # TODO: event-window matching not yet implemented, fall back to together
             self.groupReindexRequested.emit(group_id)
         elif action == "delete":
             self._delete_group(group_id)
@@ -839,3 +918,11 @@ class GroupsSubsectionWidget(QWidget):
         self.project_id = project_id
         self._generation += 1
         self.load_groups()
+
+
+# ======================================================================
+# Backward-compatibility alias
+# ======================================================================
+# people_section.py (and possibly other modules) import the class as
+# ``GroupsSection``.  Keep a public alias so both import paths work.
+GroupsSection = GroupsSubsectionWidget
