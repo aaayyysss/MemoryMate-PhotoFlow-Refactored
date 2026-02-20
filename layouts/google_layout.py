@@ -1296,6 +1296,7 @@ class GooglePhotosLayout(BaseLayout):
 
     def _request_load(self, **params):
         """Schedule a coalesced photo load.
+        """
 
         # Multiple rapid calls (e.g. accordion expand + tab switch) are
         # collapsed into a single load executed after a 50ms quiet period.
