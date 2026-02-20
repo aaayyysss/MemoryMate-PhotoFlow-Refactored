@@ -176,14 +176,16 @@ class FacePipelineWorker(QRunnable):
                     ORDER BY g.id, m.added_at
                 """, (self.project_id,)).fetchall()
 
-                # Also grab the image_paths per branch_key for overlap matching
+                # Grab image_paths per branch_key for overlap matching.
+                # MUST use project_images (not face_crops) because user merges
+                # only update project_images.branch_key, not face_crops.branch_key.
                 all_bks = set(r[1] for r in rows)
                 bk_image_paths = {}
                 if all_bks:
                     placeholders = ','.join(['?'] * len(all_bks))
                     img_rows = conn.execute(f"""
                         SELECT DISTINCT branch_key, image_path
-                        FROM face_crops
+                        FROM project_images
                         WHERE project_id = ? AND branch_key IN ({placeholders})
                     """, (self.project_id, *all_bks)).fetchall()
                     for bk, img in img_rows:
@@ -238,11 +240,12 @@ class FacePipelineWorker(QRunnable):
                 crop_to_branch = {r[0]: r[1] for r in cur.fetchall()}
 
                 # Strategy 2 prep: build new branch_key → {image_paths} for
-                # overlap matching when crop_path doesn't match exactly
+                # overlap matching when crop_path doesn't match exactly.
+                # Uses project_images (consistent with snapshot source).
                 cur.execute("""
                     SELECT branch_key, image_path
-                    FROM face_crops
-                    WHERE project_id = ? AND branch_key IS NOT NULL
+                    FROM project_images
+                    WHERE project_id = ? AND branch_key LIKE 'face_%'
                 """, (self.project_id,))
                 new_bk_images = {}
                 for bk, img in cur.fetchall():
@@ -254,8 +257,11 @@ class FacePipelineWorker(QRunnable):
 
                 for group_id, members in snapshot.items():
                     for old_bk, rep_path, old_image_paths in members:
+                        strategy = None
                         # Strategy 1: exact crop_path match
                         new_bk = crop_to_branch.get(rep_path) if rep_path else None
+                        if new_bk:
+                            strategy = "crop_path"
 
                         # Strategy 2: image overlap
                         if not new_bk and old_image_paths:
@@ -269,12 +275,15 @@ class FacePipelineWorker(QRunnable):
                                     best_bk = nbk
                             if best_bk and best_overlap > 0:
                                 new_bk = best_bk
+                                strategy = f"image_overlap({best_overlap}/{len(old_imgs)})"
 
                         if not new_bk:
                             total_lost += 1
-                            logger.debug(
-                                "[FacePipelineWorker] Group %d: lost member %s (no match)",
+                            logger.info(
+                                "[FacePipelineWorker] Group %d: LOST member %s "
+                                "(rep_path=%s, images=%d)",
                                 group_id, old_bk,
+                                bool(rep_path), len(old_image_paths),
                             )
                             continue
 
@@ -289,9 +298,9 @@ class FacePipelineWorker(QRunnable):
                             WHERE group_id = ? AND branch_key = ?
                         """, (new_bk, group_id, old_bk))
                         total_remapped += 1
-                        logger.debug(
-                            "[FacePipelineWorker] Group %d: %s → %s",
-                            group_id, old_bk, new_bk,
+                        logger.info(
+                            "[FacePipelineWorker] Group %d: %s → %s (%s)",
+                            group_id, old_bk, new_bk, strategy,
                         )
 
                 conn.commit()

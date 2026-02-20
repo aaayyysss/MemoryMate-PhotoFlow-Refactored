@@ -258,7 +258,7 @@ class ThumbCacheDB:
                 # check file size on disk
                 size_mb = os.path.getsize(self.db_path) / (1024 * 1024)
                 if size_mb > MAX_CACHE_MB:
-                    print(f"[ThumbCacheDB] 🚮 Auto-purging: cache {size_mb:.1f} MB > limit {MAX_CACHE_MB} MB")
+                    print(f"[ThumbCacheDB] Auto-purging: cache {size_mb:.1f} MB > limit {MAX_CACHE_MB} MB")
                     self.purge_stale(max_age_days=7)
                 # weekly cleanup
                 if time.time() - last_run > PURGE_INTERVAL_DAYS * 86400:
@@ -266,7 +266,11 @@ class ThumbCacheDB:
                     last_run = time.time()
             except Exception as e:
                 print(f"[ThumbCacheDB] Auto-purge thread error: {e}")
-            self._stop_event.wait(timeout=6 * 3600)
+            try:
+                self._stop_event.wait(timeout=6 * 3600)
+            except (OSError, TypeError, AttributeError):
+                # Event object may be torn down during interpreter shutdown
+                break
 
     def __del__(self):
         try:
