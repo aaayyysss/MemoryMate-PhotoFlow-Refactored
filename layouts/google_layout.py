@@ -2136,7 +2136,9 @@ class GooglePhotosLayout(BaseLayout):
                     self.main_window,
                     "No Photos Found",
                     "No photos found where all group members appear together.\n\n"
-                    "This group might need to be re-indexed."    
+                    "Try: Right-click the group → Recompute (Together).\n"
+                    "If faces were recently re-scanned, group members may need "
+                    "to be updated."
                 )
 
                 # Reset group state

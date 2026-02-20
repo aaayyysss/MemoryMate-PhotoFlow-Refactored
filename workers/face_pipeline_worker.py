@@ -148,6 +148,207 @@ class FacePipelineWorker(QRunnable):
         finally:
             db.close()
 
+    # ── Group member remapping (Google/Apple stable-identity pattern) ──
+
+    def _snapshot_group_members(self) -> dict:
+        """Snapshot group member identities BEFORE clearing old clusters.
+
+        For each group member's branch_key, saves:
+        1. rep_path from face_branch_reps (crop file path — Strategy 1 anchor)
+        2. image_paths from face_crops (photos containing this person — Strategy 2 anchor)
+
+        Returns:
+            dict: {group_id: [(old_branch_key, rep_path, [image_paths]), ...]}
+        """
+        from reference_db import ReferenceDB
+
+        db = ReferenceDB()
+        try:
+            with db._connect() as conn:
+                # Get all active groups with their members and rep_paths
+                rows = conn.execute("""
+                    SELECT g.id, m.branch_key, r.rep_path
+                    FROM person_groups g
+                    JOIN person_group_members m ON m.group_id = g.id
+                    LEFT JOIN face_branch_reps r
+                        ON r.branch_key = m.branch_key AND r.project_id = g.project_id
+                    WHERE g.project_id = ? AND g.is_deleted = 0
+                    ORDER BY g.id, m.added_at
+                """, (self.project_id,)).fetchall()
+
+                # Also grab the image_paths per branch_key for overlap matching
+                all_bks = set(r[1] for r in rows)
+                bk_image_paths = {}
+                if all_bks:
+                    placeholders = ','.join(['?'] * len(all_bks))
+                    img_rows = conn.execute(f"""
+                        SELECT DISTINCT branch_key, image_path
+                        FROM face_crops
+                        WHERE project_id = ? AND branch_key IN ({placeholders})
+                    """, (self.project_id, *all_bks)).fetchall()
+                    for bk, img in img_rows:
+                        bk_image_paths.setdefault(bk, []).append(img)
+
+                snapshot = {}
+                for group_id, branch_key, rep_path in rows:
+                    if group_id not in snapshot:
+                        snapshot[group_id] = []
+                    image_paths = bk_image_paths.get(branch_key, [])
+                    snapshot[group_id].append((branch_key, rep_path, image_paths))
+
+                if snapshot:
+                    logger.info(
+                        "[FacePipelineWorker] Snapshot: %d groups with %d total members",
+                        len(snapshot), sum(len(v) for v in snapshot.values()),
+                    )
+                return snapshot
+        except Exception as e:
+            logger.warning("[FacePipelineWorker] Snapshot failed (groups will need manual recompute): %s", e)
+            return {}
+        finally:
+            db.close()
+
+    def _remap_group_members(self, snapshot: dict) -> None:
+        """Remap group member branch_keys to new clusters AFTER re-clustering.
+
+        Strategy (most-specific to least-specific):
+        1. Exact crop_path match: old rep_path found in new face_crops → direct mapping
+        2. Image overlap match: find the new branch_key whose faces share the
+           most images with the old branch_key's snapshot of image_paths
+
+        This implements the Google/Apple pattern where person groups survive
+        re-clustering with stable identity tracking.
+        """
+        if not snapshot:
+            return
+
+        from reference_db import ReferenceDB
+
+        db = ReferenceDB()
+        try:
+            with db._connect() as conn:
+                cur = conn.cursor()
+
+                # Strategy 1: crop_path → new_branch_key
+                cur.execute("""
+                    SELECT crop_path, branch_key
+                    FROM face_crops
+                    WHERE project_id = ? AND branch_key IS NOT NULL
+                """, (self.project_id,))
+                crop_to_branch = {r[0]: r[1] for r in cur.fetchall()}
+
+                # Strategy 2 prep: build new branch_key → {image_paths} for
+                # overlap matching when crop_path doesn't match exactly
+                cur.execute("""
+                    SELECT branch_key, image_path
+                    FROM face_crops
+                    WHERE project_id = ? AND branch_key IS NOT NULL
+                """, (self.project_id,))
+                new_bk_images = {}
+                for bk, img in cur.fetchall():
+                    new_bk_images.setdefault(bk, set()).add(img)
+
+                total_remapped = 0
+                total_unchanged = 0
+                total_lost = 0
+
+                for group_id, members in snapshot.items():
+                    for old_bk, rep_path, old_image_paths in members:
+                        # Strategy 1: exact crop_path match
+                        new_bk = crop_to_branch.get(rep_path) if rep_path else None
+
+                        # Strategy 2: image overlap
+                        if not new_bk and old_image_paths:
+                            old_imgs = set(old_image_paths)
+                            best_bk = None
+                            best_overlap = 0
+                            for nbk, nimg_set in new_bk_images.items():
+                                overlap = len(old_imgs & nimg_set)
+                                if overlap > best_overlap:
+                                    best_overlap = overlap
+                                    best_bk = nbk
+                            if best_bk and best_overlap > 0:
+                                new_bk = best_bk
+
+                        if not new_bk:
+                            total_lost += 1
+                            logger.debug(
+                                "[FacePipelineWorker] Group %d: lost member %s (no match)",
+                                group_id, old_bk,
+                            )
+                            continue
+
+                        if new_bk == old_bk:
+                            total_unchanged += 1
+                            continue
+
+                        # Update the group member to point to new branch_key
+                        cur.execute("""
+                            UPDATE person_group_members
+                            SET branch_key = ?
+                            WHERE group_id = ? AND branch_key = ?
+                        """, (new_bk, group_id, old_bk))
+                        total_remapped += 1
+                        logger.debug(
+                            "[FacePipelineWorker] Group %d: %s → %s",
+                            group_id, old_bk, new_bk,
+                        )
+
+                conn.commit()
+
+                logger.info(
+                    "[FacePipelineWorker] Group remap: %d remapped, "
+                    "%d unchanged, %d lost",
+                    total_remapped, total_unchanged, total_lost,
+                )
+        except Exception as e:
+            logger.warning("[FacePipelineWorker] Group remap failed: %s", e)
+        finally:
+            db.close()
+
+    def _recompute_all_groups(self) -> None:
+        """Recompute match results for all active groups after re-clustering.
+
+        Google/Apple pattern: group match results are automatically refreshed
+        when the underlying face data changes.
+        """
+        from reference_db import ReferenceDB
+
+        db = ReferenceDB()
+        try:
+            with db._connect() as conn:
+                rows = conn.execute("""
+                    SELECT id FROM person_groups
+                    WHERE project_id = ? AND is_deleted = 0
+                """, (self.project_id,)).fetchall()
+                group_ids = [r[0] for r in rows]
+        except Exception as e:
+            logger.warning("[FacePipelineWorker] Failed to list groups: %s", e)
+            return
+        finally:
+            db.close()
+
+        if not group_ids:
+            return
+
+        logger.info("[FacePipelineWorker] Recomputing %d groups after re-clustering", len(group_ids))
+
+        try:
+            from services.people_group_service import PeopleGroupService
+
+            db = ReferenceDB()
+            service = PeopleGroupService(db)
+            for gid in group_ids:
+                try:
+                    result = service.compute_together_matches(self.project_id, gid)
+                    count = result.get("match_count", 0) if result else 0
+                    logger.info("[FacePipelineWorker] Group %d: %d matches", gid, count)
+                except Exception as ge:
+                    logger.warning("[FacePipelineWorker] Group %d recompute failed: %s", gid, ge)
+            db.close()
+        except Exception as e:
+            logger.warning("[FacePipelineWorker] Group recompute failed: %s", e)
+
     # ── Progressive clustering ────────────────────────────────────
 
     def _should_run_interim_cluster(self, faces_so_far: int) -> bool:
@@ -251,7 +452,15 @@ class FacePipelineWorker(QRunnable):
             "errors": [],
         }
 
-        # ── Step 0: Clear stale face data from previous runs ──────
+        # ── Step 0a: Snapshot group member identities before clearing ──
+        # Google/Apple pattern: groups survive re-clustering via identity anchors
+        group_snapshot = {}
+        try:
+            group_snapshot = self._snapshot_group_members()
+        except Exception as e:
+            logger.warning("[FacePipelineWorker] Group snapshot warning: %s", e)
+
+        # ── Step 0b: Clear stale face data from previous runs ──────
         if self._cancelled:
             self.signals.finished.emit(results)
             return
@@ -429,5 +638,15 @@ class FacePipelineWorker(QRunnable):
         except Exception as e:
             logger.error("[FacePipelineWorker] Clustering failed: %s", e, exc_info=True)
             results["errors"].append(f"Clustering: {e}")
+
+        # ── Step 3: Remap group members + recompute matches ────────
+        # Google/Apple pattern: groups survive re-clustering automatically
+        if group_snapshot and not self._cancelled:
+            self.signals.progress.emit("group_remap", "Updating groups after re-clustering...")
+            try:
+                self._remap_group_members(group_snapshot)
+                self._recompute_all_groups()
+            except Exception as e:
+                logger.warning("[FacePipelineWorker] Group remap/recompute failed: %s", e)
 
         self.signals.finished.emit(results)
