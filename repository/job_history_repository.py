@@ -98,11 +98,15 @@ class JobHistoryRepository:
     def update_progress(self, *, job_id: str, progress: float) -> None:
         """Update the progress fraction (0.0 – 1.0) for a running job.
 
-        Includes a single retry with short sleep to handle transient
-        'database is locked' errors under concurrent pipeline workloads.
+        Retries with exponential backoff to handle transient 'database is
+        locked' errors when face-clustering or other workers hold long
+        write transactions.
         """
         import sqlite3 as _sqlite3
-        for attempt in range(2):
+        import time as _time
+
+        backoff = [0.2, 0.5, 1.0, 2.0]  # 4 retries, up to ~3.7s total wait
+        for attempt in range(len(backoff) + 1):
             try:
                 with self._db.get_connection() as conn:
                     conn.execute(
@@ -112,10 +116,9 @@ class JobHistoryRepository:
                     conn.commit()
                 return
             except _sqlite3.OperationalError:
-                if attempt == 0:
-                    import time as _time
-                    _time.sleep(0.1)
-                # Second attempt failure is swallowed by caller (JobManager)
+                if attempt < len(backoff):
+                    _time.sleep(backoff[attempt])
+                # Final attempt failure is swallowed by caller (JobManager)
 
     def finish(
         self,

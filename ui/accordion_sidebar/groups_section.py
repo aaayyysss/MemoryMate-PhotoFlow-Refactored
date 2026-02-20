@@ -473,6 +473,13 @@ class GroupsSection(BaseSection):
         scroll_layout.setSpacing(6)
 
         for g in groups:
+            # Load member face thumbnails from rep_paths (max 3)
+            member_pixmaps = []
+            for rep_path in g.get("member_rep_paths", []):
+                pix = self._load_rep_thumbnail(rep_path)
+                if pix:
+                    member_pixmaps.append(pix)
+
             card = GroupCard(
                 group_id=g["id"],
                 display_name=g.get("name", g.get("display_name", "Group")),
@@ -481,6 +488,7 @@ class GroupsSection(BaseSection):
                 is_stale=g.get("is_stale", False),
                 match_mode=g.get("match_mode", "together"),
                 is_pinned=g.get("is_pinned", False),
+                member_pixmaps=member_pixmaps if member_pixmaps else None,
             )
             card.clicked.connect(self._on_group_clicked)
             card.context_menu_requested.connect(self._on_group_context_menu)
@@ -608,6 +616,23 @@ class GroupsSection(BaseSection):
         for gid, card in self._cards.items():
             if isValid(card):
                 card.setVisible(ft in card.group_name.lower() if ft else True)
+
+    @staticmethod
+    def _load_rep_thumbnail(rep_path: str) -> 'Optional[QPixmap]':
+        """Load a face crop thumbnail from disk path for GroupCard avatar."""
+        import os
+        if not rep_path or not os.path.exists(rep_path):
+            return None
+        try:
+            from PySide6.QtGui import QImage
+            img = QImage(rep_path)
+            if img.isNull():
+                return None
+            if img.width() > 64 or img.height() > 64:
+                img = img.scaled(64, 64, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            return QPixmap.fromImage(img)
+        except Exception:
+            return None
 
 
 # ======================================================================

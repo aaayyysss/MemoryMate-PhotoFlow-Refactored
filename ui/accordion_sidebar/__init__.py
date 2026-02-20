@@ -818,12 +818,12 @@ class AccordionSidebar(QWidget):
         self.selectGroup.emit(group_id, match_mode)
 
     def _on_new_group_requested(self):
-        """Handle new group creation request."""
+        """Handle new group creation request using the unified CreateGroupDialog."""
         logger.info("[AccordionSidebar] New group requested")
         try:
-            from ui.dialogs.new_group_dialog import NewGroupDialog
+            from ui.create_group_dialog import CreateGroupDialog
 
-            dialog = NewGroupDialog(project_id=self.project_id, db=self.db, parent=self)
+            dialog = CreateGroupDialog(project_id=self.project_id, parent=self)
             dialog.groupCreated.connect(self._on_group_created)
             dialog.exec_()
 

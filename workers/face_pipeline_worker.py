@@ -27,8 +27,11 @@ from logging_config import get_logger
 logger = get_logger(__name__)
 
 # ── Progressive clustering thresholds ─────────────────────────────
-_FIRST_INTERIM_THRESHOLD = 50    # faces before first interim cluster
-_SUBSEQUENT_INTERVAL = 200       # faces between subsequent interim clusters
+# Google/Apple/Lightroom pattern: show faces early, refine as more arrive.
+# First interim at 20 faces so users see results quickly, then every 100
+# faces with a 10-second minimum gap to avoid excessive recluster churn.
+_FIRST_INTERIM_THRESHOLD = 20    # faces before first interim cluster
+_SUBSEQUENT_INTERVAL = 100       # faces between subsequent interim clusters
 _MIN_INTERIM_GAP_S = 10.0        # minimum seconds between interim clusters
 
 
