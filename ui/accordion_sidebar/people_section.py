@@ -426,6 +426,9 @@ class PeopleSection(BaseSection):
             # Trigger data load; when loaded, build content and swap into stack
             def on_groups_loaded(gen, data):
                 try:
+                    # Discard stale results (e.g. rapid project switches)
+                    if gen != gs._generation:
+                        return
                     content = gs.create_content_widget(data)
                     if content:
                         old = stack.widget(1)

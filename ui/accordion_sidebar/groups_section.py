@@ -1,21 +1,18 @@
 # ui/accordion_sidebar/groups_section.py
 # Groups sub-section under People - user-defined groups of face clusters
 #
-# Follows the same widget patterns as PeopleSection (PersonCard, PeopleGrid)
-# but displays group tiles instead of individual person cards.
+# Architecture: Extends BaseSection (QObject) with signal-only context menu.
+# create_content_widget() builds a FRESH QWidget each call (not self).
+# AccordionSidebar handles group CRUD via its own handlers.
 
-import io
 import logging
 import threading
-import time
 from typing import Optional, List, Dict, Any
 
-from PySide6.QtCore import Signal, Qt, QObject, QSize, QPoint, QEvent
+from PySide6.QtCore import Signal, Qt, QObject
 from PySide6.QtGui import QPixmap, QImage, QPainter, QPainterPath, QPen, QColor, QFont
 from PySide6.QtWidgets import (
-    QApplication,
     QDialog,
-    QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -23,7 +20,6 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QPushButton,
     QScrollArea,
-    QSizePolicy,
     QToolButton,
     QVBoxLayout,
     QWidget,
@@ -32,6 +28,7 @@ from shiboken6 import isValid
 
 from reference_db import ReferenceDB
 from translation_manager import tr
+from .base_section import BaseSection
 
 logger = logging.getLogger(__name__)
 
@@ -57,9 +54,7 @@ class GroupCard(QWidget):
     Horizontal layout following Google Photos / Lightroom pattern:
     - Left: Stacked circular face avatars (or fallback icon)
     - Center: Group name + stats row (members, photos, match mode)
-    - Right: Context menu button (⋮)
-
-    Supports stale badge, match mode display, and full context menu.
+    - Right: Context menu button
     """
 
     clicked = Signal(int)                      # group_id
@@ -97,11 +92,11 @@ class GroupCard(QWidget):
         layout.setContentsMargins(12, 8, 12, 8)
         layout.setSpacing(12)
 
-        # ── Left: Face avatars or fallback icon ──
+        # Left: Face avatars or fallback icon
         avatar_widget = self._build_avatar_area(member_pixmaps or [], icon)
         layout.addWidget(avatar_widget)
 
-        # ── Center: Info column ──
+        # Center: Info column
         info_layout = QVBoxLayout()
         info_layout.setSpacing(2)
 
@@ -149,7 +144,7 @@ class GroupCard(QWidget):
 
         layout.addLayout(info_layout, 1)
 
-        # ── Right: Menu button ──
+        # Right: Menu button
         menu_btn = QToolButton()
         menu_btn.setText("⋮")
         menu_btn.setAutoRaise(True)
@@ -291,60 +286,328 @@ class GroupCard(QWidget):
 
 
 # ======================================================================
-# GroupsGrid — responsive grid of GroupCards
+# GroupsSection — BaseSection subclass for Groups sub-tab under People
 # ======================================================================
 
-class GroupsGrid(QWidget):
-    """Grid that automatically recalculates columns based on available width."""
+class GroupsSection(BaseSection):
+    """
+    Groups sub-section displayed under People > Groups tab.
 
-    def __init__(self, cards: List[GroupCard], parent: Optional[QWidget] = None):
+    Architecture:
+    - Extends BaseSection (QObject) — NOT QWidget
+    - create_content_widget(data) returns a FRESH QWidget each call
+    - Context menu emits signals only — AccordionSidebar handles CRUD
+    - Simple ops (rename, pin) handled internally
+
+    Signal contract (consumed by PeopleSection → AccordionSidebar):
+        groupSelected(int, str)      — (group_id, match_mode)
+        newGroupRequested()          — user clicked "+ New Group"
+        editGroupRequested(int)      — (group_id)
+        deleteGroupRequested(int)    — (group_id)
+        recomputeRequested(int, str) — (group_id, match_mode)
+    """
+
+    # Signals forwarded through PeopleSection → AccordionSidebar → GoogleLayout
+    groupSelected = Signal(int, str)        # (group_id, match_mode)
+    newGroupRequested = Signal()
+    editGroupRequested = Signal(int)
+    deleteGroupRequested = Signal(int)
+    recomputeRequested = Signal(int, str)   # (group_id, match_mode)
+
+    def __init__(self, parent=None):
         super().__init__(parent)
-        self.cards = cards
-        self._card_width = cards[0].sizeHint().width() if cards else 110
-        self._columns = 0
-        self._viewport = None
-        self._layout = QGridLayout(self)
-        self._layout.setContentsMargins(6, 6, 6, 6)
-        self._layout.setHorizontalSpacing(8)
-        self._layout.setVerticalSpacing(8)
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-        self._relayout(force=True)
+        self.signals = GroupsSectionSignals()
+        self.signals.loaded.connect(self._on_data_loaded)
 
-    def attach_viewport(self, viewport: QWidget) -> None:
-        if not viewport:
-            return
-        self._viewport = viewport
-        viewport.installEventFilter(self)
-        self._relayout(force=True)
+        self._groups_data: List[Dict] = []
+        self._cards: Dict[int, GroupCard] = {}
+        self._active_group_id: int = -1
 
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        self._relayout()
+    # --- BaseSection abstract methods ---
 
-    def eventFilter(self, obj, event):
-        if obj is self._viewport and event.type() == QEvent.Resize:
-            self._relayout(force=True)
-        return super().eventFilter(obj, event)
+    def get_section_id(self) -> str:
+        return "groups"
 
-    def _relayout(self, force: bool = False):
-        margins = self._layout.contentsMargins()
-        base_width = self._viewport.width() if self._viewport else self.width()
-        available_width = max(base_width - margins.left() - margins.right(), 0)
-        spacing = self._layout.horizontalSpacing() or 0
-        columns = max(1, int(available_width / (self._card_width + spacing)) if (self._card_width + spacing) > 0 else 1)
+    def get_title(self) -> str:
+        return "Groups"
 
-        if not force and columns == self._columns:
+    def get_icon(self) -> str:
+        return "👥"
+
+    def load_section(self) -> None:
+        """Load groups data in a background thread."""
+        if not self.project_id:
+            logger.warning("[GroupsSection] No project_id set")
             return
 
-        self._columns = columns
+        self._generation += 1
+        current_gen = self._generation
+        self._loading = True
 
-        while self._layout.count():
-            self._layout.takeAt(0)
+        logger.info(f"[GroupsSection] Loading groups (generation {current_gen})...")
 
-        for idx, card in enumerate(self.cards):
-            row = idx // columns
-            col = idx % columns
-            self._layout.addWidget(card, row, col)
+        def work():
+            try:
+                from services.people_group_service import PeopleGroupService
+                db = ReferenceDB()
+                service = PeopleGroupService(db)
+                groups = service.get_all_groups(self.project_id)
+                db.close()
+                self.signals.loaded.emit(current_gen, groups)
+            except Exception as e:
+                logger.error(f"[GroupsSection] Load failed: {e}")
+                self.signals.error.emit(current_gen, str(e))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def create_content_widget(self, data) -> Optional[QWidget]:
+        """
+        Build a FRESH QWidget from loaded groups data.
+
+        Returns a new widget each call — never returns self.
+        Called by PeopleSection._ensure_groups_tab on_groups_loaded callback.
+        """
+        groups: List[Dict] = data if data else []
+        self._groups_data = groups
+        self._cards.clear()
+
+        container = QWidget()
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(8)
+
+        if not groups:
+            # === Empty state with CTA ===
+            empty = QWidget()
+            empty_layout = QVBoxLayout(empty)
+            empty_layout.setAlignment(Qt.AlignCenter)
+            empty_layout.setSpacing(12)
+
+            icon_label = QLabel("👥")
+            icon_label.setAlignment(Qt.AlignCenter)
+            icon_label.setStyleSheet("font-size: 48px;")
+            empty_layout.addWidget(icon_label)
+
+            text_label = QLabel(
+                "No groups yet.\n"
+                "Create a group to find photos\n"
+                "where people appear together."
+            )
+            text_label.setAlignment(Qt.AlignCenter)
+            text_label.setWordWrap(True)
+            text_label.setStyleSheet("color: #5f6368; font-size: 11pt;")
+            empty_layout.addWidget(text_label)
+
+            create_btn = QPushButton("➕ Create New Group")
+            create_btn.setCursor(Qt.PointingHandCursor)
+            create_btn.setStyleSheet("""
+                QPushButton {
+                    padding: 10px 20px; border: none; border-radius: 8px;
+                    background: #1a73e8; color: white; font-weight: 600;
+                    font-size: 11pt;
+                }
+                QPushButton:hover { background: #1557b0; }
+            """)
+            create_btn.clicked.connect(self.newGroupRequested.emit)
+            empty_layout.addWidget(create_btn, alignment=Qt.AlignCenter)
+
+            layout.addStretch()
+            layout.addWidget(empty)
+            layout.addStretch()
+            return container
+
+        # === Has groups: header + search + card list ===
+
+        # Header row: "+ New Group" button + count
+        header = QWidget()
+        header_layout = QHBoxLayout(header)
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setSpacing(8)
+
+        btn_new = QPushButton("+ New Group")
+        btn_new.setCursor(Qt.PointingHandCursor)
+        btn_new.setStyleSheet("""
+            QPushButton {
+                padding: 6px 14px; border: 1px solid #1a73e8;
+                border-radius: 6px; background: #1a73e8;
+                color: white; font-weight: 600; font-size: 10pt;
+            }
+            QPushButton:hover { background: #1557b0; }
+        """)
+        btn_new.clicked.connect(self.newGroupRequested.emit)
+        header_layout.addWidget(btn_new)
+
+        header_layout.addStretch()
+
+        count_label = QLabel(
+            f"{len(groups)} group{'s' if len(groups) != 1 else ''}"
+        )
+        count_label.setStyleSheet("color: #5f6368; font-size: 9pt;")
+        header_layout.addWidget(count_label)
+
+        layout.addWidget(header)
+
+        # Search bar
+        search_input = QLineEdit()
+        search_input.setPlaceholderText("Search groups...")
+        search_input.setClearButtonEnabled(True)
+        search_input.setStyleSheet("""
+            QLineEdit {
+                padding: 6px 10px; border: 1px solid #dadce0;
+                border-radius: 6px; background: #fff; font-size: 10pt;
+            }
+            QLineEdit:focus { border-color: #1a73e8; }
+        """)
+        search_input.textChanged.connect(self._on_search_changed)
+        layout.addWidget(search_input)
+
+        # Scroll area with group cards
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setFrameShape(QScrollArea.NoFrame)
+
+        scroll_content = QWidget()
+        scroll_layout = QVBoxLayout(scroll_content)
+        scroll_layout.setContentsMargins(4, 4, 4, 4)
+        scroll_layout.setSpacing(6)
+
+        for g in groups:
+            card = GroupCard(
+                group_id=g["id"],
+                display_name=g.get("name", g.get("display_name", "Group")),
+                member_count=g.get("member_count", 0),
+                result_count=g.get("result_count", -1),
+                is_stale=g.get("is_stale", False),
+                match_mode=g.get("match_mode", "together"),
+                is_pinned=g.get("is_pinned", False),
+            )
+            card.clicked.connect(self._on_group_clicked)
+            card.context_menu_requested.connect(self._on_group_context_menu)
+
+            # Apply active highlight
+            if g["id"] == self._active_group_id:
+                card.setProperty("selected", True)
+
+            scroll_layout.addWidget(card)
+            self._cards[g["id"]] = card
+
+        scroll_layout.addStretch()
+        scroll.setWidget(scroll_content)
+        layout.addWidget(scroll, 1)
+
+        return container
+
+    # --- Group interaction handlers ---
+
+    def _on_group_clicked(self, group_id: int):
+        """Handle group click with toggle-selection behavior."""
+        if group_id == self._active_group_id:
+            # Click again to deselect
+            self._active_group_id = -1
+            self.groupSelected.emit(-1, "")
+        else:
+            self._active_group_id = group_id
+            match_mode = "together"
+            for g in self._groups_data:
+                if g.get("id") == group_id:
+                    match_mode = g.get("match_mode", "together")
+                    break
+            self.groupSelected.emit(group_id, match_mode)
+
+        # Update visual state on all cards
+        for gid, card in self._cards.items():
+            if isValid(card):
+                card.setProperty("selected", gid == self._active_group_id)
+                card.style().unpolish(card)
+                card.style().polish(card)
+
+    def _on_group_context_menu(self, group_id: int, action: str):
+        """Route context menu actions.
+
+        Signal-only for CRUD (AccordionSidebar handles the logic).
+        Internal handling for simple ops (rename, pin toggle).
+        """
+        if action in ("edit_members", "edit"):
+            self.editGroupRequested.emit(group_id)
+        elif action == "delete":
+            self.deleteGroupRequested.emit(group_id)
+        elif action in ("reindex", "recompute_together"):
+            self.recomputeRequested.emit(group_id, "together")
+        elif action == "recompute_event":
+            self.recomputeRequested.emit(group_id, "event_window")
+        elif action == "rename":
+            self._rename_group(group_id)
+        elif action == "toggle_pin":
+            self._toggle_pin(group_id)
+
+    # --- Simple internal operations (no AccordionSidebar handler needed) ---
+
+    def _rename_group(self, group_id: int):
+        """Rename a group via input dialog."""
+        from PySide6.QtWidgets import QInputDialog
+
+        current_name = ""
+        for g in self._groups_data:
+            if g["id"] == group_id:
+                current_name = g.get("name", "")
+                break
+
+        parent_widget = self.parent()
+        if not isinstance(parent_widget, QWidget):
+            parent_widget = None
+
+        new_name, ok = QInputDialog.getText(
+            parent_widget, "Rename Group", "New name:", text=current_name
+        )
+        if ok and new_name.strip():
+            try:
+                from services.group_service import GroupService
+                db = ReferenceDB()
+                GroupService.update_group(db, group_id, name=new_name.strip())
+                db.close()
+                self.load_section()  # Refresh list
+            except Exception as e:
+                logger.error(f"[GroupsSection] Rename failed: {e}")
+
+    def _toggle_pin(self, group_id: int):
+        """Toggle pinned state."""
+        try:
+            from services.group_service import GroupService
+            current_pinned = False
+            for g in self._groups_data:
+                if g["id"] == group_id:
+                    current_pinned = g.get("is_pinned", False)
+                    break
+
+            db = ReferenceDB()
+            GroupService.update_group(db, group_id, is_pinned=not current_pinned)
+            db.close()
+            self.load_section()  # Refresh list
+        except Exception as e:
+            logger.error(f"[GroupsSection] Pin toggle failed: {e}")
+
+    # --- Public helpers ---
+
+    def set_active_group(self, group_id: int):
+        """Highlight a group card externally (e.g., from GoogleLayout selection)."""
+        self._active_group_id = group_id
+        for gid, card in self._cards.items():
+            if isValid(card):
+                card.setProperty("selected", gid == group_id)
+                card.style().unpolish(card)
+                card.style().polish(card)
+
+    def set_db(self, db):
+        """Accept a DB reference (no-op — per-thread instances used)."""
+        pass
+
+    def _on_search_changed(self, text: str):
+        """Filter group cards by name."""
+        ft = text.strip().lower()
+        for gid, card in self._cards.items():
+            if isValid(card):
+                card.setVisible(ft in card.group_name.lower() if ft else True)
 
 
 # ======================================================================
@@ -585,410 +848,93 @@ class CreateGroupDialog(QDialog):
 
 
 # ======================================================================
-# GroupsSubsectionWidget — the main widget shown under People > Groups
+# GroupsSubsectionWidget — legacy QWidget wrapper for accordion_sidebar.py
 # ======================================================================
 
 class GroupsSubsectionWidget(QWidget):
     """
-    Widget displayed when the user switches to the Groups tab
-    within the People section.
+    Legacy QWidget wrapper around GroupsSection.
 
-    Provides:
-    - "+ New Group" button
-    - List/grid of existing groups
-    - Search filter
-    - Click → emits groupSelected(group_id, match_mode)
+    Used by the legacy accordion_sidebar.py (SidebarQt / CurrentLayout)
+    which expects a QWidget that can be added directly to a QStackedWidget.
 
-    Signal contract (consumed by PeopleSection._ensure_groups_tab):
-        groupSelected(int, str)      — (group_id, match_mode)
-        newGroupRequested()          — user clicked "+ New Group"
-        editGroupRequested(int)      — (group_id)
-        deleteGroupRequested(int)    — (group_id)
-        recomputeRequested(int, str) — (group_id, match_mode)
-
-    Legacy signals (consumed by accordion_sidebar.py _build_people_grid):
-        groupCreated(int)            — new group_id
-        groupDeleted(int)            — deleted group_id
-        groupUpdated(int)            — updated group_id
-        groupReindexRequested(int)   — group_id to reindex
+    The modular path (PeopleSection in ui/accordion_sidebar/) uses
+    GroupsSection (BaseSection) directly.
     """
 
-    # Signals expected by PeopleSection._ensure_groups_tab
-    groupSelected = Signal(int, str)        # (group_id, match_mode)
-    newGroupRequested = Signal()            # user wants to create a group
-    editGroupRequested = Signal(int)        # (group_id)
-    deleteGroupRequested = Signal(int)      # (group_id)
-    recomputeRequested = Signal(int, str)   # (group_id, match_mode)
+    # Legacy signals (accordion_sidebar.py connects these)
+    groupSelected = Signal(int, str)
+    groupCreated = Signal(int)
+    groupDeleted = Signal(int)
+    groupUpdated = Signal(int)
+    groupReindexRequested = Signal(int)
 
-    # Legacy signals for accordion_sidebar.py backward compat
-    groupCreated = Signal(int)              # new group_id
-    groupDeleted = Signal(int)              # deleted group_id
-    groupUpdated = Signal(int)              # updated group_id
-    groupReindexRequested = Signal(int)     # group_id to reindex
+    # New signals (for forward compat if legacy sidebar is upgraded)
+    newGroupRequested = Signal()
+    editGroupRequested = Signal(int)
+    deleteGroupRequested = Signal(int)
+    recomputeRequested = Signal(int, str)
 
     def __init__(self, project_id=0, parent: Optional[QWidget] = None):
-        # Handle PeopleSection calling GroupsSection(self.parent()) — QWidget
-        # passed as first positional arg instead of project_id
+        # Handle GroupsSubsectionWidget(QWidget) call pattern
         if isinstance(project_id, QWidget):
             parent = project_id
             project_id = 0
         super().__init__(parent)
         self.project_id = int(project_id) if project_id else 0
-        self._groups_data: List[Dict] = []
-        self._cards: Dict[int, GroupCard] = {}
-        # Public signals attribute (PeopleSection accesses gs.signals.loaded)
-        self.signals = GroupsSectionSignals()
-        self.signals.loaded.connect(self._on_groups_loaded)
-        self._generation = 0
 
-        self._setup_ui()
+        # Internal GroupsSection handles data loading + UI building
+        self._gs = GroupsSection(self)
+        if self.project_id:
+            self._gs.set_project(self.project_id)
 
-    def _setup_ui(self):
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(8)
+        # Forward signals from GroupsSection
+        self._gs.groupSelected.connect(self.groupSelected.emit)
+        self._gs.newGroupRequested.connect(self.newGroupRequested.emit)
+        self._gs.editGroupRequested.connect(self.editGroupRequested.emit)
+        self._gs.deleteGroupRequested.connect(self.deleteGroupRequested.emit)
+        self._gs.recomputeRequested.connect(self.recomputeRequested.emit)
 
-        # Header row: "+ New Group" button + count
-        header = QWidget()
-        header_layout = QHBoxLayout(header)
-        header_layout.setContentsMargins(0, 0, 0, 0)
-        header_layout.setSpacing(8)
+        # Signals proxy for PeopleSection compatibility
+        self.signals = self._gs.signals
 
-        btn_new = QPushButton("+ New Group")
-        btn_new.setCursor(Qt.PointingHandCursor)
-        btn_new.setStyleSheet("""
-            QPushButton {
-                padding: 6px 14px; border: 1px solid #1a73e8;
-                border-radius: 6px; background: #1a73e8;
-                color: white; font-weight: 600; font-size: 10pt;
-            }
-            QPushButton:hover { background: #1557b0; }
-        """)
-        btn_new.clicked.connect(self._on_create_group)
-        header_layout.addWidget(btn_new)
+        # Layout for content widget insertion
+        self._wrapper_layout = QVBoxLayout(self)
+        self._wrapper_layout.setContentsMargins(0, 0, 0, 0)
 
-        header_layout.addStretch()
+        # When data loads, build and insert content widget
+        self._gs.signals.loaded.connect(self._on_loaded)
 
-        self._count_label = QLabel("0 groups")
-        self._count_label.setStyleSheet("color: #5f6368; font-size: 9pt;")
-        header_layout.addWidget(self._count_label)
-
-        layout.addWidget(header)
-
-        # Scroll area for group grid
-        self._scroll = QScrollArea()
-        self._scroll.setWidgetResizable(True)
-        self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self._scroll.setFrameShape(QScrollArea.NoFrame)
-
-        # Empty state placeholder
-        self._empty_label = QLabel("No groups yet.\nCreate a group to see photos where people appear together.")
-        self._empty_label.setAlignment(Qt.AlignCenter)
-        self._empty_label.setWordWrap(True)
-        self._empty_label.setStyleSheet("padding: 32px; color: #5f6368; font-size: 10pt;")
-        self._scroll.setWidget(self._empty_label)
-
-        layout.addWidget(self._scroll, 1)
-
-    def set_db(self, db):
-        """Accept a DB reference (no-op — we create per-thread instances)."""
-        pass
-
-    def load_section(self):
-        """Load the groups section (alias for load_groups).
-
-        Called by PeopleSection._ensure_groups_tab.
-        """
-        self.load_groups()
-
-    def create_content_widget(self, data: list) -> "GroupsSubsectionWidget":
-        """Build internal UI from pre-loaded groups data and return self.
-
-        Called by PeopleSection.on_groups_loaded callback after signals.loaded
-        fires.  Our _on_groups_loaded already built the cards, so just return
-        ourselves as the content widget for the QStackedWidget.
-        """
-        return self
+    def _on_loaded(self, gen, data):
+        if gen != self._gs._generation:
+            return
+        content = self._gs.create_content_widget(data)
+        if content:
+            # Clear old content
+            while self._wrapper_layout.count():
+                item = self._wrapper_layout.takeAt(0)
+                w = item.widget()
+                if w:
+                    w.deleteLater()
+            self._wrapper_layout.addWidget(content)
 
     def load_groups(self):
-        """Load groups data in background thread."""
-        if not self.project_id:
-            return
+        """Legacy API — load groups data."""
+        self._gs.load_section()
 
-        self._generation += 1
-        current_gen = self._generation
+    def load_section(self):
+        """BaseSection-compatible API."""
+        self._gs.load_section()
 
-        def work():
-            try:
-                from services.group_service import GroupService
-                db = ReferenceDB()
-                groups = GroupService.get_groups(db, self.project_id)
-
-                # Get match counts and cover paths for each group
-                for g in groups:
-                    g["match_count"] = GroupService.get_cached_match_count(db, g["id"])
-                    # Resolve cover: user-chosen or auto-derived from first match
-                    if not g.get("cover_asset_path"):
-                        g["cover_asset_path"] = GroupService.get_group_cover(
-                            db, self.project_id, g["id"]
-                        )
-
-                db.close()
-                self.signals.loaded.emit(current_gen, groups)
-            except Exception as e:
-                logger.error(f"[GroupsSubsection] Failed to load groups: {e}")
-                self.signals.error.emit(current_gen, str(e))
-
-        threading.Thread(target=work, daemon=True).start()
-
-    def _on_groups_loaded(self, generation: int, groups: list):
-        if generation != self._generation:
-            return
-
-        self._groups_data = groups
-        self._count_label.setText(f"{len(groups)} group{'s' if len(groups) != 1 else ''}")
-
-        if not groups:
-            self._empty_label.setVisible(True)
-            self._scroll.setWidget(self._empty_label)
-            return
-
-        # Build group cards
-        self._cards.clear()
-        scroll_content = QWidget()
-        scroll_layout = QVBoxLayout(scroll_content)
-        scroll_layout.setContentsMargins(4, 4, 4, 4)
-        scroll_layout.setSpacing(6)
-
-        for g in groups:
-            # Load member face thumbnails (up to 3)
-            member_pixmaps = []
-            for member in g.get("members", [])[:3]:
-                pm = self._load_member_thumb(member.get("rep_thumb_png"))
-                member_pixmaps.append(pm)
-
-            # Load cover thumbnail if available
-            cover_pixmap = self._load_cover_thumb(g.get("cover_asset_path"))
-
-            # Build display name from member labels
-            member_names = [
-                m.get("display_name", m.get("branch_key", "?"))
-                for m in g.get("members", [])
-            ]
-
-            card = GroupCard(
-                group_id=g["id"],
-                display_name=g["name"],
-                member_count=g["member_count"],
-                result_count=g.get("match_count", -1),
-                is_stale=False,
-                member_pixmaps=member_pixmaps,
-                match_mode="together",
-                is_pinned=g.get("is_pinned", False),
-                cover_pixmap=cover_pixmap,
-            )
-            card.clicked.connect(self._on_group_clicked)
-            card.context_menu_requested.connect(self._on_group_context_menu)
-            scroll_layout.addWidget(card)
-            self._cards[g["id"]] = card
-
-        scroll_layout.addStretch()
-        self._scroll.setWidget(scroll_content)
-
-    def _load_member_thumb(self, rep_thumb_png: Optional[bytes]) -> Optional[QPixmap]:
-        """Load a small face thumbnail from BLOB."""
-        if not rep_thumb_png:
-            return None
-        try:
-            from PIL import Image
-            img_data = io.BytesIO(rep_thumb_png)
-            with Image.open(img_data) as img:
-                img_rgb = img.convert("RGB")
-                data = img_rgb.tobytes("raw", "RGB")
-                qimg = QImage(data, img_rgb.width, img_rgb.height, img_rgb.width * 3, QImage.Format_RGB888)
-                if qimg.isNull():
-                    return None
-                return QPixmap.fromImage(qimg).scaled(
-                    48, 48, Qt.KeepAspectRatio, Qt.SmoothTransformation
-                )
-        except Exception:
-            return None
-
-    def _load_cover_thumb(self, cover_path: Optional[str]) -> Optional[QPixmap]:
-        """Load a small cover thumbnail from a photo path (256px max edge)."""
-        if not cover_path:
-            return None
-        try:
-            import os
-            if not os.path.exists(cover_path):
-                return None
-            from services.safe_image_loader import safe_decode_qimage
-            qimg = safe_decode_qimage(cover_path, max_dim=256)
-            if qimg.isNull():
-                return None
-            return QPixmap.fromImage(qimg)
-        except Exception:
-            return None
-
-    def _on_group_clicked(self, group_id: int):
-        # Resolve match_mode from group data (defaults to "together")
-        match_mode = "together"
-        for g in self._groups_data:
-            if g.get("id") == group_id:
-                match_mode = g.get("match_mode", "together")
-                break
-        self.groupSelected.emit(group_id, match_mode)
-
-    def _on_group_context_menu(self, group_id: int, action: str):
-        if action == "rename":
-            self._rename_group(group_id)
-        elif action == "toggle_pin":
-            self._toggle_pin(group_id)
-        elif action in ("edit_members", "edit"):
-            self._edit_group(group_id)
-        elif action in ("reindex", "recompute_together"):
-            self._recompute_group(group_id, "same_photo")
-        elif action == "recompute_event":
-            self._recompute_group(group_id, "event_window")
-        elif action == "delete":
-            self._delete_group(group_id)
-
-    def _recompute_group(self, group_id: int, scope: str = "same_photo"):
-        """Recompute group matches using GroupService."""
-        try:
-            from services.group_service import GroupService
-            db = ReferenceDB()
-            count = GroupService.compute_and_store_matches(
-                db, self.project_id, group_id, scope=scope
-            )
-            db.close()
-            logger.info(f"[GroupsSubsection] Recomputed group {group_id} ({scope}): {count} matches")
-            self.groupUpdated.emit(group_id)
-            self.load_groups()
-        except Exception as e:
-            logger.error(f"[GroupsSubsection] Recompute failed for group {group_id}: {e}")
-
-    def _on_create_group(self):
-        """Open CreateGroupDialog."""
-        dialog = CreateGroupDialog(self.project_id, parent=self)
-        if dialog.exec() == QDialog.Accepted:
-            result = dialog.get_result()
-            try:
-                from services.group_service import GroupService
-                db = ReferenceDB()
-                group_id = GroupService.create_group(
-                    db, self.project_id, result["name"], result["branch_keys"]
-                )
-                # Compute initial matches
-                GroupService.compute_and_store_matches(db, self.project_id, group_id)
-                db.close()
-
-                self.groupCreated.emit(group_id)
-                self.load_groups()  # Refresh list
-            except Exception as e:
-                logger.error(f"[GroupsSubsection] Failed to create group: {e}")
-
-    def _rename_group(self, group_id: int):
-        """Rename a group via input dialog."""
-        from PySide6.QtWidgets import QInputDialog
-
-        current_name = ""
-        for g in self._groups_data:
-            if g["id"] == group_id:
-                current_name = g["name"]
-                break
-
-        new_name, ok = QInputDialog.getText(
-            self, "Rename Group", "New name:", text=current_name
-        )
-        if ok and new_name.strip():
-            try:
-                from services.group_service import GroupService
-                db = ReferenceDB()
-                GroupService.update_group(db, group_id, name=new_name.strip())
-                db.close()
-                self.groupUpdated.emit(group_id)
-                self.load_groups()
-            except Exception as e:
-                logger.error(f"[GroupsSubsection] Failed to rename group: {e}")
-
-    def _toggle_pin(self, group_id: int):
-        """Toggle pinned state."""
-        try:
-            from services.group_service import GroupService
-            current_pinned = False
-            for g in self._groups_data:
-                if g["id"] == group_id:
-                    current_pinned = g.get("is_pinned", False)
-                    break
-
-            db = ReferenceDB()
-            GroupService.update_group(db, group_id, is_pinned=not current_pinned)
-            db.close()
-            self.groupUpdated.emit(group_id)
-            self.load_groups()
-        except Exception as e:
-            logger.error(f"[GroupsSubsection] Failed to toggle pin: {e}")
-
-    def _edit_group(self, group_id: int):
-        """Edit group members via dialog."""
-        try:
-            from services.group_service import GroupService
-            db = ReferenceDB()
-            group = GroupService.get_group(db, group_id, self.project_id)
-            db.close()
-
-            if not group:
-                return
-
-            dialog = CreateGroupDialog(self.project_id, existing_group=group, parent=self)
-            if dialog.exec() == QDialog.Accepted:
-                result = dialog.get_result()
-                db = ReferenceDB()
-                GroupService.update_group(
-                    db, group_id,
-                    name=result["name"],
-                    branch_keys=result["branch_keys"],
-                )
-                GroupService.compute_and_store_matches(db, self.project_id, group_id)
-                db.close()
-                self.groupUpdated.emit(group_id)
-                self.load_groups()
-        except Exception as e:
-            logger.error(f"[GroupsSubsection] Failed to edit group: {e}")
-
-    def _delete_group(self, group_id: int):
-        """Delete a group with confirmation."""
-        from PySide6.QtWidgets import QMessageBox
-
-        reply = QMessageBox.question(
-            self,
-            "Delete Group",
-            "Are you sure you want to delete this group?\nThe people themselves won't be affected.",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No,
-        )
-        if reply == QMessageBox.Yes:
-            try:
-                from services.group_service import GroupService
-                db = ReferenceDB()
-                GroupService.delete_group(db, group_id)
-                db.close()
-                self.groupDeleted.emit(group_id)
-                self.load_groups()
-            except Exception as e:
-                logger.error(f"[GroupsSubsection] Failed to delete group: {e}")
+    def create_content_widget(self, data):
+        """Delegate to GroupsSection."""
+        return self._gs.create_content_widget(data)
 
     def set_project(self, project_id: int):
         """Update project and reload."""
         self.project_id = project_id
-        self._generation += 1
-        self.load_groups()
+        self._gs.set_project(project_id)
 
-
-# ======================================================================
-# Backward-compatibility alias
-# ======================================================================
-# people_section.py (and possibly other modules) import the class as
-# ``GroupsSection``.  Keep a public alias so both import paths work.
-GroupsSection = GroupsSubsectionWidget
+    def set_db(self, db):
+        """Accept a DB reference (no-op)."""
+        pass
