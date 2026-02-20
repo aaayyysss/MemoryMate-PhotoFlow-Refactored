@@ -1,19 +1,26 @@
 # workers/face_pipeline_worker.py
-# Version 03.00.00.00 dated 20260218
+# Version 04.00.00.00 dated 20260220
 #
 # Background pipeline worker that chains face detection + clustering
 # as a single non-blocking job.  No modal dialogs, no UI coupling.
 #
 # Steps:
-#   1. Face detection (InsightFace on all unprocessed photos)
-#      - After each batch commit, if enough new faces accumulated,
-#        trigger a lightweight interim clustering pass so the UI can
-#        show partial People results immediately (progressive UX).
-#   2. Final face clustering (DBSCAN on all embeddings)
+#   0a. Snapshot group member identities (for remap after re-clustering)
+#   0b. Clear stale face data (scope-aware: incremental vs full)
+#   1.  Face detection (InsightFace on unprocessed / scoped photos)
+#       - Progressive interim clustering during detection
+#   2.  Final face clustering (DBSCAN on ALL faces in DB)
+#   3.  Remap group members + recompute group matches
+#
+# Incremental scan support (Google/Apple pattern):
+#   - Scoped scans only clear face_crops for scoped photos, NOT all
+#   - Existing face data from previous runs is preserved and re-clustered
+#   - Clustering runs on ALL faces (existing + new), not just new ones
+#   - Groups survive re-clustering via snapshot/remap/recompute
 #
 # Progressive clustering pattern (Google Photos / Apple Photos style):
-#   - First interim cluster at 50+ detected faces
-#   - Subsequent interim clusters every 200 additional faces
+#   - First interim cluster at 20+ detected faces
+#   - Subsequent interim clusters every 100 additional faces
 #   - Full recluster at pipeline completion for final accuracy
 #   - UI shows "Indexing faces..." banner during progressive phase
 
@@ -89,13 +96,13 @@ class FacePipelineWorker(QRunnable):
         """
         Clear stale face detection data from previous pipeline runs.
 
-        This prevents the "20 detected / 30 loaded" mismatch where old faces
-        from previous runs accumulate and pollute clustering results.
-
-        Clears:
-        - face_crops: All face crops for this project (embeddings + bboxes)
-        - face_branch_reps: Derived cluster representatives
-        - branches with face-related branch_keys (auto-generated clusters)
+        Scope-aware (Google/Apple pattern):
+        - Full scan (no scope): Clears ALL face_crops, face_branch_reps,
+          and auto-generated branches for the entire project.
+        - Incremental scan (scoped): Only clears face_crops for the scoped
+          photos. Preserves existing detection results for other photos.
+          Cluster-level data (face_branch_reps, branches, project_images)
+          is cleared by face_cluster_worker internally before re-clustering.
 
         Does NOT clear:
         - User-curated labels or manual assignments (if any)
@@ -107,44 +114,77 @@ class FacePipelineWorker(QRunnable):
             with db._connect() as conn:
                 cur = conn.cursor()
 
-                # Count existing face data for logging
-                cur.execute(
-                    "SELECT COUNT(*) FROM face_crops WHERE project_id = ?",
-                    (self.project_id,)
-                )
-                old_crop_count = cur.fetchone()[0]
+                if self._scoped_photo_paths:
+                    # ── Incremental scan: preserve existing face data ──
+                    # Only clear face_crops for scoped photos (if any were
+                    # previously processed). This prevents destroying
+                    # detection results for the rest of the project.
+                    cleared_crops = 0
+                    batch_size = 500
+                    for i in range(0, len(self._scoped_photo_paths), batch_size):
+                        batch = self._scoped_photo_paths[i:i + batch_size]
+                        placeholders = ','.join(['?'] * len(batch))
+                        cur.execute(
+                            f"DELETE FROM face_crops WHERE project_id = ? "
+                            f"AND image_path IN ({placeholders})",
+                            (self.project_id, *batch),
+                        )
+                        cleared_crops += cur.rowcount
 
-                cur.execute(
-                    "SELECT COUNT(*) FROM face_branch_reps WHERE project_id = ?",
-                    (self.project_id,)
-                )
-                old_rep_count = cur.fetchone()[0]
+                    # Count preserved face data for logging
+                    cur.execute(
+                        "SELECT COUNT(*) FROM face_crops WHERE project_id = ?",
+                        (self.project_id,),
+                    )
+                    preserved_crops = cur.fetchone()[0]
 
-                # Clear face_crops (detection results with embeddings)
-                cur.execute(
-                    "DELETE FROM face_crops WHERE project_id = ?",
-                    (self.project_id,)
-                )
+                    conn.commit()
+                    logger.info(
+                        "[FacePipelineWorker] Incremental cleanup: cleared %d "
+                        "crops for %d scoped photos, preserved %d existing "
+                        "crops (project %d)",
+                        cleared_crops, len(self._scoped_photo_paths),
+                        preserved_crops, self.project_id,
+                    )
+                else:
+                    # ── Full scan: clear everything ──
+                    cur.execute(
+                        "SELECT COUNT(*) FROM face_crops WHERE project_id = ?",
+                        (self.project_id,),
+                    )
+                    old_crop_count = cur.fetchone()[0]
 
-                # Clear face_branch_reps (cluster centroids and representatives)
-                cur.execute(
-                    "DELETE FROM face_branch_reps WHERE project_id = ?",
-                    (self.project_id,)
-                )
+                    cur.execute(
+                        "SELECT COUNT(*) FROM face_branch_reps WHERE project_id = ?",
+                        (self.project_id,),
+                    )
+                    old_rep_count = cur.fetchone()[0]
 
-                # Clear auto-generated branches (face_cluster_* pattern)
-                cur.execute(
-                    "DELETE FROM branches WHERE project_id = ? AND branch_key LIKE 'face_cluster_%'",
-                    (self.project_id,)
-                )
+                    # Clear face_crops (detection results with embeddings)
+                    cur.execute(
+                        "DELETE FROM face_crops WHERE project_id = ?",
+                        (self.project_id,),
+                    )
 
-                conn.commit()
+                    # Clear face_branch_reps (cluster centroids and representatives)
+                    cur.execute(
+                        "DELETE FROM face_branch_reps WHERE project_id = ?",
+                        (self.project_id,),
+                    )
 
-                logger.info(
-                    "[FacePipelineWorker] Cleared stale face data: "
-                    "%d crops, %d reps (project %d)",
-                    old_crop_count, old_rep_count, self.project_id
-                )
+                    # Clear auto-generated branches (face_cluster_* pattern)
+                    cur.execute(
+                        "DELETE FROM branches WHERE project_id = ? "
+                        "AND branch_key LIKE 'face_cluster_%%'",
+                        (self.project_id,),
+                    )
+
+                    conn.commit()
+                    logger.info(
+                        "[FacePipelineWorker] Full cleanup: cleared %d crops, "
+                        "%d reps (project %d)",
+                        old_crop_count, old_rep_count, self.project_id,
+                    )
         finally:
             db.close()
 
@@ -554,7 +594,9 @@ class FacePipelineWorker(QRunnable):
                 self._interim_cluster_count,
             )
 
-            # ── Invariant check: faces_written_to_db == faces_detected ──
+            # ── Count TOTAL faces in DB (existing + newly detected) ──
+            # For incremental scans, existing faces from previous runs are
+            # preserved and must be included in the clustering pass.
             try:
                 from reference_db import ReferenceDB as _DB
                 _db = _DB()
@@ -566,96 +608,138 @@ class FacePipelineWorker(QRunnable):
                         (self.project_id,),
                     )
                     faces_in_db = _cur.fetchone()[0]
-                if faces_in_db != results["faces_detected"]:
-                    logger.warning(
-                        "[FacePipelineWorker] INVARIANT: faces_detected=%d but "
-                        "faces_in_db=%d — possible insert/skip mismatch",
-                        results["faces_detected"], faces_in_db,
-                    )
+
+                # Invariant check for full scans (incremental may have
+                # existing faces so count won't match newly detected)
+                if not self._scoped_photo_paths:
+                    if faces_in_db != results["faces_detected"]:
+                        logger.warning(
+                            "[FacePipelineWorker] INVARIANT: faces_detected=%d "
+                            "but faces_in_db=%d — possible insert/skip mismatch",
+                            results["faces_detected"], faces_in_db,
+                        )
+                    else:
+                        logger.info(
+                            "[FacePipelineWorker] INVARIANT OK: faces_detected "
+                            "== faces_in_db == %d", faces_in_db,
+                        )
                 else:
                     logger.info(
-                        "[FacePipelineWorker] INVARIANT OK: faces_detected == "
-                        "faces_in_db == %d", faces_in_db,
+                        "[FacePipelineWorker] Incremental scan: %d new faces "
+                        "detected, %d total faces in database",
+                        results["faces_detected"], faces_in_db,
                     )
             except Exception as inv_err:
-                logger.debug("[FacePipelineWorker] Invariant check error: %s", inv_err)
+                logger.debug("[FacePipelineWorker] Face count check error: %s", inv_err)
+                # Fallback: assume newly detected count is the total
+                faces_in_db = results["faces_detected"]
 
         except Exception as e:
             logger.error("[FacePipelineWorker] Face detection failed: %s", e, exc_info=True)
             results["errors"].append(f"Detection: {e}")
+            faces_in_db = 0
 
         # ── Step 2: Final Face Clustering ─────────────────────────
-        if self._cancelled or results["faces_detected"] == 0:
-            if results["faces_detected"] == 0:
-                logger.info("[FacePipelineWorker] No faces detected, skipping clustering")
+        # Use TOTAL faces in DB (not just newly detected) to decide
+        # whether clustering is needed. For incremental scans, existing
+        # faces from previous runs must be re-clustered with new ones.
+        if self._cancelled:
             self.signals.finished.emit(results)
             return
 
-        self.signals.progress.emit("face_clustering", "Final clustering of all detected faces...")
-
-        try:
-            from config.face_detection_config import get_face_config
-            face_config = get_face_config()
-            cluster_params = face_config.get_clustering_params()
-
-            from workers.face_cluster_worker import FaceClusterWorker
-
-            cluster_worker = FaceClusterWorker(
-                project_id=self.project_id,
-                eps=cluster_params["eps"],
-                min_samples=cluster_params["min_samples"],
-                auto_tune=True,
+        if faces_in_db == 0:
+            logger.info(
+                "[FacePipelineWorker] No faces in database (detected=%d), "
+                "skipping clustering",
+                results["faces_detected"],
             )
-
-            cluster_results = {}
-
-            def _on_cluster_progress(current, total, message):
-                self.signals.progress.emit(
-                    "face_clustering",
-                    f"Clustering faces: {message}",
+        else:
+            if results["faces_detected"] == 0 and self._scoped_photo_paths:
+                logger.info(
+                    "[FacePipelineWorker] 0 new faces in scoped photos, but "
+                    "%d existing faces — re-clustering existing data",
+                    faces_in_db,
                 )
 
-            def _on_cluster_finished(cluster_count, total_faces):
-                cluster_results["cluster_count"] = cluster_count
-                cluster_results["total_faces"] = total_faces
-
-            def _on_cluster_error(msg):
-                results["errors"].append(f"Clustering: {msg}")
-
-            cluster_worker.signals.progress.connect(_on_cluster_progress)
-            cluster_worker.signals.finished.connect(_on_cluster_finished)
-            cluster_worker.signals.error.connect(_on_cluster_error)
-
-            # Execute directly in this thread
-            cluster_worker.run()
-
-            results["clusters_created"] = cluster_results.get("cluster_count", 0)
-
-            logger.info(
-                "[FacePipelineWorker] Final clustering complete: %d clusters from %d faces",
-                results["clusters_created"],
-                cluster_results.get("total_faces", 0),
+            self.signals.progress.emit(
+                "face_clustering",
+                f"Final clustering of {faces_in_db} faces...",
             )
 
-            # Signal UI that final clusters are ready
-            self.signals.interim_clusters_ready.emit(
-                results["clusters_created"],
-                results["faces_detected"],
-                True,  # is_final=True
-            )
+            try:
+                from config.face_detection_config import get_face_config
+                face_config = get_face_config()
+                cluster_params = face_config.get_clustering_params()
 
-        except Exception as e:
-            logger.error("[FacePipelineWorker] Clustering failed: %s", e, exc_info=True)
-            results["errors"].append(f"Clustering: {e}")
+                from workers.face_cluster_worker import FaceClusterWorker
+
+                cluster_worker = FaceClusterWorker(
+                    project_id=self.project_id,
+                    eps=cluster_params["eps"],
+                    min_samples=cluster_params["min_samples"],
+                    auto_tune=True,
+                )
+
+                cluster_results = {}
+
+                def _on_cluster_progress(current, total, message):
+                    self.signals.progress.emit(
+                        "face_clustering",
+                        f"Clustering faces: {message}",
+                    )
+
+                def _on_cluster_finished(cluster_count, total_faces):
+                    cluster_results["cluster_count"] = cluster_count
+                    cluster_results["total_faces"] = total_faces
+
+                def _on_cluster_error(msg):
+                    results["errors"].append(f"Clustering: {msg}")
+
+                cluster_worker.signals.progress.connect(_on_cluster_progress)
+                cluster_worker.signals.finished.connect(_on_cluster_finished)
+                cluster_worker.signals.error.connect(_on_cluster_error)
+
+                # Execute directly in this thread
+                cluster_worker.run()
+
+                results["clusters_created"] = cluster_results.get("cluster_count", 0)
+
+                logger.info(
+                    "[FacePipelineWorker] Final clustering complete: "
+                    "%d clusters from %d faces",
+                    results["clusters_created"],
+                    cluster_results.get("total_faces", 0),
+                )
+
+                # Signal UI that final clusters are ready
+                self.signals.interim_clusters_ready.emit(
+                    results["clusters_created"],
+                    faces_in_db,
+                    True,  # is_final=True
+                )
+
+            except Exception as e:
+                logger.error(
+                    "[FacePipelineWorker] Clustering failed: %s", e,
+                    exc_info=True,
+                )
+                results["errors"].append(f"Clustering: {e}")
 
         # ── Step 3: Remap group members + recompute matches ────────
-        # Google/Apple pattern: groups survive re-clustering automatically
+        # Google/Apple pattern: groups survive re-clustering automatically.
+        # ALWAYS runs (even when 0 new faces detected) — existing groups
+        # need their branch_keys remapped to new cluster assignments.
         if group_snapshot and not self._cancelled:
-            self.signals.progress.emit("group_remap", "Updating groups after re-clustering...")
+            self.signals.progress.emit(
+                "group_remap",
+                "Updating groups after re-clustering...",
+            )
             try:
                 self._remap_group_members(group_snapshot)
                 self._recompute_all_groups()
             except Exception as e:
-                logger.warning("[FacePipelineWorker] Group remap/recompute failed: %s", e)
+                logger.warning(
+                    "[FacePipelineWorker] Group remap/recompute failed: %s", e,
+                )
 
         self.signals.finished.emit(results)
