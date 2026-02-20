@@ -845,21 +845,31 @@ class GroupsSubsectionWidget(QWidget):
         elif action == "toggle_pin":
             self._toggle_pin(group_id)
         elif action in ("edit_members", "edit"):
-            self.editGroupRequested.emit(group_id)
             self._edit_group(group_id)
         elif action in ("reindex", "recompute_together"):
-            self.recomputeRequested.emit(group_id, "together")
-            self.groupReindexRequested.emit(group_id)
+            self._recompute_group(group_id, "same_photo")
         elif action == "recompute_event":
-            self.recomputeRequested.emit(group_id, "event")
-            self.groupReindexRequested.emit(group_id)
+            self._recompute_group(group_id, "event_window")
         elif action == "delete":
-            self.deleteGroupRequested.emit(group_id)
             self._delete_group(group_id)
+
+    def _recompute_group(self, group_id: int, scope: str = "same_photo"):
+        """Recompute group matches using GroupService."""
+        try:
+            from services.group_service import GroupService
+            db = ReferenceDB()
+            count = GroupService.compute_and_store_matches(
+                db, self.project_id, group_id, scope=scope
+            )
+            db.close()
+            logger.info(f"[GroupsSubsection] Recomputed group {group_id} ({scope}): {count} matches")
+            self.groupUpdated.emit(group_id)
+            self.load_groups()
+        except Exception as e:
+            logger.error(f"[GroupsSubsection] Recompute failed for group {group_id}: {e}")
 
     def _on_create_group(self):
         """Open CreateGroupDialog."""
-        self.newGroupRequested.emit()
         dialog = CreateGroupDialog(self.project_id, parent=self)
         if dialog.exec() == QDialog.Accepted:
             result = dialog.get_result()
