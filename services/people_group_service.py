@@ -229,6 +229,18 @@ class PeopleGroupService:
                     # A group is stale if it has no cached matches
                     is_stale = match_count == 0
 
+                    # Fetch top-3 member face thumbnail paths for GroupCard avatars
+                    member_thumb_rows = conn.execute("""
+                        SELECT r.rep_path
+                        FROM person_group_members m
+                        JOIN face_branch_reps r
+                            ON r.branch_key = m.branch_key AND r.project_id = ?
+                        WHERE m.group_id = ?
+                        ORDER BY m.added_at ASC
+                        LIMIT 3
+                    """, (project_id, group_id)).fetchall()
+                    member_rep_paths = [r[0] for r in member_thumb_rows if r[0]]
+
                     groups.append({
                         'id': group_id,
                         'name': row[1],
@@ -239,7 +251,8 @@ class PeopleGroupService:
                         'is_pinned': bool(row[5]),
                         'member_count': row[6],
                         'result_count': match_count,
-                        'is_stale': is_stale
+                        'is_stale': is_stale,
+                        'member_rep_paths': member_rep_paths,
                     })
 
                 return groups

@@ -200,11 +200,20 @@ class PersonSelectCard(QWidget):
 
 class CreateGroupDialog(QDialog):
     """
-    Dialog for creating or editing a person group.
+    Unified dialog for creating or editing a person group.
 
-    In edit mode, loads existing group data and saves changes via
-    GroupService.update_group() on accept.
+    Handles both create and edit DB operations internally:
+    - Create mode: calls GroupService.create_group(), exposes created_group_id
+    - Edit mode: calls GroupService.update_group()
+
+    Cover photo selection (Google/Apple pattern):
+    - Shows selected members' face thumbnails as selectable cover options
+    - If user picks one, stores the rep_path as cover_asset_path via set_group_cover
+    - If none selected, auto-derives from first match photo (default fallback)
     """
+
+    groupCreated = Signal(dict)   # Emitted on successful creation with group info
+    groupUpdated = Signal(int)    # Emitted on successful edit with group_id
 
     def __init__(
         self,
@@ -221,10 +230,13 @@ class CreateGroupDialog(QDialog):
         self.group_name: str = ""
         self.selected_people: List[str] = []
         self.is_pinned: bool = False
+        self.created_group_id: Optional[int] = None  # Set after creation
 
         # Internal state
         self._people_cards: Dict[str, PersonSelectCard] = {}
         self._selected_branch_keys: Set[str] = set()
+        self._cover_branch_key: Optional[str] = None  # Selected cover member
+        self._member_rep_paths: Dict[str, str] = {}    # branch_key -> rep_path
 
         self._setup_ui()
         self._load_people()
@@ -297,6 +309,38 @@ class CreateGroupDialog(QDialog):
 
         scroll.setWidget(self._grid_container)
         main_layout.addWidget(scroll, 1)
+
+        # Cover photo selection row (hidden until 2+ members selected)
+        self._cover_section = QWidget()
+        cover_layout = QVBoxLayout(self._cover_section)
+        cover_layout.setContentsMargins(0, 0, 0, 0)
+        cover_layout.setSpacing(6)
+
+        cover_header = QLabel("Group thumbnail (optional)")
+        cover_header.setStyleSheet("font-size: 10pt; color: #202124; font-weight: 500;")
+        cover_layout.addWidget(cover_header)
+
+        cover_hint = QLabel("Pick a face to use as the group cover, or leave blank for auto.")
+        cover_hint.setStyleSheet("font-size: 9pt; color: #5f6368;")
+        cover_hint.setWordWrap(True)
+        cover_layout.addWidget(cover_hint)
+
+        self._cover_scroll = QScrollArea()
+        self._cover_scroll.setWidgetResizable(True)
+        self._cover_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._cover_scroll.setFixedHeight(80)
+        self._cover_scroll.setFrameShape(QFrame.NoFrame)
+
+        self._cover_container = QWidget()
+        self._cover_layout = QHBoxLayout(self._cover_container)
+        self._cover_layout.setContentsMargins(4, 4, 4, 4)
+        self._cover_layout.setSpacing(8)
+        self._cover_layout.addStretch()
+        self._cover_scroll.setWidget(self._cover_container)
+        cover_layout.addWidget(self._cover_scroll)
+
+        self._cover_section.setVisible(False)
+        main_layout.addWidget(self._cover_section)
 
         # Options row
         options_container = QWidget()
@@ -376,6 +420,10 @@ class CreateGroupDialog(QDialog):
                     thumbnail = self._load_thumbnail_blob(thumb_blob)
                 if thumbnail is None and rep_path:
                     thumbnail = self._load_thumbnail_file(rep_path)
+
+                # Store rep_path for cover selection
+                if rep_path:
+                    self._member_rep_paths[branch_key] = rep_path
 
                 card = PersonSelectCard(
                     branch_key=branch_key,
@@ -491,6 +539,11 @@ class CreateGroupDialog(QDialog):
         # Enable create/save button when >= 2 people selected
         self._create_btn.setEnabled(count >= 2)
 
+        # Show/rebuild cover selection when 2+ people selected
+        self._cover_section.setVisible(count >= 2)
+        if count >= 2:
+            self._rebuild_cover_options()
+
         # Auto-suggest group name if empty
         if not self._name_input.text().strip() and count >= 2:
             names = []
@@ -501,6 +554,88 @@ class CreateGroupDialog(QDialog):
             if count > 3:
                 suggested += f" + {count - 3} more"
             self._name_input.setPlaceholderText(f"Suggested: {suggested}")
+
+    def _rebuild_cover_options(self):
+        """Rebuild the cover photo selection row from currently selected members."""
+        # Clear existing cover widgets
+        while self._cover_layout.count():
+            item = self._cover_layout.takeAt(0)
+            w = item.widget()
+            if w:
+                w.deleteLater()
+
+        # Add a "None (auto)" option
+        none_btn = QPushButton("Auto")
+        none_btn.setFixedSize(56, 56)
+        none_btn.setCursor(Qt.PointingHandCursor)
+        is_none_selected = self._cover_branch_key is None
+        none_btn.setStyleSheet(f"""
+            QPushButton {{
+                border: 2px solid {"#1a73e8" if is_none_selected else "#dadce0"};
+                border-radius: 28px;
+                background: {"#e8f0fe" if is_none_selected else "#f8f9fa"};
+                font-size: 9px; color: #5f6368;
+            }}
+            QPushButton:hover {{ border-color: #1a73e8; }}
+        """)
+        none_btn.clicked.connect(lambda: self._on_cover_selected(None))
+        self._cover_layout.addWidget(none_btn)
+
+        # Add selected members' face thumbnails
+        for bk in self._selected_branch_keys:
+            card = self._people_cards.get(bk)
+            if not card:
+                continue
+
+            thumb = card._base_thumbnail
+            btn = QPushButton()
+            btn.setFixedSize(56, 56)
+            btn.setCursor(Qt.PointingHandCursor)
+
+            if thumb and not thumb.isNull():
+                # Render circular thumbnail on button
+                icon_pix = QPixmap(56, 56)
+                icon_pix.fill(Qt.transparent)
+                p = QPainter(icon_pix)
+                p.setRenderHint(QPainter.Antialiasing)
+                scaled = thumb.scaled(52, 52, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+                clip = QPainterPath()
+                clip.addEllipse(2, 2, 52, 52)
+                p.setClipPath(clip)
+                xo = (scaled.width() - 52) // 2
+                yo = (scaled.height() - 52) // 2
+                p.drawPixmap(2 - xo, 2 - yo, scaled)
+                p.setClipping(False)
+                # Selection ring
+                if bk == self._cover_branch_key:
+                    p.setPen(QPen(QColor("#1a73e8"), 3))
+                    p.setBrush(Qt.NoBrush)
+                    p.drawEllipse(1, 1, 54, 54)
+                p.end()
+                btn.setIcon(icon_pix)
+                btn.setIconSize(QSize(56, 56))
+
+            is_selected = bk == self._cover_branch_key
+            btn.setStyleSheet(f"""
+                QPushButton {{
+                    border: 2px solid {"#1a73e8" if is_selected else "transparent"};
+                    border-radius: 28px;
+                    background: transparent;
+                    padding: 0;
+                }}
+                QPushButton:hover {{ border-color: #1a73e8; }}
+            """)
+            btn.setToolTip(card.display_name)
+            _bk = bk  # capture for lambda
+            btn.clicked.connect(lambda checked=False, b=_bk: self._on_cover_selected(b))
+            self._cover_layout.addWidget(btn)
+
+        self._cover_layout.addStretch()
+
+    def _on_cover_selected(self, branch_key: Optional[str]):
+        """Handle cover thumbnail selection."""
+        self._cover_branch_key = branch_key
+        self._rebuild_cover_options()  # Refresh selection state
 
     def _on_create(self):
         """Handle create/save button click."""
@@ -519,11 +654,12 @@ class CreateGroupDialog(QDialog):
         self.selected_people = list(self._selected_branch_keys)
         self.is_pinned = self._pinned_checkbox.isChecked()
 
-        # In edit mode, save changes immediately via service
+        from services.group_service import GroupService
+        from reference_db import ReferenceDB
+
         if self.is_edit_mode:
+            # Edit mode: update existing group
             try:
-                from services.group_service import GroupService
-                from reference_db import ReferenceDB
                 db = ReferenceDB()
                 GroupService.update_group(
                     db,
@@ -532,15 +668,54 @@ class CreateGroupDialog(QDialog):
                     branch_keys=self.selected_people,
                     is_pinned=self.is_pinned,
                 )
+                # Set cover if user picked one
+                if self._cover_branch_key:
+                    rep_path = self._member_rep_paths.get(self._cover_branch_key)
+                    if rep_path:
+                        GroupService.set_group_cover(db, self.edit_group_id, rep_path)
                 db.close()
                 logger.info(
                     f"[CreateGroupDialog] Updated group {self.edit_group_id}: "
                     f"name='{self.group_name}', members={len(self.selected_people)}"
                 )
+                self.groupUpdated.emit(self.edit_group_id)
             except Exception as e:
                 logger.error(f"[CreateGroupDialog] Failed to update group: {e}", exc_info=True)
                 from PySide6.QtWidgets import QMessageBox
                 QMessageBox.critical(self, "Update Failed", f"Failed to update group:\n{e}")
+                return
+        else:
+            # Create mode: create new group
+            try:
+                db = ReferenceDB()
+                group_id = GroupService.create_group(
+                    db=db,
+                    project_id=self.project_id,
+                    name=self.group_name,
+                    branch_keys=self.selected_people,
+                    is_pinned=self.is_pinned,
+                )
+                self.created_group_id = group_id
+                # Set cover if user picked one
+                if self._cover_branch_key:
+                    rep_path = self._member_rep_paths.get(self._cover_branch_key)
+                    if rep_path:
+                        GroupService.set_group_cover(db, group_id, rep_path)
+                db.close()
+                logger.info(
+                    f"[CreateGroupDialog] Created group {group_id}: "
+                    f"name='{self.group_name}', members={len(self.selected_people)}"
+                )
+                self.groupCreated.emit({
+                    'id': group_id,
+                    'name': self.group_name,
+                    'member_count': len(self.selected_people),
+                    'members': self.selected_people,
+                })
+            except Exception as e:
+                logger.error(f"[CreateGroupDialog] Failed to create group: {e}", exc_info=True)
+                from PySide6.QtWidgets import QMessageBox
+                QMessageBox.critical(self, "Create Failed", f"Failed to create group:\n{e}")
                 return
 
         self.accept()

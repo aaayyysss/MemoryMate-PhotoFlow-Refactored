@@ -2203,7 +2203,7 @@ class GooglePhotosLayout(BaseLayout):
         self._refresh_people_sidebar()
 
     def _on_group_edit_requested(self, group_id: int):
-        """Handle group edit request - open edit dialog."""
+        """Handle group edit request - open edit dialog, then recompute matches."""
         logger.info(f"[GooglePhotosLayout] Edit group requested: {group_id}")
 
         try:
@@ -2211,8 +2211,12 @@ class GooglePhotosLayout(BaseLayout):
 
             dialog = CreateGroupDialog(self.project_id, edit_group_id=group_id, parent=self.main_window)
             if dialog.exec():
-                self._refresh_people_sidebar()
-                logger.info(f"[GooglePhotosLayout] Group {group_id} edited")
+                # Recompute group matches (members may have changed) then refresh
+                if hasattr(self, "accordion_sidebar") and hasattr(self.accordion_sidebar, '_compute_group_matches'):
+                    self.accordion_sidebar._compute_group_matches(group_id, 'together')
+                else:
+                    self._refresh_people_sidebar()
+                logger.info(f"[GooglePhotosLayout] Group {group_id} edited, recomputing matches")
         except Exception as e:
             logger.error(f"[GooglePhotosLayout] Failed to open edit group dialog: {e}", exc_info=True)
 
