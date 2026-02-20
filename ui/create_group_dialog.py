@@ -356,9 +356,10 @@ class CreateGroupDialog(QDialog):
     def _load_people(self):
         """Load people from database with thumbnail fallback to file path."""
         try:
-            from services.group_service import GroupService
-            service = GroupService.instance()
-            people = service.get_people_for_group_creation(self.project_id)
+            from reference_db import ReferenceDB
+            db = ReferenceDB()
+            people = db.get_face_clusters(self.project_id) or []
+            db.close()
 
             logger.info(f"[CreateGroupDialog] Loaded {len(people)} people")
 
@@ -436,8 +437,10 @@ class CreateGroupDialog(QDialog):
         """Load existing group data for edit mode."""
         try:
             from services.group_service import GroupService
-            service = GroupService.instance()
-            group = service.get_group(self.edit_group_id, self.project_id)
+            from reference_db import ReferenceDB
+            db = ReferenceDB()
+            group = GroupService.get_group(db, self.edit_group_id, self.project_id)
+            db.close()
 
             if not group:
                 logger.warning(f"[CreateGroupDialog] Group {self.edit_group_id} not found")
@@ -520,13 +523,16 @@ class CreateGroupDialog(QDialog):
         if self.is_edit_mode:
             try:
                 from services.group_service import GroupService
-                service = GroupService.instance()
-                service.update_group(
+                from reference_db import ReferenceDB
+                db = ReferenceDB()
+                GroupService.update_group(
+                    db,
                     group_id=self.edit_group_id,
                     name=self.group_name,
                     branch_keys=self.selected_people,
                     is_pinned=self.is_pinned,
                 )
+                db.close()
                 logger.info(
                     f"[CreateGroupDialog] Updated group {self.edit_group_id}: "
                     f"name='{self.group_name}', members={len(self.selected_people)}"

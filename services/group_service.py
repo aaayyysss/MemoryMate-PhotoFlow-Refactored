@@ -339,7 +339,8 @@ class GroupService:
         """
         Live AND-match: photos where ALL group members appear together.
 
-        Uses face_crops (not project_images) for accurate face-level matching.
+        Uses project_images (not face_crops) because merge operations update
+        project_images.branch_key but NOT face_crops.branch_key.
         Returns list of photo_metadata.id values.
         """
         with db.get_connection() as conn:
@@ -355,12 +356,12 @@ class GroupService:
                     SELECT COUNT(*) AS n FROM members
                 )
                 SELECT pm.id
-                FROM face_crops fc
-                JOIN members m ON m.branch_key = fc.branch_key
-                JOIN photo_metadata pm ON pm.path = fc.image_path AND pm.project_id = fc.project_id
-                WHERE fc.project_id = ?
+                FROM project_images pi
+                JOIN members m ON m.branch_key = pi.branch_key
+                JOIN photo_metadata pm ON pm.path = pi.image_path AND pm.project_id = pi.project_id
+                WHERE pi.project_id = ?
                 GROUP BY pm.id
-                HAVING COUNT(DISTINCT fc.branch_key) = (SELECT n FROM member_count)
+                HAVING COUNT(DISTINCT pi.branch_key) = (SELECT n FROM member_count)
                 ORDER BY pm.created_ts DESC, pm.id DESC
                 """,
                 (group_id, project_id),
@@ -379,6 +380,8 @@ class GroupService:
         """
         with db.get_connection() as conn:
             cur = conn.cursor()
+            # Uses project_images (not face_crops) because merge operations
+            # update project_images.branch_key but NOT face_crops.branch_key.
             cur.execute(
                 """
                 WITH members AS (
@@ -389,13 +392,13 @@ class GroupService:
                 member_count AS (
                     SELECT COUNT(*) AS n FROM members
                 )
-                SELECT fc.image_path
-                FROM face_crops fc
-                JOIN members m ON m.branch_key = fc.branch_key
-                WHERE fc.project_id = ?
-                GROUP BY fc.image_path
-                HAVING COUNT(DISTINCT fc.branch_key) = (SELECT n FROM member_count)
-                ORDER BY fc.image_path
+                SELECT pi.image_path
+                FROM project_images pi
+                JOIN members m ON m.branch_key = pi.branch_key
+                WHERE pi.project_id = ?
+                GROUP BY pi.image_path
+                HAVING COUNT(DISTINCT pi.branch_key) = (SELECT n FROM member_count)
+                ORDER BY pi.image_path
                 """,
                 (group_id, project_id),
             )
