@@ -522,23 +522,23 @@ class PeopleGroupService:
                 if progress_callback:
                     progress_callback(0, 100, f"Finding photos with {member_count} people together...")
 
-                # Find photos where ALL members appear
-                # This is the key AND query
+                # Find photos where ALL members appear.
+                # Uses project_images (not face_crops) because merge operations
+                # update project_images.branch_key but NOT face_crops.branch_key.
                 placeholders = ','.join(['?'] * len(members))
 
                 cur.execute(f"""
                     SELECT
-                        fc.image_path,
+                        pi.image_path,
                         pm.id as photo_id,
-                        COUNT(DISTINCT fc.branch_key) as person_count
-                    FROM face_crops fc
-                    JOIN photo_metadata pm ON pm.path = fc.image_path AND pm.project_id = fc.project_id
-                    WHERE fc.project_id = ?
-                      AND fc.branch_key IN ({placeholders})
-                      AND fc.confidence >= ?
-                    GROUP BY fc.image_path
-                    HAVING COUNT(DISTINCT fc.branch_key) = ?
-                """, (project_id, *members, min_confidence, member_count))
+                        COUNT(DISTINCT pi.branch_key) as person_count
+                    FROM project_images pi
+                    JOIN photo_metadata pm ON pm.path = pi.image_path AND pm.project_id = pi.project_id
+                    WHERE pi.project_id = ?
+                      AND pi.branch_key IN ({placeholders})
+                    GROUP BY pi.image_path
+                    HAVING COUNT(DISTINCT pi.branch_key) = ?
+                """, (project_id, *members, member_count))
 
                 matching_photos = cur.fetchall()
 
