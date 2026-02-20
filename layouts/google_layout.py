@@ -1297,9 +1297,8 @@ class GooglePhotosLayout(BaseLayout):
     def _request_load(self, **params):
         """Schedule a coalesced photo load.
 
-        Multiple rapid calls (e.g. accordion expand + tab switch) are
-        collapsed into a single load executed after a 50ms quiet period.
-        """
+        # Multiple rapid calls (e.g. accordion expand + tab switch) are
+        # collapsed into a single load executed after a 50ms quiet period.
         # Freeze mutable collections at request time to prevent the
         # coalescing signature from collapsing when the caller mutates
         # the original list before _execute_coalesced_load fires.
@@ -2122,10 +2121,13 @@ class GooglePhotosLayout(BaseLayout):
 
         try:
             from services.group_service import GroupService
-            service = GroupService.instance()
+            from reference_db import ReferenceDB
 
-            # Get matching photo paths using "Together (AND)" query
-            paths = service.get_group_photos(self.project_id, group_id)
+            db = ReferenceDB()
+            scope = "same_photo" if match_mode == "together" else "event_window"
+            # Get matching photo paths — falls back to live AND query if no cache
+            paths = GroupService.get_cached_match_paths(db, self.project_id, group_id, scope)
+            db.close()
 
             if not paths:
                 from PySide6.QtWidgets import QMessageBox

@@ -2875,8 +2875,10 @@ class ThumbnailGridQt(QWidget):
         if paths is None:
             try:
                 from services.group_service import GroupService
-                service = GroupService.instance()
-                paths = service.get_group_photos(self.project_id, group_id)
+                from reference_db import ReferenceDB
+                db = ReferenceDB()
+                paths = GroupService.get_cached_match_paths(db, self.project_id, group_id)
+                db.close()
                 print(f"[GRID] Fetched {len(paths)} photos for group {group_id}")
             except Exception as e:
                 print(f"[GRID] Error fetching group photos: {e}")

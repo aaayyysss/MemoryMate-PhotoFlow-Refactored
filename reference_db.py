@@ -6482,7 +6482,7 @@ class ReferenceDB:
         name: str,
         person_ids: list,
         pinned: bool = False,
-        cover_photo_id: int = None
+        cover_asset_path: str = None
     ) -> int:
         """
         Create a new person group.
@@ -6492,7 +6492,7 @@ class ReferenceDB:
             name: Group name
             person_ids: List of branch_keys (min 2)
             pinned: Show at top of list
-            cover_photo_id: Optional cover photo
+            cover_asset_path: Optional cover photo path
 
         Returns:
             group_id
@@ -6504,17 +6504,17 @@ class ReferenceDB:
             cur = conn.execute("""
                 INSERT INTO person_groups (
                     project_id, name, created_at, updated_at,
-                    is_pinned, cover_photo_id
+                    is_pinned, cover_asset_path
                 ) VALUES (?, ?, ?, ?, ?, ?)
-            """, (project_id, name, now, now, 1 if pinned else 0, cover_photo_id))
+            """, (project_id, name, now, now, 1 if pinned else 0, cover_asset_path))
 
             group_id = cur.lastrowid
 
-            for person_id in person_ids:
+            for branch_key in person_ids:
                 conn.execute("""
-                    INSERT INTO person_group_members (group_id, person_id, added_at)
+                    INSERT INTO person_group_members (group_id, branch_key, added_at)
                     VALUES (?, ?, ?)
-                """, (group_id, person_id, now))
+                """, (group_id, branch_key, now))
 
             conn.commit()
             return group_id
@@ -6525,7 +6525,7 @@ class ReferenceDB:
         name: str = None,
         person_ids: list = None,
         pinned: bool = None,
-        cover_photo_id: int = None
+        cover_asset_path: str = None
     ) -> bool:
         """
         Update an existing person group.
@@ -6546,9 +6546,9 @@ class ReferenceDB:
             if pinned is not None:
                 updates.append("is_pinned = ?")
                 params.append(1 if pinned else 0)
-            if cover_photo_id is not None:
-                updates.append("cover_photo_id = ?")
-                params.append(cover_photo_id)
+            if cover_asset_path is not None:
+                updates.append("cover_asset_path = ?")
+                params.append(cover_asset_path)
 
             params.append(group_id)
             conn.execute(
@@ -6561,11 +6561,11 @@ class ReferenceDB:
                     "DELETE FROM person_group_members WHERE group_id = ?",
                     (group_id,)
                 )
-                for person_id in person_ids:
+                for branch_key in person_ids:
                     conn.execute("""
-                        INSERT INTO person_group_members (group_id, person_id, added_at)
+                        INSERT INTO person_group_members (group_id, branch_key, added_at)
                         VALUES (?, ?, ?)
-                    """, (group_id, person_id, now))
+                    """, (group_id, branch_key, now))
 
                 # Clear cached matches
                 conn.execute(
@@ -6608,7 +6608,7 @@ class ReferenceDB:
                     g.updated_at,
                     g.last_used_at,
                     g.is_pinned,
-                    g.cover_photo_id,
+                    g.cover_asset_path,
                     (SELECT COUNT(*) FROM person_group_members WHERE group_id = g.id) AS member_count,
                     (SELECT COUNT(*) FROM group_asset_matches WHERE group_id = g.id AND scope = 'same_photo') AS photo_count
                 FROM person_groups g
@@ -6622,12 +6622,12 @@ class ReferenceDB:
 
                 members_cur = conn.execute("""
                     SELECT
-                        pgm.person_id,
-                        COALESCE(fbr.label, pgm.person_id) AS display_name,
+                        pgm.branch_key,
+                        COALESCE(fbr.label, pgm.branch_key) AS display_name,
                         fbr.rep_thumb_png
                     FROM person_group_members pgm
                     LEFT JOIN face_branch_reps fbr
-                        ON fbr.project_id = ? AND fbr.branch_key = pgm.person_id
+                        ON fbr.project_id = ? AND fbr.branch_key = pgm.branch_key
                     WHERE pgm.group_id = ?
                 """, (project_id, group_id))
 
@@ -6646,7 +6646,7 @@ class ReferenceDB:
                     "updated_at": row[3],
                     "last_used_at": row[4],
                     "pinned": bool(row[5]),
-                    "cover_photo_id": row[6],
+                    "cover_asset_path": row[6],
                     "member_count": row[7],
                     "photo_count": row[8],
                     "members": members
@@ -6663,7 +6663,7 @@ class ReferenceDB:
         """
         with self._connect() as conn:
             cur = conn.execute(
-                "SELECT person_id FROM person_group_members WHERE group_id = ?",
+                "SELECT branch_key FROM person_group_members WHERE group_id = ?",
                 (group_id,)
             )
             return [row[0] for row in cur.fetchall()]
