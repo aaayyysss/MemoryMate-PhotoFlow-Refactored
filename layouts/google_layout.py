@@ -45,6 +45,7 @@ from google_components import (
 from typing import Dict, List, Tuple, Optional
 from collections import defaultdict
 from datetime import datetime
+import json
 import os
 import subprocess
 from translation_manager import tr as t
@@ -1609,7 +1610,7 @@ class GooglePhotosLayout(BaseLayout):
         # Build tree
         for year in sorted(years_months.keys(), reverse=True):
             year_item = QTreeWidgetItem([f"📅 {year}"])
-            year_item.setData(0, Qt.UserRole, {"type": "year", "year": year})
+            year_item.setData(0, Qt.UserRole, json.dumps({"type": "year", "year": year}))
             year_item.setExpanded(True)
             self.timeline_tree.addTopLevelItem(year_item)
 
@@ -1617,7 +1618,7 @@ class GooglePhotosLayout(BaseLayout):
                 count = years_months[year][month]
                 month_name = datetime(year, month, 1).strftime("%B")
                 month_item = QTreeWidgetItem([f"  • {month_name} ({count})"])
-                month_item.setData(0, Qt.UserRole, {"type": "month", "year": year, "month": month})
+                month_item.setData(0, Qt.UserRole, json.dumps({"type": "month", "year": year, "month": month}))
                 year_item.addChild(month_item)
 
     def _build_folders_tree(self, rows):
@@ -1651,7 +1652,7 @@ class GooglePhotosLayout(BaseLayout):
                 folder_name = folder  # Show full path if basename is empty
 
             folder_item = QTreeWidgetItem([f"📁 {folder_name} ({count})"])
-            folder_item.setData(0, Qt.UserRole, {"type": "folder", "path": folder})
+            folder_item.setData(0, Qt.UserRole, json.dumps({"type": "folder", "path": folder}))
             folder_item.setToolTip(0, folder)  # Show full path on hover
             self.folders_tree.addTopLevelItem(folder_item)
         # Update Folders section count (sum of all photos across folders)
@@ -1672,6 +1673,11 @@ class GooglePhotosLayout(BaseLayout):
         data = item.data(0, Qt.UserRole)
         if not data:
             return
+        if isinstance(data, str):
+            try:
+                data = json.loads(data)
+            except (json.JSONDecodeError, TypeError):
+                return
 
         item_type = data.get("type")
 
@@ -1711,6 +1717,11 @@ class GooglePhotosLayout(BaseLayout):
         data = item.data(0, Qt.UserRole)
         if not data:
             return
+        if isinstance(data, str):
+            try:
+                data = json.loads(data)
+            except (json.JSONDecodeError, TypeError):
+                return
 
         folder_path = data.get("path")
         if folder_path:
@@ -1892,7 +1903,7 @@ class GooglePhotosLayout(BaseLayout):
             for branch_key, label, count, rep_path, rep_thumb_png in rows:
                 display_name = label if label else f"Unnamed Person"
                 person_item = QTreeWidgetItem([f"{display_name} ({count})"])
-                person_item.setData(0, Qt.UserRole, {"type": "person", "branch_key": branch_key, "label": label})
+                person_item.setData(0, Qt.UserRole, json.dumps({"type": "person", "branch_key": branch_key, "label": label}))
 
                 icon = self._load_face_thumbnail(rep_path, rep_thumb_png)
                 if icon:
@@ -2944,6 +2955,11 @@ class GooglePhotosLayout(BaseLayout):
         data = item.data(0, Qt.UserRole)
         if not data:
             return
+        if isinstance(data, str):
+            try:
+                data = json.loads(data)
+            except (json.JSONDecodeError, TypeError):
+                return
 
         branch_key = data.get("branch_key")
         if branch_key:
@@ -3747,7 +3763,14 @@ class GooglePhotosLayout(BaseLayout):
             return
 
         data = item.data(0, Qt.UserRole)
-        if not data or data.get("type") != "person":
+        if not data:
+            return
+        if isinstance(data, str):
+            try:
+                data = json.loads(data)
+            except (json.JSONDecodeError, TypeError):
+                return
+        if data.get("type") != "person":
             return
 
         branch_key = data.get("branch_key")
@@ -4835,7 +4858,7 @@ class GooglePhotosLayout(BaseLayout):
 
             # All Videos
             all_item = QTreeWidgetItem([f"All Videos ({total_videos})"])
-            all_item.setData(0, Qt.UserRole, {"type": "all_videos"})
+            all_item.setData(0, Qt.UserRole, json.dumps({"type": "all_videos"}))
             self.videos_tree.addTopLevelItem(all_item)
 
             # By Duration
@@ -4849,17 +4872,17 @@ class GooglePhotosLayout(BaseLayout):
 
                 if short_videos:
                     short_item = QTreeWidgetItem([f"  Short < 30s ({len(short_videos)})"])
-                    short_item.setData(0, Qt.UserRole, {"type": "duration", "key": "short", "videos": short_videos})
+                    short_item.setData(0, Qt.UserRole, json.dumps({"type": "duration", "key": "short"}))
                     duration_parent.addChild(short_item)
 
                 if medium_videos:
                     medium_item = QTreeWidgetItem([f"  Medium 30s-5m ({len(medium_videos)})"])
-                    medium_item.setData(0, Qt.UserRole, {"type": "duration", "key": "medium", "videos": medium_videos})
+                    medium_item.setData(0, Qt.UserRole, json.dumps({"type": "duration", "key": "medium"}))
                     duration_parent.addChild(medium_item)
 
                 if long_videos:
                     long_item = QTreeWidgetItem([f"  Long > 5m ({len(long_videos)})"])
-                    long_item.setData(0, Qt.UserRole, {"type": "duration", "key": "long", "videos": long_videos})
+                    long_item.setData(0, Qt.UserRole, json.dumps({"type": "duration", "key": "long"}))
                     duration_parent.addChild(long_item)
 
             # By Resolution
@@ -4874,22 +4897,22 @@ class GooglePhotosLayout(BaseLayout):
 
                 if sd_videos:
                     sd_item = QTreeWidgetItem([f"  SD < 720p ({len(sd_videos)})"])
-                    sd_item.setData(0, Qt.UserRole, {"type": "resolution", "key": "sd", "videos": sd_videos})
+                    sd_item.setData(0, Qt.UserRole, json.dumps({"type": "resolution", "key": "sd"}))
                     res_parent.addChild(sd_item)
 
                 if hd_videos:
                     hd_item = QTreeWidgetItem([f"  HD 720p ({len(hd_videos)})"])
-                    hd_item.setData(0, Qt.UserRole, {"type": "resolution", "key": "hd", "videos": hd_videos})
+                    hd_item.setData(0, Qt.UserRole, json.dumps({"type": "resolution", "key": "hd"}))
                     res_parent.addChild(hd_item)
 
                 if fhd_videos:
                     fhd_item = QTreeWidgetItem([f"  Full HD 1080p ({len(fhd_videos)})"])
-                    fhd_item.setData(0, Qt.UserRole, {"type": "resolution", "key": "fhd", "videos": fhd_videos})
+                    fhd_item.setData(0, Qt.UserRole, json.dumps({"type": "resolution", "key": "fhd"}))
                     res_parent.addChild(fhd_item)
 
                 if uhd_videos:
                     uhd_item = QTreeWidgetItem([f"  4K 2160p+ ({len(uhd_videos)})"])
-                    uhd_item.setData(0, Qt.UserRole, {"type": "resolution", "key": "4k", "videos": uhd_videos})
+                    uhd_item.setData(0, Qt.UserRole, json.dumps({"type": "resolution", "key": "4k"}))
                     res_parent.addChild(uhd_item)
 
             # By Date (Year/Month hierarchy)
@@ -4905,7 +4928,7 @@ class GooglePhotosLayout(BaseLayout):
                     for year in sorted(video_hier.keys(), key=lambda y: int(str(y)), reverse=True):
                         year_count = db.count_videos_for_year(year, self.project_id)
                         year_item = QTreeWidgetItem([f"  {year} ({year_count})"])
-                        year_item.setData(0, Qt.UserRole, {"type": "video_year", "year": year})
+                        year_item.setData(0, Qt.UserRole, json.dumps({"type": "video_year", "year": year}))
                         date_parent.addChild(year_item)
 
                         # Month nodes under year
@@ -4914,7 +4937,7 @@ class GooglePhotosLayout(BaseLayout):
                             month_label = f"{int(month):02d}"
                             month_count = db.count_videos_for_month(year, month, self.project_id)
                             month_item = QTreeWidgetItem([f"    {month_label} ({month_count})"])
-                            month_item.setData(0, Qt.UserRole, {"type": "video_month", "year": year, "month": month_label})
+                            month_item.setData(0, Qt.UserRole, json.dumps({"type": "video_month", "year": year, "month": month_label}))
                             year_item.addChild(month_item)
             except Exception as e:
                 print(f"[GoogleLayout] Failed to build video date hierarchy: {e}")
@@ -4962,6 +4985,11 @@ class GooglePhotosLayout(BaseLayout):
         data = item.data(0, Qt.UserRole)
         if not data:
             return
+        if isinstance(data, str):
+            try:
+                data = json.loads(data)
+            except (json.JSONDecodeError, TypeError):
+                return
 
         item_type = data.get("type")
 
@@ -4976,9 +5004,37 @@ class GooglePhotosLayout(BaseLayout):
                 print(f"[GoogleLayout] Error loading all videos: {e}")
 
         elif item_type in ["duration", "resolution"]:
-            videos = data.get("videos", [])
-            print(f"[GoogleLayout] Showing {len(videos)} videos filtered by {item_type}")
-            self._show_videos_in_timeline(videos)
+            # Re-query and filter on click (no embedded video lists)
+            filter_key = data.get("key", "")
+            print(f"[GoogleLayout] Filtering videos by {item_type}:{filter_key}")
+            try:
+                from services.video_service import VideoService
+                video_service = VideoService()
+                all_videos = video_service.get_videos_by_project(self.project_id) if self.project_id else []
+                if item_type == "duration":
+                    if filter_key == "short":
+                        videos = [v for v in all_videos if v.get('duration_seconds') and v['duration_seconds'] < 30]
+                    elif filter_key == "medium":
+                        videos = [v for v in all_videos if v.get('duration_seconds') and 30 <= v['duration_seconds'] < 300]
+                    elif filter_key == "long":
+                        videos = [v for v in all_videos if v.get('duration_seconds') and v['duration_seconds'] >= 300]
+                    else:
+                        videos = all_videos
+                elif item_type == "resolution":
+                    if filter_key == "sd":
+                        videos = [v for v in all_videos if v.get('height') and v['height'] < 720]
+                    elif filter_key == "hd":
+                        videos = [v for v in all_videos if v.get('height') and 720 <= v['height'] < 1080]
+                    elif filter_key == "fhd":
+                        videos = [v for v in all_videos if v.get('height') and 1080 <= v['height'] < 2160]
+                    elif filter_key == "4k":
+                        videos = [v for v in all_videos if v.get('height') and v['height'] >= 2160]
+                    else:
+                        videos = all_videos
+                print(f"[GoogleLayout] Showing {len(videos)} videos filtered by {item_type}:{filter_key}")
+                self._show_videos_in_timeline(videos)
+            except Exception as e:
+                print(f"[GoogleLayout] Error filtering videos: {e}")
 
         elif item_type == "video_year":
             year = data.get("year")

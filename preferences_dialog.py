@@ -897,9 +897,12 @@ class PreferencesDialog(QDialog):
         if reply == QMessageBox.Yes:
             try:
                 from services.group_service import GroupService
-                service = GroupService.instance()
-                # Clear all cached matches (they'll be recomputed on next access)
-                service.clear_all_group_caches()
+                from reference_db import ReferenceDB
+                db = ReferenceDB()
+                # Clear all cached matches and recompute
+                results = GroupService.reindex_all_groups(db, self.current_project_id)
+                db.close()
+                total = sum(results.values()) if results else 0
                 QMessageBox.information(
                     self,
                     tr("preferences.groups.cache_cleared_title"),
