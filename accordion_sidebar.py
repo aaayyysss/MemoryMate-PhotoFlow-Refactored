@@ -40,6 +40,7 @@ from PySide6.QtGui import QFont, QIcon, QColor, QPixmap, QPainter, QPainterPath,
 from datetime import datetime
 from typing import Optional
 import json
+from utils.qt_role import role_set_json, role_get_json
 import threading
 import traceback
 import time
@@ -2853,7 +2854,7 @@ class AccordionSidebar(QWidget):
 
             # All Videos
             all_item = QTreeWidgetItem([f"{tr('sidebar.all_videos')} ({total_videos})"])
-            all_item.setData(0, Qt.UserRole, json.dumps({"type": "all_videos"}))
+            role_set_json(all_item, {"type": "all_videos"}, role=Qt.UserRole)
             tree.addTopLevelItem(all_item)
 
             # By Duration
@@ -2865,19 +2866,19 @@ class AccordionSidebar(QWidget):
             # BUG FIX: Count videos WITH duration metadata (not sum of categories)
             videos_with_duration = [v for v in videos if v.get("duration_seconds")]
             duration_parent = QTreeWidgetItem([f"⏱️ {tr('sidebar.by_duration')} ({len(videos_with_duration)})"])
-            duration_parent.setData(0, Qt.UserRole, json.dumps({"type": "duration_header"}))
+            role_set_json(duration_parent, {"type": "duration_header"}, role=Qt.UserRole)
             tree.addTopLevelItem(duration_parent)
 
             short_item = QTreeWidgetItem([f"{tr('sidebar.duration_short')} ({len(short_videos)})"])
-            short_item.setData(0, Qt.UserRole, json.dumps({"type": "duration", "filter": "short"}))
+            role_set_json(short_item, {"type": "duration", "filter": "short"}, role=Qt.UserRole)
             duration_parent.addChild(short_item)
 
             medium_item = QTreeWidgetItem([f"{tr('sidebar.duration_medium')} ({len(medium_videos)})"])
-            medium_item.setData(0, Qt.UserRole, json.dumps({"type": "duration", "filter": "medium"}))
+            role_set_json(medium_item, {"type": "duration", "filter": "medium"}, role=Qt.UserRole)
             duration_parent.addChild(medium_item)
 
             long_item = QTreeWidgetItem([f"{tr('sidebar.duration_long')} ({len(long_videos)})"])
-            long_item.setData(0, Qt.UserRole, json.dumps({"type": "duration", "filter": "long"}))
+            role_set_json(long_item, {"type": "duration", "filter": "long"}, role=Qt.UserRole)
             duration_parent.addChild(long_item)
 
             # By Resolution
@@ -2893,23 +2894,23 @@ class AccordionSidebar(QWidget):
             # BUG FIX: Count videos WITH resolution metadata (not sum of categories)
             videos_with_resolution = [v for v in videos if (h := _height_value(v)) and h > 0]
             resolution_parent = QTreeWidgetItem([f"📺 {tr('sidebar.by_resolution')} ({len(videos_with_resolution)})"])
-            resolution_parent.setData(0, Qt.UserRole, json.dumps({"type": "resolution_header"}))
+            role_set_json(resolution_parent, {"type": "resolution_header"}, role=Qt.UserRole)
             tree.addTopLevelItem(resolution_parent)
 
             sd_item = QTreeWidgetItem([f"{tr('sidebar.resolution_sd')} ({len(sd_videos)})"])
-            sd_item.setData(0, Qt.UserRole, json.dumps({"type": "resolution", "filter": "sd"}))
+            role_set_json(sd_item, {"type": "resolution", "filter": "sd"}, role=Qt.UserRole)
             resolution_parent.addChild(sd_item)
 
             hd_item = QTreeWidgetItem([f"{tr('sidebar.resolution_hd')} ({len(hd_videos)})"])
-            hd_item.setData(0, Qt.UserRole, json.dumps({"type": "resolution", "filter": "hd"}))
+            role_set_json(hd_item, {"type": "resolution", "filter": "hd"}, role=Qt.UserRole)
             resolution_parent.addChild(hd_item)
 
             fhd_item = QTreeWidgetItem([f"{tr('sidebar.resolution_fhd')} ({len(fhd_videos)})"])
-            fhd_item.setData(0, Qt.UserRole, json.dumps({"type": "resolution", "filter": "fhd"}))
+            role_set_json(fhd_item, {"type": "resolution", "filter": "fhd"}, role=Qt.UserRole)
             resolution_parent.addChild(fhd_item)
 
             uhd_item = QTreeWidgetItem([f"{tr('sidebar.resolution_4k')} ({len(uhd_videos)})"])
-            uhd_item.setData(0, Qt.UserRole, json.dumps({"type": "resolution", "filter": "4k"}))
+            role_set_json(uhd_item, {"type": "resolution", "filter": "4k"}, role=Qt.UserRole)
             resolution_parent.addChild(uhd_item)
 
             # By Codec (NEW: Missing from AccordionSidebar)
@@ -2922,27 +2923,27 @@ class AccordionSidebar(QWidget):
             # BUG FIX: Count videos WITH codec metadata (not sum of categories - might miss unknown codecs)
             videos_with_codec = [v for v in videos if v.get("codec")]
             codec_parent = QTreeWidgetItem([f"🎞️ {tr('sidebar.by_codec')} ({len(videos_with_codec)})"])
-            codec_parent.setData(0, Qt.UserRole, json.dumps({"type": "codec_header"}))
+            role_set_json(codec_parent, {"type": "codec_header"}, role=Qt.UserRole)
             tree.addTopLevelItem(codec_parent)
 
             h264_item = QTreeWidgetItem([f"{tr('sidebar.codec_h264')} ({len(h264_videos)})"])
-            h264_item.setData(0, Qt.UserRole, json.dumps({"type": "codec", "filter": "h264"}))
+            role_set_json(h264_item, {"type": "codec", "filter": "h264"}, role=Qt.UserRole)
             codec_parent.addChild(h264_item)
 
             hevc_item = QTreeWidgetItem([f"{tr('sidebar.codec_h265')} ({len(hevc_videos)})"])
-            hevc_item.setData(0, Qt.UserRole, json.dumps({"type": "codec", "filter": "hevc"}))
+            role_set_json(hevc_item, {"type": "codec", "filter": "hevc"}, role=Qt.UserRole)
             codec_parent.addChild(hevc_item)
 
             vp9_item = QTreeWidgetItem([f"{tr('sidebar.codec_vp9')} ({len(vp9_videos)})"])
-            vp9_item.setData(0, Qt.UserRole, json.dumps({"type": "codec", "filter": "vp9"}))
+            role_set_json(vp9_item, {"type": "codec", "filter": "vp9"}, role=Qt.UserRole)
             codec_parent.addChild(vp9_item)
 
             av1_item = QTreeWidgetItem([f"{tr('sidebar.codec_av1')} ({len(av1_videos)})"])
-            av1_item.setData(0, Qt.UserRole, json.dumps({"type": "codec", "filter": "av1"}))
+            role_set_json(av1_item, {"type": "codec", "filter": "av1"}, role=Qt.UserRole)
             codec_parent.addChild(av1_item)
 
             mpeg4_item = QTreeWidgetItem([f"{tr('sidebar.codec_mpeg4')} ({len(mpeg4_videos)})"])
-            mpeg4_item.setData(0, Qt.UserRole, json.dumps({"type": "codec", "filter": "mpeg4"}))
+            role_set_json(mpeg4_item, {"type": "codec", "filter": "mpeg4"}, role=Qt.UserRole)
             codec_parent.addChild(mpeg4_item)
 
             # By File Size (NEW: Missing from AccordionSidebar)
@@ -2954,23 +2955,23 @@ class AccordionSidebar(QWidget):
             # BUG FIX: Count videos WITH size metadata (not sum of categories)
             videos_with_size = [v for v in videos if v.get("size_kb")]
             size_parent = QTreeWidgetItem([f"📦 {tr('sidebar.by_size')} ({len(videos_with_size)})"])
-            size_parent.setData(0, Qt.UserRole, json.dumps({"type": "size_header"}))
+            role_set_json(size_parent, {"type": "size_header"}, role=Qt.UserRole)
             tree.addTopLevelItem(size_parent)
 
             small_item = QTreeWidgetItem([f"{tr('sidebar.size_small')} ({len(small_videos)})"])
-            small_item.setData(0, Qt.UserRole, json.dumps({"type": "size", "filter": "small"}))
+            role_set_json(small_item, {"type": "size", "filter": "small"}, role=Qt.UserRole)
             size_parent.addChild(small_item)
 
             medium_item = QTreeWidgetItem([f"{tr('sidebar.size_medium')} ({len(medium_size_videos)})"])
-            medium_item.setData(0, Qt.UserRole, json.dumps({"type": "size", "filter": "medium"}))
+            role_set_json(medium_item, {"type": "size", "filter": "medium"}, role=Qt.UserRole)
             size_parent.addChild(medium_item)
 
             large_item = QTreeWidgetItem([f"{tr('sidebar.size_large')} ({len(large_videos)})"])
-            large_item.setData(0, Qt.UserRole, json.dumps({"type": "size", "filter": "large"}))
+            role_set_json(large_item, {"type": "size", "filter": "large"}, role=Qt.UserRole)
             size_parent.addChild(large_item)
 
             xlarge_item = QTreeWidgetItem([f"{tr('sidebar.size_xlarge')} ({len(xlarge_videos)})"])
-            xlarge_item.setData(0, Qt.UserRole, json.dumps({"type": "size", "filter": "xlarge"}))
+            role_set_json(xlarge_item, {"type": "size", "filter": "xlarge"}, role=Qt.UserRole)
             size_parent.addChild(xlarge_item)
 
             # Connect tree item click
@@ -2996,14 +2997,9 @@ class AccordionSidebar(QWidget):
 
     def _on_video_item_clicked(self, item: QTreeWidgetItem, column: int):
         """Handle video tree item click - emit selectVideo signal."""
-        data = item.data(0, Qt.UserRole)
+        data = role_get_json(item, role=Qt.UserRole)
         if not data:
             return
-        if isinstance(data, str):
-            try:
-                data = json.loads(data)
-            except (json.JSONDecodeError, TypeError):
-                return
 
         video_type = data.get("type")
         video_filter = data.get("filter", "all")

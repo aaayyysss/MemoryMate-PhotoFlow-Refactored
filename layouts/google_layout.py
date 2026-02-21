@@ -46,6 +46,7 @@ from typing import Dict, List, Tuple, Optional
 from collections import defaultdict
 from datetime import datetime
 import json
+from utils.qt_role import role_set_json, role_get_json
 import os
 import subprocess
 from translation_manager import tr as t
@@ -1610,7 +1611,7 @@ class GooglePhotosLayout(BaseLayout):
         # Build tree
         for year in sorted(years_months.keys(), reverse=True):
             year_item = QTreeWidgetItem([f"📅 {year}"])
-            year_item.setData(0, Qt.UserRole, json.dumps({"type": "year", "year": year}))
+            role_set_json(year_item, {"type": "year", "year": year}, role=Qt.UserRole)
             year_item.setExpanded(True)
             self.timeline_tree.addTopLevelItem(year_item)
 
@@ -1618,7 +1619,7 @@ class GooglePhotosLayout(BaseLayout):
                 count = years_months[year][month]
                 month_name = datetime(year, month, 1).strftime("%B")
                 month_item = QTreeWidgetItem([f"  • {month_name} ({count})"])
-                month_item.setData(0, Qt.UserRole, json.dumps({"type": "month", "year": year, "month": month}))
+                role_set_json(month_item, {"type": "month", "year": year, "month": month}, role=Qt.UserRole)
                 year_item.addChild(month_item)
 
     def _build_folders_tree(self, rows):
@@ -1652,7 +1653,7 @@ class GooglePhotosLayout(BaseLayout):
                 folder_name = folder  # Show full path if basename is empty
 
             folder_item = QTreeWidgetItem([f"📁 {folder_name} ({count})"])
-            folder_item.setData(0, Qt.UserRole, json.dumps({"type": "folder", "path": folder}))
+            role_set_json(folder_item, {"type": "folder", "path": folder}, role=Qt.UserRole)
             folder_item.setToolTip(0, folder)  # Show full path on hover
             self.folders_tree.addTopLevelItem(folder_item)
         # Update Folders section count (sum of all photos across folders)
@@ -1670,14 +1671,9 @@ class GooglePhotosLayout(BaseLayout):
             item: Clicked tree item
             column: Column index (always 0)
         """
-        data = item.data(0, Qt.UserRole)
+        data = role_get_json(item, role=Qt.UserRole)
         if not data:
             return
-        if isinstance(data, str):
-            try:
-                data = json.loads(data)
-            except (json.JSONDecodeError, TypeError):
-                return
 
         item_type = data.get("type")
 
@@ -1714,14 +1710,9 @@ class GooglePhotosLayout(BaseLayout):
             item: Clicked tree item
             column: Column index (always 0)
         """
-        data = item.data(0, Qt.UserRole)
+        data = role_get_json(item, role=Qt.UserRole)
         if not data:
             return
-        if isinstance(data, str):
-            try:
-                data = json.loads(data)
-            except (json.JSONDecodeError, TypeError):
-                return
 
         folder_path = data.get("path")
         if folder_path:
@@ -1903,7 +1894,7 @@ class GooglePhotosLayout(BaseLayout):
             for branch_key, label, count, rep_path, rep_thumb_png in rows:
                 display_name = label if label else f"Unnamed Person"
                 person_item = QTreeWidgetItem([f"{display_name} ({count})"])
-                person_item.setData(0, Qt.UserRole, json.dumps({"type": "person", "branch_key": branch_key, "label": label}))
+                role_set_json(person_item, {"type": "person", "branch_key": branch_key, "label": label}, role=Qt.UserRole)
 
                 icon = self._load_face_thumbnail(rep_path, rep_thumb_png)
                 if icon:
@@ -2952,14 +2943,9 @@ class GooglePhotosLayout(BaseLayout):
             item: Clicked tree item
             column: Column index (always 0)
         """
-        data = item.data(0, Qt.UserRole)
+        data = role_get_json(item, role=Qt.UserRole)
         if not data:
             return
-        if isinstance(data, str):
-            try:
-                data = json.loads(data)
-            except (json.JSONDecodeError, TypeError):
-                return
 
         branch_key = data.get("branch_key")
         if branch_key:
@@ -3762,14 +3748,9 @@ class GooglePhotosLayout(BaseLayout):
         if not item:
             return
 
-        data = item.data(0, Qt.UserRole)
+        data = role_get_json(item, role=Qt.UserRole)
         if not data:
             return
-        if isinstance(data, str):
-            try:
-                data = json.loads(data)
-            except (json.JSONDecodeError, TypeError):
-                return
         if data.get("type") != "person":
             return
 
@@ -3855,11 +3836,11 @@ class GooglePhotosLayout(BaseLayout):
                 count_part = old_text.split('(')[-1] if '(' in old_text else "0)"
                 item.setText(0, f"{new_name} ({count_part}")
 
-                # Update data
-                data = item.data(0, Qt.UserRole)
+                # Update data (safe writeback via JSON serialization)
+                data = role_get_json(item, role=Qt.UserRole)
                 if data:
                     data["label"] = new_name
-                    item.setData(0, Qt.UserRole, data)
+                    role_set_json(item, data, role=Qt.UserRole)
             else:
                 # Grid view: Refresh the entire people grid to show updated name
                 self._build_people_tree()
@@ -4858,7 +4839,7 @@ class GooglePhotosLayout(BaseLayout):
 
             # All Videos
             all_item = QTreeWidgetItem([f"All Videos ({total_videos})"])
-            all_item.setData(0, Qt.UserRole, json.dumps({"type": "all_videos"}))
+            role_set_json(all_item, {"type": "all_videos"}, role=Qt.UserRole)
             self.videos_tree.addTopLevelItem(all_item)
 
             # By Duration
@@ -4872,17 +4853,17 @@ class GooglePhotosLayout(BaseLayout):
 
                 if short_videos:
                     short_item = QTreeWidgetItem([f"  Short < 30s ({len(short_videos)})"])
-                    short_item.setData(0, Qt.UserRole, json.dumps({"type": "duration", "key": "short"}))
+                    role_set_json(short_item, {"type": "duration", "key": "short"}, role=Qt.UserRole)
                     duration_parent.addChild(short_item)
 
                 if medium_videos:
                     medium_item = QTreeWidgetItem([f"  Medium 30s-5m ({len(medium_videos)})"])
-                    medium_item.setData(0, Qt.UserRole, json.dumps({"type": "duration", "key": "medium"}))
+                    role_set_json(medium_item, {"type": "duration", "key": "medium"}, role=Qt.UserRole)
                     duration_parent.addChild(medium_item)
 
                 if long_videos:
                     long_item = QTreeWidgetItem([f"  Long > 5m ({len(long_videos)})"])
-                    long_item.setData(0, Qt.UserRole, json.dumps({"type": "duration", "key": "long"}))
+                    role_set_json(long_item, {"type": "duration", "key": "long"}, role=Qt.UserRole)
                     duration_parent.addChild(long_item)
 
             # By Resolution
@@ -4897,22 +4878,22 @@ class GooglePhotosLayout(BaseLayout):
 
                 if sd_videos:
                     sd_item = QTreeWidgetItem([f"  SD < 720p ({len(sd_videos)})"])
-                    sd_item.setData(0, Qt.UserRole, json.dumps({"type": "resolution", "key": "sd"}))
+                    role_set_json(sd_item, {"type": "resolution", "key": "sd"}, role=Qt.UserRole)
                     res_parent.addChild(sd_item)
 
                 if hd_videos:
                     hd_item = QTreeWidgetItem([f"  HD 720p ({len(hd_videos)})"])
-                    hd_item.setData(0, Qt.UserRole, json.dumps({"type": "resolution", "key": "hd"}))
+                    role_set_json(hd_item, {"type": "resolution", "key": "hd"}, role=Qt.UserRole)
                     res_parent.addChild(hd_item)
 
                 if fhd_videos:
                     fhd_item = QTreeWidgetItem([f"  Full HD 1080p ({len(fhd_videos)})"])
-                    fhd_item.setData(0, Qt.UserRole, json.dumps({"type": "resolution", "key": "fhd"}))
+                    role_set_json(fhd_item, {"type": "resolution", "key": "fhd"}, role=Qt.UserRole)
                     res_parent.addChild(fhd_item)
 
                 if uhd_videos:
                     uhd_item = QTreeWidgetItem([f"  4K 2160p+ ({len(uhd_videos)})"])
-                    uhd_item.setData(0, Qt.UserRole, json.dumps({"type": "resolution", "key": "4k"}))
+                    role_set_json(uhd_item, {"type": "resolution", "key": "4k"}, role=Qt.UserRole)
                     res_parent.addChild(uhd_item)
 
             # By Date (Year/Month hierarchy)
@@ -4928,7 +4909,7 @@ class GooglePhotosLayout(BaseLayout):
                     for year in sorted(video_hier.keys(), key=lambda y: int(str(y)), reverse=True):
                         year_count = db.count_videos_for_year(year, self.project_id)
                         year_item = QTreeWidgetItem([f"  {year} ({year_count})"])
-                        year_item.setData(0, Qt.UserRole, json.dumps({"type": "video_year", "year": year}))
+                        role_set_json(year_item, {"type": "video_year", "year": year}, role=Qt.UserRole)
                         date_parent.addChild(year_item)
 
                         # Month nodes under year
@@ -4937,7 +4918,7 @@ class GooglePhotosLayout(BaseLayout):
                             month_label = f"{int(month):02d}"
                             month_count = db.count_videos_for_month(year, month, self.project_id)
                             month_item = QTreeWidgetItem([f"    {month_label} ({month_count})"])
-                            month_item.setData(0, Qt.UserRole, json.dumps({"type": "video_month", "year": year, "month": month_label}))
+                            role_set_json(month_item, {"type": "video_month", "year": year, "month": month_label}, role=Qt.UserRole)
                             year_item.addChild(month_item)
             except Exception as e:
                 print(f"[GoogleLayout] Failed to build video date hierarchy: {e}")
@@ -4982,14 +4963,9 @@ class GooglePhotosLayout(BaseLayout):
             item: Clicked tree item
             column: Column index (always 0)
         """
-        data = item.data(0, Qt.UserRole)
+        data = role_get_json(item, role=Qt.UserRole)
         if not data:
             return
-        if isinstance(data, str):
-            try:
-                data = json.loads(data)
-            except (json.JSONDecodeError, TypeError):
-                return
 
         item_type = data.get("type")
 
