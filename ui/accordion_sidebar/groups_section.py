@@ -408,7 +408,7 @@ class GroupsSection(BaseSection):
                 }
                 QPushButton:hover { background: #1557b0; }
             """)
-            create_btn.clicked.connect(self.newGroupRequested.emit)
+            create_btn.clicked.connect(lambda _checked=False: self.newGroupRequested.emit())
             empty_layout.addWidget(create_btn, alignment=Qt.AlignCenter)
 
             layout.addStretch()
@@ -434,7 +434,7 @@ class GroupsSection(BaseSection):
             }
             QPushButton:hover { background: #1557b0; }
         """)
-        btn_new.clicked.connect(self.newGroupRequested.emit)
+        btn_new.clicked.connect(lambda _checked=False: self.newGroupRequested.emit())
         header_layout.addWidget(btn_new)
 
         header_layout.addStretch()
