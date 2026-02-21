@@ -455,12 +455,12 @@ class ReferenceDB:
         """
         thread_id = threading.get_ident()
         conn = None
-        
+
         with self._pool_lock:
             # Try to get existing connection for this thread
             if thread_id in self._connection_pool:
                 conn = self._connection_pool[thread_id]
-                
+
                 # Verify connection is still valid
                 try:
                     conn.execute("SELECT 1")
@@ -469,37 +469,44 @@ class ReferenceDB:
                     try:
                         conn.close()
                     except sqlite3.Error as e:
-                        # BUG-H6 FIX: Log connection close failures
                         print(f"[ReferenceDB] Failed to close broken connection: {e}")
                     conn = None
                     del self._connection_pool[thread_id]
-        
-        # Create new connection if needed
-        if conn is None:
-            conn = sqlite3.connect(self.db_file, check_same_thread=False)
-            conn.execute("PRAGMA foreign_keys = ON")
-            
-            ## Patch in _connect() beim Erzeugen neuer Connections ##
-            conn.execute("PRAGMA journal_mode=WAL")
-            conn.execute("PRAGMA synchronous=NORMAL")
-            conn.execute("PRAGMA busy_timeout=5000")            
-            ## END Patch ##
-            
-            conn.row_factory = sqlite3.Row  # Always return dict-like rows
-            
-            with self._pool_lock:
-                # Clean up pool if it's too large
+
+            # Create new connection if needed — INSIDE the lock to prevent
+            # concurrent sqlite3.connect() calls which cause access violations
+            # on Windows (Python 3.11 + WAL mode race condition).
+            if conn is None:
+                conn = sqlite3.connect(self.db_file, check_same_thread=False)
+                conn.execute("PRAGMA foreign_keys = ON")
+                conn.execute("PRAGMA journal_mode=WAL")
+                conn.execute("PRAGMA synchronous=NORMAL")
+                conn.execute("PRAGMA busy_timeout=5000")
+                conn.row_factory = sqlite3.Row
+
+                # Evict oldest connection if pool is full.
+                # Only evict entries for threads that are NO LONGER ALIVE
+                # to avoid closing a connection still in use by another thread.
                 if len(self._connection_pool) >= self._max_pool_size:
-                    # Remove oldest connection (simple FIFO eviction)
-                    oldest_thread = next(iter(self._connection_pool))
+                    dead_thread = None
+                    for tid in self._connection_pool:
+                        # Check if thread is still alive
+                        alive = False
+                        for t in threading.enumerate():
+                            if t.ident == tid:
+                                alive = True
+                                break
+                        if not alive:
+                            dead_thread = tid
+                            break
+
+                    evict_tid = dead_thread if dead_thread else next(iter(self._connection_pool))
                     try:
-                        self._connection_pool[oldest_thread].close()
+                        self._connection_pool[evict_tid].close()
                     except sqlite3.Error as e:
-                        # BUG-H6 FIX: Log pool cleanup failures
                         print(f"[ReferenceDB] Failed to close pooled connection: {e}")
-                    del self._connection_pool[oldest_thread]
-                
-                # Add new connection to pool
+                    del self._connection_pool[evict_tid]
+
                 self._connection_pool[thread_id] = conn
         
         try:
