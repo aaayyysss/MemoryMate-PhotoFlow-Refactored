@@ -1,7 +1,6 @@
 # ui/accordion_sidebar/videos_section.py
 # Videos section for accordion sidebar
 
-import json
 import threading
 import traceback
 import logging
@@ -9,6 +8,7 @@ from PySide6.QtWidgets import QTreeWidget, QTreeWidgetItem, QSizePolicy, QLabel
 from PySide6.QtCore import Signal, Qt, QObject
 from PySide6.QtGui import QColor
 from translation_manager import tr
+from utils.qt_role import role_set_json, role_get_json
 from .base_section import BaseSection
 
 logger = logging.getLogger(__name__)
@@ -170,7 +170,7 @@ class VideosSection(BaseSection):
 
         # All Videos
         all_item = QTreeWidgetItem([f"{tr('sidebar.all_videos')} ({total_videos})"])
-        all_item.setData(0, Qt.UserRole, json.dumps({"type": "all_videos"}))
+        role_set_json(all_item, {"type": "all_videos"}, role=Qt.UserRole)
         tree.addTopLevelItem(all_item)
 
         # By Duration
@@ -180,19 +180,19 @@ class VideosSection(BaseSection):
 
         videos_with_duration = [v for v in videos if v.get("duration_seconds")]
         duration_parent = QTreeWidgetItem([f"⏱️ {tr('sidebar.by_duration')} ({len(videos_with_duration)})"])
-        duration_parent.setData(0, Qt.UserRole, json.dumps({"type": "duration_header"}))
+        role_set_json(duration_parent, {"type": "duration_header"}, role=Qt.UserRole)
         tree.addTopLevelItem(duration_parent)
 
         short_item = QTreeWidgetItem([f"{tr('sidebar.duration_short')} ({len(short_videos)})"])
-        short_item.setData(0, Qt.UserRole, json.dumps({"type": "duration", "filter": "short"}))
+        role_set_json(short_item, {"type": "duration", "filter": "short"}, role=Qt.UserRole)
         duration_parent.addChild(short_item)
 
         medium_item = QTreeWidgetItem([f"{tr('sidebar.duration_medium')} ({len(medium_videos)})"])
-        medium_item.setData(0, Qt.UserRole, json.dumps({"type": "duration", "filter": "medium"}))
+        role_set_json(medium_item, {"type": "duration", "filter": "medium"}, role=Qt.UserRole)
         duration_parent.addChild(medium_item)
 
         long_item = QTreeWidgetItem([f"{tr('sidebar.duration_long')} ({len(long_videos)})"])
-        long_item.setData(0, Qt.UserRole, json.dumps({"type": "duration", "filter": "long"}))
+        role_set_json(long_item, {"type": "duration", "filter": "long"}, role=Qt.UserRole)
         duration_parent.addChild(long_item)
 
         # By Resolution (use max dimension height/width)
@@ -206,23 +206,23 @@ class VideosSection(BaseSection):
                 resolution_buckets[bucket] += 1
 
         resolution_parent = QTreeWidgetItem([f"📺 {tr('sidebar.by_resolution')} ({len(videos_with_resolution)})"])
-        resolution_parent.setData(0, Qt.UserRole, json.dumps({"type": "resolution_header"}))
+        role_set_json(resolution_parent, {"type": "resolution_header"}, role=Qt.UserRole)
         tree.addTopLevelItem(resolution_parent)
 
         sd_item = QTreeWidgetItem([f"{tr('sidebar.resolution_sd')} ({resolution_buckets['sd']})"])
-        sd_item.setData(0, Qt.UserRole, json.dumps({"type": "resolution", "filter": "sd"}))
+        role_set_json(sd_item, {"type": "resolution", "filter": "sd"}, role=Qt.UserRole)
         resolution_parent.addChild(sd_item)
 
         hd_item = QTreeWidgetItem([f"{tr('sidebar.resolution_hd')} ({resolution_buckets['hd']})"])
-        hd_item.setData(0, Qt.UserRole, json.dumps({"type": "resolution", "filter": "hd"}))
+        role_set_json(hd_item, {"type": "resolution", "filter": "hd"}, role=Qt.UserRole)
         resolution_parent.addChild(hd_item)
 
         fhd_item = QTreeWidgetItem([f"{tr('sidebar.resolution_fhd')} ({resolution_buckets['fhd']})"])
-        fhd_item.setData(0, Qt.UserRole, json.dumps({"type": "resolution", "filter": "fhd"}))
+        role_set_json(fhd_item, {"type": "resolution", "filter": "fhd"}, role=Qt.UserRole)
         resolution_parent.addChild(fhd_item)
 
         uhd_item = QTreeWidgetItem([f"{tr('sidebar.resolution_4k')} ({resolution_buckets['4k']})"])
-        uhd_item.setData(0, Qt.UserRole, json.dumps({"type": "resolution", "filter": "4k"}))
+        role_set_json(uhd_item, {"type": "resolution", "filter": "4k"}, role=Qt.UserRole)
         resolution_parent.addChild(uhd_item)
 
         # By Codec
@@ -250,27 +250,27 @@ class VideosSection(BaseSection):
                 codec_counts["mpeg4"] += 1
 
         codec_parent = QTreeWidgetItem([f"🎞️ By Codec ({len(videos_with_codec)})"])
-        codec_parent.setData(0, Qt.UserRole, json.dumps({"type": "codec_header"}))
+        role_set_json(codec_parent, {"type": "codec_header"}, role=Qt.UserRole)
         tree.addTopLevelItem(codec_parent)
 
         h264_item = QTreeWidgetItem([f"H.264 / AVC ({codec_counts['h264']})"])
-        h264_item.setData(0, Qt.UserRole, json.dumps({"type": "codec", "filter": "h264"}))
+        role_set_json(h264_item, {"type": "codec", "filter": "h264"}, role=Qt.UserRole)
         codec_parent.addChild(h264_item)
 
         hevc_item = QTreeWidgetItem([f"H.265 / HEVC ({codec_counts['hevc']})"])
-        hevc_item.setData(0, Qt.UserRole, json.dumps({"type": "codec", "filter": "hevc"}))
+        role_set_json(hevc_item, {"type": "codec", "filter": "hevc"}, role=Qt.UserRole)
         codec_parent.addChild(hevc_item)
 
         vp9_item = QTreeWidgetItem([f"VP9 ({codec_counts['vp9']})"])
-        vp9_item.setData(0, Qt.UserRole, json.dumps({"type": "codec", "filter": "vp9"}))
+        role_set_json(vp9_item, {"type": "codec", "filter": "vp9"}, role=Qt.UserRole)
         codec_parent.addChild(vp9_item)
 
         av1_item = QTreeWidgetItem([f"AV1 ({codec_counts['av1']})"])
-        av1_item.setData(0, Qt.UserRole, json.dumps({"type": "codec", "filter": "av1"}))
+        role_set_json(av1_item, {"type": "codec", "filter": "av1"}, role=Qt.UserRole)
         codec_parent.addChild(av1_item)
 
         mpeg4_item = QTreeWidgetItem([f"MPEG-4 ({codec_counts['mpeg4']})"])
-        mpeg4_item.setData(0, Qt.UserRole, json.dumps({"type": "codec", "filter": "mpeg4"}))
+        role_set_json(mpeg4_item, {"type": "codec", "filter": "mpeg4"}, role=Qt.UserRole)
         codec_parent.addChild(mpeg4_item)
 
         # By File Size
@@ -284,23 +284,23 @@ class VideosSection(BaseSection):
                 size_counts[bucket] += 1
 
         size_parent = QTreeWidgetItem([f"📦 {tr('sidebar.by_size')} ({len(videos_with_size)})"])
-        size_parent.setData(0, Qt.UserRole, json.dumps({"type": "size_header"}))
+        role_set_json(size_parent, {"type": "size_header"}, role=Qt.UserRole)
         tree.addTopLevelItem(size_parent)
 
         small_item = QTreeWidgetItem([f"{tr('sidebar.size_small')} ({size_counts['small']})"])
-        small_item.setData(0, Qt.UserRole, json.dumps({"type": "size", "filter": "small"}))
+        role_set_json(small_item, {"type": "size", "filter": "small"}, role=Qt.UserRole)
         size_parent.addChild(small_item)
 
         medium_item = QTreeWidgetItem([f"{tr('sidebar.size_medium')} ({size_counts['medium']})"])
-        medium_item.setData(0, Qt.UserRole, json.dumps({"type": "size", "filter": "medium"}))
+        role_set_json(medium_item, {"type": "size", "filter": "medium"}, role=Qt.UserRole)
         size_parent.addChild(medium_item)
 
         large_item = QTreeWidgetItem([f"{tr('sidebar.size_large')} ({size_counts['large']})"])
-        large_item.setData(0, Qt.UserRole, json.dumps({"type": "size", "filter": "large"}))
+        role_set_json(large_item, {"type": "size", "filter": "large"}, role=Qt.UserRole)
         size_parent.addChild(large_item)
 
         xlarge_item = QTreeWidgetItem([f"{tr('sidebar.size_xlarge')} ({size_counts['xlarge']})"])
-        xlarge_item.setData(0, Qt.UserRole, json.dumps({"type": "size", "filter": "xlarge"}))
+        role_set_json(xlarge_item, {"type": "size", "filter": "xlarge"}, role=Qt.UserRole)
         size_parent.addChild(xlarge_item)
 
         # By Date (years)
@@ -312,17 +312,17 @@ class VideosSection(BaseSection):
 
         if year_counts:
             date_parent = QTreeWidgetItem([f"📅 {tr('sidebar.by_date')} ({sum(year_counts.values())})"])
-            date_parent.setData(0, Qt.UserRole, json.dumps({"type": "date_header"}))
+            role_set_json(date_parent, {"type": "date_header"}, role=Qt.UserRole)
             tree.addTopLevelItem(date_parent)
 
             for year in sorted(year_counts.keys(), reverse=True):
                 year_item = QTreeWidgetItem([f"{year} ({year_counts[year]})"])
-                year_item.setData(0, Qt.UserRole, json.dumps({"type": "date", "filter": str(year)}))
+                role_set_json(year_item, {"type": "date", "filter": str(year)}, role=Qt.UserRole)
                 date_parent.addChild(year_item)
 
         # Search shortcut
         search_item = QTreeWidgetItem([tr("sidebar.search_videos")])
-        search_item.setData(0, Qt.UserRole, json.dumps({"type": "search"}))
+        role_set_json(search_item, {"type": "search"}, role=Qt.UserRole)
         tree.addTopLevelItem(search_item)
 
         # Connect double-click to emit filter selection
@@ -335,24 +335,18 @@ class VideosSection(BaseSection):
 
     def _on_item_double_clicked(self, item: QTreeWidgetItem):
         """Handle double-click on video filter item."""
-        data = item.data(0, Qt.UserRole)
+        data = role_get_json(item, role=Qt.UserRole)
         if not data:
             return
-        if isinstance(data, str):
-            try:
-                data = json.loads(data)
-            except (json.JSONDecodeError, TypeError):
-                return
-        if isinstance(data, dict):
-            filter_type = data.get("type")
-            if filter_type == "all_videos":
-                self.videoFilterSelected.emit("all")
-            elif filter_type in ["duration", "resolution", "codec", "size", "date"]:
-                filter_value = data.get("filter", "")
-                if filter_value:
-                    self.videoFilterSelected.emit(f"{filter_type}:{filter_value}")
-            elif filter_type == "search":
-                self.videoFilterSelected.emit("search")
+        filter_type = data.get("type")
+        if filter_type == "all_videos":
+            self.videoFilterSelected.emit("all")
+        elif filter_type in ["duration", "resolution", "codec", "size", "date"]:
+            filter_value = data.get("filter", "")
+            if filter_value:
+                self.videoFilterSelected.emit(f"{filter_type}:{filter_value}")
+        elif filter_type == "search":
+            self.videoFilterSelected.emit("search")
 
     def _on_data_loaded(self, generation: int, videos: list):
         """Callback when videos data is loaded."""
