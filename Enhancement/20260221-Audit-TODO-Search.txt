@@ -1,0 +1,1539 @@
+I'll audit all four issues in parallel, then fix them systematically.
+
+
+Audited codebase for signal definitions, Qt.UserRole dict storage, GroupService calls, and database connection patterns
+Audited codebase for signal definitions, Qt.UserRole dict storage, GroupService calls, and database connection patterns
+Mehr anzeigen
+Mehr anzeigen
+Mehr anzeigen
+Mehr anzeigen
+Mehr anzeigen
+Mehr anzeigen
+Mehr anzeigen
+Mehr anzeigen
+Mehr anzeigen
+Mehr anzeigen
+Mehr anzeigen
+Mehr anzeigen
+Mehr anzeigen
+Mehr anzeigen
+Mehr anzeigen
+Mehr anzeigen
+Mehr anzeigen
+Mehr anzeigen
+Mehr anzeigen
+Mehr anzeigen
+Mehr anzeigen
+Mehr anzeigen
+Mehr anzeigen
+Mehr anzeigen
+Mehr anzeigen
+
+Excellent. All four audits are complete. Here's what I found:
+
+Issue	Severity	Scope	Fix
+A newGroupRequested signal mismatch	Crash	2 lines in groups_section.py	Lambda wrapper
+B Shiboken dict-in-UserRole	Undefined behavior	64 writes across 3 files + reads	json.dumps/loads
+C GroupService.instance()	Crash	1 location in preferences_dialog.py	Direct static call
+D DB connection churn	Not a real issue	N/A	Singleton pool already handles it
+D is noise — ReferenceDB uses a per-thread singleton pool (max 10), workers correctly clean up with db.close(). The "Closed connection" logs are intentional lifecycle management. No fix needed.
+
+Let me fix A, B, and C now.
+
+
+Updated todo list with signal argument and serialization fixes
+Updated todo list with signal argument and serialization fixes
+Update Todos
+ Fixing newGroupRequested signal argument mismatch
+ Fix B: Shiboken dict-in-UserRole warnings → JSON serialization
+ Fix C: GroupService.instance() → direct static call
+ Evaluate sidebar evolution plan and provide recommendation
+ Syntax check, commit and push
+
+Fix A: Lambda wrap for signal/slot mismatch.
+
+
+Updated todo list tracking signal mismatch fixes
+Updated todo list tracking signal mismatch fixes
+Read
+/home/user/MemoryMate-PhotoFlow-Refactored/ui/accordion_sidebar/groups_section.py
+5 Zeilen gelesen
+Read
+/home/user/MemoryMate-PhotoFlow-Refactored/ui/accordion_sidebar/groups_section.py
+5 Zeilen gelesen
+Edit
+/home/user/MemoryMate-PhotoFlow-Refactored/ui/accordion_sidebar/groups_section.py
++1
+-1
+            create_btn.clicked.connect(self.newGroupRequested.emit)
+            create_btn.clicked.connect(lambda _checked=False: self.newGroupRequested.emit())
+Edit
+/home/user/MemoryMate-PhotoFlow-Refactored/ui/accordion_sidebar/groups_section.py
++1
+-1
+        btn_new.clicked.connect(self.newGroupRequested.emit)
+        btn_new.clicked.connect(lambda _checked=False: self.newGroupRequested.emit())
+Update Todos
+ Fix A: newGroupRequested signal argument mismatch
+ Fixing Shiboken dict-in-UserRole warnings
+ Fix C: GroupService.instance() → direct static call
+ Evaluate sidebar evolution plan and provide recommendation
+ Syntax check, commit and push
+Weniger anzeigen
+
+Fix B: Shiboken dict-in-UserRole — JSON serialization. Three files: videos_section.py (23 writes), accordion_sidebar.py (20 writes), google_layout.py (17 writes). Let me fix them systematically, starting with the new accordion sections, then the reads.
+
+
+Read videos_section.py file to review video display logic
+Read videos_section.py file to review video display logic
+Read
+/home/user/MemoryMate-PhotoFlow-Refactored/ui/accordion_sidebar/videos_section.py
+170 Zeilen gelesen
+
+Now let me find the read side for videos_section.py.
+
+
+Searched for Qt.UserRole data access patterns in videos_section.py
+Searched for Qt.UserRole data access patterns in videos_section.py
+Grep
+data\(0, Qt\.UserRole\)|\.data\(Qt\.UserRole\)
+332-        logger.info(f"[VideosSection] Tree built with {total_videos} videos")
+333-        return tree
+334-
+Weniger anzeigen
+335-    def _on_item_double_clicked(self, item: QTreeWidgetItem):
+336-        """Handle double-click on video filter item."""
+337:        data = item.data(0, Qt.UserRole)
+338-        if data and isinstance(data, dict):
+339-            filter_type = data.get("type")
+340-            if filter_type == "all_videos":
+341-                self.videoFilterSelected.emit("all")
+342-            elif filter_type in ["duration", "resolution", "codec", "size", "date"]:
+Read
+/home/user/MemoryMate-PhotoFlow-Refactored/ui/accordion_sidebar/videos_section.py
+8 Zeilen gelesen
+
+Good. Now let me fix videos_section.py — add import json and replace all dict setData with json.dumps, then update the read side.
+
+
+Updated imports and refactored videos_section.py module
+Updated imports and refactored videos_section.py module
+Edit
+/home/user/MemoryMate-PhotoFlow-Refactored/ui/accordion_sidebar/videos_section.py
++6
+-5
+import json
+import logging
+from PySide6.QtWidgets import QTreeWidget, QTreeWidgetItem, QSizePolicy, QLabel
+from PySide6.QtCore import Signal, Qt, QObject
+
+Now replace all 23 dict setData calls with json.dumps. Use replace_all for the common pattern.
+
+
+Fixed JSON serialization in videos_section.py setData call
+Fixed JSON serialization in videos_section.py setData call
+Edit
+/home/user/MemoryMate-PhotoFlow-Refactored/ui/accordion_sidebar/videos_section.py
++1
+-1
+.setData(0, Qt.UserRole, {"type":
+.setData(0, Qt.UserRole, json.dumps({"type":
+
+Now I need to close the json.dumps parenthesis. Each line has the dict closing }) but now needs })).
+
+
+Found video filter type definitions in sidebar component
+Found video filter type definitions in sidebar component
+Grep
+json\.dumps\(\{\"type\".*\}\)$
+173:        all_item.setData(0, Qt.UserRole, json.dumps({"type": "all_videos"})
+183:        duration_parent.setData(0, Qt.UserRole, json.dumps({"type": "duration_header"})
+187:        short_item.setData(0, Qt.UserRole, json.dumps({"type": "duration", "filter": "short"})
+Weniger anzeigen
+191:        medium_item.setData(0, Qt.UserRole, json.dumps({"type": "duration", "filter": "medium"})
+195:        long_item.setData(0, Qt.UserRole, json.dumps({"type": "duration", "filter": "long"})
+209:        resolution_parent.setData(0, Qt.UserRole, json.dumps({"type": "resolution_header"})
+213:        sd_item.setData(0, Qt.UserRole, json.dumps({"type": "resolution", "filter": "sd"})
+217:        hd_item.setData(0, Qt.UserRole, json.dumps({"type": "resolution", "filter": "hd"})
+221:        fhd_item.setData(0, Qt.UserRole, json.dumps({"type": "resolution", "filter": "fhd"})
+225:        uhd_item.setData(0, Qt.UserRole, json.dumps({"type": "resolution", "filter": "4k"})
+253:        codec_parent.setData(0, Qt.UserRole, json.dumps({"type": "codec_header"})
+257:        h264_item.setData(0, Qt.UserRole, json.dumps({"type": "codec", "filter": "h264"})
+261:        hevc_item.setData(0, Qt.UserRole, json.dumps({"type": "codec", "filter": "hevc"})
+265:        vp9_item.setData(0, Qt.UserRole, json.dumps({"type": "codec", "filter": "vp9"})
+269:        av1_item.setData(0, Qt.UserRole, json.dumps({"type": "codec", "filter": "av1"})
+273:        mpeg4_item.setData(0, Qt.UserRole, json.dumps({"type": "codec", "filter": "mpeg4"})
+287:        size_parent.setData(0, Qt.UserRole, json.dumps({"type": "size_header"})
+291:        small_item.setData(0, Qt.UserRole, json.dumps({"type": "size", "filter": "small"})
+295:        medium_item.setData(0, Qt.UserRole, json.dumps({"type": "size", "filter": "medium"})
+299:        large_item.setData(0, Qt.UserRole, json.dumps({"type": "size", "filter": "large"})
+303:        xlarge_item.setData(0, Qt.UserRole, json.dumps({"type": "size", "filter": "xlarge"})
+315:            date_parent.setData(0, Qt.UserRole, json.dumps({"type": "date_header"})
+320:                year_item.setData(0, Qt.UserRole, json.dumps({"type": "date", "filter": str(year)})
+325:        search_item.setData(0, Qt.UserRole, json.dumps({"type": "search"})
+
+Each json.dumps( call is now missing a closing ). Let me fix this by running a targeted Python fix.
+
+
+Fixed 24 JSON serialization syntax errors in videos_section.py
+Fixed 24 JSON serialization syntax errors in videos_section.py
+Bash
+python3 -c "
+import re
+path = 'ui/accordion_sidebar/videos_section.py'
+with open(path, 'r') as f:
+    lines = f.readlines()
+
+fixed = 0
+for i, line in enumerate(lines):
+    # Find lines with json.dumps( that end with }) - missing closing paren
+    if 'json.dumps({' in line and line.rstrip().endswith('})'):
+        lines[i] = line.rstrip() + ')\n'
+        fixed += 1
+
+with open(path, 'w') as f:
+    f.writelines(lines)
+print(f'Fixed {fixed} lines')
+"
+Fixed 24 lines
+
+Good, 24 lines fixed. Now update the READ side.
+
+
+Fixed double-click handler in videos_section.py component
+Fixed double-click handler in videos_section.py component
+Read
+/home/user/MemoryMate-PhotoFlow-Refactored/ui/accordion_sidebar/videos_section.py
+20 Zeilen gelesen
+Edit
+/home/user/MemoryMate-PhotoFlow-Refactored/ui/accordion_sidebar/videos_section.py
++11
+-4
+    def _on_item_double_clicked(self, item: QTreeWidgetItem):
+        """Handle double-click on video filter item."""
+        data = item.data(0, Qt.UserRole)
+        if data and isinstance(data, dict):
+        if not data:
+            return
+        if isinstance(data, str):
+            try:
+                data = json.loads(data)
+            except (json.JSONDecodeError, TypeError):
+                return
+        if isinstance(data, dict):
+
+Now fix accordion_sidebar.py — the old sidebar with 20 dict setData calls.
+
+
+Added json import to accordion_sidebar.py
+Added json import to accordion_sidebar.py
+Read
+/home/user/MemoryMate-PhotoFlow-Refactored/accordion_sidebar.py
+5 Zeilen gelesen
+Grep
+^import json
+No matches found
+Grep
+^import |^from
+18:from PySide6.QtWidgets import (
+23:from PySide6.QtCore import (
+38:from utils.qt_guards import connect_guarded
+Mehr anzeigen
+Edit
+/home/user/MemoryMate-PhotoFlow-Refactored/accordion_sidebar.py
++5
+-4
+import json
+import traceback
+import time
+import io
+Weniger anzeigen
+
+Now apply the same pattern to accordion_sidebar.py — replace dict setData with json.dumps.
+
+
+Fixed JSON serialization in accordion_sidebar.py data handling
+Fixed JSON serialization in accordion_sidebar.py data handling
+Edit
+/home/user/MemoryMate-PhotoFlow-Refactored/accordion_sidebar.py
++1
+-1
+.setData(0, Qt.UserRole, {"type":
+.setData(0, Qt.UserRole, json.dumps({"type":
+
+Fix the closing parens.
+
+
+Fixed 21 JSON syntax errors in accordion_sidebar.py
+Fixed 21 JSON syntax errors in accordion_sidebar.py
+Bash
+python3 -c "
+path = 'accordion_sidebar.py'
+with open(path, 'r') as f:
+    lines = f.readlines()
+
+fixed = 0
+for i, line in enumerate(lines):
+    if 'json.dumps({' in line and line.rstrip().endswith('})'):
+        lines[i] = line.rstrip() + ')\n'
+        fixed += 1
+
+with open(path, 'w') as f:
+    f.writelines(lines)
+print(f'Fixed {fixed} lines')
+"
+Fixed 21 lines
+
+Now fix the READ side in accordion_sidebar.py.
+
+
+Fixed video item click handler in accordion_sidebar.py
+Fixed video item click handler in accordion_sidebar.py
+Grep
+data = item\.data\(0, Qt\.UserRole\)
+2994-            error_label.setStyleSheet("padding: 20px; color: #ff0000;")
+2995-            section.set_content_widget(error_label)
+2996-
+Weniger anzeigen
+2997-    def _on_video_item_clicked(self, item: QTreeWidgetItem, column: int):
+2998-        """Handle video tree item click - emit selectVideo signal."""
+2999:        data = item.data(0, Qt.UserRole)
+3000-        if not data:
+3001-            return
+3002-
+3003-        video_type = data.get("type")
+3004-        video_filter = data.get("filter", "all")
+Read
+/home/user/MemoryMate-PhotoFlow-Refactored/accordion_sidebar.py
+25 Zeilen gelesen
+Edit
+/home/user/MemoryMate-PhotoFlow-Refactored/accordion_sidebar.py
++13
+-8
+        data = item.data(0, Qt.UserRole)
+        if not data:
+            return
+        if isinstance(data, str):
+            try:
+                data = json.loads(data)
+            except (json.JSONDecodeError, TypeError):
+                return
+ 
+        video_type = data.get("type")
+        video_filter = data.get("filter", "all")
+
+Now fix google_layout.py — the biggest file with 17 dict setData calls. Let me handle the writes and reads.
+
+
+Searched google_layout.py for JSON imports and data structure assignments
+Searched google_layout.py for JSON imports and data structure assignments
+Grep
+^import json
+No matches found
+Grep
+setData\(0, Qt\.UserRole, \{
+1612:            year_item.setData(0, Qt.UserRole, {"type": "year", "year": year})
+1620:                month_item.setData(0, Qt.UserRole, {"type": "month", "year": year, "month": month})
+1654:            folder_item.setData(0, Qt.UserRole, {"type": "folder", "path": folder})
+Weniger anzeigen
+1895:                person_item.setData(0, Qt.UserRole, {"type": "person", "branch_key": branch_key, "label": label})
+4838:            all_item.setData(0, Qt.UserRole, {"type": "all_videos"})
+4852:                    short_item.setData(0, Qt.UserRole, {"type": "duration", "key": "short", "videos": short_videos})
+4857:                    medium_item.setData(0, Qt.UserRole, {"type": "duration", "key": "medium", "videos": medium_videos})
+4862:                    long_item.setData(0, Qt.UserRole, {"type": "duration", "key": "long", "videos": long_videos})
+4877:                    sd_item.setData(0, Qt.UserRole, {"type": "resolution", "key": "sd", "videos": sd_videos})
+4882:                    hd_item.setData(0, Qt.UserRole, {"type": "resolution", "key": "hd", "videos": hd_videos})
+4887:                    fhd_item.setData(0, Qt.UserRole, {"type": "resolution", "key": "fhd", "videos": fhd_videos})
+4892:                    uhd_item.setData(0, Qt.UserRole, {"type": "resolution", "key": "4k", "videos": uhd_videos})
+4908:                        year_item.setData(0, Qt.UserRole, {"type": "video_year", "year": year})
+4917:                            month_item.setData(0, Qt.UserRole, {"type": "video_month", "year": year, "month": month_label})
+
+I notice that google_layout.py lines 4852-4892 store actual video lists in UserRole — those are large data payloads. Let me check the read side to understand the pattern.
+
+
+Read google_layout.py file to examine item data handling logic
+Read google_layout.py file to examine item data handling logic
+Grep
+data\.get\(\"type\"\)|data\.get\(\"videos\"\)|data\.get\(\"year\"\)|data\.get\(\"month\"\)|data\.get\(\"path\"\)|data\.get\(\"branch_key\"\)
+1673-        if not data:
+1674-            return
+1675-
+Weniger anzeigen
+1676:        item_type = data.get("type")
+1677-
+1678-        if item_type == "year":
+1679:            year = data.get("year")
+1680-            print(f"[GooglePhotosLayout] Filtering by year: {year}")
+1681-            self._load_photos(
+1682-                thumb_size=self.current_thumb_size,
+--
+1687-                filter_person=None
+1688-            )
+1689-        elif item_type == "month":
+1690:            year = data.get("year")
+1691:            month = data.get("month")
+1692-            month_name = datetime(year, month, 1).strftime("%B %Y")
+1693-            print(f"[GooglePhotosLayout] Filtering by month: {month_name}")
+1694-            self._load_photos(
+--
+1712-        if not data:
+1713-            return
+1714-
+1715:        folder_path = data.get("path")
+1716-        if folder_path:
+1717-            folder_name = os.path.basename(folder_path) if folder_path else "(Root)"
+1718-            print(f"[GooglePhotosLayout] Filtering by folder: {folder_name}")
+--
+2945-        if not data:
+2946-            return
+2947-
+2948:        branch_key = data.get("branch_key")
+2949-        if branch_key:
+2950-            label = data.get("label") or "Unnamed Person"
+2951-            print(f"[GooglePhotosLayout] Filtering by person: {label} (branch_key={branch_key})")
+--
+3747-            return
+3748-
+3749-        data = item.data(0, Qt.UserRole)
+3750:        if not data or data.get("type") != "person":
+3751-            return
+3752-
+3753:        branch_key = data.get("branch_key")
+3754-        current_label = data.get("label")
+3755-        current_name = current_label if current_label else "Unnamed Person"
+3756-
+--
+4963-        if not data:
+4964-            return
+4965-
+4966:        item_type = data.get("type")
+4967-
+4968-        if item_type == "all_videos":
+4969-            print("[GoogleLayout] Showing all videos")
+--
+4981-            self._show_videos_in_timeline(videos)
+4982-
+4983-        elif item_type == "video_year":
+4984:            year = data.get("year")
+4985-            print(f"[GoogleLayout] Showing videos from year {year}")
+4986-            try:
+4987-                from reference_db import ReferenceDB
+--
+4997-                print(f"[GoogleLayout] Error loading videos for year {year}: {e}")
+4998-
+4999-        elif item_type == "video_month":
+5000:            year = data.get("year")
+5001:            month = data.get("month")
+5002-            print(f"[GoogleLayout] Showing videos from {year}-{month}")
+5003-            try:
+5004-                from services.video_service import VideoService
+Read
+/home/user/MemoryMate-PhotoFlow-Refactored/layouts/google_layout.py
+30 Zeilen gelesen
+
+The google_layout.py video items (lines 4852-4892) embed actual video lists in UserRole — these can't be json.dumps'd safely and are architecturally wrong. The correct pattern (Apple/Google/Lightroom) is to store only the filter descriptor and re-query on click. Let me read the categorization and click handler code.
+
+
+Examined google_layout.py file structure and video loading implementation
+Examined google_layout.py file structure and video loading implementation
+Read
+/home/user/MemoryMate-PhotoFlow-Refactored/layouts/google_layout.py
+70 Zeilen gelesen
+Read
+/home/user/MemoryMate-PhotoFlow-Refactored/layouts/google_layout.py
+10 Zeilen gelesen
+Read
+/home/user/MemoryMate-PhotoFlow-Refactored/layouts/google_layout.py
+10 Zeilen gelesen
+Read
+/home/user/MemoryMate-PhotoFlow-Refactored/layouts/google_layout.py
+10 Zeilen gelesen
+Weniger anzeigen
+
+Good. Now I see the full picture for google_layout.py. Let me add import json and fix all items. For the video-list items (lines 4852-4892), I'll strip the embedded video list and store only the filter key, then fix the click handler to re-query.
+
+
+Added json import to google_layout.py
+Added json import to google_layout.py
+Grep
+^import json|^import os
+48:import os
+Edit
+/home/user/MemoryMate-PhotoFlow-Refactored/layouts/google_layout.py
++2
+-1
+import json
+import os
+Read
+/home/user/MemoryMate-PhotoFlow-Refactored/layouts/google_layout.py
+15 Zeilen gelesen
+Edit
+/home/user/MemoryMate-PhotoFlow-Refactored/layouts/google_layout.py
++4
+-3
+from datetime import datetime
+import json
+import os
+import subprocess
+Weniger anzeigen
+
+Now fix the simple dict setData calls (dates, folders, people, all_videos, video dates):
+
+
+Updated google_layout.py to serialize tree item data with json.dumps
+Updated google_layout.py to serialize tree item data with json.dumps
+Edit
+/home/user/MemoryMate-PhotoFlow-Refactored/layouts/google_layout.py
++1
+-1
+            year_item.setData(0, Qt.UserRole, {"type": "year", "year": year})
+            year_item.setData(0, Qt.UserRole, json.dumps({"type": "year", "year": year}))
+Edit
+/home/user/MemoryMate-PhotoFlow-Refactored/layouts/google_layout.py
++1
+-1
+                month_item.setData(0, Qt.UserRole, {"type": "month", "year": year, "month": month})
+                month_item.setData(0, Qt.UserRole, json.dumps({"type": "month", "year": year, "month": month}))
+Edit
+/home/user/MemoryMate-PhotoFlow-Refactored/layouts/google_layout.py
++1
+-1
+            folder_item.setData(0, Qt.UserRole, {"type": "folder", "path": folder})
+            folder_item.setData(0, Qt.UserRole, json.dumps({"type": "folder", "path": folder}))
+Edit
+/home/user/MemoryMate-PhotoFlow-Refactored/layouts/google_layout.py
++1
+-1
+                person_item.setData(0, Qt.UserRole, {"type": "person", "branch_key": branch_key, "label": label})
+                person_item.setData(0, Qt.UserRole, json.dumps({"type": "person", "branch_key": branch_key, "label": label}))
+Edit
+/home/user/MemoryMate-PhotoFlow-Refactored/layouts/google_layout.py
++1
+-1
+            all_item.setData(0, Qt.UserRole, {"type": "all_videos"})
+            all_item.setData(0, Qt.UserRole, json.dumps({"type": "all_videos"}))
+Weniger anzeigen
+
+Now fix the video-list items — strip the embedded video lists and store only filter keys:
+
+
+Updated video filtering logic in google_layout.py
+Updated video filtering logic in google_layout.py
+Edit
+/home/user/MemoryMate-PhotoFlow-Refactored/layouts/google_layout.py
++14
+-14
+                if short_videos:
+                    short_item = QTreeWidgetItem([f"  Short < 30s ({len(short_videos)})"])
+                    short_item.setData(0, Qt.UserRole, {"type": "duration", "key": "short", "videos": short_videos})
+                    duration_parent.addChild(short_item)
+ 
+                if medium_videos:
+                    medium_item = QTreeWidgetItem([f"  Medium 30s-5m ({len(medium_videos)})"])
+                    medium_item.setData(0, Qt.UserRole, {"type": "duration", "key": "medium", "videos": medium_videos})
+                    duration_parent.addChild(medium_item)
+ 
+                if long_videos:
+                    long_item = QTreeWidgetItem([f"  Long > 5m ({len(long_videos)})"])
+                    long_item.setData(0, Qt.UserRole, {"type": "duration", "key": "long", "videos": long_videos})
+                    short_item.setData(0, Qt.UserRole, json.dumps({"type": "duration", "key": "short"}))
+                    duration_parent.addChild(short_item)
+ 
+                if medium_videos:
+                    medium_item = QTreeWidgetItem([f"  Medium 30s-5m ({len(medium_videos)})"])
+                    medium_item.setData(0, Qt.UserRole, json.dumps({"type": "duration", "key": "medium"}))
+                    duration_parent.addChild(medium_item)
+ 
+                if long_videos:
+                    long_item = QTreeWidgetItem([f"  Long > 5m ({len(long_videos)})"])
+                    long_item.setData(0, Qt.UserRole, json.dumps({"type": "duration", "key": "long"}))
+                    duration_parent.addChild(long_item)
+Edit
+/home/user/MemoryMate-PhotoFlow-Refactored/layouts/google_layout.py
++14
+-14
+                if sd_videos:
+                    sd_item = QTreeWidgetItem([f"  SD < 720p ({len(sd_videos)})"])
+                    sd_item.setData(0, Qt.UserRole, {"type": "resolution", "key": "sd", "videos": sd_videos})
+                    res_parent.addChild(sd_item)
+ 
+                if hd_videos:
+                    hd_item = QTreeWidgetItem([f"  HD 720p ({len(hd_videos)})"])
+                    hd_item.setData(0, Qt.UserRole, {"type": "resolution", "key": "hd", "videos": hd_videos})
+                    res_parent.addChild(hd_item)
+ 
+                if fhd_videos:
+                    fhd_item = QTreeWidgetItem([f"  Full HD 1080p ({len(fhd_videos)})"])
+                    fhd_item.setData(0, Qt.UserRole, {"type": "resolution", "key": "fhd", "videos": fhd_videos})
+                    sd_item.setData(0, Qt.UserRole, json.dumps({"type": "resolution", "key": "sd"}))
+                    res_parent.addChild(sd_item)
+ 
+                if hd_videos:
+                    hd_item = QTreeWidgetItem([f"  HD 720p ({len(hd_videos)})"])
+                    hd_item.setData(0, Qt.UserRole, json.dumps({"type": "resolution", "key": "hd"}))
+                    res_parent.addChild(hd_item)
+ 
+                if fhd_videos:
+                    fhd_item = QTreeWidgetItem([f"  Full HD 1080p ({len(fhd_videos)})"])
+                    fhd_item.setData(0, Qt.UserRole, json.dumps({"type": "resolution", "key": "fhd"}))
+                    res_parent.addChild(fhd_item)
+
+Now fix the remaining UHD item and video year/month items:
+
+
+Updated google_layout.py with JSON serialization for Qt data storage
+Updated google_layout.py with JSON serialization for Qt data storage
+Read
+/home/user/MemoryMate-PhotoFlow-Refactored/layouts/google_layout.py
+35 Zeilen gelesen
+Edit
+/home/user/MemoryMate-PhotoFlow-Refactored/layouts/google_layout.py
++1
+-1
+                    uhd_item.setData(0, Qt.UserRole, {"type": "resolution", "key": "4k", "videos": uhd_videos})
+                    uhd_item.setData(0, Qt.UserRole, json.dumps({"type": "resolution", "key": "4k"}))
+Edit
+/home/user/MemoryMate-PhotoFlow-Refactored/layouts/google_layout.py
++1
+-1
+                        year_item.setData(0, Qt.UserRole, {"type": "video_year", "year": year})
+                        year_item.setData(0, Qt.UserRole, json.dumps({"type": "video_year", "year": year}))
+Edit
+/home/user/MemoryMate-PhotoFlow-Refactored/layouts/google_layout.py
++1
+-1
+                            month_item.setData(0, Qt.UserRole, {"type": "video_month", "year": year, "month": month_label})
+                            month_item.setData(0, Qt.UserRole, json.dumps({"type": "video_month", "year": year, "month": month_label}))
+Weniger anzeigen
+
+Now fix all READ sides in google_layout.py. Let me find all the data extraction points.
+
+
+Fixed item type handling logic in google_layout.py
+Fixed item type handling logic in google_layout.py
+Read
+/home/user/MemoryMate-PhotoFlow-Refactored/layouts/google_layout.py
+30 Zeilen gelesen
+Edit
+/home/user/MemoryMate-PhotoFlow-Refactored/layouts/google_layout.py
++25
+-20
+        data = item.data(0, Qt.UserRole)
+        if not data:
+            return
+        if isinstance(data, str):
+            try:
+                data = json.loads(data)
+            except (json.JSONDecodeError, TypeError):
+                return
+        elif item_type == "month":
+            year = data.get("year")
+            month = data.get("month")
+
+Now fix the folder click handler read side:
+
+
+Fixed data retrieval logic in google_layout.py
+Fixed data retrieval logic in google_layout.py
+Read
+/home/user/MemoryMate-PhotoFlow-Refactored/layouts/google_layout.py
+15 Zeilen gelesen
+Read
+/home/user/MemoryMate-PhotoFlow-Refactored/layouts/google_layout.py
+10 Zeilen gelesen
+Edit
+/home/user/MemoryMate-PhotoFlow-Refactored/layouts/google_layout.py
++10
+-5
+        data = item.data(0, Qt.UserRole)
+        if not data:
+            return
+        if isinstance(data, str):
+            try:
+                data = json.loads(data)
+            except (json.JSONDecodeError, TypeError):
+                return
+ 
+        folder_path = data.get("path")
+
+Now fix the person click handler and the context menu handler:
+
+
+Fixed data extraction logic in google_layout.py
+Fixed data extraction logic in google_layout.py
+Read
+/home/user/MemoryMate-PhotoFlow-Refactored/layouts/google_layout.py
+20 Zeilen gelesen
+Edit
+/home/user/MemoryMate-PhotoFlow-Refactored/layouts/google_layout.py
++10
+-5
+        data = item.data(0, Qt.UserRole)
+        if not data:
+            return
+        if isinstance(data, str):
+            try:
+                data = json.loads(data)
+            except (json.JSONDecodeError, TypeError):
+                return
+ 
+        branch_key = data.get("branch_key")
+
+Now fix the person context menu handler (line ~3750 area):
+
+
+Fixed person type validation in google_layout.py
+Fixed person type validation in google_layout.py
+Read
+/home/user/MemoryMate-PhotoFlow-Refactored/layouts/google_layout.py
+20 Zeilen gelesen
+Edit
+/home/user/MemoryMate-PhotoFlow-Refactored/layouts/google_layout.py
++10
+-3
+        data = item.data(0, Qt.UserRole)
+        if not data or data.get("type") != "person":
+        if not data:
+            return
+        if isinstance(data, str):
+            try:
+                data = json.loads(data)
+            except (json.JSONDecodeError, TypeError):
+                return
+        if data.get("type") != "person":
+            return
+
+Now fix the video click handler — this is the key one. Since we removed the embedded video lists, the duration/resolution handler needs to re-query:
+
+
+Read video loading section in google_layout.py file
+Read video loading section in google_layout.py file
+Read
+/home/user/MemoryMate-PhotoFlow-Refactored/layouts/google_layout.py
+55 Zeilen gelesen
+
+Now I need to fix the full read handler — add JSON deserialization and change the duration/resolution handler to re-query:
+
+
+Fixed item type handling in google_layout.py
+Fixed item type handling in google_layout.py
+Edit
+/home/user/MemoryMate-PhotoFlow-Refactored/layouts/google_layout.py
++56
+-23
+        data = item.data(0, Qt.UserRole)
+        if not data:
+            return
+ 
+        item_type = data.get("type")
+ 
+        if item_type == "all_videos":
+            print("[GoogleLayout] Showing all videos")
+            try:
+                from services.video_service import VideoService
+                video_service = VideoService()
+                videos = video_service.get_videos_by_project(self.project_id) if self.project_id else []
+                self._show_videos_in_timeline(videos)
+            except Exception as e:
+                print(f"[GoogleLayout] Error loading all videos: {e}")
+ 
+        elif item_type in ["duration", "resolution"]:
+            videos = data.get("videos", [])
+            print(f"[GoogleLayout] Showing {len(videos)} videos filtered by {item_type}")
+            self._show_videos_in_timeline(videos)
+        if isinstance(data, str):
+            try:
+                data = json.loads(data)
+            except (json.JSONDecodeError, TypeError):
+                return
+ 
+        item_type = data.get("type")
+ 
+        if item_type == "all_videos":
+            print("[GoogleLayout] Showing all videos")
+            try:
+                from services.video_service import VideoService
+                video_service = VideoService()
+                videos = video_service.get_videos_by_project(self.project_id) if self.project_id else []
+                self._show_videos_in_timeline(videos)
+            except Exception as e:
+                print(f"[GoogleLayout] Error loading all videos: {e}")
+ 
+        elif item_type in ["duration", "resolution"]:
+            # Re-query and filter on click (no embedded video lists)
+            filter_key = data.get("key", "")
+            print(f"[GoogleLayout] Filtering videos by {item_type}:{filter_key}")
+            try:
+                from services.video_service import VideoService
+                video_service = VideoService()
+                all_videos = video_service.get_videos_by_project(self.project_id) if self.project_id else []
+                if item_type == "duration":
+                    if filter_key == "short":
+                        videos = [v for v in all_videos if v.get('duration_seconds') and v['duration_seconds'] < 30]
+                    elif filter_key == "medium":
+                        videos = [v for v in all_videos if v.get('duration_seconds') and 30 <= v['duration_seconds'] < 300]
+                    elif filter_key == "long":
+                        videos = [v for v in all_videos if v.get('duration_seconds') and v['duration_seconds'] >= 300]
+                    else:
+                        videos = all_videos
+                elif item_type == "resolution":
+                    if filter_key == "sd":
+                        videos = [v for v in all_videos if v.get('height') and v['height'] < 720]
+                    elif filter_key == "hd":
+                        videos = [v for v in all_videos if v.get('height') and 720 <= v['height'] < 1080]
+                    elif filter_key == "fhd":
+                        videos = [v for v in all_videos if v.get('height') and 1080 <= v['height'] < 2160]
+                    elif filter_key == "4k":
+                        videos = [v for v in all_videos if v.get('height') and v['height'] >= 2160]
+                    else:
+                        videos = all_videos
+                print(f"[GoogleLayout] Showing {len(videos)} videos filtered by {item_type}:{filter_key}")
+                self._show_videos_in_timeline(videos)
+            except Exception as e:
+                print(f"[GoogleLayout] Error filtering videos: {e}")
+ 
+        elif item_type == "video_year":
+            year = data.get("year")
+
+Now fix the remaining video date read handlers (video_month area):
+
+
+Read google_layout.py file to examine video loading logic
+Read google_layout.py file to examine video loading logic
+Read
+/home/user/MemoryMate-PhotoFlow-Refactored/layouts/google_layout.py
+30 Zeilen gelesen
+Read
+/home/user/MemoryMate-PhotoFlow-Refactored/layouts/google_layout.py
+30 Zeilen gelesen
+
+Good — the video_year and video_month handlers already re-query, so they're already in the correct pattern. Those read handlers are already fixed since I added the JSON deserialization at the top of the function.
+
+Now let me verify there are no remaining dict-in-UserRole writes in google_layout.py:
+
+
+Searched codebase for Qt UserRole data setter
+Searched codebase for Qt UserRole data setter
+Grep
+setData\(0, Qt\.UserRole, \{
+No matches found
+
+All dict-in-UserRole writes are converted. Now let me run syntax checks on all three files:
+
+
+Verified Python syntax across multiple modules successfully
+Verified Python syntax across multiple modules successfully
+Bash
+python -m py_compile ui/accordion_sidebar/videos_section.py && echo "videos_section.py OK" && python -m py_compile accordion_sidebar.py && echo "accordion_sidebar.py OK" && python -m py_compile layouts/google_layout.py && echo "google_layout.py OK" && python -m py_compile ui/accordion_sidebar/groups_section.py && echo "groups_section.py OK"
+videos_section.py OK
+accordion_sidebar.py OK
+google_layout.py OK
+Weniger anzeigen
+groups_section.py OK
+
+All syntax clean. Now fix C.
+
+
+Updated todo list with two completed fixes for signal arguments and JSON serialization
+Updated todo list with two completed fixes for signal arguments and JSON serialization
+Update Todos
+ Fix A: newGroupRequested signal argument mismatch
+ Fix B: Shiboken dict-in-UserRole warnings → JSON serialization
+ Fixing GroupService.instance() calls
+ Evaluate sidebar evolution plan and provide recommendation
+ Syntax check, commit and push
+
+Fix C: GroupService.instance() in preferences_dialog.py. GroupService is all-static, has no instance() method and no clear_all_group_caches(). Let me read what the intent is and fix it properly.
+
+
+Read preferences_dialog.py cache clearing method
+Read preferences_dialog.py cache clearing method
+Read
+/home/user/MemoryMate-PhotoFlow-Refactored/preferences_dialog.py
+35 Zeilen gelesen
+
+The intent is to clear cached group matches. GroupService has reindex_all_groups(db, project_id) which recomputes all group matches. But there's no clear_all_group_caches method. The correct approach is to use GroupService.reindex_all_groups() with a DB handle, or directly clear the group_asset_matches table. Let me check what tables exist.
+
+
+Searched for group matching and reindexing functions in group_service.py
+Searched for group matching and reindexing functions in group_service.py
+Grep
+group_asset_matches|reindex_all_groups
+5-# which photos contain all group members together (AND matching).
+6-#
+7-# Design:
+Weniger anzeigen
+8-#   - Groups are per-project, identified by person_groups.id
+9-#   - Members are linked via branch_key (same as face_branch_reps)
+10:#   - Match results are materialized in group_asset_matches for speed
+11-#   - Live queries are available for small groups / interactive use
+12-
+13-from __future__ import annotations
+14-
+15-import logging
+--
+132-                cur.executemany(
+133-                    "INSERT INTO person_group_members (group_id, branch_key, added_at) VALUES (?, ?, ?)",
+134-                    member_rows,
+135-                )
+136-                # Clear stale match cache
+137:                cur.execute("DELETE FROM group_asset_matches WHERE group_id = ?", (group_id,))
+138-
+139-            conn.commit()
+140-
+141-        logger.info("[GroupService] Updated group %d", group_id)
+142-
+--
+154-
+155-    @staticmethod
+156-    def hard_delete_group(db, group_id: int) -> None:
+157-        """Permanently delete a group and all its members + cached matches."""
+158-        with db.get_connection() as conn:
+159:            conn.execute("DELETE FROM group_asset_matches WHERE group_id = ?", (group_id,))
+160-            conn.execute("DELETE FROM person_group_members WHERE group_id = ?", (group_id,))
+161-            conn.execute("DELETE FROM person_groups WHERE id = ?", (group_id,))
+162-            conn.commit()
+163-        logger.info("[GroupService] Hard-deleted group %d", group_id)
+164-
+--
+313-
+314-            # Auto-derive: first cached match photo
+315-            cur.execute(
+316-                """
+317-                SELECT pm.path
+318:                FROM group_asset_matches gam
+319-                JOIN photo_metadata pm ON pm.id = gam.photo_id AND pm.project_id = ?
+320-                WHERE gam.group_id = ? AND gam.scope = 'same_photo'
+321-                ORDER BY pm.created_ts DESC
+322-                LIMIT 1
+323-                """,
+--
+414-        project_id: int,
+415-        group_id: int,
+416-        scope: str = "same_photo",
+417-    ) -> int:
+418-        """
+419:        Compute group matches and store in group_asset_matches.
+420-
+421-        Returns number of matched photos.
+422-        """
+423-        now = int(time.time())
+424-        photo_ids = GroupService.query_same_photo_matches(db, project_id, group_id)
+425-
+426-        with db.get_connection() as conn:
+427-            cur = conn.cursor()
+428-            # Clear old matches for this group+scope
+429-            cur.execute(
+430:                "DELETE FROM group_asset_matches WHERE group_id = ? AND scope = ?",
+431-                (group_id, scope),
+432-            )
+433-            if photo_ids:
+434-                rows = [(group_id, scope, pid, now) for pid in photo_ids]
+435-                cur.executemany(
+436:                    "INSERT INTO group_asset_matches (group_id, scope, photo_id, computed_at) VALUES (?, ?, ?, ?)",
+437-                    rows,
+438-                )
+439-            conn.commit()
+440-
+441-        logger.info(
+--
+450-        project_id: int,
+451-        group_id: int,
+452-        scope: str = "same_photo",
+453-    ) -> List[str]:
+454-        """
+455:        Get cached match paths from group_asset_matches.
+456-
+457-        Falls back to live query if no cached results.
+458-        """
+459-        with db.get_connection() as conn:
+460-            cur = conn.cursor()
+461-            cur.execute(
+462-                """
+463-                SELECT pm.path
+464:                FROM group_asset_matches gam
+465-                JOIN photo_metadata pm ON pm.id = gam.photo_id AND pm.project_id = ?
+466-                WHERE gam.group_id = ? AND gam.scope = ?
+467-                ORDER BY pm.created_ts DESC, pm.id DESC
+468-                """,
+469-                (project_id, group_id, scope),
+--
+484-    ) -> int:
+485-        """Get count of cached matches for a group."""
+486-        with db.get_connection() as conn:
+487-            cur = conn.cursor()
+488-            cur.execute(
+489:                "SELECT COUNT(*) FROM group_asset_matches WHERE group_id = ? AND scope = ?",
+490-                (group_id, scope),
+491-            )
+492-            return cur.fetchone()[0]
+493-
+494-    # ------------------------------------------------------------------
+495-    # Bulk operations
+496-    # ------------------------------------------------------------------
+497-
+498-    @staticmethod
+499:    def reindex_all_groups(db, project_id: int) -> Dict[int, int]:
+500-        """
+501-        Recompute matches for all active groups in a project.
+502-
+503-        Returns dict of {group_id: match_count}.
+504-        """
+
+I see — reindex_all_groups exists as a static method. The fix for the preferences dialog is to use that. But I also need a project_id. Let me check if the preferences dialog has access to it.
+
+
+Searched for project_id references in preferences dialog
+Searched for project_id references in preferences dialog
+Grep
+project_id|self\.project
+721:        from app_services import get_default_project_id
+722:        self.current_project_id = get_default_project_id() or 1
+723:        self.lbl_project_info = QLabel(f"Current project ID: {self.current_project_id}")
+Weniger anzeigen
+1457:        ov = po.get(str(self.current_project_id), {})
+1571:            # Get current project_id (try to get from main window)
+1572:            project_id = 1  # Default to project 1
+1573:            if hasattr(self.parent(), 'sidebar') and hasattr(self.parent().sidebar, 'project_id'):
+1574:                project_id = self.parent().sidebar.project_id
+1575:            elif hasattr(self.parent(), 'grid') and hasattr(self.parent().grid, 'project_id'):
+1576:                project_id = self.parent().grid.project_id
+[Showing results with pagination = limit: 10, offset: 0]
+
+Good, self.current_project_id is available. Now fix the broken method call:
+
+
+Updated todo list tracking signal argument and serialization fixes
+Updated todo list tracking signal argument and serialization fixes
+Edit
+/home/user/MemoryMate-PhotoFlow-Refactored/preferences_dialog.py
++20
+-17
+        if reply == QMessageBox.Yes:
+            try:
+                from services.group_service import GroupService
+                service = GroupService.instance()
+                # Clear all cached matches (they'll be recomputed on next access)
+                service.clear_all_group_caches()
+                from reference_db import ReferenceDB
+                db = ReferenceDB()
+                # Clear all cached matches and recompute
+                results = GroupService.reindex_all_groups(db, self.current_project_id)
+                db.close()
+                total = sum(results.values()) if results else 0
+                    tr("common.error"),
+                    f"Failed to clear cache: {e}"
+                )
+Bash
+python -m py_compile preferences_dialog.py && echo "preferences_dialog.py OK"
+preferences_dialog.py OK
+Update Todos
+ Fix A: newGroupRequested signal argument mismatch
+ Fix B: Shiboken dict-in-UserRole warnings → JSON serialization
+ Fix C: GroupService.instance() → direct static call
+ Evaluating sidebar evolution plan
+ Syntax check, commit and push
+
+Now let me commit and push all three fixes, then deliver the sidebar evolution assessment.
+
+
+Updated todo list with completed signal and serialization fixes
+Updated todo list with completed signal and serialization fixes
+Bash
+git status
+On branch claude/fix-metadata-editor-placement-8NC6v
+Your branch is up to date with 'origin/claude/fix-metadata-editor-placement-8NC6v'.
+Mehr anzeigen
+Bash
+git diff --stat
+accordion_sidebar.py                   | 48 ++++++++++--------
+ layouts/google_layout.py               | 92 +++++++++++++++++++++++++++-------
+ preferences_dialog.py                  |  9 ++--
+Weniger anzeigen
+ ui/accordion_sidebar/groups_section.py |  4 +-
+ ui/accordion_sidebar/videos_section.py | 58 ++++++++++++---------
+ 5 files changed, 142 insertions(+), 69 deletions(-)
+Bash
+git add accordion_sidebar.py layouts/google_layout.py preferences_dialog.py ui/accordion_sidebar/groups_section.py ui/accordion_sidebar/videos_section.py && git commit -m "$(cat <<'EOF' Fix 3 crashes: signal mismatch, Shiboken dict, GroupService.instance() A) Fix newGroupRequested signal crash (QPushButton.clicked sends bool to zero-arg Signal): wrap both button connections with lambda in groups_section.py to decouple Qt signature. B) Fix Shiboken dict-in-UserRole undefined behavior: convert all 64 dict setData(Qt.UserRole, {...}) calls to json.dumps() across videos_section.py (24), accordion_sidebar.py (21), and google_layout.py (17). Add json.loads() deserialization on all read sides. For google_layout video filter items, replaced embedded video lists with filter-key-only descriptors and re-query on click (correct Apple/Google/Lightroom pattern). C) Fix GroupService.instance() crash in preferences_dialog.py: GroupService is all-static, has no instance() or clear_all_group_caches(). Replaced with direct static call to GroupService.reindex_all_groups(db, project_id). https://claude.ai/code/session_012ngA7b1qYM5Q9mSqcbJDX4 EOF )"
+[claude/fix-metadata-editor-placement-8NC6v 3952cac] Fix 3 crashes: signal mismatch, Shiboken dict, GroupService.instance()
+ 5 files changed, 142 insertions(+), 69 deletions(-)
+Bash
+git push -u origin claude/fix-metadata-editor-placement-8NC6v
+branch 'claude/fix-metadata-editor-placement-8NC6v' set up to track 'origin/claude/fix-metadata-editor-placement-8NC6v'.
+To http://127.0.0.1:20239/git/aaayyysss/MemoryMate-PhotoFlow-Refactored
+   5f9ed03..3952cac  claude/fix-metadata-editor-placement-8NC6v -> claude/fix-metadata-editor-placement-8NC6v
+Update Todos
+ Fix A: newGroupRequested signal argument mismatch
+ Fix B: Shiboken dict-in-UserRole warnings → JSON serialization
+ Fix C: GroupService.instance() → direct static call
+ Evaluating sidebar evolution plan
+ Syntax check, commit and push
+Weniger anzeigen
+
+Now for the sidebar evolution assessment. Let me audit your current accordion structure to give a grounded recommendation.
+
+
+Updated todo list with completed signal and serialization fixes
+Updated todo list with completed signal and serialization fixes
+Task
+Audit accordion sidebar structure
+Perfect! Let me create a comprehensive structural summary of the accordion sidebar architecture.
+## Accordion Sidebar Architecture - Complete Mapping
+Weniger anzeigen
+### 1. ORCHESTRATOR: AccordionSidebar (ui/accordion_sidebar/__init__.py)
+**Main Coordinator**
+- File: `/home/user/MemoryMate-PhotoFlow-Refactored/ui/accordion_sidebar/__init__.py`
+- Class: `AccordionSidebar(QWidget)`
+- Responsibility: Manages multiple collapsible sections, one expanded at a time
+- Pattern: Master signal router for all section events
+**Registration Order & Structure:**
+```python
+self.section_logic = {
+    "folders": FoldersSection(self),
+    "dates": DatesSection(self),
+    "duplicates": DuplicatesSection(self),      # Phase 3A
+    "videos": VideosSection(self),
+    "people": PeopleSection(self),              # With embedded Groups tab
+    "devices": DevicesSection(self),
+    "locations": LocationsSection(self),
+    "quick": QuickSection(self)
+}
+```
+**UI Layout:**
+- Left: 52px vertical navigation bar with icon buttons (one per section)
+- Right: Scrollable sections container (QScrollArea)
+- Each section has: header + expandable content area
+**Emitted Signals (to MainWindow/GooglePhotosLayout):**
+- `selectBranch(str)` - e.g., "all", "face_john"
+- `selectFolder(int)` - folder_id
+- `selectDate(str)` - "2025", "2025-10", "2025-10-15"
+- `selectTag(str)` - tag name
+- `selectPerson(str)` - person branch_key
+- `selectVideo(str)` - video filter type
+- `selectDevice(str)` - device root path
+- `selectLocation(object)` - location dict {name, lat, lon, count, paths}
+- `selectGroup(int, str)` - (group_id, match_mode)
+- `personMerged(str, str)` - (source, target) - face cluster merge event
+- `personDeleted(str)` - branch_key
+- `sectionExpanding(str)` - section_id being expanded
+- Groups-specific: `newGroupRequested()`, `editGroupRequested(int)`, `deleteGroupRequested(int)`, `recomputeGroupRequested(int, str)`
+**Key Methods:**
+- `_create_sections()` - Instantiates all 8 section logic modules
+- `_connect_signals()` - Wires section signals to accordion signals (hasattr guards for optional features)
+- `_on_section_expand_requested(section_id)` - Expands section, collapses others
+- `_trigger_section_load(section_id)` - Calls `section_logic[id].load_section()`
+- `_on_section_loaded(section_id, generation, data)` - Receives loaded data, calls `create_content_widget()`, updates UI
+- `reload_all_sections()` - Force refresh all sections
+- `reload_section(section_id)` - Reload specific section
+---
+### 2. BASE CONTRACT: BaseSection (ui/accordion_sidebar/base_section.py)
+**Abstract Base Class:** `BaseSection(QObject, ABC, metaclass=QABCMeta)`
+- File: `/home/user/MemoryMate-PhotoFlow-Refactored/ui/accordion_sidebar/base_section.py`
+- Combines QObject (for Signals) + ABC (for abstract methods)
+**Required Abstract Methods (ALL sections must implement):**
+```python
+def get_section_id(self) -> str          # e.g., "people"
+def get_title(self) -> str               # e.g., "People"
+def get_icon(self) -> str                # e.g., "👤"
+def load_section(self) -> None           # Async load (emit signals)
+def create_content_widget(self, data) -> Optional[QWidget]  # Build UI widget
+```
+**Lazy-Load Pattern (Standardized Across All Sections):**
+1. Increment `self._generation` counter
+2. Set `self._loading = True`
+3. Start background `threading.Thread` with worker function
+4. Worker: Instantiate per-thread `ReferenceDB()`, query data, emit `self.signals.loaded.emit(generation, data)`
+5. Main thread receives signal → `AccordionSidebar._on_section_loaded()` → calls `create_content_widget()`
+6. Generation check prevents stale results from overwriting fresh data
+**Common Properties:**
+- `project_id: Optional[int]` - Current project
+- `_generation: int` - Staleness token (incremented on project switch)
+- `_loading: bool` - Currently loading?
+- `_worker_thread: Optional[QThread]` - Background worker
+**Signal Class Pattern:** Each section defines its own `{SectionName}Signals(QObject)` class:
+```python
+class {SectionName}Signals(QObject):
+    loaded = Signal(int, object)   # (generation, data)
+    error = Signal(int, str)       # (generation, error_msg)
+```
+---
+### 3. SECTION IMPLEMENTATIONS
+#### A. **FoldersSection** (folders_section.py)
+- **File**: `/home/user/MemoryMate-PhotoFlow-Refactored/ui/accordion_sidebar/folders_section.py`
+- **Class**: `FoldersSection(BaseSection)`
+- **Icon**: 📁
+- **Title**: `tr('sidebar.header_folder')`
+- **Signal**: `folderSelected(int)` - emitted on double-click
+- **Lazy-Load**: ✓ Threading with per-thread ReferenceDB
+- **Data Type**: List of folder rows
+- **Widget**: QTreeWidget (hierarchical folder tree with counts)
+- **Features**:
+  - Recursive folder hierarchy
+  - Photo + Video counts per folder
+  - Double-click to select folder
+  - Requires `db.set_db()` for recursive queries (main thread)
+#### B. **DatesSection** (dates_section.py)
+- **File**: `/home/user/MemoryMate-PhotoFlow-Refactored/ui/accordion_sidebar/dates_section.py`
+- **Class**: `DatesSection(BaseSection)`
+- **Icon**: 📅
+- **Title**: `tr('sidebar.header_year_month_day')`
+- **Signal**: `dateSelected(str)` - "2025", "2025-10", "2025-10-15"
+- **Lazy-Load**: ✓ Threading
+- **Data Type**: Dict with keys: `hierarchy`, `year_counts`, `month_counts`, `day_counts`
+- **Widget**: QTreeWidget (Year → Month → Day hierarchy)
+- **Features**:
+  - Hierarchical date navigation
+  - Count aggregation per level
+  - Human-readable month names
+#### C. **PeopleSection** (people_section.py)
+- **File**: `/home/user/MemoryMate-PhotoFlow-Refactored/ui/accordion_sidebar/people_section.py`
+- **Class**: `PeopleSection(BaseSection)`
+- **Icon**: 👤
+- **Title**: "People"
+- **Lazy-Load**: ✓ Threading
+- **Data Type**: List of face cluster rows
+- **Widget**: QStackedWidget with 2 pages:
+  - Page 0: Individuals (face cluster grid with PersonCard widgets)
+  - Page 1: Groups (embedded GroupsSection, lazy-loaded on first tab switch)
+- **Signals**:
+  - Face cluster: `personSelected(str)`, `contextMenuRequested(str, str)`, `dragMergeRequested(str, str)`
+  - Merge history: `mergeHistoryRequested()`, `undoMergeRequested()`, `redoMergeRequested()`
+  - Toolbar: `peopleToolsRequested()`
+  - Groups (forwarded): `groupSelected(int, str)`, `newGroupRequested()`, `editGroupRequested(int)`, `deleteGroupRequested(int)`, `recomputeGroupRequested(int, str)`
+- **Features**:
+  - Search/filter by person name
+  - Drag-and-drop merge face clusters
+  - Rename, delete person actions
+  - Embedded Groups tab with creation/editing
+#### D. **VideosSection** (videos_section.py)
+- **File**: `/home/user/MemoryMate-PhotoFlow-Refactored/ui/accordion_sidebar/videos_section.py`
+- **Class**: `VideosSection(BaseSection)`
+- **Icon**: 🎬
+- **Title**: "Videos"
+- **Signal**: `videoFilterSelected(str)` - "all", "duration:short", "resolution:hd", "codec:hevc", "size:large", "date:2024"
+- **Lazy-Load**: ✓ Threading (uses VideoService)
+- **Data Type**: List of video dicts from VideoService
+- **Widget**: QTreeWidget with hierarchical filtering options
+- **Features**:
+  - By Duration: Short (<30s), Medium (30-300s), Long (≥300s)
+  - By Resolution: SD, HD, FHD, 4K
+  - By Codec: H.264, HEVC, VP9, AV1, MPEG-4
+  - By File Size: Small, Medium, Large, XLarge
+  - By Date: Years
+  - Search shortcut at bottom
+#### E. **DuplicatesSection** (duplicates_section.py)
+- **File**: `/home/user/MemoryMate-PhotoFlow-Refactored/ui/accordion_sidebar/duplicates_section.py`
+- **Class**: `DuplicatesSection(BaseSection)`
+- **Icon**: ⚡
+- **Title**: "Duplicates"
+- **Lazy-Load**: ✓ Threading (uses AssetRepository + StackRepository)
+- **Data Type**: Dict with keys: `exact_count`, `similar_count`
+- **Widget**: Custom card-based UI with stats
+- **Features**:
+  - Shows exact duplicate counts
+  - Shows similar shot stack counts
+  - Clickable cards open DuplicatesDialog
+  - Refresh button to update counts
+#### F. **DevicesSection** (devices_section.py)
+- **File**: `/home/user/MemoryMate-PhotoFlow-Refactored/ui/accordion_sidebar/devices_section.py`
+- **Class**: `DevicesSection(BaseSection)`
+- **Icon**: 📱
+- **Title**: `tr("sidebar.header_devices")`
+- **Signal**: `deviceSelected(str)` - emits root_path
+- **Lazy-Load**: ✓ Threading (uses DeviceScanner)
+- **Data Type**: List of MobileDevice objects
+- **Widget**: Custom rows with device info + "Open" buttons
+- **Features**:
+  - Scans connected mobile/external devices
+  - Shows device name, type, photo count
+  - Device monitor for hot-plug events
+  - Refresh button
+#### G. **LocationsSection** (locations_section.py)
+- **File**: `/home/user/MemoryMate-PhotoFlow-Refactored/ui/accordion_sidebar/locations_section.py`
+- **Class**: `LocationsSection(BaseSection)`
+- **Icon**: 📍
+- **Title**: "Locations"
+- **Signal**: `locationSelected(object)` - emits dict {name, lat, lon, count, paths}
+- **Lazy-Load**: ✓ Threading (queries db.get_location_clusters)
+- **Data Type**: List of location cluster dicts
+- **Widget**: QTreeWidget with location names + counts
+- **Features**:
+  - GPS-based photo clustering
+  - Location names (if available)
+  - Photo counts per location
+#### H. **QuickSection** (quick_section.py)
+- **File**: `/home/user/MemoryMate-PhotoFlow-Refactored/ui/accordion_sidebar/quick_section.py`
+- **Class**: `QuickSection(BaseSection)`
+- **Icon**: ⚡
+- **Title**: "Quick Dates"
+- **Signal**: `quickDateSelected(str)` - "2025-12-16", "2025-12-10:2025-12-16", "2025-12", "2025"
+- **Lazy-Load**: ✗ Synchronous (no DB query, predefined options)
+- **Data Type**: List of (date_id, label) tuples
+- **Widget**: Column of styled QPushButton widgets
+- **Features**:
+  - Today, Yesterday
+  - Last 7/30 days (as date ranges)
+  - This/Last month
+  - This/Last year
+  - NO database queries
+#### I. **GroupsSection** (groups_section.py) - **Embedded in PeopleSection**
+- **File**: `/home/user/MemoryMate-PhotoFlow-Refactored/ui/accordion_sidebar/groups_section.py`
+- **Class**: `GroupsSection(BaseSection)`
+- **Icon**: (not displayed, embedded as tab)
+- **Title**: "Groups"
+- **Lazy-Load**: ✓ Threading
+- **Data Type**: List of group dicts
+- **Widget**: Custom card-based UI with GroupCard widgets
+- **Features**:
+  - User-defined groups of face clusters
+  - Match modes: "together", "any"
+  - Stacked circular avatars for members
+  - Stats: member count, result count
+  - Context menu for CRUD operations
+  - Pinned/featured groups
+---
+### 4. SHARED UI COMPONENTS (section_widgets.py)
+**File**: `/home/user/MemoryMate-PhotoFlow-Refactored/ui/accordion_sidebar/section_widgets.py`
+- **SectionHeader**: Collapsible header with icon, title, count badge
+- **AccordionSection**: Container widget (header + scrollable content area)
+  - Signal: `expandRequested(str)` - section_id
+  - Methods: `set_expanded()`, `set_content_widget()`, `set_count()`
+---
+### 5. DATABASE SCHEMA CHECK
+**Reference DB Tables:**
+No `saved_searches` table exists. Available tables in reference_db.py:
+- `reference_entries`, `match_audit`, `reference_labels`
+- `projects`, `branches`, `project_images`
+- `face_crops`, `face_branch_reps`, `face_merge_history`
+- `export_history`, `photo_folders`, `photo_metadata`
+- `tags`, `photo_tags`
+- `gps_location_cache`
+**Result**: No SearchSection exists; no saved_searches table in schema.
+---
+### 6. COMPOSITION & SIGNAL FLOW DIAGRAM
+```
+┌──────────────────────────────────────────────────────────────┐
+│ AccordionSidebar (Master Orchestrator)                        │
+├──────────────────────────────────────────────────────────────┤
+│ • Manages 8 section modules + their UI containers             │
+│ • Listens to section signals (hasattr-guarded)                │
+│ • Emits filtered signals upward to MainWindow/GoogleLayout    │
+└──────────────────────────────────────────────────────────────┘
+         ▲
+         │ (receives: folderSelected, dateSelected, etc.)
+         │
+    ┌────┴────────────────────────────────────────────────┐
+    │ Section Logic Modules (isolated per-section logic)   │
+    ├─────────────────────────────────────────────────────┤
+    │ FoldersSection    (→ selectFolder)                   │
+    │ DatesSection      (→ selectDate)                     │
+    │ PeopleSection     (→ selectPerson + Groups)          │
+    │ VideosSection     (→ selectVideo)                    │
+    │ DuplicatesSection (→ opens DuplicatesDialog)         │
+    │ DevicesSection    (→ selectDevice)                   │
+    │ LocationsSection  (→ selectLocation)                 │
+    │ QuickSection      (→ selectDate via quickDateSelected)
+    └────────────────────────────────────────────────────┘
+         │ (emit: signals.loaded(generation, data))
+         ▼
+    ┌───────────────────────────────────────┐
+    │ AccordionSection UI Containers (QUI)   │
+    │ (one per section + its nav button)     │
+    └───────────────────────────────────────┘
+```
+---
+### 7. KEY ARCHITECTURAL PATTERNS
+| Pattern | Implementation |
+|---------|---|
+| **Lazy Loading** | Background threading + per-thread ReferenceDB + generation tokens |
+| **Signal Safety** | Qt signals cross thread boundaries automatically (QueuedConnection) |
+| **Staleness Check** | Increment `_generation` on project switch; discard old results |
+| **Error Handling** | Try/finally cleanup + error signal emission + logging |
+| **One-at-a-time Expansion** | `_expand_section()` collapses all others |
+| **Session State** | Parent (AccordionSidebar) saves selections via session_state_manager |
+| **Optional Features** | `hasattr()` guards for optional signals (e.g., `getHeader_widget`) |
+| **No Mutations** | create_content_widget() builds fresh widgets (not self) |
+---
+### 8. MISSING FEATURES
+✗ **No SearchSection**  
+✗ **No saved_searches table** in database  
+✗ **No persistent search history** across sessions  
+→ *Opportunity for future implementation: Create `SearchSection` with saved search queries*
+---
+### Summary Table
+| Section | ID | Icon | Async | Widget Type | Signal | Data Source |
+|---------|----|----|------|-------------|--------|-------------|
+| Folders | folders | 📁 | ✓ | QTreeWidget | folderSelected(int) | ReferenceDB.get_all_folders |
+| Dates | dates | 📅 | ✓ | QTreeWidget | dateSelected(str) | ReferenceDB.get_date_hierarchy |
+| People* | people | 👤 | ✓ | QStackedWidget | personSelected(str) | ReferenceDB (individuals + groups tabs) |
+| Videos | videos | 🎬 | ✓ | QTreeWidget | videoFilterSelected(str) | VideoService |
+| Duplicates | duplicates | ⚡ | ✓ | Custom Cards | (dialog) | AssetRepository + StackRepository |
+| Devices | devices | 📱 | ✓ | Custom Rows | deviceSelected(str) | DeviceScanner |
+| Locations | locations | 📍 | ✓ | QTreeWidget | locationSelected(dict) | ReferenceDB.get_location_clusters |
+| Quick | quick | ⚡ | ✗ | QPushButton Grid | quickDateSelected(str) | Hardcoded date math |
+*People section embeds GroupsSection as tab 2 (lazy-loaded on first switch)
+agentId: a020992 (for resuming to continue this agent's work if needed)
+<usage>total_tokens: 60033
+tool_uses: 16
+duration_ms: 67426</usage>
+Glob
+ui/accordion_sidebar/**/*.py
+/home/user/MemoryMate-PhotoFlow-Refactored/ui/accordion_sidebar/devices_section.py
+/home/user/MemoryMate-PhotoFlow-Refactored/ui/accordion_sidebar/quick_section.py
+/home/user/MemoryMate-PhotoFlow-Refactored/ui/accordion_sidebar/section_widgets.py
+Weniger anzeigen
+/home/user/MemoryMate-PhotoFlow-Refactored/ui/accordion_sidebar/dates_section.py
+/home/user/MemoryMate-PhotoFlow-Refactored/ui/accordion_sidebar/locations_section.py
+/home/user/MemoryMate-PhotoFlow-Refactored/ui/accordion_sidebar/duplicates_section.py
+/home/user/MemoryMate-PhotoFlow-Refactored/ui/accordion_sidebar/base_section.py
+/home/user/MemoryMate-PhotoFlow-Refactored/ui/accordion_sidebar/folders_section.py
+/home/user/MemoryMate-PhotoFlow-Refactored/ui/accordion_sidebar/people_section.py
+/home/user/MemoryMate-PhotoFlow-Refactored/ui/accordion_sidebar/__init__.py
+/home/user/MemoryMate-PhotoFlow-Refactored/ui/accordion_sidebar/groups_section.py
+/home/user/MemoryMate-PhotoFlow-Refactored/ui/accordion_sidebar/videos_section.py
+Read
+/home/user/MemoryMate-PhotoFlow-Refactored/ui/accordion_sidebar/__init__.py
+940 Zeilen gelesen
+Read
+/home/user/MemoryMate-PhotoFlow-Refactored/ui/accordion_sidebar/base_section.py
+236 Zeilen gelesen
+Bash
+find /home/user/MemoryMate-PhotoFlow-Refactored -name "reference_db.py" -type f
+/home/user/MemoryMate-PhotoFlow-Refactored/reference_db.py
+Read
+/home/user/MemoryMate-PhotoFlow-Refactored/ui/accordion_sidebar/folders_section.py
+260 Zeilen gelesen
+Read
+/home/user/MemoryMate-PhotoFlow-Refactored/ui/accordion_sidebar/dates_section.py
+234 Zeilen gelesen
+Read
+/home/user/MemoryMate-PhotoFlow-Refactored/ui/accordion_sidebar/people_section.py
+100 Zeilen gelesen
+Read
+/home/user/MemoryMate-PhotoFlow-Refactored/ui/accordion_sidebar/videos_section.py
+371 Zeilen gelesen
+Read
+/home/user/MemoryMate-PhotoFlow-Refactored/ui/accordion_sidebar/duplicates_section.py
+100 Zeilen gelesen
+Read
+/home/user/MemoryMate-PhotoFlow-Refactored/ui/accordion_sidebar/quick_section.py
+250 Zeilen gelesen
+Read
+/home/user/MemoryMate-PhotoFlow-Refactored/ui/accordion_sidebar/devices_section.py
+197 Zeilen gelesen
+Read
+/home/user/MemoryMate-PhotoFlow-Refactored/ui/accordion_sidebar/locations_section.py
+100 Zeilen gelesen
+Read
+/home/user/MemoryMate-PhotoFlow-Refactored/ui/accordion_sidebar/groups_section.py
+100 Zeilen gelesen
+Grep
+class.*SearchSection
+No files found
+Grep
+saved_searches|SearchSection
+No files found
+Bash
+grep -n "CREATE TABLE" /home/user/MemoryMate-PhotoFlow-Refactored/reference_db.py | head -30
+159:            CREATE TABLE IF NOT EXISTS reference_entries (
+168:            CREATE TABLE IF NOT EXISTS match_audit (
+180:            CREATE TABLE IF NOT EXISTS reference_labels (
+Weniger anzeigen
+189:            CREATE TABLE IF NOT EXISTS projects (
+199:            CREATE TABLE IF NOT EXISTS branches (
+210:            CREATE TABLE IF NOT EXISTS project_images (
+223:            CREATE TABLE IF NOT EXISTS face_crops (
+273:            CREATE TABLE IF NOT EXISTS face_branch_reps (
+291:            CREATE TABLE IF NOT EXISTS face_merge_history (
+302:            CREATE TABLE IF NOT EXISTS export_history (
+315:            CREATE TABLE IF NOT EXISTS photo_folders (
+327:            CREATE TABLE IF NOT EXISTS photo_metadata (
+350:            CREATE TABLE IF NOT EXISTS tags (
+357:            CREATE TABLE IF NOT EXISTS photo_tags (
+3753:                CREATE TABLE IF NOT EXISTS gps_location_cache (
+Update Todos
+ Fix A: newGroupRequested signal argument mismatch
+ Fix B: Shiboken dict-in-UserRole warnings → JSON serialization
+ Fix C: GroupService.instance() → direct static call
+ Evaluate sidebar evolution plan and provide recommendation
+ Syntax check, commit and push
+Weniger anzeigen
+
+All code fixes are committed and pushed. Here's the complete deliverable:
+
+Summary of Fixes (Committed & Pushed)
+Fix A: newGroupRequested() signal crash
+Root cause: QPushButton.clicked sends bool(checked) to Signal() with 0 params.
+Fix: Lambda wrapper at both locations in groups_section.py:411,437:
+
+create_btn.clicked.connect(lambda _checked=False: self.newGroupRequested.emit())
+
+Fix B: Shiboken dict-in-UserRole (64 writes fixed)
+Root cause: Python dict stored in Qt.UserRole can't be reliably marshaled as QVariant.
+Fix: json.dumps() on all 64 write locations + json.loads() on all read locations:
+
+videos_section.py — 24 writes, 1 read
+accordion_sidebar.py — 21 writes, 1 read
+google_layout.py — 17 writes (7 stripped embedded video lists), 5 reads
+For google_layout video items: removed embedded "videos": [...] lists from UserRole data. Click handler now re-queries via VideoService and filters in-place — the correct Apple/Google/Lightroom pattern (data resolved at consumption, not stored in UI).
+
+Fix C: GroupService.instance() crash
+Root cause: GroupService is all-@staticmethod, has no instance() or clear_all_group_caches().
+Fix: preferences_dialog.py:899-902 now calls GroupService.reindex_all_groups(db, project_id).
+
+Audit D: DB connection churn — Not a problem
+ReferenceDB uses per-thread singleton pool (max 10, validated with SELECT 1). Workers correctly db.close() in finally blocks. The "Closed connection for thread" messages are intentional lifecycle logging.
+
+Sidebar Evolution: Assessment & Recommendation
+Your proposed "One entry point, three layers" architecture is correct in direction but needs sequencing discipline to avoid opening construction sites that block each other. Here's my assessment grounded in your actual codebase:
+
+What you have now (8 sections)
+Folders | Dates | People(+Groups) | Videos | Duplicates | Devices | Locations | Quick
+
+All sections follow BaseSection with load_section() + create_content_widget() + lazy threading. This is a solid, tested pattern.
+
+Your proposal mapped to reality
+Your Layer	Maps to	Ready?	Effort
+Layer 1 (Instant Search)	New SearchSection extending BaseSection	No. CLIP embeddings + semantic_search_widget.py exist but aren't wired to accordion	Medium
+Layer 2 (Explore/Browse)	Your existing 8 sections already ARE this layer	Yes, done. People, Dates, Folders, Locations = the explore layer	None
+Layer 3 (Builder/Saved)	New SavedSearchSection + saved_searches table + QueryContract	No. No DB schema, no service, no UI	Large
+My recommendation: Proceed, but in this order
+Phase 1 — Query Contract first (the foundation)
+Define a SearchQuery dataclass before building any UI:
+
+@dataclass
+class SearchQuery:
+    project_id: int
+    text: str = ""                    # semantic/keyword search
+    filters: dict = field(default_factory=dict)  # media_type, date_range, etc.
+    mode: str = "semantic"            # "semantic" | "keyword" | "metadata"
+
+This is cheap (one file, zero UI risk) and becomes the contract everything else speaks.
+
+Phase 2 — SearchSection (Layer 1)
+
+Extends BaseSection, goes at position 0 in the accordion
+Text input + chip bar (People, Places, Recent, etc.)
+Chip clicks emit SearchQuery objects via signal
+GoogleLayout gets apply_query(query) that routes to existing methods (_load_photos with filters, _show_filtered_view, etc.)
+This is immediately useful because you already have CLIP semantic search
+Phase 3 — DB schema + SavedSearchSection (Layer 3)
+
+saved_searches(id, project_id, name, query_json, pinned, created_at, updated_at)
+recent_searches(id, project_id, query_text, last_used_at, use_count)
+
+New SavedSearchSection extending BaseSection
+Stores queries as JSON, displayed as clickable sidebar items
+Context menu: rename, delete, duplicate, pin
+Phase 4 — Label Extraction for instant chips (your Phase 3)
+
+Background LabelExtractionJob using CLIP → top-K labels per photo
+asset_labels(asset_id, label, score, model, updated_at) table
+Chips ("Beach", "Wedding", "Mountain") become SQL filters, not CLIP inference
+This is what separates "demo" from "product" — you're exactly right
+What NOT to do
+Don't build the Rule Tree Builder (Phase 4/Layer 3) yet. You'll over-engineer it before you know what queries users actually save. Start with free-text + filters, add rules later.
+Don't consolidate GroupService + PeopleGroupService into a service registry yet. It works, the patterns are clear. Service injection is a refactor you do when you add project switching, not now.
+Don't change BaseSection to add search awareness. SearchSection should be a peer section with its own signal contract, not a modification to the base class.
+The single most important insight
+Your existing 8 sections = Layer 2 (Explore). You don't need to rebuild them. SearchSection sits on top as a new section, SavedSearchSection sits below as another new section. Both extend BaseSection. The accordion pattern already supports N sections — you just add 2 more.
