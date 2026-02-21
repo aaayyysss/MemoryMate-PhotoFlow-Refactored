@@ -1685,3 +1685,526 @@ database_commit:
 2026-02-21 13:45:36,095 [INFO] [SemanticEmbeddingService] Loading from local path (offline mode): C:\Users\ASUS\.cache\huggingface\hub\models--openai--clip-vit-base-patch32\snapshots\3d74acf9a28c67741b2f4f2ea7635f0aaf6f0268
 2026-02-21 13:45:37,899 [INFO] [SemanticEmbeddingService] Model loaded successfully: openai/clip-vit-base-patch32
 2026-02-21 13:45:37,907 [INFO] [SemanticEmbeddingService] Model ready on cpu
+2026-02-21 13:50:25,582 [INFO] [GroupsSection] Loading groups (generation 2)...
+2026-02-21 13:50:25,582 [INFO] [PeopleSection] Groups tab lazy-loaded
+[ReferenceDB] Closed connection for thread 31128
+2026-02-21 13:50:27,865 [INFO] [AccordionSidebar] New group requested
+[ReferenceDB] Closed connection for thread 26856
+2026-02-21 13:50:27,892 [INFO] [CreateGroupDialog] Loaded 9 people
+2026-02-21 13:50:32,766 [INFO] [GroupService] Created group 1 'face_008 + face_001' with 2 members (project 1)
+[ReferenceDB] Closed connection for thread 26856
+2026-02-21 13:50:32,766 [INFO] [CreateGroupDialog] Created group 1: name='face_008 + face_001', members=2
+2026-02-21 13:50:32,766 [INFO] [AccordionSidebar] Group created: {'id': 1, 'member_count': 2, 'members': ['face_008', 'face_001'], 'name': 'face_008 + face_001'}
+2026-02-21 13:50:32,766 [INFO] [GroupsSection] Loading groups (generation 3)...
+[ReferenceDB] Closed connection for thread 36216
+2026-02-21 13:50:32,786 [INFO] [AccordionSidebar] Started group computation worker
+2026-02-21 13:50:32,796 [INFO] [GroupComputeWorker] Starting computation for group 1 (mode=together, thread=Dummy-32)
+2026-02-21 13:50:32,796 [INFO] [PeopleGroupService] Together matches for group 1: 8 photos with 2 people in 0.00s
+2026-02-21 13:50:32,796 [INFO] [GroupComputeWorker] Completed for group 1: 8 matches in 0.00s
+2026-02-21 13:50:34,255 [INFO] [AccordionSidebar] Group selected: 1 (mode=together)
+2026-02-21 13:50:34,257 [INFO] [GooglePhotosLayout] Group clicked: 1 (mode=together)
+[ReferenceDB] Closed connection for thread 26856
+2026-02-21 13:50:34,268 [INFO] [GooglePhotosLayout] Group 1 has 8 matching photos
+[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px) [paths=8 photos]...
+[GooglePhotosLayout] 🔍 Starting async photo load (generation 2) - existing content preserved...
+[GooglePhotosLayout] Photo load worker started (generation 2, legacy/paths)
+2026-02-21 13:50:34,339 [INFO] Photo query complete: generation=2, current=2, rows=8
+[GooglePhotosLayout] Dispatching 8 assets (photos+videos) to background grouping worker...
+[GooglePhotosLayout] Grouped into 3 date groups
+[GooglePhotosLayout] Tracking 8 paths for multi-selection
+[GooglePhotosLayout] 📐 Responsive grid: 4 columns (viewport: 882px, thumb: 200px)
+[GooglePhotosLayout] Virtual scrolling enabled: 3 total date groups
+[GooglePhotosLayout] Rendered: 3 groups | Placeholders: 0 groups
+[GooglePhotosLayout] Queued 8 thumbnails for loading (initial limit: 50)
+[GooglePhotosLayout] Photo loading complete! Thumbnails will load progressively.
+2026-02-21 13:50:36,878 [INFO] [AccordionSidebar] Group selected: -1 (mode=)
+2026-02-21 13:50:36,880 [INFO] [GooglePhotosLayout] Group deselected or invalid (group_id=-1)
+[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px)...
+[GooglePhotosLayout] 🔍 Starting async photo load (generation 3) - existing content preserved...
+[GooglePhotosLayout] Paged load started (generation 3, page_size=250)
+2026-02-21 13:50:36,940 [INFO] [GoogleLayout] Page count ready: gen=3 total=49 (threshold=3000)
+2026-02-21 13:50:36,940 [INFO] [GoogleLayout] Page ready: gen=3 offset=0 rows=49 loaded=49/49
+[GooglePhotosLayout] Dispatching 49 assets (photos+videos) to background grouping worker...
+2026-02-21 13:50:36,940 [INFO] [GoogleLayout] All pages loaded: 49 rows total
+[GooglePhotosLayout] Grouped into 17 date groups
+[GooglePhotosLayout] Tracking 49 paths for multi-selection
+[ThumbnailLoader] ✓ Video thumbnail: henry(super junior) & shin jiho (violin and piano perf.).wmv
+[ThumbnailLoader] ✓ Video thumbnail: بابار_كونان_ريمي_ماوكلي_هزيم الرعد  طارق العربي طرقان و أبناؤه l برنامج صاحبة السعادة(360p)_1.mp4
+[ThumbnailLoader] ✓ Video thumbnail: جزيرة الكنز- كورال غاردينيا- حفل شارات مسلسلات الكرتون 2016(480p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: وداعاً إلى اللقاء- ساندي بل(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: في قصص الشعوب(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: فلونة(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: غريندايزر(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: عدنان ولينا(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: سنان(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: ساندي بل(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: ريمي الصبي(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: جزيرة الكنز(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: توم سوير(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: بيل وسيباستيان(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: افتح يا سمسم(360p).mp4
+[GooglePhotosLayout] Virtual scrolling enabled: 17 total date groups
+[GooglePhotosLayout] Rendered: 5 groups | Placeholders: 12 groups
+[GooglePhotosLayout] Queued 17 thumbnails for loading (initial limit: 50)
+[GooglePhotosLayout] Photo loading complete! Thumbnails will load progressively.
+2026-02-21 13:50:37,902 [INFO] [AccordionSidebar] Group selected: 1 (mode=together)
+2026-02-21 13:50:37,902 [INFO] [GooglePhotosLayout] Group clicked: 1 (mode=together)
+[ReferenceDB] Closed connection for thread 26856
+2026-02-21 13:50:37,906 [INFO] [GooglePhotosLayout] Group 1 has 8 matching photos
+[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px) [paths=8 photos]...
+[GooglePhotosLayout] 🔍 Starting async photo load (generation 4) - existing content preserved...
+[GooglePhotosLayout] Photo load worker started (generation 4, legacy/paths)
+2026-02-21 13:50:37,959 [INFO] Photo query complete: generation=4, current=4, rows=8
+[GooglePhotosLayout] Dispatching 8 assets (photos+videos) to background grouping worker...
+[GooglePhotosLayout] Grouped into 3 date groups
+[GooglePhotosLayout] Tracking 8 paths for multi-selection
+[GooglePhotosLayout] Virtual scrolling enabled: 3 total date groups
+[GooglePhotosLayout] Rendered: 3 groups | Placeholders: 0 groups
+[GooglePhotosLayout] Queued 8 thumbnails for loading (initial limit: 50)
+[GooglePhotosLayout] Photo loading complete! Thumbnails will load progressively.
+2026-02-21 13:50:44,682 [INFO] [AccordionSidebar] Expanding section: devices
+[DeviceMonitor] Initialized for platform: Windows
+[WindowsDeviceWindow] Native window created (hidden)
+[DeviceMonitor] Windows device monitoring started
+[DeviceMonitor] Listening for WM_DEVICECHANGE messages
+2026-02-21 13:50:44,729 [INFO] [DevicesSection] Scanning devices (generation 2)…
+
+[DeviceScanner] ===== Starting device scan (FORCED) =====
+[DeviceScanner] Platform: Windows
+[DeviceScanner] Database registration: disabled
+[DeviceScanner] Scanning Windows drives...
+[DeviceScanner]   Checking drive letters D:-Z:...
+[DeviceScanner]     Drive D: exists, checking...
+[DeviceScanner]           Checking path: D:\
+[DeviceScanner]           Directories found: ['$RECYCLE.BIN', 'Architect Books', 'Architecture', 'Arshiif', 'B2 Prüfung', 'CORONA', 'CORONA 1', 'CORONA 2024', 'En', 'From Ammar', 'IPhone', 'MirrorTo transfer', 'MirrorTo video', 'My Phone', 'My Work', 'New folder (2)', 'Python', 'Recovery', 'REVIT', 'Revit Advance', 'REVIT NEW', 'Samer Matar V-Ray', 'SnapPea', 'System Volume Information', 'To write', 'training 2020', 'Workshop- Corona', 'المشروع الألماني', 'انكليزي', 'تصويؤي', 'تصويري', 'تلغرام', 'روايات', 'صور للإرسال', 'طيران مدني', 'عزفي', 'فيديو', 'كورس الفرنسي- هيئة التخطيط والتعاون الدولي', 'للطباعة', 'ملفاتي']
+[DeviceScanner]           Has DCIM folder: False
+[DeviceScanner]           No alternate structure found
+[DeviceScanner]           Checking subdirectories for DCIM (MTP mounts)...
+[DeviceScanner]             Checking subdirectory: IPhone
+[DeviceScanner]               Checking nested: IPhone/202202__
+[DeviceScanner]               Checking nested: IPhone/242CLOUD
+[DeviceScanner]               Checking nested: IPhone/Family
+[DeviceScanner]               Checking nested: IPhone/French Video
+[DeviceScanner]               Checking nested: IPhone/To draw
+[DeviceScanner]               Checking nested: IPhone/To learn Deutsch
+[DeviceScanner]               Checking nested: IPhone/خواطر
+[DeviceScanner]               Checking nested: IPhone/عن الموت
+[DeviceScanner]               Checking nested: IPhone/منزل عمار وسوزي
+[DeviceScanner]             Checking subdirectory: My Phone
+[DeviceScanner]               Checking nested: My Phone/Android
+[DeviceScanner]               Checking nested: My Phone/DCM
+[DeviceScanner]               Checking nested: My Phone/Document Scanner
+[DeviceScanner]               Checking nested: My Phone/Final
+[DeviceScanner]               ✓ Found DCIM in: My Phone/Final/DCIM
+[DeviceScanner]           Has DCIM in subdirectory: True
+[DeviceScanner]           Device type: android
+[DeviceScanner]           Device label: 🤖 Mobile Device
+[DeviceScanner]           Scanning for media folders...
+[DeviceScanner]           Found 0 media folder(s)
+[DeviceScanner]           REJECTED: No media folders with photos/videos
+[DeviceScanner]       ✗ No device on drive D:
+[DeviceScanner]   Checking portable devices (MTP/PTP)...
+[DeviceScanner]     Attempting Shell COM enumeration...
+[DeviceScanner]     COM initialized for current thread
+[DeviceScanner]     Found 3 items under 'This PC'
+[DeviceScanner]       → Item: 'Manage my phone' | IsFolder=False | IsFileSystem=False
+[DeviceScanner]       → Item: 'Local Disk (C:)' | IsFolder=True | IsFileSystem=True
+[DeviceScanner]       → Item: 'DATA (D:)' | IsFolder=True | IsFileSystem=True
+[DeviceScanner]     COM uninitialized
+[DeviceScanner] ===== Scan complete: 0 device(s) found =====
+[DeviceScanner] Results cached for 300.0s
+
+2026-02-21 13:50:45,537 [INFO] [AccordionSidebar] Section devices loaded and displayed
+2026-02-21 13:50:46,306 [INFO] [AccordionSidebar] Expanding section: people
+2026-02-21 13:50:46,314 [INFO] [PeopleSection] Loading face clusters (generation 9)…
+2026-02-21 13:50:46,316 [INFO] [PeopleSection] Loaded 9 clusters (gen 9)
+[ReferenceDB] Closed connection for thread 30532
+2026-02-21 13:50:46,357 [INFO] [PeopleSection] Grid built with 9 people + Groups tab
+2026-02-21 13:50:46,395 [INFO] [AccordionSidebar] Section people loaded and displayed
+2026-02-21 13:50:47,461 [INFO] [GroupsSection] Loading groups (generation 2)...
+2026-02-21 13:50:47,461 [INFO] [PeopleSection] Groups tab lazy-loaded
+[ReferenceDB] Closed connection for thread 29716
+2026-02-21 13:50:52,836 [INFO] [AccordionSidebar] New group requested
+[ReferenceDB] Closed connection for thread 26856
+2026-02-21 13:50:52,836 [INFO] [CreateGroupDialog] Loaded 9 people
+2026-02-21 13:51:01,338 [INFO] [GroupService] Created group 2 'face_003 + face_002 + face_004' with 3 members (project 1)
+[ReferenceDB] Closed connection for thread 26856
+2026-02-21 13:51:01,338 [INFO] [CreateGroupDialog] Created group 2: name='face_003 + face_002 + face_004', members=3
+2026-02-21 13:51:01,340 [INFO] [AccordionSidebar] Group created: {'id': 2, 'member_count': 3, 'members': ['face_003', 'face_002', 'face_004'], 'name': 'face_003 + face_002 + face_004'}
+2026-02-21 13:51:01,340 [INFO] [GroupsSection] Loading groups (generation 3)...
+2026-02-21 13:51:01,340 [INFO] [AccordionSidebar] Started group computation worker
+2026-02-21 13:51:01,342 [INFO] [GroupComputeWorker] Starting computation for group 2 (mode=together, thread=Dummy-32)
+2026-02-21 13:51:01,350 [INFO] [PeopleGroupService] Together matches for group 2: 2 photos with 3 people in 0.00s
+2026-02-21 13:51:01,350 [INFO] [GroupComputeWorker] Completed for group 2: 2 matches in 0.00s
+2026-02-21 13:51:01,352 [INFO] [GroupsSection] Loading groups (generation 4)...
+2026-02-21 13:51:01,352 [INFO] [AccordionSidebar] Group computation complete: 2 matches
+[ReferenceDB] Closed connection for thread 38988
+[ReferenceDB] Closed connection for thread 26384
+2026-02-21 13:51:03,823 [INFO] [AccordionSidebar] Group selected: 2 (mode=together)
+2026-02-21 13:51:03,825 [INFO] [GooglePhotosLayout] Group clicked: 2 (mode=together)
+[ReferenceDB] Closed connection for thread 26856
+2026-02-21 13:51:03,828 [INFO] [GooglePhotosLayout] Group 2 has 2 matching photos
+[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px) [paths=2 photos]...
+[GooglePhotosLayout] 🔍 Starting async photo load (generation 5) - existing content preserved...
+[GooglePhotosLayout] Photo load worker started (generation 5, legacy/paths)
+2026-02-21 13:51:03,888 [INFO] Photo query complete: generation=5, current=5, rows=2
+[GooglePhotosLayout] Dispatching 2 assets (photos+videos) to background grouping worker...
+[GooglePhotosLayout] Grouped into 1 date groups
+[GooglePhotosLayout] Tracking 2 paths for multi-selection
+[GooglePhotosLayout] Virtual scrolling enabled: 1 total date groups
+[GooglePhotosLayout] Rendered: 1 groups | Placeholders: 0 groups
+[GooglePhotosLayout] Queued 2 thumbnails for loading (initial limit: 50)
+[GooglePhotosLayout] Photo loading complete! Thumbnails will load progressively.
+2026-02-21 13:51:09,071 [INFO] [AccordionSidebar] New group requested
+[ReferenceDB] Closed connection for thread 26856
+2026-02-21 13:51:09,071 [INFO] [CreateGroupDialog] Loaded 9 people
+2026-02-21 13:51:23,811 [INFO] [GroupService] Created group 3 'face_003 + face_008 + face_002 + 3 more' with 6 members (project 1)
+[ReferenceDB] Closed connection for thread 26856
+2026-02-21 13:51:23,813 [INFO] [CreateGroupDialog] Created group 3: name='face_003 + face_008 + face_002 + 3 more', members=6
+2026-02-21 13:51:23,814 [INFO] [AccordionSidebar] Group created: {'id': 3, 'member_count': 6, 'members': ['face_003', 'face_008', 'face_002', 'face_001', 'face_004', 'face_010'], 'name': 'face_003 + face_008 + face_002 + 3 more'}
+2026-02-21 13:51:23,814 [INFO] [GroupsSection] Loading groups (generation 5)...
+2026-02-21 13:51:23,816 [INFO] [AccordionSidebar] Started group computation worker
+2026-02-21 13:51:23,816 [INFO] [GroupComputeWorker] Starting computation for group 3 (mode=together, thread=Dummy-32)
+2026-02-21 13:51:23,822 [INFO] [PeopleGroupService] Together matches for group 3: 0 photos with 6 people in 0.00s
+2026-02-21 13:51:23,822 [INFO] [GroupComputeWorker] Completed for group 3: 0 matches in 0.00s
+[ReferenceDB] Closed connection for thread 34504
+2026-02-21 13:51:26,598 [INFO] [AccordionSidebar] Group selected: 3 (mode=together)
+2026-02-21 13:51:26,598 [INFO] [GooglePhotosLayout] Group clicked: 3 (mode=together)
+[ReferenceDB] Closed connection for thread 26856
+[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px)...
+[GooglePhotosLayout] 🔍 Starting async photo load (generation 6) - existing content preserved...
+[GooglePhotosLayout] Paged load started (generation 6, page_size=250)
+2026-02-21 13:51:28,208 [INFO] [GoogleLayout] Page count ready: gen=6 total=49 (threshold=3000)
+2026-02-21 13:51:28,214 [INFO] [GoogleLayout] Page ready: gen=6 offset=0 rows=49 loaded=49/49
+[GooglePhotosLayout] Dispatching 49 assets (photos+videos) to background grouping worker...
+2026-02-21 13:51:28,215 [INFO] [GoogleLayout] All pages loaded: 49 rows total
+[GooglePhotosLayout] Grouped into 17 date groups
+[GooglePhotosLayout] Tracking 49 paths for multi-selection
+[ThumbnailLoader] ✓ Video thumbnail: henry(super junior) & shin jiho (violin and piano perf.).wmv
+[ThumbnailLoader] ✓ Video thumbnail: بابار_كونان_ريمي_ماوكلي_هزيم الرعد  طارق العربي طرقان و أبناؤه l برنامج صاحبة السعادة(360p)_1.mp4
+[ThumbnailLoader] ✓ Video thumbnail: جزيرة الكنز- كورال غاردينيا- حفل شارات مسلسلات الكرتون 2016(480p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: وداعاً إلى اللقاء- ساندي بل(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: في قصص الشعوب(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: فلونة(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: غريندايزر(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: عدنان ولينا(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: سنان(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: ساندي بل(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: ريمي الصبي(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: جزيرة الكنز(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: توم سوير(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: بيل وسيباستيان(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: افتح يا سمسم(360p).mp4
+[GooglePhotosLayout] Virtual scrolling enabled: 17 total date groups
+[GooglePhotosLayout] Rendered: 5 groups | Placeholders: 12 groups
+[GooglePhotosLayout] Queued 17 thumbnails for loading (initial limit: 50)
+[GooglePhotosLayout] Photo loading complete! Thumbnails will load progressively.
+2026-02-21 13:51:29,343 [INFO] [AccordionSidebar] Group selected: -1 (mode=)
+2026-02-21 13:51:29,343 [INFO] [GooglePhotosLayout] Group deselected or invalid (group_id=-1)
+[GooglePhotosLayout] Skipping redundant reload (same state signature)
+2026-02-21 13:51:34,771 [INFO] [GooglePhotosLayout] Edit group requested: 3
+[ReferenceDB] Closed connection for thread 26856
+2026-02-21 13:51:34,778 [INFO] [CreateGroupDialog] Loaded 9 people
+[ReferenceDB] Closed connection for thread 26856
+2026-02-21 13:51:34,795 [INFO] [CreateGroupDialog] Edit mode: group has 6 members
+2026-02-21 13:51:39,962 [INFO] [GroupService] Updated group 3
+[ReferenceDB] Closed connection for thread 26856
+2026-02-21 13:51:39,964 [INFO] [CreateGroupDialog] Updated group 3: name='face_003 + face_008 + face_002 + 3 more', members=5
+2026-02-21 13:51:39,969 [INFO] [AccordionSidebar] Started group computation worker
+2026-02-21 13:51:39,969 [INFO] [GroupComputeWorker] Starting computation for group 3 (mode=together, thread=Dummy-32)
+2026-02-21 13:51:39,969 [INFO] [GooglePhotosLayout] Group 3 edited, recomputing matches
+2026-02-21 13:51:39,969 [INFO] [PeopleGroupService] Together matches for group 3: 0 photos with 5 people in 0.00s
+2026-02-21 13:51:39,969 [INFO] [GroupComputeWorker] Completed for group 3: 0 matches in 0.00s
+2026-02-21 13:51:41,491 [INFO] [AccordionSidebar] Group selected: 3 (mode=together)
+2026-02-21 13:51:41,491 [INFO] [GooglePhotosLayout] Group clicked: 3 (mode=together)
+[ReferenceDB] Closed connection for thread 26856
+[GooglePhotosLayout] Skipping redundant reload (same state signature)
+2026-02-21 13:51:43,756 [INFO] [AccordionSidebar] Group selected: 2 (mode=together)
+2026-02-21 13:51:43,756 [INFO] [GooglePhotosLayout] Group clicked: 2 (mode=together)
+[ReferenceDB] Closed connection for thread 26856
+2026-02-21 13:51:43,756 [INFO] [GooglePhotosLayout] Group 2 has 2 matching photos
+[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px) [paths=2 photos]...
+[GooglePhotosLayout] 🔍 Starting async photo load (generation 7) - existing content preserved...
+[GooglePhotosLayout] Photo load worker started (generation 7, legacy/paths)
+2026-02-21 13:51:43,819 [INFO] Photo query complete: generation=7, current=7, rows=2
+[GooglePhotosLayout] Dispatching 2 assets (photos+videos) to background grouping worker...
+[GooglePhotosLayout] Grouped into 1 date groups
+[GooglePhotosLayout] Tracking 2 paths for multi-selection
+[GooglePhotosLayout] Virtual scrolling enabled: 1 total date groups
+[GooglePhotosLayout] Rendered: 1 groups | Placeholders: 0 groups
+[GooglePhotosLayout] Queued 2 thumbnails for loading (initial limit: 50)
+[GooglePhotosLayout] Photo loading complete! Thumbnails will load progressively.
+2026-02-21 13:51:44,803 [INFO] [AccordionSidebar] Group selected: 1 (mode=together)
+2026-02-21 13:51:44,803 [INFO] [GooglePhotosLayout] Group clicked: 1 (mode=together)
+[ReferenceDB] Closed connection for thread 26856
+2026-02-21 13:51:44,807 [INFO] [GooglePhotosLayout] Group 1 has 8 matching photos
+[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px) [paths=8 photos]...
+[GooglePhotosLayout] 🔍 Starting async photo load (generation 8) - existing content preserved...
+[GooglePhotosLayout] Photo load worker started (generation 8, legacy/paths)
+2026-02-21 13:51:44,873 [INFO] Photo query complete: generation=8, current=8, rows=8
+[GooglePhotosLayout] Dispatching 8 assets (photos+videos) to background grouping worker...
+[GooglePhotosLayout] Grouped into 3 date groups
+[GooglePhotosLayout] Tracking 8 paths for multi-selection
+[GooglePhotosLayout] Virtual scrolling enabled: 3 total date groups
+[GooglePhotosLayout] Rendered: 3 groups | Placeholders: 0 groups
+[GooglePhotosLayout] Queued 8 thumbnails for loading (initial limit: 50)
+[GooglePhotosLayout] Photo loading complete! Thumbnails will load progressively.
+2026-02-21 13:51:49,294 [INFO] [AccordionSidebar] Group selected: 3 (mode=together)
+2026-02-21 13:51:49,294 [INFO] [GooglePhotosLayout] Group clicked: 3 (mode=together)
+[ReferenceDB] Closed connection for thread 26856
+[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px)...
+[GooglePhotosLayout] 🔍 Starting async photo load (generation 9) - existing content preserved...
+[GooglePhotosLayout] Paged load started (generation 9, page_size=250)
+2026-02-21 13:51:50,489 [INFO] [GoogleLayout] Page count ready: gen=9 total=49 (threshold=3000)
+2026-02-21 13:51:50,489 [INFO] [GoogleLayout] Page ready: gen=9 offset=0 rows=49 loaded=49/49
+[GooglePhotosLayout] Dispatching 49 assets (photos+videos) to background grouping worker...
+2026-02-21 13:51:50,492 [INFO] [GoogleLayout] All pages loaded: 49 rows total
+[GooglePhotosLayout] Grouped into 17 date groups
+[GooglePhotosLayout] Tracking 49 paths for multi-selection
+[ThumbnailLoader] ✓ Video thumbnail: henry(super junior) & shin jiho (violin and piano perf.).wmv
+[ThumbnailLoader] ✓ Video thumbnail: بابار_كونان_ريمي_ماوكلي_هزيم الرعد  طارق العربي طرقان و أبناؤه l برنامج صاحبة السعادة(360p)_1.mp4
+[ThumbnailLoader] ✓ Video thumbnail: جزيرة الكنز- كورال غاردينيا- حفل شارات مسلسلات الكرتون 2016(480p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: وداعاً إلى اللقاء- ساندي بل(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: في قصص الشعوب(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: فلونة(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: غريندايزر(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: عدنان ولينا(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: سنان(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: ساندي بل(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: ريمي الصبي(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: جزيرة الكنز(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: توم سوير(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: بيل وسيباستيان(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: افتح يا سمسم(360p).mp4
+[GooglePhotosLayout] Virtual scrolling enabled: 17 total date groups
+[GooglePhotosLayout] Rendered: 5 groups | Placeholders: 12 groups
+[GooglePhotosLayout] Queued 17 thumbnails for loading (initial limit: 50)
+[GooglePhotosLayout] Photo loading complete! Thumbnails will load progressively.
+2026-02-21 13:51:52,902 [INFO] [GooglePhotosLayout] Edit group requested: 3
+[ReferenceDB] Closed connection for thread 26856
+2026-02-21 13:51:52,905 [INFO] [CreateGroupDialog] Loaded 9 people
+[ReferenceDB] Closed connection for thread 26856
+2026-02-21 13:51:52,926 [INFO] [CreateGroupDialog] Edit mode: group has 5 members
+2026-02-21 13:52:01,421 [INFO] [GroupService] Updated group 3
+[ReferenceDB] Closed connection for thread 26856
+2026-02-21 13:52:01,422 [INFO] [CreateGroupDialog] Updated group 3: name='face_003 + face_008 + face_002 + 3 more', members=5
+2026-02-21 13:52:01,431 [INFO] [AccordionSidebar] Started group computation worker
+2026-02-21 13:52:01,431 [INFO] [GroupComputeWorker] Starting computation for group 3 (mode=together, thread=Dummy-32)
+2026-02-21 13:52:01,431 [INFO] [GooglePhotosLayout] Group 3 edited, recomputing matches
+2026-02-21 13:52:01,434 [INFO] [PeopleGroupService] Together matches for group 3: 2 photos with 5 people in 0.00s
+2026-02-21 13:52:01,436 [INFO] [GroupComputeWorker] Completed for group 3: 2 matches in 0.00s
+2026-02-21 13:52:02,665 [INFO] [AccordionSidebar] Group selected: -1 (mode=)
+2026-02-21 13:52:02,665 [INFO] [GooglePhotosLayout] Group deselected or invalid (group_id=-1)
+[GooglePhotosLayout] Skipping redundant reload (same state signature)
+2026-02-21 13:52:03,951 [INFO] [AccordionSidebar] Group selected: 3 (mode=together)
+2026-02-21 13:52:03,951 [INFO] [GooglePhotosLayout] Group clicked: 3 (mode=together)
+[ReferenceDB] Closed connection for thread 26856
+2026-02-21 13:52:03,961 [INFO] [GooglePhotosLayout] Group 3 has 2 matching photos
+[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px) [paths=2 photos]...
+[GooglePhotosLayout] 🔍 Starting async photo load (generation 10) - existing content preserved...
+[GooglePhotosLayout] Photo load worker started (generation 10, legacy/paths)
+2026-02-21 13:52:04,034 [INFO] Photo query complete: generation=10, current=10, rows=2
+[GooglePhotosLayout] Dispatching 2 assets (photos+videos) to background grouping worker...
+[GooglePhotosLayout] Grouped into 1 date groups
+[GooglePhotosLayout] Tracking 2 paths for multi-selection
+[GooglePhotosLayout] Virtual scrolling enabled: 1 total date groups
+[GooglePhotosLayout] Rendered: 1 groups | Placeholders: 0 groups
+[GooglePhotosLayout] Queued 2 thumbnails for loading (initial limit: 50)
+[GooglePhotosLayout] Photo loading complete! Thumbnails will load progressively.
+2026-02-21 13:52:05,173 [INFO] [AccordionSidebar] Group selected: -1 (mode=)
+2026-02-21 13:52:05,173 [INFO] [GooglePhotosLayout] Group deselected or invalid (group_id=-1)
+[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px)...
+[GooglePhotosLayout] 🔍 Starting async photo load (generation 11) - existing content preserved...
+[GooglePhotosLayout] Paged load started (generation 11, page_size=250)
+2026-02-21 13:52:05,245 [INFO] [GoogleLayout] Page count ready: gen=11 total=49 (threshold=3000)
+2026-02-21 13:52:05,245 [INFO] [GoogleLayout] Page ready: gen=11 offset=0 rows=49 loaded=49/49
+[GooglePhotosLayout] Dispatching 49 assets (photos+videos) to background grouping worker...
+2026-02-21 13:52:05,245 [INFO] [GoogleLayout] All pages loaded: 49 rows total
+[GooglePhotosLayout] Grouped into 17 date groups
+[GooglePhotosLayout] Tracking 49 paths for multi-selection
+[ThumbnailLoader] ✓ Video thumbnail: henry(super junior) & shin jiho (violin and piano perf.).wmv
+[ThumbnailLoader] ✓ Video thumbnail: بابار_كونان_ريمي_ماوكلي_هزيم الرعد  طارق العربي طرقان و أبناؤه l برنامج صاحبة السعادة(360p)_1.mp4
+[ThumbnailLoader] ✓ Video thumbnail: جزيرة الكنز- كورال غاردينيا- حفل شارات مسلسلات الكرتون 2016(480p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: وداعاً إلى اللقاء- ساندي بل(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: في قصص الشعوب(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: فلونة(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: غريندايزر(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: عدنان ولينا(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: سنان(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: ساندي بل(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: ريمي الصبي(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: جزيرة الكنز(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: توم سوير(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: بيل وسيباستيان(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: افتح يا سمسم(360p).mp4
+[GooglePhotosLayout] Virtual scrolling enabled: 17 total date groups
+[GooglePhotosLayout] Rendered: 5 groups | Placeholders: 12 groups
+[GooglePhotosLayout] Queued 17 thumbnails for loading (initial limit: 50)
+[GooglePhotosLayout] Photo loading complete! Thumbnails will load progressively.
+2026-02-21 13:52:06,004 [INFO] [AccordionSidebar] Group selected: 3 (mode=together)
+2026-02-21 13:52:06,007 [INFO] [GooglePhotosLayout] Group clicked: 3 (mode=together)
+[ReferenceDB] Closed connection for thread 26856
+2026-02-21 13:52:06,007 [INFO] [GooglePhotosLayout] Group 3 has 2 matching photos
+[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px) [paths=2 photos]...
+[GooglePhotosLayout] 🔍 Starting async photo load (generation 12) - existing content preserved...
+[GooglePhotosLayout] Photo load worker started (generation 12, legacy/paths)
+2026-02-21 13:52:06,075 [INFO] Photo query complete: generation=12, current=12, rows=2
+[GooglePhotosLayout] Dispatching 2 assets (photos+videos) to background grouping worker...
+[GooglePhotosLayout] Grouped into 1 date groups
+[GooglePhotosLayout] Tracking 2 paths for multi-selection
+[GooglePhotosLayout] Virtual scrolling enabled: 1 total date groups
+[GooglePhotosLayout] Rendered: 1 groups | Placeholders: 0 groups
+[GooglePhotosLayout] Queued 2 thumbnails for loading (initial limit: 50)
+[GooglePhotosLayout] Photo loading complete! Thumbnails will load progressively.
+2026-02-21 13:52:09,708 [INFO] [AccordionSidebar] New group requested
+[ReferenceDB] Closed connection for thread 26856
+2026-02-21 13:52:09,711 [INFO] [CreateGroupDialog] Loaded 9 people
+2026-02-21 13:52:12,964 [INFO] [GroupService] Created group 4 'face_000 + face_006' with 2 members (project 1)
+[ReferenceDB] Closed connection for thread 26856
+2026-02-21 13:52:12,965 [INFO] [CreateGroupDialog] Created group 4: name='face_000 + face_006', members=2
+2026-02-21 13:52:12,965 [INFO] [AccordionSidebar] Group created: {'id': 4, 'member_count': 2, 'members': ['face_000', 'face_006'], 'name': 'face_000 + face_006'}
+2026-02-21 13:52:12,967 [INFO] [GroupsSection] Loading groups (generation 6)...
+2026-02-21 13:52:12,967 [INFO] [AccordionSidebar] Started group computation worker
+2026-02-21 13:52:12,967 [INFO] [GroupComputeWorker] Starting computation for group 4 (mode=together, thread=Dummy-32)
+2026-02-21 13:52:12,976 [INFO] [PeopleGroupService] Together matches for group 4: 0 photos with 2 people in 0.00s
+2026-02-21 13:52:12,978 [INFO] [GroupComputeWorker] Completed for group 4: 0 matches in 0.01s
+[ReferenceDB] Closed connection for thread 36016
+2026-02-21 13:52:13,900 [INFO] [AccordionSidebar] Group selected: 4 (mode=together)
+2026-02-21 13:52:13,900 [INFO] [GooglePhotosLayout] Group clicked: 4 (mode=together)
+[ReferenceDB] Closed connection for thread 26856
+[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px)...
+[GooglePhotosLayout] 🔍 Starting async photo load (generation 13) - existing content preserved...
+[GooglePhotosLayout] Paged load started (generation 13, page_size=250)
+2026-02-21 13:52:15,166 [INFO] [GoogleLayout] Page count ready: gen=13 total=49 (threshold=3000)
+2026-02-21 13:52:15,166 [INFO] [GoogleLayout] Page ready: gen=13 offset=0 rows=49 loaded=49/49
+[GooglePhotosLayout] Dispatching 49 assets (photos+videos) to background grouping worker...
+2026-02-21 13:52:15,169 [INFO] [GoogleLayout] All pages loaded: 49 rows total
+[GooglePhotosLayout] Grouped into 17 date groups
+[GooglePhotosLayout] Tracking 49 paths for multi-selection
+[ThumbnailLoader] ✓ Video thumbnail: henry(super junior) & shin jiho (violin and piano perf.).wmv
+[ThumbnailLoader] ✓ Video thumbnail: بابار_كونان_ريمي_ماوكلي_هزيم الرعد  طارق العربي طرقان و أبناؤه l برنامج صاحبة السعادة(360p)_1.mp4
+[ThumbnailLoader] ✓ Video thumbnail: جزيرة الكنز- كورال غاردينيا- حفل شارات مسلسلات الكرتون 2016(480p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: وداعاً إلى اللقاء- ساندي بل(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: في قصص الشعوب(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: فلونة(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: غريندايزر(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: عدنان ولينا(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: سنان(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: ساندي بل(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: ريمي الصبي(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: جزيرة الكنز(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: توم سوير(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: بيل وسيباستيان(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: افتح يا سمسم(360p).mp4
+[GooglePhotosLayout] Virtual scrolling enabled: 17 total date groups
+[GooglePhotosLayout] Rendered: 5 groups | Placeholders: 12 groups
+[GooglePhotosLayout] Queued 17 thumbnails for loading (initial limit: 50)
+[GooglePhotosLayout] Photo loading complete! Thumbnails will load progressively.
+2026-02-21 13:52:16,015 [INFO] [AccordionSidebar] Group selected: -1 (mode=)
+2026-02-21 13:52:16,015 [INFO] [GooglePhotosLayout] Group deselected or invalid (group_id=-1)
+[GooglePhotosLayout] Skipping redundant reload (same state signature)
+2026-02-21 13:52:18,669 [INFO] [AccordionSidebar] Group selected: 3 (mode=together)
+2026-02-21 13:52:18,669 [INFO] [GooglePhotosLayout] Group clicked: 3 (mode=together)
+[ReferenceDB] Closed connection for thread 26856
+2026-02-21 13:52:18,669 [INFO] [GooglePhotosLayout] Group 3 has 2 matching photos
+[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px) [paths=2 photos]...
+[GooglePhotosLayout] 🔍 Starting async photo load (generation 14) - existing content preserved...
+[GooglePhotosLayout] Photo load worker started (generation 14, legacy/paths)
+2026-02-21 13:52:18,725 [INFO] Photo query complete: generation=14, current=14, rows=2
+[GooglePhotosLayout] Dispatching 2 assets (photos+videos) to background grouping worker...
+[GooglePhotosLayout] Grouped into 1 date groups
+[GooglePhotosLayout] Tracking 2 paths for multi-selection
+[GooglePhotosLayout] Virtual scrolling enabled: 1 total date groups
+[GooglePhotosLayout] Rendered: 1 groups | Placeholders: 0 groups
+[GooglePhotosLayout] Queued 2 thumbnails for loading (initial limit: 50)
+[GooglePhotosLayout] Photo loading complete! Thumbnails will load progressively.
+2026-02-21 13:52:19,813 [INFO] [AccordionSidebar] Group selected: 2 (mode=together)
+2026-02-21 13:52:19,813 [INFO] [GooglePhotosLayout] Group clicked: 2 (mode=together)
+[ReferenceDB] Closed connection for thread 26856
+2026-02-21 13:52:19,815 [INFO] [GooglePhotosLayout] Group 2 has 2 matching photos
+[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px) [paths=2 photos]...
+[GooglePhotosLayout] 🔍 Starting async photo load (generation 15) - existing content preserved...
+[GooglePhotosLayout] Photo load worker started (generation 15, legacy/paths)
+2026-02-21 13:52:19,885 [INFO] Photo query complete: generation=15, current=15, rows=2
+[GooglePhotosLayout] Dispatching 2 assets (photos+videos) to background grouping worker...
+[GooglePhotosLayout] Grouped into 1 date groups
+[GooglePhotosLayout] Tracking 2 paths for multi-selection
+[GooglePhotosLayout] Virtual scrolling enabled: 1 total date groups
+[GooglePhotosLayout] Rendered: 1 groups | Placeholders: 0 groups
+[GooglePhotosLayout] Queued 2 thumbnails for loading (initial limit: 50)
+[GooglePhotosLayout] Photo loading complete! Thumbnails will load progressively.
+2026-02-21 13:52:21,453 [INFO] [AccordionSidebar] Group selected: 1 (mode=together)
+2026-02-21 13:52:21,453 [INFO] [GooglePhotosLayout] Group clicked: 1 (mode=together)
+[ReferenceDB] Closed connection for thread 26856
+2026-02-21 13:52:21,453 [INFO] [GooglePhotosLayout] Group 1 has 8 matching photos
+[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px) [paths=8 photos]...
+[GooglePhotosLayout] 🔍 Starting async photo load (generation 16) - existing content preserved...
+[GooglePhotosLayout] Photo load worker started (generation 16, legacy/paths)
+2026-02-21 13:52:21,518 [INFO] Photo query complete: generation=16, current=16, rows=8
+[GooglePhotosLayout] Dispatching 8 assets (photos+videos) to background grouping worker...
+[GooglePhotosLayout] Grouped into 3 date groups
+[GooglePhotosLayout] Tracking 8 paths for multi-selection
+[GooglePhotosLayout] Virtual scrolling enabled: 3 total date groups
+[GooglePhotosLayout] Rendered: 3 groups | Placeholders: 0 groups
+[GooglePhotosLayout] Queued 8 thumbnails for loading (initial limit: 50)
+[GooglePhotosLayout] Photo loading complete! Thumbnails will load progressively.
+2026-02-21 13:52:21,946 [INFO] [AccordionSidebar] Group selected: -1 (mode=)
+2026-02-21 13:52:21,946 [INFO] [GooglePhotosLayout] Group deselected or invalid (group_id=-1)
+[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px)...
+[GooglePhotosLayout] 🔍 Starting async photo load (generation 17) - existing content preserved...
+[GooglePhotosLayout] Paged load started (generation 17, page_size=250)
+2026-02-21 13:52:22,008 [INFO] [GoogleLayout] Page count ready: gen=17 total=49 (threshold=3000)
+2026-02-21 13:52:22,008 [INFO] [GoogleLayout] Page ready: gen=17 offset=0 rows=49 loaded=49/49
+[GooglePhotosLayout] Dispatching 49 assets (photos+videos) to background grouping worker...
+2026-02-21 13:52:22,010 [INFO] [GoogleLayout] All pages loaded: 49 rows total
+[GooglePhotosLayout] Grouped into 17 date groups
+[GooglePhotosLayout] Tracking 49 paths for multi-selection
+[ThumbnailLoader] ✓ Video thumbnail: henry(super junior) & shin jiho (violin and piano perf.).wmv
+[ThumbnailLoader] ✓ Video thumbnail: بابار_كونان_ريمي_ماوكلي_هزيم الرعد  طارق العربي طرقان و أبناؤه l برنامج صاحبة السعادة(360p)_1.mp4
+[ThumbnailLoader] ✓ Video thumbnail: جزيرة الكنز- كورال غاردينيا- حفل شارات مسلسلات الكرتون 2016(480p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: وداعاً إلى اللقاء- ساندي بل(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: في قصص الشعوب(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: فلونة(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: غريندايزر(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: عدنان ولينا(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: سنان(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: ساندي بل(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: ريمي الصبي(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: جزيرة الكنز(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: توم سوير(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: بيل وسيباستيان(360p).mp4
+[ThumbnailLoader] ✓ Video thumbnail: افتح يا سمسم(360p).mp4
+[GooglePhotosLayout] Virtual scrolling enabled: 17 total date groups
+[GooglePhotosLayout] Rendered: 5 groups | Placeholders: 12 groups
+[GooglePhotosLayout] Queued 17 thumbnails for loading (initial limit: 50)
+[GooglePhotosLayout] Photo loading complete! Thumbnails will load progressively.
+2026-02-21 13:52:24,840 [INFO] [GooglePhotosLayout] Accordion person clicked: face_000
+[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px) [person=face_000]...
+[GooglePhotosLayout] 🔍 Starting async photo load (generation 18) - existing content preserved...
+[GooglePhotosLayout] Paged load started (generation 18, page_size=250)
+2026-02-21 13:52:24,910 [INFO] [GoogleLayout] Page count ready: gen=18 total=2 (threshold=3000)
+2026-02-21 13:52:24,911 [INFO] [GoogleLayout] Page ready: gen=18 offset=0 rows=2 loaded=2/2
+[GooglePhotosLayout] Dispatching 2 assets (photos+videos) to background grouping worker...
+2026-02-21 13:52:24,912 [INFO] [GoogleLayout] All pages loaded: 2 rows total
+[GooglePhotosLayout] Grouped into 1 date groups
+[GooglePhotosLayout] Tracking 2 paths for multi-selection
+[GooglePhotosLayout] Virtual scrolling enabled: 1 total date groups
+[GooglePhotosLayout] Rendered: 1 groups | Placeholders: 0 groups
+[GooglePhotosLayout] Queued 2 thumbnails for loading (initial limit: 50)
+[GooglePhotosLayout] Photo loading complete! Thumbnails will load progressively.
+2026-02-21 13:52:27,048 [INFO] [GooglePhotosLayout] Accordion person clicked: face_006
+[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px) [person=face_006]...
+[GooglePhotosLayout] 🔍 Starting async photo load (generation 19) - existing content preserved...
+[GooglePhotosLayout] Paged load started (generation 19, page_size=250)
+2026-02-21 13:52:27,096 [INFO] [GoogleLayout] Page count ready: gen=19 total=2 (threshold=3000)
+2026-02-21 13:52:27,096 [INFO] [GoogleLayout] Page ready: gen=19 offset=0 rows=2 loaded=2/2
+[GooglePhotosLayout] Dispatching 2 assets (photos+videos) to background grouping worker...
+2026-02-21 13:52:27,096 [INFO] [GoogleLayout] All pages loaded: 2 rows total
+[GooglePhotosLayout] Grouped into 1 date groups
+[GooglePhotosLayout] Tracking 2 paths for multi-selection
+[GooglePhotosLayout] Virtual scrolling enabled: 1 total date groups
+[GooglePhotosLayout] Rendered: 1 groups | Placeholders: 0 groups
+[GooglePhotosLayout] Queued 2 thumbnails for loading (initial limit: 50)
+[GooglePhotosLayout] Photo loading complete! Thumbnails will load progressively.
+
+
