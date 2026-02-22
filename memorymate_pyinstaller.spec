@@ -1,3 +1,5 @@
+# pyinstaller memorymate_pyinstaller.spec
+# Version: v-11_01.01.04-16 dated 20260221
 # -*- mode: python ; coding: utf-8 -*-
 """
 PyInstaller spec file for MemoryMate-PhotoFlow
@@ -13,7 +15,7 @@ PREREQUISITES:
     3. Optionally install FFmpeg and add to PATH (for video features)
 
 OUTPUT:
-    dist/MemoryMate-PhotoFlow-v-11_01.01.04-04/  (ONEDIR bundle)
+    dist/MemoryMate-PhotoFlow-v-11_01.01.04-16/  (ONEDIR bundle)
 """
 
 import os
@@ -137,7 +139,7 @@ else:
 # --------------------------------------------------------------------------
 # Hidden imports
 # --------------------------------------------------------------------------
-# Comprehensive audit: 2026-02-12
+# Comprehensive audit: 2026-02-21
 # Covers all project modules + third-party libraries that are lazy-loaded,
 # dynamically imported, or otherwise invisible to PyInstaller's analysis.
 # --------------------------------------------------------------------------
@@ -362,12 +364,14 @@ hiddenimports = [
     'services.face_pipeline_service',
     'services.face_quality_analyzer',
     'services.geocoding_service',
+	'services.group_service',
     'services.incremental_updates',
     'services.job_manager',
     'services.job_service',
     'services.library_detector',
     'services.metadata_service',
     'services.mtp_import_adapter',
+	'services.people_group_service',
     'services.performance_analytics',
     'services.performance_monitor',
     'services.performance_tracking_db',
@@ -377,6 +381,7 @@ hiddenimports = [
     'services.photo_scan_service',
     'services.photo_similarity_service',
     'services.reranking_service',
+	'services.safe_image_loader',
     'services.scan_worker_adapter',
     'services.search_history_service',
     'services.search_service',
@@ -399,6 +404,8 @@ hiddenimports = [
     'workers.face_detection_worker',
     'workers.face_pipeline_worker',
     'workers.ffmpeg_detection_worker',
+	'workers.group_compute_worker'
+	'workers.group_index_worker'
     'workers.hash_backfill_worker',
     'workers.meta_backfill_pool',
     'workers.meta_backfill_single',
@@ -421,6 +428,7 @@ hiddenimports = [
     'ui.background_activity_panel',
     'ui.clip_model_dialog',
     'ui.cluster_face_selector',
+	'ui.create_group_dialog',
     'ui.device_import_dialog',
     'ui.duplicate_detection_dialog',
     'ui.duplicate_scope_dialog',
@@ -471,24 +479,34 @@ hiddenimports = [
     'ui.accordion_sidebar.devices_section',
     'ui.accordion_sidebar.duplicates_section',
     'ui.accordion_sidebar.folders_section',
+	'ui.accordion_sidebar.groups_section',
     'ui.accordion_sidebar.locations_section',
     'ui.accordion_sidebar.people_section',
     'ui.accordion_sidebar.quick_section',
     'ui.accordion_sidebar.section_widgets',
     'ui.accordion_sidebar.videos_section',
+	
+	# --- ui.dialogs ---
+    'ui.dialogs',
+    'ui.dialogs.new_group_dialog',
 
     # --- utils ---
     'utils',
+	'utils.cleanup_face_crops',
     'utils.clip_check',              # CLIP model availability checks (used by 6+ modules)
     'utils.clip_model_registry',
+	'utils.diagnose_insightface',
     'utils.dpi_helper',
     'utils.face_detection_logger',
+	'utils.ffmpeg_check',
+	'utils.fix_missing_project_images',
     'utils.insightface_check',       # InsightFace status (used by main_qt, preferences_dialog)
     'utils.model_selection_helper',
     'utils.test_insightface_models', # InsightFace model tests (used by preferences_dialog)
     'utils.translation_manager',
     'utils.ui_safety',               # Shutdown/generation guards (used by scan_controller)
     'utils.qt_guards',               # Guarded signal connects (used by 10+ modules)
+	'utils.qt_role',
 
     # --- Core architecture modules ---
     'core',                           # Core package
@@ -503,6 +521,7 @@ hiddenimports = [
     'db_config',
     'db_performance_optimizations',
     'db_writer',
+	'session_state_manager',
     'settings_manager_qt',
     'app_services',
     'session_state_manager',
@@ -577,7 +596,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='MemoryMate-PhotoFlow-v-11_01.01.04-04',
+    name='MemoryMate-PhotoFlow-v-11_01.01.04-16',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -604,5 +623,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='MemoryMate-PhotoFlow-v-11_01.01.04-04',
+    name='MemoryMate-PhotoFlow-v-11_01.01.04-16',
 )
