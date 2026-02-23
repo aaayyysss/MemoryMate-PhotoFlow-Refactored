@@ -1,5 +1,5 @@
 # reference_db.py
-# Version 10.03.01.01 dated 20260113
+# Version 10.03.01.02 dated 20260223
 # FIX: Convert db_file to absolute path in __init__ for consistency with DatabaseConnection
 # PHASE 4 CLEANUP: Removed unnecessary ensure_created_date_fields() calls
 # UPDATED: Now uses repository layer for schema management
@@ -5457,6 +5457,15 @@ class ReferenceDB:
             cur.execute("PRAGMA foreign_keys = ON")
 
             # ---------------- SNAPSHOT (for undo) ----------------
+#            snapshot: dict[str, list] = {
+#                "branch_keys": all_keys,
+#                "branches": [],
+#                "face_branch_reps": [],
+#                "face_crops": [],
+#                "project_images": [],
+#                "project_images_deleted": [],   # Patch: snapshot erweitern+rows vor delete selektieren
+#            }
+
             snapshot: dict[str, list] = {
                 "branch_keys": all_keys,
                 "branches": [],
@@ -5464,9 +5473,70 @@ class ReferenceDB:
                 "face_crops": [],
                 "project_images": [],
                 "project_images_deleted": [],   # Patch: snapshot erweitern+rows vor delete selektieren
+                # People Groups (v9.5.0): needed for correct undo and consistency
+                "affected_group_ids": [],
+                "person_groups": [],
+                "person_group_members": [],
+                "group_asset_matches": [],
             }
 
             placeholders = ",".join("?" * len(all_keys))
+ 
+            # ---------------- GROUPS SNAPSHOT (v9.5.0 People Groups) ----------------
+            # Capture any groups that reference target or sources, so undo can restore them.
+            try:
+                cur.execute(
+                    f"""
+                    SELECT DISTINCT pg.id
+                    FROM person_groups pg
+                    JOIN person_group_members pgm ON pgm.group_id = pg.id
+                    WHERE pg.project_id = ?
+                      AND pgm.branch_key IN ({placeholders})
+                    """,
+                    [project_id] + all_keys,
+                )
+                affected_group_ids = [int(r[0]) for r in cur.fetchall()]
+                snapshot["affected_group_ids"] = affected_group_ids
+
+                if affected_group_ids:
+                    gid_ph = ",".join("?" * len(affected_group_ids))
+
+                    # Snapshot person_groups rows (for completeness, supports rename/pin metadata)
+                    cur.execute(
+                        f"""
+                        SELECT *
+                        FROM person_groups
+                        WHERE project_id = ? AND id IN ({gid_ph})
+                        """,
+                        [project_id] + affected_group_ids,
+                    )
+                    snapshot["person_groups"] = [dict(r) for r in cur.fetchall()]
+
+                    # Snapshot members for these groups
+                    cur.execute(
+                        f"""
+                        SELECT *
+                        FROM person_group_members
+                        WHERE group_id IN ({gid_ph})
+                        """,
+                        affected_group_ids,
+                    )
+                    snapshot["person_group_members"] = [dict(r) for r in cur.fetchall()]
+
+                    # Snapshot cached matches, so undo can restore cache if you want deterministic behavior
+                    cur.execute(
+                        f"""
+                        SELECT *
+                        FROM group_asset_matches
+                        WHERE group_id IN ({gid_ph})
+                        """,
+                        affected_group_ids,
+                    )
+                    snapshot["group_asset_matches"] = [dict(r) for r in cur.fetchall()]
+
+                    print(f"[merge_face_clusters] Groups snapshot: {len(affected_group_ids)} group(s)")
+            except Exception as e:
+                print(f"[merge_face_clusters] Groups snapshot skipped: {e}")
 
             # branches
             cur.execute(
@@ -5703,6 +5773,66 @@ class ReferenceDB:
                 [project_id] + src_list,
             )
 
+ 
+            # ---------------- GROUPS FIX (v9.5.0 People Groups) ----------------
+            # Rewrite group membership and invalidate cached matches so group pipeline stays correct.
+            # Pattern: Apple/Google/Lightroom do not tolerate "dangling" people references.
+            try:
+                # Groups that contain any of the merged-away source branches
+                cur.execute(
+                    f"""
+                    SELECT DISTINCT pg.id
+                    FROM person_groups pg
+                    JOIN person_group_members pgm ON pgm.group_id = pg.id
+                    WHERE pg.project_id = ?
+                      AND pgm.branch_key IN ({src_placeholders})
+                    """,
+                    [project_id] + src_list,
+                )
+                affected_group_ids = [int(r[0]) for r in cur.fetchall()]
+
+                if affected_group_ids:
+                    for gid in affected_group_ids:
+                        # If target already exists as a member in this group,
+                        # delete the source members to prevent duplicates.
+                        cur.execute(
+                            "SELECT 1 FROM person_group_members WHERE group_id = ? AND branch_key = ? LIMIT 1",
+                            (gid, target_branch),
+                        )
+                        target_exists = cur.fetchone() is not None
+
+                        if target_exists:
+                            cur.execute(
+                                f"""
+                                DELETE FROM person_group_members
+                                WHERE group_id = ?
+                                  AND branch_key IN ({src_placeholders})
+                                """,
+                                [gid] + src_list,
+                            )
+                        else:
+                            # Safe remap, target not present
+                            cur.execute(
+                                f"""
+                                UPDATE person_group_members
+                                SET branch_key = ?
+                                WHERE group_id = ?
+                                  AND branch_key IN ({src_placeholders})
+                                """,
+                                [target_branch, gid] + src_list,
+                            )
+
+                        # Invalidate cached matches for this group, all scopes
+                        cur.execute("DELETE FROM group_asset_matches WHERE group_id = ?", (gid,))
+
+                    print(f"[merge_face_clusters] Groups updated: {len(affected_group_ids)} affected group(s)")
+            except Exception as e:
+                print(f"[merge_face_clusters] ⚠️ Groups update skipped due to error: {e}")
+
+
+             # 5) CRITICAL: Update count for target cluster to reflect UNIQUE PHOTOS
+
+
             # 5) CRITICAL: Update count for target cluster to reflect UNIQUE PHOTOS
             # Count must be based on DISTINCT photos (not face_crops count) to match grid display
             # Why: A photo can have multiple faces, but should count as 1 photo in the UI
@@ -5784,9 +5914,13 @@ class ReferenceDB:
             try:
                 from services.people_group_service import PeopleGroupService
                 group_service = PeopleGroupService(self)
-                affected_branches = [target_branch] + src_list
-                for branch in affected_branches:
-                    group_service.mark_groups_stale_for_person(project_id, branch)
+                
+#                affected_branches = [target_branch] + src_list
+#                for branch in affected_branches:
+#                    group_service.mark_groups_stale_for_person(project_id, branch)
+                    
+                group_service.mark_groups_stale_for_person(project_id, target_branch)
+                
             except Exception as group_error:
                 print(f"[merge_face_clusters] Failed to mark groups stale: {group_error}")
 
@@ -5837,6 +5971,13 @@ class ReferenceDB:
             
             branches = snapshot.get("branches", [])
             reps = snapshot.get("face_branch_reps", [])
+
+
+            # People Groups snapshot
+            affected_group_ids = snapshot.get("affected_group_ids", []) or []
+            pg_rows = snapshot.get("person_groups", []) or []
+            pgm_rows = snapshot.get("person_group_members", []) or []
+            gam_rows = snapshot.get("group_asset_matches", []) or []
 
             faces_restored = 0
             images_restored = 0
@@ -5916,6 +6057,72 @@ class ReferenceDB:
                     (rec["branch_key"], rec["id"]),
                 )
                 images_restored += cur.rowcount
+ 
+            # ---------------- RESTORE GROUPS (v9.5.0 People Groups) ----------------
+            # If merge touched groups, restore their members and cached matches.
+            # This makes undo truly undo, not just undo faces.
+            try:
+                if affected_group_ids:
+                    gid_ph = ",".join("?" * len(affected_group_ids))
+
+                    # Restore person_groups metadata (optional but safe)
+                    # If you prefer not to restore metadata, you can skip this block.
+                    if pg_rows:
+                        # Ensure rows exist, replace to restore previous state
+                        # This assumes person_groups has a primary key id.
+                        # If your schema differs, adjust columns accordingly.
+                        # First delete current rows for these group ids, then reinsert snapshot.
+                        cur.execute(
+                            f"DELETE FROM person_groups WHERE project_id = ? AND id IN ({gid_ph})",
+                            [project_id] + affected_group_ids,
+                        )
+                        # Reinsert snapshot rows
+                        for r in pg_rows:
+                            cols = list(r.keys())
+                            vals = [r[c] for c in cols]
+                            col_sql = ",".join(cols)
+                            q_sql = ",".join(["?"] * len(cols))
+                            cur.execute(
+                                f"INSERT INTO person_groups ({col_sql}) VALUES ({q_sql})",
+                                vals,
+                            )
+
+                    # Restore members: delete current, then reinsert snapshot
+                    cur.execute(
+                        f"DELETE FROM person_group_members WHERE group_id IN ({gid_ph})",
+                        affected_group_ids,
+                    )
+                    for r in pgm_rows:
+                        cols = list(r.keys())
+                        vals = [r[c] for c in cols]
+                        col_sql = ",".join(cols)
+                        q_sql = ",".join(["?"] * len(cols))
+                        cur.execute(
+                            f"INSERT INTO person_group_members ({col_sql}) VALUES ({q_sql})",
+                            vals,
+                        )
+
+                    # Restore cached matches (optional). You can also choose to clear cache instead.
+                    cur.execute(
+                        f"DELETE FROM group_asset_matches WHERE group_id IN ({gid_ph})",
+                        affected_group_ids,
+                    )
+                    for r in gam_rows:
+                        cols = list(r.keys())
+                        vals = [r[c] for c in cols]
+                        col_sql = ",".join(cols)
+                        q_sql = ",".join(["?"] * len(cols))
+                        cur.execute(
+                            f"INSERT INTO group_asset_matches ({col_sql}) VALUES ({q_sql})",
+                            vals,
+                        )
+
+                    print(f"[undo_last_face_merge] Groups restored: {len(affected_group_ids)} group(s)")
+            except Exception as e:
+                print(f"[undo_last_face_merge] ⚠️ Groups restore skipped due to error: {e}")
+
+
+
 
             # Remove history entry we just consumed
             cur.execute("DELETE FROM face_merge_history WHERE id = ?", (log_id,))
@@ -6971,5 +7178,4 @@ def single_pass_backfill_created_fields(db_path: str | None = None, chunk_size: 
         """, updates)
         conn.commit()
         return len(updates)
-        
         
