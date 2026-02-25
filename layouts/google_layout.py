@@ -2178,7 +2178,13 @@ class GooglePhotosLayout(BaseLayout):
         self._refresh_people_sidebar()
 
     def _on_group_edit_requested(self, group_id: int):
-        """Handle group edit request - open edit dialog, then recompute matches."""
+        """Handle group edit request - open edit dialog, then recompute matches.
+
+        Fix: The old flow called _compute_group_matches which silently failed
+        to refresh the groups list (callback was delivered on a non-main thread).
+        Now _compute_group_matches marshals the UI refresh via QTimer.singleShot,
+        so the group card will update with the correct photo count after edit.
+        """
         logger.info(f"[GooglePhotosLayout] Edit group requested: {group_id}")
 
         try:
@@ -2186,7 +2192,9 @@ class GooglePhotosLayout(BaseLayout):
 
             dialog = CreateGroupDialog(self.project_id, edit_group_id=group_id, parent=self.main_window)
             if dialog.exec():
-                # Recompute group matches (members may have changed) then refresh
+                # Recompute group matches (members may have changed) — the
+                # on_finished callback in _compute_group_matches now correctly
+                # marshals reload_groups() onto the main thread.
                 if hasattr(self, "accordion_sidebar") and hasattr(self.accordion_sidebar, '_compute_group_matches'):
                     self.accordion_sidebar._compute_group_matches(group_id, 'together')
                 else:

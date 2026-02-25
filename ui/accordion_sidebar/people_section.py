@@ -400,7 +400,14 @@ class PeopleSection(BaseSection):
         return main_container
 
     def _ensure_groups_tab(self, stack: QStackedWidget):
-        """Lazy-create and load the Groups tab content on first switch."""
+        """Lazy-create and load the Groups tab content on first switch.
+
+        Also detects stale groups (e.g. after face merge cleared their
+        matches) and emits recomputeGroupRequested so the AccordionSidebar
+        auto-recomputes them in the background — following the Apple Photos
+        / Lightroom pattern where opening an album triggers a background
+        refresh if the cache is outdated.
+        """
         if self._groups_loaded_once:
             return
 
@@ -436,6 +443,21 @@ class PeopleSection(BaseSection):
                         old.deleteLater()
                         stack.insertWidget(1, content)
                         stack.setCurrentIndex(1)
+
+                    # Auto-recompute stale groups in background
+                    # (e.g. after face merge cleared group_asset_matches)
+                    if data:
+                        stale_ids = [
+                            g['id'] for g in data
+                            if g.get('is_stale') and g.get('member_count', 0) >= 2
+                        ]
+                        if stale_ids:
+                            logger.info(
+                                f"[PeopleSection] Auto-recomputing {len(stale_ids)} "
+                                f"stale group(s): {stale_ids}"
+                            )
+                            for gid in stale_ids:
+                                self.recomputeGroupRequested.emit(gid, "together")
                 except Exception as e:
                     logger.error(f"[PeopleSection] Failed to build groups content: {e}", exc_info=True)
 
