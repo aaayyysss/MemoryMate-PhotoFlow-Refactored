@@ -833,18 +833,24 @@ class AccordionSidebar(QWidget):
             QMessageBox.critical(None, "Error", f"Failed to create group dialog:\n{str(e)}")
 
     def _on_group_created(self, group_info: dict):
-        """Handle successful group creation."""
+        """Handle successful group creation.
+
+        Best practice (Google Photos / Apple Photos pattern):
+        Compute matches first, THEN reload the groups list so the card
+        shows the correct photo count immediately.  The old flow called
+        reload_groups() before computation, which always displayed 0.
+        """
         logger.info(f"[AccordionSidebar] Group created: {group_info}")
 
-        # Reload groups tab inside People section
-        people = self.section_logic.get("people")
-        if people and hasattr(people, 'reload_groups'):
-            people.reload_groups()
-
-        # Optionally trigger initial computation
         group_id = group_info.get('id')
         if group_id:
+            # Compute matches first — on_finished will reload groups with correct count
             self._compute_group_matches(group_id, 'together')
+        else:
+            # No group_id: just refresh the list
+            people = self.section_logic.get("people")
+            if people and hasattr(people, 'reload_groups'):
+                people.reload_groups()
 
     def _on_delete_group_requested(self, group_id: int):
         """Handle group deletion request."""
@@ -881,11 +887,21 @@ class AccordionSidebar(QWidget):
         self._compute_group_matches(group_id, match_mode)
 
     def _compute_group_matches(self, group_id: int, match_mode: str):
-        """Run group match computation in background."""
+        """Run group match computation in background.
+
+        Fix: The previous implementation had two bugs:
+        1. The worker was not stored, risking GC before completion.
+        2. The on_finished callback was delivered on the thread-pool thread;
+           calling reload_groups() from a non-main thread caused silent
+           failures in PySide6 widget operations.
+
+        Solution: Store worker reference and use QTimer.singleShot(0, ...)
+        to marshal the reload onto the main/GUI thread (Apple Photos /
+        Google Photos pattern: compute in background, update UI on main).
+        """
         try:
-            from PySide6.QtCore import QThreadPool
+            from PySide6.QtCore import QThreadPool, QTimer
             from workers.group_compute_worker import GroupComputeWorker
-            from PySide6.QtWidgets import QMessageBox
 
             worker = GroupComputeWorker(
                 project_id=self.project_id,
@@ -894,22 +910,31 @@ class AccordionSidebar(QWidget):
             )
 
             def on_finished(success, result):
-                # Reload groups tab inside People section
-                people = self.section_logic.get("people")
-                if people and hasattr(people, 'reload_groups'):
-                    people.reload_groups()
+                # Marshal UI update onto the main thread via QTimer.singleShot
+                def _update_ui():
+                    people = self.section_logic.get("people")
+                    if people and hasattr(people, 'reload_groups'):
+                        people.reload_groups()
 
-                if success:
-                    match_count = result.get('match_count', 0)
-                    logger.info(f"[AccordionSidebar] Group computation complete: {match_count} matches")
-                else:
-                    error = result.get('error', 'Unknown error')
-                    logger.error(f"[AccordionSidebar] Group computation failed: {error}")
+                    if success:
+                        match_count = result.get('match_count', 0)
+                        logger.info(f"[AccordionSidebar] Group {group_id} computation complete: {match_count} matches")
+                    else:
+                        error = result.get('error', 'Unknown error')
+                        logger.error(f"[AccordionSidebar] Group {group_id} computation failed: {error}")
+
+                QTimer.singleShot(0, _update_ui)
 
             worker.signals.finished.connect(on_finished)
+
+            # Store reference to prevent premature GC while worker is running
+            if not hasattr(self, '_active_group_workers'):
+                self._active_group_workers = {}
+            self._active_group_workers[group_id] = worker
+
             QThreadPool.globalInstance().start(worker)
 
-            logger.info(f"[AccordionSidebar] Started group computation worker")
+            logger.info(f"[AccordionSidebar] Started group computation worker for group {group_id}")
 
         except Exception as e:
             logger.error(f"[AccordionSidebar] Failed to start group computation: {e}")
@@ -917,6 +942,13 @@ class AccordionSidebar(QWidget):
     def cleanup(self):
         """Clean up resources before destruction."""
         logger.info("[AccordionSidebar] Cleanup")
+
+        # Cancel any running group computation workers
+        if hasattr(self, '_active_group_workers'):
+            for gid, worker in self._active_group_workers.items():
+                if hasattr(worker, 'cancel'):
+                    worker.cancel()
+            self._active_group_workers.clear()
 
         # Cleanup all sections
         for section in self.section_logic.values():
