@@ -653,14 +653,19 @@ class FacePipelineWorker(QRunnable):
                 "skipping clustering",
                 results["faces_detected"],
             )
+        elif results["faces_detected"] == 0 and self._scoped_photo_paths:
+            # IDEMPOTENCY FIX: Scoped incremental scan detected 0 new faces.
+            # Skip re-clustering to preserve existing cluster topology
+            # and user merges (Google/Apple pattern: merge = permanent).
+            # Re-clustering would assign fresh branch_keys, destroying all
+            # manual merges the user made (e.g. merging 9→6 clusters).
+            logger.info(
+                "[FacePipelineWorker] 0 new faces in scoped photos, "
+                "%d existing faces — SKIPPING re-clustering to preserve "
+                "user merges and cluster topology",
+                faces_in_db,
+            )
         else:
-            if results["faces_detected"] == 0 and self._scoped_photo_paths:
-                logger.info(
-                    "[FacePipelineWorker] 0 new faces in scoped photos, but "
-                    "%d existing faces — re-clustering existing data",
-                    faces_in_db,
-                )
-
             self.signals.progress.emit(
                 "face_clustering",
                 f"Final clustering of {faces_in_db} faces...",
@@ -727,9 +732,11 @@ class FacePipelineWorker(QRunnable):
 
         # ── Step 3: Remap group members + recompute matches ────────
         # Google/Apple pattern: groups survive re-clustering automatically.
-        # ALWAYS runs (even when 0 new faces detected) — existing groups
-        # need their branch_keys remapped to new cluster assignments.
-        if group_snapshot and not self._cancelled:
+        # Only runs when clustering actually executed (branch_keys changed).
+        # When clustering was skipped (0 new faces, topology preserved),
+        # groups are already valid — remap would be a no-op at best.
+        _clustering_ran = results.get("clusters_created", 0) > 0
+        if group_snapshot and _clustering_ran and not self._cancelled:
             self.signals.progress.emit(
                 "group_remap",
                 "Updating groups after re-clustering...",

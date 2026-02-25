@@ -628,7 +628,15 @@ class ScanController(QObject):
             # PHASE 3B: Duplicate Detection — dispatched to background thread
             # Instead of blocking the UI with QEventLoop / QProgressDialog,
             # we fire a PostScanPipelineWorker and let it run asynchronously.
-            if hasattr(self, '_duplicate_detection_enabled') and self._duplicate_detection_enabled:
+            # IDEMPOTENCY: Skip when 0 new photos/videos indexed (rescan with
+            # no changes).  Existing stacks and duplicates are already valid.
+            _has_new_media = (p > 0 or v > 0)
+            if not _has_new_media and hasattr(self, '_duplicate_detection_enabled') and self._duplicate_detection_enabled:
+                self.logger.info(
+                    "Skipping post-scan pipeline: 0 new photos/videos indexed "
+                    "(existing stacks and duplicates are up-to-date)"
+                )
+            if _has_new_media and hasattr(self, '_duplicate_detection_enabled') and self._duplicate_detection_enabled:
                 self._scan_operations_pending.add("post_scan_pipeline")
                 self.logger.info("Enqueueing duplicate detection pipeline as background job...")
 
@@ -779,11 +787,18 @@ class ScanController(QObject):
             # PHASE 3: Face Detection — via central FacePipelineService
             # The service validates project_id, prevents duplicate runs,
             # and the UIRefreshMediator handles incremental People refresh.
+            # IDEMPOTENCY: Skip when 0 new photos indexed — existing face
+            # data (detections, clusters, merges) is already valid.
+            if not _has_new_media:
+                self.logger.info(
+                    "Skipping face pipeline: 0 new photos indexed "
+                    "(existing face data and merges preserved)"
+                )
             try:
                 from config.face_detection_config import get_face_config
                 face_config = get_face_config()
 
-                if face_config.is_enabled() and face_config.get("auto_cluster_after_scan", True):
+                if _has_new_media and face_config.is_enabled() and face_config.get("auto_cluster_after_scan", True):
                     from services.face_detection_service import FaceDetectionService
                     availability = FaceDetectionService.check_backend_availability()
                     backend = face_config.get_backend()
