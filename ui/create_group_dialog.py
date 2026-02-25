@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 
 AVATAR_SIZE = 64
 CARD_WIDTH = 100
-CARD_HEIGHT = 120
+CARD_HEIGHT = 136
 
 
 class PersonSelectCard(QWidget):
@@ -61,6 +61,7 @@ class PersonSelectCard(QWidget):
         display_name: str,
         thumbnail: Optional[QPixmap],
         selected: bool = False,
+        member_count: int = 0,
         parent=None
     ):
         super().__init__(parent)
@@ -74,7 +75,7 @@ class PersonSelectCard(QWidget):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(6, 6, 6, 4)
-        layout.setSpacing(3)
+        layout.setSpacing(2)
         layout.setAlignment(Qt.AlignCenter)
 
         # Avatar container (holds the rendered circular pixmap + overlay)
@@ -90,6 +91,14 @@ class PersonSelectCard(QWidget):
         name_label.setMaximumHeight(32)
         name_label.setStyleSheet("font-size: 10px; color: #202124;")
         layout.addWidget(name_label)
+
+        # Face count badge (e.g. "12 photos")
+        if member_count > 0:
+            count_text = f"{member_count} photo{'s' if member_count != 1 else ''}"
+            count_label = QLabel(count_text)
+            count_label.setAlignment(Qt.AlignCenter)
+            count_label.setStyleSheet("font-size: 9px; color: #5f6368;")
+            layout.addWidget(count_label)
 
         self._render_avatar()
         self._update_card_style()
@@ -411,6 +420,7 @@ class CreateGroupDialog(QDialog):
             for idx, person in enumerate(people):
                 branch_key = person["branch_key"]
                 display_name = person["display_name"]
+                member_count = person.get("member_count", 0) or 0
                 thumb_blob = person.get("rep_thumb_png")
                 rep_path = person.get("rep_path")
 
@@ -428,7 +438,8 @@ class CreateGroupDialog(QDialog):
                 card = PersonSelectCard(
                     branch_key=branch_key,
                     display_name=display_name,
-                    thumbnail=thumbnail
+                    thumbnail=thumbnail,
+                    member_count=member_count,
                 )
                 card.toggled.connect(self._on_person_toggled)
 
