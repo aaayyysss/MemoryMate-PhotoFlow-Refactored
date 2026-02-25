@@ -667,11 +667,18 @@ def scan_repository(root_folder, incremental=False, cancel_callback=None):
             connect_guarded(metadata_worker.signals.finished, main_window, on_metadata_finished_with_dialog, generation=gen)
             print("[SCAN] ✓ Connected metadata finished callback for date branch rebuild")
 
+            # Store reference to prevent premature GC (QRunnable safety)
+            metadata_worker.setAutoDelete(False)
+            if not hasattr(main_window, '_video_workers'):
+                main_window._video_workers = []
+            main_window._video_workers.append(metadata_worker)
+
             QThreadPool.globalInstance().start(metadata_worker)
             print(f"[SCAN] ✓ Metadata extraction worker started")
 
             # Launch thumbnail generation worker
             thumbnail_worker = VideoThumbnailWorker(project_id=project_id, thumbnail_height=200)
+            thumbnail_worker.setAutoDelete(False)
 
             # CRITICAL: Connect callbacks BEFORE starting worker to avoid race condition
             connect_guarded(thumbnail_worker.signals.progress, main_window,
@@ -681,6 +688,9 @@ def scan_repository(root_folder, incremental=False, cancel_callback=None):
                 lambda success, failed: print(f"[SCAN] ✓ Thumbnails complete: {success} successful, {failed} failed"),
                 generation=gen)
             print("[SCAN] ✓ Connected thumbnail worker callbacks")
+
+            # Store reference to prevent premature GC
+            main_window._video_workers.append(thumbnail_worker)
 
             QThreadPool.globalInstance().start(thumbnail_worker)
             print(f"[SCAN] ✓ Thumbnail generation worker started")

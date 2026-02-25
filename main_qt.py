@@ -343,14 +343,21 @@ if __name__ == "__main__":
                 
                 # Create and configure worker
                 worker = FFmpegDetectionWorker()
+                worker.setAutoDelete(False)  # prevent C++ double-free
                 gen = int(getattr(win, "_ui_generation", 0))
                 connect_guarded(worker.signals.detection_complete, win, on_detection_complete, generation=gen)
                 connect_guarded(worker.signals.error, win, on_detection_error, generation=gen)
-                
+
+                # Store reference on MainWindow to prevent premature GC.
+                # Without this, Python may garbage-collect the worker before
+                # QThreadPool finishes with it, causing a use-after-free
+                # access violation in the native pool thread (crash on restart).
+                win._ffmpeg_worker = worker
+
                 # Launch in thread pool
                 thread_pool = QThreadPool.globalInstance()
                 thread_pool.start(worker)
-                
+
                 logger.info("[Main] Async FFmpeg detection worker launched")
                 
             except Exception as e:
