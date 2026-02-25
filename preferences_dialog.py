@@ -1797,11 +1797,17 @@ class PreferencesDialog(QDialog):
             )
 
     def _update_similar_shot_status(self):
-        """Update similar shot status label."""
+        """Update similar shot status label (DB-only, no ML model loading).
+
+        IMPORTANT: This must NEVER import/instantiate the semantic embedding
+        service — that triggers CLIP model loading which freezes the UI thread
+        for 5-15 seconds on dialog open.  Use a direct DB count instead.
+        """
+        if not hasattr(self, "lbl_similar_shot_status") or not hasattr(self, "btn_run_similar_shots"):
+            return
         try:
             from repository.stack_repository import StackRepository
             from repository.base_repository import DatabaseConnection
-            from services.semantic_embedding_service import get_semantic_embedding_service
 
             # Get current project_id
             project_id = 1
@@ -1810,12 +1816,15 @@ class PreferencesDialog(QDialog):
             elif hasattr(self.parent(), 'grid') and hasattr(self.parent().grid, 'project_id'):
                 project_id = self.parent().grid.project_id
 
-            # Check status - use getter to avoid duplicate instances
+            # DB-only embedding count — no CLIP model load
             db_conn = DatabaseConnection()
-            stack_repo = StackRepository(db_conn)
-            embedding_service = get_semantic_embedding_service()
+            with db_conn.get_connection() as conn:
+                cursor = conn.execute(
+                    "SELECT COUNT(*) AS cnt FROM semantic_embeddings"
+                )
+                embedding_count = cursor.fetchone()["cnt"]
 
-            embedding_count = embedding_service.get_embedding_count()
+            stack_repo = StackRepository(db_conn)
             similar_stacks = stack_repo.count_stacks(project_id, stack_type="similar")
 
             if embedding_count == 0:

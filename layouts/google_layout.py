@@ -10485,6 +10485,23 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
         AccordionSidebar handles its own section reloads via
         its own store subscription (media_v, duplicates_v, people_v).
         """
+        # ── Project-ID recovery ──────────────────────────────────
+        # If layout was initialised before any project existed (project_id=None),
+        # the sidebar sections all bail early.  Now that a scan has run, a
+        # project must exist — resolve and propagate so sections can load.
+        if self.project_id is None:
+            from app_services import get_default_project_id, list_projects
+            self.project_id = get_default_project_id()
+            if self.project_id is None:
+                projects = list_projects()
+                if projects:
+                    self.project_id = projects[0]["id"]
+            if self.project_id is not None:
+                print(f"[GooglePhotosLayout] project_id recovered: {self.project_id}")
+                sidebar = getattr(self, 'sidebar', None)
+                if sidebar and hasattr(sidebar, 'set_project'):
+                    sidebar.set_project(self.project_id)
+
         # Invalidate signature so scan refresh always executes
         self._last_load_signature = None
         # Reload photos with ALL current filters (including filter_paths)
