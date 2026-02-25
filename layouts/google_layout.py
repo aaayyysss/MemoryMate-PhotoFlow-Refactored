@@ -1435,6 +1435,9 @@ class GooglePhotosLayout(BaseLayout):
                 generation=current_gen,
                 signals=self.photo_load_signals
             )
+            # Store reference to prevent premature GC (QRunnable safety)
+            worker.setAutoDelete(False)
+            self._photo_load_worker = worker
             QThreadPool.globalInstance().start(worker)
             print(f"[GooglePhotosLayout] Photo load worker started (generation {current_gen}, legacy/paths)")
         else:
@@ -1473,6 +1476,9 @@ class GooglePhotosLayout(BaseLayout):
                 signals=self._page_signals,
                 include_count=True,
             )
+            # Store reference to prevent premature GC (QRunnable safety)
+            worker.setAutoDelete(False)
+            self._page_worker = worker
             QThreadPool.globalInstance().start(worker)
             print(f"[GooglePhotosLayout] Paged load started (generation {current_gen}, page_size={self._page_size})")
 
@@ -6155,6 +6161,9 @@ class GooglePhotosLayout(BaseLayout):
             filters=self._paging_filters,
             signals=self._page_signals,
         )
+        # Store reference to prevent premature GC (QRunnable safety)
+        worker.setAutoDelete(False)
+        self._page_worker = worker
         QThreadPool.globalInstance().start(worker)
         logger.debug(
             "[GoogleLayout] Prefetch page offset=%d", self._paging_offset,
@@ -6211,6 +6220,8 @@ class GooglePhotosLayout(BaseLayout):
             self._grouping_signals.done.connect(self._on_grouping_done)
 
         worker = self._GroupingWorker(rows, gen, self._group_photos_by_date, self._grouping_signals)
+        worker.setAutoDelete(False)
+        self._grouping_worker = worker
         QThreadPool.globalInstance().start(worker)
 
     def _on_grouping_done(self, generation: int, photos_by_date: dict, rows: list):

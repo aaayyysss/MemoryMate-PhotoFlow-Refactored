@@ -1945,6 +1945,10 @@ class MainWindow(QMainWindow):
             # Connect dialog cancel to worker cancel
             progress_dialog.cancelled.connect(worker.cancel)
 
+            # Store reference to prevent premature GC (QRunnable safety)
+            worker.setAutoDelete(False)
+            self._embedding_worker = worker
+
             # Start worker
             QThreadPool.globalInstance().start(worker)
 
@@ -2030,6 +2034,10 @@ class MainWindow(QMainWindow):
 
             # Connect dialog cancel to worker cancel
             progress_dialog.cancelled.connect(worker.cancel)
+
+            # Store reference to prevent premature GC (QRunnable safety)
+            worker.setAutoDelete(False)
+            self._embedding_worker = worker
 
             # Start worker
             QThreadPool.globalInstance().start(worker)
@@ -3520,6 +3528,11 @@ class MainWindow(QMainWindow):
             worker.signals.progress.connect(on_progress)
             worker.signals.finished.connect(on_finished)
             worker.signals.error.connect(on_error)
+
+            # Store reference to prevent premature GC (QRunnable safety)
+            worker.setAutoDelete(False)
+            self._cluster_worker = worker
+
             QThreadPool.globalInstance().start(worker)
 
         except Exception as e:

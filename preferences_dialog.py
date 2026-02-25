@@ -1638,6 +1638,10 @@ class PreferencesDialog(QDialog):
             # Connect dialog cancel to worker (if needed - not implemented in worker yet)
             # progress_dialog.cancelled.connect(worker.cancel)
 
+            # Store reference to prevent premature GC (QRunnable safety)
+            worker.setAutoDelete(False)
+            self._hash_backfill_worker = worker
+
             # Start worker
             QThreadPool.globalInstance().start(worker)
 
@@ -1766,6 +1770,10 @@ class PreferencesDialog(QDialog):
             connect_guarded(worker.signals.progress, self.parent() or self.window(), progress_dialog.update_progress, generation=gen, extra_valid=[progress_dialog])
             connect_guarded(worker.signals.finished, self.parent() or self.window(), progress_dialog.on_finished, generation=gen, extra_valid=[progress_dialog])
             connect_guarded(worker.signals.error, self.parent() or self.window(), progress_dialog.on_error, generation=gen, extra_valid=[progress_dialog])
+
+            # Store reference to prevent premature GC (QRunnable safety)
+            worker.setAutoDelete(False)
+            self._similar_shot_worker = worker
 
             # Start worker
             QThreadPool.globalInstance().start(worker)
