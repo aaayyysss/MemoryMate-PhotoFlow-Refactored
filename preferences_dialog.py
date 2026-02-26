@@ -2096,20 +2096,9 @@ class PreferencesDialog(QDialog):
                 return
 
         # Advanced
-        self.settings.set("show_decoder_warnings", self.chk_decoder_warnings.isChecked())
-
-        if self.settings.get("show_decoder_warnings", False):
-            QMessageBox.information(
-                self,
-                tr("preferences.diagnostics.restart_required"),
-                tr("preferences.diagnostics.restart_required_message")
-            )
-        else:
-            QMessageBox.information(
-                self,
-                tr("preferences.diagnostics.restart_recommended"),
-                tr("preferences.diagnostics.restart_recommended_message")
-            )
+        old_decoder_warnings = self.settings.get("show_decoder_warnings", False)
+        new_decoder_warnings = self.chk_decoder_warnings.isChecked()
+        self.settings.set("show_decoder_warnings", new_decoder_warnings)
 
         self.settings.set("db_debug_logging", self.chk_db_debug.isChecked())
         self.settings.set("show_sql_queries", self.chk_sql_echo.isChecked())
@@ -2122,6 +2111,43 @@ class PreferencesDialog(QDialog):
         self.settings.set("meta_timeout_secs", float(self.txt_meta_timeout.currentText()))
         self.settings.set("meta_batch", int(self.txt_meta_batch.currentText()))
         self.settings.set("auto_run_backfill_after_scan", self.chk_meta_auto.isChecked())
+
+        # Offer restart if any settings actually changed.
+        # The ffprobe_path restart is handled above (returns early).
+        # For all other changes, prompt the user so the app picks up the
+        # new configuration — matching the previous-version behaviour.
+        if self._has_changes():
+            reply = QMessageBox.question(
+                self,
+                "Restart Required",
+                "Settings have been changed.\n\n"
+                "Restart the application now for changes to take effect?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.Yes
+            )
+            if reply == QMessageBox.Yes:
+                self.accept()
+                print("🔄 Restarting application after settings change...")
+                try:
+                    from PySide6.QtWidgets import QApplication
+                    main_win = None
+                    for w in QApplication.topLevelWidgets():
+                        if hasattr(w, "request_restart"):
+                            main_win = w
+                            break
+                    if main_win is not None:
+                        main_win.request_restart()
+                        return
+                    else:
+                        print("[Preferences] ERROR: MainWindow.request_restart not available!")
+                        from PySide6.QtGui import QGuiApplication
+                        QGuiApplication.quit()
+                        return
+                except Exception as e:
+                    print(f"[Preferences] ERROR: Restart failed: {e}")
+                    from PySide6.QtGui import QGuiApplication
+                    QGuiApplication.quit()
+                    return
 
         self.accept()
 
