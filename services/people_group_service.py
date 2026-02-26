@@ -29,6 +29,7 @@ Key Design Decisions:
 
 from __future__ import annotations
 import json
+import sqlite3
 import time
 from datetime import datetime
 from typing import List, Dict, Any, Optional, Tuple
@@ -511,102 +512,121 @@ class PeopleGroupService:
             Dict with computation results
         """
         start_time = time.time()
+        max_retries = 3
+        retry_delay = 2  # seconds, doubles on each retry
 
-        try:
-            with self.db._connect() as conn:
-                cur = conn.cursor()
+        for attempt in range(max_retries):
+            try:
+                with self.db._connect() as conn:
+                    cur = conn.cursor()
 
-                # Get group members
-                cur.execute("""
-                    SELECT branch_key FROM person_group_members
-                    WHERE group_id = ?
-                """, (group_id,))
-                members = [row[0] for row in cur.fetchall()]
+                    # Get group members
+                    cur.execute("""
+                        SELECT branch_key FROM person_group_members
+                        WHERE group_id = ?
+                    """, (group_id,))
+                    members = [row[0] for row in cur.fetchall()]
 
-                if len(members) < 2:
+                    if len(members) < 2:
+                        return {
+                            'success': False,
+                            'error': 'Group must have at least 2 members',
+                            'match_count': 0
+                        }
+
+                    member_count = len(members)
+
+                    if progress_callback:
+                        progress_callback(0, 100, f"Finding photos with {member_count} people together...")
+
+                    # Find photos where ALL members appear.
+                    # Uses project_images (not face_crops) because merge operations
+                    # update project_images.branch_key but NOT face_crops.branch_key.
+                    placeholders = ','.join(['?'] * len(members))
+
+                    cur.execute(f"""
+                        SELECT
+                            pi.image_path,
+                            pm.id as photo_id,
+                            COUNT(DISTINCT pi.branch_key) as person_count
+                        FROM project_images pi
+                        JOIN photo_metadata pm ON pm.path = pi.image_path AND pm.project_id = pi.project_id
+                        WHERE pi.project_id = ?
+                          AND pi.branch_key IN ({placeholders})
+                        GROUP BY pi.image_path
+                        HAVING COUNT(DISTINCT pi.branch_key) = ?
+                    """, (project_id, *members, member_count))
+
+                    matching_photos = cur.fetchall()
+
+                    if progress_callback:
+                        progress_callback(50, 100, f"Found {len(matching_photos)} matching photos")
+
+                    # Clear previous matches for this group
+                    cur.execute("""
+                        DELETE FROM group_asset_matches
+                        WHERE group_id = ? AND scope = 'same_photo'
+                    """, (group_id,))
+
+                    # Insert new matches
+                    now = int(time.time())
+                    match_count = 0
+                    for image_path, photo_id, person_count in matching_photos:
+                        cur.execute("""
+                            INSERT INTO group_asset_matches
+                                (group_id, scope, photo_id, computed_at)
+                            VALUES (?, 'same_photo', ?, ?)
+                        """, (group_id, photo_id, now))
+                        match_count += 1
+
+                    if progress_callback:
+                        progress_callback(90, 100, f"Saved {match_count} matches")
+
+                    # Update group last_used_at
+                    cur.execute("""
+                        UPDATE person_groups SET last_used_at = ? WHERE id = ?
+                    """, (now, group_id))
+
+                    conn.commit()
+
+                    duration = time.time() - start_time
+
+                    if progress_callback:
+                        progress_callback(100, 100, f"Complete: {match_count} photos")
+
+                    logger.info(f"[PeopleGroupService] Together matches for group {group_id}: "
+                               f"{match_count} photos with {member_count} people in {duration:.2f}s")
+
                     return {
-                        'success': False,
-                        'error': 'Group must have at least 2 members',
-                        'match_count': 0
+                        'success': True,
+                        'match_count': match_count,
+                        'member_count': member_count,
+                        'duration_s': duration
                     }
 
-                member_count = len(members)
-
-                if progress_callback:
-                    progress_callback(0, 100, f"Finding photos with {member_count} people together...")
-
-                # Find photos where ALL members appear.
-                # Uses project_images (not face_crops) because merge operations
-                # update project_images.branch_key but NOT face_crops.branch_key.
-                placeholders = ','.join(['?'] * len(members))
-
-                cur.execute(f"""
-                    SELECT
-                        pi.image_path,
-                        pm.id as photo_id,
-                        COUNT(DISTINCT pi.branch_key) as person_count
-                    FROM project_images pi
-                    JOIN photo_metadata pm ON pm.path = pi.image_path AND pm.project_id = pi.project_id
-                    WHERE pi.project_id = ?
-                      AND pi.branch_key IN ({placeholders})
-                    GROUP BY pi.image_path
-                    HAVING COUNT(DISTINCT pi.branch_key) = ?
-                """, (project_id, *members, member_count))
-
-                matching_photos = cur.fetchall()
-
-                if progress_callback:
-                    progress_callback(50, 100, f"Found {len(matching_photos)} matching photos")
-
-                # Clear previous matches for this group
-                cur.execute("""
-                    DELETE FROM group_asset_matches
-                    WHERE group_id = ? AND scope = 'same_photo'
-                """, (group_id,))
-
-                # Insert new matches
-                now = int(time.time())
-                match_count = 0
-                for image_path, photo_id, person_count in matching_photos:
-                    cur.execute("""
-                        INSERT INTO group_asset_matches
-                            (group_id, scope, photo_id, computed_at)
-                        VALUES (?, 'same_photo', ?, ?)
-                    """, (group_id, photo_id, now))
-                    match_count += 1
-
-                if progress_callback:
-                    progress_callback(90, 100, f"Saved {match_count} matches")
-
-                # Update group last_used_at
-                cur.execute("""
-                    UPDATE person_groups SET last_used_at = ? WHERE id = ?
-                """, (now, group_id))
-
-                conn.commit()
-
-                duration = time.time() - start_time
-
-                if progress_callback:
-                    progress_callback(100, 100, f"Complete: {match_count} photos")
-
-                logger.info(f"[PeopleGroupService] Together matches for group {group_id}: "
-                           f"{match_count} photos with {member_count} people in {duration:.2f}s")
-
+            except sqlite3.OperationalError as e:
+                if "database is locked" in str(e) and attempt < max_retries - 1:
+                    wait = retry_delay * (2 ** attempt)
+                    logger.warning(
+                        f"[PeopleGroupService] Database locked for group {group_id}, "
+                        f"retrying in {wait}s (attempt {attempt + 1}/{max_retries})"
+                    )
+                    time.sleep(wait)
+                    continue
+                logger.error(f"[PeopleGroupService] Together match computation failed: {e}", exc_info=True)
                 return {
-                    'success': True,
-                    'match_count': match_count,
-                    'member_count': member_count,
-                    'duration_s': duration
+                    'success': False,
+                    'error': str(e),
+                    'match_count': 0
                 }
 
-        except Exception as e:
-            logger.error(f"[PeopleGroupService] Together match computation failed: {e}", exc_info=True)
-            return {
-                'success': False,
-                'error': str(e),
-                'match_count': 0
-            }
+            except Exception as e:
+                logger.error(f"[PeopleGroupService] Together match computation failed: {e}", exc_info=True)
+                return {
+                    'success': False,
+                    'error': str(e),
+                    'match_count': 0
+                }
 
     def compute_event_window_matches(
         self,
@@ -633,162 +653,181 @@ class PeopleGroupService:
             Dict with computation results
         """
         start_time = time.time()
+        max_retries = 3
+        retry_delay = 2  # seconds, doubles on each retry
 
-        try:
-            with self.db._connect() as conn:
-                cur = conn.cursor()
+        for attempt in range(max_retries):
+            try:
+                with self.db._connect() as conn:
+                    cur = conn.cursor()
 
-                # Get group members
-                cur.execute("""
-                    SELECT branch_key FROM person_group_members
-                    WHERE group_id = ?
-                """, (group_id,))
-                members = [row[0] for row in cur.fetchall()]
+                    # Get group members
+                    cur.execute("""
+                        SELECT branch_key FROM person_group_members
+                        WHERE group_id = ?
+                    """, (group_id,))
+                    members = [row[0] for row in cur.fetchall()]
 
-                if len(members) < 2:
-                    return {
-                        'success': False,
-                        'error': 'Group must have at least 2 members',
-                        'match_count': 0
-                    }
+                    if len(members) < 2:
+                        return {
+                            'success': False,
+                            'error': 'Group must have at least 2 members',
+                            'match_count': 0
+                        }
 
-                member_count = len(members)
+                    member_count = len(members)
 
-                if progress_callback:
-                    progress_callback(0, 100, f"Finding event windows with {member_count} people...")
+                    if progress_callback:
+                        progress_callback(0, 100, f"Finding event windows with {member_count} people...")
 
-                # Get all photo timestamps for each member
-                placeholders = ','.join(['?'] * len(members))
+                    # Get all photo timestamps for each member
+                    placeholders = ','.join(['?'] * len(members))
 
-                cur.execute(f"""
-                    SELECT
-                        fc.branch_key,
-                        pm.created_ts,
-                        pm.id as photo_id,
-                        pm.path
-                    FROM face_crops fc
-                    JOIN photo_metadata pm ON pm.path = fc.image_path AND pm.project_id = fc.project_id
-                    WHERE fc.project_id = ?
-                      AND fc.branch_key IN ({placeholders})
-                      AND fc.confidence >= ?
-                      AND pm.created_ts IS NOT NULL
-                    ORDER BY pm.created_ts ASC
-                """, (project_id, *members, min_confidence))
+                    cur.execute(f"""
+                        SELECT
+                            fc.branch_key,
+                            pm.created_ts,
+                            pm.id as photo_id,
+                            pm.path
+                        FROM face_crops fc
+                        JOIN photo_metadata pm ON pm.path = fc.image_path AND pm.project_id = fc.project_id
+                        WHERE fc.project_id = ?
+                          AND fc.branch_key IN ({placeholders})
+                          AND fc.confidence >= ?
+                          AND pm.created_ts IS NOT NULL
+                        ORDER BY pm.created_ts ASC
+                    """, (project_id, *members, min_confidence))
 
-                events = cur.fetchall()
+                    events = cur.fetchall()
 
-                if not events:
-                    return {
-                        'success': True,
-                        'match_count': 0,
-                        'member_count': member_count,
-                        'message': 'No photos with timestamps found'
-                    }
+                    if not events:
+                        return {
+                            'success': True,
+                            'match_count': 0,
+                            'member_count': member_count,
+                            'message': 'No photos with timestamps found'
+                        }
 
-                if progress_callback:
-                    progress_callback(20, 100, f"Analyzing {len(events)} photo events...")
+                    if progress_callback:
+                        progress_callback(20, 100, f"Analyzing {len(events)} photo events...")
 
-                # Find event windows where all members appear
-                matching_photos = set()
+                    # Find event windows where all members appear
+                    matching_photos = set()
 
-                # Build person -> timestamp mapping
-                person_times: Dict[str, List[Tuple[int, int, str]]] = {m: [] for m in members}
-                for branch_key, ts, photo_id, path in events:
-                    if ts is not None:
-                        person_times[branch_key].append((ts, photo_id, path))
+                    # Build person -> timestamp mapping
+                    person_times: Dict[str, List[Tuple[int, int, str]]] = {m: [] for m in members}
+                    for branch_key, ts, photo_id, path in events:
+                        if ts is not None:
+                            person_times[branch_key].append((ts, photo_id, path))
 
-                # Sort each person's timeline
-                for m in members:
-                    person_times[m].sort(key=lambda x: x[0])
+                    # Sort each person's timeline
+                    for m in members:
+                        person_times[m].sort(key=lambda x: x[0])
 
-                # Use the first member's timeline as anchor
-                if not person_times[members[0]]:
-                    return {
-                        'success': True,
-                        'match_count': 0,
-                        'member_count': member_count,
-                        'message': 'No photos found for anchor person'
-                    }
+                    # Use the first member's timeline as anchor
+                    if not person_times[members[0]]:
+                        return {
+                            'success': True,
+                            'match_count': 0,
+                            'member_count': member_count,
+                            'message': 'No photos found for anchor person'
+                        }
 
-                anchor_member = members[0]
-                other_members = members[1:]
+                    anchor_member = members[0]
+                    other_members = members[1:]
 
-                for anchor_ts, anchor_photo_id, anchor_path in person_times[anchor_member]:
-                    window_start = anchor_ts - window_seconds
-                    window_end = anchor_ts + window_seconds
+                    for anchor_ts, anchor_photo_id, anchor_path in person_times[anchor_member]:
+                        window_start = anchor_ts - window_seconds
+                        window_end = anchor_ts + window_seconds
 
-                    all_present = True
-                    window_photos = [(anchor_photo_id, anchor_path)]
+                        all_present = True
+                        window_photos = [(anchor_photo_id, anchor_path)]
 
-                    for other_member in other_members:
-                        found_in_window = False
-                        for other_ts, other_photo_id, other_path in person_times[other_member]:
-                            if window_start <= other_ts <= window_end:
-                                found_in_window = True
-                                window_photos.append((other_photo_id, other_path))
+                        for other_member in other_members:
+                            found_in_window = False
+                            for other_ts, other_photo_id, other_path in person_times[other_member]:
+                                if window_start <= other_ts <= window_end:
+                                    found_in_window = True
+                                    window_photos.append((other_photo_id, other_path))
+                                    break
+
+                            if not found_in_window:
+                                all_present = False
                                 break
 
-                        if not found_in_window:
-                            all_present = False
-                            break
+                        if all_present:
+                            for photo_id, path in window_photos:
+                                matching_photos.add((photo_id, path))
 
-                    if all_present:
-                        for photo_id, path in window_photos:
-                            matching_photos.add((photo_id, path))
+                    if progress_callback:
+                        progress_callback(70, 100, f"Found {len(matching_photos)} matching photos")
 
-                if progress_callback:
-                    progress_callback(70, 100, f"Found {len(matching_photos)} matching photos")
-
-                # Clear previous event_window matches
-                cur.execute("""
-                    DELETE FROM group_asset_matches
-                    WHERE group_id = ? AND scope = 'event_window'
-                """, (group_id,))
-
-                # Insert new matches
-                now = int(time.time())
-                match_count = 0
-                for photo_id, path in matching_photos:
+                    # Clear previous event_window matches
                     cur.execute("""
-                        INSERT OR IGNORE INTO group_asset_matches
-                            (group_id, scope, photo_id, computed_at)
-                        VALUES (?, 'event_window', ?, ?)
-                    """, (group_id, photo_id, now))
-                    match_count += 1
+                        DELETE FROM group_asset_matches
+                        WHERE group_id = ? AND scope = 'event_window'
+                    """, (group_id,))
 
-                if progress_callback:
-                    progress_callback(90, 100, f"Saved {match_count} matches")
+                    # Insert new matches
+                    now = int(time.time())
+                    match_count = 0
+                    for photo_id, path in matching_photos:
+                        cur.execute("""
+                            INSERT OR IGNORE INTO group_asset_matches
+                                (group_id, scope, photo_id, computed_at)
+                            VALUES (?, 'event_window', ?, ?)
+                        """, (group_id, photo_id, now))
+                        match_count += 1
 
-                # Update group last_used_at
-                cur.execute("""
-                    UPDATE person_groups SET last_used_at = ? WHERE id = ?
-                """, (now, group_id))
+                    if progress_callback:
+                        progress_callback(90, 100, f"Saved {match_count} matches")
 
-                conn.commit()
+                    # Update group last_used_at
+                    cur.execute("""
+                        UPDATE person_groups SET last_used_at = ? WHERE id = ?
+                    """, (now, group_id))
 
-                duration = time.time() - start_time
+                    conn.commit()
 
-                if progress_callback:
-                    progress_callback(100, 100, f"Complete: {match_count} photos")
+                    duration = time.time() - start_time
 
-                logger.info(f"[PeopleGroupService] Event window matches for group {group_id}: "
-                           f"{match_count} photos within {window_seconds}s window in {duration:.2f}s")
+                    if progress_callback:
+                        progress_callback(100, 100, f"Complete: {match_count} photos")
 
+                    logger.info(f"[PeopleGroupService] Event window matches for group {group_id}: "
+                               f"{match_count} photos within {window_seconds}s window in {duration:.2f}s")
+
+                    return {
+                        'success': True,
+                        'match_count': match_count,
+                        'member_count': member_count,
+                        'duration_s': duration,
+                        'window_seconds': window_seconds
+                    }
+
+            except sqlite3.OperationalError as e:
+                if "database is locked" in str(e) and attempt < max_retries - 1:
+                    wait = retry_delay * (2 ** attempt)
+                    logger.warning(
+                        f"[PeopleGroupService] Database locked for group {group_id} (event_window), "
+                        f"retrying in {wait}s (attempt {attempt + 1}/{max_retries})"
+                    )
+                    time.sleep(wait)
+                    continue
+                logger.error(f"[PeopleGroupService] Event window computation failed: {e}", exc_info=True)
                 return {
-                    'success': True,
-                    'match_count': match_count,
-                    'member_count': member_count,
-                    'duration_s': duration,
-                    'window_seconds': window_seconds
+                    'success': False,
+                    'error': str(e),
+                    'match_count': 0
                 }
 
-        except Exception as e:
-            logger.error(f"[PeopleGroupService] Event window computation failed: {e}", exc_info=True)
-            return {
-                'success': False,
-                'error': str(e),
-                'match_count': 0
-            }
+            except Exception as e:
+                logger.error(f"[PeopleGroupService] Event window computation failed: {e}", exc_info=True)
+                return {
+                    'success': False,
+                    'error': str(e),
+                    'match_count': 0
+                }
 
     def get_group_matches(
         self,
