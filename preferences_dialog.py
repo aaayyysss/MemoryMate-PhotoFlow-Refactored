@@ -1514,6 +1514,9 @@ class PreferencesDialog(QDialog):
         self.spin_geocoding_timeout.setValue(int(self.settings.get("gps_geocoding_timeout_sec", 2)))
         self.chk_cache_location_names.setChecked(self.settings.get("gps_cache_location_names", True))
 
+        # Video - FFprobe path
+        self.txt_ffprobe_path.setText(self.settings.get("ffprobe_path", ""))
+
         # Advanced
         self.chk_decoder_warnings.setChecked(self.settings.get("show_decoder_warnings", False))
         self.chk_db_debug.setChecked(self.settings.get("db_debug_logging", False))
@@ -2047,6 +2050,13 @@ class PreferencesDialog(QDialog):
                     print(tr("preferences.video.ffmpeg_path_changed"))
                 except Exception as e:
                     print(f"⚠️ Failed to clear FFmpeg check flag: {e}")
+
+            # Invalidate FFmpeg detection cache so the new path is used on next launch
+            try:
+                from workers.ffmpeg_detection_worker import invalidate_cache
+                invalidate_cache()
+            except Exception as e:
+                print(f"⚠️ Failed to invalidate FFmpeg cache: {e}")
 
             path_display = ffprobe_path if ffprobe_path else tr("preferences.video.ffmpeg_path_system")
             print(tr("preferences.video.ffmpeg_path_configured", path=path_display))
