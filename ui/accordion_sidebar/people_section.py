@@ -444,12 +444,18 @@ class PeopleSection(BaseSection):
                         stack.insertWidget(1, content)
                         stack.setCurrentIndex(1)
 
-                    # Auto-recompute stale groups in background
-                    # (e.g. after face merge cleared group_asset_matches)
+                    # Auto-recompute stale groups in background, but only once
+                    # per group per session.  Without the _recomputed set guard,
+                    # a group with legitimately 0 matches would stay "stale" and
+                    # trigger an infinite loop: compute → 0 → reload → stale →
+                    # compute → 0 → ...
                     if data:
+                        if not hasattr(self, '_recomputed_group_ids'):
+                            self._recomputed_group_ids = set()
                         stale_ids = [
                             g['id'] for g in data
                             if g.get('is_stale') and g.get('member_count', 0) >= 2
+                            and g['id'] not in self._recomputed_group_ids
                         ]
                         if stale_ids:
                             logger.info(
@@ -457,6 +463,7 @@ class PeopleSection(BaseSection):
                                 f"stale group(s): {stale_ids}"
                             )
                             for gid in stale_ids:
+                                self._recomputed_group_ids.add(gid)
                                 self.recomputeGroupRequested.emit(gid, "together")
                 except Exception as e:
                     logger.error(f"[PeopleSection] Failed to build groups content: {e}", exc_info=True)
@@ -482,8 +489,11 @@ class PeopleSection(BaseSection):
             # widget at index 1 automatically.
             self._groups_section.load_section()
         elif self._stack:
-            # Groups tab was never opened; do the full lazy-init
+            # Groups tab was never opened; do the full lazy-init.
+            # Reset recompute tracking so stale groups are recomputed.
             self._groups_loaded_once = False
+            if hasattr(self, '_recomputed_group_ids'):
+                self._recomputed_group_ids.clear()
             self._ensure_groups_tab(self._stack)
 
     def set_db(self, db):
