@@ -169,8 +169,11 @@ class PeopleGroupService:
                 """, (group_id,)).fetchone()
                 match_count = match_count_row[0] if match_count_row else 0
 
-                # A group is stale if it has no cached matches
-                is_stale = match_count == 0
+                # A group is stale if it has never been computed (last_used_at is NULL)
+                # AND has no cached matches.  Having 0 matches after a successful
+                # computation (last_used_at is set) is a valid result, not stale.
+                last_used_at = row[4]
+                is_stale = match_count == 0 and last_used_at is None
 
                 return {
                     'id': row[0],
@@ -178,7 +181,7 @@ class PeopleGroupService:
                     'display_name': row[1],  # Backwards compat alias
                     'created_at': row[2],
                     'updated_at': row[3],
-                    'last_used_at': row[4],
+                    'last_used_at': last_used_at,
                     'is_pinned': bool(row[5]),
                     'member_count': row[6],
                     'result_count': match_count,
@@ -227,8 +230,11 @@ class PeopleGroupService:
                     """, (group_id,)).fetchone()
                     match_count = match_count_row[0] if match_count_row else 0
 
-                    # A group is stale if it has no cached matches
-                    is_stale = match_count == 0
+                    # A group is stale if it has never been computed (last_used_at is NULL)
+                    # AND has no cached matches.  Having 0 matches after a successful
+                    # computation (last_used_at is set) is a valid result, not stale.
+                    last_used_at = row[4]
+                    is_stale = match_count == 0 and last_used_at is None
 
                     # Fetch top-3 member face thumbnail paths for GroupCard avatars
                     member_thumb_rows = conn.execute("""
@@ -929,9 +935,15 @@ class PeopleGroupService:
 
                 # Clear cached matches for these groups
                 placeholders = ','.join(['?'] * len(group_ids))
-                cur = conn.execute(f"""
+                conn.execute(f"""
                     DELETE FROM group_asset_matches
                     WHERE group_id IN ({placeholders})
+                """, group_ids)
+
+                # Reset last_used_at so groups appear stale (need recomputation)
+                conn.execute(f"""
+                    UPDATE person_groups SET last_used_at = NULL
+                    WHERE id IN ({placeholders})
                 """, group_ids)
 
                 affected = len(group_ids)
@@ -981,6 +993,12 @@ class PeopleGroupService:
                     WHERE group_id IN ({placeholders})
                 """, group_ids)
 
+                # Reset last_used_at so groups appear stale (need recomputation)
+                conn.execute(f"""
+                    UPDATE person_groups SET last_used_at = NULL
+                    WHERE id IN ({placeholders})
+                """, group_ids)
+
                 affected = len(group_ids)
                 conn.commit()
 
@@ -998,7 +1016,9 @@ class PeopleGroupService:
         """
         Get list of group IDs that need recomputation.
 
-        A group is considered stale if it has no cached matches.
+        A group is considered stale if it has no cached matches AND has
+        never been computed (last_used_at is NULL).  Groups that were
+        computed but legitimately have 0 matches are NOT stale.
 
         Args:
             project_id: Project ID
@@ -1013,6 +1033,7 @@ class PeopleGroupService:
                     FROM person_groups g
                     LEFT JOIN group_asset_matches gam ON g.id = gam.group_id
                     WHERE g.project_id = ? AND g.is_deleted = 0
+                      AND g.last_used_at IS NULL
                     GROUP BY g.id
                     HAVING COUNT(gam.photo_id) = 0
                 """, (project_id,))
