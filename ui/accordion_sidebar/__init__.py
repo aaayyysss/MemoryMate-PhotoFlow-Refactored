@@ -887,18 +887,48 @@ class AccordionSidebar(QWidget):
         self._compute_group_matches(group_id, match_mode)
 
     def _compute_group_matches(self, group_id: int, match_mode: str):
-        """Run group match computation in background.
+        """Run group match computation in background, serialized.
 
-        Fix: The previous implementation had two bugs:
-        1. The worker was not stored, risking GC before completion.
-        2. The on_finished callback was delivered on the thread-pool thread;
-           calling reload_groups() from a non-main thread caused silent
-           failures in PySide6 widget operations.
+        Only one GroupComputeWorker runs at a time.  Additional requests are
+        queued and started automatically when the current worker finishes.
+        This prevents concurrent SQLite writes that cause 'database is locked'
+        errors and access-violation crashes when the face pipeline is also
+        writing to the database.
 
-        Solution: Store worker reference and use QTimer.singleShot(0, ...)
-        to marshal the reload onto the main/GUI thread (Apple Photos /
-        Google Photos pattern: compute in background, update UI on main).
+        Fixes applied:
+        1. setAutoDelete(False) prevents C++ double-free when Python drops
+           the worker reference (e.g. when the same group_id is re-queued).
+        2. Serialization queue prevents N concurrent workers from overwhelming
+           SQLite (the root cause of the 'database is locked' crash).
+        3. QTimer.singleShot(0, ...) marshals UI updates onto the main thread.
         """
+        # Initialise queue and tracking structures on first call
+        if not hasattr(self, '_group_compute_queue'):
+            self._group_compute_queue = []  # list of (group_id, match_mode)
+        if not hasattr(self, '_group_compute_running'):
+            self._group_compute_running = False
+        if not hasattr(self, '_active_group_workers'):
+            self._active_group_workers = {}
+
+        # Deduplicate: skip if already queued or already running for this group
+        if group_id in self._active_group_workers:
+            logger.debug(f"[AccordionSidebar] Group {group_id} already computing, skipping")
+            return
+        for queued_id, _ in self._group_compute_queue:
+            if queued_id == group_id:
+                logger.debug(f"[AccordionSidebar] Group {group_id} already queued, skipping")
+                return
+
+        self._group_compute_queue.append((group_id, match_mode))
+        self._start_next_group_computation()
+
+    def _start_next_group_computation(self):
+        """Start the next queued group computation if none is currently running."""
+        if self._group_compute_running or not self._group_compute_queue:
+            return
+
+        group_id, match_mode = self._group_compute_queue.pop(0)
+
         try:
             from PySide6.QtCore import QThreadPool, QTimer
             from workers.group_compute_worker import GroupComputeWorker
@@ -908,10 +938,15 @@ class AccordionSidebar(QWidget):
                 group_id=group_id,
                 match_mode=match_mode
             )
+            worker.setAutoDelete(False)  # prevent C++ double-free
 
             def on_finished(success, result):
-                # Marshal UI update onto the main thread via QTimer.singleShot
+                # Marshal UI update + queue drain onto the main thread
                 def _update_ui():
+                    # Remove from active set
+                    self._active_group_workers.pop(group_id, None)
+                    self._group_compute_running = False
+
                     people = self.section_logic.get("people")
                     if people and hasattr(people, 'reload_groups'):
                         people.reload_groups()
@@ -923,32 +958,41 @@ class AccordionSidebar(QWidget):
                         error = result.get('error', 'Unknown error')
                         logger.error(f"[AccordionSidebar] Group {group_id} computation failed: {error}")
 
+                    # Kick off the next queued computation (if any)
+                    self._start_next_group_computation()
+
                 QTimer.singleShot(0, _update_ui)
 
             worker.signals.finished.connect(on_finished)
 
             # Store reference to prevent premature GC while worker is running
-            if not hasattr(self, '_active_group_workers'):
-                self._active_group_workers = {}
             self._active_group_workers[group_id] = worker
+            self._group_compute_running = True
 
             QThreadPool.globalInstance().start(worker)
 
             logger.info(f"[AccordionSidebar] Started group computation worker for group {group_id}")
 
         except Exception as e:
+            self._group_compute_running = False
             logger.error(f"[AccordionSidebar] Failed to start group computation: {e}")
+            # Try the next one in the queue
+            self._start_next_group_computation()
 
     def cleanup(self):
         """Clean up resources before destruction."""
         logger.info("[AccordionSidebar] Cleanup")
 
-        # Cancel any running group computation workers
+        # Cancel any running group computation workers and drain queue
+        if hasattr(self, '_group_compute_queue'):
+            self._group_compute_queue.clear()
         if hasattr(self, '_active_group_workers'):
             for gid, worker in self._active_group_workers.items():
                 if hasattr(worker, 'cancel'):
                     worker.cancel()
             self._active_group_workers.clear()
+        if hasattr(self, '_group_compute_running'):
+            self._group_compute_running = False
 
         # Cleanup all sections
         for section in self.section_logic.values():
