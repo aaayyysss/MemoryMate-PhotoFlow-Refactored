@@ -9952,16 +9952,8 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
             # Connect signal for refresh after actions
             dialog.duplicate_action_taken.connect(self._on_duplicate_action_taken)
 
-            # Pre-select the specific asset if dialog supports it
-            if hasattr(dialog, 'select_asset'):
-                dialog.select_asset(asset_id)
-            elif hasattr(dialog, 'asset_list'):
-                # Try to select in asset list
-                for i in range(dialog.asset_list.count()):
-                    item = dialog.asset_list.item(i)
-                    if item and item.data(Qt.UserRole) == asset_id:
-                        dialog.asset_list.setCurrentItem(item)
-                        break
+            # Pre-select the specific asset (scrolls to and highlights it)
+            dialog.select_asset(asset_id)
 
             # Show the dialog
             dialog.exec()

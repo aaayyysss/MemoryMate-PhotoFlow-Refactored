@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QScrollArea, QWidget, QGridLayout, QFrame, QCheckBox,
     QMessageBox, QTableWidget, QTableWidgetItem, QHeaderView,
-    QGroupBox, QSlider, QTabWidget
+    QGroupBox, QSlider, QTabWidget, QSizePolicy
 )
 from PySide6.QtCore import Signal, Qt, Slot, QRunnable, QThreadPool, QObject, QTimer
 from PySide6.QtGui import QFont, QColor, QPixmap, QImage
@@ -158,6 +158,7 @@ class StackMemberWidget(QWidget):
     """
 
     selection_changed = Signal(int, bool)  # photo_id, is_selected
+    thumbnail_clicked = Signal(str)  # photo_path - emitted on click to open lightbox
 
     def __init__(
         self,
@@ -195,10 +196,12 @@ class StackMemberWidget(QWidget):
         layout.setContentsMargins(4, 4, 4, 4)
  
         # Thumbnail - FIX 2026-02-09: Increased from 160 to 200 for better quality
+        # Click to open in lightbox (iPhone/Google Photos pattern)
         self.thumbnail_label = QLabel()
         self.thumbnail_label.setFixedSize(200, 200)
 
         self.thumbnail_label.setAlignment(Qt.AlignCenter)
+        self.thumbnail_label.setCursor(Qt.PointingHandCursor)
         self.thumbnail_label.setStyleSheet("""
             QLabel {
                 background-color: #f5f5f5;
@@ -206,7 +209,9 @@ class StackMemberWidget(QWidget):
                 border-radius: 4px;
             }
         """)
+        self.thumbnail_label.setToolTip("Click to view in lightbox")
         self.thumbnail_label.setText("Loading...")
+        self.thumbnail_label.mousePressEvent = self._on_thumbnail_clicked
         layout.addWidget(self.thumbnail_label, alignment=Qt.AlignCenter)
 
         # Compact metadata: one-liner with key info
@@ -265,8 +270,7 @@ class StackMemberWidget(QWidget):
         # Fix vertical stretching: set maximum height based on content
         # 200 (thumb) + 4*2 (margins) + 3*2 (spacing) + ~50 (labels+checkbox)
         self.setMaximumHeight(270)
-        from PySide6.QtWidgets import QSizePolicy
-        self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)        
+        self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
 
     def _load_thumbnail(self):
         """
@@ -356,6 +360,41 @@ class StackMemberWidget(QWidget):
         logger.debug(f"[SELECTION] Emitting selection_changed signal: photo_id={self.photo_id}, is_selected={is_selected}")
         self.selection_changed.emit(self.photo_id, is_selected)
 
+    def _on_thumbnail_clicked(self, event):
+        """Handle thumbnail click - open photo in lightbox."""
+        if event.button() == Qt.LeftButton:
+            path = self.photo.get('path', '')
+            if path:
+                self.thumbnail_clicked.emit(path)
+
+    def set_thumb_size(self, size: int):
+        """Update thumbnail size dynamically for zoom controls."""
+        size = int(size)
+        if size == self.thumbnail_label.width():
+            return
+        self.thumbnail_label.setFixedSize(size, size)
+        # Update max height to match new thumbnail size
+        self.setMaximumHeight(size + 70)
+
+        # Reload pixmap at new size
+        try:
+            path = self.photo.get('path', '')
+            if path and Path(path).exists():
+                from app_services import get_thumbnail
+                pixmap = get_thumbnail(path, size)
+                if pixmap and not pixmap.isNull():
+                    scaled = pixmap.scaled(
+                        size, size,
+                        Qt.KeepAspectRatio,
+                        Qt.SmoothTransformation
+                    )
+                    x = (scaled.width() - size) // 2
+                    y = (scaled.height() - size) // 2
+                    cropped = scaled.copy(x, y, size, size)
+                    self.thumbnail_label.setPixmap(cropped)
+        except Exception:
+            pass
+
     def is_selected(self) -> bool:
         """Check if selected."""
         return self.checkbox.isChecked()
@@ -426,6 +465,34 @@ class StackViewDialog(QDialog):
         title_layout.addWidget(self.info_label)
 
         title_layout.addStretch()
+
+        # Zoom controls (Lightroom / Excire style thumbnail sizing)
+        zoom_out_btn = QPushButton("-")
+        zoom_out_btn.setFixedSize(24, 24)
+        zoom_out_btn.setToolTip("Smaller thumbnails")
+        zoom_out_btn.setStyleSheet("QPushButton { padding: 2px; background: #f0f0f0; border: 1px solid #ccc; border-radius: 3px; } QPushButton:hover { background: #e0e0e0; }")
+        zoom_out_btn.clicked.connect(lambda: self.zoom_slider.setValue(self.zoom_slider.value() - 20))
+        title_layout.addWidget(zoom_out_btn)
+
+        self.zoom_slider = QSlider(Qt.Horizontal)
+        self.zoom_slider.setMinimum(100)
+        self.zoom_slider.setMaximum(400)
+        self.zoom_slider.setValue(200)
+        self.zoom_slider.setFixedWidth(120)
+        self.zoom_slider.setToolTip("Adjust thumbnail size")
+        self.zoom_slider.valueChanged.connect(self._on_zoom_changed)
+        title_layout.addWidget(self.zoom_slider)
+
+        zoom_in_btn = QPushButton("+")
+        zoom_in_btn.setFixedSize(24, 24)
+        zoom_in_btn.setToolTip("Larger thumbnails")
+        zoom_in_btn.setStyleSheet("QPushButton { padding: 2px; background: #f0f0f0; border: 1px solid #ccc; border-radius: 3px; } QPushButton:hover { background: #e0e0e0; }")
+        zoom_in_btn.clicked.connect(lambda: self.zoom_slider.setValue(self.zoom_slider.value() + 20))
+        title_layout.addWidget(zoom_in_btn)
+
+        self.zoom_label = QLabel("200px")
+        self.zoom_label.setStyleSheet("color: #888; font-size: 10px; min-width: 36px;")
+        title_layout.addWidget(self.zoom_label)
 
         layout.addLayout(title_layout)
 
@@ -647,6 +714,7 @@ class StackViewDialog(QDialog):
                 parent=self
             )
             widget.selection_changed.connect(self._on_member_selection_changed)
+            widget.thumbnail_clicked.connect(self._open_lightbox)
             logger.debug(f"[SIGNAL_CONNECT] Connected selection signal for photo {photo_id} (rep={is_representative})")
 
             row = idx // 3
@@ -926,6 +994,52 @@ class StackViewDialog(QDialog):
                     "Deletion Failed",
                     f"Failed to delete photos:\n{e}\n\nPlease check the log for details."
                 )
+
+    # ========================================================================
+    # LIGHTBOX INTEGRATION (Google Photos / iPhone Photos pattern)
+    # ========================================================================
+
+    def _open_lightbox(self, path: str):
+        """Open a photo in the media lightbox for full-size viewing."""
+        try:
+            from google_components.media_lightbox import MediaLightbox
+
+            # Collect all photo paths from stack members
+            all_paths = []
+            for member in self.members:
+                photo = self.photos.get(member['photo_id'])
+                if photo:
+                    p = photo.get('path', '')
+                    if p and Path(p).exists():
+                        all_paths.append(p)
+
+            if not all_paths:
+                all_paths = [path]
+
+            if path not in all_paths:
+                all_paths.insert(0, path)
+
+            lightbox = MediaLightbox(
+                path, all_paths, parent=self,
+                project_id=self.project_id,
+            )
+            lightbox.exec()
+        except Exception as e:
+            logger.error(f"Failed to open lightbox: {e}", exc_info=True)
+
+    # ========================================================================
+    # ZOOM CONTROLS (Lightroom / Excire style thumbnail sizing)
+    # ========================================================================
+
+    def _on_zoom_changed(self, value: int):
+        """Handle zoom slider change - resize thumbnails."""
+        self.zoom_label.setText(f"{value}px")
+
+        # Update all visible member widgets
+        for i in range(self.members_grid.count()):
+            item = self.members_grid.itemAt(i)
+            if item and item.widget() and isinstance(item.widget(), StackMemberWidget):
+                item.widget().set_thumb_size(value)
 
     def _on_unstack_all(self):
         """Handle unstack all button click."""

@@ -16,10 +16,11 @@ from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QListWidget, QListWidgetItem, QWidget, QScrollArea,
     QGridLayout, QFrame, QCheckBox, QMessageBox, QSplitter,
-    QGroupBox, QTableWidget, QTableWidgetItem, QHeaderView
+    QGroupBox, QTableWidget, QTableWidgetItem, QHeaderView,
+    QSlider
 )
 from PySide6.QtCore import Signal, Qt, QSize, Slot, QThreadPool, QTimer
-from PySide6.QtGui import QPixmap, QFont, QColor
+from PySide6.QtGui import QPixmap, QFont, QColor, QCursor
 from typing import Optional, List, Dict, Any
 from pathlib import Path
 from logging_config import get_logger
@@ -32,7 +33,7 @@ class PhotoInstanceWidget(QWidget):
     Widget displaying a single photo instance with thumbnail and metadata.
 
     Shows:
-    - Thumbnail (responsive size)
+    - Thumbnail (responsive size, click to open lightbox)
     - Resolution
     - File size
     - Date taken
@@ -42,6 +43,7 @@ class PhotoInstanceWidget(QWidget):
     """
 
     selection_changed = Signal(int, bool)  # photo_id, is_selected
+    thumbnail_clicked = Signal(str)  # photo_path - emitted on single click to open lightbox
 
     def __init__(self, photo: Dict[str, Any], is_representative: bool = False, thumb_size: int = 280, parent=None):
         super().__init__(parent)
@@ -59,9 +61,11 @@ class PhotoInstanceWidget(QWidget):
         layout.setContentsMargins(6, 6, 6, 6)
 
         # Thumbnail placeholder - Responsive size for better comparison (Google Photos style)
+        # Click to open in lightbox (iPhone/Google Photos pattern)
         self.thumbnail_label = QLabel()
         self.thumbnail_label.setFixedSize(self.thumb_size, self.thumb_size)
         self.thumbnail_label.setAlignment(Qt.AlignCenter)
+        self.thumbnail_label.setCursor(QCursor(Qt.PointingHandCursor))
         self.thumbnail_label.setStyleSheet("""
             QLabel {
                 background-color: #f5f5f5;
@@ -69,7 +73,9 @@ class PhotoInstanceWidget(QWidget):
                 border-radius: 8px;
             }
         """)
+        self.thumbnail_label.setToolTip("Click to view in lightbox")
         self.thumbnail_label.setText("Loading...")
+        self.thumbnail_label.mousePressEvent = self._on_thumbnail_clicked
         layout.addWidget(self.thumbnail_label, alignment=Qt.AlignCenter)
 
         # Metadata - Compact single-line format for media-first layout
@@ -209,6 +215,13 @@ class PhotoInstanceWidget(QWidget):
         logger.info(f"[PhotoInstanceWidget] Emitting selection_changed signal: photo_id={photo_id}, is_selected={is_selected}")
         self.selection_changed.emit(photo_id, is_selected)
         logger.info(f"[PhotoInstanceWidget] Signal emitted successfully")
+
+    def _on_thumbnail_clicked(self, event):
+        """Handle thumbnail click - open photo in lightbox."""
+        if event.button() == Qt.LeftButton:
+            path = self.photo.get('path', '')
+            if path:
+                self.thumbnail_clicked.emit(path)
 
     def is_selected(self) -> bool:
         """Check if this instance is selected for deletion."""
@@ -466,6 +479,38 @@ class DuplicatesDialog(QDialog):
 
         toolbar_layout.addStretch()
 
+        # Zoom controls (Google Photos / Lightroom style thumbnail sizing)
+        sep2 = QLabel("|")
+        sep2.setStyleSheet("color: #ccc;")
+        toolbar_layout.addWidget(sep2)
+
+        zoom_out_btn = QPushButton("-")
+        zoom_out_btn.setFixedSize(24, 24)
+        zoom_out_btn.setToolTip("Smaller thumbnails")
+        zoom_out_btn.setStyleSheet(toolbar_btn_style)
+        zoom_out_btn.clicked.connect(lambda: self.zoom_slider.setValue(self.zoom_slider.value() - 10))
+        toolbar_layout.addWidget(zoom_out_btn)
+
+        self.zoom_slider = QSlider(Qt.Horizontal)
+        self.zoom_slider.setMinimum(80)
+        self.zoom_slider.setMaximum(400)
+        self.zoom_slider.setValue(200)
+        self.zoom_slider.setFixedWidth(120)
+        self.zoom_slider.setToolTip("Adjust thumbnail size")
+        self.zoom_slider.valueChanged.connect(self._on_zoom_changed)
+        toolbar_layout.addWidget(self.zoom_slider)
+
+        zoom_in_btn = QPushButton("+")
+        zoom_in_btn.setFixedSize(24, 24)
+        zoom_in_btn.setToolTip("Larger thumbnails")
+        zoom_in_btn.setStyleSheet(toolbar_btn_style)
+        zoom_in_btn.clicked.connect(lambda: self.zoom_slider.setValue(self.zoom_slider.value() + 10))
+        toolbar_layout.addWidget(zoom_in_btn)
+
+        self.zoom_label = QLabel("200px")
+        self.zoom_label.setStyleSheet("color: #888; font-size: 10px; min-width: 36px;")
+        toolbar_layout.addWidget(self.zoom_label)
+
         return toolbar
 
     def _create_assets_list_panel(self) -> QWidget:
@@ -672,6 +717,11 @@ class DuplicatesDialog(QDialog):
             # Update counter
             self.items_counter.setText(f"{len(self.duplicates)} items loaded")
         
+        # Handle deferred asset selection (from badge click)
+        pending_id = getattr(self, '_pending_select_asset_id', None)
+        if pending_id is not None:
+            QTimer.singleShot(0, lambda: self._try_select_asset(pending_id))
+
         logger.info(f"Async duplicate loading complete: {len(duplicates)} groups loaded")
     
     def _load_more_duplicates(self):
@@ -830,6 +880,7 @@ class DuplicatesDialog(QDialog):
                 parent=self.instances_container
             )
             widget.selection_changed.connect(self._on_instance_selection_changed)
+            widget.thumbnail_clicked.connect(self._open_lightbox)
 
             # Add to tracking list
             self.instance_widgets.append(widget)
@@ -1107,12 +1158,87 @@ class DuplicatesDialog(QDialog):
             self.savings_label.setText("")
 
     # ========================================================================
+    # LIGHTBOX INTEGRATION (Google Photos / iPhone Photos pattern)
+    # ========================================================================
+
+    def _open_lightbox(self, path: str):
+        """Open a photo in the media lightbox for full-size viewing."""
+        try:
+            from google_components.media_lightbox import MediaLightbox
+
+            # Collect all photo paths from current duplicate group
+            all_paths = []
+            if self._current_asset:
+                for photo in self._current_asset.get('photos', []):
+                    p = photo.get('path', '')
+                    if p and Path(p).exists():
+                        all_paths.append(p)
+
+            if not all_paths:
+                all_paths = [path]
+
+            if path not in all_paths:
+                all_paths.insert(0, path)
+
+            lightbox = MediaLightbox(
+                path, all_paths, parent=self,
+                project_id=self.project_id,
+            )
+            lightbox.exec()
+        except Exception as e:
+            logger.error(f"Failed to open lightbox: {e}", exc_info=True)
+
+    # ========================================================================
+    # FOCUS / SELECT ASSET (open dialog pre-focused on a specific duplicate)
+    # ========================================================================
+
+    def select_asset(self, asset_id: int):
+        """
+        Pre-select and focus on a specific asset in the duplicate groups list.
+
+        Called when opening the dialog from a duplicate badge click in the
+        photo grid - scrolls to and highlights the matching duplicate group.
+
+        Args:
+            asset_id: Asset ID to focus on
+        """
+        # Store for deferred selection (data may not be loaded yet)
+        self._pending_select_asset_id = asset_id
+
+        # Try immediate selection if data is already loaded
+        self._try_select_asset(asset_id)
+
+    def _try_select_asset(self, asset_id: int):
+        """Attempt to select a specific asset in the list widget."""
+        for i in range(self.assets_list.count()):
+            item = self.assets_list.item(i)
+            if item and item.data(Qt.UserRole) == asset_id:
+                self.assets_list.setCurrentItem(item)
+                self.assets_list.scrollToItem(item)
+                self._on_asset_selected(item)
+                self._pending_select_asset_id = None
+                return True
+        return False
+
+    # ========================================================================
+    # ZOOM CONTROLS (Lightroom / Excire style thumbnail sizing)
+    # ========================================================================
+
+    def _on_zoom_changed(self, value: int):
+        """Handle zoom slider change - resize thumbnails."""
+        self.zoom_label.setText(f"{value}px")
+
+        # Throttle full relayout (column count may change at different zoom levels)
+        if hasattr(self, '_relayout_timer'):
+            self._relayout_timer.start(150)
+
+    # ========================================================================
     # RESPONSIVE GRID LAYOUT (Google Photos / Lightroom style media-first)
     # ========================================================================
 
     def _grid_metrics(self):
         """
-        Calculate responsive grid metrics based on container width.
+        Calculate responsive grid metrics based on container width and zoom level.
 
         Returns: (cols, thumb_size, spacing)
         """
@@ -1124,15 +1250,15 @@ class DuplicatesDialog(QDialog):
         spacing = 8
         margins = 8 * 2  # left + right
 
-        # Target card width like Google Photos tiles: thumb + metadata padding
-        target_card_w = 320
+        # Use zoom slider value as thumb size when available
+        if hasattr(self, 'zoom_slider'):
+            thumb_size = self.zoom_slider.value()
+        else:
+            thumb_size = 200
 
+        # Calculate columns based on thumb size + card padding
+        target_card_w = thumb_size + 56  # thumb + metadata padding
         cols = max(1, min(6, (w - margins) // target_card_w))
-
-        # Compute thumb size from available width and columns
-        # Card needs: thumb + padding around + checkbox/labels; reserve ~56px
-        available_per_col = (w - margins - spacing * (cols - 1)) / cols
-        thumb_size = int(max(180, min(360, available_per_col - 56)))
 
         return cols, thumb_size, spacing
 
