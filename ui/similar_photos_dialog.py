@@ -37,8 +37,8 @@ from PySide6.QtWidgets import (
     QLabel, QSlider, QPushButton, QWidget, QScrollArea,
     QFrame, QMessageBox
 )
-from PySide6.QtCore import Qt, Signal, QSize
-from PySide6.QtGui import QPixmap, QMouseEvent
+from PySide6.QtCore import Qt, Signal, QSize, QTimer
+from PySide6.QtGui import QPixmap, QMouseEvent, QCursor
 
 from services.photo_similarity_service import (
     get_photo_similarity_service,
@@ -70,14 +70,17 @@ class PhotoThumbnail(QFrame):
 
     clicked = Signal(int)  # photo_id
 
-    def __init__(self, similar_photo: SimilarPhoto, parent=None):
+    def __init__(self, similar_photo: SimilarPhoto, display_size: int = THUMBNAIL_DISPLAY_SIZE, parent=None):
         super().__init__(parent)
         self.photo_id = similar_photo.photo_id
         self.similarity_score = similar_photo.similarity_score
+        self.file_path = similar_photo.file_path or similar_photo.thumbnail_path or ''
+        self._display_size = display_size
 
         self.setFrameStyle(QFrame.Box | QFrame.Plain)
         self.setLineWidth(1)
         self.setCursor(Qt.PointingHandCursor)
+        self.setToolTip("Click to view in lightbox")
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
@@ -86,7 +89,7 @@ class PhotoThumbnail(QFrame):
         # Thumbnail
         self.thumbnail_label = QLabel()
         self.thumbnail_label.setAlignment(Qt.AlignCenter)
-        self.thumbnail_label.setFixedSize(THUMBNAIL_DISPLAY_SIZE, THUMBNAIL_DISPLAY_SIZE)
+        self.thumbnail_label.setFixedSize(self._display_size, self._display_size)
         self.thumbnail_label.setStyleSheet("background-color: #f0f0f0;")
 
         # Load thumbnail via SafeImageLoader (capped at 256px, never full resolution)
@@ -137,11 +140,35 @@ class PhotoThumbnail(QFrame):
         layout.addWidget(self.thumbnail_label)
         layout.addWidget(self.score_label)
 
-    def mouseDoubleClickEvent(self, event: QMouseEvent):
-        """Handle double-click to open photo."""
+    def mousePressEvent(self, event: QMouseEvent):
+        """Handle click to open photo in lightbox (single click, Google Photos style)."""
         if event.button() == Qt.LeftButton:
             self.clicked.emit(self.photo_id)
-        super().mouseDoubleClickEvent(event)
+        super().mousePressEvent(event)
+
+    def set_display_size(self, size: int):
+        """Update display size for zoom controls."""
+        self._display_size = size
+        self.thumbnail_label.setFixedSize(size, size)
+
+        # Reload thumbnail at new size
+        if self.file_path and Path(self.file_path).exists():
+            try:
+                from services.safe_image_loader import safe_decode_qimage
+                qimage = safe_decode_qimage(
+                    str(self.file_path),
+                    max_dim=max(size, GRID_THUMBNAIL_MAX_DIM),
+                    enable_retry_ladder=True,
+                )
+                if not qimage.isNull():
+                    pixmap = QPixmap.fromImage(qimage)
+                    pixmap = pixmap.scaled(
+                        size, size,
+                        Qt.KeepAspectRatio, Qt.SmoothTransformation
+                    )
+                    self.thumbnail_label.setPixmap(pixmap)
+            except Exception:
+                pass
 
 
 class SimilarPhotosDialog(QDialog):
@@ -236,6 +263,36 @@ class SimilarPhotosDialog(QDialog):
         threshold_layout.addWidget(self.threshold_value_label)
 
         layout.addLayout(threshold_layout)
+
+        # Zoom controls (Lightroom / Excire style)
+        zoom_layout = QHBoxLayout()
+        zoom_layout.addWidget(QLabel("Zoom:"))
+
+        zoom_out_btn = QPushButton("-")
+        zoom_out_btn.setFixedSize(24, 24)
+        zoom_out_btn.clicked.connect(lambda: self.zoom_slider.setValue(self.zoom_slider.value() - 20))
+        zoom_layout.addWidget(zoom_out_btn)
+
+        self.zoom_slider = QSlider(Qt.Horizontal)
+        self.zoom_slider.setMinimum(80)
+        self.zoom_slider.setMaximum(300)
+        self.zoom_slider.setValue(THUMBNAIL_DISPLAY_SIZE)
+        self.zoom_slider.setFixedWidth(100)
+        self.zoom_slider.setToolTip("Adjust thumbnail size")
+        self.zoom_slider.valueChanged.connect(self._on_zoom_changed)
+        zoom_layout.addWidget(self.zoom_slider)
+
+        zoom_in_btn = QPushButton("+")
+        zoom_in_btn.setFixedSize(24, 24)
+        zoom_in_btn.clicked.connect(lambda: self.zoom_slider.setValue(self.zoom_slider.value() + 20))
+        zoom_layout.addWidget(zoom_in_btn)
+
+        self.zoom_value_label = QLabel(f"{THUMBNAIL_DISPLAY_SIZE}px")
+        self.zoom_value_label.setMinimumWidth(40)
+        zoom_layout.addWidget(self.zoom_value_label)
+
+        zoom_layout.addStretch()
+        layout.addLayout(zoom_layout)
 
         # Results info
         self.results_label = QLabel()
@@ -352,16 +409,60 @@ class SimilarPhotosDialog(QDialog):
             self.grid_layout.addWidget(no_results_label, 0, 0)
             return
 
-        # Add thumbnails to grid (4 columns)
-        for i, photo in enumerate(filtered_results):
-            row = i // 4
-            col = i % 4
+        # Determine display size from zoom slider
+        display_size = self.zoom_slider.value() if hasattr(self, 'zoom_slider') else THUMBNAIL_DISPLAY_SIZE
 
-            thumbnail = PhotoThumbnail(photo)
+        # Calculate columns based on zoom level
+        cols = max(1, min(8, (self.grid_widget.width() or 800) // (display_size + 20)))
+
+        # Add thumbnails to grid
+        for i, photo in enumerate(filtered_results):
+            row = i // cols
+            col = i % cols
+
+            thumbnail = PhotoThumbnail(photo, display_size=display_size)
             thumbnail.clicked.connect(self._on_photo_clicked)
             self.grid_layout.addWidget(thumbnail, row, col)
 
+        # Store filtered results for lightbox navigation
+        self._current_filtered = filtered_results
+
     def _on_photo_clicked(self, photo_id: int):
-        """Handle photo thumbnail click."""
+        """Handle photo thumbnail click - open in lightbox."""
         self.photo_clicked.emit(photo_id)
         logger.info(f"[SimilarPhotosDialog] Photo {photo_id} clicked")
+
+        # Open in lightbox
+        self._open_lightbox_for_photo(photo_id)
+
+    def _open_lightbox_for_photo(self, photo_id: int):
+        """Open a photo in the media lightbox for full-size viewing."""
+        try:
+            from google_components.media_lightbox import MediaLightbox
+
+            # Build path list from filtered results
+            all_paths = []
+            target_path = None
+            for photo in getattr(self, '_current_filtered', self.all_results):
+                if photo.file_path and Path(photo.file_path).exists():
+                    all_paths.append(photo.file_path)
+                    if photo.photo_id == photo_id:
+                        target_path = photo.file_path
+
+            if not target_path or not all_paths:
+                logger.warning(f"[SimilarPhotosDialog] Could not find path for photo {photo_id}")
+                return
+
+            lightbox = MediaLightbox(
+                target_path, all_paths, parent=self,
+                project_id=self.project_id,
+            )
+            lightbox.exec()
+        except Exception as e:
+            logger.error(f"Failed to open lightbox: {e}", exc_info=True)
+
+    def _on_zoom_changed(self, value: int):
+        """Handle zoom slider change - resize thumbnails."""
+        self.zoom_value_label.setText(f"{value}px")
+        # Rebuild grid with new size
+        self._update_display()
