@@ -392,7 +392,7 @@ class SmartFindService:
                     query=prompt,
                     top_k=top_k,
                     threshold=threshold,
-                    include_metadata=True
+                    include_metadata=False
                 )
                 for r in results:
                     if r.photo_id not in all_scores or r.relevance_score > all_scores[r.photo_id]:
@@ -413,12 +413,12 @@ class SmartFindService:
 
             with db.get_connection() as conn:
                 cursor = conn.execute(
-                    f"SELECT id, file_path FROM photo_metadata WHERE id IN ({placeholders})",
+                    f"SELECT id, path FROM photo_metadata WHERE id IN ({placeholders})",
                     photo_ids
                 )
                 for row in cursor.fetchall():
                     photo_id = row['id']
-                    file_path = row['file_path']
+                    file_path = row['path']
                     if file_path:
                         path_scores.append((file_path, all_scores[photo_id]))
         except Exception as e:
@@ -484,10 +484,10 @@ class SmartFindService:
                 db = DatabaseConnection()
                 with db.get_connection() as conn:
                     cursor = conn.execute(
-                        "SELECT file_path FROM photo_metadata WHERE rating >= ? AND project_id = ?",
+                        "SELECT path FROM photo_metadata WHERE rating >= ? AND project_id = ?",
                         (rating_min, self.project_id)
                     )
-                    rated_paths = {row['file_path'] for row in cursor.fetchall()}
+                    rated_paths = {row['path'] for row in cursor.fetchall()}
                 if paths:
                     paths = [p for p in paths if p in rated_paths]
                 else:

@@ -272,7 +272,7 @@ class SemanticSearchService:
 
         with self.db.get_connection() as conn:
             cursor = conn.execute(f"""
-                SELECT id, file_path, thumbnail_path
+                SELECT id, path
                 FROM photo_metadata
                 WHERE id IN ({placeholders})
             """, photo_ids)
@@ -283,8 +283,7 @@ class SemanticSearchService:
         for result in results:
             meta = metadata.get(result.photo_id)
             if meta:
-                result.file_path = meta.get('file_path')
-                result.thumbnail_path = meta.get('thumbnail_path')
+                result.file_path = meta.get('path')
 
     def get_search_statistics(self) -> dict:
         """

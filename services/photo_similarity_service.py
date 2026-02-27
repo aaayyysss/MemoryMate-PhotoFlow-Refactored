@@ -398,7 +398,7 @@ class PhotoSimilarityService:
 
         with self.db.get_connection() as conn:
             cursor = conn.execute(f"""
-                SELECT id, file_path, thumbnail_path
+                SELECT id, path
                 FROM photo_metadata
                 WHERE id IN ({placeholders})
             """, photo_ids)
@@ -409,8 +409,7 @@ class PhotoSimilarityService:
         for result in results:
             meta = metadata.get(result.photo_id)
             if meta:
-                result.file_path = meta.get('file_path')
-                result.thumbnail_path = meta.get('thumbnail_path')
+                result.file_path = meta.get('path')
 
     def get_embedding_coverage(self) -> dict:
         """
