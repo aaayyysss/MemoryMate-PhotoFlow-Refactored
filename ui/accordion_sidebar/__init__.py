@@ -37,6 +37,7 @@ from .people_section import PeopleSection
 from .devices_section import DevicesSection
 from .quick_section import QuickSection
 from .locations_section import LocationsSection
+from .find_section import FindSection
 logger = logging.getLogger(__name__)
 
 
@@ -77,6 +78,10 @@ class AccordionSidebar(QWidget):
     editGroupRequested = Signal(int)  # group_id
     deleteGroupRequested = Signal(int)  # group_id
     recomputeGroupRequested = Signal(int, str)  # (group_id, match_mode)
+
+    # Smart Find signals
+    selectSmartFind = Signal(list, str)  # (paths, query_label)
+    smartFindCleared = Signal()
 
     # Section expansion signal
     sectionExpanding = Signal(str)  # section_id
@@ -159,16 +164,20 @@ class AccordionSidebar(QWidget):
 
         # Create section logic modules
         # NOTE: Groups is embedded inside People as a tab, not a standalone section
-        self.section_logic = {
-            "folders": FoldersSection(self),
-            "dates": DatesSection(self),
-            "duplicates": DuplicatesSection(self),  # Phase 3A
-            "videos": VideosSection(self),
-            "people": PeopleSection(self),
-            "devices": DevicesSection(self),
-            "locations": LocationsSection(self),
-            "quick": QuickSection(self)
-        }
+        # NOTE: Find is first - it's the primary discovery entry point
+        #       (iPhone/Google Photos place search prominently at top)
+        from collections import OrderedDict
+        self.section_logic = OrderedDict([
+            ("find", FindSection(self)),
+            ("people", PeopleSection(self)),
+            ("folders", FoldersSection(self)),
+            ("dates", DatesSection(self)),
+            ("duplicates", DuplicatesSection(self)),
+            ("videos", VideosSection(self)),
+            ("devices", DevicesSection(self)),
+            ("locations", LocationsSection(self)),
+            ("quick", QuickSection(self)),
+        ])
 
         # Set project ID and DB reference for all sections
         for section_id, section in self.section_logic.items():
@@ -230,6 +239,13 @@ class AccordionSidebar(QWidget):
 
     def _connect_signals(self):
         """Connect section signals to accordion signals."""
+
+        # Find section (Smart Find)
+        find = self.section_logic.get("find")
+        if find and hasattr(find, 'smartFindTriggered'):
+            find.smartFindTriggered.connect(self.selectSmartFind.emit)
+        if find and hasattr(find, 'smartFindCleared'):
+            find.smartFindCleared.connect(self.smartFindCleared.emit)
 
         # Folders section
         folders = self.section_logic.get("folders")
