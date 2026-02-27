@@ -82,6 +82,8 @@ class AccordionSidebar(QWidget):
     # Smart Find signals
     selectSmartFind = Signal(list, str)  # (paths, query_label)
     smartFindCleared = Signal()
+    smartFindScores = Signal(object)  # {path: score} dict for confidence overlay
+    smartFindExclude = Signal(str)  # path to exclude ("Not this")
 
     # Section expansion signal
     sectionExpanding = Signal(str)  # section_id
@@ -246,6 +248,10 @@ class AccordionSidebar(QWidget):
             find.smartFindTriggered.connect(self.selectSmartFind.emit)
         if find and hasattr(find, 'smartFindCleared'):
             find.smartFindCleared.connect(self.smartFindCleared.emit)
+        if find and hasattr(find, 'smartFindScores'):
+            find.smartFindScores.connect(self.smartFindScores.emit)
+        if find and hasattr(find, 'smartFindExclude'):
+            find.smartFindExclude.connect(self.smartFindExclude.emit)
 
         # Folders section
         folders = self.section_logic.get("folders")

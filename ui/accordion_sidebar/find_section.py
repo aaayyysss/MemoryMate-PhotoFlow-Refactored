@@ -8,17 +8,31 @@ Find Section for AccordionSidebar
 Three-layer discovery pattern (Apple/Google/Lightroom best practice):
 
 Layer 1 - Quick Finds: Preset category chips (Beach, Mountains, Wedding, etc.)
-    One click → instant results in the grid. No thinking required.
+    One click -> instant results in the grid. No thinking required.
 
 Layer 2 - Refine: Metadata facets (date, people, location, media type, rating)
     Additive filters applied ON TOP of the concept search.
 
-Layer 3 - Custom Search: Free-text CLIP search field
+Layer 3 - Custom Search: Free-text CLIP search field with NLP parsing
     User types their own query (e.g., "dog playing on grass").
+    NLP extracts dates, ratings, media types before CLIP fallback.
+
+Phase 2 additions:
+    - Custom presets (save/edit/delete)
+    - "Save current search" button
+    - Manage Presets panel with preset editor dialog
+    - Combinable filter chips
+
+Phase 3 additions:
+    - Confidence score display on results
+    - "Not this" exclusion on thumbnails
+    - Search suggestions
 
 Signals:
     smartFindTriggered(list, str): Emitted with (paths, query_label) for grid filtering
     smartFindCleared(): Emitted when Find filter is cleared
+    smartFindScores(object): Emitted with {path: score} dict for confidence overlay
+    smartFindExclude(str): Emitted when user excludes a path ("Not this")
 """
 
 import logging
@@ -26,9 +40,11 @@ from typing import Optional, Dict, List
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QScrollArea, QFrame, QLineEdit, QComboBox, QCheckBox,
-    QGridLayout, QSizePolicy
+    QGridLayout, QSizePolicy, QDialog, QDialogButtonBox,
+    QTextEdit, QSlider, QMessageBox, QMenu
 )
 from PySide6.QtCore import Signal, Qt, QTimer
+from PySide6.QtGui import QAction
 from .base_section import BaseSection
 
 logger = logging.getLogger(__name__)
@@ -36,6 +52,7 @@ logger = logging.getLogger(__name__)
 
 # Category display order and labels
 CATEGORY_ORDER = [
+    ("custom", "My Presets"),
     ("places", "Places & Scenes"),
     ("events", "Events & Activities"),
     ("subjects", "Subjects & Things"),
@@ -43,13 +60,211 @@ CATEGORY_ORDER = [
     ("quality", "Quality & Flags"),
 ]
 
+# Common icons for preset editor picker
+PRESET_ICONS = [
+    "\U0001f516", "\U0001f50d", "\u2b50", "\u2764\ufe0f", "\U0001f3af",
+    "\U0001f4f8", "\U0001f30d", "\U0001f3e0", "\U0001f333", "\U0001f30a",
+    "\U0001f525", "\U0001f4a1", "\U0001f3a8", "\U0001f381", "\U0001f4cc",
+    "\U0001f3b5", "\U0001f30c", "\U0001f697", "\U0001f36d", "\U0001f4d6",
+]
+
+
+class PresetEditorDialog(QDialog):
+    """
+    Dialog for creating/editing custom Smart Find presets.
+
+    Lightroom/Excire-inspired: name, icon, prompts, threshold, optional filters.
+    """
+
+    def __init__(self, parent=None, preset: Optional[Dict] = None):
+        super().__init__(parent)
+        self.setWindowTitle("Edit Preset" if preset else "New Preset")
+        self.setMinimumSize(420, 480)
+        self._preset = preset
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(12)
+        layout.setContentsMargins(16, 16, 16, 16)
+
+        # Name
+        layout.addWidget(QLabel("Name:"))
+        self._name_edit = QLineEdit()
+        self._name_edit.setPlaceholderText("e.g., Family Vacations")
+        self._name_edit.setStyleSheet(
+            "QLineEdit { padding: 8px; border: 1px solid #dadce0; "
+            "border-radius: 4px; font-size: 13px; }"
+        )
+        layout.addWidget(self._name_edit)
+
+        # Icon picker
+        layout.addWidget(QLabel("Icon:"))
+        icon_widget = QWidget()
+        icon_layout = QGridLayout(icon_widget)
+        icon_layout.setContentsMargins(0, 0, 0, 0)
+        icon_layout.setSpacing(4)
+        self._icon_buttons = {}
+        self._selected_icon = PRESET_ICONS[0]
+        for i, icon in enumerate(PRESET_ICONS):
+            btn = QPushButton(icon)
+            btn.setFixedSize(36, 36)
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.setStyleSheet(
+                "QPushButton { font-size: 18px; border: 2px solid transparent; "
+                "border-radius: 4px; background: #f1f3f4; }"
+                "QPushButton:hover { background: #e8f0fe; }"
+            )
+            btn.clicked.connect(lambda _, ic=icon: self._select_icon(ic))
+            icon_layout.addWidget(btn, i // 10, i % 10)
+            self._icon_buttons[icon] = btn
+        layout.addWidget(icon_widget)
+
+        # Prompts (CLIP search terms)
+        layout.addWidget(QLabel("Search Prompts (one per line):"))
+        self._prompts_edit = QTextEdit()
+        self._prompts_edit.setPlaceholderText(
+            "beach sunset\ncoastal scenery\nsandy shore\n\n"
+            "(Multiple prompts improve results — use synonyms)"
+        )
+        self._prompts_edit.setMaximumHeight(120)
+        self._prompts_edit.setStyleSheet(
+            "QTextEdit { padding: 6px; border: 1px solid #dadce0; "
+            "border-radius: 4px; font-size: 12px; }"
+        )
+        layout.addWidget(self._prompts_edit)
+
+        # Threshold slider
+        threshold_layout = QHBoxLayout()
+        threshold_layout.addWidget(QLabel("Sensitivity:"))
+        self._threshold_slider = QSlider(Qt.Horizontal)
+        self._threshold_slider.setRange(10, 40)  # 0.10 to 0.40
+        self._threshold_slider.setValue(22)
+        self._threshold_slider.setTickPosition(QSlider.TicksBelow)
+        self._threshold_slider.setTickInterval(5)
+        self._threshold_label = QLabel("0.22")
+        self._threshold_slider.valueChanged.connect(
+            lambda v: self._threshold_label.setText(f"{v / 100:.2f}")
+        )
+        threshold_layout.addWidget(self._threshold_slider, 1)
+        threshold_layout.addWidget(self._threshold_label)
+        layout.addLayout(threshold_layout)
+
+        hint = QLabel("Lower = more results but less precise. Higher = fewer but more relevant.")
+        hint.setStyleSheet("color: #5f6368; font-size: 11px;")
+        hint.setWordWrap(True)
+        layout.addWidget(hint)
+
+        # Optional metadata filters
+        layout.addWidget(QLabel("Optional Filters:"))
+        filter_widget = QWidget()
+        filter_layout = QGridLayout(filter_widget)
+        filter_layout.setContentsMargins(0, 0, 0, 0)
+        filter_layout.setSpacing(6)
+
+        self._filter_gps = QCheckBox("Has GPS location")
+        filter_layout.addWidget(self._filter_gps, 0, 0, 1, 2)
+
+        filter_layout.addWidget(QLabel("Min rating:"), 1, 0)
+        self._filter_rating = QComboBox()
+        self._filter_rating.addItem("Any", None)
+        for i in range(1, 6):
+            self._filter_rating.addItem("\u2605" * i, str(i))
+        filter_layout.addWidget(self._filter_rating, 1, 1)
+
+        filter_layout.addWidget(QLabel("Media:"), 2, 0)
+        self._filter_media = QComboBox()
+        self._filter_media.addItem("All", None)
+        self._filter_media.addItem("Photos only", "photo")
+        self._filter_media.addItem("Videos only", "video")
+        filter_layout.addWidget(self._filter_media, 2, 1)
+
+        layout.addWidget(filter_widget)
+
+        # Buttons
+        buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self._on_save)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+        # Pre-fill if editing
+        if preset:
+            self._name_edit.setText(preset.get("name", ""))
+            icon = preset.get("icon", PRESET_ICONS[0])
+            self._select_icon(icon)
+            prompts = preset.get("prompts", [])
+            self._prompts_edit.setPlainText("\n".join(prompts))
+            threshold = preset.get("threshold", 0.22)
+            self._threshold_slider.setValue(int(threshold * 100))
+            filters = preset.get("filters", {})
+            if filters.get("has_gps"):
+                self._filter_gps.setChecked(True)
+            if filters.get("rating_min"):
+                for i in range(self._filter_rating.count()):
+                    if self._filter_rating.itemData(i) == str(filters["rating_min"]):
+                        self._filter_rating.setCurrentIndex(i)
+                        break
+            if filters.get("media_type"):
+                for i in range(self._filter_media.count()):
+                    if self._filter_media.itemData(i) == filters["media_type"]:
+                        self._filter_media.setCurrentIndex(i)
+                        break
+        else:
+            self._select_icon(PRESET_ICONS[0])
+
+    def _select_icon(self, icon: str):
+        """Highlight selected icon."""
+        self._selected_icon = icon
+        for ic, btn in self._icon_buttons.items():
+            if ic == icon:
+                btn.setStyleSheet(
+                    "QPushButton { font-size: 18px; border: 2px solid #1a73e8; "
+                    "border-radius: 4px; background: #e8f0fe; }"
+                )
+            else:
+                btn.setStyleSheet(
+                    "QPushButton { font-size: 18px; border: 2px solid transparent; "
+                    "border-radius: 4px; background: #f1f3f4; }"
+                    "QPushButton:hover { background: #e8f0fe; }"
+                )
+
+    def _on_save(self):
+        """Validate and accept."""
+        name = self._name_edit.text().strip()
+        if not name:
+            QMessageBox.warning(self, "Missing Name", "Please enter a preset name.")
+            return
+        self.accept()
+
+    def get_preset_data(self) -> Dict:
+        """Get the preset data from the dialog."""
+        prompts_text = self._prompts_edit.toPlainText().strip()
+        prompts = [line.strip() for line in prompts_text.split("\n") if line.strip()]
+
+        filters = {}
+        if self._filter_gps.isChecked():
+            filters["has_gps"] = True
+        rating = self._filter_rating.currentData()
+        if rating:
+            filters["rating_min"] = int(rating)
+        media = self._filter_media.currentData()
+        if media:
+            filters["media_type"] = media
+
+        return {
+            "name": self._name_edit.text().strip(),
+            "icon": self._selected_icon,
+            "prompts": prompts,
+            "threshold": self._threshold_slider.value() / 100.0,
+            "filters": filters,
+        }
+
 
 class FindSection(BaseSection):
     """
     Smart Find section for the AccordionSidebar.
 
     Provides intelligent photo discovery with preset categories,
-    refinement facets, and free-text CLIP search.
+    refinement facets, free-text CLIP search, custom presets,
+    combinable filters, and confidence scoring.
     """
 
     # Emitted when a Smart Find query produces results
@@ -59,11 +274,18 @@ class FindSection(BaseSection):
     # Emitted when the user clears the Find filter
     smartFindCleared = Signal()
 
+    # Emitted with {path: score} dict for confidence overlay on grid thumbnails
+    smartFindScores = Signal(object)
+
+    # Emitted when user wants to exclude a photo ("Not this")
+    smartFindExclude = Signal(str)
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self._smart_find_service = None
         self._active_preset_id = None
         self._active_query_label = None
+        self._active_text_query = None
         self._search_debounce = QTimer()
         self._search_debounce.setSingleShot(True)
         self._search_debounce.setInterval(500)
@@ -72,6 +294,8 @@ class FindSection(BaseSection):
         self._recent_searches: List[Dict] = []  # [{label, preset_id_or_query, count}]
         self._preset_buttons: Dict[str, QPushButton] = {}
         self._refine_filters: Dict[str, any] = {}
+        # Combinable filter state
+        self._active_filters: List[Dict] = []  # [{type, id, label, icon}]
 
     def get_section_id(self) -> str:
         return "find"
@@ -80,13 +304,14 @@ class FindSection(BaseSection):
         return "Find"
 
     def get_icon(self) -> str:
-        return "🔍"
+        return "\U0001f50d"
 
     def set_project(self, project_id: int) -> None:
         """Override to reinitialize service on project switch."""
         super().set_project(project_id)
         self._smart_find_service = None
         self._active_preset_id = None
+        self._active_filters = []
 
     def _get_service(self):
         """Get or create SmartFindService for current project."""
@@ -105,10 +330,10 @@ class FindSection(BaseSection):
 
     def create_content_widget(self, data) -> Optional[QWidget]:
         """
-        Create the three-layer Find UI.
+        Create the three-layer Find UI with Phase 2/3 enhancements.
 
-        Layer 1: Quick Find preset chips (categorized)
-        Layer 2: Refine facets
+        Layer 1: Quick Find preset chips (categorized, including custom)
+        Layer 2: Refine facets + active filter chips
         Layer 3: Custom text search + recent searches
         """
         container = QWidget()
@@ -116,7 +341,7 @@ class FindSection(BaseSection):
         main_layout.setContentsMargins(8, 6, 8, 8)
         main_layout.setSpacing(8)
 
-        # ── Active Query Indicator (shown when a find is active) ──
+        # -- Active Query Indicator (shown when a find is active) --
         self._active_indicator = QWidget()
         indicator_layout = QHBoxLayout(self._active_indicator)
         indicator_layout.setContentsMargins(8, 6, 8, 6)
@@ -126,9 +351,21 @@ class FindSection(BaseSection):
         self._active_label.setStyleSheet(
             "font-size: 12px; font-weight: bold; color: #1a73e8;"
         )
+        self._active_label.setWordWrap(True)
         indicator_layout.addWidget(self._active_label, 1)
 
-        clear_btn = QPushButton("✕ Clear")
+        save_btn = QPushButton("\U0001f4be")
+        save_btn.setFixedSize(26, 26)
+        save_btn.setToolTip("Save as custom preset")
+        save_btn.setCursor(Qt.PointingHandCursor)
+        save_btn.setStyleSheet(
+            "QPushButton { background: #e8f0fe; border: none; border-radius: 4px; font-size: 14px; }"
+            "QPushButton:hover { background: #d2e3fc; }"
+        )
+        save_btn.clicked.connect(self._save_current_search)
+        indicator_layout.addWidget(save_btn)
+
+        clear_btn = QPushButton("\u2715 Clear")
         clear_btn.setFixedHeight(26)
         clear_btn.setStyleSheet("""
             QPushButton {
@@ -146,7 +383,15 @@ class FindSection(BaseSection):
         self._active_indicator.hide()
         main_layout.addWidget(self._active_indicator)
 
-        # ── Layer 3: Custom Text Search (at top for quick access) ──
+        # -- Active Filter Chips (combinable filters) --
+        self._filter_chips_container = QWidget()
+        self._filter_chips_layout = QHBoxLayout(self._filter_chips_container)
+        self._filter_chips_layout.setContentsMargins(0, 0, 0, 0)
+        self._filter_chips_layout.setSpacing(4)
+        self._filter_chips_container.hide()
+        main_layout.addWidget(self._filter_chips_container)
+
+        # -- Layer 3: Custom Text Search (at top for quick access) --
         search_frame = QFrame()
         search_frame.setStyleSheet(
             "QFrame { background: white; border: 1px solid #dadce0; border-radius: 8px; }"
@@ -155,7 +400,7 @@ class FindSection(BaseSection):
         search_layout.setContentsMargins(10, 4, 10, 4)
         search_layout.setSpacing(6)
 
-        search_icon = QLabel("🔍")
+        search_icon = QLabel("\U0001f50d")
         search_icon.setFixedWidth(20)
         search_layout.addWidget(search_icon)
 
@@ -173,11 +418,16 @@ class FindSection(BaseSection):
 
         main_layout.addWidget(search_frame)
 
-        # ── CLIP availability indicator ──
+        # NLP hint
+        nlp_hint = QLabel("Try: \"sunset from 2024\", \"3 star beach\", \"videos last month\"")
+        nlp_hint.setStyleSheet("color: #9aa0a6; font-size: 10px; padding: 0 2px;")
+        main_layout.addWidget(nlp_hint)
+
+        # -- CLIP availability indicator --
         service = self._get_service()
         if service and not service.clip_available:
             no_clip = QLabel(
-                "⚠ AI Search unavailable — CLIP model not loaded.\n"
+                "\u26a0 AI Search unavailable \u2014 CLIP model not loaded.\n"
                 "Metadata-only presets still work."
             )
             no_clip.setWordWrap(True)
@@ -187,7 +437,7 @@ class FindSection(BaseSection):
             )
             main_layout.addWidget(no_clip)
 
-        # ── Layer 1: Quick Find Preset Chips (categorized) ──
+        # -- Layer 1: Quick Find Preset Chips (categorized) --
         presets_by_cat = data if isinstance(data, dict) else {}
         self._preset_buttons = {}
 
@@ -196,13 +446,31 @@ class FindSection(BaseSection):
             if not presets:
                 continue
 
-            # Category header
+            # Category header with action button for custom category
+            cat_header_widget = QWidget()
+            cat_header_layout = QHBoxLayout(cat_header_widget)
+            cat_header_layout.setContentsMargins(2, 4, 2, 2)
+            cat_header_layout.setSpacing(4)
+
             cat_header = QLabel(cat_label)
             cat_header.setStyleSheet(
-                "font-size: 11px; font-weight: bold; color: #5f6368; "
-                "padding: 4px 0 2px 2px;"
+                "font-size: 11px; font-weight: bold; color: #5f6368;"
             )
-            main_layout.addWidget(cat_header)
+            cat_header_layout.addWidget(cat_header, 1)
+
+            if cat_id == "custom":
+                manage_btn = QPushButton("+ New")
+                manage_btn.setFixedHeight(22)
+                manage_btn.setCursor(Qt.PointingHandCursor)
+                manage_btn.setStyleSheet(
+                    "QPushButton { background: transparent; border: none; "
+                    "color: #1a73e8; font-size: 11px; font-weight: bold; }"
+                    "QPushButton:hover { color: #1765cc; }"
+                )
+                manage_btn.clicked.connect(self._create_new_preset)
+                cat_header_layout.addWidget(manage_btn)
+
+            main_layout.addWidget(cat_header_widget)
 
             # Preset chips in a flow grid
             chip_widget = QWidget()
@@ -215,7 +483,23 @@ class FindSection(BaseSection):
 
             main_layout.addWidget(chip_widget)
 
-        # ── Layer 2: Refine Facets ──
+        # Add "Create First Preset" button if no custom presets yet
+        if "custom" not in presets_by_cat or not presets_by_cat.get("custom"):
+            create_first = QPushButton("+ Create Custom Preset")
+            create_first.setMinimumHeight(34)
+            create_first.setCursor(Qt.PointingHandCursor)
+            create_first.setStyleSheet("""
+                QPushButton {
+                    background: transparent; border: 1px dashed #dadce0;
+                    border-radius: 17px; padding: 5px 14px;
+                    font-size: 12px; color: #1a73e8;
+                }
+                QPushButton:hover { background: #e8f0fe; border-color: #1a73e8; }
+            """)
+            create_first.clicked.connect(self._create_new_preset)
+            main_layout.addWidget(create_first)
+
+        # -- Layer 2: Refine Facets --
         refine_header = QLabel("Refine Results")
         refine_header.setStyleSheet(
             "font-size: 11px; font-weight: bold; color: #5f6368; "
@@ -226,7 +510,7 @@ class FindSection(BaseSection):
         refine_widget = self._create_refine_panel()
         main_layout.addWidget(refine_widget)
 
-        # ── Recent Searches ──
+        # -- Recent Searches --
         self._recent_container = QWidget()
         self._recent_layout = QVBoxLayout(self._recent_container)
         self._recent_layout.setContentsMargins(0, 4, 0, 0)
@@ -250,79 +534,73 @@ class FindSection(BaseSection):
         """
         Create a Google Photos-style preset chip button.
 
-        Design: icon + name, rounded corners, subtle background,
-        hover highlight, active state.
+        Custom presets get a context menu for edit/delete.
         """
-        icon = preset.get("icon", "🔍")
+        icon = preset.get("icon", "\U0001f50d")
         name = preset.get("name", "Unknown")
         preset_id = preset.get("id", "")
+        is_custom = preset.get("is_custom", False)
 
         btn = QPushButton(f" {icon}  {name}")
         btn.setMinimumHeight(34)
         btn.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
         btn.setCursor(Qt.PointingHandCursor)
-        btn.setStyleSheet("""
-            QPushButton {
-                background: #f1f3f4;
-                border: 1px solid #e0e0e0;
-                border-radius: 17px;
-                padding: 5px 14px;
-                font-size: 12px;
-                color: #202124;
-                text-align: left;
-            }
-            QPushButton:hover {
-                background: #e8f0fe;
-                border-color: #1a73e8;
-                color: #1a73e8;
-            }
-            QPushButton:pressed {
-                background: #d2e3fc;
-            }
-        """)
+        btn.setStyleSheet(self._chip_default_style())
         btn.setProperty("preset_id", preset_id)
         btn.clicked.connect(lambda _, pid=preset_id: self._on_preset_clicked(pid))
+
+        # Context menu for custom presets
+        if is_custom:
+            btn.setContextMenuPolicy(Qt.CustomContextMenu)
+            btn.customContextMenuRequested.connect(
+                lambda pos, pid=preset_id, b=btn: self._show_preset_context_menu(b, pid)
+            )
+
         return btn
+
+    def _chip_default_style(self) -> str:
+        return """
+            QPushButton {
+                background: #f1f3f4; border: 1px solid #e0e0e0;
+                border-radius: 17px; padding: 5px 14px;
+                font-size: 12px; color: #202124; text-align: left;
+            }
+            QPushButton:hover {
+                background: #e8f0fe; border-color: #1a73e8; color: #1a73e8;
+            }
+            QPushButton:pressed { background: #d2e3fc; }
+        """
+
+    def _chip_active_style(self) -> str:
+        return """
+            QPushButton {
+                background: #1a73e8; border: 1px solid #1a73e8;
+                border-radius: 17px; padding: 5px 14px;
+                font-size: 12px; color: white; text-align: left; font-weight: bold;
+            }
+            QPushButton:hover { background: #1765cc; }
+        """
 
     def _set_chip_active(self, preset_id: str):
         """Highlight the active preset chip, reset others."""
         for pid, btn in self._preset_buttons.items():
-            if pid == preset_id:
-                btn.setStyleSheet("""
-                    QPushButton {
-                        background: #1a73e8;
-                        border: 1px solid #1a73e8;
-                        border-radius: 17px;
-                        padding: 5px 14px;
-                        font-size: 12px;
-                        color: white;
-                        text-align: left;
-                        font-weight: bold;
-                    }
-                    QPushButton:hover {
-                        background: #1765cc;
-                    }
-                """)
-            else:
-                btn.setStyleSheet("""
-                    QPushButton {
-                        background: #f1f3f4;
-                        border: 1px solid #e0e0e0;
-                        border-radius: 17px;
-                        padding: 5px 14px;
-                        font-size: 12px;
-                        color: #202124;
-                        text-align: left;
-                    }
-                    QPushButton:hover {
-                        background: #e8f0fe;
-                        border-color: #1a73e8;
-                        color: #1a73e8;
-                    }
-                    QPushButton:pressed {
-                        background: #d2e3fc;
-                    }
-                """)
+            btn.setStyleSheet(
+                self._chip_active_style() if pid == preset_id
+                else self._chip_default_style()
+            )
+
+    def _show_preset_context_menu(self, button: QPushButton, preset_id: str):
+        """Show edit/delete context menu for custom presets."""
+        menu = QMenu(button)
+        edit_action = menu.addAction("Edit Preset")
+        delete_action = menu.addAction("Delete Preset")
+        delete_action.setIcon(button.style().standardIcon(button.style().SP_TrashIcon))
+
+        action = menu.exec_(button.mapToGlobal(button.rect().bottomLeft()))
+        if action == edit_action:
+            self._edit_custom_preset(preset_id)
+        elif action == delete_action:
+            self._delete_custom_preset(preset_id)
 
     def _create_refine_panel(self) -> QWidget:
         """Create Layer 2: Metadata refinement facets."""
@@ -350,8 +628,11 @@ class FindSection(BaseSection):
         self._date_combo = QComboBox()
         self._date_combo.addItem("Any time", None)
         self._date_combo.addItem("Today", "today")
+        self._date_combo.addItem("Yesterday", "yesterday")
         self._date_combo.addItem("This week", "week")
+        self._date_combo.addItem("Last week", "last_week")
         self._date_combo.addItem("This month", "month")
+        self._date_combo.addItem("Last month", "last_month")
         self._date_combo.addItem("This year", "year")
         self._date_combo.addItem("Last year", "last_year")
         self._date_combo.setStyleSheet(combo_style)
@@ -378,11 +659,11 @@ class FindSection(BaseSection):
         layout.addWidget(QLabel("Rating:"), 3, 0)
         self._rating_combo = QComboBox()
         self._rating_combo.addItem("Any rating", None)
-        self._rating_combo.addItem("★ and above", "1")
-        self._rating_combo.addItem("★★ and above", "2")
-        self._rating_combo.addItem("★★★ and above", "3")
-        self._rating_combo.addItem("★★★★ and above", "4")
-        self._rating_combo.addItem("★★★★★ only", "5")
+        self._rating_combo.addItem("\u2605 and above", "1")
+        self._rating_combo.addItem("\u2605\u2605 and above", "2")
+        self._rating_combo.addItem("\u2605\u2605\u2605 and above", "3")
+        self._rating_combo.addItem("\u2605\u2605\u2605\u2605 and above", "4")
+        self._rating_combo.addItem("\u2605\u2605\u2605\u2605\u2605 only", "5")
         self._rating_combo.setStyleSheet(combo_style)
         self._rating_combo.currentIndexChanged.connect(self._on_refine_changed)
         layout.addWidget(self._rating_combo, 3, 1)
@@ -405,14 +686,29 @@ class FindSection(BaseSection):
             if date_val == "today":
                 filters["date_from"] = today.strftime("%Y-%m-%d")
                 filters["date_to"] = today.strftime("%Y-%m-%d")
+            elif date_val == "yesterday":
+                yesterday = today - timedelta(days=1)
+                filters["date_from"] = yesterday.strftime("%Y-%m-%d")
+                filters["date_to"] = yesterday.strftime("%Y-%m-%d")
             elif date_val == "week":
-                start = today - timedelta(days=6)
+                start = today - timedelta(days=today.weekday())
                 filters["date_from"] = start.strftime("%Y-%m-%d")
                 filters["date_to"] = today.strftime("%Y-%m-%d")
+            elif date_val == "last_week":
+                start = today - timedelta(days=today.weekday() + 7)
+                end = start + timedelta(days=6)
+                filters["date_from"] = start.strftime("%Y-%m-%d")
+                filters["date_to"] = end.strftime("%Y-%m-%d")
             elif date_val == "month":
                 start = today.replace(day=1)
                 filters["date_from"] = start.strftime("%Y-%m-%d")
                 filters["date_to"] = today.strftime("%Y-%m-%d")
+            elif date_val == "last_month":
+                first_of_month = today.replace(day=1)
+                last_month_end = first_of_month - timedelta(days=1)
+                last_month_start = last_month_end.replace(day=1)
+                filters["date_from"] = last_month_start.strftime("%Y-%m-%d")
+                filters["date_to"] = last_month_end.strftime("%Y-%m-%d")
             elif date_val == "year":
                 filters["date_from"] = f"{today.year}-01-01"
                 filters["date_to"] = today.strftime("%Y-%m-%d")
@@ -439,13 +735,14 @@ class FindSection(BaseSection):
     # ── Event Handlers ──
 
     def _on_preset_clicked(self, preset_id: str):
-        """Handle preset chip click — run Smart Find."""
+        """Handle preset chip click - run Smart Find."""
         # Toggle: clicking active preset clears it
         if self._active_preset_id == preset_id:
             self._clear_find()
             return
 
         self._active_preset_id = preset_id
+        self._active_text_query = None
         self._set_chip_active(preset_id)
 
         service = self._get_service()
@@ -471,6 +768,9 @@ class FindSection(BaseSection):
             self._show_active_indicator(result.query_label, result.total_matches)
             self._add_recent(result.query_label, preset_id, result.total_matches)
             self.smartFindTriggered.emit(result.paths, result.query_label)
+            # Emit scores for confidence overlay
+            if result.scores:
+                self.smartFindScores.emit(result.scores)
         else:
             self._show_active_indicator(result.query_label, 0)
             self.smartFindTriggered.emit([], result.query_label)
@@ -484,45 +784,30 @@ class FindSection(BaseSection):
             self._search_debounce.stop()
 
     def _execute_text_search(self):
-        """Execute free-text CLIP search."""
+        """Execute free-text search with NLP parsing."""
         query = self._pending_text_query
         if not query or len(query) < 3:
             return
 
         service = self._get_service()
-        if not service or not service.clip_available:
-            logger.warning("[FindSection] CLIP not available for text search")
+        if not service:
+            logger.warning("[FindSection] SmartFindService not available")
             return
 
         # Clear preset selection
         self._active_preset_id = None
+        self._active_text_query = query
         self._set_chip_active("")
 
         extra_filters = self._get_refine_filters()
-        result = service.find_by_text(query)
-
-        # Apply refine filters if any
-        if extra_filters and result.paths:
-            from services.smart_find_service import SmartFindService
-            filtered = service.find_by_preset.__func__  # noqa - not needed
-            # Simple path-based filtering for extra criteria
-            result_paths = result.paths
-            if "media_type" in extra_filters:
-                mt = extra_filters["media_type"]
-                if mt == "video":
-                    video_exts = {'.mp4', '.mov', '.avi', '.mkv', '.wmv', '.webm'}
-                    result_paths = [p for p in result_paths
-                                    if any(p.lower().endswith(e) for e in video_exts)]
-                elif mt == "photo":
-                    video_exts = {'.mp4', '.mov', '.avi', '.mkv', '.wmv', '.webm'}
-                    result_paths = [p for p in result_paths
-                                    if not any(p.lower().endswith(e) for e in video_exts)]
-            result.paths = result_paths
+        result = service.find_by_text(query, extra_filters=extra_filters or None)
 
         self._active_query_label = result.query_label
         self._show_active_indicator(result.query_label, result.total_matches)
         self._add_recent(result.query_label, query, result.total_matches)
         self.smartFindTriggered.emit(result.paths, result.query_label)
+        if result.scores:
+            self.smartFindScores.emit(result.scores)
 
     def _on_refine_changed(self, _=None):
         """Re-run current find with updated refine filters."""
@@ -530,13 +815,15 @@ class FindSection(BaseSection):
             extra_filters = self._get_refine_filters()
             QTimer.singleShot(0, lambda: self._run_preset_find(
                 self._active_preset_id, extra_filters))
-        elif self._pending_text_query and len(self._pending_text_query) >= 3:
+        elif self._active_text_query and len(self._active_text_query) >= 3:
+            self._pending_text_query = self._active_text_query
             self._execute_text_search()
 
     def _clear_find(self):
         """Clear all Smart Find state and restore full photo grid."""
         self._active_preset_id = None
         self._active_query_label = None
+        self._active_text_query = None
         self._set_chip_active("")
 
         if hasattr(self, '_active_indicator'):
@@ -556,16 +843,150 @@ class FindSection(BaseSection):
         if hasattr(self, '_search_field'):
             self._search_field.clear()
 
+        # Clear exclusions
+        service = self._get_service()
+        if service:
+            service.clear_exclusions()
+
         self.smartFindCleared.emit()
 
     def _show_active_indicator(self, label: str, count: int):
         """Show the active query indicator at top of section."""
         if hasattr(self, '_active_indicator') and hasattr(self, '_active_label'):
             if count > 0:
-                self._active_label.setText(f"{label}  —  {count} photos found")
+                self._active_label.setText(f"{label}  \u2014  {count} photos found")
             else:
-                self._active_label.setText(f"{label}  —  No matches")
+                self._active_label.setText(f"{label}  \u2014  No matches")
             self._active_indicator.show()
+
+    # ── Custom Preset Management ──
+
+    def _create_new_preset(self):
+        """Open the preset editor dialog to create a new custom preset."""
+        dialog = PresetEditorDialog(self)
+        if dialog.exec() == QDialog.Accepted:
+            data = dialog.get_preset_data()
+            service = self._get_service()
+            if service:
+                service.save_custom_preset(
+                    name=data["name"],
+                    icon=data["icon"],
+                    prompts=data["prompts"],
+                    filters=data.get("filters"),
+                    threshold=data.get("threshold", 0.22),
+                )
+                # Refresh the section to show new preset
+                self._reload_section()
+
+    def _edit_custom_preset(self, preset_id: str):
+        """Open the preset editor to edit an existing custom preset."""
+        service = self._get_service()
+        if not service:
+            return
+
+        preset = service._lookup_preset(preset_id)
+        if not preset or not preset.get("is_custom"):
+            return
+
+        dialog = PresetEditorDialog(self, preset=preset)
+        if dialog.exec() == QDialog.Accepted:
+            data = dialog.get_preset_data()
+            service.update_custom_preset(
+                db_id=preset["db_id"],
+                name=data["name"],
+                icon=data["icon"],
+                prompts=data["prompts"],
+                filters=data.get("filters"),
+                threshold=data.get("threshold", 0.22),
+            )
+            self._reload_section()
+
+    def _delete_custom_preset(self, preset_id: str):
+        """Delete a custom preset after confirmation."""
+        service = self._get_service()
+        if not service:
+            return
+
+        preset = service._lookup_preset(preset_id)
+        if not preset or not preset.get("is_custom"):
+            return
+
+        reply = QMessageBox.question(
+            self, "Delete Preset",
+            f"Delete custom preset \"{preset['name']}\"?\n\nThis cannot be undone.",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+        )
+        if reply == QMessageBox.Yes:
+            service.delete_custom_preset(preset["db_id"])
+            if self._active_preset_id == preset_id:
+                self._clear_find()
+            self._reload_section()
+
+    def _save_current_search(self):
+        """Save the current active search as a custom preset."""
+        service = self._get_service()
+        if not service:
+            return
+
+        # Pre-fill dialog with current search info
+        current_preset = None
+        if self._active_preset_id:
+            source = service._lookup_preset(self._active_preset_id)
+            if source:
+                current_preset = {
+                    "name": f"My {source.get('name', 'Search')}",
+                    "icon": source.get("icon", PRESET_ICONS[0]),
+                    "prompts": source.get("prompts", []),
+                    "filters": {**source.get("filters", {}), **self._get_refine_filters()},
+                    "threshold": source.get("threshold", 0.22),
+                }
+        elif self._active_text_query:
+            current_preset = {
+                "name": self._active_text_query[:30],
+                "icon": PRESET_ICONS[1],  # search icon
+                "prompts": [self._active_text_query],
+                "filters": self._get_refine_filters(),
+                "threshold": 0.22,
+            }
+
+        dialog = PresetEditorDialog(self, preset=current_preset)
+        if dialog.exec() == QDialog.Accepted:
+            data = dialog.get_preset_data()
+            service.save_custom_preset(
+                name=data["name"],
+                icon=data["icon"],
+                prompts=data["prompts"],
+                filters=data.get("filters"),
+                threshold=data.get("threshold", 0.22),
+            )
+            self._reload_section()
+
+    def _reload_section(self):
+        """Reload section content to reflect preset changes."""
+        # Invalidate custom presets cache
+        service = self._get_service()
+        if service:
+            service._custom_presets = None
+
+        # Re-trigger load
+        data = self.load_section()
+        if hasattr(self, '_content_widget') and self._content_widget:
+            # Find the parent layout and replace content
+            parent = self._content_widget.parent()
+            if parent and parent.layout():
+                layout = parent.layout()
+                # Remove old content
+                layout.removeWidget(self._content_widget)
+                self._content_widget.deleteLater()
+                # Create new content
+                new_widget = self.create_content_widget(data)
+                if new_widget:
+                    layout.addWidget(new_widget)
+                    self._content_widget = new_widget
+        else:
+            # Fallback: emit loaded signal to trigger section refresh
+            if hasattr(self, '_signals'):
+                self._signals.loaded.emit(self._generation, data)
 
     # ── Recent Searches ──
 
@@ -623,10 +1044,11 @@ class FindSection(BaseSection):
 
     def _on_recent_clicked(self, query_or_id: str):
         """Re-run a recent search."""
-        # Check if it's a preset ID
-        from services.smart_find_service import BUILTIN_PRESETS
-        for p in BUILTIN_PRESETS:
-            if p["id"] == query_or_id:
+        # Check if it's a preset ID (builtin or custom)
+        service = self._get_service()
+        if service:
+            preset = service._lookup_preset(query_or_id)
+            if preset:
                 self._on_preset_clicked(query_or_id)
                 return
 

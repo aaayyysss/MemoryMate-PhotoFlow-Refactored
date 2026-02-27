@@ -483,6 +483,36 @@ VALUES ('10.0.0', 'People Groups: person_groups, person_group_members, group_ass
 )
 
 
+MIGRATION_10_1_0 = Migration(
+    version="10.1.0",
+    description="Smart Find custom presets: smart_find_presets",
+    sql="""
+-- Migration v10.1.0: Smart Find custom presets
+-- User-created search presets with CLIP prompts and metadata filters
+
+CREATE TABLE IF NOT EXISTS smart_find_presets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    icon TEXT DEFAULT '🔖',
+    category TEXT DEFAULT 'custom',
+    config_json TEXT NOT NULL,
+    sort_order INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_smart_find_presets_project
+    ON smart_find_presets(project_id, sort_order);
+
+INSERT OR REPLACE INTO schema_version (version, description, applied_at)
+VALUES ('10.1.0', 'Smart Find custom presets: smart_find_presets', CURRENT_TIMESTAMP);
+""",
+    rollback_sql=""
+)
+
+
 # Ordered list of all migrations
 ALL_MIGRATIONS = [
     MIGRATION_1_5_0,
@@ -498,6 +528,7 @@ ALL_MIGRATIONS = [
     MIGRATION_9_3_0,
     MIGRATION_9_4_0,
     MIGRATION_10_0_0,
+    MIGRATION_10_1_0,
 ]
 
 
