@@ -218,6 +218,12 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         self.slideshow_music_path = None  # Path to music file
         self.slideshow_music_volume = 0.5  # Music volume (0.0 - 1.0)
 
+        # Slideshow editor (photo selection for curated slideshow)
+        self.slideshow_selected_indices = set()  # Indices selected for slideshow
+        self._slideshow_playlist = None  # Ordered list of (all_media_index, path) when curated
+        self._slideshow_playlist_pos = 0  # Position within curated playlist
+        self.slideshow_editor_visible = False
+
         # Rating state
         self.current_rating = 0  # 0-5 stars
 
@@ -1018,6 +1024,11 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         main_layout.addWidget(self.mode_stack, 1)
         self.mode_stack.setCurrentIndex(0)
 
+        # === SLIDESHOW EDITOR PANEL (select photos for curated slideshow) ===
+        self.slideshow_editor_panel = self._create_slideshow_editor()
+        main_layout.addWidget(self.slideshow_editor_panel)
+        self.slideshow_editor_panel.hide()
+
         # === BOTTOM TOOLBAR (Overlay with gradient) ===
         self.bottom_toolbar = self._create_bottom_toolbar()
         main_layout.addWidget(self.bottom_toolbar)
@@ -1728,7 +1739,16 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         self.slideshow_settings_btn.setToolTip("Slideshow Settings & Music")
         layout.addWidget(self.slideshow_settings_btn)
 
-
+        # Slideshow editor button (select photos for slideshow)
+        self.slideshow_editor_btn = QPushButton("🎞")
+        self.slideshow_editor_btn.setFocusPolicy(Qt.NoFocus)
+        self.slideshow_editor_btn.setFixedSize(self.button_size_sm, self.button_size_sm)
+        self.slideshow_editor_btn.setStyleSheet(
+            btn_style + f"QPushButton {{ font-size: {zoom_font_size}pt; }}"
+        )
+        self.slideshow_editor_btn.clicked.connect(self._toggle_slideshow_editor)
+        self.slideshow_editor_btn.setToolTip("Edit Slideshow (select photos)")
+        layout.addWidget(self.slideshow_editor_btn)
 
         # Info toggle button - RESPONSIVE SIZE
         self.info_btn = QPushButton("ℹ️")
@@ -7732,7 +7752,9 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         if self.slideshow_active:
             interval_s = self.slideshow_interval / 1000
             kb_label = " | Ken Burns" if self.slideshow_ken_burns else ""
-            status_parts.append(f"⏵ Slideshow ({interval_s:.0f}s{kb_label})")
+            pl = getattr(self, '_slideshow_playlist', None)
+            pl_label = f" | {len(pl)} photos" if pl else ""
+            status_parts.append(f"⏵ Slideshow ({interval_s:.0f}s{kb_label}{pl_label})")
         # Slideshow music indicator
         if (getattr(self, 'slideshow_music_player', None) and
                 self.slideshow_music_player.playbackState() == QMediaPlayer.PlayingState):
@@ -7768,7 +7790,9 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         if self.slideshow_active:
             interval_s = self.slideshow_interval / 1000
             kb_label = " | Ken Burns" if self.slideshow_ken_burns else ""
-            status_parts.append(f"⏵ Slideshow ({interval_s:.0f}s{kb_label})")
+            pl = getattr(self, '_slideshow_playlist', None)
+            pl_label = f" | {len(pl)} photos" if pl else ""
+            status_parts.append(f"⏵ Slideshow ({interval_s:.0f}s{kb_label}{pl_label})")
         # Slideshow music indicator
         if (getattr(self, 'slideshow_music_player', None) and
                 self.slideshow_music_player.playbackState() == QMediaPlayer.PlayingState):
@@ -7792,6 +7816,8 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 self.slideshow_timer.stop()
             self._stop_ken_burns()
             self._stop_slideshow_music()
+            self._slideshow_playlist = None
+            self._slideshow_playlist_pos = 0
             self.slideshow_btn.setText("▶")
             self.slideshow_btn.setToolTip("Slideshow (S)")
 
@@ -7804,6 +7830,26 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
             self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         else:
+            # Build curated playlist if photos are selected
+            if self.slideshow_selected_indices:
+                sorted_indices = sorted(self.slideshow_selected_indices)
+                self._slideshow_playlist = [
+                    (idx, self.all_media[idx]) for idx in sorted_indices
+                    if idx < len(self.all_media)
+                ]
+                if not self._slideshow_playlist:
+                    self._slideshow_playlist = None
+                else:
+                    # Jump to first selected photo
+                    first_idx, first_path = self._slideshow_playlist[0]
+                    self._slideshow_playlist_pos = 0
+                    self.current_index = first_idx
+                    self.media_path = first_path
+                    self._load_media()
+                    print(f"[MediaLightbox] Curated slideshow: {len(self._slideshow_playlist)} photos")
+            else:
+                self._slideshow_playlist = None
+
             # Start slideshow
             self.slideshow_active = True
             self._ken_burns_direction = 0
@@ -7814,6 +7860,10 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             self.slideshow_timer.start(self.slideshow_interval)
             self.slideshow_btn.setText("⏸")
             self.slideshow_btn.setToolTip("Pause Slideshow (S)")
+
+            # Hide slideshow editor if visible
+            if self.slideshow_editor_visible:
+                self._toggle_slideshow_editor()
 
             # Hide scrollbars for clean cinematic look
             self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
@@ -7982,25 +8032,41 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             return None
 
     def _slideshow_advance(self):
-        """Advance to next media in slideshow (with loop support)."""
+        """Advance to next media in slideshow (with playlist and loop support)."""
         if not self.slideshow_active:
             return
 
         # Stop Ken Burns before transitioning
         self._stop_ken_burns()
+        self._save_zoom_state()
 
-        if self.current_index < len(self.all_media) - 1:
-            # Normal advance
-            self._next_media()
-        elif self.slideshow_loop and len(self.all_media) > 1:
-            # Loop back to start (iPhone/Google Photos behavior)
-            self._save_zoom_state()
-            self.current_index = 0
-            self.media_path = self.all_media[0]
-            self._load_media_with_transition()
+        if self._slideshow_playlist:
+            # Curated playlist mode: navigate through selected photos only
+            self._slideshow_playlist_pos += 1
+            if self._slideshow_playlist_pos < len(self._slideshow_playlist):
+                idx, path = self._slideshow_playlist[self._slideshow_playlist_pos]
+                self.current_index = idx
+                self.media_path = path
+                self._load_media_with_transition()
+            elif self.slideshow_loop and len(self._slideshow_playlist) > 1:
+                # Loop back to first selected photo
+                self._slideshow_playlist_pos = 0
+                idx, path = self._slideshow_playlist[0]
+                self.current_index = idx
+                self.media_path = path
+                self._load_media_with_transition()
+            else:
+                self._toggle_slideshow()
         else:
-            # End of slideshow, stop
-            self._toggle_slideshow()
+            # Normal mode: navigate through all media
+            if self.current_index < len(self.all_media) - 1:
+                self._next_media()
+            elif self.slideshow_loop and len(self.all_media) > 1:
+                self.current_index = 0
+                self.media_path = self.all_media[0]
+                self._load_media_with_transition()
+            else:
+                self._toggle_slideshow()
 
     # ── Ken Burns Effect (iPhone Photos style slow pan + zoom) ──
 
@@ -8362,6 +8428,315 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         ok_btn.clicked.connect(on_apply)
 
         dialog.exec()
+
+    # ── Slideshow Editor (curated photo selection) ──
+
+    def _create_slideshow_editor(self) -> QWidget:
+        """Create the slideshow editor panel with selectable thumbnails."""
+        from PySide6.QtWidgets import QScrollArea, QHBoxLayout
+
+        panel = QWidget()
+        panel.setFixedHeight(160)
+        panel.setStyleSheet("""
+            QWidget#slideshow_editor_panel {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 rgba(0, 0, 0, 0.95),
+                    stop:1 rgba(0, 0, 0, 0.98));
+                border-top: 1px solid rgba(255, 255, 255, 0.15);
+            }
+        """)
+        panel.setObjectName("slideshow_editor_panel")
+
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(12, 6, 12, 8)
+        layout.setSpacing(6)
+
+        # Top row: action buttons + selection count
+        top_row = QHBoxLayout()
+        top_row.setSpacing(8)
+
+        toolbar_btn_style = """
+            QPushButton {
+                background: rgba(255, 255, 255, 0.12);
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 4px 12px;
+                font-size: 11pt;
+            }
+            QPushButton:hover { background: rgba(255, 255, 255, 0.22); }
+        """
+
+        select_all_btn = QPushButton("Select All")
+        select_all_btn.setStyleSheet(toolbar_btn_style)
+        select_all_btn.setFocusPolicy(Qt.NoFocus)
+        select_all_btn.clicked.connect(self._slideshow_select_all)
+        top_row.addWidget(select_all_btn)
+
+        deselect_all_btn = QPushButton("Deselect All")
+        deselect_all_btn.setStyleSheet(toolbar_btn_style)
+        deselect_all_btn.setFocusPolicy(Qt.NoFocus)
+        deselect_all_btn.clicked.connect(self._slideshow_deselect_all)
+        top_row.addWidget(deselect_all_btn)
+
+        top_row.addStretch()
+
+        self._slideshow_count_label = QLabel("")
+        self._slideshow_count_label.setStyleSheet(
+            "color: rgba(255, 255, 255, 0.7); font-size: 11pt;"
+        )
+        top_row.addWidget(self._slideshow_count_label)
+
+        top_row.addStretch()
+
+        start_btn = QPushButton("▶  Start Slideshow")
+        start_btn.setStyleSheet("""
+            QPushButton {
+                background: rgba(66, 133, 244, 0.6);
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 5px 16px;
+                font-size: 11pt;
+                font-weight: bold;
+            }
+            QPushButton:hover { background: rgba(66, 133, 244, 0.85); }
+        """)
+        start_btn.setFocusPolicy(Qt.NoFocus)
+        start_btn.clicked.connect(self._toggle_slideshow)
+        top_row.addWidget(start_btn)
+
+        close_btn = QPushButton("✕")
+        close_btn.setFixedSize(28, 28)
+        close_btn.setStyleSheet("""
+            QPushButton {
+                background: rgba(255, 255, 255, 0.1);
+                color: white; border: none; border-radius: 14px;
+                font-size: 12pt;
+            }
+            QPushButton:hover { background: rgba(255, 255, 255, 0.25); }
+        """)
+        close_btn.setFocusPolicy(Qt.NoFocus)
+        close_btn.clicked.connect(self._toggle_slideshow_editor)
+        top_row.addWidget(close_btn)
+
+        layout.addLayout(top_row)
+
+        # Thumbnail scroll area
+        self._editor_scroll = QScrollArea()
+        self._editor_scroll.setFrameShape(QFrame.NoFrame)
+        self._editor_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._editor_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._editor_scroll.setWidgetResizable(False)
+        self._editor_scroll.setStyleSheet("background: transparent;")
+        self._editor_scroll.setFixedHeight(105)
+
+        # Container for thumbnail buttons
+        self._editor_container = QWidget()
+        self._editor_thumb_layout = QHBoxLayout(self._editor_container)
+        self._editor_thumb_layout.setContentsMargins(0, 0, 0, 0)
+        self._editor_thumb_layout.setSpacing(6)
+        self._editor_thumb_layout.setAlignment(Qt.AlignLeft)
+
+        self._editor_scroll.setWidget(self._editor_container)
+
+        # Enable mouse wheel for horizontal scrolling on the filmstrip
+        self._editor_scroll.wheelEvent = self._editor_wheel_event
+
+        layout.addWidget(self._editor_scroll)
+
+        return panel
+
+    def _editor_wheel_event(self, event):
+        """Convert vertical wheel to horizontal scroll in editor filmstrip."""
+        delta = event.angleDelta().y()
+        h_bar = self._editor_scroll.horizontalScrollBar()
+        h_bar.setValue(h_bar.value() - delta)
+        event.accept()
+
+    def _toggle_slideshow_editor(self):
+        """Show/hide the slideshow editor panel."""
+        self.slideshow_editor_visible = not self.slideshow_editor_visible
+
+        if self.slideshow_editor_visible:
+            # Default: select all photos
+            if not self.slideshow_selected_indices:
+                self.slideshow_selected_indices = set(range(len(self.all_media)))
+            self._populate_slideshow_editor()
+            self.slideshow_editor_panel.show()
+            self.slideshow_editor_btn.setStyleSheet(
+                self.slideshow_editor_btn.styleSheet()
+                + "QPushButton { background: rgba(66, 133, 244, 0.5); }"
+            )
+        else:
+            self.slideshow_editor_panel.hide()
+            # Reset button style
+            self.slideshow_editor_btn.setStyleSheet(
+                self.slideshow_editor_btn.styleSheet()
+                .replace("QPushButton { background: rgba(66, 133, 244, 0.5); }", "")
+            )
+
+    def _populate_slideshow_editor(self):
+        """Populate the editor filmstrip with all thumbnails (lazy load visible range)."""
+        from PySide6.QtCore import Qt
+        from PySide6.QtGui import QIcon
+
+        # Clear existing
+        while self._editor_thumb_layout.count():
+            child = self._editor_thumb_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+
+        self._editor_thumb_buttons = {}
+        thumb_size = 90
+
+        for i in range(len(self.all_media)):
+            media_path = self.all_media[i]
+            is_selected = i in self.slideshow_selected_indices
+
+            btn = QPushButton()
+            btn.setFixedSize(thumb_size, thumb_size)
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.setToolTip(os.path.basename(media_path))
+            btn.setProperty("media_index", i)
+
+            self._apply_editor_thumb_style(btn, is_selected, i == self.current_index)
+
+            # Load thumbnail
+            try:
+                from app_services import get_thumbnail
+                pixmap = get_thumbnail(media_path, thumb_size)
+                if pixmap and not pixmap.isNull():
+                    btn.setIcon(QIcon(pixmap))
+                    btn.setIconSize(QSize(thumb_size - 8, thumb_size - 8))
+                else:
+                    btn.setText("📷")
+            except Exception:
+                btn.setText("📷")
+
+            # Click to toggle selection
+            btn.clicked.connect(lambda checked, idx=i: self._toggle_slideshow_selection(idx))
+
+            self._editor_thumb_layout.addWidget(btn)
+            self._editor_thumb_buttons[i] = btn
+
+        # Resize container to fit all thumbnails
+        total_w = len(self.all_media) * (thumb_size + 6) + 20
+        self._editor_container.setFixedSize(total_w, thumb_size + 4)
+
+        self._update_selection_count()
+
+        # Scroll to current photo
+        QTimer.singleShot(50, self._scroll_editor_to_current)
+
+    def _apply_editor_thumb_style(self, btn, is_selected, is_current):
+        """Apply visual style to editor thumbnail based on selection state."""
+        if is_selected and is_current:
+            btn.setStyleSheet("""
+                QPushButton {
+                    border: 3px solid #4285f4;
+                    border-radius: 5px;
+                    background: rgba(66, 133, 244, 0.25);
+                    opacity: 1.0;
+                }
+            """)
+        elif is_selected:
+            btn.setStyleSheet("""
+                QPushButton {
+                    border: 2px solid #4285f4;
+                    border-radius: 5px;
+                    background: rgba(66, 133, 244, 0.15);
+                    opacity: 1.0;
+                }
+                QPushButton:hover { border: 3px solid #5a9cf5; }
+            """)
+        elif is_current:
+            btn.setStyleSheet("""
+                QPushButton {
+                    border: 2px solid rgba(255, 255, 255, 0.4);
+                    border-radius: 5px;
+                    background: rgba(255, 255, 255, 0.05);
+                    opacity: 0.4;
+                }
+            """)
+        else:
+            btn.setStyleSheet("""
+                QPushButton {
+                    border: 1px solid rgba(255, 255, 255, 0.15);
+                    border-radius: 5px;
+                    background: rgba(0, 0, 0, 0.3);
+                    opacity: 0.4;
+                }
+                QPushButton:hover {
+                    border: 2px solid rgba(255, 255, 255, 0.35);
+                    opacity: 0.7;
+                }
+            """)
+
+    def _toggle_slideshow_selection(self, index):
+        """Toggle selection of a photo in the slideshow editor."""
+        if index in self.slideshow_selected_indices:
+            self.slideshow_selected_indices.discard(index)
+        else:
+            self.slideshow_selected_indices.add(index)
+
+        # Update button visual
+        if index in self._editor_thumb_buttons:
+            btn = self._editor_thumb_buttons[index]
+            is_selected = index in self.slideshow_selected_indices
+            self._apply_editor_thumb_style(btn, is_selected, index == self.current_index)
+
+        self._update_selection_count()
+
+    def _slideshow_select_all(self):
+        """Select all photos for slideshow."""
+        self.slideshow_selected_indices = set(range(len(self.all_media)))
+        self._refresh_editor_styles()
+        self._update_selection_count()
+
+    def _slideshow_deselect_all(self):
+        """Deselect all photos from slideshow."""
+        self.slideshow_selected_indices.clear()
+        self._refresh_editor_styles()
+        self._update_selection_count()
+
+    def _refresh_editor_styles(self):
+        """Refresh all editor thumbnail styles after bulk operation."""
+        for idx, btn in self._editor_thumb_buttons.items():
+            is_selected = idx in self.slideshow_selected_indices
+            self._apply_editor_thumb_style(btn, is_selected, idx == self.current_index)
+
+    def _update_selection_count(self):
+        """Update the selection count label in the editor."""
+        count = len(self.slideshow_selected_indices)
+        total = len(self.all_media)
+        if hasattr(self, '_slideshow_count_label'):
+            self._slideshow_count_label.setText(f"{count} of {total} selected")
+
+    def _scroll_editor_to_current(self):
+        """Scroll editor filmstrip to center on current photo."""
+        if not hasattr(self, '_editor_thumb_buttons'):
+            return
+        if self.current_index not in self._editor_thumb_buttons:
+            return
+
+        btn = self._editor_thumb_buttons[self.current_index]
+        scroll_w = self._editor_scroll.width()
+        btn_center = btn.x() + btn.width() // 2
+        scroll_to = btn_center - scroll_w // 2
+
+        from PySide6.QtCore import QPropertyAnimation, QEasingCurve
+        h_bar = self._editor_scroll.horizontalScrollBar()
+
+        if hasattr(self, '_editor_scroll_anim'):
+            self._editor_scroll_anim.stop()
+
+        self._editor_scroll_anim = QPropertyAnimation(h_bar, b"value")
+        self._editor_scroll_anim.setDuration(300)
+        self._editor_scroll_anim.setStartValue(h_bar.value())
+        self._editor_scroll_anim.setEndValue(max(0, scroll_to))
+        self._editor_scroll_anim.setEasingCurve(QEasingCurve.OutCubic)
+        self._editor_scroll_anim.start()
 
     def _delete_current_media(self):
         """Delete current media file."""
