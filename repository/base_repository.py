@@ -446,7 +446,7 @@ class BaseRepository(ABC):
             sql += f" ORDER BY {order_by}"
         if limit is not None:
             sql += f" LIMIT {int(limit)}"
-        if offset is not None:
+        if offset is not None and limit is not None:
             sql += f" OFFSET {int(offset)}"
 
         with self.connection(read_only=True) as conn:
