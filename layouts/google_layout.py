@@ -1205,6 +1205,8 @@ class GooglePhotosLayout(BaseLayout):
         # Smart Find signals
         sidebar.selectSmartFind.connect(self._on_smart_find_results)
         sidebar.smartFindCleared.connect(self._on_smart_find_cleared)
+        sidebar.smartFindScores.connect(self._on_smart_find_scores)
+        sidebar.smartFindExclude.connect(self._on_smart_find_exclude)
 
         # FIX: Connect section expansion signal to hide search suggestions popup
         sidebar.sectionExpanding.connect(self._on_accordion_section_expanding)
@@ -9060,6 +9062,48 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
             self._clear_filter()
         except Exception as e:
             logger.error(f"[GooglePhotosLayout] Smart Find clear failed: {e}", exc_info=True)
+
+    def _on_smart_find_scores(self, scores: object):
+        """
+        Handle Smart Find confidence scores for overlay display.
+
+        Stores scores dict so thumbnails can show confidence badges.
+        """
+        try:
+            self._smart_find_scores = scores if isinstance(scores, dict) else {}
+            logger.debug(
+                f"[GooglePhotosLayout] Received {len(self._smart_find_scores)} confidence scores"
+            )
+        except Exception as e:
+            logger.error(f"[GooglePhotosLayout] Smart Find scores failed: {e}")
+
+    def _on_smart_find_exclude(self, path: str):
+        """
+        Handle 'Not this' exclusion - remove photo from current results.
+
+        Delegates to SmartFindService to track exclusion, then re-runs
+        the current active search.
+        """
+        try:
+            if hasattr(self, 'accordion_sidebar'):
+                find = self.accordion_sidebar.section_logic.get("find")
+                if find:
+                    service = find._get_service()
+                    if service:
+                        service.exclude_path(path)
+                        # Re-trigger the current search
+                        if find._active_preset_id:
+                            find._on_preset_clicked(find._active_preset_id)
+                            # Re-click would toggle off, so call directly
+                            find._run_preset_find(
+                                find._active_preset_id,
+                                find._get_refine_filters()
+                            )
+                        elif find._active_text_query:
+                            find._execute_text_search()
+                        logger.info(f"[GooglePhotosLayout] Excluded photo from results: {path}")
+        except Exception as e:
+            logger.error(f"[GooglePhotosLayout] Smart Find exclude failed: {e}")
 
     def _filter_people_by_count(self, operator: str, threshold: int):
         """Filter people grid by photo count."""

@@ -19,7 +19,7 @@ Schema Version: 2.0.0
 - Adds schema_version tracking table
 """
 
-SCHEMA_VERSION = "10.0.0"
+SCHEMA_VERSION = "10.1.0"
 
 # Complete schema SQL - executed as a script for new databases
 SCHEMA_SQL = """
@@ -65,6 +65,28 @@ VALUES ('9.3.0', 'Add image_content_hash for pixel-based embedding staleness det
 
 INSERT OR IGNORE INTO schema_version (version, description)
 VALUES ('10.0.0', 'People Groups: person_groups, person_group_members, group_asset_matches');
+
+INSERT OR IGNORE INTO schema_version (version, description)
+VALUES ('10.1.0', 'Smart Find custom presets: smart_find_presets');
+
+-- ============================================================================
+-- SMART FIND CUSTOM PRESETS (v10.1.0)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS smart_find_presets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    icon TEXT DEFAULT '🔖',
+    category TEXT DEFAULT 'custom',
+    config_json TEXT NOT NULL,  -- JSON: {"prompts":[], "filters":{}, "threshold":0.22}
+    sort_order INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_smart_find_presets_project
+    ON smart_find_presets(project_id, sort_order);
 
 -- ============================================================================
 -- FACE RECOGNITION TABLES
