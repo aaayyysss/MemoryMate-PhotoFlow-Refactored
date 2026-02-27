@@ -382,7 +382,7 @@ class BaseRepository(ABC):
 
         with self.connection(read_only=True) as conn:
             cur = conn.cursor()
-            cur.execute(sql, params)
+            cur.execute(sql, params or ())
             result = cur.fetchone()
             return result['count'] if result else 0
 
@@ -451,7 +451,7 @@ class BaseRepository(ABC):
 
         with self.connection(read_only=True) as conn:
             cur = conn.cursor()
-            cur.execute(sql, params)
+            cur.execute(sql, params or ())
             return cur.fetchall()
 
     def delete_by_id(self, id_value: Any, id_column: str = "id") -> bool:
