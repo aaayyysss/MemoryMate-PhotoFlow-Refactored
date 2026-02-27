@@ -207,7 +207,16 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         # Slideshow state
         self.slideshow_active = False
         self.slideshow_timer = None
-        self.slideshow_interval = 3000  # 3 seconds
+        self.slideshow_interval = 3000  # 3 seconds default
+        self.slideshow_loop = True  # Loop back to start (like iPhone/Google Photos)
+        self.slideshow_ken_burns = True  # Ken Burns effect (slow pan+zoom)
+        self._ken_burns_direction = 0  # Cycles through pan directions
+        self._kb_h_anim = None  # Horizontal pan animation
+        self._kb_v_anim = None  # Vertical pan animation
+        self.slideshow_music_player = None  # Separate QMediaPlayer for music
+        self.slideshow_music_output = None  # Separate QAudioOutput for music
+        self.slideshow_music_path = None  # Path to music file
+        self.slideshow_music_volume = 0.5  # Music volume (0.0 - 1.0)
 
         # Rating state
         self.current_rating = 0  # 0-5 stars
@@ -1114,9 +1123,19 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                 except Exception as audio_cleanup_err:
                     print(f"[MediaLightbox] Warning during audio cleanup: {audio_cleanup_err}")
             
-            # Stop slideshow timer
+            # Stop slideshow timer and Ken Burns
             if hasattr(self, 'slideshow_timer') and self.slideshow_timer:
                 self.slideshow_timer.stop()
+            self._stop_ken_burns()
+
+            # Stop slideshow music
+            if hasattr(self, 'slideshow_music_player') and self.slideshow_music_player:
+                self.slideshow_music_player.stop()
+                self.slideshow_music_player.deleteLater()
+                self.slideshow_music_player = None
+            if hasattr(self, 'slideshow_music_output') and self.slideshow_music_output:
+                self.slideshow_music_output.deleteLater()
+                self.slideshow_music_output = None
             
             # Clear preload cache to free memory
             if hasattr(self, 'preload_cache'):
@@ -1697,6 +1716,17 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         self.slideshow_btn.clicked.connect(self._toggle_slideshow)
         self.slideshow_btn.setToolTip(t('google_layout.lightbox.slideshow_tooltip'))
         layout.addWidget(self.slideshow_btn)
+
+        # Slideshow settings button (speed, Ken Burns, music)
+        self.slideshow_settings_btn = QPushButton("♫")
+        self.slideshow_settings_btn.setFocusPolicy(Qt.NoFocus)
+        self.slideshow_settings_btn.setFixedSize(self.button_size_sm, self.button_size_sm)
+        self.slideshow_settings_btn.setStyleSheet(
+            btn_style + f"QPushButton {{ font-size: {zoom_font_size}pt; }}"
+        )
+        self.slideshow_settings_btn.clicked.connect(self._show_slideshow_settings)
+        self.slideshow_settings_btn.setToolTip("Slideshow Settings & Music")
+        layout.addWidget(self.slideshow_settings_btn)
 
 
 
@@ -4556,6 +4586,12 @@ class MediaLightbox(QDialog, VideoEditorMixin):
                     print("[MediaLightbox] Keyboard: Toggle mute (M key)")
                 return
 
+            # S key: Toggle slideshow (when not in video edit mode)
+            if event.key() == Qt.Key_S and not (is_video_loaded and in_edit_mode):
+                self._toggle_slideshow()
+                print("[MediaLightbox] Keyboard: Toggle slideshow (S key)")
+                return
+
             # Undo/Redo shortcuts (for photo editing)
             if event.modifiers() & Qt.ControlModifier:
                 if event.key() == Qt.Key_Z:
@@ -7407,6 +7443,11 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             fade_in.setEasingCurve(QEasingCurve.OutCubic)
             fade_in.setParent(self)  # Keep object alive
             self._fade_in_animation = fade_in  # Strong reference
+
+            # Start Ken Burns after fade-in completes (slideshow only)
+            if self.slideshow_active and self.slideshow_ken_burns:
+                fade_in.finished.connect(self._start_ken_burns)
+
             fade_in.start()
 
         fade_out.finished.connect(load_and_fade_in)
@@ -7689,7 +7730,14 @@ class MediaLightbox(QDialog, VideoEditorMixin):
 
         # Slideshow indicator
         if self.slideshow_active:
-            status_parts.append("⏵ Slideshow")
+            interval_s = self.slideshow_interval / 1000
+            kb_label = " | Ken Burns" if self.slideshow_ken_burns else ""
+            status_parts.append(f"⏵ Slideshow ({interval_s:.0f}s{kb_label})")
+        # Slideshow music indicator
+        if (getattr(self, 'slideshow_music_player', None) and
+                self.slideshow_music_player.playbackState() == QMediaPlayer.PlayingState):
+            music_name = os.path.basename(self.slideshow_music_path or "")
+            status_parts.append(f"♫ {music_name}")
         # Auto-Enhance indicator
         if getattr(self, 'auto_enhance_on', False):
             status_parts.append("✨ Enhance")
@@ -7718,7 +7766,14 @@ class MediaLightbox(QDialog, VideoEditorMixin):
 
         # Slideshow indicator
         if self.slideshow_active:
-            status_parts.append("⏵ Slideshow")
+            interval_s = self.slideshow_interval / 1000
+            kb_label = " | Ken Burns" if self.slideshow_ken_burns else ""
+            status_parts.append(f"⏵ Slideshow ({interval_s:.0f}s{kb_label})")
+        # Slideshow music indicator
+        if (getattr(self, 'slideshow_music_player', None) and
+                self.slideshow_music_player.playbackState() == QMediaPlayer.PlayingState):
+            music_name = os.path.basename(self.slideshow_music_path or "")
+            status_parts.append(f"♫ {music_name}")
         # Auto-Enhance indicator
         if getattr(self, 'auto_enhance_on', False):
             status_parts.append("✨ Enhance")
@@ -7729,17 +7784,29 @@ class MediaLightbox(QDialog, VideoEditorMixin):
         self.status_label.setText(" | ".join(status_parts) if status_parts else "")
 
     def _toggle_slideshow(self):
-        """Toggle slideshow mode."""
+        """Toggle slideshow mode (iPhone/Google Photos style)."""
         if self.slideshow_active:
             # Stop slideshow
             self.slideshow_active = False
             if self.slideshow_timer:
                 self.slideshow_timer.stop()
+            self._stop_ken_burns()
+            self._stop_slideshow_music()
             self.slideshow_btn.setText("▶")
             self.slideshow_btn.setToolTip("Slideshow (S)")
+
+            # Restore fit-to-window after Ken Burns
+            if not self._is_video(self.media_path):
+                self.zoom_mode = "fit"
+                self._fit_to_window()
+
+            # Show scrollbars again
+            self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+            self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         else:
             # Start slideshow
             self.slideshow_active = True
+            self._ken_burns_direction = 0
             from PySide6.QtCore import QTimer
             if not self.slideshow_timer:
                 self.slideshow_timer = QTimer()
@@ -7747,6 +7814,17 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             self.slideshow_timer.start(self.slideshow_interval)
             self.slideshow_btn.setText("⏸")
             self.slideshow_btn.setToolTip("Pause Slideshow (S)")
+
+            # Hide scrollbars for clean cinematic look
+            self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+
+            # Start Ken Burns on current photo
+            if self.slideshow_ken_burns and not self._is_video(self.media_path):
+                QTimer.singleShot(100, self._start_ken_burns)
+
+            # Start music if configured
+            self._start_slideshow_music()
 
         self._update_status_label()
 
@@ -7904,9 +7982,386 @@ class MediaLightbox(QDialog, VideoEditorMixin):
             return None
 
     def _slideshow_advance(self):
-        """Advance to next media in slideshow."""
-        if self.slideshow_active:
+        """Advance to next media in slideshow (with loop support)."""
+        if not self.slideshow_active:
+            return
+
+        # Stop Ken Burns before transitioning
+        self._stop_ken_burns()
+
+        if self.current_index < len(self.all_media) - 1:
+            # Normal advance
             self._next_media()
+        elif self.slideshow_loop and len(self.all_media) > 1:
+            # Loop back to start (iPhone/Google Photos behavior)
+            self._save_zoom_state()
+            self.current_index = 0
+            self.media_path = self.all_media[0]
+            self._load_media_with_transition()
+        else:
+            # End of slideshow, stop
+            self._toggle_slideshow()
+
+    # ── Ken Burns Effect (iPhone Photos style slow pan + zoom) ──
+
+    def _start_ken_burns(self):
+        """Start Ken Burns effect: scale to fill + gentle pan animation."""
+        if not self.slideshow_active or not self.slideshow_ken_burns:
+            return
+        if not self.original_pixmap or self.original_pixmap.isNull():
+            return
+        if self._is_video(self.media_path):
+            return
+
+        from PySide6.QtCore import QPropertyAnimation, QEasingCurve, Qt
+
+        self._stop_ken_burns()
+
+        viewport = self.scroll_area.viewport().size()
+        img_w = self.original_pixmap.width()
+        img_h = self.original_pixmap.height()
+
+        if img_w == 0 or img_h == 0:
+            return
+
+        # Calculate fill ratio (image fills viewport, edges may be cropped)
+        width_ratio = viewport.width() / img_w
+        height_ratio = viewport.height() / img_h
+        fill_ratio = max(width_ratio, height_ratio)
+
+        # Scale to fill + 10% extra for pan room
+        kb_zoom = fill_ratio * 1.10
+        new_w = int(img_w * kb_zoom)
+        new_h = int(img_h * kb_zoom)
+
+        scaled = self.original_pixmap.scaled(
+            new_w, new_h,
+            Qt.KeepAspectRatio,
+            Qt.SmoothTransformation
+        )
+
+        self.image_label.setPixmap(scaled)
+        self.image_label.resize(scaled.size())
+        self.media_container.resize(scaled.size())
+        self.zoom_level = kb_zoom
+        self.zoom_mode = "custom"
+
+        # Get scroll ranges for panning
+        h_bar = self.scroll_area.horizontalScrollBar()
+        v_bar = self.scroll_area.verticalScrollBar()
+
+        # Force layout update so scrollbar ranges are correct
+        self.scroll_area.viewport().update()
+        from PySide6.QtWidgets import QApplication
+        QApplication.processEvents()
+
+        h_max = h_bar.maximum()
+        v_max = v_bar.maximum()
+
+        # Cycle through 4 pan directions for variety
+        direction = self._ken_burns_direction % 4
+        self._ken_burns_direction += 1
+
+        # Set start/end positions based on direction
+        if direction == 0:
+            # Top-left → bottom-right
+            h_start, v_start = 0, 0
+            h_end, v_end = h_max, v_max
+        elif direction == 1:
+            # Bottom-right → top-left
+            h_start, v_start = h_max, v_max
+            h_end, v_end = 0, 0
+        elif direction == 2:
+            # Center → top-right (gentle drift)
+            h_start, v_start = h_max // 2, v_max // 2
+            h_end, v_end = h_max, 0
+        else:
+            # Top-right → bottom-left
+            h_start, v_start = h_max, 0
+            h_end, v_end = 0, v_max
+
+        # Set initial position
+        h_bar.setValue(h_start)
+        v_bar.setValue(v_start)
+
+        # Animation duration: slideshow interval minus transition time
+        duration = max(1000, self.slideshow_interval - 400)
+
+        # Animate horizontal pan
+        if h_max > 0:
+            self._kb_h_anim = QPropertyAnimation(h_bar, b"value")
+            self._kb_h_anim.setDuration(duration)
+            self._kb_h_anim.setStartValue(h_start)
+            self._kb_h_anim.setEndValue(h_end)
+            self._kb_h_anim.setEasingCurve(QEasingCurve.InOutSine)
+            self._kb_h_anim.start()
+
+        # Animate vertical pan
+        if v_max > 0:
+            self._kb_v_anim = QPropertyAnimation(v_bar, b"value")
+            self._kb_v_anim.setDuration(duration)
+            self._kb_v_anim.setStartValue(v_start)
+            self._kb_v_anim.setEndValue(v_end)
+            self._kb_v_anim.setEasingCurve(QEasingCurve.InOutSine)
+            self._kb_v_anim.start()
+
+    def _stop_ken_burns(self):
+        """Stop any running Ken Burns animation."""
+        if self._kb_h_anim:
+            self._kb_h_anim.stop()
+            self._kb_h_anim = None
+        if self._kb_v_anim:
+            self._kb_v_anim.stop()
+            self._kb_v_anim = None
+
+    # ── Slideshow Music (background audio during slideshow) ──
+
+    def _start_slideshow_music(self):
+        """Start playing slideshow background music if configured."""
+        if not self.slideshow_music_path:
+            return
+
+        from PySide6.QtCore import QUrl
+
+        if not self.slideshow_music_player:
+            self.slideshow_music_player = QMediaPlayer(self)
+            self.slideshow_music_output = QAudioOutput(self)
+            self.slideshow_music_player.setAudioOutput(self.slideshow_music_output)
+            # Loop music continuously
+            self.slideshow_music_player.setLoops(QMediaPlayer.Infinite)
+
+        self.slideshow_music_output.setVolume(self.slideshow_music_volume)
+        self.slideshow_music_player.setSource(QUrl.fromLocalFile(self.slideshow_music_path))
+        self.slideshow_music_player.play()
+        print(f"[MediaLightbox] Slideshow music started: {os.path.basename(self.slideshow_music_path)}")
+        self._update_status_label()
+
+    def _stop_slideshow_music(self):
+        """Stop slideshow background music."""
+        if self.slideshow_music_player:
+            self.slideshow_music_player.stop()
+            from PySide6.QtCore import QUrl
+            self.slideshow_music_player.setSource(QUrl())
+            print("[MediaLightbox] Slideshow music stopped")
+            self._update_status_label()
+
+    def _pick_slideshow_music(self):
+        """Open file picker to select music file for slideshow."""
+        from PySide6.QtWidgets import QFileDialog
+
+        music_filter = (
+            "Audio Files (*.mp3 *.wav *.aac *.ogg *.flac *.wma *.m4a *.opus);;"
+            "MP3 Files (*.mp3);;"
+            "All Files (*)"
+        )
+
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select Slideshow Music",
+            "",
+            music_filter
+        )
+
+        if file_path:
+            self.slideshow_music_path = file_path
+            print(f"[MediaLightbox] Music selected: {file_path}")
+
+            # If slideshow is already running, start the music immediately
+            if self.slideshow_active:
+                self._stop_slideshow_music()
+                self._start_slideshow_music()
+
+            return True
+        return False
+
+    # ── Slideshow Settings Panel ──
+
+    def _show_slideshow_settings(self):
+        """Show slideshow settings popup (speed, Ken Burns, loop, music)."""
+        from PySide6.QtWidgets import (
+            QDialog, QVBoxLayout, QHBoxLayout, QLabel,
+            QSlider, QCheckBox, QPushButton, QGroupBox, QComboBox
+        )
+        from PySide6.QtCore import Qt
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Slideshow Settings")
+        dialog.setFixedWidth(380)
+        dialog.setStyleSheet("""
+            QDialog { background-color: #1e1e1e; color: white; }
+            QLabel { color: white; }
+            QGroupBox { color: white; border: 1px solid #444; border-radius: 6px;
+                        margin-top: 8px; padding-top: 14px; font-weight: bold; }
+            QGroupBox::title { subcontrol-origin: margin; left: 10px; }
+            QPushButton { background: rgba(255,255,255,0.15); color: white;
+                          border: none; border-radius: 6px; padding: 8px 16px; }
+            QPushButton:hover { background: rgba(255,255,255,0.25); }
+            QSlider::groove:horizontal { background: #444; height: 4px; border-radius: 2px; }
+            QSlider::handle:horizontal { background: white; width: 14px; height: 14px;
+                                          border-radius: 7px; margin: -5px 0; }
+            QCheckBox { color: white; }
+            QCheckBox::indicator { width: 16px; height: 16px; }
+            QComboBox { background: rgba(255,255,255,0.15); color: white;
+                        border: 1px solid #555; border-radius: 4px; padding: 4px 8px; }
+            QComboBox::drop-down { border: none; }
+            QComboBox QAbstractItemView { background: #2d2d2d; color: white;
+                                           selection-background-color: #4a90d9; }
+        """)
+
+        layout = QVBoxLayout(dialog)
+        layout.setSpacing(12)
+
+        # ── Speed Group ──
+        speed_group = QGroupBox("Speed")
+        speed_layout = QVBoxLayout(speed_group)
+
+        speed_row = QHBoxLayout()
+        speed_row.addWidget(QLabel("Interval:"))
+
+        speed_combo = QComboBox()
+        speed_options = [
+            ("2 seconds (Fast)", 2000),
+            ("3 seconds", 3000),
+            ("5 seconds", 5000),
+            ("7 seconds", 7000),
+            ("10 seconds (Slow)", 10000),
+        ]
+        current_idx = 1  # Default to 3s
+        for i, (label, ms) in enumerate(speed_options):
+            speed_combo.addItem(label, ms)
+            if ms == self.slideshow_interval:
+                current_idx = i
+        speed_combo.setCurrentIndex(current_idx)
+        speed_row.addWidget(speed_combo, 1)
+        speed_layout.addLayout(speed_row)
+
+        layout.addWidget(speed_group)
+
+        # ── Effects Group ──
+        effects_group = QGroupBox("Effects")
+        effects_layout = QVBoxLayout(effects_group)
+
+        ken_burns_cb = QCheckBox("Ken Burns Effect (slow pan + zoom)")
+        ken_burns_cb.setChecked(self.slideshow_ken_burns)
+        effects_layout.addWidget(ken_burns_cb)
+
+        loop_cb = QCheckBox("Loop Slideshow")
+        loop_cb.setChecked(self.slideshow_loop)
+        effects_layout.addWidget(loop_cb)
+
+        layout.addWidget(effects_group)
+
+        # ── Music Group ──
+        music_group = QGroupBox("Background Music")
+        music_layout = QVBoxLayout(music_group)
+
+        # Current music file
+        music_file_row = QHBoxLayout()
+        if self.slideshow_music_path:
+            music_name = os.path.basename(self.slideshow_music_path)
+            music_file_label = QLabel(f"♫ {music_name}")
+        else:
+            music_file_label = QLabel("No music selected")
+        music_file_label.setStyleSheet("color: #aaa;")
+        music_file_row.addWidget(music_file_label, 1)
+
+        pick_btn = QPushButton("Browse...")
+        music_file_row.addWidget(pick_btn)
+        music_layout.addLayout(music_file_row)
+
+        # Volume slider
+        vol_row = QHBoxLayout()
+        vol_row.addWidget(QLabel("Volume:"))
+
+        vol_slider = QSlider(Qt.Horizontal)
+        vol_slider.setMinimum(0)
+        vol_slider.setMaximum(100)
+        vol_slider.setValue(int(self.slideshow_music_volume * 100))
+        vol_row.addWidget(vol_slider, 1)
+
+        vol_label = QLabel(f"{int(self.slideshow_music_volume * 100)}%")
+        vol_label.setMinimumWidth(35)
+        vol_row.addWidget(vol_label)
+        music_layout.addLayout(vol_row)
+
+        def on_vol_changed(val):
+            vol_label.setText(f"{val}%")
+
+        vol_slider.valueChanged.connect(on_vol_changed)
+
+        # Clear music button
+        clear_row = QHBoxLayout()
+        clear_row.addStretch()
+        clear_music_btn = QPushButton("Clear Music")
+        clear_music_btn.setStyleSheet(
+            "QPushButton { background: rgba(231,76,60,0.3); }"
+            "QPushButton:hover { background: rgba(231,76,60,0.5); }"
+        )
+        clear_row.addWidget(clear_music_btn)
+        music_layout.addLayout(clear_row)
+
+        layout.addWidget(music_group)
+
+        # File picker callback
+        def on_pick_music():
+            if self._pick_slideshow_music():
+                music_file_label.setText(f"♫ {os.path.basename(self.slideshow_music_path)}")
+                music_file_label.setStyleSheet("color: #2ecc71;")
+
+        pick_btn.clicked.connect(on_pick_music)
+
+        # Clear music callback
+        def on_clear_music():
+            self._stop_slideshow_music()
+            self.slideshow_music_path = None
+            music_file_label.setText("No music selected")
+            music_file_label.setStyleSheet("color: #aaa;")
+
+        clear_music_btn.clicked.connect(on_clear_music)
+
+        # ── OK / Cancel buttons ──
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.clicked.connect(dialog.reject)
+        btn_row.addWidget(cancel_btn)
+
+        ok_btn = QPushButton("Apply")
+        ok_btn.setStyleSheet(
+            "QPushButton { background: rgba(52,152,219,0.5); }"
+            "QPushButton:hover { background: rgba(52,152,219,0.7); }"
+        )
+        btn_row.addWidget(ok_btn)
+
+        layout.addLayout(btn_row)
+
+        def on_apply():
+            # Apply settings
+            self.slideshow_interval = speed_combo.currentData()
+            self.slideshow_ken_burns = ken_burns_cb.isChecked()
+            self.slideshow_loop = loop_cb.isChecked()
+            self.slideshow_music_volume = vol_slider.value() / 100.0
+
+            # Update running timer if slideshow is active
+            if self.slideshow_active and self.slideshow_timer:
+                self.slideshow_timer.setInterval(self.slideshow_interval)
+
+            # Update music volume if playing
+            if self.slideshow_music_output:
+                self.slideshow_music_output.setVolume(self.slideshow_music_volume)
+
+            self._update_status_label()
+            print(
+                f"[MediaLightbox] Slideshow settings: interval={self.slideshow_interval}ms, "
+                f"ken_burns={self.slideshow_ken_burns}, loop={self.slideshow_loop}, "
+                f"music={'yes' if self.slideshow_music_path else 'no'}"
+            )
+            dialog.accept()
+
+        ok_btn.clicked.connect(on_apply)
+
+        dialog.exec()
 
     def _delete_current_media(self):
         """Delete current media file."""
