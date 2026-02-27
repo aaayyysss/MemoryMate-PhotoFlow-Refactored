@@ -1202,6 +1202,10 @@ class GooglePhotosLayout(BaseLayout):
         sidebar.editGroupRequested.connect(self._on_group_edit_requested)
         sidebar.deleteGroupRequested.connect(self._on_group_deleted)
 
+        # Smart Find signals
+        sidebar.selectSmartFind.connect(self._on_smart_find_results)
+        sidebar.smartFindCleared.connect(self._on_smart_find_cleared)
+
         # FIX: Connect section expansion signal to hide search suggestions popup
         sidebar.sectionExpanding.connect(self._on_accordion_section_expanding)
 
@@ -9018,6 +9022,44 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
 
         except Exception as e:
             logger.error(f"[GooglePhotosLayout] Failed to clear semantic search: {e}", exc_info=True)
+
+    def _on_smart_find_results(self, paths: list, query_label: str):
+        """
+        Handle Smart Find results from sidebar Find section.
+
+        Displays matching photos in the grid using the existing
+        filter_by_paths mechanism, plus adds a search header.
+        """
+        try:
+            logger.info(
+                f"[GooglePhotosLayout] Smart Find: '{query_label}' → {len(paths)} results"
+            )
+
+            if paths:
+                # Use existing path-based filtering
+                self._request_load(paths=paths)
+
+                # Add search header with result info
+                QTimer.singleShot(100, lambda: self._add_search_header(
+                    f"{query_label}  —  {len(paths)} photos"
+                ))
+            else:
+                # No results - show empty state with header
+                self._request_load(paths=[])
+                QTimer.singleShot(100, lambda: self._add_search_header(
+                    f"{query_label}  —  No matching photos found"
+                ))
+
+        except Exception as e:
+            logger.error(f"[GooglePhotosLayout] Smart Find display failed: {e}", exc_info=True)
+
+    def _on_smart_find_cleared(self):
+        """Handle Smart Find cleared - restore full photo grid."""
+        try:
+            logger.info("[GooglePhotosLayout] Smart Find cleared, reloading all photos")
+            self._clear_filter()
+        except Exception as e:
+            logger.error(f"[GooglePhotosLayout] Smart Find clear failed: {e}", exc_info=True)
 
     def _filter_people_by_count(self, operator: str, threshold: int):
         """Filter people grid by photo count."""
