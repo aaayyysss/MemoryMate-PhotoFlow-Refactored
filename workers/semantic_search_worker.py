@@ -363,7 +363,7 @@ class SemanticSearchWorker(QThread):
             with db.get_connection() as conn:
                 # Get all embeddings for project
                 cursor = conn.execute("""
-                    SELECT se.photo_id, se.embedding, pm.file_path, pm.thumbnail_path
+                    SELECT se.photo_id, se.embedding, pm.path
                     FROM semantic_embeddings se
                     JOIN photo_metadata pm ON se.photo_id = pm.id
                     WHERE pm.project_id = ?
@@ -378,7 +378,6 @@ class SemanticSearchWorker(QThread):
                 photo_ids = []
                 embeddings = []
                 paths = []
-                thumb_paths = []
 
                 for row in rows:
                     if cancelled_check and cancelled_check():
@@ -393,8 +392,7 @@ class SemanticSearchWorker(QThread):
                         if len(emb) > 0:
                             photo_ids.append(row['photo_id'])
                             embeddings.append(emb)
-                            paths.append(row['file_path'])
-                            thumb_paths.append(row['thumbnail_path'])
+                            paths.append(row['path'])
                     except Exception as e:
                         logger.debug(f"[SemanticSearchWorker] Skip embedding {row['photo_id']}: {e}")
                         continue
@@ -428,7 +426,6 @@ class SemanticSearchWorker(QThread):
                             photo_id=photo_ids[i],
                             file_path=paths[i],
                             score=float(score),
-                            thumbnail_path=thumb_paths[i],
                             kind="photo"
                         ))
 
