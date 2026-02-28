@@ -9091,10 +9091,9 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
                     service = find._get_service()
                     if service:
                         service.exclude_path(path)
-                        # Re-trigger the current search
+                        # Re-run the current search directly (don't use
+                        # _on_preset_clicked which would toggle the search off)
                         if find._active_preset_id:
-                            find._on_preset_clicked(find._active_preset_id)
-                            # Re-click would toggle off, so call directly
                             find._run_preset_find(
                                 find._active_preset_id,
                                 find._get_refine_filters()

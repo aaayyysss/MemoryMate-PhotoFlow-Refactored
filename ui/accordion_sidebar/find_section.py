@@ -472,13 +472,13 @@ class FindSection(BaseSection):
 
             main_layout.addWidget(cat_header_widget)
 
-            # Preset chips in a flow grid
+            # Preset chips in a flow grid (3 columns)
             chip_widget = QWidget()
             chip_layout = self._create_flow_layout(chip_widget)
 
-            for preset in presets:
+            for i, preset in enumerate(presets):
                 chip = self._create_preset_chip(preset)
-                chip_layout.addWidget(chip)
+                chip_layout.addWidget(chip, i // 3, i % 3)
                 self._preset_buttons[preset["id"]] = chip
 
             main_layout.addWidget(chip_widget)
@@ -968,25 +968,15 @@ class FindSection(BaseSection):
         if service:
             service._custom_presets = None
 
-        # Re-trigger load
+        # Re-trigger load and update widget through the AccordionSidebar
         data = self.load_section()
-        if hasattr(self, '_content_widget') and self._content_widget:
-            # Find the parent layout and replace content
-            parent = self._content_widget.parent()
-            if parent and parent.layout():
-                layout = parent.layout()
-                # Remove old content
-                layout.removeWidget(self._content_widget)
-                self._content_widget.deleteLater()
-                # Create new content
+        sidebar = self.parent()
+        if sidebar and hasattr(sidebar, 'section_widgets'):
+            section_widget = sidebar.section_widgets.get("find")
+            if section_widget:
                 new_widget = self.create_content_widget(data)
                 if new_widget:
-                    layout.addWidget(new_widget)
-                    self._content_widget = new_widget
-        else:
-            # Fallback: emit loaded signal to trigger section refresh
-            if hasattr(self, '_signals'):
-                self._signals.loaded.emit(self._generation, data)
+                    section_widget.set_content_widget(new_widget)
 
     # ── Recent Searches ──
 
