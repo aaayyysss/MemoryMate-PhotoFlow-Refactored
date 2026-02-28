@@ -191,13 +191,31 @@ class SemanticEmbeddingWorker(QRunnable):
                     status='in_progress'
                 )
 
+            # Track consecutive failures to detect model load issues early
+            _consecutive_failures = 0
+            _MAX_CONSECUTIVE_FAILURES = 3  # Abort after 3 consecutive failures
+
             for i, photo_id in enumerate(self.photo_ids, 1):
                 try:
                     self._process_photo(photo_id, embedder, photo_repo)
                     self._last_processed_photo_id = photo_id
+                    _consecutive_failures = 0  # Reset on success or skip
                 except Exception as e:
                     logger.error(f"[SemanticEmbeddingWorker] Failed to process photo {photo_id}: {e}")
                     self.failed_count += 1
+                    _consecutive_failures += 1
+
+                    # Early abort: if model loading is broken, stop immediately
+                    # instead of repeating the same error for every photo
+                    if _consecutive_failures >= _MAX_CONSECUTIVE_FAILURES:
+                        remaining = total - i
+                        logger.error(
+                            f"[SemanticEmbeddingWorker] Aborting batch: {_consecutive_failures} "
+                            f"consecutive failures detected (likely model load issue). "
+                            f"Skipping remaining {remaining} photos."
+                        )
+                        self.failed_count += remaining
+                        break
 
                 # Progress reporting and saving (every N photos or last)
                 if i % self.save_progress_interval == 0 or i == total:

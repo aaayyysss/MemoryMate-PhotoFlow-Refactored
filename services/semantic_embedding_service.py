@@ -192,11 +192,48 @@ class SemanticEmbeddingService:
 
             # Import heavy dependencies now (deferred from __init__)
             if self._torch is None:
-                import torch
-                from transformers import CLIPProcessor, CLIPModel
-                self._torch = torch
-                self._CLIPProcessor = CLIPProcessor
-                self._CLIPModel = CLIPModel
+                try:
+                    import torch
+                    self._torch = torch
+                except ImportError as e:
+                    error = RuntimeError(
+                        f"PyTorch is not installed or cannot be imported.\n"
+                        f"Install it with: pip install torch\n\n"
+                        f"Error: {e}"
+                    )
+                    self._load_error = error
+                    raise error
+
+            if self._CLIPProcessor is None or self._CLIPModel is None:
+                try:
+                    from transformers import CLIPProcessor, CLIPModel
+                    self._CLIPProcessor = CLIPProcessor
+                    self._CLIPModel = CLIPModel
+                except ImportError as e:
+                    error = RuntimeError(
+                        f"HuggingFace transformers CLIP classes not available.\n"
+                        f"Install with: pip install transformers\n\n"
+                        f"Error: {e}"
+                    )
+                    self._load_error = error
+                    raise error
+
+                # Validate the imports actually resolved (transformers uses lazy loading
+                # that can silently yield None if backend dependencies are missing)
+                if self._CLIPProcessor is None or self._CLIPModel is None:
+                    missing = []
+                    if self._CLIPProcessor is None:
+                        missing.append("CLIPProcessor")
+                    if self._CLIPModel is None:
+                        missing.append("CLIPModel")
+                    error = RuntimeError(
+                        f"CLIP classes failed to initialize: {', '.join(missing)} resolved to None.\n\n"
+                        f"This usually means a dependency is missing or incompatible.\n"
+                        f"Try: pip install --upgrade transformers torch pillow\n\n"
+                        f"If the issue persists, check your Python environment for conflicts."
+                    )
+                    self._load_error = error
+                    raise error
 
             logger.info(f"[SemanticEmbeddingService] Loading model: {self.model_name}")
 
@@ -468,6 +505,22 @@ class SemanticEmbeddingService:
             # STEP 4: Load model from local path (offline mode)
             try:
                 logger.info(f"[SemanticEmbeddingService] Loading from local path (offline mode): {local_model_path}")
+
+                # Safety check: ensure CLIP classes were imported
+                if self._CLIPProcessor is None or self._CLIPModel is None:
+                    missing = []
+                    if self._CLIPProcessor is None:
+                        missing.append("CLIPProcessor")
+                    if self._CLIPModel is None:
+                        missing.append("CLIPModel")
+                    error = RuntimeError(
+                        f"CLIP classes not loaded: {', '.join(missing)} is None.\n\n"
+                        f"This indicates a broken transformers installation.\n"
+                        f"Try: pip install --upgrade transformers torch pillow"
+                    )
+                    self._load_error = error
+                    raise error
+
                 # FIX #4: Pin use_fast=False for reproducible embeddings.
                 # HF transformers v4.52+ will default to the fast tokenizer
                 # which can produce slightly different tokens → different

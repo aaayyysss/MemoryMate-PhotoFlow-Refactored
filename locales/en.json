@@ -267,6 +267,7 @@
       "video": "Video",
       "gps_location": "GPS & Location",
       "visual_embeddings": "Visual Embeddings",
+      "search_discovery": "Search & Discovery",
       "advanced": "Advanced"
     },
     "general": {
