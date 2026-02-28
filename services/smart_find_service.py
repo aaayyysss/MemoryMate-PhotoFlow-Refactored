@@ -195,6 +195,7 @@ class SmartFindResult:
     execution_time_ms: float
     scores: Optional[Dict[str, float]] = None  # path -> score for ranking info
     excluded_paths: Optional[List[str]] = None  # paths user chose to exclude
+    _cached_at: float = 0.0  # Timestamp when this result was cached
 
 
 # ── Natural Language Parser ──
@@ -546,7 +547,7 @@ class SmartFindService:
         cache_key = f"{preset_id}:{top_k}:{threshold}:{extra_filters}"
         if cache_key in self._result_cache:
             cached = self._result_cache[cache_key]
-            if (time.time() - cached.execution_time_ms) < self._cache_ttl * 1000:
+            if (time.time() - cached._cached_at) < self._cache_ttl:
                 return cached
 
         start = time.time()
@@ -608,6 +609,7 @@ class SmartFindService:
             total_matches=len(result_paths),
             execution_time_ms=elapsed_ms,
             scores=score_map if score_map else None,
+            _cached_at=time.time(),
         )
 
         # Cache result
@@ -943,6 +945,21 @@ class SmartFindService:
 
         result = self.search_service.search(criteria)
         paths = result.paths
+
+        # Filter to current project (SearchService is not project-aware)
+        if paths:
+            try:
+                from repository.base_repository import DatabaseConnection
+                db = DatabaseConnection()
+                with db.get_connection() as conn:
+                    cursor = conn.execute(
+                        "SELECT path FROM photo_metadata WHERE project_id = ?",
+                        (self.project_id,)
+                    )
+                    project_paths = {row['path'] for row in cursor.fetchall()}
+                paths = [p for p in paths if p in project_paths]
+            except Exception as e:
+                logger.warning(f"[SmartFind] Project filtering failed: {e}")
 
         # Custom: media type filtering
         if "media_type" in filters:
