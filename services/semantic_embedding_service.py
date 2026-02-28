@@ -119,18 +119,29 @@ class SemanticEmbeddingService:
         self._stale_cache = {}       # {project_id: (timestamp, result_list)}
         self._stale_cache_ttl = 300  # seconds (5 minutes)
 
-        # Defer heavy imports to _load_model(); just probe availability here
+        # Defer heavy imports to _load_model(); just probe availability here.
+        # CRITICAL: Use find_spec() instead of import_module() to avoid
+        # actually importing torch/transformers (first torch import takes
+        # 15-20 seconds due to CUDA/cuDNN init and freezes the GUI).
         self._available = False
         self._torch = None
         self._CLIPProcessor = None
         self._CLIPModel = None
         try:
-            import importlib
-            importlib.import_module("torch")
-            importlib.import_module("transformers")
-            self._available = True
-            logger.info(f"[SemanticEmbeddingService] Initialized (lazy) with model={model_name}")
-        except ImportError:
+            import importlib.util
+            torch_spec = importlib.util.find_spec("torch")
+            transformers_spec = importlib.util.find_spec("transformers")
+            if torch_spec and transformers_spec:
+                self._available = True
+                logger.info(f"[SemanticEmbeddingService] Initialized (lazy) with model={model_name}")
+            else:
+                missing = []
+                if not torch_spec:
+                    missing.append("torch")
+                if not transformers_spec:
+                    missing.append("transformers")
+                logger.warning(f"[SemanticEmbeddingService] Not installed: {', '.join(missing)}")
+        except Exception:
             logger.warning("[SemanticEmbeddingService] PyTorch/Transformers not available")
 
     @property
@@ -558,6 +569,10 @@ class SemanticEmbeddingService:
         """
         Get GPU memory information for the current device.
 
+        Does NOT force full model loading — only imports torch to detect
+        the device and query GPU memory. This avoids a ~1s model load
+        just to show GPU info in the Preferences dialog.
+
         Returns:
             Dictionary with:
             - device_type: 'cuda', 'mps', or 'cpu'
@@ -577,24 +592,33 @@ class SemanticEmbeddingService:
         if not self._available:
             return info
 
-        # Ensure model is loaded to know the device
-        try:
-            self._load_model()
-        except Exception:
-            return info
+        # If model is already loaded, use its device directly
+        if self._device is not None:
+            device_type = self._device.type
+        else:
+            # Detect device by importing torch (but NOT loading the model)
+            try:
+                if self._torch is None:
+                    import torch
+                    self._torch = torch
+                if self._torch.cuda.is_available():
+                    device_type = 'cuda'
+                elif hasattr(self._torch.backends, 'mps') and self._torch.backends.mps.is_available():
+                    device_type = 'mps'
+                else:
+                    device_type = 'cpu'
+            except Exception:
+                return info
 
-        if self._device is None:
-            return info
-
-        device_type = self._device.type
         info['device_type'] = device_type
 
         if device_type == 'cuda':
             try:
-                # Get CUDA memory info
-                total = self._torch.cuda.get_device_properties(self._device).total_memory
-                reserved = self._torch.cuda.memory_reserved(self._device)
-                allocated = self._torch.cuda.memory_allocated(self._device)
+                # Get CUDA memory info (use self._device if loaded, else default device 0)
+                cuda_device = self._device if self._device is not None else self._torch.device("cuda:0")
+                total = self._torch.cuda.get_device_properties(cuda_device).total_memory
+                reserved = self._torch.cuda.memory_reserved(cuda_device)
+                allocated = self._torch.cuda.memory_allocated(cuda_device)
 
                 # Free memory = total - reserved (reserved includes allocated + cached)
                 free = total - reserved

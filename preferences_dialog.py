@@ -2642,98 +2642,153 @@ class PreferencesDialog(QDialog):
             return None
 
     def _refresh_gpu_info(self):
-        """Refresh GPU and performance information."""
-        try:
-            from services.semantic_embedding_service import get_semantic_embedding_service
-            service = get_semantic_embedding_service()
+        """Refresh GPU and performance information in a background thread.
 
-            # Get GPU info
-            gpu_info = service.get_gpu_memory_info()
-            device = gpu_info.get('device', 'cpu')
-            total_mb = gpu_info.get('total_mb', 0)
-            available_mb = gpu_info.get('available_mb', 0)
+        CRITICAL: get_semantic_embedding_service() triggers torch import
+        which takes 15-20s on first call. Running on main thread freezes
+        the entire Preferences dialog. Use a daemon thread + QTimer callback.
+        """
+        import threading
 
-            # Update GPU device label
-            device_text = device.upper()
-            if device == 'cuda':
-                device_text = f"CUDA ({gpu_info.get('device_name', 'NVIDIA GPU')})"
-            elif device == 'mps':
-                device_text = "Apple Metal (MPS)"
-            elif device == 'cpu':
-                device_text = "CPU (No GPU detected)"
-            self.lbl_gpu_device.setText(device_text)
+        # Show loading state immediately
+        self.lbl_gpu_device.setText("Detecting...")
+        self.lbl_gpu_memory.setText("...")
+        self.lbl_optimal_batch.setText("...")
 
-            # Update memory info
-            if total_mb > 0:
-                self.lbl_gpu_memory.setText(f"{available_mb:.0f} MB / {total_mb:.0f} MB")
-            else:
-                self.lbl_gpu_memory.setText("N/A (CPU mode)")
-
-            # Get optimal batch size
+        def _bg_work():
+            """Heavy work in background thread."""
             try:
-                batch_size = service.get_optimal_batch_size()
-                self.lbl_optimal_batch.setText(f"{batch_size} photos/batch")
-            except Exception:
-                self.lbl_optimal_batch.setText("N/A")
+                from services.semantic_embedding_service import get_semantic_embedding_service
+                service = get_semantic_embedding_service()
+                gpu_info = service.get_gpu_memory_info()
+                try:
+                    batch_size = service.get_optimal_batch_size()
+                except Exception:
+                    batch_size = None
+                try:
+                    import faiss
+                    faiss_ok = True
+                except ImportError:
+                    faiss_ok = False
+                return gpu_info, batch_size, faiss_ok, None
+            except Exception as e:
+                return None, None, False, str(e)
 
-            # Check FAISS availability
+        def _apply(result):
+            """Apply results on main thread."""
+            gpu_info, batch_size, faiss_ok, error = result
             try:
-                import faiss
-                self.lbl_faiss_status.setText("✓ Available")
-                self.lbl_faiss_status.setStyleSheet("color: #4CAF50; font-weight: bold;")
-            except ImportError:
-                self.lbl_faiss_status.setText("Not installed (using numpy)")
-                self.lbl_faiss_status.setStyleSheet("color: #666;")
+                if error or not gpu_info:
+                    self.lbl_gpu_device.setText("Error detecting GPU")
+                    self.lbl_gpu_memory.setText("—")
+                    self.lbl_optimal_batch.setText("—")
+                    self.lbl_faiss_status.setText("Unknown")
+                    return
 
-        except Exception as e:
-            self.lbl_gpu_device.setText("Error detecting GPU")
-            self.lbl_gpu_memory.setText("—")
-            self.lbl_optimal_batch.setText("—")
-            self.lbl_faiss_status.setText("Unknown")
+                device = gpu_info.get('device', 'cpu')
+                total_mb = gpu_info.get('total_mb', 0)
+                available_mb = gpu_info.get('available_mb', 0)
+
+                device_text = device.upper()
+                if device == 'cuda':
+                    device_text = f"CUDA ({gpu_info.get('device_name', 'NVIDIA GPU')})"
+                elif device == 'mps':
+                    device_text = "Apple Metal (MPS)"
+                elif device == 'cpu':
+                    device_text = "CPU (No GPU detected)"
+                self.lbl_gpu_device.setText(device_text)
+
+                if total_mb > 0:
+                    self.lbl_gpu_memory.setText(f"{available_mb:.0f} MB / {total_mb:.0f} MB")
+                else:
+                    self.lbl_gpu_memory.setText("N/A (CPU mode)")
+
+                self.lbl_optimal_batch.setText(
+                    f"{batch_size} photos/batch" if batch_size else "N/A"
+                )
+
+                if faiss_ok:
+                    self.lbl_faiss_status.setText("✓ Available")
+                    self.lbl_faiss_status.setStyleSheet("color: #4CAF50; font-weight: bold;")
+                else:
+                    self.lbl_faiss_status.setText("Not installed (using numpy)")
+                    self.lbl_faiss_status.setStyleSheet("color: #666;")
+            except RuntimeError:
+                pass  # Dialog may have been closed
+
+        _result_holder = [None]
+
+        def _thread_target():
+            _result_holder[0] = _bg_work()
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(0, lambda: _apply(_result_holder[0]))
+
+        threading.Thread(target=_thread_target, daemon=True).start()
 
     def _refresh_embedding_stats(self):
-        """Refresh embedding statistics summary."""
-        try:
-            from services.semantic_embedding_service import get_semantic_embedding_service
+        """Refresh embedding statistics summary in a background thread.
 
-            # Get current project ID from main window's grid or sidebar
-            project_id = self._get_current_project_id()
+        Uses background thread to avoid freezing the Preferences dialog
+        when get_semantic_embedding_service() triggers heavy torch import.
+        """
+        import threading
 
-            if project_id is None:
-                self.lbl_embedding_coverage.setText("No project selected")
-                self.lbl_storage_format.setText("")
-                self.btn_migrate_float16.setEnabled(False)
-                return
-
-            service = get_semantic_embedding_service()
-            stats = service.get_project_embedding_stats(project_id)
-
-            # Coverage summary
-            total = stats.get('total_photos', 0)
-            with_emb = stats.get('photos_with_embeddings', 0)
-            coverage = stats.get('coverage_percent', 0)
-            self.lbl_embedding_coverage.setText(
-                f"📊 Coverage: {with_emb}/{total} photos ({coverage:.1f}%)"
-            )
-
-            # Storage format
-            float16 = stats.get('float16_count', 0)
-            float32 = stats.get('float32_count', 0)
-            storage_mb = stats.get('storage_mb', 0)
-
-            if float16 > 0 or float32 > 0:
-                self.lbl_storage_format.setText(
-                    f"Storage: {storage_mb:.2f} MB ({float16} float16, {float32} float32)"
-                )
-                self.btn_migrate_float16.setEnabled(float32 > 0)
-            else:
-                self.lbl_storage_format.setText("No embeddings yet")
-                self.btn_migrate_float16.setEnabled(False)
-
-        except Exception as e:
-            self.lbl_embedding_coverage.setText("Could not load statistics")
-            self.lbl_storage_format.setText(f"Error: {str(e)[:50]}")
+        project_id = self._get_current_project_id()
+        if project_id is None:
+            self.lbl_embedding_coverage.setText("No project selected")
+            self.lbl_storage_format.setText("")
             self.btn_migrate_float16.setEnabled(False)
+            return
+
+        self.lbl_embedding_coverage.setText("Loading...")
+
+        def _bg_work():
+            try:
+                from services.semantic_embedding_service import get_semantic_embedding_service
+                service = get_semantic_embedding_service()
+                return service.get_project_embedding_stats(project_id), None
+            except Exception as e:
+                return None, str(e)
+
+        def _apply(result):
+            stats, error = result
+            try:
+                if error or not stats:
+                    self.lbl_embedding_coverage.setText("Could not load statistics")
+                    self.lbl_storage_format.setText(f"Error: {str(error)[:50]}" if error else "")
+                    self.btn_migrate_float16.setEnabled(False)
+                    return
+
+                total = stats.get('total_photos', 0)
+                with_emb = stats.get('photos_with_embeddings', 0)
+                coverage = stats.get('coverage_percent', 0)
+                self.lbl_embedding_coverage.setText(
+                    f"📊 Coverage: {with_emb}/{total} photos ({coverage:.1f}%)"
+                )
+
+                float16 = stats.get('float16_count', 0)
+                float32 = stats.get('float32_count', 0)
+                storage_mb = stats.get('storage_mb', 0)
+
+                if float16 > 0 or float32 > 0:
+                    self.lbl_storage_format.setText(
+                        f"Storage: {storage_mb:.2f} MB ({float16} float16, {float32} float32)"
+                    )
+                    self.btn_migrate_float16.setEnabled(float32 > 0)
+                else:
+                    self.lbl_storage_format.setText("No embeddings yet")
+                    self.btn_migrate_float16.setEnabled(False)
+            except RuntimeError:
+                pass  # Dialog may have been closed
+
+        _result_holder = [None]
+
+        def _thread_target():
+            _result_holder[0] = _bg_work()
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(0, lambda: _apply(_result_holder[0]))
+
+        threading.Thread(target=_thread_target, daemon=True).start()
 
     def _open_embedding_stats_dashboard(self):
         """Open the full embedding statistics dashboard."""
