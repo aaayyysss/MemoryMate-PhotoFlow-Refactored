@@ -30,7 +30,9 @@
       "gps_location": "GPS & Location",
       "face_detection": "Face Detection",
       "visual_embeddings": "Visual Embeddings",
+      "search_discovery": "Search & Discovery",
       "video": "Video",
+      "groups": "Groups",
       "advanced": "Advanced"
     },
     "sections": {

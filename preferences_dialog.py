@@ -27,6 +27,7 @@ from pathlib import Path
 from translation_manager import get_translation_manager, tr
 from utils.qt_guards import connect_guarded
 from config.face_detection_config import get_face_config
+from config.search_config import SearchConfig, SearchDefaults
 
 
 class BadgePreviewWidget(QWidget):
@@ -201,6 +202,7 @@ class PreferencesDialog(QDialog):
             ("preferences.nav.face_detection", "👤"),
             ("preferences.nav.groups", "👥"),
             ("preferences.nav.visual_embeddings", "🔍"),
+            ("preferences.nav.search_discovery", "🔎"),
             ("preferences.nav.video", "🎬"),
             ("preferences.nav.advanced", "🔧")
         ]
@@ -247,6 +249,7 @@ class PreferencesDialog(QDialog):
         self.content_stack.addWidget(self._create_face_detection_panel())
         self.content_stack.addWidget(self._create_groups_panel())
         self.content_stack.addWidget(self._create_visual_embeddings_panel())
+        self.content_stack.addWidget(self._create_search_discovery_panel())
         self.content_stack.addWidget(self._create_video_panel())
         self.content_stack.addWidget(self._create_advanced_panel())
 
@@ -1143,6 +1146,229 @@ class PreferencesDialog(QDialog):
 
         return self._create_scrollable_panel(widget)
 
+    def _create_search_discovery_panel(self) -> QWidget:
+        """Create Search & Discovery settings panel.
+
+        Configures all search parameters:
+        - Smart Find CLIP threshold, top_k, cache TTL
+        - Semantic search min similarity, top_k
+        - NLP parsing toggle
+        - Confidence display settings
+        - Search debounce timing
+        """
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setAlignment(Qt.AlignTop)
+        layout.setSpacing(15)
+
+        # Title
+        title = QLabel("🔎 Search & Discovery")
+        title.setStyleSheet("font-size: 18pt; font-weight: bold;")
+        layout.addWidget(title)
+
+        # Description
+        desc = QLabel(
+            "Tune search sensitivity, result limits, and behavior for Smart Find "
+            "presets and free-text semantic search. Settings inspired by Google Photos, "
+            "Apple Photos, Lightroom, and Excire best practices."
+        )
+        desc.setWordWrap(True)
+        desc.setStyleSheet("color: #666; font-size: 10pt; padding: 4px;")
+        layout.addWidget(desc)
+
+        # ── Smart Find Settings ──
+        smart_find_group = QGroupBox("Smart Find (Presets & Text Search)")
+        sf_layout = QFormLayout(smart_find_group)
+        sf_layout.setSpacing(10)
+
+        # CLIP Threshold slider (0.05 - 0.50, shown as percentage)
+        clip_row = QWidget()
+        clip_row_layout = QHBoxLayout(clip_row)
+        clip_row_layout.setContentsMargins(0, 0, 0, 0)
+
+        from PySide6.QtWidgets import QSlider
+        self.slider_clip_threshold = QSlider(Qt.Horizontal)
+        self.slider_clip_threshold.setRange(5, 50)  # 0.05 to 0.50
+        self.slider_clip_threshold.setTickPosition(QSlider.TicksBelow)
+        self.slider_clip_threshold.setTickInterval(5)
+        self.lbl_clip_threshold_val = QLabel("0.22")
+        self.lbl_clip_threshold_val.setMinimumWidth(40)
+        self.slider_clip_threshold.valueChanged.connect(
+            lambda v: self.lbl_clip_threshold_val.setText(f"{v / 100:.2f}")
+        )
+        clip_row_layout.addWidget(self.slider_clip_threshold, 1)
+        clip_row_layout.addWidget(self.lbl_clip_threshold_val)
+
+        sf_layout.addRow("CLIP Sensitivity:", clip_row)
+
+        clip_hint = QLabel(
+            "Lower = more results (broader matching). Higher = fewer results (stricter).\n"
+            "Default: 0.22. Range: 0.10 (very broad) to 0.40 (very strict)."
+        )
+        clip_hint.setWordWrap(True)
+        clip_hint.setStyleSheet("color: #888; font-size: 9pt; padding-left: 4px;")
+        sf_layout.addRow("", clip_hint)
+
+        # Max Results
+        self.spin_search_top_k = QSpinBox()
+        self.spin_search_top_k.setRange(10, 2000)
+        self.spin_search_top_k.setSingleStep(50)
+        self.spin_search_top_k.setSuffix(" photos")
+        self.spin_search_top_k.setToolTip(
+            "Maximum number of results returned per Smart Find query.\n"
+            "Higher values show more results but may be slower.\n"
+            "Default: 200"
+        )
+        sf_layout.addRow("Max Results:", self.spin_search_top_k)
+
+        # Cache TTL
+        self.spin_cache_ttl = QSpinBox()
+        self.spin_cache_ttl.setRange(0, 3600)
+        self.spin_cache_ttl.setSingleStep(30)
+        self.spin_cache_ttl.setSuffix(" sec")
+        self.spin_cache_ttl.setToolTip(
+            "How long search results are cached before re-querying.\n"
+            "0 = no caching (always fresh results).\n"
+            "Default: 300 seconds (5 minutes)"
+        )
+        sf_layout.addRow("Cache Duration:", self.spin_cache_ttl)
+
+        # Search Debounce
+        self.spin_debounce = QSpinBox()
+        self.spin_debounce.setRange(100, 2000)
+        self.spin_debounce.setSingleStep(50)
+        self.spin_debounce.setSuffix(" ms")
+        self.spin_debounce.setToolTip(
+            "Delay before executing search after typing stops.\n"
+            "Lower = faster response, Higher = fewer intermediate queries.\n"
+            "Default: 500ms"
+        )
+        sf_layout.addRow("Input Debounce:", self.spin_debounce)
+
+        # NLP Parsing toggle
+        self.chk_nlp_enabled = QCheckBox("Enable NLP query parsing")
+        self.chk_nlp_enabled.setToolTip(
+            "Parse natural language queries to extract dates, ratings, and media types\n"
+            "before CLIP search. Example: 'sunset from 2024' extracts year filter.\n"
+            "Disable to always use raw CLIP text search."
+        )
+        sf_layout.addRow("", self.chk_nlp_enabled)
+
+        layout.addWidget(smart_find_group)
+
+        # ── Semantic Search Settings (Toolbar) ──
+        semantic_group = QGroupBox("Semantic Search (Toolbar)")
+        sem_layout = QFormLayout(semantic_group)
+        sem_layout.setSpacing(10)
+
+        # Min similarity slider
+        sem_row = QWidget()
+        sem_row_layout = QHBoxLayout(sem_row)
+        sem_row_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.slider_semantic_sim = QSlider(Qt.Horizontal)
+        self.slider_semantic_sim.setRange(5, 60)  # 0.05 to 0.60
+        self.slider_semantic_sim.setTickPosition(QSlider.TicksBelow)
+        self.slider_semantic_sim.setTickInterval(5)
+        self.lbl_semantic_sim_val = QLabel("0.30")
+        self.lbl_semantic_sim_val.setMinimumWidth(40)
+        self.slider_semantic_sim.valueChanged.connect(
+            lambda v: self.lbl_semantic_sim_val.setText(f"{v / 100:.2f}")
+        )
+        sem_row_layout.addWidget(self.slider_semantic_sim, 1)
+        sem_row_layout.addWidget(self.lbl_semantic_sim_val)
+
+        sem_layout.addRow("Min Similarity:", sem_row)
+
+        sem_hint = QLabel(
+            "Minimum relevance score for toolbar semantic search results.\n"
+            "Default: 0.30. Lower shows more results, higher is stricter."
+        )
+        sem_hint.setWordWrap(True)
+        sem_hint.setStyleSheet("color: #888; font-size: 9pt; padding-left: 4px;")
+        sem_layout.addRow("", sem_hint)
+
+        # Semantic top_k
+        self.spin_semantic_top_k = QSpinBox()
+        self.spin_semantic_top_k.setRange(5, 500)
+        self.spin_semantic_top_k.setSingleStep(5)
+        self.spin_semantic_top_k.setSuffix(" results")
+        self.spin_semantic_top_k.setToolTip(
+            "Maximum results for toolbar semantic search.\n"
+            "Default: 20"
+        )
+        sem_layout.addRow("Max Results:", self.spin_semantic_top_k)
+
+        layout.addWidget(semantic_group)
+
+        # ── Display Settings ──
+        display_group = QGroupBox("Result Display")
+        disp_layout = QFormLayout(display_group)
+        disp_layout.setSpacing(10)
+
+        self.chk_show_confidence = QCheckBox("Show confidence scores on results")
+        self.chk_show_confidence.setToolTip(
+            "Display relevance/confidence percentage overlay on search result thumbnails.\n"
+            "Useful for understanding search quality."
+        )
+        disp_layout.addRow("", self.chk_show_confidence)
+
+        # Min display confidence slider
+        conf_row = QWidget()
+        conf_row_layout = QHBoxLayout(conf_row)
+        conf_row_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.slider_min_confidence = QSlider(Qt.Horizontal)
+        self.slider_min_confidence.setRange(0, 50)  # 0.00 to 0.50
+        self.slider_min_confidence.setTickPosition(QSlider.TicksBelow)
+        self.slider_min_confidence.setTickInterval(5)
+        self.lbl_min_confidence_val = QLabel("0.15")
+        self.lbl_min_confidence_val.setMinimumWidth(40)
+        self.slider_min_confidence.valueChanged.connect(
+            lambda v: self.lbl_min_confidence_val.setText(f"{v / 100:.2f}")
+        )
+        conf_row_layout.addWidget(self.slider_min_confidence, 1)
+        conf_row_layout.addWidget(self.lbl_min_confidence_val)
+
+        disp_layout.addRow("Min Display Score:", conf_row)
+
+        conf_hint = QLabel(
+            "Filter out results below this confidence from display.\n"
+            "0.00 = show all matches. Default: 0.15"
+        )
+        conf_hint.setWordWrap(True)
+        conf_hint.setStyleSheet("color: #888; font-size: 9pt; padding-left: 4px;")
+        disp_layout.addRow("", conf_hint)
+
+        layout.addWidget(display_group)
+
+        # ── Reset Button ──
+        btn_reset = QPushButton("Reset Search Settings to Defaults")
+        btn_reset.setMaximumWidth(280)
+        btn_reset.setToolTip("Restore all search parameters to their default values")
+        btn_reset.clicked.connect(self._reset_search_defaults)
+        layout.addWidget(btn_reset)
+
+        layout.addStretch()
+
+        return self._create_scrollable_panel(widget)
+
+    def _reset_search_defaults(self):
+        """Reset all search settings to defaults."""
+        d = SearchDefaults()
+        self.slider_clip_threshold.setValue(int(d.CLIP_THRESHOLD * 100))
+        self.lbl_clip_threshold_val.setText(f"{d.CLIP_THRESHOLD:.2f}")
+        self.spin_search_top_k.setValue(d.DEFAULT_TOP_K)
+        self.spin_cache_ttl.setValue(d.CACHE_TTL)
+        self.spin_debounce.setValue(d.SEARCH_DEBOUNCE_MS)
+        self.chk_nlp_enabled.setChecked(d.NLP_ENABLED)
+        self.slider_semantic_sim.setValue(int(d.SEMANTIC_MIN_SIMILARITY * 100))
+        self.lbl_semantic_sim_val.setText(f"{d.SEMANTIC_MIN_SIMILARITY:.2f}")
+        self.spin_semantic_top_k.setValue(d.SEMANTIC_TOP_K)
+        self.chk_show_confidence.setChecked(d.SHOW_CONFIDENCE_SCORES)
+        self.slider_min_confidence.setValue(int(d.MIN_DISPLAY_CONFIDENCE * 100))
+        self.lbl_min_confidence_val.setText(f"{d.MIN_DISPLAY_CONFIDENCE:.2f}")
+
     def _create_video_panel(self) -> QWidget:
         """Create Video Settings panel."""
         widget = QWidget()
@@ -1495,6 +1721,23 @@ class PreferencesDialog(QDialog):
         self.spin_extraction_batch.setValue(self.settings.get("clip_batch_size", 50))
         self.txt_clip_model_path.setText(self.settings.get("clip_model_path", ""))
 
+        # Search & Discovery
+        clip_thresh = SearchConfig.get_clip_threshold()
+        self.slider_clip_threshold.setValue(int(clip_thresh * 100))
+        self.lbl_clip_threshold_val.setText(f"{clip_thresh:.2f}")
+        self.spin_search_top_k.setValue(SearchConfig.get_default_top_k())
+        self.spin_cache_ttl.setValue(SearchConfig.get_cache_ttl())
+        self.spin_debounce.setValue(SearchConfig.get_search_debounce_ms())
+        self.chk_nlp_enabled.setChecked(SearchConfig.get_nlp_enabled())
+        sem_sim = SearchConfig.get_semantic_min_similarity()
+        self.slider_semantic_sim.setValue(int(sem_sim * 100))
+        self.lbl_semantic_sim_val.setText(f"{sem_sim:.2f}")
+        self.spin_semantic_top_k.setValue(SearchConfig.get_semantic_top_k())
+        self.chk_show_confidence.setChecked(SearchConfig.get_show_confidence_scores())
+        min_conf = SearchConfig.get_min_display_confidence()
+        self.slider_min_confidence.setValue(int(min_conf * 100))
+        self.lbl_min_confidence_val.setText(f"{min_conf:.2f}")
+
         # Badge overlay settings
         self.chk_badge_overlays.setChecked(self.settings.get("badge_overlays_enabled", True))
         self.spin_badge_size.setValue(int(self.settings.get("badge_size_px", 22)))
@@ -1559,6 +1802,15 @@ class PreferencesDialog(QDialog):
             "meta_timeout_secs": self.settings.get("meta_timeout_secs", 8.0),
             "meta_batch": self.settings.get("meta_batch", 200),
             "auto_run_backfill_after_scan": self.settings.get("auto_run_backfill_after_scan", False),
+            "search_clip_threshold": SearchConfig.get_clip_threshold(),
+            "search_default_top_k": SearchConfig.get_default_top_k(),
+            "search_cache_ttl": SearchConfig.get_cache_ttl(),
+            "search_debounce_ms": SearchConfig.get_search_debounce_ms(),
+            "search_nlp_enabled": SearchConfig.get_nlp_enabled(),
+            "search_semantic_min_similarity": SearchConfig.get_semantic_min_similarity(),
+            "search_semantic_top_k": SearchConfig.get_semantic_top_k(),
+            "search_show_confidence": SearchConfig.get_show_confidence_scores(),
+            "search_min_display_confidence": SearchConfig.get_min_display_confidence(),
         }
 
     def _on_run_hash_backfill(self):
@@ -2024,6 +2276,19 @@ class PreferencesDialog(QDialog):
         self.settings.set("clip_model_path", clip_path)
         print(f"🔍 CLIP settings saved: variant={self.cmb_clip_variant.currentData()}, device={self.cmb_clip_device.currentData()}")
 
+        # Search & Discovery
+        SearchConfig.set_clip_threshold(self.slider_clip_threshold.value() / 100.0)
+        SearchConfig.set_default_top_k(self.spin_search_top_k.value())
+        SearchConfig.set_cache_ttl(self.spin_cache_ttl.value())
+        SearchConfig.set_search_debounce_ms(self.spin_debounce.value())
+        SearchConfig.set_nlp_enabled(self.chk_nlp_enabled.isChecked())
+        SearchConfig.set_semantic_min_similarity(self.slider_semantic_sim.value() / 100.0)
+        SearchConfig.set_semantic_top_k(self.spin_semantic_top_k.value())
+        SearchConfig.set_show_confidence_scores(self.chk_show_confidence.isChecked())
+        SearchConfig.set_min_display_confidence(self.slider_min_confidence.value() / 100.0)
+        print(f"🔎 Search settings saved: clip_threshold={self.slider_clip_threshold.value() / 100:.2f}, "
+              f"top_k={self.spin_search_top_k.value()}, cache_ttl={self.spin_cache_ttl.value()}s")
+
         # Badge overlays
         self.settings.set("badge_overlays_enabled", self.chk_badge_overlays.isChecked())
         self.settings.set("badge_size_px", self.spin_badge_size.value())
@@ -2180,6 +2445,15 @@ class PreferencesDialog(QDialog):
             "meta_timeout_secs": float(self.txt_meta_timeout.currentText()) if self.txt_meta_timeout.currentText().replace('.', '').isdigit() else 8.0,
             "meta_batch": int(self.txt_meta_batch.currentText()) if self.txt_meta_batch.currentText().isdigit() else 200,
             "auto_run_backfill_after_scan": self.chk_meta_auto.isChecked(),
+            "search_clip_threshold": self.slider_clip_threshold.value() / 100.0,
+            "search_default_top_k": self.spin_search_top_k.value(),
+            "search_cache_ttl": self.spin_cache_ttl.value(),
+            "search_debounce_ms": self.spin_debounce.value(),
+            "search_nlp_enabled": self.chk_nlp_enabled.isChecked(),
+            "search_semantic_min_similarity": self.slider_semantic_sim.value() / 100.0,
+            "search_semantic_top_k": self.spin_semantic_top_k.value(),
+            "search_show_confidence": self.chk_show_confidence.isChecked(),
+            "search_min_display_confidence": self.slider_min_confidence.value() / 100.0,
         }
 
         return current != self.original_settings
