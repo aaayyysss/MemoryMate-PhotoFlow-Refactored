@@ -288,7 +288,11 @@ class FindSection(BaseSection):
         self._active_text_query = None
         self._search_debounce = QTimer()
         self._search_debounce.setSingleShot(True)
-        self._search_debounce.setInterval(500)
+        try:
+            from config.search_config import SearchConfig
+            self._search_debounce.setInterval(SearchConfig.get_search_debounce_ms())
+        except Exception:
+            self._search_debounce.setInterval(500)
         self._search_debounce.timeout.connect(self._execute_text_search)
         self._pending_text_query = ""
         self._recent_searches: List[Dict] = []  # [{label, preset_id_or_query, count}]

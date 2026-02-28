@@ -335,9 +335,17 @@ class SmartFindService:
         self._semantic_service = None  # Lazy init
         self._search_service = None  # Lazy init
         self._result_cache: Dict[str, SmartFindResult] = {}
-        self._cache_ttl = 300  # 5 minute cache TTL
         self._custom_presets: Optional[List[Dict]] = None  # Lazy-loaded
         self._excluded_paths: set = set()  # "Not this" exclusions for current session
+
+    @property
+    def _cache_ttl(self) -> int:
+        """Get cache TTL from centralized config."""
+        try:
+            from config.search_config import SearchConfig
+            return SearchConfig.get_cache_ttl()
+        except Exception:
+            return 300
 
     @property
     def semantic_service(self):
@@ -539,10 +547,23 @@ class SmartFindService:
     # ── Search Execution ──
 
     def find_by_preset(self, preset_id: str,
-                       top_k: int = 200,
-                       threshold: float = 0.22,
+                       top_k: Optional[int] = None,
+                       threshold: Optional[float] = None,
                        extra_filters: Optional[Dict] = None) -> SmartFindResult:
         """Execute a Smart Find using a preset (builtin or custom)."""
+        # Resolve defaults from centralized config
+        try:
+            from config.search_config import SearchConfig
+            if top_k is None:
+                top_k = SearchConfig.get_default_top_k()
+            if threshold is None:
+                threshold = SearchConfig.get_clip_threshold()
+        except Exception:
+            if top_k is None:
+                top_k = 200
+            if threshold is None:
+                threshold = 0.22
+
         # Check cache
         cache_key = f"{preset_id}:{top_k}:{threshold}:{extra_filters}"
         if cache_key in self._result_cache:
@@ -624,8 +645,8 @@ class SmartFindService:
         return result
 
     def find_by_text(self, query: str,
-                     top_k: int = 200,
-                     threshold: float = 0.22,
+                     top_k: Optional[int] = None,
+                     threshold: Optional[float] = None,
                      extra_filters: Optional[Dict] = None) -> SmartFindResult:
         """
         Free-text Smart Find with NLP parsing.
@@ -633,10 +654,28 @@ class SmartFindService:
         Parses structured metadata from the query before falling back to CLIP.
         Example: "sunset photos from 2024" -> CLIP("sunset") + date filter 2024.
         """
+        # Resolve defaults from centralized config
+        try:
+            from config.search_config import SearchConfig
+            if top_k is None:
+                top_k = SearchConfig.get_default_top_k()
+            if threshold is None:
+                threshold = SearchConfig.get_clip_threshold()
+            nlp_enabled = SearchConfig.get_nlp_enabled()
+        except Exception:
+            if top_k is None:
+                top_k = 200
+            if threshold is None:
+                threshold = 0.22
+            nlp_enabled = True
+
         start = time.time()
 
-        # NLP: extract structured filters before CLIP
-        clip_query, parsed_filters = NLQueryParser.parse(query)
+        # NLP: extract structured filters before CLIP (can be disabled in settings)
+        if nlp_enabled:
+            clip_query, parsed_filters = NLQueryParser.parse(query)
+        else:
+            clip_query, parsed_filters = query, {}
 
         # Merge parsed filters with extra UI filters
         all_filters = dict(parsed_filters)
@@ -701,14 +740,27 @@ class SmartFindService:
     def find_combined(self, preset_ids: List[str],
                       text_query: Optional[str] = None,
                       extra_filters: Optional[Dict] = None,
-                      top_k: int = 200,
-                      threshold: float = 0.22) -> SmartFindResult:
+                      top_k: Optional[int] = None,
+                      threshold: Optional[float] = None) -> SmartFindResult:
         """
         Combinable filters: stack multiple presets + text + metadata.
 
         Intersects CLIP results from all sources, unions metadata filters.
         Example: "Beach" + "With Location" + rating >= 3
         """
+        # Resolve defaults from centralized config
+        try:
+            from config.search_config import SearchConfig
+            if top_k is None:
+                top_k = SearchConfig.get_default_top_k()
+            if threshold is None:
+                threshold = SearchConfig.get_clip_threshold()
+        except Exception:
+            if top_k is None:
+                top_k = 200
+            if threshold is None:
+                threshold = 0.22
+
         start = time.time()
         all_prompts = []
         all_metadata_filters = {}

@@ -171,7 +171,14 @@ class SemanticSearchWidget(QWidget):
         self._query_image_path = None  # Path to uploaded query image
         self._query_image_embedding = None  # Cached image embedding
         self._search_start_time = None  # For timing searches
-        self._min_similarity = 0.30  # Default similarity threshold (raised from 0.25 for better quality)
+        # Load search parameters from centralized config
+        try:
+            from config.search_config import SearchConfig
+            self._min_similarity = SearchConfig.get_semantic_min_similarity()
+            self._semantic_top_k = SearchConfig.get_semantic_top_k()
+        except Exception:
+            self._min_similarity = 0.30
+            self._semantic_top_k = 20
         self._slider_debounce_timer = None  # Timer for debouncing slider changes
 
         # FIX 2026-02-08: Async model loading state
@@ -703,7 +710,7 @@ class SemanticSearchWidget(QWidget):
         self._active_search_worker = SemanticSearchWorker(
             project_id=self._project_id,
             query=query,
-            limit=100,
+            limit=self._semantic_top_k,
             threshold=self._min_similarity,
             model_name=self._resolve_clip_variant()
         )
@@ -1163,7 +1170,7 @@ class SemanticSearchWidget(QWidget):
 
                         results = self.embedding_service.search_similar(
                             query_embedding,
-                            top_k=100,  # Get top 100 results
+                            top_k=self._semantic_top_k,
                             model_id=model_id,
                             min_similarity=self._min_similarity,
                             progress_callback=on_progress,
@@ -1175,7 +1182,7 @@ class SemanticSearchWidget(QWidget):
                         # Small collection - no progress dialog needed
                         results = self.embedding_service.search_similar(
                             query_embedding,
-                            top_k=100,  # Get top 100 results
+                            top_k=self._semantic_top_k,
                             model_id=model_id,
                             min_similarity=self._min_similarity,
                             query_text=expanded_query  # For metrics logging
