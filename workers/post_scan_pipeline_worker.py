@@ -236,8 +236,16 @@ class PostScanPipelineWorker(QRunnable):
                     embedding_count = embedding_service.get_embedding_count()
 
                     if embedding_count == 0:
-                        logger.warning("No embeddings found - skipping similar shot detection")
-                        results["errors"].append("No embeddings available for similar detection")
+                        logger.warning(
+                            "No embeddings found - skipping similar shot detection. "
+                            "This is likely because the CLIP model failed to load. "
+                            "Check: Preferences → Visual Embeddings for model path, "
+                            "or try: pip install --upgrade transformers torch pillow"
+                        )
+                        results["errors"].append(
+                            "No embeddings available for similar detection. "
+                            "CLIP model may need reinstalling (pip install --upgrade transformers torch pillow)"
+                        )
                     else:
                         stack_repo = StackRepository(db_conn)
                         stack_svc = StackGenerationService(
