@@ -827,17 +827,28 @@ class SearchOrchestrator:
         scored.sort(key=lambda r: r.final_score, reverse=True)
 
         # Step 7: Backoff if below min_results_target and semantic was used
-        # Adaptive target: for small libraries the static target of 20 is
-        # too aggressive (20/25 = 80%) and causes every search to backoff,
-        # pulling in the entire library.  Cap at ~30% of library size.
+        # Adaptive target AND step for library size:
+        #   - 25 photos: target=2, step=0.02  (only backoff on 0-1 results)
+        #   - 100 photos: target=10, step=0.02
+        #   - 500+ photos: target=20, step=0.04 (original behaviour)
+        #
+        # Why: ViT-B/32 CLIP at threshold 0.22 typically finds 1-6 genuine
+        # matches in a 25-photo library. A target of 7+ forces backoff on
+        # every query, lowering threshold to 0.18 where everything matches,
+        # destroying discrimination entirely.
         backoff_applied = False
         total_library = len(project_meta) if project_meta else 0
         min_target = min(
             self._MIN_RESULTS_TARGET,
-            max(3, total_library * 3 // 10),  # 30% of library, floor of 3
+            max(2, total_library // 10),  # 10% of library, floor of 2
         )
-        if len(scored) < min_target and plan.has_semantic() and self._smart_find.clip_available:
+        # Smaller backoff step for small libraries: 0.22 → 0.20 instead
+        # of 0.22 → 0.18, which keeps some CLIP discrimination alive.
+        if total_library <= 100:
+            backoff_step = 0.02
+        else:
             backoff_step = cfg.get("backoff_step", 0.04)
+        if len(scored) < min_target and plan.has_semantic() and self._smart_find.clip_available:
             max_retries = cfg.get("backoff_retries", 2)
             prompts = plan.semantic_prompts if plan.semantic_prompts else [plan.semantic_text]
             logger.info(
@@ -1199,14 +1210,14 @@ class SearchOrchestrator:
                     WHERE pm.project_id = ?
                     LIMIT 1
                 """, (self.project_id,)).fetchone()
-                dim = row['dim'] if row else 0
+                dim = abs(row['dim']) if row else 0
 
             tier = self._MODEL_QUALITY_TIERS.get(dim, f"unknown ({dim}-D)")
             logger.info(
                 f"[SearchOrchestrator] Embedding model: {model_name} | "
-                f"quality tier: {tier}"
+                f"dimension: {dim}-D | quality tier: {tier}"
             )
-            if dim > 0 and dim <= 512:
+            if 0 < dim <= 512:
                 logger.info(
                     f"[SearchOrchestrator] Semantic quality ceiling: base model "
                     f"({dim}-D). For better search separation, re-extract with "
