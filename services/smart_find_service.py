@@ -1122,15 +1122,15 @@ class SmartFindService:
             db = DatabaseConnection()
             with db.get_connection() as conn:
                 cursor = conn.execute(
-                    "SELECT path, rating, latitude, longitude, created_date "
+                    "SELECT path, rating, gps_latitude, gps_longitude, created_date "
                     "FROM photo_metadata WHERE project_id = ?",
                     (self.project_id,)
                 )
                 result = {}
                 for row in cursor.fetchall():
                     path = row['path']
-                    lat = row['latitude']
-                    lon = row['longitude']
+                    lat = row['gps_latitude']
+                    lon = row['gps_longitude']
                     result[path] = {
                         "rating": row['rating'],
                         "has_gps": lat is not None and lon is not None and lat != 0 and lon != 0,
