@@ -278,6 +278,13 @@ class PostScanPipelineWorker(QRunnable):
                     logger.error("Similar shot detection failed: %s", e, exc_info=True)
                     results["errors"].append(f"Similar shots: {e}")
 
+            # Bump search index version so SmartFind caches are invalidated
+            try:
+                from services.smart_find_service import bump_index_version
+                bump_index_version("post_scan_pipeline_complete")
+            except Exception:
+                pass
+
             self.signals.finished.emit(results)
 
         except Exception as e:

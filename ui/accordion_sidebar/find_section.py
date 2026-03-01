@@ -863,6 +863,12 @@ class FindSection(BaseSection):
                 self._active_label.setText(f"{label}  \u2014  No matches")
             self._active_indicator.show()
 
+    def focus_search(self):
+        """Focus the search input field (called by Ctrl+F shortcut)."""
+        if hasattr(self, '_search_field'):
+            self._search_field.setFocus()
+            self._search_field.selectAll()
+
     # ── Custom Preset Management ──
 
     def _create_new_preset(self):
