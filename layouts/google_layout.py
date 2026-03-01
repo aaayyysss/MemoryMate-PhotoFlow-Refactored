@@ -1365,8 +1365,13 @@ class GooglePhotosLayout(BaseLayout):
         self.current_filter_day = filter_day
         self.current_filter_folder = filter_folder
         self.current_filter_person = filter_person
-        # Freeze to avoid mutations from callers while worker is running
-        self.current_filter_paths = list(filter_paths) if filter_paths else None
+        # Freeze to avoid mutations from callers while worker is running.
+        # IMPORTANT: preserve the distinction between [] (empty search results)
+        # and None (no path filter at all).  Only convert truthy lists.
+        if filter_paths is not None:
+            self.current_filter_paths = list(filter_paths)
+        else:
+            self.current_filter_paths = None
 
         filter_desc = []
         if filter_year:
@@ -1433,6 +1438,24 @@ class GooglePhotosLayout(BaseLayout):
         # ── Decide: paged loading vs legacy single-query ──────────
         # filter_paths (location filter) is not supported by PhotoQueryService
         # so fall back to the legacy all-at-once PhotoLoadWorker for that case.
+
+        # Guard: empty path list means "zero search results" — short-circuit
+        # to display the empty state immediately instead of querying the DB
+        # (which would return ALL photos since no IN-clause is built).
+        if filter_paths is not None and len(filter_paths) == 0:
+            self._hide_refresh_indicator()
+            self._photo_load_in_progress = False
+            self._clear_timeline_for_new_content()
+            empty_widget = self._create_empty_state(
+                icon="\U0001f50d",
+                title="No matching photos",
+                message="Try a different search or filter.",
+                action_text=""
+            )
+            self.timeline_layout.addWidget(empty_widget)
+            print(f"[GooglePhotosLayout] Empty path list → empty state (generation {current_gen})")
+            return
+
         if filter_paths is not None:
             # Legacy path: load everything in one shot
             worker = PhotoLoadWorker(
@@ -9031,6 +9054,10 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
 
         Displays matching photos in the grid using the existing
         filter_by_paths mechanism, plus adds a search header.
+
+        CRITICAL: paths=[] means "search returned zero results" and must
+        show an empty state — NOT load the full library.  paths with
+        items means "display exactly these photos".
         """
         try:
             logger.info(
@@ -9046,11 +9073,24 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
                     f"{query_label}  —  {len(paths)} photos"
                 ))
             else:
-                # No results - show empty state with header
-                self._request_load(paths=[])
-                QTimer.singleShot(100, lambda: self._add_search_header(
-                    f"{query_label}  —  No matching photos found"
-                ))
+                # ── Empty results: show clean empty state, NOT the full library ──
+                # This matches Apple Photos / Google Photos behaviour:
+                # zero matches → centered empty-state card, never a silent
+                # fallback to showing everything.
+                self._photo_load_generation += 1
+                self._clear_timeline_for_new_content()
+                self.btn_clear_filter.setVisible(True)  # allow user to clear
+
+                empty_widget = self._create_empty_state(
+                    icon="\U0001f50d",
+                    title=f"{query_label}",
+                    message="No matching photos found",
+                    action_text="Try a different search or click Clear to return"
+                )
+                self.timeline_layout.addWidget(empty_widget)
+                logger.info(
+                    f"[GooglePhotosLayout] Smart Find empty state shown for '{query_label}'"
+                )
 
         except Exception as e:
             logger.error(f"[GooglePhotosLayout] Smart Find display failed: {e}", exc_info=True)
