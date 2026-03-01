@@ -1554,7 +1554,7 @@ class MainWindow(QMainWindow):
                 try:
                     from thumb_cache_db import get_cache
                     cache = get_cache()
-                    cache.purge_stale(max_age_days=7)
+                    cache.purge_stale(max_age_days=30)
                     print("[MainWindow] Deferred cache purge completed")
                 except Exception as e:
                     print(f"[MainWindow] Cache purge error (non-fatal): {e}")

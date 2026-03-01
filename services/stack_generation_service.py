@@ -938,9 +938,10 @@ class StackGenerationService:
         if len(candidate_ids) < min_cluster_size:
             return []
 
+        unique_clustered = len(set(already_clustered.keys()))
         self.logger.info(
             f"Global similarity pass: {len(candidate_ids)} photos with embeddings "
-            f"({len(already_clustered)} already in time-window clusters)"
+            f"({unique_clustered} unique photos in {len(set(already_clustered.values()))} time-window clusters)"
         )
 
         # Build embedding matrix and compute pairwise cosine similarity
