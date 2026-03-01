@@ -182,10 +182,28 @@ class ScoringWeights:
     # Guardrails
     max_recency_boost: float = 0.10   # Recency can't swamp relevance
     max_favorite_boost: float = 0.15  # Favorites can't float irrelevant items
-    recency_halflife_days: int = 365  # How fast recency decays
+    recency_halflife_days: int = 90   # How fast recency decays (half-life in days)
+
+    # Canonical mapping: weight attr -> ScoredResult component attr.
+    # Used by validate() to enforce that every weight has a matching
+    # component and vice-versa.
+    _WEIGHT_TO_COMPONENT = {
+        "w_clip": "clip_score",
+        "w_recency": "recency_score",
+        "w_favorite": "favorite_score",
+        "w_location": "location_score",
+        "w_face_match": "face_match_score",
+    }
 
     def validate(self):
-        """Ensure weights sum to ~1.0 and are reasonable."""
+        """Ensure weights sum to ~1.0, are reasonable, and match components."""
+        # Structural check: every weight must have a ScoredResult field
+        for w_attr, c_attr in self._WEIGHT_TO_COMPONENT.items():
+            assert hasattr(self, w_attr), f"Missing weight: {w_attr}"
+            assert hasattr(ScoredResult, c_attr), (
+                f"Weight '{w_attr}' has no matching ScoredResult component '{c_attr}'"
+            )
+
         total = self.w_clip + self.w_recency + self.w_favorite + self.w_location + self.w_face_match
         if abs(total - 1.0) > 0.01:
             logger.warning(
@@ -689,12 +707,12 @@ class SearchOrchestrator:
                 if metadata_candidate_paths is not None and path not in metadata_candidate_paths:
                     continue
 
-                sr = self._score_result(path, sem_score, matched_prompt, project_meta)
+                sr = self._score_result(path, sem_score, matched_prompt, project_meta, plan.filters)
                 scored.append(sr)
 
         elif metadata_candidate_paths is not None:
             for path in metadata_candidate_paths:
-                sr = self._score_result(path, 0.0, "", project_meta)
+                sr = self._score_result(path, 0.0, "", project_meta, plan.filters)
                 scored.append(sr)
 
         # Step 6: Sort by final_score
@@ -735,7 +753,7 @@ class SearchOrchestrator:
                             continue
                         if metadata_candidate_paths is not None and path not in metadata_candidate_paths:
                             continue
-                        sr = self._score_result(path, sem_score, prompt, project_meta)
+                        sr = self._score_result(path, sem_score, prompt, project_meta, plan.filters)
                         sr.reasons.append("(backoff)")
                         scored.append(sr)
 
@@ -762,7 +780,8 @@ class SearchOrchestrator:
 
     def _score_result(self, path: str, clip_score: float,
                       matched_prompt: str,
-                      project_meta: Dict[str, Dict]) -> ScoredResult:
+                      project_meta: Dict[str, Dict],
+                      active_filters: Optional[Dict] = None) -> ScoredResult:
         """
         Apply the deterministic scoring contract to a single result.
 
@@ -786,12 +805,14 @@ class SearchOrchestrator:
                     dt = datetime.strptime(created[:10], "%Y-%m-%d")
                 else:
                     dt = created
-                days_ago = (datetime.now() - dt).days
-                # Exponential decay: score = 2^(-days/halflife)
-                recency = min(w.max_recency_boost,
-                              2.0 ** (-days_ago / max(1, w.recency_halflife_days)))
-                if recency > 0.01:
-                    reasons.append(f"recency={recency:.3f} ({days_ago}d ago)")
+                days_ago = max(0, (datetime.now() - dt).days)
+                # Smooth exponential decay scaled to [0, max_boost]:
+                # today = max_boost, half-life days ago = max_boost/2, etc.
+                recency = w.max_recency_boost * (
+                    2.0 ** (-days_ago / max(1, w.recency_halflife_days))
+                )
+                if recency > 0.001:
+                    reasons.append(f"recency={recency:.4f} ({days_ago}d ago)")
             except (ValueError, TypeError):
                 pass
 
@@ -811,8 +832,12 @@ class SearchOrchestrator:
             location = 1.0
             reasons.append("location=1.0 (GPS)")
 
-        # Face match score (future: when person filter is active)
+        # Face match score: 1.0 when person filter is active (result
+        # already passed the person filter, so it's a confirmed match)
         face_match = 0.0
+        if active_filters and active_filters.get("person_id"):
+            face_match = 1.0
+            reasons.append(f"face=1.0 (person:{active_filters['person_id']})")
 
         # Final score
         final = (
@@ -931,7 +956,8 @@ class SearchOrchestrator:
             f"[SearchOrchestrator] query=\"{plan.raw_query}\" "
             f"| {result.total_matches} results | {result.execution_time_ms:.0f}ms "
             f"| weights=[clip={weights.w_clip:.2f} rec={weights.w_recency:.2f} "
-            f"fav={weights.w_favorite:.2f} loc={weights.w_location:.2f}]"
+            f"fav={weights.w_favorite:.2f} loc={weights.w_location:.2f} "
+            f"face={weights.w_face_match:.2f}]"
             f"{'| backoff' if result.backoff_applied else ''}"
             f"{' | filters=' + str(plan.filters) if plan.filters else ''}"
         )
@@ -941,8 +967,9 @@ class SearchOrchestrator:
             import os
             basename = os.path.basename(sr.path)
             components = (
-                f"clip={sr.clip_score:.3f} rec={sr.recency_score:.3f} "
-                f"fav={sr.favorite_score:.2f} loc={sr.location_score:.1f}"
+                f"clip={sr.clip_score:.3f} rec={sr.recency_score:.4f} "
+                f"fav={sr.favorite_score:.2f} loc={sr.location_score:.1f} "
+                f"face={sr.face_match_score:.1f}"
             )
             logger.info(
                 f"  #{i+1} {sr.final_score:.4f} | {components} | {basename}"
@@ -984,7 +1011,7 @@ class SearchOrchestrator:
         if plan.has_filters():
             metadata_paths = self._smart_find._run_metadata_filter(plan.filters)
             for path in metadata_paths[:top_k]:
-                sr = self._score_result(path, 0.0, "", project_meta)
+                sr = self._score_result(path, 0.0, "", project_meta, plan.filters)
                 scored.append(sr)
         else:
             # No explicit filters from tokens - show recent photos as baseline
@@ -996,7 +1023,7 @@ class SearchOrchestrator:
                 return str(d)
             all_paths.sort(key=_date_key, reverse=True)
             for path in all_paths[:top_k]:
-                sr = self._score_result(path, 0.0, "", project_meta)
+                sr = self._score_result(path, 0.0, "", project_meta, plan.filters)
                 scored.append(sr)
 
         scored.sort(key=lambda r: r.final_score, reverse=True)
@@ -1326,7 +1353,7 @@ class SearchOrchestrator:
                     continue
                 if metadata_candidate_paths is not None and path not in metadata_candidate_paths:
                     continue
-                sr = self._score_result(path, sem_score, prompt, project_meta)
+                sr = self._score_result(path, sem_score, prompt, project_meta, plan.filters)
                 scored.append(sr)
 
             scored.sort(key=lambda r: r.final_score, reverse=True)
