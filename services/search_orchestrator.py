@@ -784,10 +784,23 @@ class SearchOrchestrator:
                 1 for m in project_meta.values()
                 if (m.get("face_count", 0) or 0) > 0
             )
+            total_photos = len(project_meta)
+            face_coverage = face_photo_count / total_photos if total_photos else 0
             logger.info(
                 f"[SearchOrchestrator] People-implied query: "
-                f"{face_photo_count}/{len(project_meta)} photos have face_count > 0"
+                f"{face_photo_count}/{total_photos} photos have face_count > 0 "
+                f"(coverage={face_coverage:.0%})"
             )
+            # If face data is essentially absent (<1% coverage), temporarily
+            # zero out face weight so it doesn't waste ranking budget on a
+            # null signal.  Redistribute its weight to clip.
+            if face_coverage < 0.01 and total_photos > 0:
+                people_implied = False  # disable face boosting for this query
+                logger.info(
+                    "[SearchOrchestrator] Face data unavailable "
+                    "(coverage < 1%); face scoring disabled for this query. "
+                    "Run face detection for better people results."
+                )
 
         # Step 5: Score every candidate
         scored: List[ScoredResult] = []
@@ -1030,6 +1043,7 @@ class SearchOrchestrator:
 
                 # Face counts from face_crops table (populated by face pipeline)
                 try:
+                    import os as _os
                     face_cursor = conn.execute("""
                         SELECT fc.image_path, COUNT(*) as cnt
                         FROM face_crops fc
@@ -1040,14 +1054,23 @@ class SearchOrchestrator:
                     face_hit_count = 0
                     for frow in face_rows:
                         p = frow['image_path']
-                        if p and p in result:
+                        if not p:
+                            continue
+                        # Try exact match first, then normalized match
+                        if p in result:
                             result[p]["face_count"] = frow['cnt']
                             face_hit_count += 1
-                    if face_hit_count > 0:
-                        logger.debug(
-                            f"[SearchOrchestrator] face_count populated for "
-                            f"{face_hit_count}/{len(result)} photos"
-                        )
+                        else:
+                            norm_p = _os.path.normpath(p)
+                            for rp in result:
+                                if _os.path.normpath(rp) == norm_p:
+                                    result[rp]["face_count"] = frow['cnt']
+                                    face_hit_count += 1
+                                    break
+                    logger.debug(
+                        f"[SearchOrchestrator] face_count: {face_hit_count}/{len(result)} photos "
+                        f"({len(face_rows)} face_crops groups)"
+                    )
                 except Exception:
                     pass  # face_crops table may not exist yet
 
@@ -1326,19 +1349,41 @@ class SearchOrchestrator:
         return result, stacked
 
     @staticmethod
+    def _normalize_path(path: str) -> str:
+        """Normalize a file path for consistent comparison.
+
+        Handles trailing slashes, redundant separators, and OS-specific
+        differences so that the same physical file always maps to one key.
+        """
+        import os
+        return os.path.normpath(path)
+
+    @staticmethod
     def _enforce_unique_paths(scored: List[ScoredResult]) -> List[ScoredResult]:
         """
         Final safety net: ensure no path appears more than once.
 
         Input must be sorted by score (descending). Keeps the first (highest-
-        scored) occurrence of each path and drops later duplicates.
+        scored) occurrence of each normalized path and drops later duplicates.
+        Logs how many duplicates were removed for debugging.
         """
+        import os
         seen: set = set()
         unique: List[ScoredResult] = []
+        dropped = 0
         for sr in scored:
-            if sr.path not in seen:
-                seen.add(sr.path)
+            norm = os.path.normpath(sr.path)
+            if norm not in seen:
+                seen.add(norm)
                 unique.append(sr)
+            else:
+                dropped += 1
+        if dropped > 0:
+            logger.info(
+                f"[SearchOrchestrator] _enforce_unique_paths: "
+                f"dropped {dropped} duplicate path(s) "
+                f"({len(scored)} → {len(unique)})"
+            )
         return unique
 
     # ── Progressive Search (metadata first, then semantic) ──
@@ -2031,13 +2076,12 @@ class LibraryAnalyzer:
                         "icon": "\U0001f3ac",
                     })
 
-                # 5. Photos with faces
+                # 5. Photos with faces (face_crops table, not 'faces')
                 try:
                     face_row = conn.execute("""
-                        SELECT COUNT(DISTINCT pm.id) as cnt
-                        FROM photo_metadata pm
-                        JOIN faces f ON pm.id = f.photo_id
-                        WHERE pm.project_id = ?
+                        SELECT COUNT(DISTINCT fc.image_path) as cnt
+                        FROM face_crops fc
+                        WHERE fc.project_id = ?
                     """, (project_id,)).fetchone()
                     if face_row and face_row['cnt'] > 0:
                         suggestions.append({
@@ -2046,7 +2090,7 @@ class LibraryAnalyzer:
                             "icon": "\U0001f464",
                         })
                 except Exception:
-                    pass  # faces table may not exist
+                    pass  # face_crops table may not exist yet
 
                 # 6. Rated photos (3+)
                 rated_row = conn.execute("""
