@@ -1186,13 +1186,13 @@ class SearchOrchestrator:
             db = DatabaseConnection()
             with db.get_connection() as conn:
                 row = conn.execute("""
-                    SELECT se.dimension
+                    SELECT se.dim
                     FROM semantic_embeddings se
                     JOIN photo_metadata pm ON se.photo_id = pm.id
                     WHERE pm.project_id = ?
                     LIMIT 1
                 """, (self.project_id,)).fetchone()
-                dim = row['dimension'] if row else 0
+                dim = row['dim'] if row else 0
 
             tier = self._MODEL_QUALITY_TIERS.get(dim, f"unknown ({dim}-D)")
             logger.info(
