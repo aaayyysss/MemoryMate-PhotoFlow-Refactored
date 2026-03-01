@@ -56,7 +56,7 @@ from services.scan_worker_adapter import ScanWorkerAdapter as ScanWorker
 
 from PySide6.QtCore import Qt, QThread, QSize, QThreadPool, Signal, QObject, QRunnable, QEvent, QTimer, QProcess, QItemSelectionModel, QRect
 
-from PySide6.QtGui import QPixmap, QImage, QImageReader, QAction, QActionGroup, QIcon, QTransform, QPalette, QColor, QGuiApplication
+from PySide6.QtGui import QPixmap, QImage, QImageReader, QAction, QActionGroup, QIcon, QTransform, QPalette, QColor, QGuiApplication, QShortcut, QKeySequence
 
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QSplitter,
@@ -1088,6 +1088,10 @@ class MainWindow(QMainWindow):
             self.sidebar.selectVideos.connect(self.sidebar_controller.on_videos_selected)
 
         self.splitter.addWidget(self.sidebar)
+
+        # Ctrl+F → focus Smart Find search input
+        shortcut_find = QShortcut(QKeySequence("Ctrl+F"), self)
+        shortcut_find.activated.connect(self._focus_smart_find)
 
         # Session state restoration is handled by _deferred_initialization()
         # (post first-paint). Removed early QTimer(100) that could fire before
@@ -3342,6 +3346,7 @@ class MainWindow(QMainWindow):
 
 <h3>Actions</h3>
 <table>
+<tr><td><b>Ctrl+F</b></td><td>Focus Smart Find search</td></tr>
 <tr><td><b>Ctrl+O</b></td><td>Scan repository</td></tr>
 <tr><td><b>Ctrl+,</b></td><td>Preferences</td></tr>
 <tr><td><b>F1</b></td><td>Show keyboard shortcuts</td></tr>
@@ -3354,6 +3359,25 @@ class MainWindow(QMainWindow):
         msg_box.setText(shortcuts_text)
         msg_box.setStandardButtons(QMessageBox.StandardButton.Ok)
         msg_box.exec()
+
+    def _focus_smart_find(self):
+        """Focus Smart Find search input via Ctrl+F shortcut."""
+        try:
+            accordion = None
+            if hasattr(self, 'sidebar'):
+                if hasattr(self.sidebar, '_expand_section'):
+                    accordion = self.sidebar
+                elif hasattr(self.sidebar, 'accordion_controller') and self.sidebar.accordion_controller:
+                    accordion = self.sidebar.accordion_controller
+                elif hasattr(self.sidebar, 'accordion') and self.sidebar.accordion:
+                    accordion = self.sidebar.accordion
+            if accordion and hasattr(accordion, 'section_logic'):
+                accordion._expand_section("find")
+                find_section = accordion.section_logic.get("find")
+                if find_section and hasattr(find_section, 'focus_search'):
+                    QTimer.singleShot(150, find_section.focus_search)
+        except Exception as e:
+            print(f"[MainWindow] Ctrl+F focus_smart_find failed: {e}")
 
     def _open_url(self, url: str):
         """Phase 3: Open URL in default browser."""

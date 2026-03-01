@@ -65,6 +65,25 @@ class SearchDefaults:
     # Minimum confidence to display (filter out very low matches)
     MIN_DISPLAY_CONFIDENCE: float = 0.15
 
+    # ── Fusion & Scoring ──
+
+    # Fusion mode for multi-prompt scoring: "max", "weighted_max", "soft_or"
+    FUSION_MODE: str = "max"
+
+    # Semantic weight in final score (alpha):
+    #   0.8 = concept searches (Beach, Wedding), 0.4 = utility searches (Screenshots)
+    SEMANTIC_WEIGHT: float = 0.8
+
+    # Metadata soft-boost values (graded scoring, not pass/fail)
+    META_BOOST_GPS: float = 0.05
+    META_BOOST_RATING: float = 0.10
+    META_BOOST_DATE: float = 0.03
+
+    # Dynamic threshold backoff: retry with lower threshold when 0 results
+    THRESHOLD_BACKOFF_ENABLED: bool = True
+    THRESHOLD_BACKOFF_STEP: float = 0.04  # Lower by this amount per retry
+    THRESHOLD_BACKOFF_MAX_RETRIES: int = 2  # Max retries before giving up
+
 
 class SearchConfig:
     """
@@ -342,4 +361,84 @@ class SearchConfig:
             return True
         except Exception as e:
             logger.error(f"[SearchConfig] Failed to save min display confidence: {e}")
+            return False
+
+    # ── Fusion & Scoring Settings ──
+
+    @classmethod
+    def get_fusion_mode(cls) -> str:
+        """Get multi-prompt fusion mode: 'max', 'weighted_max', 'soft_or'."""
+        try:
+            from settings_manager_qt import SettingsManager
+            settings = SettingsManager()
+            value = settings.get("search_fusion_mode", None)
+            if value and value in ("max", "weighted_max", "soft_or"):
+                return value
+        except Exception:
+            pass
+        return SearchDefaults.FUSION_MODE
+
+    @classmethod
+    def set_fusion_mode(cls, mode: str) -> bool:
+        """Save fusion mode to settings."""
+        if mode not in ("max", "weighted_max", "soft_or"):
+            return False
+        try:
+            from settings_manager_qt import SettingsManager
+            settings = SettingsManager()
+            settings.set("search_fusion_mode", mode)
+            return True
+        except Exception:
+            return False
+
+    @classmethod
+    def get_semantic_weight(cls) -> float:
+        """Get semantic vs metadata weight (alpha). 0.0=all metadata, 1.0=all semantic."""
+        try:
+            from settings_manager_qt import SettingsManager
+            settings = SettingsManager()
+            value = settings.get("search_semantic_weight", None)
+            if value is not None:
+                w = float(value)
+                if 0.0 <= w <= 1.0:
+                    return w
+        except Exception:
+            pass
+        return SearchDefaults.SEMANTIC_WEIGHT
+
+    @classmethod
+    def set_semantic_weight(cls, weight: float) -> bool:
+        """Save semantic weight to settings."""
+        if not 0.0 <= weight <= 1.0:
+            return False
+        try:
+            from settings_manager_qt import SettingsManager
+            settings = SettingsManager()
+            settings.set("search_semantic_weight", weight)
+            return True
+        except Exception:
+            return False
+
+    @classmethod
+    def get_threshold_backoff_enabled(cls) -> bool:
+        """Get whether dynamic threshold backoff is enabled."""
+        try:
+            from settings_manager_qt import SettingsManager
+            settings = SettingsManager()
+            value = settings.get("search_threshold_backoff", None)
+            if value is not None:
+                return bool(value)
+        except Exception:
+            pass
+        return SearchDefaults.THRESHOLD_BACKOFF_ENABLED
+
+    @classmethod
+    def set_threshold_backoff_enabled(cls, enabled: bool) -> bool:
+        """Save threshold backoff enabled flag."""
+        try:
+            from settings_manager_qt import SettingsManager
+            settings = SettingsManager()
+            settings.set("search_threshold_backoff", enabled)
+            return True
+        except Exception:
             return False

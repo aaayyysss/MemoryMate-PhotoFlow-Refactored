@@ -5,33 +5,32 @@
 """
 SmartFindService - Intelligent photo discovery engine.
 
-Combines two existing services:
-- SemanticSearchService (CLIP text-to-image similarity)
-- SearchService (metadata SQL filters: dates, GPS, tags, camera, etc.)
+Architecture (aligned with audit reference design):
+1. Query normalization (resolve preset, NLP extraction)
+2. Hybrid candidate retrieval (semantic CLIP + metadata SQL)
+3. Graded score fusion with explainability
+4. Cache with index_version invalidation
+5. Query cancellation (only latest request wins)
 
-Pipeline:
-1. If preset has prompts -> run CLIP search across all prompts, merge results
-2. If preset has metadata filters -> apply SQL filters to narrow results
-3. Score fusion: combine CLIP similarity + metadata match into final ranking
-4. Return ordered list of file paths for grid display
-
-Phase 2 additions:
-- Custom preset CRUD (save/edit/delete user-created presets)
-- Save current search as preset
-- Natural language parsing (extract dates, ratings, etc. before CLIP fallback)
-- Combinable filters (stack multiple presets + metadata)
+Scoring fusion strategy:
+- Semantic: multi-prompt fusion (max, weighted_max, soft_or)
+- Metadata: graded scoring (soft boosts, not just pass/fail)
+- Final = alpha * semantic + (1-alpha) * metadata + boosts
+- Dynamic threshold backoff for empty results
 
 Usage:
-    from services.smart_find_service import SmartFindService
+    from services.smart_find_service import SmartFindService, get_smart_find_service
 
-    service = SmartFindService(project_id=1)
-    results = service.find_by_preset("beach")
-    # Returns: SmartFindResult(paths=[...], scores={...}, ...)
+    service = get_smart_find_service(project_id=1)
+    result = service.find_by_preset("beach")
+    # Returns: SmartFindResult with explainability
 """
 
 import json
 import re
 import time
+import uuid
+import threading
 from typing import List, Dict, Optional, Any, Tuple
 from dataclasses import dataclass, field
 from logging_config import get_logger
@@ -148,23 +147,27 @@ BUILTIN_PRESETS = [
         "id": "screenshots", "name": "Screenshots", "icon": "\U0001f4f1",
         "prompts": ["screenshot", "screen capture", "phone screen"],
         "category": "media",
+        "semantic_weight": 0.4,  # Metadata more reliable for utility searches
     },
     {
         "id": "documents", "name": "Documents", "icon": "\U0001f4c4",
         "prompts": ["document", "text", "paper", "receipt", "handwriting"],
         "category": "media",
+        "semantic_weight": 0.4,
     },
     {
         "id": "videos", "name": "Videos", "icon": "\U0001f3ac",
         "prompts": [],
         "filters": {"media_type": "video"},
         "category": "media",
+        "semantic_weight": 0.0,  # Pure metadata
     },
     {
         "id": "panoramas", "name": "Panoramas", "icon": "\U0001f304",
         "prompts": ["panoramic view", "wide landscape"],
         "filters": {"orientation": "landscape", "width_min": 4000},
         "category": "media",
+        "semantic_weight": 0.4,
     },
 
     # Quality flags (metadata-only)
@@ -173,12 +176,14 @@ BUILTIN_PRESETS = [
         "prompts": [],
         "filters": {"rating_min": 4},
         "category": "quality",
+        "semantic_weight": 0.0,
     },
     {
         "id": "gps_photos", "name": "With Location", "icon": "\U0001f4cd",
         "prompts": [],
         "filters": {"has_gps": True},
         "category": "quality",
+        "semantic_weight": 0.0,
     },
 ]
 
@@ -186,16 +191,44 @@ BUILTIN_PRESETS = [
 _BUILTIN_LOOKUP = {p["id"]: p for p in BUILTIN_PRESETS}
 
 
+# ── Explainability-enriched result ──
+
 @dataclass
 class SmartFindResult:
-    """Result from a Smart Find query."""
+    """Result from a Smart Find query with explainability."""
     paths: List[str]
     query_label: str  # Human-readable label (e.g., "Beach", "Mountains")
     total_matches: int
     execution_time_ms: float
-    scores: Optional[Dict[str, float]] = None  # path -> score for ranking info
+    scores: Optional[Dict[str, float]] = None  # path -> final_score for ranking
     excluded_paths: Optional[List[str]] = None  # paths user chose to exclude
     _cached_at: float = 0.0  # Timestamp when this result was cached
+    # ── Explainability fields (audit requirement) ──
+    matched_prompts: Optional[Dict[str, str]] = None  # path -> winning prompt
+    semantic_scores: Optional[Dict[str, float]] = None  # path -> raw semantic score
+    metadata_scores: Optional[Dict[str, float]] = None  # path -> metadata boost
+    reasons: Optional[Dict[str, List[str]]] = None  # path -> list of reason strings
+    backoff_applied: bool = False  # True if threshold was lowered to get results
+    request_id: Optional[str] = None  # For cancellation tracking
+    index_version: int = 0  # Index version at time of query
+
+
+# ── Cancellation Token ──
+
+class _CancelToken:
+    """Lightweight cancellation token for inflight queries."""
+    __slots__ = ('_cancelled', 'request_id')
+
+    def __init__(self, request_id: str):
+        self.request_id = request_id
+        self._cancelled = False
+
+    def cancel(self):
+        self._cancelled = True
+
+    @property
+    def is_cancelled(self) -> bool:
+        return self._cancelled
 
 
 # ── Natural Language Parser ──
@@ -204,11 +237,7 @@ class NLQueryParser:
     """
     Parse natural language queries to extract structured metadata filters.
 
-    Inspired by Lightroom/Excire: attempt structured extraction before CLIP fallback.
-    Examples:
-        "sunset photos from 2024" -> {prompts: ["sunset"], filters: {date_from: "2024-01-01"}}
-        "5 star beach" -> {prompts: ["beach"], filters: {rating_min: 5}}
-        "videos from last month" -> {prompts: [], filters: {media_type: "video", date: "last_month"}}
+    Deterministic extraction only (no LLM) for speed and predictability.
     """
 
     # Date patterns
@@ -322,12 +351,32 @@ class NLQueryParser:
         return remaining, filters
 
 
+# ── Index Version Provider ──
+
+class _IndexVersionProvider:
+    """
+    Tracks index version for cache invalidation.
+
+    Incremented when embeddings, scans, metadata, or face pipeline updates occur.
+    """
+    _version: int = 0
+    _lock = threading.Lock()
+
+    @classmethod
+    def get(cls, project_id: int) -> int:
+        return cls._version
+
+    @classmethod
+    def bump(cls, reason: str = ""):
+        with cls._lock:
+            cls._version += 1
+            logger.debug(f"[IndexVersion] Bumped to {cls._version} ({reason})")
+
+
 class SmartFindService:
     """
-    Intelligent photo discovery combining CLIP + metadata.
-
-    Reuses existing SemanticSearchService and SearchService.
-    Does NOT create parallel pipelines - leverages what's already built.
+    Intelligent photo discovery combining CLIP + metadata with
+    explainability, cancellation, and graded scoring.
     """
 
     def __init__(self, project_id: int):
@@ -337,19 +386,47 @@ class SmartFindService:
         self._result_cache: Dict[str, SmartFindResult] = {}
         self._custom_presets: Optional[List[Dict]] = None  # Lazy-loaded
         self._excluded_paths: set = set()  # "Not this" exclusions for current session
+        # Cancellation: per-project inflight token
+        self._inflight_token: Optional[_CancelToken] = None
+        self._inflight_lock = threading.Lock()
+
+    # ── Config Properties ──
 
     @property
     def _cache_ttl(self) -> int:
-        """Get cache TTL from centralized config."""
         try:
             from config.search_config import SearchConfig
             return SearchConfig.get_cache_ttl()
         except Exception:
             return 300
 
+    def _get_config(self):
+        """Get all search config values in one call (reduce repeated imports)."""
+        try:
+            from config.search_config import SearchConfig, SearchDefaults
+            return {
+                "top_k": SearchConfig.get_default_top_k(),
+                "threshold": SearchConfig.get_clip_threshold(),
+                "nlp_enabled": SearchConfig.get_nlp_enabled(),
+                "fusion_mode": SearchConfig.get_fusion_mode(),
+                "semantic_weight": SearchConfig.get_semantic_weight(),
+                "backoff_enabled": SearchConfig.get_threshold_backoff_enabled(),
+                "backoff_step": SearchDefaults.THRESHOLD_BACKOFF_STEP,
+                "backoff_retries": SearchDefaults.THRESHOLD_BACKOFF_MAX_RETRIES,
+                "meta_boost_gps": SearchDefaults.META_BOOST_GPS,
+                "meta_boost_rating": SearchDefaults.META_BOOST_RATING,
+                "meta_boost_date": SearchDefaults.META_BOOST_DATE,
+            }
+        except Exception:
+            return {
+                "top_k": 200, "threshold": 0.22, "nlp_enabled": True,
+                "fusion_mode": "max", "semantic_weight": 0.8,
+                "backoff_enabled": True, "backoff_step": 0.04, "backoff_retries": 2,
+                "meta_boost_gps": 0.05, "meta_boost_rating": 0.10, "meta_boost_date": 0.03,
+            }
+
     @property
     def semantic_service(self):
-        """Lazy-initialize semantic search service."""
         if self._semantic_service is None:
             try:
                 from services.semantic_search_service import get_semantic_search_service_for_project
@@ -360,7 +437,6 @@ class SmartFindService:
 
     @property
     def search_service(self):
-        """Lazy-initialize metadata search service."""
         if self._search_service is None:
             from services.search_service import SearchService
             self._search_service = SearchService()
@@ -368,21 +444,30 @@ class SmartFindService:
 
     @property
     def clip_available(self) -> bool:
-        """Check if CLIP semantic search is available."""
         svc = self.semantic_service
         return svc is not None and svc.available
+
+    # ── Cancellation ──
+
+    def _begin_query(self) -> _CancelToken:
+        """Cancel any inflight query and create a new token."""
+        with self._inflight_lock:
+            if self._inflight_token is not None:
+                self._inflight_token.cancel()
+                logger.debug("[SmartFind] Cancelled inflight query")
+            token = _CancelToken(str(uuid.uuid4()))
+            self._inflight_token = token
+            return token
 
     # ── Preset Access (builtin + custom merged) ──
 
     def get_presets(self) -> List[Dict]:
-        """Get all available presets (builtin + custom)."""
         all_presets = list(BUILTIN_PRESETS)
         custom = self._load_custom_presets()
         all_presets.extend(custom)
         return all_presets
 
     def get_presets_by_category(self) -> Dict[str, List[Dict]]:
-        """Get presets organized by category."""
         categories = {}
         for preset in self.get_presets():
             cat = preset.get("category", "other")
@@ -392,10 +477,8 @@ class SmartFindService:
         return categories
 
     def _lookup_preset(self, preset_id: str) -> Optional[Dict]:
-        """Find a preset by ID (builtin or custom)."""
         if preset_id in _BUILTIN_LOOKUP:
             return _BUILTIN_LOOKUP[preset_id]
-        # Check custom presets
         for p in self._load_custom_presets():
             if p["id"] == preset_id:
                 return p
@@ -404,7 +487,6 @@ class SmartFindService:
     # ── Custom Preset CRUD ──
 
     def _load_custom_presets(self) -> List[Dict]:
-        """Load custom presets from database."""
         if self._custom_presets is not None:
             return self._custom_presets
 
@@ -440,12 +522,6 @@ class SmartFindService:
                            filters: Optional[Dict] = None,
                            threshold: float = 0.22,
                            category: str = "custom") -> Optional[int]:
-        """
-        Save a new custom preset to the database.
-
-        Returns:
-            The new preset's database ID, or None on failure.
-        """
         config = {
             "prompts": prompts,
             "filters": filters or {},
@@ -463,7 +539,7 @@ class SmartFindService:
                 )
                 conn.commit()
                 new_id = cursor.lastrowid
-                self._custom_presets = None  # Invalidate cache
+                self._custom_presets = None
                 self.invalidate_cache()
                 logger.info(f"[SmartFind] Saved custom preset '{name}' (id={new_id})")
                 return new_id
@@ -475,7 +551,6 @@ class SmartFindService:
                              prompts: List[str], filters: Optional[Dict] = None,
                              threshold: float = 0.22,
                              category: str = "custom") -> bool:
-        """Update an existing custom preset."""
         config = {
             "prompts": prompts,
             "filters": filters or {},
@@ -500,7 +575,6 @@ class SmartFindService:
             return False
 
     def delete_custom_preset(self, db_id: int) -> bool:
-        """Delete a custom preset."""
         try:
             from repository.base_repository import DatabaseConnection
             db = DatabaseConnection()
@@ -522,11 +596,6 @@ class SmartFindService:
                             preset_id: Optional[str] = None,
                             text_query: Optional[str] = None,
                             extra_filters: Optional[Dict] = None) -> Optional[int]:
-        """
-        Save the current active search as a custom preset.
-
-        Captures the full search configuration (preset prompts + refine filters).
-        """
         prompts = []
         filters = extra_filters.copy() if extra_filters else {}
 
@@ -535,7 +604,6 @@ class SmartFindService:
             if source:
                 prompts = list(source.get("prompts", []))
                 base_filters = source.get("filters", {})
-                # Merge: source filters as base, extra_filters override
                 merged = dict(base_filters)
                 merged.update(filters)
                 filters = merged
@@ -544,28 +612,24 @@ class SmartFindService:
 
         return self.save_custom_preset(name, icon, prompts, filters)
 
-    # ── Search Execution ──
+    # ── Core Search Pipeline ──
 
     def find_by_preset(self, preset_id: str,
                        top_k: Optional[int] = None,
                        threshold: Optional[float] = None,
                        extra_filters: Optional[Dict] = None) -> SmartFindResult:
-        """Execute a Smart Find using a preset (builtin or custom)."""
-        # Resolve defaults from centralized config
-        try:
-            from config.search_config import SearchConfig
-            if top_k is None:
-                top_k = SearchConfig.get_default_top_k()
-            if threshold is None:
-                threshold = SearchConfig.get_clip_threshold()
-        except Exception:
-            if top_k is None:
-                top_k = 200
-            if threshold is None:
-                threshold = 0.22
+        """Execute Smart Find using a preset with full pipeline."""
+        cfg = self._get_config()
+        if top_k is None:
+            top_k = cfg["top_k"]
+        if threshold is None:
+            threshold = cfg["threshold"]
 
-        # Check cache
-        cache_key = f"{preset_id}:{top_k}:{threshold}:{extra_filters}"
+        token = self._begin_query()
+
+        # Cache with index_version
+        idx_v = _IndexVersionProvider.get(self.project_id)
+        cache_key = f"preset:{preset_id}:{top_k}:{threshold}:{extra_filters}:{idx_v}"
         if cache_key in self._result_cache:
             cached = self._result_cache[cache_key]
             if (time.time() - cached._cached_at) < self._cache_ttl:
@@ -573,9 +637,7 @@ class SmartFindService:
 
         start = time.time()
 
-        # Find preset (builtin or custom)
         preset = self._lookup_preset(preset_id)
-
         if not preset:
             logger.warning(f"[SmartFind] Unknown preset: {preset_id}")
             return SmartFindResult(
@@ -586,60 +648,40 @@ class SmartFindService:
         prompts = preset.get("prompts", [])
         filters = dict(preset.get("filters", {}))
         preset_threshold = preset.get("threshold", threshold)
+        preset_sem_weight = preset.get("semantic_weight", cfg["semantic_weight"])
         if extra_filters:
             filters.update(extra_filters)
 
-        result_paths = []
-        score_map = {}
-
-        # Step 1: CLIP semantic search (if prompts exist and CLIP available)
-        if prompts and self.clip_available:
-            clip_results = self._run_clip_search(prompts, top_k * 2, preset_threshold)
-            for path, score in clip_results:
-                if path not in score_map or score > score_map[path]:
-                    score_map[path] = score
-
-        # Step 2: Apply metadata filters (SQL-based, fast)
-        if filters:
-            metadata_paths = self._run_metadata_filter(filters)
-            if score_map:
-                # Intersection: CLIP results AND metadata match
-                clip_paths = set(score_map.keys())
-                metadata_set = set(metadata_paths)
-                final_paths = clip_paths & metadata_set
-                result_paths = sorted(final_paths, key=lambda p: score_map.get(p, 0), reverse=True)
-            else:
-                # Metadata-only preset (e.g., "Videos", "Favorites")
-                result_paths = metadata_paths
-        elif score_map:
-            # CLIP-only preset (e.g., "Beach", "Mountains")
-            result_paths = sorted(score_map.keys(), key=lambda p: score_map[p], reverse=True)
-
-        # Apply "Not this" exclusions
-        if self._excluded_paths:
-            result_paths = [p for p in result_paths if p not in self._excluded_paths]
-
-        # Limit results
-        result_paths = result_paths[:top_k]
-
-        elapsed_ms = (time.time() - start) * 1000
-
-        result = SmartFindResult(
-            paths=result_paths,
-            query_label=f"{preset.get('icon', '')} {preset['name']}",
-            total_matches=len(result_paths),
-            execution_time_ms=elapsed_ms,
-            scores=score_map if score_map else None,
-            _cached_at=time.time(),
+        result = self._execute_hybrid_search(
+            prompts=prompts,
+            filters=filters,
+            top_k=top_k,
+            threshold=preset_threshold,
+            semantic_weight=preset_sem_weight,
+            fusion_mode=cfg["fusion_mode"],
+            cfg=cfg,
+            token=token,
         )
 
-        # Cache result
+        if token.is_cancelled:
+            return SmartFindResult(paths=[], query_label="(cancelled)",
+                                  total_matches=0, execution_time_ms=0)
+
+        elapsed_ms = (time.time() - start) * 1000
+        label = f"{preset.get('icon', '')} {preset['name']}"
+
+        result.query_label = label
+        result.execution_time_ms = elapsed_ms
+        result.request_id = token.request_id
+        result.index_version = idx_v
+        result._cached_at = time.time()
+
         self._result_cache[cache_key] = result
 
         logger.info(
-            f"[SmartFind] Preset '{preset['name']}': {len(result_paths)} results "
+            f"[SmartFind] Preset '{preset['name']}': {result.total_matches} results "
             f"in {elapsed_ms:.0f}ms (CLIP={bool(prompts and self.clip_available)}, "
-            f"filters={bool(filters)})"
+            f"filters={bool(filters)}, backoff={result.backoff_applied})"
         )
 
         return result
@@ -648,71 +690,46 @@ class SmartFindService:
                      top_k: Optional[int] = None,
                      threshold: Optional[float] = None,
                      extra_filters: Optional[Dict] = None) -> SmartFindResult:
-        """
-        Free-text Smart Find with NLP parsing.
+        """Free-text Smart Find with NLP parsing and hybrid pipeline."""
+        cfg = self._get_config()
+        if top_k is None:
+            top_k = cfg["top_k"]
+        if threshold is None:
+            threshold = cfg["threshold"]
 
-        Parses structured metadata from the query before falling back to CLIP.
-        Example: "sunset photos from 2024" -> CLIP("sunset") + date filter 2024.
-        """
-        # Resolve defaults from centralized config
-        try:
-            from config.search_config import SearchConfig
-            if top_k is None:
-                top_k = SearchConfig.get_default_top_k()
-            if threshold is None:
-                threshold = SearchConfig.get_clip_threshold()
-            nlp_enabled = SearchConfig.get_nlp_enabled()
-        except Exception:
-            if top_k is None:
-                top_k = 200
-            if threshold is None:
-                threshold = 0.22
-            nlp_enabled = True
-
+        token = self._begin_query()
         start = time.time()
 
-        # NLP: extract structured filters before CLIP (can be disabled in settings)
-        if nlp_enabled:
+        # NLP extraction
+        if cfg["nlp_enabled"]:
             clip_query, parsed_filters = NLQueryParser.parse(query)
         else:
             clip_query, parsed_filters = query, {}
 
-        # Merge parsed filters with extra UI filters
         all_filters = dict(parsed_filters)
         if extra_filters:
             all_filters.update(extra_filters)
 
-        # Resolve relative dates
         if "_relative_date" in all_filters:
             date_filters = self._resolve_relative_date(all_filters.pop("_relative_date"))
             all_filters.update(date_filters)
 
-        score_map = {}
+        prompts = [clip_query] if clip_query else []
 
-        # CLIP search on cleaned query
-        if clip_query and self.clip_available:
-            clip_results = self._run_clip_search([clip_query], top_k, threshold)
-            for path, score in clip_results:
-                score_map[path] = score
+        result = self._execute_hybrid_search(
+            prompts=prompts,
+            filters=all_filters,
+            top_k=top_k,
+            threshold=threshold,
+            semantic_weight=cfg["semantic_weight"],
+            fusion_mode=cfg["fusion_mode"],
+            cfg=cfg,
+            token=token,
+        )
 
-        # Apply metadata filters
-        result_paths = []
-        if all_filters:
-            metadata_paths = self._run_metadata_filter(all_filters)
-            if score_map:
-                # Intersection: CLIP + metadata
-                result_paths = [p for p in metadata_paths if p in score_map]
-                result_paths.sort(key=lambda p: score_map.get(p, 0), reverse=True)
-            else:
-                result_paths = metadata_paths
-        elif score_map:
-            result_paths = sorted(score_map.keys(), key=lambda p: score_map[p], reverse=True)
-
-        # Apply "Not this" exclusions
-        if self._excluded_paths:
-            result_paths = [p for p in result_paths if p not in self._excluded_paths]
-
-        result_paths = result_paths[:top_k]
+        if token.is_cancelled:
+            return SmartFindResult(paths=[], query_label="(cancelled)",
+                                  total_matches=0, execution_time_ms=0)
 
         elapsed_ms = (time.time() - start) * 1000
 
@@ -729,38 +746,25 @@ class SmartFindService:
             if extracted:
                 label_parts.append(f"[{', '.join(extracted)}]")
 
-        return SmartFindResult(
-            paths=result_paths,
-            query_label=' '.join(label_parts),
-            total_matches=len(result_paths),
-            execution_time_ms=elapsed_ms,
-            scores=score_map if score_map else None,
-        )
+        result.query_label = ' '.join(label_parts)
+        result.execution_time_ms = elapsed_ms
+        result.request_id = token.request_id
+
+        return result
 
     def find_combined(self, preset_ids: List[str],
                       text_query: Optional[str] = None,
                       extra_filters: Optional[Dict] = None,
                       top_k: Optional[int] = None,
                       threshold: Optional[float] = None) -> SmartFindResult:
-        """
-        Combinable filters: stack multiple presets + text + metadata.
+        """Combinable filters: stack multiple presets + text + metadata."""
+        cfg = self._get_config()
+        if top_k is None:
+            top_k = cfg["top_k"]
+        if threshold is None:
+            threshold = cfg["threshold"]
 
-        Intersects CLIP results from all sources, unions metadata filters.
-        Example: "Beach" + "With Location" + rating >= 3
-        """
-        # Resolve defaults from centralized config
-        try:
-            from config.search_config import SearchConfig
-            if top_k is None:
-                top_k = SearchConfig.get_default_top_k()
-            if threshold is None:
-                threshold = SearchConfig.get_clip_threshold()
-        except Exception:
-            if top_k is None:
-                top_k = 200
-            if threshold is None:
-                threshold = 0.22
-
+        token = self._begin_query()
         start = time.time()
         all_prompts = []
         all_metadata_filters = {}
@@ -786,60 +790,371 @@ class SmartFindService:
         if extra_filters:
             all_metadata_filters.update(extra_filters)
 
-        score_map = {}
-        if all_prompts and self.clip_available:
-            clip_results = self._run_clip_search(all_prompts, top_k * 2, threshold)
-            for path, score in clip_results:
-                if path not in score_map or score > score_map[path]:
-                    score_map[path] = score
+        result = self._execute_hybrid_search(
+            prompts=all_prompts,
+            filters=all_metadata_filters,
+            top_k=top_k,
+            threshold=threshold,
+            semantic_weight=cfg["semantic_weight"],
+            fusion_mode=cfg["fusion_mode"],
+            cfg=cfg,
+            token=token,
+        )
 
-        result_paths = []
-        if all_metadata_filters:
-            metadata_paths = self._run_metadata_filter(all_metadata_filters)
-            if score_map:
-                result_paths = [p for p in metadata_paths if p in score_map]
-                result_paths.sort(key=lambda p: score_map.get(p, 0), reverse=True)
-            else:
-                result_paths = metadata_paths
-        elif score_map:
-            result_paths = sorted(score_map.keys(), key=lambda p: score_map[p], reverse=True)
-
-        if self._excluded_paths:
-            result_paths = [p for p in result_paths if p not in self._excluded_paths]
-        result_paths = result_paths[:top_k]
+        if token.is_cancelled:
+            return SmartFindResult(paths=[], query_label="(cancelled)",
+                                  total_matches=0, execution_time_ms=0)
 
         elapsed_ms = (time.time() - start) * 1000
         combined_label = " + ".join(labels) if labels else "\U0001f50d Combined Search"
 
+        result.query_label = combined_label
+        result.execution_time_ms = elapsed_ms
+        result.request_id = token.request_id
+
+        return result
+
+    # ── Core Hybrid Pipeline (audit design) ──
+
+    def _execute_hybrid_search(
+        self,
+        prompts: List[str],
+        filters: Dict,
+        top_k: int,
+        threshold: float,
+        semantic_weight: float,
+        fusion_mode: str,
+        cfg: Dict,
+        token: _CancelToken,
+    ) -> SmartFindResult:
+        """
+        Hybrid search pipeline:
+        1. Semantic retrieval (CLIP, multi-prompt)
+        2. Metadata retrieval + graded scoring
+        3. Score fusion with explainability
+        4. Dynamic threshold backoff if 0 results
+        """
+        # ── Step 1: Semantic candidate retrieval ──
+        # {photo_id: (best_score, matched_prompt)}
+        semantic_hits: Dict[int, Tuple[float, str]] = {}
+
+        if prompts and self.clip_available:
+            semantic_hits = self._run_clip_multi_prompt(
+                prompts, top_k * 3, threshold, fusion_mode
+            )
+
+        if token.is_cancelled:
+            return SmartFindResult(paths=[], query_label="", total_matches=0, execution_time_ms=0)
+
+        # ── Step 2: Metadata candidate pool + graded scoring ──
+        # {path: (metadata_score, reasons[])}
+        meta_evaluated: Dict[str, Tuple[float, List[str]]] = {}
+        metadata_candidate_paths: Optional[set] = None
+
+        if filters:
+            metadata_paths = self._run_metadata_filter(filters)
+            metadata_candidate_paths = set(metadata_paths)
+
+        # ── Step 3: Resolve photo_id -> path and fuse scores ──
+        path_lookup = {}  # photo_id -> path
+        if semantic_hits:
+            try:
+                from repository.base_repository import DatabaseConnection
+                db = DatabaseConnection()
+                photo_ids = list(semantic_hits.keys())
+                placeholders = ','.join(['?'] * len(photo_ids))
+                with db.get_connection() as conn:
+                    cursor = conn.execute(
+                        f"SELECT id, path FROM photo_metadata WHERE id IN ({placeholders})",
+                        photo_ids
+                    )
+                    for row in cursor.fetchall():
+                        path_lookup[row['id']] = row['path']
+            except Exception as e:
+                logger.error(f"[SmartFind] Failed to resolve photo paths: {e}")
+
+        if token.is_cancelled:
+            return SmartFindResult(paths=[], query_label="", total_matches=0, execution_time_ms=0)
+
+        # Load per-path metadata for graded scoring
+        project_meta = self._load_project_photo_metadata()
+
+        # Fuse scores
+        fused_results: List[Tuple[str, float, float, float, str, List[str]]] = []
+        # Each: (path, final_score, sem_score, meta_score, matched_prompt, reasons)
+
+        if semantic_hits:
+            # Semantic-first: score each semantic hit
+            for photo_id, (sem_score, matched_prompt) in semantic_hits.items():
+                path = path_lookup.get(photo_id)
+                if not path:
+                    continue
+
+                # If hard metadata filter exists, check membership
+                if metadata_candidate_paths is not None and path not in metadata_candidate_paths:
+                    continue  # Excluded by hard filter
+
+                # Graded metadata scoring
+                meta_score, reasons = self._evaluate_metadata_score(
+                    path, filters, project_meta, cfg
+                )
+
+                # Final fusion: alpha * semantic + (1-alpha) * metadata
+                alpha = semantic_weight
+                final_score = alpha * sem_score + (1 - alpha) * meta_score
+
+                reasons.insert(0, f"semantic: \"{matched_prompt}\" score={sem_score:.3f}")
+
+                fused_results.append((
+                    path, final_score, sem_score, meta_score, matched_prompt, reasons
+                ))
+        elif metadata_candidate_paths is not None:
+            # Metadata-only search (Videos, Favorites, etc.)
+            for path in metadata_candidate_paths:
+                meta_score, reasons = self._evaluate_metadata_score(
+                    path, filters, project_meta, cfg
+                )
+                fused_results.append((path, meta_score, 0.0, meta_score, None, reasons))
+
+        # Apply "Not this" exclusions
+        if self._excluded_paths:
+            fused_results = [r for r in fused_results if r[0] not in self._excluded_paths]
+
+        # Sort by final_score descending
+        fused_results.sort(key=lambda r: r[1], reverse=True)
+
+        # ── Step 4: Dynamic threshold backoff ──
+        backoff_applied = False
+        if (not fused_results and prompts and self.clip_available
+                and cfg.get("backoff_enabled", True)):
+            backoff_step = cfg.get("backoff_step", 0.04)
+            max_retries = cfg.get("backoff_retries", 2)
+
+            for retry in range(1, max_retries + 1):
+                if token.is_cancelled:
+                    break
+                lowered = max(0.05, threshold - (backoff_step * retry))
+                logger.info(
+                    f"[SmartFind] Backoff retry {retry}: threshold {threshold:.2f} -> {lowered:.2f}"
+                )
+                retry_hits = self._run_clip_multi_prompt(
+                    prompts, top_k * 3, lowered, fusion_mode
+                )
+                if retry_hits:
+                    for photo_id, (sem_score, matched_prompt) in retry_hits.items():
+                        path = path_lookup.get(photo_id)
+                        if not path:
+                            # Need to resolve new photo_ids
+                            continue
+                        if metadata_candidate_paths is not None and path not in metadata_candidate_paths:
+                            continue
+                        meta_score, reasons = self._evaluate_metadata_score(
+                            path, filters, project_meta, cfg
+                        )
+                        alpha = semantic_weight
+                        final_score = alpha * sem_score + (1 - alpha) * meta_score
+                        reasons.insert(0, f"semantic: \"{matched_prompt}\" score={sem_score:.3f} (backoff)")
+                        fused_results.append((
+                            path, final_score, sem_score, meta_score, matched_prompt, reasons
+                        ))
+
+                    if self._excluded_paths:
+                        fused_results = [r for r in fused_results if r[0] not in self._excluded_paths]
+                    fused_results.sort(key=lambda r: r[1], reverse=True)
+                    backoff_applied = True
+                    break
+
+        # Limit to top_k
+        fused_results = fused_results[:top_k]
+
+        # Build result with explainability
+        paths = [r[0] for r in fused_results]
+        scores = {r[0]: r[1] for r in fused_results}
+        matched_prompts = {r[0]: r[4] for r in fused_results if r[4]}
+        semantic_scores = {r[0]: r[2] for r in fused_results}
+        metadata_scores = {r[0]: r[3] for r in fused_results}
+        all_reasons = {r[0]: r[5] for r in fused_results}
+
         return SmartFindResult(
-            paths=result_paths,
-            query_label=combined_label,
-            total_matches=len(result_paths),
-            execution_time_ms=elapsed_ms,
-            scores=score_map if score_map else None,
+            paths=paths,
+            query_label="",  # Set by caller
+            total_matches=len(paths),
+            execution_time_ms=0,  # Set by caller
+            scores=scores if scores else None,
+            matched_prompts=matched_prompts if matched_prompts else None,
+            semantic_scores=semantic_scores if semantic_scores else None,
+            metadata_scores=metadata_scores if metadata_scores else None,
+            reasons=all_reasons if all_reasons else None,
+            backoff_applied=backoff_applied,
         )
+
+    # ── Multi-prompt CLIP Search with Fusion Modes ──
+
+    def _run_clip_multi_prompt(
+        self,
+        prompts: List[str],
+        candidate_k: int,
+        threshold: float,
+        fusion_mode: str,
+    ) -> Dict[int, Tuple[float, str]]:
+        """
+        Multi-prompt CLIP search with fusion.
+
+        Returns: {photo_id: (best_score, matched_prompt)}
+
+        Fusion modes:
+          max: S(i) = max_p s_i(p)
+          weighted_max: S(i) = max_p(w_p * s_i(p)), main=1.0, synonyms=0.7
+          soft_or: S(i) = 1 - prod_p(1 - clamp01(s_i(p)))
+        """
+        svc = self.semantic_service
+        if not svc:
+            return {}
+
+        # Collect per-prompt scores: {photo_id: {prompt: score}}
+        per_prompt: Dict[int, Dict[str, float]] = {}
+
+        for prompt in prompts:
+            try:
+                results = svc.search(
+                    query=prompt,
+                    top_k=candidate_k,
+                    threshold=threshold,
+                    include_metadata=False
+                )
+                for r in results:
+                    if r.photo_id not in per_prompt:
+                        per_prompt[r.photo_id] = {}
+                    per_prompt[r.photo_id][prompt] = r.relevance_score
+            except Exception as e:
+                logger.warning(f"[SmartFind] CLIP search failed for '{prompt}': {e}")
+
+        if not per_prompt:
+            return {}
+
+        # Apply fusion
+        result: Dict[int, Tuple[float, str]] = {}
+
+        if fusion_mode == "soft_or":
+            # S(i) = 1 - prod_p(1 - clamp(s_i(p)))
+            for photo_id, prompt_scores in per_prompt.items():
+                product = 1.0
+                best_prompt = ""
+                best_score = 0.0
+                for prompt, score in prompt_scores.items():
+                    clamped = max(0.0, min(1.0, score))
+                    product *= (1.0 - clamped)
+                    if score > best_score:
+                        best_score = score
+                        best_prompt = prompt
+                fused = 1.0 - product
+                result[photo_id] = (fused, best_prompt)
+
+        elif fusion_mode == "weighted_max":
+            # Main prompt (first) gets weight 1.0, synonyms 0.7
+            main_prompt = prompts[0] if prompts else ""
+            for photo_id, prompt_scores in per_prompt.items():
+                best_weighted = 0.0
+                best_prompt = ""
+                for prompt, score in prompt_scores.items():
+                    weight = 1.0 if prompt == main_prompt else 0.7
+                    weighted = weight * score
+                    if weighted > best_weighted:
+                        best_weighted = weighted
+                        best_prompt = prompt
+                result[photo_id] = (best_weighted, best_prompt)
+
+        else:  # "max" (default, most robust)
+            for photo_id, prompt_scores in per_prompt.items():
+                best_prompt = max(prompt_scores, key=prompt_scores.get)
+                result[photo_id] = (prompt_scores[best_prompt], best_prompt)
+
+        return result
+
+    def _evaluate_metadata_score(
+        self,
+        path: str,
+        filters: Dict,
+        project_meta: Dict[str, Dict],
+        cfg: Dict,
+    ) -> Tuple[float, List[str]]:
+        """
+        Graded metadata scoring (not just pass/fail).
+
+        Returns: (metadata_score, reasons)
+        """
+        score = 0.0
+        reasons = []
+        meta = project_meta.get(path, {})
+
+        # GPS boost
+        has_gps = meta.get("has_gps", False)
+        if has_gps:
+            score += cfg.get("meta_boost_gps", 0.05)
+            reasons.append(f"GPS: +{cfg.get('meta_boost_gps', 0.05):.2f}")
+
+        # Rating boost
+        rating = meta.get("rating", 0) or 0
+        if rating >= 4:
+            boost = cfg.get("meta_boost_rating", 0.10)
+            score += boost
+            reasons.append(f"rating={rating}: +{boost:.2f}")
+        elif rating >= 3:
+            boost = cfg.get("meta_boost_rating", 0.10) * 0.5
+            score += boost
+            reasons.append(f"rating={rating}: +{boost:.2f}")
+
+        # Date proximity boost (photos from recent dates get a small boost)
+        created_date = meta.get("created_date")
+        if created_date and "date_from" in filters:
+            score += cfg.get("meta_boost_date", 0.03)
+            reasons.append(f"date match: +{cfg.get('meta_boost_date', 0.03):.2f}")
+
+        # Clamp to [0, 1]
+        score = max(0.0, min(1.0, score))
+
+        return score, reasons
+
+    def _load_project_photo_metadata(self) -> Dict[str, Dict]:
+        """Load lightweight metadata for all project photos (for graded scoring)."""
+        try:
+            from repository.base_repository import DatabaseConnection
+            db = DatabaseConnection()
+            with db.get_connection() as conn:
+                cursor = conn.execute(
+                    "SELECT path, rating, latitude, longitude, created_date "
+                    "FROM photo_metadata WHERE project_id = ?",
+                    (self.project_id,)
+                )
+                result = {}
+                for row in cursor.fetchall():
+                    path = row['path']
+                    lat = row['latitude']
+                    lon = row['longitude']
+                    result[path] = {
+                        "rating": row['rating'],
+                        "has_gps": lat is not None and lon is not None and lat != 0 and lon != 0,
+                        "created_date": row['created_date'],
+                    }
+                return result
+        except Exception as e:
+            logger.warning(f"[SmartFind] Failed to load project metadata: {e}")
+            return {}
 
     # ── "Not This" Exclusion ──
 
     def exclude_path(self, path: str):
-        """Exclude a photo from current results ('Not this' feature)."""
         self._excluded_paths.add(path)
         self.invalidate_cache()
         logger.info(f"[SmartFind] Excluded: {path}")
 
     def clear_exclusions(self):
-        """Clear all 'Not this' exclusions."""
         self._excluded_paths.clear()
         self.invalidate_cache()
 
     # ── Search Suggestions ──
 
     def get_suggestions(self) -> List[Dict]:
-        """
-        Get search suggestions based on library content distribution.
-
-        Returns presets with estimated match counts based on quick sampling.
-        """
         suggestions = []
         for preset in BUILTIN_PRESETS:
             prompts = preset.get("prompts", [])
@@ -857,7 +1172,6 @@ class SmartFindService:
     # ── Internal Helpers ──
 
     def _resolve_relative_date(self, relative: str) -> Dict:
-        """Convert relative date string to date_from/date_to filters."""
         from datetime import datetime, timedelta
         today = datetime.now().date()
         filters = {}
@@ -897,72 +1211,8 @@ class SmartFindService:
 
         return filters
 
-    def _run_clip_search(self, prompts: List[str],
-                         top_k: int,
-                         threshold: float) -> List[tuple]:
-        """
-        Run CLIP search across multiple prompts and merge results.
-
-        Uses max-score fusion: for each photo, keep the highest score
-        across all prompts. This handles synonyms naturally.
-
-        Returns:
-            List of (file_path, best_score) tuples
-        """
-        svc = self.semantic_service
-        if not svc:
-            return []
-
-        # Collect results across all prompts
-        all_scores: Dict[int, float] = {}  # photo_id -> best score
-        for prompt in prompts:
-            try:
-                results = svc.search(
-                    query=prompt,
-                    top_k=top_k,
-                    threshold=threshold,
-                    include_metadata=False
-                )
-                for r in results:
-                    if r.photo_id not in all_scores or r.relevance_score > all_scores[r.photo_id]:
-                        all_scores[r.photo_id] = r.relevance_score
-            except Exception as e:
-                logger.warning(f"[SmartFind] CLIP search failed for '{prompt}': {e}")
-
-        if not all_scores:
-            return []
-
-        # Get file paths for matched photo IDs
-        path_scores = []
-        try:
-            from repository.base_repository import DatabaseConnection
-            db = DatabaseConnection()
-            photo_ids = list(all_scores.keys())
-            placeholders = ','.join(['?'] * len(photo_ids))
-
-            with db.get_connection() as conn:
-                cursor = conn.execute(
-                    f"SELECT id, path FROM photo_metadata WHERE id IN ({placeholders})",
-                    photo_ids
-                )
-                for row in cursor.fetchall():
-                    photo_id = row['id']
-                    file_path = row['path']
-                    if file_path:
-                        path_scores.append((file_path, all_scores[photo_id]))
-        except Exception as e:
-            logger.error(f"[SmartFind] Failed to resolve photo paths: {e}")
-
-        return path_scores
-
     def _run_metadata_filter(self, filters: Dict) -> List[str]:
-        """
-        Apply metadata filters using existing SearchService.
-
-        Supported filter keys:
-            media_type, has_gps, orientation, date_from, date_to,
-            rating_min, width_min, camera_model
-        """
+        """Apply metadata filters using existing SearchService."""
         from services.search_service import SearchCriteria
 
         criteria = SearchCriteria()
@@ -988,17 +1238,15 @@ class SmartFindService:
         if "media_type" in filters:
             media_type = filters["media_type"]
             if media_type == "video":
-                # Filter to video file extensions
-                criteria.path_contains = None  # Will use custom logic below
+                criteria.path_contains = None
 
         if "rating_min" in filters:
-            # Rating filtering requires custom query (not in SearchCriteria)
             pass  # Handled separately below
 
         result = self.search_service.search(criteria)
         paths = result.paths
 
-        # Filter to current project (SearchService is not project-aware)
+        # Filter to current project
         if paths:
             try:
                 from repository.base_repository import DatabaseConnection
@@ -1013,7 +1261,7 @@ class SmartFindService:
             except Exception as e:
                 logger.warning(f"[SmartFind] Project filtering failed: {e}")
 
-        # Custom: media type filtering
+        # Media type filtering
         if "media_type" in filters:
             media_type = filters["media_type"]
             if media_type == "video":
@@ -1023,7 +1271,7 @@ class SmartFindService:
                 video_exts = {'.mp4', '.mov', '.avi', '.mkv', '.wmv', '.webm', '.m4v', '.flv'}
                 paths = [p for p in paths if not any(p.lower().endswith(ext) for ext in video_exts)]
 
-        # Custom: rating filtering
+        # Rating filtering
         if "rating_min" in filters:
             rating_min = filters["rating_min"]
             try:
@@ -1045,8 +1293,9 @@ class SmartFindService:
         return paths
 
     def invalidate_cache(self):
-        """Clear result cache (call after new photos ingested)."""
+        """Clear result cache and bump index version."""
         self._result_cache.clear()
+        _IndexVersionProvider.bump("cache_invalidated")
         logger.info("[SmartFind] Cache invalidated")
 
 
@@ -1059,3 +1308,8 @@ def get_smart_find_service(project_id: int) -> SmartFindService:
     if project_id not in _smart_find_services:
         _smart_find_services[project_id] = SmartFindService(project_id)
     return _smart_find_services[project_id]
+
+
+def bump_index_version(reason: str = ""):
+    """Bump the global index version (call after scans, embedding updates, etc.)."""
+    _IndexVersionProvider.bump(reason)

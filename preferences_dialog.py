@@ -1301,6 +1301,61 @@ class PreferencesDialog(QDialog):
 
         layout.addWidget(semantic_group)
 
+        # ── Score Fusion & Scoring ──
+        fusion_group = QGroupBox("Score Fusion & Hybrid Search")
+        fus_layout = QFormLayout(fusion_group)
+        fus_layout.setSpacing(10)
+
+        # Fusion mode combo
+        self.combo_fusion_mode = QComboBox()
+        self.combo_fusion_mode.addItems(["max", "weighted_max", "soft_or"])
+        self.combo_fusion_mode.setToolTip(
+            "How multi-prompt CLIP scores are combined:\n"
+            "• max — highest single-prompt score wins (fast, simple)\n"
+            "• weighted_max — best prompt gets 70%, second-best 30%\n"
+            "• soft_or — probabilistic union (rewards matching multiple prompts)\n"
+            "Default: max"
+        )
+        fus_layout.addRow("Fusion Mode:", self.combo_fusion_mode)
+
+        # Semantic weight slider (0.0 - 1.0)
+        sw_row = QWidget()
+        sw_row_layout = QHBoxLayout(sw_row)
+        sw_row_layout.setContentsMargins(0, 0, 0, 0)
+
+        from PySide6.QtWidgets import QSlider
+        self.slider_semantic_weight = QSlider(Qt.Horizontal)
+        self.slider_semantic_weight.setRange(0, 100)  # 0.00 to 1.00
+        self.slider_semantic_weight.setTickPosition(QSlider.TicksBelow)
+        self.slider_semantic_weight.setTickInterval(10)
+        self.lbl_semantic_weight_val = QLabel("0.80")
+        self.lbl_semantic_weight_val.setMinimumWidth(40)
+        self.slider_semantic_weight.valueChanged.connect(
+            lambda v: self.lbl_semantic_weight_val.setText(f"{v / 100:.2f}")
+        )
+        sw_row_layout.addWidget(self.slider_semantic_weight, 1)
+        sw_row_layout.addWidget(self.lbl_semantic_weight_val)
+        fus_layout.addRow("Semantic Weight:", sw_row)
+
+        sw_hint = QLabel(
+            "Balance between CLIP semantic score and metadata boost.\n"
+            "1.0 = pure semantic. 0.0 = pure metadata. Default: 0.80"
+        )
+        sw_hint.setWordWrap(True)
+        sw_hint.setStyleSheet("color: #888; font-size: 9pt; padding-left: 4px;")
+        fus_layout.addRow("", sw_hint)
+
+        # Threshold backoff toggle
+        self.chk_threshold_backoff = QCheckBox("Enable dynamic threshold backoff")
+        self.chk_threshold_backoff.setToolTip(
+            "When a query returns 0 results, automatically retry with\n"
+            "a lower CLIP threshold (up to 2 retries, step -0.04).\n"
+            "Prevents empty result screens for borderline queries."
+        )
+        fus_layout.addRow("", self.chk_threshold_backoff)
+
+        layout.addWidget(fusion_group)
+
         # ── Display Settings ──
         display_group = QGroupBox("Result Display")
         disp_layout = QFormLayout(display_group)
@@ -1368,6 +1423,10 @@ class PreferencesDialog(QDialog):
         self.chk_show_confidence.setChecked(d.SHOW_CONFIDENCE_SCORES)
         self.slider_min_confidence.setValue(int(d.MIN_DISPLAY_CONFIDENCE * 100))
         self.lbl_min_confidence_val.setText(f"{d.MIN_DISPLAY_CONFIDENCE:.2f}")
+        self.combo_fusion_mode.setCurrentText(d.FUSION_MODE)
+        self.slider_semantic_weight.setValue(int(d.SEMANTIC_WEIGHT * 100))
+        self.lbl_semantic_weight_val.setText(f"{d.SEMANTIC_WEIGHT:.2f}")
+        self.chk_threshold_backoff.setChecked(d.THRESHOLD_BACKOFF_ENABLED)
 
     def _create_video_panel(self) -> QWidget:
         """Create Video Settings panel."""
@@ -1737,6 +1796,11 @@ class PreferencesDialog(QDialog):
         min_conf = SearchConfig.get_min_display_confidence()
         self.slider_min_confidence.setValue(int(min_conf * 100))
         self.lbl_min_confidence_val.setText(f"{min_conf:.2f}")
+        self.combo_fusion_mode.setCurrentText(SearchConfig.get_fusion_mode())
+        sem_w = SearchConfig.get_semantic_weight()
+        self.slider_semantic_weight.setValue(int(sem_w * 100))
+        self.lbl_semantic_weight_val.setText(f"{sem_w:.2f}")
+        self.chk_threshold_backoff.setChecked(SearchConfig.get_threshold_backoff_enabled())
 
         # Badge overlay settings
         self.chk_badge_overlays.setChecked(self.settings.get("badge_overlays_enabled", True))
@@ -1811,6 +1875,9 @@ class PreferencesDialog(QDialog):
             "search_semantic_top_k": SearchConfig.get_semantic_top_k(),
             "search_show_confidence": SearchConfig.get_show_confidence_scores(),
             "search_min_display_confidence": SearchConfig.get_min_display_confidence(),
+            "search_fusion_mode": SearchConfig.get_fusion_mode(),
+            "search_semantic_weight": SearchConfig.get_semantic_weight(),
+            "search_threshold_backoff": SearchConfig.get_threshold_backoff_enabled(),
         }
 
     def _on_run_hash_backfill(self):
@@ -2286,8 +2353,12 @@ class PreferencesDialog(QDialog):
         SearchConfig.set_semantic_top_k(self.spin_semantic_top_k.value())
         SearchConfig.set_show_confidence_scores(self.chk_show_confidence.isChecked())
         SearchConfig.set_min_display_confidence(self.slider_min_confidence.value() / 100.0)
+        SearchConfig.set_fusion_mode(self.combo_fusion_mode.currentText())
+        SearchConfig.set_semantic_weight(self.slider_semantic_weight.value() / 100.0)
+        SearchConfig.set_threshold_backoff_enabled(self.chk_threshold_backoff.isChecked())
         print(f"🔎 Search settings saved: clip_threshold={self.slider_clip_threshold.value() / 100:.2f}, "
-              f"top_k={self.spin_search_top_k.value()}, cache_ttl={self.spin_cache_ttl.value()}s")
+              f"top_k={self.spin_search_top_k.value()}, cache_ttl={self.spin_cache_ttl.value()}s, "
+              f"fusion={self.combo_fusion_mode.currentText()}, sem_weight={self.slider_semantic_weight.value() / 100:.2f}")
 
         # Badge overlays
         self.settings.set("badge_overlays_enabled", self.chk_badge_overlays.isChecked())
@@ -2454,6 +2525,9 @@ class PreferencesDialog(QDialog):
             "search_semantic_top_k": self.spin_semantic_top_k.value(),
             "search_show_confidence": self.chk_show_confidence.isChecked(),
             "search_min_display_confidence": self.slider_min_confidence.value() / 100.0,
+            "search_fusion_mode": self.combo_fusion_mode.currentText(),
+            "search_semantic_weight": self.slider_semantic_weight.value() / 100.0,
+            "search_threshold_backoff": self.chk_threshold_backoff.isChecked(),
         }
 
         return current != self.original_settings
