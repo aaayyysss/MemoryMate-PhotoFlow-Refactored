@@ -801,7 +801,15 @@ class FindSection(BaseSection):
             if result.scores:
                 self.smartFindScores.emit(result.scores)
         else:
-            self._show_active_indicator(result.query_label, 0)
+            # Friendly empty-state messages for known presets
+            empty_hints = {
+                "favorites": "No favorites yet \u2014 flag photos as Pick to see them here",
+            }
+            hint = empty_hints.get(preset_id, "")
+            if hint:
+                self._show_active_indicator(result.query_label, 0, hint=hint)
+            else:
+                self._show_active_indicator(result.query_label, 0)
             self._show_facet_chips({})
             self.smartFindTriggered.emit([], result.query_label)
 
@@ -820,7 +828,9 @@ class FindSection(BaseSection):
         Phase 1 (immediate): Metadata-only results from structured tokens.
         Phase 2 (async): Full semantic + metadata results replace phase 1.
 
-        This gives instant feedback while CLIP encodes the query.
+        Both phases share a single stable display_label generated once from
+        the raw query so the UI never jitters between "🔍 date:2025" and
+        "🔍 date:2025 [2025]".
         """
         query = self._pending_text_query
         if not query or len(query) < 3:
@@ -838,19 +848,20 @@ class FindSection(BaseSection):
 
         extra_filters = self._get_refine_filters()
 
+        # Generate a stable display label once — reused by both phases.
+        display_label = f"\U0001f50d {query}"
+
         # Phase 1: Metadata-only results (instant, <50ms)
-        # Use orchestrator's built label for stable identity across phases
         try:
             orch = service.orchestrator
             meta_result = orch.search_metadata_only(
                 query, extra_filters=extra_filters or None
             )
             if meta_result.paths:
-                phase1_label = meta_result.label or f"\U0001f50d {query}"
-                self._active_query_label = phase1_label
-                self._show_active_indicator(phase1_label, meta_result.total_matches)
+                self._active_query_label = display_label
+                self._show_active_indicator(display_label, meta_result.total_matches)
                 self._show_facet_chips(meta_result.facets)
-                self.smartFindTriggered.emit(meta_result.paths, phase1_label)
+                self.smartFindTriggered.emit(meta_result.paths, display_label)
                 if meta_result.scores:
                     self.smartFindScores.emit(meta_result.scores)
         except Exception:
@@ -858,9 +869,11 @@ class FindSection(BaseSection):
 
         # Phase 2: Full search (may take 200ms-2s for CLIP)
         # Use QTimer.singleShot to avoid blocking the UI thread
-        QTimer.singleShot(0, lambda: self._execute_full_search(query, extra_filters))
+        QTimer.singleShot(0, lambda: self._execute_full_search(
+            query, extra_filters, display_label))
 
-    def _execute_full_search(self, query: str, extra_filters: Dict):
+    def _execute_full_search(self, query: str, extra_filters: Dict,
+                             display_label: str = ""):
         """Phase 2 of progressive search: full semantic + metadata results."""
         # Guard: if user typed something new, don't overwrite
         if self._active_text_query != query:
@@ -887,11 +900,13 @@ class FindSection(BaseSection):
         except Exception:
             pass
 
-        self._active_query_label = result.query_label
-        self._show_active_indicator(result.query_label, result.total_matches)
+        # Reuse the stable display_label from Phase 1 (no jitter)
+        label = display_label or result.query_label
+        self._active_query_label = label
+        self._show_active_indicator(label, result.total_matches)
         self._show_facet_chips(facets)
-        self._add_recent(result.query_label, query, result.total_matches)
-        self.smartFindTriggered.emit(result.paths, result.query_label)
+        self._add_recent(label, query, result.total_matches)
+        self.smartFindTriggered.emit(result.paths, label)
         if result.scores:
             self.smartFindScores.emit(result.scores)
 
@@ -939,11 +954,13 @@ class FindSection(BaseSection):
 
         self.smartFindCleared.emit()
 
-    def _show_active_indicator(self, label: str, count: int):
+    def _show_active_indicator(self, label: str, count: int, hint: str = ""):
         """Show the active query indicator at top of section."""
         if hasattr(self, '_active_indicator') and hasattr(self, '_active_label'):
             if count > 0:
                 self._active_label.setText(f"{label}  \u2014  {count} photos found")
+            elif hint:
+                self._active_label.setText(hint)
             else:
                 self._active_label.setText(f"{label}  \u2014  No matches")
             self._active_indicator.show()

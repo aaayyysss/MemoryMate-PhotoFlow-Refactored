@@ -478,15 +478,17 @@ class FacetComputer:
     Only shows what's actually present in results, not global.
     This is the Google Photos / Lightroom filter bar concept.
 
-    Hygiene rules (Patch E):
-    - Each facet must have 2+ meaningful buckets
-    - Small buckets (<2 items) are pruned
+    Hygiene rules:
+    - Facets suppressed entirely for small result sets (< _MIN_RESULTS_FOR_FACETS)
+    - Each facet must have 2+ meaningful buckets with _MIN_BUCKET_SIZE items each
+    - 90/10 splits are hidden (the minority bucket must hold >= 10% of results)
     - Facets are ordered by entropy (most discriminating first)
     """
 
     # Video extensions for media type detection
     _VIDEO_EXTS = frozenset({'.mp4', '.mov', '.avi', '.mkv', '.wmv', '.webm', '.m4v', '.flv'})
-    _MIN_BUCKET_SIZE = 1  # Minimum items per bucket to show
+    _MIN_BUCKET_SIZE = 2  # Minimum items per bucket to show
+    _MIN_RESULTS_FOR_FACETS = 8  # Don't show facets below this result count
 
     @classmethod
     def compute(cls, paths: List[str], project_meta: Dict[str, Dict]) -> Dict[str, Dict[str, int]]:
@@ -501,7 +503,7 @@ class FacetComputer:
                 "rated": {"Rated": 4, "Unrated": 14},
             }
         """
-        if not paths:
+        if not paths or len(paths) < cls._MIN_RESULTS_FOR_FACETS:
             return {}
 
         facets = {}
@@ -563,17 +565,19 @@ class FacetComputer:
 
     @classmethod
     def _apply_hygiene(cls, facets: Dict[str, Dict[str, int]]) -> Dict[str, Dict[str, int]]:
-        """Prune small buckets, drop degenerate facets, order by entropy."""
+        """Prune small buckets, drop degenerate/lopsided facets, order by entropy."""
         cleaned = {}
         for name, buckets in facets.items():
             # Prune buckets below minimum size
             pruned = {k: v for k, v in buckets.items() if v >= cls._MIN_BUCKET_SIZE}
             # Need at least 2 buckets to be a meaningful facet
-            if len(pruned) >= 2:
-                cleaned[name] = pruned
-            elif len(pruned) == 1 and len(buckets) == 1:
-                # Single-value facet (e.g. all videos) — keep as-is for info
-                cleaned[name] = buckets
+            if len(pruned) < 2:
+                continue
+            # Drop lopsided splits where the smallest bucket < 10% of total
+            total = sum(pruned.values())
+            if total > 0 and min(pruned.values()) / total < 0.10:
+                continue
+            cleaned[name] = pruned
 
         # Order by entropy (most discriminating first)
         def _entropy(counts: Dict[str, int]) -> float:
@@ -617,6 +621,12 @@ class SearchOrchestrator:
         "selfie", "people", "person", "child", "children", "kids",
     })
 
+    # Known embedding model quality tiers (dim → tier label)
+    _MODEL_QUALITY_TIERS = {
+        512: "base (ViT-B/32, 512-D)",
+        768: "large (ViT-L/14, 768-D)",
+    }
+
     def __init__(self, project_id: int):
         self.project_id = project_id
         self._weights = ScoringWeights()
@@ -625,6 +635,7 @@ class SearchOrchestrator:
         self._project_meta_cache: Optional[Dict[str, Dict]] = None
         self._meta_cache_time: float = 0.0
         self._META_CACHE_TTL = 60.0  # Refresh metadata cache every 60s
+        self._embedding_quality_logged = False
 
     # ── Lazy Service Access ──
 
@@ -732,6 +743,10 @@ class SearchOrchestrator:
         # Step 1: Semantic candidates
         semantic_hits = {}  # {photo_id: (score, prompt)}
         if plan.has_semantic() and self._smart_find.clip_available:
+            # One-time embedding quality diagnostic
+            if not self._embedding_quality_logged:
+                self._log_embedding_quality()
+
             prompts = plan.semantic_prompts if plan.semantic_prompts else [plan.semantic_text]
             semantic_hits = self._smart_find._run_clip_multi_prompt(
                 prompts, top_k * 3, threshold, fusion_mode
@@ -763,6 +778,16 @@ class SearchOrchestrator:
 
         # Step 4: Load project metadata for scoring
         project_meta = self._get_project_meta()
+
+        if people_implied:
+            face_photo_count = sum(
+                1 for m in project_meta.values()
+                if (m.get("face_count", 0) or 0) > 0
+            )
+            logger.info(
+                f"[SearchOrchestrator] People-implied query: "
+                f"{face_photo_count}/{len(project_meta)} photos have face_count > 0"
+            )
 
         # Step 5: Score every candidate
         scored: List[ScoredResult] = []
@@ -849,10 +874,16 @@ class SearchOrchestrator:
         # Step 8: Deduplicate (stack duplicates behind representative)
         scored, stacked_count = self._deduplicate_results(scored)
 
-        # Step 9: Limit to top_k
+        # Step 9: Enforce strict path uniqueness
+        # After backoff merge + dedup, the same path can still appear if it
+        # entered through different candidate paths (initial vs backoff).
+        # Keep only the first (highest-scored) occurrence of each path.
+        scored = self._enforce_unique_paths(scored)
+
+        # Step 10: Limit to top_k
         scored = scored[:top_k]
 
-        # Step 10: Compute facets from result set
+        # Step 11: Compute facets from result set
         result_paths = [r.path for r in scored]
         facets = FacetComputer.compute(result_paths, project_meta)
 
@@ -997,21 +1028,28 @@ class SearchOrchestrator:
                     }
                     id_to_path[row['id']] = path
 
-                # Face counts (best-effort, faces table may not exist yet)
+                # Face counts from face_crops table (populated by face pipeline)
                 try:
                     face_cursor = conn.execute("""
-                        SELECT photo_id, COUNT(*) as cnt
-                        FROM faces
-                        JOIN photo_metadata pm ON faces.photo_id = pm.id
-                        WHERE pm.project_id = ?
-                        GROUP BY photo_id
+                        SELECT fc.image_path, COUNT(*) as cnt
+                        FROM face_crops fc
+                        WHERE fc.project_id = ?
+                        GROUP BY fc.image_path
                     """, (self.project_id,))
-                    for frow in face_cursor.fetchall():
-                        p = id_to_path.get(frow['photo_id'])
+                    face_rows = face_cursor.fetchall()
+                    face_hit_count = 0
+                    for frow in face_rows:
+                        p = frow['image_path']
                         if p and p in result:
                             result[p]["face_count"] = frow['cnt']
+                            face_hit_count += 1
+                    if face_hit_count > 0:
+                        logger.debug(
+                            f"[SearchOrchestrator] face_count populated for "
+                            f"{face_hit_count}/{len(result)} photos"
+                        )
                 except Exception:
-                    pass  # faces table may not exist
+                    pass  # face_crops table may not exist yet
 
                 self._project_meta_cache = result
                 self._meta_cache_time = now
@@ -1110,6 +1148,42 @@ class SearchOrchestrator:
         """Invalidate the metadata cache (call after scans, rating changes, etc.)."""
         self._project_meta_cache = None
         self._meta_cache_time = 0.0
+
+    def _log_embedding_quality(self):
+        """One-time diagnostic: log current embedding model and quality tier."""
+        self._embedding_quality_logged = True
+        try:
+            from repository.project_repository import ProjectRepository
+            proj_repo = ProjectRepository()
+            model_name = proj_repo.get_semantic_model(self.project_id) or \
+                "openai/clip-vit-base-patch32"
+
+            # Detect dimension from a sample embedding
+            from repository.base_repository import DatabaseConnection
+            db = DatabaseConnection()
+            with db.get_connection() as conn:
+                row = conn.execute("""
+                    SELECT se.dimension
+                    FROM semantic_embeddings se
+                    JOIN photo_metadata pm ON se.photo_id = pm.id
+                    WHERE pm.project_id = ?
+                    LIMIT 1
+                """, (self.project_id,)).fetchone()
+                dim = row['dimension'] if row else 0
+
+            tier = self._MODEL_QUALITY_TIERS.get(dim, f"unknown ({dim}-D)")
+            logger.info(
+                f"[SearchOrchestrator] Embedding model: {model_name} | "
+                f"quality tier: {tier}"
+            )
+            if dim > 0 and dim <= 512:
+                logger.info(
+                    f"[SearchOrchestrator] Semantic quality ceiling: base model "
+                    f"({dim}-D). For better search separation, re-extract with "
+                    f"clip-vit-large-patch14 (768-D) via Tools > Extract Embeddings."
+                )
+        except Exception as e:
+            logger.debug(f"[SearchOrchestrator] Embedding quality check skipped: {e}")
 
     # ── Duplicate Stacking (P0: fold duplicates into representative + badge) ──
 
@@ -1251,6 +1325,22 @@ class SearchOrchestrator:
         result.sort(key=lambda r: r.final_score, reverse=True)
         return result, stacked
 
+    @staticmethod
+    def _enforce_unique_paths(scored: List[ScoredResult]) -> List[ScoredResult]:
+        """
+        Final safety net: ensure no path appears more than once.
+
+        Input must be sorted by score (descending). Keeps the first (highest-
+        scored) occurrence of each path and drops later duplicates.
+        """
+        seen: set = set()
+        unique: List[ScoredResult] = []
+        for sr in scored:
+            if sr.path not in seen:
+                seen.add(sr.path)
+                unique.append(sr)
+        return unique
+
     # ── Progressive Search (metadata first, then semantic) ──
 
     def search_metadata_only(self, query: str, top_k: int = 200,
@@ -1296,6 +1386,7 @@ class SearchOrchestrator:
                 scored.append(sr)
 
         scored.sort(key=lambda r: r.final_score, reverse=True)
+        scored = self._enforce_unique_paths(scored)
         scored = scored[:top_k]
 
         result_paths = [r.path for r in scored]
@@ -1427,6 +1518,7 @@ class SearchOrchestrator:
                 scored.append(sr)
 
             scored.sort(key=lambda r: r.final_score, reverse=True)
+            scored = self._enforce_unique_paths(scored)
 
             result_paths = [r.path for r in scored]
             facets = FacetComputer.compute(result_paths, project_meta)
@@ -1636,6 +1728,7 @@ class SearchOrchestrator:
                 scored.append(sr)
 
             scored.sort(key=lambda r: r.final_score, reverse=True)
+            scored = self._enforce_unique_paths(scored)
             scored = scored[:top_k]
 
             result_paths = [r.path for r in scored]
