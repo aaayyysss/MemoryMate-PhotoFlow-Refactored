@@ -526,6 +526,14 @@ class FindSection(BaseSection):
         self._update_recent_ui()
         main_layout.addWidget(self._recent_container)
 
+        # -- Suggested Searches (from library stats) --
+        self._suggestions_container = QWidget()
+        self._suggestions_layout = QVBoxLayout(self._suggestions_container)
+        self._suggestions_layout.setContentsMargins(0, 4, 0, 0)
+        self._suggestions_layout.setSpacing(2)
+        self._load_suggestions()
+        main_layout.addWidget(self._suggestions_container)
+
         # Stretch at bottom
         main_layout.addStretch()
 
@@ -806,7 +814,14 @@ class FindSection(BaseSection):
             self._search_debounce.stop()
 
     def _execute_text_search(self):
-        """Execute free-text search with NLP parsing + structured tokens."""
+        """
+        Execute free-text search with progressive results.
+
+        Phase 1 (immediate): Metadata-only results from structured tokens.
+        Phase 2 (async): Full semantic + metadata results replace phase 1.
+
+        This gives instant feedback while CLIP encodes the query.
+        """
         query = self._pending_text_query
         if not query or len(query) < 3:
             return
@@ -822,7 +837,44 @@ class FindSection(BaseSection):
         self._set_chip_active("")
 
         extra_filters = self._get_refine_filters()
+
+        # Phase 1: Metadata-only results (instant, <50ms)
+        try:
+            orch = service.orchestrator
+            meta_result = orch.search_metadata_only(
+                query, extra_filters=extra_filters or None
+            )
+            if meta_result.paths:
+                self._active_query_label = f"\U0001f50d {query} (searching...)"
+                self._show_active_indicator(
+                    f"\U0001f50d {query}", meta_result.total_matches
+                )
+                self._show_facet_chips(meta_result.facets)
+                self.smartFindTriggered.emit(meta_result.paths, f"\U0001f50d {query}")
+                if meta_result.scores:
+                    self.smartFindScores.emit(meta_result.scores)
+        except Exception:
+            pass  # Phase 1 is best-effort
+
+        # Phase 2: Full search (may take 200ms-2s for CLIP)
+        # Use QTimer.singleShot to avoid blocking the UI thread
+        QTimer.singleShot(0, lambda: self._execute_full_search(query, extra_filters))
+
+    def _execute_full_search(self, query: str, extra_filters: Dict):
+        """Phase 2 of progressive search: full semantic + metadata results."""
+        # Guard: if user typed something new, don't overwrite
+        if self._active_text_query != query:
+            return
+
+        service = self._get_service()
+        if not service:
+            return
+
         result = service.find_by_text(query, extra_filters=extra_filters or None)
+
+        # Guard again after search completes
+        if self._active_text_query != query:
+            return
 
         # Get facets from orchestrator
         facets = {}
@@ -1126,6 +1178,77 @@ class FindSection(BaseSection):
         # Otherwise treat as text query
         self._search_field.setText(query_or_id)
         self._pending_text_query = query_or_id
+        self._execute_text_search()
+
+    # ── Suggested Searches (from library stats) ──
+
+    def _load_suggestions(self):
+        """Load library-aware search suggestions."""
+        if not hasattr(self, '_suggestions_layout'):
+            return
+
+        # Clear existing
+        while self._suggestions_layout.count():
+            child = self._suggestions_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+
+        if not self.project_id:
+            self._suggestions_container.hide()
+            return
+
+        try:
+            from services.search_orchestrator import LibraryAnalyzer
+            suggestions = LibraryAnalyzer.suggest(self.project_id)
+        except Exception:
+            suggestions = []
+
+        if not suggestions:
+            self._suggestions_container.hide()
+            return
+
+        header = QLabel("Suggested")
+        header.setStyleSheet(
+            "font-size: 11px; font-weight: bold; color: #5f6368; "
+            "padding: 4px 0 2px 2px;"
+        )
+        self._suggestions_layout.addWidget(header)
+
+        # Flow layout for suggestion chips
+        chips_widget = QWidget()
+        chips_layout = QHBoxLayout(chips_widget)
+        chips_layout.setContentsMargins(0, 0, 0, 0)
+        chips_layout.setSpacing(4)
+
+        chip_style = (
+            "QPushButton { background: #e8f5e9; border: 1px solid #c8e6c9; "
+            "border-radius: 12px; padding: 3px 10px; font-size: 10px; color: #2e7d32; }"
+            "QPushButton:hover { background: #c8e6c9; border-color: #4caf50; color: #1b5e20; }"
+        )
+
+        for suggestion in suggestions:
+            icon = suggestion.get("icon", "")
+            label = suggestion.get("label", "")
+            query = suggestion.get("query", "")
+
+            chip = QPushButton(f"{icon} {label}")
+            chip.setFixedHeight(24)
+            chip.setCursor(Qt.PointingHandCursor)
+            chip.setStyleSheet(chip_style)
+            chip.clicked.connect(
+                lambda _, q=query: self._on_suggestion_clicked(q)
+            )
+            chips_layout.addWidget(chip)
+
+        chips_layout.addStretch()
+        self._suggestions_layout.addWidget(chips_widget)
+        self._suggestions_container.show()
+
+    def _on_suggestion_clicked(self, query: str):
+        """Run a suggested search query."""
+        if hasattr(self, '_search_field'):
+            self._search_field.setText(query)
+        self._pending_text_query = query
         self._execute_text_search()
 
     def cleanup(self):

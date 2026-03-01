@@ -1747,6 +1747,11 @@ class ThumbnailGridQt(QWidget):
         # Edit Metadata action - opens metadata editor dock for this photo
         act_edit_metadata = m.addAction("✏️ Edit Metadata")
 
+        # Find Similar - Excire-style visual similarity search
+        act_find_similar = None
+        if len(paths) == 1:
+            act_find_similar = m.addAction("\U0001f3af Find Similar Photos...")
+
         m.addSeparator()
         act_export = m.addAction(tr('context_menu.export'))
         act_delete = m.addAction(tr('context_menu.delete'))
@@ -1776,6 +1781,9 @@ class ThumbnailGridQt(QWidget):
         elif chosen is act_edit_metadata:
             # Open metadata editor dock for the first selected photo
             self._show_metadata_editor_for_photo(paths[0] if paths else None)
+
+        elif act_find_similar and chosen is act_find_similar:
+            self._open_find_similar_for_path(paths[0])
 
         elif chosen is act_fav:
             # Check if any photos are selected
@@ -2012,6 +2020,45 @@ class ThumbnailGridQt(QWidget):
         elif act_paste_location and chosen is act_paste_location:
             self._paste_location(paths)
 
+
+    def _open_find_similar_for_path(self, path: str):
+        """
+        Open Find Similar dialog for a photo (Excire-style).
+
+        Looks up the photo_id from the path and opens SimilarPhotosDialog.
+        """
+        if not path:
+            return
+        try:
+            from reference_db import ReferenceDB
+            db = ReferenceDB()
+            with db.get_connection() as conn:
+                row = conn.execute(
+                    "SELECT id FROM photo_metadata WHERE path = ? AND project_id = ?",
+                    (path, self.project_id)
+                ).fetchone()
+                if not row:
+                    row = conn.execute(
+                        "SELECT id FROM photo_metadata WHERE LOWER(path) = LOWER(?) AND project_id = ?",
+                        (path, self.project_id)
+                    ).fetchone()
+                if not row:
+                    print(f"[FindSimilar] Photo not found in DB: {path}")
+                    return
+                photo_id = row['id']
+
+            from ui.similar_photos_dialog import SimilarPhotosDialog
+            dialog = SimilarPhotosDialog(
+                reference_photo_id=photo_id,
+                project_id=self.project_id,
+                parent=self,
+            )
+            dialog.exec()
+
+        except Exception as e:
+            print(f"[FindSimilar] Error: {e}")
+            import traceback
+            traceback.print_exc()
 
     def _show_metadata_editor_for_photo(self, path: str):
         """Show the metadata editor dock for a specific photo (triggered from right-click menu)."""
