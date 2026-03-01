@@ -422,9 +422,13 @@ class FindSection(BaseSection):
 
         main_layout.addWidget(search_frame)
 
-        # NLP hint
-        nlp_hint = QLabel("Try: \"sunset from 2024\", \"3 star beach\", \"videos last month\"")
+        # Search syntax hint (NLP + structured tokens)
+        nlp_hint = QLabel(
+            'Try: "sunset from 2024", "beach is:fav", '
+            '"type:video date:2024", "3 star portraits"'
+        )
         nlp_hint.setStyleSheet("color: #9aa0a6; font-size: 10px; padding: 0 2px;")
+        nlp_hint.setWordWrap(True)
         main_layout.addWidget(nlp_hint)
 
         # -- CLIP availability indicator --
@@ -767,9 +771,22 @@ class FindSection(BaseSection):
 
         result = service.find_by_preset(preset_id, extra_filters=extra_filters or None)
 
+        # Get facets from orchestrator result (if available)
+        facets = {}
+        try:
+            orch = service.orchestrator
+            # Re-fetch facets from the orchestrator's last result
+            if hasattr(orch, '_get_project_meta'):
+                from services.search_orchestrator import FacetComputer
+                project_meta = orch._get_project_meta()
+                facets = FacetComputer.compute(result.paths, project_meta)
+        except Exception:
+            pass
+
         if result.paths:
             self._active_query_label = result.query_label
             self._show_active_indicator(result.query_label, result.total_matches)
+            self._show_facet_chips(facets)
             self._add_recent(result.query_label, preset_id, result.total_matches)
             self.smartFindTriggered.emit(result.paths, result.query_label)
             # Emit scores for confidence overlay
@@ -777,6 +794,7 @@ class FindSection(BaseSection):
                 self.smartFindScores.emit(result.scores)
         else:
             self._show_active_indicator(result.query_label, 0)
+            self._show_facet_chips({})
             self.smartFindTriggered.emit([], result.query_label)
 
     def _on_search_text_changed(self, text: str):
@@ -788,7 +806,7 @@ class FindSection(BaseSection):
             self._search_debounce.stop()
 
     def _execute_text_search(self):
-        """Execute free-text search with NLP parsing."""
+        """Execute free-text search with NLP parsing + structured tokens."""
         query = self._pending_text_query
         if not query or len(query) < 3:
             return
@@ -806,8 +824,20 @@ class FindSection(BaseSection):
         extra_filters = self._get_refine_filters()
         result = service.find_by_text(query, extra_filters=extra_filters or None)
 
+        # Get facets from orchestrator
+        facets = {}
+        try:
+            orch = service.orchestrator
+            if hasattr(orch, '_get_project_meta'):
+                from services.search_orchestrator import FacetComputer
+                project_meta = orch._get_project_meta()
+                facets = FacetComputer.compute(result.paths, project_meta)
+        except Exception:
+            pass
+
         self._active_query_label = result.query_label
         self._show_active_indicator(result.query_label, result.total_matches)
+        self._show_facet_chips(facets)
         self._add_recent(result.query_label, query, result.total_matches)
         self.smartFindTriggered.emit(result.paths, result.query_label)
         if result.scores:
@@ -832,6 +862,9 @@ class FindSection(BaseSection):
 
         if hasattr(self, '_active_indicator'):
             self._active_indicator.hide()
+
+        # Clear facet chips
+        self._show_facet_chips({})
 
         # Reset refine facets
         if hasattr(self, '_date_combo'):
@@ -862,6 +895,44 @@ class FindSection(BaseSection):
             else:
                 self._active_label.setText(f"{label}  \u2014  No matches")
             self._active_indicator.show()
+
+    def _show_facet_chips(self, facets: Dict):
+        """
+        Show result-set facet chips below the active query indicator.
+
+        Facets are computed from the current result set (not global).
+        This is the Google Photos / Lightroom filter refinement pattern.
+        """
+        if not hasattr(self, '_filter_chips_layout'):
+            return
+
+        # Clear existing chips
+        while self._filter_chips_layout.count():
+            child = self._filter_chips_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+
+        if not facets:
+            self._filter_chips_container.hide()
+            return
+
+        chip_style = (
+            "QPushButton { background: #f1f3f4; border: 1px solid #e0e0e0; "
+            "border-radius: 12px; padding: 3px 10px; font-size: 10px; color: #5f6368; }"
+            "QPushButton:hover { background: #e8f0fe; border-color: #1a73e8; color: #1a73e8; }"
+        )
+
+        for facet_type, distribution in facets.items():
+            for label, count in distribution.items():
+                chip = QPushButton(f"{label} ({count})")
+                chip.setFixedHeight(24)
+                chip.setCursor(Qt.PointingHandCursor)
+                chip.setStyleSheet(chip_style)
+                # Facet chips are informational (refinement via Layer 2 combos)
+                self._filter_chips_layout.addWidget(chip)
+
+        self._filter_chips_layout.addStretch()
+        self._filter_chips_container.show()
 
     def focus_search(self):
         """Focus the search input field (called by Ctrl+F shortcut)."""
