@@ -612,7 +612,46 @@ class SmartFindService:
 
         return self.save_custom_preset(name, icon, prompts, filters)
 
-    # ── Core Search Pipeline ──
+    # ── Orchestrator Access (unified pipeline) ──
+
+    @property
+    def orchestrator(self):
+        """Get the SearchOrchestrator for this project (lazy)."""
+        if not hasattr(self, '_orchestrator') or self._orchestrator is None:
+            from services.search_orchestrator import get_search_orchestrator
+            self._orchestrator = get_search_orchestrator(self.project_id)
+        return self._orchestrator
+
+    def _orchestrator_to_smartfind(self, orch_result) -> SmartFindResult:
+        """Convert OrchestratorResult to SmartFindResult for backward compatibility."""
+        matched_prompts = {}
+        semantic_scores = {}
+        metadata_scores = {}
+        all_reasons = {}
+        for sr in orch_result.scored_results:
+            if sr.matched_prompt:
+                matched_prompts[sr.path] = sr.matched_prompt
+            semantic_scores[sr.path] = sr.clip_score
+            metadata_scores[sr.path] = (
+                sr.recency_score + sr.favorite_score
+                + sr.location_score + sr.face_match_score
+            )
+            all_reasons[sr.path] = sr.reasons
+
+        return SmartFindResult(
+            paths=orch_result.paths,
+            query_label=orch_result.label,
+            total_matches=orch_result.total_matches,
+            execution_time_ms=orch_result.execution_time_ms,
+            scores=orch_result.scores if orch_result.scores else None,
+            matched_prompts=matched_prompts if matched_prompts else None,
+            semantic_scores=semantic_scores if semantic_scores else None,
+            metadata_scores=metadata_scores if metadata_scores else None,
+            reasons=all_reasons if all_reasons else None,
+            backoff_applied=orch_result.backoff_applied,
+        )
+
+    # ── Core Search Pipeline (routed through SearchOrchestrator) ──
 
     def find_by_preset(self, preset_id: str,
                        top_k: Optional[int] = None,
@@ -645,42 +684,27 @@ class SmartFindService:
                 total_matches=0, execution_time_ms=0
             )
 
-        prompts = preset.get("prompts", [])
-        filters = dict(preset.get("filters", {}))
-        preset_threshold = preset.get("threshold", threshold)
-        preset_sem_weight = preset.get("semantic_weight", cfg["semantic_weight"])
-        if extra_filters:
-            filters.update(extra_filters)
-
-        result = self._execute_hybrid_search(
-            prompts=prompts,
-            filters=filters,
-            top_k=top_k,
-            threshold=preset_threshold,
-            semantic_weight=preset_sem_weight,
-            fusion_mode=cfg["fusion_mode"],
-            cfg=cfg,
-            token=token,
+        # Route through orchestrator for unified ranking + explainability
+        orch_result = self.orchestrator.search_by_preset(
+            preset_id, top_k=top_k, extra_filters=extra_filters
         )
 
         if token.is_cancelled:
             return SmartFindResult(paths=[], query_label="(cancelled)",
                                   total_matches=0, execution_time_ms=0)
 
-        elapsed_ms = (time.time() - start) * 1000
-        label = f"{preset.get('icon', '')} {preset['name']}"
-
-        result.query_label = label
-        result.execution_time_ms = elapsed_ms
+        result = self._orchestrator_to_smartfind(orch_result)
         result.request_id = token.request_id
         result.index_version = idx_v
         result._cached_at = time.time()
 
         self._result_cache[cache_key] = result
 
+        prompts = preset.get("prompts", [])
+        filters = dict(preset.get("filters", {}))
         logger.info(
             f"[SmartFind] Preset '{preset['name']}': {result.total_matches} results "
-            f"in {elapsed_ms:.0f}ms (CLIP={bool(prompts and self.clip_available)}, "
+            f"in {result.execution_time_ms:.0f}ms (CLIP={bool(prompts and self.clip_available)}, "
             f"filters={bool(filters)}, backoff={result.backoff_applied})"
         )
 
@@ -698,56 +722,17 @@ class SmartFindService:
             threshold = cfg["threshold"]
 
         token = self._begin_query()
-        start = time.time()
 
-        # NLP extraction
-        if cfg["nlp_enabled"]:
-            clip_query, parsed_filters = NLQueryParser.parse(query)
-        else:
-            clip_query, parsed_filters = query, {}
-
-        all_filters = dict(parsed_filters)
-        if extra_filters:
-            all_filters.update(extra_filters)
-
-        if "_relative_date" in all_filters:
-            date_filters = self._resolve_relative_date(all_filters.pop("_relative_date"))
-            all_filters.update(date_filters)
-
-        prompts = [clip_query] if clip_query else []
-
-        result = self._execute_hybrid_search(
-            prompts=prompts,
-            filters=all_filters,
-            top_k=top_k,
-            threshold=threshold,
-            semantic_weight=cfg["semantic_weight"],
-            fusion_mode=cfg["fusion_mode"],
-            cfg=cfg,
-            token=token,
+        # Route through orchestrator for unified ranking + explainability
+        orch_result = self.orchestrator.search(
+            query, top_k=top_k, extra_filters=extra_filters
         )
 
         if token.is_cancelled:
             return SmartFindResult(paths=[], query_label="(cancelled)",
                                   total_matches=0, execution_time_ms=0)
 
-        elapsed_ms = (time.time() - start) * 1000
-
-        # Build label showing what was parsed
-        label_parts = [f"\U0001f50d {query}"]
-        if parsed_filters:
-            extracted = []
-            if "date_from" in parsed_filters:
-                extracted.append(f"date: {parsed_filters['date_from']}")
-            if "rating_min" in parsed_filters:
-                extracted.append(f"rating >= {parsed_filters['rating_min']}")
-            if "media_type" in parsed_filters:
-                extracted.append(parsed_filters["media_type"])
-            if extracted:
-                label_parts.append(f"[{', '.join(extracted)}]")
-
-        result.query_label = ' '.join(label_parts)
-        result.execution_time_ms = elapsed_ms
+        result = self._orchestrator_to_smartfind(orch_result)
         result.request_id = token.request_id
 
         return result
@@ -765,51 +750,18 @@ class SmartFindService:
             threshold = cfg["threshold"]
 
         token = self._begin_query()
-        start = time.time()
-        all_prompts = []
-        all_metadata_filters = {}
-        labels = []
 
-        for pid in preset_ids:
-            preset = self._lookup_preset(pid)
-            if preset:
-                all_prompts.extend(preset.get("prompts", []))
-                for k, v in preset.get("filters", {}).items():
-                    all_metadata_filters[k] = v
-                labels.append(f"{preset.get('icon', '')} {preset['name']}")
-
-        if text_query:
-            clip_text, parsed = NLQueryParser.parse(text_query)
-            if clip_text:
-                all_prompts.append(clip_text)
-            all_metadata_filters.update(parsed)
-            if "_relative_date" in all_metadata_filters:
-                date_f = self._resolve_relative_date(all_metadata_filters.pop("_relative_date"))
-                all_metadata_filters.update(date_f)
-
-        if extra_filters:
-            all_metadata_filters.update(extra_filters)
-
-        result = self._execute_hybrid_search(
-            prompts=all_prompts,
-            filters=all_metadata_filters,
-            top_k=top_k,
-            threshold=threshold,
-            semantic_weight=cfg["semantic_weight"],
-            fusion_mode=cfg["fusion_mode"],
-            cfg=cfg,
-            token=token,
+        # Route through orchestrator for unified ranking + explainability
+        orch_result = self.orchestrator.search_combined(
+            preset_ids, text_query=text_query,
+            extra_filters=extra_filters, top_k=top_k
         )
 
         if token.is_cancelled:
             return SmartFindResult(paths=[], query_label="(cancelled)",
                                   total_matches=0, execution_time_ms=0)
 
-        elapsed_ms = (time.time() - start) * 1000
-        combined_label = " + ".join(labels) if labels else "\U0001f50d Combined Search"
-
-        result.query_label = combined_label
-        result.execution_time_ms = elapsed_ms
+        result = self._orchestrator_to_smartfind(orch_result)
         result.request_id = token.request_id
 
         return result
