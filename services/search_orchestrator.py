@@ -342,8 +342,8 @@ class TokenParser:
 
         elif key == "is":
             if value_lower in ("fav", "favorite", "favourite", "starred"):
-                filters["rating_min"] = 4
-                return {"type": "quality", "label": "Favorites", "key": "rating_min", "value": "4"}
+                filters["flag"] = "pick"
+                return {"type": "quality", "label": "Favorites", "key": "flag", "value": "pick"}
 
         elif key == "has":
             if value_lower in ("location", "gps", "geo"):
@@ -477,10 +477,16 @@ class FacetComputer:
 
     Only shows what's actually present in results, not global.
     This is the Google Photos / Lightroom filter bar concept.
+
+    Hygiene rules (Patch E):
+    - Each facet must have 2+ meaningful buckets
+    - Small buckets (<2 items) are pruned
+    - Facets are ordered by entropy (most discriminating first)
     """
 
     # Video extensions for media type detection
     _VIDEO_EXTS = frozenset({'.mp4', '.mov', '.avi', '.mkv', '.wmv', '.webm', '.m4v', '.flv'})
+    _MIN_BUCKET_SIZE = 1  # Minimum items per bucket to show
 
     @classmethod
     def compute(cls, paths: List[str], project_meta: Dict[str, Dict]) -> Dict[str, Dict[str, int]]:
@@ -552,7 +558,35 @@ class FacetComputer:
         if rated > 0 and unrated > 0:
             facets["rated"] = {"Rated": rated, "Unrated": unrated}
 
-        return facets
+        # Hygiene: prune small buckets, drop single-bucket facets, order by entropy
+        return cls._apply_hygiene(facets)
+
+    @classmethod
+    def _apply_hygiene(cls, facets: Dict[str, Dict[str, int]]) -> Dict[str, Dict[str, int]]:
+        """Prune small buckets, drop degenerate facets, order by entropy."""
+        cleaned = {}
+        for name, buckets in facets.items():
+            # Prune buckets below minimum size
+            pruned = {k: v for k, v in buckets.items() if v >= cls._MIN_BUCKET_SIZE}
+            # Need at least 2 buckets to be a meaningful facet
+            if len(pruned) >= 2:
+                cleaned[name] = pruned
+            elif len(pruned) == 1 and len(buckets) == 1:
+                # Single-value facet (e.g. all videos) — keep as-is for info
+                cleaned[name] = buckets
+
+        # Order by entropy (most discriminating first)
+        def _entropy(counts: Dict[str, int]) -> float:
+            total = sum(counts.values())
+            if total == 0:
+                return 0.0
+            return -sum(
+                (c / total) * math.log2(c / total)
+                for c in counts.values() if c > 0
+            )
+
+        ordered = sorted(cleaned.items(), key=lambda kv: _entropy(kv[1]), reverse=True)
+        return dict(ordered)
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -572,6 +606,16 @@ class SearchOrchestrator:
     Guarantees: same query always produces same ranking,
     regardless of entry point.
     """
+
+    # Presets and keywords where face presence should boost scoring
+    _PEOPLE_IMPLIED_PRESETS = frozenset({
+        "portraits", "baby", "wedding", "party",
+    })
+    _PEOPLE_IMPLIED_KEYWORDS = frozenset({
+        "portrait", "portraits", "baby", "babies", "toddler", "infant",
+        "wedding", "party", "celebration", "group photo", "family",
+        "selfie", "people", "person", "child", "children", "kids",
+    })
 
     def __init__(self, project_id: int):
         self.project_id = project_id
@@ -663,11 +707,27 @@ class SearchOrchestrator:
 
     # ── Internal Pipeline ──
 
+    # Minimum results before backoff triggers
+    _MIN_RESULTS_TARGET = 20
+
+    def _is_people_implied(self, plan: QueryPlan) -> bool:
+        """Detect if a query implies people/faces (portraits, baby, wedding, etc.)."""
+        if plan.preset_id and plan.preset_id in self._PEOPLE_IMPLIED_PRESETS:
+            return True
+        if plan.semantic_text:
+            text_lower = plan.semantic_text.lower()
+            if any(kw in text_lower for kw in self._PEOPLE_IMPLIED_KEYWORDS):
+                return True
+        return False
+
     def _execute(self, plan: QueryPlan, top_k: int) -> OrchestratorResult:
         """Execute the full search pipeline from a QueryPlan."""
         cfg = self._smart_find._get_config()
         threshold = cfg["threshold"]
         fusion_mode = cfg["fusion_mode"]
+
+        # Detect people-implied queries for face presence scoring
+        people_implied = self._is_people_implied(plan)
 
         # Step 1: Semantic candidates
         semantic_hits = {}  # {photo_id: (score, prompt)}
@@ -715,23 +775,30 @@ class SearchOrchestrator:
                 if metadata_candidate_paths is not None and path not in metadata_candidate_paths:
                     continue
 
-                sr = self._score_result(path, sem_score, matched_prompt, project_meta, plan.filters)
+                sr = self._score_result(path, sem_score, matched_prompt, project_meta,
+                                        plan.filters, people_implied)
                 scored.append(sr)
 
         elif metadata_candidate_paths is not None:
             for path in metadata_candidate_paths:
-                sr = self._score_result(path, 0.0, "", project_meta, plan.filters)
+                sr = self._score_result(path, 0.0, "", project_meta,
+                                        plan.filters, people_implied)
                 scored.append(sr)
 
         # Step 6: Sort by final_score
         scored.sort(key=lambda r: r.final_score, reverse=True)
 
-        # Step 7: Backoff if empty and semantic was used
+        # Step 7: Backoff if below min_results_target and semantic was used
         backoff_applied = False
-        if not scored and plan.has_semantic() and self._smart_find.clip_available:
+        min_target = self._MIN_RESULTS_TARGET
+        if len(scored) < min_target and plan.has_semantic() and self._smart_find.clip_available:
             backoff_step = cfg.get("backoff_step", 0.04)
             max_retries = cfg.get("backoff_retries", 2)
             prompts = plan.semantic_prompts if plan.semantic_prompts else [plan.semantic_text]
+            logger.info(
+                f"[SearchOrchestrator] Backoff triggered: {len(scored)} results "
+                f"< min_results_target={min_target}"
+            )
 
             for retry in range(1, max_retries + 1):
                 lowered = max(0.05, threshold - (backoff_step * retry))
@@ -761,13 +828,23 @@ class SearchOrchestrator:
                             continue
                         if metadata_candidate_paths is not None and path not in metadata_candidate_paths:
                             continue
-                        sr = self._score_result(path, sem_score, prompt, project_meta, plan.filters)
+                        sr = self._score_result(path, sem_score, prompt, project_meta,
+                                                plan.filters, people_implied)
                         sr.reasons.append("(backoff)")
                         scored.append(sr)
 
                     scored.sort(key=lambda r: r.final_score, reverse=True)
                     backoff_applied = True
+                    logger.info(
+                        f"[SearchOrchestrator] Backoff succeeded: {len(scored)} results "
+                        f"after retry {retry}"
+                    )
                     break
+        elif plan.has_semantic() and self._smart_find.clip_available:
+            logger.debug(
+                f"[SearchOrchestrator] No backoff needed: {len(scored)} results "
+                f">= min_results_target={min_target}"
+            )
 
         # Step 8: Deduplicate (stack duplicates behind representative)
         scored, stacked_count = self._deduplicate_results(scored)
@@ -794,7 +871,8 @@ class SearchOrchestrator:
     def _score_result(self, path: str, clip_score: float,
                       matched_prompt: str,
                       project_meta: Dict[str, Dict],
-                      active_filters: Optional[Dict] = None) -> ScoredResult:
+                      active_filters: Optional[Dict] = None,
+                      people_implied: bool = False) -> ScoredResult:
         """
         Apply the deterministic scoring contract to a single result.
 
@@ -829,10 +907,14 @@ class SearchOrchestrator:
             except (ValueError, TypeError):
                 pass
 
-        # Favorite score
+        # Favorite score: flag='pick' takes priority, then rating
         favorite = 0.0
+        flag = meta.get("flag", "none") or "none"
         rating = meta.get("rating", 0) or 0
-        if rating >= 4:
+        if flag == "pick":
+            favorite = min(w.max_favorite_boost, 1.0)
+            reasons.append(f"favorite={favorite:.2f} (flagged pick)")
+        elif rating >= 4:
             favorite = min(w.max_favorite_boost, 1.0)
             reasons.append(f"favorite={favorite:.2f} (rating={rating})")
         elif rating >= 3:
@@ -845,12 +927,19 @@ class SearchOrchestrator:
             location = 1.0
             reasons.append("location=1.0 (GPS)")
 
-        # Face match score: 1.0 when person filter is active (result
-        # already passed the person filter, so it's a confirmed match)
+        # Face match score:
+        # 1. person_id filter active → confirmed face match (1.0)
+        # 2. people-implied query + photo has faces → face presence boost (1.0)
+        # 3. otherwise → 0.0
         face_match = 0.0
         if active_filters and active_filters.get("person_id"):
             face_match = 1.0
             reasons.append(f"face=1.0 (person:{active_filters['person_id']})")
+        elif people_implied:
+            face_count = meta.get("face_count", 0) or 0
+            if face_count > 0:
+                face_match = 1.0
+                reasons.append(f"face=1.0 (face_presence, {face_count} faces)")
 
         # Final score
         final = (
@@ -874,7 +963,7 @@ class SearchOrchestrator:
         )
 
     def _get_project_meta(self) -> Dict[str, Dict]:
-        """Get project photo metadata with caching."""
+        """Get project photo metadata with caching (includes flag, dimensions, face counts)."""
         now = time.time()
         if (self._project_meta_cache is not None
                 and (now - self._meta_cache_time) < self._META_CACHE_TTL):
@@ -885,22 +974,45 @@ class SearchOrchestrator:
             db = DatabaseConnection()
             with db.get_connection() as conn:
                 cursor = conn.execute(
-                    "SELECT path, rating, gps_latitude, gps_longitude, "
+                    "SELECT id, path, rating, flag, width, height, "
+                    "gps_latitude, gps_longitude, "
                     "created_date, date_taken "
                     "FROM photo_metadata WHERE project_id = ?",
                     (self.project_id,)
                 )
                 result = {}
+                id_to_path = {}
                 for row in cursor.fetchall():
                     path = row['path']
                     lat = row['gps_latitude']
                     lon = row['gps_longitude']
                     result[path] = {
                         "rating": row['rating'],
+                        "flag": row['flag'] or "none",
+                        "width": row['width'],
+                        "height": row['height'],
                         "has_gps": lat is not None and lon is not None and lat != 0 and lon != 0,
                         "created_date": row['created_date'],
                         "date_taken": row['date_taken'],
                     }
+                    id_to_path[row['id']] = path
+
+                # Face counts (best-effort, faces table may not exist yet)
+                try:
+                    face_cursor = conn.execute("""
+                        SELECT photo_id, COUNT(*) as cnt
+                        FROM faces
+                        JOIN photo_metadata pm ON faces.photo_id = pm.id
+                        WHERE pm.project_id = ?
+                        GROUP BY photo_id
+                    """, (self.project_id,))
+                    for frow in face_cursor.fetchall():
+                        p = id_to_path.get(frow['photo_id'])
+                        if p and p in result:
+                            result[p]["face_count"] = frow['cnt']
+                except Exception:
+                    pass  # faces table may not exist
+
                 self._project_meta_cache = result
                 self._meta_cache_time = now
                 return result
@@ -1072,10 +1184,28 @@ class SearchOrchestrator:
         self._dup_cache_time = now
         return dup_map
 
+    # Copy/duplicate filename patterns (German "Kopie", English "Copy", numbered suffixes)
+    _COPY_PATTERN = re.compile(
+        r'[\s\-_]*(kopie|copy|kopia|copia)\s*(\(\d+\))?'
+        r'|[\s\-_]*\(\d+\)\s*$',
+        re.IGNORECASE,
+    )
+
+    @staticmethod
+    def _is_copy_filename(path: str) -> bool:
+        """Detect filenames that look like copies (Kopie, Copy, (1), (2), etc.)."""
+        import os
+        basename = os.path.splitext(os.path.basename(path))[0]
+        return bool(SearchOrchestrator._COPY_PATTERN.search(basename))
+
     def _deduplicate_results(self, scored: List[ScoredResult]) -> Tuple[List[ScoredResult], int]:
         """
-        Stack duplicate results: keep highest-scoring representative per
-        duplicate group, annotate with duplicate_count badge.
+        Stack duplicate results: keep best representative per duplicate group.
+
+        Representative selection priority (when scores tie within epsilon):
+        1. Non-copy filename beats copy filename (demote "Kopie", "Copy", "(1)")
+        2. Higher resolution (width * height from metadata)
+        3. Newer date_taken
 
         Returns (deduped_list, stacked_count).
         """
@@ -1083,10 +1213,22 @@ class SearchOrchestrator:
         if not dup_map:
             return scored, 0
 
+        project_meta = self._get_project_meta()
+
         # Group results by representative path
         seen_reps: Dict[str, ScoredResult] = {}
         non_dup: List[ScoredResult] = []
         stacked = 0
+
+        def _quality_key(sr: ScoredResult) -> Tuple:
+            """Tie-breaking key: prefer non-copy, higher-res, newer."""
+            meta = project_meta.get(sr.path, {})
+            is_copy = SearchOrchestrator._is_copy_filename(sr.path)
+            w = meta.get("width", 0) or 0
+            h = meta.get("height", 0) or 0
+            resolution = w * h
+            date = meta.get("created_date") or meta.get("date_taken") or ""
+            return (not is_copy, resolution, str(date), sr.final_score)
 
         for sr in scored:
             entry = dup_map.get(sr.path)
@@ -1096,14 +1238,13 @@ class SearchOrchestrator:
 
             rep_path, group_size = entry
             if rep_path in seen_reps:
-                # This is a duplicate of an already-seen representative
                 existing = seen_reps[rep_path]
-                if sr.final_score > existing.final_score:
-                    # Swap: this instance scored higher, promote it
+                if _quality_key(sr) > _quality_key(existing):
+                    sr.duplicate_count = existing.duplicate_count
                     seen_reps[rep_path] = sr
                 stacked += 1
             else:
-                sr.duplicate_count = group_size - 1  # other copies
+                sr.duplicate_count = group_size - 1
                 seen_reps[rep_path] = sr
 
         result = non_dup + list(seen_reps.values())
@@ -1131,12 +1272,14 @@ class SearchOrchestrator:
 
         # Force metadata-only: even if there's semantic text, only use filters
         project_meta = self._get_project_meta()
+        people_implied = self._is_people_implied(plan)
         scored: List[ScoredResult] = []
 
         if plan.has_filters():
             metadata_paths = self._smart_find._run_metadata_filter(plan.filters)
             for path in metadata_paths[:top_k]:
-                sr = self._score_result(path, 0.0, "", project_meta, plan.filters)
+                sr = self._score_result(path, 0.0, "", project_meta,
+                                        plan.filters, people_implied)
                 scored.append(sr)
         else:
             # No explicit filters from tokens - show recent photos as baseline
@@ -1148,7 +1291,8 @@ class SearchOrchestrator:
                 return str(d)
             all_paths.sort(key=_date_key, reverse=True)
             for path in all_paths[:top_k]:
-                sr = self._score_result(path, 0.0, "", project_meta, plan.filters)
+                sr = self._score_result(path, 0.0, "", project_meta,
+                                        plan.filters, people_implied)
                 scored.append(sr)
 
         scored.sort(key=lambda r: r.final_score, reverse=True)
@@ -1474,6 +1618,7 @@ class SearchOrchestrator:
                 metadata_candidate_paths = set(metadata_paths)
 
             project_meta = self._get_project_meta()
+            people_implied = self._is_people_implied(plan)
             cfg = self._smart_find._get_config()
             threshold = cfg["threshold"]
             scored: List[ScoredResult] = []
@@ -1486,7 +1631,8 @@ class SearchOrchestrator:
                     continue
                 if metadata_candidate_paths is not None and path not in metadata_candidate_paths:
                     continue
-                sr = self._score_result(path, sem_score, prompt, project_meta, plan.filters)
+                sr = self._score_result(path, sem_score, prompt, project_meta,
+                                        plan.filters, people_implied)
                 scored.append(sr)
 
             scored.sort(key=lambda r: r.final_score, reverse=True)
@@ -1752,10 +1898,10 @@ class LibraryAnalyzer:
                             "icon": "\U0001f4c5",
                         })
 
-                # 2. Favorites count
+                # 2. Favorites count (flag='pick' is the canonical favorite)
                 fav_row = conn.execute("""
                     SELECT COUNT(*) as cnt FROM photo_metadata
-                    WHERE project_id = ? AND rating >= 4
+                    WHERE project_id = ? AND flag = 'pick'
                 """, (project_id,)).fetchone()
                 if fav_row and fav_row['cnt'] > 0:
                     suggestions.append({

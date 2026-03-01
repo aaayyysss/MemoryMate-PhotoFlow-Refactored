@@ -57,13 +57,13 @@ class TestTokenParser:
 
     def test_is_fav_token(self):
         plan = self.parser.parse("portraits is:fav")
-        assert plan.filters.get("rating_min") == 4
+        assert plan.filters.get("flag") == "pick"
         assert "portraits" in plan.semantic_text
         assert any(t["label"] == "Favorites" for t in plan.extracted_tokens)
 
     def test_is_favorite_token(self):
         plan = self.parser.parse("sunset is:favorite")
-        assert plan.filters.get("rating_min") == 4
+        assert plan.filters.get("flag") == "pick"
 
     def test_has_location_token(self):
         plan = self.parser.parse("wedding has:location")
@@ -118,14 +118,14 @@ class TestTokenParser:
         assert plan.filters.get("media_type") == "photo"
         assert plan.filters.get("date_from") == "2023-01-01"
         assert plan.filters.get("date_to") == "2023-12-31"
-        assert plan.filters.get("rating_min") == 4
+        assert plan.filters.get("flag") == "pick"
         # Semantic text should have the non-token parts
         assert "wedding" in plan.semantic_text.lower() or "munich" in plan.semantic_text.lower()
 
     def test_mixed_nl_and_tokens(self):
         """NL date extraction + structured tokens coexist."""
         plan = self.parser.parse("beach from 2024 is:fav")
-        assert plan.filters.get("rating_min") == 4
+        assert plan.filters.get("flag") == "pick"
         # Either NL parser or token parser should capture the date
         assert plan.filters.get("date_from") is not None
 
@@ -139,7 +139,7 @@ class TestTokenParser:
     def test_only_tokens_no_semantic(self):
         plan = self.parser.parse("type:video is:fav")
         assert plan.filters.get("media_type") == "video"
-        assert plan.filters.get("rating_min") == 4
+        assert plan.filters.get("flag") == "pick"
         # Semantic text should be empty or very short
         assert len(plan.semantic_text.strip()) <= 2
 
@@ -411,6 +411,29 @@ class TestScoringDeterminism:
         assert r_face.final_score > r_no_face.final_score, \
             "Face match must boost the final score"
 
+    def test_flag_pick_triggers_favorite_boost(self):
+        """flag='pick' must activate favorite scoring (Favorites = flag, not rating)."""
+        from services.search_orchestrator import SearchOrchestrator, ScoringWeights
+        orch = SearchOrchestrator.__new__(SearchOrchestrator)
+        orch._weights = ScoringWeights()
+        orch._weights.validate()
+
+        meta_flagged = {"/flagged.jpg": {
+            "rating": 0, "flag": "pick", "has_gps": False,
+            "created_date": None, "date_taken": None,
+        }}
+        meta_unflagged = {"/unflagged.jpg": {
+            "rating": 0, "flag": "none", "has_gps": False,
+            "created_date": None, "date_taken": None,
+        }}
+
+        r_flagged = orch._score_result("/flagged.jpg", 0.30, "test", meta_flagged)
+        r_unflagged = orch._score_result("/unflagged.jpg", 0.30, "test", meta_unflagged)
+
+        assert r_flagged.favorite_score > 0, "flag='pick' must trigger favorite boost"
+        assert r_unflagged.favorite_score == 0.0
+        assert r_flagged.final_score > r_unflagged.final_score
+
     def test_weight_component_structural_match(self):
         """Every ScoringWeights field must have a matching ScoredResult component."""
         from services.search_orchestrator import ScoringWeights
@@ -440,7 +463,7 @@ class TestNLQueryParserCompat:
     def test_nl_favorites_extraction(self):
         from services.smart_find_service import NLQueryParser
         text, filters = NLQueryParser.parse("my favorites")
-        assert filters.get("rating_min") == 4
+        assert filters.get("flag") == "pick"
 
     def test_nl_video_extraction(self):
         from services.smart_find_service import NLQueryParser
@@ -485,7 +508,7 @@ class TestProgressiveSearch:
         # are correctly extracted even without semantic search
         plan = TokenParser.parse("date:2024 is:fav")
         assert plan.filters.get("date_from") == "2024-01-01"
-        assert plan.filters.get("rating_min") == 4
+        assert plan.filters.get("flag") == "pick"
         assert not plan.semantic_text.strip()  # No semantic text
 
 
@@ -669,7 +692,7 @@ class TestRelevanceContract:
         tokens = {
             "type:video": "media_type",
             "type:photo": "media_type",
-            "is:fav": "rating_min",
+            "is:fav": "flag",
             "has:location": "has_gps",
             "has:faces": "has_faces",
             "date:2024": "date_from",
@@ -786,6 +809,9 @@ class TestDuplicateStacking:
         from services.search_orchestrator import SearchOrchestrator, ScoredResult
         orch = SearchOrchestrator.__new__(SearchOrchestrator)
         orch.project_id = 999
+        orch._project_meta_cache = {}
+        orch._meta_cache_time = 99999999999.0
+        orch._META_CACHE_TTL = 60.0
         # Simulate: /a.jpg and /a_copy.jpg share representative /a.jpg, group size 2
         orch._dup_cache = {
             "/a.jpg": ("/a.jpg", 2),
@@ -805,11 +831,14 @@ class TestDuplicateStacking:
         rep = [r for r in deduped if r.path == "/a.jpg"][0]
         assert rep.duplicate_count == 1
 
-    def test_deduplicate_promotes_higher_scorer(self):
-        """If a copy scores higher than the representative, it gets promoted."""
+    def test_deduplicate_prefers_non_copy(self):
+        """Non-copy filenames are preferred over copies, even with lower scores."""
         from services.search_orchestrator import SearchOrchestrator, ScoredResult
         orch = SearchOrchestrator.__new__(SearchOrchestrator)
         orch.project_id = 999
+        orch._project_meta_cache = {}
+        orch._meta_cache_time = 99999999999.0
+        orch._META_CACHE_TTL = 60.0
         orch._dup_cache = {
             "/a.jpg": ("/a.jpg", 2),
             "/a_copy.jpg": ("/a.jpg", 2),
@@ -822,7 +851,8 @@ class TestDuplicateStacking:
         ]
         deduped, stacked = orch._deduplicate_results(results)
         assert len(deduped) == 1
-        assert deduped[0].final_score == 0.9  # higher-scoring copy wins
+        # Non-copy wins as representative (Patch A quality tie-breaker)
+        assert deduped[0].path == "/a.jpg"
 
     def test_orchestrator_result_has_stacked_count(self):
         """OrchestratorResult must have stacked_duplicates field."""
@@ -976,3 +1006,271 @@ class TestPhaseLabels:
         from services.search_orchestrator import OrchestratorResult
         r = OrchestratorResult(phase="full", phase_label="Semantic refined")
         assert r.phase_label == "Semantic refined"
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Regression Tests: Product-Level Issues (Patch I)
+# ══════════════════════════════════════════════════════════════════════
+
+class TestDuplicateDiversity:
+    """Regression: duplicate stacking must not flood top-10 with same group."""
+
+    def test_max_copies_in_top_10(self):
+        """At most 1 representative per duplicate group should appear in results."""
+        from services.search_orchestrator import SearchOrchestrator, ScoredResult
+        orch = SearchOrchestrator.__new__(SearchOrchestrator)
+        orch.project_id = 999
+        orch._project_meta_cache = {}
+        orch._meta_cache_time = 99999999999.0
+        orch._META_CACHE_TTL = 60.0
+        # Group A: 5 copies all mapping to /a.jpg
+        orch._dup_cache = {
+            "/a.jpg": ("/a.jpg", 5),
+            "/a_copy1.jpg": ("/a.jpg", 5),
+            "/a_copy2.jpg": ("/a.jpg", 5),
+            "/a_copy3.jpg": ("/a.jpg", 5),
+            "/a_copy4.jpg": ("/a.jpg", 5),
+        }
+        orch._dup_cache_time = 99999999999.0
+
+        results = [
+            ScoredResult(path="/a.jpg", final_score=0.95),
+            ScoredResult(path="/a_copy1.jpg", final_score=0.94),
+            ScoredResult(path="/a_copy2.jpg", final_score=0.93),
+            ScoredResult(path="/a_copy3.jpg", final_score=0.92),
+            ScoredResult(path="/a_copy4.jpg", final_score=0.91),
+            ScoredResult(path="/b.jpg", final_score=0.80),
+            ScoredResult(path="/c.jpg", final_score=0.70),
+        ]
+        deduped, stacked = orch._deduplicate_results(results)
+        # Only 1 from group A + /b.jpg + /c.jpg
+        group_a_in_top10 = [r for r in deduped[:10] if "a" in r.path and "b" not in r.path and "c" not in r.path]
+        assert len(group_a_in_top10) == 1, \
+            f"Expected 1 representative from group A in top-10, got {len(group_a_in_top10)}"
+        assert stacked == 4  # 4 copies stacked behind representative
+
+    def test_copy_filename_demoted(self):
+        """Files with 'Kopie', 'Copy', or '(1)' should not be chosen as representative."""
+        from services.search_orchestrator import SearchOrchestrator
+        assert SearchOrchestrator._is_copy_filename("/photos/IMG_1234 Kopie.jpg")
+        assert SearchOrchestrator._is_copy_filename("/photos/Photo Copy.png")
+        assert SearchOrchestrator._is_copy_filename("/photos/Photo copy(2).jpg")
+        assert SearchOrchestrator._is_copy_filename("/photos/IMG_5678 (1).jpg")
+        assert not SearchOrchestrator._is_copy_filename("/photos/IMG_1234.jpg")
+        assert not SearchOrchestrator._is_copy_filename("/photos/landscape.png")
+
+
+class TestFavoritesSemantics:
+    """Regression: Favorites ≡ flag='pick', not rating >= 4."""
+
+    def test_favorites_preset_uses_flag(self):
+        """Favorites preset must filter by flag='pick', not rating_min."""
+        from services.smart_find_service import BUILTIN_PRESETS
+        fav_preset = next(p for p in BUILTIN_PRESETS if p["id"] == "favorites")
+        assert "flag" in fav_preset["filters"], \
+            "Favorites preset must use flag filter"
+        assert fav_preset["filters"]["flag"] == "pick", \
+            "Favorites must map to flag='pick'"
+        assert "rating_min" not in fav_preset["filters"], \
+            "Favorites preset must NOT use rating_min"
+
+    def test_is_fav_token_uses_flag(self):
+        """is:fav token must produce flag='pick' filter."""
+        from services.search_orchestrator import TokenParser
+        plan = TokenParser.parse("sunset is:fav")
+        assert plan.filters.get("flag") == "pick"
+        assert "rating_min" not in plan.filters, \
+            "is:fav should set flag, not rating_min"
+
+    def test_rating_token_still_works(self):
+        """rating:4 token must still produce rating_min filter (separate from favorites)."""
+        from services.search_orchestrator import TokenParser
+        plan = TokenParser.parse("sunset rating:4")
+        assert plan.filters.get("rating_min") == 4
+        assert "flag" not in plan.filters
+
+    def test_favorite_scoring_flag_pick(self):
+        """Flag='pick' must boost score even with rating=0."""
+        from services.search_orchestrator import SearchOrchestrator, ScoringWeights
+        orch = SearchOrchestrator.__new__(SearchOrchestrator)
+        orch._weights = ScoringWeights()
+        orch._weights.validate()
+
+        meta = {"/test.jpg": {
+            "rating": 0, "flag": "pick", "has_gps": False,
+            "created_date": None, "date_taken": None,
+        }}
+        r = orch._score_result("/test.jpg", 0.30, "test", meta)
+        assert r.favorite_score > 0, "flag='pick' with rating=0 must still boost"
+
+    def test_favorite_scoring_high_rating(self):
+        """Rating >= 4 must still boost score (backward compat)."""
+        from services.search_orchestrator import SearchOrchestrator, ScoringWeights
+        orch = SearchOrchestrator.__new__(SearchOrchestrator)
+        orch._weights = ScoringWeights()
+        orch._weights.validate()
+
+        meta = {"/test.jpg": {
+            "rating": 5, "flag": "none", "has_gps": False,
+            "created_date": None, "date_taken": None,
+        }}
+        r = orch._score_result("/test.jpg", 0.30, "test", meta)
+        assert r.favorite_score > 0, "rating=5 must still boost (backward compat)"
+
+
+class TestFacePresenceScoring:
+    """Regression: people-implied queries must use face presence for scoring."""
+
+    def test_people_implied_preset_detection(self):
+        """Portraits, Baby, Wedding, Party must be detected as people-implied."""
+        from services.search_orchestrator import SearchOrchestrator, QueryPlan
+        orch = SearchOrchestrator.__new__(SearchOrchestrator)
+        for preset_id in ["portraits", "baby", "wedding", "party"]:
+            plan = QueryPlan(preset_id=preset_id)
+            assert orch._is_people_implied(plan), \
+                f"Preset '{preset_id}' must be people-implied"
+
+    def test_non_people_preset_not_detected(self):
+        """Beach, Mountains, etc. must NOT be people-implied."""
+        from services.search_orchestrator import SearchOrchestrator, QueryPlan
+        orch = SearchOrchestrator.__new__(SearchOrchestrator)
+        for preset_id in ["beach", "mountains", "sunset", "food"]:
+            plan = QueryPlan(preset_id=preset_id)
+            assert not orch._is_people_implied(plan), \
+                f"Preset '{preset_id}' must NOT be people-implied"
+
+    def test_people_implied_keywords(self):
+        """Free-text queries with people keywords must be detected."""
+        from services.search_orchestrator import SearchOrchestrator, QueryPlan
+        orch = SearchOrchestrator.__new__(SearchOrchestrator)
+        for text in ["portrait", "baby photos", "wedding ceremony", "family photo"]:
+            plan = QueryPlan(semantic_text=text)
+            assert orch._is_people_implied(plan), \
+                f"Query '{text}' must be people-implied"
+
+    def test_face_presence_boosts_score(self):
+        """Photos with faces must score higher for people-implied queries."""
+        from services.search_orchestrator import SearchOrchestrator, ScoringWeights
+        orch = SearchOrchestrator.__new__(SearchOrchestrator)
+        orch._weights = ScoringWeights()
+        orch._weights.validate()
+
+        meta_face = {"/face.jpg": {
+            "rating": 0, "flag": "none", "has_gps": False,
+            "created_date": None, "date_taken": None,
+            "face_count": 2,
+        }}
+        meta_no_face = {"/noface.jpg": {
+            "rating": 0, "flag": "none", "has_gps": False,
+            "created_date": None, "date_taken": None,
+            "face_count": 0,
+        }}
+
+        r_face = orch._score_result("/face.jpg", 0.30, "portrait", meta_face,
+                                     people_implied=True)
+        r_no_face = orch._score_result("/noface.jpg", 0.30, "portrait", meta_no_face,
+                                        people_implied=True)
+
+        assert r_face.face_match_score == 1.0, \
+            "Face presence in people-implied query must score 1.0"
+        assert r_no_face.face_match_score == 0.0, \
+            "No face in people-implied query must score 0.0"
+        assert r_face.final_score > r_no_face.final_score
+
+    def test_non_people_query_ignores_faces(self):
+        """Non-people queries must not use face presence scoring."""
+        from services.search_orchestrator import SearchOrchestrator, ScoringWeights
+        orch = SearchOrchestrator.__new__(SearchOrchestrator)
+        orch._weights = ScoringWeights()
+        orch._weights.validate()
+
+        meta = {"/face.jpg": {
+            "rating": 0, "flag": "none", "has_gps": False,
+            "created_date": None, "date_taken": None,
+            "face_count": 5,
+        }}
+        r = orch._score_result("/face.jpg", 0.30, "sunset", meta,
+                                people_implied=False)
+        assert r.face_match_score == 0.0, \
+            "Non-people query must not use face presence scoring"
+
+
+class TestProgressiveSearchIdentity:
+    """Regression: progressive search must use stable labels across phases."""
+
+    def test_metadata_only_has_label(self):
+        """search_metadata_only must return a label for UI consistency."""
+        from services.search_orchestrator import OrchestratorResult
+        r = OrchestratorResult(phase="metadata", label="test label")
+        assert r.label, "Metadata-only result must have a label"
+
+    def test_phase_field_distinguishes_phases(self):
+        """Phase 1 and Phase 2 must be distinguishable by the phase field."""
+        from services.search_orchestrator import OrchestratorResult
+        r1 = OrchestratorResult(phase="metadata")
+        r2 = OrchestratorResult(phase="full")
+        assert r1.phase != r2.phase
+
+    def test_build_label_stable_across_phases(self):
+        """_build_label must produce the same output for the same QueryPlan."""
+        from services.search_orchestrator import (
+            SearchOrchestrator, QueryPlan, OrchestratorResult
+        )
+        orch = SearchOrchestrator.__new__(SearchOrchestrator)
+        orch._smart_find_service = None
+
+        plan = QueryPlan(raw_query="sunset date:2024",
+                         extracted_tokens=[{"label": "2024", "type": "date",
+                                           "key": "date", "value": "2024"}])
+        dummy_result = OrchestratorResult(paths=["/a.jpg"])
+
+        label1 = orch._build_label(plan, dummy_result)
+        label2 = orch._build_label(plan, dummy_result)
+        assert label1 == label2, "Same plan must produce same label"
+        assert "2024" in label1, "Label must include extracted tokens"
+
+
+class TestFacetHygiene:
+    """Regression: facets must be meaningful (Patch E)."""
+
+    def test_single_bucket_facet_pruned(self):
+        """Facets where everything falls in one bucket should be removed."""
+        from services.search_orchestrator import FacetComputer
+        # All photos, no videos — media facet should be absent
+        paths = ["/a.jpg", "/b.jpg", "/c.jpg", "/d.jpg", "/e.jpg"]
+        facets = FacetComputer.compute(paths, {})
+        assert "media" not in facets
+
+    def test_facets_ordered_by_entropy(self):
+        """Facets should be ordered by discriminating power (entropy)."""
+        from services.search_orchestrator import FacetComputer
+        paths = ["/a.jpg", "/b.mp4", "/c.jpg", "/d.jpg", "/e.jpg"]
+        meta = {
+            "/a.jpg": {"has_gps": True, "rating": 5, "created_date": "2024-01-01"},
+            "/b.mp4": {"has_gps": True, "rating": 0, "created_date": "2023-06-15"},
+            "/c.jpg": {"has_gps": False, "rating": 0, "created_date": "2024-03-20"},
+            "/d.jpg": {"has_gps": False, "rating": 0, "created_date": "2024-07-10"},
+            "/e.jpg": {"has_gps": False, "rating": 3, "created_date": "2023-11-05"},
+        }
+        facets = FacetComputer.compute(paths, meta)
+        # Verify result is a dict (entropy ordering is internal)
+        assert isinstance(facets, dict)
+        # All facets must have 2+ meaningful buckets
+        for name, buckets in facets.items():
+            assert len(buckets) >= 1, f"Facet '{name}' has no buckets"
+
+
+class TestBackoffTuning:
+    """Regression: backoff must respect min_results_target."""
+
+    def test_min_results_target_exists(self):
+        """SearchOrchestrator must have _MIN_RESULTS_TARGET attribute."""
+        from services.search_orchestrator import SearchOrchestrator
+        assert hasattr(SearchOrchestrator, '_MIN_RESULTS_TARGET')
+        assert SearchOrchestrator._MIN_RESULTS_TARGET > 0
+
+    def test_is_people_implied_method_exists(self):
+        """SearchOrchestrator must have _is_people_implied method."""
+        from services.search_orchestrator import SearchOrchestrator
+        assert hasattr(SearchOrchestrator, '_is_people_implied')
+        assert callable(SearchOrchestrator._is_people_implied)

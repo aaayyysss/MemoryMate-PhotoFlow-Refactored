@@ -174,7 +174,7 @@ BUILTIN_PRESETS = [
     {
         "id": "favorites", "name": "Favorites", "icon": "\u2b50",
         "prompts": [],
-        "filters": {"rating_min": 4},
+        "filters": {"flag": "pick"},
         "category": "quality",
         "semantic_weight": 0.0,
     },
@@ -327,7 +327,7 @@ class NLQueryParser:
                 filters["rating_min"] = int(m.group(1))
                 remaining = remaining[:m.start()] + remaining[m.end():]
             elif cls._FAVORITES_PATTERN.search(remaining):
-                filters["rating_min"] = 4
+                filters["flag"] = "pick"
                 remaining = cls._FAVORITES_PATTERN.sub('', remaining)
 
         # Extract media type
@@ -1238,6 +1238,25 @@ class SmartFindService:
                     paths = list(rated_paths)
             except Exception as e:
                 logger.warning(f"[SmartFind] Rating filter failed: {e}")
+
+        # Flag filtering (Favorites = flag='pick')
+        if "flag" in filters:
+            flag_value = filters["flag"]
+            try:
+                from repository.base_repository import DatabaseConnection
+                db = DatabaseConnection()
+                with db.get_connection() as conn:
+                    cursor = conn.execute(
+                        "SELECT path FROM photo_metadata WHERE flag = ? AND project_id = ?",
+                        (flag_value, self.project_id)
+                    )
+                    flagged_paths = {row['path'] for row in cursor.fetchall()}
+                if paths:
+                    paths = [p for p in paths if p in flagged_paths]
+                else:
+                    paths = list(flagged_paths)
+            except Exception as e:
+                logger.warning(f"[SmartFind] Flag filter failed: {e}")
 
         return paths
 
