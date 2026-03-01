@@ -1,711 +1,161 @@
-overall direction is good, the phases are logical, and the architectural instincts are mostly correct. However, there are several blind spots compared to best practices from iPhone Photos, Google Photos, Lightroom, and Excire. If you do not address these early, the system will feel “sometimes smart, sometimes wrong,” which destroys user trust.
+Hier ist mein Audit der Log-Dumps, mit Fokus auf versteckte Leaks, redundante Work, falsche Zustände, und UX-Qualität nach iPhone, Google Photos, Lightroom, Excire Prinzipien (Status sichtbar, keine Modals, robuste Background-Jobs, deterministische Zustände).
 
-Below is a deep audit with concrete improvements to reach the goal of fast, explainable, repeatable, configurable Smart Find.
+Was im Log klar gut ist (das ist schon “pro” Niveau)
 
-1. UX Audit, What Best-in-Class Systems Actually Do
-A. Search is not a feature, it is a mode
+Generation-Gating gegen stale Worker Results funktioniert:
+[Sidebar][counts] Ignoring stale worker results (gen=2, current=4) ist exakt die richtige Richtung, verhindert UI-Übernahme durch alte Threads.
 
-Apple Photos treats search as a primary navigation mode. Suggestions appear instantly, people, places, categories, without typing being required.
-https://support.apple.com/guide/iphone/search-for-photos-and-videos-iph392d77d5f/ios
+Startup Throttle beim JobManager ist sinnvoll, du reduzierst Thread-Stampede am Anfang und schaltest später sauber hoch.
 
-Google Photos does the same, search is effectively a content browser entry point across People, Places, Things, Documents.
-https://support.google.com/photos/answer/15235862
+Scan, Video-Metadaten, Video-Thumbs, Embeddings, Similar Stacks laufen als getrennte Background-Aktivitäten und blockieren nicht die UI.
 
-Excire exposes multiple entry points, prompt search, similarity search, face search, but they all converge into one consistent experience.
-https://excire.com/en/excire-search/
+Shutdown/Restart Sequenz sieht insgesamt sauber aus: JobManager barrier drained, ScanController barrier drained, Threadpools shutdown, DB connections closed, Prozess respawn, dann Neustart. Das ist der Kern, den viele Apps nie stabil hinbekommen.
 
-Your current gap
+Die 6 wichtigsten Probleme, die ich fixen würde (nach Impact)
+1) Doppelte Pipeline-Ausführung, du rufst “Backfill/Asset Linking” zweimal
 
-You implemented presets plus facets inside a sidebar, but you do not yet have a unified global Search Mode.
+Direkt nach ScanCompleted steht zweimal:
+Starting hash backfill and asset linking for project 1
 
-Required modifications
+Das ist kein kosmetischer Fehler, das ist ein klassischer “Hidden Cost”, doppelte DB Reads, doppelte Hashing-Kosten, doppelte Locks, und bei großen Libraries später ein echter Performance-Killer.
 
-Phase 1 should include:
+Fix-Idee (Best Practice):
 
-Global shortcut, Ctrl or Cmd + F focuses Smart Find input.
+Mache den Post-Scan Pipeline Dispatcher idempotent pro project_id und scan_generation (oder scan_job_id).
 
-Active Query Bar in the toolbar, not only sidebar, with chips for:
+Verwende ein dediziertes “pipeline lock” in DB oder Store (z.B. post_scan_inflight[project_id]=scan_id), so dass ein zweiter Trigger sofort abbricht.
 
-Preset
+2) Sidebar wird beim Start doppelt gebaut, das ist unnötige Arbeit und erhöht Crash-Risiko
 
-Text query
+Du baust Tree Model, dann machst du switch_display_mode(list) und baust den Tree nochmal. Das ist genau die Stelle, wo Qt Apps gern segfaulten, weil Models, Views, und Worker noch Events pending haben.
 
-Facets
+Du hast zwar “fresh model (avoiding Qt segfault)” drin, aber du erzeugst die Situation selbst durch doppeltes Rebuild.
 
-Consistent chip behavior:
+Fix-Idee:
 
-Click toggles
+Beim Start: entscheide einmal den Display Mode, dann baue exakt einmal.
 
-X removes
+Oder: switch_display_mode() sollte beim ersten Call nur Flags setzen, aber kein Rebuild triggern, wenn ohnehin _build_tree_model() direkt folgt.
 
-Clear All resets state
+3) Inkonsistente Cache-Retention, einmal 30 Tage, dann 7 Tage
 
-Without this, Smart Find will feel like a secondary tool, not core discovery.
+Im Restart-Log:
 
-B. Hard metadata filtering first is dangerous
+Purged 9 stale thumbnails (> 30 days).
 
-You currently propose:
+später: Purged 10 stale thumbnails (> 7 days).
 
-metadata SQL filters first, CLIP re-ranking second.
+Das schreit nach zwei verschiedenen Purge-Jobs oder zwei verschiedenen Defaults (z.B. ThumbCacheDB vs ThumbnailManager). Das ist nicht nur inkonsistent, es macht Debugging schwer und kann “Cache Thrash” erzeugen (immer wieder neu generieren, statt wiederverwenden).
 
-This works only if filters are guaranteed correct. In practice, they are not.
+Fix-Idee:
 
-Example failure:
-User searches Beach and enables Has GPS. Many beach photos without GPS disappear. User concludes system is bad.
+Eine zentrale Setting-Quelle, ein Purge-Job, ein Retention-Wert.
 
-Best practice modification
+Logge den Retention-Wert immer explizit: purge_days=7 oder purge_days=30, damit du später sofort siehst, wer ihn setzt.
 
-Use a two-stage semantic pipeline:
+4) Similar Stacks Logging zeigt eine Zähl-Inkonsistenz, möglicher Logik-Bug
 
-Semantic retrieval first, broad candidate set.
+Du loggst:
 
-Metadata facets applied as:
+Representative-only mode enabled: 25 → 13 photos considered
 
-soft boost
+Global similarity pass: 13 photos with embeddings (14 already in time-window clusters)
 
-optional filter
+Wie können 14 “already in time-window clusters” sein, wenn du nur 13 considered? Das riecht nach:
 
-or hard constraint only when explicitly requested.
+Du zählst Memberships statt unique photos, oder
 
-UI solution:
+du hast Duplikate in der Clusterliste, oder
 
-Facets must support three states:
+du vermischst “time-window clusters” von pre-filter und post-filter.
 
-Any
+Fix-Idee:
 
-Must include
+Erzwinge in der Pipeline überall unique_photo_ids (set) und logge beides: unique_photos, memberships.
 
-Must exclude
+Das ist wichtig, weil sonst später UI “16 items” zeigt, aber Klick öffnet weniger, UX fühlt sich buggy an.
 
-This dramatically improves recall and user trust.
+5) SearchService wird erneut initialisiert (mögliche Resource-Leak oder unnötige Re-init)
 
-Google itself paused parts of AI search rollout due to latency and reliability concerns, reinforcing that speed and predictability matter more than cleverness.
-https://www.theverge.com/news/678858/google-photos-ask-photos-ai-search-rollout-pause
+Du hast ganz am Anfang SearchService initialized und später nochmal:
+2026-03-01 03:27:54,981 [INFO] SearchService initialized
 
-C. Explainability cannot wait until Phase 3
+Wenn das wirklich ein neues Objekt ist (nicht nur ein Log aus einem anderen Modul), dann hast du:
 
-If you delay explainability, debugging becomes extremely difficult.
+potentiell doppelte Cache-Instanzen
 
-Minimum explainability should exist in Phase 1.
+unkontrollierte Threads/Executors
 
-Required
+schwer trackbare Memory-Kurven
 
-Each result should have:
+Fix-Idee:
 
-Matched because:
+SearchService als Singleton pro App-Prozess, und jede Re-init sollte entweder verboten oder sauber “dispose”n.
 
-Prompt: beach
+Im Log immer id(self) oder instance_uuid loggen, dann erkennst du sofort, ob es wirklich neu ist.
 
-Score: 0.31
+6) UX-Problem, CLIP Modellpfad Setting ist “Exists True aber invalid”, das wird Nutzer verwirren
 
-Facet: date 2024
+Du loggst:
+Stored preference path invalid, clearing setting: Exists: True, Has model weights: False
 
-For multi-prompt fusion:
-Show which prompt produced the winning score.
+Das ist gut, dass du’s abfängst, aber aus UX-Sicht ist es eine Falle:
 
-This also helps threshold tuning later.
+Nutzer sieht “Model folder exists”, denkt “alles ok”, App sagt “nein”.
 
-2. Architecture and Performance Audit
-A. CLIP without ANN index will break scalability
+Fix-Idee:
 
-You assume runtime CLIP search is fine under 10k photos. That assumption fails once:
+UI soll klar erklären, welche Dateien erwartet werden (z.B. config, weights, tokenizer), und einen “Fix” Button anbieten: “Use HF Cache Snapshot” oder “Re-download to local folder”.
 
-multiple projects exist
+Für Progress Indication: wenn du nicht deterministisch bist, verwende Spinner oder Indeterminate Progress, nicht Fake Prozent.
 
-embeddings increase
+Was du schon richtig machst, aber konsequenter durchziehen solltest (Google, iPhone, Lightroom Prinzip)
+Status sichtbar, aber nicht nervig
 
-live debounce search runs continuously
+Du hast bereits Store Events (ScanStarted, ScanCompleted, EmbeddingsCompleted, DuplicatesCompleted). Das ist genau das richtige “Single Source of Truth” Prinzip für UI.
 
-Required modification
+Blind Spot: Du brauchst eine klare UI-Regel: Statusbar zeigt nur Summary, Activity Center zeigt Details und Logs, keine modalen Dialoge bei Background Indexing. Das entspricht dem “Visibility of system status” Prinzip.
 
-Introduce ANN search early:
+Cancel, Pause, Resume, und “Don’t thrash”
 
-FAISS or HNSW index
+Du cancelst Jobs beim Shutdown, gut. Aber als Produkt brauchst du:
 
-Partition per project_id
+Pause/Resume für Scan und Embeddings
 
-Cache prompt embeddings
+“Debounce/skip redundant reload” machst du bereits (sehr gut)
 
-Also implement:
+Idempotency überall (siehe doppelte Backfill Calls)
 
-Cancellation tokens for inflight queries, otherwise late results overwrite newer searches.
+8 konkrete Debug Checks, die du jetzt sofort einbauen solltest
 
-B. Cache TTL alone is insufficient
+Pipeline idempotency keys: (project_id, scan_job_id, pipeline_stage) in DB oder Store.
 
-A fixed 5 minute TTL creates stale results after rescans or rating updates.
+Service instance IDs loggen: SearchService, ThumbnailService, SemanticEmbeddingService.
 
-Required
+Threadpool Usage Telemetry: aktive Worker, Queue-Länge, Peak concurrency (pro Job).
 
-Cache key must include:
+Unique counters: in Similar Stacks stets unique_photo_ids vs memberships.
 
-hash(project_id, query, preset_id, filters, index_version)
+Cache purge unified: ein Job, ein retention, ein Log-Format.
 
-Increment index_version when:
+Startup rebuild elimination: nur ein Sidebar build pro Start, kein doppeltes detach/attach.
 
-embeddings rebuild
+Model path validation: definierte “required files”, und UI “Repair”.
 
-metadata changes
+No UI blocking calls: Stelle sicher, dass QThreadPool.waitForDone() nie im UI Thread benutzt wird, sonst riskierst du Freeze oder Deadlock, gerade bei Shutdown oder Restart.
 
-scan updates
+Das, was ich an deiner Annahme challengen will
 
-face pipeline updates
+Du wirkst im Log stolz auf “viele Worker parallel”, aber das ist nicht automatisch “best practice”. Lightroom und Google Photos wirken schnell, weil sie:
 
-C. SmartFind result contract must be explicit
+aggressiv cachen
 
-Define a structured result object:
+Work deduplizieren
 
-SmartFindResult
+Stages entkoppeln
 
-path
+und vor allem keine doppelte Arbeit zulassen (dein Backfill doppelt, Sidebar doppelt, Cache purge inkonsistent)
 
-score_semantic
+Wenn du diese drei Redundanzen nicht eliminierst, wird die App bei 200k Fotos nicht langsam “linear”, sondern “chaotisch”.
 
-score_final
-
-matched_prompt
-
-applied_facets
-
-debug_reason
-
-Without this contract, UI overlays and debugging become fragile.
-
-3. Preset System Audit
-A. Mixed preset types need normalization
-
-Currently some presets use prompts, others filters.
-
-That creates inconsistent behavior.
-
-Required schema
-
-Each preset should include:
-
-concept_prompts[]
-
-hard_filters{}
-
-soft_boosts{}
-
-threshold
-
-fusion_mode
-
-Screenshots and Videos should be categorized separately as media utilities, similar to Apple Photos Media Types and Utilities sections.
-https://apps.apple.com/us/app/photos/id1584215428
-
-B. Threshold only per preset is insufficient
-
-Users often want global search sensitivity control.
-
-Required
-
-Global search settings:
-
-default threshold
-
-default top_k
-
-fusion strategy
-
-semantic weight vs metadata weight
-
-Preset can override.
-
-4. Phase-by-Phase Evaluation
-Phase 1 Strengths
-
-Correct decisions:
-
-Sidebar instead of modal
-
-Three-layer structure
-
-Reusing filter_by_paths pipeline
-
-Hardcoded presets first
-
-These align with fast iteration principles.
-
-Phase 1 Missing Critical Elements
-
-Must add immediately:
-
-Explainability minimum
-
-Query cancellation support
-
-Facet tri-state logic
-
-Embedding-missing fallback with rebuild shortcut
-
-Lightweight telemetry:
-
-latency
-
-empty result rate
-
-search duration
-
-candidate count
-
-Otherwise Phase 3 optimization becomes guesswork.
-
-Phase 2 Persistence
-
-Single table plus JSON is acceptable if versioned.
-
-Recommended table:
-
-smart_find_presets
-
-id
-
-project_id
-
-name
-
-icon
-
-config_json
-
-updated_at
-
-Index:
-
-(project_id, updated_at)
-
-Include config version field inside JSON.
-
-Phase 3 NLP Parsing
-
-Important warning:
-
-Do not build a full language model parser.
-
-Keep deterministic extraction:
-
-dates
-
-rating
-
-media type
-
-GPS presence
-
-faces presence
-
-Also consider localization:
-
-Users may type:
-
-last year
-
-summer 2023
-
-Hochzeit 2024
-
-vacation
-
-NLP must not slow search.
-
-Again, Google AI search latency problems show the risk.
-https://www.theverge.com/news/678858/google-photos-ask-photos-ai-search-rollout-pause
-
-5. The Major Strategic Blind Spot
-
-You are treating Smart Find as a feature layer.
-
-In reality, it is a product core system.
-
-That means from day one you need:
-
-Measurement
-
-Debuggability
-
-Performance guarantees
-
-Failure transparency
-
-Without these, scaling becomes painful.
-
-6. What You Did Very Well
-
-Your strongest decisions:
-
-Reusing SemanticSearchService
-
-Avoiding premature DB complexity
-
-Using existing grid filtering pipeline
-
-Multi-prompt fusion approach
-
-Sidebar integration instead of modal
-
-These are solid architectural instincts.
-
-Below is a concrete, implementable reference design for Smart Find, aligned with how iPhone Photos, Google Photos, Lightroom style workflows, and Excire style search panels behave. I will give you:
-
-A. A reference Smart Find architecture diagram
-B. Production grade pipeline pseudocode (with cancellation, caching, ANN, explainability)
-C. A scoring fusion strategy used by large photo systems (hybrid retrieval, rerank, calibration)
-
-Citations are included, mainly to anchor the UX and the search primitives.
-
-A) Reference Smart Find architecture diagram
-
-This diagram assumes your existing pieces, like SearchService, SemanticSearchService, filter_by_paths, People pipeline, plus a new SmartFindService that orchestrates a hybrid search.
-
-+------------------------------------------------------------------------------------+
-| UI                                                                                |
-|                                                                                    |
-|  [FindSection Sidebar]                         [Toolbar Active Query Bar]          |
-|   - Preset chips (Beach, Wedding, ...)          - Chips: Preset, Text, Facets      |
-|   - Free text input (debounced)                - Clear All, Save Search            |
-|   - Facets (Date, Media type, GPS, Faces, ...)                                   |
-|   - Recent searches (rerun)                                                        |
-|                                                                                    |
-|                      signals: findRequested(querySpec), clearRequested             |
-+-------------------------------------------+----------------------------------------+
-                                            |
-                                            v
-+------------------------------------------------------------------------------------+
-| SmartFindService (Orchestrator)                                                     |
-|                                                                                    |
-|  Input: QuerySpec = {project_id, text, preset_id, prompts[], facets, top_k, ...}   |
-|                                                                                    |
-|  1) Query normalization                                                            |
-|     - resolve preset -> prompts + default thresholds + facet defaults              |
-|     - optional deterministic NLP extraction (Phase 3)                              |
-|                                                                                    |
-|  2) Candidate retrieval (hybrid)                                                   |
-|     - MetadataCandidateProvider (SQL)                                              |
-|     - VectorCandidateProvider (ANN index, CLIP embeddings)                         |
-|                                                                                    |
-|  3) Rerank and fuse                                                                |
-|     - combine semantic score + metadata score + boosts/penalties                   |
-|     - apply facet tri-state (Any, Must, Must-not)                                  |
-|                                                                                    |
-|  4) Explainability payload                                                         |
-|     - per result: matched_prompt, semantic_score, facet_effects, final_score       |
-|                                                                                    |
-|  5) Cache and cancellation                                                         |
-|     - cancel inflight searches                                                     |
-|     - cache by (project_id, query_hash, index_version)                             |
-|                                                                                    |
-|  Output: [SmartFindResult{path, final_score, semantic_score, debug_reason, ...}]   |
-+--------------------------+-------------------------------+--------------------------+
-                           |                               |
-                           v                               v
-+-------------------------------+              +--------------------------------------+
-| Metadata Layer                |              | Semantic Layer                       |
-|                               |              |                                      |
-| SearchService + SQL           |              | SemanticSearchService                |
-| - dates, rating, gps, faces   |              | - text embedding cache               |
-| - media type, orientation      |              | - ANN index per project (FAISS/HNSW)|
-| - project scoping             |              | - topN vector retrieval              |
-+-------------------------------+              +--------------------------------------+
-                           |                               |
-                           +---------------+---------------+
-                                           |
-                                           v
-+------------------------------------------------------------------------------------+
-| Layout Integration                                                                  |
-|                                                                                    |
-| GooglePhotosLayout.filter_by_paths(paths)                                           |
-| - displays results                                                                  |
-| - optionally overlays confidence and “matched because” tooltip                      |
-| - supports “Not this” exclusion (Phase 3)                                           |
-+------------------------------------------------------------------------------------+
-
-Why this matches best practice:
-
-iPhone Photos and Google Photos both expose search as a primary discovery surface that can search by category, event, place, people, and free text. Your preset chips plus facets plus history maps directly to that mental model.
-
-Excire explicitly centers a “search panel” workflow, your FindSection is the same idea but integrated into your app.
-
-B) Production grade pipeline pseudocode
-
-This is designed to be robust under rapid typing, rescans, and large libraries. It includes cancellation, query hashing, index versions, and explainability.
-
-Data structures
-struct QuerySpec:
-  project_id: int
-  preset_id: string|null
-  text: string|null
-  prompts: list<string>         # resolved from preset and or parsed from text
-  facets: FacetSpec             # tri-state values
-  top_k: int
-  candidate_k: int              # for ANN, usually 5x to 20x top_k
-  semantic_weight: float        # global default, preset can override
-  metadata_weight: float
-  threshold: float              # global default, preset can override
-  fusion_mode: enum(max, weighted_max, soft_or)
-  request_id: uuid              # for cancellation and ordering
-
-struct FacetSpec:
-  date_range: TriStateRange     # Any, Must, Must-not
-  has_gps: TriStateBool
-  has_faces: TriStateBool
-  media_type: TriStateEnum(photo, video, screenshot, any)
-  rating_min: TriStateNumber
-  rating_max: TriStateNumber
-  location_bbox: TriStateGeo
-  people_ids: TriStateList      # optional, Phase 3 combinable with People
-
-struct SmartFindResult:
-  path: string
-  final_score: float
-  semantic_score: float
-  metadata_score: float
-  matched_prompt: string|null
-  reasons: list<string>         # explainability strings
-Core service
-class SmartFindService:
-
-  init(semanticService, searchService, annIndex, cache, indexVersionProvider):
-    self.semantic = semanticService
-    self.meta = searchService
-    self.ann = annIndex
-    self.cache = cache
-    self.indexVersion = indexVersionProvider
-    self.inflight = map<project_id, CancelToken>()
-
-  function find(querySpec: QuerySpec) -> list<SmartFindResult>:
-
-    # 0) Cancellation, only latest request wins per project
-    if inflight contains querySpec.project_id:
-      inflight[project_id].cancel()
-    token = new CancelToken(querySpec.request_id)
-    inflight[project_id] = token
-
-    # 1) Normalize query
-    norm = normalize_query(querySpec)
-    # normalize_query resolves preset prompts, trims text,
-    # sets defaults, expands synonyms if you want.
-
-    # 2) Cache key with index version for invalidation
-    idxV = indexVersion.get(project_id)
-    key = hash(project_id, norm.preset_id, norm.text, norm.prompts, norm.facets,
-               norm.top_k, norm.candidate_k, norm.threshold,
-               norm.semantic_weight, norm.metadata_weight, norm.fusion_mode, idxV)
-
-    cached = cache.get(key)
-    if cached exists:
-      return cached
-
-    # 3) Candidate retrieval, hybrid
-    # 3a) Metadata candidate pool (optional, depends on facet strictness)
-    # Strategy: if user set many Must facets, use SQL to restrict.
-    # Otherwise keep SQL as soft boosts only to avoid recall collapse.
-    metaCandidates = []
-    if should_restrict_by_sql(norm.facets):
-      metaCandidates = meta.query_paths(project_id, norm.facets, limit=norm.candidate_k * 2)
-
-    if token.isCancelled(): return []
-
-    # 3b) Semantic candidates from ANN
-    # Multi-prompt fusion: compute embedding per prompt, retrieve topN, union.
-    unionCandidates = map<path, SemanticHitAggregate>()
-
-    for prompt in norm.prompts:
-      emb = semantic.get_text_embedding_cached(prompt)  # cache per prompt
-      hits = ann.search(project_id, emb, topN=norm.candidate_k)
-      for hit in hits:
-        agg = unionCandidates.get_or_create(hit.path)
-        agg.add(prompt, hit.similarity)  # keep max per prompt, also store winner
-
-    if token.isCancelled(): return []
-
-    # 3c) Merge candidate sets
-    candidates = merge_candidates(unionCandidates.keys, metaCandidates)
-    # If metaCandidates is empty, candidates is purely vector set.
-    # If both exist, union them, mark provenance.
-
-    # 4) Score and rerank
-    results = []
-    for path in candidates:
-
-      # semantic score
-      semAgg = unionCandidates.get(path)
-      semantic_score, matched_prompt = semAgg.best_score_and_prompt()
-
-      # metadata score, not only pass fail, can be graded
-      meta_eval = meta.evaluate_path_against_facets(project_id, path, norm.facets)
-      # meta_eval returns:
-      # - pass_hard: bool
-      # - metadata_score: float
-      # - reasons: list<string>
-
-      if violates_must_not(meta_eval): continue
-      if has_hard_must_facets(norm.facets) and meta_eval.pass_hard == false: continue
-
-      # final fusion
-      final_score = fuse_scores(semantic_score, meta_eval.metadata_score,
-                                norm.semantic_weight, norm.metadata_weight, norm.fusion_mode)
-
-      if final_score < norm.threshold: continue
-
-      reasons = []
-      reasons.append("semantic: " + matched_prompt + " score=" + round(semantic_score, 3))
-      reasons.extend(meta_eval.reasons)
-
-      results.append(SmartFindResult(
-        path=path,
-        final_score=final_score,
-        semantic_score=semantic_score,
-        metadata_score=meta_eval.metadata_score,
-        matched_prompt=matched_prompt,
-        reasons=reasons
-      ))
-
-    # 5) Sort, cut top_k
-    results.sort_by(final_score desc)
-    results = results.take(norm.top_k)
-
-    if token.isCancelled(): return []
-
-    # 6) Cache and return
-    cache.set(key, results, ttl_seconds=120)  # TTL is fine if versioned by idxV
-    return results
-Notes you should implement immediately
-
-ANN index for embeddings, otherwise CLIP similarity becomes slow as libraries grow. FAISS is a standard choice for similarity search and ANN indexing.
-
-Cache must include index version, not only TTL, to prevent stale results after rescans.
-
-Cancellation ensures old searches do not overwrite new results, essential under debounce.
-
-C) Scoring fusion strategy used by large photo systems
-
-Large scale retrieval systems almost always use a two stage or three stage approach:
-
-candidate retrieval (fast, high recall)
-
-reranking (slower, higher precision)
-
-optional business logic boosts and filters
-
-For your photo app, the equivalent is:
-
-metadata retrieval and filtering (SQL)
-
-vector retrieval (ANN, CLIP)
-
-fusion and rerank in SmartFindService
-
-This is a hybrid search pattern, combining lexical or structured filters with vector similarity.
-
-1) Candidate retrieval, union, then rerank
-
-Recommended:
-
-Retrieve topN from ANN for each prompt
-
-Union candidates across prompts
-
-Optionally union with SQL candidates when facets are strict
-
-Then rerank all candidates with fused scoring
-
-This gives you synonym resilience, your multi prompt max fusion is already heading there.
-
-2) Multi prompt fusion strategies
-
-You mentioned max score fusion. Keep it, but offer two additional modes for power users, even if hidden in settings.
-
-Let s_i(p) be the similarity score for candidate image i under prompt p.
-
-Mode A, Max, simple and robust:
-
-S_sem(i) = max_p s_i(p)
-
-matched_prompt is argmax prompt
-
-Mode B, Weighted max, reduces prompt noise:
-
-S_sem(i) = max_p ( w_p * s_i(p) )
-
-where w_p can be 1.0 for the main prompt, 0.7 for synonyms, 0.5 for broad prompts
-
-Mode C, Soft OR, rewards multiple prompt agreement:
-
-S_sem(i) = 1 - Π_p (1 - clamp01(s_i(p)))
-
-This increases score if the image matches multiple prompts moderately well.
-
-3) Metadata scoring should be graded, not only pass fail
-
-Instead of only hard SQL filtering, treat metadata facets as a score contribution, except when user explicitly sets Must.
-
-Example:
-
-has_gps true adds +0.05
-
-rating >= 4 adds +0.10
-
-date in last year adds +0.03
-
-media_type mismatch subtracts, or hard excludes if Must
-
-This mirrors the “predictable” behavior users expect from mainstream apps that combine multiple hints, rather than acting like a strict database query. iPhone Photos and Google Photos explicitly support searching by dates, places, categories, and combinations, which implies the system tolerates partial matches and multiple signals.
-
-4) Final fusion formula
-
-A production friendly fusion that is easy to tune and explain:
-
-Normalize semantic similarity to 0..1:
-
-S = clamp01((cos_sim + 1) / 2) or your existing normalization
-
-Normalize metadata score to 0..1:
-
-M = clamp01(meta_score)
-
-Fuse:
-
-Final = α * S + (1 - α) * M + Boosts - Penalties
-
-Where:
-
-α defaults to 0.8 for concept searches (Beach, Wedding)
-
-α defaults to 0.4 for utility searches (Screenshots, Videos) because metadata is more reliable
-
-Boosts and Penalties are small, bounded, and logged in reasons
-
-5) Calibration and thresholds
-
-Do not hardcode one threshold for all presets.
-
-Best practice:
-
-global default threshold
-
-per preset override
-
-dynamic backoff if results are empty:
-
-if result count is 0, lower threshold slightly and show “expanded results” chip, user can undo
-
-This keeps the system from returning nothing, which users interpret as failure.
-
-Practical implementation checklist for your codebase
-
-If you want to implement cleanly with minimal refactor:
-
-Introduce QuerySpec and SmartFindResult types.
-
-Add cancellation, per project inflight token.
-
-Add index_version provider, increment when embeddings, scan, metadata update happens.
-
-Add ANN index wrapper per project (FAISS is a common baseline).
-
-Implement graded metadata evaluation, not only SQL filter.
-
-Add explainability strings into result, show tooltip or side panel in UI.
-
-Implement fusion modes as settings, default to Max.
+Wenn du mir als nächstes die betroffenen Module nennst oder als Zip gibst, dann kann ich dir daraus eine gezielte Patch-Liste machen, mit genau den Stellen, wo die doppelte Backfill Dispatch und die SearchService Re-init herkommt, plus einen klaren Idempotency Mechanismus pro Pipeline-Stage.
