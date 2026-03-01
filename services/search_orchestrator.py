@@ -123,6 +123,8 @@ class ScoredResult:
     # Explanation
     matched_prompt: str = ""
     reasons: List[str] = field(default_factory=list)
+    # Duplicate stacking: >0 means this is a stack representative
+    duplicate_count: int = 0
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -157,6 +159,12 @@ class OrchestratorResult:
 
     # Progressive search phase: "metadata" (fast) or "full" (complete)
     phase: str = "full"
+
+    # Phase label for UI transparency (e.g. "Metadata results", "Semantic refined")
+    phase_label: str = ""
+
+    # Duplicate stacking stats
+    stacked_duplicates: int = 0  # how many results were folded into stacks
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -761,10 +769,13 @@ class SearchOrchestrator:
                     backoff_applied = True
                     break
 
-        # Step 8: Limit to top_k
+        # Step 8: Deduplicate (stack duplicates behind representative)
+        scored, stacked_count = self._deduplicate_results(scored)
+
+        # Step 9: Limit to top_k
         scored = scored[:top_k]
 
-        # Step 9: Compute facets from result set
+        # Step 10: Compute facets from result set
         result_paths = [r.path for r in scored]
         facets = FacetComputer.compute(result_paths, project_meta)
 
@@ -776,6 +787,8 @@ class SearchOrchestrator:
             facets=facets,
             query_plan=plan,
             backoff_applied=backoff_applied,
+            phase_label="Semantic refined" if plan.has_semantic() else "Filter results",
+            stacked_duplicates=stacked_count,
         )
 
     def _score_result(self, path: str, clip_score: float,
@@ -971,8 +984,9 @@ class SearchOrchestrator:
                 f"fav={sr.favorite_score:.2f} loc={sr.location_score:.1f} "
                 f"face={sr.face_match_score:.1f}"
             )
+            dup_tag = f" [+{sr.duplicate_count}]" if sr.duplicate_count else ""
             logger.info(
-                f"  #{i+1} {sr.final_score:.4f} | {components} | {basename}"
+                f"  #{i+1} {sr.final_score:.4f} | {components} | {basename}{dup_tag}"
             )
 
         # Facets summary
@@ -984,6 +998,117 @@ class SearchOrchestrator:
         """Invalidate the metadata cache (call after scans, rating changes, etc.)."""
         self._project_meta_cache = None
         self._meta_cache_time = 0.0
+
+    # ── Duplicate Stacking (P0: fold duplicates into representative + badge) ──
+
+    _dup_cache: Optional[Dict[str, Tuple[str, int]]] = None  # path -> (representative_path, group_size)
+    _dup_cache_time: float = 0.0
+    _DUP_CACHE_TTL = 120.0  # 2 minutes
+
+    def _get_duplicate_map(self) -> Dict[str, Tuple[str, int]]:
+        """
+        Build a path -> (representative_path, group_size) map from media_asset model.
+
+        Photos sharing the same content_hash are duplicates. The asset's
+        representative_photo_id picks the preview; other instances are folded.
+        """
+        now = time.time()
+        if self._dup_cache is not None and (now - self._dup_cache_time) < self._DUP_CACHE_TTL:
+            return self._dup_cache
+
+        dup_map: Dict[str, Tuple[str, int]] = {}
+        try:
+            from repository.base_repository import DatabaseConnection
+            db = DatabaseConnection()
+            with db.get_connection() as conn:
+                # Find assets with >1 instance (= duplicates)
+                rows = conn.execute("""
+                    SELECT
+                        mi.photo_id,
+                        pm.path,
+                        a.representative_photo_id,
+                        a.asset_id
+                    FROM media_instance mi
+                    JOIN media_asset a ON mi.asset_id = a.asset_id
+                        AND mi.project_id = a.project_id
+                    JOIN photo_metadata pm ON mi.photo_id = pm.id
+                    WHERE mi.project_id = ?
+                    AND a.asset_id IN (
+                        SELECT asset_id FROM media_instance
+                        WHERE project_id = ? GROUP BY asset_id HAVING COUNT(*) > 1
+                    )
+                    ORDER BY a.asset_id
+                """, (self.project_id, self.project_id)).fetchall()
+
+                # Group by asset_id
+                from collections import defaultdict
+                asset_groups: Dict[int, List[Tuple[int, str]]] = defaultdict(list)
+                rep_map: Dict[int, Optional[int]] = {}
+                for row in rows:
+                    asset_id = row['asset_id']
+                    asset_groups[asset_id].append((row['photo_id'], row['path']))
+                    if row['representative_photo_id'] is not None:
+                        rep_map[asset_id] = row['representative_photo_id']
+
+                for asset_id, members in asset_groups.items():
+                    group_size = len(members)
+                    rep_id = rep_map.get(asset_id)
+                    # Find representative path
+                    rep_path = None
+                    for pid, ppath in members:
+                        if pid == rep_id:
+                            rep_path = ppath
+                            break
+                    if not rep_path:
+                        rep_path = members[0][1]  # fallback to first
+
+                    for _, ppath in members:
+                        dup_map[ppath] = (rep_path, group_size)
+
+        except Exception as e:
+            logger.debug(f"[SearchOrchestrator] Duplicate map build failed: {e}")
+
+        self._dup_cache = dup_map
+        self._dup_cache_time = now
+        return dup_map
+
+    def _deduplicate_results(self, scored: List[ScoredResult]) -> Tuple[List[ScoredResult], int]:
+        """
+        Stack duplicate results: keep highest-scoring representative per
+        duplicate group, annotate with duplicate_count badge.
+
+        Returns (deduped_list, stacked_count).
+        """
+        dup_map = self._get_duplicate_map()
+        if not dup_map:
+            return scored, 0
+
+        # Group results by representative path
+        seen_reps: Dict[str, ScoredResult] = {}
+        non_dup: List[ScoredResult] = []
+        stacked = 0
+
+        for sr in scored:
+            entry = dup_map.get(sr.path)
+            if entry is None:
+                non_dup.append(sr)
+                continue
+
+            rep_path, group_size = entry
+            if rep_path in seen_reps:
+                # This is a duplicate of an already-seen representative
+                existing = seen_reps[rep_path]
+                if sr.final_score > existing.final_score:
+                    # Swap: this instance scored higher, promote it
+                    seen_reps[rep_path] = sr
+                stacked += 1
+            else:
+                sr.duplicate_count = group_size - 1  # other copies
+                seen_reps[rep_path] = sr
+
+        result = non_dup + list(seen_reps.values())
+        result.sort(key=lambda r: r.final_score, reverse=True)
+        return result, stacked
 
     # ── Progressive Search (metadata first, then semantic) ──
 
@@ -1042,6 +1167,7 @@ class SearchOrchestrator:
             execution_time_ms=(time.time() - start) * 1000,
             label=self._build_label(plan, OrchestratorResult(paths=result_paths)),
             phase="metadata",
+            phase_label="Metadata results",
         )
         logger.info(
             f"[SearchOrchestrator] Progressive phase=metadata: "
@@ -1185,6 +1311,7 @@ class SearchOrchestrator:
     # ── ANN Retrieval (two-stage: FAISS candidate → full scoring) ──
 
     _ann_index_cache: Dict[int, Tuple] = {}  # class-level: {project_id: (index, photo_ids, vectors, timestamp)}
+    _ann_dirty: set = set()  # class-level: project_ids with new embeddings since last build
     _ANN_CACHE_TTL = 300.0  # 5 minutes
 
     def _get_or_build_ann_index(self):
@@ -1192,6 +1319,7 @@ class SearchOrchestrator:
         Get or build a FAISS/numpy ANN index for the project.
 
         Caches the index for _ANN_CACHE_TTL seconds.
+        Rebuilds immediately if marked dirty (new embeddings added).
         For projects with >500 embeddings and FAISS available,
         uses FAISS IndexFlatIP for O(log n) retrieval.
         """
@@ -1199,9 +1327,14 @@ class SearchOrchestrator:
             return None, [], {}
 
         now = time.time()
+        is_dirty = self.project_id in SearchOrchestrator._ann_dirty
         cached = SearchOrchestrator._ann_index_cache.get(self.project_id)
-        if cached and (now - cached[3]) < self._ANN_CACHE_TTL:
+        if cached and not is_dirty and (now - cached[3]) < self._ANN_CACHE_TTL:
             return cached[0], cached[1], cached[2]
+
+        if is_dirty:
+            logger.info(f"[SearchOrchestrator] ANN index dirty (new embeddings) — rebuilding for project {self.project_id}")
+            SearchOrchestrator._ann_dirty.discard(self.project_id)
 
         try:
             from repository.base_repository import DatabaseConnection
@@ -1387,6 +1520,176 @@ class SearchOrchestrator:
     def invalidate_ann_cache(self):
         """Invalidate ANN index cache (call after embedding extraction)."""
         SearchOrchestrator._ann_index_cache.pop(self.project_id, None)
+        SearchOrchestrator._ann_dirty.discard(self.project_id)
+
+    @classmethod
+    def mark_ann_dirty(cls, project_id: int):
+        """
+        Mark ANN index as dirty for a project.
+
+        Call this after new embeddings are generated or backfilled.
+        The next search_ann() call will rebuild the index instead of
+        serving a stale cached copy that's missing the new vectors.
+        """
+        cls._ann_dirty.add(project_id)
+        logger.info(f"[SearchOrchestrator] ANN index marked dirty for project {project_id}")
+
+    # ── Relevance Feedback (search_events + personal boost) ──
+
+    @staticmethod
+    def record_search_event(project_id: int, query_hash: str,
+                            asset_path: str, action: str):
+        """
+        Record a user interaction with a search result for relevance feedback.
+
+        Actions: 'click', 'open', 'add_to_album', 'favorite_toggle', 'share'.
+        This data powers a future personal_relevance scoring term.
+        """
+        try:
+            from repository.base_repository import DatabaseConnection
+            db = DatabaseConnection()
+            with db.get_connection() as conn:
+                conn.execute("""
+                    INSERT INTO search_events
+                        (project_id, query_hash, asset_path, action)
+                    VALUES (?, ?, ?, ?)
+                """, (project_id, query_hash, asset_path, action))
+                conn.commit()
+        except Exception as e:
+            # Table may not exist yet; log and move on
+            logger.debug(f"[SearchOrchestrator] record_search_event: {e}")
+
+    @staticmethod
+    def get_personal_boost(project_id: int, query_hash: str,
+                           path: str) -> float:
+        """
+        Compute a capped personal relevance boost from past interactions.
+
+        Returns a value in [0.0, 0.15] based on how often this asset
+        was clicked/opened for similar queries.
+        """
+        try:
+            from repository.base_repository import DatabaseConnection
+            db = DatabaseConnection()
+            with db.get_connection() as conn:
+                row = conn.execute("""
+                    SELECT COUNT(*) as cnt FROM search_events
+                    WHERE project_id = ? AND query_hash = ? AND asset_path = ?
+                """, (project_id, query_hash, path)).fetchone()
+                if row and row['cnt'] > 0:
+                    # Capped log boost: 1 interaction = 0.05, 3 = 0.10, 10+ = 0.15
+                    return min(0.15, 0.05 * math.log2(1 + row['cnt']))
+        except Exception:
+            pass
+        return 0.0
+
+    # ── Query Autocomplete (history + library stats) ──
+
+    @staticmethod
+    def autocomplete(project_id: int, prefix: str,
+                     max_results: int = 8) -> List[Dict[str, str]]:
+        """
+        Generate autocomplete suggestions from search history + library stats.
+
+        Returns a list of {"label": "...", "query": "...", "source": "..."} dicts
+        combining:
+        1. Recent queries matching the prefix (from search_history table)
+        2. Library-based suggestions from LibraryAnalyzer
+        3. Token completions (type:, date:, rating:, has:, is:, ext:, person:)
+        """
+        suggestions: List[Dict[str, str]] = []
+        prefix_lower = prefix.strip().lower()
+
+        if not prefix_lower:
+            return suggestions
+
+        # 1. Search history matches
+        try:
+            from repository.base_repository import DatabaseConnection
+            db = DatabaseConnection()
+            with db.get_connection() as conn:
+                rows = conn.execute("""
+                    SELECT DISTINCT query FROM search_history
+                    WHERE project_id = ? AND LOWER(query) LIKE ?
+                    ORDER BY timestamp DESC
+                    LIMIT 4
+                """, (project_id, f"{prefix_lower}%")).fetchall()
+                for row in rows:
+                    suggestions.append({
+                        "label": row['query'],
+                        "query": row['query'],
+                        "source": "history",
+                    })
+        except Exception:
+            pass
+
+        # 2. Token completions
+        token_prefixes = {
+            "type:": ["type:video", "type:photo"],
+            "is:": ["is:fav", "is:favorite"],
+            "has:": ["has:location", "has:gps", "has:faces"],
+            "date:": ["date:2024", "date:2025", "date:2026"],
+            "rating:": ["rating:3", "rating:4", "rating:5"],
+            "ext:": ["ext:jpg", "ext:png", "ext:heic", "ext:raw"],
+            "person:": [],
+        }
+        for tok_prefix, completions in token_prefixes.items():
+            if tok_prefix.startswith(prefix_lower) or prefix_lower.startswith(tok_prefix):
+                for comp in completions:
+                    if comp.lower().startswith(prefix_lower) and len(suggestions) < max_results:
+                        suggestions.append({
+                            "label": comp,
+                            "query": comp,
+                            "source": "token",
+                        })
+
+        # 3. Library suggestions (if prefix is long enough for semantic matching)
+        if len(prefix_lower) >= 3:
+            try:
+                lib_suggestions = LibraryAnalyzer.suggest(project_id, max_suggestions=4)
+                for s in lib_suggestions:
+                    label = s.get("label", "")
+                    if prefix_lower in label.lower() and len(suggestions) < max_results:
+                        suggestions.append({
+                            "label": label,
+                            "query": s.get("query", ""),
+                            "source": "library",
+                        })
+            except Exception:
+                pass
+
+        return suggestions[:max_results]
+
+    # ── OCR Search Integration Point ──
+
+    @staticmethod
+    def search_ocr_text(project_id: int, query: str,
+                        limit: int = 50) -> List[str]:
+        """
+        Search photos by OCR text content using FTS5.
+
+        Returns a list of photo paths matching the query in their
+        extracted OCR text. The FTS5 table (ocr_fts5) is populated
+        by the OCR pipeline during background processing.
+
+        Falls back gracefully if the ocr_text column or FTS5 table
+        doesn't exist yet.
+        """
+        try:
+            from repository.base_repository import DatabaseConnection
+            db = DatabaseConnection()
+            with db.get_connection() as conn:
+                rows = conn.execute("""
+                    SELECT pm.path
+                    FROM ocr_fts5 fts
+                    JOIN photo_metadata pm ON fts.rowid = pm.id
+                    WHERE fts.ocr_text MATCH ? AND pm.project_id = ?
+                    LIMIT ?
+                """, (query, project_id, limit)).fetchall()
+                return [row['path'] for row in rows]
+        except Exception:
+            # FTS5 table not created yet — OCR pipeline hasn't run
+            return []
 
 
 # ══════════════════════════════════════════════════════════════════════

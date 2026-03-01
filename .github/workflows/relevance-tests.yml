@@ -46,7 +46,7 @@ jobs:
         run: |
           count=$(python -m pytest tests/test_search_orchestrator.py --collect-only -q --override-ini="addopts=" 2>/dev/null | tail -1 | grep -oP '\d+(?= test)')
           echo "Found $count tests"
-          if [ "$count" -lt 50 ]; then
-            echo "ERROR: Expected at least 50 relevance tests, found $count"
+          if [ "$count" -lt 80 ]; then
+            echo "ERROR: Expected at least 80 relevance tests, found $count"
             exit 1
           fi
