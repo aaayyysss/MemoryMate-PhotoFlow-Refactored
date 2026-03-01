@@ -9065,6 +9065,12 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
             )
 
             if paths:
+                # Force the coalescing signature to miss so the UI always
+                # refreshes for a new search, even when the underlying paths
+                # happen to be identical to the previous result set (common
+                # in small libraries where backoff pulls in the same photos).
+                self._last_load_signature = None
+
                 # Use existing path-based filtering
                 self._request_load(paths=paths)
 

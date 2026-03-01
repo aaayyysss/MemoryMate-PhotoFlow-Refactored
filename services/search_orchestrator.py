@@ -827,8 +827,15 @@ class SearchOrchestrator:
         scored.sort(key=lambda r: r.final_score, reverse=True)
 
         # Step 7: Backoff if below min_results_target and semantic was used
+        # Adaptive target: for small libraries the static target of 20 is
+        # too aggressive (20/25 = 80%) and causes every search to backoff,
+        # pulling in the entire library.  Cap at ~30% of library size.
         backoff_applied = False
-        min_target = self._MIN_RESULTS_TARGET
+        total_library = len(project_meta) if project_meta else 0
+        min_target = min(
+            self._MIN_RESULTS_TARGET,
+            max(3, total_library * 3 // 10),  # 30% of library, floor of 3
+        )
         if len(scored) < min_target and plan.has_semantic() and self._smart_find.clip_available:
             backoff_step = cfg.get("backoff_step", 0.04)
             max_retries = cfg.get("backoff_retries", 2)
