@@ -372,6 +372,52 @@ class TestScoringDeterminism:
         assert "favorite=" in reason_text
         assert "location=" in reason_text
 
+    def test_recency_discriminates_across_dates(self):
+        """Recency must produce different values for different dates, not saturate."""
+        from services.search_orchestrator import SearchOrchestrator, ScoringWeights
+        orch = SearchOrchestrator.__new__(SearchOrchestrator)
+        orch._weights = ScoringWeights()
+        orch._weights.validate()
+
+        meta_recent = {"/recent.jpg": {"rating": 0, "has_gps": False,
+                                       "created_date": "2026-02-28", "date_taken": "2026-02-28"}}
+        meta_old = {"/old.jpg": {"rating": 0, "has_gps": False,
+                                 "created_date": "2025-06-01", "date_taken": "2025-06-01"}}
+
+        r_recent = orch._score_result("/recent.jpg", 0.30, "test", meta_recent)
+        r_old = orch._score_result("/old.jpg", 0.30, "test", meta_old)
+
+        assert r_recent.recency_score > r_old.recency_score, \
+            f"Recent ({r_recent.recency_score:.4f}) must beat old ({r_old.recency_score:.4f})"
+        assert r_recent.recency_score != r_old.recency_score, \
+            "Recency must not saturate to the same value for all dates"
+
+    def test_face_score_active_with_person_filter(self):
+        """Face component must be 1.0 when person filter is active."""
+        from services.search_orchestrator import SearchOrchestrator, ScoringWeights
+        orch = SearchOrchestrator.__new__(SearchOrchestrator)
+        orch._weights = ScoringWeights()
+        orch._weights.validate()
+
+        meta = {"/face.jpg": {"rating": 0, "has_gps": False,
+                              "created_date": None, "date_taken": None}}
+
+        r_no_face = orch._score_result("/face.jpg", 0.30, "test", meta)
+        r_face = orch._score_result("/face.jpg", 0.30, "test", meta,
+                                    active_filters={"person_id": "face_001"})
+
+        assert r_no_face.face_match_score == 0.0
+        assert r_face.face_match_score == 1.0
+        assert r_face.final_score > r_no_face.final_score, \
+            "Face match must boost the final score"
+
+    def test_weight_component_structural_match(self):
+        """Every ScoringWeights field must have a matching ScoredResult component."""
+        from services.search_orchestrator import ScoringWeights
+        w = ScoringWeights()
+        # validate() now asserts weight-to-component mapping
+        w.validate()  # must not raise
+
 
 # ══════════════════════════════════════════════════════════════════════
 # NLQueryParser backward compatibility
