@@ -1,3 +1,223 @@
+C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.06-Photo-App\MemoryMate-PhotoFlow-Refactored-main-18>python main_qt.py
+[Startup] pillow_heif available — HEIC/HEIF support enabled.
+🔇 Decoder warnings suppressed per settings.
+🔇 Decoder warnings suppressed (Qt, Pillow, ICC).
+✅ Loaded en translations from C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.06-Photo-App\MemoryMate-PhotoFlow-Refactored-main-18\locales\en.json
+🌍 Language initialized: en
+2026-03-01 18:37:19,557 [INFO] ================================================================================
+2026-03-01 18:37:19,558 [INFO] MemoryMate-PhotoFlow logging initialized (level=INFO)
+2026-03-01 18:37:19,559 [INFO] Log file: C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.06-Photo-App\MemoryMate-PhotoFlow-Refactored-main-18\app_log.txt
+2026-03-01 18:37:19,559 [INFO] ================================================================================
+============================================================
+SCREEN INFORMATION (DPI-Aware)
+============================================================
+Resolution:      1920x1200
+Available:       1920x1152
+Category:        FHD
+DPI Scale:       1.0x (100%)
+High-DPI:        No
+Taskbar Height:  48px
+Adaptive Margin: 60px
+Adaptive Icons:  24px
+============================================================
+2026-03-01 18:37:19,630 [INFO] Installed Qt message handler to suppress TIFF warnings
+2026-03-01 18:37:19,630 [INFO] Qt message handler installed to suppress TIFF warnings
+2026-03-01 18:37:19,645 [INFO] [Store] Initialized (ui_epoch=0)
+2026-03-01 18:37:19,646 [INFO] [Startup] ProjectState store initialized
+[Main] Starting Qt event loop...
+[Startup] Database schema initialized successfully
+[Cache] {'entries': 0, 'size_mb': 0.0, 'path': 'C:\\Users\\suleimaa\\Downloads\\Photo-Sorter\\11.01.01.06-Photo-App\\MemoryMate-PhotoFlow-Refactored-main-18\\thumbnails_cache.db', 'last_updated': '2026-03-01 18:37'}
+2026-03-01 18:37:24,565 [INFO] SearchService initialized
+[Startup] SearchService initialized
+2026-03-01 18:37:24,565 [INFO] LRUCache initialized with capacity=200, max_memory=100.0MB
+2026-03-01 18:37:24,565 [INFO] ThumbnailService initialized (L1 capacity=200, max_memory=100.0MB, timeout=5.0s)
+2026-03-01 18:37:24,566 [INFO] Global ThumbnailService created with Phase 1B memory limits
+[Startup] ThumbnailService initialized
+[Startup] Qt image plugins: ['bmp', 'cur', 'gif', 'icns', 'ico', 'jfif', 'jpeg', 'jpg', 'pbm', 'pdf', 'pgm', 'png', 'ppm', 'svg', 'svgz', 'tga', 'tif', 'tiff', 'wbmp', 'webp', 'xbm', 'xpm']
+[Startup] ⚠️ CREATING MainWindow instance...
+🌍 Language switched to: en
+[MainWindow] Language loaded from settings: en
+[LayoutManager] Registered layout: Current Layout (id=current)
+[LayoutManager] Registered layout: Google Photos Style (id=google)
+[LayoutManager] Registered layout: Apple Photos Style (id=apple)
+[LayoutManager] Registered layout: Lightroom Style (id=lightroom)
+[MainWindow] Layout manager initialized
+[MainWindow] 🖥️ Screen detected: 1920x1152 (DPI: 1.0x)
+[MainWindow] Screen geometry: x=0, y=0, w=1920, h=1152
+[MainWindow] 📐 Window size: 1800x1032 (margins: 60px)
+[MainWindow] 📍 Window position: x=60, y=60
+[MainWindow] ✓ Window geometry: PySide6.QtCore.QRect(60, 60, 1800, 1032)
+🔇 Qt/Pillow decoder warnings silenced (per user settings).
+2026-03-01 18:37:24,646 [INFO] [SemanticSearch] Result caching ENABLED (cachetools available)
+2026-03-01 18:37:24,648 [INFO] [SearchHistory] Creating search history tables...
+2026-03-01 18:37:24,671 [INFO] [SearchHistory] Tables created successfully
+2026-03-01 18:37:24,674 [INFO] [SemanticSearch] Result cache initialized (100 entries, 5min TTL)
+2026-03-01 18:37:24,684 [INFO] [SemanticSearch] No project model set, using default: openai/clip-vit-base-patch32
+2026-03-01 18:37:24,684 [INFO] [SemanticSearch] 🔍 Available CLIP models found: 2
+2026-03-01 18:37:24,684 [INFO]   ✓ openai/clip-vit-base-patch32: Base model, fastest (512-D) (512-D, 600MB) ← WILL BE USED
+2026-03-01 18:37:24,685 [INFO]   ✓ openai/clip-vit-large-patch14: Large model, best quality (768-D) (768-D, 1700MB)
+2026-03-01 18:37:24,685 [INFO] [SemanticSearch] 🎯 Will use: openai/clip-vit-base-patch32 - Base model, fastest (512-D)
+2026-03-01 18:37:24,686 [WARNING] [SemanticSearch] ⚠️  Better model available but not being used!
+  clip-vit-large-patch14 is installed but has embeddings from base-patch32.
+  To use the large model: Tools → Extract Embeddings (will auto-use large model)
+2026-03-01 18:37:24,686 [INFO] [MainWindow] ✨ Semantic search widget added to toolbar - visible: False, size: PySide6.QtCore.QSize(100, 30)
+2026-03-01 18:37:24,710 [INFO] [SessionState] Loaded: section=find, selection=None/None
+[MainWindow] PHASE 1: Session project_id=1 not in DB, clearing
+[MainWindow] PHASE 1: Restoring project_id=None from session state
+[Sidebar] Device auto-detection disabled (manual refresh only)
+[SidebarQt] switch_display_mode(list) - canceling old workers
+[SidebarQt] Hiding tabs controller and accordion
+[SidebarQt] Canceled tab/accordion workers via hide
+[SidebarQt] Clearing tree view selection before rebuild
+[SidebarQt] Showing tree view
+[SidebarQt] Calling _build_tree_model()
+[SidebarQt] _build_tree_model() called with project_id=None
+[Sidebar] Detaching old model from tree view
+[Sidebar] Pending events processed (skipped explicit processEvents)
+[Sidebar] Creating fresh model (avoiding Qt segfault)
+[Sidebar] Attaching fresh model to tree view
+[SidebarQt] list_branches() returned 0 branches
+[Sidebar] Loading videos for project_id=None
+[Sidebar] Found 0 videos in project None
+2026-03-01 18:37:24,775 [INFO] [get_location_clusters] GPS columns exist: True
+2026-03-01 18:37:24,775 [INFO] [get_location_clusters] Found 0 photos with GPS data (project_id=None)
+2026-03-01 18:37:24,775 [WARNING] [get_location_clusters] No GPS data found. Total photos in DB: 0
+2026-03-01 18:37:24,775 [INFO] [get_location_clusters] get_photos_by_location returned 0 location groups
+2026-03-01 18:37:24,776 [INFO] [get_location_clusters] Returning 0 location clusters
+[Sidebar] No mobile devices detected - added help message
+[SidebarQt] _build_tree_model() completed
+[GRID] P2-26: Created dedicated thumbnail thread pool with 4 workers
+[MainWindow] ✓ MetadataEditorDock initialized
+[LayoutManager] Initializing default layout: google
+[LayoutManager] Switching layout: current → google
+[LayoutManager] 💾 Took ownership of original central widget: QWidget
+[GooglePhotosLayout] ⚠️ WARNING: No projects found! Please create a project first.
+[GooglePhotosLayout] Project selector populated with 0 projects (+ New Project option)
+[GooglePhotosLayout] ✓ Reusing existing semantic_search widget from main_window
+[GooglePhotosLayout] ✓ Semantic search widget visibility ensured
+[GooglePhotosLayout] ✓ Semantic search toolbar visibility ensured
+2026-03-01 18:37:25,464 [INFO] [AccordionSidebar] Initializing with project_id=None
+2026-03-01 18:37:25,478 [INFO] [AccordionSidebar] Created 9 sections
+2026-03-01 18:37:25,478 [INFO] [AccordionSidebar] Expanding section: find
+2026-03-01 18:37:25,549 [INFO] [AccordionSidebar] Section find loaded and displayed
+[GooglePhotosLayout] ✅ Scroll-triggered lazy loading enabled
+[LayoutManager] Setting new central widget: QWidget
+[GooglePhotosLayout] Layout activated
+[LayoutManager] Switched to: Google Photos Style
+[Startup] Layout system initialized successfully
+[MainWindow] __init__() COMPLETED - returning to main_qt.py
+[MainWindow] Window object: <main_window_qt.MainWindow(0x240cdfe8200) at 0x00000240CF748600>
+[MainWindow] Window valid: N/A
+[Startup] ✅ MainWindow instance created successfully
+[Startup] MainWindow type: <class 'main_window_qt.MainWindow'>
+[Startup] MainWindow is valid: True
+2026-03-01 18:37:25,631 [INFO] [Store] QtActionBridge initialized
+2026-03-01 18:37:25,631 [INFO] [Startup] QtActionBridge attached to MainWindow
+[Startup] Updating splash progress to 95%...
+[GooglePhotosLayout] 📐 Responsive grid: 2 columns (viewport: 397px, thumb: 200px)
+
+[Breadcrumb] _update_breadcrumb() CALLED
+[Breadcrumb] Grid state: navigation_mode=None, project_id=None
+[Breadcrumb] Added project segment: My Photos
+[Breadcrumb] Added fallback segment: All Photos
+[Breadcrumb] Calling set_path() with 2 segments
+[BreadcrumbNav] set_path() called with 2 segments
+[BreadcrumbNav] Clearing 0 existing widgets
+[BreadcrumbNav] Cleared all existing widgets
+[BreadcrumbNav] Added segment 0: My Photos
+[BreadcrumbNav] Added segment 1: All Photos
+[BreadcrumbNav] set_path() completed - 2 segments added
+[Breadcrumb] set_path() completed successfully
+[Breadcrumb] _update_breadcrumb() COMPLETED
+
+[Startup] Processing events...
+[Startup] Events processed, ready to show window
+[Startup] Showing main window...
+[Startup] Window geometry before show(): PySide6.QtCore.QRect(60, 60, 1800, 1032)
+[Startup] Window visible before show(): False
+[Startup] Window visible after show(): True
+[Startup] Window geometry after show(): PySide6.QtCore.QRect(60, 91, 1800, 1032)
+[Startup] Window position: x=60, y=60, w=1800, h=1032
+[Startup] Window on screen: \\.\DISPLAY1
+[MainWindow] ✓ Window is on-screen (center at 959, 606)
+[Startup] Window raised and activated
+[Startup] _after_first_paint fired at 17636.424s
+2026-03-01 18:37:25,699 [INFO] JobService initialized
+2026-03-01 18:37:25,705 [INFO] [JobManager] Initialized with max 4 workers
+2026-03-01 18:37:25,705 [INFO] [JobManager] Startup throttle enabled (max_threads=1)
+[Startup] Scheduled _on_startup_ready for GooglePhotosLayout
+[GooglePhotosLayout] First paint done — starting initial photo load
+[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px)...
+[GooglePhotosLayout] 🔍 Starting async photo load (generation 1) - existing content preserved...
+[GooglePhotosLayout] ⚠️ No project selected
+[Startup] ✅ Main window should now be visible
+[Startup] If window is not visible, check:
+[Startup]   1. Window position: (60, 60)
+[Startup]   2. Window size: 1800x1032
+[Startup]   3. Screen geometry: PySide6.QtCore.QRect(0, 0, 1920, 1152)
+[Startup]   4. Check if window is off-screen or on disconnected monitor
+2026-03-01 18:37:25,819 [INFO] [Main] Async FFmpeg detection worker launched
+2026-03-01 18:37:25,821 [INFO] [FFmpegDetectionWorker] Starting async FFmpeg detection...
+2026-03-01 18:37:25,903 [INFO] [FFmpegDetectionWorker] Fresh detection completed in 0.08s
+✅ FFmpeg and FFprobe detected (custom path: C:\ffmpeg\bin)
+[MainWindow] Starting deferred initialization...
+[MainWindow] ✅ Database handle initialized (fast)
+[MainWindow] ✅ Session state restoration scheduled
+[MainWindow] ✅ Status bar updated
+[MainWindow] Database maintenance job scheduled (2s delay)
+[MainWindow] CLIP warmup disabled (lazy load on first search)
+[MainWindow] Cache purge scheduled (5s delay)
+[MainWindow] ✅ Deferred initialization completed successfully
+[MainWindow] PHASE 2: Using Current Layout (SidebarQt) - will restore via tree selection
+[MainWindow] PHASE 3 (SidebarQt): No selection to restore
+2026-03-01 18:37:28,011 [INFO] [JobManager] Registered tracked job -1: maintenance — Database maintenance (backfill & index)
+[MainWindow] Maintenance job registered: job_id=-1
+2026-03-01 18:37:28,037 [INFO] [JobManager] Tracked job -1 (maintenance) completed: None
+[MainWindow] Background maintenance completed
+[Startup] Global QThreadPool restored to 1 threads
+2026-03-01 18:37:30,716 [INFO] [JobManager] Startup throttle disabled (restored max_threads=12)
+[MainWindow] Deferred cache purge completed
+🌍 Language switched to: en
+2026-03-01 18:37:34,593 [INFO] [SemanticEmbeddingService] Creating service for model: openai/clip-vit-base-patch32
+2026-03-01 18:37:34,612 [INFO] [SemanticEmbeddingService] Initialized (lazy) with model=openai/clip-vit-base-patch32
+✅ InsightFace detected with buffalo_l models
+   Location: C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.06-Photo-App\MemoryMate-PhotoFlow-Refactored-main-18\models\buffalo_l
+[FaceConfig] Saved to C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.06-Photo-App\MemoryMate-PhotoFlow-Refactored-main-18\config_data\face_detection_config.json
+✅ Face detection settings saved: model=buffalo_l, eps=40%, min_samples=1
+✅ Groups settings saved: scope=same_photo, auto_index=True
+🔍 CLIP settings saved: variant=openai/clip-vit-base-patch32, device=auto
+2026-03-01 18:37:48,322 [INFO] [SearchConfig] Saved search_clip_threshold=0.22
+2026-03-01 18:37:48,336 [INFO] [SearchConfig] Saved search_default_top_k=200
+2026-03-01 18:37:48,347 [INFO] [SearchConfig] Saved search_cache_ttl=300
+2026-03-01 18:37:48,360 [INFO] [SearchConfig] Saved search_debounce_ms=500
+2026-03-01 18:37:48,371 [INFO] [SearchConfig] Saved search_nlp_enabled=True
+2026-03-01 18:37:48,383 [INFO] [SearchConfig] Saved search_semantic_min_similarity=0.3
+2026-03-01 18:37:48,394 [INFO] [SearchConfig] Saved search_semantic_top_k=20
+2026-03-01 18:37:48,404 [INFO] [SearchConfig] Saved search_show_confidence=True
+2026-03-01 18:37:48,414 [INFO] [SearchConfig] Saved search_min_display_confidence=0.15
+🔎 Search settings saved: clip_threshold=0.22, top_k=200, cache_ttl=300s, fusion=max, sem_weight=0.80
+🔄 Restarting application after settings change...
+[Restart] Requested — setting _closing flag and bumping generation...
+[UI] Generation bumped 0 -> 1: restart requested (pre-spawn)
+[Restart] _closing=True, generation=1, spawning new process...
+2026-03-01 18:37:49,903 [INFO] [Store] ShutdownRequested src=main_window deltas={'ui_epoch': '0→1'}  →  3 subscriber(s)
+2026-03-01 18:37:49,903 [INFO] [JobManager] Canceled 0 jobs
+[Shutdown] JobManager barrier complete (drained=True).
+2026-03-01 18:37:49,904 [INFO] [ScanController] Shutdown barrier complete (drained=True)
+[Shutdown] ScanController barrier complete.
+[Shutdown] Grid threads shut down.
+[ThumbnailManager] Thread pool shut down.
+[Shutdown] ThumbnailManager threads shut down.
+[Shutdown] Thumbnail cache cleared.
+[ReferenceDB] Closed connection for thread 22488
+[Shutdown] Database connections closed.
+[Shutdown] Teardown complete.
+[Main] Qt event loop exited with code: 0
+[ThumbCacheDB] Closing cache gracefully...
+[Startup] pillow_heif available — HEIC/HEIF support enabled.
+🔇 Decoder warnings suppressed per settings.
+🔇 Decoder warnings suppressed (Qt, Pillow, ICC).
+
 C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.06-Photo-App\MemoryMate-PhotoFlow-Refactored-main-18>✅ Loaded en translations from C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.06-Photo-App\MemoryMate-PhotoFlow-Refactored-main-18\locales\en.json
 🌍 Language initialized: en
 2026-03-01 18:37:50,459 [INFO] ================================================================================
@@ -1992,3 +2212,4 @@ database_commit:
 [Shutdown] Teardown complete.
 [Main] Qt event loop exited with code: 0
 [ThumbCacheDB] Closing cache gracefully...
+
