@@ -726,6 +726,43 @@ CREATE INDEX IF NOT EXISTS idx_media_stack_member_stack_id ON media_stack_member
 CREATE INDEX IF NOT EXISTS idx_media_stack_member_photo_id ON media_stack_member(photo_id);
 
 CREATE INDEX IF NOT EXISTS idx_media_stack_meta_project_id ON media_stack_meta(project_id);
+
+-- ============================================================================
+-- SEARCH EVENTS (v10.0.0 - Relevance Feedback)
+-- ============================================================================
+-- Records user interactions with search results (clicks, opens, favorites)
+-- to power a personal_relevance scoring term per query cluster.
+CREATE TABLE IF NOT EXISTS search_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL,
+    query_hash TEXT NOT NULL,        -- Hash of normalized query for clustering
+    asset_path TEXT NOT NULL,        -- Photo path that was interacted with
+    action TEXT NOT NULL,            -- 'click', 'open', 'add_to_album', 'favorite_toggle', 'share'
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_search_events_project_query
+    ON search_events(project_id, query_hash);
+CREATE INDEX IF NOT EXISTS idx_search_events_project_path
+    ON search_events(project_id, asset_path);
+
+-- ============================================================================
+-- OCR TEXT (v10.0.0 - Text in Images)
+-- ============================================================================
+-- FTS5 virtual table for full-text search of OCR-extracted text from photos.
+-- Populated incrementally by the OCR pipeline (EasyOCR or Tesseract).
+-- The photo_metadata.ocr_text column stores the raw extracted text;
+-- this FTS5 table provides fast MATCH queries.
+--
+-- NOTE: The ocr_text column on photo_metadata must be added via migration
+-- (ALTER TABLE photo_metadata ADD COLUMN ocr_text TEXT) since it was not
+-- in the original schema. The FTS5 table is safe to create regardless.
+CREATE VIRTUAL TABLE IF NOT EXISTS ocr_fts5 USING fts5(
+    ocr_text,
+    content='photo_metadata',
+    content_rowid='id'
+);
 """
 
 

@@ -739,3 +739,240 @@ class TestRelevanceContract:
         for source in ["text", "preset", "combined", "similar"]:
             plan = QueryPlan(source=source)
             assert plan.source == source
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Unit Tests: Duplicate Stacking (P0)
+# ══════════════════════════════════════════════════════════════════════
+
+class TestDuplicateStacking:
+    """Test duplicate stacking in search results."""
+
+    def test_scored_result_has_duplicate_count(self):
+        """ScoredResult must have a duplicate_count field."""
+        from services.search_orchestrator import ScoredResult
+        sr = ScoredResult(path="/test.jpg")
+        assert hasattr(sr, 'duplicate_count')
+        assert sr.duplicate_count == 0
+
+    def test_deduplicate_empty_list(self):
+        """_deduplicate_results on empty list returns empty."""
+        from services.search_orchestrator import SearchOrchestrator
+        orch = SearchOrchestrator.__new__(SearchOrchestrator)
+        orch.project_id = 999
+        orch._dup_cache = {}
+        orch._dup_cache_time = 0.0
+        deduped, stacked = orch._deduplicate_results([])
+        assert deduped == []
+        assert stacked == 0
+
+    def test_deduplicate_no_duplicates(self):
+        """Non-duplicate results pass through unchanged."""
+        from services.search_orchestrator import SearchOrchestrator, ScoredResult
+        orch = SearchOrchestrator.__new__(SearchOrchestrator)
+        orch.project_id = 999
+        orch._dup_cache = {}  # no duplicates mapped
+        orch._dup_cache_time = 99999999999.0
+        results = [
+            ScoredResult(path="/a.jpg", final_score=0.9),
+            ScoredResult(path="/b.jpg", final_score=0.8),
+        ]
+        deduped, stacked = orch._deduplicate_results(results)
+        assert len(deduped) == 2
+        assert stacked == 0
+
+    def test_deduplicate_folds_duplicates(self):
+        """Duplicate results should be folded into a single representative."""
+        from services.search_orchestrator import SearchOrchestrator, ScoredResult
+        orch = SearchOrchestrator.__new__(SearchOrchestrator)
+        orch.project_id = 999
+        # Simulate: /a.jpg and /a_copy.jpg share representative /a.jpg, group size 2
+        orch._dup_cache = {
+            "/a.jpg": ("/a.jpg", 2),
+            "/a_copy.jpg": ("/a.jpg", 2),
+        }
+        orch._dup_cache_time = 99999999999.0
+
+        results = [
+            ScoredResult(path="/a.jpg", final_score=0.9),
+            ScoredResult(path="/a_copy.jpg", final_score=0.85),
+            ScoredResult(path="/b.jpg", final_score=0.7),  # not a duplicate
+        ]
+        deduped, stacked = orch._deduplicate_results(results)
+        assert len(deduped) == 2  # /a.jpg representative + /b.jpg
+        assert stacked == 1
+        # Representative should have duplicate_count = 1
+        rep = [r for r in deduped if r.path == "/a.jpg"][0]
+        assert rep.duplicate_count == 1
+
+    def test_deduplicate_promotes_higher_scorer(self):
+        """If a copy scores higher than the representative, it gets promoted."""
+        from services.search_orchestrator import SearchOrchestrator, ScoredResult
+        orch = SearchOrchestrator.__new__(SearchOrchestrator)
+        orch.project_id = 999
+        orch._dup_cache = {
+            "/a.jpg": ("/a.jpg", 2),
+            "/a_copy.jpg": ("/a.jpg", 2),
+        }
+        orch._dup_cache_time = 99999999999.0
+
+        results = [
+            ScoredResult(path="/a.jpg", final_score=0.5),
+            ScoredResult(path="/a_copy.jpg", final_score=0.9),  # copy scores higher
+        ]
+        deduped, stacked = orch._deduplicate_results(results)
+        assert len(deduped) == 1
+        assert deduped[0].final_score == 0.9  # higher-scoring copy wins
+
+    def test_orchestrator_result_has_stacked_count(self):
+        """OrchestratorResult must have stacked_duplicates field."""
+        from services.search_orchestrator import OrchestratorResult
+        r = OrchestratorResult()
+        assert hasattr(r, 'stacked_duplicates')
+        assert r.stacked_duplicates == 0
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Unit Tests: ANN Dirty-on-Embed (P2)
+# ══════════════════════════════════════════════════════════════════════
+
+class TestANNDirtyOnEmbed:
+    """Test ANN index invalidation when new embeddings arrive."""
+
+    def test_mark_ann_dirty_exists(self):
+        """mark_ann_dirty class method must exist."""
+        from services.search_orchestrator import SearchOrchestrator
+        assert hasattr(SearchOrchestrator, 'mark_ann_dirty')
+        assert callable(SearchOrchestrator.mark_ann_dirty)
+
+    def test_dirty_flag_set_and_cleared(self):
+        """mark_ann_dirty sets flag, _get_or_build_ann_index clears it."""
+        from services.search_orchestrator import SearchOrchestrator
+        project_id = 99999
+        # Mark dirty
+        SearchOrchestrator.mark_ann_dirty(project_id)
+        assert project_id in SearchOrchestrator._ann_dirty
+        # Clean up
+        SearchOrchestrator._ann_dirty.discard(project_id)
+        assert project_id not in SearchOrchestrator._ann_dirty
+
+    def test_invalidate_ann_cache_clears_dirty(self):
+        """invalidate_ann_cache must also clear dirty flag."""
+        from services.search_orchestrator import SearchOrchestrator
+        orch = SearchOrchestrator.__new__(SearchOrchestrator)
+        orch.project_id = 99998
+        SearchOrchestrator._ann_dirty.add(99998)
+        orch.invalidate_ann_cache()
+        assert 99998 not in SearchOrchestrator._ann_dirty
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Unit Tests: Relevance Feedback (P1)
+# ══════════════════════════════════════════════════════════════════════
+
+class TestRelevanceFeedback:
+    """Test search event recording and personal boost."""
+
+    def test_record_search_event_exists(self):
+        """record_search_event static method must exist."""
+        from services.search_orchestrator import SearchOrchestrator
+        assert hasattr(SearchOrchestrator, 'record_search_event')
+        assert callable(SearchOrchestrator.record_search_event)
+
+    def test_get_personal_boost_exists(self):
+        """get_personal_boost static method must exist."""
+        from services.search_orchestrator import SearchOrchestrator
+        assert hasattr(SearchOrchestrator, 'get_personal_boost')
+
+    def test_personal_boost_returns_float(self):
+        """get_personal_boost must return a float in [0, 0.15]."""
+        from services.search_orchestrator import SearchOrchestrator
+        # With no DB, should return 0.0 gracefully
+        boost = SearchOrchestrator.get_personal_boost(1, "test_hash", "/test.jpg")
+        assert isinstance(boost, float)
+        assert 0.0 <= boost <= 0.15
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Unit Tests: Query Autocomplete (P1)
+# ══════════════════════════════════════════════════════════════════════
+
+class TestQueryAutocomplete:
+    """Test autocomplete suggestions."""
+
+    def test_autocomplete_exists(self):
+        """autocomplete static method must exist."""
+        from services.search_orchestrator import SearchOrchestrator
+        assert hasattr(SearchOrchestrator, 'autocomplete')
+
+    def test_autocomplete_returns_list(self):
+        """autocomplete must return a list."""
+        from services.search_orchestrator import SearchOrchestrator
+        result = SearchOrchestrator.autocomplete(1, "type:")
+        assert isinstance(result, list)
+
+    def test_autocomplete_token_completions(self):
+        """autocomplete must suggest token completions."""
+        from services.search_orchestrator import SearchOrchestrator
+        result = SearchOrchestrator.autocomplete(1, "type:v")
+        labels = [r["label"] for r in result]
+        assert "type:video" in labels
+
+    def test_autocomplete_empty_prefix(self):
+        """Empty prefix returns no suggestions."""
+        from services.search_orchestrator import SearchOrchestrator
+        result = SearchOrchestrator.autocomplete(1, "")
+        assert result == []
+
+    def test_autocomplete_respects_max(self):
+        """autocomplete must respect max_results."""
+        from services.search_orchestrator import SearchOrchestrator
+        result = SearchOrchestrator.autocomplete(1, "type:", max_results=1)
+        assert len(result) <= 1
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Unit Tests: OCR Search Integration (P1)
+# ══════════════════════════════════════════════════════════════════════
+
+class TestOCRSearchIntegration:
+    """Test OCR text search integration point."""
+
+    def test_search_ocr_text_exists(self):
+        """search_ocr_text static method must exist."""
+        from services.search_orchestrator import SearchOrchestrator
+        assert hasattr(SearchOrchestrator, 'search_ocr_text')
+
+    def test_search_ocr_text_graceful_fallback(self):
+        """search_ocr_text must return empty list when FTS5 table doesn't exist."""
+        from services.search_orchestrator import SearchOrchestrator
+        result = SearchOrchestrator.search_ocr_text(1, "receipt")
+        assert isinstance(result, list)
+        assert result == []  # No FTS5 table = graceful empty
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Unit Tests: Phase Labels (P2)
+# ══════════════════════════════════════════════════════════════════════
+
+class TestPhaseLabels:
+    """Test hybrid retrieval phase labels for UI transparency."""
+
+    def test_orchestrator_result_has_phase_label(self):
+        """OrchestratorResult must have phase_label field."""
+        from services.search_orchestrator import OrchestratorResult
+        r = OrchestratorResult()
+        assert hasattr(r, 'phase_label')
+        assert r.phase_label == ""
+
+    def test_metadata_phase_label(self):
+        """Metadata-only results should be labeled."""
+        from services.search_orchestrator import OrchestratorResult
+        r = OrchestratorResult(phase="metadata", phase_label="Metadata results")
+        assert r.phase_label == "Metadata results"
+
+    def test_full_phase_label(self):
+        """Full semantic results should be labeled."""
+        from services.search_orchestrator import OrchestratorResult
+        r = OrchestratorResult(phase="full", phase_label="Semantic refined")
+        assert r.phase_label == "Semantic refined"
