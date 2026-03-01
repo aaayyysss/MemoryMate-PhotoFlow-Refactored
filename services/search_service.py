@@ -174,10 +174,8 @@ class SearchService:
                 elif criteria.orientation == 'square':
                     where_clauses.append("width = height")
 
-            # Camera model (EXIF data search)
-            if criteria.camera_model:
-                where_clauses.append("camera_model LIKE ?")
-                params.append(f"%{criteria.camera_model}%")
+            # Camera model - column not yet in schema; skip to avoid SQL error
+            # TODO: Add camera_model column to photo_metadata when EXIF persistence is implemented
 
             # GPS data
             # P2-31 FIX: Consistent NULL checking for both coordinate fields
