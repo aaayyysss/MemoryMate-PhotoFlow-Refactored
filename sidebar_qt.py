@@ -1958,14 +1958,12 @@ class SidebarQt(QWidget):
         self._countsReady.connect(self._apply_counts_defensive, Qt.QueuedConnection)        
         
         
-        # Build the tree (counts update async)
-        self._build_tree_model()
-
         # Click handlers
         self.tree.clicked.connect(self._on_item_clicked)
         self.tree.doubleClicked.connect(self._on_item_double_clicked)
 
-        # Start with persisted mode
+        # Build once via switch_display_mode (which calls _build_tree_model internally).
+        # Avoids the previous double-build: __init__ built once, then switch_display_mode rebuilt.
         try:
             mode = current_mode.lower()
             if mode in ("tabs", "accordion"):

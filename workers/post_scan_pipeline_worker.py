@@ -115,7 +115,6 @@ class PostScanPipelineWorker(QRunnable):
                     asset_repo = AssetRepository(db_conn)
                     asset_service = AssetService(photo_repo, asset_repo)
 
-                    logger.info("Starting hash backfill and asset linking for project %d", self.project_id)
                     backfill_stats = asset_service.backfill_hashes_and_link_assets(self.project_id)
                     results["hash_backfill"] = backfill_stats.hashed
                     logger.info(
