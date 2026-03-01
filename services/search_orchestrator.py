@@ -330,10 +330,6 @@ class TokenParser:
         elif key in ("date", "in", "from"):
             return cls._process_date_token(value, filters)
 
-        elif key == "camera":
-            filters["camera_model"] = value
-            return {"type": "camera", "label": f"Camera: {value}", "key": "camera_model", "value": value}
-
         elif key == "ext":
             ext = value_lower if value_lower.startswith('.') else f".{value_lower}"
             filters["extension"] = ext
@@ -1453,32 +1449,7 @@ class LibraryAnalyzer:
                         "icon": "\U0001f4cd",
                     })
 
-                # 4. Camera models
-                cam_rows = conn.execute("""
-                    SELECT camera_model, COUNT(*) as cnt
-                    FROM photo_metadata
-                    WHERE project_id = ? AND camera_model IS NOT NULL
-                      AND camera_model != ''
-                    GROUP BY camera_model
-                    HAVING cnt >= 10
-                    ORDER BY cnt DESC
-                    LIMIT 3
-                """, (project_id,)).fetchall()
-
-                for row in cam_rows:
-                    model = row['camera_model']
-                    cnt = row['cnt']
-                    # Shorten long camera model names
-                    short_model = model
-                    if len(model) > 20:
-                        short_model = model[:18] + "..."
-                    suggestions.append({
-                        "label": f"{short_model} ({cnt:,})",
-                        "query": f"camera:{model.replace(' ', '_')}",
-                        "icon": "\U0001f4f7",
-                    })
-
-                # 5. Videos
+                # 4. Videos
                 vid_row = conn.execute("""
                     SELECT COUNT(*) as cnt FROM photo_metadata
                     WHERE project_id = ?
@@ -1491,7 +1462,7 @@ class LibraryAnalyzer:
                         "icon": "\U0001f3ac",
                     })
 
-                # 6. Photos with faces
+                # 5. Photos with faces
                 try:
                     face_row = conn.execute("""
                         SELECT COUNT(DISTINCT pm.id) as cnt
@@ -1508,7 +1479,7 @@ class LibraryAnalyzer:
                 except Exception:
                     pass  # faces table may not exist
 
-                # 7. Rated photos (3+)
+                # 6. Rated photos (3+)
                 rated_row = conn.execute("""
                     SELECT COUNT(*) as cnt FROM photo_metadata
                     WHERE project_id = ? AND rating >= 3 AND rating < 4

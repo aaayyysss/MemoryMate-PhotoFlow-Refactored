@@ -91,9 +91,10 @@ class TestTokenParser:
         assert plan.filters.get("date_from") == "2024-12-25"
         assert plan.filters.get("date_to") == "2024-12-25"
 
-    def test_camera_token(self):
+    def test_camera_token_ignored(self):
+        """camera: token is not a valid filter (column not in schema)."""
         plan = self.parser.parse("portraits camera:iPhone")
-        assert plan.filters.get("camera_model") == "iPhone"
+        assert "camera_model" not in plan.filters
         assert "portraits" in plan.semantic_text
 
     def test_ext_token(self):
@@ -626,7 +627,6 @@ class TestRelevanceContract:
             "has:location": "has_gps",
             "has:faces": "has_faces",
             "date:2024": "date_from",
-            "camera:Canon": "camera_model",
             "ext:heic": "extension",
             "rating:4": "rating_min",
             "person:face_001": "person_id",

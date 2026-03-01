@@ -1181,9 +1181,6 @@ class SmartFindService:
         if "date_to" in filters:
             criteria.date_to = filters["date_to"]
 
-        if "camera_model" in filters:
-            criteria.camera_model = filters["camera_model"]
-
         if "width_min" in filters:
             criteria.width_min = filters["width_min"]
 
