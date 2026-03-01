@@ -206,12 +206,15 @@ class TestFacetComputer:
         assert facets == {}
 
     def test_media_facet_mixed(self):
+        """Facets need >= 8 results and buckets >= 10% each to appear."""
         from services.search_orchestrator import FacetComputer
-        paths = ["/photos/a.jpg", "/photos/b.mp4", "/photos/c.jpg"]
+        # 5 photos + 5 videos = 10 results, 50/50 split
+        paths = [f"/photos/{i}.jpg" for i in range(5)] + \
+                [f"/photos/{i}.mp4" for i in range(5)]
         facets = FacetComputer.compute(paths, {})
         assert "media" in facets
-        assert facets["media"]["Photos"] == 2
-        assert facets["media"]["Videos"] == 1
+        assert facets["media"]["Photos"] == 5
+        assert facets["media"]["Videos"] == 5
 
     def test_media_facet_no_mix(self):
         """If all results are photos, no media facet (nothing to refine)."""
@@ -220,43 +223,66 @@ class TestFacetComputer:
         facets = FacetComputer.compute(paths, {})
         assert "media" not in facets
 
+    def test_small_result_set_no_facets(self):
+        """Result sets smaller than _MIN_RESULTS_FOR_FACETS get no facets."""
+        from services.search_orchestrator import FacetComputer
+        paths = ["/a.jpg", "/b.mp4", "/c.jpg"]
+        facets = FacetComputer.compute(paths, {})
+        assert facets == {}
+
     def test_year_facet(self):
         from services.search_orchestrator import FacetComputer
-        paths = ["/a.jpg", "/b.jpg", "/c.jpg"]
-        meta = {
-            "/a.jpg": {"created_date": "2024-06-15", "has_gps": False, "rating": 0},
-            "/b.jpg": {"created_date": "2023-03-10", "has_gps": False, "rating": 0},
-            "/c.jpg": {"created_date": "2024-08-20", "has_gps": False, "rating": 0},
-        }
+        # 10 results: 5 in 2024, 5 in 2023 — balanced split
+        paths = [f"/{i}.jpg" for i in range(10)]
+        meta = {}
+        for i in range(5):
+            meta[f"/{i}.jpg"] = {"created_date": "2024-06-15", "has_gps": False, "rating": 0}
+        for i in range(5, 10):
+            meta[f"/{i}.jpg"] = {"created_date": "2023-03-10", "has_gps": False, "rating": 0}
         facets = FacetComputer.compute(paths, meta)
         assert "years" in facets
-        assert facets["years"]["2024"] == 2
-        assert facets["years"]["2023"] == 1
+        assert facets["years"]["2024"] == 5
+        assert facets["years"]["2023"] == 5
 
     def test_location_facet(self):
         from services.search_orchestrator import FacetComputer
-        paths = ["/a.jpg", "/b.jpg"]
-        meta = {
-            "/a.jpg": {"has_gps": True, "created_date": None, "rating": 0},
-            "/b.jpg": {"has_gps": False, "created_date": None, "rating": 0},
-        }
+        # 10 results: 5 with GPS, 5 without — balanced
+        paths = [f"/{i}.jpg" for i in range(10)]
+        meta = {}
+        for i in range(5):
+            meta[f"/{i}.jpg"] = {"has_gps": True, "created_date": None, "rating": 0}
+        for i in range(5, 10):
+            meta[f"/{i}.jpg"] = {"has_gps": False, "created_date": None, "rating": 0}
         facets = FacetComputer.compute(paths, meta)
         assert "location" in facets
-        assert facets["location"]["With Location"] == 1
-        assert facets["location"]["No Location"] == 1
+        assert facets["location"]["With Location"] == 5
+        assert facets["location"]["No Location"] == 5
 
     def test_rating_facet(self):
         from services.search_orchestrator import FacetComputer
-        paths = ["/a.jpg", "/b.jpg", "/c.jpg"]
-        meta = {
-            "/a.jpg": {"has_gps": False, "created_date": None, "rating": 5},
-            "/b.jpg": {"has_gps": False, "created_date": None, "rating": 0},
-            "/c.jpg": {"has_gps": False, "created_date": None, "rating": None},
-        }
+        # 10 results: 5 rated, 5 unrated — balanced
+        paths = [f"/{i}.jpg" for i in range(10)]
+        meta = {}
+        for i in range(5):
+            meta[f"/{i}.jpg"] = {"has_gps": False, "created_date": None, "rating": 5}
+        for i in range(5, 10):
+            meta[f"/{i}.jpg"] = {"has_gps": False, "created_date": None, "rating": 0}
         facets = FacetComputer.compute(paths, meta)
         assert "rated" in facets
-        assert facets["rated"]["Rated"] == 1
-        assert facets["rated"]["Unrated"] == 2
+        assert facets["rated"]["Rated"] == 5
+        assert facets["rated"]["Unrated"] == 5
+
+    def test_lopsided_facet_hidden(self):
+        """90/10 splits should be suppressed — the minority < 10% of total."""
+        from services.search_orchestrator import FacetComputer
+        # 10 results: 9 with GPS, 1 without — lopsided
+        paths = [f"/{i}.jpg" for i in range(10)]
+        meta = {}
+        for i in range(9):
+            meta[f"/{i}.jpg"] = {"has_gps": True, "created_date": None, "rating": 0}
+        meta["/9.jpg"] = {"has_gps": False, "created_date": None, "rating": 0}
+        facets = FacetComputer.compute(paths, meta)
+        assert "location" not in facets
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -1059,6 +1085,22 @@ class TestDuplicateDiversity:
         assert not SearchOrchestrator._is_copy_filename("/photos/IMG_1234.jpg")
         assert not SearchOrchestrator._is_copy_filename("/photos/landscape.png")
 
+    def test_enforce_unique_paths_removes_duplicates(self):
+        """_enforce_unique_paths must keep only first occurrence of each path."""
+        from services.search_orchestrator import SearchOrchestrator, ScoredResult
+        scored = [
+            ScoredResult(path="/a.jpg", final_score=0.95),
+            ScoredResult(path="/b.jpg", final_score=0.90),
+            ScoredResult(path="/a.jpg", final_score=0.85),  # duplicate path
+            ScoredResult(path="/c.jpg", final_score=0.80),
+            ScoredResult(path="/b.jpg", final_score=0.75),  # duplicate path
+        ]
+        unique = SearchOrchestrator._enforce_unique_paths(scored)
+        paths = [r.path for r in unique]
+        assert paths == ["/a.jpg", "/b.jpg", "/c.jpg"]
+        assert unique[0].final_score == 0.95  # kept highest-scored /a.jpg
+        assert unique[1].final_score == 0.90  # kept highest-scored /b.jpg
+
 
 class TestFavoritesSemantics:
     """Regression: Favorites ≡ flag='pick', not rating >= 4."""
@@ -1236,28 +1278,34 @@ class TestFacetHygiene:
     def test_single_bucket_facet_pruned(self):
         """Facets where everything falls in one bucket should be removed."""
         from services.search_orchestrator import FacetComputer
-        # All photos, no videos — media facet should be absent
-        paths = ["/a.jpg", "/b.jpg", "/c.jpg", "/d.jpg", "/e.jpg"]
+        # All photos, no videos, 10 items — media facet should be absent
+        paths = [f"/{i}.jpg" for i in range(10)]
         facets = FacetComputer.compute(paths, {})
         assert "media" not in facets
+
+    def test_small_results_no_facets(self):
+        """Result sets below _MIN_RESULTS_FOR_FACETS get no facets."""
+        from services.search_orchestrator import FacetComputer
+        paths = ["/a.jpg", "/b.mp4", "/c.jpg"]
+        facets = FacetComputer.compute(paths, {})
+        assert facets == {}
 
     def test_facets_ordered_by_entropy(self):
         """Facets should be ordered by discriminating power (entropy)."""
         from services.search_orchestrator import FacetComputer
-        paths = ["/a.jpg", "/b.mp4", "/c.jpg", "/d.jpg", "/e.jpg"]
-        meta = {
-            "/a.jpg": {"has_gps": True, "rating": 5, "created_date": "2024-01-01"},
-            "/b.mp4": {"has_gps": True, "rating": 0, "created_date": "2023-06-15"},
-            "/c.jpg": {"has_gps": False, "rating": 0, "created_date": "2024-03-20"},
-            "/d.jpg": {"has_gps": False, "rating": 0, "created_date": "2024-07-10"},
-            "/e.jpg": {"has_gps": False, "rating": 3, "created_date": "2023-11-05"},
-        }
+        # 10 results with balanced splits for years/location/rating
+        paths = [f"/{i}.jpg" for i in range(5)] + [f"/{i}.mp4" for i in range(5, 10)]
+        meta = {}
+        for i in range(5):
+            meta[f"/{i}.jpg"] = {"has_gps": True, "rating": 5, "created_date": "2024-01-01"}
+        for i in range(5, 10):
+            meta[f"/{i}.mp4"] = {"has_gps": False, "rating": 0, "created_date": "2023-06-15"}
         facets = FacetComputer.compute(paths, meta)
         # Verify result is a dict (entropy ordering is internal)
         assert isinstance(facets, dict)
         # All facets must have 2+ meaningful buckets
         for name, buckets in facets.items():
-            assert len(buckets) >= 1, f"Facet '{name}' has no buckets"
+            assert len(buckets) >= 2, f"Facet '{name}' has fewer than 2 buckets"
 
 
 class TestBackoffTuning:
