@@ -45,12 +45,26 @@ Usage:
 import re
 import time
 import threading
+import math
 from datetime import datetime, timedelta
-from typing import List, Dict, Optional, Tuple, Any
+from typing import List, Dict, Optional, Tuple, Any, Callable
 from dataclasses import dataclass, field
 from logging_config import get_logger
 
 logger = get_logger(__name__)
+
+# Optional FAISS import for ANN retrieval
+try:
+    import numpy as np
+    _numpy_available = True
+except ImportError:
+    _numpy_available = False
+
+try:
+    import faiss as _faiss
+    _faiss_available = True
+except ImportError:
+    _faiss_available = False
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -140,6 +154,9 @@ class OrchestratorResult:
 
     # Backoff
     backoff_applied: bool = False
+
+    # Progressive search phase: "metadata" (fast) or "full" (complete)
+    phase: str = "full"
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -944,6 +961,569 @@ class SearchOrchestrator:
         """Invalidate the metadata cache (call after scans, rating changes, etc.)."""
         self._project_meta_cache = None
         self._meta_cache_time = 0.0
+
+    # ── Progressive Search (metadata first, then semantic) ──
+
+    def search_metadata_only(self, query: str, top_k: int = 200,
+                             extra_filters: Optional[Dict] = None) -> OrchestratorResult:
+        """
+        Phase 1 of progressive search: metadata-only results.
+
+        Returns instantly (<50ms) with filter-matched results.
+        No CLIP/semantic scoring - just structured tokens + NL date/rating
+        extraction + SQL metadata filters. Results scored by recency/fav/location
+        only (clip_score=0 for all).
+
+        The UI should call this first, then call search() for full results.
+        """
+        start = time.time()
+        plan = TokenParser.parse(query)
+        if extra_filters:
+            plan.filters.update(extra_filters)
+
+        # Force metadata-only: even if there's semantic text, only use filters
+        project_meta = self._get_project_meta()
+        scored: List[ScoredResult] = []
+
+        if plan.has_filters():
+            metadata_paths = self._smart_find._run_metadata_filter(plan.filters)
+            for path in metadata_paths[:top_k]:
+                sr = self._score_result(path, 0.0, "", project_meta)
+                scored.append(sr)
+        else:
+            # No explicit filters from tokens - show recent photos as baseline
+            all_paths = list(project_meta.keys())
+            # Sort by date (most recent first)
+            def _date_key(p):
+                m = project_meta.get(p, {})
+                d = m.get("created_date") or m.get("date_taken") or ""
+                return str(d)
+            all_paths.sort(key=_date_key, reverse=True)
+            for path in all_paths[:top_k]:
+                sr = self._score_result(path, 0.0, "", project_meta)
+                scored.append(sr)
+
+        scored.sort(key=lambda r: r.final_score, reverse=True)
+        scored = scored[:top_k]
+
+        result_paths = [r.path for r in scored]
+        facets = FacetComputer.compute(result_paths, project_meta)
+
+        result = OrchestratorResult(
+            paths=result_paths,
+            total_matches=len(result_paths),
+            scored_results=scored,
+            scores={r.path: r.final_score for r in scored},
+            facets=facets,
+            query_plan=plan,
+            execution_time_ms=(time.time() - start) * 1000,
+            label=self._build_label(plan, OrchestratorResult(paths=result_paths)),
+            phase="metadata",
+        )
+        logger.info(
+            f"[SearchOrchestrator] Progressive phase=metadata: "
+            f"query=\"{query}\" → {len(result_paths)} results in "
+            f"{result.execution_time_ms:.0f}ms"
+        )
+        return result
+
+    # ── Find Similar (Excire-style image-to-image) ──
+
+    def find_similar(self, photo_path: str, top_k: int = 50,
+                     threshold: float = 0.5) -> OrchestratorResult:
+        """
+        Find photos visually similar to a reference photo.
+
+        Uses CLIP embeddings + FAISS/numpy cosine similarity (not text query).
+        Returns results through the same OrchestratorResult interface so
+        facets, scoring, and UI all work identically.
+
+        Args:
+            photo_path: Path to the reference photo
+            top_k: Maximum results
+            threshold: Minimum similarity (0-1)
+        """
+        start = time.time()
+
+        try:
+            from services.semantic_embedding_service import get_semantic_embedding_service
+            from repository.project_repository import ProjectRepository
+            from repository.base_repository import DatabaseConnection
+
+            # Get canonical model
+            proj_repo = ProjectRepository()
+            model_name = proj_repo.get_semantic_model(self.project_id) or \
+                "openai/clip-vit-base-patch32"
+            service = get_semantic_embedding_service(model_name=model_name)
+
+            if not service._available:
+                logger.warning("[SearchOrchestrator] find_similar: semantic service not available")
+                return OrchestratorResult(label="Find Similar - AI not available")
+
+            # Get reference photo's embedding
+            db = DatabaseConnection()
+            ref_photo_id = None
+            ref_embedding = None
+
+            with db.get_connection() as conn:
+                # Look up photo_id from path
+                row = conn.execute(
+                    "SELECT id FROM photo_metadata WHERE path = ? AND project_id = ?",
+                    (photo_path, self.project_id)
+                ).fetchone()
+                if not row:
+                    return OrchestratorResult(label="Find Similar - Photo not found")
+                ref_photo_id = row['id']
+
+                # Get its embedding
+                emb_row = conn.execute(
+                    "SELECT embedding FROM semantic_embeddings WHERE photo_id = ?",
+                    (ref_photo_id,)
+                ).fetchone()
+                if not emb_row:
+                    return OrchestratorResult(label="Find Similar - No embedding (run Extract Embeddings)")
+                ref_embedding = np.frombuffer(emb_row['embedding'], dtype=np.float32)
+                if len(ref_embedding) == 0:
+                    ref_embedding = np.frombuffer(emb_row['embedding'], dtype=np.float16).astype(np.float32)
+
+                # Get all project embeddings
+                rows = conn.execute("""
+                    SELECT se.photo_id, se.embedding, pm.path
+                    FROM semantic_embeddings se
+                    JOIN photo_metadata pm ON se.photo_id = pm.id
+                    WHERE pm.project_id = ?
+                """, (self.project_id,)).fetchall()
+
+            if not rows:
+                return OrchestratorResult(label="Find Similar - No embeddings")
+
+            # Build embedding dict
+            embeddings = {}
+            path_by_id = {}
+            for row in rows:
+                try:
+                    emb = np.frombuffer(row['embedding'], dtype=np.float32)
+                    if len(emb) == 0:
+                        emb = np.frombuffer(row['embedding'], dtype=np.float16).astype(np.float32)
+                    if len(emb) > 0:
+                        embeddings[row['photo_id']] = emb
+                        path_by_id[row['photo_id']] = row['path']
+                except Exception:
+                    continue
+
+            # Use the embedding service's find_similar_photos
+            similar_results = service.find_similar_photos(
+                query_embedding=ref_embedding,
+                embeddings=embeddings,
+                top_k=top_k,
+                threshold=threshold,
+                exclude_photo_id=ref_photo_id,
+            )
+
+            # Score through orchestrator pipeline
+            project_meta = self._get_project_meta()
+            scored: List[ScoredResult] = []
+            import os
+            ref_basename = os.path.basename(photo_path)
+
+            for photo_id, sim_score in similar_results:
+                path = path_by_id.get(photo_id, "")
+                if not path:
+                    continue
+                sr = self._score_result(path, sim_score, f"similar to {ref_basename}", project_meta)
+                scored.append(sr)
+
+            scored.sort(key=lambda r: r.final_score, reverse=True)
+
+            result_paths = [r.path for r in scored]
+            facets = FacetComputer.compute(result_paths, project_meta)
+
+            result = OrchestratorResult(
+                paths=result_paths,
+                total_matches=len(result_paths),
+                scored_results=scored,
+                scores={r.path: r.final_score for r in scored},
+                facets=facets,
+                query_plan=QueryPlan(
+                    raw_query=f"similar:{ref_basename}",
+                    source="similar",
+                    semantic_text=f"similar to {ref_basename}",
+                ),
+                execution_time_ms=(time.time() - start) * 1000,
+                label=f"\U0001f3af Similar to {ref_basename}",
+            )
+            self._log_explainability(result.query_plan, result)
+            return result
+
+        except Exception as e:
+            logger.error(f"[SearchOrchestrator] find_similar failed: {e}", exc_info=True)
+            return OrchestratorResult(label=f"Find Similar - Error: {e}")
+
+    # ── ANN Retrieval (two-stage: FAISS candidate → full scoring) ──
+
+    _ann_index_cache: Dict[int, Tuple] = {}  # class-level: {project_id: (index, photo_ids, vectors, timestamp)}
+    _ANN_CACHE_TTL = 300.0  # 5 minutes
+
+    def _get_or_build_ann_index(self):
+        """
+        Get or build a FAISS/numpy ANN index for the project.
+
+        Caches the index for _ANN_CACHE_TTL seconds.
+        For projects with >500 embeddings and FAISS available,
+        uses FAISS IndexFlatIP for O(log n) retrieval.
+        """
+        if not _numpy_available:
+            return None, [], {}
+
+        now = time.time()
+        cached = SearchOrchestrator._ann_index_cache.get(self.project_id)
+        if cached and (now - cached[3]) < self._ANN_CACHE_TTL:
+            return cached[0], cached[1], cached[2]
+
+        try:
+            from repository.base_repository import DatabaseConnection
+            db = DatabaseConnection()
+
+            with db.get_connection() as conn:
+                rows = conn.execute("""
+                    SELECT se.photo_id, se.embedding, pm.path
+                    FROM semantic_embeddings se
+                    JOIN photo_metadata pm ON se.photo_id = pm.id
+                    WHERE pm.project_id = ?
+                """, (self.project_id,)).fetchall()
+
+            if not rows:
+                return None, [], {}
+
+            photo_ids = []
+            vectors = []
+            path_lookup = {}
+
+            for row in rows:
+                try:
+                    emb = np.frombuffer(row['embedding'], dtype=np.float32)
+                    if len(emb) == 0:
+                        emb = np.frombuffer(row['embedding'], dtype=np.float16).astype(np.float32)
+                    if len(emb) > 0:
+                        photo_ids.append(row['photo_id'])
+                        vectors.append(emb)
+                        path_lookup[row['photo_id']] = row['path']
+                except Exception:
+                    continue
+
+            if not vectors:
+                return None, [], {}
+
+            vectors_np = np.vstack(vectors).astype('float32')
+            # Normalize for cosine similarity
+            norms = np.linalg.norm(vectors_np, axis=1, keepdims=True)
+            vectors_np = vectors_np / np.maximum(norms, 1e-8)
+
+            n_vectors = len(photo_ids)
+            dim = vectors_np.shape[1]
+
+            if _faiss_available and n_vectors >= 500:
+                index = _faiss.IndexFlatIP(dim)
+                index.add(vectors_np)
+                index_data = ('faiss', index, vectors_np)
+                logger.info(
+                    f"[SearchOrchestrator] Built FAISS ANN index: "
+                    f"{n_vectors} vectors, dim={dim}"
+                )
+            else:
+                index_data = ('numpy', None, vectors_np)
+                logger.debug(
+                    f"[SearchOrchestrator] Using numpy brute-force: "
+                    f"{n_vectors} vectors"
+                )
+
+            SearchOrchestrator._ann_index_cache[self.project_id] = (
+                index_data, photo_ids, path_lookup, now
+            )
+            return index_data, photo_ids, path_lookup
+
+        except Exception as e:
+            logger.error(f"[SearchOrchestrator] ANN index build failed: {e}")
+            return None, [], {}
+
+    def search_ann(self, query_text: str, top_k: int = 200,
+                   extra_filters: Optional[Dict] = None) -> OrchestratorResult:
+        """
+        Two-stage ANN search: FAISS candidate retrieval → full scoring.
+
+        Stage 1: Encode query with CLIP, use FAISS for fast top-K candidates
+        Stage 2: Apply full scoring contract (recency, favorites, etc.)
+
+        Falls back to standard search() if no ANN index is available.
+        """
+        index_data, photo_ids, path_lookup = self._get_or_build_ann_index()
+        if index_data is None or not photo_ids:
+            # Fallback to standard search
+            return self.search(query_text, top_k, extra_filters)
+
+        start = time.time()
+        plan = TokenParser.parse(query_text)
+        if extra_filters:
+            plan.filters.update(extra_filters)
+
+        try:
+            from services.semantic_embedding_service import get_semantic_embedding_service
+            from repository.project_repository import ProjectRepository
+
+            proj_repo = ProjectRepository()
+            model_name = proj_repo.get_semantic_model(self.project_id) or \
+                "openai/clip-vit-base-patch32"
+            service = get_semantic_embedding_service(model_name=model_name)
+
+            if not service._available or not plan.has_semantic():
+                return self.search(query_text, top_k, extra_filters)
+
+            # Stage 1: Encode query and retrieve candidates via ANN
+            semantic_text = plan.semantic_text or (
+                plan.semantic_prompts[0] if plan.semantic_prompts else ""
+            )
+            if not semantic_text:
+                return self.search(query_text, top_k, extra_filters)
+
+            query_emb = service.encode_text(semantic_text)
+            query_emb = query_emb.astype('float32')
+            query_norm = np.linalg.norm(query_emb)
+            if query_norm > 0:
+                query_emb = query_emb / query_norm
+            query_emb = query_emb.reshape(1, -1)
+
+            index_type, index, vectors = index_data
+            candidate_k = min(top_k * 3, len(photo_ids))
+
+            ann_hits = {}  # {photo_id: (score, query_text)}
+
+            if index_type == 'faiss' and _faiss_available:
+                sims, indices = index.search(query_emb, candidate_k)
+                for sim, idx in zip(sims[0], indices[0]):
+                    if 0 <= idx < len(photo_ids):
+                        ann_hits[photo_ids[idx]] = (float(sim), semantic_text)
+            else:
+                sims = np.dot(vectors, query_emb.T).flatten()
+                if len(sims) > candidate_k:
+                    top_idx = np.argpartition(sims, -candidate_k)[-candidate_k:]
+                else:
+                    top_idx = np.arange(len(sims))
+                for idx in top_idx:
+                    ann_hits[photo_ids[idx]] = (float(sims[idx]), semantic_text)
+
+            # Stage 2: Apply metadata filters + full scoring
+            metadata_candidate_paths = None
+            if plan.has_filters():
+                metadata_paths = self._smart_find._run_metadata_filter(plan.filters)
+                metadata_candidate_paths = set(metadata_paths)
+
+            project_meta = self._get_project_meta()
+            cfg = self._smart_find._get_config()
+            threshold = cfg["threshold"]
+            scored: List[ScoredResult] = []
+
+            for photo_id, (sem_score, prompt) in ann_hits.items():
+                if sem_score < threshold:
+                    continue
+                path = path_lookup.get(photo_id)
+                if not path:
+                    continue
+                if metadata_candidate_paths is not None and path not in metadata_candidate_paths:
+                    continue
+                sr = self._score_result(path, sem_score, prompt, project_meta)
+                scored.append(sr)
+
+            scored.sort(key=lambda r: r.final_score, reverse=True)
+            scored = scored[:top_k]
+
+            result_paths = [r.path for r in scored]
+            facets = FacetComputer.compute(result_paths, project_meta)
+
+            result = OrchestratorResult(
+                paths=result_paths,
+                total_matches=len(result_paths),
+                scored_results=scored,
+                scores={r.path: r.final_score for r in scored},
+                facets=facets,
+                query_plan=plan,
+                execution_time_ms=(time.time() - start) * 1000,
+                label=self._build_label(plan, OrchestratorResult(paths=result_paths)),
+            )
+            self._log_explainability(plan, result)
+            logger.info(
+                f"[SearchOrchestrator] ANN search: "
+                f"index_type={index_type}, candidates={len(ann_hits)}, "
+                f"final={len(scored)}, {result.execution_time_ms:.0f}ms"
+            )
+            return result
+
+        except Exception as e:
+            logger.error(f"[SearchOrchestrator] ANN search failed, falling back: {e}")
+            return self.search(query_text, top_k, extra_filters)
+
+    def invalidate_ann_cache(self):
+        """Invalidate ANN index cache (call after embedding extraction)."""
+        SearchOrchestrator._ann_index_cache.pop(self.project_id, None)
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Library Analyzer - suggested searches from library stats
+# ══════════════════════════════════════════════════════════════════════
+
+class LibraryAnalyzer:
+    """
+    Analyze library metadata to generate contextual search suggestions.
+
+    Produces "suggested searches" chips based on what's actually in the
+    library - inspired by Google Photos' auto-generated albums and
+    Excire's tag suggestions.
+
+    Only suggests what exists (no "Sunsets" if there are no sunset photos).
+    """
+
+    @staticmethod
+    def suggest(project_id: int, max_suggestions: int = 8) -> List[Dict[str, str]]:
+        """
+        Generate search suggestions from library metadata stats.
+
+        Returns list of suggestion dicts:
+            [
+                {"label": "2024 Photos (1,234)", "query": "date:2024", "icon": "📅"},
+                {"label": "Favorites (56)", "query": "is:fav", "icon": "⭐"},
+                {"label": "iPhone shots (890)", "query": "camera:iPhone", "icon": "📱"},
+                ...
+            ]
+        """
+        suggestions = []
+
+        try:
+            from repository.base_repository import DatabaseConnection
+            db = DatabaseConnection()
+
+            with db.get_connection() as conn:
+                # 1. Year distribution - suggest top years
+                year_rows = conn.execute("""
+                    SELECT
+                        SUBSTR(COALESCE(created_date, date_taken), 1, 4) as year,
+                        COUNT(*) as cnt
+                    FROM photo_metadata
+                    WHERE project_id = ?
+                      AND COALESCE(created_date, date_taken) IS NOT NULL
+                      AND LENGTH(COALESCE(created_date, date_taken)) >= 4
+                    GROUP BY year
+                    HAVING cnt >= 5
+                    ORDER BY cnt DESC
+                    LIMIT 4
+                """, (project_id,)).fetchall()
+
+                for row in year_rows:
+                    year = row['year']
+                    cnt = row['cnt']
+                    if year and year.isdigit() and 1990 <= int(year) <= 2099:
+                        suggestions.append({
+                            "label": f"{year} ({cnt:,})",
+                            "query": f"date:{year}",
+                            "icon": "\U0001f4c5",
+                        })
+
+                # 2. Favorites count
+                fav_row = conn.execute("""
+                    SELECT COUNT(*) as cnt FROM photo_metadata
+                    WHERE project_id = ? AND rating >= 4
+                """, (project_id,)).fetchone()
+                if fav_row and fav_row['cnt'] > 0:
+                    suggestions.append({
+                        "label": f"Favorites ({fav_row['cnt']:,})",
+                        "query": "is:fav",
+                        "icon": "\u2b50",
+                    })
+
+                # 3. Photos with GPS
+                gps_row = conn.execute("""
+                    SELECT COUNT(*) as cnt FROM photo_metadata
+                    WHERE project_id = ?
+                      AND gps_latitude IS NOT NULL
+                      AND gps_longitude IS NOT NULL
+                      AND gps_latitude != 0
+                """, (project_id,)).fetchone()
+                if gps_row and gps_row['cnt'] > 0:
+                    suggestions.append({
+                        "label": f"With Location ({gps_row['cnt']:,})",
+                        "query": "has:location",
+                        "icon": "\U0001f4cd",
+                    })
+
+                # 4. Camera models
+                cam_rows = conn.execute("""
+                    SELECT camera_model, COUNT(*) as cnt
+                    FROM photo_metadata
+                    WHERE project_id = ? AND camera_model IS NOT NULL
+                      AND camera_model != ''
+                    GROUP BY camera_model
+                    HAVING cnt >= 10
+                    ORDER BY cnt DESC
+                    LIMIT 3
+                """, (project_id,)).fetchall()
+
+                for row in cam_rows:
+                    model = row['camera_model']
+                    cnt = row['cnt']
+                    # Shorten long camera model names
+                    short_model = model
+                    if len(model) > 20:
+                        short_model = model[:18] + "..."
+                    suggestions.append({
+                        "label": f"{short_model} ({cnt:,})",
+                        "query": f"camera:{model.replace(' ', '_')}",
+                        "icon": "\U0001f4f7",
+                    })
+
+                # 5. Videos
+                vid_row = conn.execute("""
+                    SELECT COUNT(*) as cnt FROM photo_metadata
+                    WHERE project_id = ?
+                      AND LOWER(SUBSTR(path, -4)) IN ('.mp4', '.mov', '.avi', '.mkv', '.m4v')
+                """, (project_id,)).fetchone()
+                if vid_row and vid_row['cnt'] > 0:
+                    suggestions.append({
+                        "label": f"Videos ({vid_row['cnt']:,})",
+                        "query": "type:video",
+                        "icon": "\U0001f3ac",
+                    })
+
+                # 6. Photos with faces
+                try:
+                    face_row = conn.execute("""
+                        SELECT COUNT(DISTINCT pm.id) as cnt
+                        FROM photo_metadata pm
+                        JOIN faces f ON pm.id = f.photo_id
+                        WHERE pm.project_id = ?
+                    """, (project_id,)).fetchone()
+                    if face_row and face_row['cnt'] > 0:
+                        suggestions.append({
+                            "label": f"With Faces ({face_row['cnt']:,})",
+                            "query": "has:faces",
+                            "icon": "\U0001f464",
+                        })
+                except Exception:
+                    pass  # faces table may not exist
+
+                # 7. Rated photos (3+)
+                rated_row = conn.execute("""
+                    SELECT COUNT(*) as cnt FROM photo_metadata
+                    WHERE project_id = ? AND rating >= 3 AND rating < 4
+                """, (project_id,)).fetchone()
+                if rated_row and rated_row['cnt'] > 0:
+                    suggestions.append({
+                        "label": f"3+ Stars ({rated_row['cnt']:,})",
+                        "query": "rating:3",
+                        "icon": "\u2b50",
+                    })
+
+        except Exception as e:
+            logger.warning(f"[LibraryAnalyzer] suggest failed: {e}")
+
+        return suggestions[:max_suggestions]
 
 
 # ══════════════════════════════════════════════════════════════════════

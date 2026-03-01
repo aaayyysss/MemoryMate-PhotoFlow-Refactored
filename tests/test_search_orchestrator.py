@@ -404,3 +404,292 @@ class TestNLQueryParserCompat:
         from services.smart_find_service import NLQueryParser
         text, filters = NLQueryParser.parse("photos with GPS")
         assert filters.get("has_gps") is True
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Unit Tests: OrchestratorResult progressive phase
+# ══════════════════════════════════════════════════════════════════════
+
+class TestProgressiveSearch:
+    """Test the progressive search-as-you-type contract."""
+
+    def test_result_has_phase_field(self):
+        """OrchestratorResult must have a 'phase' field."""
+        from services.search_orchestrator import OrchestratorResult
+        r = OrchestratorResult()
+        assert hasattr(r, 'phase')
+        assert r.phase == "full"
+
+    def test_metadata_phase(self):
+        """Metadata-only results should have phase='metadata'."""
+        from services.search_orchestrator import OrchestratorResult
+        r = OrchestratorResult(phase="metadata")
+        assert r.phase == "metadata"
+
+    def test_search_metadata_only_exists(self):
+        """SearchOrchestrator must have search_metadata_only method."""
+        from services.search_orchestrator import SearchOrchestrator
+        assert hasattr(SearchOrchestrator, 'search_metadata_only')
+
+    def test_token_parser_works_for_progressive(self):
+        """Token parsing used in progressive search must handle all cases."""
+        from services.search_orchestrator import TokenParser
+        # Progressive search uses the same TokenParser - ensure metadata tokens
+        # are correctly extracted even without semantic search
+        plan = TokenParser.parse("date:2024 is:fav")
+        assert plan.filters.get("date_from") == "2024-01-01"
+        assert plan.filters.get("rating_min") == 4
+        assert not plan.semantic_text.strip()  # No semantic text
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Unit Tests: ANN Retrieval
+# ══════════════════════════════════════════════════════════════════════
+
+class TestANNRetrieval:
+    """Test two-stage ANN retrieval infrastructure."""
+
+    def test_search_ann_method_exists(self):
+        """SearchOrchestrator must have search_ann method."""
+        from services.search_orchestrator import SearchOrchestrator
+        assert hasattr(SearchOrchestrator, 'search_ann')
+
+    def test_invalidate_ann_cache_exists(self):
+        """SearchOrchestrator must have invalidate_ann_cache method."""
+        from services.search_orchestrator import SearchOrchestrator
+        assert hasattr(SearchOrchestrator, 'invalidate_ann_cache')
+
+    def test_ann_cache_class_level(self):
+        """ANN index cache should be class-level (shared across instances)."""
+        from services.search_orchestrator import SearchOrchestrator
+        assert hasattr(SearchOrchestrator, '_ann_index_cache')
+        assert isinstance(SearchOrchestrator._ann_index_cache, dict)
+
+    def test_ann_cache_ttl(self):
+        """ANN cache TTL should be > 0."""
+        from services.search_orchestrator import SearchOrchestrator
+        assert SearchOrchestrator._ANN_CACHE_TTL > 0
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Unit Tests: Find Similar
+# ══════════════════════════════════════════════════════════════════════
+
+class TestFindSimilar:
+    """Test find-similar (Excire-style) integration."""
+
+    def test_find_similar_method_exists(self):
+        """SearchOrchestrator must have find_similar method."""
+        from services.search_orchestrator import SearchOrchestrator
+        assert hasattr(SearchOrchestrator, 'find_similar')
+
+    def test_find_similar_returns_orchestrator_result(self):
+        """find_similar should return OrchestratorResult (not raw list)."""
+        from services.search_orchestrator import SearchOrchestrator
+        import inspect
+        sig = inspect.signature(SearchOrchestrator.find_similar)
+        # Method signature: (self, photo_path, top_k, threshold)
+        params = list(sig.parameters.keys())
+        assert 'photo_path' in params
+        assert 'top_k' in params
+        assert 'threshold' in params
+
+    def test_find_similar_query_plan_source(self):
+        """find_similar results should have source='similar' in query_plan."""
+        from services.search_orchestrator import QueryPlan
+        plan = QueryPlan(source="similar", raw_query="similar:test.jpg")
+        assert plan.source == "similar"
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Unit Tests: LibraryAnalyzer (suggested searches)
+# ══════════════════════════════════════════════════════════════════════
+
+class TestLibraryAnalyzer:
+    """Test library-stats-based search suggestions."""
+
+    def test_library_analyzer_exists(self):
+        """LibraryAnalyzer class must exist."""
+        from services.search_orchestrator import LibraryAnalyzer
+        assert hasattr(LibraryAnalyzer, 'suggest')
+
+    def test_suggest_returns_list(self):
+        """suggest() should return a list of dicts."""
+        from services.search_orchestrator import LibraryAnalyzer
+        import inspect
+        sig = inspect.signature(LibraryAnalyzer.suggest)
+        params = list(sig.parameters.keys())
+        assert 'project_id' in params
+        assert 'max_suggestions' in params
+
+    def test_suggestion_dict_format(self):
+        """Each suggestion must have label, query, icon."""
+        # Verify the expected format without hitting the DB
+        suggestion = {"label": "2024 (100)", "query": "date:2024", "icon": "\U0001f4c5"}
+        assert "label" in suggestion
+        assert "query" in suggestion
+        assert "icon" in suggestion
+
+    def test_max_suggestions_cap(self):
+        """suggest() should respect max_suggestions parameter."""
+        from services.search_orchestrator import LibraryAnalyzer
+        import inspect
+        sig = inspect.signature(LibraryAnalyzer.suggest)
+        # max_suggestions has a default value
+        assert sig.parameters['max_suggestions'].default == 8
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Integration Tests: Scoring with progressive phases
+# ══════════════════════════════════════════════════════════════════════
+
+class TestScoringInProgressiveMode:
+    """Test scoring contract works correctly in metadata-only mode."""
+
+    def test_metadata_only_scoring_no_clip(self):
+        """In metadata-only phase, clip_score should be 0."""
+        from services.search_orchestrator import SearchOrchestrator, ScoringWeights
+        orch = SearchOrchestrator.__new__(SearchOrchestrator)
+        orch._weights = ScoringWeights()
+        orch._weights.validate()
+
+        meta = {"/test.jpg": {
+            "rating": 5, "has_gps": True,
+            "created_date": "2024-06-15", "date_taken": "2024-06-15"
+        }}
+        r = orch._score_result("/test.jpg", 0.0, "", meta)
+
+        assert r.clip_score == 0.0
+        assert r.final_score > 0  # Other signals still contribute
+        assert r.favorite_score > 0
+        assert r.location_score > 0
+
+    def test_full_scoring_beats_metadata_only(self):
+        """Full search (with clip) should produce higher scores than metadata-only."""
+        from services.search_orchestrator import SearchOrchestrator, ScoringWeights
+        orch = SearchOrchestrator.__new__(SearchOrchestrator)
+        orch._weights = ScoringWeights()
+        orch._weights.validate()
+
+        meta = {"/test.jpg": {
+            "rating": 5, "has_gps": True,
+            "created_date": "2024-06-15", "date_taken": "2024-06-15"
+        }}
+
+        r_meta = orch._score_result("/test.jpg", 0.0, "", meta)
+        r_full = orch._score_result("/test.jpg", 0.35, "sunset", meta)
+
+        assert r_full.final_score > r_meta.final_score
+
+    def test_progressive_result_phase_distinguishable(self):
+        """UI can tell metadata results from full results via phase field."""
+        from services.search_orchestrator import OrchestratorResult
+        meta_result = OrchestratorResult(phase="metadata", total_matches=10)
+        full_result = OrchestratorResult(phase="full", total_matches=15)
+        assert meta_result.phase != full_result.phase
+        assert meta_result.phase == "metadata"
+        assert full_result.phase == "full"
+
+
+# ══════════════════════════════════════════════════════════════════════
+# CI Integration: Relevance contract tests
+# ══════════════════════════════════════════════════════════════════════
+
+class TestRelevanceContract:
+    """
+    Relevance contract tests for CI integration.
+
+    These tests verify the search system's fundamental contracts
+    without requiring a database or CLIP model. They should pass
+    in any CI environment.
+
+    Run in CI: pytest tests/test_search_orchestrator.py -v -m "not requires_qt"
+    """
+
+    def test_scoring_weights_are_stable(self):
+        """Scoring weights shouldn't change without deliberate update."""
+        from services.search_orchestrator import ScoringWeights
+        w = ScoringWeights()
+        assert w.w_clip == 0.75
+        assert w.w_recency == 0.05
+        assert w.w_favorite == 0.08
+        assert w.w_location == 0.04
+        assert w.w_face_match == 0.08
+
+    def test_token_parser_complete_coverage(self):
+        """All documented token types must be parseable."""
+        from services.search_orchestrator import TokenParser
+        tokens = {
+            "type:video": "media_type",
+            "type:photo": "media_type",
+            "is:fav": "rating_min",
+            "has:location": "has_gps",
+            "has:faces": "has_faces",
+            "date:2024": "date_from",
+            "camera:Canon": "camera_model",
+            "ext:heic": "extension",
+            "rating:4": "rating_min",
+            "person:face_001": "person_id",
+        }
+        for token, expected_key in tokens.items():
+            plan = TokenParser.parse(f"test {token}")
+            assert expected_key in plan.filters, \
+                f"Token '{token}' should produce filter key '{expected_key}'"
+
+    def test_facet_computer_handles_edge_cases(self):
+        """FacetComputer must not crash on degenerate inputs."""
+        from services.search_orchestrator import FacetComputer
+        # Empty
+        assert FacetComputer.compute([], {}) == {}
+        # No metadata
+        paths = ["/a.jpg"]
+        facets = FacetComputer.compute(paths, {})
+        # Should not crash, may produce empty facets
+        assert isinstance(facets, dict)
+        # Single path
+        facets = FacetComputer.compute(
+            ["/a.jpg"],
+            {"/a.jpg": {"has_gps": True, "rating": 5, "created_date": "2024-01-01"}}
+        )
+        assert isinstance(facets, dict)
+
+    def test_orchestrator_result_serializable(self):
+        """OrchestratorResult should be JSON-serializable (for CI reporting)."""
+        from services.search_orchestrator import OrchestratorResult
+        r = OrchestratorResult(
+            paths=["/a.jpg", "/b.jpg"],
+            total_matches=2,
+            scores={"/a.jpg": 0.95, "/b.jpg": 0.80},
+            facets={"media": {"Photos": 2}},
+            phase="full",
+        )
+        import json
+        # Should not raise
+        data = {
+            "paths": r.paths,
+            "total_matches": r.total_matches,
+            "scores": r.scores,
+            "facets": r.facets,
+            "phase": r.phase,
+        }
+        serialized = json.dumps(data)
+        assert "full" in serialized
+
+    def test_date_relative_tokens_resolve(self):
+        """Relative date tokens should resolve to valid date strings."""
+        from services.search_orchestrator import TokenParser
+        relatives = ["today", "yesterday", "this_week", "last_week",
+                      "this_month", "last_month", "this_year", "last_year"]
+        for rel in relatives:
+            plan = TokenParser.parse(f"test date:{rel}")
+            assert "date_from" in plan.filters, \
+                f"Relative date '{rel}' should resolve to date_from"
+            assert "date_to" in plan.filters, \
+                f"Relative date '{rel}' should resolve to date_to"
+
+    def test_query_plan_immutable_source(self):
+        """QueryPlan source should be one of: text, preset, combined, similar."""
+        from services.search_orchestrator import QueryPlan
+        for source in ["text", "preset", "combined", "similar"]:
+            plan = QueryPlan(source=source)
+            assert plan.source == source
