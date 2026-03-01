@@ -839,18 +839,18 @@ class FindSection(BaseSection):
         extra_filters = self._get_refine_filters()
 
         # Phase 1: Metadata-only results (instant, <50ms)
+        # Use orchestrator's built label for stable identity across phases
         try:
             orch = service.orchestrator
             meta_result = orch.search_metadata_only(
                 query, extra_filters=extra_filters or None
             )
             if meta_result.paths:
-                self._active_query_label = f"\U0001f50d {query} (searching...)"
-                self._show_active_indicator(
-                    f"\U0001f50d {query}", meta_result.total_matches
-                )
+                phase1_label = meta_result.label or f"\U0001f50d {query}"
+                self._active_query_label = phase1_label
+                self._show_active_indicator(phase1_label, meta_result.total_matches)
                 self._show_facet_chips(meta_result.facets)
-                self.smartFindTriggered.emit(meta_result.paths, f"\U0001f50d {query}")
+                self.smartFindTriggered.emit(meta_result.paths, phase1_label)
                 if meta_result.scores:
                     self.smartFindScores.emit(meta_result.scores)
         except Exception:
