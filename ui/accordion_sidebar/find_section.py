@@ -43,7 +43,7 @@ from PySide6.QtWidgets import (
     QGridLayout, QSizePolicy, QDialog, QDialogButtonBox,
     QTextEdit, QSlider, QMessageBox, QMenu
 )
-from PySide6.QtCore import Signal, Qt, QTimer
+from PySide6.QtCore import Signal, Qt, QTimer, QRunnable, QObject, QThreadPool
 from PySide6.QtGui import QAction
 from .base_section import BaseSection
 
@@ -258,6 +258,73 @@ class PresetEditorDialog(QDialog):
         }
 
 
+class _SmartFindSignals(QObject):
+    """Signals for async Smart Find search worker."""
+    finished = Signal(object)  # dict with search results
+
+
+class _SmartFindWorker(QRunnable):
+    """
+    Background worker for Smart Find searches.
+
+    Runs find_by_preset() or find_by_text() off the main thread
+    so that heavy CLIP model loading (torch/transformers import +
+    weight deserialization) never freezes the UI.
+    """
+
+    def __init__(self, service, preset_id: str = None,
+                 query: str = None, extra_filters: dict = None,
+                 display_label: str = ""):
+        super().__init__()
+        self.signals = _SmartFindSignals()
+        self._service = service
+        self._preset_id = preset_id
+        self._query = query
+        self._extra_filters = extra_filters
+        self._display_label = display_label
+
+    def run(self):
+        try:
+            if self._preset_id:
+                result = self._service.find_by_preset(
+                    self._preset_id,
+                    extra_filters=self._extra_filters or None,
+                )
+            else:
+                result = self._service.find_by_text(
+                    self._query,
+                    extra_filters=self._extra_filters or None,
+                )
+
+            # Compute facets in this same background thread
+            facets = {}
+            try:
+                orch = self._service.orchestrator
+                if hasattr(orch, '_get_project_meta'):
+                    from services.search_orchestrator import FacetComputer
+                    project_meta = orch._get_project_meta()
+                    facets = FacetComputer.compute(result.paths, project_meta)
+            except Exception:
+                pass
+
+            self.signals.finished.emit({
+                'preset_id': self._preset_id,
+                'query': self._query,
+                'display_label': self._display_label,
+                'result': result,
+                'facets': facets,
+            })
+        except Exception as e:
+            logger.error(f"[FindSection] Async search failed: {e}")
+            self.signals.finished.emit({
+                'preset_id': self._preset_id,
+                'query': self._query,
+                'display_label': self._display_label,
+                'result': None,
+                'facets': {},
+            })
+
+
 class FindSection(BaseSection):
     """
     Smart Find section for the AccordionSidebar.
@@ -300,6 +367,8 @@ class FindSection(BaseSection):
         self._refine_filters: Dict[str, any] = {}
         # Combinable filter state
         self._active_filters: List[Dict] = []  # [{type, id, label, icon}]
+        # Async search worker reference (for cancellation)
+        self._search_worker: Optional[_SmartFindWorker] = None
 
     def get_section_id(self) -> str:
         return "find"
@@ -772,32 +841,42 @@ class FindSection(BaseSection):
         QTimer.singleShot(0, lambda: self._run_preset_find(preset_id, extra_filters))
 
     def _run_preset_find(self, preset_id: str, extra_filters: Dict):
-        """Execute preset find and emit results."""
+        """Execute preset find asynchronously in a background thread."""
         service = self._get_service()
         if not service:
             return
 
-        result = service.find_by_preset(preset_id, extra_filters=extra_filters or None)
+        worker = _SmartFindWorker(
+            service, preset_id=preset_id, extra_filters=extra_filters,
+        )
+        worker.signals.finished.connect(self._on_search_result)
+        self._search_worker = worker
+        QThreadPool.globalInstance().start(worker)
 
-        # Get facets from orchestrator result (if available)
-        facets = {}
-        try:
-            orch = service.orchestrator
-            # Re-fetch facets from the orchestrator's last result
-            if hasattr(orch, '_get_project_meta'):
-                from services.search_orchestrator import FacetComputer
-                project_meta = orch._get_project_meta()
-                facets = FacetComputer.compute(result.paths, project_meta)
-        except Exception:
-            pass
+    def _on_search_result(self, data: dict):
+        """Handle search results delivered from background worker."""
+        result = data.get('result')
+        if result is None:
+            return
+
+        preset_id = data.get('preset_id')
+        query = data.get('query')
+        facets = data.get('facets', {})
+        display_label = data.get('display_label') or result.query_label
+
+        # Guard: if user started a different search, discard stale results
+        if preset_id and self._active_preset_id != preset_id:
+            return
+        if query and self._active_text_query != query:
+            return
 
         if result.paths:
-            self._active_query_label = result.query_label
-            self._show_active_indicator(result.query_label, result.total_matches)
+            self._active_query_label = display_label
+            self._show_active_indicator(display_label, result.total_matches)
             self._show_facet_chips(facets)
-            self._add_recent(result.query_label, preset_id, result.total_matches)
-            self.smartFindTriggered.emit(result.paths, result.query_label)
-            # Emit scores for confidence overlay
+            key = preset_id or query
+            self._add_recent(display_label, key, result.total_matches)
+            self.smartFindTriggered.emit(result.paths, display_label)
             if result.scores:
                 self.smartFindScores.emit(result.scores)
         else:
@@ -805,13 +884,13 @@ class FindSection(BaseSection):
             empty_hints = {
                 "favorites": "No favorites yet \u2014 flag photos as Pick to see them here",
             }
-            hint = empty_hints.get(preset_id, "")
+            hint = empty_hints.get(preset_id, "") if preset_id else ""
             if hint:
-                self._show_active_indicator(result.query_label, 0, hint=hint)
+                self._show_active_indicator(display_label, 0, hint=hint)
             else:
-                self._show_active_indicator(result.query_label, 0)
+                self._show_active_indicator(display_label, 0)
             self._show_facet_chips({})
-            self.smartFindTriggered.emit([], result.query_label)
+            self.smartFindTriggered.emit([], display_label)
 
     def _on_search_text_changed(self, text: str):
         """Debounced text input handler."""
@@ -867,15 +946,13 @@ class FindSection(BaseSection):
         except Exception:
             pass  # Phase 1 is best-effort
 
-        # Phase 2: Full search (may take 200ms-2s for CLIP)
-        # Use QTimer.singleShot to avoid blocking the UI thread
-        QTimer.singleShot(0, lambda: self._execute_full_search(
-            query, extra_filters, display_label))
+        # Phase 2: Full search — runs in background thread to avoid freezing UI
+        # during CLIP model loading (import torch + transformers can take 20+ seconds)
+        self._execute_full_search(query, extra_filters, display_label)
 
     def _execute_full_search(self, query: str, extra_filters: Dict,
                              display_label: str = ""):
-        """Phase 2 of progressive search: full semantic + metadata results."""
-        # Guard: if user typed something new, don't overwrite
+        """Phase 2 of progressive search: full semantic + metadata results (async)."""
         if self._active_text_query != query:
             return
 
@@ -883,32 +960,13 @@ class FindSection(BaseSection):
         if not service:
             return
 
-        result = service.find_by_text(query, extra_filters=extra_filters or None)
-
-        # Guard again after search completes
-        if self._active_text_query != query:
-            return
-
-        # Get facets from orchestrator
-        facets = {}
-        try:
-            orch = service.orchestrator
-            if hasattr(orch, '_get_project_meta'):
-                from services.search_orchestrator import FacetComputer
-                project_meta = orch._get_project_meta()
-                facets = FacetComputer.compute(result.paths, project_meta)
-        except Exception:
-            pass
-
-        # Reuse the stable display_label from Phase 1 (no jitter)
-        label = display_label or result.query_label
-        self._active_query_label = label
-        self._show_active_indicator(label, result.total_matches)
-        self._show_facet_chips(facets)
-        self._add_recent(label, query, result.total_matches)
-        self.smartFindTriggered.emit(result.paths, label)
-        if result.scores:
-            self.smartFindScores.emit(result.scores)
+        worker = _SmartFindWorker(
+            service, query=query, extra_filters=extra_filters,
+            display_label=display_label,
+        )
+        worker.signals.finished.connect(self._on_search_result)
+        self._search_worker = worker
+        QThreadPool.globalInstance().start(worker)
 
     def _on_refine_changed(self, _=None):
         """Re-run current find with updated refine filters."""
