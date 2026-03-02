@@ -151,9 +151,14 @@ BUILTIN_PRESETS = [
     },
     {
         "id": "documents", "name": "Documents", "icon": "\U0001f4c4",
-        "prompts": ["document", "text", "paper", "receipt", "handwriting"],
+        "prompts": [
+            "scanned document", "printed page", "form",
+            "invoice", "receipt", "handwritten note",
+        ],
+        "negative_prompts": ["screenshot", "phone screen", "app interface"],
         "category": "media",
         "semantic_weight": 0.4,
+        "allow_backoff": False,  # Precision-first: do not lower threshold
     },
     {
         "id": "videos", "name": "Videos", "icon": "\U0001f3ac",
