@@ -1,0 +1,271 @@
+Audit, verify, analyse, I am not seeing “search results improved” because the current Documents preset is structurally set up to accept any image that contains text-like patterns, especially after backoff lowers the CLIP threshold. In the snippet, hereto pasted "2026-03-02 13:47:13,409 [INFO] [GooglePhotosLayout] Smart Find: '📱 Screenshots' → 6 results [GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px) [paths=6 photos]... [GooglePhotosLayout] 🔍 Starting async photo load (generation 24) - existing content preserved... [GooglePhotosLayout] Photo load worker started (generation 24, legacy/paths) 2026-03-02 13:47:13,482 [INFO] Photo query complete: generation=24, current=24, rows=6 [GooglePhotosLayout] Dispatching 6 assets (photos+videos) to background grouping worker... [GooglePhotosLayout] Grouped into 6 date groups [GooglePhotosLayout] Tracking 6 paths for multi-selection [GooglePhotosLayout] Virtual scrolling enabled: 6 total date groups [GooglePhotosLayout] Rendered: 5 groups | Placeholders: 1 groups [GooglePhotosLayout] Queued 5 thumbnails for loading (initial limit: 50) [GooglePhotosLayout] Photo loading complete! Thumbnails will load progressively. 2026-03-02 13:47:19,008 [INFO] [SemanticSearchService] Query 'document': 2 matches (threshold=0.22, top_k=600) 2026-03-02 13:47:19,031 [INFO] [SemanticSearchService] Query 'text': 6 matches (threshold=0.22, top_k=600) 2026-03-02 13:47:19,051 [INFO] [SemanticSearchService] Query 'paper': 4 matches (threshold=0.22, top_k=600) 2026-03-02 13:47:19,069 [INFO] [SemanticSearchService] Query 'receipt': 0 matches (threshold=0.22, top_k=600) 2026-03-02 13:47:19,089 [INFO] [SemanticSearchService] Query 'handwriting': 0 matches (threshold=0.22, top_k=600) 2026-03-02 13:47:19,091 [INFO] [SearchOrchestrator] query="Documents" | 4 results | 103ms | weights=[clip=0.75 rec=0.05 fav=0.08 loc=0.04 face=0.08] 2026-03-02 13:47:19,091 [INFO] #1 0.2063 | clip=0.220 rec=0.0206 fav=0.00 loc=1.0 face=0.0 | img_6995_2_2_2.jpeg 2026-03-02 13:47:19,092 [INFO] #2 0.1766 | clip=0.230 rec=0.0877 fav=0.00 loc=0.0 face=0.0 | pexels-matreding-11363475.jpg [+3] 2026-03-02 13:47:19,092 [INFO] #3 0.1720 | clip=0.228 rec=0.0226 fav=0.00 loc=0.0 face=0.0 | ammar3_2_2_2_2.jpeg 2026-03-02 13:47:19,092 [INFO] #4 0.1679 | clip=0.224 rec=0.0029 fav=0.00 loc=0.0 face=0.0 | alya1_2_2_2.jpeg [+1] 2026-03-02 13:47:19,093 [INFO] [SmartFind] Preset 'Documents': 4 results in 103ms (CLIP=True, filters=False, backoff=False) 2026-03-02 13:47:19,095 [INFO] [GooglePhotosLayout] Smart Find: '📄 Documents' → 4 results [GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px) [paths=4 photos]... [GooglePhotosLayout] 🔍 Starting async photo load (generation 25) - existing content preserved... [GooglePhotosLayout] Photo load worker started (generation 25, legacy/paths) 2026-03-02 13:47:19,167 [INFO] Photo query complete: generation=25, current=25, rows=4 [GooglePhotosLayout] Dispatching 4 assets (photos+videos) to background grouping worker... [GooglePhotosLayout] Grouped into 4 date groups [GooglePhotosLayout] Tracking 4 paths for multi-selection [GooglePhotosLayout] Virtual scrolling enabled: 4 total date groups [GooglePhotosLayout] Rendered: 4 groups | Placeholders: 0 groups [GooglePhotosLayout] Queued 4 thumbnails for loading (initial limit: 50) [GooglePhotosLayout] Photo loading complete! Thumbnails will load progressively. 2026-03-02 13:47:23,498 [INFO] SearchService initialized 2026-03-02 13:47:23,500 [INFO] Search completed: 25 results in 2.05ms 2026-03-02 13:47:23,501 [INFO] [SearchOrchestrator] query="Videos" | 0 results | 5ms | filters={'media_type': 'video'} 2026-03-02 13:47:23,502 [INFO] [SmartFind] Preset 'Videos': 0 results in 5ms (CLIP=False, filters=True, backoff=False) 2026-03-02 13:47:23,503 [INFO] [GooglePhotosLayout] Smart Find: '🎬 Videos' → 0 results 2026-03-02 13:47:23,504 [INFO] [GooglePhotosLayout] Smart Find empty state shown for '🎬 Videos' [UI] Generation bumped 0 -> 1: shutdown barrier [Shutdown] _closing flag set, ui_generation=1, beginning teardown... 2026-03-02 13:48:45,330 [INFO] [Store] ShutdownRequested src=main_window deltas={'ui_epoch': '0→1'} → 3 subscriber(s) 2026-03-02 13:48:45,331 [INFO] [JobManager] Canceled 0 jobs [Shutdown] JobManager barrier complete (drained=True). 2026-03-02 13:48:45,331 [INFO] Scan cancellation requested 2026-03-02 13:48:45,333 [INFO] Scan stop requested via adapter 2026-03-02 13:48:45,333 [INFO] [ScanController] DBWriter shut down 2026-03-02 13:48:45,333 [INFO] [ScanController] Shutdown barrier complete (drained=True) [Shutdown] ScanController barrier complete.", the prompt set includes text (very broad) and the threshold is low (0.22), so screenshots (UI text, menus, chat bubbles, web pages) naturally score as “document-ish”.
+
+Below is a step-by-step Search Quality Checklist review of your app_log.txt (the file you uploaded) plus your pasted March 02 snippet, then a concrete patch list by file to eliminate false “Documents” hits while keeping recall strong, aligned with iPhone, Google Photos, Lightroom, Excire patterns (hybrid signals, gated broad prompts, strong type semantics).
+
+Step-by-step Search Quality Checklist, updated verdicts
+1) Type integrity, “Documents” must not be “anything with text”
+
+Symptom in logs
+
+Documents preset runs CLIP prompts: document, text, paper, receipt, handwriting.
+
+text returns the largest hit count, then results shown are clearly not guaranteed to be document media.
+
+With backoff, threshold drops from 0.22 to 0.18 in app_log.txt, which increases recall but collapses precision.
+
+Why this happens
+
+“text” is a semantic magnet for screenshots.
+
+Backoff makes it worse: it trades precision for count without query-specific safety.
+
+Fix direction
+
+Documents must become a gated, hybrid classifier, not “CLIP-only + backoff”.
+
+Use metadata screenshot detection first.
+
+Use doc-shape and OCR density second.
+
+Use CLIP third, but with doc-specific prompts and negative prompts.
+
+2) Backoff safety, must be preset-aware
+
+Symptom
+
+Backoff triggers for Screenshots and Documents, then threshold drops, then result count jumps.
+
+That is correct behavior for “Screenshots”, but harmful for “Documents”.
+
+Fix direction
+
+Disable backoff for Documents, or constrain it to a narrow range and require stronger consensus (below).
+
+3) Prompt hygiene, remove broad prompts or gate them
+
+Symptom
+
+text prompt dominates. It is too generic.
+
+Fix direction
+
+Remove text from Documents preset, or gate it behind OCR/doc-shape signals.
+
+Use narrower prompts: scanned document, printed page, form, invoice, receipt, letter, contract, passport, certificate.
+
+4) False acceptance control, require multi-signal consensus
+
+Symptom
+
+You are effectively using “union of prompts” after thresholding.
+
+A single prompt match can include the asset.
+
+Fix direction
+
+Add consensus rules for Documents:
+
+Require at least 2 doc prompts above threshold, or
+
+Require 1 strong doc prompt plus OCR density plus doc-shape score.
+
+5) Screenshot exclusion, explicitly penalize screenshots inside Documents
+
+Your March 02 snippet
+
+You selected Screenshots first, then Documents immediately returns images that look like normal photos.
+
+That is consistent with screenshots, because screenshots often contain “paper-like rectangles” and lots of text.
+
+Fix direction
+
+If is_screenshot == True, apply a hard penalty or exclude unless user explicitly types type:screenshot or allow:screenshot.
+
+6) Facets must not reinforce bad classification
+
+Symptom in app_log.txt
+
+Facets show location split etc, but nothing that tells the user “these are screenshots” or “these contain heavy text”.
+
+Fix direction
+
+Add facet chips for:
+
+Screenshots, Has lots of text, Looks scanned
+
+But only after you fix type integrity, otherwise facets become lipstick on the wrong result set.
+
+7) Duplicates and saturation, representative quality still matters
+
+In your uploaded app_log.txt you still had duplicate paths appearing twice in top results (#1 and #2 identical path), which means that log run predates your “Strict Path Uniqueness” change, or one search path bypasses uniqueness. That alone can make results feel “not improved” even when scoring changes.
+So, first verify the run is truly on the commit you think it is (log the git hash at startup).
+
+Concrete patch list by file (to eliminate Documents false classification)
+A) services/smart_find_service.py
+
+Patch A1, Documents preset prompt set
+
+Replace current prompt list:
+
+Remove text, optionally remove paper (also broad).
+
+Use doc-specific prompts:
+
+Suggested prompt set:
+
+scanned document
+
+printed page
+
+form
+
+invoice
+
+receipt
+
+letter
+
+contract
+
+handwritten note
+
+Patch A2, Documents backoff policy
+
+Add per-preset policy:
+
+allow_backoff=False for Documents
+or
+
+backoff_floor=0.20 and min_results_target=8, not 20
+
+Why, Documents is precision-first, Screenshots is recall-first.
+
+Patch A3, Add explicit “Screenshots” type filter support in presets
+
+Ensure Screenshots preset prefers metadata detection first (filename, EXIF hints, dimensions), then CLIP.
+
+B) services/search_orchestrator.py
+
+This is where you should make Documents robust.
+
+Patch B1, Add is_screenshot to project meta
+
+If you do not already store it, compute it in _get_project_meta() from:
+
+filename patterns, OS patterns, folder hints
+
+EXIF Software field patterns
+
+known screenshot resolution heuristics
+
+Store in meta cache.
+
+Patch B2, Add doc_shape_score and ocr_text_density (lightweight)
+Best practice systems do not rely on semantics alone for documents, they use “document-likeness” cues.
+
+Minimal viable:
+
+ocr_text_density: run OCR only when candidate set is small, or cache OCR stats lazily.
+
+ratio of text area to image area
+
+number of words, lines
+
+doc_shape_score: cheap CV heuristic (no deep model needed):
+
+detect a large quadrilateral, paper-like rectangle
+
+high edge density in a rectangle
+
+high contrast regions consistent with printed page
+
+Patch B3, Documents gating logic
+Add a Documents-specific acceptance rule, for example:
+
+Compute doc_confidence = w1*clip_doc + w2*doc_shape + w3*ocr_density
+
+Exclude if:
+
+is_screenshot=True AND doc_confidence < strict_threshold
+
+Require consensus:
+
+count(prompts_above_t) >= 2 OR doc_confidence >= strong_threshold
+
+Patch B4, Negative prompt penalty
+If your CLIP layer supports it, run one negative query and subtract:
+
+negative prompts: screenshot, phone screen, app interface, UI
+This is extremely effective at reducing screenshot bleed into Documents.
+
+Patch B5, Query intent override
+If user typed type:photo or clicked a non-doc preset, Documents should not leak across sessions by history or UI label reuse.
+
+This is usually a UI state issue, but orchestrator can enforce plan correctness.
+
+C) services/semantic_search_service.py
+
+Patch C1, Per-prompt thresholds
+
+“receipt” and “invoice” should have a lower threshold than “paper”, but “text” (if you keep it) must have a much higher threshold.
+
+Patch C2, Return per-prompt hit lists for consensus
+
+You need the orchestrator to know which prompts matched strongly, not only the fused union.
+
+D) ui/find_section.py and layouts/google_layout.py
+
+Patch D1, Better empty-state education
+You already added Favorites empty hint. Do the same for Documents:
+
+“Documents uses scan-like cues (text density, page shape). If you want screenshots, use Screenshots.”
+
+This reduces “it’s wrong” perception and aligns with iPhone and Google Photos communication patterns.
+
+E) Tests, tests/test_search_orchestrator.py
+
+Add regression tests specifically for your reported failure mode:
+
+Patch E1
+
+Given:
+
+screenshot-like image has high “text” CLIP score
+
+document-like scan has high “receipt/invoice” score
+
+Expect:
+
+Documents returns scan, not screenshot
+
+Screenshots returns screenshot, not scan (or at least ranks correctly)
+
+Patch E2
+
+Backoff must not reduce Documents precision:
+
+assert Documents backoff is disabled or bounded
+
+What to do next, in the exact order (so you stop chasing ghosts)
+
+Confirm you are testing the correct commit
+
+Log git hash at startup, and in every search log line include build_id.
+
+Your uploaded app_log.txt shows duplicate paths in top results, that suggests you tested an older build, or a bypass path still exists.
+
+Remove or gate the text prompt in Documents
+
+This single change will cut most screenshot bleed immediately.
+
+Disable backoff for Documents
+
+Do not “fix” low result counts by lowering threshold. Fix it by better prompts and hybrid gating.
+
+Add screenshot exclusion and doc consensus
+
+This is the real “product-level” fix.
+
+Only then tune scoring weights
+
+Weight tuning cannot fix wrong acceptance rules.
