@@ -1421,13 +1421,12 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(2000, self._enqueue_startup_maintenance_job)
             print("[MainWindow] Database maintenance job scheduled (2s delay)")
 
-            # Step 5: CLIP model warmup (8s delay — after thumbnails + maintenance)
-            # Uses ModelWarmupWorker (QRunnable) on QThreadPool. The GIL stutter
-            # during torch/transformers import is brief (~2-3s) and happens well
-            # after the UI is fully rendered. Without warmup the first search
-            # freezes the UI for ~25-30s while the model loads synchronously.
-            QTimer.singleShot(8000, self._warmup_clip_in_background)
-            print("[MainWindow] CLIP background warmup scheduled (8s delay)")
+            # Step 5: CLIP model warmup (3s delay — after initial photo load)
+            # Uses ModelWarmupWorker (QRunnable) on QThreadPool. Searches also
+            # run in background threads, so even if warmup hasn't finished the
+            # UI stays responsive (no main-thread freeze).
+            QTimer.singleShot(3000, self._warmup_clip_in_background)
+            print("[MainWindow] CLIP background warmup scheduled (3s delay)")
 
             # Step 6: Deferred thumbnail cache purge (delayed 5s)
             QTimer.singleShot(5000, self._deferred_cache_purge)
@@ -1502,11 +1501,10 @@ class MainWindow(QMainWindow):
         """
         Warm up CLIP model via ModelWarmupWorker (QRunnable on QThreadPool).
 
-        Runs 8 seconds after startup when thumbnails are loaded and
-        the UI is fully interactive.  The GIL stutter during
-        torch/transformers import is brief (~2-3s) and far less
-        disruptive than the ~25-30s synchronous freeze on first search
-        that happens without warmup.
+        Runs 3 seconds after startup. Searches also run in background
+        threads (via _SmartFindWorker), so even if warmup hasn't
+        finished when the user clicks a preset, the UI stays
+        responsive.
         """
         if self._closing:
             return
