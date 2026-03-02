@@ -95,6 +95,12 @@ class QueryPlan:
     # Weights override (per-preset or default)
     semantic_weight: float = 0.8
 
+    # Per-preset backoff policy (precision-first presets set False)
+    allow_backoff: bool = True
+
+    # Negative prompts for penalty scoring (e.g. Documents excludes screenshots)
+    negative_prompts: List[str] = field(default_factory=list)
+
     # Tokens that were extracted (for chip display)
     extracted_tokens: List[Dict[str, str]] = field(default_factory=list)
 
@@ -848,7 +854,8 @@ class SearchOrchestrator:
             backoff_step = 0.02
         else:
             backoff_step = cfg.get("backoff_step", 0.04)
-        if len(scored) < min_target and plan.has_semantic() and self._smart_find.clip_available:
+        if (len(scored) < min_target and plan.has_semantic()
+                and self._smart_find.clip_available and plan.allow_backoff):
             max_retries = cfg.get("backoff_retries", 2)
             prompts = plan.semantic_prompts if plan.semantic_prompts else [plan.semantic_text]
             logger.info(
@@ -900,6 +907,15 @@ class SearchOrchestrator:
             logger.debug(
                 f"[SearchOrchestrator] No backoff needed: {len(scored)} results "
                 f">= min_results_target={min_target}"
+            )
+
+        # Step 7b: Negative prompt penalty + screenshot exclusion
+        # For presets like Documents that define negative_prompts, compute
+        # negative CLIP scores and penalize matching results. Also exclude
+        # screenshots from document-type presets (precision-first).
+        if plan.negative_prompts and scored and self._smart_find.clip_available:
+            scored = self._apply_negative_prompt_penalty(
+                scored, plan, project_meta
             )
 
         # Step 8: Deduplicate (stack duplicates behind representative)
@@ -1056,6 +1072,9 @@ class SearchOrchestrator:
                         "has_gps": lat is not None and lon is not None and lat != 0 and lon != 0,
                         "created_date": row['created_date'],
                         "date_taken": row['date_taken'],
+                        "is_screenshot": self._detect_screenshot(
+                            path, row['width'], row['height']
+                        ),
                     }
                     id_to_path[row['id']] = path
 
@@ -1099,6 +1118,53 @@ class SearchOrchestrator:
             logger.warning(f"[SearchOrchestrator] Metadata load failed: {e}")
             return self._project_meta_cache or {}
 
+    # ── Screenshot Detection (filename + dimension heuristics) ──
+
+    # Known screenshot resolution pairs (width, height) for popular devices
+    _SCREENSHOT_RESOLUTIONS = frozenset({
+        (1170, 2532), (2532, 1170),  # iPhone 12/13/14
+        (1179, 2556), (2556, 1179),  # iPhone 14 Pro/15
+        (1284, 2778), (2778, 1284),  # iPhone 12/13/14 Pro Max
+        (1290, 2796), (2796, 1290),  # iPhone 15 Pro Max
+        (1080, 1920), (1920, 1080),  # Android FHD
+        (1080, 2340), (2340, 1080),  # Android 19.5:9
+        (1080, 2400), (2400, 1080),  # Android 20:9
+        (1440, 2560), (2560, 1440),  # Android QHD
+        (1440, 3200), (3200, 1440),  # Samsung S20/S21
+        (1440, 3088), (3088, 1440),  # Samsung S22/S23
+    })
+
+    _SCREENSHOT_FILENAME_RE = re.compile(
+        r'(?i)(screenshot|screen.?shot|screen.?cap|capture|bildschirmfoto'
+        r'|schermopname|captura|snip|clip\d)',
+    )
+
+    @classmethod
+    def _detect_screenshot(cls, path: str, width, height) -> bool:
+        """
+        Lightweight screenshot detection from filename patterns and
+        known device screenshot resolutions.
+
+        Aligned with iPhone/Google Photos heuristics:
+        - Filename contains 'screenshot', 'screen shot', 'screen_capture', etc.
+        - Exact match on known device screenshot resolutions
+        """
+        import os
+        # Filename check
+        basename = os.path.basename(path) if path else ""
+        if cls._SCREENSHOT_FILENAME_RE.search(basename):
+            return True
+
+        # Resolution check (exact match on known screenshot sizes)
+        try:
+            w, h = int(width or 0), int(height or 0)
+            if w > 0 and h > 0 and (w, h) in cls._SCREENSHOT_RESOLUTIONS:
+                return True
+        except (TypeError, ValueError):
+            pass
+
+        return False
+
     def _plan_from_preset(self, preset_id: str,
                           extra_filters: Optional[Dict]) -> QueryPlan:
         """Build a QueryPlan from a SmartFind preset."""
@@ -1114,6 +1180,8 @@ class SearchOrchestrator:
             semantic_prompts=list(preset.get("prompts", [])),
             filters=dict(preset.get("filters", {})),
             semantic_weight=preset.get("semantic_weight", 0.8),
+            allow_backoff=preset.get("allow_backoff", True),
+            negative_prompts=list(preset.get("negative_prompts", [])),
         )
 
         if extra_filters:
@@ -1375,6 +1443,85 @@ class SearchOrchestrator:
         """
         import os
         return os.path.normpath(path)
+
+    def _apply_negative_prompt_penalty(
+        self, scored: List[ScoredResult], plan: QueryPlan,
+        project_meta: Dict[str, Dict],
+    ) -> List[ScoredResult]:
+        """
+        Penalize results that match negative prompts or are screenshots.
+
+        Two-pronged precision gate (aligned with Excire/Lightroom patterns):
+        1. Hard exclude: screenshots are removed from Documents results
+        2. Soft penalty: negative CLIP prompt scores reduce final_score
+
+        This prevents 'text'-like images (chat screenshots, UI, menus)
+        from polluting document-type searches.
+        """
+        neg_prompts = plan.negative_prompts
+        if not neg_prompts:
+            return scored
+
+        # 1. Hard exclude screenshots for document-like presets
+        if plan.preset_id in ("documents",):
+            before = len(scored)
+            scored = [
+                sr for sr in scored
+                if not project_meta.get(sr.path, {}).get("is_screenshot", False)
+            ]
+            removed = before - len(scored)
+            if removed:
+                logger.info(
+                    f"[SearchOrchestrator] Excluded {removed} screenshots "
+                    f"from '{plan.preset_id}' results"
+                )
+
+        # 2. Soft penalty from negative CLIP prompts
+        try:
+            neg_hits = self._smart_find._run_clip_multi_prompt(
+                neg_prompts, top_k=600, threshold=0.18, fusion_mode="max"
+            )
+        except Exception:
+            neg_hits = {}
+
+        if neg_hits:
+            neg_penalty_weight = 0.15  # Scale of penalty
+            penalized = 0
+
+            # neg_hits is keyed by photo_id; do path→id lookup from DB
+            try:
+                from repository.base_repository import DatabaseConnection
+                db = DatabaseConnection()
+                with db.get_connection() as conn:
+                    scored_paths = [sr.path for sr in scored]
+                    if scored_paths:
+                        placeholders = ",".join("?" * len(scored_paths))
+                        rows = conn.execute(
+                            f"SELECT id, path FROM photo_metadata "
+                            f"WHERE path IN ({placeholders})",
+                            scored_paths,
+                        ).fetchall()
+                        path_to_id = {r['path']: r['id'] for r in rows}
+
+                        for sr in scored:
+                            pid = path_to_id.get(sr.path)
+                            if pid and pid in neg_hits:
+                                neg_score, neg_prompt = neg_hits[pid]
+                                penalty = neg_penalty_weight * neg_score
+                                sr.final_score = max(0, sr.final_score - penalty)
+                                sr.reasons.append(f"(neg:{neg_prompt}:-{penalty:.3f})")
+                                penalized += 1
+            except Exception as e:
+                logger.debug(f"[SearchOrchestrator] Negative prompt lookup failed: {e}")
+
+            if penalized:
+                scored.sort(key=lambda r: r.final_score, reverse=True)
+                logger.info(
+                    f"[SearchOrchestrator] Negative prompt penalty applied to "
+                    f"{penalized} results"
+                )
+
+        return scored
 
     @staticmethod
     def _enforce_unique_paths(scored: List[ScoredResult]) -> List[ScoredResult]:
