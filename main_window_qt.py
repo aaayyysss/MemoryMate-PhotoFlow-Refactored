@@ -1421,13 +1421,13 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(2000, self._enqueue_startup_maintenance_job)
             print("[MainWindow] Database maintenance job scheduled (2s delay)")
 
-            # Step 5: CLIP model warmup — DISABLED
-            # Heavy imports (torch, transformers) hold the GIL extensively and
-            # starve the UI thread even when run in a daemon thread.  With a
-            # pre-populated DB this causes a visible multi-second freeze.
-            # The model now loads lazily on the first semantic search instead.
-            # QTimer.singleShot(15000, self._warmup_clip_in_background)
-            print("[MainWindow] CLIP warmup disabled (lazy load on first search)")
+            # Step 5: CLIP model warmup (8s delay — after thumbnails + maintenance)
+            # Uses ModelWarmupWorker (QRunnable) on QThreadPool. The GIL stutter
+            # during torch/transformers import is brief (~2-3s) and happens well
+            # after the UI is fully rendered. Without warmup the first search
+            # freezes the UI for ~25-30s while the model loads synchronously.
+            QTimer.singleShot(8000, self._warmup_clip_in_background)
+            print("[MainWindow] CLIP background warmup scheduled (8s delay)")
 
             # Step 6: Deferred thumbnail cache purge (delayed 5s)
             QTimer.singleShot(5000, self._deferred_cache_purge)
@@ -1500,11 +1500,13 @@ class MainWindow(QMainWindow):
 
     def _warmup_clip_in_background(self):
         """
-        Warm up CLIP model in a background thread after UI is shown.
+        Warm up CLIP model via ModelWarmupWorker (QRunnable on QThreadPool).
 
-        This gives the best UX: UI appears immediately, and CLIP loads quietly
-        in the background while the user starts working. First semantic search
-        will be fast because model is already loaded.
+        Runs 8 seconds after startup when thumbnails are loaded and
+        the UI is fully interactive.  The GIL stutter during
+        torch/transformers import is brief (~2-3s) and far less
+        disruptive than the ~25-30s synchronous freeze on first search
+        that happens without warmup.
         """
         if self._closing:
             return
@@ -1517,22 +1519,20 @@ class MainWindow(QMainWindow):
                 print("[MainWindow] CLIP warmup skipped (semantic embeddings disabled)")
                 return
 
-            import threading
+            # Resolve current project ID for canonical model selection
+            project_id = getattr(self.grid, 'project_id', None) if hasattr(self, 'grid') else None
 
-            def _warmup():
-                try:
-                    from services.semantic_embedding_service import get_semantic_embedding_service
-                    svc = get_semantic_embedding_service()
-                    svc._load_model()  # Intentionally warm cache, tokenizer, weights
-                    print("[MainWindow] ✅ CLIP model warmed up in background")
-                except Exception as e:
-                    # Non-fatal - model will load on first use if warmup fails
-                    print(f"[MainWindow] ⚠️ CLIP background warmup failed (non-fatal): {e}")
-
-            # Run in daemon thread so it doesn't block app shutdown
-            thread = threading.Thread(target=_warmup, name="clip_warmup", daemon=True)
-            thread.start()
-            print("[MainWindow] 🧠 CLIP background warmup started")
+            from workers.model_warmup_worker import launch_model_warmup
+            self._clip_warmup_worker = launch_model_warmup(
+                project_id=project_id,
+                on_finished=lambda mid, variant: print(
+                    f"[MainWindow] ✅ CLIP model warmed up in background: {variant}"
+                ),
+                on_error=lambda err: print(
+                    f"[MainWindow] ⚠️ CLIP background warmup failed (non-fatal): {err}"
+                ),
+            )
+            print("[MainWindow] CLIP background warmup started (ModelWarmupWorker)")
 
         except Exception as e:
             print(f"[MainWindow] ⚠️ Could not start CLIP warmup: {e}")
