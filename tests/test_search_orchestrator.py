@@ -1518,6 +1518,22 @@ class TestDocumentsPrecision:
         assert doc_preset.get("allow_backoff") is False, \
             "Documents preset must disable backoff to prevent false positives"
 
+    def test_documents_threshold_override(self):
+        """Documents must use a higher CLIP threshold than the global 0.22 default."""
+        from services.smart_find_service import BUILTIN_PRESETS
+        doc_preset = next(p for p in BUILTIN_PRESETS if p["id"] == "documents")
+        override = doc_preset.get("threshold_override")
+        assert override is not None, "Documents must define threshold_override"
+        assert override > 0.22, \
+            f"Documents threshold_override ({override}) must be > 0.22 (global default)"
+
+    def test_documents_exclude_faces(self):
+        """Documents must set exclude_faces=True (a document is never a portrait)."""
+        from services.smart_find_service import BUILTIN_PRESETS
+        doc_preset = next(p for p in BUILTIN_PRESETS if p["id"] == "documents")
+        assert doc_preset.get("exclude_faces") is True, \
+            "Documents preset must exclude photos with detected faces"
+
 
 class TestScreenshotDetection:
     """_detect_screenshot must identify screenshots by filename and resolution."""
@@ -1665,3 +1681,98 @@ class TestNegativePromptPenalty:
             filtered = scored
 
         assert len(filtered) == 2  # Both kept
+
+
+class TestFaceExclusionGate:
+    """Photos with detected faces must be excluded from Documents results."""
+
+    def test_portraits_excluded_from_documents(self):
+        """Photos with face_count > 0 must be removed when exclude_faces=True."""
+        from services.search_orchestrator import ScoredResult, QueryPlan
+        scored = [
+            ScoredResult(path="/photos/receipt.jpg", final_score=0.85),
+            ScoredResult(path="/photos/portrait.jpg", final_score=0.80),
+            ScoredResult(path="/photos/form.jpg", final_score=0.75),
+        ]
+        plan = QueryPlan(preset_id="documents", exclude_faces=True)
+        project_meta = {
+            "/photos/receipt.jpg": {"face_count": 0},
+            "/photos/portrait.jpg": {"face_count": 2},
+            "/photos/form.jpg": {"face_count": 0},
+        }
+
+        if plan.exclude_faces:
+            filtered = [
+                sr for sr in scored
+                if (project_meta.get(sr.path, {}).get("face_count", 0) or 0) == 0
+            ]
+        else:
+            filtered = scored
+
+        assert len(filtered) == 2
+        assert all(sr.path != "/photos/portrait.jpg" for sr in filtered)
+
+    def test_face_exclusion_off_keeps_portraits(self):
+        """When exclude_faces=False, photos with faces are kept."""
+        from services.search_orchestrator import ScoredResult, QueryPlan
+        scored = [
+            ScoredResult(path="/photos/a.jpg", final_score=0.85),
+            ScoredResult(path="/photos/portrait.jpg", final_score=0.80),
+        ]
+        plan = QueryPlan(preset_id="beach", exclude_faces=False)
+        project_meta = {
+            "/photos/a.jpg": {"face_count": 0},
+            "/photos/portrait.jpg": {"face_count": 1},
+        }
+
+        if plan.exclude_faces:
+            filtered = [
+                sr for sr in scored
+                if (project_meta.get(sr.path, {}).get("face_count", 0) or 0) == 0
+            ]
+        else:
+            filtered = scored
+
+        assert len(filtered) == 2
+
+    def test_queryplan_threshold_override_default_none(self):
+        """QueryPlan defaults to threshold_override=None."""
+        from services.search_orchestrator import QueryPlan
+        plan = QueryPlan()
+        assert plan.threshold_override is None
+
+    def test_queryplan_threshold_override_set(self):
+        """QueryPlan can hold a threshold_override value."""
+        from services.search_orchestrator import QueryPlan
+        plan = QueryPlan(threshold_override=0.26)
+        assert plan.threshold_override == 0.26
+
+    def test_queryplan_exclude_faces_default_false(self):
+        """QueryPlan defaults to exclude_faces=False."""
+        from services.search_orchestrator import QueryPlan
+        plan = QueryPlan()
+        assert plan.exclude_faces is False
+
+
+class TestBackoffFloor:
+    """Backoff must never drop more than 0.04 below the original threshold."""
+
+    def test_backoff_floor_limits_drop(self):
+        """With threshold=0.22, backoff cannot go below 0.18."""
+        threshold = 0.22
+        backoff_step = 0.02
+        backoff_floor = max(0.05, threshold - 0.04)
+        for retry in range(1, 5):
+            lowered = max(backoff_floor, threshold - (backoff_step * retry))
+            assert lowered >= 0.18, \
+                f"Retry {retry}: lowered={lowered} is below floor 0.18"
+
+    def test_backoff_floor_higher_threshold(self):
+        """With threshold=0.26 (Documents override), floor is 0.22."""
+        threshold = 0.26
+        backoff_step = 0.02
+        backoff_floor = max(0.05, threshold - 0.04)
+        assert backoff_floor == 0.22
+        for retry in range(1, 5):
+            lowered = max(backoff_floor, threshold - (backoff_step * retry))
+            assert lowered >= 0.22
