@@ -98,8 +98,14 @@ class QueryPlan:
     # Per-preset backoff policy (precision-first presets set False)
     allow_backoff: bool = True
 
+    # Per-preset CLIP threshold override (None = use global default)
+    threshold_override: Optional[float] = None
+
     # Negative prompts for penalty scoring (e.g. Documents excludes screenshots)
     negative_prompts: List[str] = field(default_factory=list)
+
+    # Presets that should exclude photos containing faces (e.g. Documents)
+    exclude_faces: bool = False
 
     # Tokens that were extracted (for chip display)
     extracted_tokens: List[Dict[str, str]] = field(default_factory=list)
@@ -740,7 +746,7 @@ class SearchOrchestrator:
     def _execute(self, plan: QueryPlan, top_k: int) -> OrchestratorResult:
         """Execute the full search pipeline from a QueryPlan."""
         cfg = self._smart_find._get_config()
-        threshold = cfg["threshold"]
+        threshold = plan.threshold_override if plan.threshold_override is not None else cfg["threshold"]
         fusion_mode = cfg["fusion_mode"]
 
         # Detect people-implied queries for face presence scoring
@@ -863,8 +869,12 @@ class SearchOrchestrator:
                 f"< min_results_target={min_target}"
             )
 
+            # Floor: never drop more than 0.04 below the original threshold.
+            # At 0.18 or below, ViT-B/32 loses all discrimination and
+            # returns essentially random images.
+            backoff_floor = max(0.05, threshold - 0.04)
             for retry in range(1, max_retries + 1):
-                lowered = max(0.05, threshold - (backoff_step * retry))
+                lowered = max(backoff_floor, threshold - (backoff_step * retry))
                 logger.info(f"[SearchOrchestrator] Backoff retry {retry}: {threshold:.2f} -> {lowered:.2f}")
                 retry_hits = self._smart_find._run_clip_multi_prompt(
                     prompts, top_k * 3, lowered, fusion_mode
@@ -917,6 +927,24 @@ class SearchOrchestrator:
             scored = self._apply_negative_prompt_penalty(
                 scored, plan, project_meta
             )
+
+        # Step 7c: Face-presence exclusion gate
+        # Documents, receipts, invoices etc. are never portraits. A photo
+        # with detected faces is structurally not a document. This gate
+        # aligns with iPhone/Google Photos/Lightroom which never classify
+        # face photos as documents.
+        if plan.exclude_faces and scored and project_meta:
+            before = len(scored)
+            scored = [
+                sr for sr in scored
+                if (project_meta.get(sr.path, {}).get("face_count", 0) or 0) == 0
+            ]
+            removed = before - len(scored)
+            if removed:
+                logger.info(
+                    f"[SearchOrchestrator] Face-exclusion gate removed {removed} "
+                    f"photos with faces from '{plan.preset_id}' results"
+                )
 
         # Step 8: Deduplicate (stack duplicates behind representative)
         scored, stacked_count = self._deduplicate_results(scored)
@@ -1181,7 +1209,9 @@ class SearchOrchestrator:
             filters=dict(preset.get("filters", {})),
             semantic_weight=preset.get("semantic_weight", 0.8),
             allow_backoff=preset.get("allow_backoff", True),
+            threshold_override=preset.get("threshold_override"),
             negative_prompts=list(preset.get("negative_prompts", [])),
+            exclude_faces=preset.get("exclude_faces", False),
         )
 
         if extra_filters:
