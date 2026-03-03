@@ -69,6 +69,15 @@ PRESET_ICONS = [
 ]
 
 
+def _find_parent_widget(obj):
+    """Walk up the QObject parent chain to find the nearest QWidget ancestor."""
+    while obj is not None:
+        if isinstance(obj, QWidget):
+            return obj
+        obj = obj.parent() if hasattr(obj, 'parent') else None
+    return None
+
+
 class PresetEditorDialog(QDialog):
     """
     Dialog for creating/editing custom Smart Find presets.
@@ -77,7 +86,9 @@ class PresetEditorDialog(QDialog):
     """
 
     def __init__(self, parent=None, preset: Optional[Dict] = None):
-        super().__init__(parent)
+        # QDialog requires a QWidget parent; walk up if given a QObject
+        widget_parent = parent if isinstance(parent, QWidget) else _find_parent_widget(parent)
+        super().__init__(widget_parent)
         self.setWindowTitle("Edit Preset" if preset else "New Preset")
         self.setMinimumSize(420, 480)
         self._preset = preset
@@ -1120,7 +1131,7 @@ class FindSection(BaseSection):
             return
 
         reply = QMessageBox.question(
-            self, "Delete Preset",
+            _find_parent_widget(self), "Delete Preset",
             f"Delete custom preset \"{preset['name']}\"?\n\nThis cannot be undone.",
             QMessageBox.Yes | QMessageBox.No, QMessageBox.No
         )
