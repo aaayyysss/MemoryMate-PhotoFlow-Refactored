@@ -1518,14 +1518,15 @@ class TestDocumentsPrecision:
         assert doc_preset.get("allow_backoff") is False, \
             "Documents preset must disable backoff to prevent false positives"
 
-    def test_documents_threshold_override(self):
-        """Documents must use a higher CLIP threshold than the global 0.22 default."""
+    def test_documents_no_threshold_override(self):
+        """Documents must NOT use threshold_override (ViT-B/32 docs score 0.220-0.232;
+        any override above 0.22 kills genuine results). Face gate is the discriminator."""
         from services.smart_find_service import BUILTIN_PRESETS
         doc_preset = next(p for p in BUILTIN_PRESETS if p["id"] == "documents")
         override = doc_preset.get("threshold_override")
-        assert override is not None, "Documents must define threshold_override"
-        assert override > 0.22, \
-            f"Documents threshold_override ({override}) must be > 0.22 (global default)"
+        assert override is None, \
+            f"Documents must not set threshold_override ({override}); " \
+            f"rely on exclude_faces gate instead"
 
     def test_documents_exclude_faces(self):
         """Documents must set exclude_faces=True (a document is never a portrait)."""
