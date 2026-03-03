@@ -158,7 +158,6 @@ BUILTIN_PRESETS = [
         "negative_prompts": ["screenshot", "phone screen", "app interface"],
         "category": "media",
         "semantic_weight": 0.4,
-        "threshold_override": 0.26,  # Higher bar: ViT-B/32 can't separate docs at 0.22
         "allow_backoff": False,  # Precision-first: do not lower threshold
         "exclude_faces": True,  # Documents never contain portraits
     },
