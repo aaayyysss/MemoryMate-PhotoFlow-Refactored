@@ -1777,3 +1777,231 @@ class TestBackoffFloor:
         for retry in range(1, 5):
             lowered = max(backoff_floor, threshold - (backoff_step * retry))
             assert lowered >= 0.22
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Unit Tests: Gate Engine (_apply_gates)
+# ══════════════════════════════════════════════════════════════════════
+
+class TestGateEngine:
+    """
+    Test the consolidated gate engine for category-specific hard filtering.
+
+    Aligned with best practices from iPhone, Google Photos, Lightroom, and Excire:
+    hard gates separate categories that CLIP similarity alone cannot distinguish.
+    """
+
+    @pytest.fixture(autouse=True)
+    def setup(self):
+        from services.search_orchestrator import SearchOrchestrator, QueryPlan, ScoredResult
+        self.SearchOrchestrator = SearchOrchestrator
+        self.QueryPlan = QueryPlan
+        self.ScoredResult = ScoredResult
+
+    def _make_orch(self):
+        """Create an uninitialized orchestrator (no DB, no CLIP needed)."""
+        return self.SearchOrchestrator.__new__(self.SearchOrchestrator)
+
+    def _make_scored(self, path, score=0.25):
+        return self.ScoredResult(
+            path=path, clip_score=score, recency_score=0, favorite_score=0,
+            location_score=0, face_match_score=0, final_score=score,
+        )
+
+    # ── Documents preset: exclude faces + screenshots + tiny images ──
+
+    def test_documents_excludes_faces(self):
+        """Documents gate drops photos with detected faces."""
+        orch = self._make_orch()
+        plan = self.QueryPlan(
+            raw_query="Documents", preset_id="documents", source="preset",
+            exclude_faces=True,
+        )
+        meta = {
+            "doc.png": {"is_screenshot": False, "face_count": 0, "width": 1200, "height": 1600, "has_gps": False},
+            "portrait.jpg": {"is_screenshot": False, "face_count": 2, "width": 2000, "height": 3000, "has_gps": False},
+        }
+        scored = [self._make_scored("doc.png"), self._make_scored("portrait.jpg")]
+        kept = orch._apply_gates(scored, plan, meta)
+        assert [r.path for r in kept] == ["doc.png"]
+
+    def test_documents_excludes_screenshots(self):
+        """Documents gate drops screenshots (separate category, not documents)."""
+        orch = self._make_orch()
+        plan = self.QueryPlan(
+            raw_query="Documents", preset_id="documents", source="preset",
+            exclude_screenshots=True,
+        )
+        meta = {
+            "doc.png": {"is_screenshot": False, "face_count": 0, "width": 1200, "height": 1600, "has_gps": False},
+            "shot.png": {"is_screenshot": True, "face_count": 0, "width": 1170, "height": 2532, "has_gps": False},
+        }
+        scored = [self._make_scored("doc.png"), self._make_scored("shot.png")]
+        kept = orch._apply_gates(scored, plan, meta)
+        assert [r.path for r in kept] == ["doc.png"]
+
+    def test_documents_excludes_tiny_images(self):
+        """Documents gate drops icons/thumbnails below min_edge_size."""
+        orch = self._make_orch()
+        plan = self.QueryPlan(
+            raw_query="Documents", preset_id="documents", source="preset",
+            min_edge_size=350,
+        )
+        meta = {
+            "doc.png": {"is_screenshot": False, "face_count": 0, "width": 1200, "height": 1600, "has_gps": False},
+            "icon.png": {"is_screenshot": False, "face_count": 0, "width": 64, "height": 64, "has_gps": False},
+        }
+        scored = [self._make_scored("doc.png"), self._make_scored("icon.png")]
+        kept = orch._apply_gates(scored, plan, meta)
+        assert [r.path for r in kept] == ["doc.png"]
+
+    def test_documents_full_gate_profile(self):
+        """Documents preset with all gates active: faces + screenshots + tiny."""
+        orch = self._make_orch()
+        plan = self.QueryPlan(
+            raw_query="Documents", preset_id="documents", source="preset",
+            exclude_faces=True, exclude_screenshots=True, min_edge_size=350,
+        )
+        meta = {
+            "doc_ok.png": {"is_screenshot": False, "face_count": 0, "width": 1200, "height": 1600, "has_gps": False},
+            "portrait.jpg": {"is_screenshot": False, "face_count": 1, "width": 2000, "height": 3000, "has_gps": False},
+            "shot.png": {"is_screenshot": True, "face_count": 0, "width": 1170, "height": 2532, "has_gps": False},
+            "icon.png": {"is_screenshot": False, "face_count": 0, "width": 32, "height": 32, "has_gps": False},
+        }
+        scored = [self._make_scored(p) for p in meta]
+        kept = orch._apply_gates(scored, plan, meta)
+        assert [r.path for r in kept] == ["doc_ok.png"]
+
+    # ── Screenshots preset: require is_screenshot ──
+
+    def test_screenshots_requires_is_screenshot(self):
+        """Screenshots gate keeps only photos detected as screenshots."""
+        orch = self._make_orch()
+        plan = self.QueryPlan(
+            raw_query="Screenshots", preset_id="screenshots", source="preset",
+            require_screenshot=True,
+        )
+        meta = {
+            "shot1.png": {"is_screenshot": True, "face_count": 0, "width": 1170, "height": 2532, "has_gps": False},
+            "photo.jpg": {"is_screenshot": False, "face_count": 0, "width": 4000, "height": 3000, "has_gps": True},
+        }
+        scored = [self._make_scored("shot1.png"), self._make_scored("photo.jpg", 0.30)]
+        kept = orch._apply_gates(scored, plan, meta)
+        assert [r.path for r in kept] == ["shot1.png"]
+
+    # ── People-centric presets: require faces ──
+
+    def test_wedding_requires_faces(self):
+        """Wedding gate drops photos without detected faces."""
+        orch = self._make_orch()
+        plan = self.QueryPlan(
+            raw_query="Wedding", preset_id="wedding", source="preset",
+            require_faces=True, min_face_count=1,
+        )
+        # Enough face coverage (>1%) so gates are not skipped
+        meta = {
+            "couple.jpg": {"is_screenshot": False, "face_count": 2, "width": 4000, "height": 3000, "has_gps": True},
+            "cake.jpg": {"is_screenshot": False, "face_count": 0, "width": 4000, "height": 3000, "has_gps": True},
+            "venue.jpg": {"is_screenshot": False, "face_count": 0, "width": 4000, "height": 3000, "has_gps": True},
+            # Add enough face photos to exceed 1% coverage
+            **{f"person{i}.jpg": {"is_screenshot": False, "face_count": 1, "width": 4000, "height": 3000, "has_gps": False}
+               for i in range(5)},
+        }
+        scored = [self._make_scored("couple.jpg"), self._make_scored("cake.jpg"), self._make_scored("venue.jpg")]
+        kept = orch._apply_gates(scored, plan, meta)
+        assert [r.path for r in kept] == ["couple.jpg"]
+
+    def test_face_gate_skipped_when_no_face_data(self):
+        """Face gates are skipped when face pipeline hasn't run (<1% coverage)."""
+        orch = self._make_orch()
+        plan = self.QueryPlan(
+            raw_query="Wedding", preset_id="wedding", source="preset",
+            require_faces=True, min_face_count=1,
+        )
+        # No face data at all — 0% coverage
+        meta = {
+            "couple.jpg": {"is_screenshot": False, "face_count": 0, "width": 4000, "height": 3000, "has_gps": True},
+            "cake.jpg": {"is_screenshot": False, "face_count": 0, "width": 4000, "height": 3000, "has_gps": True},
+        }
+        scored = [self._make_scored("couple.jpg"), self._make_scored("cake.jpg")]
+        kept = orch._apply_gates(scored, plan, meta)
+        # All results kept because face gate is auto-disabled
+        assert len(kept) == 2
+
+    # ── GPS gate ──
+
+    def test_require_gps_gate(self):
+        """GPS gate drops photos without GPS coordinates."""
+        orch = self._make_orch()
+        plan = self.QueryPlan(
+            raw_query="With Location", source="preset",
+            require_gps_gate=True,
+        )
+        meta = {
+            "gps.jpg": {"is_screenshot": False, "face_count": 0, "width": 4000, "height": 3000, "has_gps": True},
+            "no_gps.jpg": {"is_screenshot": False, "face_count": 0, "width": 4000, "height": 3000, "has_gps": False},
+        }
+        scored = [self._make_scored("gps.jpg"), self._make_scored("no_gps.jpg")]
+        kept = orch._apply_gates(scored, plan, meta)
+        assert [r.path for r in kept] == ["gps.jpg"]
+
+    # ── No gates active = no-op ──
+
+    def test_no_gates_passthrough(self):
+        """When no gates are active, all results pass through unchanged."""
+        orch = self._make_orch()
+        plan = self.QueryPlan(raw_query="beach", source="preset", preset_id="beach")
+        meta = {
+            "a.jpg": {"is_screenshot": False, "face_count": 0, "width": 4000, "height": 3000, "has_gps": False},
+            "b.jpg": {"is_screenshot": True, "face_count": 3, "width": 1170, "height": 2532, "has_gps": True},
+        }
+        scored = [self._make_scored("a.jpg"), self._make_scored("b.jpg")]
+        kept = orch._apply_gates(scored, plan, meta)
+        assert len(kept) == 2
+
+    def test_empty_scored_returns_empty(self):
+        """Empty input returns empty output."""
+        orch = self._make_orch()
+        plan = self.QueryPlan(raw_query="Documents", preset_id="documents", exclude_faces=True)
+        kept = orch._apply_gates([], plan, {})
+        assert kept == []
+
+    # ── Gate profile integration via _plan_from_preset ──
+
+    def test_plan_from_preset_reads_gate_profile(self):
+        """Verify _plan_from_preset populates gate fields from preset gate_profile."""
+        from services.smart_find_service import BUILTIN_PRESETS
+
+        # Verify Documents preset has gate_profile
+        docs_preset = next(p for p in BUILTIN_PRESETS if p["id"] == "documents")
+        gp = docs_preset.get("gate_profile", {})
+        assert gp.get("exclude_faces") is True
+        assert gp.get("exclude_screenshots") is True
+        assert gp.get("min_edge_size", 0) > 0
+
+        # Verify Screenshots preset has gate_profile
+        screenshots_preset = next(p for p in BUILTIN_PRESETS if p["id"] == "screenshots")
+        gp = screenshots_preset.get("gate_profile", {})
+        assert gp.get("require_screenshot") is True
+
+        # Verify Wedding preset has gate_profile
+        wedding_preset = next(p for p in BUILTIN_PRESETS if p["id"] == "wedding")
+        gp = wedding_preset.get("gate_profile", {})
+        assert gp.get("require_faces") is True
+        assert gp.get("min_face_count", 0) >= 1
+
+    def test_documents_implicit_exclude_screenshots(self):
+        """Documents preset_id triggers exclude_screenshots even without explicit flag."""
+        orch = self._make_orch()
+        # Only set preset_id, not the explicit exclude_screenshots flag
+        plan = self.QueryPlan(
+            raw_query="Documents", preset_id="documents", source="preset",
+        )
+        meta = {
+            "doc.png": {"is_screenshot": False, "face_count": 0, "width": 1200, "height": 1600, "has_gps": False},
+            "shot.png": {"is_screenshot": True, "face_count": 0, "width": 1170, "height": 2532, "has_gps": False},
+        }
+        scored = [self._make_scored("doc.png"), self._make_scored("shot.png")]
+        kept = orch._apply_gates(scored, plan, meta)
+        # Documents preset_id triggers exclude_screenshots implicitly
+        assert [r.path for r in kept] == ["doc.png"]
