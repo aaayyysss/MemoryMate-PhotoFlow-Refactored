@@ -941,7 +941,14 @@ class SearchOrchestrator:
                 scored, plan, project_meta
             )
 
-        # Step 7c: Gate engine (hard pre-filters)
+        # Step 7c: Structural scorer for type-like presets (Documents)
+        # Applies document-specific structural scoring adjustments beyond
+        # what CLIP + gates alone can achieve. Penalizes photo-like images
+        # that CLIP considers semantically similar to documents.
+        if plan.preset_id and self._get_preset_family(plan.preset_id) == "type":
+            scored = self._apply_structural_scorer(scored, plan, project_meta)
+
+        # Step 7d: Gate engine (hard pre-filters)
         # Consolidated gate logic: exclude_faces, exclude_screenshots,
         # require_screenshot, require_faces, min_face_count, require_gps,
         # min_edge_size. Replaces scattered inline gate blocks.
@@ -949,6 +956,19 @@ class SearchOrchestrator:
 
         # Step 8: Deduplicate (stack duplicates behind representative)
         scored, stacked_count = self._deduplicate_results(scored)
+
+        # Step 8b: Post-dedup gate re-validation (Bug C fix)
+        # If dedup chose a representative that doesn't satisfy active gates,
+        # remove it. This prevents dedup from undoing gate outcomes.
+        pre_revalidation = len(scored)
+        scored = self._apply_gates(scored, plan, project_meta)
+        post_revalidation = len(scored)
+        if pre_revalidation != post_revalidation:
+            logger.warning(
+                f"[SearchOrchestrator] Post-dedup gate re-validation dropped "
+                f"{pre_revalidation - post_revalidation} result(s) that "
+                f"dedup reintroduced outside the gated set"
+            )
 
         # Step 9: Enforce strict path uniqueness
         # After backoff merge + dedup, the same path can still appear if it
@@ -1395,8 +1415,22 @@ class SearchOrchestrator:
         dropped = Counter()
         kept: List[ScoredResult] = []
 
+        import os as _os
+
+        # Build a normalized-path → meta lookup so that path mismatches
+        # between candidate paths and metadata cache keys are resolved.
+        # This is the fix for Bug B: path normalization mismatch where
+        # candidate path, metadata cache key, and database path differ.
+        _norm_meta: Dict[str, Dict] = {}
+        for mp, mv in project_meta.items():
+            _norm_meta[_os.path.normpath(mp).lower()] = mv
+
         for r in scored:
+            # Try exact match first, then normalized match (Bug B fix)
             meta = project_meta.get(r.path, {})
+            if not meta:
+                norm_key = _os.path.normpath(r.path).lower()
+                meta = _norm_meta.get(norm_key, {})
 
             is_screenshot = bool(meta.get("is_screenshot", False))
             face_count = int(meta.get("face_count") or 0)
@@ -1406,6 +1440,12 @@ class SearchOrchestrator:
             if require_screenshot and not is_screenshot:
                 dropped["require_screenshot"] += 1
                 continue
+            # Diagnostic: log screenshots that PASS the gate so we can verify
+            if require_screenshot and is_screenshot:
+                logger.debug(
+                    f"[Gate] Screenshot PASS: {_os.path.basename(r.path)} "
+                    f"is_screenshot={is_screenshot} score={r.final_score:.4f}"
+                )
 
             # Gate: exclude screenshots
             if exclude_screenshots and is_screenshot:
@@ -1453,7 +1493,146 @@ class SearchOrchestrator:
                 f"kept={len(kept)}/{len(scored)} dropped={dict(dropped)}"
             )
 
+        # Log gate survivors for debugging (screenshots/documents integrity)
+        if (require_screenshot or exclude_screenshots or exclude_faces) and kept:
+            for k in kept[:5]:
+                kmeta = project_meta.get(k.path, {})
+                if not kmeta:
+                    kmeta = _norm_meta.get(_os.path.normpath(k.path).lower(), {})
+                logger.debug(
+                    f"[Gate] Survivor: {_os.path.basename(k.path)} "
+                    f"is_screenshot={kmeta.get('is_screenshot')} "
+                    f"face_count={kmeta.get('face_count', 0)} "
+                    f"score={k.final_score:.4f}"
+                )
+
         return kept
+
+    # ── Preset Family Classification ──
+
+    # Preset family mapping: determines which gate profile family a preset
+    # belongs to. Aligned with the audit recommendation:
+    #   - "type": precision-first (Documents, Screenshots, Videos, Panoramas, Favorites, With Location)
+    #   - "people_event": face-required (Wedding, Party, Baby, Portraits)
+    #   - "scenic": recall-first (Mountains, Beach, City, Forest, etc.)
+    _PRESET_FAMILIES = {
+        # Type-like presets (precision-first, hard structural gates)
+        "documents": "type",
+        "screenshots": "type",
+        "videos": "type",
+        "panoramas": "type",
+        "favorites": "type",
+        "gps_photos": "type",
+        # People-event presets (face-required)
+        "wedding": "people_event",
+        "party": "people_event",
+        "baby": "people_event",
+        "portraits": "people_event",
+        # Scenic / semantic presets (recall-first, soft gates only)
+        "beach": "scenic",
+        "mountains": "scenic",
+        "city": "scenic",
+        "forest": "scenic",
+        "lake": "scenic",
+        "travel": "scenic",
+        "sunset": "scenic",
+        "sport": "scenic",
+        "food": "scenic",
+        "pets": "scenic",
+        "flowers": "scenic",
+        "snow": "scenic",
+        "night": "scenic",
+        "architecture": "scenic",
+        "car": "scenic",
+    }
+
+    @classmethod
+    def _get_preset_family(cls, preset_id: str) -> str:
+        """Get the preset family for gate profile selection."""
+        return cls._PRESET_FAMILIES.get(preset_id, "scenic")
+
+    # ── Structural Scorer (for type-like presets) ──
+
+    def _apply_structural_scorer(
+        self,
+        scored: List[ScoredResult],
+        plan: QueryPlan,
+        project_meta: Dict[str, Dict],
+    ) -> List[ScoredResult]:
+        """
+        Apply structural scoring adjustments for type-like presets.
+
+        For Documents: penalizes photo-like images that CLIP considers
+        semantically similar. Uses structural signals beyond CLIP:
+        - Face presence penalty (documents never have faces)
+        - Photo-like aspect ratio penalty (typical photo 3:2, 4:3, 16:9)
+        - Small image penalty (icons, thumbnails)
+        - Extension bonus (.pdf, .png for documents)
+
+        This is the "document_final = semantic_score + structural_document_score
+        - photo_likeness_penalty" from the audit recommendation.
+        """
+        if plan.preset_id != "documents":
+            return scored
+
+        import os
+
+        # Common photo aspect ratios (with tolerance)
+        _PHOTO_RATIOS = [(3/2, 0.05), (4/3, 0.05), (16/9, 0.05),
+                         (2/3, 0.05), (3/4, 0.05), (9/16, 0.05)]
+        # Document-like extensions
+        _DOC_EXTENSIONS = frozenset({'.pdf', '.png', '.tiff', '.tif', '.bmp'})
+        # Photo-like extensions
+        _PHOTO_EXTENSIONS = frozenset({'.jpg', '.jpeg', '.heic', '.heif', '.cr2', '.nef', '.arw'})
+
+        PENALTY_PHOTO_RATIO = 0.08       # Penalty for photo-like aspect ratios
+        PENALTY_PHOTO_EXTENSION = 0.05   # Penalty for .jpg/.heic etc.
+        BONUS_DOC_EXTENSION = 0.05       # Bonus for .pdf/.png
+        PENALTY_SMALL_IMAGE = 0.03       # Penalty for small images
+
+        adjusted = 0
+        for sr in scored:
+            meta = project_meta.get(sr.path, {})
+            adjustment = 0.0
+
+            w = meta.get("width", 0) or 0
+            h = meta.get("height", 0) or 0
+            ext = os.path.splitext(sr.path)[1].lower() if sr.path else ""
+
+            # Photo-like aspect ratio penalty
+            if w > 0 and h > 0:
+                ratio = max(w, h) / min(w, h)
+                for target_ratio, tolerance in _PHOTO_RATIOS:
+                    r = max(target_ratio, 1/target_ratio) if target_ratio < 1 else target_ratio
+                    if abs(ratio - r) < tolerance * r:
+                        adjustment -= PENALTY_PHOTO_RATIO
+                        sr.reasons.append(f"(doc_penalty: photo_ratio={ratio:.2f})")
+                        break
+
+            # Extension-based scoring
+            if ext in _PHOTO_EXTENSIONS:
+                adjustment -= PENALTY_PHOTO_EXTENSION
+                sr.reasons.append(f"(doc_penalty: photo_ext={ext})")
+            elif ext in _DOC_EXTENSIONS:
+                adjustment += BONUS_DOC_EXTENSION
+                sr.reasons.append(f"(doc_bonus: doc_ext={ext})")
+
+            # Small image penalty
+            if w > 0 and h > 0 and max(w, h) < 800:
+                adjustment -= PENALTY_SMALL_IMAGE
+
+            if adjustment != 0.0:
+                sr.final_score = max(0, sr.final_score + adjustment)
+                adjusted += 1
+
+        if adjusted:
+            scored.sort(key=lambda r: r.final_score, reverse=True)
+            logger.info(
+                f"[SearchOrchestrator] Document structural scorer adjusted "
+                f"{adjusted} result(s)"
+            )
+
+        return scored
 
     # ── Duplicate Stacking (P0: fold duplicates into representative + badge) ──
 
