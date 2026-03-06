@@ -81,6 +81,23 @@ class ScanController(QObject):
         self._scan_refresh_scheduled = False
         self._scan_result_cached = None  # Cache scan results for final refresh
 
+    def _get_ocr_enabled(self) -> bool:
+        """Check if OCR is enabled in settings."""
+        try:
+            from settings_manager_qt import SettingsManager
+            return SettingsManager().get("ocr_enabled", False)
+        except Exception:
+            return False
+
+    def _get_ocr_languages(self):
+        """Get OCR language list from settings."""
+        try:
+            from settings_manager_qt import SettingsManager
+            langs = SettingsManager().get("ocr_languages", "en") or "en"
+            return langs.split(",")
+        except Exception:
+            return ["en"]
+
     # ------------------------------------------------------------------
     # Helper: resolve project_id from the *active* layout, not from the
     # hidden CurrentLayout grid/sidebar which may still have project_id=None
@@ -645,6 +662,8 @@ class ScanController(QObject):
                         "time_window_seconds": getattr(self, '_time_window_seconds', None),
                         "similarity_threshold": getattr(self, '_similarity_threshold', None),
                         "min_stack_size": getattr(self, '_min_stack_size', None),
+                        "run_ocr": self._get_ocr_enabled(),
+                        "ocr_languages": self._get_ocr_languages(),
                     }
 
                     self._post_scan_worker = PostScanPipelineWorker(

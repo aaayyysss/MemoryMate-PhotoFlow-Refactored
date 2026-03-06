@@ -19,7 +19,7 @@ Schema Version: 2.0.0
 - Adds schema_version tracking table
 """
 
-SCHEMA_VERSION = "10.1.0"
+SCHEMA_VERSION = "12.0.0"
 
 # Complete schema SQL - executed as a script for new databases
 SCHEMA_SQL = """
@@ -296,6 +296,8 @@ CREATE TABLE IF NOT EXISTS photo_metadata (
     flag TEXT DEFAULT 'none',        -- 'pick', 'reject', 'none'
     title TEXT,                      -- User-defined title
     caption TEXT,                    -- User-defined description/caption
+    -- OCR extracted text (v12.0.0 - text-in-image search)
+    ocr_text TEXT,
     FOREIGN KEY(folder_id) REFERENCES photo_folders(id),
     FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
     UNIQUE(path, project_id)

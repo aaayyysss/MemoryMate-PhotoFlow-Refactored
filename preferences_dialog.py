@@ -1397,6 +1397,52 @@ class PreferencesDialog(QDialog):
 
         layout.addWidget(display_group)
 
+        # ── OCR Text Recognition ──
+        ocr_group = QGroupBox("OCR Text Recognition (Text in Photos)")
+        ocr_layout = QFormLayout(ocr_group)
+        ocr_layout.setSpacing(10)
+
+        self.chk_ocr_enabled = QCheckBox("Enable OCR text extraction during scan")
+        self.chk_ocr_enabled.setToolTip(
+            "Extract text from photos using OCR after scanning.\n"
+            "Enables searching for text visible in photos (signs, documents, etc.).\n"
+            "Requires: pip install easyocr\n"
+            "Note: First run downloads ~200MB model. Processing is CPU/GPU intensive."
+        )
+        self.chk_ocr_enabled.setChecked(self.settings.get("ocr_enabled", False))
+        ocr_layout.addRow("", self.chk_ocr_enabled)
+
+        self.combo_ocr_languages = QComboBox()
+        self.combo_ocr_languages.addItem("English", "en")
+        self.combo_ocr_languages.addItem("English + Arabic", "en,ar")
+        self.combo_ocr_languages.addItem("English + German", "en,de")
+        self.combo_ocr_languages.addItem("English + French", "en,fr")
+        self.combo_ocr_languages.addItem("English + Spanish", "en,es")
+        self.combo_ocr_languages.addItem("English + Chinese", "en,ch_sim")
+        self.combo_ocr_languages.addItem("English + Japanese", "en,ja")
+        self.combo_ocr_languages.addItem("English + Korean", "en,ko")
+        self.combo_ocr_languages.setToolTip(
+            "Language(s) for OCR text recognition.\n"
+            "Adding more languages may reduce accuracy and speed."
+        )
+        # Set current selection from settings
+        saved_langs = self.settings.get("ocr_languages", "en")
+        for i in range(self.combo_ocr_languages.count()):
+            if self.combo_ocr_languages.itemData(i) == saved_langs:
+                self.combo_ocr_languages.setCurrentIndex(i)
+                break
+        ocr_layout.addRow("Languages:", self.combo_ocr_languages)
+
+        ocr_hint = QLabel(
+            "Once enabled, text is extracted after each scan. Use has:text in search\n"
+            "to find photos with recognized text, or just type the text to search for it."
+        )
+        ocr_hint.setWordWrap(True)
+        ocr_hint.setStyleSheet("color: #888; font-size: 9pt; padding-left: 4px;")
+        ocr_layout.addRow("", ocr_hint)
+
+        layout.addWidget(ocr_group)
+
         # ── Reset Button ──
         btn_reset = QPushButton("Reset Search Settings to Defaults")
         btn_reset.setMaximumWidth(280)
@@ -2359,6 +2405,10 @@ class PreferencesDialog(QDialog):
         print(f"🔎 Search settings saved: clip_threshold={self.slider_clip_threshold.value() / 100:.2f}, "
               f"top_k={self.spin_search_top_k.value()}, cache_ttl={self.spin_cache_ttl.value()}s, "
               f"fusion={self.combo_fusion_mode.currentText()}, sem_weight={self.slider_semantic_weight.value() / 100:.2f}")
+
+        # OCR Text Recognition
+        self.settings.set("ocr_enabled", self.chk_ocr_enabled.isChecked())
+        self.settings.set("ocr_languages", self.combo_ocr_languages.currentData())
 
         # Badge overlays
         self.settings.set("badge_overlays_enabled", self.chk_badge_overlays.isChecked())
