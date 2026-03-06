@@ -204,15 +204,37 @@ def _get_insightface_app():
                     # This prevents fallback app from downloading models to wrong location
                     _buffalo_dir_path = buffalo_dir
                     logger.debug(f"[INIT] Stored buffalo_dir for fallback use: {buffalo_dir}")
-                    
-                    # VALIDATION: Check for duplicate buffalo_l subdirectory (common packaging error)
+
+                    # COMPATIBILITY: Detect InsightFace version and log details
+                    try:
+                        import insightface
+                        insightface_version = getattr(insightface, '__version__', 'unknown')
+                        logger.info(f"📦 InsightFace version: {insightface_version}")
+                    except Exception as e:
+                        logger.debug(f"Could not detect InsightFace version: {e}")
+                        insightface_version = 'unknown'
+
+                    # Version detection: Check if FaceAnalysis supports providers parameter
+                    # This ensures compatibility with BOTH old and new InsightFace versions
+                    import inspect
+                    sig = inspect.signature(FaceAnalysis.__init__)
+                    supports_providers = 'providers' in sig.parameters
+
+                    # VALIDATION: Check for duplicate buffalo_l subdirectory
                     nested_buffalo = os.path.join(buffalo_dir, 'models', 'buffalo_l')
                     if os.path.exists(nested_buffalo):
-                        logger.warning(f"⚠️ Detected nested buffalo_l directory: {nested_buffalo}")
-                        logger.warning("⚠️ This may cause model loading issues. Expected structure:")
-                        logger.warning("   buffalo_l/det_10g.onnx")
-                        logger.warning("   NOT buffalo_l/models/buffalo_l/det_10g.onnx")
-                        logger.warning("   Please check your model directory structure.")
+                        if supports_providers:
+                            # Newer InsightFace: root is grandparent, so nested structure is unused/unexpected
+                            logger.warning(f"⚠️ Detected nested buffalo_l directory: {nested_buffalo}")
+                            logger.warning("⚠️ This may cause model loading issues with newer InsightFace.")
+                            logger.warning("   Expected: buffalo_l/det_10g.onnx")
+                            logger.warning("   Found:    buffalo_l/models/buffalo_l/det_10g.onnx")
+                            logger.warning("   Please check your model directory structure.")
+                        else:
+                            # Older InsightFace (v0.2.x-v0.7.x): root=buffalo_dir, resolves
+                            # models at {root}/models/{name}/, so nested structure is EXPECTED.
+                            logger.info(f"Nested buffalo_l directory detected: {nested_buffalo}")
+                            logger.info("   This is expected for older InsightFace (models resolved at root/models/buffalo_l/).")
 
                     # P1-8 FIX: Validate ONNX model files exist and have reasonable size
                     required_models = ['det_10g.onnx', 'genderage.onnx', 'w600k_r50.onnx']
@@ -246,20 +268,12 @@ def _get_insightface_app():
                     # Do NOT pass parent directory, pass the buffalo_l directory itself!
                     logger.info(f"✓ Initializing InsightFace with buffalo_l directory: {buffalo_dir}")
 
-                    # COMPATIBILITY: Detect InsightFace version and log details
-                    try:
-                        import insightface
-                        insightface_version = getattr(insightface, '__version__', 'unknown')
-                        logger.info(f"📦 InsightFace version: {insightface_version}")
-                    except Exception as e:
-                        logger.debug(f"Could not detect InsightFace version: {e}")
-                        insightface_version = 'unknown'
-
-                    # Version detection: Check if FaceAnalysis supports providers parameter
-                    # This ensures compatibility with BOTH old and new InsightFace versions
-                    import inspect
-                    sig = inspect.signature(FaceAnalysis.__init__)
-                    supports_providers = 'providers' in sig.parameters
+                    # Suppress FutureWarnings from insightface internals:
+                    # - numpy rcond deprecation in insightface/utils/transform.py
+                    # - skimage estimate() deprecation in insightface/utils/face_align.py
+                    # These are in third-party code we cannot modify; safe to suppress.
+                    import warnings
+                    warnings.filterwarnings('ignore', category=FutureWarning, module=r'insightface\.utils')
 
                     # Initialize FaceAnalysis with version-appropriate root path.
                     # FaceAnalysis resolves models at {root}/models/{name}/.
