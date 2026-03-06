@@ -1362,6 +1362,26 @@ class SmartFindService:
             except Exception as e:
                 logger.warning(f"[SmartFind] Rating filter failed: {e}")
 
+        # OCR text filtering (has:text)
+        if "has_ocr_text" in filters:
+            try:
+                from repository.base_repository import DatabaseConnection
+                db = DatabaseConnection()
+                with db.get_connection() as conn:
+                    cursor = conn.execute(
+                        "SELECT path FROM photo_metadata "
+                        "WHERE ocr_text IS NOT NULL AND ocr_text != '' "
+                        "AND project_id = ?",
+                        (self.project_id,)
+                    )
+                    ocr_paths = {row['path'] for row in cursor.fetchall()}
+                if paths:
+                    paths = [p for p in paths if p in ocr_paths]
+                else:
+                    paths = list(ocr_paths)
+            except Exception as e:
+                logger.warning(f"[SmartFind] OCR text filter failed: {e}")
+
         # Flag filtering (Favorites = flag='pick')
         if "flag" in filters:
             flag_value = filters["flag"]

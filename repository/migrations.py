@@ -561,6 +561,32 @@ VALUES ('11.0.0', 'search_asset_features: flattened search index table', CURRENT
 )
 
 
+MIGRATION_12_0_0 = Migration(
+    version="12.0.0",
+    description="OCR pipeline: ocr_text column + FTS5 virtual table for text-in-image search",
+    sql="""
+-- Migration v12.0.0: OCR text extraction pipeline
+-- Adds ocr_text column to photo_metadata for storing extracted text.
+-- Creates ocr_fts5 FTS5 virtual table for full-text search of OCR results.
+-- The column is populated by the OCR pipeline worker (EasyOCR backend).
+
+-- NOTE: ALTER TABLE ADD COLUMN is handled in Python code below
+-- (SQLite doesn't support IF NOT EXISTS for ALTER TABLE).
+
+-- FTS5 virtual table for fast MATCH queries on OCR text
+CREATE VIRTUAL TABLE IF NOT EXISTS ocr_fts5 USING fts5(
+    ocr_text,
+    content='photo_metadata',
+    content_rowid='id'
+);
+
+INSERT OR REPLACE INTO schema_version (version, description, applied_at)
+VALUES ('12.0.0', 'OCR pipeline: ocr_text column + FTS5 virtual table', CURRENT_TIMESTAMP);
+""",
+    rollback_sql=""
+)
+
+
 # Ordered list of all migrations
 ALL_MIGRATIONS = [
     MIGRATION_1_5_0,
@@ -578,6 +604,7 @@ ALL_MIGRATIONS = [
     MIGRATION_10_0_0,
     MIGRATION_10_1_0,
     MIGRATION_11_0_0,
+    MIGRATION_12_0_0,
 ]
 
 
@@ -767,6 +794,9 @@ class MigrationManager:
                     # Apply migration v9.4: add metadata editing columns
                     self._add_metadata_editing_columns_if_missing(conn)
                 # Note: v10.0.0 migration (People Groups) has table creation in SQL
+                elif migration.version == "12.0.0":
+                    # Apply migration v12.0: add ocr_text column to photo_metadata
+                    self._add_ocr_text_column_if_missing(conn)
 
                 # Execute migration SQL (version tracking)
                 conn.executescript(migration.sql)
@@ -1245,6 +1275,25 @@ class MigrationManager:
 
         conn.commit()
         self.logger.info("✓ Metadata editing columns (rating, flag, title, caption) added successfully")
+
+    def _add_ocr_text_column_if_missing(self, conn: sqlite3.Connection):
+        """
+        Add ocr_text column to photo_metadata for OCR pipeline (v12.0.0).
+
+        Args:
+            conn: Database connection
+        """
+        cur = conn.cursor()
+        cur.execute("PRAGMA table_info(photo_metadata)")
+        metadata_columns = {row['name'] for row in cur.fetchall()}
+
+        if 'ocr_text' not in metadata_columns:
+            self.logger.info("Adding column photo_metadata.ocr_text")
+            cur.execute("ALTER TABLE photo_metadata ADD COLUMN ocr_text TEXT")
+            conn.commit()
+            self.logger.info("✓ ocr_text column added successfully")
+        else:
+            self.logger.info("✓ ocr_text column already exists")
 
 
 def get_migration_status(db_connection) -> Dict[str, Any]:

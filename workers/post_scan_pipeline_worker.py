@@ -9,6 +9,7 @@
 #   2. Exact duplicate detection
 #   3. Embedding generation
 #   4. Similar shot detection
+#   5. OCR text extraction
 #
 # All steps are optional and controlled via options dict.
 
@@ -72,12 +73,15 @@ class PostScanPipelineWorker(QRunnable):
             "exact_duplicates": 0,
             "embeddings_generated": 0,
             "similar_stacks": 0,
+            "ocr_processed": 0,
+            "ocr_with_text": 0,
             "errors": [],
         }
 
         detect_exact = self.options.get("detect_exact", False)
         detect_similar = self.options.get("detect_similar", False)
         generate_embeddings = self.options.get("generate_embeddings", False)
+        run_ocr = self.options.get("run_ocr", False)
 
         # Count total steps for progress
         total_steps = 0
@@ -87,6 +91,8 @@ class PostScanPipelineWorker(QRunnable):
             total_steps += 1  # embedding generation
         if detect_similar:
             total_steps += 1  # similar shot detection
+        if run_ocr:
+            total_steps += 1  # OCR text extraction
         if total_steps == 0:
             self.signals.finished.emit(results)
             return
@@ -276,6 +282,51 @@ class PostScanPipelineWorker(QRunnable):
                 except Exception as e:
                     logger.error("Similar shot detection failed: %s", e, exc_info=True)
                     results["errors"].append(f"Similar shots: {e}")
+
+            # ── Step 5: OCR text extraction ───────────────────────
+            if run_ocr and not self._cancelled:
+                current_step += 1
+                self.signals.progress.emit(
+                    "ocr", current_step, total_steps,
+                    "Extracting text from photos (OCR)..."
+                )
+
+                try:
+                    from workers.ocr_pipeline_worker import OCRPipelineWorker
+
+                    ocr_worker = OCRPipelineWorker(
+                        project_id=self.project_id,
+                        languages=self.options.get("ocr_languages"),
+                    )
+
+                    # Run synchronously in this background thread
+                    import threading
+                    ocr_stats = {}
+                    ocr_done = threading.Event()
+
+                    def _on_ocr_finished(stats):
+                        ocr_stats.update(stats)
+                        ocr_done.set()
+
+                    def _on_ocr_error(msg):
+                        results["errors"].append(f"OCR: {msg}")
+                        ocr_done.set()
+
+                    ocr_worker.signals.finished.connect(_on_ocr_finished)
+                    ocr_worker.signals.error.connect(_on_ocr_error)
+
+                    ocr_worker.run()
+
+                    results["ocr_processed"] = ocr_stats.get("processed", 0)
+                    results["ocr_with_text"] = ocr_stats.get("with_text", 0)
+                    logger.info(
+                        "OCR complete: %d processed, %d with text",
+                        results["ocr_processed"], results["ocr_with_text"],
+                    )
+
+                except Exception as e:
+                    logger.error("OCR pipeline failed: %s", e, exc_info=True)
+                    results["errors"].append(f"OCR: {e}")
 
             # Bump search index version so SmartFind caches are invalidated
             try:

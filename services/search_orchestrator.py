@@ -318,6 +318,9 @@ class TokenParser:
             elif value_lower in ("face", "faces", "people"):
                 filters["has_faces"] = True
                 return {"type": "meta", "label": "Has Faces", "key": "has_faces", "value": "true"}
+            elif value_lower in ("text", "ocr", "words"):
+                filters["has_ocr_text"] = True
+                return {"type": "meta", "label": "Has Text", "key": "has_ocr_text", "value": "true"}
 
         elif key in ("date", "in", "from"):
             return cls._process_date_token(value, filters)
@@ -718,6 +721,33 @@ class SearchOrchestrator:
             metadata_paths = self._smart_find._run_metadata_filter(plan.filters)
             metadata_candidate_paths = set(metadata_paths)
 
+        # Step 2b: OCR text candidates
+        # When user types free text, also search OCR-extracted text.
+        # OCR matches get injected as metadata candidates so they appear
+        # even when CLIP doesn't find them semantically.
+        ocr_match_paths = set()
+        ocr_query = plan.semantic_text or plan.raw_query
+        if ocr_query and len(ocr_query.strip()) >= 2:
+            try:
+                ocr_paths = SearchOrchestrator.search_ocr_text(
+                    self.project_id, ocr_query, limit=top_k
+                )
+                if ocr_paths:
+                    ocr_match_paths = set(ocr_paths)
+                    logger.info(
+                        f"[SearchOrchestrator] OCR text search found "
+                        f"{len(ocr_match_paths)} matches for '{ocr_query}'"
+                    )
+                    # Merge OCR matches into metadata candidates
+                    if metadata_candidate_paths is not None:
+                        metadata_candidate_paths.update(ocr_match_paths)
+                    else:
+                        # If no metadata filters, OCR matches become candidates
+                        if not semantic_hits:
+                            metadata_candidate_paths = ocr_match_paths
+            except Exception as e:
+                logger.debug(f"[SearchOrchestrator] OCR search skipped: {e}")
+
         # Step 3: Resolve photo_id -> path
         path_lookup = {}
         if semantic_hits:
@@ -782,6 +812,29 @@ class SearchOrchestrator:
                 sr = self._score_result(path, 0.0, "", project_meta,
                                         plan.filters, people_implied)
                 scored.append(sr)
+
+        # Step 5b: Boost OCR-matched results
+        # Photos where the query text matches OCR-extracted text get a score
+        # boost so they rank higher, especially for type-family searches
+        # (Documents, Screenshots) where text content is the primary signal.
+        if ocr_match_paths:
+            OCR_BOOST = 0.15  # additive bonus for OCR text match
+            scored_paths = {r.path for r in scored}
+            for sr in scored:
+                if sr.path in ocr_match_paths:
+                    sr.final_score += OCR_BOOST
+                    sr.reasons.append(f"ocr_text_match=+{OCR_BOOST}")
+
+            # Also add OCR-only matches that weren't in semantic results
+            for opath in ocr_match_paths:
+                if opath not in scored_paths:
+                    sr = self._score_result(
+                        opath, 0.0, "", project_meta,
+                        plan.filters, people_implied,
+                    )
+                    sr.final_score += OCR_BOOST
+                    sr.reasons.append(f"ocr_text_match=+{OCR_BOOST}")
+                    scored.append(sr)
 
         # Step 6: Sort by final_score
         scored.sort(key=lambda r: r.final_score, reverse=True)
