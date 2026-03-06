@@ -668,3 +668,322 @@ Add one “Not a document” action in UI, store it, and use it as negative trai
 search_orchestrator
 
 If you want, I can now do the next concrete step in the most mechanical way: I will open your pasted search_orchestrator.py and propose an exact _apply_gates() implementation plus the exact call sites to patch (function names, placement, and the minimal tests to add), sticking strictly to your current meta fields (is_screenshot, face_count, width, height, has_gps, flag).
+
+Below is the next “mechanical” step, scoped exactly the way you asked: implement a single _apply_gates() in search_orchestrator.py, patch the exact call sites, add minimal tests. I will only use the meta fields you listed: is_screenshot, face_count, width, height, has_gps, flag.
+
+1) What the gates must do (strict, deterministic)
+
+Think of gates as hard keep, hard drop, not scoring. iPhone, Google Photos, Lightroom, Excire all do this implicitly for some categories: they do not just “rank”, they filter with a few high precision rules, then rank inside the filtered pool.
+
+With your current meta, you can implement these high precision gates:
+
+Gate rules (only using your meta)
+
+Screenshots preset
+
+Keep only: is_screenshot == True
+
+Documents preset
+
+Drop if: is_screenshot == True (screenshots are a major false positive source)
+
+Drop if: face_count > 0 (portraits are your other major false positive source)
+
+[Optional but still “meta-only”] Drop if very small (min(width, height) < 350) to remove thumbnails, icons, UI scraps
+
+With Location preset
+
+Keep only: has_gps == True
+
+Favorites preset
+
+Keep only: flag == "pick"
+
+Everything else (Mountains, Beach, Wedding, etc.) can remain scoring-based for now, because you do not have reliable meta gates for them yet (you would need OCR text density, scene classifier, or object detectors, none of which you allow in this step).
+
+2) Exact _apply_gates() implementation to add to search_orchestrator.py
+Placement
+
+Put it inside class SearchOrchestrator, near your other “pipeline helpers”, best location is right above _deduplicate_results() so it is obvious it runs before dedup and slicing.
+
+Code (copy-paste)
+from collections import Counter
+
+# inside class SearchOrchestrator:
+
+    def _apply_gates(
+        self,
+        scored: List[ScoredResult],
+        plan: QueryPlan,
+        project_meta: Dict[str, Dict],
+    ) -> List[ScoredResult]:
+        """
+        Hard filters applied after scoring but before dedup and top_k slicing.
+
+        Only uses existing meta fields:
+        - is_screenshot, face_count, width, height, has_gps, flag
+        """
+        if not scored:
+            return scored
+
+        preset = (plan.preset_id or "").strip().lower()
+        filters = plan.filters or {}
+
+        # Infer gate intent from preset_id and filters only.
+        require_screenshot = (preset in {"screenshots", "screenshot"}) or bool(filters.get("is_screenshot") is True)
+        exclude_screenshots = (preset in {"documents", "document"}) or bool(filters.get("exclude_screenshots") is True)
+
+        require_gps = bool(filters.get("has_gps") is True) or bool(filters.get("has_location") is True)
+        require_favorite = (preset in {"favorites", "favourites"}) or (filters.get("flag") == "pick")
+
+        # Documents should default to excluding faces even if caller forgot to set exclude_faces
+        exclude_faces = bool(plan.exclude_faces) or (preset in {"documents", "document"}) or bool(filters.get("exclude_faces") is True)
+
+        # Optional: reject tiny images for docs (still meta-only). Tune later if needed.
+        min_doc_edge = 350 if preset in {"documents", "document"} else None
+
+        dropped = Counter()
+        kept: List[ScoredResult] = []
+
+        for r in scored:
+            meta = project_meta.get(r.path, {})
+
+            is_screenshot = bool(meta.get("is_screenshot", False))
+            face_count = int(meta.get("face_count") or 0)
+            has_gps = bool(meta.get("has_gps", False))
+            flag = meta.get("flag", None)
+
+            w = meta.get("width")
+            h = meta.get("height")
+            try:
+                w = int(w) if w is not None else None
+                h = int(h) if h is not None else None
+            except Exception:
+                w, h = None, None
+
+            # Gate: require screenshot
+            if require_screenshot and not is_screenshot:
+                dropped["require_screenshot"] += 1
+                continue
+
+            # Gate: exclude screenshots
+            if exclude_screenshots and is_screenshot:
+                dropped["exclude_screenshot"] += 1
+                continue
+
+            # Gate: require GPS
+            if require_gps and not has_gps:
+                dropped["require_gps"] += 1
+                continue
+
+            # Gate: require favorite flag
+            if require_favorite and flag != "pick":
+                dropped["require_favorite"] += 1
+                continue
+
+            # Gate: exclude faces
+            if exclude_faces and face_count > 0:
+                dropped["exclude_faces"] += 1
+                continue
+
+            # Gate: documents, drop tiny images
+            if min_doc_edge is not None and w is not None and h is not None:
+                if min(w, h) < min_doc_edge:
+                    dropped["doc_too_small"] += 1
+                    continue
+
+            kept.append(r)
+
+        if dropped:
+            logger.info(
+                f"[SearchOrchestrator] Gates applied preset={plan.preset_id!r} "
+                f"kept={len(kept)}/{len(scored)} dropped={dict(dropped)}"
+            )
+
+        return kept
+3) Exact call sites to patch (function names, placement)
+
+You want gates applied after scoring, after negative prompt penalty, but before:
+
+_deduplicate_results(...)
+
+_enforce_unique_paths(...)
+
+[:top_k] slicing
+
+facet computation (facets must reflect the gated set)
+
+A) Patch _execute(...)
+
+Find your current block (you already have an inline exclude_faces block). Replace that inline block with _apply_gates.
+
+In _execute(...), after this existing section:
+
+scoring loop
+
+negative prompt penalty block
+
+Add:
+
+        scored = self._apply_gates(scored, plan, project_meta)
+
+Then keep your existing:
+
+        scored = self._deduplicate_results(scored, project_meta)
+        scored.sort(key=lambda r: r.final_score, reverse=True)
+        scored = self._enforce_unique_paths(scored)
+        scored = scored[:top_k]
+
+Remove the old inline if plan.exclude_faces: ... block to avoid double logic.
+
+B) Patch search_metadata_only(...)
+
+Right now you do:
+
+build scored
+
+sort
+
+enforce unique
+
+slice
+
+Insert gates before uniqueness and slicing:
+
+        scored.sort(key=lambda r: r.final_score, reverse=True)
+        scored = self._apply_gates(scored, plan, project_meta)
+        scored = self._enforce_unique_paths(scored)
+        scored = scored[:top_k]
+C) Patch search_ann(...)
+
+Wherever search_ann(...) produces a scored list (ScoredResult list), apply:
+
+        scored = self._apply_gates(scored, plan, project_meta)
+
+Place it after any ANN candidate expansion, after scoring, before dedup and slicing.
+
+D) Patch find_similar(...)
+
+find_similar does not have a “preset”, but it still might be called from UI actions that conceptually want gating (for example, user right-clicks a screenshot and wants similar screenshots). Since you asked “minimal” and mechanical:
+
+If you do not have a plan there, you can create a local plan:
+
+plan = QueryPlan(raw_query="find_similar", tokens={}, filters={}, preset_id=None, source="similar")
+
+Then apply:
+
+scored = self._apply_gates(scored, plan, project_meta)
+
+If you do not want any gating for find-similar, skip it. But you explicitly asked to apply to all search paths earlier, so I would apply it for consistency (it will be a no-op because preset_id is None and filters empty).
+
+4) Minimal tests to add (exact, small, meta-only)
+
+These tests should live in your existing tests/test_search_orchestrator.py (or wherever your orchestrator tests are). They should not require DB, CLIP, FAISS, or Qt.
+
+Test 1: Documents gate drops screenshots and faces
+def test_apply_gates_documents_excludes_faces_and_screenshots():
+    orch = SearchOrchestrator.__new__(SearchOrchestrator)
+
+    plan = QueryPlan(
+        raw_query="Documents",
+        tokens={},
+        filters={},
+        preset_id="Documents",
+        source="preset",
+        exclude_faces=True,
+    )
+
+    project_meta = {
+        "doc_ok.png": {"is_screenshot": False, "face_count": 0, "width": 1200, "height": 1600, "has_gps": False, "flag": None},
+        "portrait.jpg": {"is_screenshot": False, "face_count": 1, "width": 2000, "height": 3000, "has_gps": False, "flag": None},
+        "shot.png": {"is_screenshot": True, "face_count": 0, "width": 1170, "height": 2532, "has_gps": False, "flag": None},
+    }
+
+    scored = [
+        ScoredResult(path="doc_ok.png", clip_score=0.23, recency_score=0, favorite_score=0, location_score=0, face_match_score=0, final_score=0.23),
+        ScoredResult(path="portrait.jpg", clip_score=0.25, recency_score=0, favorite_score=0, location_score=0, face_match_score=0, final_score=0.25),
+        ScoredResult(path="shot.png", clip_score=0.26, recency_score=0, favorite_score=0, location_score=0, face_match_score=0, final_score=0.26),
+    ]
+
+    kept = orch._apply_gates(scored, plan, project_meta)
+    kept_paths = [r.path for r in kept]
+    assert kept_paths == ["doc_ok.png"]
+Test 2: Screenshots gate keeps only screenshots
+def test_apply_gates_screenshots_requires_is_screenshot():
+    orch = SearchOrchestrator.__new__(SearchOrchestrator)
+
+    plan = QueryPlan(
+        raw_query="Screenshots",
+        tokens={},
+        filters={},
+        preset_id="Screenshots",
+        source="preset",
+    )
+
+    project_meta = {
+        "shot1.png": {"is_screenshot": True, "face_count": 0, "width": 1170, "height": 2532, "has_gps": False, "flag": None},
+        "photo.jpg": {"is_screenshot": False, "face_count": 0, "width": 4000, "height": 3000, "has_gps": True, "flag": None},
+    }
+
+    scored = [
+        ScoredResult(path="shot1.png", clip_score=0.20, recency_score=0, favorite_score=0, location_score=0, face_match_score=0, final_score=0.20),
+        ScoredResult(path="photo.jpg", clip_score=0.30, recency_score=0, favorite_score=0, location_score=0, face_match_score=0, final_score=0.30),
+    ]
+
+    kept = orch._apply_gates(scored, plan, project_meta)
+    assert [r.path for r in kept] == ["shot1.png"]
+Test 3: Favorites and With Location gates from filters
+def test_apply_gates_require_favorite_and_gps_via_filters():
+    orch = SearchOrchestrator.__new__(SearchOrchestrator)
+
+    plan = QueryPlan(
+        raw_query="is:fav has:location",
+        tokens={},
+        filters={"flag": "pick", "has_gps": True},
+        preset_id=None,
+        source="text",
+    )
+
+    project_meta = {
+        "fav_gps.jpg": {"is_screenshot": False, "face_count": 0, "width": 2000, "height": 1500, "has_gps": True, "flag": "pick"},
+        "fav_no_gps.jpg": {"is_screenshot": False, "face_count": 0, "width": 2000, "height": 1500, "has_gps": False, "flag": "pick"},
+        "gps_not_fav.jpg": {"is_screenshot": False, "face_count": 0, "width": 2000, "height": 1500, "has_gps": True, "flag": None},
+    }
+
+    scored = [
+        ScoredResult(path=p, clip_score=0.1, recency_score=0, favorite_score=0, location_score=0, face_match_score=0, final_score=0.1)
+        for p in project_meta.keys()
+    ]
+
+    kept = orch._apply_gates(scored, plan, project_meta)
+    assert [r.path for r in kept] == ["fav_gps.jpg"]
+
+That is enough to prevent regressions for your exact pain points: documents, screenshots, favorites, with-location.
+
+5) Do you need DB schema changes for this step?
+
+No, not for the gates above.
+
+face_count comes from face_crops grouped by image_path (you already fixed that)
+
+flag exists in media_assets
+
+width, height, gps_latitude, gps_longitude exist in photo_metadata
+
+is_screenshot is derived (path heuristic) in orchestrator
+
+So this step is a pure orchestrator change + tests.
+
+6) Why your results “still not improved” even after earlier patches
+
+You are trying to solve a classification problem using only a semantic similarity ranker (ViT-B/32), which is exactly why Google, Apple, Lightroom, Excire all add hard gates for special categories.
+
+Documents is the clearest example:
+
+CLIP similarity for “document” overlaps with portrait similarity on ViT-B/32 in your logs
+
+therefore no threshold tweak will reliably separate them
+
+gates must do the separation, ranking can only refine inside the gated pool
+
+If you paste your current tests/test_search_orchestrator.py (or tell me its exact path inside your repo), I will align these tests to your existing fixtures and helper constructors so you can drop them in without any manual adaptati
