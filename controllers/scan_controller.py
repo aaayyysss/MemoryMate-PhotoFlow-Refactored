@@ -494,14 +494,9 @@ class ScanController(QObject):
         except Exception:
             pass
 
-        # Dispatch ScanCompleted to ProjectState store
-        from core.state_bus import ActionMeta, ScanCompleted as ScanCompletedAction
-        _dispatch_store_action(ScanCompletedAction(
-            meta=ActionMeta(source="scan_controller"),
-            job_id=self._scan_job_id or -1,
-            photos_indexed=photos,
-            videos_indexed=videos,
-        ))
+        # NOTE: ScanCompleted dispatch is deferred to _finalize_scan_refresh()
+        # so that project_images is populated (via build_date_branches) BEFORE
+        # the store bump triggers GoogleLayout to re-query the database.
 
     def _on_error(self, err_text: str):
         if not is_alive(self.main) or not generation_ok(self.main, self._expected_generation):
@@ -1015,6 +1010,17 @@ class ScanController(QObject):
         # Final status message — auto-hides after 5 s
         self.main.scan_ui_finish(f"Scan complete: {p} photos, {v} videos indexed", 5000)
         self.logger.info(f"Final refresh complete: {p} photos, {v} videos")
+
+        # Dispatch ScanCompleted NOW — after build_date_branches() has populated
+        # project_images, so the media_v bump triggers layout queries against a
+        # fully populated database (fixes "0 rows total" race condition).
+        from core.state_bus import ActionMeta, ScanCompleted as ScanCompletedAction
+        _dispatch_store_action(ScanCompletedAction(
+            meta=ActionMeta(source="scan_controller"),
+            job_id=self._scan_job_id or -1,
+            photos_indexed=p,
+            videos_indexed=v,
+        ))
 
         # Mark scan complete via JobManager
         if self._scan_job_id is not None:
