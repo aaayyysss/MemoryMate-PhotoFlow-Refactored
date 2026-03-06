@@ -297,10 +297,13 @@ class SemanticEmbeddingService:
                     import os
                     app_root = Path(__file__).parent.parent.absolute()
                     folder_name = hf_model.replace('/', '--')
+                    # Also try bare model name without org prefix
+                    # User may have folder named 'clip-vit-base-patch32' instead of 'openai--clip-vit-base-patch32'
+                    bare_name = hf_model.split('/')[-1] if '/' in hf_model else hf_model
 
                     logger.info(f"[SemanticEmbeddingService] Searching for offline model...")
                     logger.info(f"[SemanticEmbeddingService]   App root: {app_root}")
-                    logger.info(f"[SemanticEmbeddingService]   Looking for: {folder_name}")
+                    logger.info(f"[SemanticEmbeddingService]   Looking for: {folder_name} (or {bare_name})")
 
                     # Check multiple possible locations
                     possible_locations = [
@@ -308,6 +311,14 @@ class SemanticEmbeddingService:
                         app_root / 'model' / folder_name,      # Lowercase m, singular
                         app_root / 'models' / folder_name,     # Lowercase m, plural
                     ]
+
+                    # Also check bare model name (without org prefix)
+                    if bare_name != folder_name:
+                        possible_locations.extend([
+                            app_root / 'models' / bare_name,   # models/clip-vit-base-patch32
+                            app_root / 'Model' / bare_name,    # Model/clip-vit-base-patch32
+                            app_root / 'model' / bare_name,    # model/clip-vit-base-patch32
+                        ])
 
                     # CRITICAL: Also check HuggingFace default cache location
                     # This is where transformers downloads models by default
@@ -418,12 +429,12 @@ class SemanticEmbeddingService:
                             f"[SemanticEmbeddingService] Model not found and running in background thread. "
                             f"Cannot show dialog during background processing."
                         )
+                        _bare = hf_model.split('/')[-1] if '/' in hf_model else hf_model
                         error = RuntimeError(
                             f"CLIP model '{hf_model}' not found offline.\n\n"
                             f"The model is required for similar photo detection.\n\n"
                             f"Please ensure model is installed at one of:\n"
-                            f"  • ./Model/{hf_model.replace('/', '--')}/\n"
-                            f"  • ./model/{hf_model.replace('/', '--')}/\n"
+                            f"  • ./models/{_bare}/\n"
                             f"  • ./models/{hf_model.replace('/', '--')}/\n\n"
                             f"Or set path in: Preferences → Visual Embeddings → Model Path\n\n"
                             f"Note: Model check performed once and cached - will not retry for each photo."

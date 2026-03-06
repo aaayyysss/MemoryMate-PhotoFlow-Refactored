@@ -312,18 +312,21 @@ class CLIPModelDialog(QDialog):
         }
 
         for model_key, folder_name in model_variants.items():
-            # Check Model folder (uppercase)
-            model_path = app_root / 'Model' / folder_name
-            if model_path.exists() and (model_path / 'config.json').exists():
-                models_found.append((model_key, str(model_path)))
-                logger.info(f"[CLIPModelDialog] Found offline model: {model_path}")
-                continue
+            # Bare model name without org prefix (e.g. 'clip-vit-base-patch32')
+            bare_name = folder_name.split('--', 1)[-1] if '--' in folder_name else folder_name
 
-            # Check models folder (lowercase)
-            model_path = app_root / 'models' / folder_name
-            if model_path.exists() and (model_path / 'config.json').exists():
-                models_found.append((model_key, str(model_path)))
-                logger.info(f"[CLIPModelDialog] Found offline model: {model_path}")
+            found = False
+            # Check all folder name variants × directory name variants
+            for name in (folder_name, bare_name):
+                for dir_name in ('Model', 'models', 'model'):
+                    model_path = app_root / dir_name / name
+                    if model_path.exists() and (model_path / 'config.json').exists():
+                        models_found.append((model_key, str(model_path)))
+                        logger.info(f"[CLIPModelDialog] Found offline model: {model_path}")
+                        found = True
+                        break
+                if found:
+                    break
 
         if models_found:
             # Found at least one offline model
