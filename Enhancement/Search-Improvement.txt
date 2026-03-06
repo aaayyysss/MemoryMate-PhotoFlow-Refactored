@@ -1,271 +1,310 @@
-Audit, verify, analyse, I am not seeing “search results improved” because the current Documents preset is structurally set up to accept any image that contains text-like patterns, especially after backoff lowers the CLIP threshold. In the snippet, hereto pasted "2026-03-02 13:47:13,409 [INFO] [GooglePhotosLayout] Smart Find: '📱 Screenshots' → 6 results [GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px) [paths=6 photos]... [GooglePhotosLayout] 🔍 Starting async photo load (generation 24) - existing content preserved... [GooglePhotosLayout] Photo load worker started (generation 24, legacy/paths) 2026-03-02 13:47:13,482 [INFO] Photo query complete: generation=24, current=24, rows=6 [GooglePhotosLayout] Dispatching 6 assets (photos+videos) to background grouping worker... [GooglePhotosLayout] Grouped into 6 date groups [GooglePhotosLayout] Tracking 6 paths for multi-selection [GooglePhotosLayout] Virtual scrolling enabled: 6 total date groups [GooglePhotosLayout] Rendered: 5 groups | Placeholders: 1 groups [GooglePhotosLayout] Queued 5 thumbnails for loading (initial limit: 50) [GooglePhotosLayout] Photo loading complete! Thumbnails will load progressively. 2026-03-02 13:47:19,008 [INFO] [SemanticSearchService] Query 'document': 2 matches (threshold=0.22, top_k=600) 2026-03-02 13:47:19,031 [INFO] [SemanticSearchService] Query 'text': 6 matches (threshold=0.22, top_k=600) 2026-03-02 13:47:19,051 [INFO] [SemanticSearchService] Query 'paper': 4 matches (threshold=0.22, top_k=600) 2026-03-02 13:47:19,069 [INFO] [SemanticSearchService] Query 'receipt': 0 matches (threshold=0.22, top_k=600) 2026-03-02 13:47:19,089 [INFO] [SemanticSearchService] Query 'handwriting': 0 matches (threshold=0.22, top_k=600) 2026-03-02 13:47:19,091 [INFO] [SearchOrchestrator] query="Documents" | 4 results | 103ms | weights=[clip=0.75 rec=0.05 fav=0.08 loc=0.04 face=0.08] 2026-03-02 13:47:19,091 [INFO] #1 0.2063 | clip=0.220 rec=0.0206 fav=0.00 loc=1.0 face=0.0 | img_6995_2_2_2.jpeg 2026-03-02 13:47:19,092 [INFO] #2 0.1766 | clip=0.230 rec=0.0877 fav=0.00 loc=0.0 face=0.0 | pexels-matreding-11363475.jpg [+3] 2026-03-02 13:47:19,092 [INFO] #3 0.1720 | clip=0.228 rec=0.0226 fav=0.00 loc=0.0 face=0.0 | ammar3_2_2_2_2.jpeg 2026-03-02 13:47:19,092 [INFO] #4 0.1679 | clip=0.224 rec=0.0029 fav=0.00 loc=0.0 face=0.0 | alya1_2_2_2.jpeg [+1] 2026-03-02 13:47:19,093 [INFO] [SmartFind] Preset 'Documents': 4 results in 103ms (CLIP=True, filters=False, backoff=False) 2026-03-02 13:47:19,095 [INFO] [GooglePhotosLayout] Smart Find: '📄 Documents' → 4 results [GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px) [paths=4 photos]... [GooglePhotosLayout] 🔍 Starting async photo load (generation 25) - existing content preserved... [GooglePhotosLayout] Photo load worker started (generation 25, legacy/paths) 2026-03-02 13:47:19,167 [INFO] Photo query complete: generation=25, current=25, rows=4 [GooglePhotosLayout] Dispatching 4 assets (photos+videos) to background grouping worker... [GooglePhotosLayout] Grouped into 4 date groups [GooglePhotosLayout] Tracking 4 paths for multi-selection [GooglePhotosLayout] Virtual scrolling enabled: 4 total date groups [GooglePhotosLayout] Rendered: 4 groups | Placeholders: 0 groups [GooglePhotosLayout] Queued 4 thumbnails for loading (initial limit: 50) [GooglePhotosLayout] Photo loading complete! Thumbnails will load progressively. 2026-03-02 13:47:23,498 [INFO] SearchService initialized 2026-03-02 13:47:23,500 [INFO] Search completed: 25 results in 2.05ms 2026-03-02 13:47:23,501 [INFO] [SearchOrchestrator] query="Videos" | 0 results | 5ms | filters={'media_type': 'video'} 2026-03-02 13:47:23,502 [INFO] [SmartFind] Preset 'Videos': 0 results in 5ms (CLIP=False, filters=True, backoff=False) 2026-03-02 13:47:23,503 [INFO] [GooglePhotosLayout] Smart Find: '🎬 Videos' → 0 results 2026-03-02 13:47:23,504 [INFO] [GooglePhotosLayout] Smart Find empty state shown for '🎬 Videos' [UI] Generation bumped 0 -> 1: shutdown barrier [Shutdown] _closing flag set, ui_generation=1, beginning teardown... 2026-03-02 13:48:45,330 [INFO] [Store] ShutdownRequested src=main_window deltas={'ui_epoch': '0→1'} → 3 subscriber(s) 2026-03-02 13:48:45,331 [INFO] [JobManager] Canceled 0 jobs [Shutdown] JobManager barrier complete (drained=True). 2026-03-02 13:48:45,331 [INFO] Scan cancellation requested 2026-03-02 13:48:45,333 [INFO] Scan stop requested via adapter 2026-03-02 13:48:45,333 [INFO] [ScanController] DBWriter shut down 2026-03-02 13:48:45,333 [INFO] [ScanController] Shutdown barrier complete (drained=True) [Shutdown] ScanController barrier complete.", the prompt set includes text (very broad) and the threshold is low (0.22), so screenshots (UI text, menus, chat bubbles, web pages) naturally score as “document-ish”.
+push for “smart gates”. What your logs show is not a tuning problem, it is a taxonomy problem: ViT-B/32 similarity scores overlap across “documents” and “normal photos”, so you need structural discriminators (hard filters) plus a small second stage re-rank (soft signals). That is exactly how the big apps behave: they combine semantic search with metadata and content signals (people, places, objects) rather than trusting one score.
 
-Below is a step-by-step Search Quality Checklist review of the  app_log.txt (the file you uploaded) and  a concrete patch list by file to eliminate false “Documents” hits while keeping recall strong, aligned with iPhone, Google Photos, Lightroom, Excire patterns (hybrid signals, gated broad prompts, strong type semantics).
+Below is a concrete, step-by-step plan, tied to the files you already have (based on the snippets you pasted and the code in services/search_orchestrator.py that already contains _get_project_meta() and _detect_screenshot()).
 
-Step-by-step Search Quality Checklist, updated verdicts
-1) Type integrity, “Documents” must not be “anything with text”
+Step-by-step: implement “Gate Profiles” per preset
+Step 1: Introduce a single place where preset logic becomes “profile”
 
-Symptom in logs
+Goal: every preset becomes {retrieve → hard gates → soft boosts → final slice}. This is the iPhone, Google Photos, Lightroom mental model: a category is not just a query string, it is a pipeline.
 
-Documents preset runs CLIP prompts: document, text, paper, receipt, handwriting.
+Where to change
 
-text returns the largest hit count, then results shown are clearly not guaranteed to be document media.
+services/smart_find_service.py
 
-With backoff, threshold drops from 0.22 to 0.18 in app_log.txt, which increases recall but collapses precision.
+Make each preset return a SearchProfile (or plain dict) with:
 
-Why this happens
+positive_prompts
 
-“text” is a semantic magnet for screenshots.
+negative_prompts
 
-Backoff makes it worse: it trades precision for count without query-specific safety.
+filters (media type, date, rating, flag)
 
-Fix direction
+gates (hard exclude and hard require)
 
-Documents must become a gated, hybrid classifier, not “CLIP-only + backoff”.
+boosts (soft scoring signals)
 
-Use metadata screenshot detection first.
+threshold (optional, but use sparingly)
 
-Use doc-shape and OCR density second.
+Why
+Right now presets behave mostly like “prompt bundles”. That will always leak.
 
-Use CLIP third, but with doc-specific prompts and negative prompts.
+Step 2: Add a GateEngine that runs after retrieval, before ranking
 
-2) Backoff safety, must be preset-aware
+Goal: hard filters happen before scoring and before top_k slice, otherwise false acceptances remain and your ranking fights a losing battle.
 
-Symptom
+Where to change
 
-Backoff triggers for Screenshots and Documents, then threshold drops, then result count jumps.
+services/search_orchestrator.py
 
-That is correct behavior for “Screenshots”, but harmful for “Documents”.
+In _execute() (and also in search_ann(), find_similar(), search_metadata_only()), insert:
 
-Fix direction
+retrieve candidates
 
-Disable backoff for Documents, or constrain it to a narrow range and require stronger consensus (below).
+apply hard gates
 
-3) Prompt hygiene, remove broad prompts or gate them
+score and sort
 
-Symptom
+deduplicate
 
-text prompt dominates. It is too generic.
+enforce unique paths
 
-Fix direction
+slice [:top_k]
 
-Remove text from Documents preset, or gate it behind OCR/doc-shape signals.
+You already have _enforce_unique_paths() and dedup logic, so gates should sit just before scoring.
 
-Use narrower prompts: scanned document, printed page, form, invoice, receipt, letter, contract, passport, certificate.
+Why
+This is exactly what your “Documents” case needs: “exclude faces” and “exclude screenshots” must be hard gates, not just weak score factors.
 
-4) False acceptance control, require multi-signal consensus
+Step 3: Fix “Documents” with a proper 3-part gate, not a threshold
 
-Symptom
+You already discovered the core truth: thresholds do not separate documents vs portraits on ViT-B/32.
 
-You are effectively using “union of prompts” after thresholding.
+Documents: recommended pipeline
 
-A single prompt match can include the asset.
+Retrieve (semantic, wide net)
 
-Fix direction
+Positive prompts: ["scanned document","printed page","form","invoice","receipt","handwritten note","paper","document","text"]
 
-Add consensus rules for Documents:
+Negative prompts: ["selfie","portrait","person","face","group photo","landscape","mountain","beach","city","pet"]
 
-Require at least 2 doc prompts above threshold, or
+Hard gates (structural)
 
-Require 1 strong doc prompt plus OCR density plus doc-shape score.
+exclude_faces: True
+Use your existing face coverage from face_crops (you already fixed the table name, good).
 
-5) Screenshot exclusion, explicitly penalize screenshots inside Documents
+exclude_screenshots: True
+Use your existing _detect_screenshot() and meta["is_screenshot"].
 
-Your March 02 snippet
+require_document_visuals: True (new)
+Implement a “document-likeness” check using lightweight visual features on thumbnails for the candidate set only, not the whole library:
 
-You selected Screenshots first, then Documents immediately returns images that look like normal photos.
+high edge density (pages have lots of straight edges)
 
-That is consistent with screenshots, because screenshots often contain “paper-like rectangles” and lots of text.
+low colorfulness (documents tend to be gray/white background)
 
-Fix direction
+high text-likeness (optional OCR later)
 
-If is_screenshot == True, apply a hard penalty or exclude unless user explicitly types type:screenshot or allow:screenshot.
+This one is the missing piece that will eliminate “random photos with some texture” being accepted as documents.
 
-6) Facets must not reinforce bad classification
+Soft boosts (ranking)
 
-Symptom in app_log.txt
+boost if aspect ratio is paper-like:
 
-Facets show location split etc, but nothing that tells the user “these are screenshots” or “these contain heavy text”.
+A4-ish ratios (portrait ~ 0.70 to 0.78), receipts (very tall), screenshots usually 9:16 (but you already excluded them)
 
-Fix direction
+boost if EXIF indicates scan apps (later enhancement)
 
-Add facet chips for:
+Where to implement
 
-Screenshots, Has lots of text, Looks scanned
+services/search_orchestrator.py
 
-But only after you fix type integrity, otherwise facets become lipstick on the wrong result set.
+Extend _get_project_meta() to store:
 
-7) Duplicates and saturation, representative quality still matters
+is_screenshot (already present)
 
-In your uploaded app_log.txt you still had duplicate paths appearing twice in top results (#1 and #2 identical path), which means that log run predates your “Strict Path Uniqueness” change, or one search path bypasses uniqueness. That alone can make results feel “not improved” even when scoring changes.
-So, first verify the run is truly on the commit you think it is (log the git hash at startup).
+face_count (already present)
 
-Concrete patch list by file (to eliminate Documents false classification)
-A) services/smart_find_service.py
+add doc_visual_score (new, computed lazily)
 
-Patch A1, Documents preset prompt set
+Add a new module:
 
-Replace current prompt list:
+services/document_vision.py (new)
 
-Remove text, optionally remove paper (also broad).
+compute_doc_visual_score(image_path, thumb_cache) -> float
 
-Use doc-specific prompts:
+Use thumbnail image from cache if available, otherwise load a small 256px version.
 
-Suggested prompt set:
+Best-practice alignment
+This mirrors how major apps rely on multiple signals (semantic + content + metadata) instead of thresholding one similarity score.
 
-scanned document
+Step 4: Screenshots should be filter-first, not CLIP-first
 
-printed page
+You already have _detect_screenshot() which uses filename patterns and known resolutions.
 
-form
+Recommended Screenshots profile
 
-invoice
+Retrieval: metadata only, no CLIP
 
-receipt
+Hard gates:
 
-letter
+require_screenshot: True (meta flag)
 
-contract
+Soft boosts:
 
-handwritten note
+prefer higher resolution
 
-Patch A2, Documents backoff policy
+optionally prefer “recent” if users expect that
 
-Add per-preset policy:
+Where
 
-allow_backoff=False for Documents
-or
+services/smart_find_service.py
 
-backoff_floor=0.20 and min_results_target=8, not 20
+Set Screenshots preset to CLIP=False, filters=True
 
-Why, Documents is precision-first, Screenshots is recall-first.
+services/search_orchestrator.py
 
-Patch A3, Add explicit “Screenshots” type filter support in presets
+Ensure search_metadata_only() supports require_screenshot
 
-Ensure Screenshots preset prefers metadata detection first (filename, EXIF hints, dimensions), then CLIP.
+Why
+Screenshots are a taxonomy category in iPhone and Google Photos largely driven by device and file heuristics, not semantic embeddings.
 
-B) services/search_orchestrator.py
+Step 5: Mountains, Beach, City should add “diversity and sanity gates”
 
-This is where you should make Documents robust.
+Your log shows category bleed: documents appear under Mountains (doc1.png, doc2.png). That is a classic embedding side effect on small libraries.
 
-Patch B1, Add is_screenshot to project meta
+Mountains profile
 
-If you do not already store it, compute it in _get_project_meta() from:
+Retrieval: CLIP prompts, allow backoff (already)
 
-filename patterns, OS patterns, folder hints
+Hard gates:
 
-EXIF Software field patterns
+exclude_documents: True (new)
+This is the “inverse doc gate”: if doc_visual_score >= 0.7, drop it.
 
-known screenshot resolution heuristics
+optional: exclude_screenshots: True
 
-Store in meta cache.
+Soft boosts:
 
-Patch B2, Add doc_shape_score and ocr_text_density (lightweight)
-Best practice systems do not rely on semantics alone for documents, they use “document-likeness” cues.
+boost if has GPS (mountains often taken outdoors, GPS more common)
 
-Minimal viable:
+boost if wide aspect ratio (landscapes)
 
-ocr_text_density: run OCR only when candidate set is small, or cache OCR stats lazily.
+Where
 
-ratio of text area to image area
+services/search_orchestrator.py
 
-number of words, lines
+Add generic gate hooks: exclude_by_doc_score, exclude_screenshots
 
-doc_shape_score: cheap CV heuristic (no deep model needed):
+Why
+This is exactly how Lightroom and Excire feel “clean”: they do not just retrieve, they also suppress obvious cross-category artifacts.
 
-detect a large quadrilateral, paper-like rectangle
+Step 6: Wedding, Party need a “people gate” that is stricter than “face_presence”
 
-high edge density in a rectangle
+Right now “Wedding” returns 1 result with face=1.0 and that is basically “any face photo”.
 
-high contrast regions consistent with printed page
+Wedding profile
 
-Patch B3, Documents gating logic
-Add a Documents-specific acceptance rule, for example:
+Retrieval: CLIP prompts as you do
 
-Compute doc_confidence = w1*clip_doc + w2*doc_shape + w3*ocr_density
+Hard gates:
 
-Exclude if:
+require faces present, and ideally:
 
-is_screenshot=True AND doc_confidence < strict_threshold
+require face_count >= 2 for “party, group, wedding” (configurable)
 
-Require consensus:
+Soft boosts:
 
-count(prompts_above_t) >= 2 OR doc_confidence >= strong_threshold
+boost if multiple faces
 
-Patch B4, Negative prompt penalty
-If your CLIP layer supports it, run one negative query and subtract:
+boost if date/time is evening (optional later)
 
-negative prompts: screenshot, phone screen, app interface, UI
-This is extremely effective at reducing screenshot bleed into Documents.
+Where
 
-Patch B5, Query intent override
-If user typed type:photo or clicked a non-doc preset, Documents should not leak across sessions by history or UI label reuse.
+services/search_orchestrator.py
 
-This is usually a UI state issue, but orchestrator can enforce plan correctness.
+You already log face coverage for people-implied queries.
 
-C) services/semantic_search_service.py
+Add min_face_count in active profile, apply as a hard gate for these presets.
 
-Patch C1, Per-prompt thresholds
+Why
+In iPhone and Google Photos, “People-centric categories” behave like a people filter with semantics layered on top.
 
-“receipt” and “invoice” should have a lower threshold than “paper”, but “text” (if you keep it) must have a much higher threshold.
+Concrete patch list by file
+1) services/smart_find_service.py
 
-Patch C2, Return per-prompt hit lists for consensus
+Patch
 
-You need the orchestrator to know which prompts matched strongly, not only the fused union.
+Convert each preset into a profile with fields:
 
-D) ui/find_section.py and layouts/google_layout.py
+filters, positive_prompts, negative_prompts, gates, boosts, allow_backoff, threshold
 
-Patch D1, Better empty-state education
-You already added Favorites empty hint. Do the same for Documents:
+Change:
 
-“Documents uses scan-like cues (text density, page shape). If you want screenshots, use Screenshots.”
+Screenshots: CLIP=False, filters={"require_screenshot": True}
 
-This reduces “it’s wrong” perception and aligns with iPhone and Google Photos communication patterns.
+Documents: keep CLIP, but add gates:
 
-E) Tests, tests/test_search_orchestrator.py
+exclude_faces=True
 
-Add regression tests specifically for your reported failure mode:
+exclude_screenshots=True
 
-Patch E1
+require_doc_visual=True
 
-Given:
+Wedding, Party: gates min_face_count=2
 
-screenshot-like image has high “text” CLIP score
+2) services/search_orchestrator.py
 
-document-like scan has high “receipt/invoice” score
+Patch
 
-Expect:
+Add apply_gates(candidates, profile, meta) and call it in:
 
-Documents returns scan, not screenshot
+_execute()
 
-Screenshots returns screenshot, not scan (or at least ranks correctly)
+search_ann()
 
-Patch E2
+find_similar()
 
-Backoff must not reduce Documents precision:
+search_metadata_only()
 
-assert Documents backoff is disabled or bounded
+Extend _get_project_meta() to include:
 
-What to do next, in the exact order (so you stop chasing ghosts)
+doc_visual_score (lazy compute, cached)
 
-Confirm you are testing the correct commit
+Add new gates:
 
-Log git hash at startup, and in every search log line include build_id.
+require_doc_visual
 
-Your uploaded app_log.txt shows duplicate paths in top results, that suggests you tested an older build, or a bypass path still exists.
+exclude_documents
 
-Remove or gate the text prompt in Documents
+require_screenshot
 
-This single change will cut most screenshot bleed immediately.
+min_face_count
 
-Disable backoff for Documents
+3) services/document_vision.py (new)
 
-Do not “fix” low result counts by lowering threshold. Fix it by better prompts and hybrid gating.
+Patch
 
-Add screenshot exclusion and doc consensus
+Implement compute_doc_visual_score() using thumbnail-only features:
 
-This is the real “product-level” fix.
+edge density
 
-Only then tune scoring weights
+colorfulness
 
-Weight tuning cannot fix wrong acceptance rules.
+optional “textness” placeholder (OCR later)
+
+Keep it fast and only run for candidates, not whole library.
+
+4) services/semantic_search_service.py (optional refinement)
+
+Patch
+
+Support “negative prompt penalty” more explicitly if you do prompt fusion:
+
+if an image matches negatives strongly, subtract from semantic score before gates
+This reduces category bleed on small datasets.
+
+5) Tests
+
+tests/test_search_orchestrator.py
+
+Add regression tests:
+
+Documents excludes face_count > 0
+
+Documents excludes screenshots
+
+Mountains excludes high doc_visual_score
+
+Wedding requires min_face_count
+
+What I recommend you do first (order matters)
+
+Implement GateProfiles and GateEngine (so every preset becomes consistent and testable).
+
+Implement the Document visual gate (doc_visual_score), this will remove the worst false acceptances.
+
+Flip Screenshots to metadata-only.
+
+Tighten Wedding and Party with min_face_count.
+
+Only then revisit weights, because weights are useless if the candidate set is polluted.
