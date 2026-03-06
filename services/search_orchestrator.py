@@ -51,6 +51,15 @@ from typing import List, Dict, Optional, Tuple, Any, Callable
 from dataclasses import dataclass, field
 from logging_config import get_logger
 
+# ── Extracted modules (Phase 1 decomposition) ──
+from services.gate_engine import GateEngine
+from services.ranker import (
+    Ranker, ScoringWeights, ScoredResult,
+    get_preset_family, get_weights_for_family, is_people_implied,
+    PRESET_FAMILIES,
+)
+from services.deduplicator import Deduplicator, is_copy_filename
+
 logger = get_logger(__name__)
 
 # Optional FAISS import for ANN retrieval
@@ -132,25 +141,9 @@ class QueryPlan:
 
 
 # ══════════════════════════════════════════════════════════════════════
-# Scored Result - single result with full score breakdown
+# Scored Result - imported from services.ranker
 # ══════════════════════════════════════════════════════════════════════
-
-@dataclass
-class ScoredResult:
-    """A single search result with full score decomposition."""
-    path: str
-    final_score: float = 0.0
-    # Score components (all in [0, 1])
-    clip_score: float = 0.0
-    recency_score: float = 0.0
-    favorite_score: float = 0.0
-    location_score: float = 0.0
-    face_match_score: float = 0.0
-    # Explanation
-    matched_prompt: str = ""
-    reasons: List[str] = field(default_factory=list)
-    # Duplicate stacking: >0 means this is a stack representative
-    duplicate_count: int = 0
+# ScoredResult is now defined in services/ranker.py and imported above.
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -194,62 +187,9 @@ class OrchestratorResult:
 
 
 # ══════════════════════════════════════════════════════════════════════
-# Scoring Weights - the deterministic contract
+# Scoring Weights - imported from services.ranker
 # ══════════════════════════════════════════════════════════════════════
-
-@dataclass
-class ScoringWeights:
-    """
-    Deterministic scoring contract.
-
-    S = w_clip * clip + w_recency * recency + w_fav * favorite
-      + w_location * location + w_face * face_match
-
-    All weights are explicit, testable, and logged.
-    """
-    w_clip: float = 0.75        # Semantic similarity (dominant signal)
-    w_recency: float = 0.05     # Recency decay (recent photos slightly preferred)
-    w_favorite: float = 0.08    # Favorited/rated photos boosted
-    w_location: float = 0.04    # Photos with GPS data boosted
-    w_face_match: float = 0.08  # Face match when person filter active
-
-    # Guardrails
-    max_recency_boost: float = 0.10   # Recency can't swamp relevance
-    max_favorite_boost: float = 0.15  # Favorites can't float irrelevant items
-    recency_halflife_days: int = 90   # How fast recency decays (half-life in days)
-
-    # Canonical mapping: weight attr -> ScoredResult component attr.
-    # Used by validate() to enforce that every weight has a matching
-    # component and vice-versa.
-    _WEIGHT_TO_COMPONENT = {
-        "w_clip": "clip_score",
-        "w_recency": "recency_score",
-        "w_favorite": "favorite_score",
-        "w_location": "location_score",
-        "w_face_match": "face_match_score",
-    }
-
-    def validate(self):
-        """Ensure weights sum to ~1.0, are reasonable, and match components."""
-        # Structural check: every weight must have a ScoredResult field
-        for w_attr, c_attr in self._WEIGHT_TO_COMPONENT.items():
-            assert hasattr(self, w_attr), f"Missing weight: {w_attr}"
-            assert hasattr(ScoredResult, c_attr), (
-                f"Weight '{w_attr}' has no matching ScoredResult component '{c_attr}'"
-            )
-
-        total = self.w_clip + self.w_recency + self.w_favorite + self.w_location + self.w_face_match
-        if abs(total - 1.0) > 0.01:
-            logger.warning(
-                f"[ScoringWeights] Weights sum to {total:.3f}, not 1.0. "
-                f"Normalizing."
-            )
-            if total > 0:
-                self.w_clip /= total
-                self.w_recency /= total
-                self.w_favorite /= total
-                self.w_location /= total
-                self.w_face_match /= total
+# ScoringWeights is now defined in services/ranker.py and imported above.
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -637,15 +577,7 @@ class SearchOrchestrator:
     regardless of entry point.
     """
 
-    # Presets and keywords where face presence should boost scoring
-    _PEOPLE_IMPLIED_PRESETS = frozenset({
-        "portraits", "baby", "wedding", "party",
-    })
-    _PEOPLE_IMPLIED_KEYWORDS = frozenset({
-        "portrait", "portraits", "baby", "babies", "toddler", "infant",
-        "wedding", "party", "celebration", "group photo", "family",
-        "selfie", "people", "person", "child", "children", "kids",
-    })
+    # People-implied detection delegated to services.ranker module
 
     # Known embedding model quality tiers (dim → tier label)
     _MODEL_QUALITY_TIERS = {
@@ -662,6 +594,11 @@ class SearchOrchestrator:
         self._meta_cache_time: float = 0.0
         self._META_CACHE_TTL = 60.0  # Refresh metadata cache every 60s
         self._embedding_quality_logged = False
+        # ── Extracted modules (Phase 1 decomposition) ──
+        self._gate_engine = GateEngine()
+        self._ranker = Ranker()
+        self._deduplicator = Deduplicator(project_id)
+        self._search_feature_repo = None  # Lazy
 
     # ── Lazy Service Access ──
 
@@ -749,19 +686,16 @@ class SearchOrchestrator:
 
     def _is_people_implied(self, plan: QueryPlan) -> bool:
         """Detect if a query implies people/faces (portraits, baby, wedding, etc.)."""
-        if plan.preset_id and plan.preset_id in self._PEOPLE_IMPLIED_PRESETS:
-            return True
-        if plan.semantic_text:
-            text_lower = plan.semantic_text.lower()
-            if any(kw in text_lower for kw in self._PEOPLE_IMPLIED_KEYWORDS):
-                return True
-        return False
+        return is_people_implied(plan)
 
     def _execute(self, plan: QueryPlan, top_k: int) -> OrchestratorResult:
         """Execute the full search pipeline from a QueryPlan."""
         cfg = self._smart_find._get_config()
         threshold = plan.threshold_override if plan.threshold_override is not None else cfg["threshold"]
         fusion_mode = cfg["fusion_mode"]
+
+        # Track current preset for family-aware scoring
+        self._current_plan_preset_id = plan.preset_id
 
         # Detect people-implied queries for face presence scoring
         people_implied = self._is_people_implied(plan)
@@ -1002,100 +936,63 @@ class SearchOrchestrator:
                       people_implied: bool = False) -> ScoredResult:
         """
         Apply the deterministic scoring contract to a single result.
-
-        S = w_clip * clip + w_recency * recency + w_fav * favorite
-          + w_location * location + w_face * face_match
+        Delegates to the family-aware Ranker module.
         """
-        w = self._weights
         meta = project_meta.get(path, {})
-        reasons = []
+        family = get_preset_family(
+            getattr(self, '_current_plan_preset_id', None)
+        )
+        # Lazy init for tests that bypass __init__ via __new__
+        ranker = getattr(self, '_ranker', None) or Ranker()
+        return ranker.score(
+            path, clip_score, matched_prompt, meta,
+            active_filters, people_implied, family=family,
+        )
 
-        # Clip score (already computed)
-        if clip_score > 0 and matched_prompt:
-            reasons.append(f"clip={clip_score:.3f} (\"{matched_prompt}\")")
-
-        # Recency score
-        recency = 0.0
-        created = meta.get("created_date") or meta.get("date_taken")
-        if created:
+    def _get_search_feature_repo(self):
+        """Lazy accessor for SearchFeatureRepository."""
+        if getattr(self, '_search_feature_repo', None) is None:
             try:
-                if isinstance(created, str):
-                    dt = datetime.strptime(created[:10], "%Y-%m-%d")
-                else:
-                    dt = created
-                days_ago = max(0, (datetime.now() - dt).days)
-                # Smooth exponential decay scaled to [0, max_boost]:
-                # today = max_boost, half-life days ago = max_boost/2, etc.
-                recency = w.max_recency_boost * (
-                    2.0 ** (-days_ago / max(1, w.recency_halflife_days))
-                )
-                if recency > 0.001:
-                    reasons.append(f"recency={recency:.4f} ({days_ago}d ago)")
-            except (ValueError, TypeError):
+                from repository.search_feature_repository import SearchFeatureRepository
+                repo = SearchFeatureRepository()
+                if repo.table_exists():
+                    self._search_feature_repo = repo
+            except Exception:
                 pass
-
-        # Favorite score: flag='pick' takes priority, then rating
-        favorite = 0.0
-        flag = meta.get("flag", "none") or "none"
-        rating = meta.get("rating", 0) or 0
-        if flag == "pick":
-            favorite = min(w.max_favorite_boost, 1.0)
-            reasons.append(f"favorite={favorite:.2f} (flagged pick)")
-        elif rating >= 4:
-            favorite = min(w.max_favorite_boost, 1.0)
-            reasons.append(f"favorite={favorite:.2f} (rating={rating})")
-        elif rating >= 3:
-            favorite = min(w.max_favorite_boost, 0.5)
-            reasons.append(f"favorite={favorite:.2f} (rating={rating})")
-
-        # Location score
-        location = 0.0
-        if meta.get("has_gps"):
-            location = 1.0
-            reasons.append("location=1.0 (GPS)")
-
-        # Face match score:
-        # 1. person_id filter active → confirmed face match (1.0)
-        # 2. people-implied query + photo has faces → face presence boost (1.0)
-        # 3. otherwise → 0.0
-        face_match = 0.0
-        if active_filters and active_filters.get("person_id"):
-            face_match = 1.0
-            reasons.append(f"face=1.0 (person:{active_filters['person_id']})")
-        elif people_implied:
-            face_count = meta.get("face_count", 0) or 0
-            if face_count > 0:
-                face_match = 1.0
-                reasons.append(f"face=1.0 (face_presence, {face_count} faces)")
-
-        # Final score
-        final = (
-            w.w_clip * clip_score
-            + w.w_recency * recency
-            + w.w_favorite * favorite
-            + w.w_location * location
-            + w.w_face_match * face_match
-        )
-
-        return ScoredResult(
-            path=path,
-            final_score=final,
-            clip_score=clip_score,
-            recency_score=recency,
-            favorite_score=favorite,
-            location_score=location,
-            face_match_score=face_match,
-            matched_prompt=matched_prompt,
-            reasons=reasons,
-        )
+        return getattr(self, '_search_feature_repo', None)
 
     def _get_project_meta(self) -> Dict[str, Dict]:
-        """Get project photo metadata with caching (includes flag, dimensions, face counts)."""
-        now = time.time()
-        if (self._project_meta_cache is not None
-                and (now - self._meta_cache_time) < self._META_CACHE_TTL):
-            return self._project_meta_cache
+        """Get project photo metadata with caching (includes flag, dimensions, face counts).
 
+        Fast path: reads from search_asset_features table if populated.
+        Fallback: original JOIN-based approach for backward compatibility.
+        """
+        now = time.time()
+        # Resilient to tests that bypass __init__ via __new__
+        _cache = getattr(self, '_project_meta_cache', None)
+        _cache_time = getattr(self, '_meta_cache_time', 0.0)
+        _cache_ttl = getattr(self, '_META_CACHE_TTL', 60.0)
+        if (_cache is not None
+                and (now - _cache_time) < _cache_ttl):
+            return _cache
+
+        # Fast path: use flattened search_asset_features table if available
+        repo = self._get_search_feature_repo()
+        if repo is not None:
+            try:
+                meta = repo.get_project_meta(self.project_id)
+                if meta:
+                    self._project_meta_cache = meta
+                    self._meta_cache_time = now
+                    logger.debug(
+                        f"[SearchOrchestrator] Loaded {len(meta)} rows from "
+                        f"search_asset_features (fast path)"
+                    )
+                    return meta
+            except Exception as e:
+                logger.debug(f"[SearchOrchestrator] search_asset_features fallback: {e}")
+
+        # Fallback: original JOIN-based approach
         try:
             from repository.base_repository import DatabaseConnection
             db = DatabaseConnection()
@@ -1365,191 +1262,21 @@ class SearchOrchestrator:
     ) -> List[ScoredResult]:
         """
         Hard filters applied after scoring but before dedup and top_k slicing.
-
-        Gate profiles are declarative (set per preset via gate_profile dict).
-        This consolidates all hard-filtering logic into one place, aligned
-        with how Apple Photos, Google Photos, Lightroom, and Excire apply
-        category-specific structural filters before ranking.
-
-        Uses existing meta fields only:
-        - is_screenshot, face_count, width, height, has_gps, flag
+        Delegates to the extracted GateEngine module.
         """
-        if not scored:
-            return scored
-
-        # Determine which gates are active from the plan
-        require_screenshot = plan.require_screenshot
-        exclude_screenshots = plan.exclude_screenshots or plan.preset_id in ("documents",)
-        exclude_faces = plan.exclude_faces
-        require_faces = plan.require_faces
-        min_face_count = plan.min_face_count
-        require_gps = plan.require_gps_gate
-        min_edge = plan.min_edge_size
-
-        # Safety: skip face-requiring gates if face data is essentially absent.
-        # When the face pipeline hasn't run, requiring faces would return 0 results.
-        if require_faces or min_face_count > 0:
-            total_photos = len(project_meta) if project_meta else 0
-            face_photo_count = sum(
-                1 for m in project_meta.values()
-                if (m.get("face_count", 0) or 0) > 0
-            ) if project_meta else 0
-            face_coverage = face_photo_count / total_photos if total_photos > 0 else 0
-            if face_coverage < 0.01 and total_photos > 0:
-                logger.info(
-                    f"[SearchOrchestrator] Gate: face coverage < 1% "
-                    f"({face_photo_count}/{total_photos}); "
-                    f"skipping require_faces/min_face_count gates for "
-                    f"preset={plan.preset_id!r}. Run face detection for "
-                    f"better results."
-                )
-                require_faces = False
-                min_face_count = 0
-
-        # Fast path: no gates active
-        if not any([require_screenshot, exclude_screenshots, exclude_faces,
-                     require_faces, min_face_count > 0, require_gps, min_edge > 0]):
-            return scored
-
-        from collections import Counter
-        dropped = Counter()
-        kept: List[ScoredResult] = []
-
-        import os as _os
-
-        # Build a normalized-path → meta lookup so that path mismatches
-        # between candidate paths and metadata cache keys are resolved.
-        # This is the fix for Bug B: path normalization mismatch where
-        # candidate path, metadata cache key, and database path differ.
-        _norm_meta: Dict[str, Dict] = {}
-        for mp, mv in project_meta.items():
-            _norm_meta[_os.path.normpath(mp).lower()] = mv
-
-        for r in scored:
-            # Try exact match first, then normalized match (Bug B fix)
-            meta = project_meta.get(r.path, {})
-            if not meta:
-                norm_key = _os.path.normpath(r.path).lower()
-                meta = _norm_meta.get(norm_key, {})
-
-            is_screenshot = bool(meta.get("is_screenshot", False))
-            face_count = int(meta.get("face_count") or 0)
-            has_gps = bool(meta.get("has_gps", False))
-
-            # Gate: require screenshot
-            if require_screenshot and not is_screenshot:
-                dropped["require_screenshot"] += 1
-                continue
-            # Diagnostic: log screenshots that PASS the gate so we can verify
-            if require_screenshot and is_screenshot:
-                logger.debug(
-                    f"[Gate] Screenshot PASS: {_os.path.basename(r.path)} "
-                    f"is_screenshot={is_screenshot} score={r.final_score:.4f}"
-                )
-
-            # Gate: exclude screenshots
-            if exclude_screenshots and is_screenshot:
-                dropped["exclude_screenshot"] += 1
-                continue
-
-            # Gate: exclude faces (documents should never contain portraits)
-            if exclude_faces and face_count > 0:
-                dropped["exclude_faces"] += 1
-                continue
-
-            # Gate: require faces present
-            if require_faces and face_count == 0:
-                dropped["require_faces"] += 1
-                continue
-
-            # Gate: minimum face count (group/crowd presets)
-            if min_face_count > 0 and face_count < min_face_count:
-                dropped["min_face_count"] += 1
-                continue
-
-            # Gate: require GPS
-            if require_gps and not has_gps:
-                dropped["require_gps"] += 1
-                continue
-
-            # Gate: minimum edge size (drop tiny images for document presets)
-            if min_edge > 0:
-                w = meta.get("width")
-                h = meta.get("height")
-                try:
-                    w = int(w) if w is not None else None
-                    h = int(h) if h is not None else None
-                except (TypeError, ValueError):
-                    w, h = None, None
-                if w is not None and h is not None and min(w, h) < min_edge:
-                    dropped["min_edge_size"] += 1
-                    continue
-
-            kept.append(r)
-
-        if dropped:
-            logger.info(
-                f"[SearchOrchestrator] Gates applied preset={plan.preset_id!r} "
-                f"kept={len(kept)}/{len(scored)} dropped={dict(dropped)}"
-            )
-
-        # Log gate survivors for debugging (screenshots/documents integrity)
-        if (require_screenshot or exclude_screenshots or exclude_faces) and kept:
-            for k in kept[:5]:
-                kmeta = project_meta.get(k.path, {})
-                if not kmeta:
-                    kmeta = _norm_meta.get(_os.path.normpath(k.path).lower(), {})
-                logger.debug(
-                    f"[Gate] Survivor: {_os.path.basename(k.path)} "
-                    f"is_screenshot={kmeta.get('is_screenshot')} "
-                    f"face_count={kmeta.get('face_count', 0)} "
-                    f"score={k.final_score:.4f}"
-                )
-
+        # Lazy init for tests that bypass __init__ via __new__
+        gate_engine = getattr(self, '_gate_engine', None) or GateEngine()
+        kept, _dropped = gate_engine.apply(scored, plan, project_meta)
         return kept
 
-    # ── Preset Family Classification ──
+    # ── Preset Family Classification (delegated to services.ranker) ──
 
-    # Preset family mapping: determines which gate profile family a preset
-    # belongs to. Aligned with the audit recommendation:
-    #   - "type": precision-first (Documents, Screenshots, Videos, Panoramas, Favorites, With Location)
-    #   - "people_event": face-required (Wedding, Party, Baby, Portraits)
-    #   - "scenic": recall-first (Mountains, Beach, City, Forest, etc.)
-    _PRESET_FAMILIES = {
-        # Type-like presets (precision-first, hard structural gates)
-        "documents": "type",
-        "screenshots": "type",
-        "videos": "type",
-        "panoramas": "type",
-        "favorites": "type",
-        "gps_photos": "type",
-        # People-event presets (face-required)
-        "wedding": "people_event",
-        "party": "people_event",
-        "baby": "people_event",
-        "portraits": "people_event",
-        # Scenic / semantic presets (recall-first, soft gates only)
-        "beach": "scenic",
-        "mountains": "scenic",
-        "city": "scenic",
-        "forest": "scenic",
-        "lake": "scenic",
-        "travel": "scenic",
-        "sunset": "scenic",
-        "sport": "scenic",
-        "food": "scenic",
-        "pets": "scenic",
-        "flowers": "scenic",
-        "snow": "scenic",
-        "night": "scenic",
-        "architecture": "scenic",
-        "car": "scenic",
-    }
+    _PRESET_FAMILIES = PRESET_FAMILIES  # Backward-compat class attribute
 
     @classmethod
     def _get_preset_family(cls, preset_id: str) -> str:
         """Get the preset family for gate profile selection."""
-        return cls._PRESET_FAMILIES.get(preset_id, "scenic")
+        return get_preset_family(preset_id)
 
     # ── Structural Scorer (for type-like presets) ──
 
@@ -1634,145 +1361,30 @@ class SearchOrchestrator:
 
         return scored
 
-    # ── Duplicate Stacking (P0: fold duplicates into representative + badge) ──
-
-    _dup_cache: Optional[Dict[str, Tuple[str, int]]] = None  # path -> (representative_path, group_size)
-    _dup_cache_time: float = 0.0
-    _DUP_CACHE_TTL = 120.0  # 2 minutes
-
-    def _get_duplicate_map(self) -> Dict[str, Tuple[str, int]]:
-        """
-        Build a path -> (representative_path, group_size) map from media_asset model.
-
-        Photos sharing the same content_hash are duplicates. The asset's
-        representative_photo_id picks the preview; other instances are folded.
-        """
-        now = time.time()
-        if self._dup_cache is not None and (now - self._dup_cache_time) < self._DUP_CACHE_TTL:
-            return self._dup_cache
-
-        dup_map: Dict[str, Tuple[str, int]] = {}
-        try:
-            from repository.base_repository import DatabaseConnection
-            db = DatabaseConnection()
-            with db.get_connection() as conn:
-                # Find assets with >1 instance (= duplicates)
-                rows = conn.execute("""
-                    SELECT
-                        mi.photo_id,
-                        pm.path,
-                        a.representative_photo_id,
-                        a.asset_id
-                    FROM media_instance mi
-                    JOIN media_asset a ON mi.asset_id = a.asset_id
-                        AND mi.project_id = a.project_id
-                    JOIN photo_metadata pm ON mi.photo_id = pm.id
-                    WHERE mi.project_id = ?
-                    AND a.asset_id IN (
-                        SELECT asset_id FROM media_instance
-                        WHERE project_id = ? GROUP BY asset_id HAVING COUNT(*) > 1
-                    )
-                    ORDER BY a.asset_id
-                """, (self.project_id, self.project_id)).fetchall()
-
-                # Group by asset_id
-                from collections import defaultdict
-                asset_groups: Dict[int, List[Tuple[int, str]]] = defaultdict(list)
-                rep_map: Dict[int, Optional[int]] = {}
-                for row in rows:
-                    asset_id = row['asset_id']
-                    asset_groups[asset_id].append((row['photo_id'], row['path']))
-                    if row['representative_photo_id'] is not None:
-                        rep_map[asset_id] = row['representative_photo_id']
-
-                for asset_id, members in asset_groups.items():
-                    group_size = len(members)
-                    rep_id = rep_map.get(asset_id)
-                    # Find representative path
-                    rep_path = None
-                    for pid, ppath in members:
-                        if pid == rep_id:
-                            rep_path = ppath
-                            break
-                    if not rep_path:
-                        rep_path = members[0][1]  # fallback to first
-
-                    for _, ppath in members:
-                        dup_map[ppath] = (rep_path, group_size)
-
-        except Exception as e:
-            logger.debug(f"[SearchOrchestrator] Duplicate map build failed: {e}")
-
-        self._dup_cache = dup_map
-        self._dup_cache_time = now
-        return dup_map
-
-    # Copy/duplicate filename patterns (German "Kopie", English "Copy", numbered suffixes)
-    _COPY_PATTERN = re.compile(
-        r'[\s\-_]*(kopie|copy|kopia|copia)\s*(\(\d+\))?'
-        r'|[\s\-_]*\(\d+\)\s*$',
-        re.IGNORECASE,
-    )
+    # ── Duplicate Stacking (delegated to services.deduplicator) ──
 
     @staticmethod
     def _is_copy_filename(path: str) -> bool:
-        """Detect filenames that look like copies (Kopie, Copy, (1), (2), etc.)."""
-        import os
-        basename = os.path.splitext(os.path.basename(path))[0]
-        return bool(SearchOrchestrator._COPY_PATTERN.search(basename))
+        """Detect filenames that look like copies. Delegates to deduplicator module."""
+        return is_copy_filename(path)
 
     def _deduplicate_results(self, scored: List[ScoredResult]) -> Tuple[List[ScoredResult], int]:
         """
         Stack duplicate results: keep best representative per duplicate group.
-
-        Representative selection priority (when scores tie within epsilon):
-        1. Non-copy filename beats copy filename (demote "Kopie", "Copy", "(1)")
-        2. Higher resolution (width * height from metadata)
-        3. Newer date_taken
-
-        Returns (deduped_list, stacked_count).
+        Delegates to the extracted Deduplicator module.
         """
-        dup_map = self._get_duplicate_map()
-        if not dup_map:
-            return scored, 0
-
         project_meta = self._get_project_meta()
-
-        # Group results by representative path
-        seen_reps: Dict[str, ScoredResult] = {}
-        non_dup: List[ScoredResult] = []
-        stacked = 0
-
-        def _quality_key(sr: ScoredResult) -> Tuple:
-            """Tie-breaking key: prefer non-copy, higher-res, newer."""
-            meta = project_meta.get(sr.path, {})
-            is_copy = SearchOrchestrator._is_copy_filename(sr.path)
-            w = meta.get("width", 0) or 0
-            h = meta.get("height", 0) or 0
-            resolution = w * h
-            date = meta.get("created_date") or meta.get("date_taken") or ""
-            return (not is_copy, resolution, str(date), sr.final_score)
-
-        for sr in scored:
-            entry = dup_map.get(sr.path)
-            if entry is None:
-                non_dup.append(sr)
-                continue
-
-            rep_path, group_size = entry
-            if rep_path in seen_reps:
-                existing = seen_reps[rep_path]
-                if _quality_key(sr) > _quality_key(existing):
-                    sr.duplicate_count = existing.duplicate_count
-                    seen_reps[rep_path] = sr
-                stacked += 1
-            else:
-                sr.duplicate_count = group_size - 1
-                seen_reps[rep_path] = sr
-
-        result = non_dup + list(seen_reps.values())
-        result.sort(key=lambda r: r.final_score, reverse=True)
-        return result, stacked
+        # Lazy init for tests that bypass __init__ via __new__
+        dedup = getattr(self, '_deduplicator', None)
+        if dedup is None:
+            dedup = Deduplicator(getattr(self, 'project_id', 0))
+        # Backward compat: if tests set _dup_cache directly on the orchestrator,
+        # propagate it to the deduplicator
+        legacy_cache = getattr(self, '_dup_cache', None)
+        if legacy_cache is not None:
+            dedup._dup_cache = legacy_cache
+            dedup._dup_cache_time = getattr(self, '_dup_cache_time', 0.0)
+        return dedup.deduplicate(scored, project_meta)
 
     @staticmethod
     def _normalize_path(path: str) -> str:
