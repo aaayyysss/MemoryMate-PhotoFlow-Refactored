@@ -59,6 +59,11 @@ from services.ranker import (
     PRESET_FAMILIES,
 )
 from services.deduplicator import Deduplicator, is_copy_filename
+# Phase 3 imports (lazy - actual classes loaded on first use)
+# from services.person_search_service import PersonSearchService
+# from services.entity_graph import get_entity_graph
+# from services.suggestion_service import get_suggestion_service
+# from services.query_intent_service import get_query_intent_service
 
 logger = get_logger(__name__)
 
@@ -602,8 +607,53 @@ class SearchOrchestrator:
         self._ranker = Ranker()
         self._deduplicator = Deduplicator(project_id)
         self._search_feature_repo = None  # Lazy
+        # ── Phase 3: Person search, entity graph, suggestions, intent ──
+        self._person_search = None   # Lazy
+        self._entity_graph = None    # Lazy
+        self._suggestion_svc = None  # Lazy
+        self._intent_svc = None      # Lazy
 
     # ── Lazy Service Access ──
+
+    @property
+    def _person_search_svc(self):
+        if self._person_search is None:
+            try:
+                from services.person_search_service import PersonSearchService
+                self._person_search = PersonSearchService(self.project_id)
+            except Exception:
+                pass
+        return self._person_search
+
+    @property
+    def _entity_graph_svc(self):
+        if self._entity_graph is None:
+            try:
+                from services.entity_graph import get_entity_graph
+                self._entity_graph = get_entity_graph(self.project_id)
+            except Exception:
+                pass
+        return self._entity_graph
+
+    @property
+    def _suggestion_service(self):
+        if self._suggestion_svc is None:
+            try:
+                from services.suggestion_service import get_suggestion_service
+                self._suggestion_svc = get_suggestion_service(self.project_id)
+            except Exception:
+                pass
+        return self._suggestion_svc
+
+    @property
+    def _query_intent_svc(self):
+        if self._intent_svc is None:
+            try:
+                from services.query_intent_service import get_query_intent_service
+                self._intent_svc = get_query_intent_service(self.project_id)
+            except Exception:
+                pass
+        return self._intent_svc
 
     @property
     def _smart_find(self):
@@ -620,15 +670,54 @@ class SearchOrchestrator:
         Unified search from free text.
 
         Handles: "wedding Munich 2023 screenshots is:fav type:photo"
+        Also handles Phase 3 advanced intent decomposition:
+        - "best sunset photos from last summer"
+        - "photos of John and Sarah at the beach"
+        - "Christmas 2024 without screenshots"
         """
         start = time.time()
         plan = TokenParser.parse(query)
         if extra_filters:
             plan.filters.update(extra_filters)
 
+        # Phase 3: Advanced intent decomposition for richer NL queries.
+        # Only apply when TokenParser didn't extract structured filters,
+        # meaning the query is mostly free text.
+        intent_svc = self._query_intent_svc
+        if intent_svc and not plan.has_filters():
+            try:
+                intent = intent_svc.decompose(query)
+                overrides = intent.to_query_plan_overrides()
+                if overrides:
+                    # Merge intent-derived filters
+                    if "filters" in overrides:
+                        plan.filters.update(overrides["filters"])
+                    if "semantic_text" in overrides and overrides["semantic_text"]:
+                        plan.semantic_text = overrides["semantic_text"]
+                        plan.semantic_prompts = [overrides["semantic_text"]]
+                    if overrides.get("exclude_faces"):
+                        plan.exclude_faces = True
+                    if overrides.get("exclude_screenshots"):
+                        plan.exclude_screenshots = True
+                    if overrides.get("require_faces"):
+                        plan.require_faces = True
+                    logger.info(
+                        f"[SearchOrchestrator] Intent decomposition applied: "
+                        f"intents={intent.intents_found}"
+                    )
+            except Exception as e:
+                logger.debug(f"[SearchOrchestrator] Intent decomposition skipped: {e}")
+
+        # Phase 3: Person cluster integration.
+        # Resolve person_id filter to photo paths using PersonSearchService.
+        plan = self._resolve_person_filters(plan)
+
         result = self._execute(plan, top_k)
         result.execution_time_ms = (time.time() - start) * 1000
         result.label = self._build_label(plan, result)
+
+        # Phase 3: Enrich facets with person facet
+        self._enrich_person_facet(result)
 
         self._log_explainability(plan, result)
         return result
@@ -682,6 +771,139 @@ class SearchOrchestrator:
         self._log_explainability(plan, result)
         return result
 
+    # ── Phase 3: Person Cluster Integration ──
+
+    def _resolve_person_filters(self, plan: QueryPlan) -> QueryPlan:
+        """
+        Resolve person_id or person_ids filters to photo paths.
+
+        When the user searches for a person (via structured token or NL),
+        this resolves the person's branch_key to actual photo paths and
+        injects them as metadata candidates.
+        """
+        person_id = plan.filters.get("person_id")
+        person_ids = plan.filters.get("person_ids")
+        person_mode = plan.filters.pop("person_mode", "any")
+
+        if not person_id and not person_ids:
+            return plan
+
+        pss = self._person_search_svc
+        if not pss:
+            return plan
+
+        try:
+            if person_id:
+                # Single person: resolve name if not a branch_key
+                branch_keys = pss.resolve_person_name(person_id)
+                if not branch_keys:
+                    branch_keys = [person_id]  # Try raw as branch_key
+                person_paths = pss.get_person_photo_paths_multi(branch_keys)
+            elif person_ids:
+                # Multi-person
+                all_keys = []
+                for pid in person_ids:
+                    keys = pss.resolve_person_name(pid)
+                    all_keys.extend(keys if keys else [pid])
+
+                if person_mode == "all":
+                    person_paths = pss.get_co_occurrence_paths(all_keys)
+                else:
+                    person_paths = pss.get_person_photo_paths_multi(all_keys)
+            else:
+                return plan
+
+            if person_paths:
+                plan.filters["_person_paths"] = person_paths
+                logger.info(
+                    f"[SearchOrchestrator] Person filter resolved: "
+                    f"{len(person_paths)} photos for person(s)"
+                )
+        except Exception as e:
+            logger.debug(f"[SearchOrchestrator] Person filter resolution failed: {e}")
+
+        return plan
+
+    def _enrich_person_facet(self, result: OrchestratorResult):
+        """Add person facet to search results if people are detected."""
+        if not result.paths or len(result.paths) < 5:
+            return
+
+        pss = self._person_search_svc
+        if not pss:
+            return
+
+        try:
+            person_facet = pss.compute_person_facet(result.paths, max_people=8)
+            if person_facet and len(person_facet) >= 2:
+                result.facets["people"] = person_facet
+        except Exception:
+            pass
+
+    # ── Phase 3: Suggestion API ──
+
+    def get_suggestions(self, prefix: str, limit: int = 12) -> List[Dict]:
+        """
+        Get search suggestions for autocomplete.
+
+        Args:
+            prefix: Current search widget text
+            limit: Maximum suggestions
+
+        Returns:
+            List of suggestion dicts with type, text, icon, action, score
+        """
+        svc = self._suggestion_service
+        if not svc:
+            return []
+        try:
+            return svc.suggest(prefix, limit=limit)
+        except Exception:
+            return []
+
+    # ── Phase 3: Entity Graph API ──
+
+    def get_photo_entities(self, photo_path: str) -> List[Dict]:
+        """Get all entities linked to a photo (for detail panels)."""
+        graph = self._entity_graph_svc
+        if not graph:
+            return []
+        try:
+            nodes = graph.get_photo_entities(photo_path)
+            return [
+                {
+                    "type": n.entity_type,
+                    "id": n.entity_id,
+                    "name": n.display_name,
+                    "photo_count": n.photo_count,
+                }
+                for n in nodes
+            ]
+        except Exception:
+            return []
+
+    def get_entity_context(self, entity_type: str, entity_id: str) -> Dict:
+        """Get full context for an entity (for knowledge cards)."""
+        graph = self._entity_graph_svc
+        if not graph:
+            return {}
+        try:
+            context = graph.get_entity_context(entity_type, entity_id)
+            result = {}
+            for etype, nodes in context.items():
+                result[etype] = [
+                    {
+                        "type": n.entity_type,
+                        "id": n.entity_id,
+                        "name": n.display_name,
+                        "photo_count": n.photo_count,
+                    }
+                    for n in nodes
+                ]
+            return result
+        except Exception:
+            return {}
+
     # ── Internal Pipeline ──
 
     # Minimum results before backoff triggers
@@ -720,6 +942,21 @@ class SearchOrchestrator:
         if plan.has_filters():
             metadata_paths = self._smart_find._run_metadata_filter(plan.filters)
             metadata_candidate_paths = set(metadata_paths)
+
+        # Step 2a: Person path filter (Phase 3)
+        # If person_id resolved to a set of paths, intersect with candidates
+        person_paths = plan.filters.pop("_person_paths", None)
+        if person_paths:
+            person_path_set = set(person_paths) if not isinstance(person_paths, set) else person_paths
+            if metadata_candidate_paths is not None:
+                metadata_candidate_paths &= person_path_set
+            else:
+                metadata_candidate_paths = person_path_set
+            logger.info(
+                f"[SearchOrchestrator] Person path filter: "
+                f"{len(person_path_set)} person photos → "
+                f"{len(metadata_candidate_paths)} after intersection"
+            )
 
         # Step 2b: OCR text candidates
         # When user types free text, also search OCR-extracted text.
