@@ -2125,6 +2125,13 @@ class SearchOrchestrator:
         try:
             from repository.base_repository import DatabaseConnection
             db = DatabaseConnection()
+            # Sanitize query for FTS5: quote each token to avoid syntax
+            # errors from special characters like & | ( ) " * etc.
+            import re
+            tokens = re.findall(r'\w+', query)
+            if not tokens:
+                return []
+            fts_query = " OR ".join(f'"{t}"' for t in tokens)
             with db.get_connection() as conn:
                 rows = conn.execute("""
                     SELECT pm.path
@@ -2132,7 +2139,7 @@ class SearchOrchestrator:
                     JOIN photo_metadata pm ON fts.rowid = pm.id
                     WHERE fts.ocr_text MATCH ? AND pm.project_id = ?
                     LIMIT ?
-                """, (query, project_id, limit)).fetchall()
+                """, (fts_query, project_id, limit)).fetchall()
                 return [row['path'] for row in rows]
         except Exception:
             # FTS5 table not created yet — OCR pipeline hasn't run
