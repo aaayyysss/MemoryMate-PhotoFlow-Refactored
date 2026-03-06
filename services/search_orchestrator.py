@@ -107,6 +107,20 @@ class QueryPlan:
     # Presets that should exclude photos containing faces (e.g. Documents)
     exclude_faces: bool = False
 
+    # ── Gate Profile fields (hard pre-filters applied before scoring) ──
+    # Screenshots preset: keep only photos flagged as screenshots
+    require_screenshot: bool = False
+    # Documents preset: drop screenshots from results
+    exclude_screenshots: bool = False
+    # People-centric presets (Wedding, Party): require face presence
+    require_faces: bool = False
+    # Minimum face count (e.g. group presets need >= 2)
+    min_face_count: int = 0
+    # Location-dependent presets: hard-require GPS
+    require_gps_gate: bool = False
+    # Documents: drop tiny images (icons, thumbnails) below this edge size
+    min_edge_size: int = 0
+
     # Tokens that were extracted (for chip display)
     extracted_tokens: List[Dict[str, str]] = field(default_factory=list)
 
@@ -919,32 +933,19 @@ class SearchOrchestrator:
                 f">= min_results_target={min_target}"
             )
 
-        # Step 7b: Negative prompt penalty + screenshot exclusion
+        # Step 7b: Negative prompt penalty (soft scoring adjustment)
         # For presets like Documents that define negative_prompts, compute
-        # negative CLIP scores and penalize matching results. Also exclude
-        # screenshots from document-type presets (precision-first).
+        # negative CLIP scores and penalize matching results.
         if plan.negative_prompts and scored and self._smart_find.clip_available:
             scored = self._apply_negative_prompt_penalty(
                 scored, plan, project_meta
             )
 
-        # Step 7c: Face-presence exclusion gate
-        # Documents, receipts, invoices etc. are never portraits. A photo
-        # with detected faces is structurally not a document. This gate
-        # aligns with iPhone/Google Photos/Lightroom which never classify
-        # face photos as documents.
-        if plan.exclude_faces and scored and project_meta:
-            before = len(scored)
-            scored = [
-                sr for sr in scored
-                if (project_meta.get(sr.path, {}).get("face_count", 0) or 0) == 0
-            ]
-            removed = before - len(scored)
-            if removed:
-                logger.info(
-                    f"[SearchOrchestrator] Face-exclusion gate removed {removed} "
-                    f"photos with faces from '{plan.preset_id}' results"
-                )
+        # Step 7c: Gate engine (hard pre-filters)
+        # Consolidated gate logic: exclude_faces, exclude_screenshots,
+        # require_screenshot, require_faces, min_face_count, require_gps,
+        # min_edge_size. Replaces scattered inline gate blocks.
+        scored = self._apply_gates(scored, plan, project_meta)
 
         # Step 8: Deduplicate (stack duplicates behind representative)
         scored, stacked_count = self._deduplicate_results(scored)
@@ -1201,6 +1202,9 @@ class SearchOrchestrator:
             logger.warning(f"[SearchOrchestrator] Unknown preset: {preset_id}")
             return QueryPlan(raw_query=preset_id, source="preset")
 
+        # Read gate_profile from preset (declarative hard filters)
+        gp = preset.get("gate_profile", {})
+
         plan = QueryPlan(
             raw_query=preset.get("name", preset_id),
             source="preset",
@@ -1211,7 +1215,14 @@ class SearchOrchestrator:
             allow_backoff=preset.get("allow_backoff", True),
             threshold_override=preset.get("threshold_override"),
             negative_prompts=list(preset.get("negative_prompts", [])),
-            exclude_faces=preset.get("exclude_faces", False),
+            exclude_faces=preset.get("exclude_faces", False) or gp.get("exclude_faces", False),
+            # Gate profile fields
+            require_screenshot=gp.get("require_screenshot", False),
+            exclude_screenshots=gp.get("exclude_screenshots", False),
+            require_faces=gp.get("require_faces", False),
+            min_face_count=gp.get("min_face_count", 0),
+            require_gps_gate=gp.get("require_gps_gate", False),
+            min_edge_size=gp.get("min_edge_size", 0),
         )
 
         if extra_filters:
@@ -1323,6 +1334,126 @@ class SearchOrchestrator:
                 )
         except Exception as e:
             logger.debug(f"[SearchOrchestrator] Embedding quality check skipped: {e}")
+
+    # ── Gate Engine (hard pre-filters before dedup and top_k) ──
+
+    def _apply_gates(
+        self,
+        scored: List[ScoredResult],
+        plan: QueryPlan,
+        project_meta: Dict[str, Dict],
+    ) -> List[ScoredResult]:
+        """
+        Hard filters applied after scoring but before dedup and top_k slicing.
+
+        Gate profiles are declarative (set per preset via gate_profile dict).
+        This consolidates all hard-filtering logic into one place, aligned
+        with how Apple Photos, Google Photos, Lightroom, and Excire apply
+        category-specific structural filters before ranking.
+
+        Uses existing meta fields only:
+        - is_screenshot, face_count, width, height, has_gps, flag
+        """
+        if not scored:
+            return scored
+
+        # Determine which gates are active from the plan
+        require_screenshot = plan.require_screenshot
+        exclude_screenshots = plan.exclude_screenshots or plan.preset_id in ("documents",)
+        exclude_faces = plan.exclude_faces
+        require_faces = plan.require_faces
+        min_face_count = plan.min_face_count
+        require_gps = plan.require_gps_gate
+        min_edge = plan.min_edge_size
+
+        # Safety: skip face-requiring gates if face data is essentially absent.
+        # When the face pipeline hasn't run, requiring faces would return 0 results.
+        if require_faces or min_face_count > 0:
+            total_photos = len(project_meta) if project_meta else 0
+            face_photo_count = sum(
+                1 for m in project_meta.values()
+                if (m.get("face_count", 0) or 0) > 0
+            ) if project_meta else 0
+            face_coverage = face_photo_count / total_photos if total_photos > 0 else 0
+            if face_coverage < 0.01 and total_photos > 0:
+                logger.info(
+                    f"[SearchOrchestrator] Gate: face coverage < 1% "
+                    f"({face_photo_count}/{total_photos}); "
+                    f"skipping require_faces/min_face_count gates for "
+                    f"preset={plan.preset_id!r}. Run face detection for "
+                    f"better results."
+                )
+                require_faces = False
+                min_face_count = 0
+
+        # Fast path: no gates active
+        if not any([require_screenshot, exclude_screenshots, exclude_faces,
+                     require_faces, min_face_count > 0, require_gps, min_edge > 0]):
+            return scored
+
+        from collections import Counter
+        dropped = Counter()
+        kept: List[ScoredResult] = []
+
+        for r in scored:
+            meta = project_meta.get(r.path, {})
+
+            is_screenshot = bool(meta.get("is_screenshot", False))
+            face_count = int(meta.get("face_count") or 0)
+            has_gps = bool(meta.get("has_gps", False))
+
+            # Gate: require screenshot
+            if require_screenshot and not is_screenshot:
+                dropped["require_screenshot"] += 1
+                continue
+
+            # Gate: exclude screenshots
+            if exclude_screenshots and is_screenshot:
+                dropped["exclude_screenshot"] += 1
+                continue
+
+            # Gate: exclude faces (documents should never contain portraits)
+            if exclude_faces and face_count > 0:
+                dropped["exclude_faces"] += 1
+                continue
+
+            # Gate: require faces present
+            if require_faces and face_count == 0:
+                dropped["require_faces"] += 1
+                continue
+
+            # Gate: minimum face count (group/crowd presets)
+            if min_face_count > 0 and face_count < min_face_count:
+                dropped["min_face_count"] += 1
+                continue
+
+            # Gate: require GPS
+            if require_gps and not has_gps:
+                dropped["require_gps"] += 1
+                continue
+
+            # Gate: minimum edge size (drop tiny images for document presets)
+            if min_edge > 0:
+                w = meta.get("width")
+                h = meta.get("height")
+                try:
+                    w = int(w) if w is not None else None
+                    h = int(h) if h is not None else None
+                except (TypeError, ValueError):
+                    w, h = None, None
+                if w is not None and h is not None and min(w, h) < min_edge:
+                    dropped["min_edge_size"] += 1
+                    continue
+
+            kept.append(r)
+
+        if dropped:
+            logger.info(
+                f"[SearchOrchestrator] Gates applied preset={plan.preset_id!r} "
+                f"kept={len(kept)}/{len(scored)} dropped={dict(dropped)}"
+            )
+
+        return kept
 
     # ── Duplicate Stacking (P0: fold duplicates into representative + badge) ──
 
@@ -1479,34 +1610,20 @@ class SearchOrchestrator:
         project_meta: Dict[str, Dict],
     ) -> List[ScoredResult]:
         """
-        Penalize results that match negative prompts or are screenshots.
+        Penalize results that match negative prompts.
 
-        Two-pronged precision gate (aligned with Excire/Lightroom patterns):
-        1. Hard exclude: screenshots are removed from Documents results
-        2. Soft penalty: negative CLIP prompt scores reduce final_score
-
+        Soft penalty: negative CLIP prompt scores reduce final_score.
         This prevents 'text'-like images (chat screenshots, UI, menus)
         from polluting document-type searches.
+
+        Note: Hard exclusions (screenshots, faces) are now handled by
+        _apply_gates() which runs after this method.
         """
         neg_prompts = plan.negative_prompts
         if not neg_prompts:
             return scored
 
-        # 1. Hard exclude screenshots for document-like presets
-        if plan.preset_id in ("documents",):
-            before = len(scored)
-            scored = [
-                sr for sr in scored
-                if not project_meta.get(sr.path, {}).get("is_screenshot", False)
-            ]
-            removed = before - len(scored)
-            if removed:
-                logger.info(
-                    f"[SearchOrchestrator] Excluded {removed} screenshots "
-                    f"from '{plan.preset_id}' results"
-                )
-
-        # 2. Soft penalty from negative CLIP prompts
+        # Soft penalty from negative CLIP prompts
         try:
             neg_hits = self._smart_find._run_clip_multi_prompt(
                 neg_prompts, top_k=600, threshold=0.18, fusion_mode="max"
@@ -1626,6 +1743,7 @@ class SearchOrchestrator:
                 scored.append(sr)
 
         scored.sort(key=lambda r: r.final_score, reverse=True)
+        scored = self._apply_gates(scored, plan, project_meta)
         scored = self._enforce_unique_paths(scored)
         scored = scored[:top_k]
 
@@ -1757,7 +1875,13 @@ class SearchOrchestrator:
                 sr = self._score_result(path, sim_score, f"similar to {ref_basename}", project_meta)
                 scored.append(sr)
 
+            similar_plan = QueryPlan(
+                raw_query=f"similar:{ref_basename}",
+                source="similar",
+                semantic_text=f"similar to {ref_basename}",
+            )
             scored.sort(key=lambda r: r.final_score, reverse=True)
+            scored = self._apply_gates(scored, similar_plan, project_meta)
             scored = self._enforce_unique_paths(scored)
 
             result_paths = [r.path for r in scored]
@@ -1769,11 +1893,7 @@ class SearchOrchestrator:
                 scored_results=scored,
                 scores={r.path: r.final_score for r in scored},
                 facets=facets,
-                query_plan=QueryPlan(
-                    raw_query=f"similar:{ref_basename}",
-                    source="similar",
-                    semantic_text=f"similar to {ref_basename}",
-                ),
+                query_plan=similar_plan,
                 execution_time_ms=(time.time() - start) * 1000,
                 label=f"\U0001f3af Similar to {ref_basename}",
             )
@@ -1968,6 +2088,7 @@ class SearchOrchestrator:
                 scored.append(sr)
 
             scored.sort(key=lambda r: r.final_score, reverse=True)
+            scored = self._apply_gates(scored, plan, project_meta)
             scored = self._enforce_unique_paths(scored)
             scored = scored[:top_k]
 

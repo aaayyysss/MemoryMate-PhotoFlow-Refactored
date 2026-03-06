@@ -73,11 +73,13 @@ BUILTIN_PRESETS = [
         "id": "wedding", "name": "Wedding", "icon": "\U0001f492",
         "prompts": ["wedding", "bride", "wedding ceremony", "wedding dress", "wedding reception"],
         "category": "events",
+        "gate_profile": {"require_faces": True, "min_face_count": 1},
     },
     {
         "id": "party", "name": "Party", "icon": "\U0001f389",
         "prompts": ["party", "celebration", "birthday party", "gathering", "birthday cake"],
         "category": "events",
+        "gate_profile": {"require_faces": True, "min_face_count": 1},
     },
     {
         "id": "travel", "name": "Travel", "icon": "\u2708\ufe0f",
@@ -110,11 +112,13 @@ BUILTIN_PRESETS = [
         "id": "baby", "name": "Baby & Kids", "icon": "\U0001f476",
         "prompts": ["baby", "infant", "toddler", "small child", "kids playing"],
         "category": "subjects",
+        "gate_profile": {"require_faces": True, "min_face_count": 1},
     },
     {
         "id": "portraits", "name": "Portraits", "icon": "\U0001f5bc\ufe0f",
         "prompts": ["portrait", "headshot", "face close-up", "person posing"],
         "category": "subjects",
+        "gate_profile": {"require_faces": True, "min_face_count": 1},
     },
     {
         "id": "flowers", "name": "Flowers & Garden", "icon": "\U0001f338",
@@ -147,7 +151,8 @@ BUILTIN_PRESETS = [
         "id": "screenshots", "name": "Screenshots", "icon": "\U0001f4f1",
         "prompts": ["screenshot", "screen capture", "phone screen"],
         "category": "media",
-        "semantic_weight": 0.4,  # Metadata more reliable for utility searches
+        "semantic_weight": 0.2,  # Metadata-dominant: heuristic detection is primary signal
+        "gate_profile": {"require_screenshot": True},
     },
     {
         "id": "documents", "name": "Documents", "icon": "\U0001f4c4",
@@ -160,6 +165,11 @@ BUILTIN_PRESETS = [
         "semantic_weight": 0.4,
         "allow_backoff": False,  # Precision-first: do not lower threshold
         "exclude_faces": True,  # Documents never contain portraits
+        "gate_profile": {
+            "exclude_faces": True,
+            "exclude_screenshots": True,
+            "min_edge_size": 350,  # Drop tiny images (icons, thumbnails)
+        },
     },
     {
         "id": "videos", "name": "Videos", "icon": "\U0001f3ac",
