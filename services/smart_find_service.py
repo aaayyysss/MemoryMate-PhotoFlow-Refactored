@@ -41,116 +41,217 @@ logger = get_logger(__name__)
 # ── Builtin Presets (iPhone/Google Photos inspired categories) ──
 
 BUILTIN_PRESETS = [
-    # Places / Scenes
+    # ── Family: scenic (recall-first, multi-prompt expansion) ──
+    # These use broad semantic recall with soft gates only.
+    # Expanded prompt lists aligned with Excire/Google Photos multi-prompt practice.
     {
         "id": "beach", "name": "Beach", "icon": "\U0001f3d6\ufe0f",
-        "prompts": ["beach", "sand", "seaside", "coast", "ocean shore"],
+        "prompts": [
+            "beach", "sandy beach", "shoreline", "seaside",
+            "ocean coast", "waves on shore", "tropical beach",
+        ],
         "category": "places",
+        "family": "scenic",
     },
     {
         "id": "mountains", "name": "Mountains", "icon": "\u26f0\ufe0f",
-        "prompts": ["mountain", "mountain view", "peaks", "hiking trail", "mountain landscape"],
+        "prompts": [
+            "mountain landscape", "alpine peaks", "rocky ridge",
+            "snow mountain", "mountain valley", "hiking trail",
+            "summit view", "mountain panorama",
+        ],
         "category": "places",
+        "family": "scenic",
     },
     {
         "id": "city", "name": "City", "icon": "\U0001f3d9\ufe0f",
-        "prompts": ["city skyline", "urban", "buildings", "downtown", "street view"],
+        "prompts": [
+            "city skyline", "urban street", "buildings",
+            "downtown", "street view", "cityscape",
+            "metropolitan area", "city at night",
+        ],
         "category": "places",
+        "family": "scenic",
     },
     {
         "id": "forest", "name": "Forest", "icon": "\U0001f332",
-        "prompts": ["forest", "trees", "woods", "nature trail", "woodland"],
+        "prompts": [
+            "forest", "dense trees", "woods",
+            "nature trail", "woodland path", "rainforest",
+            "autumn forest", "tree canopy",
+        ],
         "category": "places",
+        "family": "scenic",
     },
     {
         "id": "lake", "name": "Lake & River", "icon": "\U0001f3de\ufe0f",
-        "prompts": ["lake", "river", "waterfall", "pond", "stream"],
+        "prompts": [
+            "lake", "river", "waterfall",
+            "pond", "stream", "lakeside",
+            "river bank", "calm water reflection",
+        ],
         "category": "places",
+        "family": "scenic",
     },
 
-    # Events / Activities
+    # ── Family: people_event (face-required) ──
     {
         "id": "wedding", "name": "Wedding", "icon": "\U0001f492",
-        "prompts": ["wedding", "bride", "wedding ceremony", "wedding dress", "wedding reception"],
+        "prompts": [
+            "wedding", "bride", "wedding ceremony",
+            "wedding dress", "wedding reception",
+            "groom", "wedding couple",
+        ],
         "category": "events",
+        "family": "people_event",
         "gate_profile": {"require_faces": True, "min_face_count": 1},
     },
     {
         "id": "party", "name": "Party", "icon": "\U0001f389",
-        "prompts": ["party", "celebration", "birthday party", "gathering", "birthday cake"],
+        "prompts": [
+            "party", "celebration", "birthday party",
+            "gathering", "birthday cake", "festive crowd",
+        ],
         "category": "events",
+        "family": "people_event",
         "gate_profile": {"require_faces": True, "min_face_count": 1},
     },
+
+    # ── Family: scenic (events / activities) ──
     {
         "id": "travel", "name": "Travel", "icon": "\u2708\ufe0f",
-        "prompts": ["travel", "vacation", "sightseeing", "tourist attraction", "landmark"],
+        "prompts": [
+            "travel", "vacation", "sightseeing",
+            "tourist attraction", "landmark",
+            "travel destination", "holiday trip",
+        ],
         "category": "events",
+        "family": "scenic",
     },
     {
         "id": "sport", "name": "Sports", "icon": "\u26bd",
-        "prompts": ["sport", "playing sports", "athletic activity", "game", "exercise"],
+        "prompts": [
+            "sport", "playing sports", "athletic activity",
+            "game", "exercise", "stadium",
+            "outdoor sports", "fitness",
+        ],
         "category": "events",
+        "family": "scenic",
     },
 
-    # Subjects
+    # ── Family: scenic (subjects) ──
     {
         "id": "sunset", "name": "Sunset & Sunrise", "icon": "\U0001f305",
-        "prompts": ["sunset", "sunrise", "golden hour", "dusk sky"],
+        "prompts": [
+            "sunset", "sunrise", "golden hour",
+            "dusk sky", "dawn light", "orange sky",
+            "sun setting over horizon",
+        ],
         "category": "subjects",
+        "family": "scenic",
     },
     {
         "id": "food", "name": "Food & Drinks", "icon": "\U0001f355",
-        "prompts": ["food", "meal", "dish", "restaurant table", "cooking"],
+        "prompts": [
+            "food", "meal", "dish",
+            "restaurant table", "cooking",
+            "gourmet plate", "dessert",
+        ],
         "category": "subjects",
+        "family": "scenic",
     },
     {
         "id": "pets", "name": "Pets & Animals", "icon": "\U0001f43e",
-        "prompts": ["dog", "cat", "pet", "puppy", "kitten", "animal"],
+        "prompts": [
+            "dog", "cat", "pet",
+            "puppy", "kitten", "animal",
+            "pet portrait", "domestic animal",
+        ],
         "category": "subjects",
+        "family": "scenic",
     },
+
+    # ── Family: people_event (subjects) ──
     {
         "id": "baby", "name": "Baby & Kids", "icon": "\U0001f476",
-        "prompts": ["baby", "infant", "toddler", "small child", "kids playing"],
+        "prompts": [
+            "baby", "infant", "toddler",
+            "small child", "kids playing",
+            "newborn", "child portrait",
+        ],
         "category": "subjects",
+        "family": "people_event",
         "gate_profile": {"require_faces": True, "min_face_count": 1},
     },
     {
         "id": "portraits", "name": "Portraits", "icon": "\U0001f5bc\ufe0f",
-        "prompts": ["portrait", "headshot", "face close-up", "person posing"],
+        "prompts": [
+            "portrait", "headshot", "face close-up",
+            "person posing", "profile photo",
+        ],
         "category": "subjects",
+        "family": "people_event",
         "gate_profile": {"require_faces": True, "min_face_count": 1},
     },
+
+    # ── Family: scenic (more subjects) ──
     {
         "id": "flowers", "name": "Flowers & Garden", "icon": "\U0001f338",
-        "prompts": ["flowers", "garden", "blooming", "bouquet", "floral"],
+        "prompts": [
+            "flowers", "garden", "blooming",
+            "bouquet", "floral", "wildflowers",
+            "flower field", "rose garden",
+        ],
         "category": "subjects",
+        "family": "scenic",
     },
     {
         "id": "snow", "name": "Snow & Winter", "icon": "\u2744\ufe0f",
-        "prompts": ["snow", "winter", "skiing", "snowfall", "ice"],
+        "prompts": [
+            "snow", "winter", "skiing",
+            "snowfall", "ice", "frozen lake",
+            "winter landscape", "snowy trees",
+        ],
         "category": "subjects",
+        "family": "scenic",
     },
     {
         "id": "night", "name": "Night & Stars", "icon": "\U0001f319",
-        "prompts": ["night sky", "stars", "night photography", "moon", "city lights at night"],
+        "prompts": [
+            "night sky", "stars", "night photography",
+            "moon", "city lights at night",
+            "starry sky", "milky way",
+        ],
         "category": "subjects",
+        "family": "scenic",
     },
     {
         "id": "architecture", "name": "Architecture", "icon": "\U0001f3db\ufe0f",
-        "prompts": ["architecture", "building facade", "interior design", "monument", "church"],
+        "prompts": [
+            "architecture", "building facade", "interior design",
+            "monument", "church", "modern building",
+            "historic architecture", "skyscraper",
+        ],
         "category": "subjects",
+        "family": "scenic",
     },
     {
         "id": "car", "name": "Cars & Vehicles", "icon": "\U0001f697",
-        "prompts": ["car", "vehicle", "automobile", "motorcycle", "truck"],
+        "prompts": [
+            "car", "vehicle", "automobile",
+            "motorcycle", "truck", "sports car",
+            "classic car", "car on road",
+        ],
         "category": "subjects",
+        "family": "scenic",
     },
 
-    # Media types (metadata-only, no CLIP needed)
+    # ── Family: type (metadata-driven, precision-first) ──
     {
         "id": "screenshots", "name": "Screenshots", "icon": "\U0001f4f1",
         "prompts": ["screenshot", "screen capture", "phone screen"],
         "category": "media",
+        "family": "type",
         "semantic_weight": 0.2,  # Metadata-dominant: heuristic detection is primary signal
         "gate_profile": {"require_screenshot": True},
     },
@@ -159,9 +260,11 @@ BUILTIN_PRESETS = [
         "prompts": [
             "scanned document", "printed page", "form",
             "invoice", "receipt", "handwritten note",
+            "typed text on paper", "letter",
         ],
         "negative_prompts": ["screenshot", "phone screen", "app interface"],
         "category": "media",
+        "family": "type",
         "semantic_weight": 0.4,
         "allow_backoff": False,  # Precision-first: do not lower threshold
         "exclude_faces": True,  # Documents never contain portraits
@@ -176,6 +279,7 @@ BUILTIN_PRESETS = [
         "prompts": [],
         "filters": {"media_type": "video"},
         "category": "media",
+        "family": "type",
         "semantic_weight": 0.0,  # Pure metadata
     },
     {
@@ -183,15 +287,17 @@ BUILTIN_PRESETS = [
         "prompts": ["panoramic view", "wide landscape"],
         "filters": {"orientation": "landscape", "width_min": 4000},
         "category": "media",
+        "family": "type",
         "semantic_weight": 0.4,
     },
 
-    # Quality flags (metadata-only)
+    # Quality flags (metadata-only, type family)
     {
         "id": "favorites", "name": "Favorites", "icon": "\u2b50",
         "prompts": [],
         "filters": {"flag": "pick"},
         "category": "quality",
+        "family": "type",
         "semantic_weight": 0.0,
     },
     {
@@ -199,6 +305,7 @@ BUILTIN_PRESETS = [
         "prompts": [],
         "filters": {"has_gps": True},
         "category": "quality",
+        "family": "type",
         "semantic_weight": 0.0,
     },
 ]

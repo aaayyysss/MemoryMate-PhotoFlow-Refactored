@@ -2005,3 +2005,204 @@ class TestGateEngine:
         kept = orch._apply_gates(scored, plan, meta)
         # Documents preset_id triggers exclude_screenshots implicitly
         assert [r.path for r in kept] == ["doc.png"]
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Unit Tests: Preset Family Classification
+# ══════════════════════════════════════════════════════════════════════
+
+class TestPresetFamilies:
+    """Test preset family classification for gate profile selection."""
+
+    def test_type_presets_classified_correctly(self):
+        """Type-like presets should be in the 'type' family."""
+        from services.search_orchestrator import SearchOrchestrator
+        for preset_id in ["documents", "screenshots", "videos", "panoramas",
+                          "favorites", "gps_photos"]:
+            assert SearchOrchestrator._get_preset_family(preset_id) == "type", \
+                f"{preset_id} should be family='type'"
+
+    def test_people_event_presets_classified_correctly(self):
+        """People-event presets should be in the 'people_event' family."""
+        from services.search_orchestrator import SearchOrchestrator
+        for preset_id in ["wedding", "party", "baby", "portraits"]:
+            assert SearchOrchestrator._get_preset_family(preset_id) == "people_event", \
+                f"{preset_id} should be family='people_event'"
+
+    def test_scenic_presets_classified_correctly(self):
+        """Scenic presets should be in the 'scenic' family."""
+        from services.search_orchestrator import SearchOrchestrator
+        for preset_id in ["beach", "mountains", "city", "forest", "lake",
+                          "travel", "sunset", "sport", "food", "pets",
+                          "flowers", "snow", "night", "architecture", "car"]:
+            assert SearchOrchestrator._get_preset_family(preset_id) == "scenic", \
+                f"{preset_id} should be family='scenic'"
+
+    def test_unknown_preset_defaults_to_scenic(self):
+        """Unknown presets should default to 'scenic' (recall-first)."""
+        from services.search_orchestrator import SearchOrchestrator
+        assert SearchOrchestrator._get_preset_family("unknown_preset") == "scenic"
+
+    def test_builtin_presets_have_family_field(self):
+        """All BUILTIN_PRESETS should have a 'family' field."""
+        from services.smart_find_service import BUILTIN_PRESETS
+        for preset in BUILTIN_PRESETS:
+            assert "family" in preset, \
+                f"Preset '{preset['id']}' missing 'family' field"
+            assert preset["family"] in ("type", "people_event", "scenic"), \
+                f"Preset '{preset['id']}' has invalid family '{preset['family']}'"
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Unit Tests: Expanded Scenic Prompts
+# ══════════════════════════════════════════════════════════════════════
+
+class TestExpandedPrompts:
+    """Test that scenic presets have expanded multi-prompt lists."""
+
+    def test_scenic_presets_have_minimum_prompts(self):
+        """Scenic presets should have at least 6 prompts for broad recall."""
+        from services.smart_find_service import BUILTIN_PRESETS
+        scenic_presets = [p for p in BUILTIN_PRESETS
+                         if p.get("family") == "scenic" and p.get("prompts")]
+        for preset in scenic_presets:
+            assert len(preset["prompts"]) >= 6, \
+                f"Scenic preset '{preset['id']}' has only {len(preset['prompts'])} prompts, " \
+                f"expected >= 6 for broad semantic recall"
+
+    def test_mountains_has_expanded_prompts(self):
+        """Mountains preset should have diversified prompt bundle."""
+        from services.smart_find_service import _BUILTIN_LOOKUP
+        mountains = _BUILTIN_LOOKUP["mountains"]
+        prompts = mountains["prompts"]
+        # Should include variety: alpine, ridge, snow, valley, etc.
+        assert len(prompts) >= 7
+        assert any("alpine" in p for p in prompts)
+        assert any("valley" in p or "ridge" in p for p in prompts)
+
+    def test_beach_has_expanded_prompts(self):
+        """Beach preset should have diversified prompt bundle."""
+        from services.smart_find_service import _BUILTIN_LOOKUP
+        beach = _BUILTIN_LOOKUP["beach"]
+        prompts = beach["prompts"]
+        assert len(prompts) >= 6
+        assert any("shore" in p for p in prompts)
+        assert any("coast" in p for p in prompts)
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Unit Tests: Structural Document Scorer
+# ══════════════════════════════════════════════════════════════════════
+
+class TestStructuralDocumentScorer:
+    """Test document structural scoring adjustments."""
+
+    @pytest.fixture(autouse=True)
+    def setup(self):
+        from services.search_orchestrator import SearchOrchestrator, ScoredResult, QueryPlan
+        self.SearchOrchestrator = SearchOrchestrator
+        self.ScoredResult = ScoredResult
+        self.QueryPlan = QueryPlan
+
+    def _make_orch(self):
+        orch = self.SearchOrchestrator.__new__(self.SearchOrchestrator)
+        orch.project_id = 999
+        return orch
+
+    def test_documents_penalizes_photo_extensions(self):
+        """JPEG photos should be penalized when scoring for documents."""
+        orch = self._make_orch()
+        plan = self.QueryPlan(preset_id="documents", source="preset")
+        scored = [
+            self.ScoredResult(path="/doc.png", final_score=0.50),
+            self.ScoredResult(path="/photo.jpg", final_score=0.52),
+        ]
+        meta = {
+            "/doc.png": {"width": 1200, "height": 1600, "face_count": 0},
+            "/photo.jpg": {"width": 4000, "height": 3000, "face_count": 0},
+        }
+        result = orch._apply_structural_scorer(scored, plan, meta)
+        # doc.png should get bonus, photo.jpg should get penalty
+        doc_score = next(r for r in result if r.path == "/doc.png")
+        photo_score = next(r for r in result if r.path == "/photo.jpg")
+        assert doc_score.final_score > photo_score.final_score, \
+            "Document-like .png should outrank photo-like .jpg after structural scoring"
+
+    def test_documents_penalizes_photo_ratios(self):
+        """Photos with 3:2 or 4:3 aspect ratios should be penalized."""
+        orch = self._make_orch()
+        plan = self.QueryPlan(preset_id="documents", source="preset")
+        scored = [
+            self.ScoredResult(path="/doc.png", final_score=0.50),
+            self.ScoredResult(path="/photo_32.jpg", final_score=0.50),
+        ]
+        meta = {
+            "/doc.png": {"width": 800, "height": 1100},   # A4-like ratio
+            "/photo_32.jpg": {"width": 6000, "height": 4000},  # 3:2 photo ratio
+        }
+        result = orch._apply_structural_scorer(scored, plan, meta)
+        doc = next(r for r in result if r.path == "/doc.png")
+        photo = next(r for r in result if r.path == "/photo_32.jpg")
+        assert doc.final_score > photo.final_score
+
+    def test_non_document_preset_skips_scorer(self):
+        """Structural scorer should not apply to non-document presets."""
+        orch = self._make_orch()
+        plan = self.QueryPlan(preset_id="beach", source="preset")
+        scored = [
+            self.ScoredResult(path="/photo.jpg", final_score=0.50),
+        ]
+        meta = {"/photo.jpg": {"width": 4000, "height": 3000}}
+        result = orch._apply_structural_scorer(scored, plan, meta)
+        assert result[0].final_score == 0.50  # Unchanged
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Unit Tests: Post-Dedup Gate Re-validation
+# ══════════════════════════════════════════════════════════════════════
+
+class TestPostDedupGateRevalidation:
+    """Test that dedup cannot reintroduce gated-out results."""
+
+    @pytest.fixture(autouse=True)
+    def setup(self):
+        from services.search_orchestrator import SearchOrchestrator, ScoredResult, QueryPlan
+        self.SearchOrchestrator = SearchOrchestrator
+        self.ScoredResult = ScoredResult
+        self.QueryPlan = QueryPlan
+
+    def test_gate_path_normalization(self):
+        """Gate should find metadata even with path normalization differences."""
+        orch = self.SearchOrchestrator.__new__(self.SearchOrchestrator)
+        orch.project_id = 999
+        plan = self.QueryPlan(preset_id="screenshots", source="preset",
+                              require_screenshot=True)
+        # Meta uses one path format, scored result uses another
+        meta = {
+            "c:/users/test/photo.jpg": {
+                "is_screenshot": True, "face_count": 0, "has_gps": False
+            },
+        }
+        scored = [
+            self.ScoredResult(path="c:/users/test/photo.jpg", final_score=0.5),
+        ]
+        kept = orch._apply_gates(scored, plan, meta)
+        # Should pass because path normalizes to match
+        assert len(kept) == 1
+
+    def test_gate_rejects_non_screenshot_in_screenshot_preset(self):
+        """Non-screenshot files must be rejected by screenshot gate."""
+        orch = self.SearchOrchestrator.__new__(self.SearchOrchestrator)
+        orch.project_id = 999
+        plan = self.QueryPlan(preset_id="screenshots", source="preset",
+                              require_screenshot=True)
+        meta = {
+            "photo.jpeg": {
+                "is_screenshot": False, "face_count": 2, "has_gps": True
+            },
+        }
+        scored = [
+            self.ScoredResult(path="photo.jpeg", final_score=0.8),
+        ]
+        kept = orch._apply_gates(scored, plan, meta)
+        assert len(kept) == 0, "Non-screenshot JPEG should be rejected by screenshot gate"
