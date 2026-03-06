@@ -86,6 +86,12 @@ def _qt_message_handler(msg_type, context, message):
     if is_compression_warning:
         return  # Silently ignore
 
+    # Suppress noisy Qt touch/pointer event warnings ("no target window")
+    # These occur when touch events arrive for regions without a receiving widget
+    # and are harmless — purely a Qt framework-level diagnostic.
+    if 'no target window' in message:
+        return
+
     # For other Qt messages, log them appropriately
     if msg_type == QtMsgType.QtDebugMsg:
         logger.debug(f"Qt: {message}")
