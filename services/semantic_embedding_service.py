@@ -673,8 +673,27 @@ class SemanticEmbeddingService:
         try:
             # Preprocess + inference under lock to prevent concurrent native crashes
             with self._infer_lock:
-                inputs = self._processor(text=[text], return_tensors="pt", padding=True)
-                inputs = {k: v.to(self._device) for k, v in inputs.items()}
+                # FIX: Always pad to max_length=77 (CLIP context length) and
+                # truncate.  The original OpenAI CLIP always uses 77-token
+                # sequences.  Using padding=True produces variable-length
+                # tensors (e.g. 3 tokens for "beach") which triggers a native
+                # access violation in transformers' _make_causal_mask on
+                # certain Windows builds.  Fixed-length input avoids the
+                # buggy short-sequence code path entirely.
+                inputs = self._processor(
+                    text=[text],
+                    return_tensors="pt",
+                    padding="max_length",
+                    truncation=True,
+                    max_length=77,
+                )
+                # Only pass text-model keys to avoid stray processor outputs
+                text_keys = {"input_ids", "attention_mask"}
+                inputs = {
+                    k: v.to(self._device)
+                    for k, v in inputs.items()
+                    if k in text_keys
+                }
 
                 with self._torch.no_grad():
                     text_features = self._model.get_text_features(**inputs)
@@ -917,15 +936,20 @@ class SemanticEmbeddingService:
                     batch_images = images[j:j + current_batch_size]
                     batch_valid_paths = valid_paths[j:j + current_batch_size]
 
-                    # Preprocess batch
-                    inputs = self._processor(images=batch_images, return_tensors="pt", padding=True)
-                    inputs = {k: v.to(self._device) for k, v in inputs.items()}
+                    # FIX: Acquire _infer_lock around model access.
+                    # The CLIP model is NOT thread-safe; without the lock,
+                    # concurrent batch encoding + text search causes native
+                    # access violations (0xC0000005) in _make_causal_mask.
+                    with self._infer_lock:
+                        # Preprocess batch
+                        inputs = self._processor(images=batch_images, return_tensors="pt", padding=True)
+                        inputs = {k: v.to(self._device) for k, v in inputs.items()}
 
-                    # Extract features
-                    with self._torch.no_grad():
-                        image_features = self._model.get_image_features(**inputs)
+                        # Extract features
+                        with self._torch.no_grad():
+                            image_features = self._model.get_image_features(**inputs)
 
-                    # Convert to numpy and normalize
+                    # Convert to numpy and normalize (outside lock - no model access)
                     embeddings = image_features.cpu().numpy().astype('float32')
                     norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
                     embeddings = embeddings / np.maximum(norms, 1e-8)
