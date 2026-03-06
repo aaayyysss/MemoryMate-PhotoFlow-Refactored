@@ -308,3 +308,363 @@ Flip Screenshots to metadata-only.
 Tighten Wedding and Party with min_face_count.
 
 Only then revisit weights, because weights are useless if the candidate set is polluted.
+
+Below is a concrete, step by step plan to implement “smart gates” properly, using the files you pasted, and aligned with what Apple Photos, Google Photos, Lightroom, and Excire effectively do in practice (hybrid retrieval, then strong category specific gating, then ranking).
+
+Your current architecture already supports this, because presets can carry intent (Documents, Screenshots, Wedding, Mountains), and the orchestrator already has a single scoring and dedup path. The missing piece is a consistent, explicit gate layer that runs before scoring and before top_k slicing.
+
+1) What is going wrong right now
+A) Documents vs non-documents cannot be separated by CLIP on ViT-B/32
+
+You already saw the overlap in scores, a portrait and a paper can sit in the same similarity band, so threshold tuning alone will always fail at scale. Your Documents preset currently uses CLIP prompts plus negative prompts and exclude_faces=True. 
+
+smart_find_service
+
+That is the correct direction, but you still need one more discriminator: “does this image contain a lot of readable text-like structure”, which the big apps get from OCR and document classifiers.
+
+B) Screenshots must be primarily metadata and heuristic gated, not CLIP gated
+
+You already have screenshot detection in the orchestrator metadata cache via _detect_screenshot() and known device resolutions. 
+
+search_orchestrator
+
+
+But your Screenshots preset is currently defined as semantic prompts only, no filters. 
+
+smart_find_service
+
+
+That leaves you exposed to false positives and misses.
+
+C) People implied categories (Wedding, Party, Baby, Portraits) need a face gate as a first class constraint
+
+You implemented face_count loading from face_crops (good), and you log people implied coverage, also good.
+But the “people implied” logic is still mostly a ranking boost, it should also be usable as a hard gate when precision matters.
+
+2) The best practice pattern you should implement
+
+All four products (Apple, Google, Lightroom, Excire) follow a pattern like this:
+
+Retrieve candidates (semantic, metadata, or both)
+
+Apply category gates (hard exclude, hard include)
+
+Apply category rerankers (soft boosts)
+
+Diversify and deduplicate
+
+Return stable UI result set (no jitter, no duplicates)
+
+You already have (1), (4), (5) partly. You need to formalize (2) and (3).
+
+3) Add an explicit “GateProfile” to presets (smart_find_service.py)
+Step 3.1, Extend preset schema
+
+In BUILTIN_PRESETS, add a new key, for example gate_profile, and keep it purely declarative.
+
+Example for Documents and Screenshots:
+
+# in services/smart_find_service.py inside BUILTIN_PRESETS
+
+{
+  "id": "documents", "name": "Documents", "icon": "📄",
+  "prompts": ["scanned document", "printed page", "form", "invoice", "receipt", "handwritten note"],
+  "negative_prompts": ["screenshot", "phone screen", "app interface"],
+  "category": "media",
+  "semantic_weight": 0.4,
+  "allow_backoff": False,
+  "gate_profile": {
+      "exclude_faces": True,
+      "exclude_screenshots": True,
+      "require_text_signal": True,
+      "min_text_score": 0.35
+  }
+},
+{
+  "id": "screenshots", "name": "Screenshots", "icon": "📱",
+  "prompts": ["screenshot", "screen capture", "phone screen"],
+  "category": "media",
+  "semantic_weight": 0.2,
+  "gate_profile": {
+      "require_screenshot": True
+  }
+},
+
+Why this is correct in your codebase:
+
+Your Documents preset already encodes the intent (exclude_faces) but only at the preset level, you want it enforced in orchestrator consistently.
+
+Your orchestrator already computes is_screenshot and face_count in _get_project_meta(). 
+
+search_orchestrator
+
+Step 3.2, Do the same for people implied presets
+
+For Wedding/Party:
+
+"gate_profile": {
+  "require_faces": True,
+  "min_face_count": 1
+}
+
+Your presets for wedding, party exist here. 
+
+smart_find_service
+
+4) Implement the gate engine in SearchOrchestrator (search_orchestrator.py)
+
+You want one function that takes candidates and a gate_profile, and returns filtered candidates plus explainability counters.
+
+Step 4.1, Add _apply_gates() in SearchOrchestrator
+
+Place it near other post processing utilities like _enforce_unique_paths. 
+
+search_orchestrator
+
+Conceptually:
+
+Inputs:
+
+paths: List[str]
+
+project_meta: Dict[path, meta] (already available)
+
+gate_profile: Dict
+
+Output:
+
+filtered list
+
+gate stats for logging (dropped_by_face, dropped_by_screenshot, dropped_by_text)
+
+Hard gates to support immediately using current metadata:
+
+exclude_faces, require_faces, min_face_count
+
+exclude_screenshots, require_screenshot (use meta["is_screenshot"])
+
+require_gps (use meta["has_gps"]) if you want location dependent presets later
+
+min_width, min_height, orientation
+
+Step 4.2, Wire it into every orchestrator entry point
+
+You already did a good job ensuring uniqueness across multiple search paths. 
+
+search_orchestrator
+
+
+Now do the same with gates:
+
+In _execute() after you build merged candidates and before scoring, apply gates
+
+In search_metadata_only() apply gates after metadata filter result list is built 
+
+search_orchestrator
+
+In search_ann() apply gates after ANN candidate retrieval
+
+In find_similar() apply gates optionally (often none)
+
+This is the single biggest “quality jump” because it aligns all entry points (presets, text, combined) to one behavior, like you already did for ranking.
+
+Step 4.3, Feed gate_profile from preset into orchestrator
+
+Right now, SmartFindService routes into orchestrator search methods. 
+
+smart_find_service
+
+
+So, update orchestrator’s preset resolution (where you turn preset_id into plan) to also pass gate_profile.
+
+If your orchestrator currently reads preset configs from SmartFindService internally, then add a method in SmartFindService like:
+
+get_preset_config(preset_id) returning the dict with gate_profile
+
+Then orchestrator calls it once.
+
+5) The missing module for Documents quality: “Text signal” (OCR-lite first, OCR full next)
+
+Your require_text_signal gate cannot be real without a signal. You have two staged options:
+
+Option 1 (fast, no OCR), implement a cheap “documentness” heuristic
+
+This mimics what many systems do before OCR:
+
+Downscale image, compute edge density and horizontal/vertical line strength (printed text has lots of short edges)
+
+Compute low color variance (documents are often low saturation)
+
+Compute “large uniform background + high contrast blobs”
+
+This can be done with OpenCV quickly and cached per photo.
+
+Where to put it:
+
+New file: services/document_signal_service.py
+
+Add a DB table or extend metadata cache:
+
+simplest: store doc_signal in a new table keyed by photo_id or path
+
+Then in _get_project_meta() enrich meta with doc_signal like you already do for is_screenshot and face_count. 
+
+search_orchestrator
+
+
+Now your gate require_text_signal uses meta["doc_signal"] >= min_text_score.
+
+Option 2 (best practice), implement OCR indexing
+
+This is what Apple/Google actually rely on heavily for Documents:
+
+Create photo_ocr table: photo_id, text, char_count, avg_confidence, language, updated_at
+
+Background job that OCRs photos incrementally (only new or changed)
+
+Gate: require char_count >= N and avg_confidence >= X
+
+If you do this, Documents becomes “precision-first” in the same way those products behave.
+
+6) Category specific recommendations (what gates each preset should use)
+
+You asked “for Document finding this path, for screenshot this path, for mountains, for wedding, etc”.
+
+Use this as your default GateProfile library:
+
+Documents
+
+Hard gates:
+
+exclude_faces = True
+
+exclude_screenshots = True
+
+require_text_signal = True (doc_signal or OCR)
+Soft boosts:
+
+boost if aspect ratio resembles A4-ish rectangle (portrait orientation)
+
+boost if high resolution
+Negative prompts:
+
+already present (good) 
+
+smart_find_service
+
+Screenshots
+
+Hard gates:
+
+require_screenshot = True (your _detect_screenshot) 
+
+search_orchestrator
+
+
+Soft boosts:
+
+boost if filename contains “Screenshot”, “Bildschirmfoto”, “Screen Shot”
+
+boost if dimension exactly matches known pairs
+
+Also, reduce semantic_weight (metadata wins here).
+
+Wedding, Party, Baby, Portraits
+
+Hard gates:
+
+require_faces = True, min_face_count >= 1
+Soft boosts:
+
+boost for face_count > 2 (group photos)
+
+boost for high “people implied” keywords in query, you already detect people implied in orchestrator logs, formalize it 
+
+search_orchestrator
+
+Mountains, Beach, Forest, Lake
+
+Hard gates:
+
+none, because landscape photos can also include people
+Soft boosts:
+
+boost if has_gps = True (location tends to correlate with travel scenes)
+
+boost if orientation landscape, width_min threshold for panoramas you already do for Panoramas 
+
+smart_find_service
+
+City, Architecture
+
+Soft boosts:
+
+boost if GPS present
+
+boost if higher resolution (architecture details)
+
+7) Where exactly to modify in each file you pasted
+A) services/smart_find_service.py
+
+Add gate_profile to builtin presets (Documents, Screenshots, Wedding, Party, Portraits, Baby, etc).
+
+When building a search request that routes to orchestrator, include gate_profile in the call (either as extra_filters or as a new param). 
+
+smart_find_service
+
+If you allow custom presets, extend their config_json schema to optionally store gate_profile too (future proof).
+
+B) services/search_orchestrator.py
+
+Implement _apply_gates(paths, gate_profile, project_meta) using face_count and is_screenshot already stored in meta. 
+
+search_orchestrator
+
+Ensure _execute(), search_metadata_only(), search_ann(), find_similar() call _apply_gates() before scoring and before slicing. 
+
+search_orchestrator
+
+Keep logs like:
+
+“Gates applied: dropped_by_face=12, dropped_by_screenshot=3, kept=15”
+This is exactly the kind of explainability you already do for scoring. 
+
+search_orchestrator
+
+Add a regression test for each gate, similar to how you increased coverage before.
+
+C) services/search_service.py
+
+You did not paste its content in the excerpts I can cite, but based on how SmartFindService calls _run_metadata_filter() and your TokenParser sets filters like flag="pick", media_type, has_gps, this file should be the one that:
+
+translates filters into SQL constraints
+
+should be extended for:
+
+is_screenshot filter (use the same heuristic output, or store it in DB)
+
+min_face_count filter (join to face_crops grouping)
+
+Your NL parser already maps favorites to flag="pick" inside smart_find_service.py, that is correct. 
+
+smart_find_service
+
+D) services/search_history_service.py
+
+Mostly fine, but once you introduce gate profiles, store them in the filters_json when recording searches, so the system can learn from “successful searches per gate type”, later powering suggestions.
+
+8) What I would implement next, in priority order
+
+If you want visible improvement fast, do it in this order:
+
+Screenshots become hard gated by require_screenshot
+
+Documents become hard gated by exclude_faces, exclude_screenshots, plus a minimal “doc_signal”
+
+Wedding/Party become hard gated by require_faces, not just boosted
+
+Add one “Not a document” action in UI, store it, and use it as negative training data for doc_signal thresholds (simple relevance feedback, you already have an early skeleton for events). 
+
+search_orchestrator
+
+If you want, I can now do the next concrete step in the most mechanical way: I will open your pasted search_orchestrator.py and propose an exact _apply_gates() implementation plus the exact call sites to patch (function names, placement, and the minimal tests to add), sticking strictly to your current meta fields (is_screenshot, face_count, width, height, has_gps, flag).
