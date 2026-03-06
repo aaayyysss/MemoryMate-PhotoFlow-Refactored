@@ -160,6 +160,10 @@ class SemanticSearchService:
             logger.error(f"[SemanticSearchService] Failed to encode query '{query}': {e}")
             return []
 
+        if query_embedding is None:
+            logger.error("[SemanticSearchService] encode_text returned None for query '%s'", query)
+            return []
+
         # Get all photo embeddings
         photo_embeddings = self._get_all_embeddings()
         if not photo_embeddings:

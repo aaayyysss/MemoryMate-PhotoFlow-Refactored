@@ -234,6 +234,12 @@ class SemanticSearchWorker(QThread):
                 self.signals.finished.emit()
                 return
 
+            if query_embedding is None:
+                logger.error("[SemanticSearchWorker] encode_text returned None for query: %r", self.query)
+                self.signals.error.emit("Failed to encode query (model returned None)")
+                self.signals.finished.emit()
+                return
+
             encode_time = time.time() - encode_start
             model_load_time = time.time() - model_load_start
 

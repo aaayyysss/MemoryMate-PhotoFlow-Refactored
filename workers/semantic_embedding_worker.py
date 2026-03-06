@@ -327,10 +327,17 @@ class SemanticEmbeddingWorker(QRunnable):
         source_mtime = str(Path(file_path).stat().st_mtime)
 
         # Extract embedding
+        logger.info("[SemanticEmbeddingWorker] Embedding photo %d: %s", photo_id, file_path)
         try:
             embedding = embedder.encode_image(file_path)
         except Exception as e:
             logger.error(f"[SemanticEmbeddingWorker] Failed to encode photo {photo_id}: {e}")
+            self.failed_count += 1
+            return
+
+        # encode_image returns None when the image could not be processed
+        if embedding is None:
+            logger.warning("[SemanticEmbeddingWorker] Skipping photo %d (encode returned None): %s", photo_id, file_path)
             self.failed_count += 1
             return
 

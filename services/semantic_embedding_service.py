@@ -115,6 +115,12 @@ class SemanticEmbeddingService:
         self._load_error = None
         self._load_lock = threading.Lock()
 
+        # FIX: Inference lock to prevent concurrent model access from
+        # multiple threads (search + embedding worker).  The CLIP model
+        # is NOT thread-safe; concurrent get_text_features / get_image_features
+        # calls cause native access violations (0xC0000005) in _make_causal_mask.
+        self._infer_lock = threading.Lock()
+
         # TTL cache for stale-embeddings query (avoids re-querying every 30s)
         self._stale_cache = {}       # {project_id: (timestamp, result_list)}
         self._stale_cache_ttl = 300  # seconds (5 minutes)
@@ -566,7 +572,45 @@ class SemanticEmbeddingService:
             self._load_error = None
             logger.info(f"[SemanticEmbeddingService] Model ready on {self._device}")
 
-    def encode_image(self, image_path: str) -> np.ndarray:
+    # ------------------------------------------------------------------
+    # Image normalization helper
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _normalize_pil_for_clip(img: Image.Image) -> Image.Image:
+        """
+        Force a safe, fully-decoded RGB PIL image before CLIP preprocessing.
+
+        Handles palette mode, CMYK, grayscale, alpha, truncated files,
+        EXIF orientation, and absurdly large images that would spike memory.
+        """
+        from PIL import ImageFile
+        ImageFile.LOAD_TRUNCATED_IMAGES = True
+
+        # Force full pixel decode now (catches truncated files early)
+        img.load()
+
+        # Fix EXIF orientation
+        try:
+            from PIL import ImageOps
+            img = ImageOps.exif_transpose(img)
+        except Exception:
+            pass
+
+        # Convert all non-RGB modes (P, L, LA, CMYK, RGBA, …) to RGB
+        if img.mode != "RGB":
+            img = img.convert("RGB")
+
+        # Cap very large images to avoid memory spikes in CLIP preprocess
+        max_side = 4096
+        if max(img.size) > max_side:
+            img.thumbnail((max_side, max_side), Image.Resampling.LANCZOS)
+
+        return img
+
+    # ------------------------------------------------------------------
+
+    def encode_image(self, image_path: str) -> Optional[np.ndarray]:
         """
         Extract semantic embedding from image.
 
@@ -574,7 +618,8 @@ class SemanticEmbeddingService:
             image_path: Path to image file
 
         Returns:
-            Normalized embedding vector (float32, L2 norm = 1.0)
+            Normalized embedding vector (float32, L2 norm = 1.0),
+            or None if the image could not be processed.
 
         Note:
             Normalization is MANDATORY for cosine similarity.
@@ -582,16 +627,27 @@ class SemanticEmbeddingService:
         """
         self._load_model()
 
-        # Load image
-        image = Image.open(image_path).convert('RGB')
+        logger.debug("[SemanticEmbeddingService] Preprocessing image: %s", image_path)
 
-        # Preprocess
-        inputs = self._processor(images=image, return_tensors="pt")
-        inputs = {k: v.to(self._device) for k, v in inputs.items()}
+        try:
+            # Load and normalize image
+            image = Image.open(image_path)
+            image = self._normalize_pil_for_clip(image)
+        except Exception as e:
+            logger.exception("[SemanticEmbeddingService] Failed to open/normalize image %s: %s", image_path, e)
+            return None
 
-        # Extract features
-        with self._torch.no_grad():
-            image_features = self._model.get_image_features(**inputs)
+        try:
+            # Preprocess + inference under lock to prevent concurrent native crashes
+            with self._infer_lock:
+                inputs = self._processor(images=image, return_tensors="pt")
+                inputs = {k: v.to(self._device) for k, v in inputs.items()}
+
+                with self._torch.no_grad():
+                    image_features = self._model.get_image_features(**inputs)
+        except Exception as e:
+            logger.exception("[SemanticEmbeddingService] CLIP inference failed on %s: %s", image_path, e)
+            return None
 
         # Convert to numpy and normalize (CRITICAL)
         vec = image_features.cpu().numpy()[0].astype('float32')
@@ -599,7 +655,7 @@ class SemanticEmbeddingService:
 
         return vec
 
-    def encode_text(self, text: str) -> np.ndarray:
+    def encode_text(self, text: str) -> Optional[np.ndarray]:
         """
         Extract semantic embedding from text query.
 
@@ -607,17 +663,24 @@ class SemanticEmbeddingService:
             text: Query text (e.g., "sunset beach")
 
         Returns:
-            Normalized embedding vector (float32, L2 norm = 1.0)
+            Normalized embedding vector (float32, L2 norm = 1.0),
+            or None if encoding failed.
         """
         self._load_model()
 
-        # Preprocess
-        inputs = self._processor(text=[text], return_tensors="pt", padding=True)
-        inputs = {k: v.to(self._device) for k, v in inputs.items()}
+        logger.debug("[SemanticEmbeddingService] Encoding text query: %r", text)
 
-        # Extract features
-        with self._torch.no_grad():
-            text_features = self._model.get_text_features(**inputs)
+        try:
+            # Preprocess + inference under lock to prevent concurrent native crashes
+            with self._infer_lock:
+                inputs = self._processor(text=[text], return_tensors="pt", padding=True)
+                inputs = {k: v.to(self._device) for k, v in inputs.items()}
+
+                with self._torch.no_grad():
+                    text_features = self._model.get_text_features(**inputs)
+        except Exception as e:
+            logger.exception("[SemanticEmbeddingService] CLIP text inference failed for %r: %s", text, e)
+            return None
 
         # Convert to numpy and normalize (CRITICAL)
         vec = text_features.cpu().numpy()[0].astype('float32')

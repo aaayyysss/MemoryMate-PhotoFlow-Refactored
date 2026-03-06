@@ -2038,6 +2038,9 @@ class SearchOrchestrator:
                 return self.search(query_text, top_k, extra_filters)
 
             query_emb = service.encode_text(semantic_text)
+            if query_emb is None:
+                logger.error("[SearchOrchestrator] encode_text returned None for: %r", semantic_text)
+                return self.search(query_text, top_k, extra_filters)
             query_emb = query_emb.astype('float32')
             query_norm = np.linalg.norm(query_emb)
             if query_norm > 0:
