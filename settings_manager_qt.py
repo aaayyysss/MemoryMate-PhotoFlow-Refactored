@@ -5,10 +5,10 @@
 import json, os
 import warnings
 import logging
+from app_env import app_path
 
 
-
-SETTINGS_FILE = "photo_app_settings.json"
+SETTINGS_FILE = app_path("photo_app_settings.json")
 
 DEFAULT_SETTINGS = {
     "skip_unchanged_photos": True,  # ✅ incremental scanning

@@ -44,6 +44,7 @@
 
 from splash_qt import SplashScreen, StartupWorker
 import os, platform, traceback, time as _time, logging, json
+from app_env import APP_DIR, app_path
 from thumb_cache_db import get_cache
 
 from db_writer import DBWriter
@@ -155,7 +156,7 @@ def _on_thumb_double_click(self, path):
 def safe_log(msg: str):
     """Append a message to app_log.txt (UTF-8)."""
     try:
-        log_path = os.path.join(os.getcwd(), "app_log.txt")
+        log_path = app_path("app_log.txt")
         with open(log_path, "a", encoding="utf-8") as f:
             f.write(msg + "\n")
     except Exception as e:
@@ -1266,7 +1267,7 @@ class MainWindow(QMainWindow):
         
         # === Initialize periodic progress pollers (for detached workers) ===
         try:
-            self.app_root = os.getcwd()  # base path for 'status/' folder
+            self.app_root = APP_DIR  # base path for 'status/' folder
             status_dir = os.path.join(self.app_root, "status")
 
             # More defensive directory creation (fixes WinError 183 on Windows)
@@ -3927,9 +3928,8 @@ class MainWindow(QMainWindow):
             import sys
             exe = sys.executable
             args = sys.argv[:]
-            cwd = os.getcwd()
             from PySide6.QtCore import QProcess
-            ok = QProcess.startDetached(exe, args, cwd)
+            ok = QProcess.startDetached(exe, args, APP_DIR)
             if not ok:
                 QMessageBox.critical(self, "Restart failed",
                                      "Could not relaunch the application process.")

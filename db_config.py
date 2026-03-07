@@ -22,6 +22,7 @@ Migration from previous code:
 
 import os
 from pathlib import Path
+from app_env import APP_DIR, app_path
 
 
 # Canonical database file name
@@ -33,20 +34,22 @@ def get_db_path(base_dir: str = None) -> str:
     Get the canonical database path.
 
     Args:
-        base_dir: Optional base directory (defaults to current working directory)
+        base_dir: Optional base directory (defaults to APP_DIR — the
+                  application root, which works for both portable and
+                  full Python installations)
 
     Returns:
-        str: Full path to database file
+        str: Full absolute path to database file
 
     Examples:
         >>> get_db_path()
-        'reference_data.db'
+        '/path/to/app/reference_data.db'
 
         >>> get_db_path('/path/to/project')
         '/path/to/project/reference_data.db'
     """
     if base_dir is None:
-        return _DB_FILENAME
+        return app_path(_DB_FILENAME)
 
     return str(Path(base_dir) / _DB_FILENAME)
 
@@ -95,8 +98,8 @@ def ensure_db_directory(db_path: str = None) -> str:
 
 # Legacy compatibility exports
 # These maintain backward compatibility with existing code
-DB_PATH = get_db_path()
-DB_FILE = get_db_path()
+DB_PATH = get_db_path()   # Now returns absolute path under APP_DIR
+DB_FILE = get_db_path()   # Now returns absolute path under APP_DIR
 DB_FILENAME = _DB_FILENAME
 
 

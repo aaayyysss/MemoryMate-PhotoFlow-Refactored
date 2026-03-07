@@ -8,6 +8,7 @@ import os
 import sys
 from pathlib import Path
 from typing import Optional
+from app_env import app_path
 
 
 class ColoredFormatter(logging.Formatter):
@@ -96,7 +97,7 @@ def setup_logging(
 
     # File handler with rotation
     if log_file is None:
-        log_file = os.path.join(os.getcwd(), "app_log.txt")
+        log_file = app_path("app_log.txt")
 
     # Ensure log directory exists
     log_dir = os.path.dirname(log_file)
