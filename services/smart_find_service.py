@@ -272,6 +272,7 @@ BUILTIN_PRESETS = [
             "exclude_faces": True,
             "exclude_screenshots": True,
             "min_edge_size": 350,  # Drop tiny images (icons, thumbnails)
+            "require_document_signal": True,
         },
     },
     {

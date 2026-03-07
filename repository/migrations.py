@@ -586,6 +586,23 @@ VALUES ('12.0.0', 'OCR pipeline: ocr_text column + FTS5 virtual table', CURRENT_
     rollback_sql=""
 )
 
+MIGRATION_12_1_0 = Migration(
+    version="12.1.0",
+    description="Screenshot confidence: multi-signal screenshot detection",
+    sql="""
+-- Migration v12.1.0: Screenshot confidence column
+-- Replaces boolean is_screenshot with a confidence score (0.0 to 1.0)
+-- so screenshot detection uses combined evidence instead of
+-- resolution-only hard positives.
+
+-- NOTE: ALTER TABLE ADD COLUMN is handled in Python code below.
+
+INSERT OR REPLACE INTO schema_version (version, description, applied_at)
+VALUES ('12.1.0', 'Screenshot confidence: multi-signal screenshot detection', CURRENT_TIMESTAMP);
+""",
+    rollback_sql=""
+)
+
 
 # Ordered list of all migrations
 ALL_MIGRATIONS = [
@@ -605,6 +622,7 @@ ALL_MIGRATIONS = [
     MIGRATION_10_1_0,
     MIGRATION_11_0_0,
     MIGRATION_12_0_0,
+    MIGRATION_12_1_0,
 ]
 
 
@@ -797,6 +815,9 @@ class MigrationManager:
                 elif migration.version == "12.0.0":
                     # Apply migration v12.0: add ocr_text column to photo_metadata
                     self._add_ocr_text_column_if_missing(conn)
+                elif migration.version == "12.1.0":
+                    # Apply migration v12.1: add screenshot_confidence column
+                    self._add_screenshot_confidence_column_if_missing(conn)
 
                 # Execute migration SQL (version tracking)
                 conn.executescript(migration.sql)
@@ -1294,6 +1315,29 @@ class MigrationManager:
             self.logger.info("✓ ocr_text column added successfully")
         else:
             self.logger.info("✓ ocr_text column already exists")
+
+    def _add_screenshot_confidence_column_if_missing(self, conn: sqlite3.Connection):
+        """
+        Add screenshot_confidence column to search_asset_features (v12.1.0).
+
+        Stores a 0.0–1.0 confidence score for screenshot detection,
+        replacing the old boolean-only approach. is_screenshot is now
+        derived from screenshot_confidence >= 0.50.
+        """
+        cur = conn.cursor()
+        cur.execute("PRAGMA table_info(search_asset_features)")
+        columns = {row['name'] for row in cur.fetchall()}
+
+        if 'screenshot_confidence' not in columns:
+            self.logger.info("Adding column search_asset_features.screenshot_confidence")
+            cur.execute(
+                "ALTER TABLE search_asset_features "
+                "ADD COLUMN screenshot_confidence REAL DEFAULT 0.0"
+            )
+            conn.commit()
+            self.logger.info("✓ screenshot_confidence column added successfully")
+        else:
+            self.logger.info("✓ screenshot_confidence column already exists")
 
 
 def get_migration_status(db_connection) -> Dict[str, Any]:

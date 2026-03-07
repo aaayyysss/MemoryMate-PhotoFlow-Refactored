@@ -43,14 +43,18 @@ class ScoringWeights:
 
     S = w_clip * clip + w_recency * recency + w_fav * favorite
       + w_location * location + w_face * face_match
+      + w_structural * structural
 
     All weights are explicit, testable, and logged.
+    The structural weight reserves budget for document/screenshot/scenic
+    structural signals so that validate() does not normalize it away.
     """
     w_clip: float = 0.75
     w_recency: float = 0.05
     w_favorite: float = 0.08
     w_location: float = 0.04
     w_face_match: float = 0.08
+    w_structural: float = 0.00  # reserved structural budget
 
     # Guardrails
     max_recency_boost: float = 0.10
@@ -64,11 +68,17 @@ class ScoringWeights:
         "w_favorite": "favorite_score",
         "w_location": "location_score",
         "w_face_match": "face_match_score",
+        "w_structural": "structural_score",
     }
 
     def validate(self):
-        """Ensure weights sum to ~1.0 and normalize if needed."""
-        total = self.w_clip + self.w_recency + self.w_favorite + self.w_location + self.w_face_match
+        """Ensure weights sum to ~1.0 and normalize if needed.
+
+        Includes w_structural in the total so that profiles with a
+        structural budget are not silently renormalized.
+        """
+        total = (self.w_clip + self.w_recency + self.w_favorite
+                 + self.w_location + self.w_face_match + self.w_structural)
         if abs(total - 1.0) > 0.01:
             logger.warning(
                 f"[ScoringWeights] Weights sum to {total:.3f}, not 1.0. Normalizing."
@@ -79,35 +89,41 @@ class ScoringWeights:
                 self.w_favorite /= total
                 self.w_location /= total
                 self.w_face_match /= total
+                self.w_structural /= total
 
 
 # ── Family-specific weight profiles ──
+# Each profile must sum to 1.0 including w_structural.
+# w_structural reserves budget for document/screenshot/scenic structural
+# signals that are computed separately and folded into the final score.
 
 FAMILY_WEIGHTS = {
-    # Scenic: semantic is king
+    # Scenic: semantic is king, mild structural anti-type penalty
     "scenic": ScoringWeights(
-        w_clip=0.75,
-        w_recency=0.05,
-        w_favorite=0.08,
-        w_location=0.04,
-        w_face_match=0.08,
-    ),
-    # Type (Documents, Screenshots): metadata and structure matter more
-    "type": ScoringWeights(
-        w_clip=0.50,
-        w_recency=0.03,
+        w_clip=0.82,
+        w_recency=0.04,
         w_favorite=0.05,
-        w_location=0.02,
+        w_location=0.06,
+        w_face_match=0.03,
+        w_structural=0.00,  # scenic uses penalty, not positive structural
+    ),
+    # Type (Documents, Screenshots): structural is the dominant signal
+    "type": ScoringWeights(
+        w_clip=0.35,
+        w_recency=0.02,
+        w_favorite=0.03,
+        w_location=0.00,
         w_face_match=0.00,
-        # Remaining 0.40 handled by structural scorer externally
+        w_structural=0.60,
     ),
     # People events: face presence is critical
     "people_event": ScoringWeights(
         w_clip=0.55,
-        w_recency=0.05,
-        w_favorite=0.08,
-        w_location=0.04,
-        w_face_match=0.28,
+        w_recency=0.03,
+        w_favorite=0.04,
+        w_location=0.02,
+        w_face_match=0.36,
+        w_structural=0.00,
     ),
     # Utility (Videos, Favorites, With Location): metadata-only
     "utility": ScoringWeights(
@@ -116,6 +132,7 @@ FAMILY_WEIGHTS = {
         w_favorite=0.40,
         w_location=0.20,
         w_face_match=0.10,
+        w_structural=0.00,
     ),
 }
 
@@ -138,6 +155,7 @@ class ScoredResult:
     favorite_score: float = 0.0
     location_score: float = 0.0
     face_match_score: float = 0.0
+    structural_score: float = 0.0
     matched_prompt: str = ""
     reasons: List[str] = field(default_factory=list)
     duplicate_count: int = 0
@@ -177,6 +195,17 @@ PRESET_FAMILIES = {
     "architecture": "scenic",
     "car": "scenic",
 }
+
+
+# ── Scenic anti-type penalty thresholds ──
+# Scenic families use soft negative structural scores to demote
+# assets that look type-like (document, screenshot).
+SCENIC_ANTI_TYPE_PENALTIES = {
+    "doc_extension": -0.30,     # .png/.pdf/.tif/.tiff/.bmp
+    "high_ocr_text": -0.25,     # OCR text length > threshold
+    "scan_aspect": -0.15,       # aspect ratio consistent with scan/page
+}
+SCENIC_OCR_TEXT_PENALTY_THRESHOLD = 50  # characters
 
 
 def get_preset_family(preset_id: Optional[str]) -> str:
@@ -243,12 +272,17 @@ class Ranker:
         active_filters: Optional[Dict] = None,
         people_implied: bool = False,
         family: Optional[str] = None,
+        structural_score: float = 0.0,
     ) -> ScoredResult:
         """
         Apply the deterministic scoring contract to a single result.
 
         S = w_clip * clip + w_recency * recency + w_fav * favorite
           + w_location * location + w_face * face_match
+          + w_structural * structural
+
+        structural_score is computed externally (by the orchestrator) and
+        passed in so it participates as a first-class weight term.
         """
         w = get_weights_for_family(family or self._default_family)
         reasons = []
@@ -306,6 +340,10 @@ class Ranker:
                 face_match = 1.0
                 reasons.append(f"face=1.0 (face_presence, {face_count} faces)")
 
+        # Structural score (logged when non-zero)
+        if structural_score != 0.0:
+            reasons.append(f"structural={structural_score:.3f}")
+
         # Final score
         final = (
             w.w_clip * clip_score
@@ -313,6 +351,7 @@ class Ranker:
             + w.w_favorite * favorite
             + w.w_location * location
             + w.w_face_match * face_match
+            + w.w_structural * structural_score
         )
 
         return ScoredResult(
@@ -323,6 +362,7 @@ class Ranker:
             favorite_score=favorite,
             location_score=location,
             face_match_score=face_match,
+            structural_score=structural_score,
             matched_prompt=matched_prompt,
             reasons=reasons,
         )
@@ -333,11 +373,13 @@ class Ranker:
         project_meta: Dict[str, Dict],
         plan: Any,
         family: Optional[str] = None,
+        structural_scores: Optional[Dict[str, float]] = None,
     ) -> List[ScoredResult]:
         """Score a batch of candidates using the same plan/family."""
         fam = family or get_preset_family(getattr(plan, 'preset_id', None))
         people = is_people_implied(plan)
         active_filters = getattr(plan, 'filters', None)
+        struct_lookup = structural_scores or {}
 
         results = []
         for c in candidates:
@@ -350,8 +392,10 @@ class Ranker:
                 path, clip_score, prompt = c[0], c[1], c[2]
 
             meta = project_meta.get(path, {})
+            struct = struct_lookup.get(path, 0.0)
             sr = self.score(path, clip_score, prompt, meta,
-                            active_filters, people, fam)
+                            active_filters, people, fam,
+                            structural_score=struct)
             results.append(sr)
 
         results.sort(key=lambda r: r.final_score, reverse=True)
