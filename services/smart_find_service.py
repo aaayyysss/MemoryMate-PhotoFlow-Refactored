@@ -163,12 +163,13 @@ BUILTIN_PRESETS = [
     {
         "id": "pets", "name": "Pets & Animals", "icon": "\U0001f43e",
         "prompts": [
-            "dog", "cat", "pet",
-            "puppy", "kitten", "animal",
+            "a photo of a dog", "a photo of a cat", "pet animal",
+            "puppy", "kitten", "a photo of an animal",
             "pet portrait", "domestic animal",
         ],
         "category": "subjects",
         "family": "scenic",
+        "allow_backoff": False,  # Precision-first: generic terms like "animal" produce too many false positives at lower thresholds
     },
 
     # ── Family: people_event (subjects) ──
