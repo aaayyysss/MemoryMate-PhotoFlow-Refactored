@@ -28,6 +28,19 @@ def check_insightface_availability() -> Tuple[bool, str]:
     except ImportError:
         message = _get_install_message(library_missing=True)
         return False, message
+    except AttributeError as e:
+        # NumPy 2.x incompatibility: onnxruntime compiled against NumPy 1.x
+        # raises "_ARRAY_API not found" when loaded with NumPy 2.x
+        message = (
+            "⚠️ NumPy version incompatibility detected!\n\n"
+            f"Error: {e}\n\n"
+            "onnxruntime (required by InsightFace) was compiled against NumPy 1.x\n"
+            "but NumPy 2.x is installed. Fix:\n\n"
+            "  pip install \"numpy<2\"\n\n"
+            "Then restart the application."
+        )
+        logger.error("NumPy 2.x incompatibility: %s", e)
+        return False, message
 
     # Check if models exist in any of the standard locations
     model_locations = _get_model_search_paths()
@@ -170,6 +183,14 @@ def get_model_download_status() -> Dict[str, any]:
         status['can_download'] = True
     except ImportError:
         status['message'] = "InsightFace library not installed"
+        return status
+    except AttributeError as e:
+        # NumPy 2.x incompatibility with onnxruntime
+        status['message'] = (
+            f"NumPy version conflict: {e}. "
+            "Fix: pip install \"numpy<2\" and restart."
+        )
+        logger.error("NumPy 2.x incompatibility in get_model_download_status: %s", e)
         return status
 
     # Check models

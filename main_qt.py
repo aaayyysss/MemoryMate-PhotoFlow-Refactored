@@ -67,6 +67,33 @@ os.environ.setdefault('VECLIB_MAXIMUM_THREADS', _ml_threads)
 os.environ.setdefault('NUMEXPR_NUM_THREADS', _ml_threads)
 os.environ.setdefault('ONNXRUNTIME_SESSION_THREAD_POOL_SIZE', _ml_threads)
 
+# ========================================================================
+# NumPy Version Compatibility Check
+# ========================================================================
+# Several ML libraries (onnxruntime, torch, transformers) are compiled
+# against NumPy 1.x. Installing packages like EasyOCR or PySide6 can
+# inadvertently upgrade NumPy to 2.x, breaking binary compatibility.
+# Detect this early and warn clearly instead of cryptic crashes later.
+# ========================================================================
+try:
+    import numpy as _np
+    _np_version = tuple(int(x) for x in _np.__version__.split('.')[:2])
+    if _np_version >= (2, 0):
+        print("=" * 70)
+        print(f"WARNING: NumPy {_np.__version__} detected (NumPy 2.x)")
+        print("=" * 70)
+        print("Several ML libraries (onnxruntime, torch, transformers) may")
+        print("have been compiled against NumPy 1.x and will crash.")
+        print()
+        print("Symptoms: '_ARRAY_API not found', 'Could not infer dtype',")
+        print("          'numpy.dtype size changed'")
+        print()
+        print("FIX:  pip install \"numpy<2\"")
+        print("=" * 70)
+    del _np, _np_version
+except Exception:
+    pass
+
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import Qt, QTimer
 from utils.qt_guards import connect_guarded
