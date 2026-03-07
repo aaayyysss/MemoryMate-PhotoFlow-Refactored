@@ -442,3 +442,137 @@ class SearchConfig:
             return True
         except Exception:
             return False
+
+    # ── Metadata Boost Settings ──
+
+    @classmethod
+    def get_meta_boost_gps(cls) -> float:
+        """Get GPS metadata boost value."""
+        try:
+            from settings_manager_qt import SettingsManager
+            settings = SettingsManager()
+            value = settings.get("search_meta_boost_gps", None)
+            if value is not None:
+                v = float(value)
+                if 0.0 <= v <= 0.50:
+                    return v
+        except Exception:
+            pass
+        return SearchDefaults.META_BOOST_GPS
+
+    @classmethod
+    def set_meta_boost_gps(cls, v: float) -> bool:
+        if not 0.0 <= v <= 0.50:
+            return False
+        try:
+            from settings_manager_qt import SettingsManager
+            SettingsManager().set("search_meta_boost_gps", v)
+            return True
+        except Exception:
+            return False
+
+    @classmethod
+    def get_meta_boost_rating(cls) -> float:
+        """Get rating metadata boost value."""
+        try:
+            from settings_manager_qt import SettingsManager
+            settings = SettingsManager()
+            value = settings.get("search_meta_boost_rating", None)
+            if value is not None:
+                v = float(value)
+                if 0.0 <= v <= 0.50:
+                    return v
+        except Exception:
+            pass
+        return SearchDefaults.META_BOOST_RATING
+
+    @classmethod
+    def set_meta_boost_rating(cls, v: float) -> bool:
+        if not 0.0 <= v <= 0.50:
+            return False
+        try:
+            from settings_manager_qt import SettingsManager
+            SettingsManager().set("search_meta_boost_rating", v)
+            return True
+        except Exception:
+            return False
+
+    @classmethod
+    def get_meta_boost_date(cls) -> float:
+        """Get date metadata boost value."""
+        try:
+            from settings_manager_qt import SettingsManager
+            settings = SettingsManager()
+            value = settings.get("search_meta_boost_date", None)
+            if value is not None:
+                v = float(value)
+                if 0.0 <= v <= 0.50:
+                    return v
+        except Exception:
+            pass
+        return SearchDefaults.META_BOOST_DATE
+
+    @classmethod
+    def set_meta_boost_date(cls, v: float) -> bool:
+        if not 0.0 <= v <= 0.50:
+            return False
+        try:
+            from settings_manager_qt import SettingsManager
+            SettingsManager().set("search_meta_boost_date", v)
+            return True
+        except Exception:
+            return False
+
+    # ── Threshold Backoff Parameters ──
+
+    @classmethod
+    def get_threshold_backoff_step(cls) -> float:
+        """Get threshold backoff step size."""
+        try:
+            from settings_manager_qt import SettingsManager
+            settings = SettingsManager()
+            value = settings.get("search_backoff_step", None)
+            if value is not None:
+                v = float(value)
+                if 0.01 <= v <= 0.20:
+                    return v
+        except Exception:
+            pass
+        return SearchDefaults.THRESHOLD_BACKOFF_STEP
+
+    @classmethod
+    def set_threshold_backoff_step(cls, v: float) -> bool:
+        if not 0.01 <= v <= 0.20:
+            return False
+        try:
+            from settings_manager_qt import SettingsManager
+            SettingsManager().set("search_backoff_step", v)
+            return True
+        except Exception:
+            return False
+
+    @classmethod
+    def get_threshold_backoff_max_retries(cls) -> int:
+        """Get max retries for threshold backoff."""
+        try:
+            from settings_manager_qt import SettingsManager
+            settings = SettingsManager()
+            value = settings.get("search_backoff_max_retries", None)
+            if value is not None:
+                v = int(value)
+                if 0 <= v <= 5:
+                    return v
+        except Exception:
+            pass
+        return SearchDefaults.THRESHOLD_BACKOFF_MAX_RETRIES
+
+    @classmethod
+    def set_threshold_backoff_max_retries(cls, v: int) -> bool:
+        if not 0 <= v <= 5:
+            return False
+        try:
+            from settings_manager_qt import SettingsManager
+            SettingsManager().set("search_backoff_max_retries", v)
+            return True
+        except Exception:
+            return False

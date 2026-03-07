@@ -28,6 +28,7 @@ from translation_manager import get_translation_manager, tr
 from utils.qt_guards import connect_guarded
 from config.face_detection_config import get_face_config
 from config.search_config import SearchConfig, SearchDefaults
+from config.ranking_config import RankingConfig, RankingDefaults
 
 
 class BadgePreviewWidget(QWidget):
@@ -1356,6 +1357,194 @@ class PreferencesDialog(QDialog):
 
         layout.addWidget(fusion_group)
 
+        # ── Ranking Weights (Default / Scenic Profile) ──
+        ranking_group = QGroupBox("Ranking Weights (Default Profile)")
+        rank_layout = QFormLayout(ranking_group)
+        rank_layout.setSpacing(8)
+
+        rank_desc = QLabel(
+            "Controls how different signals are weighted when scoring search results.\n"
+            "Weights should sum to 1.0 — they are auto-normalized on save.\n"
+            "Applies to the default (scenic/general) search profile."
+        )
+        rank_desc.setWordWrap(True)
+        rank_desc.setStyleSheet("color: #888; font-size: 9pt; padding: 2px;")
+        rank_layout.addRow("", rank_desc)
+
+        # Helper to create a weight slider row (0-100 mapped to 0.00-1.00)
+        def _make_weight_slider(default_val, tooltip):
+            row = QWidget()
+            row_layout = QHBoxLayout(row)
+            row_layout.setContentsMargins(0, 0, 0, 0)
+            slider = QSlider(Qt.Horizontal)
+            slider.setRange(0, 100)
+            slider.setTickPosition(QSlider.TicksBelow)
+            slider.setTickInterval(10)
+            slider.setValue(int(default_val * 100))
+            slider.setToolTip(tooltip)
+            lbl = QLabel(f"{default_val:.2f}")
+            lbl.setMinimumWidth(40)
+            slider.valueChanged.connect(lambda v, l=lbl: l.setText(f"{v / 100:.2f}"))
+            row_layout.addWidget(slider, 1)
+            row_layout.addWidget(lbl)
+            return row, slider, lbl
+
+        from PySide6.QtWidgets import QSlider
+
+        row, self.slider_rank_clip, self.lbl_rank_clip = _make_weight_slider(
+            0.75, "CLIP semantic similarity weight.\nHigher = rely more on visual/text match. Default: 0.75")
+        rank_layout.addRow("CLIP Weight:", row)
+
+        row, self.slider_rank_recency, self.lbl_rank_recency = _make_weight_slider(
+            0.05, "Recency weight — boost newer photos.\nDefault: 0.05")
+        rank_layout.addRow("Recency Weight:", row)
+
+        row, self.slider_rank_favorite, self.lbl_rank_favorite = _make_weight_slider(
+            0.08, "Favorite/rating weight — boost favorited photos.\nDefault: 0.08")
+        rank_layout.addRow("Favorite Weight:", row)
+
+        row, self.slider_rank_location, self.lbl_rank_location = _make_weight_slider(
+            0.04, "Location weight — boost photos with GPS data.\nDefault: 0.04")
+        rank_layout.addRow("Location Weight:", row)
+
+        row, self.slider_rank_face, self.lbl_rank_face = _make_weight_slider(
+            0.08, "Face match weight — boost photos with detected faces.\nDefault: 0.08")
+        rank_layout.addRow("Face Match Weight:", row)
+
+        row, self.slider_rank_structural, self.lbl_rank_structural = _make_weight_slider(
+            0.00, "Structural weight — reserved for document/screenshot signals.\nDefault: 0.00")
+        rank_layout.addRow("Structural Weight:", row)
+
+        # Weight sum indicator
+        self.lbl_weight_sum = QLabel("Sum: 1.00")
+        self.lbl_weight_sum.setStyleSheet("font-weight: bold; padding-left: 4px;")
+
+        def _update_weight_sum():
+            total = sum(s.value() for s in [
+                self.slider_rank_clip, self.slider_rank_recency, self.slider_rank_favorite,
+                self.slider_rank_location, self.slider_rank_face, self.slider_rank_structural
+            ]) / 100.0
+            color = "#2ecc71" if abs(total - 1.0) < 0.02 else "#e74c3c"
+            self.lbl_weight_sum.setText(f"Sum: {total:.2f}")
+            self.lbl_weight_sum.setStyleSheet(f"font-weight: bold; padding-left: 4px; color: {color};")
+
+        for s in [self.slider_rank_clip, self.slider_rank_recency, self.slider_rank_favorite,
+                  self.slider_rank_location, self.slider_rank_face, self.slider_rank_structural]:
+            s.valueChanged.connect(lambda _: _update_weight_sum())
+        rank_layout.addRow("", self.lbl_weight_sum)
+
+        # Guardrails sub-section
+        guard_label = QLabel("Guardrails:")
+        guard_label.setStyleSheet("font-weight: bold; padding-top: 6px;")
+        rank_layout.addRow(guard_label, QWidget())
+
+        row, self.slider_max_recency_boost, self.lbl_max_recency_boost = _make_weight_slider(
+            0.10, "Maximum recency boost cap.\nDefault: 0.10")
+        rank_layout.addRow("Max Recency Boost:", row)
+
+        row, self.slider_max_favorite_boost, self.lbl_max_favorite_boost = _make_weight_slider(
+            0.15, "Maximum favorite boost cap.\nDefault: 0.15")
+        rank_layout.addRow("Max Favorite Boost:", row)
+
+        self.spin_recency_halflife = QSpinBox()
+        self.spin_recency_halflife.setRange(1, 730)
+        self.spin_recency_halflife.setSingleStep(10)
+        self.spin_recency_halflife.setSuffix(" days")
+        self.spin_recency_halflife.setToolTip(
+            "Half-life for recency decay.\n"
+            "Photos older than this get ~50% of the recency boost.\n"
+            "Default: 90 days"
+        )
+        rank_layout.addRow("Recency Half-life:", self.spin_recency_halflife)
+
+        layout.addWidget(ranking_group)
+
+        # ── Metadata Boosts ──
+        meta_group = QGroupBox("Metadata Soft-Boosts")
+        meta_layout = QFormLayout(meta_group)
+        meta_layout.setSpacing(8)
+
+        meta_desc = QLabel(
+            "Small additive bonuses applied to results that have matching metadata.\n"
+            "These are applied on top of the main score to reward completeness."
+        )
+        meta_desc.setWordWrap(True)
+        meta_desc.setStyleSheet("color: #888; font-size: 9pt; padding: 2px;")
+        meta_layout.addRow("", meta_desc)
+
+        # Helper for boost sliders (0-50 mapped to 0.00-0.50)
+        def _make_boost_slider(default_val, tooltip):
+            row = QWidget()
+            row_layout = QHBoxLayout(row)
+            row_layout.setContentsMargins(0, 0, 0, 0)
+            slider = QSlider(Qt.Horizontal)
+            slider.setRange(0, 50)
+            slider.setTickPosition(QSlider.TicksBelow)
+            slider.setTickInterval(5)
+            slider.setValue(int(default_val * 100))
+            slider.setToolTip(tooltip)
+            lbl = QLabel(f"{default_val:.2f}")
+            lbl.setMinimumWidth(40)
+            slider.valueChanged.connect(lambda v, l=lbl: l.setText(f"{v / 100:.2f}"))
+            row_layout.addWidget(slider, 1)
+            row_layout.addWidget(lbl)
+            return row, slider, lbl
+
+        row, self.slider_boost_gps, self.lbl_boost_gps = _make_boost_slider(
+            0.05, "Bonus for photos with GPS coordinates.\nDefault: 0.05")
+        meta_layout.addRow("GPS Boost:", row)
+
+        row, self.slider_boost_rating, self.lbl_boost_rating = _make_boost_slider(
+            0.10, "Bonus for photos with star ratings/favorites.\nDefault: 0.10")
+        meta_layout.addRow("Rating Boost:", row)
+
+        row, self.slider_boost_date, self.lbl_boost_date = _make_boost_slider(
+            0.03, "Bonus for photos with date metadata.\nDefault: 0.03")
+        meta_layout.addRow("Date Boost:", row)
+
+        layout.addWidget(meta_group)
+
+        # ── Threshold Backoff Parameters ──
+        backoff_group = QGroupBox("Threshold Backoff Parameters")
+        bo_layout = QFormLayout(backoff_group)
+        bo_layout.setSpacing(8)
+
+        bo_desc = QLabel(
+            "When a search returns too few results, the threshold is automatically\n"
+            "lowered by this step for up to N retries to find more matches."
+        )
+        bo_desc.setWordWrap(True)
+        bo_desc.setStyleSheet("color: #888; font-size: 9pt; padding: 2px;")
+        bo_layout.addRow("", bo_desc)
+
+        # Backoff step slider (0.01 to 0.20)
+        bo_step_row = QWidget()
+        bo_step_layout = QHBoxLayout(bo_step_row)
+        bo_step_layout.setContentsMargins(0, 0, 0, 0)
+        self.slider_backoff_step = QSlider(Qt.Horizontal)
+        self.slider_backoff_step.setRange(1, 20)  # 0.01 to 0.20
+        self.slider_backoff_step.setTickPosition(QSlider.TicksBelow)
+        self.slider_backoff_step.setTickInterval(2)
+        self.lbl_backoff_step = QLabel("0.04")
+        self.lbl_backoff_step.setMinimumWidth(40)
+        self.slider_backoff_step.valueChanged.connect(
+            lambda v: self.lbl_backoff_step.setText(f"{v / 100:.2f}")
+        )
+        bo_step_layout.addWidget(self.slider_backoff_step, 1)
+        bo_step_layout.addWidget(self.lbl_backoff_step)
+        bo_layout.addRow("Backoff Step:", bo_step_row)
+
+        # Max retries
+        self.spin_backoff_retries = QSpinBox()
+        self.spin_backoff_retries.setRange(0, 5)
+        self.spin_backoff_retries.setToolTip(
+            "Maximum number of backoff retries.\n"
+            "0 = disable backoff entirely. Default: 2"
+        )
+        bo_layout.addRow("Max Retries:", self.spin_backoff_retries)
+
+        layout.addWidget(backoff_group)
+
         # ── Display Settings ──
         display_group = QGroupBox("Result Display")
         disp_layout = QFormLayout(display_group)
@@ -1455,8 +1644,9 @@ class PreferencesDialog(QDialog):
         return self._create_scrollable_panel(widget)
 
     def _reset_search_defaults(self):
-        """Reset all search settings to defaults."""
+        """Reset all search and ranking settings to defaults."""
         d = SearchDefaults()
+        r = RankingDefaults()
         self.slider_clip_threshold.setValue(int(d.CLIP_THRESHOLD * 100))
         self.lbl_clip_threshold_val.setText(f"{d.CLIP_THRESHOLD:.2f}")
         self.spin_search_top_k.setValue(d.DEFAULT_TOP_K)
@@ -1473,6 +1663,38 @@ class PreferencesDialog(QDialog):
         self.slider_semantic_weight.setValue(int(d.SEMANTIC_WEIGHT * 100))
         self.lbl_semantic_weight_val.setText(f"{d.SEMANTIC_WEIGHT:.2f}")
         self.chk_threshold_backoff.setChecked(d.THRESHOLD_BACKOFF_ENABLED)
+
+        # Ranking weights
+        self.slider_rank_clip.setValue(int(r.W_CLIP * 100))
+        self.lbl_rank_clip.setText(f"{r.W_CLIP:.2f}")
+        self.slider_rank_recency.setValue(int(r.W_RECENCY * 100))
+        self.lbl_rank_recency.setText(f"{r.W_RECENCY:.2f}")
+        self.slider_rank_favorite.setValue(int(r.W_FAVORITE * 100))
+        self.lbl_rank_favorite.setText(f"{r.W_FAVORITE:.2f}")
+        self.slider_rank_location.setValue(int(r.W_LOCATION * 100))
+        self.lbl_rank_location.setText(f"{r.W_LOCATION:.2f}")
+        self.slider_rank_face.setValue(int(r.W_FACE_MATCH * 100))
+        self.lbl_rank_face.setText(f"{r.W_FACE_MATCH:.2f}")
+        self.slider_rank_structural.setValue(int(r.W_STRUCTURAL * 100))
+        self.lbl_rank_structural.setText(f"{r.W_STRUCTURAL:.2f}")
+        self.slider_max_recency_boost.setValue(int(r.MAX_RECENCY_BOOST * 100))
+        self.lbl_max_recency_boost.setText(f"{r.MAX_RECENCY_BOOST:.2f}")
+        self.slider_max_favorite_boost.setValue(int(r.MAX_FAVORITE_BOOST * 100))
+        self.lbl_max_favorite_boost.setText(f"{r.MAX_FAVORITE_BOOST:.2f}")
+        self.spin_recency_halflife.setValue(r.RECENCY_HALFLIFE_DAYS)
+
+        # Metadata boosts
+        self.slider_boost_gps.setValue(int(d.META_BOOST_GPS * 100))
+        self.lbl_boost_gps.setText(f"{d.META_BOOST_GPS:.2f}")
+        self.slider_boost_rating.setValue(int(d.META_BOOST_RATING * 100))
+        self.lbl_boost_rating.setText(f"{d.META_BOOST_RATING:.2f}")
+        self.slider_boost_date.setValue(int(d.META_BOOST_DATE * 100))
+        self.lbl_boost_date.setText(f"{d.META_BOOST_DATE:.2f}")
+
+        # Backoff parameters
+        self.slider_backoff_step.setValue(int(d.THRESHOLD_BACKOFF_STEP * 100))
+        self.lbl_backoff_step.setText(f"{d.THRESHOLD_BACKOFF_STEP:.2f}")
+        self.spin_backoff_retries.setValue(d.THRESHOLD_BACKOFF_MAX_RETRIES)
 
     def _create_video_panel(self) -> QWidget:
         """Create Video Settings panel."""
@@ -1848,6 +2070,39 @@ class PreferencesDialog(QDialog):
         self.lbl_semantic_weight_val.setText(f"{sem_w:.2f}")
         self.chk_threshold_backoff.setChecked(SearchConfig.get_threshold_backoff_enabled())
 
+        # Ranking Weights
+        self.slider_rank_clip.setValue(int(RankingConfig.get_w_clip() * 100))
+        self.lbl_rank_clip.setText(f"{RankingConfig.get_w_clip():.2f}")
+        self.slider_rank_recency.setValue(int(RankingConfig.get_w_recency() * 100))
+        self.lbl_rank_recency.setText(f"{RankingConfig.get_w_recency():.2f}")
+        self.slider_rank_favorite.setValue(int(RankingConfig.get_w_favorite() * 100))
+        self.lbl_rank_favorite.setText(f"{RankingConfig.get_w_favorite():.2f}")
+        self.slider_rank_location.setValue(int(RankingConfig.get_w_location() * 100))
+        self.lbl_rank_location.setText(f"{RankingConfig.get_w_location():.2f}")
+        self.slider_rank_face.setValue(int(RankingConfig.get_w_face_match() * 100))
+        self.lbl_rank_face.setText(f"{RankingConfig.get_w_face_match():.2f}")
+        self.slider_rank_structural.setValue(int(RankingConfig.get_w_structural() * 100))
+        self.lbl_rank_structural.setText(f"{RankingConfig.get_w_structural():.2f}")
+        self.slider_max_recency_boost.setValue(int(RankingConfig.get_max_recency_boost() * 100))
+        self.lbl_max_recency_boost.setText(f"{RankingConfig.get_max_recency_boost():.2f}")
+        self.slider_max_favorite_boost.setValue(int(RankingConfig.get_max_favorite_boost() * 100))
+        self.lbl_max_favorite_boost.setText(f"{RankingConfig.get_max_favorite_boost():.2f}")
+        self.spin_recency_halflife.setValue(RankingConfig.get_recency_halflife_days())
+
+        # Metadata Boosts
+        self.slider_boost_gps.setValue(int(SearchConfig.get_meta_boost_gps() * 100))
+        self.lbl_boost_gps.setText(f"{SearchConfig.get_meta_boost_gps():.2f}")
+        self.slider_boost_rating.setValue(int(SearchConfig.get_meta_boost_rating() * 100))
+        self.lbl_boost_rating.setText(f"{SearchConfig.get_meta_boost_rating():.2f}")
+        self.slider_boost_date.setValue(int(SearchConfig.get_meta_boost_date() * 100))
+        self.lbl_boost_date.setText(f"{SearchConfig.get_meta_boost_date():.2f}")
+
+        # Backoff Parameters
+        bo_step = SearchConfig.get_threshold_backoff_step()
+        self.slider_backoff_step.setValue(int(bo_step * 100))
+        self.lbl_backoff_step.setText(f"{bo_step:.2f}")
+        self.spin_backoff_retries.setValue(SearchConfig.get_threshold_backoff_max_retries())
+
         # Badge overlay settings
         self.chk_badge_overlays.setChecked(self.settings.get("badge_overlays_enabled", True))
         self.spin_badge_size.setValue(int(self.settings.get("badge_size_px", 22)))
@@ -1924,6 +2179,23 @@ class PreferencesDialog(QDialog):
             "search_fusion_mode": SearchConfig.get_fusion_mode(),
             "search_semantic_weight": SearchConfig.get_semantic_weight(),
             "search_threshold_backoff": SearchConfig.get_threshold_backoff_enabled(),
+            # Ranking weights
+            "ranking_w_clip": RankingConfig.get_w_clip(),
+            "ranking_w_recency": RankingConfig.get_w_recency(),
+            "ranking_w_favorite": RankingConfig.get_w_favorite(),
+            "ranking_w_location": RankingConfig.get_w_location(),
+            "ranking_w_face_match": RankingConfig.get_w_face_match(),
+            "ranking_w_structural": RankingConfig.get_w_structural(),
+            "ranking_max_recency_boost": RankingConfig.get_max_recency_boost(),
+            "ranking_max_favorite_boost": RankingConfig.get_max_favorite_boost(),
+            "ranking_recency_halflife": RankingConfig.get_recency_halflife_days(),
+            # Metadata boosts
+            "search_meta_boost_gps": SearchConfig.get_meta_boost_gps(),
+            "search_meta_boost_rating": SearchConfig.get_meta_boost_rating(),
+            "search_meta_boost_date": SearchConfig.get_meta_boost_date(),
+            # Backoff params
+            "search_backoff_step": SearchConfig.get_threshold_backoff_step(),
+            "search_backoff_retries": SearchConfig.get_threshold_backoff_max_retries(),
         }
 
     def _on_run_hash_backfill(self):
@@ -2405,6 +2677,30 @@ class PreferencesDialog(QDialog):
         print(f"🔎 Search settings saved: clip_threshold={self.slider_clip_threshold.value() / 100:.2f}, "
               f"top_k={self.spin_search_top_k.value()}, cache_ttl={self.spin_cache_ttl.value()}s, "
               f"fusion={self.combo_fusion_mode.currentText()}, sem_weight={self.slider_semantic_weight.value() / 100:.2f}")
+
+        # Ranking Weights
+        RankingConfig.set_w_clip(self.slider_rank_clip.value() / 100.0)
+        RankingConfig.set_w_recency(self.slider_rank_recency.value() / 100.0)
+        RankingConfig.set_w_favorite(self.slider_rank_favorite.value() / 100.0)
+        RankingConfig.set_w_location(self.slider_rank_location.value() / 100.0)
+        RankingConfig.set_w_face_match(self.slider_rank_face.value() / 100.0)
+        RankingConfig.set_w_structural(self.slider_rank_structural.value() / 100.0)
+        RankingConfig.set_max_recency_boost(self.slider_max_recency_boost.value() / 100.0)
+        RankingConfig.set_max_favorite_boost(self.slider_max_favorite_boost.value() / 100.0)
+        RankingConfig.set_recency_halflife_days(self.spin_recency_halflife.value())
+        print(f"📊 Ranking weights saved: clip={self.slider_rank_clip.value() / 100:.2f}, "
+              f"recency={self.slider_rank_recency.value() / 100:.2f}, "
+              f"fav={self.slider_rank_favorite.value() / 100:.2f}, "
+              f"halflife={self.spin_recency_halflife.value()}d")
+
+        # Metadata Boosts
+        SearchConfig.set_meta_boost_gps(self.slider_boost_gps.value() / 100.0)
+        SearchConfig.set_meta_boost_rating(self.slider_boost_rating.value() / 100.0)
+        SearchConfig.set_meta_boost_date(self.slider_boost_date.value() / 100.0)
+
+        # Backoff Parameters
+        SearchConfig.set_threshold_backoff_step(self.slider_backoff_step.value() / 100.0)
+        SearchConfig.set_threshold_backoff_max_retries(self.spin_backoff_retries.value())
 
         # OCR Text Recognition
         self.settings.set("ocr_enabled", self.chk_ocr_enabled.isChecked())

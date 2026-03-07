@@ -535,11 +535,11 @@ class SmartFindService:
                 "fusion_mode": SearchConfig.get_fusion_mode(),
                 "semantic_weight": SearchConfig.get_semantic_weight(),
                 "backoff_enabled": SearchConfig.get_threshold_backoff_enabled(),
-                "backoff_step": SearchDefaults.THRESHOLD_BACKOFF_STEP,
-                "backoff_retries": SearchDefaults.THRESHOLD_BACKOFF_MAX_RETRIES,
-                "meta_boost_gps": SearchDefaults.META_BOOST_GPS,
-                "meta_boost_rating": SearchDefaults.META_BOOST_RATING,
-                "meta_boost_date": SearchDefaults.META_BOOST_DATE,
+                "backoff_step": SearchConfig.get_threshold_backoff_step(),
+                "backoff_retries": SearchConfig.get_threshold_backoff_max_retries(),
+                "meta_boost_gps": SearchConfig.get_meta_boost_gps(),
+                "meta_boost_rating": SearchConfig.get_meta_boost_rating(),
+                "meta_boost_date": SearchConfig.get_meta_boost_date(),
             }
         except Exception:
             return {
