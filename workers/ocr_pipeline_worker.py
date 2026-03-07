@@ -85,6 +85,18 @@ class OCRPipelineWorker(QRunnable):
 
             ocr = OCRService(self.languages)
 
+            # Fail fast: verify OCR backend is available before iterating photos
+            try:
+                ocr._ensure_reader()
+            except ImportError as e:
+                msg = (
+                    f"OCR not available: {e}. "
+                    "Install one of: pip install easyocr  OR  pip install pytesseract"
+                )
+                logger.error(f"[OCRPipelineWorker] {msg}")
+                self.signals.error.emit(msg)
+                return
+
             # Get photos to process
             if self.photo_ids:
                 # Resolve paths for specified IDs
@@ -154,7 +166,7 @@ class OCRPipelineWorker(QRunnable):
         except ImportError as e:
             msg = (
                 f"OCR dependencies not available: {e}. "
-                "Install with: pip install easyocr"
+                "Install one of: pip install easyocr  OR  pip install pytesseract"
             )
             logger.error(f"[OCRPipelineWorker] {msg}")
             self.signals.error.emit(msg)

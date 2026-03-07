@@ -23,49 +23,124 @@ logger = get_logger(__name__)
 # Singleton lock for model loading
 _model_lock = threading.Lock()
 _reader_instance = None
+_reader_backend = None   # "easyocr" | "tesseract" | None
+_reader_failed = False   # Cache failure so we don't retry 29 times
 
 
 def _get_reader(languages: Optional[List[str]] = None):
     """
-    Get or create the EasyOCR reader (singleton, thread-safe).
+    Get or create an OCR reader (singleton, thread-safe).
+
+    Tries EasyOCR first, then falls back to pytesseract.
 
     Args:
         languages: Language codes for OCR (default: ['en'])
 
     Returns:
-        easyocr.Reader instance
+        OCR reader instance (easyocr.Reader or a _TesseractReader wrapper)
+
+    Raises:
+        ImportError: If neither easyocr nor pytesseract is available
     """
-    global _reader_instance
+    global _reader_instance, _reader_backend, _reader_failed
 
     if _reader_instance is not None:
         return _reader_instance
+
+    if _reader_failed:
+        raise ImportError(
+            "No OCR backend available. "
+            "Install one of: pip install easyocr  OR  pip install pytesseract"
+        )
 
     with _model_lock:
         # Double-check after acquiring lock
         if _reader_instance is not None:
             return _reader_instance
+        if _reader_failed:
+            raise ImportError("No OCR backend available (cached)")
 
         langs = languages or ['en']
-        logger.info(f"[OCRService] Loading EasyOCR reader for languages: {langs}")
 
+        # Try EasyOCR first
         try:
+            logger.info(f"[OCRService] Loading EasyOCR reader for languages: {langs}")
             import easyocr
             _reader_instance = easyocr.Reader(
                 langs,
                 gpu=_detect_gpu(),
                 verbose=False,
             )
+            _reader_backend = "easyocr"
             logger.info("[OCRService] EasyOCR reader loaded successfully")
             return _reader_instance
         except ImportError:
-            logger.warning(
-                "[OCRService] EasyOCR not installed. "
-                "Install with: pip install easyocr"
-            )
-            raise
+            logger.info("[OCRService] EasyOCR not installed, trying pytesseract fallback...")
         except Exception as e:
-            logger.error(f"[OCRService] Failed to load EasyOCR reader: {e}")
-            raise
+            logger.warning(f"[OCRService] EasyOCR failed to load: {e}, trying pytesseract fallback...")
+
+        # Fallback: pytesseract
+        try:
+            import pytesseract
+            # Verify tesseract binary is accessible
+            pytesseract.get_tesseract_version()
+            lang_str = '+'.join(langs)
+            _reader_instance = _TesseractReader(lang_str)
+            _reader_backend = "tesseract"
+            logger.info(f"[OCRService] Tesseract OCR loaded (languages: {lang_str})")
+            return _reader_instance
+        except ImportError:
+            logger.warning(
+                "[OCRService] pytesseract not installed. "
+                "Install with: pip install pytesseract"
+            )
+        except Exception as e:
+            logger.warning(f"[OCRService] Tesseract not available: {e}")
+
+        # Neither backend available - cache the failure
+        _reader_failed = True
+        raise ImportError(
+            "No OCR backend available. "
+            "Install one of: pip install easyocr  OR  pip install pytesseract  "
+            "(pytesseract also requires the tesseract binary)"
+        )
+
+
+class _TesseractReader:
+    """Minimal wrapper around pytesseract that mimics the EasyOCR readtext() API."""
+
+    def __init__(self, lang: str = "eng"):
+        self._lang = lang
+
+    def readtext(self, image, detail=1):
+        """
+        Run Tesseract OCR and return results in EasyOCR format:
+        list of (bbox, text, confidence).
+        """
+        import pytesseract
+        from PIL import Image
+        import numpy as np
+
+        if isinstance(image, np.ndarray):
+            image = Image.fromarray(image)
+
+        data = pytesseract.image_to_data(
+            image, lang=self._lang, output_type=pytesseract.Output.DICT
+        )
+
+        results = []
+        n = len(data['text'])
+        for i in range(n):
+            text = data['text'][i].strip()
+            conf = int(data['conf'][i])
+            if conf < 0 or not text:
+                continue
+            confidence = conf / 100.0
+            x, y, w, h = data['left'][i], data['top'][i], data['width'][i], data['height'][i]
+            bbox = [[x, y], [x + w, y], [x + w, y + h], [x, y + h]]
+            results.append((bbox, text, confidence))
+
+        return results
 
 
 def _detect_gpu() -> bool:
