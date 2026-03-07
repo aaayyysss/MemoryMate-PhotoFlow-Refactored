@@ -57,6 +57,7 @@ from services.ranker import (
     Ranker, ScoringWeights, ScoredResult,
     get_preset_family, get_weights_for_family, is_people_implied,
     PRESET_FAMILIES,
+    SCENIC_ANTI_TYPE_PENALTIES, SCENIC_OCR_TEXT_PENALTY_THRESHOLD,
 )
 from services.deduplicator import Deduplicator, is_copy_filename
 # Phase 3 imports (lazy - actual classes loaded on first use)
@@ -134,6 +135,10 @@ class QueryPlan:
     require_gps_gate: bool = False
     # Documents: drop tiny images (icons, thumbnails) below this edge size
     min_edge_size: int = 0
+
+    # Documents: require at least one positive document signal
+    # (OCR text, document extension, page-like structure)
+    require_document_signal: bool = False
 
     # Tokens that were extracted (for chip display)
     extracted_tokens: List[Dict[str, str]] = field(default_factory=list)
@@ -1029,6 +1034,20 @@ class SearchOrchestrator:
                     "Run face detection for better people results."
                 )
 
+        # Step 4b: Pre-compute structural scores for type/scenic families
+        # Structural scores are computed once and folded into the weighted
+        # scoring contract as a first-class term (w_structural * structural).
+        current_family = get_preset_family(plan.preset_id)
+        structural_scores: Dict[str, float] = {}
+        if current_family == "type":
+            structural_scores = self._compute_structural_scores(
+                plan, project_meta, ocr_match_paths
+            )
+        elif current_family == "scenic":
+            structural_scores = self._compute_scenic_anti_type_scores(
+                plan, project_meta
+            )
+
         # Step 5: Score every candidate
         scored: List[ScoredResult] = []
 
@@ -1040,14 +1059,18 @@ class SearchOrchestrator:
                 if metadata_candidate_paths is not None and path not in metadata_candidate_paths:
                     continue
 
+                struct = structural_scores.get(path, 0.0)
                 sr = self._score_result(path, sem_score, matched_prompt, project_meta,
-                                        plan.filters, people_implied)
+                                        plan.filters, people_implied,
+                                        structural_score=struct)
                 scored.append(sr)
 
         elif metadata_candidate_paths is not None:
             for path in metadata_candidate_paths:
+                struct = structural_scores.get(path, 0.0)
                 sr = self._score_result(path, 0.0, "", project_meta,
-                                        plan.filters, people_implied)
+                                        plan.filters, people_implied,
+                                        structural_score=struct)
                 scored.append(sr)
 
         # Step 5b: Boost OCR-matched results
@@ -1065,13 +1088,33 @@ class SearchOrchestrator:
             # Also add OCR-only matches that weren't in semantic results
             for opath in ocr_match_paths:
                 if opath not in scored_paths:
+                    struct = structural_scores.get(opath, 0.0)
                     sr = self._score_result(
                         opath, 0.0, "", project_meta,
                         plan.filters, people_implied,
+                        structural_score=struct,
                     )
                     sr.final_score += OCR_BOOST
                     sr.reasons.append(f"ocr_text_match=+{OCR_BOOST}")
                     scored.append(sr)
+
+        # Step 5c: Apply scenic anti-type soft penalties directly
+        # Scenic families have w_structural=0.00 (no positive structural
+        # budget), so anti-type penalties are applied as direct adjustments.
+        if current_family == "scenic" and structural_scores:
+            penalized = 0
+            for sr in scored:
+                penalty = structural_scores.get(sr.path, 0.0)
+                if penalty < 0:
+                    sr.final_score = max(0, sr.final_score + penalty)
+                    sr.structural_score = penalty
+                    sr.reasons.append(f"scenic_anti_type={penalty:.3f}")
+                    penalized += 1
+            if penalized:
+                logger.info(
+                    f"[SearchOrchestrator] Scenic anti-type penalties applied "
+                    f"to {penalized} result(s)"
+                )
 
         # Step 6: Sort by final_score
         scored.sort(key=lambda r: r.final_score, reverse=True)
@@ -1139,8 +1182,10 @@ class SearchOrchestrator:
                             continue
                         if metadata_candidate_paths is not None and path not in metadata_candidate_paths:
                             continue
+                        struct = structural_scores.get(path, 0.0)
                         sr = self._score_result(path, sem_score, prompt, project_meta,
-                                                plan.filters, people_implied)
+                                                plan.filters, people_implied,
+                                                structural_score=struct)
                         sr.reasons.append("(backoff)")
                         scored.append(sr)
 
@@ -1165,12 +1210,9 @@ class SearchOrchestrator:
                 scored, plan, project_meta
             )
 
-        # Step 7c: Structural scorer for type-like presets (Documents)
-        # Applies document-specific structural scoring adjustments beyond
-        # what CLIP + gates alone can achieve. Penalizes photo-like images
-        # that CLIP considers semantically similar to documents.
-        if plan.preset_id and self._get_preset_family(plan.preset_id) == "type":
-            scored = self._apply_structural_scorer(scored, plan, project_meta)
+        # Step 7c: Structural scoring is now integrated into the scoring
+        # contract (w_structural * structural_score) computed in Step 4b.
+        # No post-hoc adjustment needed.
 
         # Step 7d: Gate engine (hard pre-filters)
         # Consolidated gate logic: exclude_faces, exclude_screenshots,
@@ -1223,7 +1265,8 @@ class SearchOrchestrator:
                       matched_prompt: str,
                       project_meta: Dict[str, Dict],
                       active_filters: Optional[Dict] = None,
-                      people_implied: bool = False) -> ScoredResult:
+                      people_implied: bool = False,
+                      structural_score: float = 0.0) -> ScoredResult:
         """
         Apply the deterministic scoring contract to a single result.
         Delegates to the family-aware Ranker module.
@@ -1237,6 +1280,7 @@ class SearchOrchestrator:
         return ranker.score(
             path, clip_score, matched_prompt, meta,
             active_filters, people_implied, family=family,
+            structural_score=structural_score,
         )
 
     def _get_search_feature_repo(self):
@@ -1354,52 +1398,22 @@ class SearchOrchestrator:
             logger.warning(f"[SearchOrchestrator] Metadata load failed: {e}")
             return self._project_meta_cache or {}
 
-    # ── Screenshot Detection (filename + dimension heuristics) ──
-
-    # Known screenshot resolution pairs (width, height) for popular devices
-    _SCREENSHOT_RESOLUTIONS = frozenset({
-        (1170, 2532), (2532, 1170),  # iPhone 12/13/14
-        (1179, 2556), (2556, 1179),  # iPhone 14 Pro/15
-        (1284, 2778), (2778, 1284),  # iPhone 12/13/14 Pro Max
-        (1290, 2796), (2796, 1290),  # iPhone 15 Pro Max
-        (1080, 1920), (1920, 1080),  # Android FHD
-        (1080, 2340), (2340, 1080),  # Android 19.5:9
-        (1080, 2400), (2400, 1080),  # Android 20:9
-        (1440, 2560), (2560, 1440),  # Android QHD
-        (1440, 3200), (3200, 1440),  # Samsung S20/S21
-        (1440, 3088), (3088, 1440),  # Samsung S22/S23
-    })
-
-    _SCREENSHOT_FILENAME_RE = re.compile(
-        r'(?i)(screenshot|screen.?shot|screen.?cap|capture|bildschirmfoto'
-        r'|schermopname|captura|snip|clip\d)',
-    )
+    # ── Screenshot Detection (multi-signal confidence) ──
+    # Delegates to search_feature_repository._compute_screenshot_confidence
+    # for consistent detection logic. Resolution alone is no longer sufficient.
 
     @classmethod
     def _detect_screenshot(cls, path: str, width, height) -> bool:
         """
-        Lightweight screenshot detection from filename patterns and
-        known device screenshot resolutions.
+        Multi-signal screenshot detection.
 
-        Aligned with iPhone/Google Photos heuristics:
-        - Filename contains 'screenshot', 'screen shot', 'screen_capture', etc.
-        - Exact match on known device screenshot resolutions
+        Delegates to the shared _compute_screenshot_confidence function
+        which combines filename, folder, resolution, extension, and OCR
+        signals. Resolution alone is NOT sufficient.
         """
-        import os
-        # Filename check
-        basename = os.path.basename(path) if path else ""
-        if cls._SCREENSHOT_FILENAME_RE.search(basename):
-            return True
-
-        # Resolution check (exact match on known screenshot sizes)
-        try:
-            w, h = int(width or 0), int(height or 0)
-            if w > 0 and h > 0 and (w, h) in cls._SCREENSHOT_RESOLUTIONS:
-                return True
-        except (TypeError, ValueError):
-            pass
-
-        return False
+        from repository.search_feature_repository import _compute_screenshot_confidence
+        confidence = _compute_screenshot_confidence(path, width, height)
+        return confidence >= 0.50
 
     def _plan_from_preset(self, preset_id: str,
                           extra_filters: Optional[Dict]) -> QueryPlan:
@@ -1430,6 +1444,7 @@ class SearchOrchestrator:
             min_face_count=gp.get("min_face_count", 0),
             require_gps_gate=gp.get("require_gps_gate", False),
             min_edge_size=gp.get("min_edge_size", 0),
+            require_document_signal=gp.get("require_document_signal", False),
         )
 
         if extra_filters:
@@ -1470,14 +1485,16 @@ class SearchOrchestrator:
             )
             return
 
-        # Compact summary line
-        weights = self._weights
+        # Compact summary line with family-aware weights
+        family = get_preset_family(plan.preset_id)
+        weights = get_weights_for_family(family)
         logger.info(
             f"[SearchOrchestrator] query=\"{plan.raw_query}\" "
             f"| {result.total_matches} results | {result.execution_time_ms:.0f}ms "
+            f"| family={family} "
             f"| weights=[clip={weights.w_clip:.2f} rec={weights.w_recency:.2f} "
             f"fav={weights.w_favorite:.2f} loc={weights.w_location:.2f} "
-            f"face={weights.w_face_match:.2f}]"
+            f"face={weights.w_face_match:.2f} struct={weights.w_structural:.2f}]"
             f"{'| backoff' if result.backoff_applied else ''}"
             f"{' | filters=' + str(plan.filters) if plan.filters else ''}"
         )
@@ -1489,7 +1506,7 @@ class SearchOrchestrator:
             components = (
                 f"clip={sr.clip_score:.3f} rec={sr.recency_score:.4f} "
                 f"fav={sr.favorite_score:.2f} loc={sr.location_score:.1f} "
-                f"face={sr.face_match_score:.1f}"
+                f"face={sr.face_match_score:.1f} struct={sr.structural_score:.3f}"
             )
             dup_tag = f" [+{sr.duplicate_count}]" if sr.duplicate_count else ""
             logger.info(
@@ -1568,31 +1585,34 @@ class SearchOrchestrator:
         """Get the preset family for gate profile selection."""
         return get_preset_family(preset_id)
 
-    # ── Structural Scorer (for type-like presets) ──
+    # ── Structural Scoring (first-class scoring term) ──
 
-    def _apply_structural_scorer(
+    def _compute_structural_scores(
         self,
-        scored: List[ScoredResult],
         plan: QueryPlan,
         project_meta: Dict[str, Dict],
-    ) -> List[ScoredResult]:
+        ocr_match_paths: set,
+    ) -> Dict[str, float]:
         """
-        Apply structural scoring adjustments for type-like presets.
+        Compute structural scores for type-family presets.
 
-        For Documents: penalizes photo-like images that CLIP considers
-        semantically similar. Uses structural signals beyond CLIP:
-        - Face presence penalty (documents never have faces)
-        - Photo-like aspect ratio penalty (typical photo 3:2, 4:3, 16:9)
-        - Small image penalty (icons, thumbnails)
-        - Extension bonus (.pdf, .png for documents)
+        Returns {path: structural_score} where structural_score is 0..1.
+        This score is multiplied by w_structural in the weighted scoring
+        contract, making it a first-class ranking term.
 
-        This is the "document_final = semantic_score + structural_document_score
-        - photo_likeness_penalty" from the audit recommendation.
+        For Documents:
+        - OCR text presence is a strong positive signal
+        - Document-like extension (.pdf, .png, .tif) is positive
+        - Page-like aspect ratio is positive
+        - Photo-like aspect ratio is negative
+        - Photo-like extension (.jpg, .heic) is mildly negative
+
+        For Screenshots:
+        - is_screenshot flag is the primary signal
         """
-        if plan.preset_id != "documents":
-            return scored
-
         import os
+
+        scores: Dict[str, float] = {}
 
         # Common photo aspect ratios (with tolerance)
         _PHOTO_RATIOS = [(3/2, 0.05), (4/3, 0.05), (16/9, 0.05),
@@ -1601,55 +1621,122 @@ class SearchOrchestrator:
         _DOC_EXTENSIONS = frozenset({'.pdf', '.png', '.tiff', '.tif', '.bmp'})
         # Photo-like extensions
         _PHOTO_EXTENSIONS = frozenset({'.jpg', '.jpeg', '.heic', '.heif', '.cr2', '.nef', '.arw'})
+        # Page-like aspect ratios (tall narrow or square-ish)
+        _PAGE_RATIOS = [(1.414, 0.10), (1.294, 0.10)]  # A4, US Letter
 
-        PENALTY_PHOTO_RATIO = 0.08       # Penalty for photo-like aspect ratios
-        PENALTY_PHOTO_EXTENSION = 0.05   # Penalty for .jpg/.heic etc.
-        BONUS_DOC_EXTENSION = 0.05       # Bonus for .pdf/.png
-        PENALTY_SMALL_IMAGE = 0.03       # Penalty for small images
+        is_documents = (plan.preset_id == "documents")
+        is_screenshots = (plan.preset_id == "screenshots")
 
-        adjusted = 0
-        for sr in scored:
-            meta = project_meta.get(sr.path, {})
-            adjustment = 0.0
-
+        for path, meta in project_meta.items():
+            score = 0.0
             w = meta.get("width", 0) or 0
             h = meta.get("height", 0) or 0
-            ext = os.path.splitext(sr.path)[1].lower() if sr.path else ""
+            ext = os.path.splitext(path)[1].lower() if path else ""
+            ocr_text = meta.get("ocr_text", "") or ""
+            ocr_len = len(ocr_text)
 
-            # Photo-like aspect ratio penalty
-            if w > 0 and h > 0:
-                ratio = max(w, h) / min(w, h)
-                for target_ratio, tolerance in _PHOTO_RATIOS:
-                    r = max(target_ratio, 1/target_ratio) if target_ratio < 1 else target_ratio
-                    if abs(ratio - r) < tolerance * r:
-                        adjustment -= PENALTY_PHOTO_RATIO
-                        sr.reasons.append(f"(doc_penalty: photo_ratio={ratio:.2f})")
-                        break
+            if is_documents:
+                # Positive signals for documents
+                if ext in _DOC_EXTENSIONS:
+                    score += 0.25
+                if ocr_len > 20:
+                    score += min(0.35, 0.15 + 0.002 * ocr_len)
+                if path in ocr_match_paths:
+                    score += 0.20
+                # Page-like aspect ratio bonus
+                if w > 0 and h > 0:
+                    ratio = max(w, h) / min(w, h)
+                    for target, tol in _PAGE_RATIOS:
+                        if abs(ratio - target) < tol * target:
+                            score += 0.10
+                            break
+                # Negative signals for documents
+                if ext in _PHOTO_EXTENSIONS:
+                    score -= 0.15
+                if w > 0 and h > 0:
+                    ratio = max(w, h) / min(w, h)
+                    for target, tol in _PHOTO_RATIOS:
+                        r = max(target, 1/target) if target < 1 else target
+                        if abs(ratio - r) < tol * r:
+                            score -= 0.10
+                            break
+                if w > 0 and h > 0 and max(w, h) < 800:
+                    score -= 0.05
 
-            # Extension-based scoring
-            if ext in _PHOTO_EXTENSIONS:
-                adjustment -= PENALTY_PHOTO_EXTENSION
-                sr.reasons.append(f"(doc_penalty: photo_ext={ext})")
-            elif ext in _DOC_EXTENSIONS:
-                adjustment += BONUS_DOC_EXTENSION
-                sr.reasons.append(f"(doc_bonus: doc_ext={ext})")
+            elif is_screenshots:
+                # Screenshots: is_screenshot flag is primary structural signal
+                if meta.get("is_screenshot"):
+                    score += 0.80
+                if ocr_len > 10:
+                    score += 0.15
+                if ext == ".png":
+                    score += 0.05
 
-            # Small image penalty
-            if w > 0 and h > 0 and max(w, h) < 800:
-                adjustment -= PENALTY_SMALL_IMAGE
+            # Clamp to [-1, 1]
+            scores[path] = max(-1.0, min(1.0, score))
 
-            if adjustment != 0.0:
-                sr.final_score = max(0, sr.final_score + adjustment)
-                adjusted += 1
-
-        if adjusted:
-            scored.sort(key=lambda r: r.final_score, reverse=True)
+        computed = sum(1 for v in scores.values() if v != 0.0)
+        if computed:
             logger.info(
-                f"[SearchOrchestrator] Document structural scorer adjusted "
-                f"{adjusted} result(s)"
+                f"[SearchOrchestrator] Structural scores computed for "
+                f"{computed}/{len(scores)} assets "
+                f"(preset={plan.preset_id})"
             )
 
-        return scored
+        return scores
+
+    def _compute_scenic_anti_type_scores(
+        self,
+        plan: QueryPlan,
+        project_meta: Dict[str, Dict],
+    ) -> Dict[str, float]:
+        """
+        Compute soft anti-type structural penalties for scenic presets.
+
+        Scenic families do not use hard document exclusion (kills recall),
+        but they apply a soft negative score for assets that look type-like.
+        This prevents doc2.png from appearing in Travel results.
+
+        The scenic family has w_structural=0.00, so these penalties are
+        applied as direct score adjustments after initial scoring.
+        We store them so they can be logged, and apply them in Step 5b
+        via a small additive penalty.
+        """
+        import os
+
+        _DOC_EXTENSIONS = frozenset({'.pdf', '.png', '.tif', '.tiff', '.bmp'})
+
+        scores: Dict[str, float] = {}
+        for path, meta in project_meta.items():
+            penalty = 0.0
+            ext = os.path.splitext(path)[1].lower() if path else ""
+            ocr_text = meta.get("ocr_text", "") or ""
+            ocr_len = len(ocr_text)
+            w = meta.get("width", 0) or 0
+            h = meta.get("height", 0) or 0
+
+            if ext in _DOC_EXTENSIONS:
+                penalty += SCENIC_ANTI_TYPE_PENALTIES["doc_extension"]
+
+            if ocr_len > SCENIC_OCR_TEXT_PENALTY_THRESHOLD:
+                penalty += SCENIC_ANTI_TYPE_PENALTIES["high_ocr_text"]
+
+            # Scan/page-like aspect ratio (tall narrow)
+            if w > 0 and h > 0:
+                ratio = max(w, h) / min(w, h)
+                if 1.3 < ratio < 1.5:  # A4/letter-like
+                    penalty += SCENIC_ANTI_TYPE_PENALTIES["scan_aspect"]
+
+            if penalty != 0.0:
+                scores[path] = penalty
+
+        if scores:
+            logger.info(
+                f"[SearchOrchestrator] Scenic anti-type penalties computed for "
+                f"{len(scores)} assets (preset={plan.preset_id})"
+            )
+
+        return scores
 
     # ── Duplicate Stacking (delegated to services.deduplicator) ──
 

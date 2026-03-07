@@ -30,7 +30,7 @@ from logging_config import get_logger
 
 logger = get_logger(__name__)
 
-# Known screenshot resolution pairs
+# Known screenshot resolution pairs (weak signal — insufficient alone)
 _SCREENSHOT_RESOLUTIONS = frozenset({
     (1170, 2532), (2532, 1170),
     (1179, 2556), (2556, 1179),
@@ -44,24 +44,88 @@ _SCREENSHOT_RESOLUTIONS = frozenset({
     (1440, 3088), (3088, 1440),
 })
 
+# Screenshot folder patterns (strong signal when combined with resolution)
+_SCREENSHOT_FOLDER_RE = re.compile(
+    r'(?i)(screenshots?|screen.?captures?|bildschirmfotos?)',
+)
+
 _SCREENSHOT_FILENAME_RE = re.compile(
     r'(?i)(screenshot|screen.?shot|screen.?cap|capture|bildschirmfoto'
     r'|schermopname|captura|snip|clip\d)',
 )
 
+# Camera EXIF markers — their ABSENCE is a weak screenshot hint
+_CAMERA_EXIF_EXTENSIONS = frozenset({
+    '.jpg', '.jpeg', '.heic', '.heif', '.cr2', '.nef', '.arw', '.dng',
+})
 
-def _detect_screenshot(path: str, width, height) -> bool:
-    """Lightweight screenshot detection from filename and resolution."""
+
+def _compute_screenshot_confidence(
+    path: str, width, height,
+    has_camera_exif: bool = True,
+    ocr_text: str = "",
+) -> float:
+    """
+    Compute a screenshot confidence score (0.0 to 1.0).
+
+    Combines multiple signals instead of using resolution alone:
+    - Filename match: strong positive (0.90)
+    - Screenshot folder: moderate positive (0.40)
+    - Resolution match: weak positive, NOT sufficient alone (0.25)
+    - No camera EXIF on photo extension: weak positive (0.15)
+    - High OCR/UI text density: weak positive (0.15)
+    - PNG extension (non-camera): weak positive (0.10)
+
+    is_screenshot = confidence >= 0.50
+    """
+    confidence = 0.0
     basename = os.path.basename(path) if path else ""
+    ext = os.path.splitext(basename)[1].lower() if basename else ""
+
+    # Strong positive: filename match
     if _SCREENSHOT_FILENAME_RE.search(basename):
-        return True
+        confidence += 0.90
+
+    # Moderate positive: screenshot folder
+    dirname = os.path.dirname(path) if path else ""
+    if _SCREENSHOT_FOLDER_RE.search(dirname):
+        confidence += 0.40
+
+    # Weak positive: known screenshot resolution (NOT sufficient alone)
+    resolution_match = False
     try:
         w, h = int(width or 0), int(height or 0)
         if w > 0 and h > 0 and (w, h) in _SCREENSHOT_RESOLUTIONS:
-            return True
+            confidence += 0.25
+            resolution_match = True
     except (TypeError, ValueError):
         pass
-    return False
+
+    # Weak positive: no camera EXIF on a photo-type extension
+    if ext in _CAMERA_EXIF_EXTENSIONS and not has_camera_exif:
+        confidence += 0.15
+
+    # Weak positive: PNG (non-camera source)
+    if ext == '.png' and resolution_match:
+        confidence += 0.10
+
+    # Weak positive: high OCR text density (UI text)
+    if ocr_text and len(ocr_text) > 30:
+        confidence += 0.15
+
+    return min(1.0, confidence)
+
+
+def _detect_screenshot(path: str, width, height) -> bool:
+    """
+    Screenshot detection using multi-signal confidence.
+
+    Filename match alone is sufficient (strong positive).
+    Resolution match alone is NOT sufficient — requires at least one
+    additional signal (folder, extension, no EXIF, OCR text).
+    """
+    confidence = _compute_screenshot_confidence(path, width, height)
+    return confidence >= 0.50
 
 
 class SearchFeatureRepository:
@@ -136,7 +200,8 @@ class SearchFeatureRepository:
                     lon = row['gps_longitude']
                     has_gps = 1 if (lat is not None and lon is not None
                                     and lat != 0 and lon != 0) else 0
-                    is_ss = 1 if _detect_screenshot(path, w, h) else 0
+                    ss_conf = _compute_screenshot_confidence(path, w, h)
+                    is_ss = 1 if ss_conf >= 0.50 else 0
                     ext = os.path.splitext(path)[1].lower() if path else None
                     date = row['created_date'] or row['date_taken']
 
@@ -145,16 +210,33 @@ class SearchFeatureRepository:
                     if fc == 0:
                         fc = face_counts.get(os.path.normpath(path), 0)
 
-                    conn.execute("""
-                        INSERT OR REPLACE INTO search_asset_features
-                        (path, project_id, media_type, width, height, has_gps,
-                         face_count, is_screenshot, flag, ext, date_taken,
-                         rating, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                    """, (
-                        path, project_id, None, w, h, has_gps,
-                        fc, is_ss, row['flag'], ext, date, row['rating'] or 0,
-                    ))
+                    # Try to store screenshot_confidence if column exists
+                    try:
+                        conn.execute("""
+                            INSERT OR REPLACE INTO search_asset_features
+                            (path, project_id, media_type, width, height, has_gps,
+                             face_count, is_screenshot, screenshot_confidence,
+                             flag, ext, date_taken,
+                             rating, updated_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                        """, (
+                            path, project_id, None, w, h, has_gps,
+                            fc, is_ss, ss_conf, row['flag'], ext, date,
+                            row['rating'] or 0,
+                        ))
+                    except Exception:
+                        # Fallback: column doesn't exist yet (pre-migration)
+                        conn.execute("""
+                            INSERT OR REPLACE INTO search_asset_features
+                            (path, project_id, media_type, width, height, has_gps,
+                             face_count, is_screenshot, flag, ext, date_taken,
+                             rating, updated_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                        """, (
+                            path, project_id, None, w, h, has_gps,
+                            fc, is_ss, row['flag'], ext, date,
+                            row['rating'] or 0,
+                        ))
                     count += 1
 
                 conn.commit()

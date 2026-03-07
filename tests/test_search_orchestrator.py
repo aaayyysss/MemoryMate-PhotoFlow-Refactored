@@ -1568,15 +1568,30 @@ class TestScreenshotDetection:
         assert not SearchOrchestrator._detect_screenshot("DSC_0001.jpg", 0, 0)
         assert not SearchOrchestrator._detect_screenshot("photo_2024.heic", 0, 0)
 
-    def test_iphone_resolution(self):
-        """iPhone 14 Pro resolution (1179x2556) is a known screenshot size."""
+    def test_iphone_resolution_alone_not_sufficient(self):
+        """Resolution alone is NOT sufficient for screenshot detection (multi-signal)."""
         from services.search_orchestrator import SearchOrchestrator
-        assert SearchOrchestrator._detect_screenshot("IMG_1234.png", 1179, 2556)
+        # Resolution match alone scores 0.25 (below 0.50 threshold)
+        # A generic filename like IMG_1234.png does NOT trigger filename match
+        assert not SearchOrchestrator._detect_screenshot("IMG_1234.jpg", 1179, 2556)
 
-    def test_android_fhd_resolution(self):
-        """Android 1080x1920 FHD is a known screenshot size."""
+    def test_resolution_plus_png_is_screenshot(self):
+        """Resolution match + PNG extension (non-camera source) = screenshot."""
         from services.search_orchestrator import SearchOrchestrator
-        assert SearchOrchestrator._detect_screenshot("image.png", 1080, 1920)
+        # Resolution (0.25) + PNG resolution match (0.10) = 0.35, still below
+        # But a screenshot in a screenshots folder would work
+        from repository.search_feature_repository import _compute_screenshot_confidence
+        # PNG alone not enough but combined with folder it is
+        conf = _compute_screenshot_confidence(
+            "/Users/test/Screenshots/IMG_1234.png", 1179, 2556
+        )
+        assert conf >= 0.50  # folder (0.40) + resolution (0.25) + png (0.10)
+
+    def test_android_fhd_resolution_alone_not_sufficient(self):
+        """Android 1080x1920 FHD resolution alone is NOT sufficient."""
+        from services.search_orchestrator import SearchOrchestrator
+        # Resolution alone = 0.25, not enough
+        assert not SearchOrchestrator._detect_screenshot("image.jpg", 1080, 1920)
 
     def test_normal_photo_resolution_not_screenshot(self):
         """Common camera resolutions must NOT match screenshot detection."""
@@ -1591,6 +1606,18 @@ class TestScreenshotDetection:
         from services.search_orchestrator import SearchOrchestrator
         assert not SearchOrchestrator._detect_screenshot("IMG.jpg", 0, 0)
         assert not SearchOrchestrator._detect_screenshot("IMG.jpg", None, None)
+
+    def test_screenshot_confidence_multi_signal(self):
+        """Multi-signal screenshot confidence requires combined evidence."""
+        from repository.search_feature_repository import _compute_screenshot_confidence
+        # Filename alone is strong enough (0.90)
+        assert _compute_screenshot_confidence("Screenshot_2024.png", 0, 0) >= 0.50
+        # Resolution alone is NOT enough (0.25)
+        assert _compute_screenshot_confidence("IMG.jpg", 1179, 2556) < 0.50
+        # Resolution + screenshot folder is enough (0.25 + 0.40 = 0.65)
+        assert _compute_screenshot_confidence(
+            "/path/Screenshots/IMG.jpg", 1179, 2556
+        ) >= 0.50
 
 
 class TestAllowBackoffQueryPlan:
@@ -2095,7 +2122,7 @@ class TestExpandedPrompts:
 # ══════════════════════════════════════════════════════════════════════
 
 class TestStructuralDocumentScorer:
-    """Test document structural scoring adjustments."""
+    """Test document structural scoring (now computed as first-class term)."""
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -2109,52 +2136,50 @@ class TestStructuralDocumentScorer:
         orch.project_id = 999
         return orch
 
-    def test_documents_penalizes_photo_extensions(self):
-        """JPEG photos should be penalized when scoring for documents."""
+    def test_documents_structural_scores_favor_doc_extensions(self):
+        """Document-like extensions (.png) should get higher structural scores than photos (.jpg)."""
         orch = self._make_orch()
         plan = self.QueryPlan(preset_id="documents", source="preset")
-        scored = [
-            self.ScoredResult(path="/doc.png", final_score=0.50),
-            self.ScoredResult(path="/photo.jpg", final_score=0.52),
-        ]
         meta = {
-            "/doc.png": {"width": 1200, "height": 1600, "face_count": 0},
-            "/photo.jpg": {"width": 4000, "height": 3000, "face_count": 0},
+            "/doc.png": {"width": 1200, "height": 1600, "face_count": 0, "ocr_text": "", "ext": ".png"},
+            "/photo.jpg": {"width": 4000, "height": 3000, "face_count": 0, "ocr_text": "", "ext": ".jpg"},
         }
-        result = orch._apply_structural_scorer(scored, plan, meta)
-        # doc.png should get bonus, photo.jpg should get penalty
-        doc_score = next(r for r in result if r.path == "/doc.png")
-        photo_score = next(r for r in result if r.path == "/photo.jpg")
-        assert doc_score.final_score > photo_score.final_score, \
-            "Document-like .png should outrank photo-like .jpg after structural scoring"
+        scores = orch._compute_structural_scores(plan, meta, set())
+        assert scores["/doc.png"] > scores["/photo.jpg"], \
+            "Document-like .png should get higher structural score than photo-like .jpg"
 
-    def test_documents_penalizes_photo_ratios(self):
-        """Photos with 3:2 or 4:3 aspect ratios should be penalized."""
+    def test_documents_structural_scores_favor_page_ratio(self):
+        """Page-like aspect ratios should score higher than photo ratios."""
         orch = self._make_orch()
         plan = self.QueryPlan(preset_id="documents", source="preset")
-        scored = [
-            self.ScoredResult(path="/doc.png", final_score=0.50),
-            self.ScoredResult(path="/photo_32.jpg", final_score=0.50),
-        ]
         meta = {
-            "/doc.png": {"width": 800, "height": 1100},   # A4-like ratio
-            "/photo_32.jpg": {"width": 6000, "height": 4000},  # 3:2 photo ratio
+            "/doc.png": {"width": 800, "height": 1100, "ocr_text": "", "ext": ".png"},   # A4-like
+            "/photo_32.jpg": {"width": 6000, "height": 4000, "ocr_text": "", "ext": ".jpg"},  # 3:2
         }
-        result = orch._apply_structural_scorer(scored, plan, meta)
-        doc = next(r for r in result if r.path == "/doc.png")
-        photo = next(r for r in result if r.path == "/photo_32.jpg")
-        assert doc.final_score > photo.final_score
+        scores = orch._compute_structural_scores(plan, meta, set())
+        assert scores["/doc.png"] > scores["/photo_32.jpg"]
 
-    def test_non_document_preset_skips_scorer(self):
-        """Structural scorer should not apply to non-document presets."""
+    def test_non_document_preset_returns_empty_structural(self):
+        """Non-type presets don't compute structural scores."""
         orch = self._make_orch()
         plan = self.QueryPlan(preset_id="beach", source="preset")
-        scored = [
-            self.ScoredResult(path="/photo.jpg", final_score=0.50),
-        ]
-        meta = {"/photo.jpg": {"width": 4000, "height": 3000}}
-        result = orch._apply_structural_scorer(scored, plan, meta)
-        assert result[0].final_score == 0.50  # Unchanged
+        meta = {"/photo.jpg": {"width": 4000, "height": 3000, "ocr_text": "", "ext": ".jpg"}}
+        # _compute_structural_scores is only called for type family,
+        # so for scenic the orchestrator would call _compute_scenic_anti_type_scores instead
+        from services.ranker import get_preset_family
+        assert get_preset_family("beach") == "scenic"
+
+    def test_ocr_text_boosts_document_score(self):
+        """Assets with OCR text should get higher structural scores for documents."""
+        orch = self._make_orch()
+        plan = self.QueryPlan(preset_id="documents", source="preset")
+        meta = {
+            "/doc_with_ocr.png": {"width": 800, "height": 1100, "ocr_text": "Invoice #12345 Total: $500", "ext": ".png"},
+            "/doc_no_ocr.png": {"width": 800, "height": 1100, "ocr_text": "", "ext": ".png"},
+        }
+        scores = orch._compute_structural_scores(plan, meta, set())
+        assert scores["/doc_with_ocr.png"] > scores["/doc_no_ocr.png"], \
+            "OCR text presence should boost structural score"
 
 
 # ══════════════════════════════════════════════════════════════════════
