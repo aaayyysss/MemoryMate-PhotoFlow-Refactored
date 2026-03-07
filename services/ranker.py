@@ -28,6 +28,7 @@ from typing import List, Dict, Optional, Any
 from dataclasses import dataclass, field
 
 from logging_config import get_logger
+from config.ranking_config import RankingConfig
 
 logger = get_logger(__name__)
 
@@ -216,8 +217,26 @@ def get_preset_family(preset_id: Optional[str]) -> str:
 
 
 def get_weights_for_family(family: str) -> ScoringWeights:
-    """Get the scoring weights for a preset family."""
-    return FAMILY_WEIGHTS.get(family, FAMILY_WEIGHTS["scenic"])
+    """Get the scoring weights for a preset family.
+
+    The default/scenic profile reads from user preferences so weights
+    are tunable in Preferences > Search & Discovery.  Other families
+    use fixed profiles that are already optimized per best practices.
+    """
+    if family == "scenic" or family not in FAMILY_WEIGHTS:
+        # Build from dynamic config (user-tunable defaults)
+        return ScoringWeights(
+            w_clip=RankingConfig.get_w_clip(),
+            w_recency=RankingConfig.get_w_recency(),
+            w_favorite=RankingConfig.get_w_favorite(),
+            w_location=RankingConfig.get_w_location(),
+            w_face_match=RankingConfig.get_w_face_match(),
+            w_structural=RankingConfig.get_w_structural(),
+            max_recency_boost=RankingConfig.get_max_recency_boost(),
+            max_favorite_boost=RankingConfig.get_max_favorite_boost(),
+            recency_halflife_days=RankingConfig.get_recency_halflife_days(),
+        )
+    return FAMILY_WEIGHTS[family]
 
 
 # ══════════════════════════════════════════════════════════════════════
