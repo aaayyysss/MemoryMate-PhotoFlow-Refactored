@@ -804,7 +804,8 @@ def cluster_faces(project_id: int, eps: float = 0.35, min_samples: int = 2):
 
     X = np.vstack(vecs)
     total = len(X)
-    status_path = os.path.join(os.getcwd(), "status", "cluster_status.json")
+    from app_env import app_path
+    status_path = app_path("status", "cluster_status.json")
     log_path = status_path.replace(".json", ".log")
 
     def _log_progress(phase, current, total):

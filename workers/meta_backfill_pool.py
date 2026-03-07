@@ -213,7 +213,8 @@ def controller(workers=4, timeout=8.0, batch=200, limit=0, dry_run=False, max_re
 #    status_path = os.path.join(os.getcwd(), "status", "backfill_status.json")
 #    write_status(status_path, "starting", 0, total)
 
-    status_path = os.path.join(os.getcwd(), "status", "backfill_status.json")
+    from app_env import app_path
+    status_path = app_path("status", "backfill_status.json")
     log_path = status_path.replace(".json", ".log")
 
     def _log_progress(phase, current, total):

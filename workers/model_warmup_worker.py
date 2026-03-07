@@ -162,8 +162,20 @@ class ModelWarmupWorker(QRunnable):
             logger.info(f"[ModelWarmupWorker] Importing torch and transformers...")
 
             # These imports are slow - that's why we do them in background
-            import torch  # noqa: F401
-            from transformers import CLIPModel, CLIPProcessor  # noqa: F401
+            try:
+                import torch  # noqa: F401
+                from transformers import CLIPModel, CLIPProcessor  # noqa: F401
+            except (AttributeError, RuntimeError) as e:
+                # NumPy 2.x incompatibility: torch/onnxruntime compiled against NumPy 1.x
+                logger.error(
+                    "[ModelWarmupWorker] Failed to import ML dependencies "
+                    "(likely NumPy 2.x incompatibility): %s", e
+                )
+                self.signals.error.emit(
+                    f"ML dependency import failed: {e}\n"
+                    f'Fix: pip install "numpy<2" and restart.'
+                )
+                return
 
             if self._is_cancelled:
                 logger.info(f"[ModelWarmupWorker] Cancelled after imports")

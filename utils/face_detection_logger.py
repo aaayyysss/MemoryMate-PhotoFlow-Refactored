@@ -58,7 +58,8 @@ class FaceDetectionLogger:
 
         # Setup log directory
         if log_dir is None:
-            log_dir = os.path.join(os.getcwd(), ".memorymate", "logs", "face_detection")
+            from app_env import app_path
+            log_dir = app_path(".memorymate", "logs", "face_detection")
 
         os.makedirs(log_dir, exist_ok=True)
 

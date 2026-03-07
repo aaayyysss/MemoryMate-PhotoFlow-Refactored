@@ -194,7 +194,8 @@ class StartupWorker(QThread):
             self.emit_detail("👤 Checking face detection models...")
             try:
                 import os
-                models_path = os.path.join(os.getcwd(), "models", "buffalo_l")
+                from app_env import app_path
+                models_path = app_path("models", "buffalo_l")
                 if os.path.exists(models_path):
                     self.emit_detail(f"✓ InsightFace buffalo_l models detected")
                     self.emit_detail(f"   Location: {models_path}")

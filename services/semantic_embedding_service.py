@@ -201,10 +201,18 @@ class SemanticEmbeddingService:
                 try:
                     import torch
                     self._torch = torch
-                except ImportError as e:
+                except (ImportError, AttributeError, RuntimeError) as e:
+                    # AttributeError: NumPy 2.x incompatibility (_ARRAY_API not found)
+                    # RuntimeError: dtype inference failures from numpy version mismatch
+                    is_numpy = 'numpy' in str(e).lower() or '_ARRAY_API' in str(e)
+                    hint = (
+                        'Fix: pip install "numpy<2"'
+                        if is_numpy else
+                        "Install it with: pip install torch"
+                    )
                     error = RuntimeError(
-                        f"PyTorch is not installed or cannot be imported.\n"
-                        f"Install it with: pip install torch\n\n"
+                        f"PyTorch cannot be imported.\n"
+                        f"{hint}\n\n"
                         f"Error: {e}"
                     )
                     self._load_error = error

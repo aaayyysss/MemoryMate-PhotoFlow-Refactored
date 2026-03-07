@@ -12,11 +12,13 @@ import json
 import os
 import logging
 from typing import Optional, Dict, Any
+from app_env import get_data_dir
 
 logger = logging.getLogger(__name__)
 
-# State file location (same directory as settings)
-STATE_FILE = os.path.join(os.path.expanduser("~"), ".memorymate", "session_state.json")
+# State file location — uses get_data_dir() which picks a writable location
+# (APP_DIR for portable setups, ~/.memorymate for full installs, or temp as fallback)
+STATE_FILE = os.path.join(get_data_dir(), "session_state.json")
 
 
 class SessionState:

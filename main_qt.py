@@ -4,6 +4,7 @@
 
 import sys
 import os
+from app_env import APP_DIR, app_path
 
 # ========================================================================
 # CRITICAL: Qt WebEngine D3D11 Fix
@@ -67,6 +68,33 @@ os.environ.setdefault('VECLIB_MAXIMUM_THREADS', _ml_threads)
 os.environ.setdefault('NUMEXPR_NUM_THREADS', _ml_threads)
 os.environ.setdefault('ONNXRUNTIME_SESSION_THREAD_POOL_SIZE', _ml_threads)
 
+# ========================================================================
+# NumPy Version Compatibility Check
+# ========================================================================
+# Several ML libraries (onnxruntime, torch, transformers) are compiled
+# against NumPy 1.x. Installing packages like EasyOCR or PySide6 can
+# inadvertently upgrade NumPy to 2.x, breaking binary compatibility.
+# Detect this early and warn clearly instead of cryptic crashes later.
+# ========================================================================
+try:
+    import numpy as _np
+    _np_version = tuple(int(x) for x in _np.__version__.split('.')[:2])
+    if _np_version >= (2, 0):
+        print("=" * 70)
+        print(f"WARNING: NumPy {_np.__version__} detected (NumPy 2.x)")
+        print("=" * 70)
+        print("Several ML libraries (onnxruntime, torch, transformers) may")
+        print("have been compiled against NumPy 1.x and will crash.")
+        print()
+        print("Symptoms: '_ARRAY_API not found', 'Could not infer dtype',")
+        print("          'numpy.dtype size changed'")
+        print()
+        print("FIX:  pip install \"numpy<2\"")
+        print("=" * 70)
+    del _np, _np_version
+except Exception:
+    pass
+
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import Qt, QTimer
 from utils.qt_guards import connect_guarded
@@ -75,6 +103,11 @@ from main_window_qt import MainWindow
 # ✅ Logging setup (must be first!)
 from logging_config import setup_logging, get_logger, disable_external_logging
 from settings_manager_qt import SettingsManager
+from app_env import is_portable_python
+
+print(f"[Environment] APP_DIR = {APP_DIR}")
+print(f"[Environment] Portable Python: {is_portable_python()}")
+print(f"[Environment] sys.executable = {sys.executable}")
 
 # P2-25 FIX: Initialize settings once (will be reused at line 67)
 # This prevents potential state inconsistencies from multiple instantiations
@@ -113,7 +146,7 @@ import faulthandler
 # and to a persistent crash log.  This makes Qt/onnxruntime/InsightFace native
 # crashes visible — they kill the process without a Python traceback.
 try:
-    _fault_log = open("crash_fault.log", "a", encoding="utf-8")
+    _fault_log = open(app_path("crash_fault.log"), "a", encoding="utf-8")
     faulthandler.enable(file=_fault_log, all_threads=True)
     faulthandler.enable(file=sys.stderr, all_threads=True)
 except Exception:
@@ -130,7 +163,7 @@ def exception_hook(exctype, value, tb):
 
     # DIAGNOSTIC: Log stack trace to file for post-mortem analysis
     try:
-        with open("crash_log.txt", "a", encoding="utf-8") as f:
+        with open(app_path("crash_log.txt"), "a", encoding="utf-8") as f:
             f.write(f"\n{'='*80}\n")
             f.write(f"CRASH at {datetime.datetime.now()}\n")
             f.write(f"Exception Type: {exctype.__name__}\n")
@@ -147,9 +180,9 @@ def log_shutdown():
     """Log when app shuts down normally (helps identify crashes vs normal exits)"""
     try:
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
-        with open('app_log.txt', 'a', encoding='utf-8') as f:
+        with open(app_path('app_log.txt'), 'a', encoding='utf-8') as f:
             f.write(f"\n[{timestamp}] [SHUTDOWN] Normal exit with code 0\n")
-        with open('crash_log.txt', 'a', encoding='utf-8') as f:
+        with open(app_path('crash_log.txt'), 'a', encoding='utf-8') as f:
             f.write(f"\n[{timestamp}] Normal exit with code 0\n\n")
     except:
         pass
@@ -158,7 +191,7 @@ def log_startup():
     """Log app startup"""
     try:
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
-        with open('app_log.txt', 'a', encoding='utf-8') as f:
+        with open(app_path('app_log.txt'), 'a', encoding='utf-8') as f:
             f.write(f"\n{'='*80}\n")
             f.write(f"[{timestamp}] [STARTUP] MemoryMate-PhotoFlow starting...\n")
             f.write(f"{'='*80}\n")
@@ -445,7 +478,7 @@ if __name__ == "__main__":
     
     # DIAGNOSTIC: Log normal exit
     try:
-        with open("crash_log.txt", "a", encoding="utf-8") as f:
+        with open(app_path("crash_log.txt"), "a", encoding="utf-8") as f:
             import datetime
             f.write(f"\n[{datetime.datetime.now()}] Normal exit with code {exit_code}\n")
     except:

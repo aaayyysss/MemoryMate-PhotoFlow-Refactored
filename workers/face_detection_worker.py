@@ -169,7 +169,8 @@ class FaceDetectionWorker(QRunnable):
             logger.info(f"[FaceDetectionWorker] Processing {total_photos} photos")
 
             # Create face crops directory
-            face_crops_dir = os.path.join(os.getcwd(), ".memorymate", "faces")
+            from app_env import app_path
+            face_crops_dir = app_path(".memorymate", "faces")
             os.makedirs(face_crops_dir, exist_ok=True)
 
             # ENHANCEMENT (2026-01-07): Log detection start with parameters
