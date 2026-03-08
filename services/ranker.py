@@ -118,21 +118,21 @@ FAMILY_WEIGHTS = {
     ),
     # Type (Documents, Screenshots): structural + OCR dominate over CLIP
     "type": ScoringWeights(
-        w_clip=0.30,
-        w_recency=0.02,
-        w_favorite=0.03,
+        w_clip=0.20,
+        w_recency=0.03,
+        w_favorite=0.02,
         w_location=0.00,
         w_face_match=0.00,
-        w_structural=0.45,
-        w_ocr=0.20,
+        w_structural=0.50,
+        w_ocr=0.25,
     ),
     # People events: face presence is critical
     "people_event": ScoringWeights(
-        w_clip=0.55,
-        w_recency=0.03,
-        w_favorite=0.04,
-        w_location=0.02,
-        w_face_match=0.36,
+        w_clip=0.58,
+        w_recency=0.07,
+        w_favorite=0.05,
+        w_location=0.00,
+        w_face_match=0.30,
         w_structural=0.00,
         w_ocr=0.00,
     ),
@@ -144,6 +144,16 @@ FAMILY_WEIGHTS = {
         w_location=0.25,
         w_face_match=0.10,
         w_structural=0.00,
+        w_ocr=0.00,
+    ),
+    # Animal/Object (Pets): CLIP-dominant, face-negative, no OCR
+    "animal_object": ScoringWeights(
+        w_clip=0.88,
+        w_recency=0.05,
+        w_favorite=0.03,
+        w_location=0.00,
+        w_face_match=0.00,
+        w_structural=0.04,
         w_ocr=0.00,
     ),
 }
@@ -201,7 +211,7 @@ PRESET_FAMILIES = {
     "sunset": "scenic",
     "sport": "scenic",
     "food": "scenic",
-    "pets": "scenic",
+    "pets": "animal_object",
     "flowers": "scenic",
     "snow": "scenic",
     "night": "scenic",
@@ -392,6 +402,14 @@ class Ranker:
             + w.w_ocr * ocr_score
         )
 
+        # Family-specific post-score adjustment
+        adj = self._family_post_adjust(
+            family or self._default_family, ocr_score, structural_score, face_match
+        )
+        if adj != 0.0:
+            final += adj
+            reasons.append(f"family_adjust={adj:+.3f}")
+
         return ScoredResult(
             path=path,
             final_score=final,
@@ -405,6 +423,25 @@ class Ranker:
             matched_prompt=matched_prompt,
             reasons=reasons,
         )
+
+    @staticmethod
+    def _family_post_adjust(
+        family: str,
+        ocr_score: float,
+        structural_score: float,
+        face_match: float,
+    ) -> float:
+        """Small family-specific post-score adjustments.
+
+        These help Documents and Pets without contaminating other families.
+        """
+        # Documents: penalize candidates with no OCR and negative structure
+        if family == "type" and ocr_score <= 0 and structural_score < 0:
+            return -0.05
+        # Pets: penalize candidates that triggered face scoring
+        if family == "animal_object" and face_match > 0:
+            return -0.08
+        return 0.0
 
     def score_many(
         self,

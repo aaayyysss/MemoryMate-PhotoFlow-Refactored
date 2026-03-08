@@ -5,7 +5,7 @@
 # Aligned with Apple Photos / Google Photos / Lightroom category purity.
 #
 # Uses existing meta fields only:
-#   is_screenshot, face_count, width, height, has_gps, flag
+#   is_screenshot, face_count, width, height, has_gps, flag, ext, ocr_text
 
 """
 GateEngine - Hard pre-filters for search category purity.
@@ -27,13 +27,21 @@ from typing import List, Dict, Tuple, Optional, Any
 
 from logging_config import get_logger
 
-# Document-like extensions (positive signal for require_document_signal gate)
-_DOC_EXTENSIONS = frozenset({'.pdf', '.png', '.tiff', '.tif', '.bmp'})
+# Document-native extensions (strong positive signal)
+_DOC_NATIVE_EXTENSIONS = frozenset({'.pdf', '.png', '.tif', '.tiff'})
+# Image extensions that need strong content evidence to pass as documents
+_IMAGE_EXTENSIONS = frozenset({'.jpg', '.jpeg', '.heic', '.webp'})
 # Minimum OCR text length to count as a document signal
 _DOC_OCR_MIN_LENGTH = 15
-# Page-like aspect ratios (A4, US Letter) — tall-narrow or square-ish
-_PAGE_RATIO_MIN = 1.30
-_PAGE_RATIO_MAX = 1.50
+# Page-like aspect ratio bounds (A4, US Letter)
+_PAGE_RATIO_MIN = 1.20
+_PAGE_RATIO_MAX = 1.60
+# Document lexicon terms for OCR content analysis
+_DOC_LEXICON = (
+    "invoice", "receipt", "bill", "total", "amount", "date",
+    "address", "account", "bank", "iban", "signature",
+    "form", "application", "reference", "customer", "page",
+)
 
 logger = get_logger(__name__)
 
@@ -45,6 +53,82 @@ class GateEngine:
     Gate profiles are declarative (set per preset via gate_profile dict).
     This consolidates all hard-filtering logic into one place.
     """
+
+    # ── Document signal helpers ──
+
+    @staticmethod
+    def has_document_ocr_signal(meta: dict) -> bool:
+        """Check if OCR text contains document-like content."""
+        text = (meta.get("ocr_text") or "").strip()
+        if len(text) >= _DOC_OCR_MIN_LENGTH:
+            return True
+        text_l = text.lower()
+        return any(term in text_l for term in _DOC_LEXICON)
+
+    @staticmethod
+    def is_page_like(meta: dict) -> bool:
+        """Check if dimensions suggest a page-like aspect ratio."""
+        w = meta.get("width") or 0
+        h = meta.get("height") or 0
+        if not w or not h:
+            return False
+        aspect = max(w, h) / max(1, min(w, h))
+        return _PAGE_RATIO_MIN <= aspect <= _PAGE_RATIO_MAX
+
+    def _passes_document_gate(self, meta: dict, path: str = "") -> bool:
+        """
+        Strict document gate.
+
+        For document-native extensions (.pdf, .png, .tif, .tiff):
+            Accept if OCR evidence OR page-like geometry.
+        For image extensions (.jpg, .jpeg, .heic, .webp):
+            Accept ONLY if OCR evidence is present.
+            Plain page geometry alone is NOT enough for JPGs.
+        """
+        ext = (meta.get("ext") or "").lower()
+        if not ext and path:
+            ext = os.path.splitext(path)[1].lower()
+
+        has_ocr = self.has_document_ocr_signal(meta)
+        page_like = self.is_page_like(meta)
+        min_edge = min(meta.get("width") or 0, meta.get("height") or 0)
+
+        # Hard rejections regardless of extension
+        if meta.get("is_screenshot"):
+            return False
+        if (meta.get("face_count") or 0) > 0:
+            return False
+        if min_edge < 700:
+            return False
+
+        # Extension-specific rules
+        if ext in _DOC_NATIVE_EXTENSIONS:
+            return has_ocr or page_like
+        if ext in _IMAGE_EXTENSIONS:
+            # JPGs need actual OCR content, not just page geometry
+            return has_ocr
+
+        # Unknown extension: require OCR or page geometry
+        return has_ocr or page_like
+
+    @staticmethod
+    def _passes_screenshot_gate(meta: dict) -> bool:
+        """Strict screenshot gate — only true screenshots pass."""
+        return bool(meta.get("is_screenshot"))
+
+    @staticmethod
+    def _passes_pets_gate(meta: dict) -> bool:
+        """
+        Precision gate for pets preset.
+
+        Excludes screenshots and photos with detected faces to prevent
+        human portraits from dominating the pet category.
+        """
+        if meta.get("is_screenshot"):
+            return False
+        if (meta.get("face_count") or 0) > 0:
+            return False
+        return True
 
     def apply(
         self,
@@ -67,10 +151,11 @@ class GateEngine:
             return scored, {}
 
         # Read gate flags from plan
+        preset_id = getattr(plan, 'preset_id', None)
         require_screenshot = getattr(plan, 'require_screenshot', False)
         exclude_screenshots = (
             getattr(plan, 'exclude_screenshots', False)
-            or getattr(plan, 'preset_id', None) == "documents"
+            or preset_id == "documents"
         )
         exclude_faces = getattr(plan, 'exclude_faces', False)
         require_faces = getattr(plan, 'require_faces', False)
@@ -78,6 +163,9 @@ class GateEngine:
         require_gps = getattr(plan, 'require_gps_gate', False)
         min_edge = getattr(plan, 'min_edge_size', 0)
         require_doc_signal = getattr(plan, 'require_document_signal', False)
+
+        # Detect preset-specific gates
+        is_pets = (preset_id == "pets")
 
         # Safety: skip face-requiring gates if face data is essentially absent
         if require_faces or min_face_count > 0:
@@ -92,7 +180,7 @@ class GateEngine:
                     f"[GateEngine] Face coverage < 1% "
                     f"({face_photo_count}/{total_photos}); "
                     f"skipping require_faces/min_face_count gates for "
-                    f"preset={getattr(plan, 'preset_id', None)!r}. "
+                    f"preset={preset_id!r}. "
                     f"Run face detection for better results."
                 )
                 require_faces = False
@@ -101,7 +189,7 @@ class GateEngine:
         # Fast path: no gates active
         if not any([require_screenshot, exclude_screenshots, exclude_faces,
                      require_faces, min_face_count > 0, require_gps,
-                     min_edge > 0, require_doc_signal]):
+                     min_edge > 0, require_doc_signal, is_pets]):
             return scored, {}
 
         dropped = Counter()
@@ -123,11 +211,11 @@ class GateEngine:
             face_count = int(meta.get("face_count") or 0)
             has_gps = bool(meta.get("has_gps", False))
 
-            # Gate: require screenshot
-            if require_screenshot and not is_screenshot:
-                dropped["require_screenshot"] += 1
-                continue
-            if require_screenshot and is_screenshot:
+            # Gate: require screenshot (strict)
+            if require_screenshot:
+                if not self._passes_screenshot_gate(meta):
+                    dropped["require_screenshot"] += 1
+                    continue
                 logger.debug(
                     f"[GateEngine] Screenshot PASS: {os.path.basename(r.path)} "
                     f"is_screenshot={is_screenshot} score={r.final_score:.4f}"
@@ -171,52 +259,29 @@ class GateEngine:
                     dropped["min_edge_size"] += 1
                     continue
 
-            # Gate: require at least one positive document signal
-            # Prevents scenic JPGs from leaking into Documents results.
-            # Only structural/content signals count — CLIP similarity alone
-            # is not sufficient because scenic photos can match document prompts.
+            # Gate: strict document signal (extension-aware)
             if require_doc_signal:
-                has_doc_signal = False
-                ext = meta.get("ext", "") or ""
-                if not ext and r.path:
-                    ext = os.path.splitext(r.path)[1].lower()
-                ocr_text = meta.get("ocr_text", "") or ""
-                dw = meta.get("width")
-                dh = meta.get("height")
-                try:
-                    dw = int(dw) if dw is not None else None
-                    dh = int(dh) if dh is not None else None
-                except (TypeError, ValueError):
-                    dw, dh = None, None
-
-                # Signal 1: document-like extension
-                if ext in _DOC_EXTENSIONS:
-                    has_doc_signal = True
-                # Signal 2: OCR text present (content-based signal)
-                if not has_doc_signal and len(ocr_text) >= _DOC_OCR_MIN_LENGTH:
-                    has_doc_signal = True
-                # Signal 3: page-like aspect ratio
-                if (not has_doc_signal
-                        and dw is not None and dh is not None
-                        and dw > 0 and dh > 0):
-                    ratio = max(dw, dh) / min(dw, dh)
-                    if _PAGE_RATIO_MIN < ratio < _PAGE_RATIO_MAX:
-                        has_doc_signal = True
-
-                if not has_doc_signal:
+                if not self._passes_document_gate(meta, r.path):
                     dropped["require_document_signal"] += 1
+                    continue
+
+            # Gate: pets precision (no faces, no screenshots)
+            if is_pets:
+                if not self._passes_pets_gate(meta):
+                    dropped["pets_precision_gate"] += 1
                     continue
 
             kept.append(r)
 
         if dropped:
             logger.info(
-                f"[GateEngine] Gates applied preset={getattr(plan, 'preset_id', None)!r} "
+                f"[GateEngine] Gates applied preset={preset_id!r} "
                 f"kept={len(kept)}/{len(scored)} dropped={dict(dropped)}"
             )
 
         # Log gate survivors for debugging
-        if (require_screenshot or exclude_screenshots or exclude_faces) and kept:
+        if (require_screenshot or exclude_screenshots or exclude_faces
+                or require_doc_signal or is_pets) and kept:
             for k in kept[:5]:
                 kmeta = project_meta.get(k.path, {})
                 if not kmeta:
@@ -225,6 +290,7 @@ class GateEngine:
                     f"[GateEngine] Survivor: {os.path.basename(k.path)} "
                     f"is_screenshot={kmeta.get('is_screenshot')} "
                     f"face_count={kmeta.get('face_count', 0)} "
+                    f"ext={os.path.splitext(k.path)[1].lower()} "
                     f"score={k.final_score:.4f}"
                 )
 

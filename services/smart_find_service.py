@@ -172,14 +172,21 @@ BUILTIN_PRESETS = [
     {
         "id": "pets", "name": "Pets & Animals", "icon": "\U0001f43e",
         "prompts": [
-            "a photo of a dog", "a photo of a cat", "pet animal",
-            "puppy", "kitten", "a photo of an animal",
-            "pet portrait", "domestic animal",
+            "pet dog", "dog", "puppy",
+            "pet cat", "cat", "kitten",
+            "domestic pet",
+        ],
+        "negative_prompts": [
+            "portrait person", "selfie", "group photo",
+            "wedding", "party", "travel", "landscape",
         ],
         "category": "subjects",
-        "family": "scenic",
-        "allow_backoff": False,  # Precision-first: generic terms like "animal" produce too many false positives at lower thresholds
-        "gate_profile": {"exclude_screenshots": True},
+        "family": "animal_object",
+        "allow_backoff": False,
+        "gate_profile": {
+            "exclude_screenshots": True,
+            "exclude_faces": True,
+        },
     },
 
     # ── Family: people_event (subjects) ──
@@ -279,16 +286,20 @@ BUILTIN_PRESETS = [
             "invoice", "receipt", "handwritten note",
             "typed text on paper", "letter page",
         ],
-        "negative_prompts": ["screenshot", "phone screen", "app interface"],
+        "negative_prompts": [
+            "portrait photo", "person standing", "landscape photo",
+            "travel photo", "pet photo", "selfie",
+            "screenshot", "phone screen", "app interface",
+        ],
         "category": "media",
         "family": "type",
         "semantic_weight": 0.4,
-        "allow_backoff": False,  # Precision-first: do not lower threshold
-        "exclude_faces": True,  # Documents never contain portraits
+        "allow_backoff": False,
+        "exclude_faces": True,
         "gate_profile": {
             "exclude_faces": True,
             "exclude_screenshots": True,
-            "min_edge_size": 700,  # Drop tiny images (icons, thumbnails)
+            "min_edge_size": 700,
             "require_document_signal": True,
         },
     },
