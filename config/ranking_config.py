@@ -39,6 +39,7 @@ class RankingDefaults:
     W_LOCATION: float = 0.04
     W_FACE_MATCH: float = 0.08
     W_STRUCTURAL: float = 0.00
+    W_OCR: float = 0.00
 
     # Guardrails
     MAX_RECENCY_BOOST: float = 0.10
@@ -87,6 +88,10 @@ class RankingConfig:
     @classmethod
     def get_w_structural(cls) -> float:
         return cls._get_float("ranking_w_structural", RankingDefaults.W_STRUCTURAL, 0.0, 1.0)
+
+    @classmethod
+    def get_w_ocr(cls) -> float:
+        return cls._get_float("ranking_w_ocr", RankingDefaults.W_OCR, 0.0, 1.0)
 
     # ── Guardrail getters ──
 
@@ -151,6 +156,10 @@ class RankingConfig:
     @classmethod
     def set_w_structural(cls, v: float) -> bool:
         return cls._set_float("ranking_w_structural", v, 0.0, 1.0)
+
+    @classmethod
+    def set_w_ocr(cls, v: float) -> bool:
+        return cls._set_float("ranking_w_ocr", v, 0.0, 1.0)
 
     @classmethod
     def set_max_recency_boost(cls, v: float) -> bool:

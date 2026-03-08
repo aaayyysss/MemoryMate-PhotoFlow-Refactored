@@ -2231,3 +2231,339 @@ class TestPostDedupGateRevalidation:
         ]
         kept = orch._apply_gates(scored, plan, meta)
         assert len(kept) == 0, "Non-screenshot JPEG should be rejected by screenshot gate"
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Patch validation tests - scoring contract, screenshot detection, gates
+# ══════════════════════════════════════════════════════════════════════
+
+
+class TestScoringContractWithOCR:
+    """Validate that structural + OCR weights are properly integrated."""
+
+    def test_type_family_weights_include_structural_and_ocr_sum_to_one(self):
+        """Type family weights must include structural + OCR and sum to 1.0."""
+        from services.ranker import get_weights_for_family
+        w = get_weights_for_family("type")
+        total = (
+            w.w_clip + w.w_recency + w.w_favorite + w.w_location
+            + w.w_face_match + w.w_structural + w.w_ocr
+        )
+        assert abs(total - 1.0) < 1e-6, f"Type weights sum to {total}, expected 1.0"
+        assert w.w_structural > 0, "Type family must have positive w_structural"
+        assert w.w_ocr > 0, "Type family must have positive w_ocr"
+
+    def test_scenic_family_weights_sum_to_one(self):
+        """Scenic family weights must sum to 1.0."""
+        from services.ranker import FAMILY_WEIGHTS
+        w = FAMILY_WEIGHTS["scenic"]
+        total = (
+            w.w_clip + w.w_recency + w.w_favorite + w.w_location
+            + w.w_face_match + w.w_structural + w.w_ocr
+        )
+        assert abs(total - 1.0) < 1e-6, f"Scenic weights sum to {total}, expected 1.0"
+
+    def test_people_event_family_weights_sum_to_one(self):
+        """People_event family weights must sum to 1.0."""
+        from services.ranker import FAMILY_WEIGHTS
+        w = FAMILY_WEIGHTS["people_event"]
+        total = (
+            w.w_clip + w.w_recency + w.w_favorite + w.w_location
+            + w.w_face_match + w.w_structural + w.w_ocr
+        )
+        assert abs(total - 1.0) < 1e-6, f"People_event weights sum to {total}, expected 1.0"
+
+    def test_utility_family_weights_sum_to_one(self):
+        """Utility family weights must sum to 1.0."""
+        from services.ranker import FAMILY_WEIGHTS
+        w = FAMILY_WEIGHTS["utility"]
+        total = (
+            w.w_clip + w.w_recency + w.w_favorite + w.w_location
+            + w.w_face_match + w.w_structural + w.w_ocr
+        )
+        assert abs(total - 1.0) < 1e-6, f"Utility weights sum to {total}, expected 1.0"
+
+    def test_all_families_have_seven_weight_components(self):
+        """All families must declare all 7 weight components."""
+        from services.ranker import FAMILY_WEIGHTS
+        for name, w in FAMILY_WEIGHTS.items():
+            assert hasattr(w, 'w_ocr'), f"Family {name} missing w_ocr"
+            assert hasattr(w, 'w_structural'), f"Family {name} missing w_structural"
+
+    def test_ocr_score_affects_type_family_final_score(self):
+        """OCR score must contribute to final score for type family."""
+        from services.ranker import Ranker
+        ranker = Ranker()
+        meta = {"date_taken": None}
+        sr_no_ocr = ranker.score(
+            "doc.png", 0.3, "document", meta, family="type",
+            structural_score=0.7, ocr_score=0.0,
+        )
+        sr_with_ocr = ranker.score(
+            "doc.png", 0.3, "document", meta, family="type",
+            structural_score=0.7, ocr_score=0.8,
+        )
+        assert sr_with_ocr.final_score > sr_no_ocr.final_score, \
+            "OCR score must increase final score for type family"
+        assert sr_with_ocr.ocr_score == 0.8
+
+    def test_validate_normalizes_seven_weights(self):
+        """validate() must normalize all 7 weights including w_ocr."""
+        from services.ranker import ScoringWeights
+        w = ScoringWeights(
+            w_clip=0.50, w_recency=0.10, w_favorite=0.10,
+            w_location=0.10, w_face_match=0.10,
+            w_structural=0.10, w_ocr=0.10,
+        )
+        # Total = 1.10, should normalize
+        w.validate()
+        total = (
+            w.w_clip + w.w_recency + w.w_favorite + w.w_location
+            + w.w_face_match + w.w_structural + w.w_ocr
+        )
+        assert abs(total - 1.0) < 1e-6
+
+
+class TestConservativeScreenshotDetection:
+    """Screenshot detection must be conservative - resolution alone is NOT enough."""
+
+    def test_resolution_alone_is_not_screenshot(self):
+        """iPhone resolution alone must NOT classify as screenshot."""
+        from repository.search_feature_repository import _detect_screenshot
+        assert _detect_screenshot("IMG_1234.JPG", 1179, 2556) is False
+
+    def test_android_resolution_alone_is_not_screenshot(self):
+        """Android FHD resolution alone must NOT classify as screenshot."""
+        from repository.search_feature_repository import _detect_screenshot
+        assert _detect_screenshot("IMG_5678.jpg", 1080, 1920) is False
+
+    def test_filename_is_hard_positive(self):
+        """Screenshot filename pattern must always classify as screenshot."""
+        from repository.search_feature_repository import _detect_screenshot
+        assert _detect_screenshot("Screenshot_2026-03-06.png", 1179, 2556) is True
+
+    def test_screenshot_filename_without_resolution(self):
+        """Screenshot filename works even without resolution data."""
+        from repository.search_feature_repository import _detect_screenshot
+        assert _detect_screenshot("Screenshot_2026.png", 0, 0) is True
+
+    def test_bildschirmfoto_filename(self):
+        """German locale screenshot filename must be detected."""
+        from repository.search_feature_repository import _detect_screenshot
+        assert _detect_screenshot("Bildschirmfoto 2026-03-06.png", 0, 0) is True
+
+    def test_normal_camera_photo_not_screenshot(self):
+        """Regular camera photos must NEVER be flagged as screenshots."""
+        from repository.search_feature_repository import _detect_screenshot
+        assert _detect_screenshot("DSC_0001.jpg", 4000, 3000) is False
+        assert _detect_screenshot("IMG_2024.heic", 4032, 3024) is False
+        assert _detect_screenshot("photo_vacation.jpg", 1179, 2556) is False
+
+    def test_screenshot_folder_with_resolution_is_screenshot(self):
+        """Screenshot folder + known resolution should classify as screenshot."""
+        from repository.search_feature_repository import _detect_screenshot
+        assert _detect_screenshot(
+            "/Users/test/Screenshots/IMG_1234.png", 1179, 2556
+        ) is True
+
+
+class TestDocumentGateRejectsPlainJPG:
+    """Documents gate must reject plain JPGs without OCR or document extension."""
+
+    def test_plain_jpg_without_ocr_rejected(self):
+        """A scenic JPG with no OCR text must be rejected by document signal gate."""
+        from services.gate_engine import GateEngine
+        from services.ranker import ScoredResult
+
+        plan = type('Plan', (), {
+            'preset_id': 'documents',
+            'require_screenshot': False,
+            'exclude_screenshots': True,
+            'exclude_faces': True,
+            'require_faces': False,
+            'min_face_count': 0,
+            'require_gps_gate': False,
+            'min_edge_size': 700,
+            'require_document_signal': True,
+        })()
+
+        meta = {
+            "c:/x/photo.jpg": {
+                "ext": ".jpg",
+                "ocr_text": "",
+                "face_count": 0,
+                "is_screenshot": False,
+                "width": 3000,
+                "height": 2000,
+            }
+        }
+        scored = [ScoredResult(path="c:/x/photo.jpg", final_score=0.5, clip_score=0.25)]
+        engine = GateEngine()
+        kept, dropped = engine.apply(scored, plan, meta)
+        assert len(kept) == 0, "Plain JPG without document signal must be rejected"
+        assert "require_document_signal" in dropped
+
+    def test_png_with_ocr_kept(self):
+        """A PNG with OCR text must pass the document signal gate."""
+        from services.gate_engine import GateEngine
+        from services.ranker import ScoredResult
+
+        plan = type('Plan', (), {
+            'preset_id': 'documents',
+            'require_screenshot': False,
+            'exclude_screenshots': False,
+            'exclude_faces': False,
+            'require_faces': False,
+            'min_face_count': 0,
+            'require_gps_gate': False,
+            'min_edge_size': 0,
+            'require_document_signal': True,
+        })()
+
+        meta = {
+            "c:/x/doc.png": {
+                "ext": ".png",
+                "ocr_text": "Invoice Total EUR 123.45",
+                "face_count": 0,
+                "is_screenshot": False,
+                "width": 1400,
+                "height": 2000,
+            }
+        }
+        scored = [ScoredResult(path="c:/x/doc.png", final_score=0.6)]
+        engine = GateEngine()
+        kept, dropped = engine.apply(scored, plan, meta)
+        assert len(kept) == 1, "PNG with OCR text must pass document signal gate"
+
+    def test_pdf_without_ocr_kept(self):
+        """A PDF must pass the document signal gate even without OCR."""
+        from services.gate_engine import GateEngine
+        from services.ranker import ScoredResult
+
+        plan = type('Plan', (), {
+            'preset_id': 'documents',
+            'require_screenshot': False,
+            'exclude_screenshots': False,
+            'exclude_faces': False,
+            'require_faces': False,
+            'min_face_count': 0,
+            'require_gps_gate': False,
+            'min_edge_size': 0,
+            'require_document_signal': True,
+        })()
+
+        meta = {
+            "c:/x/contract.pdf": {
+                "ext": ".pdf",
+                "ocr_text": "",
+                "face_count": 0,
+                "is_screenshot": False,
+                "width": 1200,
+                "height": 1600,
+            }
+        }
+        scored = [ScoredResult(path="c:/x/contract.pdf", final_score=0.5)]
+        engine = GateEngine()
+        kept, dropped = engine.apply(scored, plan, meta)
+        assert len(kept) == 1, "PDF must pass document signal gate"
+
+
+class TestScenicStructuralPenalty:
+    """Scenic presets must penalize document-like assets."""
+
+    def test_scenic_penalizes_document_like_png_with_ocr(self):
+        """A PNG with long OCR text should get a lower scenic structural score."""
+        from services.search_orchestrator import SearchOrchestrator, QueryPlan
+        from services.ranker import SCENIC_ANTI_TYPE_PENALTIES
+
+        orch = SearchOrchestrator.__new__(SearchOrchestrator)
+        orch.project_id = 999
+
+        plan = QueryPlan(preset_id="travel", source="preset")
+        meta = {
+            "/doc.png": {
+                "ext": ".png",
+                "ocr_text": "Invoice Total EUR 123.45 Date: 2024-01-15 Company XYZ GmbH",
+                "face_count": 0, "is_screenshot": False,
+                "width": 1200, "height": 1700,
+            },
+            "/beach.jpg": {
+                "ext": ".jpg",
+                "ocr_text": "",
+                "face_count": 0, "is_screenshot": False,
+                "width": 6000, "height": 4000,
+            },
+        }
+        scores = orch._compute_scenic_anti_type_scores(plan, meta)
+        # doc.png should have a negative penalty
+        assert "/doc.png" in scores
+        assert scores["/doc.png"] < 0, "Document-like PNG must receive negative scenic penalty"
+        # beach.jpg should have no penalty (standard 3:2 camera ratio)
+        assert "/beach.jpg" not in scores
+
+
+class TestDocumentStructuralScoring:
+    """Documents structural scoring must favor document-like assets."""
+
+    def test_document_png_with_ocr_scores_high(self):
+        """A PNG with OCR text should score high structurally for documents."""
+        from services.search_orchestrator import SearchOrchestrator, QueryPlan
+
+        orch = SearchOrchestrator.__new__(SearchOrchestrator)
+        orch.project_id = 999
+
+        plan = QueryPlan(preset_id="documents", source="preset")
+        meta = {
+            "/doc.png": {
+                "ext": ".png",
+                "ocr_text": "Invoice Total EUR 123.45",
+                "face_count": 0, "is_screenshot": False,
+                "width": 1200, "height": 1700,
+            },
+        }
+        scores = orch._compute_structural_scores(plan, meta, set())
+        assert "/doc.png" in scores
+        assert scores["/doc.png"] > 0.5, \
+            f"Document PNG with OCR must score > 0.5, got {scores['/doc.png']}"
+
+    def test_scenic_jpg_scores_low_for_documents(self):
+        """A scenic JPG without OCR should score low structurally for documents."""
+        from services.search_orchestrator import SearchOrchestrator, QueryPlan
+
+        orch = SearchOrchestrator.__new__(SearchOrchestrator)
+        orch.project_id = 999
+
+        plan = QueryPlan(preset_id="documents", source="preset")
+        meta = {
+            "/beach.jpg": {
+                "ext": ".jpg",
+                "ocr_text": "",
+                "face_count": 0, "is_screenshot": False,
+                "width": 4000, "height": 3000,
+            },
+        }
+        scores = orch._compute_structural_scores(plan, meta, set())
+        assert "/beach.jpg" in scores
+        assert scores["/beach.jpg"] < 0.5, \
+            f"Scenic JPG must score < 0.5 for documents, got {scores['/beach.jpg']}"
+
+    def test_face_photo_penalized_for_documents(self):
+        """A photo with faces should be heavily penalized structurally for documents."""
+        from services.search_orchestrator import SearchOrchestrator, QueryPlan
+
+        orch = SearchOrchestrator.__new__(SearchOrchestrator)
+        orch.project_id = 999
+
+        plan = QueryPlan(preset_id="documents", source="preset")
+        meta = {
+            "/portrait.jpg": {
+                "ext": ".jpg",
+                "ocr_text": "",
+                "face_count": 3, "is_screenshot": False,
+                "width": 3000, "height": 2000,
+            },
+        }
+        scores = orch._compute_structural_scores(plan, meta, set())
+        assert "/portrait.jpg" in scores
+        assert scores["/portrait.jpg"] < 0.2, \
+            f"Face photo must score very low for documents, got {scores['/portrait.jpg']}"
