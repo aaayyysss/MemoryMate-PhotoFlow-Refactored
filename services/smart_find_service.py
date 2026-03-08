@@ -52,6 +52,7 @@ BUILTIN_PRESETS = [
         ],
         "category": "places",
         "family": "scenic",
+        "gate_profile": {"exclude_screenshots": True},
     },
     {
         "id": "mountains", "name": "Mountains", "icon": "\u26f0\ufe0f",
@@ -62,6 +63,7 @@ BUILTIN_PRESETS = [
         ],
         "category": "places",
         "family": "scenic",
+        "gate_profile": {"exclude_screenshots": True},
     },
     {
         "id": "city", "name": "City", "icon": "\U0001f3d9\ufe0f",
@@ -72,6 +74,7 @@ BUILTIN_PRESETS = [
         ],
         "category": "places",
         "family": "scenic",
+        "gate_profile": {"exclude_screenshots": True},
     },
     {
         "id": "forest", "name": "Forest", "icon": "\U0001f332",
@@ -82,6 +85,7 @@ BUILTIN_PRESETS = [
         ],
         "category": "places",
         "family": "scenic",
+        "gate_profile": {"exclude_screenshots": True},
     },
     {
         "id": "lake", "name": "Lake & River", "icon": "\U0001f3de\ufe0f",
@@ -92,6 +96,7 @@ BUILTIN_PRESETS = [
         ],
         "category": "places",
         "family": "scenic",
+        "gate_profile": {"exclude_screenshots": True},
     },
 
     # ── Family: people_event (face-required) ──
@@ -127,6 +132,7 @@ BUILTIN_PRESETS = [
         ],
         "category": "events",
         "family": "scenic",
+        "gate_profile": {"exclude_screenshots": True},
     },
     {
         "id": "sport", "name": "Sports", "icon": "\u26bd",
@@ -137,6 +143,7 @@ BUILTIN_PRESETS = [
         ],
         "category": "events",
         "family": "scenic",
+        "gate_profile": {"exclude_screenshots": True},
     },
 
     # ── Family: scenic (subjects) ──
@@ -149,6 +156,7 @@ BUILTIN_PRESETS = [
         ],
         "category": "subjects",
         "family": "scenic",
+        "gate_profile": {"exclude_screenshots": True},
     },
     {
         "id": "food", "name": "Food & Drinks", "icon": "\U0001f355",
@@ -159,6 +167,7 @@ BUILTIN_PRESETS = [
         ],
         "category": "subjects",
         "family": "scenic",
+        "gate_profile": {"exclude_screenshots": True},
     },
     {
         "id": "pets", "name": "Pets & Animals", "icon": "\U0001f43e",
@@ -170,6 +179,7 @@ BUILTIN_PRESETS = [
         "category": "subjects",
         "family": "scenic",
         "allow_backoff": False,  # Precision-first: generic terms like "animal" produce too many false positives at lower thresholds
+        "gate_profile": {"exclude_screenshots": True},
     },
 
     # ── Family: people_event (subjects) ──
@@ -205,6 +215,7 @@ BUILTIN_PRESETS = [
         ],
         "category": "subjects",
         "family": "scenic",
+        "gate_profile": {"exclude_screenshots": True},
     },
     {
         "id": "snow", "name": "Snow & Winter", "icon": "\u2744\ufe0f",
@@ -215,6 +226,7 @@ BUILTIN_PRESETS = [
         ],
         "category": "subjects",
         "family": "scenic",
+        "gate_profile": {"exclude_screenshots": True},
     },
     {
         "id": "night", "name": "Night & Stars", "icon": "\U0001f319",
@@ -225,6 +237,7 @@ BUILTIN_PRESETS = [
         ],
         "category": "subjects",
         "family": "scenic",
+        "gate_profile": {"exclude_screenshots": True},
     },
     {
         "id": "architecture", "name": "Architecture", "icon": "\U0001f3db\ufe0f",
@@ -235,6 +248,7 @@ BUILTIN_PRESETS = [
         ],
         "category": "subjects",
         "family": "scenic",
+        "gate_profile": {"exclude_screenshots": True},
     },
     {
         "id": "car", "name": "Cars & Vehicles", "icon": "\U0001f697",
@@ -245,6 +259,7 @@ BUILTIN_PRESETS = [
         ],
         "category": "subjects",
         "family": "scenic",
+        "gate_profile": {"exclude_screenshots": True},
     },
 
     # ── Family: type (metadata-driven, precision-first) ──
@@ -254,6 +269,7 @@ BUILTIN_PRESETS = [
         "category": "media",
         "family": "type",
         "semantic_weight": 0.2,  # Metadata-dominant: heuristic detection is primary signal
+        "allow_backoff": False,  # Precision-first: purity over recall
         "gate_profile": {"require_screenshot": True},
     },
     {
@@ -261,7 +277,7 @@ BUILTIN_PRESETS = [
         "prompts": [
             "scanned document", "printed page", "form",
             "invoice", "receipt", "handwritten note",
-            "typed text on paper", "letter",
+            "typed text on paper", "letter page",
         ],
         "negative_prompts": ["screenshot", "phone screen", "app interface"],
         "category": "media",
@@ -272,7 +288,7 @@ BUILTIN_PRESETS = [
         "gate_profile": {
             "exclude_faces": True,
             "exclude_screenshots": True,
-            "min_edge_size": 350,  # Drop tiny images (icons, thumbnails)
+            "min_edge_size": 700,  # Drop tiny images (icons, thumbnails)
             "require_document_signal": True,
         },
     },

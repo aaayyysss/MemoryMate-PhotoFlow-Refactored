@@ -1034,15 +1034,18 @@ class SearchOrchestrator:
                     "Run face detection for better people results."
                 )
 
-        # Step 4b: Pre-compute structural scores for type/scenic families
+        # Step 4b: Pre-compute structural + OCR scores for type/scenic families
         # Structural scores are computed once and folded into the weighted
-        # scoring contract as a first-class term (w_structural * structural).
+        # scoring contract as first-class terms (w_structural * structural,
+        # w_ocr * ocr).
         current_family = get_preset_family(plan.preset_id)
         structural_scores: Dict[str, float] = {}
+        ocr_scores: Dict[str, float] = {}
         if current_family == "type":
             structural_scores = self._compute_structural_scores(
                 plan, project_meta, ocr_match_paths
             )
+            ocr_scores = self._compute_ocr_scores(plan, project_meta)
         elif current_family == "scenic":
             structural_scores = self._compute_scenic_anti_type_scores(
                 plan, project_meta
@@ -1060,17 +1063,19 @@ class SearchOrchestrator:
                     continue
 
                 struct = structural_scores.get(path, 0.0)
+                ocr = ocr_scores.get(path, 0.0)
                 sr = self._score_result(path, sem_score, matched_prompt, project_meta,
                                         plan.filters, people_implied,
-                                        structural_score=struct)
+                                        structural_score=struct, ocr_score=ocr)
                 scored.append(sr)
 
         elif metadata_candidate_paths is not None:
             for path in metadata_candidate_paths:
                 struct = structural_scores.get(path, 0.0)
+                ocr = ocr_scores.get(path, 0.0)
                 sr = self._score_result(path, 0.0, "", project_meta,
                                         plan.filters, people_implied,
-                                        structural_score=struct)
+                                        structural_score=struct, ocr_score=ocr)
                 scored.append(sr)
 
         # Step 5b: Boost OCR-matched results
@@ -1089,10 +1094,11 @@ class SearchOrchestrator:
             for opath in ocr_match_paths:
                 if opath not in scored_paths:
                     struct = structural_scores.get(opath, 0.0)
+                    ocr = ocr_scores.get(opath, 0.0)
                     sr = self._score_result(
                         opath, 0.0, "", project_meta,
                         plan.filters, people_implied,
-                        structural_score=struct,
+                        structural_score=struct, ocr_score=ocr,
                     )
                     sr.final_score += OCR_BOOST
                     sr.reasons.append(f"ocr_text_match=+{OCR_BOOST}")
@@ -1183,9 +1189,10 @@ class SearchOrchestrator:
                         if metadata_candidate_paths is not None and path not in metadata_candidate_paths:
                             continue
                         struct = structural_scores.get(path, 0.0)
+                        ocr = ocr_scores.get(path, 0.0)
                         sr = self._score_result(path, sem_score, prompt, project_meta,
                                                 plan.filters, people_implied,
-                                                structural_score=struct)
+                                                structural_score=struct, ocr_score=ocr)
                         sr.reasons.append("(backoff)")
                         scored.append(sr)
 
@@ -1266,7 +1273,8 @@ class SearchOrchestrator:
                       project_meta: Dict[str, Dict],
                       active_filters: Optional[Dict] = None,
                       people_implied: bool = False,
-                      structural_score: float = 0.0) -> ScoredResult:
+                      structural_score: float = 0.0,
+                      ocr_score: float = 0.0) -> ScoredResult:
         """
         Apply the deterministic scoring contract to a single result.
         Delegates to the family-aware Ranker module.
@@ -1281,6 +1289,7 @@ class SearchOrchestrator:
             path, clip_score, matched_prompt, meta,
             active_filters, people_implied, family=family,
             structural_score=structural_score,
+            ocr_score=ocr_score,
         )
 
     def _get_search_feature_repo(self):
@@ -1327,6 +1336,10 @@ class SearchOrchestrator:
                 logger.debug(f"[SearchOrchestrator] search_asset_features fallback: {e}")
 
         # Fallback: original JOIN-based approach
+        logger.warning(
+            "[SearchOrchestrator] search_asset_features unavailable, using slow fallback. "
+            "Search purity may be less stable until flattened features are rebuilt."
+        )
         try:
             from repository.base_repository import DatabaseConnection
             db = DatabaseConnection()
@@ -1405,15 +1418,13 @@ class SearchOrchestrator:
     @classmethod
     def _detect_screenshot(cls, path: str, width, height) -> bool:
         """
-        Multi-signal screenshot detection.
+        Conservative screenshot detection.
 
-        Delegates to the shared _compute_screenshot_confidence function
-        which combines filename, folder, resolution, extension, and OCR
-        signals. Resolution alone is NOT sufficient.
+        Delegates to the shared _detect_screenshot function which uses
+        filename as the only hard positive. Resolution alone is NOT sufficient.
         """
-        from repository.search_feature_repository import _compute_screenshot_confidence
-        confidence = _compute_screenshot_confidence(path, width, height)
-        return confidence >= 0.50
+        from repository.search_feature_repository import _detect_screenshot
+        return _detect_screenshot(path, width, height)
 
     def _plan_from_preset(self, preset_id: str,
                           extra_filters: Optional[Dict]) -> QueryPlan:
@@ -1489,12 +1500,13 @@ class SearchOrchestrator:
         family = get_preset_family(plan.preset_id)
         weights = get_weights_for_family(family)
         logger.info(
-            f"[SearchOrchestrator] query=\"{plan.raw_query}\" "
-            f"| {result.total_matches} results | {result.execution_time_ms:.0f}ms "
-            f"| family={family} "
-            f"| weights=[clip={weights.w_clip:.2f} rec={weights.w_recency:.2f} "
-            f"fav={weights.w_favorite:.2f} loc={weights.w_location:.2f} "
-            f"face={weights.w_face_match:.2f} struct={weights.w_structural:.2f}]"
+            f'[SearchOrchestrator] query="{plan.raw_query}" '
+            f'| {result.total_matches} results | {result.execution_time_ms:.0f}ms '
+            f'| family={family} '
+            f'| weights=[clip={weights.w_clip:.2f} rec={weights.w_recency:.2f} '
+            f'fav={weights.w_favorite:.2f} loc={weights.w_location:.2f} '
+            f'face={weights.w_face_match:.2f} struct={weights.w_structural:.2f} '
+            f'ocr={weights.w_ocr:.2f}]'
             f"{'| backoff' if result.backoff_applied else ''}"
             f"{' | filters=' + str(plan.filters) if plan.filters else ''}"
         )
@@ -1504,9 +1516,10 @@ class SearchOrchestrator:
             import os
             basename = os.path.basename(sr.path)
             components = (
-                f"clip={sr.clip_score:.3f} rec={sr.recency_score:.4f} "
+                f"clip={sr.clip_score:.3f} rec={sr.recency_score:.3f} "
                 f"fav={sr.favorite_score:.2f} loc={sr.location_score:.1f} "
-                f"face={sr.face_match_score:.1f} struct={sr.structural_score:.3f}"
+                f"face={sr.face_match_score:.1f} struct={sr.structural_score:.3f} "
+                f"ocr={sr.ocr_score:.3f}"
             )
             dup_tag = f" [+{sr.duplicate_count}]" if sr.duplicate_count else ""
             logger.info(
@@ -1635,45 +1648,43 @@ class SearchOrchestrator:
             ocr_text = meta.get("ocr_text", "") or ""
             ocr_len = len(ocr_text)
 
+            face_count = int(meta.get("face_count") or 0)
+            is_screenshot = bool(meta.get("is_screenshot", False))
+
             if is_documents:
                 # Positive signals for documents
                 if ext in _DOC_EXTENSIONS:
-                    score += 0.25
-                if ocr_len > 20:
-                    score += min(0.35, 0.15 + 0.002 * ocr_len)
-                if path in ocr_match_paths:
-                    score += 0.20
-                # Page-like aspect ratio bonus
-                if w > 0 and h > 0:
-                    ratio = max(w, h) / min(w, h)
-                    for target, tol in _PAGE_RATIOS:
-                        if abs(ratio - target) < tol * target:
-                            score += 0.10
-                            break
-                # Negative signals for documents
+                    score += 0.35
                 if ext in _PHOTO_EXTENSIONS:
-                    score -= 0.15
-                if w > 0 and h > 0:
-                    ratio = max(w, h) / min(w, h)
-                    for target, tol in _PHOTO_RATIOS:
-                        r = max(target, 1/target) if target < 1 else target
-                        if abs(ratio - r) < tol * r:
-                            score -= 0.10
-                            break
-                if w > 0 and h > 0 and max(w, h) < 800:
-                    score -= 0.05
+                    score -= 0.20
+                if face_count > 0:
+                    score -= 0.40
+                if is_screenshot:
+                    score -= 0.35
+                if w > 0 and h > 0 and min(w, h) < 700:
+                    score -= 0.10
+                if ocr_len >= 15:
+                    score += 0.35
+                if path in ocr_match_paths:
+                    score += 0.15
+                # Normalize to [0, 1] centered at 0.5
+                score = max(0.0, min(1.0, 0.5 + score))
 
             elif is_screenshots:
                 # Screenshots: is_screenshot flag is primary structural signal
-                if meta.get("is_screenshot"):
-                    score += 0.80
-                if ocr_len > 10:
-                    score += 0.15
-                if ext == ".png":
-                    score += 0.05
+                if is_screenshot:
+                    score += 0.70
+                else:
+                    score -= 0.50
+                if face_count > 0:
+                    score -= 0.10
+                # Normalize to [0, 1] centered at 0.5
+                score = max(0.0, min(1.0, 0.5 + score))
 
-            # Clamp to [-1, 1]
-            scores[path] = max(-1.0, min(1.0, score))
+            else:
+                score = 0.5  # Neutral for other type-family presets
+
+            scores[path] = score
 
         computed = sum(1 for v in scores.values() if v != 0.0)
         if computed:
@@ -1681,6 +1692,65 @@ class SearchOrchestrator:
                 f"[SearchOrchestrator] Structural scores computed for "
                 f"{computed}/{len(scores)} assets "
                 f"(preset={plan.preset_id})"
+            )
+
+        return scores
+
+    def _compute_ocr_scores(
+        self,
+        plan: QueryPlan,
+        project_meta: Dict[str, Dict],
+    ) -> Dict[str, float]:
+        """
+        Compute OCR text relevance scores for type-family presets.
+
+        Returns {path: ocr_score} where ocr_score is 0..1.
+        This score is multiplied by w_ocr in the weighted scoring
+        contract, making it a first-class ranking term.
+
+        For Documents: looks for document-related terms (invoice, receipt, etc.)
+        For Screenshots: looks for UI-related terms (battery, wifi, etc.)
+        """
+        preset = (plan.preset_id or "").lower()
+        family = get_preset_family(preset)
+
+        if family != "type":
+            return {}
+
+        scores: Dict[str, float] = {}
+
+        for path, meta in project_meta.items():
+            ocr_text = (meta.get("ocr_text") or "").strip().lower()
+            if not ocr_text:
+                continue
+
+            score = 0.0
+            if preset == "documents":
+                doc_terms = (
+                    "invoice", "receipt", "total", "date", "address", "page",
+                    "form", "document", "amount", "eur", "\u20ac", "tel", "fax",
+                    "contract", "signature", "company", "tax", "payment",
+                )
+                hit_count = sum(1 for t in doc_terms if t in ocr_text)
+                score = min(1.0, 0.20 + hit_count * 0.12)
+            elif preset == "screenshots":
+                ui_terms = (
+                    "battery", "wifi", "lte", "5g", "notification",
+                    "settings", "search", "cancel", "back", "menu",
+                    "home", "share", "download",
+                )
+                hit_count = sum(1 for t in ui_terms if t in ocr_text)
+                score = min(1.0, 0.15 + hit_count * 0.10)
+            else:
+                continue
+
+            if score > 0:
+                scores[path] = score
+
+        if scores:
+            logger.info(
+                f"[SearchOrchestrator] OCR scores computed for "
+                f"{len(scores)} assets (preset={preset})"
             )
 
         return scores

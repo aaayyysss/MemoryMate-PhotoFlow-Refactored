@@ -44,11 +44,12 @@ class ScoringWeights:
 
     S = w_clip * clip + w_recency * recency + w_fav * favorite
       + w_location * location + w_face * face_match
-      + w_structural * structural
+      + w_structural * structural + w_ocr * ocr
 
     All weights are explicit, testable, and logged.
     The structural weight reserves budget for document/screenshot/scenic
     structural signals so that validate() does not normalize it away.
+    The OCR weight reserves budget for text-content relevance scoring.
     """
     w_clip: float = 0.75
     w_recency: float = 0.05
@@ -56,6 +57,7 @@ class ScoringWeights:
     w_location: float = 0.04
     w_face_match: float = 0.08
     w_structural: float = 0.00  # reserved structural budget
+    w_ocr: float = 0.00  # reserved OCR text relevance budget
 
     # Guardrails
     max_recency_boost: float = 0.10
@@ -70,16 +72,20 @@ class ScoringWeights:
         "w_location": "location_score",
         "w_face_match": "face_match_score",
         "w_structural": "structural_score",
+        "w_ocr": "ocr_score",
     }
 
     def validate(self):
         """Ensure weights sum to ~1.0 and normalize if needed.
 
-        Includes w_structural in the total so that profiles with a
-        structural budget are not silently renormalized.
+        Includes w_structural and w_ocr in the total so that profiles
+        with structural/OCR budget are not silently renormalized.
         """
-        total = (self.w_clip + self.w_recency + self.w_favorite
-                 + self.w_location + self.w_face_match + self.w_structural)
+        total = (
+            self.w_clip + self.w_recency + self.w_favorite
+            + self.w_location + self.w_face_match
+            + self.w_structural + self.w_ocr
+        )
         if abs(total - 1.0) > 0.01:
             logger.warning(
                 f"[ScoringWeights] Weights sum to {total:.3f}, not 1.0. Normalizing."
@@ -91,6 +97,7 @@ class ScoringWeights:
                 self.w_location /= total
                 self.w_face_match /= total
                 self.w_structural /= total
+                self.w_ocr /= total
 
 
 # ── Family-specific weight profiles ──
@@ -107,15 +114,17 @@ FAMILY_WEIGHTS = {
         w_location=0.06,
         w_face_match=0.03,
         w_structural=0.00,  # scenic uses penalty, not positive structural
+        w_ocr=0.00,
     ),
-    # Type (Documents, Screenshots): structural is the dominant signal
+    # Type (Documents, Screenshots): structural + OCR dominate over CLIP
     "type": ScoringWeights(
-        w_clip=0.35,
+        w_clip=0.30,
         w_recency=0.02,
         w_favorite=0.03,
         w_location=0.00,
         w_face_match=0.00,
-        w_structural=0.60,
+        w_structural=0.45,
+        w_ocr=0.20,
     ),
     # People events: face presence is critical
     "people_event": ScoringWeights(
@@ -125,15 +134,17 @@ FAMILY_WEIGHTS = {
         w_location=0.02,
         w_face_match=0.36,
         w_structural=0.00,
+        w_ocr=0.00,
     ),
     # Utility (Videos, Favorites, With Location): metadata-only
     "utility": ScoringWeights(
         w_clip=0.00,
-        w_recency=0.30,
-        w_favorite=0.40,
-        w_location=0.20,
+        w_recency=0.20,
+        w_favorite=0.45,
+        w_location=0.25,
         w_face_match=0.10,
         w_structural=0.00,
+        w_ocr=0.00,
     ),
 }
 
@@ -157,6 +168,7 @@ class ScoredResult:
     location_score: float = 0.0
     face_match_score: float = 0.0
     structural_score: float = 0.0
+    ocr_score: float = 0.0
     matched_prompt: str = ""
     reasons: List[str] = field(default_factory=list)
     duplicate_count: int = 0
@@ -232,6 +244,7 @@ def get_weights_for_family(family: str) -> ScoringWeights:
             w_location=RankingConfig.get_w_location(),
             w_face_match=RankingConfig.get_w_face_match(),
             w_structural=RankingConfig.get_w_structural(),
+            w_ocr=RankingConfig.get_w_ocr(),
             max_recency_boost=RankingConfig.get_max_recency_boost(),
             max_favorite_boost=RankingConfig.get_max_favorite_boost(),
             recency_halflife_days=RankingConfig.get_recency_halflife_days(),
@@ -292,16 +305,17 @@ class Ranker:
         people_implied: bool = False,
         family: Optional[str] = None,
         structural_score: float = 0.0,
+        ocr_score: float = 0.0,
     ) -> ScoredResult:
         """
         Apply the deterministic scoring contract to a single result.
 
         S = w_clip * clip + w_recency * recency + w_fav * favorite
           + w_location * location + w_face * face_match
-          + w_structural * structural
+          + w_structural * structural + w_ocr * ocr
 
-        structural_score is computed externally (by the orchestrator) and
-        passed in so it participates as a first-class weight term.
+        structural_score and ocr_score are computed externally (by the
+        orchestrator) and passed in as first-class weight terms.
         """
         w = get_weights_for_family(family or self._default_family)
         reasons = []
@@ -363,6 +377,10 @@ class Ranker:
         if structural_score != 0.0:
             reasons.append(f"structural={structural_score:.3f}")
 
+        # OCR score (logged when non-zero)
+        if ocr_score != 0.0:
+            reasons.append(f"ocr={ocr_score:.3f}")
+
         # Final score
         final = (
             w.w_clip * clip_score
@@ -371,6 +389,7 @@ class Ranker:
             + w.w_location * location
             + w.w_face_match * face_match
             + w.w_structural * structural_score
+            + w.w_ocr * ocr_score
         )
 
         return ScoredResult(
@@ -382,6 +401,7 @@ class Ranker:
             location_score=location,
             face_match_score=face_match,
             structural_score=structural_score,
+            ocr_score=ocr_score,
             matched_prompt=matched_prompt,
             reasons=reasons,
         )
@@ -393,12 +413,14 @@ class Ranker:
         plan: Any,
         family: Optional[str] = None,
         structural_scores: Optional[Dict[str, float]] = None,
+        ocr_scores: Optional[Dict[str, float]] = None,
     ) -> List[ScoredResult]:
         """Score a batch of candidates using the same plan/family."""
         fam = family or get_preset_family(getattr(plan, 'preset_id', None))
         people = is_people_implied(plan)
         active_filters = getattr(plan, 'filters', None)
         struct_lookup = structural_scores or {}
+        ocr_lookup = ocr_scores or {}
 
         results = []
         for c in candidates:
@@ -412,9 +434,11 @@ class Ranker:
 
             meta = project_meta.get(path, {})
             struct = struct_lookup.get(path, 0.0)
+            ocr = ocr_lookup.get(path, 0.0)
             sr = self.score(path, clip_score, prompt, meta,
                             active_filters, people, fam,
-                            structural_score=struct)
+                            structural_score=struct,
+                            ocr_score=ocr)
             results.append(sr)
 
         results.sort(key=lambda r: r.final_score, reverse=True)

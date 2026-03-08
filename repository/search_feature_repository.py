@@ -118,14 +118,29 @@ def _compute_screenshot_confidence(
 
 def _detect_screenshot(path: str, width, height) -> bool:
     """
-    Screenshot detection using multi-signal confidence.
+    Conservative screenshot detection.
 
-    Filename match alone is sufficient (strong positive).
-    Resolution match alone is NOT sufficient — requires at least one
-    additional signal (folder, extension, no EXIF, OCR text).
+    Hard positive:
+      - explicit screenshot-like filename (strong signal, >= 0.90)
+      - screenshot folder + any weak signal (>= 0.50)
+
+    Resolution alone is NOT sufficient — too many exported phone images
+    share common screenshot resolutions (e.g. 1179x2556).
     """
-    confidence = _compute_screenshot_confidence(path, width, height)
-    return confidence >= 0.50
+    basename = os.path.basename(path or "").lower()
+
+    # Strong positive: filename match alone is sufficient
+    if _SCREENSHOT_FILENAME_RE.search(basename):
+        return True
+
+    # Moderate positive: screenshot folder (0.40) needs one weak signal
+    dirname = os.path.dirname(path) if path else ""
+    if _SCREENSHOT_FOLDER_RE.search(dirname):
+        confidence = _compute_screenshot_confidence(path, width, height)
+        return confidence >= 0.50
+
+    # Resolution alone (0.25) is NOT sufficient — too noisy
+    return False
 
 
 class SearchFeatureRepository:

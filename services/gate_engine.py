@@ -172,7 +172,9 @@ class GateEngine:
                     continue
 
             # Gate: require at least one positive document signal
-            # Prevents scenic JPGs from leaking into Documents results
+            # Prevents scenic JPGs from leaking into Documents results.
+            # Only structural/content signals count — CLIP similarity alone
+            # is not sufficient because scenic photos can match document prompts.
             if require_doc_signal:
                 has_doc_signal = False
                 ext = meta.get("ext", "") or ""
@@ -190,17 +192,16 @@ class GateEngine:
                 # Signal 1: document-like extension
                 if ext in _DOC_EXTENSIONS:
                     has_doc_signal = True
-                # Signal 2: OCR text present
-                elif len(ocr_text) >= _DOC_OCR_MIN_LENGTH:
+                # Signal 2: OCR text present (content-based signal)
+                if not has_doc_signal and len(ocr_text) >= _DOC_OCR_MIN_LENGTH:
                     has_doc_signal = True
                 # Signal 3: page-like aspect ratio
-                elif dw is not None and dh is not None and dw > 0 and dh > 0:
+                if (not has_doc_signal
+                        and dw is not None and dh is not None
+                        and dw > 0 and dh > 0):
                     ratio = max(dw, dh) / min(dw, dh)
                     if _PAGE_RATIO_MIN < ratio < _PAGE_RATIO_MAX:
                         has_doc_signal = True
-                # Signal 4: strong CLIP match (score above threshold)
-                if not has_doc_signal and hasattr(r, 'clip_score') and r.clip_score >= 0.30:
-                    has_doc_signal = True
 
                 if not has_doc_signal:
                     dropped["require_document_signal"] += 1
