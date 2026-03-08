@@ -432,3 +432,68 @@ class TestDocumentOCRSignal:
 
     def test_receipt_term_has_signal(self):
         assert self.has_signal({"ocr_text": "receipt total"}) is True
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Dynamic Family Weight Config Tests
+# ══════════════════════════════════════════════════════════════════════
+
+class TestDynamicFamilyWeights:
+    """All family weights must be readable/writable via RankingConfig."""
+
+    @pytest.fixture(autouse=True)
+    def setup(self):
+        from config.ranking_config import RankingConfig, FAMILY_DEFAULTS
+        self.config = RankingConfig
+        self.defaults = FAMILY_DEFAULTS
+
+    def test_all_families_have_defaults(self):
+        """Every known family must have a defaults entry."""
+        expected = {"scenic", "type", "people_event", "utility", "animal_object"}
+        assert expected == set(self.defaults.keys())
+
+    def test_family_defaults_sum_to_one(self):
+        """Each family default profile must sum to ~1.0."""
+        for name, wd in self.defaults.items():
+            total = sum(wd.values())
+            assert abs(total - 1.0) < 0.02, (
+                f"Family {name!r} defaults sum to {total:.3f}, expected ~1.0"
+            )
+
+    def test_get_family_weight_returns_default(self):
+        """Reading a family weight with no user pref returns the default."""
+        for family, wd in self.defaults.items():
+            for key, expected in wd.items():
+                actual = self.config.get_family_weight(family, key)
+                assert actual == expected, (
+                    f"{family}.{key}: expected {expected}, got {actual}"
+                )
+
+    def test_get_family_weights_dict_has_all_keys(self):
+        """get_family_weights_dict must return all 7 weight keys."""
+        for family in self.defaults:
+            wd = self.config.get_family_weights_dict(family)
+            assert set(wd.keys()) == set(self.config._WEIGHT_KEYS)
+
+    def test_get_weights_for_family_uses_preferences(self):
+        """get_weights_for_family should return a ScoringWeights built from config."""
+        from services.ranker import get_weights_for_family
+        for family in self.defaults:
+            sw = get_weights_for_family(family)
+            total = (sw.w_clip + sw.w_recency + sw.w_favorite + sw.w_location
+                     + sw.w_face_match + sw.w_structural + sw.w_ocr)
+            assert abs(total - 1.0) < 0.02, (
+                f"Family {family!r} dynamic weights sum to {total:.3f}"
+            )
+
+    def test_unknown_family_falls_back_to_scenic(self):
+        """Unknown family should resolve to scenic defaults."""
+        from services.ranker import get_weights_for_family
+        sw = get_weights_for_family("unknown_family_xyz")
+        scenic_clip = self.defaults["scenic"]["w_clip"]
+        assert sw.w_clip == scenic_clip
+
+    def test_legacy_getters_match_scenic_defaults(self):
+        """Legacy get_w_* methods should return scenic family values."""
+        assert self.config.get_w_clip() == self.defaults["scenic"]["w_clip"]
+        assert self.config.get_w_structural() == self.defaults["scenic"]["w_structural"]
