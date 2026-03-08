@@ -815,8 +815,19 @@ class SemanticEmbeddingService:
                 prev_threads = self._torch.get_num_threads()
                 self._torch.set_num_threads(1)
                 try:
-                    inputs = self._processor(images=image, return_tensors="pt")
-                    inputs = {k: v.to(self._device) for k, v in inputs.items()}
+                    # FIX: Use return_tensors="np" and manually convert to
+                    # PyTorch tensors.  The transformers CLIPProcessor's
+                    # as_tensor() crashes with a native access violation
+                    # (0xC0000005) on Windows when converting numpy arrays
+                    # to torch tensors in background threads (MKL/BLAS
+                    # thread-pool contention).  By getting numpy output
+                    # first and using torch.from_numpy() on contiguous
+                    # arrays, we bypass the buggy code path entirely.
+                    inputs_np = self._processor(images=image, return_tensors="np")
+                    inputs = {}
+                    for k, v in inputs_np.items():
+                        arr = np.ascontiguousarray(v)
+                        inputs[k] = self._torch.from_numpy(arr).to(self._device)
 
                     with self._torch.no_grad():
                         image_features = self._model.get_image_features(**inputs)
