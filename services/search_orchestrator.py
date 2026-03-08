@@ -1227,6 +1227,19 @@ class SearchOrchestrator:
         # min_edge_size. Replaces scattered inline gate blocks.
         scored = self._apply_gates(scored, plan, project_meta)
 
+        # Step 7e: Family-specific debug logging (post-gate, pre-dedup)
+        if scored:
+            logger.info(
+                f"[SearchOrchestrator] pre-rank preset={plan.preset_id!r} "
+                f"family={current_family!r} survivors={len(scored)}"
+            )
+            for idx, sr in enumerate(scored[:5]):
+                logger.info(
+                    f"  #{idx} {sr.final_score:.4f} | clip={sr.clip_score:.3f} "
+                    f"struct={sr.structural_score:.3f} ocr={sr.ocr_score:.3f} "
+                    f"face={sr.face_match_score:.3f} | {os.path.basename(sr.path)}"
+                )
+
         # Step 8: Deduplicate (stack duplicates behind representative)
         scored, stacked_count = self._deduplicate_results(scored)
 
@@ -1609,33 +1622,29 @@ class SearchOrchestrator:
         """
         Compute structural scores for type-family presets.
 
-        Returns {path: structural_score} where structural_score is 0..1.
-        This score is multiplied by w_structural in the weighted scoring
-        contract, making it a first-class ranking term.
+        Returns {path: structural_score} where score is in [-1.0, 1.0]
+        internally, then clamped to [-1.0, 1.0].  This score is multiplied
+        by w_structural in the weighted scoring contract.
 
         For Documents:
-        - OCR text presence is a strong positive signal
-        - Document-like extension (.pdf, .png, .tif) is positive
-        - Page-like aspect ratio is positive
-        - Photo-like aspect ratio is negative
-        - Photo-like extension (.jpg, .heic) is mildly negative
+        - Document-native extensions get strong positive boost
+        - Image extensions (.jpg/.jpeg/.heic) get strong negative penalty
+        - Faces and screenshots are strong negatives
+        - OCR evidence is the strongest positive signal
+        - Page-like geometry is a moderate positive
 
         For Screenshots:
         - is_screenshot flag is the primary signal
         """
         import os
+        from services.gate_engine import GateEngine
 
         scores: Dict[str, float] = {}
 
-        # Common photo aspect ratios (with tolerance)
-        _PHOTO_RATIOS = [(3/2, 0.05), (4/3, 0.05), (16/9, 0.05),
-                         (2/3, 0.05), (3/4, 0.05), (9/16, 0.05)]
-        # Document-like extensions
+        # Document-native extensions
         _DOC_EXTENSIONS = frozenset({'.pdf', '.png', '.tiff', '.tif', '.bmp'})
-        # Photo-like extensions
-        _PHOTO_EXTENSIONS = frozenset({'.jpg', '.jpeg', '.heic', '.heif', '.cr2', '.nef', '.arw'})
-        # Page-like aspect ratios (tall narrow or square-ish)
-        _PAGE_RATIOS = [(1.414, 0.10), (1.294, 0.10)]  # A4, US Letter
+        # Photo-like extensions (need strong content evidence)
+        _PHOTO_EXTENSIONS = frozenset({'.jpg', '.jpeg', '.heic', '.heif', '.webp', '.cr2', '.nef', '.arw'})
 
         is_documents = (plan.preset_id == "documents")
         is_screenshots = (plan.preset_id == "screenshots")
@@ -1645,44 +1654,47 @@ class SearchOrchestrator:
             w = meta.get("width", 0) or 0
             h = meta.get("height", 0) or 0
             ext = os.path.splitext(path)[1].lower() if path else ""
-            ocr_text = meta.get("ocr_text", "") or ""
-            ocr_len = len(ocr_text)
-
             face_count = int(meta.get("face_count") or 0)
             is_screenshot = bool(meta.get("is_screenshot", False))
 
             if is_documents:
-                # Positive signals for documents
+                has_ocr = GateEngine.has_document_ocr_signal(meta)
+                page_like = GateEngine.is_page_like(meta)
+                min_edge = min(w, h) if w and h else 0
+
+                # Extension signals
                 if ext in _DOC_EXTENSIONS:
                     score += 0.35
                 if ext in _PHOTO_EXTENSIONS:
-                    score -= 0.20
+                    score -= 0.25
+
+                # Content signals
                 if face_count > 0:
-                    score -= 0.40
+                    score -= 0.45
                 if is_screenshot:
-                    score -= 0.35
-                if w > 0 and h > 0 and min(w, h) < 700:
-                    score -= 0.10
-                if ocr_len >= 15:
-                    score += 0.35
+                    score -= 0.40
+                if min_edge < 700:
+                    score -= 0.12
+                if page_like:
+                    score += 0.18
+                if has_ocr:
+                    score += 0.42
                 if path in ocr_match_paths:
                     score += 0.15
-                # Normalize to [0, 1] centered at 0.5
-                score = max(0.0, min(1.0, 0.5 + score))
+
+                score = max(-1.0, min(1.0, score))
 
             elif is_screenshots:
-                # Screenshots: is_screenshot flag is primary structural signal
                 if is_screenshot:
                     score += 0.70
                 else:
                     score -= 0.50
                 if face_count > 0:
                     score -= 0.10
-                # Normalize to [0, 1] centered at 0.5
-                score = max(0.0, min(1.0, 0.5 + score))
+                score = max(-1.0, min(1.0, score))
 
             else:
-                score = 0.5  # Neutral for other type-family presets
+                score = 0.0  # Neutral for other type-family presets
 
             scores[path] = score
 
@@ -1708,7 +1720,7 @@ class SearchOrchestrator:
         This score is multiplied by w_ocr in the weighted scoring
         contract, making it a first-class ranking term.
 
-        For Documents: looks for document-related terms (invoice, receipt, etc.)
+        For Documents: normalized signal from text length + lexicon hits.
         For Screenshots: looks for UI-related terms (battery, wifi, etc.)
         """
         preset = (plan.preset_id or "").lower()
@@ -1720,27 +1732,34 @@ class SearchOrchestrator:
         scores: Dict[str, float] = {}
 
         for path, meta in project_meta.items():
-            ocr_text = (meta.get("ocr_text") or "").strip().lower()
+            ocr_text = (meta.get("ocr_text") or "").strip()
             if not ocr_text:
                 continue
 
+            ocr_lower = ocr_text.lower()
             score = 0.0
+
             if preset == "documents":
                 doc_terms = (
-                    "invoice", "receipt", "total", "date", "address", "page",
-                    "form", "document", "amount", "eur", "\u20ac", "tel", "fax",
-                    "contract", "signature", "company", "tax", "payment",
+                    "invoice", "receipt", "bill", "total", "amount", "date",
+                    "address", "account", "iban", "customer", "page",
+                    "signature", "form", "application", "reference",
                 )
-                hit_count = sum(1 for t in doc_terms if t in ocr_text)
-                score = min(1.0, 0.20 + hit_count * 0.12)
+                hit_count = sum(1 for t in doc_terms if t in ocr_lower)
+                length_score = min(len(ocr_text) / 80.0, 1.0)
+                term_score = min(hit_count / 3.0, 1.0)
+                score = min(1.0, 0.45 * length_score + 0.55 * term_score)
+
             elif preset == "screenshots":
                 ui_terms = (
                     "battery", "wifi", "lte", "5g", "notification",
                     "settings", "search", "cancel", "back", "menu",
                     "home", "share", "download",
                 )
-                hit_count = sum(1 for t in ui_terms if t in ocr_text)
-                score = min(1.0, 0.15 + hit_count * 0.10)
+                hit_count = sum(1 for t in ui_terms if t in ocr_lower)
+                score = min(1.0, len(ocr_text) / 120.0)
+                if hit_count > 0:
+                    score = min(1.0, score + hit_count * 0.10)
             else:
                 continue
 

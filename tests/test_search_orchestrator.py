@@ -2060,10 +2060,12 @@ class TestPresetFamilies:
         """Scenic presets should be in the 'scenic' family."""
         from services.search_orchestrator import SearchOrchestrator
         for preset_id in ["beach", "mountains", "city", "forest", "lake",
-                          "travel", "sunset", "sport", "food", "pets",
+                          "travel", "sunset", "sport", "food",
                           "flowers", "snow", "night", "architecture", "car"]:
             assert SearchOrchestrator._get_preset_family(preset_id) == "scenic", \
                 f"{preset_id} should be family='scenic'"
+        # pets is now animal_object (precision-first, not scenic)
+        assert SearchOrchestrator._get_preset_family("pets") == "animal_object"
 
     def test_unknown_preset_defaults_to_scenic(self):
         """Unknown presets should default to 'scenic' (recall-first)."""
@@ -2076,7 +2078,7 @@ class TestPresetFamilies:
         for preset in BUILTIN_PRESETS:
             assert "family" in preset, \
                 f"Preset '{preset['id']}' missing 'family' field"
-            assert preset["family"] in ("type", "people_event", "scenic"), \
+            assert preset["family"] in ("type", "people_event", "scenic", "animal_object"), \
                 f"Preset '{preset['id']}' has invalid family '{preset['family']}'"
 
 
