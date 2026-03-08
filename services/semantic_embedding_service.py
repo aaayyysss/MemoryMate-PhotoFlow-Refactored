@@ -576,9 +576,171 @@ class SemanticEmbeddingService:
             self._model.to(self._device)
             self._model.eval()
 
+            # FIX: Pre-compute the static causal attention mask and patch it
+            # into the CLIP text model.  The dynamic _make_causal_mask() in
+            # transformers' modeling_attn_mask_utils.py triggers native access
+            # violations (0xC0000005) on certain Windows builds when called
+            # from QThreadPool worker threads — even with a Python-level lock.
+            # The root cause is MKL/OpenBLAS internal thread-pool contention
+            # inside torch.full() / torch.triu().
+            #
+            # CLIP always uses a fixed 77-token context window, so the causal
+            # mask is always the same.  Pre-computing it once at load time and
+            # patching it into the model's forward pass eliminates the crash
+            # entirely by bypassing the problematic code path.
+            self._patch_causal_mask()
+
             # Successfully loaded - clear any previous error
             self._load_error = None
             logger.info(f"[SemanticEmbeddingService] Model ready on {self._device}")
+
+    # ------------------------------------------------------------------
+    # Causal-mask patch (Windows crash prevention)
+    # ------------------------------------------------------------------
+
+    def _patch_causal_mask(self):
+        """
+        Pre-compute the CLIP causal attention mask and monkey-patch the
+        text model so that _create_4d_causal_attention_mask is never
+        called at inference time.
+
+        CLIP's text encoder (GPT-2 based) always uses seq_len=77.
+        The 4-D causal mask is deterministic for a given (seq_len, dtype,
+        device) triple, so we compute it once and inject a fast-return
+        wrapper around the text model's forward method.
+
+        This prevents the Windows-specific access violation in
+        _make_causal_mask → torch.full() that occurs when MKL/OpenBLAS
+        internal threads collide across QThreadPool workers.
+        """
+        try:
+            torch = self._torch
+            text_model = self._model.text_model  # CLIPTextTransformer
+
+            seq_len = 77  # CLIP fixed context length
+            dtype = next(self._model.parameters()).dtype
+
+            # Build the lower-triangular causal mask once.
+            # Shape: [1, 1, seq_len, seq_len]  (batch=1, head=1, broadcast)
+            with torch.no_grad():
+                mask = torch.full(
+                    (seq_len, seq_len),
+                    torch.finfo(dtype).min,
+                    dtype=dtype,
+                    device=self._device,
+                )
+                mask = torch.triu(mask, diagonal=1)
+                cached_mask = mask.unsqueeze(0).unsqueeze(0)  # [1, 1, 77, 77]
+
+            # Store for potential external access / debugging
+            self._cached_causal_mask = cached_mask
+
+            # Wrap the text model's forward to inject the cached mask and
+            # skip the dynamic _create_4d_causal_attention_mask call.
+            _original_forward = text_model.forward
+
+            def _patched_forward(
+                input_ids=None,
+                attention_mask=None,
+                position_ids=None,
+                output_attentions=None,
+                output_hidden_states=None,
+                return_dict=None,
+                **kwargs,
+            ):
+                """
+                Patched CLIPTextTransformer.forward that injects a
+                pre-computed causal_attention_mask, bypassing the
+                dynamic mask creation that crashes on Windows.
+                """
+                # Import the base config for return_dict default
+                if return_dict is None:
+                    return_dict = text_model.config.use_return_dict
+
+                if input_ids is None:
+                    raise ValueError("input_ids is required")
+
+                input_shape = input_ids.size()
+                input_ids = input_ids.view(-1, input_shape[-1])
+
+                hidden_states = text_model.embeddings(
+                    input_ids=input_ids,
+                    position_ids=position_ids,
+                )
+
+                # Use the pre-computed causal mask (the whole point of this patch).
+                # Expand to match batch size.
+                bsz = input_ids.shape[0]
+                causal_attention_mask = cached_mask.expand(bsz, -1, -1, -1)
+
+                # Build the 4-D attention_mask from the 2-D padding mask
+                # (this part does NOT use _make_causal_mask and is safe).
+                if attention_mask is not None:
+                    _attn_mask = _expand_attention_mask(
+                        attention_mask, hidden_states.dtype, tgt_len=input_shape[-1]
+                    ).to(self._device)
+                else:
+                    _attn_mask = None
+
+                encoder_outputs = text_model.encoder(
+                    inputs_embeds=hidden_states,
+                    attention_mask=_attn_mask,
+                    causal_attention_mask=causal_attention_mask,
+                    output_attentions=output_attentions,
+                    output_hidden_states=output_hidden_states,
+                    return_dict=return_dict,
+                )
+
+                last_hidden_state = encoder_outputs[0]
+                last_hidden_state = text_model.final_layer_norm(last_hidden_state)
+
+                if text_model.eos_token_id == 2:
+                    # Standard CLIP: pool from EOS token position
+                    pooled_output = last_hidden_state[
+                        torch.arange(last_hidden_state.shape[0], device=last_hidden_state.device),
+                        input_ids.to(dtype=torch.int, device=last_hidden_state.device).argmax(dim=-1),
+                    ]
+                else:
+                    pooled_output = last_hidden_state[
+                        torch.arange(last_hidden_state.shape[0], device=last_hidden_state.device),
+                        input_ids.to(dtype=torch.int, device=last_hidden_state.device).argmax(dim=-1),
+                    ]
+
+                if not return_dict:
+                    return (last_hidden_state, pooled_output) + encoder_outputs[1:]
+
+                from transformers.modeling_outputs import BaseModelOutputWithPooling
+                return BaseModelOutputWithPooling(
+                    last_hidden_state=last_hidden_state,
+                    pooler_output=pooled_output,
+                    hidden_states=encoder_outputs.hidden_states if return_dict else None,
+                    attentions=encoder_outputs.attentions if return_dict else None,
+                )
+
+            # Helper: expand 2-D attention mask to 4-D
+            def _expand_attention_mask(mask, dtype, tgt_len=None):
+                """Expand [bsz, src_len] → [bsz, 1, tgt_len, src_len]."""
+                bsz, src_len = mask.size()
+                if tgt_len is None:
+                    tgt_len = src_len
+                expanded = mask[:, None, None, :].expand(bsz, 1, tgt_len, src_len).to(dtype)
+                inverted = (1.0 - expanded) * torch.finfo(dtype).min
+                return inverted
+
+            text_model.forward = _patched_forward
+            logger.info(
+                "[SemanticEmbeddingService] ✓ Patched CLIPTextTransformer.forward "
+                "with pre-computed causal mask (Windows crash prevention)"
+            )
+
+        except Exception as e:
+            # Non-fatal: if patching fails, fall back to original forward.
+            # The existing _infer_lock + max_length=77 padding still provide
+            # partial protection.
+            logger.warning(
+                "[SemanticEmbeddingService] ⚠ Could not patch causal mask "
+                "(falling back to default forward): %s", e
+            )
 
     # ------------------------------------------------------------------
     # Image normalization helper
@@ -648,11 +810,18 @@ class SemanticEmbeddingService:
         try:
             # Preprocess + inference under lock to prevent concurrent native crashes
             with self._infer_lock:
-                inputs = self._processor(images=image, return_tensors="pt")
-                inputs = {k: v.to(self._device) for k, v in inputs.items()}
+                # Restrict MKL/OpenBLAS internal threads to prevent access
+                # violations from native thread-pool contention on Windows.
+                prev_threads = self._torch.get_num_threads()
+                self._torch.set_num_threads(1)
+                try:
+                    inputs = self._processor(images=image, return_tensors="pt")
+                    inputs = {k: v.to(self._device) for k, v in inputs.items()}
 
-                with self._torch.no_grad():
-                    image_features = self._model.get_image_features(**inputs)
+                    with self._torch.no_grad():
+                        image_features = self._model.get_image_features(**inputs)
+                finally:
+                    self._torch.set_num_threads(prev_threads)
         except Exception as e:
             logger.exception("[SemanticEmbeddingService] CLIP inference failed on %s: %s", image_path, e)
             return None
@@ -681,30 +850,37 @@ class SemanticEmbeddingService:
         try:
             # Preprocess + inference under lock to prevent concurrent native crashes
             with self._infer_lock:
-                # FIX: Always pad to max_length=77 (CLIP context length) and
-                # truncate.  The original OpenAI CLIP always uses 77-token
-                # sequences.  Using padding=True produces variable-length
-                # tensors (e.g. 3 tokens for "beach") which triggers a native
-                # access violation in transformers' _make_causal_mask on
-                # certain Windows builds.  Fixed-length input avoids the
-                # buggy short-sequence code path entirely.
-                inputs = self._processor(
-                    text=[text],
-                    return_tensors="pt",
-                    padding="max_length",
-                    truncation=True,
-                    max_length=77,
-                )
-                # Only pass text-model keys to avoid stray processor outputs
-                text_keys = {"input_ids", "attention_mask"}
-                inputs = {
-                    k: v.to(self._device)
-                    for k, v in inputs.items()
-                    if k in text_keys
-                }
+                # Restrict MKL/OpenBLAS internal threads to prevent access
+                # violations from native thread-pool contention on Windows.
+                prev_threads = self._torch.get_num_threads()
+                self._torch.set_num_threads(1)
+                try:
+                    # FIX: Always pad to max_length=77 (CLIP context length) and
+                    # truncate.  The original OpenAI CLIP always uses 77-token
+                    # sequences.  Using padding=True produces variable-length
+                    # tensors (e.g. 3 tokens for "beach") which triggers a native
+                    # access violation in transformers' _make_causal_mask on
+                    # certain Windows builds.  Fixed-length input avoids the
+                    # buggy short-sequence code path entirely.
+                    inputs = self._processor(
+                        text=[text],
+                        return_tensors="pt",
+                        padding="max_length",
+                        truncation=True,
+                        max_length=77,
+                    )
+                    # Only pass text-model keys to avoid stray processor outputs
+                    text_keys = {"input_ids", "attention_mask"}
+                    inputs = {
+                        k: v.to(self._device)
+                        for k, v in inputs.items()
+                        if k in text_keys
+                    }
 
-                with self._torch.no_grad():
-                    text_features = self._model.get_text_features(**inputs)
+                    with self._torch.no_grad():
+                        text_features = self._model.get_text_features(**inputs)
+                finally:
+                    self._torch.set_num_threads(prev_threads)
         except Exception as e:
             logger.exception("[SemanticEmbeddingService] CLIP text inference failed for %r: %s", text, e)
             return None
@@ -949,13 +1125,19 @@ class SemanticEmbeddingService:
                     # concurrent batch encoding + text search causes native
                     # access violations (0xC0000005) in _make_causal_mask.
                     with self._infer_lock:
-                        # Preprocess batch
-                        inputs = self._processor(images=batch_images, return_tensors="pt", padding=True)
-                        inputs = {k: v.to(self._device) for k, v in inputs.items()}
+                        # Restrict MKL/OpenBLAS internal threads (Windows crash prevention)
+                        prev_threads = self._torch.get_num_threads()
+                        self._torch.set_num_threads(1)
+                        try:
+                            # Preprocess batch
+                            inputs = self._processor(images=batch_images, return_tensors="pt", padding=True)
+                            inputs = {k: v.to(self._device) for k, v in inputs.items()}
 
-                        # Extract features
-                        with self._torch.no_grad():
-                            image_features = self._model.get_image_features(**inputs)
+                            # Extract features
+                            with self._torch.no_grad():
+                                image_features = self._model.get_image_features(**inputs)
+                        finally:
+                            self._torch.set_num_threads(prev_threads)
 
                     # Convert to numpy and normalize (outside lock - no model access)
                     embeddings = image_features.cpu().numpy().astype('float32')
