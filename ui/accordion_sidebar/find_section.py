@@ -287,6 +287,7 @@ class _SmartFindWorker(QRunnable):
                  query: str = None, extra_filters: dict = None,
                  display_label: str = ""):
         super().__init__()
+        self.setAutoDelete(False)  # prevent C++ deletion before signal delivery
         self.signals = _SmartFindSignals()
         self._service = service
         self._preset_id = preset_id
@@ -315,8 +316,8 @@ class _SmartFindWorker(QRunnable):
                     from services.search_orchestrator import FacetComputer
                     project_meta = orch._get_project_meta()
                     facets = FacetComputer.compute(result.paths, project_meta)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"[FindSection] Facet computation failed: {e}")
 
             self.signals.finished.emit({
                 'preset_id': self._preset_id,
@@ -954,8 +955,8 @@ class FindSection(BaseSection):
                 self.smartFindTriggered.emit(meta_result.paths, display_label)
                 if meta_result.scores:
                     self.smartFindScores.emit(meta_result.scores)
-        except Exception:
-            pass  # Phase 1 is best-effort
+        except Exception as e:
+            logger.debug(f"[FindSection] Phase 1 metadata search failed: {e}")
 
         # Phase 2: Full search — runs in background thread to avoid freezing UI
         # during CLIP model loading (import torch + transformers can take 20+ seconds)
@@ -983,8 +984,9 @@ class FindSection(BaseSection):
         """Re-run current find with updated refine filters."""
         if self._active_preset_id:
             extra_filters = self._get_refine_filters()
+            pid = self._active_preset_id  # capture by value before deferred call
             QTimer.singleShot(0, lambda: self._run_preset_find(
-                self._active_preset_id, extra_filters))
+                pid, extra_filters))
         elif self._active_text_query and len(self._active_text_query) >= 3:
             self._pending_text_query = self._active_text_query
             self._execute_text_search()
