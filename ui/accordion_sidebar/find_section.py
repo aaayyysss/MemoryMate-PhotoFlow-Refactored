@@ -1340,4 +1340,6 @@ class FindSection(BaseSection):
     def cleanup(self):
         """Clean up resources."""
         self._search_debounce.stop()
+        self._search_worker = None
+        super().cleanup()
         logger.debug("[FindSection] Cleanup")

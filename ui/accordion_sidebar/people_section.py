@@ -564,7 +564,8 @@ class PeopleSection(BaseSection):
                         data = img_rgb.tobytes("raw", "RGB")
 
                         # DEFENSIVE: Create QImage with explicit format
-                        qimg = QImage(data, img_rgb.width, img_rgb.height, img_rgb.width * 3, QImage.Format_RGB888)
+                        # .copy() ensures pixel data is owned by QImage (data buffer may be GC'd)
+                        qimg = QImage(data, img_rgb.width, img_rgb.height, img_rgb.width * 3, QImage.Format_RGB888).copy()
 
                         if qimg.isNull():
                             logger.warning(f"[PeopleSection] QImage.isNull() == True for BLOB thumbnail")
@@ -608,8 +609,9 @@ class PeopleSection(BaseSection):
                         data = img_rgb.tobytes("raw", "RGB")
 
                         # DEFENSIVE: Create QImage with explicit stride
+                        # .copy() ensures pixel data is owned by QImage (data buffer may be GC'd)
                         stride = img_rgb.width * 3
-                        qimg = QImage(data, img_rgb.width, img_rgb.height, stride, QImage.Format_RGB888)
+                        qimg = QImage(data, img_rgb.width, img_rgb.height, stride, QImage.Format_RGB888).copy()
 
                         if qimg.isNull():
                             logger.warning(f"[PeopleSection] QImage.isNull() == True for {rep_path}")
@@ -657,7 +659,6 @@ class FlowLayout(QLayout):
 
     def addWidget(self, widget):
         super().addWidget(widget)
-        self.itemList.append(self.itemAt(self.count() - 1))
 
     def count(self):
         return len(self.itemList)

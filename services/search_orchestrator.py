@@ -42,6 +42,7 @@ Usage:
     # result.explanations -> [{path, clip: 0.35, recency: 0.02, ...}, ...]
 """
 
+import os
 import re
 import time
 import threading
