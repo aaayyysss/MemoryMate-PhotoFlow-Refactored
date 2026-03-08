@@ -4,10 +4,11 @@ RankingConfig - Dynamic Configuration for Search Ranking Weights
 Centralizes all ranking/scoring weight parameters so they can be
 tuned from the Preferences dialog (Search & Discovery tab).
 
-Each preset family (scenic, type, people_event, utility) has its own
-weight profile.  The *default* family weights are user-tunable; the
-per-family overrides remain fixed but reference the defaults as a
-starting point when the user resets.
+Each preset family (scenic, type, people_event, utility, animal_object)
+has its own weight profile.  All family weights are user-tunable via
+per-family preference keys (e.g. ranking_type_w_clip).  The hardcoded
+defaults in FAMILY_DEFAULTS serve as fallbacks when no user preference
+is set.
 
 Usage:
     from config.ranking_config import RankingConfig
@@ -15,11 +16,15 @@ Usage:
     # Get default (scenic) weights
     weights = RankingConfig.get_default_weights()
 
+    # Get per-family weight
+    clip_w = RankingConfig.get_family_weight("type", "w_clip")
+
     # Get recency guardrails
     halflife = RankingConfig.get_recency_halflife_days()
 """
 
 from dataclasses import dataclass
+from typing import Dict
 
 from logging_config import get_logger
 
@@ -56,6 +61,40 @@ class RankingDefaults:
     THRESHOLD_BACKOFF_MAX_RETRIES: int = 2
 
 
+# ── Per-family default weight profiles ──
+# Keys: w_clip, w_recency, w_favorite, w_location, w_face_match,
+#        w_structural, w_ocr
+# Each profile must sum to ~1.0.
+
+FAMILY_DEFAULTS: Dict[str, Dict[str, float]] = {
+    "scenic": {
+        "w_clip": 0.82, "w_recency": 0.04, "w_favorite": 0.05,
+        "w_location": 0.06, "w_face_match": 0.03,
+        "w_structural": 0.00, "w_ocr": 0.00,
+    },
+    "type": {
+        "w_clip": 0.20, "w_recency": 0.03, "w_favorite": 0.02,
+        "w_location": 0.00, "w_face_match": 0.00,
+        "w_structural": 0.50, "w_ocr": 0.25,
+    },
+    "people_event": {
+        "w_clip": 0.58, "w_recency": 0.07, "w_favorite": 0.05,
+        "w_location": 0.00, "w_face_match": 0.30,
+        "w_structural": 0.00, "w_ocr": 0.00,
+    },
+    "utility": {
+        "w_clip": 0.00, "w_recency": 0.20, "w_favorite": 0.45,
+        "w_location": 0.25, "w_face_match": 0.10,
+        "w_structural": 0.00, "w_ocr": 0.00,
+    },
+    "animal_object": {
+        "w_clip": 0.88, "w_recency": 0.05, "w_favorite": 0.03,
+        "w_location": 0.00, "w_face_match": 0.00,
+        "w_structural": 0.04, "w_ocr": 0.00,
+    },
+}
+
+
 class RankingConfig:
     """
     Centralized ranking configuration.
@@ -63,35 +102,63 @@ class RankingConfig:
     Reads from user preferences with fallback to RankingDefaults.
     """
 
-    # ── Weight getters ──
+    # ── Per-family weight getters/setters ──
+
+    _WEIGHT_KEYS = ("w_clip", "w_recency", "w_favorite", "w_location",
+                     "w_face_match", "w_structural", "w_ocr")
+
+    @classmethod
+    def get_family_weight(cls, family: str, weight_name: str) -> float:
+        """Get a single weight for a specific family from preferences.
+
+        Preference key format: ranking_{family}_{weight_name}
+        Falls back to FAMILY_DEFAULTS, then to the scenic/general default.
+        """
+        family_defaults = FAMILY_DEFAULTS.get(family, FAMILY_DEFAULTS.get("scenic", {}))
+        default = family_defaults.get(weight_name, 0.0)
+        key = f"ranking_{family}_{weight_name}"
+        return cls._get_float(key, default, 0.0, 1.0)
+
+    @classmethod
+    def set_family_weight(cls, family: str, weight_name: str, value: float) -> bool:
+        """Set a single weight for a specific family in preferences."""
+        key = f"ranking_{family}_{weight_name}"
+        return cls._set_float(key, value, 0.0, 1.0)
+
+    @classmethod
+    def get_family_weights_dict(cls, family: str) -> dict:
+        """Get all weights for a family as a dict, reading from preferences."""
+        return {k: cls.get_family_weight(family, k) for k in cls._WEIGHT_KEYS}
+
+    # ── Legacy scenic/general weight getters (backward compatible) ──
 
     @classmethod
     def get_w_clip(cls) -> float:
-        return cls._get_float("ranking_w_clip", RankingDefaults.W_CLIP, 0.0, 1.0)
+        return cls.get_family_weight("scenic", "w_clip")
 
     @classmethod
     def get_w_recency(cls) -> float:
-        return cls._get_float("ranking_w_recency", RankingDefaults.W_RECENCY, 0.0, 1.0)
+        return cls.get_family_weight("scenic", "w_recency")
 
     @classmethod
     def get_w_favorite(cls) -> float:
-        return cls._get_float("ranking_w_favorite", RankingDefaults.W_FAVORITE, 0.0, 1.0)
+        return cls.get_family_weight("scenic", "w_favorite")
 
     @classmethod
     def get_w_location(cls) -> float:
-        return cls._get_float("ranking_w_location", RankingDefaults.W_LOCATION, 0.0, 1.0)
+        return cls.get_family_weight("scenic", "w_location")
 
     @classmethod
     def get_w_face_match(cls) -> float:
-        return cls._get_float("ranking_w_face_match", RankingDefaults.W_FACE_MATCH, 0.0, 1.0)
+        return cls.get_family_weight("scenic", "w_face_match")
 
     @classmethod
     def get_w_structural(cls) -> float:
-        return cls._get_float("ranking_w_structural", RankingDefaults.W_STRUCTURAL, 0.0, 1.0)
+        return cls.get_family_weight("scenic", "w_structural")
 
     @classmethod
     def get_w_ocr(cls) -> float:
-        return cls._get_float("ranking_w_ocr", RankingDefaults.W_OCR, 0.0, 1.0)
+        return cls.get_family_weight("scenic", "w_ocr")
 
     # ── Guardrail getters ──
 
@@ -131,35 +198,35 @@ class RankingConfig:
     def get_threshold_backoff_max_retries(cls) -> int:
         return cls._get_int("ranking_backoff_max_retries", RankingDefaults.THRESHOLD_BACKOFF_MAX_RETRIES, 0, 5)
 
-    # ── Setters ──
+    # ── Legacy scenic setters (backward compatible) ──
 
     @classmethod
     def set_w_clip(cls, v: float) -> bool:
-        return cls._set_float("ranking_w_clip", v, 0.0, 1.0)
+        return cls.set_family_weight("scenic", "w_clip", v)
 
     @classmethod
     def set_w_recency(cls, v: float) -> bool:
-        return cls._set_float("ranking_w_recency", v, 0.0, 1.0)
+        return cls.set_family_weight("scenic", "w_recency", v)
 
     @classmethod
     def set_w_favorite(cls, v: float) -> bool:
-        return cls._set_float("ranking_w_favorite", v, 0.0, 1.0)
+        return cls.set_family_weight("scenic", "w_favorite", v)
 
     @classmethod
     def set_w_location(cls, v: float) -> bool:
-        return cls._set_float("ranking_w_location", v, 0.0, 1.0)
+        return cls.set_family_weight("scenic", "w_location", v)
 
     @classmethod
     def set_w_face_match(cls, v: float) -> bool:
-        return cls._set_float("ranking_w_face_match", v, 0.0, 1.0)
+        return cls.set_family_weight("scenic", "w_face_match", v)
 
     @classmethod
     def set_w_structural(cls, v: float) -> bool:
-        return cls._set_float("ranking_w_structural", v, 0.0, 1.0)
+        return cls.set_family_weight("scenic", "w_structural", v)
 
     @classmethod
     def set_w_ocr(cls, v: float) -> bool:
-        return cls._set_float("ranking_w_ocr", v, 0.0, 1.0)
+        return cls.set_family_weight("scenic", "w_ocr", v)
 
     @classmethod
     def set_max_recency_boost(cls, v: float) -> bool:

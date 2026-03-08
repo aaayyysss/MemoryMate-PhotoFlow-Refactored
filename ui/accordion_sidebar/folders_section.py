@@ -148,8 +148,10 @@ class FoldersSection(BaseSection):
 
         # Connect double-click to emit folder selection
         tree.itemDoubleClicked.connect(
-            lambda item, col: self.folderSelected.emit(item.data(0, Qt.UserRole))
-            if item.data(0, Qt.UserRole) else None
+            lambda item, col: (
+                self.folderSelected.emit(item.data(0, Qt.UserRole))
+                if item.data(0, Qt.UserRole) is not None else None
+            )
         )
 
         logger.info(f"[FoldersSection] Tree built with {tree.topLevelItemCount()} top-level folders")

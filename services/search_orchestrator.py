@@ -42,6 +42,7 @@ Usage:
     # result.explanations -> [{path, clip: 0.35, recency: 0.02, ...}, ...]
 """
 
+import os
 import re
 import time
 import threading
@@ -924,9 +925,6 @@ class SearchOrchestrator:
         threshold = plan.threshold_override if plan.threshold_override is not None else cfg["threshold"]
         fusion_mode = cfg["fusion_mode"]
 
-        # Track current preset for family-aware scoring
-        self._current_plan_preset_id = plan.preset_id
-
         # Detect people-implied queries for face presence scoring
         people_implied = self._is_people_implied(plan)
 
@@ -1066,7 +1064,8 @@ class SearchOrchestrator:
                 ocr = ocr_scores.get(path, 0.0)
                 sr = self._score_result(path, sem_score, matched_prompt, project_meta,
                                         plan.filters, people_implied,
-                                        structural_score=struct, ocr_score=ocr)
+                                        structural_score=struct, ocr_score=ocr,
+                                        preset_id=plan.preset_id)
                 scored.append(sr)
 
         elif metadata_candidate_paths is not None:
@@ -1075,7 +1074,8 @@ class SearchOrchestrator:
                 ocr = ocr_scores.get(path, 0.0)
                 sr = self._score_result(path, 0.0, "", project_meta,
                                         plan.filters, people_implied,
-                                        structural_score=struct, ocr_score=ocr)
+                                        structural_score=struct, ocr_score=ocr,
+                                        preset_id=plan.preset_id)
                 scored.append(sr)
 
         # Step 5b: Boost OCR-matched results
@@ -1099,6 +1099,7 @@ class SearchOrchestrator:
                         opath, 0.0, "", project_meta,
                         plan.filters, people_implied,
                         structural_score=struct, ocr_score=ocr,
+                        preset_id=plan.preset_id,
                     )
                     sr.final_score += OCR_BOOST
                     sr.reasons.append(f"ocr_text_match=+{OCR_BOOST}")
@@ -1160,6 +1161,7 @@ class SearchOrchestrator:
             # At 0.18 or below, ViT-B/32 loses all discrimination and
             # returns essentially random images.
             backoff_floor = max(0.05, threshold - 0.04)
+            already_scored = {sr.path for sr in scored}
             for retry in range(1, max_retries + 1):
                 lowered = max(backoff_floor, threshold - (backoff_step * retry))
                 logger.info(f"[SearchOrchestrator] Backoff retry {retry}: {threshold:.2f} -> {lowered:.2f}")
@@ -1186,15 +1188,19 @@ class SearchOrchestrator:
                                 continue
                         if not path:
                             continue
+                        if path in already_scored:
+                            continue
                         if metadata_candidate_paths is not None and path not in metadata_candidate_paths:
                             continue
                         struct = structural_scores.get(path, 0.0)
                         ocr = ocr_scores.get(path, 0.0)
                         sr = self._score_result(path, sem_score, prompt, project_meta,
                                                 plan.filters, people_implied,
-                                                structural_score=struct, ocr_score=ocr)
+                                                structural_score=struct, ocr_score=ocr,
+                                                preset_id=plan.preset_id)
                         sr.reasons.append("(backoff)")
                         scored.append(sr)
+                        already_scored.add(path)
 
                     scored.sort(key=lambda r: r.final_score, reverse=True)
                     backoff_applied = True
@@ -1287,15 +1293,14 @@ class SearchOrchestrator:
                       active_filters: Optional[Dict] = None,
                       people_implied: bool = False,
                       structural_score: float = 0.0,
-                      ocr_score: float = 0.0) -> ScoredResult:
+                      ocr_score: float = 0.0,
+                      preset_id: Optional[str] = None) -> ScoredResult:
         """
         Apply the deterministic scoring contract to a single result.
         Delegates to the family-aware Ranker module.
         """
         meta = project_meta.get(path, {})
-        family = get_preset_family(
-            getattr(self, '_current_plan_preset_id', None)
-        )
+        family = get_preset_family(preset_id)
         # Lazy init for tests that bypass __init__ via __new__
         ranker = getattr(self, '_ranker', None) or Ranker()
         return ranker.score(
@@ -1902,8 +1907,8 @@ class SearchOrchestrator:
                         placeholders = ",".join("?" * len(scored_paths))
                         rows = conn.execute(
                             f"SELECT id, path FROM photo_metadata "
-                            f"WHERE path IN ({placeholders})",
-                            scored_paths,
+                            f"WHERE project_id = ? AND path IN ({placeholders})",
+                            [self.project_id] + scored_paths,
                         ).fetchall()
                         path_to_id = {r['path']: r['id'] for r in rows}
 
@@ -1983,7 +1988,8 @@ class SearchOrchestrator:
             metadata_paths = self._smart_find._run_metadata_filter(plan.filters)
             for path in metadata_paths[:top_k]:
                 sr = self._score_result(path, 0.0, "", project_meta,
-                                        plan.filters, people_implied)
+                                        plan.filters, people_implied,
+                                        preset_id=plan.preset_id)
                 scored.append(sr)
         else:
             # No explicit filters from tokens - show recent photos as baseline
@@ -1996,7 +2002,8 @@ class SearchOrchestrator:
             all_paths.sort(key=_date_key, reverse=True)
             for path in all_paths[:top_k]:
                 sr = self._score_result(path, 0.0, "", project_meta,
-                                        plan.filters, people_implied)
+                                        plan.filters, people_implied,
+                                        preset_id=plan.preset_id)
                 scored.append(sr)
 
         scored.sort(key=lambda r: r.final_score, reverse=True)
@@ -2043,6 +2050,9 @@ class SearchOrchestrator:
             threshold: Minimum similarity (0-1)
         """
         start = time.time()
+
+        if not _numpy_available:
+            return OrchestratorResult(label="Find Similar - numpy not available")
 
         try:
             from services.semantic_embedding_service import get_semantic_embedding_service
@@ -2344,7 +2354,8 @@ class SearchOrchestrator:
                 if metadata_candidate_paths is not None and path not in metadata_candidate_paths:
                     continue
                 sr = self._score_result(path, sem_score, prompt, project_meta,
-                                        plan.filters, people_implied)
+                                        plan.filters, people_implied,
+                                        preset_id=plan.preset_id)
                 scored.append(sr)
 
             scored.sort(key=lambda r: r.final_score, reverse=True)
@@ -2678,7 +2689,7 @@ class LibraryAnalyzer:
                 # 6. Rated photos (3+)
                 rated_row = conn.execute("""
                     SELECT COUNT(*) as cnt FROM photo_metadata
-                    WHERE project_id = ? AND rating >= 3 AND rating < 4
+                    WHERE project_id = ? AND rating >= 3
                 """, (project_id,)).fetchone()
                 if rated_row and rated_row['cnt'] > 0:
                     suggestions.append({

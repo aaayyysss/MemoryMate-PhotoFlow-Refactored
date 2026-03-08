@@ -241,25 +241,31 @@ def get_preset_family(preset_id: Optional[str]) -> str:
 def get_weights_for_family(family: str) -> ScoringWeights:
     """Get the scoring weights for a preset family.
 
-    The default/scenic profile reads from user preferences so weights
-    are tunable in Preferences > Search & Discovery.  Other families
-    use fixed profiles that are already optimized per best practices.
+    All families read from user preferences (Preferences > Search & Discovery)
+    with per-family hardcoded defaults as fallback.  Preference keys follow
+    the pattern ``ranking_{family}_{weight_name}``.
+
+    Examples:
+        ranking_scenic_w_clip     -> scenic CLIP weight
+        ranking_type_w_structural -> type structural weight
+        ranking_animal_object_w_clip -> animal_object CLIP weight
     """
-    if family == "scenic" or family not in FAMILY_WEIGHTS:
-        # Build from dynamic config (user-tunable defaults)
-        return ScoringWeights(
-            w_clip=RankingConfig.get_w_clip(),
-            w_recency=RankingConfig.get_w_recency(),
-            w_favorite=RankingConfig.get_w_favorite(),
-            w_location=RankingConfig.get_w_location(),
-            w_face_match=RankingConfig.get_w_face_match(),
-            w_structural=RankingConfig.get_w_structural(),
-            w_ocr=RankingConfig.get_w_ocr(),
-            max_recency_boost=RankingConfig.get_max_recency_boost(),
-            max_favorite_boost=RankingConfig.get_max_favorite_boost(),
-            recency_halflife_days=RankingConfig.get_recency_halflife_days(),
-        )
-    return FAMILY_WEIGHTS[family]
+    resolved = family if family in FAMILY_WEIGHTS else "scenic"
+    wd = RankingConfig.get_family_weights_dict(resolved)
+    sw = ScoringWeights(
+        w_clip=wd["w_clip"],
+        w_recency=wd["w_recency"],
+        w_favorite=wd["w_favorite"],
+        w_location=wd["w_location"],
+        w_face_match=wd["w_face_match"],
+        w_structural=wd["w_structural"],
+        w_ocr=wd["w_ocr"],
+        max_recency_boost=RankingConfig.get_max_recency_boost(),
+        max_favorite_boost=RankingConfig.get_max_favorite_boost(),
+        recency_halflife_days=RankingConfig.get_recency_halflife_days(),
+    )
+    sw.validate()
+    return sw
 
 
 # ══════════════════════════════════════════════════════════════════════
