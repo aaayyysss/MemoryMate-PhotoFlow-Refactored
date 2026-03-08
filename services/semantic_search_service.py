@@ -73,7 +73,9 @@ class SemanticSearchService:
             db_connection: Optional database connection
             project_id: Optional project ID (used for filtering and model validation)
         """
-        self.model_name = model_name
+        from utils.clip_model_registry import normalize_model_id, all_aliases_for
+        self.model_name = normalize_model_id(model_name)
+        self._model_aliases = all_aliases_for(self.model_name)
         self.project_id = project_id
         self.db = db_connection or DatabaseConnection()
         self.embedder = get_semantic_embedding_service(model_name=model_name)
@@ -214,21 +216,26 @@ class SemanticSearchService:
         with self.db.get_connection() as conn:
             # CRITICAL FIX: Filter by project_id when set
             # Without this, search returns photos from ALL projects!
+            # Use all model aliases to match embeddings stored under
+            # either short alias ("clip-vit-b32") or canonical name
+            # ("openai/clip-vit-base-patch32").
+            aliases = self._model_aliases
+            placeholders = ','.join(['?'] * len(aliases))
             if self.project_id is not None:
-                cursor = conn.execute("""
+                cursor = conn.execute(f"""
                     SELECT se.photo_id, se.embedding, se.dim
                     FROM semantic_embeddings se
                     JOIN photo_metadata pm ON se.photo_id = pm.id
-                    WHERE se.model = ?
+                    WHERE se.model IN ({placeholders})
                       AND pm.project_id = ?
-                """, (self.model_name, self.project_id))
+                """, (*aliases, self.project_id))
             else:
                 # Legacy behavior for non-project-aware callers
-                cursor = conn.execute("""
+                cursor = conn.execute(f"""
                     SELECT photo_id, embedding, dim
                     FROM semantic_embeddings
-                    WHERE model = ?
-                """, (self.model_name,))
+                    WHERE model IN ({placeholders})
+                """, tuple(aliases))
 
             results = []
             for row in cursor.fetchall():
@@ -298,6 +305,8 @@ class SemanticSearchService:
         """
         with self.db.get_connection() as conn:
             # CRITICAL FIX: Filter by project_id when set
+            aliases = self._model_aliases
+            placeholders = ','.join(['?'] * len(aliases))
             if self.project_id is not None:
                 # Total photos in project
                 cursor = conn.execute(
@@ -307,24 +316,24 @@ class SemanticSearchService:
                 total_photos = cursor.fetchone()['count']
 
                 # Embedded photos in project
-                cursor = conn.execute("""
+                cursor = conn.execute(f"""
                     SELECT COUNT(*) as count
                     FROM semantic_embeddings se
                     JOIN photo_metadata pm ON se.photo_id = pm.id
-                    WHERE se.model = ?
+                    WHERE se.model IN ({placeholders})
                       AND pm.project_id = ?
-                """, (self.model_name, self.project_id))
+                """, (*aliases, self.project_id))
                 embedded_photos = cursor.fetchone()['count']
             else:
                 # Legacy behavior for non-project-aware callers
                 cursor = conn.execute("SELECT COUNT(*) as count FROM photo_metadata")
                 total_photos = cursor.fetchone()['count']
 
-                cursor = conn.execute("""
+                cursor = conn.execute(f"""
                     SELECT COUNT(*) as count
                     FROM semantic_embeddings
-                    WHERE model = ?
-                """, (self.model_name,))
+                    WHERE model IN ({placeholders})
+                """, tuple(aliases))
                 embedded_photos = cursor.fetchone()['count']
 
             coverage_percent = (embedded_photos / total_photos * 100) if total_photos > 0 else 0.0

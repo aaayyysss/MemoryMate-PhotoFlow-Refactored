@@ -328,6 +328,23 @@ class PostScanPipelineWorker(QRunnable):
                     logger.error("OCR pipeline failed: %s", e, exc_info=True)
                     results["errors"].append(f"OCR: {e}")
 
+            # Rebuild the flattened search_asset_features index so the
+            # search orchestrator can use the fast path instead of the
+            # slow JOIN-based fallback.
+            try:
+                from repository.search_feature_repository import SearchFeatureRepository
+                repo = SearchFeatureRepository()
+                if repo.table_exists():
+                    count = repo.refresh_project(self.project_id)
+                    logger.info(
+                        "[PostScanPipelineWorker] Rebuilt search_asset_features: "
+                        "%d rows for project %d", count, self.project_id,
+                    )
+            except Exception as e:
+                logger.warning(
+                    "[PostScanPipelineWorker] search_asset_features rebuild failed: %s", e
+                )
+
             # Bump search index version so SmartFind caches are invalidated
             try:
                 from services.smart_find_service import bump_index_version
