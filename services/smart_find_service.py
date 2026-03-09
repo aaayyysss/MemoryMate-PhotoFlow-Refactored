@@ -1128,7 +1128,16 @@ class SmartFindService:
         # Collect per-prompt scores: {photo_id: {prompt: score}}
         per_prompt: Dict[int, Dict[str, float]] = {}
 
-        for prompt in prompts:
+        for idx, prompt in enumerate(prompts):
+            # Check cancellation before each prompt to abandon stale searches
+            with self._inflight_lock:
+                token = self._inflight_token
+            if token is not None and token.is_cancelled:
+                logger.info(
+                    f"[SmartFind] CLIP search cancelled before prompt {idx+1}/{len(prompts)}"
+                )
+                return {}
+
             try:
                 results = svc.search(
                     query=prompt,

@@ -26,6 +26,8 @@ Usage:
 """
 
 import numpy as np
+import threading
+import queue
 from typing import List, Optional
 from dataclasses import dataclass
 
@@ -34,6 +36,81 @@ from repository.base_repository import DatabaseConnection
 from logging_config import get_logger
 
 logger = get_logger(__name__)
+
+
+# ── Dedicated CLIP Executor Thread ─────────────────────────────────────
+# All CLIP text encoding runs on ONE dedicated long-lived daemon thread.
+# This eliminates the class of Windows crashes caused by CLIP/MKL native
+# code being invoked from arbitrary QThreadPool workers where thread
+# lifecycle, stack size, and TLS state are unpredictable.
+#
+# The executor accepts (text, result_event, result_holder) tuples via a
+# queue.  Callers block on result_event until the dedicated thread
+# completes the encode_text() call and stores the result.
+
+class _ClipExecutorThread(threading.Thread):
+    """Single dedicated thread for all CLIP text inference."""
+
+    def __init__(self):
+        super().__init__(name="ClipExecutor", daemon=True)
+        self._queue = queue.Queue()
+        self._shutdown = False
+
+    def submit(self, embedder, text: str, timeout: float = 60.0) -> Optional[np.ndarray]:
+        """Submit a text encoding request and block until result is ready."""
+        result_event = threading.Event()
+        result_holder = [None, None]  # [result, exception]
+        self._queue.put((embedder, text, result_event, result_holder))
+        if not result_event.wait(timeout=timeout):
+            logger.error(
+                "[ClipExecutor] Timed out waiting for encode_text(%r) after %.0fs",
+                text, timeout,
+            )
+            return None
+        if result_holder[1] is not None:
+            raise result_holder[1]
+        return result_holder[0]
+
+    def shutdown(self):
+        """Signal the executor to stop."""
+        self._shutdown = True
+        self._queue.put(None)  # sentinel to unblock
+
+    def run(self):
+        logger.info("[ClipExecutor] Dedicated CLIP inference thread started")
+        while not self._shutdown:
+            try:
+                item = self._queue.get(timeout=1.0)
+            except queue.Empty:
+                continue
+            if item is None:  # shutdown sentinel
+                break
+            embedder, text, result_event, result_holder = item
+            try:
+                result_holder[0] = embedder.encode_text(text)
+            except Exception as e:
+                logger.error("[ClipExecutor] encode_text(%r) failed: %s", text, e)
+                result_holder[1] = e
+            finally:
+                result_event.set()
+        logger.info("[ClipExecutor] Dedicated CLIP inference thread stopped")
+
+
+# Module-level singleton
+_clip_executor: Optional[_ClipExecutorThread] = None
+_clip_executor_lock = threading.Lock()
+
+
+def _get_clip_executor() -> _ClipExecutorThread:
+    """Get or create the singleton CLIP executor thread."""
+    global _clip_executor
+    if _clip_executor is not None and _clip_executor.is_alive():
+        return _clip_executor
+    with _clip_executor_lock:
+        if _clip_executor is None or not _clip_executor.is_alive():
+            _clip_executor = _ClipExecutorThread()
+            _clip_executor.start()
+        return _clip_executor
 
 
 @dataclass
@@ -155,9 +232,18 @@ class SemanticSearchService:
             logger.debug("[SemanticSearchService] Service not available (PyTorch/Transformers missing)")
             return []
 
-        # Encode query
+        # Encode query via dedicated CLIP executor thread.
+        # All CLIP text inference is routed through a single long-lived
+        # thread to avoid Windows MKL/OpenBLAS crashes that occur when
+        # CLIP forward is called from short-lived QThreadPool workers.
+        _thread_name = threading.current_thread().name
+        logger.info(
+            f"[SemanticSearchService] encode_text START: query={query!r} "
+            f"thread={_thread_name} project={self.project_id}"
+        )
         try:
-            query_embedding = self.embedder.encode_text(query.strip())
+            executor = _get_clip_executor()
+            query_embedding = executor.submit(self.embedder, query.strip())
         except Exception as e:
             logger.error(f"[SemanticSearchService] Failed to encode query '{query}': {e}")
             return []
@@ -166,11 +252,26 @@ class SemanticSearchService:
             logger.error("[SemanticSearchService] encode_text returned None for query '%s'", query)
             return []
 
+        # Forensic: log query embedding health
+        logger.info(
+            f"[SemanticSearchService] encode_text OK: query={query!r} "
+            f"shape={query_embedding.shape} dtype={query_embedding.dtype} "
+            f"contiguous={query_embedding.flags['C_CONTIGUOUS']} "
+            f"norm={np.linalg.norm(query_embedding):.4f}"
+        )
+
         # Get all photo embeddings
         photo_embeddings = self._get_all_embeddings()
         if not photo_embeddings:
             logger.warning("[SemanticSearchService] No photo embeddings found")
             return []
+
+        # Forensic: log embedding corpus health
+        logger.info(
+            f"[SemanticSearchService] Corpus loaded: {len(photo_embeddings)} embeddings "
+            f"(sample dtype={photo_embeddings[0][1].dtype}, "
+            f"contiguous={photo_embeddings[0][1].flags['C_CONTIGUOUS']})"
+        )
 
         # Compute similarities
         matches = []
