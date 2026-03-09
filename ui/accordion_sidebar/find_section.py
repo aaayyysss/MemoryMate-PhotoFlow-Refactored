@@ -852,6 +852,32 @@ class FindSection(BaseSection):
         # Run in background to avoid freezing UI
         QTimer.singleShot(0, lambda: self._run_preset_find(preset_id, extra_filters))
 
+    def _retire_search_worker(self):
+        """
+        Disconnect and release the previous search worker.
+
+        Workers use setAutoDelete(False) to prevent C++ deletion before
+        signal delivery.  Without explicit cleanup the old QRunnable leaks
+        every time a new search is started (17+ preset searches in a row
+        leaked 16+ workers).  Disconnecting the signal prevents stale
+        results from being delivered after a new search has started, and
+        calling setAutoDelete(True) lets the thread-pool reclaim the
+        QRunnable once it finishes.
+        """
+        old = self._search_worker
+        if old is not None:
+            try:
+                old.signals.finished.disconnect(self._on_search_result)
+            except (RuntimeError, TypeError):
+                pass  # already disconnected or object deleted
+            # Allow thread-pool to delete when done (was False to keep alive
+            # until signal delivery — now that we disconnected, safe to GC).
+            try:
+                old.setAutoDelete(True)
+            except RuntimeError:
+                pass  # C++ object already deleted
+            self._search_worker = None
+
     def _run_preset_find(self, preset_id: str, extra_filters: Dict):
         """Execute preset find asynchronously in a background thread."""
         service = self._get_service()
@@ -862,6 +888,7 @@ class FindSection(BaseSection):
             service, preset_id=preset_id, extra_filters=extra_filters,
         )
         worker.signals.finished.connect(self._on_search_result)
+        self._retire_search_worker()
         self._search_worker = worker
         QThreadPool.globalInstance().start(worker)
 
@@ -977,6 +1004,7 @@ class FindSection(BaseSection):
             display_label=display_label,
         )
         worker.signals.finished.connect(self._on_search_result)
+        self._retire_search_worker()
         self._search_worker = worker
         QThreadPool.globalInstance().start(worker)
 
@@ -1342,6 +1370,6 @@ class FindSection(BaseSection):
     def cleanup(self):
         """Clean up resources."""
         self._search_debounce.stop()
-        self._search_worker = None
+        self._retire_search_worker()
         super().cleanup()
         logger.debug("[FindSection] Cleanup")

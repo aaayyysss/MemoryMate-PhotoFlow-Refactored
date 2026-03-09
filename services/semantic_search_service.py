@@ -250,12 +250,21 @@ class SemanticSearchService:
                 # CRITICAL FIX: Handle float16 vs float32 storage format
                 # Negative dim indicates float16 format (new, 50% smaller)
                 # Positive dim indicates float32 format (legacy)
+                #
+                # FIX 2026-03-09: Always .copy() the array.
+                # np.frombuffer() returns a READ-ONLY view backed by the
+                # SQLite BLOB buffer.  The float16 path was safe (astype
+                # creates a copy) but the float32 path returned a view
+                # whose backing buffer could be garbage-collected after
+                # the cursor/connection is released, causing a dangling-
+                # pointer access violation (0xC0000005) inside np.dot()
+                # during concurrent preset searches.
                 if dim < 0:
                     actual_dim = abs(dim)
                     embedding = np.frombuffer(embedding_blob, dtype='float16').astype('float32')
                 else:
                     actual_dim = dim
-                    embedding = np.frombuffer(embedding_blob, dtype='float32')
+                    embedding = np.frombuffer(embedding_blob, dtype='float32').copy()
 
                 if len(embedding) != actual_dim:
                     logger.warning(

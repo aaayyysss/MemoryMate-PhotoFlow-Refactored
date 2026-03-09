@@ -736,6 +736,14 @@ class SemanticEmbeddingService:
             # skip the dynamic _create_4d_causal_attention_mask call.
             _original_forward = text_model.forward
 
+            # FIX 2026-03-09: Capture device as a local variable instead of
+            # closing over `self`.  The old closure kept a strong reference
+            # to the entire SemanticEmbeddingService instance (and through it
+            # the model, processor, DB connection, etc.), preventing GC even
+            # after the service was dereferenced.  Since the device never
+            # changes after model load, a plain value capture is correct.
+            _device = self._device
+
             def _patched_forward(
                 input_ids=None,
                 attention_mask=None,
@@ -775,7 +783,7 @@ class SemanticEmbeddingService:
                 if attention_mask is not None:
                     _attn_mask = _expand_attention_mask(
                         attention_mask, hidden_states.dtype, tgt_len=input_shape[-1]
-                    ).to(self._device)
+                    ).to(_device)
                 else:
                     _attn_mask = None
 
