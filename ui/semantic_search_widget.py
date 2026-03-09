@@ -835,7 +835,10 @@ class SemanticSearchWidget(QWidget):
     def _on_search_finished(self):
         """Handle search worker completion."""
         logger.debug("[SemanticSearch] Async search worker finished")
-        # Don't clear _active_search_worker here - it may be reused
+        # FIX 2026-03-09: Clear the worker reference so the next search
+        # creates a fresh QThread instead of reusing a finished one.
+        # QThread objects should not be restarted after finishing.
+        self._active_search_worker = None
 
     def _on_threshold_changed(self, value: int):
         """Handle similarity threshold slider change with debouncing."""
