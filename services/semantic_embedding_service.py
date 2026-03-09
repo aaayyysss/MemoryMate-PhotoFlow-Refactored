@@ -1,5 +1,5 @@
 ## services\semantic_embedding_service.py
-## Version: 1.1.2 dated 20260309
+## Version: 1.1.3 dated 20260309
  
 """
 SemanticEmbeddingService - Clean Architectural Separation
@@ -42,22 +42,48 @@ from PIL import Image
 from repository.base_repository import DatabaseConnection
 from logging_config import get_logger
 
-# FIX: Set MKL/OpenBLAS/OMP environment variables BEFORE any torch import.
-# On Windows, MKL's internal thread pool causes native access violations
-# (0xC0000005) when toggled between single-thread and multi-thread mode
-# across rapid-fire inference calls from QThreadPool workers.
-# Setting these env vars once at module load prevents MKL from ever
-# initializing its multi-thread pool, eliminating the crash entirely.
-# This must happen BEFORE torch is imported (torch reads these at init).
-os.environ.setdefault("OMP_NUM_THREADS", "1")
-os.environ.setdefault("MKL_NUM_THREADS", "1")
-os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
-os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+# FIX 2026-03-09: Force (not setdefault) MKL/OpenBLAS/OMP to 1 thread.
+# main_qt.py previously set these to min(4, cpu_count) for InsightFace.
+# setdefault() here was a no-op because the vars were already set to 4.
+# MKL then initialised a 4-thread pool, and later set_num_threads(1)
+# calls from CLIP inference workers caused native access violations
+# (0xC0000005) by reconfiguring MKL's pool across threads.
+# Force-setting to 1 ensures MKL never creates a multi-thread pool.
+# main_qt.py is also fixed to set 1 at process startup; this is a
+# belt-and-suspenders defence in case this module is imported first.
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 logger = get_logger(__name__)
 
 # Thread-safe singleton lock
 _service_lock = threading.Lock()
+
+# ── GLOBAL CLIP INFERENCE LOCK ──────────────────────────────────────────
+# Process-wide lock for ALL CLIP model inference (text AND image).
+# The CLIP model + MKL/OpenBLAS native backend are NOT thread-safe.
+# An instance-local lock is insufficient because:
+#   - Multiple SemanticEmbeddingService instances (different model variants)
+#     share the same MKL thread pool (process-global native resource).
+#   - Warmup dry-run inference and live search encode_text can overlap
+#     if they happen in different QThreadPool workers.
+# Using RLock (reentrant) so that nested calls (e.g. encode_text calling
+# _load_model which does warmup inference) don't deadlock.
+_GLOBAL_CLIP_INFER_LOCK = threading.RLock()
+
+# ── MODEL-READY EVENT ────────────────────────────────────────────────────
+# Signalled after the first model load + warmup inference completes.
+# Search workers should wait on this before calling encode_text() to
+# prevent overlapping with the warmup dry-run.
+_MODEL_READY_EVENT = threading.Event()
+
+# ── ONCE-ONLY PATCH SENTINEL ────────────────────────────────────────────
+# Tracks which CLIPTextTransformer classes have been patched to avoid
+# re-patching on duplicate _load_model() calls or service recreation.
+# Keyed by id(text_model) to handle multiple model variants.
+_PATCHED_TEXT_MODELS: set = set()
 
 # Optional FAISS import for fast similarity search on large collections
 # Falls back to brute-force numpy when FAISS is not available
@@ -128,11 +154,14 @@ class SemanticEmbeddingService:
         self._load_error = None
         self._load_lock = threading.Lock()
 
-        # FIX: Inference lock to prevent concurrent model access from
-        # multiple threads (search + embedding worker).  The CLIP model
-        # is NOT thread-safe; concurrent get_text_features / get_image_features
-        # calls cause native access violations (0xC0000005) in _make_causal_mask.
-        self._infer_lock = threading.Lock()
+        # FIX 2026-03-09: Use process-wide _GLOBAL_CLIP_INFER_LOCK instead
+        # of a per-instance lock.  MKL/OpenBLAS thread pools are process-
+        # global, so even different SemanticEmbeddingService instances must
+        # serialise their CLIP inference calls.
+        # self._infer_lock is kept as an alias for backward compatibility
+        # with any external code that references it, but it points to the
+        # same global lock.
+        self._infer_lock = _GLOBAL_CLIP_INFER_LOCK
 
         # TTL cache for stale-embeddings query (avoids re-querying every 30s)
         self._stale_cache = {}       # {project_id: (timestamp, result_list)}
@@ -629,17 +658,26 @@ class SemanticEmbeddingService:
             # on Windows when MKL lazily initialises its thread pool.
             # A single warm-up call forces MKL to complete its initialisation
             # while we hold _load_lock, making subsequent cross-thread calls safe.
+            #
+            # FIX 2026-03-09: Acquire _GLOBAL_CLIP_INFER_LOCK for warm-up
+            # so it serialises with any concurrent encode_text/encode_image.
             try:
-                with self._torch.inference_mode():
-                    dummy_ids = self._torch.zeros(1, 77, dtype=self._torch.long, device=self._device)
-                    self._model.get_text_features(input_ids=dummy_ids)
+                with _GLOBAL_CLIP_INFER_LOCK:
+                    self._torch.set_num_threads(1)
+                    with self._torch.inference_mode():
+                        dummy_ids = self._torch.zeros(1, 77, dtype=self._torch.long, device=self._device)
+                        self._model.get_text_features(input_ids=dummy_ids)
                 logger.info("[SemanticEmbeddingService] ✓ Warm-up inference completed (MKL initialised)")
             except Exception as e:
                 logger.warning(f"[SemanticEmbeddingService] Warm-up inference failed (non-fatal): {e}")
 
             # Successfully loaded - clear any previous error
             self._load_error = None
-            logger.info(f"[SemanticEmbeddingService] Model ready on {self._device}")
+
+            # Signal that the model is ready for inference.
+            # Search workers waiting on _MODEL_READY_EVENT can now proceed.
+            _MODEL_READY_EVENT.set()
+            logger.info(f"[SemanticEmbeddingService] Model ready on {self._device} (ready event set)")
 
     # ------------------------------------------------------------------
     # Causal-mask patch (Windows crash prevention)
@@ -659,10 +697,22 @@ class SemanticEmbeddingService:
         This prevents the Windows-specific access violation in
         _make_causal_mask → torch.full() that occurs when MKL/OpenBLAS
         internal threads collide across QThreadPool workers.
+
+        ONCE-ONLY GUARD: Uses _PATCHED_TEXT_MODELS sentinel to prevent
+        re-patching the same model object across service recreations.
         """
         try:
+            text_model = self._model.text_model
+            model_identity = id(text_model)
+
+            if model_identity in _PATCHED_TEXT_MODELS:
+                logger.info(
+                    "[SemanticEmbeddingService] ✓ Causal mask patch already applied "
+                    "for this text_model instance, skipping"
+                )
+                return
+
             torch = self._torch
-            text_model = self._model.text_model  # CLIPTextTransformer
 
             seq_len = 77  # CLIP fixed context length
             dtype = next(self._model.parameters()).dtype
@@ -775,9 +825,10 @@ class SemanticEmbeddingService:
                 return inverted
 
             text_model.forward = _patched_forward
+            _PATCHED_TEXT_MODELS.add(model_identity)
             logger.info(
                 "[SemanticEmbeddingService] ✓ Patched CLIPTextTransformer.forward "
-                "with pre-computed causal mask (Windows crash prevention)"
+                "with pre-computed causal mask (Windows crash prevention, once-only)"
             )
 
         except Exception as e:
@@ -844,6 +895,11 @@ class SemanticEmbeddingService:
         """
         self._load_model()
 
+        # Wait for warmup inference to finish before we try to use the model.
+        if not _MODEL_READY_EVENT.wait(timeout=120):
+            logger.error("[SemanticEmbeddingService] Timed out waiting for model ready event")
+            return None
+
         logger.debug("[SemanticEmbeddingService] Preprocessing image: %s", image_path)
 
         try:
@@ -899,6 +955,13 @@ class SemanticEmbeddingService:
             or None if encoding failed.
         """
         self._load_model()
+
+        # Wait for warmup inference to finish before we try to use the model.
+        # This prevents overlap between the warmup dry-run and the first
+        # real search call, which can crash MKL on Windows.
+        if not _MODEL_READY_EVENT.wait(timeout=120):
+            logger.error("[SemanticEmbeddingService] Timed out waiting for model ready event")
+            return None
 
         logger.debug("[SemanticEmbeddingService] Encoding text query: %r", text)
 
@@ -1122,6 +1185,11 @@ class SemanticEmbeddingService:
             List of (image_path, embedding) tuples. embedding is None if failed.
         """
         self._load_model()
+
+        # Wait for warmup inference to finish before we try to use the model.
+        if not _MODEL_READY_EVENT.wait(timeout=120):
+            logger.error("[SemanticEmbeddingService] Timed out waiting for model ready event")
+            return [(p, None) for p in image_paths]
 
         if batch_size is None:
             batch_size = self.get_optimal_batch_size()

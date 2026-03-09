@@ -59,13 +59,24 @@ os.environ['QT_QUICK_BACKEND'] = 'software'  # Force software backend for Qt Qui
 # their own thread pools. Without caps, a single InsightFace call can
 # create 8-16 native threads on top of our Python thread pools.
 # Must be set BEFORE importing numpy/torch/onnxruntime.
+#
+# CRITICAL FIX 2026-03-09: Force OMP/MKL/OpenBLAS to 1 thread.
+# Previous value of min(4, cpu_count) caused MKL to initialise its
+# multi-thread pool.  When CLIP inference later calls set_num_threads(1)
+# from QThreadPool worker threads, MKL's internal pool gets
+# reconfigured across threads → native access violation (0xC0000005).
+# Setting to 1 at process startup ensures MKL never creates a
+# multi-thread pool in the first place.  InsightFace/ONNX Runtime
+# have their own thread pool configs and are not affected.
 # ========================================================================
+os.environ['OMP_NUM_THREADS'] = '1'
+os.environ['MKL_NUM_THREADS'] = '1'
+os.environ['OPENBLAS_NUM_THREADS'] = '1'
+os.environ['TOKENIZERS_PARALLELISM'] = 'false'
+os.environ.setdefault('VECLIB_MAXIMUM_THREADS', '1')
+os.environ.setdefault('NUMEXPR_NUM_THREADS', '1')
+# ONNX Runtime manages its own thread pool separately from MKL
 _ml_threads = str(min(4, os.cpu_count() or 4))
-os.environ.setdefault('OMP_NUM_THREADS', _ml_threads)
-os.environ.setdefault('MKL_NUM_THREADS', _ml_threads)
-os.environ.setdefault('OPENBLAS_NUM_THREADS', _ml_threads)
-os.environ.setdefault('VECLIB_MAXIMUM_THREADS', _ml_threads)
-os.environ.setdefault('NUMEXPR_NUM_THREADS', _ml_threads)
 os.environ.setdefault('ONNXRUNTIME_SESSION_THREAD_POOL_SIZE', _ml_threads)
 
 # ========================================================================
