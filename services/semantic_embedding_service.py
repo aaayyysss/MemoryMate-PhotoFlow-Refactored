@@ -204,6 +204,7 @@ class SemanticEmbeddingService:
                 except (ImportError, AttributeError, RuntimeError) as e:
                     # AttributeError: NumPy 2.x incompatibility (_ARRAY_API not found)
                     # RuntimeError: dtype inference failures from numpy version mismatch
+                    self._available = False
                     is_numpy = 'numpy' in str(e).lower() or '_ARRAY_API' in str(e)
                     hint = (
                         'Fix: pip install "numpy<2"'
@@ -224,6 +225,9 @@ class SemanticEmbeddingService:
                     self._CLIPProcessor = CLIPProcessor
                     self._CLIPModel = CLIPModel
                 except ImportError as e:
+                    # Mark service as unavailable so callers short-circuit
+                    # via the `available` property instead of retrying.
+                    self._available = False
                     error = RuntimeError(
                         f"HuggingFace transformers CLIP classes not available.\n"
                         f"Install with: pip install transformers\n\n"
@@ -235,6 +239,7 @@ class SemanticEmbeddingService:
                 # Validate the imports actually resolved (transformers uses lazy loading
                 # that can silently yield None if backend dependencies are missing)
                 if self._CLIPProcessor is None or self._CLIPModel is None:
+                    self._available = False
                     missing = []
                     if self._CLIPProcessor is None:
                         missing.append("CLIPProcessor")
