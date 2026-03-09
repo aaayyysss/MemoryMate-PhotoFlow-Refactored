@@ -1,5 +1,5 @@
 ## services\semantic_embedding_service.py
-## Version: 1.1.3 dated 20260309
+## Version: 1.1.4 dated 20260309
  
 """
 SemanticEmbeddingService - Clean Architectural Separation
@@ -832,11 +832,32 @@ class SemanticEmbeddingService:
                 inverted = (1.0 - expanded) * torch.finfo(dtype).min
                 return inverted
 
-            text_model.forward = _patched_forward
+            # Wrap _patched_forward with a safety net: if the patched
+            # path raises any Python-level exception, fall back to the
+            # original forward.  This does NOT catch native crashes
+            # (which are the main risk), but prevents the patch from
+            # being a source of Python-level regressions.
+            _patch_fallback_count = [0]  # mutable counter in closure
+
+            def _safe_patched_forward(*args, **kw):
+                try:
+                    return _patched_forward(*args, **kw)
+                except Exception as exc:
+                    _patch_fallback_count[0] += 1
+                    if _patch_fallback_count[0] <= 3:
+                        logger.warning(
+                            "[SemanticEmbeddingService] _patched_forward failed "
+                            "(fallback #%d to original): %s",
+                            _patch_fallback_count[0], exc,
+                        )
+                    return _original_forward(*args, **kw)
+
+            text_model.forward = _safe_patched_forward
             _PATCHED_TEXT_MODELS.add(model_identity)
             logger.info(
                 "[SemanticEmbeddingService] ✓ Patched CLIPTextTransformer.forward "
-                "with pre-computed causal mask (Windows crash prevention, once-only)"
+                "with pre-computed causal mask + safety fallback "
+                "(Windows crash prevention, once-only)"
             )
 
         except Exception as e:
@@ -971,7 +992,11 @@ class SemanticEmbeddingService:
             logger.error("[SemanticEmbeddingService] Timed out waiting for model ready event")
             return None
 
-        logger.debug("[SemanticEmbeddingService] Encoding text query: %r", text)
+        _tid = threading.current_thread().name
+        logger.info(
+            "[SemanticEmbeddingService] encode_text ENTER: text=%r thread=%s model=%s",
+            text[:80], _tid, self.model_name,
+        )
 
         try:
             # Preprocess + inference under lock to prevent concurrent native crashes
@@ -1023,7 +1048,14 @@ class SemanticEmbeddingService:
 
         # Convert to numpy and normalize (CRITICAL)
         vec = text_features.cpu().numpy()[0].astype('float32')
-        vec = vec / np.linalg.norm(vec)  # L2 normalization
+        norm = np.linalg.norm(vec)
+        vec = vec / norm  # L2 normalization
+
+        logger.info(
+            "[SemanticEmbeddingService] encode_text OK: text=%r thread=%s "
+            "norm=%.4f shape=%s",
+            text[:80], _tid, norm, vec.shape,
+        )
 
         return vec
 

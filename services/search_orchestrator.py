@@ -1111,8 +1111,20 @@ class SearchOrchestrator:
                 )
 
         # Step 1: Semantic candidates
+        # ARCHITECTURAL FIX: Skip full-corpus CLIP for type-family presets
+        # (documents, screenshots) when structural candidates exist.
+        # These presets are structure-first: OCR + geometry + metadata are
+        # sufficient for retrieval.  Running CLIP over the full embedding
+        # universe is unnecessary and introduces crash risk (the CLIP text
+        # inference path on Windows is fragile under concurrent Qt workers).
+        # CLIP is only used as an optional reranker on the small structural
+        # candidate set later, if at all.
+        skip_clip_for_type = (
+            type_structural_candidates is not None
+            and len(type_structural_candidates) > 0
+        )
         semantic_hits = {}  # {photo_id: (score, prompt)}
-        if plan.has_semantic() and self._smart_find.clip_available:
+        if plan.has_semantic() and self._smart_find.clip_available and not skip_clip_for_type:
             # One-time embedding quality diagnostic
             if not self._embedding_quality_logged:
                 self._log_embedding_quality()
@@ -1120,6 +1132,12 @@ class SearchOrchestrator:
             prompts = plan.semantic_prompts if plan.semantic_prompts else [plan.semantic_text]
             semantic_hits = self._smart_find._run_clip_multi_prompt(
                 prompts, top_k * 3, threshold, fusion_mode
+            )
+        elif skip_clip_for_type:
+            logger.info(
+                f"[SearchOrchestrator] Skipping CLIP for type-family preset "
+                f"{plan.preset_id!r}: {len(type_structural_candidates)} "
+                f"structural candidates will be scored by OCR/structure only"
             )
 
         # Step 2: Metadata filter candidates
@@ -1356,7 +1374,8 @@ class SearchOrchestrator:
         else:
             backoff_step = cfg.get("backoff_step", 0.04)
         if (len(scored) < min_target and plan.has_semantic()
-                and self._smart_find.clip_available and plan.allow_backoff):
+                and self._smart_find.clip_available and plan.allow_backoff
+                and not skip_clip_for_type):
             max_retries = cfg.get("backoff_retries", 2)
             prompts = plan.semantic_prompts if plan.semantic_prompts else [plan.semantic_text]
             logger.info(
@@ -1370,6 +1389,12 @@ class SearchOrchestrator:
             backoff_floor = max(0.05, threshold - 0.04)
             already_scored = {sr.path for sr in scored}
             for retry in range(1, max_retries + 1):
+                # Check cancellation before each backoff retry
+                with self._smart_find._inflight_lock:
+                    _token = self._smart_find._inflight_token
+                if _token is not None and _token.is_cancelled:
+                    logger.info("[SearchOrchestrator] Backoff cancelled (stale search)")
+                    break
                 lowered = max(backoff_floor, threshold - (backoff_step * retry))
                 logger.info(f"[SearchOrchestrator] Backoff retry {retry}: {threshold:.2f} -> {lowered:.2f}")
                 retry_hits = self._smart_find._run_clip_multi_prompt(
@@ -1425,7 +1450,9 @@ class SearchOrchestrator:
         # Step 7b: Negative prompt penalty (soft scoring adjustment)
         # For presets like Documents that define negative_prompts, compute
         # negative CLIP scores and penalize matching results.
-        if plan.negative_prompts and scored and self._smart_find.clip_available:
+        # Skip for type-family presets where CLIP was intentionally disabled.
+        if (plan.negative_prompts and scored and self._smart_find.clip_available
+                and not skip_clip_for_type):
             scored = self._apply_negative_prompt_penalty(
                 scored, plan, project_meta
             )
