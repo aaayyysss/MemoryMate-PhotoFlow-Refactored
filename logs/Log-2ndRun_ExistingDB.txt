@@ -1,0 +1,310 @@
+Using runtime: C:\Tools\MM_Runtime\.venv\Scripts\python.exe
+[BOOT] sys.executable = C:\Tools\MM_Runtime\.venv\Scripts\python.exe
+[Startup] pillow_heif available — HEIC/HEIF support enabled.
+🔇 Decoder warnings suppressed per settings.
+🔇 Decoder warnings suppressed (Qt, Pillow, ICC).
+[Environment] APP_DIR = C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.07-Photo-App\MemoryMate-PhotoFlow-Refactored-main-26
+[Environment] Portable Python: False
+[Environment] sys.executable = C:\Tools\MM_Runtime\.venv\Scripts\python.exe
+✅ Loaded en translations from C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.07-Photo-App\MemoryMate-PhotoFlow-Refactored-main-26\locales\en.json
+🌍 Language initialized: en
+2026-03-09 12:25:19,529 [INFO] ================================================================================
+2026-03-09 12:25:19,529 [INFO] MemoryMate-PhotoFlow logging initialized (level=INFO)
+2026-03-09 12:25:19,529 [INFO] Log file: C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.07-Photo-App\MemoryMate-PhotoFlow-Refactored-main-26\app_log.txt
+2026-03-09 12:25:19,530 [INFO] ================================================================================
+============================================================
+SCREEN INFORMATION (DPI-Aware)
+============================================================
+Resolution:      1920x1200
+Available:       1920x1152
+Category:        FHD
+DPI Scale:       1.0x (100%)
+High-DPI:        No
+Taskbar Height:  48px
+Adaptive Margin: 60px
+Adaptive Icons:  24px
+============================================================
+2026-03-09 12:25:19,564 [INFO] Installed Qt message handler to suppress TIFF warnings
+2026-03-09 12:25:19,565 [INFO] Qt message handler installed to suppress TIFF warnings
+2026-03-09 12:25:19,572 [INFO] [Store] Initialized (ui_epoch=0)
+2026-03-09 12:25:19,572 [INFO] [Startup] ProjectState store initialized
+[Main] Starting Qt event loop...
+[Startup] Database schema initialized successfully
+[Cache] {'entries': 23, 'size_mb': 0.16, 'path': 'C:\\Users\\suleimaa\\Downloads\\Photo-Sorter\\11.01.01.07-Photo-App\\MemoryMate-PhotoFlow-Refactored-main-26\\thumbnails_cache.db', 'last_updated': '2026-03-09 12:25'}
+2026-03-09 12:25:20,996 [INFO] SearchService initialized
+[ThumbCacheDB] Purged 20 stale thumbnails (> 30 days).
+[Startup] SearchService initialized
+2026-03-09 12:25:21,004 [INFO] LRUCache initialized with capacity=200, max_memory=100.0MB
+2026-03-09 12:25:21,004 [INFO] ThumbnailService initialized (L1 capacity=200, max_memory=100.0MB, timeout=5.0s)
+2026-03-09 12:25:21,005 [INFO] Global ThumbnailService created with Phase 1B memory limits
+[Startup] ThumbnailService initialized
+[Startup] Qt image plugins: ['bmp', 'cur', 'gif', 'icns', 'ico', 'jpeg', 'jpg', 'pbm', 'pdf', 'pgm', 'png', 'ppm', 'svg', 'svgz', 'tga', 'tif', 'tiff', 'wbmp', 'webp', 'xbm', 'xpm']
+[Startup] ⚠️ CREATING MainWindow instance...
+🌍 Language switched to: en
+[MainWindow] Language loaded from settings: en
+[LayoutManager] Registered layout: Current Layout (id=current)
+[LayoutManager] Registered layout: Google Photos Style (id=google)
+[LayoutManager] Registered layout: Apple Photos Style (id=apple)
+[LayoutManager] Registered layout: Lightroom Style (id=lightroom)
+[MainWindow] Layout manager initialized
+[MainWindow] 🖥️ Screen detected: 1920x1152 (DPI: 1.0x)
+[MainWindow] Screen geometry: x=0, y=0, w=1920, h=1152
+[MainWindow] 📐 Window size: 1800x1032 (margins: 60px)
+[MainWindow] 📍 Window position: x=60, y=60
+[MainWindow] ✓ Window geometry: PySide6.QtCore.QRect(60, 60, 1800, 1032)
+🔇 Qt/Pillow decoder warnings silenced (per user settings).
+2026-03-09 12:25:21,094 [INFO] [SemanticSearch] Result caching ENABLED (cachetools available)
+2026-03-09 12:25:21,098 [INFO] [SemanticSearch] Result cache initialized (100 entries, 5min TTL)
+2026-03-09 12:25:21,109 [INFO] [SemanticSearch] No project model set, using default: openai/clip-vit-base-patch32
+2026-03-09 12:25:21,110 [INFO] [SemanticSearch] 🔍 Available CLIP models found: 2
+2026-03-09 12:25:21,110 [INFO]   ✓ openai/clip-vit-base-patch32: Base model, fastest (512-D) (512-D, 600MB) ← WILL BE USED
+2026-03-09 12:25:21,111 [INFO]   ✓ openai/clip-vit-large-patch14: Large model, best quality (768-D) (768-D, 1700MB)
+2026-03-09 12:25:21,111 [INFO] [SemanticSearch] 🎯 Will use: openai/clip-vit-base-patch32 - Base model, fastest (512-D)
+2026-03-09 12:25:21,111 [WARNING] [SemanticSearch] ⚠️  Better model available but not being used!
+  clip-vit-large-patch14 is installed but has embeddings from base-patch32.
+  To use the large model: Tools → Extract Embeddings (will auto-use large model)
+2026-03-09 12:25:21,112 [INFO] [MainWindow] ✨ Semantic search widget added to toolbar - visible: False, size: PySide6.QtCore.QSize(100, 30)
+2026-03-09 12:25:21,133 [INFO] [SessionState] Loaded: section=find, selection=None/None
+[MainWindow] PHASE 1: Restoring project_id=1 from session state
+[Sidebar] Device auto-detection disabled (manual refresh only)
+[SidebarQt] switch_display_mode(list) - canceling old workers
+[SidebarQt] Hiding tabs controller and accordion
+[SidebarQt] Canceled tab/accordion workers via hide
+[SidebarQt] Clearing tree view selection before rebuild
+[SidebarQt] Showing tree view
+[SidebarQt] Calling _build_tree_model()
+[SidebarQt] _build_tree_model() called with project_id=1
+[Sidebar] Detaching old model from tree view
+[Sidebar] Pending events processed (skipped explicit processEvents)
+[Sidebar] Creating fresh model (avoiding Qt segfault)
+[Sidebar] Attaching fresh model to tree view
+[SidebarQt] list_branches() returned 1 branches
+[SidebarQt] Sample branches: [{'branch_key': 'all', 'display_name': '📁 All Photos', 'count': 29}]
+[Sidebar] Loaded 3 folder counts in batch (performance optimization)
+[Sidebar] Loaded date counts in batch: 4 years, 9 months, 13 days
+[Sidebar] Loading videos for project_id=1
+[Sidebar] Found 2 videos in project 1
+[VideoDateHierarchy] Building: 1 years, 1 months, 2 videos
+[Sidebar] Added 🎬 Videos section with 2 videos and filters.
+2026-03-09 12:25:21,169 [INFO] [get_location_clusters] GPS columns exist: True
+2026-03-09 12:25:21,170 [INFO] [get_location_clusters] Found 2 photos with GPS data (project_id=1)
+2026-03-09 12:25:21,170 [INFO] [get_location_clusters] get_photos_by_location returned 2 location groups
+2026-03-09 12:25:21,171 [INFO] [get_location_clusters] Returning 2 location clusters
+[Sidebar] Added 🗺️ Locations section with 2 locations, 2 photos.
+[Sidebar] No mobile devices detected - added help message
+[Sidebar] starting async count population for 1 branch targets
+[Sidebar][counts worker gen=2] running for 1 targets...
+[SidebarQt] _build_tree_model() completed
+[Sidebar][counts worker gen=2] finished scanning targets, scheduling UI update
+[GRID] P2-26: Created dedicated thumbnail thread pool with 4 workers
+[MainWindow] ✓ MetadataEditorDock initialized
+[LayoutManager] Initializing default layout: google
+[LayoutManager] Switching layout: current → google
+[LayoutManager] 💾 Took ownership of original central widget: QWidget
+[GooglePhotosLayout] Using default project: 1
+[GooglePhotosLayout] Project selector populated with 1 projects (+ New Project option)
+[GooglePhotosLayout] ✓ Reusing existing semantic_search widget from main_window
+[GooglePhotosLayout] ✓ Semantic search widget visibility ensured
+[GooglePhotosLayout] ✓ Semantic search toolbar visibility ensured
+2026-03-09 12:25:23,096 [INFO] [AccordionSidebar] Initializing with project_id=1
+2026-03-09 12:25:23,117 [INFO] [AccordionSidebar] Created 9 sections
+2026-03-09 12:25:23,118 [INFO] [AccordionSidebar] Expanding section: find
+2026-03-09 12:25:23,131 [INFO] [SemanticSearchService] Creating service for project 1 with canonical model: openai/clip-vit-base-patch32
+2026-03-09 12:25:23,131 [INFO] [SemanticEmbeddingService] Creating service for model: openai/clip-vit-base-patch32
+2026-03-09 12:25:23,133 [INFO] [SemanticEmbeddingService] Initialized (lazy) with model=openai/clip-vit-base-patch32
+2026-03-09 12:25:23,133 [INFO] [SemanticSearchService] Initialized with model=openai/clip-vit-base-patch32
+2026-03-09 12:25:23,298 [INFO] [AccordionSidebar] Section find loaded and displayed
+[GooglePhotosLayout] ✅ Scroll-triggered lazy loading enabled
+[LayoutManager] Setting new central widget: QWidget
+[GooglePhotosLayout] Layout activated
+[LayoutManager] Switched to: Google Photos Style
+[Startup] Layout system initialized successfully
+[MainWindow] __init__() COMPLETED - returning to main_qt.py
+[MainWindow] Window object: <main_window_qt.MainWindow(0x1d23c4e04e0) at 0x000001D23DB43E00>
+[MainWindow] Window valid: N/A
+[Startup] ✅ MainWindow instance created successfully
+[Startup] MainWindow type: <class 'main_window_qt.MainWindow'>
+[Startup] MainWindow is valid: True
+2026-03-09 12:25:23,458 [INFO] [Store] QtActionBridge initialized
+2026-03-09 12:25:23,458 [INFO] [Startup] QtActionBridge attached to MainWindow
+[Startup] Updating splash progress to 95%...
+[Sidebar][counts applied] updated UI with counts
+[GooglePhotosLayout] 📐 Responsive grid: 2 columns (viewport: 397px, thumb: 200px)
+
+[Breadcrumb] _update_breadcrumb() CALLED
+[Breadcrumb] Grid state: navigation_mode=None, project_id=1
+[Breadcrumb] Looking for CURRENT project_id=1 in 1 projects
+[Breadcrumb] Found CURRENT project name: P01
+[Breadcrumb] Added project segment: P01
+[Breadcrumb] Added fallback segment: All Photos
+[Breadcrumb] Calling set_path() with 2 segments
+[BreadcrumbNav] set_path() called with 2 segments
+[BreadcrumbNav] Clearing 0 existing widgets
+[BreadcrumbNav] Cleared all existing widgets
+[BreadcrumbNav] Added segment 0: P01
+[BreadcrumbNav] Added segment 1: All Photos
+[BreadcrumbNav] set_path() completed - 2 segments added
+[Breadcrumb] set_path() completed successfully
+[Breadcrumb] _update_breadcrumb() COMPLETED
+
+[Startup] Processing events...
+[Startup] Events processed, ready to show window
+[Startup] Showing main window...
+[Startup] Window geometry before show(): PySide6.QtCore.QRect(60, 60, 1800, 1032)
+[Startup] Window visible before show(): False
+[Startup] Window visible after show(): True
+[Startup] Window geometry after show(): PySide6.QtCore.QRect(60, 91, 1800, 1032)
+[Startup] Window position: x=60, y=60, w=1800, h=1032
+[Startup] Window on screen: \\.\DISPLAY1
+[MainWindow] ✓ Window is on-screen (center at 959, 606)
+[Startup] Window raised and activated
+[Startup] _after_first_paint fired at 2597.712s
+2026-03-09 12:25:23,549 [INFO] JobService initialized
+2026-03-09 12:25:23,551 [INFO] [JobManager] Initialized with max 4 workers
+2026-03-09 12:25:23,552 [INFO] [JobManager] Startup throttle enabled (max_threads=1)
+[Startup] Scheduled _on_startup_ready for GooglePhotosLayout
+[GooglePhotosLayout] First paint done — starting initial photo load
+[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px)...
+[GooglePhotosLayout] 🔍 Starting async photo load (generation 1) - existing content preserved...
+[GooglePhotosLayout] Paged load started (generation 1, page_size=250)
+[Startup] ✅ Main window should now be visible
+[Startup] If window is not visible, check:
+[Startup]   1. Window position: (60, 60)
+[Startup]   2. Window size: 1800x1032
+[Startup]   3. Screen geometry: PySide6.QtCore.QRect(0, 0, 1920, 1152)
+[Startup]   4. Check if window is off-screen or on disconnected monitor
+2026-03-09 12:25:23,651 [INFO] [Main] Async FFmpeg detection worker launched
+2026-03-09 12:25:23,651 [INFO] [FFmpegDetectionWorker] Starting async FFmpeg detection...
+2026-03-09 12:25:23,651 [INFO] [GoogleLayout] Page count ready: gen=1 total=31 (threshold=3000)
+2026-03-09 12:25:23,653 [INFO] [GoogleLayout] Page ready: gen=1 offset=0 rows=31 loaded=31/31
+[GooglePhotosLayout] Dispatching 31 assets (photos+videos) to background grouping worker...
+2026-03-09 12:25:23,654 [INFO] [GoogleLayout] All pages loaded: 31 rows total
+2026-03-09 12:25:23,655 [INFO] [FFmpegDetectionWorker] Using cached FFmpeg detection result
+✅ FFmpeg and FFprobe detected (custom path: C:\ffmpeg\bin)
+[GooglePhotosLayout] Grouped into 13 date groups
+[GooglePhotosLayout] Tracking 31 paths for multi-selection
+[GooglePhotosLayout] 📐 Responsive grid: 7 columns (viewport: 1517px, thumb: 200px)
+[GooglePhotosLayout] Virtual scrolling enabled: 13 total date groups
+[GooglePhotosLayout] Rendered: 5 groups | Placeholders: 8 groups
+[GooglePhotosLayout] Queued 10 thumbnails for loading (initial limit: 50)
+[GooglePhotosLayout] Photo loading complete! Thumbnails will load progressively.
+[MainWindow] Starting deferred initialization...
+[MainWindow] ✅ Database handle initialized (fast)
+[MainWindow] ✅ Session state restoration scheduled
+[MainWindow] ✅ Status bar updated
+[MainWindow] Database maintenance job scheduled (2s delay)
+[MainWindow] CLIP background warmup scheduled (3s delay)
+[MainWindow] Cache purge scheduled (5s delay)
+[MainWindow] ✅ Deferred initialization completed successfully
+[MainWindow] PHASE 2: Using Current Layout (SidebarQt) - will restore via tree selection
+[MainWindow] PHASE 3 (SidebarQt): No selection to restore
+2026-03-09 12:25:25,831 [INFO] [JobManager] Registered tracked job -1: maintenance — Database maintenance (backfill & index)
+[MainWindow] Maintenance job registered: job_id=-1
+2026-03-09 12:25:25,857 [INFO] [JobManager] Tracked job -1 (maintenance) completed: None
+[MainWindow] Background maintenance completed
+[MainWindow] CLIP background warmup started (ModelWarmupWorker)
+2026-03-09 12:25:26,830 [INFO] [ModelWarmupWorker] Starting: worker=model-warmup-c363842e
+2026-03-09 12:25:26,833 [INFO] [ModelWarmupWorker] Using project canonical model: openai/clip-vit-base-patch32 (project_id=1)
+2026-03-09 12:25:26,833 [INFO] [ModelWarmupWorker] Importing torch and transformers...
+[Startup] Global QThreadPool restored to 1 threads
+2026-03-09 12:25:28,572 [INFO] [JobManager] Startup throttle disabled (restored max_threads=12)
+[ThumbCacheDB] Purged 9 stale thumbnails (> 30 days).
+[MainWindow] Deferred cache purge completed
+2026-03-09 12:25:29,103 [INFO] [ModelWarmupWorker] Loading CLIP model: openai/clip-vit-base-patch32
+2026-03-09 12:25:29,104 [INFO] [SemanticEmbeddingService] Loading model: openai/clip-vit-base-patch32
+2026-03-09 12:25:29,104 [INFO] [SemanticEmbeddingService] Using CPU
+2026-03-09 12:25:29,105 [INFO] [SemanticEmbeddingService] Searching for offline model...
+2026-03-09 12:25:29,105 [INFO] [SemanticEmbeddingService]   App root: C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.07-Photo-App\MemoryMate-PhotoFlow-Refactored-main-26
+2026-03-09 12:25:29,106 [INFO] [SemanticEmbeddingService]   Looking for: openai--clip-vit-base-patch32 (or clip-vit-base-patch32)
+2026-03-09 12:25:29,106 [INFO] [SemanticEmbeddingService]   Checking: C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.07-Photo-App\MemoryMate-PhotoFlow-Refactored-main-26\Model\openai--clip-vit-base-patch32
+2026-03-09 12:25:29,107 [INFO] [SemanticEmbeddingService]     → Exists: False
+2026-03-09 12:25:29,107 [INFO] [SemanticEmbeddingService]   Checking: C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.07-Photo-App\MemoryMate-PhotoFlow-Refactored-main-26\model\openai--clip-vit-base-patch32
+2026-03-09 12:25:29,108 [INFO] [SemanticEmbeddingService]     → Exists: False
+2026-03-09 12:25:29,108 [INFO] [SemanticEmbeddingService]   Checking: C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.07-Photo-App\MemoryMate-PhotoFlow-Refactored-main-26\models\openai--clip-vit-base-patch32
+2026-03-09 12:25:29,108 [INFO] [SemanticEmbeddingService]     → Exists: False
+2026-03-09 12:25:29,108 [INFO] [SemanticEmbeddingService]   Checking: C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.07-Photo-App\MemoryMate-PhotoFlow-Refactored-main-26\models\clip-vit-base-patch32
+2026-03-09 12:25:29,109 [INFO] [SemanticEmbeddingService]     → Exists: True
+2026-03-09 12:25:29,109 [INFO] [SemanticEmbeddingService]     → Has config.json: False
+2026-03-09 12:25:29,109 [INFO] [SemanticEmbeddingService]     → Has snapshots folder: True
+2026-03-09 12:25:29,109 [INFO] [SemanticEmbeddingService]     → Found 3 snapshot(s)
+2026-03-09 12:25:29,110 [INFO] [SemanticEmbeddingService]     → refs/main points to: 3d74acf9a28c67741b2f4f2ea7635f0aaf6f0268
+2026-03-09 12:25:29,110 [INFO] [SemanticEmbeddingService]     → Using snapshot: 3d74acf9a28c67741b2f4f2ea7635f0aaf6f0268
+2026-03-09 12:25:29,110 [INFO] [SemanticEmbeddingService]     → Snapshot has config.json: True
+2026-03-09 12:25:29,110 [INFO] [SemanticEmbeddingService]     → ✓ VALID MODEL FOUND in HF cache snapshot!
+2026-03-09 12:25:29,112 [INFO] [SemanticEmbeddingService] Loading from local path (offline mode): C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.07-Photo-App\MemoryMate-PhotoFlow-Refactored-main-26\models\clip-vit-base-patch32\snapshots\3d74acf9a28c67741b2f4f2ea7635f0aaf6f0268
+2026-03-09 12:25:29,599 [INFO] [SemanticEmbeddingService] Model loaded successfully: openai/clip-vit-base-patch32
+2026-03-09 12:25:29,605 [INFO] [SemanticEmbeddingService] ✓ Patched CLIPTextTransformer.forward with pre-computed causal mask (Windows crash prevention)
+2026-03-09 12:25:29,606 [INFO] [SemanticEmbeddingService] Model ready on cpu
+2026-03-09 12:25:29,606 [INFO] [ModelWarmupWorker] Model loaded successfully: variant=openai/clip-vit-base-patch32, device=cpu
+[MainWindow] ✅ CLIP model warmed up in background: openai/clip-vit-base-patch32
+2026-03-09 12:25:29,606 [INFO] [ModelWarmup] Model ready: openai/clip-vit-base-patch32 (id=0)
+✅ InsightFace detected with buffalo_l models
+   Location: C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.07-Photo-App\MemoryMate-PhotoFlow-Refactored-main-26\models\buffalo_l
+2026-03-09 12:25:42,876 [INFO] [SearchOrchestrator] Embedding model: openai/clip-vit-base-patch32 | dimension: 512-D | quality tier: base (ViT-B/32, 512-D)
+2026-03-09 12:25:42,876 [INFO] [SearchOrchestrator] Semantic quality ceiling: base model (512-D). For better search separation, re-extract with clip-vit-large-patch14 (768-D) via Tools > Extract Embeddings.
+2026-03-09 12:25:43,084 [INFO] [SemanticSearchService] Query 'beach': 2 matches (threshold=0.22, top_k=600)
+2026-03-09 12:25:43,271 [INFO] [SemanticSearchService] Query 'sandy beach': 0 matches (threshold=0.22, top_k=600)
+2026-03-09 12:25:43,465 [INFO] [SemanticSearchService] Query 'shoreline': 4 matches (threshold=0.22, top_k=600)
+2026-03-09 12:25:43,645 [INFO] [SemanticSearchService] Query 'seaside': 4 matches (threshold=0.22, top_k=600)
+2026-03-09 12:25:43,845 [INFO] [SemanticSearchService] Query 'ocean coast': 0 matches (threshold=0.22, top_k=600)
+2026-03-09 12:25:44,056 [INFO] [SemanticSearchService] Query 'waves on shore': 0 matches (threshold=0.22, top_k=600)
+2026-03-09 12:25:44,243 [INFO] [SemanticSearchService] Query 'tropical beach': 0 matches (threshold=0.22, top_k=600)
+2026-03-09 12:25:44,246 [INFO] [SearchOrchestrator] Scenic anti-type penalties computed for 13 assets (preset=beach)
+2026-03-09 12:25:44,256 [INFO] [SearchOrchestrator] pre-rank preset='beach' family='scenic' survivors=6
+2026-03-09 12:25:44,257 [INFO]   #0 0.1904 | clip=0.228 struct=0.000 ocr=0.000 face=0.000 | pexels-matreding-11363475 - kopie (2).jpg
+2026-03-09 12:25:44,257 [INFO]   #1 0.1904 | clip=0.228 struct=0.000 ocr=0.000 face=0.000 | pexels-matreding-11363475 - kopie (3).jpg
+2026-03-09 12:25:44,257 [INFO]   #2 0.1904 | clip=0.228 struct=0.000 ocr=0.000 face=0.000 | pexels-matreding-11363475 - kopie.jpg
+2026-03-09 12:25:44,258 [INFO]   #3 0.1904 | clip=0.228 struct=0.000 ocr=0.000 face=0.000 | pexels-matreding-11363475.jpg
+2026-03-09 12:25:44,258 [INFO]   #4 0.1835 | clip=0.224 struct=0.000 ocr=0.000 face=0.000 | alya1_2_2_2.jpeg
+2026-03-09 12:25:44,263 [INFO] [SearchOrchestrator] query="Beach" | 2 results | 1391ms | family=scenic | weights=[clip=0.82 rec=0.04 fav=0.05 loc=0.06 face=0.03 struct=0.00 ocr=0.00]
+2026-03-09 12:25:44,263 [INFO]   #1 0.1904 | clip=0.228 rec=0.083 fav=0.00 loc=0.0 face=0.0 struct=0.000 ocr=0.000 | pexels-matreding-11363475.jpg [+3]
+2026-03-09 12:25:44,264 [INFO]   #2 0.1835 | clip=0.224 rec=0.003 fav=0.00 loc=0.0 face=0.0 struct=0.000 ocr=0.000 | alya1_2_2_2.jpeg [+1]
+2026-03-09 12:25:44,264 [INFO] [SmartFind] Preset 'Beach': 2 results in 1391ms (CLIP=True, filters=False, backoff=False)
+2026-03-09 12:25:44,269 [INFO] [GooglePhotosLayout] Smart Find: '🏖️ Beach' → 2 results
+[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px) [paths=2 photos]...
+[GooglePhotosLayout] 🔍 Starting async photo load (generation 2) - existing content preserved...
+[GooglePhotosLayout] Photo load worker started (generation 2, legacy/paths)
+2026-03-09 12:25:44,330 [INFO] Photo query complete: generation=2, current=2, rows=2
+[GooglePhotosLayout] Dispatching 2 assets (photos+videos) to background grouping worker...
+[GooglePhotosLayout] Grouped into 2 date groups
+[GooglePhotosLayout] Tracking 2 paths for multi-selection
+[GooglePhotosLayout] Virtual scrolling enabled: 2 total date groups
+[GooglePhotosLayout] Rendered: 2 groups | Placeholders: 0 groups
+[GooglePhotosLayout] Queued 2 thumbnails for loading (initial limit: 50)
+[GooglePhotosLayout] Photo loading complete! Thumbnails will load progressively.
+Windows fatal exception: access violation
+
+Current thread 0x000046d0 (most recent call first):
+  File "C:\Tools\MM_Runtime\.venv\Lib\site-packages\transformers\models\clip\modeling_clip.py", line 294 in forward
+  File "C:\Tools\MM_Runtime\.venv\Lib\site-packages\torch\nn\modules\module.py", line 1520 in _call_impl
+  File "C:\Tools\MM_Runtime\.venv\Lib\site-packages\torch\nn\modules\module.py", line 1511 in _wrapped_call_impl
+  File "C:\Tools\MM_Runtime\.venv\Lib\site-packages\transformers\models\clip\modeling_clip.py", line 372 in forward
+  File "C:\Tools\MM_Runtime\.venv\Lib\site-packages\torch\nn\modules\module.py", line 1520 in _call_impl
+  File "C:\Tools\MM_Runtime\.venv\Lib\site-packages\torch\nn\modules\module.py", line 1511 in _wrapped_call_impl
+  File "C:\Tools\MM_Runtime\.venv\Lib\site-packages\transformers\models\clip\modeling_clip.py", line 630 in forward
+  File "C:\Tools\MM_Runtime\.venv\Lib\site-packages\torch\nn\modules\module.py", line 1520 in _call_impl
+  File "C:\Tools\MM_Runtime\.venv\Lib\site-packages\torch\nn\modules\module.py", line 1511 in _wrapped_call_impl
+  File "C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.07-Photo-App\MemoryMate-PhotoFlow-Refactored-main-26\services\semantic_embedding_service.py", line 690 in _patched_forward
+  File "C:\Tools\MM_Runtime\.venv\Lib\site-packages\torch\nn\modules\module.py", line 1520 in _call_impl
+  File "C:\Tools\MM_Runtime\.venv\Lib\site-packages\torch\nn\modules\module.py", line 1511 in _wrapped_call_impl
+  File "C:\Tools\MM_Runtime\.venv\Lib\site-packages\transformers\models\clip\modeling_clip.py", line 994 in get_text_features
+  File "C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.07-Photo-App\MemoryMate-PhotoFlow-Refactored-main-26\services\semantic_embedding_service.py", line 897 in encode_text
+  File "C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.07-Photo-App\MemoryMate-PhotoFlow-Refactored-main-26\services\semantic_search_service.py", line 160 in search
+  File "C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.07-Photo-App\MemoryMate-PhotoFlow-Refactored-main-26\services\smart_find_service.py", line 1133 in _run_clip_multi_prompt
+  File "C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.07-Photo-App\MemoryMate-PhotoFlow-Refactored-main-26\services\search_orchestrator.py", line 1121 in _execute
+  File "C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.07-Photo-App\MemoryMate-PhotoFlow-Refactored-main-26\services\search_orchestrator.py", line 739 in search_by_preset
+  File "C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.07-Photo-App\MemoryMate-PhotoFlow-Refactored-main-26\services\smart_find_service.py", line 850 in find_by_preset
+  File "C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.07-Photo-App\MemoryMate-PhotoFlow-Refactored-main-26\ui\accordion_sidebar\find_section.py", line 301 in run
+
+Thread 0x00002a58 (most recent call first):
+  File "C:\Tools\WinPython\WPy64-31180\python-3.11.8.amd64\Lib\threading.py", line 331 in wait
+  File "C:\Tools\WinPython\WPy64-31180\python-3.11.8.amd64\Lib\threading.py", line 629 in wait
+  File "C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.07-Photo-App\MemoryMate-PhotoFlow-Refactored-main-26\thumb_cache_db.py", line 270 in _auto_purge_worker
+  File "C:\Tools\WinPython\WPy64-31180\python-3.11.8.amd64\Lib\threading.py", line 982 in run
+  File "C:\Tools\WinPython\WPy64-31180\python-3.11.8.amd64\Lib\threading.py", line 1045 in _bootstrap_inner
+  File "C:\Tools\WinPython\WPy64-31180\python-3.11.8.amd64\Lib\threading.py", line 1002 in _bootstrap
+
+Thread 0x0000181c (most recent call first):
+  File "C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.07-Photo-App\MemoryMate-PhotoFlow-Refactored-main-26\main_qt.py", line 476 in <module>
+Exit code: -1073741819
+Drücken Sie eine beliebige Taste . . .
