@@ -214,6 +214,19 @@ class SemanticEmbeddingService:
                 try:
                     import torch
                     self._torch = torch
+
+                    # CRITICAL FIX: Pin MKL/OpenBLAS to 1 thread IMMEDIATELY
+                    # after importing torch, BEFORE loading the model.
+                    # main_qt.py sets OMP_NUM_THREADS=4 for InsightFace, so
+                    # MKL initializes with 4 threads.  If we wait until the
+                    # first encode_text() call (which runs in a *different*
+                    # QThreadPool worker thread) to switch to 1, MKL's
+                    # internal thread pool gets reconfigured across threads
+                    # and crashes with an access violation (0xC0000005).
+                    # Pinning here ensures MKL is at 1 thread before
+                    # from_pretrained() ever touches the weight tensors.
+                    torch.set_num_threads(1)
+
                 except (ImportError, AttributeError, RuntimeError) as e:
                     # AttributeError: NumPy 2.x incompatibility (_ARRAY_API not found)
                     # RuntimeError: dtype inference failures from numpy version mismatch
@@ -607,6 +620,22 @@ class SemanticEmbeddingService:
             # patching it into the model's forward pass eliminates the crash
             # entirely by bypassing the problematic code path.
             self._patch_causal_mask()
+
+            # CRITICAL FIX: Run a dummy inference pass during model loading
+            # to fully initialise MKL's internal state in THIS thread.
+            # Without this, the first real encode_text() call (from a
+            # *different* QThreadPool worker thread) performs the first-ever
+            # MKL matrix multiply, which can still trigger access violations
+            # on Windows when MKL lazily initialises its thread pool.
+            # A single warm-up call forces MKL to complete its initialisation
+            # while we hold _load_lock, making subsequent cross-thread calls safe.
+            try:
+                with self._torch.inference_mode():
+                    dummy_ids = self._torch.zeros(1, 77, dtype=self._torch.long, device=self._device)
+                    self._model.get_text_features(input_ids=dummy_ids)
+                logger.info("[SemanticEmbeddingService] ✓ Warm-up inference completed (MKL initialised)")
+            except Exception as e:
+                logger.warning(f"[SemanticEmbeddingService] Warm-up inference failed (non-fatal): {e}")
 
             # Successfully loaded - clear any previous error
             self._load_error = None
