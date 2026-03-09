@@ -190,7 +190,7 @@ class ModelWarmupWorker(QRunnable):
 
             if not embedding_service._available:
                 error_msg = "Embedding service not available (missing dependencies)"
-                logger.error(f"[ModelWarmupWorker] {error_msg}")
+                logger.warning(f"[ModelWarmupWorker] {error_msg}")
                 self.signals.error.emit(error_msg)
                 return
 

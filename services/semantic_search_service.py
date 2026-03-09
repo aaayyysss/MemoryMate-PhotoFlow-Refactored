@@ -152,7 +152,7 @@ class SemanticSearchService:
             return []
 
         if not self.available:
-            logger.error("[SemanticSearchService] Service not available (PyTorch/Transformers missing)")
+            logger.debug("[SemanticSearchService] Service not available (PyTorch/Transformers missing)")
             return []
 
         # Encode query
