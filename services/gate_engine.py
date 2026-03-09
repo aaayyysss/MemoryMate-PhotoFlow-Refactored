@@ -168,6 +168,9 @@ class GateEngine:
         is_pets = (preset_id == "pets")
 
         # Safety: skip face-requiring gates if face data is essentially absent
+        # Note: For people_event presets, the orchestrator now blocks execution
+        # entirely when face coverage < 10%. This gate-level fallback handles
+        # edge cases where face data is nearly absent (<1%) for non-preset queries.
         if require_faces or min_face_count > 0:
             total_photos = len(project_meta) if project_meta else 0
             face_photo_count = sum(

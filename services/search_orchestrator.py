@@ -915,9 +915,154 @@ class SearchOrchestrator:
     # Minimum results before backoff triggers
     _MIN_RESULTS_TARGET = 20
 
+    # Face coverage floor for people-event presets.
+    # Below this, return "not ready" instead of silently degraded results.
+    _FACE_COVERAGE_FLOOR = 0.10
+
     def _is_people_implied(self, plan: QueryPlan) -> bool:
         """Detect if a query implies people/faces (portraits, baby, wedding, etc.)."""
         return is_people_implied(plan)
+
+    # ── Family-specific candidate builders (structure-first retrieval) ──
+
+    def _build_type_candidates(
+        self, plan: QueryPlan, project_meta: Dict[str, Dict],
+    ) -> List[str]:
+        """
+        Build structural candidate pool for type-family presets.
+
+        For Documents: candidates from all assets where at least one is true:
+          - document-native extension (.pdf, .png, .tif, .tiff)
+          - page-like geometry (A4/letter aspect ratio)
+          - OCR text length above threshold
+          - OCR lexicon hit (invoice, receipt, etc.)
+        Then exclude: screenshots, face_count > 0, tiny images (<700px).
+
+        For Screenshots: candidates from all assets where:
+          - is_screenshot == True
+          - OR filename contains screenshot markers
+          - OR OCR contains UI terms
+        No CLIP-only candidates allowed.
+
+        This is the Apple/Google-style approach: structure narrows the
+        universe first, semantics ranks inside it.
+        """
+        import os
+
+        preset_id = plan.preset_id
+        candidates = []
+
+        if preset_id == "documents":
+            _DOC_EXTENSIONS = frozenset({'.pdf', '.png', '.tif', '.tiff', '.bmp'})
+
+            for path, meta in project_meta.items():
+                # Exclusions first (hard reject)
+                if meta.get("is_screenshot"):
+                    continue
+                if (meta.get("face_count") or 0) > 0:
+                    continue
+                w = meta.get("width") or 0
+                h = meta.get("height") or 0
+                if w and h and min(w, h) < 700:
+                    continue
+
+                # Inclusion: at least one structural signal
+                ext = os.path.splitext(path)[1].lower() if path else ""
+                has_doc_ext = ext in _DOC_EXTENSIONS
+                has_ocr = GateEngine.has_document_ocr_signal(meta)
+                page_like = GateEngine.is_page_like(meta)
+
+                # OCR lexicon check
+                ocr_text = (meta.get("ocr_text") or "").lower()
+                from services.gate_engine import _DOC_LEXICON
+                lexicon_hit = any(term in ocr_text for term in _DOC_LEXICON)
+
+                if has_doc_ext or has_ocr or page_like or lexicon_hit:
+                    candidates.append(path)
+
+            logger.info(
+                f"[SearchOrchestrator] build_type_candidates(documents): "
+                f"{len(candidates)}/{len(project_meta)} structural candidates"
+            )
+
+        elif preset_id == "screenshots":
+            _SCREENSHOT_MARKERS = ("screenshot", "screen shot", "screen_shot",
+                                   "bildschirmfoto", "captura")
+            _UI_TERMS = frozenset({
+                "battery", "wifi", "lte", "5g", "notification",
+                "settings", "search", "cancel", "back", "menu",
+                "home", "share", "download",
+            })
+
+            for path, meta in project_meta.items():
+                is_screenshot = bool(meta.get("is_screenshot"))
+                basename_lower = os.path.basename(path).lower() if path else ""
+                filename_marker = any(m in basename_lower for m in _SCREENSHOT_MARKERS)
+
+                ocr_text = (meta.get("ocr_text") or "").lower()
+                ui_hit = any(t in ocr_text for t in _UI_TERMS) if ocr_text else False
+
+                if is_screenshot or filename_marker or ui_hit:
+                    candidates.append(path)
+
+            logger.info(
+                f"[SearchOrchestrator] build_type_candidates(screenshots): "
+                f"{len(candidates)}/{len(project_meta)} structural candidates"
+            )
+
+        return candidates
+
+    def _check_face_readiness(
+        self, plan: QueryPlan, project_meta: Dict[str, Dict],
+    ) -> Optional[OrchestratorResult]:
+        """
+        Check if face index is ready for people-event presets.
+
+        Returns an OrchestratorResult with a "not ready" status if face
+        coverage is below the floor threshold. Returns None if ready.
+
+        This prevents silently degraded results that look convincing but
+        are actually just generic CLIP-only portraits.
+        """
+        current_family = get_preset_family(plan.preset_id)
+        if current_family != "people_event":
+            return None
+
+        total_photos = len(project_meta) if project_meta else 0
+        if total_photos == 0:
+            return None
+
+        face_photo_count = sum(
+            1 for m in project_meta.values()
+            if (m.get("face_count", 0) or 0) > 0
+        )
+        face_coverage = face_photo_count / total_photos
+
+        if face_coverage >= self._FACE_COVERAGE_FLOOR:
+            return None
+
+        logger.warning(
+            f"[SearchOrchestrator] Face index not ready for "
+            f"preset={plan.preset_id!r}: "
+            f"coverage={face_photo_count}/{total_photos} "
+            f"({face_coverage:.0%}) < floor={self._FACE_COVERAGE_FLOOR:.0%}. "
+            f"Run face detection pipeline for accurate results."
+        )
+
+        return OrchestratorResult(
+            paths=[],
+            total_matches=0,
+            scored_results=[],
+            scores={},
+            facets={},
+            query_plan=plan,
+            phase_label=(
+                f"Face index not ready ({face_photo_count}/{total_photos} "
+                f"photos indexed). Run face detection for "
+                f"{plan.preset_id!r} results."
+            ),
+            label=self._build_label(plan, OrchestratorResult()),
+        )
 
     def _execute(self, plan: QueryPlan, top_k: int) -> OrchestratorResult:
         """Execute the full search pipeline from a QueryPlan."""
@@ -927,6 +1072,43 @@ class SearchOrchestrator:
 
         # Detect people-implied queries for face presence scoring
         people_implied = self._is_people_implied(plan)
+
+        # Step 0: Load project metadata early (needed for candidate builders)
+        project_meta = self._get_project_meta()
+
+        # Step 0a: Face readiness check for people-event presets
+        # Instead of silently degrading to generic CLIP search when face
+        # data is absent, return a clear "not ready" status.
+        face_block = self._check_face_readiness(plan, project_meta)
+        if face_block is not None:
+            return face_block
+
+        current_family = get_preset_family(plan.preset_id)
+
+        # Step 0b: Type-family structural candidate generation
+        # For documents/screenshots, build candidate pool from structural
+        # signals FIRST, then apply semantic ranking inside that pool.
+        # This is the Apple/Google approach: structure narrows, semantics ranks.
+        type_structural_candidates = None
+        if current_family == "type" and plan.preset_id in ("documents", "screenshots"):
+            type_structural_candidates = set(
+                self._build_type_candidates(plan, project_meta)
+            )
+            if not type_structural_candidates:
+                logger.info(
+                    f"[SearchOrchestrator] No structural candidates for "
+                    f"preset={plan.preset_id!r}; returning empty result"
+                )
+                return OrchestratorResult(
+                    paths=[],
+                    total_matches=0,
+                    scored_results=[],
+                    scores={},
+                    facets={},
+                    query_plan=plan,
+                    phase_label=f"No {plan.preset_id} found in library",
+                    label=self._build_label(plan, OrchestratorResult()),
+                )
 
         # Step 1: Semantic candidates
         semantic_hits = {}  # {photo_id: (score, prompt)}
@@ -1006,9 +1188,6 @@ class SearchOrchestrator:
             except Exception as e:
                 logger.error(f"[SearchOrchestrator] Path resolution failed: {e}")
 
-        # Step 4: Load project metadata for scoring
-        project_meta = self._get_project_meta()
-
         if people_implied:
             face_photo_count = sum(
                 1 for m in project_meta.values()
@@ -1036,7 +1215,6 @@ class SearchOrchestrator:
         # Structural scores are computed once and folded into the weighted
         # scoring contract as first-class terms (w_structural * structural,
         # w_ocr * ocr).
-        current_family = get_preset_family(plan.preset_id)
         structural_scores: Dict[str, float] = {}
         ocr_scores: Dict[str, float] = {}
         if current_family == "type":
@@ -1052,7 +1230,36 @@ class SearchOrchestrator:
         # Step 5: Score every candidate
         scored: List[ScoredResult] = []
 
-        if semantic_hits:
+        # For type-family structural presets (documents, screenshots):
+        # Seed from structural candidates, not from CLIP hits.
+        # CLIP may re-rank but may NOT create candidates by itself.
+        if type_structural_candidates is not None:
+            # Score all structural candidates (CLIP score applied if available)
+            clip_path_scores = {}
+            if semantic_hits:
+                for photo_id, (sem_score, matched_prompt) in semantic_hits.items():
+                    path = path_lookup.get(photo_id)
+                    if path:
+                        clip_path_scores[path] = (sem_score, matched_prompt)
+
+            for path in type_structural_candidates:
+                clip_info = clip_path_scores.get(path, (0.0, ""))
+                sem_score, matched_prompt = clip_info
+                struct = structural_scores.get(path, 0.0)
+                ocr = ocr_scores.get(path, 0.0)
+                sr = self._score_result(path, sem_score, matched_prompt, project_meta,
+                                        plan.filters, people_implied,
+                                        structural_score=struct, ocr_score=ocr,
+                                        preset_id=plan.preset_id)
+                scored.append(sr)
+
+            logger.info(
+                f"[SearchOrchestrator] Type-structural retrieval: "
+                f"{len(scored)} candidates seeded from structure "
+                f"({len(clip_path_scores)} had CLIP scores)"
+            )
+
+        elif semantic_hits:
             for photo_id, (sem_score, matched_prompt) in semantic_hits.items():
                 path = path_lookup.get(photo_id)
                 if not path:
