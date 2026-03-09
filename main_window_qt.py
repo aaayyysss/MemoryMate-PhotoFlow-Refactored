@@ -1067,6 +1067,21 @@ class MainWindow(QMainWindow):
                     self.statusBar().showMessage(
                         "Face pipeline complete — no faces detected", 5000
                     )
+                # Rebuild search_asset_features so face_count is available
+                # to SearchOrchestrator, then invalidate its metadata cache.
+                try:
+                    from repository.search_feature_repository import SearchFeatureRepository
+                    repo = SearchFeatureRepository()
+                    if repo.table_exists():
+                        repo.refresh_project(pid)
+                except Exception as e:
+                    print(f"[MainWindow] search_asset_features rebuild after face pipeline failed: {e}")
+                try:
+                    from services.search_orchestrator import get_search_orchestrator
+                    orch = get_search_orchestrator(pid)
+                    orch.invalidate_meta_cache()
+                except Exception:
+                    pass
                 self._ui_refresh_mediator.request_refresh({"people"}, "pipeline_done", pid)
             _face_svc.finished.connect(_on_face_svc_finished)
             # Error → status bar (guarded against shutdown)

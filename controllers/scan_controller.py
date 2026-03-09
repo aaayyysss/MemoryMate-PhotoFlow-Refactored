@@ -892,6 +892,21 @@ class ScanController(QObject):
                                 clustered=clusters,
                             ))
 
+                            # Rebuild search_asset_features so face_count is
+                            # visible to SearchOrchestrator (fixes 0% coverage).
+                            try:
+                                from repository.search_feature_repository import SearchFeatureRepository
+                                repo = SearchFeatureRepository()
+                                if repo.table_exists():
+                                    repo.refresh_project(pid)
+                            except Exception:
+                                pass
+                            try:
+                                from services.search_orchestrator import get_search_orchestrator
+                                get_search_orchestrator(pid).invalidate_meta_cache()
+                            except Exception:
+                                pass
+
                             # People section now self-refreshes via AccordionSidebar's
                             # store subscription (people_v change → reload_section).
                             self._check_and_trigger_final_refresh()
