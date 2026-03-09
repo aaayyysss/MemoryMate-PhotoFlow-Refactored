@@ -117,14 +117,16 @@ FAMILY_WEIGHTS = {
         w_ocr=0.00,
     ),
     # Type (Documents, Screenshots): structural + OCR dominate over CLIP
+    # w_clip intentionally low (0.12) — for type-family, CLIP re-ranks
+    # inside a structurally-generated candidate pool, not as primary retrieval.
     "type": ScoringWeights(
-        w_clip=0.20,
+        w_clip=0.12,
         w_recency=0.03,
         w_favorite=0.02,
         w_location=0.00,
         w_face_match=0.00,
-        w_structural=0.50,
-        w_ocr=0.25,
+        w_structural=0.55,
+        w_ocr=0.28,
     ),
     # People events: face presence is critical
     "people_event": ScoringWeights(

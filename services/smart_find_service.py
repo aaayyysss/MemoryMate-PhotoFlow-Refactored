@@ -109,6 +109,7 @@ BUILTIN_PRESETS = [
         ],
         "category": "events",
         "family": "people_event",
+        "requires_entity_index": "faces",
         "gate_profile": {"require_faces": True, "min_face_count": 1},
     },
     {
@@ -119,6 +120,7 @@ BUILTIN_PRESETS = [
         ],
         "category": "events",
         "family": "people_event",
+        "requires_entity_index": "faces",
         "gate_profile": {"require_faces": True, "min_face_count": 1},
     },
 
@@ -174,15 +176,19 @@ BUILTIN_PRESETS = [
         "prompts": [
             "pet dog", "dog", "puppy",
             "pet cat", "cat", "kitten",
-            "domestic pet",
+            "dog portrait", "cat portrait",
+            "puppy playing", "kitten playing",
         ],
         "negative_prompts": [
-            "portrait person", "selfie", "group photo",
-            "wedding", "party", "travel", "landscape",
+            "person portrait", "selfie", "group photo",
+            "wedding", "party", "human face",
+            "people standing", "family photo",
+            "landscape scenery", "building architecture",
         ],
         "category": "subjects",
         "family": "animal_object",
         "allow_backoff": False,
+        "semantic_weight": 0.6,
         "gate_profile": {
             "exclude_screenshots": True,
             "exclude_faces": True,
@@ -199,6 +205,7 @@ BUILTIN_PRESETS = [
         ],
         "category": "subjects",
         "family": "people_event",
+        "requires_entity_index": "faces",
         "gate_profile": {"require_faces": True, "min_face_count": 1},
     },
     {
@@ -209,6 +216,7 @@ BUILTIN_PRESETS = [
         ],
         "category": "subjects",
         "family": "people_event",
+        "requires_entity_index": "faces",
         "gate_profile": {"require_faces": True, "min_face_count": 1},
     },
 
@@ -275,6 +283,7 @@ BUILTIN_PRESETS = [
         "prompts": ["screenshot", "screen capture", "phone screen"],
         "category": "media",
         "family": "type",
+        "retrieval_mode": "screenshot_structural",
         "semantic_weight": 0.2,  # Metadata-dominant: heuristic detection is primary signal
         "allow_backoff": False,  # Precision-first: purity over recall
         "gate_profile": {"require_screenshot": True},
@@ -293,6 +302,7 @@ BUILTIN_PRESETS = [
         ],
         "category": "media",
         "family": "type",
+        "retrieval_mode": "type_structural",
         "semantic_weight": 0.4,
         "allow_backoff": False,
         "exclude_faces": True,
