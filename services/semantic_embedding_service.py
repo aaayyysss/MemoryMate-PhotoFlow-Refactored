@@ -1,5 +1,5 @@
 ## services\semantic_embedding_service.py
-## Version: 1.1.1 dated 20260126
+## Version: 1.1.2 dated 20260309
  
 """
 SemanticEmbeddingService - Clean Architectural Separation
@@ -32,6 +32,7 @@ Usage:
     query_embedding = service.encode_text('sunset beach')
 """
 
+import os
 import threading
 import numpy as np
 from pathlib import Path
@@ -40,6 +41,18 @@ from PIL import Image
 
 from repository.base_repository import DatabaseConnection
 from logging_config import get_logger
+
+# FIX: Set MKL/OpenBLAS/OMP environment variables BEFORE any torch import.
+# On Windows, MKL's internal thread pool causes native access violations
+# (0xC0000005) when toggled between single-thread and multi-thread mode
+# across rapid-fire inference calls from QThreadPool workers.
+# Setting these env vars once at module load prevents MKL from ever
+# initializing its multi-thread pool, eliminating the crash entirely.
+# This must happen BEFORE torch is imported (torch reads these at init).
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
 logger = get_logger(__name__)
 
@@ -815,29 +828,26 @@ class SemanticEmbeddingService:
         try:
             # Preprocess + inference under lock to prevent concurrent native crashes
             with self._infer_lock:
-                # Restrict MKL/OpenBLAS internal threads to prevent access
-                # violations from native thread-pool contention on Windows.
-                prev_threads = self._torch.get_num_threads()
+                # FIX: Pin MKL/OpenBLAS to 1 thread and do NOT restore.
+                # See encode_text() for full explanation.
                 self._torch.set_num_threads(1)
-                try:
-                    # FIX: Use return_tensors="np" and manually convert to
-                    # PyTorch tensors.  The transformers CLIPProcessor's
-                    # as_tensor() crashes with a native access violation
-                    # (0xC0000005) on Windows when converting numpy arrays
-                    # to torch tensors in background threads (MKL/BLAS
-                    # thread-pool contention).  By getting numpy output
-                    # first and using torch.from_numpy() on contiguous
-                    # arrays, we bypass the buggy code path entirely.
-                    inputs_np = self._processor(images=image, return_tensors="np")
-                    inputs = {}
-                    for k, v in inputs_np.items():
-                        arr = np.ascontiguousarray(v)
-                        inputs[k] = self._torch.from_numpy(arr).to(self._device)
 
-                    with self._torch.no_grad():
-                        image_features = self._model.get_image_features(**inputs)
-                finally:
-                    self._torch.set_num_threads(prev_threads)
+                # FIX: Use return_tensors="np" and manually convert to
+                # PyTorch tensors.  The transformers CLIPProcessor's
+                # as_tensor() crashes with a native access violation
+                # (0xC0000005) on Windows when converting numpy arrays
+                # to torch tensors in background threads (MKL/BLAS
+                # thread-pool contention).  By getting numpy output
+                # first and using torch.from_numpy() on contiguous
+                # arrays, we bypass the buggy code path entirely.
+                inputs_np = self._processor(images=image, return_tensors="np")
+                inputs = {}
+                for k, v in inputs_np.items():
+                    arr = np.ascontiguousarray(v)
+                    inputs[k] = self._torch.from_numpy(arr).to(self._device)
+
+                with self._torch.inference_mode():
+                    image_features = self._model.get_image_features(**inputs)
         except Exception as e:
             logger.exception("[SemanticEmbeddingService] CLIP inference failed on %s: %s", image_path, e)
             return None
@@ -866,37 +876,47 @@ class SemanticEmbeddingService:
         try:
             # Preprocess + inference under lock to prevent concurrent native crashes
             with self._infer_lock:
-                # Restrict MKL/OpenBLAS internal threads to prevent access
-                # violations from native thread-pool contention on Windows.
-                prev_threads = self._torch.get_num_threads()
+                # FIX: Pin MKL/OpenBLAS to 1 thread and do NOT restore.
+                # Toggling set_num_threads between 1 and N across rapid-fire
+                # searches destabilises MKL's internal thread pool on Windows,
+                # causing native access violations (0xC0000005) in CLIPAttention.
+                # The env-var fix (OMP_NUM_THREADS=1) handles new processes;
+                # this call handles cases where torch was imported before the
+                # env var was set.
                 self._torch.set_num_threads(1)
-                try:
-                    # FIX: Always pad to max_length=77 (CLIP context length) and
-                    # truncate.  The original OpenAI CLIP always uses 77-token
-                    # sequences.  Using padding=True produces variable-length
-                    # tensors (e.g. 3 tokens for "beach") which triggers a native
-                    # access violation in transformers' _make_causal_mask on
-                    # certain Windows builds.  Fixed-length input avoids the
-                    # buggy short-sequence code path entirely.
-                    inputs = self._processor(
-                        text=[text],
-                        return_tensors="pt",
-                        padding="max_length",
-                        truncation=True,
-                        max_length=77,
-                    )
-                    # Only pass text-model keys to avoid stray processor outputs
-                    text_keys = {"input_ids", "attention_mask"}
-                    inputs = {
-                        k: v.to(self._device)
-                        for k, v in inputs.items()
-                        if k in text_keys
-                    }
 
-                    with self._torch.no_grad():
-                        text_features = self._model.get_text_features(**inputs)
-                finally:
-                    self._torch.set_num_threads(prev_threads)
+                # FIX: Use return_tensors="np" and manually convert to
+                # PyTorch tensors, exactly like encode_image().
+                # The transformers CLIPProcessor's as_tensor() path
+                # (return_tensors="pt") triggers native access violations
+                # on Windows when called from QThreadPool worker threads.
+                # Using numpy output first and torch.from_numpy() on
+                # contiguous arrays bypasses the buggy code path.
+                #
+                # Always pad to max_length=77 (CLIP context length) and
+                # truncate.  Fixed-length input avoids the variable-length
+                # _make_causal_mask code path that also crashes.
+                inputs_np = self._processor(
+                    text=[text],
+                    return_tensors="np",
+                    padding="max_length",
+                    truncation=True,
+                    max_length=77,
+                )
+                # Only pass text-model keys to avoid stray processor outputs
+                text_keys = {"input_ids", "attention_mask"}
+                inputs = {}
+                for k, v in inputs_np.items():
+                    if k not in text_keys:
+                        continue
+                    arr = np.ascontiguousarray(v)
+                    # input_ids must be long (int64), attention_mask int
+                    if k == "input_ids":
+                        arr = arr.astype(np.int64)
+                    inputs[k] = self._torch.from_numpy(arr).to(self._device)
+
+                with self._torch.inference_mode():
+                    text_features = self._model.get_text_features(**inputs)
         except Exception as e:
             logger.exception("[SemanticEmbeddingService] CLIP text inference failed for %r: %s", text, e)
             return None
@@ -1141,19 +1161,21 @@ class SemanticEmbeddingService:
                     # concurrent batch encoding + text search causes native
                     # access violations (0xC0000005) in _make_causal_mask.
                     with self._infer_lock:
-                        # Restrict MKL/OpenBLAS internal threads (Windows crash prevention)
-                        prev_threads = self._torch.get_num_threads()
+                        # FIX: Pin MKL/OpenBLAS to 1 thread and do NOT restore.
+                        # See encode_text() for full explanation.
                         self._torch.set_num_threads(1)
-                        try:
-                            # Preprocess batch
-                            inputs = self._processor(images=batch_images, return_tensors="pt", padding=True)
-                            inputs = {k: v.to(self._device) for k, v in inputs.items()}
 
-                            # Extract features
-                            with self._torch.no_grad():
-                                image_features = self._model.get_image_features(**inputs)
-                        finally:
-                            self._torch.set_num_threads(prev_threads)
+                        # FIX: Use return_tensors="np" + manual conversion
+                        # to avoid processor's as_tensor() crash on Windows.
+                        inputs_np = self._processor(images=batch_images, return_tensors="np", padding=True)
+                        inputs = {}
+                        for k, v in inputs_np.items():
+                            arr = np.ascontiguousarray(v)
+                            inputs[k] = self._torch.from_numpy(arr).to(self._device)
+
+                        # Extract features
+                        with self._torch.inference_mode():
+                            image_features = self._model.get_image_features(**inputs)
 
                     # Convert to numpy and normalize (outside lock - no model access)
                     embeddings = image_features.cpu().numpy().astype('float32')
