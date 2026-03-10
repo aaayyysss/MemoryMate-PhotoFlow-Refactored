@@ -137,6 +137,15 @@ _MONTH_NAMES = {
 
 _PERSON_NAME_PATTERN = re.compile(r"\b([A-Z][a-z]{2,})\b")
 
+# Preset names and utility terms that must never be treated as person names
+_NON_PERSON_TERMS = frozenset({
+    "favorites", "favourite", "favourites", "favorite",
+    "videos", "video", "panoramas", "panorama",
+    "screenshots", "screenshot", "documents", "document",
+    "gps", "location", "locations", "starred",
+    "recent", "latest", "newest", "oldest",
+})
+
 
 # ══════════════════════════════════════════════════════════════════════
 # QueryIntentPlanner
@@ -204,6 +213,13 @@ class QueryIntentPlanner:
             intent.require_ocr = True
         if intent.family_hint == "people_event" and not intent.exclude_faces:
             intent.require_faces = True
+        # Utility presets are metadata-only — no CLIP, no OCR, no faces
+        if intent.family_hint == "utility":
+            intent.require_ocr = False
+            if intent.preset_id == "videos":
+                intent.videos_only = True
+            elif intent.preset_id == "favorites":
+                intent.quality_sort = "favorite"
 
         # Score confidence
         intent.planner_confidence = self._score_planner_confidence(intent)
@@ -229,19 +245,20 @@ class QueryIntentPlanner:
 
     @staticmethod
     def _detect_family_hint(text: str, preset_id: Optional[str]) -> Optional[str]:
-        """Determine dominant retrieval family from text/preset."""
-        # Preset takes priority
-        if preset_id:
-            family = get_preset_family(preset_id)
-            if family != "scenic":  # scenic is the default fallback
-                return family
-            if preset_id in PRESET_FAMILIES:
-                return PRESET_FAMILIES[preset_id]
+        """Determine dominant retrieval family from text/preset.
+
+        Preset clicks are deterministic — the PRESET_FAMILIES map is the
+        single source of truth.  NLP heuristics only apply when no preset
+        is active (free-text queries).
+        """
+        # Preset clicks are deterministic — always trust the map
+        if preset_id and preset_id in PRESET_FAMILIES:
+            return PRESET_FAMILIES[preset_id]
 
         text_lower = text.lower()
         words = set(text_lower.split())
 
-        # Check family lexicons
+        # Check family lexicons (only for free-text, not preset clicks)
         if words & _DOCUMENT_TERMS or words & _SCREENSHOT_TERMS:
             return "type"
         if words & _PEOPLE_TERMS:
@@ -269,6 +286,9 @@ class QueryIntentPlanner:
         terms = []
         words = text.split()
         for w in words:
+            # Skip preset/utility terms that are never person names
+            if w in _NON_PERSON_TERMS:
+                continue
             # Skip common scene/object words
             if w in _SCENE_TERMS or w in _DOCUMENT_TERMS or w in _PET_TERMS:
                 continue

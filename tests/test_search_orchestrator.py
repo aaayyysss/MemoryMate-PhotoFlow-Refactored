@@ -2044,10 +2044,16 @@ class TestPresetFamilies:
     def test_type_presets_classified_correctly(self):
         """Type-like presets should be in the 'type' family."""
         from services.search_orchestrator import SearchOrchestrator
-        for preset_id in ["documents", "screenshots", "videos", "panoramas",
-                          "favorites", "gps_photos"]:
+        for preset_id in ["documents", "screenshots"]:
             assert SearchOrchestrator._get_preset_family(preset_id) == "type", \
                 f"{preset_id} should be family='type'"
+
+    def test_utility_presets_classified_correctly(self):
+        """Utility/metadata presets should be in the 'utility' family."""
+        from services.search_orchestrator import SearchOrchestrator
+        for preset_id in ["videos", "favorites", "gps_photos"]:
+            assert SearchOrchestrator._get_preset_family(preset_id) == "utility", \
+                f"{preset_id} should be family='utility'"
 
     def test_people_event_presets_classified_correctly(self):
         """People-event presets should be in the 'people_event' family."""
@@ -2061,7 +2067,8 @@ class TestPresetFamilies:
         from services.search_orchestrator import SearchOrchestrator
         for preset_id in ["beach", "mountains", "city", "forest", "lake",
                           "travel", "sunset", "sport", "food",
-                          "flowers", "snow", "night", "architecture", "car"]:
+                          "flowers", "snow", "night", "architecture", "car",
+                          "panoramas"]:
             assert SearchOrchestrator._get_preset_family(preset_id) == "scenic", \
                 f"{preset_id} should be family='scenic'"
         # pets is now animal_object (precision-first, not scenic)

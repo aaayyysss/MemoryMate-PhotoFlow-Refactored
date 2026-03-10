@@ -103,6 +103,7 @@ class PeopleCandidateBuilder(BaseCandidateBuilder):
 
         if named_cluster_ids and pss:
             # Named person retrieval via PersonSearchService
+            # Uses face_branch_reps + face_crops (canonical schema)
             try:
                 for branch_key in named_cluster_ids:
                     paths = pss.get_person_photo_paths(branch_key)
@@ -121,6 +122,16 @@ class PeopleCandidateBuilder(BaseCandidateBuilder):
                 except Exception:
                     pass
 
+            # Also check precomputed group_asset_matches from person_groups
+            # for richer co-occurrence data (existing schema, not parallel)
+            try:
+                group_paths = pss.get_group_match_paths(named_cluster_ids)
+                if group_paths:
+                    cooccurrence_paths |= group_paths
+                    cluster_paths.update(group_paths)
+            except Exception:
+                pass
+
         # Face-presence candidates (photos that have faces)
         face_presence_paths = self._query_face_presence_paths(
             project_meta, min_faces=1
@@ -137,7 +148,7 @@ class PeopleCandidateBuilder(BaseCandidateBuilder):
             # No named matches — use all face-having photos
             all_candidates = face_presence_paths
 
-        # Step 4: Build evidence and limit
+        # Step 4: Build evidence with event-aware scoring
         candidates = []
         evidence_by_path = {}
 
@@ -145,7 +156,6 @@ class PeopleCandidateBuilder(BaseCandidateBuilder):
             if path not in project_meta:
                 continue
             meta = project_meta[path]
-            face_count = meta.get("face_count") or 0
 
             evidence = self._build_evidence(
                 path, meta,
@@ -156,8 +166,13 @@ class PeopleCandidateBuilder(BaseCandidateBuilder):
             candidates.append(path)
             evidence_by_path[path] = evidence
 
-            if len(candidates) >= limit:
-                break
+        # Sort by event_score descending so top candidates have strongest
+        # event evidence, not just arbitrary insertion order
+        candidates.sort(
+            key=lambda p: evidence_by_path[p].get("event_score", 0),
+            reverse=True,
+        )
+        candidates = candidates[:limit]
 
         source_counts = {
             "named_person": len(named_paths),
@@ -257,15 +272,60 @@ class PeopleCandidateBuilder(BaseCandidateBuilder):
         cooccurrence_paths: Set[str],
         person_terms: List[str],
     ) -> dict:
-        """Build per-path evidence for people candidates."""
+        """Build per-path evidence for people candidates.
+
+        Includes event-aware signals beyond simple face presence:
+        - face_count: more faces → more likely a group/event photo
+        - is_portrait: portrait orientation suggests posed/people photo
+        - is_favorite: user curation signal
+        - named_person_count: how many queried people appear
+        - event_score: composite event-relevance score [0..1]
+        """
+        face_count = meta.get("face_count") or 0
+        is_named = path in named_paths
+        is_cooccurrence = path in cooccurrence_paths
+
+        # Portrait orientation detection
+        w = meta.get("width") or 0
+        h = meta.get("height") or 0
+        is_portrait = (h > w * 1.1) if (w > 0 and h > 0) else False
+
+        # Favorite flag
+        is_favorite = bool(meta.get("flag") or meta.get("is_favorite"))
+
+        # Compute event score — composite signal beyond face presence
+        event_score = 0.0
+        # Named person match is strongest signal
+        if is_named:
+            event_score += 0.40
+        if is_cooccurrence:
+            event_score += 0.20
+        # Multiple faces suggest group/event context
+        if face_count >= 3:
+            event_score += 0.15
+        elif face_count >= 2:
+            event_score += 0.10
+        # Portrait orientation suggests posed people photo
+        if is_portrait:
+            event_score += 0.05
+        # User curation is a quality signal
+        if is_favorite:
+            event_score += 0.10
+        # Face presence is baseline
+        if face_count > 0:
+            event_score += 0.10
+
         return {
             "builder": "people",
-            "face_count": meta.get("face_count") or 0,
-            "is_named_match": path in named_paths,
+            "face_count": face_count,
+            "is_named_match": is_named,
             "is_cluster_match": path in cluster_paths,
             "is_face_presence": path in face_presence_paths,
-            "is_cooccurrence": path in cooccurrence_paths,
-            "matched_people": person_terms if path in named_paths else [],
+            "is_cooccurrence": is_cooccurrence,
+            "matched_people": person_terms if is_named else [],
+            "is_portrait": is_portrait,
+            "is_favorite": is_favorite,
+            "event_score": min(1.0, event_score),
         }
 
     @staticmethod

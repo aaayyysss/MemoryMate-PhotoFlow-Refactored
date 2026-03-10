@@ -49,11 +49,11 @@ class SearchConfidencePolicy:
     Decide whether results are trustworthy enough to show normally.
 
     Family-specific evaluation:
-    - type: check OCR/structural evidence density
+    - type: check OCR/structural evidence density (documents, screenshots only)
     - people_event: check face index readiness and face presence
     - scenic: mostly trust CLIP, check for anti-type contamination
     - animal_object: check that results exclude faces
-    - utility: metadata-driven, always trust
+    - utility: metadata-driven (favorites, videos, gps_photos), always trust
     """
 
     def evaluate(

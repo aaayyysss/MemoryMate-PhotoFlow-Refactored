@@ -19,14 +19,16 @@ from services.candidate_builders.people_candidate_builder import (
     PeopleCandidateBuilder,
 )
 
-# Dispatch map for orchestrator
+# Dispatch map for orchestrator.
+# Families NOT in this map fall through to the legacy CLIP pipeline,
+# which is logged as a FAMILY_FALLBACK structured event.
 CANDIDATE_BUILDERS = {
     "type": DocumentCandidateBuilder,
     "people_event": PeopleCandidateBuilder,
-    # Future:
-    # "scenic": ScenicCandidateBuilder,
-    # "animal_object": PetCandidateBuilder,
-    # "utility": UtilityCandidateBuilder,
+    # "utility" is intentionally absent — metadata-only queries bypass
+    # both builder and CLIP, handled by metadata filters in the orchestrator.
+    # "scenic" uses CLIP-first (legacy pipeline) until a ScenicCandidateBuilder exists.
+    # "animal_object" uses CLIP-first with pets gate until a PetCandidateBuilder exists.
 }
 
 __all__ = [
