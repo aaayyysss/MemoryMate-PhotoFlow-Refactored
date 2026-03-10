@@ -7,5 +7,6 @@ photo_organizer.db
 *.db-wal
 *.db-shm
 photos.db
+thumbnails_cache.db
 *.backup_*
 *.backup

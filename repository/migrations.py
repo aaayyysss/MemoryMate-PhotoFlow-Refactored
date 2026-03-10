@@ -604,6 +604,94 @@ VALUES ('12.1.0', 'Screenshot confidence: multi-signal screenshot detection', CU
 )
 
 
+# Migration v13.0.0: Family-first hybrid retrieval tables
+# Adds tables for OCR text storage, person clusters, and asset-person links
+# required by the candidate builder architecture.
+MIGRATION_13_0_0 = Migration(
+    version="13.0.0",
+    description="Family-first hybrid retrieval: OCR text, person clusters, asset-person links, search features extension",
+    sql="""
+-- Migration v13.0.0: Family-first hybrid retrieval tables
+-- These tables support the candidate builder architecture where each
+-- search family (type, people_event, scenic, pet, utility) uses
+-- index-specific retrieval first, then ranking inside the candidate pool.
+
+-- ── asset_ocr_text: Dedicated OCR text storage ──
+-- Separates OCR storage from photo_metadata for cleaner indexing.
+CREATE TABLE IF NOT EXISTS asset_ocr_text (
+    asset_id INTEGER PRIMARY KEY,
+    project_id INTEGER NOT NULL,
+    path TEXT NOT NULL,
+    ocr_text TEXT,
+    ocr_lang TEXT,
+    ocr_confidence REAL DEFAULT 0.0,
+    token_count INTEGER DEFAULT 0,
+    updated_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_aot_project ON asset_ocr_text(project_id);
+CREATE INDEX IF NOT EXISTS idx_aot_path ON asset_ocr_text(path);
+
+-- ── asset_ocr_text_fts: FTS5 for OCR text search ──
+CREATE VIRTUAL TABLE IF NOT EXISTS asset_ocr_text_fts USING fts5(
+    ocr_text,
+    content='asset_ocr_text',
+    content_rowid='asset_id'
+);
+
+-- ── person_clusters: Named person clusters ──
+CREATE TABLE IF NOT EXISTS person_clusters (
+    cluster_id INTEGER PRIMARY KEY,
+    project_id INTEGER NOT NULL,
+    display_name TEXT,
+    cluster_confidence REAL DEFAULT 0.0,
+    representative_asset_id INTEGER,
+    face_count INTEGER DEFAULT 0,
+    is_named INTEGER DEFAULT 0,
+    updated_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_pc_project ON person_clusters(project_id);
+CREATE INDEX IF NOT EXISTS idx_pc_project_named ON person_clusters(project_id, is_named);
+
+-- ── asset_person_links: Photo-person associations ──
+CREATE TABLE IF NOT EXISTS asset_person_links (
+    asset_id INTEGER NOT NULL,
+    project_id INTEGER NOT NULL,
+    cluster_id INTEGER NOT NULL,
+    face_count_in_asset INTEGER DEFAULT 1,
+    match_confidence REAL DEFAULT 0.0,
+    PRIMARY KEY (asset_id, cluster_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_apl_project_cluster ON asset_person_links(project_id, cluster_id);
+CREATE INDEX IF NOT EXISTS idx_apl_project_asset ON asset_person_links(project_id, asset_id);
+
+-- ── search_asset_features extensions ──
+-- Add new columns for candidate builder evidence (handled in Python code
+-- since SQLite does not support ADD COLUMN IF NOT EXISTS).
+
+-- ── query_history: For suggestions and analytics ──
+CREATE TABLE IF NOT EXISTS query_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER,
+    raw_query TEXT NOT NULL,
+    normalized_query TEXT,
+    family TEXT,
+    result_count INTEGER,
+    confidence_label TEXT,
+    executed_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_qh_project ON query_history(project_id, executed_at);
+
+INSERT OR REPLACE INTO schema_version (version, description, applied_at)
+VALUES ('13.0.0', 'Family-first hybrid retrieval tables', CURRENT_TIMESTAMP);
+""",
+    rollback_sql=""
+)
+
+
 # Ordered list of all migrations
 ALL_MIGRATIONS = [
     MIGRATION_1_5_0,
@@ -623,6 +711,7 @@ ALL_MIGRATIONS = [
     MIGRATION_11_0_0,
     MIGRATION_12_0_0,
     MIGRATION_12_1_0,
+    MIGRATION_13_0_0,
 ]
 
 
