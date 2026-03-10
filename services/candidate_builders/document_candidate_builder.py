@@ -36,29 +36,22 @@ from services.candidate_builders.base_candidate_builder import (
     CandidateSet,
 )
 from services.query_intent_planner import QueryIntent
-from services.gate_engine import GateEngine, _DOC_LEXICON
+from services.document_evidence_evaluator import (
+    DocumentEvidenceEvaluator,
+    DOC_NATIVE_EXTENSIONS as _DOC_NATIVE_EXTENSIONS,
+    IMAGE_EXTENSIONS as _IMAGE_EXTENSIONS,
+    DOC_OCR_MIN_LENGTH as _DOC_OCR_MIN_LENGTH,
+    PAGE_RATIO_MIN as _PAGE_RATIO_MIN,
+    PAGE_RATIO_MAX as _PAGE_RATIO_MAX,
+    MIN_EDGE_SIZE as _MIN_EDGE_SIZE,
+    DOC_LEXICON as _DOC_LEXICON,
+)
 from logging_config import get_logger
 
 logger = get_logger(__name__)
 
-
-# ── Constants ──
-
-# Document-native extensions (strong positive signal)
-_DOC_NATIVE_EXTENSIONS = frozenset({".pdf", ".png", ".tif", ".tiff", ".bmp"})
-
-# Image extensions that need strong content evidence
-_IMAGE_EXTENSIONS = frozenset({".jpg", ".jpeg", ".heic", ".heif", ".webp"})
-
-# Minimum OCR text length to count as a document signal
-_DOC_OCR_MIN_LENGTH = 15
-
-# Page-like aspect ratio bounds (A4, US Letter)
-_PAGE_RATIO_MIN = 1.20
-_PAGE_RATIO_MAX = 1.60
-
-# Minimum edge size — reject tiny images (icons, thumbnails)
-_MIN_EDGE_SIZE = 700
+# Canonical evaluator — same contract as GateEngine
+_doc_evaluator = DocumentEvidenceEvaluator()
 
 # Screenshot markers for the screenshot sub-builder
 _SCREENSHOT_MARKERS = frozenset({
@@ -130,33 +123,19 @@ class DocumentCandidateBuilder(BaseCandidateBuilder):
             ocr_fts_paths, ocr_lexicon_paths, structural_paths, extension_paths
         )
 
-        # Apply hard exclusions
+        # Apply hard exclusions using canonical DocumentEvidenceEvaluator
+        # This ensures builder and gate agree on what "document evidence" means.
         kept = []
         evidence_by_path = {}
         for path in all_candidates:
             meta = project_meta.get(path, {})
 
-            # Hard rejections
-            if meta.get("is_screenshot"):
-                continue
-            if (meta.get("face_count") or 0) > 0:
-                continue
-            w = meta.get("width") or 0
-            h = meta.get("height") or 0
-            if w and h and min(w, h) < _MIN_EDGE_SIZE:
+            # Use canonical evaluator for all hard rejections and evidence rules
+            doc_evidence = _doc_evaluator.evaluate(meta, path)
+            if not doc_evidence.is_document:
                 continue
 
-            # For common photo extensions (.jpg, .heic, etc.), require at
-            # least OCR or a document extension — structural signals alone
-            # (page-like ratio) are too noisy for these formats.
-            ext = os.path.splitext(path)[1].lower() if path else ""
-            if ext in _IMAGE_EXTENSIONS:
-                has_ocr = path in ocr_fts_paths or path in ocr_lexicon_paths
-                has_doc_ext = path in extension_paths
-                if not has_ocr and not has_doc_ext:
-                    continue
-
-            # Build evidence
+            # Build evidence (augmented with canonical evaluation)
             evidence = self._build_evidence(
                 path, meta, text_terms,
                 ocr_fts_paths, ocr_lexicon_paths,

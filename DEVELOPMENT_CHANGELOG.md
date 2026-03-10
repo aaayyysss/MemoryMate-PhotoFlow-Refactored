@@ -4,6 +4,29 @@ This document tracks all features, modifications, and bug fixes applied to the c
 
 ---
 
+## Search Architecture — Phase 5: Query Routing & Evidence Alignment
+
+### Planner Taxonomy Fix
+- **Deterministic preset routing** — Preset clicks now always use `PRESET_FAMILIES` map directly; NLP heuristics only apply to free-text queries. Eliminates misclassification of "Favorites", "Videos", "Panoramas" as `family=type`.
+- **New `utility` family** — "Videos", "Favorites", "GPS Photos" routed to `utility` (metadata-only, no CLIP, no OCR). "Panoramas" routed to `scenic`.
+- **Non-person term exclusion** — Preset names like "favorites", "videos", "panoramas" can no longer be parsed as person name candidates.
+
+### Canonical Document Evidence Contract
+- **`DocumentEvidenceEvaluator`** (`services/document_evidence_evaluator.py`) — Single source of truth for document evidence evaluation. Used by `DocumentCandidateBuilder`, `GateEngine`, and `SearchConfidencePolicy`. Eliminates the contract mismatch where builder accepted candidates that the gate later rejected.
+- **`GateEngine`** now delegates document gate logic to the canonical evaluator.
+- **`DocumentCandidateBuilder`** now uses the same evaluator for candidate inclusion.
+
+### Event-Aware People Retrieval
+- **`PeopleCandidateBuilder`** upgraded from face-presence to event-evidence ranking. Candidates now scored with: face count (group events), co-occurrence density, portrait orientation, favorite flag, and named-person hits.
+- Candidates sorted by `event_score` so "Wedding" returns group photos with multiple faces, not just any photo with a face.
+- **Group retrieval** — Builder now queries `group_asset_matches` / `person_groups` from the existing schema for richer co-occurrence data. No parallel person tables introduced.
+
+### Structured Fallback Logging
+- **`FAMILY_FALLBACK`** events logged when a family has no dedicated builder and falls through to legacy CLIP pipeline.
+- **`LEGACY_FALLBACK`** events logged when the builder is inactive and the orchestrator uses the old inline candidate path.
+
+---
+
 ## Search Architecture — Phase 4: Family-First Hybrid Retrieval
 
 ### New Components

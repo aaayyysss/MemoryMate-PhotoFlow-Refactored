@@ -191,13 +191,15 @@ class ScoredResult:
 # ══════════════════════════════════════════════════════════════════════
 
 PRESET_FAMILIES = {
-    # Type-like presets (precision-first, hard structural gates)
+    # Document-like presets (OCR/structure-first, hard gates)
     "documents": "type",
     "screenshots": "type",
-    "videos": "type",
-    "panoramas": "type",
-    "favorites": "type",
-    "gps_photos": "type",
+    # Utility/metadata presets (no CLIP, no builder — pure metadata filters)
+    "videos": "utility",
+    "favorites": "utility",
+    "gps_photos": "utility",
+    # Scenic-visual presets (CLIP-dominant, soft gates)
+    "panoramas": "scenic",
     # People-event presets (face-required)
     "wedding": "people_event",
     "party": "people_event",

@@ -26,24 +26,20 @@ from collections import Counter
 from typing import List, Dict, Tuple, Optional, Any
 
 from logging_config import get_logger
-
-# Document-native extensions (strong positive signal)
-_DOC_NATIVE_EXTENSIONS = frozenset({'.pdf', '.png', '.tif', '.tiff'})
-# Image extensions that need strong content evidence to pass as documents
-_IMAGE_EXTENSIONS = frozenset({'.jpg', '.jpeg', '.heic', '.webp'})
-# Minimum OCR text length to count as a document signal
-_DOC_OCR_MIN_LENGTH = 15
-# Page-like aspect ratio bounds (A4, US Letter)
-_PAGE_RATIO_MIN = 1.20
-_PAGE_RATIO_MAX = 1.60
-# Document lexicon terms for OCR content analysis
-_DOC_LEXICON = (
-    "invoice", "receipt", "bill", "total", "amount", "date",
-    "address", "account", "bank", "iban", "signature",
-    "form", "application", "reference", "customer", "page",
+from services.document_evidence_evaluator import (
+    DocumentEvidenceEvaluator,
+    DOC_NATIVE_EXTENSIONS as _DOC_NATIVE_EXTENSIONS,
+    IMAGE_EXTENSIONS as _IMAGE_EXTENSIONS,
+    DOC_OCR_MIN_LENGTH as _DOC_OCR_MIN_LENGTH,
+    PAGE_RATIO_MIN as _PAGE_RATIO_MIN,
+    PAGE_RATIO_MAX as _PAGE_RATIO_MAX,
+    DOC_LEXICON as _DOC_LEXICON,
 )
 
 logger = get_logger(__name__)
+
+# Module-level canonical evaluator instance
+_doc_evaluator = DocumentEvidenceEvaluator()
 
 
 class GateEngine:
@@ -54,62 +50,26 @@ class GateEngine:
     This consolidates all hard-filtering logic into one place.
     """
 
-    # ── Document signal helpers ──
+    # ── Document signal helpers (delegating to canonical evaluator) ──
 
     @staticmethod
     def has_document_ocr_signal(meta: dict) -> bool:
         """Check if OCR text contains document-like content."""
-        text = (meta.get("ocr_text") or "").strip()
-        if len(text) >= _DOC_OCR_MIN_LENGTH:
-            return True
-        text_l = text.lower()
-        return any(term in text_l for term in _DOC_LEXICON)
+        return _doc_evaluator.has_ocr_signal(meta)
 
     @staticmethod
     def is_page_like(meta: dict) -> bool:
         """Check if dimensions suggest a page-like aspect ratio."""
-        w = meta.get("width") or 0
-        h = meta.get("height") or 0
-        if not w or not h:
-            return False
-        aspect = max(w, h) / max(1, min(w, h))
-        return _PAGE_RATIO_MIN <= aspect <= _PAGE_RATIO_MAX
+        return _doc_evaluator.is_page_like(meta)
 
     def _passes_document_gate(self, meta: dict, path: str = "") -> bool:
         """
-        Strict document gate.
+        Strict document gate — delegates to canonical DocumentEvidenceEvaluator.
 
-        For document-native extensions (.pdf, .png, .tif, .tiff):
-            Accept if OCR evidence OR page-like geometry.
-        For image extensions (.jpg, .jpeg, .heic, .webp):
-            Accept ONLY if OCR evidence is present.
-            Plain page geometry alone is NOT enough for JPGs.
+        Builder and gate now use the same evidence contract.
         """
-        ext = (meta.get("ext") or "").lower()
-        if not ext and path:
-            ext = os.path.splitext(path)[1].lower()
-
-        has_ocr = self.has_document_ocr_signal(meta)
-        page_like = self.is_page_like(meta)
-        min_edge = min(meta.get("width") or 0, meta.get("height") or 0)
-
-        # Hard rejections regardless of extension
-        if meta.get("is_screenshot"):
-            return False
-        if (meta.get("face_count") or 0) > 0:
-            return False
-        if min_edge < 700:
-            return False
-
-        # Extension-specific rules
-        if ext in _DOC_NATIVE_EXTENSIONS:
-            return has_ocr or page_like
-        if ext in _IMAGE_EXTENSIONS:
-            # JPGs need actual OCR content, not just page geometry
-            return has_ocr
-
-        # Unknown extension: require OCR or page geometry
-        return has_ocr or page_like
+        evidence = _doc_evaluator.evaluate(meta, path)
+        return evidence.is_document
 
     @staticmethod
     def _passes_screenshot_gate(meta: dict) -> bool:

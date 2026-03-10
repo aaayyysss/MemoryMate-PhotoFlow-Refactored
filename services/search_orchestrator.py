@@ -964,6 +964,13 @@ class SearchOrchestrator:
 
         builder_cls = CANDIDATE_BUILDERS.get(family)
         if builder_cls is None:
+            # Structured fallback event: no dedicated builder for this family
+            logger.info(
+                f"[SearchOrchestrator] FAMILY_FALLBACK: "
+                f"family={family!r} preset={intent.preset_id!r} "
+                f"query={intent.raw_query!r} -> "
+                f"no dedicated builder, falling back to legacy CLIP pipeline"
+            )
             return None
 
         try:
@@ -1239,6 +1246,11 @@ class SearchOrchestrator:
                 )
         elif not builder_active and current_family == "type" and plan.preset_id in ("documents", "screenshots"):
             # Legacy fallback: use old inline type candidate builder
+            logger.info(
+                f"[SearchOrchestrator] LEGACY_FALLBACK: "
+                f"family={current_family!r} preset={plan.preset_id!r} -> "
+                f"builder inactive, using legacy structural candidate path"
+            )
             type_structural_candidates = set(
                 self._build_type_candidates(plan, project_meta)
             )

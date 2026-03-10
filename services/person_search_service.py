@@ -368,6 +368,46 @@ class PersonSearchService:
             logger.debug(f"[PersonSearch] get_all_person_names failed: {e}")
         return result
 
+    def get_group_match_paths(self, branch_keys: List[str]) -> Set[str]:
+        """
+        Get photo paths from precomputed person_groups / group_asset_matches.
+
+        This leverages the existing person_groups schema for richer
+        co-occurrence retrieval than raw face_crops intersection.
+        Falls back gracefully if tables don't exist or are empty.
+
+        Args:
+            branch_keys: Person identifiers to look up in groups
+
+        Returns:
+            Set of photo paths from matching group_asset_matches
+        """
+        if not branch_keys:
+            return set()
+        try:
+            db = self._get_db()
+            with db.get_connection() as conn:
+                # Find groups that contain any of these branch_keys as members
+                placeholders = ",".join("?" * len(branch_keys))
+                rows = conn.execute(
+                    f"SELECT DISTINCT gam.asset_path "
+                    f"FROM group_asset_matches gam "
+                    f"JOIN person_groups pg ON gam.group_id = pg.id "
+                    f"WHERE pg.project_id = ? "
+                    f"AND gam.group_id IN ("
+                    f"  SELECT pgm.group_id FROM person_group_members pgm "
+                    f"  WHERE pgm.branch_key IN ({placeholders})"
+                    f")",
+                    [self.project_id] + list(branch_keys),
+                ).fetchall()
+                return {row["asset_path"] for row in rows}
+        except Exception as e:
+            logger.debug(
+                f"[PersonSearch] get_group_match_paths failed "
+                f"(table may not exist): {e}"
+            )
+            return set()
+
     def invalidate_cache(self):
         """Invalidate the name cache (call after face re-clustering)."""
         self._name_cache = None
