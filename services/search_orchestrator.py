@@ -61,6 +61,10 @@ from services.ranker import (
     SCENIC_ANTI_TYPE_PENALTIES, SCENIC_OCR_TEXT_PENALTY_THRESHOLD,
 )
 from services.deduplicator import Deduplicator, is_copy_filename
+# Phase 4 imports: Family-first hybrid retrieval
+from services.query_intent_planner import QueryIntentPlanner, QueryIntent, get_query_intent_planner
+from services.candidate_builders import CANDIDATE_BUILDERS, CandidateSet
+from services.search_confidence_policy import SearchConfidencePolicy, SearchDecision
 # Phase 3 imports (lazy - actual classes loaded on first use)
 # from services.person_search_service import PersonSearchService
 # from services.entity_graph import get_entity_graph
@@ -195,6 +199,10 @@ class OrchestratorResult:
 
     # Duplicate stacking stats
     stacked_duplicates: int = 0  # how many results were folded into stacks
+
+    # Phase 4: Confidence policy decision
+    confidence_label: str = ""  # high, medium, low, not_ready, empty
+    confidence_warning: str = ""  # user-facing warning when confidence is low
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -613,6 +621,9 @@ class SearchOrchestrator:
         self._ranker = Ranker()
         self._deduplicator = Deduplicator(project_id)
         self._search_feature_repo = None  # Lazy
+        # ── Phase 4: Family-first hybrid retrieval ──
+        self._intent_planner = None  # Lazy
+        self._confidence_policy = SearchConfidencePolicy()
         # ── Phase 3: Person search, entity graph, suggestions, intent ──
         self._person_search = None   # Lazy
         self._entity_graph = None    # Lazy
@@ -650,6 +661,15 @@ class SearchOrchestrator:
             except Exception:
                 pass
         return self._suggestion_svc
+
+    @property
+    def _query_intent_planner_svc(self):
+        if self._intent_planner is None:
+            try:
+                self._intent_planner = get_query_intent_planner(self.project_id)
+            except Exception:
+                pass
+        return self._intent_planner
 
     @property
     def _query_intent_svc(self):
@@ -923,6 +943,65 @@ class SearchOrchestrator:
         """Detect if a query implies people/faces (portraits, baby, wedding, etc.)."""
         return is_people_implied(plan)
 
+    # ── Phase 4: Family-first candidate builder dispatch ──
+
+    def _build_candidate_set(
+        self,
+        intent: QueryIntent,
+        project_meta: Dict[str, Dict],
+        top_k: int,
+    ) -> Optional[CandidateSet]:
+        """
+        Dispatch to family-specific candidate builder if available.
+
+        Returns CandidateSet for families that have dedicated builders,
+        or None for families that should fall through to the legacy
+        CLIP-first pipeline.
+        """
+        family = intent.family_hint
+        if not family:
+            return None
+
+        builder_cls = CANDIDATE_BUILDERS.get(family)
+        if builder_cls is None:
+            return None
+
+        try:
+            builder = builder_cls(self.project_id)
+            candidate_set = builder.build(intent, project_meta, limit=top_k * 3)
+            logger.info(
+                f"[SearchOrchestrator] CandidateBuilder({family}): "
+                f"{candidate_set.count} candidates, "
+                f"ready_state={candidate_set.ready_state}, "
+                f"confidence={candidate_set.builder_confidence:.2f}"
+            )
+            return candidate_set
+        except Exception as e:
+            logger.warning(
+                f"[SearchOrchestrator] CandidateBuilder({family}) failed: {e}; "
+                f"falling back to legacy pipeline"
+            )
+            return None
+
+    def _apply_confidence_policy(
+        self,
+        intent: QueryIntent,
+        candidate_set: CandidateSet,
+        ranked_results: list,
+        family: str,
+    ) -> SearchDecision:
+        """Evaluate result trustworthiness via SearchConfidencePolicy."""
+        policy = getattr(self, '_confidence_policy', None) or SearchConfidencePolicy()
+        return policy.evaluate(intent, candidate_set, ranked_results, family)
+
+    def _resolve_family(self, intent: QueryIntent, plan: QueryPlan) -> str:
+        """Resolve the dominant retrieval family from intent + plan."""
+        # Intent family_hint takes priority if set
+        if intent.family_hint:
+            return intent.family_hint
+        # Fall back to preset-based family
+        return get_preset_family(plan.preset_id)
+
     # ── Family-specific candidate builders (structure-first retrieval) ──
 
     def _build_type_candidates(
@@ -1076,21 +1155,90 @@ class SearchOrchestrator:
         # Step 0: Load project metadata early (needed for candidate builders)
         project_meta = self._get_project_meta()
 
+        # ── Phase 4: Try family-first candidate builder pipeline ──
+        # For families with dedicated builders (type, people_event),
+        # the builder is the mandatory first-stage retrieval path.
+        # The ranking stage only sees the builder's candidate pool.
+        planner = self._query_intent_planner_svc
+        builder_intent = None
+        builder_candidate_set = None
+        if planner:
+            try:
+                builder_intent = planner.plan(
+                    plan.raw_query, preset_id=plan.preset_id
+                )
+                builder_candidate_set = self._build_candidate_set(
+                    builder_intent, project_meta, top_k
+                )
+            except Exception as e:
+                logger.debug(
+                    f"[SearchOrchestrator] Phase 4 planner/builder skipped: {e}"
+                )
+
+        # If builder produced a not_ready result, return immediately
+        if (builder_candidate_set is not None
+                and builder_candidate_set.ready_state == "not_ready"):
+            decision = self._apply_confidence_policy(
+                builder_intent, builder_candidate_set, [],
+                builder_intent.family_hint or get_preset_family(plan.preset_id),
+            )
+            return OrchestratorResult(
+                paths=[],
+                total_matches=0,
+                scored_results=[],
+                scores={},
+                facets={},
+                query_plan=plan,
+                phase_label=decision.warning_message or "Index not ready",
+                label=self._build_label(plan, OrchestratorResult()),
+                confidence_label=decision.confidence_label,
+                confidence_warning=decision.warning_message or "",
+            )
+
+        # If builder produced a candidate set, use it as the retrieval pool
+        # (replaces both the old type_structural_candidates and face_readiness)
+        builder_active = (
+            builder_candidate_set is not None
+            and builder_candidate_set.is_ready
+            and builder_candidate_set.count > 0
+        )
+
         # Step 0a: Face readiness check for people-event presets
-        # Instead of silently degrading to generic CLIP search when face
-        # data is absent, return a clear "not ready" status.
-        face_block = self._check_face_readiness(plan, project_meta)
-        if face_block is not None:
-            return face_block
+        # (skipped if builder already handled it)
+        if not builder_active:
+            face_block = self._check_face_readiness(plan, project_meta)
+            if face_block is not None:
+                return face_block
 
         current_family = get_preset_family(plan.preset_id)
+        # Override family if builder resolved it
+        if builder_intent and builder_intent.family_hint:
+            current_family = builder_intent.family_hint
 
         # Step 0b: Type-family structural candidate generation
-        # For documents/screenshots, build candidate pool from structural
-        # signals FIRST, then apply semantic ranking inside that pool.
-        # This is the Apple/Google approach: structure narrows, semantics ranks.
+        # When builder is active, use its candidate pool instead.
+        # Legacy path only runs when no builder handled the family.
         type_structural_candidates = None
-        if current_family == "type" and plan.preset_id in ("documents", "screenshots"):
+        if builder_active and current_family in ("type", "people_event"):
+            type_structural_candidates = set(builder_candidate_set.candidate_paths)
+            if not type_structural_candidates:
+                logger.info(
+                    f"[SearchOrchestrator] Builder returned empty candidates for "
+                    f"preset={plan.preset_id!r}; returning empty result"
+                )
+                return OrchestratorResult(
+                    paths=[],
+                    total_matches=0,
+                    scored_results=[],
+                    scores={},
+                    facets={},
+                    query_plan=plan,
+                    phase_label=f"No {plan.preset_id} found in library",
+                    label=self._build_label(plan, OrchestratorResult()),
+                    confidence_label="empty",
+                )
+        elif not builder_active and current_family == "type" and plan.preset_id in ("documents", "screenshots"):
+            # Legacy fallback: use old inline type candidate builder
             type_structural_candidates = set(
                 self._build_type_candidates(plan, project_meta)
             )
@@ -1509,6 +1657,28 @@ class SearchOrchestrator:
         result_paths = [r.path for r in scored]
         facets = FacetComputer.compute(result_paths, project_meta)
 
+        # Step 12: Apply confidence policy (Phase 4)
+        confidence_label = ""
+        confidence_warning = ""
+        if builder_candidate_set is not None and builder_intent is not None:
+            try:
+                decision = self._apply_confidence_policy(
+                    builder_intent, builder_candidate_set, scored,
+                    current_family,
+                )
+                confidence_label = decision.confidence_label
+                confidence_warning = decision.warning_message or ""
+                if decision.confidence_label in ("low", "not_ready"):
+                    logger.warning(
+                        f"[SearchOrchestrator] Confidence policy: "
+                        f"{decision.confidence_label} — "
+                        f"{decision.warning_message}"
+                    )
+            except Exception as e:
+                logger.debug(
+                    f"[SearchOrchestrator] Confidence policy skipped: {e}"
+                )
+
         return OrchestratorResult(
             paths=result_paths,
             total_matches=len(result_paths),
@@ -1519,6 +1689,8 @@ class SearchOrchestrator:
             backoff_applied=backoff_applied,
             phase_label="Semantic refined" if plan.has_semantic() else "Filter results",
             stacked_duplicates=stacked_count,
+            confidence_label=confidence_label,
+            confidence_warning=confidence_warning,
         )
 
     def _score_result(self, path: str, clip_score: float,
