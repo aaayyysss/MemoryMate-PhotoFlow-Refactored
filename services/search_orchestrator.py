@@ -1009,94 +1009,15 @@ class SearchOrchestrator:
         # Fall back to preset-based family
         return get_preset_family(plan.preset_id)
 
-    # ── Family-specific candidate builders (structure-first retrieval) ──
-
-    def _build_type_candidates(
-        self, plan: QueryPlan, project_meta: Dict[str, Dict],
-    ) -> List[str]:
-        """
-        Build structural candidate pool for type-family presets.
-
-        For Documents: candidates from all assets where at least one is true:
-          - document-native extension (.pdf, .png, .tif, .tiff)
-          - page-like geometry (A4/letter aspect ratio)
-          - OCR text length above threshold
-          - OCR lexicon hit (invoice, receipt, etc.)
-        Then exclude: screenshots, face_count > 0, tiny images (<700px).
-
-        For Screenshots: candidates from all assets where:
-          - is_screenshot == True
-          - OR filename contains screenshot markers
-          - OR OCR contains UI terms
-        No CLIP-only candidates allowed.
-
-        This is the Apple/Google-style approach: structure narrows the
-        universe first, semantics ranks inside it.
-        """
-        import os
-
-        preset_id = plan.preset_id
-        candidates = []
-
-        if preset_id == "documents":
-            _DOC_EXTENSIONS = frozenset({'.pdf', '.png', '.tif', '.tiff', '.bmp'})
-
-            for path, meta in project_meta.items():
-                # Exclusions first (hard reject)
-                if meta.get("is_screenshot"):
-                    continue
-                if (meta.get("face_count") or 0) > 0:
-                    continue
-                w = meta.get("width") or 0
-                h = meta.get("height") or 0
-                if w and h and min(w, h) < 700:
-                    continue
-
-                # Inclusion: at least one structural signal
-                ext = os.path.splitext(path)[1].lower() if path else ""
-                has_doc_ext = ext in _DOC_EXTENSIONS
-                has_ocr = GateEngine.has_document_ocr_signal(meta)
-                page_like = GateEngine.is_page_like(meta)
-
-                # OCR lexicon check
-                ocr_text = (meta.get("ocr_text") or "").lower()
-                from services.gate_engine import _DOC_LEXICON
-                lexicon_hit = any(term in ocr_text for term in _DOC_LEXICON)
-
-                if has_doc_ext or has_ocr or page_like or lexicon_hit:
-                    candidates.append(path)
-
-            logger.info(
-                f"[SearchOrchestrator] build_type_candidates(documents): "
-                f"{len(candidates)}/{len(project_meta)} structural candidates"
-            )
-
-        elif preset_id == "screenshots":
-            _SCREENSHOT_MARKERS = ("screenshot", "screen shot", "screen_shot",
-                                   "bildschirmfoto", "captura")
-            _UI_TERMS = frozenset({
-                "battery", "wifi", "lte", "5g", "notification",
-                "settings", "search", "cancel", "back", "menu",
-                "home", "share", "download",
-            })
-
-            for path, meta in project_meta.items():
-                is_screenshot = bool(meta.get("is_screenshot"))
-                basename_lower = os.path.basename(path).lower() if path else ""
-                filename_marker = any(m in basename_lower for m in _SCREENSHOT_MARKERS)
-
-                ocr_text = (meta.get("ocr_text") or "").lower()
-                ui_hit = any(t in ocr_text for t in _UI_TERMS) if ocr_text else False
-
-                if is_screenshot or filename_marker or ui_hit:
-                    candidates.append(path)
-
-            logger.info(
-                f"[SearchOrchestrator] build_type_candidates(screenshots): "
-                f"{len(candidates)}/{len(project_meta)} structural candidates"
-            )
-
-        return candidates
+    # ── Legacy _build_type_candidates() removed ──
+    # The inline structural candidate builder was a split-brain:
+    # it reimplemented DocumentEvidenceEvaluator logic with its own
+    # constants, extensions set, and GateEngine calls.  All type-family
+    # candidate generation now goes through DocumentCandidateBuilder
+    # (services/candidate_builders/document_candidate_builder.py) which
+    # uses the canonical DocumentEvidenceEvaluator.  If the builder is
+    # unavailable, search returns empty rather than silently switching
+    # to a parallel evidence contract.
 
     def _check_face_readiness(
         self, plan: QueryPlan, project_meta: Dict[str, Dict],
@@ -1222,12 +1143,31 @@ class SearchOrchestrator:
         if builder_intent and builder_intent.family_hint:
             current_family = builder_intent.family_hint
 
+        # ── Family-path consistency assertion ──
+        # If the builder resolved a family, it must match the preset-derived
+        # family. A mismatch means QueryIntentPlanner and PRESET_FAMILIES
+        # disagree — log a warning so the inconsistency is visible.
+        if builder_intent and builder_intent.family_hint:
+            preset_family = get_preset_family(plan.preset_id)
+            if builder_intent.family_hint != preset_family:
+                logger.warning(
+                    f"[SearchOrchestrator] FAMILY_MISMATCH: "
+                    f"builder says {builder_intent.family_hint!r} but "
+                    f"preset {plan.preset_id!r} maps to {preset_family!r}. "
+                    f"Using builder hint. Check PRESET_FAMILIES mapping."
+                )
+
         # Step 0b: Type-family structural candidate generation
         # When builder is active, use its candidate pool instead.
         # Legacy path only runs when no builder handled the family.
         type_structural_candidates = None
-        if builder_active and current_family in ("type", "people_event"):
+        type_evidence = {}  # evidence_by_path from builder (type family)
+        people_event_candidates = None  # separate pool for people_event
+        people_event_evidence = {}  # evidence_by_path from builder
+
+        if builder_active and current_family == "type":
             type_structural_candidates = set(builder_candidate_set.candidate_paths)
+            type_evidence = builder_candidate_set.evidence_by_path or {}
             if not type_structural_candidates:
                 logger.info(
                     f"[SearchOrchestrator] Builder returned empty candidates for "
@@ -1244,20 +1184,15 @@ class SearchOrchestrator:
                     label=self._build_label(plan, OrchestratorResult()),
                     confidence_label="empty",
                 )
-        elif not builder_active and current_family == "type" and plan.preset_id in ("documents", "screenshots"):
-            # Legacy fallback: use old inline type candidate builder
-            logger.info(
-                f"[SearchOrchestrator] LEGACY_FALLBACK: "
-                f"family={current_family!r} preset={plan.preset_id!r} -> "
-                f"builder inactive, using legacy structural candidate path"
-            )
-            type_structural_candidates = set(
-                self._build_type_candidates(plan, project_meta)
-            )
-            if not type_structural_candidates:
+        elif builder_active and current_family == "people_event":
+            # People_event gets its own candidate pool — never reuse
+            # type_structural_candidates variable.
+            people_event_candidates = set(builder_candidate_set.candidate_paths)
+            people_event_evidence = builder_candidate_set.evidence_by_path or {}
+            if not people_event_candidates:
                 logger.info(
-                    f"[SearchOrchestrator] No structural candidates for "
-                    f"preset={plan.preset_id!r}; returning empty result"
+                    f"[SearchOrchestrator] [PeopleEvent] Builder returned empty "
+                    f"candidates for preset={plan.preset_id!r}; returning empty"
                 )
                 return OrchestratorResult(
                     paths=[],
@@ -1268,7 +1203,33 @@ class SearchOrchestrator:
                     query_plan=plan,
                     phase_label=f"No {plan.preset_id} found in library",
                     label=self._build_label(plan, OrchestratorResult()),
+                    confidence_label="empty",
                 )
+            logger.info(
+                f"[SearchOrchestrator] [PeopleEvent] {len(people_event_candidates)} "
+                f"candidates from builder, {len(people_event_evidence)} with evidence"
+            )
+        elif not builder_active and current_family == "type" and plan.preset_id in ("documents", "screenshots"):
+            # No legacy fallback: builder is the single source of truth
+            # for type-family candidates.  Returning empty prevents the
+            # split-brain where a second evidence contract invents
+            # candidates with different semantics.
+            logger.warning(
+                f"[SearchOrchestrator] BUILDER_UNAVAILABLE: "
+                f"family={current_family!r} preset={plan.preset_id!r} -> "
+                f"no builder candidates; returning empty (legacy split-brain removed)"
+            )
+            return OrchestratorResult(
+                paths=[],
+                total_matches=0,
+                scored_results=[],
+                scores={},
+                facets={},
+                query_plan=plan,
+                phase_label=f"No {plan.preset_id} found — builder unavailable",
+                label=self._build_label(plan, OrchestratorResult()),
+                confidence_label="empty",
+            )
 
         # Step 1: Semantic candidates
         # ARCHITECTURAL FIX: Skip full-corpus CLIP for type-family presets
@@ -1280,8 +1241,10 @@ class SearchOrchestrator:
         # CLIP is only used as an optional reranker on the small structural
         # candidate set later, if at all.
         skip_clip_for_type = (
-            type_structural_candidates is not None
-            and len(type_structural_candidates) > 0
+            (type_structural_candidates is not None
+             and len(type_structural_candidates) > 0)
+            or (people_event_candidates is not None
+                and len(people_event_candidates) > 0)
         )
         semantic_hits = {}  # {photo_id: (score, prompt)}
         if plan.has_semantic() and self._smart_find.clip_available and not skip_clip_for_type:
@@ -1389,29 +1352,99 @@ class SearchOrchestrator:
                     "Run face detection for better people results."
                 )
 
-        # Step 4b: Pre-compute structural + OCR scores for type/scenic families
+        # Step 4b: Pre-compute structural + OCR + event scores per family
         # Structural scores are computed once and folded into the weighted
         # scoring contract as first-class terms (w_structural * structural,
-        # w_ocr * ocr).
+        # w_ocr * ocr, w_event * event).
         structural_scores: Dict[str, float] = {}
         ocr_scores: Dict[str, float] = {}
+        event_scores: Dict[str, float] = {}
         if current_family == "type":
             structural_scores = self._compute_structural_scores(
                 plan, project_meta, ocr_match_paths
             )
             ocr_scores = self._compute_ocr_scores(plan, project_meta)
+            # Supplement with builder evidence when available.
+            # The builder's evidence_by_path contains boolean signals
+            # (ocr_fts_hit, ocr_lexicon_hit, structural_hit, etc.)
+            # that can boost candidates the metadata scan may have
+            # scored conservatively.
+            if type_evidence:
+                boosted = 0
+                for path, ev in type_evidence.items():
+                    bonus = 0.0
+                    if ev.get("ocr_fts_hit"):
+                        bonus += 0.10
+                    if ev.get("ocr_lexicon_hit"):
+                        bonus += 0.08
+                    if ev.get("structural_hit"):
+                        bonus += 0.05
+                    if bonus > 0:
+                        structural_scores[path] = min(
+                            1.0, structural_scores.get(path, 0.0) + bonus
+                        )
+                        boosted += 1
+                if boosted:
+                    logger.info(
+                        f"[SearchOrchestrator] Builder evidence boosted "
+                        f"structural scores for {boosted}/{len(type_evidence)} "
+                        f"type candidates"
+                    )
         elif current_family == "scenic":
             structural_scores = self._compute_scenic_anti_type_scores(
                 plan, project_meta
+            )
+        elif current_family == "people_event" and people_event_evidence:
+            # Extract event_score from builder evidence — this is the
+            # composite signal (named match, co-occurrence, face count,
+            # portrait, favorite) computed by PeopleCandidateBuilder.
+            event_scores = {
+                path: ev.get("event_score", 0.0)
+                for path, ev in people_event_evidence.items()
+            }
+            logger.info(
+                f"[SearchOrchestrator] [PeopleEvent] Extracted event_scores "
+                f"for {len(event_scores)} candidates "
+                f"(avg={sum(event_scores.values()) / max(1, len(event_scores)):.3f})"
             )
 
         # Step 5: Score every candidate
         scored: List[ScoredResult] = []
 
-        # For type-family structural presets (documents, screenshots):
+        # ── People-event branch: own scoring path with event_score ──
+        # Builder-produced candidates are scored with event evidence
+        # extracted from people_event_evidence, not reusing type path.
+        if people_event_candidates is not None:
+            # Optional CLIP rerank within the people pool
+            clip_path_scores = {}
+            if semantic_hits:
+                for photo_id, (sem_score, matched_prompt) in semantic_hits.items():
+                    path = path_lookup.get(photo_id)
+                    if path:
+                        clip_path_scores[path] = (sem_score, matched_prompt)
+
+            for path in people_event_candidates:
+                clip_info = clip_path_scores.get(path, (0.0, ""))
+                sem_score, matched_prompt = clip_info
+                ev_score = event_scores.get(path, 0.0)
+                sr = self._score_result(
+                    path, sem_score, matched_prompt, project_meta,
+                    plan.filters, people_implied,
+                    event_score=ev_score,
+                    preset_id=plan.preset_id,
+                )
+                scored.append(sr)
+
+            logger.info(
+                f"[SearchOrchestrator] [PeopleEvent] retrieval: "
+                f"{len(scored)} candidates scored with event_score "
+                f"({len(clip_path_scores)} had CLIP scores)"
+            )
+
+        # ── Type-family structural branch (documents, screenshots) ──
         # Seed from structural candidates, not from CLIP hits.
         # CLIP may re-rank but may NOT create candidates by itself.
-        if type_structural_candidates is not None:
+        elif type_structural_candidates is not None:
             # Score all structural candidates (CLIP score applied if available)
             clip_path_scores = {}
             if semantic_hits:
@@ -1507,6 +1540,35 @@ class SearchOrchestrator:
                     f"[SearchOrchestrator] Scenic anti-type penalties applied "
                     f"to {penalized} result(s)"
                 )
+
+        # Step 5d: Post-scoring family-path consistency check
+        # Verify that the scoring channels used match what the family expects.
+        # A type-family result with zero structural and zero OCR, or a
+        # people_event result with zero event_score, suggests a wiring bug.
+        if scored:
+            if current_family == "type":
+                no_signal = sum(
+                    1 for sr in scored
+                    if sr.structural_score == 0.0 and sr.ocr_score == 0.0
+                )
+                if no_signal == len(scored):
+                    logger.warning(
+                        f"[SearchOrchestrator] SCORING_ANOMALY: "
+                        f"all {len(scored)} type-family results have "
+                        f"structural=0 AND ocr=0. Builder may not be "
+                        f"producing evidence."
+                    )
+            elif current_family == "people_event":
+                no_event = sum(
+                    1 for sr in scored if sr.event_score == 0.0
+                )
+                if no_event == len(scored):
+                    logger.warning(
+                        f"[SearchOrchestrator] SCORING_ANOMALY: "
+                        f"all {len(scored)} people_event results have "
+                        f"event_score=0. PeopleCandidateBuilder may not "
+                        f"be producing evidence."
+                    )
 
         # Step 6: Sort by final_score
         scored.sort(key=lambda r: r.final_score, reverse=True)
@@ -1637,7 +1699,8 @@ class SearchOrchestrator:
                 logger.info(
                     f"  #{idx} {sr.final_score:.4f} | clip={sr.clip_score:.3f} "
                     f"struct={sr.structural_score:.3f} ocr={sr.ocr_score:.3f} "
-                    f"face={sr.face_match_score:.3f} | {os.path.basename(sr.path)}"
+                    f"event={sr.event_score:.3f} face={sr.face_match_score:.3f} "
+                    f"| {os.path.basename(sr.path)}"
                 )
 
         # Step 8: Deduplicate (stack duplicates behind representative)
@@ -1712,6 +1775,7 @@ class SearchOrchestrator:
                       people_implied: bool = False,
                       structural_score: float = 0.0,
                       ocr_score: float = 0.0,
+                      event_score: float = 0.0,
                       preset_id: Optional[str] = None) -> ScoredResult:
         """
         Apply the deterministic scoring contract to a single result.
@@ -1726,6 +1790,7 @@ class SearchOrchestrator:
             active_filters, people_implied, family=family,
             structural_score=structural_score,
             ocr_score=ocr_score,
+            event_score=event_score,
         )
 
     def _get_search_feature_repo(self):
