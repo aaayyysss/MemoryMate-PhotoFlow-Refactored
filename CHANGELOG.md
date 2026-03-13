@@ -4,6 +4,26 @@ All notable changes to the MemoryMate PhotoFlow search pipeline are documented h
 
 ## [Unreleased] - 2026-03-13
 
+### Bug Fix: people_event NoneType crash (PR #718 CI fix)
+
+Fixed `TypeError: object of type 'NoneType' has no len()` that crashed
+all people_event searches (Wedding, Party, Baby, Portraits).
+
+**Root cause**: When `people_event_candidates` triggered `skip_clip_for_type`,
+the CLIP-skip log line at the `elif` branch called `len(type_structural_candidates)`
+— but `type_structural_candidates` was `None` for people_event queries (only
+`people_event_candidates` was populated). The f-string `len()` call on `None`
+raised `TypeError`, which propagated to `[FindSection] Async search failed`.
+
+**Fix**: Replaced the unsafe `len(type_structural_candidates)` with a
+None-guarded expression that logs the correct pool name and size for
+whichever candidate pool (type or people_event) caused CLIP to be skipped.
+
+**Audit**: Verified all other `len()` calls on potentially-None variables
+(`metadata_candidate_paths`, `people_event_candidates`,
+`type_structural_candidates`) are safe — either guarded by `is not None`
+checks or inside branches where assignment is guaranteed.
+
 ### Search Pipeline Architecture Fixes (Steps 1-5)
 
 Five surgical fixes addressing confirmed architectural issues in the search

@@ -1257,10 +1257,21 @@ class SearchOrchestrator:
                 prompts, top_k * 3, threshold, fusion_mode
             )
         elif skip_clip_for_type:
+            # Log which pool caused the skip (type or people_event)
+            _skip_pool_size = (
+                len(type_structural_candidates) if type_structural_candidates is not None
+                else len(people_event_candidates) if people_event_candidates is not None
+                else 0
+            )
+            _skip_pool_name = (
+                "structural" if type_structural_candidates is not None
+                else "people_event" if people_event_candidates is not None
+                else "unknown"
+            )
             logger.info(
-                f"[SearchOrchestrator] Skipping CLIP for type-family preset "
-                f"{plan.preset_id!r}: {len(type_structural_candidates)} "
-                f"structural candidates will be scored by OCR/structure only"
+                f"[SearchOrchestrator] Skipping CLIP for {current_family} preset "
+                f"{plan.preset_id!r}: {_skip_pool_size} "
+                f"{_skip_pool_name} candidates will be scored without full-corpus CLIP"
             )
 
         # Step 2: Metadata filter candidates
