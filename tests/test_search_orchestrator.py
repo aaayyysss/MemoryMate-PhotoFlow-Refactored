@@ -2256,7 +2256,7 @@ class TestScoringContractWithOCR:
         w = get_weights_for_family("type")
         total = (
             w.w_clip + w.w_recency + w.w_favorite + w.w_location
-            + w.w_face_match + w.w_structural + w.w_ocr
+            + w.w_face_match + w.w_structural + w.w_ocr + w.w_event
         )
         assert abs(total - 1.0) < 1e-6, f"Type weights sum to {total}, expected 1.0"
         assert w.w_structural > 0, "Type family must have positive w_structural"
@@ -2268,7 +2268,7 @@ class TestScoringContractWithOCR:
         w = FAMILY_WEIGHTS["scenic"]
         total = (
             w.w_clip + w.w_recency + w.w_favorite + w.w_location
-            + w.w_face_match + w.w_structural + w.w_ocr
+            + w.w_face_match + w.w_structural + w.w_ocr + w.w_event
         )
         assert abs(total - 1.0) < 1e-6, f"Scenic weights sum to {total}, expected 1.0"
 
@@ -2278,9 +2278,10 @@ class TestScoringContractWithOCR:
         w = FAMILY_WEIGHTS["people_event"]
         total = (
             w.w_clip + w.w_recency + w.w_favorite + w.w_location
-            + w.w_face_match + w.w_structural + w.w_ocr
+            + w.w_face_match + w.w_structural + w.w_ocr + w.w_event
         )
         assert abs(total - 1.0) < 1e-6, f"People_event weights sum to {total}, expected 1.0"
+        assert w.w_event > 0, "People_event family must have positive w_event"
 
     def test_utility_family_weights_sum_to_one(self):
         """Utility family weights must sum to 1.0."""
@@ -2288,16 +2289,17 @@ class TestScoringContractWithOCR:
         w = FAMILY_WEIGHTS["utility"]
         total = (
             w.w_clip + w.w_recency + w.w_favorite + w.w_location
-            + w.w_face_match + w.w_structural + w.w_ocr
+            + w.w_face_match + w.w_structural + w.w_ocr + w.w_event
         )
         assert abs(total - 1.0) < 1e-6, f"Utility weights sum to {total}, expected 1.0"
 
-    def test_all_families_have_seven_weight_components(self):
-        """All families must declare all 7 weight components."""
+    def test_all_families_have_eight_weight_components(self):
+        """All families must declare all 8 weight components."""
         from services.ranker import FAMILY_WEIGHTS
         for name, w in FAMILY_WEIGHTS.items():
             assert hasattr(w, 'w_ocr'), f"Family {name} missing w_ocr"
             assert hasattr(w, 'w_structural'), f"Family {name} missing w_structural"
+            assert hasattr(w, 'w_event'), f"Family {name} missing w_event"
 
     def test_ocr_score_affects_type_family_final_score(self):
         """OCR score must contribute to final score for type family."""
@@ -2316,19 +2318,19 @@ class TestScoringContractWithOCR:
             "OCR score must increase final score for type family"
         assert sr_with_ocr.ocr_score == 0.8
 
-    def test_validate_normalizes_seven_weights(self):
-        """validate() must normalize all 7 weights including w_ocr."""
+    def test_validate_normalizes_eight_weights(self):
+        """validate() must normalize all 8 weights including w_ocr and w_event."""
         from services.ranker import ScoringWeights
         w = ScoringWeights(
             w_clip=0.50, w_recency=0.10, w_favorite=0.10,
             w_location=0.10, w_face_match=0.10,
-            w_structural=0.10, w_ocr=0.10,
+            w_structural=0.10, w_ocr=0.10, w_event=0.10,
         )
-        # Total = 1.10, should normalize
+        # Total = 1.20, should normalize
         w.validate()
         total = (
             w.w_clip + w.w_recency + w.w_favorite + w.w_location
-            + w.w_face_match + w.w_structural + w.w_ocr
+            + w.w_face_match + w.w_structural + w.w_ocr + w.w_event
         )
         assert abs(total - 1.0) < 1e-6
 

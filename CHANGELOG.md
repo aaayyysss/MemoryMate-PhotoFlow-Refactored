@@ -85,4 +85,15 @@ the structural scoring pass.
 - `services/ranker.py`
 - `config/ranking_config.py`
 - `services/search_orchestrator.py`
+- `tests/test_search_orchestrator.py`
 - `CHANGELOG.md` (this file)
+
+### Test Updates
+- Updated weight-sum-to-one tests for all families to include `w_event` in
+  the total (was summing 7 weights, now correctly sums all 8)
+- Renamed `test_all_families_have_seven_weight_components` to
+  `test_all_families_have_eight_weight_components` and added `w_event` check
+- Renamed `test_validate_normalizes_seven_weights` to
+  `test_validate_normalizes_eight_weights` with `w_event` in constructor
+- Added assertion that `people_event` family has positive `w_event`
+- All 207 tests pass
