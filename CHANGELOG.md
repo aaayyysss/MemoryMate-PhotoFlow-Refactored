@@ -2,6 +2,68 @@
 
 All notable changes to the MemoryMate PhotoFlow search pipeline are documented here.
 
+## [Unreleased] - 2026-03-14
+
+### Screenshot Builder, Candidate Fusion & Builder Diagnostics
+
+New dedicated screenshot retrieval pipeline, multi-builder fusion support,
+and diagnostic instrumentation across all candidate builders.
+
+#### ScreenshotCandidateBuilder
+- **New `ScreenshotCandidateBuilder`** (`services/candidate_builders/screenshot_candidate_builder.py`)
+  — Dedicated multi-signal screenshot detection with composite scoring:
+  - `is_screenshot` metadata flag (0.40)
+  - Filename markers: screenshot, bildschirmfoto, captura, etc. (0.25)
+  - UI-text OCR patterns: battery, wifi, settings, etc. — 2+ terms required (0.20)
+  - Screen-like aspect ratio (1.5–2.3) + OCR text density (0.15)
+  - Query text term match in OCR content (0.05)
+- Each candidate receives a `screenshot_score` [0..1] for ranking
+
+#### Preset-Level Builder Dispatch
+- **`PRESET_BUILDERS`** map in `services/candidate_builders/__init__.py` — Preset-specific
+  builder overrides that take priority over family-level `CANDIDATE_BUILDERS` dispatch
+- `"screenshots"` preset now routes to `ScreenshotCandidateBuilder` instead of
+  falling through to `DocumentCandidateBuilder`
+
+#### Candidate Set Fusion
+- **`_fuse_candidate_sets()`** in `search_orchestrator.py` — Google-style fusion
+  that merges multiple `CandidateSet` results by path with evidence accumulation
+- When the same path appears in multiple builders, evidence dicts are merged
+- Inherits family from the first non-empty set; takes max confidence
+
+#### Builder Diagnostics
+- **`CandidateSet.diagnostics`** — New `Dict[str, Any]` field on `CandidateSet`
+  for rejection tracking and debug metadata
+- **`DocumentCandidateBuilder`** now tracks rejection counts by reason
+  (insufficient_evidence, etc.) and logs rejection histograms
+- **`PeopleCandidateBuilder`** diagnostics include named_hits, cluster_hits,
+  cooccurrence_hits, face_presence_hits, and top event_score samples
+- **`SearchConfidencePolicy`** enriches low-confidence warnings with top rejection
+  reasons (document family) and face presence breakdown (people family)
+- **`get_last_candidate_diagnostics()`** on orchestrator for external access
+
+#### Ranker: w_screenshot Weight
+- **`ScoringWeights.w_screenshot`** — New reserved weight channel (default 0.00)
+  for screenshot-specific evidence scoring
+
+### Files Changed
+- `services/candidate_builders/__init__.py`
+- `services/candidate_builders/base_candidate_builder.py`
+- `services/candidate_builders/screenshot_candidate_builder.py` *(new)*
+- `services/candidate_builders/document_candidate_builder.py`
+- `services/candidate_builders/people_candidate_builder.py`
+- `services/ranker.py`
+- `services/search_confidence_policy.py`
+- `services/search_orchestrator.py`
+- `tests/test_search_quality.py`
+
+### Test Updates
+- Updated weight-sum-to-one tests to include `w_event` + `w_screenshot` in the
+  total (was summing 8 weights, now correctly sums all 9)
+- All 306 relevant tests pass
+
+---
+
 ## [Unreleased] - 2026-03-13
 
 ### Bug Fix: people_event NoneType crash (PR #718 CI fix)

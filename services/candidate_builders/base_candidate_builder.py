@@ -22,7 +22,7 @@ Usage:
 from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 
 from services.query_intent_planner import QueryIntent
 from logging_config import get_logger
@@ -40,6 +40,7 @@ class CandidateSet:
     builder_confidence: float = 0.0
     ready_state: str = "ready"  # ready, partial, not_ready, empty
     notes: List[str] = field(default_factory=list)
+    diagnostics: Dict[str, Any] = field(default_factory=dict)
 
     @property
     def count(self) -> int:
