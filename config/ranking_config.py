@@ -71,26 +71,31 @@ FAMILY_DEFAULTS: Dict[str, Dict[str, float]] = {
         "w_clip": 0.82, "w_recency": 0.04, "w_favorite": 0.05,
         "w_location": 0.06, "w_face_match": 0.03,
         "w_structural": 0.00, "w_ocr": 0.00, "w_event": 0.00,
+        "w_screenshot": 0.00,
     },
     "type": {
         "w_clip": 0.20, "w_recency": 0.03, "w_favorite": 0.02,
         "w_location": 0.00, "w_face_match": 0.00,
-        "w_structural": 0.50, "w_ocr": 0.25, "w_event": 0.00,
+        "w_structural": 0.40, "w_ocr": 0.22, "w_event": 0.00,
+        "w_screenshot": 0.13,
     },
     "people_event": {
         "w_clip": 0.33, "w_recency": 0.07, "w_favorite": 0.05,
         "w_location": 0.00, "w_face_match": 0.30,
         "w_structural": 0.00, "w_ocr": 0.00, "w_event": 0.25,
+        "w_screenshot": 0.00,
     },
     "utility": {
         "w_clip": 0.00, "w_recency": 0.20, "w_favorite": 0.45,
         "w_location": 0.25, "w_face_match": 0.10,
         "w_structural": 0.00, "w_ocr": 0.00, "w_event": 0.00,
+        "w_screenshot": 0.00,
     },
     "animal_object": {
         "w_clip": 0.88, "w_recency": 0.05, "w_favorite": 0.03,
         "w_location": 0.00, "w_face_match": 0.00,
         "w_structural": 0.04, "w_ocr": 0.00, "w_event": 0.00,
+        "w_screenshot": 0.00,
     },
 }
 
@@ -105,7 +110,7 @@ class RankingConfig:
     # ── Per-family weight getters/setters ──
 
     _WEIGHT_KEYS = ("w_clip", "w_recency", "w_favorite", "w_location",
-                     "w_face_match", "w_structural", "w_ocr", "w_event")
+                     "w_face_match", "w_structural", "w_ocr", "w_event", "w_screenshot")
 
     @classmethod
     def get_family_weight(cls, family: str, weight_name: str) -> float:
@@ -159,6 +164,10 @@ class RankingConfig:
     @classmethod
     def get_w_ocr(cls) -> float:
         return cls.get_family_weight("scenic", "w_ocr")
+
+    @classmethod
+    def get_w_screenshot(cls) -> float:
+        return cls.get_family_weight("scenic", "w_screenshot")
 
     # ── Guardrail getters ──
 
@@ -227,6 +236,10 @@ class RankingConfig:
     @classmethod
     def set_w_ocr(cls, v: float) -> bool:
         return cls.set_family_weight("scenic", "w_ocr", v)
+
+    @classmethod
+    def set_w_screenshot(cls, v: float) -> bool:
+        return cls.set_family_weight("scenic", "w_screenshot", v)
 
     @classmethod
     def set_max_recency_boost(cls, v: float) -> bool:
