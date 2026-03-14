@@ -236,6 +236,14 @@ class PeopleGroupService:
                     last_used_at = row[4]
                     is_stale = match_count == 0 and last_used_at is None
 
+                    # FIX 2026-03-14: When stale (never computed), report result_count
+                    # as -1 so the UI shows "..." instead of "0 photos".  This follows
+                    # the Google Photos / Apple Photos pattern where a group shows a
+                    # loading indicator until its first computation completes.
+                    # A group that HAS been computed (last_used_at is set) and has 0
+                    # matches is a legitimate result and should display "0 photos".
+                    display_count = -1 if is_stale else match_count
+
                     # Fetch top-3 member face thumbnail paths for GroupCard avatars
                     member_thumb_rows = conn.execute("""
                         SELECT r.rep_path
@@ -257,7 +265,7 @@ class PeopleGroupService:
                         'last_used_at': row[4],
                         'is_pinned': bool(row[5]),
                         'member_count': row[6],
-                        'result_count': match_count,
+                        'result_count': display_count,
                         'is_stale': is_stale,
                         'member_rep_paths': member_rep_paths,
                     })

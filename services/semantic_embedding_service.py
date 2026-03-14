@@ -650,23 +650,37 @@ class SemanticEmbeddingService:
             # entirely by bypassing the problematic code path.
             self._patch_causal_mask()
 
-            # CRITICAL FIX: Run a dummy inference pass during model loading
+            # CRITICAL FIX: Run dummy inference passes during model loading
             # to fully initialise MKL's internal state in THIS thread.
-            # Without this, the first real encode_text() call (from a
-            # *different* QThreadPool worker thread) performs the first-ever
-            # MKL matrix multiply, which can still trigger access violations
-            # on Windows when MKL lazily initialises its thread pool.
-            # A single warm-up call forces MKL to complete its initialisation
-            # while we hold _load_lock, making subsequent cross-thread calls safe.
+            # Without this, the first real encode_text()/encode_image() call
+            # (from a *different* QThreadPool worker thread) performs the
+            # first-ever MKL matrix multiply, which can trigger access
+            # violations on Windows when MKL lazily initialises its thread
+            # pool.  Warm-up calls force MKL to complete its initialisation
+            # while we hold _load_lock, making subsequent cross-thread
+            # calls safe.
             #
             # FIX 2026-03-09: Acquire _GLOBAL_CLIP_INFER_LOCK for warm-up
             # so it serialises with any concurrent encode_text/encode_image.
+            #
+            # FIX 2026-03-14: Also warm up the IMAGE encoder path.
+            # The text-only warmup left the visual encoder's MKL kernels
+            # uninitialised, causing access violations (0xC0000005) on the
+            # first encode_image() call from the post-scan pipeline thread.
             try:
                 with _GLOBAL_CLIP_INFER_LOCK:
                     self._torch.set_num_threads(1)
                     with self._torch.inference_mode():
+                        # Text encoder warmup
                         dummy_ids = self._torch.zeros(1, 77, dtype=self._torch.long, device=self._device)
                         self._model.get_text_features(input_ids=dummy_ids)
+
+                        # Image encoder warmup — use a 224×224 dummy tensor
+                        # matching CLIP's expected input shape (1, 3, 224, 224)
+                        dummy_pixel_values = self._torch.zeros(
+                            1, 3, 224, 224, dtype=self._torch.float32, device=self._device
+                        )
+                        self._model.get_image_features(pixel_values=dummy_pixel_values)
                 logger.info("[SemanticEmbeddingService] ✓ Warm-up inference completed (MKL initialised)")
             except Exception as e:
                 logger.warning(f"[SemanticEmbeddingService] Warm-up inference failed (non-fatal): {e}")
