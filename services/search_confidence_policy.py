@@ -124,13 +124,33 @@ class SearchConfidencePolicy:
 
         evidence_ratio = hard_evidence / total
 
-        if evidence_ratio >= 0.6:
+        # Check for low-confidence candidates from relaxed document builder
+        diag = candidate_set.diagnostics or {}
+        low_conf_count = diag.get("low_confidence_candidates", 0)
+
+        if evidence_ratio >= 0.6 and low_conf_count == 0:
             return SearchDecision(
                 show_results=True,
                 confidence_label="high",
                 explanation=[
                     f"{hard_evidence}/{total} results have strong "
                     f"document/OCR evidence"
+                ],
+            )
+
+        if evidence_ratio >= 0.6 and low_conf_count > 0:
+            # Good evidence ratio but some candidates lack OCR
+            return SearchDecision(
+                show_results=True,
+                confidence_label="medium",
+                warning_message=(
+                    f"{hard_evidence}/{total} results have strong evidence, but "
+                    f"{low_conf_count} candidates are structural matches "
+                    f"without OCR confirmation. Run OCR for full confidence."
+                ),
+                explanation=[
+                    f"{low_conf_count} candidates admitted by structural "
+                    f"evidence only (OCR missing)"
                 ],
             )
 
@@ -141,12 +161,13 @@ class SearchConfidencePolicy:
                 warning_message=(
                     f"Some results may not be documents. "
                     f"{hard_evidence}/{total} have strong evidence."
+                    + (f" {low_conf_count} are structural-only (no OCR)."
+                       if low_conf_count > 0 else "")
                 ),
                 explanation=failures,
             )
 
         # Enrich low-confidence message with builder diagnostics
-        diag = candidate_set.diagnostics or {}
         rejection_hist = diag.get("rejections", {})
         diag_detail = ""
         if rejection_hist:
@@ -159,7 +180,13 @@ class SearchConfidencePolicy:
                 + "."
             )
 
-        # Low confidence
+        if low_conf_count > 0:
+            diag_detail += (
+                f" {low_conf_count} candidates admitted by structural "
+                f"evidence only (OCR missing)."
+            )
+
+        # Low confidence but still showing results (retrieval-first approach)
         return SearchDecision(
             show_results=True,
             confidence_label="low",
@@ -253,22 +280,35 @@ class SearchConfidencePolicy:
         if not ranked_results:
             return self._empty_decision("scenic")
 
+        # Check builder diagnostics for pre-filtering stats
+        diag = candidate_set.diagnostics or {}
+        hard_exclusions = diag.get("hard_exclusions", {})
+        total_excluded = sum(hard_exclusions.values()) if hard_exclusions else 0
+
         # For scenic, check for contamination (documents/screenshots)
         failures = self._detect_trust_failure_patterns(
             ranked_results, candidate_set, "scenic"
         )
 
+        explanation = []
+        if total_excluded > 0:
+            explanation.append(
+                f"ScenicCandidateBuilder pre-filtered {total_excluded} "
+                f"non-scenic assets ({hard_exclusions})"
+            )
+
         if failures:
             return SearchDecision(
                 show_results=True,
                 confidence_label="medium",
-                explanation=failures,
+                explanation=explanation + failures,
             )
 
+        explanation.append("Scenic search completed with builder pre-filtering")
         return SearchDecision(
             show_results=True,
             confidence_label="high",
-            explanation=["Scenic CLIP search completed normally"],
+            explanation=explanation,
         )
 
     def _evaluate_pet_family(
@@ -339,7 +379,11 @@ class SearchConfidencePolicy:
 
             if family == "type":
                 # Strong evidence: OCR hit or structural document signal
-                if (evidence.get("ocr_fts_hit")
+                # Low-confidence candidates (structural-only without OCR)
+                # count as partial evidence, not as strong evidence.
+                if evidence.get("confidence_level") == "low":
+                    pass  # Excluded from hard evidence count
+                elif (evidence.get("ocr_fts_hit")
                         or evidence.get("ocr_lexicon_hit")
                         or evidence.get("doc_extension")
                         or evidence.get("is_screenshot_flag")
@@ -369,10 +413,13 @@ class SearchConfidencePolicy:
         if family == "type":
             # Check if top results are scenic photos with no OCR
             no_evidence = 0
+            low_conf = 0
             for r in results[:top_n]:
                 path = r.path if hasattr(r, "path") else r
                 evidence = candidate_set.evidence_by_path.get(path, {})
-                if (not evidence.get("ocr_fts_hit")
+                if evidence.get("confidence_level") == "low":
+                    low_conf += 1
+                elif (not evidence.get("ocr_fts_hit")
                         and not evidence.get("ocr_lexicon_hit")
                         and not evidence.get("doc_extension")):
                     no_evidence += 1
@@ -380,6 +427,11 @@ class SearchConfidencePolicy:
                 failures.append(
                     f"{no_evidence}/{top_n} top results lack OCR or "
                     f"structural document evidence"
+                )
+            if low_conf > 0:
+                failures.append(
+                    f"{low_conf}/{top_n} top results are structural-only "
+                    f"(no OCR confirmation — run OCR for better accuracy)"
                 )
 
         elif family == "people_event":
@@ -392,6 +444,21 @@ class SearchConfidencePolicy:
             if no_faces > top_n * 0.5:
                 failures.append(
                     f"{no_faces}/{top_n} top results have no detected faces"
+                )
+
+        elif family == "scenic":
+            # Check for document/screenshot contamination in top results
+            contaminated = 0
+            for r in results[:top_n]:
+                path = r.path if hasattr(r, "path") else r
+                evidence = candidate_set.evidence_by_path.get(path, {})
+                soft_pen = evidence.get("soft_penalty", 0.0)
+                if soft_pen < -0.10:
+                    contaminated += 1
+            if contaminated > top_n * 0.3:
+                failures.append(
+                    f"{contaminated}/{top_n} top scenic results have "
+                    f"document-like signals (soft-penalized)"
                 )
 
         return failures
