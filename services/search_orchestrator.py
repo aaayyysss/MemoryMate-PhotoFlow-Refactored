@@ -1004,6 +1004,72 @@ class SearchOrchestrator:
         policy = getattr(self, '_confidence_policy', None) or SearchConfidencePolicy()
         return policy.evaluate(intent, candidate_set, ranked_results, family)
 
+    def _get_screenshot_semantic_fallback_candidates(
+        self,
+        top_k: int,
+        threshold: float,
+        fusion_mode: str,
+    ) -> Dict[int, tuple]:
+        """
+        Narrow semantic supplement for screenshots only.
+
+        This is NOT a legacy fallback. It is a constrained semantic probe used
+        only when the dedicated screenshot builder returns zero candidates.
+        """
+        if not self._smart_find.clip_available:
+            return {}
+
+        prompts = [
+            "screenshot",
+            "screen capture",
+            "mobile app screen",
+            "phone screenshot",
+            "chat screenshot",
+            "settings screen",
+        ]
+
+        try:
+            return self._smart_find._run_clip_multi_prompt(
+                prompts,
+                top_k=max(20, top_k * 2),
+                threshold=max(0.18, threshold - 0.02),
+                fusion_mode=fusion_mode,
+            )
+        except Exception as e:
+            logger.warning(
+                f"[SearchOrchestrator] screenshot semantic supplement failed: {e}"
+            )
+            return {}
+
+    def _get_builder_screenshot_score(
+        self,
+        path: str,
+        builder_evidence_by_path: Dict[str, dict],
+    ) -> float:
+        """Extract screenshot score from builder evidence."""
+        evidence = builder_evidence_by_path.get(path, {})
+        return float(evidence.get("screenshot_score", 0.0) or 0.0)
+
+    def _log_type_builder_diagnostics(
+        self,
+        preset_id: str,
+        candidate_set: CandidateSet,
+        project_meta: Dict[str, dict],
+    ):
+        """Log granular diagnostics for empty type-family results."""
+        diag = candidate_set.diagnostics or {}
+        rejections = diag.get("rejections", {})
+        has_any_screenshot = diag.get("has_any_screenshot_flag", False)
+        has_any_ocr = diag.get("has_any_ocr_text", False)
+
+        logger.info(
+            f"[SearchOrchestrator] {preset_id!r} DIAGNOSTICS: "
+            f"library_size={len(project_meta)} "
+            f"has_screenshot_metadata={has_any_screenshot} "
+            f"has_ocr_text={has_any_ocr} "
+            f"rejections={rejections}"
+        )
+
     def get_last_candidate_diagnostics(self) -> dict:
         """Return diagnostics from the most recent candidate builder run."""
         return getattr(self, "_last_candidate_diagnostics", {})
@@ -1254,20 +1320,60 @@ class SearchOrchestrator:
             type_evidence = builder_candidate_set.evidence_by_path or {}
             if not type_structural_candidates:
                 logger.info(
-                    f"[SearchOrchestrator] Builder returned empty candidates for "
-                    f"preset={plan.preset_id!r}; returning empty result"
+                    f"[SearchOrchestrator] TYPE_BUILDER_EMPTY: "
+                    f"family={current_family!r} preset={plan.preset_id!r} "
+                    f"builder returned 0 legal candidates"
                 )
-                return OrchestratorResult(
-                    paths=[],
-                    total_matches=0,
-                    scored_results=[],
-                    scores={},
-                    facets={},
-                    query_plan=plan,
-                    phase_label=f"No {plan.preset_id} found in library",
-                    label=self._build_label(plan, OrchestratorResult()),
-                    confidence_label="empty",
+
+                self._log_type_builder_diagnostics(
+                    plan.preset_id,
+                    builder_candidate_set,
+                    project_meta,
                 )
+
+                # Phase 2: screenshots-only semantic supplement
+                if (plan.preset_id or "").lower() == "screenshots":
+                    semantic_hits = self._get_screenshot_semantic_fallback_candidates(
+                        top_k=top_k,
+                        threshold=threshold,
+                        fusion_mode=fusion_mode,
+                    )
+
+                    if semantic_hits:
+                        logger.warning(
+                            f"[SearchOrchestrator] SCREENSHOT_SUPPLEMENT: "
+                            f"builder empty, semantic supplement produced "
+                            f"{len(semantic_hits)} raw hits"
+                        )
+                        # Inject hits into the structural pool so they get scored
+                        type_structural_candidates = set()
+                        # photo_ids in semantic_hits are resolved later in Step 3
+                    else:
+                        return OrchestratorResult(
+                            paths=[],
+                            total_matches=0,
+                            scored_results=[],
+                            scores={},
+                            facets={},
+                            query_plan=plan,
+                            phase_label=f"No {plan.preset_id} found in library",
+                            label=self._build_label(plan, OrchestratorResult()),
+                            confidence_label="empty",
+                            confidence_warning="No screenshot candidates found.",
+                        )
+                else:
+                    return OrchestratorResult(
+                        paths=[],
+                        total_matches=0,
+                        scored_results=[],
+                        scores={},
+                        facets={},
+                        query_plan=plan,
+                        phase_label=f"No {plan.preset_id} found in library",
+                        label=self._build_label(plan, OrchestratorResult()),
+                        confidence_label="empty",
+                        confidence_warning="No legal type-family candidates found.",
+                    )
         elif builder_active and current_family == "people_event":
             # People_event gets its own candidate pool — never reuse
             # type_structural_candidates variable.
@@ -1295,25 +1401,52 @@ class SearchOrchestrator:
             )
         elif not builder_active and current_family == "type" and plan.preset_id in ("documents", "screenshots"):
             # No legacy fallback: builder is the single source of truth
-            # for type-family candidates.  Returning empty prevents the
-            # split-brain where a second evidence contract invents
-            # candidates with different semantics.
-            logger.warning(
+            # for type-family candidates.
+            logger.info(
                 f"[SearchOrchestrator] BUILDER_UNAVAILABLE: "
                 f"family={current_family!r} preset={plan.preset_id!r} -> "
-                f"no builder candidates; returning empty (legacy split-brain removed)"
+                f"no builder candidates, attempting family-internal supplement"
             )
-            return OrchestratorResult(
-                paths=[],
-                total_matches=0,
-                scored_results=[],
-                scores={},
-                facets={},
-                query_plan=plan,
-                phase_label=f"No {plan.preset_id} found — builder unavailable",
-                label=self._build_label(plan, OrchestratorResult()),
-                confidence_label="empty",
-            )
+
+            # Phase 2: screenshots-only semantic supplement
+            if (plan.preset_id or "").lower() == "screenshots":
+                semantic_hits = self._get_screenshot_semantic_fallback_candidates(
+                    top_k=top_k,
+                    threshold=threshold,
+                    fusion_mode=fusion_mode,
+                )
+
+                if semantic_hits:
+                    logger.warning(
+                        f"[SearchOrchestrator] SCREENSHOT_SUPPLEMENT: "
+                        f"builder unavailable, semantic supplement produced "
+                        f"{len(semantic_hits)} raw hits"
+                    )
+                    type_structural_candidates = set()
+                else:
+                    return OrchestratorResult(
+                        paths=[],
+                        total_matches=0,
+                        scored_results=[],
+                        scores={},
+                        facets={},
+                        query_plan=plan,
+                        phase_label=f"No {plan.preset_id} found — builder unavailable",
+                        label=self._build_label(plan, OrchestratorResult()),
+                        confidence_label="empty",
+                    )
+            else:
+                return OrchestratorResult(
+                    paths=[],
+                    total_matches=0,
+                    scored_results=[],
+                    scores={},
+                    facets={},
+                    query_plan=plan,
+                    phase_label=f"No {plan.preset_id} found — builder unavailable",
+                    label=self._build_label(plan, OrchestratorResult()),
+                    confidence_label="empty",
+                )
 
         # Step 1: Semantic candidates
         # ARCHITECTURAL FIX: Skip full-corpus CLIP for type-family presets
@@ -1548,16 +1681,43 @@ class SearchOrchestrator:
                     if path:
                         clip_path_scores[path] = (sem_score, matched_prompt)
 
+            # Resolve all supplemental semantic hits into the pool
+            if semantic_hits and (plan.preset_id or "").lower() == "screenshots":
+                for photo_id in semantic_hits:
+                    path = path_lookup.get(photo_id)
+                    if path:
+                        type_structural_candidates.add(path)
+
             for path in type_structural_candidates:
                 clip_info = clip_path_scores.get(path, (0.0, ""))
                 sem_score, matched_prompt = clip_info
                 struct = structural_scores.get(path, 0.0)
                 ocr = ocr_scores.get(path, 0.0)
+
+                screenshot_score = 0.0
+                if (plan.preset_id or "").lower() == "screenshots":
+                    screenshot_score = self._get_builder_screenshot_score(
+                        path, type_evidence
+                    )
+                    # Phase 2: semantic supplement hits get a weak prior
+                    if screenshot_score <= 0.0 and sem_score > 0.0:
+                        screenshot_score = 0.20
+
                 sr = self._score_result(path, sem_score, matched_prompt, project_meta,
                                         plan.filters, people_implied,
                                         structural_score=struct, ocr_score=ocr,
+                                        screenshot_score=screenshot_score,
                                         preset_id=plan.preset_id)
                 scored.append(sr)
+
+            if (plan.preset_id or "").lower() == "screenshots" and scored:
+                for idx, sr in enumerate(scored[:10]):
+                    logger.info(
+                        f"[SearchOrchestrator][Screenshots] pre-sort #{idx} "
+                        f"path={os.path.basename(sr.path)!r} clip={sr.clip_score:.3f} "
+                        f"screen={sr.screenshot_score:.3f} "
+                        f"ocr={sr.ocr_score:.3f} struct={sr.structural_score:.3f}"
+                    )
 
             logger.info(
                 f"[SearchOrchestrator] Type-structural retrieval: "
@@ -1916,6 +2076,7 @@ class SearchOrchestrator:
                       structural_score: float = 0.0,
                       ocr_score: float = 0.0,
                       event_score: float = 0.0,
+                      screenshot_score: float = 0.0,
                       preset_id: Optional[str] = None) -> ScoredResult:
         """
         Apply the deterministic scoring contract to a single result.
@@ -1931,6 +2092,7 @@ class SearchOrchestrator:
             structural_score=structural_score,
             ocr_score=ocr_score,
             event_score=event_score,
+            screenshot_score=screenshot_score,
         )
 
     def _get_search_feature_repo(self):

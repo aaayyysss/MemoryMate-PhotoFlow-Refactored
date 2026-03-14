@@ -105,9 +105,22 @@ class ScreenshotCandidateBuilder(BaseCandidateBuilder):
         confidence = min(1.0, 0.3 + 0.5 * (len(candidates) / max(1, len(project_meta))))
 
         logger.info(
-            f"[ScreenshotCandidateBuilder] {len(candidates)}/{len(project_meta)} "
-            f"candidates"
+            f"[ScreenshotCandidateBuilder] screenshots: "
+            f"{len(candidates)}/{len(project_meta)} candidates"
         )
+        if candidates:
+            top_preview = sorted(
+                (
+                    (p, evidence_by_path[p].get("screenshot_score", 0.0))
+                    for p in candidates[:5]
+                ),
+                key=lambda x: x[1],
+                reverse=True,
+            )
+            logger.info(
+                f"[ScreenshotCandidateBuilder] top candidates: "
+                f"{[(os.path.basename(p), round(s, 3)) for p, s in top_preview]}"
+            )
         if rejection_counts:
             logger.info(
                 f"[ScreenshotCandidateBuilder] rejections: {rejection_counts}"
@@ -124,6 +137,16 @@ class ScreenshotCandidateBuilder(BaseCandidateBuilder):
             diagnostics={
                 "rejections": rejection_counts,
                 "pre_filter_candidates": len(project_meta),
+                "kept": len(candidates),
+                "mode": "screenshots",
+                "has_any_screenshot_flag": any(
+                    bool((project_meta.get(p) or {}).get("is_screenshot"))
+                    for p in project_meta
+                ),
+                "has_any_ocr_text": any(
+                    bool((project_meta.get(p) or {}).get("ocr_text"))
+                    for p in project_meta
+                ),
             },
         )
 
@@ -143,58 +166,83 @@ class ScreenshotCandidateBuilder(BaseCandidateBuilder):
         score = 0.0
         evidence = {"builder": "screenshot"}
 
-        # Signal 1: is_screenshot metadata flag
+        # Signal 1: metadata flag
         is_screenshot = bool(meta.get("is_screenshot"))
         if is_screenshot:
-            score += 0.40
+            score += 0.45
         evidence["is_screenshot_flag"] = is_screenshot
 
-        # Signal 2: Filename markers
+        # Signal 2: filename markers
         basename_lower = os.path.basename(path).lower() if path else ""
         filename_marker = any(m in basename_lower for m in _SCREENSHOT_MARKERS)
         if filename_marker:
             score += 0.25
         evidence["filename_marker"] = filename_marker
 
-        # Signal 3: UI-text OCR detection
+        # Signal 3: OCR UI text
         ocr_text = (meta.get("ocr_text") or "").lower()
-        ui_term_count = sum(1 for t in _UI_TERMS if t in ocr_text) if ocr_text else 0
-        ui_hit = ui_term_count >= 2  # require 2+ UI terms for stronger signal
+        ocr_len = len(ocr_text)
+        ui_hit = any(t in ocr_text for t in _UI_TERMS) if ocr_text else False
         if ui_hit:
             score += 0.20
-        elif ui_term_count == 1:
-            score += 0.10
         evidence["ui_text_hit"] = ui_hit
-        evidence["ui_term_count"] = ui_term_count
+        evidence["ocr_text_len"] = ocr_len
 
-        # Signal 4: Screen-like aspect ratio + OCR density
+        # Signal 4: dimensions / aspect
         w = meta.get("width") or 0
         h = meta.get("height") or 0
-        if w > 0 and h > 0:
-            aspect = max(w, h) / max(1, min(w, h))
-            screen_ratio = _SCREEN_RATIO_MIN <= aspect <= _SCREEN_RATIO_MAX
-            ocr_dense = len(ocr_text) >= _MIN_OCR_FOR_SCREEN
-            if screen_ratio and ocr_dense:
-                score += 0.15
-            evidence["screen_aspect_ratio"] = screen_ratio
-            evidence["ocr_dense"] = ocr_dense
-        else:
-            evidence["screen_aspect_ratio"] = False
-            evidence["ocr_dense"] = False
+        aspect = (max(w, h) / max(1, min(w, h))) if w and h else 0.0
+        face_count = int(meta.get("face_count") or 0)
 
-        # Signal 5: Text term match in OCR
+        looks_like_phone_screen = (
+            700 <= min(w, h) <= 1800
+            and _SCREEN_RATIO_MIN <= aspect <= _SCREEN_RATIO_MAX
+            and face_count == 0
+        )
+        if looks_like_phone_screen:
+            score += 0.10
+        evidence["looks_like_phone_screen"] = looks_like_phone_screen
+
+        # Signal 5: flat PNG / UI-like fallback
+        ext = os.path.splitext(path)[1].lower() if path else ""
+        flat_ui_fallback = (
+            ext == ".png"
+            and face_count == 0
+            and min(w, h) >= 700
+            and (
+                ui_hit
+                or filename_marker
+                or is_screenshot
+                or ocr_len >= _MIN_OCR_FOR_SCREEN
+            )
+        )
+        if flat_ui_fallback:
+            score += 0.10
+        evidence["flat_ui_fallback"] = flat_ui_fallback
+
+        # Query text match in OCR
         term_hit = False
         if text_terms and ocr_text:
             term_hit = any(t.lower() in ocr_text for t in text_terms)
             if term_hit:
                 score += 0.05
         evidence["text_term_hit"] = term_hit
-        evidence["ocr_text_len"] = len(ocr_text)
 
-        # Cap at 1.0
-        score = min(1.0, score)
+        # Hard negatives
+        if face_count > 0:
+            evidence["rejection_reason"] = "has_faces"
+            return 0.0, evidence
 
-        if score == 0.0:
-            evidence["rejection_reason"] = "not_screenshot"
+        if min(w, h) > 0 and min(w, h) < 500:
+            evidence["rejection_reason"] = "too_small"
+            return 0.0, evidence
 
-        return score, evidence
+        # Final threshold
+        if score < 0.20:
+            if not is_screenshot and not filename_marker and not ui_hit and not looks_like_phone_screen and not flat_ui_fallback:
+                evidence["rejection_reason"] = "no_screenshot_signals"
+            else:
+                evidence["rejection_reason"] = "weak_screenshot_score"
+            return 0.0, evidence
+
+        return min(1.0, score), evidence

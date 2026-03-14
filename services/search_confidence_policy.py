@@ -99,10 +99,79 @@ class SearchConfidencePolicy:
             "animal_object": self._evaluate_pet_family,
             "utility": self._evaluate_utility_family,
         }
+
+        # Special case for screenshots (type family)
+        if family == "type" and (intent.preset_id or "").lower() == "screenshots":
+            return self._evaluate_screenshot_type(intent, candidate_set, ranked_results)
+
         evaluator = dispatch.get(family, self._evaluate_scenic_family)
         return evaluator(intent, candidate_set, ranked_results)
 
     # ── Family evaluators ──
+
+    def _evaluate_screenshot_type(
+        self,
+        intent: QueryIntent,
+        candidate_set: CandidateSet,
+        ranked_results: list,
+    ) -> SearchDecision:
+        """Strengthened screenshot trust evaluation (Phase 2)."""
+        hard_evidence = self._count_hard_evidence(
+            ranked_results, candidate_set, "screenshots"
+        )
+        soft_evidence = self._count_soft_evidence(
+            ranked_results, candidate_set, "screenshots"
+        )
+        total = len(ranked_results)
+        failures = self._detect_trust_failure_patterns(
+            ranked_results, candidate_set, "screenshots"
+        )
+
+        if total == 0:
+            return self._empty_decision("screenshots")
+
+        # Effective evidence combines hard and weighted soft evidence
+        effective_evidence = hard_evidence + (0.5 * soft_evidence)
+        evidence_ratio = effective_evidence / total
+
+        diag = candidate_set.diagnostics or {}
+        rejection_hist = diag.get("rejections", {})
+
+        if evidence_ratio >= 0.7:
+            return SearchDecision(
+                show_results=True,
+                confidence_label="high",
+                explanation=[
+                    f"{hard_evidence}/{total} results have strong screenshot evidence"
+                ],
+            )
+
+        if evidence_ratio >= 0.35:
+            return SearchDecision(
+                show_results=True,
+                confidence_label="medium",
+                warning_message=(
+                    f"Some results may not be screenshots. "
+                    f"{hard_evidence}/{total} have strong evidence."
+                ),
+                explanation=failures,
+            )
+
+        return SearchDecision(
+            show_results=True,
+            confidence_label="low",
+            warning_message=(
+                f"Low screenshot confidence: only {hard_evidence}/{total} "
+                f"results have strong screenshot evidence, with {soft_evidence} "
+                f"weak screenshot matches. "
+                f"Builder rejections={rejection_hist}."
+            ),
+            explanation=failures,
+            recommended_actions=[
+                "Rebuild screenshot detection metadata",
+                "Try a more specific UI/text query",
+            ],
+        )
 
     def _evaluate_type_family(
         self,
@@ -377,7 +446,11 @@ class SearchConfidencePolicy:
             path = r.path if hasattr(r, "path") else r
             evidence = candidate_set.evidence_by_path.get(path, {})
 
-            if family == "type":
+            if family == "screenshots":
+                score = float(evidence.get("screenshot_score", 0.0) or 0.0)
+                if score >= 0.35:
+                    count += 1
+            elif family == "type":
                 # Strong evidence: OCR hit or structural document signal
                 # Low-confidence candidates (structural-only without OCR)
                 # count as partial evidence, not as strong evidence.
@@ -401,6 +474,27 @@ class SearchConfidencePolicy:
         return count
 
     @staticmethod
+    def _count_soft_evidence(
+        results: list,
+        candidate_set: CandidateSet,
+        family: str,
+    ) -> int:
+        """Count weaker evidence that should not be treated as hard proof."""
+        count = 0
+        top_n = min(20, len(results))
+
+        for r in results[:top_n]:
+            path = r.path if hasattr(r, "path") else r
+            evidence = candidate_set.evidence_by_path.get(path, {})
+
+            if family == "screenshots":
+                score = float(evidence.get("screenshot_score", 0.0) or 0.0)
+                if 0.20 <= score < 0.35:
+                    count += 1
+
+        return count
+
+    @staticmethod
     def _detect_trust_failure_patterns(
         results: list,
         candidate_set: CandidateSet,
@@ -410,7 +504,20 @@ class SearchConfidencePolicy:
         failures = []
         top_n = min(10, len(results))
 
-        if family == "type":
+        if family == "screenshots":
+            no_evidence = 0
+            for r in results[:top_n]:
+                path = r.path if hasattr(r, "path") else r
+                evidence = candidate_set.evidence_by_path.get(path, {})
+                score = float(evidence.get("screenshot_score", 0.0) or 0.0)
+                if score < 0.20:
+                    no_evidence += 1
+            if no_evidence > top_n * 0.4:
+                failures.append(
+                    f"{no_evidence}/{top_n} top results lack screenshot signals"
+                )
+
+        elif family == "type":
             # Check if top results are scenic photos with no OCR
             no_evidence = 0
             low_conf = 0

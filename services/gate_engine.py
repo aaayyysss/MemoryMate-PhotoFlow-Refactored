@@ -174,9 +174,13 @@ class GateEngine:
             face_count = int(meta.get("face_count") or 0)
             has_gps = bool(meta.get("has_gps", False))
 
-            # Gate: require screenshot (strict)
+            # Gate: require screenshot (strict flag or semantic supplement hit)
             if require_screenshot:
-                if not self._passes_screenshot_gate(meta):
+                # We allow it to pass if it has the explicit metadata flag
+                # OR if it has a positive screenshot_score from the pipeline
+                # (which covers semantic supplement hits).
+                screenshot_score = getattr(r, 'screenshot_score', 0.0)
+                if not self._passes_screenshot_gate(meta) and screenshot_score < 0.20:
                     dropped["require_screenshot"] += 1
                     continue
                 logger.debug(
