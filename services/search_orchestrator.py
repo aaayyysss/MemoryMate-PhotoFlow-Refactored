@@ -1031,7 +1031,7 @@ class SearchOrchestrator:
         try:
             return self._smart_find._run_clip_multi_prompt(
                 prompts,
-                top_k=max(20, top_k * 2),
+                candidate_k=max(20, top_k * 2),
                 threshold=max(0.18, threshold - 0.02),
                 fusion_mode=fusion_mode,
             )
@@ -1463,6 +1463,8 @@ class SearchOrchestrator:
             or (people_event_candidates is not None
                 and len(people_event_candidates) > 0)
         )
+        # Step 1: Semantic candidates
+        _supplemental_hits = semantic_hits or {}
         semantic_hits = {}  # {photo_id: (score, prompt)}
         if plan.has_semantic() and self._smart_find.clip_available and not skip_clip_for_type:
             # One-time embedding quality diagnostic
@@ -1473,6 +1475,13 @@ class SearchOrchestrator:
             semantic_hits = self._smart_find._run_clip_multi_prompt(
                 prompts, top_k * 3, threshold, fusion_mode
             )
+
+        if _supplemental_hits:
+            # Merge supplemental hits (e.g. from screenshot supplement)
+            # Broad hits take priority if they overlap.
+            for photo_id, val in _supplemental_hits.items():
+                if photo_id not in semantic_hits:
+                    semantic_hits[photo_id] = val
         elif skip_clip_for_type:
             # Log which pool caused the skip (type or people_event)
             _skip_pool_size = (
@@ -1659,7 +1668,7 @@ class SearchOrchestrator:
                     path, sem_score, matched_prompt, project_meta,
                     plan.filters, people_implied,
                     event_score=ev_score,
-                    preset_id=plan.preset_id,
+                    family=current_family,
                 )
                 scored.append(sr)
 
@@ -1702,12 +1711,19 @@ class SearchOrchestrator:
                     # Phase 2: semantic supplement hits get a weak prior
                     if screenshot_score <= 0.0 and sem_score > 0.0:
                         screenshot_score = 0.20
+                        # Bridge to SearchConfidencePolicy:
+                        # Ensure these semantic hits are in type_evidence
+                        if path not in type_evidence:
+                            type_evidence[path] = {
+                                "builder": "screenshot_supplement",
+                                "screenshot_score": 0.20,
+                            }
 
                 sr = self._score_result(path, sem_score, matched_prompt, project_meta,
                                         plan.filters, people_implied,
                                         structural_score=struct, ocr_score=ocr,
                                         screenshot_score=screenshot_score,
-                                        preset_id=plan.preset_id)
+                                        family=current_family)
                 scored.append(sr)
 
             if (plan.preset_id or "").lower() == "screenshots" and scored:
@@ -1747,7 +1763,7 @@ class SearchOrchestrator:
                 sr = self._score_result(path, sem_score, matched_prompt, project_meta,
                                         plan.filters, people_implied,
                                         structural_score=struct, ocr_score=ocr,
-                                        preset_id=plan.preset_id)
+                                        family=current_family)
                 scored.append(sr)
 
             if scenic_pool_filtered > 0:
@@ -1764,7 +1780,7 @@ class SearchOrchestrator:
                 sr = self._score_result(path, 0.0, "", project_meta,
                                         plan.filters, people_implied,
                                         structural_score=struct, ocr_score=ocr,
-                                        preset_id=plan.preset_id)
+                                        family=current_family)
                 scored.append(sr)
 
         # Step 5b: Boost OCR-matched results
@@ -1788,7 +1804,7 @@ class SearchOrchestrator:
                         opath, 0.0, "", project_meta,
                         plan.filters, people_implied,
                         structural_score=struct, ocr_score=ocr,
-                        preset_id=plan.preset_id,
+                        family=current_family,
                     )
                     sr.final_score += OCR_BOOST
                     sr.reasons.append(f"ocr_text_match=+{OCR_BOOST}")
@@ -1947,7 +1963,7 @@ class SearchOrchestrator:
                         sr = self._score_result(path, sem_score, prompt, project_meta,
                                                 plan.filters, people_implied,
                                                 structural_score=struct, ocr_score=ocr,
-                                                preset_id=plan.preset_id)
+                                                family=current_family)
                         sr.reasons.append("(backoff)")
                         scored.append(sr)
                         already_scored.add(path)
@@ -1983,7 +1999,11 @@ class SearchOrchestrator:
         # Consolidated gate logic: exclude_faces, exclude_screenshots,
         # require_screenshot, require_faces, min_face_count, require_gps,
         # min_edge_size. Replaces scattered inline gate blocks.
-        scored = self._apply_gates(scored, plan, project_meta)
+        # Pass combined type evidence (documents/screenshots) for rescues
+        scored = self._apply_gates(
+            scored, plan, project_meta,
+            builder_evidence=(type_evidence or people_event_evidence)
+        )
 
         # Step 7e: Family-specific debug logging (post-gate, pre-dedup)
         if scored:
@@ -2006,7 +2026,10 @@ class SearchOrchestrator:
         # If dedup chose a representative that doesn't satisfy active gates,
         # remove it. This prevents dedup from undoing gate outcomes.
         pre_revalidation = len(scored)
-        scored = self._apply_gates(scored, plan, project_meta)
+        scored = self._apply_gates(
+            scored, plan, project_meta,
+            builder_evidence=(type_evidence or people_event_evidence)
+        )
         post_revalidation = len(scored)
         if pre_revalidation != post_revalidation:
             logger.warning(
@@ -2068,22 +2091,25 @@ class SearchOrchestrator:
             confidence_warning=confidence_warning,
         )
 
-    def _score_result(self, path: str, clip_score: float,
-                      matched_prompt: str,
-                      project_meta: Dict[str, Dict],
-                      active_filters: Optional[Dict] = None,
-                      people_implied: bool = False,
-                      structural_score: float = 0.0,
-                      ocr_score: float = 0.0,
-                      event_score: float = 0.0,
-                      screenshot_score: float = 0.0,
-                      preset_id: Optional[str] = None) -> ScoredResult:
+    def _score_result(
+        self,
+        path: str,
+        clip_score: float,
+        matched_prompt: str,
+        project_meta: Dict[str, Dict],
+        active_filters: Optional[Dict] = None,
+        people_implied: bool = False,
+        structural_score: float = 0.0,
+        ocr_score: float = 0.0,
+        event_score: float = 0.0,
+        screenshot_score: float = 0.0,
+        family: Optional[str] = None,
+    ) -> ScoredResult:
         """
         Apply the deterministic scoring contract to a single result.
         Delegates to the family-aware Ranker module.
         """
         meta = project_meta.get(path, {})
-        family = get_preset_family(preset_id)
         # Lazy init for tests that bypass __init__ via __new__
         ranker = getattr(self, '_ranker', None) or Ranker()
         return ranker.score(
@@ -2373,7 +2399,7 @@ class SearchOrchestrator:
             return
 
         # Compact summary line with family-aware weights
-        family = get_preset_family(plan.preset_id)
+        family = current_family if 'current_family' in locals() else get_preset_family(plan.preset_id)
         weights = get_weights_for_family(family)
         logger.info(
             f'[SearchOrchestrator] query="{plan.raw_query}" '
@@ -2382,7 +2408,8 @@ class SearchOrchestrator:
             f'| weights=[clip={weights.w_clip:.2f} rec={weights.w_recency:.2f} '
             f'fav={weights.w_favorite:.2f} loc={weights.w_location:.2f} '
             f'face={weights.w_face_match:.2f} struct={weights.w_structural:.2f} '
-            f'ocr={weights.w_ocr:.2f}]'
+            f'ocr={weights.w_ocr:.2f} event={weights.w_event:.2f} '
+            f'screen={weights.w_screenshot:.2f}]'
             f"{'| backoff' if result.backoff_applied else ''}"
             f"{' | filters=' + str(plan.filters) if plan.filters else ''}"
         )
@@ -2395,7 +2422,8 @@ class SearchOrchestrator:
                 f"clip={sr.clip_score:.3f} rec={sr.recency_score:.3f} "
                 f"fav={sr.favorite_score:.2f} loc={sr.location_score:.1f} "
                 f"face={sr.face_match_score:.1f} struct={sr.structural_score:.3f} "
-                f"ocr={sr.ocr_score:.3f}"
+                f"ocr={sr.ocr_score:.3f} event={sr.event_score:.3f} "
+                f"screen={sr.screenshot_score:.3f}"
             )
             dup_tag = f" [+{sr.duplicate_count}]" if sr.duplicate_count else ""
             logger.info(
@@ -2455,6 +2483,7 @@ class SearchOrchestrator:
         scored: List[ScoredResult],
         plan: QueryPlan,
         project_meta: Dict[str, Dict],
+        builder_evidence: Optional[Dict[str, dict]] = None,
     ) -> List[ScoredResult]:
         """
         Hard filters applied after scoring but before dedup and top_k slicing.
@@ -2462,7 +2491,7 @@ class SearchOrchestrator:
         """
         # Lazy init for tests that bypass __init__ via __new__
         gate_engine = getattr(self, '_gate_engine', None) or GateEngine()
-        kept, _dropped = gate_engine.apply(scored, plan, project_meta)
+        kept, _dropped = gate_engine.apply(scored, plan, project_meta, builder_evidence)
         return kept
 
     # ── Preset Family Classification (delegated to services.ranker) ──
@@ -2746,7 +2775,7 @@ class SearchOrchestrator:
         # Soft penalty from negative CLIP prompts
         try:
             neg_hits = self._smart_find._run_clip_multi_prompt(
-                neg_prompts, top_k=600, threshold=0.18, fusion_mode="max"
+                neg_prompts, candidate_k=600, threshold=0.18, fusion_mode="max"
             )
         except Exception:
             neg_hits = {}
@@ -2842,12 +2871,13 @@ class SearchOrchestrator:
         people_implied = self._is_people_implied(plan)
         scored: List[ScoredResult] = []
 
+        family = get_preset_family(plan.preset_id)
         if plan.has_filters():
             metadata_paths = self._smart_find._run_metadata_filter(plan.filters)
             for path in metadata_paths[:top_k]:
                 sr = self._score_result(path, 0.0, "", project_meta,
                                         plan.filters, people_implied,
-                                        preset_id=plan.preset_id)
+                                        family=family)
                 scored.append(sr)
         else:
             # No explicit filters from tokens - show recent photos as baseline
@@ -2861,7 +2891,7 @@ class SearchOrchestrator:
             for path in all_paths[:top_k]:
                 sr = self._score_result(path, 0.0, "", project_meta,
                                         plan.filters, people_implied,
-                                        preset_id=plan.preset_id)
+                                        family=family)
                 scored.append(sr)
 
         scored.sort(key=lambda r: r.final_score, reverse=True)
@@ -2997,7 +3027,9 @@ class SearchOrchestrator:
                 path = path_by_id.get(photo_id, "")
                 if not path:
                     continue
-                sr = self._score_result(path, sim_score, f"similar to {ref_basename}", project_meta)
+                sr = self._score_result(
+                    path, sim_score, f"similar to {ref_basename}", project_meta
+                )
                 scored.append(sr)
 
             similar_plan = QueryPlan(
@@ -3203,6 +3235,7 @@ class SearchOrchestrator:
             threshold = cfg["threshold"]
             scored: List[ScoredResult] = []
 
+            family = get_preset_family(plan.preset_id)
             for photo_id, (sem_score, prompt) in ann_hits.items():
                 if sem_score < threshold:
                     continue
@@ -3213,7 +3246,7 @@ class SearchOrchestrator:
                     continue
                 sr = self._score_result(path, sem_score, prompt, project_meta,
                                         plan.filters, people_implied,
-                                        preset_id=plan.preset_id)
+                                        family=family)
                 scored.append(sr)
 
             scored.sort(key=lambda r: r.final_score, reverse=True)

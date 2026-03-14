@@ -33,9 +33,9 @@ from config.ranking_config import RankingConfig
 logger = get_logger(__name__)
 
 
-# ══════════════════════════════════════════════════════════════════════
+# ======================================================================
 # Scoring Weights per family
-# ══════════════════════════════════════════════════════════════════════
+# ======================================================================
 
 @dataclass
 class ScoringWeights:
@@ -111,7 +111,7 @@ class ScoringWeights:
                 self.w_screenshot /= total
 
 
-# ── Family-specific weight profiles ──
+# FAMILY_SECTION weight profiles --
 # Each profile must sum to 1.0 including w_structural.
 # w_structural reserves budget for document/screenshot/scenic structural
 # signals that are computed separately and folded into the final score.
@@ -127,9 +127,10 @@ FAMILY_WEIGHTS = {
         w_structural=0.00,  # scenic uses penalty, not positive structural
         w_ocr=0.00,
         w_event=0.00,
+        w_screenshot=0.00,
     ),
     # Type (Documents, Screenshots): structural + OCR dominate over CLIP
-    # w_clip intentionally low (0.12) — for type-family, CLIP re-ranks
+    # w_clip intentionally low (0.12) -- for type-family, CLIP re-ranks
     # inside a structurally-generated candidate pool, not as primary retrieval.
     "type": ScoringWeights(
         w_clip=0.12,
@@ -184,9 +185,9 @@ for _fw in FAMILY_WEIGHTS.values():
     _fw.validate()
 
 
-# ══════════════════════════════════════════════════════════════════════
+# ======================================================================
 # ScoredResult (shared dataclass, re-exported for convenience)
-# ══════════════════════════════════════════════════════════════════════
+# ======================================================================
 
 @dataclass
 class ScoredResult:
@@ -207,15 +208,15 @@ class ScoredResult:
     duplicate_count: int = 0
 
 
-# ══════════════════════════════════════════════════════════════════════
+# ======================================================================
 # Preset Family Classification
-# ══════════════════════════════════════════════════════════════════════
+# ======================================================================
 
 PRESET_FAMILIES = {
     # Document-like presets (OCR/structure-first, hard gates)
     "documents": "type",
     "screenshots": "type",
-    # Utility/metadata presets (no CLIP, no builder — pure metadata filters)
+    # Utility/metadata presets (no CLIP, no builder -- pure metadata filters)
     "videos": "utility",
     "favorites": "utility",
     "gps_photos": "utility",
@@ -245,7 +246,7 @@ PRESET_FAMILIES = {
 }
 
 
-# ── Scenic anti-type penalty thresholds ──
+# -- Scenic anti-type penalty thresholds --
 # Scenic families use soft negative structural scores to demote
 # assets that look type-like (document, screenshot).
 SCENIC_ANTI_TYPE_PENALTIES = {
@@ -295,9 +296,9 @@ def get_weights_for_family(family: str) -> ScoringWeights:
     return sw
 
 
-# ══════════════════════════════════════════════════════════════════════
+# ======================================================================
 # People-implied detection
-# ══════════════════════════════════════════════════════════════════════
+# ======================================================================
 
 _PEOPLE_IMPLIED_PRESETS = frozenset({
     "portraits", "baby", "wedding", "party",
@@ -323,9 +324,9 @@ def is_people_implied(plan: Any) -> bool:
     return False
 
 
-# ══════════════════════════════════════════════════════════════════════
+# ======================================================================
 # Ranker
-# ══════════════════════════════════════════════════════════════════════
+# ======================================================================
 
 class Ranker:
     """
