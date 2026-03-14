@@ -201,6 +201,7 @@ class OrchestratorResult:
     stacked_duplicates: int = 0  # how many results were folded into stacks
 
     # Phase 4: Confidence policy decision
+    family: str = ""  # The retrieval family used for this search
     confidence_label: str = ""  # high, medium, low, not_ready, empty
     confidence_warning: str = ""  # user-facing warning when confidence is low
 
@@ -1203,6 +1204,15 @@ class SearchOrchestrator:
 
     def _execute(self, plan: QueryPlan, top_k: int) -> OrchestratorResult:
         """Execute the full search pipeline from a QueryPlan."""
+        # Initialize candidate pools and evidence early to avoid UnboundLocalError
+        semantic_hits = {}
+        type_evidence = {}
+        people_event_evidence = {}
+        scenic_evidence = {}
+        type_structural_candidates = None
+        people_event_candidates = None
+        scenic_candidate_pool = None
+
         cfg = self._smart_find._get_config()
         threshold = plan.threshold_override if plan.threshold_override is not None else cfg["threshold"]
         fusion_mode = cfg["fusion_mode"]
@@ -1288,16 +1298,7 @@ class SearchOrchestrator:
                 )
 
         # Step 0b: Type-family structural candidate generation
-        # When builder is active, use its candidate pool instead.
-        # Legacy path only runs when no builder handled the family.
-        type_structural_candidates = None
-        type_evidence = {}  # evidence_by_path from builder (type family)
-        people_event_candidates = None  # separate pool for people_event
-        people_event_evidence = {}  # evidence_by_path from builder
-
-        # Scenic builder: pre-filtered candidate pool for CLIP retrieval
-        scenic_candidate_pool = None
-        scenic_evidence = {}
+        # (Variables initialized at start of method)
         if builder_active and current_family == "scenic":
             scenic_candidate_pool = set(builder_candidate_set.candidate_paths)
             scenic_evidence = builder_candidate_set.evidence_by_path or {}
@@ -1464,7 +1465,7 @@ class SearchOrchestrator:
                 and len(people_event_candidates) > 0)
         )
         # Step 1: Semantic candidates
-        _supplemental_hits = semantic_hits or {}
+        _supplemental_hits = semantic_hits.copy()
         semantic_hits = {}  # {photo_id: (score, prompt)}
         if plan.has_semantic() and self._smart_find.clip_available and not skip_clip_for_type:
             # One-time embedding quality diagnostic
@@ -2087,6 +2088,7 @@ class SearchOrchestrator:
             backoff_applied=backoff_applied,
             phase_label="Semantic refined" if plan.has_semantic() else "Filter results",
             stacked_duplicates=stacked_count,
+            family=current_family,
             confidence_label=confidence_label,
             confidence_warning=confidence_warning,
         )
@@ -2399,7 +2401,7 @@ class SearchOrchestrator:
             return
 
         # Compact summary line with family-aware weights
-        family = current_family if 'current_family' in locals() else get_preset_family(plan.preset_id)
+        family = result.family or get_preset_family(plan.preset_id)
         weights = get_weights_for_family(family)
         logger.info(
             f'[SearchOrchestrator] query="{plan.raw_query}" '
