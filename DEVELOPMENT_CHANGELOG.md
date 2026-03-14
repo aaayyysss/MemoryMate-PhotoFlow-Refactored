@@ -4,6 +4,30 @@ This document tracks all features, modifications, and bug fixes applied to the c
 
 ---
 
+## Search Architecture — Phase 6: Screenshot Builder, Fusion & Diagnostics
+
+### ScreenshotCandidateBuilder
+- **`ScreenshotCandidateBuilder`** (`services/candidate_builders/screenshot_candidate_builder.py`) — Dedicated multi-signal screenshot detection. Composite `screenshot_score` [0..1] from: `is_screenshot` metadata flag, filename markers (screenshot, bildschirmfoto, captura, etc.), UI-text OCR patterns (battery, wifi, settings — 2+ required), screen-like aspect ratio + OCR density, and query text term matching.
+- Feeds into `w_screenshot` scoring channel for ranking.
+
+### Preset-Level Builder Dispatch
+- **`PRESET_BUILDERS`** map — Preset-specific builder overrides that take priority over family-level `CANDIDATE_BUILDERS`. The `"screenshots"` preset now routes to `ScreenshotCandidateBuilder` instead of falling through to `DocumentCandidateBuilder`.
+
+### Candidate Set Fusion
+- **`_fuse_candidate_sets()`** — Google-style multi-builder fusion. Merges multiple `CandidateSet` results by path with evidence accumulation (later builder wins on key conflicts). Inherits family from first non-empty set; takes max confidence.
+
+### Builder Diagnostics
+- **`CandidateSet.diagnostics`** field — Rejection tracking and debug metadata on every `CandidateSet`.
+- **`DocumentCandidateBuilder`** tracks rejection counts by reason and logs histograms.
+- **`PeopleCandidateBuilder`** diagnostics: named_hits, cluster_hits, cooccurrence_hits, face_presence_hits, top event_scores.
+- **`SearchConfidencePolicy`** enriches low-confidence warnings with top rejection reasons (documents) and face presence breakdown (people).
+- **`get_last_candidate_diagnostics()`** accessor on orchestrator.
+
+### Ranker
+- **`w_screenshot`** weight channel added to `ScoringWeights` (default 0.00, reserved for screenshot evidence).
+
+---
+
 ## Search Architecture — Phase 5: Query Routing & Evidence Alignment
 
 ### Planner Taxonomy Fix
@@ -108,7 +132,7 @@ A series of fixes targeting native access violation crashes (`0xC0000005`, `0xC0
 | Area | Key Files |
 |------|-----------|
 | Core search | `services/search_orchestrator.py`, `services/semantic_search_service.py`, `services/semantic_embedding_service.py`, `services/smart_find_service.py` |
-| New modules | `services/query_intent_planner.py`, `services/search_confidence_policy.py`, `services/candidate_builders/*` |
+| New modules | `services/query_intent_planner.py`, `services/search_confidence_policy.py`, `services/document_evidence_evaluator.py`, `services/candidate_builders/*` |
 | Database | `repository/migrations.py` |
 | UI | `ui/accordion_sidebar/find_section.py`, `ui/semantic_search_widget.py` |
 | Entry point | `main_qt.py` |
@@ -116,4 +140,4 @@ A series of fixes targeting native access violation crashes (`0xC0000005`, `0xC0
 
 ---
 
-*Last updated: 2026-03-10*
+*Last updated: 2026-03-14*
