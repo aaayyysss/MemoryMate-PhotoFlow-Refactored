@@ -95,6 +95,7 @@ class GateEngine:
         scored: list,
         plan: Any,
         project_meta: Dict[str, Dict],
+        builder_evidence: Optional[Dict[str, dict]] = None,
     ) -> Tuple[list, Dict[str, int]]:
         """
         Apply hard gates to scored results.
@@ -180,12 +181,18 @@ class GateEngine:
                 # OR if it has a positive screenshot_score from the pipeline
                 # (which covers semantic supplement hits).
                 screenshot_score = getattr(r, 'screenshot_score', 0.0)
-                if not self._passes_screenshot_gate(meta) and screenshot_score < 0.20:
+
+                # Check for rescue via builder evidence (semantic supplement)
+                rescued = False
+                if builder_evidence and self._rescue_type_results_from_builder_evidence(r, builder_evidence):
+                    rescued = True
+
+                if not rescued and not self._passes_screenshot_gate(meta) and screenshot_score < 0.20:
                     dropped["require_screenshot"] += 1
                     continue
                 logger.debug(
                     f"[GateEngine] Screenshot PASS: {os.path.basename(r.path)} "
-                    f"is_screenshot={is_screenshot} score={r.final_score:.4f}"
+                    f"is_screenshot={is_screenshot} score={r.final_score:.4f} rescued={rescued}"
                 )
 
             # Gate: exclude screenshots
@@ -228,7 +235,12 @@ class GateEngine:
 
             # Gate: strict document signal (extension-aware)
             if require_doc_signal:
-                if not self._passes_document_gate(meta, r.path):
+                # Check for rescue via builder evidence (DocumentCandidateBuilder low-confidence)
+                rescued = False
+                if builder_evidence and self._rescue_type_results_from_builder_evidence(r, builder_evidence):
+                    rescued = True
+
+                if not rescued and not self._passes_document_gate(meta, r.path):
                     dropped["require_document_signal"] += 1
                     continue
 
@@ -262,3 +274,30 @@ class GateEngine:
                 )
 
         return kept, dict(dropped)
+
+    def _rescue_type_results_from_builder_evidence(
+        self,
+        scored_result: Any,
+        builder_evidence: Dict[str, dict],
+    ) -> bool:
+        """
+        Check if a result should be rescued because the builder admitted it.
+
+        This prevents the GateEngine from silently dropping low-confidence
+        candidates that the DocumentCandidateBuilder specifically chose to include,
+        or semantic supplement hits for screenshots.
+        """
+        path = scored_result.path
+        evidence = builder_evidence.get(path, {})
+        if not evidence:
+            return False
+
+        # Admitted by DocumentCandidateBuilder as low-confidence?
+        if evidence.get("confidence_level") == "low":
+            return True
+
+        # Admitted by screenshot supplement?
+        if evidence.get("builder") == "screenshot_supplement":
+            return True
+
+        return False
