@@ -1,0 +1,920 @@
+Good, the current source is enough for Phase 1. I do **not** need more files right now.
+
+My audit of the exact uploaded files is:
+
+* `CandidateSet` already supports `diagnostics`, so the base builder contract is good enough for this phase. No mandatory structural change is needed there. 
+* `DocumentCandidateBuilder` still contains its own `_build_screenshots()` path, even though you now also have a dedicated `ScreenshotCandidateBuilder`. That is still split-brain.
+* `ScreenshotCandidateBuilder` is the right direction, but its weak heuristic can still admit tall non-face images too easily. 
+* `SearchOrchestrator` still needs one more precise layer: preset-specific screenshot builder dispatch, screenshot-score pass-through into ranking, and a scenic hard-prune step to stop obvious type assets from entering Travel, Beach, etc.
+* `SearchConfidencePolicy` is mostly aligned already, but it should recognize provisional document evidence and `screenshot_score`, not just binary flags. That is the next low-risk improvement.
+
+Below is the exact patch plan, in phases, against the current source you uploaded.
+
+---
+
+# Phase 1, remove screenshot split-brain and make scenic less leaky
+
+## File 1, `services/candidate_builders/document_candidate_builder.py`
+
+### Goal
+
+Make `DocumentCandidateBuilder` responsible only for documents, and delegate screenshots to the dedicated `ScreenshotCandidateBuilder`. Also relax document retrieval slightly so “document-like but OCR-poor” items can still enter as low-confidence candidates instead of returning zero.
+
+---
+
+### Patch 1.1, add the screenshot builder import
+
+Find this import block near the top:
+
+```python
+from services.candidate_builders.base_candidate_builder import (
+    BaseCandidateBuilder,
+    CandidateSet,
+)
+from services.query_intent_planner import QueryIntent
+```
+
+Replace it with:
+
+```python
+from services.candidate_builders.base_candidate_builder import (
+    BaseCandidateBuilder,
+    CandidateSet,
+)
+from services.candidate_builders.screenshot_candidate_builder import (
+    ScreenshotCandidateBuilder,
+)
+from services.query_intent_planner import QueryIntent
+```
+
+---
+
+### Patch 1.2, delegate screenshots to the dedicated builder
+
+Find the current `build()` method:
+
+```python
+def build(
+    self,
+    intent: QueryIntent,
+    project_meta: Dict[str, dict],
+    limit: int = 500,
+) -> CandidateSet:
+    """Build candidate pool for type-family queries."""
+    preset_id = intent.preset_id
+    if not project_meta:
+        return self._empty("type", "No project metadata available")
+
+    if preset_id == "screenshots":
+        return self._build_screenshots(intent, project_meta, limit)
+    else:
+        return self._build_documents(intent, project_meta, limit)
+```
+
+Replace it with:
+
+```python
+def build(
+    self,
+    intent: QueryIntent,
+    project_meta: Dict[str, dict],
+    limit: int = 500,
+) -> CandidateSet:
+    """Build candidate pool for type-family queries."""
+    preset_id = intent.preset_id
+    if not project_meta:
+        return self._empty("type", "No project metadata available")
+
+    if preset_id == "screenshots":
+        logger.info(
+            "[DocumentCandidateBuilder] Delegating screenshots preset "
+            "to ScreenshotCandidateBuilder"
+        )
+        return ScreenshotCandidateBuilder(self.project_id).build(
+            intent, project_meta, limit
+        )
+
+    return self._build_documents(intent, project_meta, limit)
+```
+
+---
+
+### Patch 1.3, admit provisional low-confidence documents
+
+In `_build_documents()`, find this block:
+
+```python
+for path in all_candidates:
+    meta = project_meta.get(path, {})
+
+    doc_evidence = _doc_evaluator.evaluate(meta, path)
+    if not doc_evidence.is_document:
+        reason = doc_evidence.rejection_reason or "unknown"
+        rejection_counts[reason] = rejection_counts.get(reason, 0) + 1
+        continue
+
+    # Build evidence (augmented with canonical evaluation)
+    evidence = self._build_evidence(
+        path, meta, text_terms,
+        ocr_fts_paths, ocr_lexicon_paths,
+        structural_paths, extension_paths,
+    )
+    kept.append(path)
+    evidence_by_path[path] = evidence
+```
+
+Replace it with:
+
+```python
+for path in all_candidates:
+    meta = project_meta.get(path, {})
+
+    doc_evidence = _doc_evaluator.evaluate(meta, path)
+
+    provisional_document = False
+    if not doc_evidence.is_document:
+        ext = os.path.splitext(path)[1].lower() if path else ""
+
+        provisional_document = (
+            doc_evidence.rejection_reason == "insufficient_evidence"
+            and ext in _DOC_NATIVE_EXTENSIONS
+            and bool(doc_evidence.is_page_like)
+            and not bool(doc_evidence.is_screenshot)
+            and int(doc_evidence.face_count or 0) == 0
+        )
+
+        if not provisional_document:
+            reason = doc_evidence.rejection_reason or "unknown"
+            rejection_counts[reason] = rejection_counts.get(reason, 0) + 1
+            continue
+
+    # Build evidence (augmented with canonical evaluation)
+    evidence = self._build_evidence(
+        path, meta, text_terms,
+        ocr_fts_paths, ocr_lexicon_paths,
+        structural_paths, extension_paths,
+    )
+    evidence["provisional_document"] = provisional_document
+    evidence["document_confidence"] = 0.35 if provisional_document else 1.0
+
+    kept.append(path)
+    evidence_by_path[path] = evidence
+```
+
+Why this patch matters: your current evaluator is acting like a legality gate, not a retrieval layer. This patch keeps type search honest while allowing page-like PNG/PDF/TIFF assets into the candidate pool even if OCR is weak. That directly addresses “0 documents in Documents” without reopening scenic leakage. 
+
+---
+
+### Patch 1.4, enrich diagnostics in the returned `CandidateSet`
+
+Find this return block in `_build_documents()`:
+
+```python
+return CandidateSet(
+    family="type",
+    candidate_paths=kept,
+    evidence_by_path=evidence_by_path,
+    source_counts=source_counts,
+    builder_confidence=confidence,
+    ready_state="ready" if kept else "empty",
+    notes=[f"Document builder: {len(kept)} candidates"],
+)
+```
+
+Replace it with:
+
+```python
+return CandidateSet(
+    family="type",
+    candidate_paths=kept,
+    evidence_by_path=evidence_by_path,
+    source_counts=source_counts,
+    builder_confidence=confidence,
+    ready_state="ready" if kept else "empty",
+    notes=[f"Document builder: {len(kept)} candidates"],
+    diagnostics={
+        "rejections": rejection_counts,
+        "pre_filter_candidates": len(all_candidates),
+        "kept": len(kept),
+        "mode": "documents",
+    },
+)
+```
+
+---
+
+### Patch 1.5, deprecate the old local screenshot method
+
+You do **not** need to delete `_build_screenshots()` yet. But make it dead code on purpose.
+
+At the top of `_build_screenshots()`, insert:
+
+```python
+logger.warning(
+    "[DocumentCandidateBuilder] _build_screenshots() is deprecated. "
+    "Use ScreenshotCandidateBuilder instead."
+)
+```
+
+This is just a safety warning. The real routing is now in `build()`.
+
+---
+
+## File 2, `services/candidate_builders/screenshot_candidate_builder.py`
+
+### Goal
+
+Keep screenshots in their own builder, but tighten the weak heuristic so random tall images do not get admitted as screenshots. Also keep diagnostics rich. 
+
+---
+
+### Patch 2.1, tighten `looks_like_phone_screen`
+
+Find this current block:
+
+```python
+looks_like_phone_screen = (
+    700 <= min(w, h) <= 1500
+    and 1.7 <= aspect <= 2.4
+    and (meta.get("face_count") or 0) == 0
+)
+```
+
+Replace it with:
+
+```python
+ocr_len = len(ocr_text)
+
+looks_like_phone_screen = (
+    700 <= min(w, h) <= 1500
+    and 1.7 <= aspect <= 2.4
+    and (meta.get("face_count") or 0) == 0
+    and (
+        ocr_len >= _MIN_OCR_FOR_SCREEN
+        or ui_hit
+        or filename_marker
+        or is_screenshot
+    )
+)
+```
+
+This is important because the current heuristic will accept a tall clean image with no face, even if it has no real screenshot evidence. That is too permissive. 
+
+---
+
+### Patch 2.2, make `screenshot_score` slightly more conservative
+
+Find this current score block:
+
+```python
+"screenshot_score": (
+    0.50 * float(is_screenshot)
+    + 0.20 * float(filename_marker)
+    + 0.20 * float(ui_hit)
+    + 0.10 * float(looks_like_phone_screen)
+),
+```
+
+Replace it with:
+
+```python
+"screenshot_score": min(
+    1.0,
+    (
+        0.55 * float(is_screenshot)
+        + 0.20 * float(filename_marker)
+        + 0.20 * float(ui_hit)
+        + 0.05 * float(looks_like_phone_screen)
+    )
+),
+```
+
+That makes the true metadata flag dominate more, and the weak heuristic dominate less.
+
+---
+
+### Patch 2.3, enrich diagnostics payload
+
+Find the current return:
+
+```python
+return CandidateSet(
+    family="type",
+    candidate_paths=candidates,
+    evidence_by_path=evidence_by_path,
+    source_counts={"screenshot_candidates": len(candidates)},
+    builder_confidence=0.85 if candidates else 0.0,
+    ready_state="ready" if candidates else "empty",
+    notes=[f"Screenshot builder: {len(candidates)} candidates"],
+    diagnostics={"rejections": rejection_counts},
+)
+```
+
+Replace it with:
+
+```python
+return CandidateSet(
+    family="type",
+    candidate_paths=candidates,
+    evidence_by_path=evidence_by_path,
+    source_counts={"screenshot_candidates": len(candidates)},
+    builder_confidence=0.85 if candidates else 0.0,
+    ready_state="ready" if candidates else "empty",
+    notes=[f"Screenshot builder: {len(candidates)} candidates"],
+    diagnostics={
+        "rejections": rejection_counts,
+        "pre_filter_candidates": len(project_meta),
+        "kept": len(candidates),
+        "mode": "screenshots",
+    },
+)
+```
+
+---
+
+## File 3, `services/search_orchestrator.py`
+
+### Goal
+
+This is the most important phase. We want:
+
+* screenshot preset to use the dedicated builder,
+* screenshot score to flow into ranking,
+* scenic presets to hard-prune obvious type assets before scoring,
+* no more split-brain between “candidate admission” and “ranking contamination control.”
+
+---
+
+### Patch 3.1, make `_build_candidate_set()` use the dedicated screenshot builder
+
+Find this current method body start:
+
+```python
+family = intent.family_hint
+if not family:
+    return None
+
+builder_cls = CANDIDATE_BUILDERS.get(family)
+if builder_cls is None:
+    # Structured fallback event...
+```
+
+Replace that block with:
+
+```python
+family = intent.family_hint
+if not family:
+    return None
+
+if intent.preset_id == "screenshots":
+    builder_cls = ScreenshotCandidateBuilder
+else:
+    builder_cls = CANDIDATE_BUILDERS.get(family)
+
+if builder_cls is None:
+    logger.info(
+        f"[SearchOrchestrator] FAMILY_FALLBACK: "
+        f"family={family!r} preset={intent.preset_id!r} "
+        f"query={intent.raw_query!r} -> "
+        f"no dedicated builder, falling back to legacy CLIP pipeline"
+    )
+    return None
+```
+
+This is required because your current uploaded orchestrator still imports `ScreenshotCandidateBuilder` directly, but the builder dispatch still needs to explicitly route the screenshots preset. 
+
+---
+
+### Patch 3.2, add screenshot-score extractor
+
+Place this helper directly below your existing `_get_builder_event_score()` helper.
+
+```python
+def _get_builder_screenshot_score(
+    self,
+    path: str,
+    builder_evidence_by_path: Dict[str, Dict],
+) -> float:
+    evidence = builder_evidence_by_path.get(path) or {}
+    try:
+        return float(evidence.get("screenshot_score", 0.0) or 0.0)
+    except Exception:
+        return 0.0
+```
+
+---
+
+### Patch 3.3, add a strong-type detector for scenic hard-pruning
+
+Place this helper below `_get_builder_screenshot_score()`:
+
+```python
+def _is_strong_type_asset(
+    self,
+    path: str,
+    project_meta: Dict[str, Dict],
+) -> bool:
+    meta = project_meta.get(path, {}) or {}
+    ext = os.path.splitext(path)[1].lower() if path else ""
+    ocr_text = (meta.get("ocr_text") or "").strip()
+    ocr_len = len(ocr_text)
+    is_screenshot = bool(meta.get("is_screenshot"))
+    face_count = int(meta.get("face_count") or 0)
+
+    if is_screenshot:
+        return True
+
+    if ext in {".pdf", ".tif", ".tiff"}:
+        return True
+
+    if ext == ".png" and ocr_len >= 20 and face_count == 0:
+        return True
+
+    if ocr_len >= 60 and face_count == 0:
+        return True
+
+    return False
+```
+
+---
+
+### Patch 3.4, add scenic hard-prune helper
+
+Place this directly below `_is_strong_type_asset()`:
+
+```python
+def _filter_scenic_candidates(
+    self,
+    candidate_paths: List[str],
+    project_meta: Dict[str, Dict],
+) -> List[str]:
+    kept = []
+    dropped = {
+        "strong_type_asset": 0,
+    }
+
+    for path in candidate_paths:
+        if self._is_strong_type_asset(path, project_meta):
+            dropped["strong_type_asset"] += 1
+            continue
+        kept.append(path)
+
+    logger.info(
+        f"[SearchOrchestrator] Scenic hard-prune: kept={len(kept)} "
+        f"dropped={dropped}"
+    )
+    return kept
+```
+
+This is the direct fix for “doc photo still appears in Travel.” It is not enough to lightly penalize obvious documents after scenic retrieval. You need to remove them before scoring. That is exactly what robust candidate fusion systems do. 
+
+---
+
+### Patch 3.5, apply scenic hard-prune before scoring
+
+In `_execute()`, find this block:
+
+```python
+# De-duplicate while preserving order
+candidate_paths = list(dict.fromkeys(candidate_paths))
+```
+
+Immediately after it, insert:
+
+```python
+if current_family == "scenic" and candidate_paths:
+    candidate_paths = self._filter_scenic_candidates(
+        candidate_paths,
+        project_meta,
+    )
+```
+
+---
+
+### Patch 3.6, pass screenshot score into the scoring loop
+
+Find this block in your scoring loop:
+
+```python
+for path in candidate_paths:
+    if path not in project_meta:
+        continue
+
+    sem_score, matched_prompt = clip_path_scores.get(path, (0.0, ""))
+
+    structural_score = 0.0
+    ocr_score = 0.0
+    event_score = 0.0
+
+    if current_family == "type":
+        structural_score = structural_scores.get(path, 0.0) if 'structural_scores' in locals() else 0.0
+        ocr_score = ocr_scores.get(path, 0.0) if 'ocr_scores' in locals() else 0.0
+
+    elif current_family == "people_event":
+        event_score = self._get_builder_event_score(path, builder_evidence_by_path)
+
+    sr = self._score_result(
+        path=path,
+        clip_score=sem_score,
+        matched_prompt=matched_prompt,
+        project_meta=project_meta,
+        active_filters=plan.filters,
+        people_implied=people_implied,
+        family=current_family,
+        event_score=event_score,
+        structural_score=structural_score,
+        ocr_score=ocr_score,
+    )
+```
+
+Replace it with:
+
+```python
+for path in candidate_paths:
+    if path not in project_meta:
+        continue
+
+    sem_score, matched_prompt = clip_path_scores.get(path, (0.0, ""))
+
+    structural_score = 0.0
+    ocr_score = 0.0
+    event_score = 0.0
+    screenshot_score = 0.0
+
+    if current_family == "type":
+        structural_score = structural_scores.get(path, 0.0) if 'structural_scores' in locals() else 0.0
+        ocr_score = ocr_scores.get(path, 0.0) if 'ocr_scores' in locals() else 0.0
+
+        if (plan.preset_id or "").lower() == "screenshots":
+            screenshot_score = self._get_builder_screenshot_score(
+                path,
+                builder_evidence_by_path,
+            )
+
+    elif current_family == "people_event":
+        event_score = self._get_builder_event_score(path, builder_evidence_by_path)
+
+    sr = self._score_result(
+        path=path,
+        clip_score=sem_score,
+        matched_prompt=matched_prompt,
+        project_meta=project_meta,
+        active_filters=plan.filters,
+        people_implied=people_implied,
+        family=current_family,
+        event_score=event_score,
+        structural_score=structural_score,
+        ocr_score=ocr_score,
+        screenshot_score=screenshot_score,
+    )
+```
+
+---
+
+### Patch 3.7, also pass screenshot score in OCR-only additions
+
+Find this OCR-only block:
+
+```python
+sr = self._score_result(
+    path=opath,
+    clip_score=0.0,
+    matched_prompt="",
+    project_meta=project_meta,
+    active_filters=plan.filters,
+    people_implied=people_implied,
+    family=current_family,
+    event_score=0.0,
+    structural_score=struct,
+    ocr_score=ocr,
+)
+```
+
+Replace it with:
+
+```python
+screen = 0.0
+if (plan.preset_id or "").lower() == "screenshots":
+    screen = self._get_builder_screenshot_score(opath, builder_evidence_by_path)
+
+sr = self._score_result(
+    path=opath,
+    clip_score=0.0,
+    matched_prompt="",
+    project_meta=project_meta,
+    active_filters=plan.filters,
+    people_implied=people_implied,
+    family=current_family,
+    event_score=0.0,
+    structural_score=struct,
+    ocr_score=ocr,
+    screenshot_score=screen,
+)
+```
+
+---
+
+### Patch 3.8, also pass screenshot score in backoff-added results
+
+Find this backoff block:
+
+```python
+sr = self._score_result(
+    path=path,
+    clip_score=sem_score,
+    matched_prompt=prompt,
+    project_meta=project_meta,
+    active_filters=plan.filters,
+    people_implied=people_implied,
+    family=current_family,
+    event_score=0.0,
+    structural_score=struct,
+    ocr_score=ocr,
+)
+```
+
+Replace it with:
+
+```python
+screen = 0.0
+if (plan.preset_id or "").lower() == "screenshots":
+    screen = self._get_builder_screenshot_score(path, builder_evidence_by_path)
+
+sr = self._score_result(
+    path=path,
+    clip_score=sem_score,
+    matched_prompt=prompt,
+    project_meta=project_meta,
+    active_filters=plan.filters,
+    people_implied=people_implied,
+    family=current_family,
+    event_score=0.0,
+    structural_score=struct,
+    ocr_score=ocr,
+    screenshot_score=screen,
+)
+```
+
+---
+
+### Patch 3.9, add screenshot component to type-family debug log
+
+Find this debug block:
+
+```python
+if scored:
+    logger.info(
+        f"[SearchOrchestrator] pre-rank preset={plan.preset_id!r} "
+        f"family={current_family!r} survivors={len(scored)}"
+    )
+    for idx, sr in enumerate(scored[:5]):
+        logger.info(
+            f"  #{idx} {sr.final_score:.4f} | clip={sr.clip_score:.3f} "
+            f"struct={sr.structural_score:.3f} ocr={sr.ocr_score:.3f} "
+            f"face={sr.face_match_score:.3f} | {os.path.basename(sr.path)}"
+        )
+```
+
+Replace it with:
+
+```python
+if scored:
+    logger.info(
+        f"[SearchOrchestrator] pre-rank preset={plan.preset_id!r} "
+        f"family={current_family!r} survivors={len(scored)}"
+    )
+    for idx, sr in enumerate(scored[:5]):
+        logger.info(
+            f"  #{idx} {sr.final_score:.4f} | clip={sr.clip_score:.3f} "
+            f"struct={sr.structural_score:.3f} ocr={sr.ocr_score:.3f} "
+            f"event={getattr(sr, 'event_score', 0.0):.3f} "
+            f"screen={getattr(sr, 'screenshot_score', 0.0):.3f} "
+            f"face={sr.face_match_score:.3f} | {os.path.basename(sr.path)}"
+        )
+```
+
+---
+
+## File 4, `services/search_confidence_policy.py`
+
+### Goal
+
+Make confidence aware of:
+
+* provisional documents,
+* screenshot score,
+* people-event event score, not just raw face presence.
+
+Your current file is already much better than earlier versions, so this is a refinement pass, not a rewrite.
+
+---
+
+### Patch 4.1, treat provisional documents as soft evidence
+
+In `_evaluate_document_type()`, replace this line:
+
+```python
+hard_evidence = self._count_hard_evidence(
+    ranked_results, candidate_set, "documents"
+)
+```
+
+with:
+
+```python
+hard_evidence = self._count_hard_evidence(
+    ranked_results, candidate_set, "documents"
+)
+soft_evidence = self._count_soft_evidence(
+    ranked_results, candidate_set, "documents"
+)
+```
+
+Then replace:
+
+```python
+evidence_ratio = hard_evidence / total
+```
+
+with:
+
+```python
+effective_evidence = hard_evidence + (0.5 * soft_evidence)
+evidence_ratio = effective_evidence / total
+```
+
+Then replace the low-confidence warning text with:
+
+```python
+warning_message=(
+    f"Low document confidence: only {hard_evidence}/{total} "
+    f"results have strong OCR/structural evidence, "
+    f"with {soft_evidence} provisional document matches. "
+    f"Builder rejections={rejection_hist}."
+),
+```
+
+---
+
+### Patch 4.2, treat screenshot score as real evidence
+
+In `_count_hard_evidence()`, find the `family == "screenshots"` block:
+
+```python
+elif family == "screenshots":
+    if (
+        evidence.get("is_screenshot_flag")
+        or evidence.get("filename_marker")
+        or evidence.get("ui_text_hit")
+        or evidence.get("looks_like_phone_screen")
+    ):
+        count += 1
+```
+
+Replace it with:
+
+```python
+elif family == "screenshots":
+    if (
+        evidence.get("is_screenshot_flag")
+        or evidence.get("filename_marker")
+        or evidence.get("ui_text_hit")
+        or evidence.get("looks_like_phone_screen")
+        or float(evidence.get("screenshot_score", 0.0) or 0.0) >= 0.35
+    ):
+        count += 1
+```
+
+---
+
+### Patch 4.3, use event score in people confidence
+
+In `_count_hard_evidence()`, find the `people_event` block:
+
+```python
+elif family == "people_event":
+    if (evidence.get("face_count", 0) > 0
+            or evidence.get("is_named_match")
+            or evidence.get("is_face_presence")):
+        count += 1
+```
+
+Replace it with:
+
+```python
+elif family == "people_event":
+    if (
+        (evidence.get("face_count", 0) > 0)
+        or evidence.get("is_named_match")
+        or evidence.get("is_face_presence")
+        or float(evidence.get("event_score", 0.0) or 0.0) >= 0.40
+    ):
+        count += 1
+```
+
+---
+
+### Patch 4.4, add `_count_soft_evidence()`
+
+Place this helper directly below `_count_hard_evidence()`:
+
+```python
+@staticmethod
+def _count_soft_evidence(
+    results: list,
+    candidate_set: CandidateSet,
+    family: str,
+) -> int:
+    """Count weaker, provisional evidence."""
+    count = 0
+    top_n = min(20, len(results))
+
+    for r in results[:top_n]:
+        path = r.path if hasattr(r, "path") else r
+        evidence = candidate_set.evidence_by_path.get(path, {})
+
+        if family == "documents":
+            if evidence.get("provisional_document"):
+                count += 1
+
+    return count
+```
+
+---
+
+## File 5, `services/candidate_builders/base_candidate_builder.py`
+
+### Goal
+
+No mandatory structural patch is needed here.
+
+Your current `CandidateSet` already includes:
+
+* `candidate_paths`
+* `evidence_by_path`
+* `diagnostics`
+
+That is sufficient for this phase. 
+
+### Optional tiny patch
+
+If you want a convenience accessor, add this inside `CandidateSet`:
+
+```python
+@property
+def rejection_histogram(self) -> Dict[str, int]:
+    return dict((self.diagnostics or {}).get("rejections", {}))
+```
+
+This is optional only.
+
+---
+
+# Phase 2, after Phase 1 is tested
+
+Once the above patches are in and tested, the next phase should be:
+
+1. add a real `ScenicCandidateBuilder`,
+2. move screenshot scoring fully out of `family="type"` special-casing,
+3. unify document and screenshot confidence under mode-specific diagnostics,
+4. expose builder diagnostics in a Candidate Diagnostics panel.
+
+That is the correct next architecture step.
+
+## What I expect these patches to improve immediately
+
+After Phase 1:
+
+* **Screenshots** should stop going through the stale document-local screenshot path.
+* **Documents** should stop returning zero just because OCR is sparse on otherwise document-like PNG/PDF/TIFF assets.
+* **Travel / Beach / Scenic presets** should stop admitting obvious document/screenshot assets into the pre-score pool.
+* **Confidence warnings** will better reflect provisional documents and screenshot confidence.
+
+## My blunt recommendation
+
+Do **not** patch everything at once.
+
+Apply in exactly this order:
+
+1. `document_candidate_builder.py`
+2. `screenshot_candidate_builder.py`
+3. `search_orchestrator.py`
+4. `search_confidence_policy.py`
+5. optional `base_candidate_builder.py`
+
+Then run one fresh test with these presets only:
+
+* Documents
+* Screenshots
+* Travel
+* Beach
+* Wedding
+
+And compare:
+
+* candidate counts,
+* rejection histograms,
+* top 5 pre-rank logs,
+* final visible results.
+
+If you want, after you apply Phase 1, paste the new search log and I will give you the exact Phase 2 patch set.
