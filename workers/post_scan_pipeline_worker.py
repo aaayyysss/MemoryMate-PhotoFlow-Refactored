@@ -108,6 +108,16 @@ class PostScanPipelineWorker(QRunnable):
             db_conn = DatabaseConnection()
             photo_repo = PhotoRepository(db_conn)
 
+            # FIX 2026-03-14: Resolve canonical_model early so it's available
+            # for both Step 3 (embeddings) and Step 4 (similar shot detection).
+            # Previously it was only resolved inside Step 3's try-block, so
+            # Step 4 would crash with NameError if Step 3 was skipped.
+            canonical_model = None
+            if generate_embeddings or detect_similar:
+                from repository.project_repository import ProjectRepository
+                proj_repo = ProjectRepository(db_conn)
+                canonical_model = proj_repo.get_semantic_model(self.project_id)
+
             # ── Step 1: Hash backfill ─────────────────────────────
             if detect_exact and not self._cancelled:
                 current_step += 1
@@ -159,15 +169,15 @@ class PostScanPipelineWorker(QRunnable):
                 )
 
                 try:
-                    from services.semantic_embedding_service import SemanticEmbeddingService
-                    from repository.project_repository import ProjectRepository
+                    from services.semantic_embedding_service import get_semantic_embedding_service
 
-                    # Use project's canonical model (single source of truth)
-                    proj_repo = ProjectRepository(db_conn)
-                    canonical_model = proj_repo.get_semantic_model(self.project_id)
-
-                    embedding_service = SemanticEmbeddingService(
-                        model_name=canonical_model, db_connection=db_conn,
+                    # FIX 2026-03-14: Use the singleton factory instead of direct
+                    # instantiation.  Direct instantiation bypasses the per-model
+                    # cache and can create a duplicate CLIP model instance that
+                    # contends with the warmup singleton for MKL resources,
+                    # causing native access violations on Windows.
+                    embedding_service = get_semantic_embedding_service(
+                        model_name=canonical_model,
                     )
 
                     all_photos = photo_repo.find_all(
@@ -231,12 +241,12 @@ class PostScanPipelineWorker(QRunnable):
                 )
 
                 try:
-                    from services.semantic_embedding_service import SemanticEmbeddingService
+                    from services.semantic_embedding_service import get_semantic_embedding_service
                     from services.stack_generation_service import StackGenerationService, StackGenParams
                     from repository.stack_repository import StackRepository
 
-                    embedding_service = SemanticEmbeddingService(
-                        model_name=canonical_model, db_connection=db_conn,
+                    embedding_service = get_semantic_embedding_service(
+                        model_name=canonical_model,
                     )
                     embedding_count = embedding_service.get_embedding_count()
 
