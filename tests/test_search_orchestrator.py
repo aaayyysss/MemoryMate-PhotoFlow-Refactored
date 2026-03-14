@@ -159,7 +159,8 @@ class TestScoringWeights:
     def test_default_weights_sum_to_one(self):
         from services.search_orchestrator import ScoringWeights
         w = ScoringWeights()
-        total = w.w_clip + w.w_recency + w.w_favorite + w.w_location + w.w_face_match
+        total = (w.w_clip + w.w_recency + w.w_favorite + w.w_location + w.w_face_match
+                 + w.w_structural + w.w_ocr + w.w_event + w.w_screenshot)
         assert abs(total - 1.0) < 0.01, f"Weights sum to {total}, expected ~1.0"
 
     def test_validate_normalizes(self):
@@ -167,7 +168,8 @@ class TestScoringWeights:
         w = ScoringWeights(w_clip=0.5, w_recency=0.5, w_favorite=0.5,
                            w_location=0.5, w_face_match=0.5)
         w.validate()
-        total = w.w_clip + w.w_recency + w.w_favorite + w.w_location + w.w_face_match
+        total = (w.w_clip + w.w_recency + w.w_favorite + w.w_location + w.w_face_match
+                 + w.w_structural + w.w_ocr + w.w_event + w.w_screenshot)
         assert abs(total - 1.0) < 0.01
 
     def test_clip_dominates_scoring(self):
@@ -711,6 +713,7 @@ class TestRelevanceContract:
         assert w.w_favorite == 0.08
         assert w.w_location == 0.04
         assert w.w_face_match == 0.08
+        assert w.w_screenshot == 0.00
 
     def test_token_parser_complete_coverage(self):
         """All documented token types must be parseable."""
@@ -1829,10 +1832,11 @@ class TestGateEngine:
         """Create an uninitialized orchestrator (no DB, no CLIP needed)."""
         return self.SearchOrchestrator.__new__(self.SearchOrchestrator)
 
-    def _make_scored(self, path, score=0.25):
+    def _make_scored(self, path, score=0.25, screenshot_score=0.0):
         return self.ScoredResult(
             path=path, clip_score=score, recency_score=0, favorite_score=0,
             location_score=0, face_match_score=0, final_score=score,
+            screenshot_score=screenshot_score,
         )
 
     # ── Documents preset: exclude faces + screenshots + tiny images ──
@@ -1902,7 +1906,7 @@ class TestGateEngine:
     # ── Screenshots preset: require is_screenshot ──
 
     def test_screenshots_requires_is_screenshot(self):
-        """Screenshots gate keeps only photos detected as screenshots."""
+        """Screenshots gate keeps only photos detected as screenshots or supplemental hits."""
         orch = self._make_orch()
         plan = self.QueryPlan(
             raw_query="Screenshots", preset_id="screenshots", source="preset",
@@ -1911,10 +1915,19 @@ class TestGateEngine:
         meta = {
             "shot1.png": {"is_screenshot": True, "face_count": 0, "width": 1170, "height": 2532, "has_gps": False},
             "photo.jpg": {"is_screenshot": False, "face_count": 0, "width": 4000, "height": 3000, "has_gps": True},
+            "supp.png": {"is_screenshot": False, "face_count": 0, "width": 1080, "height": 1920, "has_gps": False},
         }
-        scored = [self._make_scored("shot1.png"), self._make_scored("photo.jpg", 0.30)]
+        # shot1: flag (pass), photo: no flag + no score (drop), supp: score (pass)
+        scored = [
+            self._make_scored("shot1.png"),
+            self._make_scored("photo.jpg", 0.30),
+            self._make_scored("supp.png", 0.40, screenshot_score=0.25)
+        ]
         kept = orch._apply_gates(scored, plan, meta)
-        assert [r.path for r in kept] == ["shot1.png"]
+        paths = [r.path for r in kept]
+        assert "shot1.png" in paths
+        assert "supp.png" in paths
+        assert "photo.jpg" not in paths
 
     # ── People-centric presets: require faces ──
 
@@ -2251,16 +2264,18 @@ class TestScoringContractWithOCR:
     """Validate that structural + OCR weights are properly integrated."""
 
     def test_type_family_weights_include_structural_and_ocr_sum_to_one(self):
-        """Type family weights must include structural + OCR and sum to 1.0."""
+        """Type family weights must include structural + OCR + screenshot and sum to 1.0."""
         from services.ranker import get_weights_for_family
         w = get_weights_for_family("type")
         total = (
             w.w_clip + w.w_recency + w.w_favorite + w.w_location
             + w.w_face_match + w.w_structural + w.w_ocr + w.w_event
+            + w.w_screenshot
         )
         assert abs(total - 1.0) < 1e-6, f"Type weights sum to {total}, expected 1.0"
         assert w.w_structural > 0, "Type family must have positive w_structural"
         assert w.w_ocr > 0, "Type family must have positive w_ocr"
+        assert w.w_screenshot > 0, "Type family must have positive w_screenshot"
 
     def test_scenic_family_weights_sum_to_one(self):
         """Scenic family weights must sum to 1.0."""
@@ -2269,6 +2284,7 @@ class TestScoringContractWithOCR:
         total = (
             w.w_clip + w.w_recency + w.w_favorite + w.w_location
             + w.w_face_match + w.w_structural + w.w_ocr + w.w_event
+            + w.w_screenshot
         )
         assert abs(total - 1.0) < 1e-6, f"Scenic weights sum to {total}, expected 1.0"
 
@@ -2279,6 +2295,7 @@ class TestScoringContractWithOCR:
         total = (
             w.w_clip + w.w_recency + w.w_favorite + w.w_location
             + w.w_face_match + w.w_structural + w.w_ocr + w.w_event
+            + w.w_screenshot
         )
         assert abs(total - 1.0) < 1e-6, f"People_event weights sum to {total}, expected 1.0"
         assert w.w_event > 0, "People_event family must have positive w_event"
@@ -2290,16 +2307,18 @@ class TestScoringContractWithOCR:
         total = (
             w.w_clip + w.w_recency + w.w_favorite + w.w_location
             + w.w_face_match + w.w_structural + w.w_ocr + w.w_event
+            + w.w_screenshot
         )
         assert abs(total - 1.0) < 1e-6, f"Utility weights sum to {total}, expected 1.0"
 
-    def test_all_families_have_eight_weight_components(self):
-        """All families must declare all 8 weight components."""
+    def test_all_families_have_nine_weight_components(self):
+        """All families must declare all 9 weight components."""
         from services.ranker import FAMILY_WEIGHTS
         for name, w in FAMILY_WEIGHTS.items():
             assert hasattr(w, 'w_ocr'), f"Family {name} missing w_ocr"
             assert hasattr(w, 'w_structural'), f"Family {name} missing w_structural"
             assert hasattr(w, 'w_event'), f"Family {name} missing w_event"
+            assert hasattr(w, 'w_screenshot'), f"Family {name} missing w_screenshot"
 
     def test_ocr_score_affects_type_family_final_score(self):
         """OCR score must contribute to final score for type family."""
@@ -2318,19 +2337,21 @@ class TestScoringContractWithOCR:
             "OCR score must increase final score for type family"
         assert sr_with_ocr.ocr_score == 0.8
 
-    def test_validate_normalizes_eight_weights(self):
-        """validate() must normalize all 8 weights including w_ocr and w_event."""
+    def test_validate_normalizes_nine_weights(self):
+        """validate() must normalize all 9 weights including w_ocr, w_event, and w_screenshot."""
         from services.ranker import ScoringWeights
         w = ScoringWeights(
             w_clip=0.50, w_recency=0.10, w_favorite=0.10,
             w_location=0.10, w_face_match=0.10,
             w_structural=0.10, w_ocr=0.10, w_event=0.10,
+            w_screenshot=0.10,
         )
-        # Total = 1.20, should normalize
+        # Total = 1.30, should normalize
         w.validate()
         total = (
             w.w_clip + w.w_recency + w.w_favorite + w.w_location
             + w.w_face_match + w.w_structural + w.w_ocr + w.w_event
+            + w.w_screenshot
         )
         assert abs(total - 1.0) < 1e-6
 
