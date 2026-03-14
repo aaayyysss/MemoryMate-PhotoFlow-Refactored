@@ -63,7 +63,7 @@ from services.ranker import (
 from services.deduplicator import Deduplicator, is_copy_filename
 # Phase 4 imports: Family-first hybrid retrieval
 from services.query_intent_planner import QueryIntentPlanner, QueryIntent, get_query_intent_planner
-from services.candidate_builders import CANDIDATE_BUILDERS, CandidateSet
+from services.candidate_builders import CANDIDATE_BUILDERS, PRESET_BUILDERS, CandidateSet
 from services.search_confidence_policy import SearchConfidencePolicy, SearchDecision
 # Phase 3 imports (lazy - actual classes loaded on first use)
 # from services.person_search_service import PersonSearchService
@@ -962,7 +962,10 @@ class SearchOrchestrator:
         if not family:
             return None
 
-        builder_cls = CANDIDATE_BUILDERS.get(family)
+        # Preset-specific builder takes priority (e.g. screenshots)
+        builder_cls = PRESET_BUILDERS.get(intent.preset_id)
+        if builder_cls is None:
+            builder_cls = CANDIDATE_BUILDERS.get(family)
         if builder_cls is None:
             # Structured fallback event: no dedicated builder for this family
             logger.info(
@@ -1001,6 +1004,10 @@ class SearchOrchestrator:
         policy = getattr(self, '_confidence_policy', None) or SearchConfidencePolicy()
         return policy.evaluate(intent, candidate_set, ranked_results, family)
 
+    def get_last_candidate_diagnostics(self) -> dict:
+        """Return diagnostics from the most recent candidate builder run."""
+        return getattr(self, "_last_candidate_diagnostics", {})
+
     def _resolve_family(self, intent: QueryIntent, plan: QueryPlan) -> str:
         """Resolve the dominant retrieval family from intent + plan."""
         # Intent family_hint takes priority if set
@@ -1018,6 +1025,63 @@ class SearchOrchestrator:
     # uses the canonical DocumentEvidenceEvaluator.  If the builder is
     # unavailable, search returns empty rather than silently switching
     # to a parallel evidence contract.
+
+    @staticmethod
+    def _fuse_candidate_sets(*candidate_sets: CandidateSet) -> CandidateSet:
+        """
+        Merge multiple CandidateSets by path with evidence accumulation.
+
+        When the same path appears in multiple builders, evidence dicts are
+        merged (later builder wins on key conflicts).  The fused set inherits
+        the family from the first non-empty set.
+
+        This is the Google-style fusion pattern: run multiple retrieval
+        strategies in parallel, then merge into one candidate pool.
+        """
+        merged_paths = []
+        merged_evidence = {}
+        merged_source_counts = {}
+        seen = set()
+        family = "type"
+        all_notes = []
+        all_diagnostics = {}
+        best_confidence = 0.0
+
+        for cs in candidate_sets:
+            if cs is None:
+                continue
+            if cs.candidate_paths:
+                family = cs.family
+            for path in cs.candidate_paths:
+                if path not in seen:
+                    seen.add(path)
+                    merged_paths.append(path)
+                    merged_evidence[path] = cs.evidence_by_path.get(path, {})
+                else:
+                    # Merge evidence from additional builder
+                    existing = merged_evidence.get(path, {})
+                    new_ev = cs.evidence_by_path.get(path, {})
+                    existing.update(new_ev)
+                    merged_evidence[path] = existing
+
+            for k, v in cs.source_counts.items():
+                merged_source_counts[k] = merged_source_counts.get(k, 0) + v
+            all_notes.extend(cs.notes or [])
+            if cs.diagnostics:
+                all_diagnostics[cs.notes[0] if cs.notes else "builder"] = cs.diagnostics
+            best_confidence = max(best_confidence, cs.builder_confidence)
+
+        ready = "ready" if merged_paths else "empty"
+        return CandidateSet(
+            family=family,
+            candidate_paths=merged_paths,
+            evidence_by_path=merged_evidence,
+            source_counts=merged_source_counts,
+            builder_confidence=best_confidence,
+            ready_state=ready,
+            notes=all_notes,
+            diagnostics=all_diagnostics,
+        )
 
     def _check_face_readiness(
         self, plan: QueryPlan, project_meta: Dict[str, Dict],
@@ -1742,6 +1806,10 @@ class SearchOrchestrator:
         # Step 11: Compute facets from result set
         result_paths = [r.path for r in scored]
         facets = FacetComputer.compute(result_paths, project_meta)
+
+        # Capture builder diagnostics for confidence policy and debugging
+        if builder_candidate_set is not None:
+            self._last_candidate_diagnostics = builder_candidate_set.diagnostics or {}
 
         # Step 12: Apply confidence policy (Phase 4)
         confidence_label = ""

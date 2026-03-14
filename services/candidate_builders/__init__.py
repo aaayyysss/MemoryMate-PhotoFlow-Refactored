@@ -18,6 +18,9 @@ from services.candidate_builders.document_candidate_builder import (
 from services.candidate_builders.people_candidate_builder import (
     PeopleCandidateBuilder,
 )
+from services.candidate_builders.screenshot_candidate_builder import (
+    ScreenshotCandidateBuilder,
+)
 
 # Dispatch map for orchestrator.
 # Families NOT in this map fall through to the legacy CLIP pipeline,
@@ -31,10 +34,20 @@ CANDIDATE_BUILDERS = {
     # "animal_object" uses CLIP-first with pets gate until a PetCandidateBuilder exists.
 }
 
+# Preset-specific builder overrides.
+# When a preset has an entry here, it takes priority over the family-level
+# CANDIDATE_BUILDERS dispatch.  This lets "screenshots" use its own builder
+# while "documents" still uses DocumentCandidateBuilder via the "type" family.
+PRESET_BUILDERS = {
+    "screenshots": ScreenshotCandidateBuilder,
+}
+
 __all__ = [
     "BaseCandidateBuilder",
     "CandidateSet",
     "DocumentCandidateBuilder",
     "PeopleCandidateBuilder",
+    "ScreenshotCandidateBuilder",
     "CANDIDATE_BUILDERS",
+    "PRESET_BUILDERS",
 ]

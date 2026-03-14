@@ -127,12 +127,15 @@ class DocumentCandidateBuilder(BaseCandidateBuilder):
         # This ensures builder and gate agree on what "document evidence" means.
         kept = []
         evidence_by_path = {}
+        rejection_counts = {}
         for path in all_candidates:
             meta = project_meta.get(path, {})
 
             # Use canonical evaluator for all hard rejections and evidence rules
             doc_evidence = _doc_evaluator.evaluate(meta, path)
             if not doc_evidence.is_document:
+                reason = doc_evidence.rejection_reason or "insufficient_evidence"
+                rejection_counts[reason] = rejection_counts.get(reason, 0) + 1
                 continue
 
             # Build evidence (augmented with canonical evaluation)
@@ -167,6 +170,12 @@ class DocumentCandidateBuilder(BaseCandidateBuilder):
             f"(ocr_fts={len(ocr_fts_paths)}, lexicon={len(ocr_lexicon_paths)}, "
             f"structural={len(structural_paths)}, extension={len(extension_paths)})"
         )
+        if rejection_counts:
+            logger.info(
+                f"[DocumentCandidateBuilder] rejections: {rejection_counts} "
+                f"({sum(rejection_counts.values())} total from "
+                f"{len(all_candidates)} pre-filter candidates)"
+            )
 
         return CandidateSet(
             family="type",
@@ -176,6 +185,10 @@ class DocumentCandidateBuilder(BaseCandidateBuilder):
             builder_confidence=confidence,
             ready_state="ready" if kept else "empty",
             notes=[f"Document builder: {len(kept)} candidates"],
+            diagnostics={
+                "rejections": rejection_counts,
+                "pre_filter_candidates": len(all_candidates),
+            },
         )
 
     def _build_screenshots(

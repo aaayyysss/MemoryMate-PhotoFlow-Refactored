@@ -256,7 +256,8 @@ class TestRankerFamilies:
         """All family weight profiles must sum to ~1.0."""
         for name, w in self.FAMILY_WEIGHTS.items():
             total = (w.w_clip + w.w_recency + w.w_favorite + w.w_location
-                     + w.w_face_match + w.w_structural + w.w_ocr)
+                     + w.w_face_match + w.w_structural + w.w_ocr
+                     + w.w_event + w.w_screenshot)
             assert abs(total - 1.0) < 0.02, (
                 f"Family {name!r} weights sum to {total:.3f}, expected ~1.0"
             )
@@ -481,7 +482,8 @@ class TestDynamicFamilyWeights:
         for family in self.defaults:
             sw = get_weights_for_family(family)
             total = (sw.w_clip + sw.w_recency + sw.w_favorite + sw.w_location
-                     + sw.w_face_match + sw.w_structural + sw.w_ocr)
+                     + sw.w_face_match + sw.w_structural + sw.w_ocr
+                     + sw.w_event + sw.w_screenshot)
             assert abs(total - 1.0) < 0.02, (
                 f"Family {family!r} dynamic weights sum to {total:.3f}"
             )

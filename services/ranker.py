@@ -45,13 +45,14 @@ class ScoringWeights:
     S = w_clip * clip + w_recency * recency + w_fav * favorite
       + w_location * location + w_face * face_match
       + w_structural * structural + w_ocr * ocr
-      + w_event * event
+      + w_event * event + w_screenshot * screenshot
 
     All weights are explicit, testable, and logged.
     The structural weight reserves budget for document/screenshot/scenic
     structural signals so that validate() does not normalize it away.
     The OCR weight reserves budget for text-content relevance scoring.
     The event weight reserves budget for people_event composite scoring.
+    The screenshot weight reserves budget for screenshot-specific evidence.
     """
     w_clip: float = 0.75
     w_recency: float = 0.05
@@ -61,6 +62,7 @@ class ScoringWeights:
     w_structural: float = 0.00  # reserved structural budget
     w_ocr: float = 0.00  # reserved OCR text relevance budget
     w_event: float = 0.00  # reserved event-evidence budget (people_event)
+    w_screenshot: float = 0.00  # reserved screenshot-evidence budget
 
     # Guardrails
     max_recency_boost: float = 0.10

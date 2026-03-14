@@ -145,13 +145,28 @@ class SearchConfidencePolicy:
                 explanation=failures,
             )
 
+        # Enrich low-confidence message with builder diagnostics
+        diag = candidate_set.diagnostics or {}
+        rejection_hist = diag.get("rejections", {})
+        diag_detail = ""
+        if rejection_hist:
+            top_reasons = sorted(
+                rejection_hist.items(), key=lambda x: x[1], reverse=True
+            )[:3]
+            diag_detail = (
+                " Top rejection reasons: "
+                + ", ".join(f"{r}({c})" for r, c in top_reasons)
+                + "."
+            )
+
         # Low confidence
         return SearchDecision(
             show_results=True,
             confidence_label="low",
             warning_message=(
                 f"Low document confidence: only {hard_evidence}/{total} "
-                f"results have OCR or structural evidence. "
+                f"results have OCR or structural evidence."
+                f"{diag_detail} "
                 f"Run OCR processing for better results."
             ),
             explanation=failures,
@@ -202,13 +217,24 @@ class SearchConfidencePolicy:
                 explanation=failures,
             )
 
+        # Enrich with builder diagnostics
+        diag = candidate_set.diagnostics or {}
+        diag_detail = ""
+        if diag.get("face_presence_hits") is not None:
+            diag_detail = (
+                f" Face presence: {diag.get('face_presence_hits', 0)} photos, "
+                f"named: {diag.get('named_hits', 0)}, "
+                f"cooccurrence: {diag.get('cooccurrence_hits', 0)}."
+            )
+
         return SearchDecision(
             show_results=True,
             confidence_label="low",
             warning_message=(
                 f"Low people confidence: only {face_results}/{total} "
-                f"results have detected faces. Run face detection "
-                f"for better results."
+                f"results have detected faces."
+                f"{diag_detail} "
+                f"Run face detection for better results."
             ),
             explanation=failures,
             recommended_actions=[

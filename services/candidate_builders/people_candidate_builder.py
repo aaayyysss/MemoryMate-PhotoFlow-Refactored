@@ -87,6 +87,10 @@ class PeopleCandidateBuilder(BaseCandidateBuilder):
                 builder_confidence=0.0,
                 ready_state="not_ready",
                 notes=[ready_msg],
+                diagnostics={
+                    "rejections": {"face_index_not_ready": len(project_meta)},
+                    "face_coverage_floor": _FACE_COVERAGE_FLOOR,
+                },
             )
 
         # Step 2: Resolve named people
@@ -200,6 +204,16 @@ class PeopleCandidateBuilder(BaseCandidateBuilder):
             builder_confidence=confidence,
             ready_state="ready" if candidates else "empty",
             notes=[f"People builder: {len(candidates)} candidates"],
+            diagnostics={
+                "named_hits": len(named_paths),
+                "cluster_hits": len(cluster_paths),
+                "cooccurrence_hits": len(cooccurrence_paths),
+                "face_presence_hits": len(face_presence_paths),
+                "top_event_scores": [
+                    evidence_by_path[p].get("event_score", 0.0)
+                    for p in candidates[:10]
+                ],
+            },
         )
 
     # ── Index readiness ──
