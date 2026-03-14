@@ -1229,6 +1229,26 @@ class SearchOrchestrator:
         people_event_candidates = None  # separate pool for people_event
         people_event_evidence = {}  # evidence_by_path from builder
 
+        # Scenic builder: pre-filtered candidate pool for CLIP retrieval
+        scenic_candidate_pool = None
+        scenic_evidence = {}
+        if builder_active and current_family == "scenic":
+            scenic_candidate_pool = set(builder_candidate_set.candidate_paths)
+            scenic_evidence = builder_candidate_set.evidence_by_path or {}
+            if not scenic_candidate_pool:
+                logger.info(
+                    f"[SearchOrchestrator] Scenic builder returned empty pool for "
+                    f"preset={plan.preset_id!r}; proceeding with full CLIP fallback"
+                )
+                scenic_candidate_pool = None
+            else:
+                logger.info(
+                    f"[SearchOrchestrator] Scenic builder pre-filtered: "
+                    f"{len(scenic_candidate_pool)} candidates "
+                    f"(excluded {len(project_meta) - len(scenic_candidate_pool)} "
+                    f"non-scenic assets)"
+                )
+
         if builder_active and current_family == "type":
             type_structural_candidates = set(builder_candidate_set.candidate_paths)
             type_evidence = builder_candidate_set.evidence_by_path or {}
@@ -1546,11 +1566,20 @@ class SearchOrchestrator:
             )
 
         elif semantic_hits:
+            scenic_pool_filtered = 0
             for photo_id, (sem_score, matched_prompt) in semantic_hits.items():
                 path = path_lookup.get(photo_id)
                 if not path:
                     continue
                 if metadata_candidate_paths is not None and path not in metadata_candidate_paths:
+                    continue
+
+                # Scenic builder pool filter: if the scenic builder ran and
+                # excluded this asset, skip it.  This is the key architectural
+                # change: CLIP results are intersected with the pre-filtered
+                # scenic pool, not scored against the whole corpus.
+                if scenic_candidate_pool is not None and path not in scenic_candidate_pool:
+                    scenic_pool_filtered += 1
                     continue
 
                 struct = structural_scores.get(path, 0.0)
@@ -1560,6 +1589,13 @@ class SearchOrchestrator:
                                         structural_score=struct, ocr_score=ocr,
                                         preset_id=plan.preset_id)
                 scored.append(sr)
+
+            if scenic_pool_filtered > 0:
+                logger.info(
+                    f"[SearchOrchestrator] Scenic pool filter: "
+                    f"removed {scenic_pool_filtered} CLIP results "
+                    f"that were hard-excluded by ScenicCandidateBuilder"
+                )
 
         elif metadata_candidate_paths is not None:
             for path in metadata_candidate_paths:
@@ -1614,6 +1650,31 @@ class SearchOrchestrator:
                 logger.info(
                     f"[SearchOrchestrator] Scenic anti-type penalties applied "
                     f"to {penalized} result(s)"
+                )
+
+        # Step 5c2: Apply scenic builder soft penalties
+        # These come from the ScenicCandidateBuilder evidence and provide
+        # finer-grained demotion for borderline cases that weren't hard-excluded.
+        if current_family == "scenic" and scenic_evidence:
+            builder_penalized = 0
+            builder_boosted = 0
+            for sr in scored:
+                ev = scenic_evidence.get(sr.path, {})
+                soft_pen = ev.get("soft_penalty", 0.0)
+                scenic_boost = ev.get("scenic_boost", 0.0)
+                adjustment = soft_pen + scenic_boost
+                if adjustment != 0.0:
+                    sr.final_score = max(0, sr.final_score + adjustment)
+                    if soft_pen < 0:
+                        sr.reasons.append(f"scenic_soft_pen={soft_pen:.3f}")
+                        builder_penalized += 1
+                    if scenic_boost > 0:
+                        sr.reasons.append(f"scenic_boost={scenic_boost:.3f}")
+                        builder_boosted += 1
+            if builder_penalized or builder_boosted:
+                logger.info(
+                    f"[SearchOrchestrator] Scenic builder evidence: "
+                    f"{builder_penalized} penalized, {builder_boosted} boosted"
                 )
 
         # Step 5d: Post-scoring family-path consistency check
@@ -1911,7 +1972,26 @@ class SearchOrchestrator:
                         f"[SearchOrchestrator] Loaded {len(meta)} rows from "
                         f"search_asset_features (fast path)"
                     )
+                    # Validate critical columns are populated
+                    self._validate_search_features(meta)
                     return meta
+                # Table exists but empty for this project — auto-rebuild
+                logger.info(
+                    f"[SearchOrchestrator] search_asset_features empty for "
+                    f"project {self.project_id}, triggering auto-rebuild"
+                )
+                rebuilt = repo.refresh_project(self.project_id)
+                if rebuilt > 0:
+                    meta = repo.get_project_meta(self.project_id)
+                    if meta:
+                        self._project_meta_cache = meta
+                        self._meta_cache_time = now
+                        logger.info(
+                            f"[SearchOrchestrator] Auto-rebuilt {rebuilt} rows "
+                            f"in search_asset_features"
+                        )
+                        self._validate_search_features(meta)
+                        return meta
             except Exception as e:
                 logger.debug(f"[SearchOrchestrator] search_asset_features fallback: {e}")
 
@@ -1990,6 +2070,60 @@ class SearchOrchestrator:
         except Exception as e:
             logger.warning(f"[SearchOrchestrator] Metadata load failed: {e}")
             return self._project_meta_cache or {}
+
+    @staticmethod
+    def _validate_search_features(meta: Dict[str, Dict]) -> None:
+        """
+        Validate that search_asset_features has critical columns populated.
+
+        Logs warnings when structural signals are missing so that downstream
+        search quality degradation is visible in the logs.  This replaces
+        the silent fallback that previously masked purity issues.
+        """
+        if not meta:
+            return
+
+        sample_size = min(50, len(meta))
+        paths = list(meta.keys())[:sample_size]
+
+        missing_screenshot = 0
+        missing_face_count = 0
+        missing_dimensions = 0
+        missing_ocr = 0
+
+        for p in paths:
+            m = meta[p]
+            if "is_screenshot" not in m:
+                missing_screenshot += 1
+            if "face_count" not in m:
+                missing_face_count += 1
+            if not m.get("width") or not m.get("height"):
+                missing_dimensions += 1
+            # OCR may legitimately be empty, but track coverage
+            if not m.get("ocr_text"):
+                missing_ocr += 1
+
+        warnings = []
+        if missing_screenshot > sample_size * 0.5:
+            warnings.append(f"is_screenshot missing on {missing_screenshot}/{sample_size}")
+        if missing_face_count > sample_size * 0.5:
+            warnings.append(f"face_count missing on {missing_face_count}/{sample_size}")
+        if missing_dimensions > sample_size * 0.3:
+            warnings.append(f"dimensions missing on {missing_dimensions}/{sample_size}")
+
+        if warnings:
+            logger.warning(
+                f"[SearchOrchestrator] FEATURE_QUALITY_DEGRADED: "
+                f"{'; '.join(warnings)}. "
+                f"Type/scenic purity may be unstable. "
+                f"Rebuild search_asset_features to fix."
+            )
+        else:
+            logger.debug(
+                f"[SearchOrchestrator] search_asset_features validated: "
+                f"all critical columns populated "
+                f"(ocr_coverage={sample_size - missing_ocr}/{sample_size})"
+            )
 
     # ── Screenshot Detection (multi-signal confidence) ──
     # Delegates to search_feature_repository._compute_screenshot_confidence

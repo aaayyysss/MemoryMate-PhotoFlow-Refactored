@@ -123,20 +123,50 @@ class DocumentCandidateBuilder(BaseCandidateBuilder):
             ocr_fts_paths, ocr_lexicon_paths, structural_paths, extension_paths
         )
 
-        # Apply hard exclusions using canonical DocumentEvidenceEvaluator
-        # This ensures builder and gate agree on what "document evidence" means.
+        # Apply exclusions using canonical DocumentEvidenceEvaluator.
+        # Key change: instead of a hard legal gate that returns 0 when
+        # OCR is absent, we admit low-confidence candidates with relaxed
+        # evidence and let SearchConfidencePolicy label the trust level.
+        #
+        # Hard exclusions (always rejected):
+        #   - is_screenshot (wrong category)
+        #   - has_faces (likely a photo, not a document)
+        #   - too_small (below MIN_EDGE_SIZE)
+        #
+        # Relaxed admission (kept as low-confidence):
+        #   - page-like geometry without OCR
+        #   - doc extension without OCR
+        #   - These are labeled "low_confidence" in evidence so
+        #     SearchConfidencePolicy can warn honestly.
         kept = []
         evidence_by_path = {}
         rejection_counts = {}
+        low_confidence_count = 0
         for path in all_candidates:
             meta = project_meta.get(path, {})
 
-            # Use canonical evaluator for all hard rejections and evidence rules
             doc_evidence = _doc_evaluator.evaluate(meta, path)
-            if not doc_evidence.is_document:
-                reason = doc_evidence.rejection_reason or "insufficient_evidence"
-                rejection_counts[reason] = rejection_counts.get(reason, 0) + 1
+
+            # Hard rejections: screenshot, faces, too small
+            if doc_evidence.rejection_reason in ("is_screenshot", "has_faces", "too_small"):
+                rejection_counts[doc_evidence.rejection_reason] = (
+                    rejection_counts.get(doc_evidence.rejection_reason, 0) + 1
+                )
                 continue
+
+            # Full acceptance: canonical evaluator says it's a document
+            is_low_confidence = False
+            if not doc_evidence.is_document:
+                # Relaxed admission: if it has structural signals (page-like
+                # geometry or doc extension) but no OCR, admit as low-confidence
+                if doc_evidence.is_structural or doc_evidence.has_doc_extension:
+                    is_low_confidence = True
+                    low_confidence_count += 1
+                else:
+                    # No structural signal at all — truly insufficient evidence
+                    reason = doc_evidence.rejection_reason or "insufficient_evidence"
+                    rejection_counts[reason] = rejection_counts.get(reason, 0) + 1
+                    continue
 
             # Build evidence (augmented with canonical evaluation)
             evidence = self._build_evidence(
@@ -144,6 +174,9 @@ class DocumentCandidateBuilder(BaseCandidateBuilder):
                 ocr_fts_paths, ocr_lexicon_paths,
                 structural_paths, extension_paths,
             )
+            # Tag confidence level for downstream policy evaluation
+            evidence["confidence_level"] = "low" if is_low_confidence else "high"
+            evidence["ocr_missing"] = not doc_evidence.has_ocr
             kept.append(path)
             evidence_by_path[path] = evidence
 
@@ -168,13 +201,20 @@ class DocumentCandidateBuilder(BaseCandidateBuilder):
             f"[DocumentCandidateBuilder] documents: "
             f"{len(kept)}/{len(project_meta)} candidates "
             f"(ocr_fts={len(ocr_fts_paths)}, lexicon={len(ocr_lexicon_paths)}, "
-            f"structural={len(structural_paths)}, extension={len(extension_paths)})"
+            f"structural={len(structural_paths)}, extension={len(extension_paths)}, "
+            f"low_confidence={low_confidence_count})"
         )
         if rejection_counts:
             logger.info(
                 f"[DocumentCandidateBuilder] rejections: {rejection_counts} "
                 f"({sum(rejection_counts.values())} total from "
                 f"{len(all_candidates)} pre-filter candidates)"
+            )
+        if low_confidence_count > 0:
+            logger.info(
+                f"[DocumentCandidateBuilder] {low_confidence_count} candidates "
+                f"admitted as low-confidence (structural evidence without OCR). "
+                f"Run OCR processing for better document detection."
             )
 
         return CandidateSet(
@@ -184,10 +224,12 @@ class DocumentCandidateBuilder(BaseCandidateBuilder):
             source_counts=source_counts,
             builder_confidence=confidence,
             ready_state="ready" if kept else "empty",
-            notes=[f"Document builder: {len(kept)} candidates"],
+            notes=[f"Document builder: {len(kept)} candidates "
+                   f"({low_confidence_count} low-confidence)"],
             diagnostics={
                 "rejections": rejection_counts,
                 "pre_filter_candidates": len(all_candidates),
+                "low_confidence_candidates": low_confidence_count,
             },
         )
 
