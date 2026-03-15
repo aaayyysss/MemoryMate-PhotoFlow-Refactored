@@ -50,6 +50,8 @@ _UI_TERMS = frozenset({
     "settings", "search", "cancel", "back", "menu",
     "home", "share", "download", "whatsapp", "instagram",
     "telegram", "messenger", "chrome", "safari",
+    "edit", "done", "reply", "delete", "save", "profile",
+    "messages", "chat", "feed", "explore", "reels",
 })
 
 # Page-like aspect ratio range for screenshot detection

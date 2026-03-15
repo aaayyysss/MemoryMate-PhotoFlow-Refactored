@@ -286,8 +286,7 @@ class SearchConfidencePolicy:
             warning_message=(
                 f"Low screenshot confidence: only {hard_evidence}/{total} "
                 f"results have strong screenshot evidence, with {soft_evidence} "
-                f"weak matches. "
-                f"Weak semantic-only={weak_semantic_only}. "
+                f"weak screenshot matches. "
                 f"Builder rejections={rejection_hist}."
             ),
             explanation=failures,
@@ -534,7 +533,7 @@ class SearchConfidencePolicy:
 
             if family == "screenshots":
                 score = float(evidence.get("screenshot_score", 0.0) or 0.0)
-                if 0.25 <= score < 0.35 and SearchConfidencePolicy._has_screenshot_signal(evidence):
+                if 0.20 <= score < 0.35:
                     count += 1
 
         return count

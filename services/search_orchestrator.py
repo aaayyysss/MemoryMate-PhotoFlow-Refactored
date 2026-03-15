@@ -1937,8 +1937,8 @@ class SearchOrchestrator:
                 for idx, sr in enumerate(scored[:10]):
                     logger.info(
                         f"[SearchOrchestrator][Screenshots] pre-sort #{idx} "
-                        f"path={os.path.basename(sr.path)!r} clip={sr.clip_score:.3f} "
-                        f"screen={sr.screenshot_score:.3f} "
+                        f"path={sr.path!r} clip={sr.clip_score:.3f} "
+                        f"screen={getattr(sr, 'screenshot_score', 0.0):.3f} "
                         f"ocr={sr.ocr_score:.3f} struct={sr.structural_score:.3f}"
                     )
 
