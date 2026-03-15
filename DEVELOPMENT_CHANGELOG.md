@@ -200,3 +200,27 @@ A series of fixes targeting native access violation crashes (`0xC0000005`, `0xC0
 ---
 
 *Last updated: 2026-03-14*
+
+## Search Architecture — Phase 10: Screenshot Recall Recovery, Utility Logging Cleanup, CLIP Cache Validation
+
+### Screenshot Recall Recovery
+- Expanded screenshot filename markers and UI OCR lexicon.
+- Added low-confidence screenshot recovery for assets with at least two non-semantic screenshot signals.
+- Added broader screen-geometry support for tablet/desktop captures.
+- Added screenshot acceptance diagnostics:
+  - `acceptance_reasons`
+  - `recovery_signal_count`
+  - `low_confidence_recovery`
+
+### Utility Logging Cleanup
+- Added explicit `UTILITY_ROUTE` logging before metadata-only utility execution.
+- Utility presets now log a first-class route instead of looking like legacy fallback.
+
+### CLIP Cache Validation
+- `_has_model_weights()` now recognizes Hugging Face cache roots with:
+  - direct config + weights,
+  - `snapshots/<hash>/config.json`,
+  - `refs/main` -> snapshot resolution.
+- Stored CLIP model preference is no longer incorrectly cleared when it points to a valid Hugging Face cache root.
+
+*Last updated: 2026-03-15*
