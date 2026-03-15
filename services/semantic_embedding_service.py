@@ -1,6 +1,6 @@
 ## services\semantic_embedding_service.py
 ## Version: 1.1.4 dated 20260309
- 
+
 """
 SemanticEmbeddingService - Clean Architectural Separation
 
@@ -61,7 +61,7 @@ logger = get_logger(__name__)
 # Thread-safe singleton lock
 _service_lock = threading.Lock()
 
-# ── GLOBAL CLIP INFERENCE LOCK ──────────────────────────────────────────
+# ---- GLOBAL CLIP INFERENCE LOCK ------------------------------------------------------------------------------------
 # Process-wide lock for ALL CLIP model inference (text AND image).
 # The CLIP model + MKL/OpenBLAS native backend are NOT thread-safe.
 # An instance-local lock is insufficient because:
@@ -73,17 +73,21 @@ _service_lock = threading.Lock()
 # _load_model which does warmup inference) don't deadlock.
 _GLOBAL_CLIP_INFER_LOCK = threading.RLock()
 
-# ── MODEL-READY EVENT ────────────────────────────────────────────────────
+# ---- MODEL-READY EVENT --------------------------------------------------------------------------------------------------------
 # Signalled after the first model load + warmup inference completes.
 # Search workers should wait on this before calling encode_text() to
 # prevent overlapping with the warmup dry-run.
 _MODEL_READY_EVENT = threading.Event()
 
-# ── ONCE-ONLY PATCH SENTINEL ────────────────────────────────────────────
+# ---- ONCE-ONLY PATCH SENTINEL ----------------------------------------------------------------------------------------
 # Tracks which CLIPTextTransformer classes have been patched to avoid
 # re-patching on duplicate _load_model() calls or service recreation.
 # Keyed by id(text_model) to handle multiple model variants.
 _PATCHED_TEXT_MODELS: set = set()
+
+# Tracks if torch.set_num_threads(1) has been called to prevent redundant
+# and potentially unstable re-calls on Windows.
+_TORCH_INITIALIZED = False
 
 # Optional FAISS import for fast similarity search on large collections
 # Falls back to brute-force numpy when FAISS is not available
@@ -254,7 +258,17 @@ class SemanticEmbeddingService:
                     # and crashes with an access violation (0xC0000005).
                     # Pinning here ensures MKL is at 1 thread before
                     # from_pretrained() ever touches the weight tensors.
-                    torch.set_num_threads(1)
+                    # FIX 2026-03-15: Use a one-time guard for stability.
+                    global _TORCH_INITIALIZED
+                    if not _TORCH_INITIALIZED:
+                        torch.set_num_threads(1)
+                        _TORCH_INITIALIZED = True
+
+                    # Also set for numpy/BLAS specifically via environment
+                    # if they were already initialized.
+                    os.environ["OMP_NUM_THREADS"] = "1"
+                    os.environ["MKL_NUM_THREADS"] = "1"
+                    os.environ["OPENBLAS_NUM_THREADS"] = "1"
 
                 except (ImportError, AttributeError, RuntimeError) as e:
                     # AttributeError: NumPy 2.x incompatibility (_ARRAY_API not found)
@@ -348,7 +362,7 @@ class SemanticEmbeddingService:
                     # Validate model path
                     if clip_path_obj.exists() and _has_model_weights(str(clip_path_obj)):
                         local_model_path = str(clip_path_obj)
-                        logger.info(f"[SemanticEmbeddingService] ✓ Using stored preference: {local_model_path}")
+                        logger.info(f"[SemanticEmbeddingService] CHECKMARK Using stored preference: {local_model_path}")
                     else:
                         logger.warning(
                             f"[SemanticEmbeddingService] Stored preference path invalid, clearing setting:\n"
@@ -451,7 +465,7 @@ class SemanticEmbeddingService:
                                         logger.info(f"[SemanticEmbeddingService]     → Snapshot has config.json: {snapshot_has_config}")
 
                                         if snapshot_has_config:
-                                            logger.info(f"[SemanticEmbeddingService]     → ✓ VALID MODEL FOUND in HF cache snapshot!")
+                                            logger.info(f"[SemanticEmbeddingService]     → CHECKMARK VALID MODEL FOUND in HF cache snapshot!")
                                             local_model_path = str(latest_snapshot)
                                             break
                                         else:
@@ -467,7 +481,7 @@ class SemanticEmbeddingService:
                                     logger.warning(f"[SemanticEmbeddingService]     → Error checking snapshots: {e}", exc_info=True)
 
                             elif has_config:
-                                logger.info(f"[SemanticEmbeddingService]     → ✓ VALID MODEL FOUND!")
+                                logger.info(f"[SemanticEmbeddingService]     → CHECKMARK VALID MODEL FOUND!")
                                 local_model_path = str(model_folder)
                                 break
                             else:
@@ -669,7 +683,6 @@ class SemanticEmbeddingService:
             # first encode_image() call from the post-scan pipeline thread.
             try:
                 with _GLOBAL_CLIP_INFER_LOCK:
-                    self._torch.set_num_threads(1)
                     with self._torch.inference_mode():
                         # Text encoder warmup
                         dummy_ids = self._torch.zeros(1, 77, dtype=self._torch.long, device=self._device)
@@ -681,7 +694,22 @@ class SemanticEmbeddingService:
                             1, 3, 224, 224, dtype=self._torch.float32, device=self._device
                         )
                         self._model.get_image_features(pixel_values=dummy_pixel_values)
-                logger.info("[SemanticEmbeddingService] ✓ Warm-up inference completed (MKL initialised)")
+
+                        # FIX 2026-03-15: Force MKL to initialise its GEMM kernels
+                        # for general matrix multiplication.  Access violations
+                        # often occur when MKL lazily initialises its thread pool
+                        # during the first matrix operation in a new thread.
+                        # Warm up both the current device AND CPU (for processor/MKL).
+                        a = self._torch.randn(32, 32, device=self._device)
+                        b = self._torch.randn(32, 32, device=self._device)
+                        self._torch.mm(a, b)
+
+                        if self._device.type != 'cpu':
+                            a_cpu = self._torch.randn(32, 32, device='cpu')
+                            b_cpu = self._torch.randn(32, 32, device='cpu')
+                            self._torch.mm(a_cpu, b_cpu)
+
+                logger.info("[SemanticEmbeddingService] CHECKMARK Warm-up inference completed (MKL kernels and GEMM initialised)")
             except Exception as e:
                 logger.warning(f"[SemanticEmbeddingService] Warm-up inference failed (non-fatal): {e}")
 
@@ -697,7 +725,7 @@ class SemanticEmbeddingService:
     # Causal-mask patch (Windows crash prevention)
     # ------------------------------------------------------------------
 
-    def _patch_causal_mask(self):
+    def _patch_causal_mask(self, model=None):
         """
         Pre-compute the CLIP causal attention mask and monkey-patch the
         text model so that _create_4d_causal_attention_mask is never
@@ -716,12 +744,13 @@ class SemanticEmbeddingService:
         re-patching the same model object across service recreations.
         """
         try:
-            text_model = self._model.text_model
+            target_model = model if model is not None else self._model
+            text_model = target_model.text_model
             model_identity = id(text_model)
 
             if model_identity in _PATCHED_TEXT_MODELS:
                 logger.info(
-                    "[SemanticEmbeddingService] ✓ Causal mask patch already applied "
+                    "[SemanticEmbeddingService] CHECKMARK Causal mask patch already applied "
                     "for this text_model instance, skipping"
                 )
                 return
@@ -729,7 +758,12 @@ class SemanticEmbeddingService:
             torch = self._torch
 
             seq_len = 77  # CLIP fixed context length
-            dtype = next(self._model.parameters()).dtype
+            dtype = next(target_model.parameters()).dtype
+
+            # Capture device as a local variable for the closure.
+            # FIX 2026-03-09: Use local capture to avoid keeping a strong
+            # reference to the entire service instance.
+            _device = self._device
 
             # Build the lower-triangular causal mask once.
             # Shape: [1, 1, seq_len, seq_len]  (batch=1, head=1, broadcast)
@@ -738,7 +772,7 @@ class SemanticEmbeddingService:
                     (seq_len, seq_len),
                     torch.finfo(dtype).min,
                     dtype=dtype,
-                    device=self._device,
+                    device=_device,
                 )
                 mask = torch.triu(mask, diagonal=1)
                 cached_mask = mask.unsqueeze(0).unsqueeze(0)  # [1, 1, 77, 77]
@@ -869,7 +903,7 @@ class SemanticEmbeddingService:
             text_model.forward = _safe_patched_forward
             _PATCHED_TEXT_MODELS.add(model_identity)
             logger.info(
-                "[SemanticEmbeddingService] ✓ Patched CLIPTextTransformer.forward "
+                "[SemanticEmbeddingService] CHECKMARK Patched CLIPTextTransformer.forward "
                 "with pre-computed causal mask + safety fallback "
                 "(Windows crash prevention, once-only)"
             )
@@ -956,10 +990,6 @@ class SemanticEmbeddingService:
         try:
             # Preprocess + inference under lock to prevent concurrent native crashes
             with self._infer_lock:
-                # FIX: Pin MKL/OpenBLAS to 1 thread and do NOT restore.
-                # See encode_text() for full explanation.
-                self._torch.set_num_threads(1)
-
                 # FIX: Use return_tensors="np" and manually convert to
                 # PyTorch tensors.  The transformers CLIPProcessor's
                 # as_tensor() crashes with a native access violation
@@ -1015,15 +1045,6 @@ class SemanticEmbeddingService:
         try:
             # Preprocess + inference under lock to prevent concurrent native crashes
             with self._infer_lock:
-                # FIX: Pin MKL/OpenBLAS to 1 thread and do NOT restore.
-                # Toggling set_num_threads between 1 and N across rapid-fire
-                # searches destabilises MKL's internal thread pool on Windows,
-                # causing native access violations (0xC0000005) in CLIPAttention.
-                # The env-var fix (OMP_NUM_THREADS=1) handles new processes;
-                # this call handles cases where torch was imported before the
-                # env var was set.
-                self._torch.set_num_threads(1)
-
                 # FIX: Use return_tensors="np" and manually convert to
                 # PyTorch tensors, exactly like encode_image().
                 # The transformers CLIPProcessor's as_tensor() path
@@ -1312,10 +1333,6 @@ class SemanticEmbeddingService:
                     # concurrent batch encoding + text search causes native
                     # access violations (0xC0000005) in _make_causal_mask.
                     with self._infer_lock:
-                        # FIX: Pin MKL/OpenBLAS to 1 thread and do NOT restore.
-                        # See encode_text() for full explanation.
-                        self._torch.set_num_threads(1)
-
                         # FIX: Use return_tensors="np" + manual conversion
                         # to avoid processor's as_tensor() crash on Windows.
                         inputs_np = self._processor(images=batch_images, return_tensors="np", padding=True)

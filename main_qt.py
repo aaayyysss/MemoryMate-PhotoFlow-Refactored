@@ -66,15 +66,22 @@ os.environ['QT_QUICK_BACKEND'] = 'software'  # Force software backend for Qt Qui
 # from QThreadPool worker threads, MKL's internal pool gets
 # reconfigured across threads → native access violation (0xC0000005).
 # Setting to 1 at process startup ensures MKL never creates a
-# multi-thread pool in the first place.  InsightFace/ONNX Runtime
-# have their own thread pool configs and are not affected.
+# multi-thread pool in the first place.
 # ========================================================================
 os.environ['OMP_NUM_THREADS'] = '1'
 os.environ['MKL_NUM_THREADS'] = '1'
 os.environ['OPENBLAS_NUM_THREADS'] = '1'
 os.environ['TOKENIZERS_PARALLELISM'] = 'false'
-os.environ.setdefault('VECLIB_MAXIMUM_THREADS', '1')
-os.environ.setdefault('NUMEXPR_NUM_THREADS', '1')
+os.environ['VECLIB_MAXIMUM_THREADS'] = '1'
+os.environ['NUMEXPR_NUM_THREADS'] = '1'
+
+# Pre-pin torch if possible to prevent MKL from ever spawning threads
+try:
+    import torch
+    torch.set_num_threads(1)
+except ImportError:
+    pass
+
 # ONNX Runtime manages its own thread pool separately from MKL
 _ml_threads = str(min(4, os.cpu_count() or 4))
 os.environ.setdefault('ONNXRUNTIME_SESSION_THREAD_POOL_SIZE', _ml_threads)
