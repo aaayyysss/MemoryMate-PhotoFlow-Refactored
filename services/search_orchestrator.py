@@ -944,6 +944,62 @@ class SearchOrchestrator:
         """Detect if a query implies people/faces (portraits, baby, wedding, etc.)."""
         return is_people_implied(plan)
 
+    def _execute_utility_metadata_only(
+        self,
+        plan: QueryPlan,
+        project_meta: Dict[str, Dict],
+        top_k: int,
+    ) -> OrchestratorResult:
+        """
+        Metadata-only execution path for utility-family presets.
+        No builder, no CLIP, no FAMILY_FALLBACK.
+        """
+        from services.smart_find_service import get_smart_find_service
+        sf = get_smart_find_service(self.project_id)
+
+        # Re-use metadata filter from SmartFindService
+        matched_paths = sf._run_metadata_filter(plan.filters)
+
+        family = "utility"
+
+        scored = []
+        for path in matched_paths:
+            scored.append(
+                self._score_result(
+                    path=path,
+                    clip_score=0.0,
+                    matched_prompt="",
+                    project_meta=project_meta,
+                    active_filters=plan.filters,
+                    people_implied=False,
+                    family=family,
+                )
+            )
+
+        scored.sort(key=lambda r: r.final_score, reverse=True)
+        scored = scored[:top_k]
+
+        result_paths = [r.path for r in scored]
+        facets = FacetComputer.compute(result_paths, project_meta)
+
+        logger.info(
+            f"[SearchOrchestrator] UTILITY_FAST_PATH: "
+            f"preset={plan.preset_id!r} filters={plan.filters} "
+            f"matched={len(result_paths)}"
+        )
+
+        return OrchestratorResult(
+            paths=result_paths,
+            total_matches=len(result_paths),
+            scored_results=scored,
+            scores={r.path: r.final_score for r in scored},
+            facets=facets,
+            query_plan=plan,
+            family=family,
+            phase="full",
+            phase_label="Metadata results",
+        )
+
     # ── Phase 4: Family-first candidate builder dispatch ──
 
     def _build_candidate_set(
@@ -1041,6 +1097,53 @@ class SearchOrchestrator:
                 f"[SearchOrchestrator] screenshot semantic supplement failed: {e}"
             )
             return {}
+
+    def _prune_document_survivors(
+        self,
+        scored_results: List[ScoredResult],
+        builder_evidence: Optional[Dict[str, dict]],
+        project_meta: Dict[str, Dict],
+    ) -> List[ScoredResult]:
+        """
+        Final integrity pass for Documents preset.
+
+        A surviving document result must either:
+        - pass canonical document evaluation, or
+        - be explicitly admitted by DocumentCandidateBuilder evidence.
+        """
+        if not scored_results:
+            return scored_results
+
+        kept = []
+        dropped = 0
+        builder_evidence = builder_evidence or {}
+
+        for r in scored_results:
+            ev = builder_evidence.get(r.path) or {}
+            meta = project_meta.get(r.path, {})
+
+            builder_ok = bool(
+                ev.get("ocr_fts_hit")
+                or ev.get("ocr_lexicon_hit")
+                or ev.get("doc_extension")
+                or ev.get("structural_hit")
+                or ev.get("low_confidence_admit")
+            )
+
+            gate_ok = self._gate_engine._passes_document_gate(meta, r.path)
+
+            if builder_ok or gate_ok:
+                kept.append(r)
+            else:
+                dropped += 1
+
+        if dropped:
+            logger.warning(
+                f"[SearchOrchestrator] DOCUMENT_SURVIVOR_PRUNE: "
+                f"kept={len(kept)}/{len(scored_results)} dropped={dropped}"
+            )
+
+        return kept
 
     def _get_builder_screenshot_score(
         self,
@@ -1318,6 +1421,13 @@ class SearchOrchestrator:
         # Override family if builder resolved it
         if builder_intent and builder_intent.family_hint:
             current_family = builder_intent.family_hint
+
+        if current_family == "utility":
+            return self._execute_utility_metadata_only(
+                plan=plan,
+                project_meta=project_meta,
+                top_k=top_k,
+            )
 
         # ── Family-path consistency assertion ──
         # If the builder resolved a family, it must match the preset-derived
@@ -2088,6 +2198,17 @@ class SearchOrchestrator:
             scored, plan, project_meta,
             builder_evidence=(type_evidence or people_event_evidence)
         )
+
+        if (plan.preset_id or "").lower() == "documents":
+            builder_evidence = None
+            if builder_candidate_set is not None:
+                builder_evidence = getattr(builder_candidate_set, "evidence_by_path", None)
+
+            scored = self._prune_document_survivors(
+                scored_results=scored,
+                builder_evidence=builder_evidence,
+                project_meta=project_meta,
+            )
 
         # Step 7e: Family-specific debug logging (post-gate, pre-dedup)
         if scored:

@@ -86,8 +86,8 @@ FAMILY_DEFAULTS: Dict[str, Dict[str, float]] = {
         "w_screenshot": 0.00,
     },
     "utility": {
-        "w_clip": 0.00, "w_recency": 0.20, "w_favorite": 0.45,
-        "w_location": 0.25, "w_face_match": 0.10,
+        "w_clip": 0.00, "w_recency": 0.20, "w_favorite": 0.55,
+        "w_location": 0.25, "w_face_match": 0.00,
         "w_structural": 0.00, "w_ocr": 0.00, "w_event": 0.00,
         "w_screenshot": 0.00,
     },

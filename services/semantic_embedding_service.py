@@ -113,7 +113,21 @@ def _has_model_weights(model_dir: str) -> bool:
         p / "tf_model.h5",
         p / "flax_model.msgpack",
     ]
-    return any(x.exists() for x in weight_candidates)
+    if any(x.exists() for x in weight_candidates):
+        return True
+
+    # Also check for HuggingFace cache-style snapshots subdirectory
+    snapshots_dir = p / "snapshots"
+    if snapshots_dir.exists() and snapshots_dir.is_dir():
+        try:
+            snapshot_folders = [d for d in snapshots_dir.iterdir() if d.is_dir()]
+            for folder in snapshot_folders:
+                if (folder / "config.json").exists():
+                    return True
+        except Exception:
+            pass
+
+    return False
 
 
 class SemanticEmbeddingService:
