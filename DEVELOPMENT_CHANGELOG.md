@@ -36,6 +36,33 @@ This document tracks all features, modifications, and bug fixes applied to the c
 
 ---
 
+## Search Architecture — Phase 9: Document Precision Tightening
+
+### Canonical Document Contract
+- **`DocumentEvidenceEvaluator`** now distinguishes between strong native documents, strong raster documents, and weak page-like lookalikes.
+- Removed `.png` from `DOC_NATIVE_EXTENSIONS` to avoid false document positives from screenshots and exported graphics.
+- Raster images (JPG, HEIC, PNG) now require stronger multi-signal evidence (e.g., page geometry PLUS text-dense layout) to qualify as documents.
+- Added `has_text_dense_layout` signal to detect OCR-rich raster pages.
+
+### Document Builder Tightening
+- **`DocumentCandidateBuilder`** no longer admits geometry-only raster candidates as low-confidence documents.
+- Admittance now requires at least a text-dense layout for structural-only candidates.
+- Expanded evidence payload and diagnostics with `strong_raster_documents` and `text_dense_layout_admits`.
+
+### Gate and Survivor Tightening
+- **`GateEngine`** document rescue now accepts only canonical document evidence or strong raster-document evidence.
+- **`SearchOrchestrator._prune_document_survivors()`** now rejects geometry-only document survivors.
+- Added `DOCUMENT_PRUNE_DROP` debug logging to trace document precision filtering.
+
+### Test Suite Expansion
+- Added regression tests for:
+  - page-like PNG without OCR rejection,
+  - dense-text PNG acceptance,
+  - sparse-text JPG rejection,
+  - geometry-only survivor pruning.
+
+---
+
 ## Search Architecture — Phase 6: Screenshot Builder, Fusion & Diagnostics
 
 ### ScreenshotCandidateBuilder

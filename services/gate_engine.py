@@ -113,8 +113,11 @@ class GateEngine:
             evidence.get("ocr_fts_hit")
             or evidence.get("ocr_lexicon_hit")
             or evidence.get("doc_extension")
-            or evidence.get("structural_hit")
-            or evidence.get("low_confidence_admit")
+            or evidence.get("strong_raster_document")
+            or (
+                evidence.get("low_confidence_admit")
+                and evidence.get("has_text_dense_layout")
+            )
         )
 
     def _rescue_screenshot_result_from_builder_evidence(

@@ -35,7 +35,7 @@ logger = get_logger(__name__)
 # ── Shared constants (single source of truth) ──
 
 # Document-native extensions (strong positive signal)
-DOC_NATIVE_EXTENSIONS = frozenset({'.pdf', '.png', '.tif', '.tiff', '.bmp'})
+DOC_NATIVE_EXTENSIONS = frozenset({'.pdf', '.tif', '.tiff', '.bmp'})
 
 # Image extensions that need strong content evidence to pass as documents
 IMAGE_EXTENSIONS = frozenset({'.jpg', '.jpeg', '.heic', '.heif', '.webp'})
@@ -67,6 +67,8 @@ class DocumentEvidence:
     has_doc_extension: bool = False
     is_page_like: bool = False
     is_structural: bool = False
+    has_text_dense_layout: bool = False
+    strong_raster_document: bool = False
     rejection_reason: Optional[str] = None
     # Raw signals for downstream use
     ocr_text_len: int = 0
@@ -118,6 +120,26 @@ class DocumentEvidenceEvaluator:
             return 0.0
         return max(w, h) / max(1, min(w, h))
 
+    @staticmethod
+    def has_text_dense_layout(meta: dict) -> bool:
+        """
+        Heuristic for raster documents that look like pages:
+        enough OCR characters, enough OCR words, or multiple line breaks.
+        This is weaker than true OCR-positive document confidence, but
+        stronger than geometry alone.
+        """
+        text = (meta.get("ocr_text") or "").strip()
+        if not text:
+            return False
+
+        if len(text) >= 40:
+            return True
+        if len(text.split()) >= 6:
+            return True
+        if text.count("\n") >= 2:
+            return True
+        return False
+
     def evaluate(self, meta: dict, path: str = "") -> DocumentEvidence:
         """
         Evaluate whether an asset qualifies as a document.
@@ -147,6 +169,7 @@ class DocumentEvidenceEvaluator:
         h = meta.get("height") or 0
         min_edge = min(w, h) if w and h else 0
         structural = page_like or doc_ext
+        text_dense_layout = self.has_text_dense_layout(meta)
 
         evidence = DocumentEvidence(
             has_ocr=has_ocr,
@@ -154,6 +177,8 @@ class DocumentEvidenceEvaluator:
             has_doc_extension=doc_ext,
             is_page_like=page_like,
             is_structural=structural,
+            has_text_dense_layout=text_dense_layout,
+            strong_raster_document=False,
             ocr_text_len=len((meta.get("ocr_text") or "").strip()),
             face_count=face_count,
             is_screenshot=is_screenshot,
@@ -176,14 +201,29 @@ class DocumentEvidenceEvaluator:
             return evidence
 
         # Extension-specific acceptance rules
-        if ext in DOC_NATIVE_EXTENSIONS:
-            evidence.is_document = has_ocr or page_like
+        if ext == ".pdf":
+            # PDF is strong native document evidence.
+            evidence.is_document = True
+
+        elif ext in {".tif", ".tiff", ".bmp"}:
+            # Scan-like formats may pass with OCR or convincing page structure.
+            evidence.is_document = has_ocr or (page_like and text_dense_layout)
+
+        elif ext == ".png":
+            # PNG is ambiguous: scanned page, export, or screenshot.
+            # Require OCR OR page-like + text-dense layout.
+            evidence.is_document = has_ocr or (page_like and text_dense_layout)
+
         elif ext in IMAGE_EXTENSIONS:
-            # JPGs/HEICs need actual OCR content, not just page geometry
-            evidence.is_document = has_ocr
+            # JPG/HEIC/WebP need stronger content evidence than geometry alone.
+            evidence.strong_raster_document = bool(
+                has_ocr or (page_like and lexicon_hit and text_dense_layout)
+            )
+            evidence.is_document = evidence.strong_raster_document
+
         else:
-            # Unknown extension: require OCR or page geometry
-            evidence.is_document = has_ocr or page_like
+            # Unknown types remain conservative.
+            evidence.is_document = has_ocr or (page_like and text_dense_layout)
 
         if not evidence.is_document:
             evidence.rejection_reason = "insufficient_evidence"

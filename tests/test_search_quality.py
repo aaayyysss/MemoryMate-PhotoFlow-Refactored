@@ -137,6 +137,42 @@ class TestGateEngineDocuments:
         kept, dropped = self.engine.apply(scored, plan, meta)
         assert len(kept) == 1
 
+    def test_png_page_like_no_ocr_rejected(self):
+        """PNG with page-like geometry but no OCR/text-density must be rejected."""
+        plan = self._make_plan()
+        meta = {"/exports/graphic.png": {
+            "ext": ".png", "width": 2100, "height": 2970,
+            "ocr_text": "", "face_count": 0, "is_screenshot": False,
+        }}
+        scored = [self._make_scored("/exports/graphic.png")]
+        kept, dropped = self.engine.apply(scored, plan, meta)
+        assert len(kept) == 0
+        assert "require_document_signal" in dropped
+
+    def test_png_page_like_with_dense_text_accepted(self):
+        """PNG scan/export with dense OCR text may pass as a document."""
+        plan = self._make_plan()
+        meta = {"/exports/form.png": {
+            "ext": ".png", "width": 2100, "height": 2970,
+            "ocr_text": "Application Form\nReference Number 12345\nCustomer Address\nSignature",
+            "face_count": 0, "is_screenshot": False,
+        }}
+        scored = [self._make_scored("/exports/form.png")]
+        kept, dropped = self.engine.apply(scored, plan, meta)
+        assert len(kept) == 1
+
+    def test_jpg_page_like_sparse_text_rejected(self):
+        """JPG with geometry and sparse OCR must still be rejected."""
+        plan = self._make_plan()
+        meta = {"/camera/pageish.jpg": {
+            "ext": ".jpg", "width": 2100, "height": 2970,
+            "ocr_text": "hello",
+            "face_count": 0, "is_screenshot": False,
+        }}
+        scored = [self._make_scored("/camera/pageish.jpg")]
+        kept, dropped = self.engine.apply(scored, plan, meta)
+        assert len(kept) == 0
+
 
 class TestGateEnginePets:
     """Pets gate must reject portraits and screenshots."""
