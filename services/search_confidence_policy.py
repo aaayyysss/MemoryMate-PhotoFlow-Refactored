@@ -100,14 +100,132 @@ class SearchConfidencePolicy:
             "utility": self._evaluate_utility_family,
         }
 
-        # Special case for screenshots (type family)
-        if family == "type" and (intent.preset_id or "").lower() == "screenshots":
-            return self._evaluate_screenshot_type(intent, candidate_set, ranked_results)
-
         evaluator = dispatch.get(family, self._evaluate_scenic_family)
         return evaluator(intent, candidate_set, ranked_results)
 
     # ── Family evaluators ──
+
+    def _evaluate_type_family(
+        self,
+        intent: QueryIntent,
+        candidate_set: CandidateSet,
+        ranked_results: list,
+    ) -> SearchDecision:
+        """
+        Evaluate type-family results.
+
+        IMPORTANT:
+        - documents and screenshots both map to family="type"
+        - confidence evaluation must still distinguish them
+        """
+        preset_id = (intent.preset_id or "").lower()
+
+        if preset_id == "screenshots":
+            return self._evaluate_screenshot_type(
+                intent, candidate_set, ranked_results
+            )
+
+        return self._evaluate_document_type(
+            intent, candidate_set, ranked_results
+        )
+
+    def _evaluate_document_type(
+        self,
+        intent: QueryIntent,
+        candidate_set: CandidateSet,
+        ranked_results: list,
+    ) -> SearchDecision:
+        """Document-specific trust evaluation."""
+        hard_evidence = self._count_hard_evidence(
+            ranked_results, candidate_set, "documents"
+        )
+        total = len(ranked_results)
+        failures = self._detect_trust_failure_patterns(
+            ranked_results, candidate_set, "documents"
+        )
+
+        if total == 0:
+            return self._empty_decision("documents")
+
+        evidence_ratio = hard_evidence / total
+        diag = candidate_set.diagnostics or {}
+        low_conf_count = (
+            diag.get("low_confidence_candidates", 0)
+            or diag.get("structural_only_admits", 0)
+        )
+        rejection_hist = diag.get("rejections", {})
+
+        if evidence_ratio >= 0.6 and low_conf_count == 0:
+            return SearchDecision(
+                show_results=True,
+                confidence_label="high",
+                explanation=[
+                    f"{hard_evidence}/{total} results have strong document evidence"
+                ],
+            )
+
+        if evidence_ratio >= 0.6 and low_conf_count > 0:
+            return SearchDecision(
+                show_results=True,
+                confidence_label="medium",
+                warning_message=(
+                    f"{hard_evidence}/{total} results have strong document evidence, "
+                    f"but {low_conf_count} candidates are structural-only "
+                    f"without OCR confirmation."
+                ),
+                explanation=[
+                    f"{low_conf_count} candidates admitted by structural evidence only"
+                ],
+                recommended_actions=[
+                    "Run OCR processing for full confidence",
+                ],
+            )
+
+        if evidence_ratio >= 0.3:
+            return SearchDecision(
+                show_results=True,
+                confidence_label="medium",
+                warning_message=(
+                    f"Some results may not be documents. "
+                    f"{hard_evidence}/{total} have strong document evidence."
+                    + (
+                        f" {low_conf_count} are structural-only."
+                        if low_conf_count > 0 else ""
+                    )
+                ),
+                explanation=failures,
+            )
+
+        diag_detail = ""
+        if rejection_hist:
+            top_reasons = sorted(
+                rejection_hist.items(), key=lambda x: x[1], reverse=True
+            )[:3]
+            diag_detail = (
+                " Top rejection reasons: "
+                + ", ".join(f"{r}({c})" for r, c in top_reasons)
+                + "."
+            )
+
+        if low_conf_count > 0:
+            diag_detail += (
+                f" {low_conf_count} candidates were admitted by structural evidence only."
+            )
+
+        return SearchDecision(
+            show_results=True,
+            confidence_label="low",
+            warning_message=(
+                f"Low document confidence: only {hard_evidence}/{total} "
+                f"results have OCR or structural document evidence."
+                f"{diag_detail}"
+            ),
+            explanation=failures,
+            recommended_actions=[
+                "Run OCR processing on your library",
+                "Try a more specific document query",
+            ],
+        )
 
     def _evaluate_screenshot_type(
         self,
@@ -115,7 +233,7 @@ class SearchConfidencePolicy:
         candidate_set: CandidateSet,
         ranked_results: list,
     ) -> SearchDecision:
-        """Strengthened screenshot trust evaluation (Phase 2)."""
+        """Screenshot-specific trust evaluation with stricter supplement control."""
         hard_evidence = self._count_hard_evidence(
             ranked_results, candidate_set, "screenshots"
         )
@@ -130,14 +248,16 @@ class SearchConfidencePolicy:
         if total == 0:
             return self._empty_decision("screenshots")
 
-        # Effective evidence combines hard and weighted soft evidence
-        effective_evidence = hard_evidence + (0.5 * soft_evidence)
+        effective_evidence = hard_evidence + (0.35 * soft_evidence)
         evidence_ratio = effective_evidence / total
 
         diag = candidate_set.diagnostics or {}
         rejection_hist = diag.get("rejections", {})
+        supplement_admitted = diag.get("supplement_admitted", 0)
+        supplement_rejected = diag.get("supplement_rejected", 0)
+        weak_semantic_only = diag.get("weak_semantic_only", 0)
 
-        if evidence_ratio >= 0.7:
+        if evidence_ratio >= 0.7 and weak_semantic_only == 0:
             return SearchDecision(
                 show_results=True,
                 confidence_label="high",
@@ -146,15 +266,18 @@ class SearchConfidencePolicy:
                 ],
             )
 
-        if evidence_ratio >= 0.35:
+        if evidence_ratio >= 0.4:
             return SearchDecision(
                 show_results=True,
                 confidence_label="medium",
                 warning_message=(
                     f"Some results may not be screenshots. "
-                    f"{hard_evidence}/{total} have strong evidence."
+                    f"{hard_evidence}/{total} have strong screenshot evidence."
                 ),
-                explanation=failures,
+                explanation=failures + (
+                    [f"Supplement admitted={supplement_admitted}, rejected={supplement_rejected}"]
+                    if (supplement_admitted or supplement_rejected) else []
+                ),
             )
 
         return SearchDecision(
@@ -163,112 +286,14 @@ class SearchConfidencePolicy:
             warning_message=(
                 f"Low screenshot confidence: only {hard_evidence}/{total} "
                 f"results have strong screenshot evidence, with {soft_evidence} "
-                f"weak screenshot matches. "
+                f"weak matches. "
+                f"Weak semantic-only={weak_semantic_only}. "
                 f"Builder rejections={rejection_hist}."
             ),
             explanation=failures,
             recommended_actions=[
                 "Rebuild screenshot detection metadata",
                 "Try a more specific UI/text query",
-            ],
-        )
-
-    def _evaluate_type_family(
-        self,
-        intent: QueryIntent,
-        candidate_set: CandidateSet,
-        ranked_results: list,
-    ) -> SearchDecision:
-        """Evaluate type-family results (documents, screenshots)."""
-        hard_evidence = self._count_hard_evidence(
-            ranked_results, candidate_set, "type"
-        )
-        total = len(ranked_results)
-        failures = self._detect_trust_failure_patterns(
-            ranked_results, candidate_set, "type"
-        )
-
-        if total == 0:
-            return self._empty_decision("type")
-
-        evidence_ratio = hard_evidence / total
-
-        # Check for low-confidence candidates from relaxed document builder
-        diag = candidate_set.diagnostics or {}
-        low_conf_count = diag.get("low_confidence_candidates", 0)
-
-        if evidence_ratio >= 0.6 and low_conf_count == 0:
-            return SearchDecision(
-                show_results=True,
-                confidence_label="high",
-                explanation=[
-                    f"{hard_evidence}/{total} results have strong "
-                    f"document/OCR evidence"
-                ],
-            )
-
-        if evidence_ratio >= 0.6 and low_conf_count > 0:
-            # Good evidence ratio but some candidates lack OCR
-            return SearchDecision(
-                show_results=True,
-                confidence_label="medium",
-                warning_message=(
-                    f"{hard_evidence}/{total} results have strong evidence, but "
-                    f"{low_conf_count} candidates are structural matches "
-                    f"without OCR confirmation. Run OCR for full confidence."
-                ),
-                explanation=[
-                    f"{low_conf_count} candidates admitted by structural "
-                    f"evidence only (OCR missing)"
-                ],
-            )
-
-        if evidence_ratio >= 0.3:
-            return SearchDecision(
-                show_results=True,
-                confidence_label="medium",
-                warning_message=(
-                    f"Some results may not be documents. "
-                    f"{hard_evidence}/{total} have strong evidence."
-                    + (f" {low_conf_count} are structural-only (no OCR)."
-                       if low_conf_count > 0 else "")
-                ),
-                explanation=failures,
-            )
-
-        # Enrich low-confidence message with builder diagnostics
-        rejection_hist = diag.get("rejections", {})
-        diag_detail = ""
-        if rejection_hist:
-            top_reasons = sorted(
-                rejection_hist.items(), key=lambda x: x[1], reverse=True
-            )[:3]
-            diag_detail = (
-                " Top rejection reasons: "
-                + ", ".join(f"{r}({c})" for r, c in top_reasons)
-                + "."
-            )
-
-        if low_conf_count > 0:
-            diag_detail += (
-                f" {low_conf_count} candidates admitted by structural "
-                f"evidence only (OCR missing)."
-            )
-
-        # Low confidence but still showing results (retrieval-first approach)
-        return SearchDecision(
-            show_results=True,
-            confidence_label="low",
-            warning_message=(
-                f"Low document confidence: only {hard_evidence}/{total} "
-                f"results have OCR or structural evidence."
-                f"{diag_detail} "
-                f"Run OCR processing for better results."
-            ),
-            explanation=failures,
-            recommended_actions=[
-                "Run OCR processing on your library",
-                "Try a more specific search query",
             ],
         )
 
@@ -448,19 +473,39 @@ class SearchConfidencePolicy:
 
             if family == "screenshots":
                 score = float(evidence.get("screenshot_score", 0.0) or 0.0)
-                if score >= 0.35:
+                provenance = evidence.get("builder") or ""
+                if (
+                    score >= 0.35
+                    or bool(evidence.get("is_screenshot_flag"))
+                    or bool(evidence.get("filename_marker"))
+                    or bool(evidence.get("ui_text_hit"))
+                    or bool(evidence.get("looks_like_phone_screen"))
+                ):
                     count += 1
-            elif family == "type":
-                # Strong evidence: OCR hit or structural document signal
-                # Low-confidence candidates (structural-only without OCR)
-                # count as partial evidence, not as strong evidence.
+                elif provenance == "screenshot_supplement" and SearchConfidencePolicy._has_screenshot_signal(evidence):
+                    count += 1
+
+            elif family == "documents":
                 if evidence.get("confidence_level") == "low":
-                    pass  # Excluded from hard evidence count
-                elif (evidence.get("ocr_fts_hit")
-                        or evidence.get("ocr_lexicon_hit")
-                        or evidence.get("doc_extension")
-                        or evidence.get("is_screenshot_flag")
-                        or evidence.get("structural_hit")):
+                    pass
+                elif (
+                    evidence.get("ocr_fts_hit")
+                    or evidence.get("ocr_lexicon_hit")
+                    or evidence.get("doc_extension")
+                    or evidence.get("structural_hit")
+                    or evidence.get("low_confidence_admit")
+                ):
+                    count += 1
+
+            elif family == "type":
+                if evidence.get("confidence_level") == "low":
+                    pass
+                elif (
+                    evidence.get("ocr_fts_hit")
+                    or evidence.get("ocr_lexicon_hit")
+                    or evidence.get("doc_extension")
+                    or evidence.get("structural_hit")
+                ):
                     count += 1
             elif family == "people_event":
                 # Strong evidence: has faces
@@ -489,10 +534,26 @@ class SearchConfidencePolicy:
 
             if family == "screenshots":
                 score = float(evidence.get("screenshot_score", 0.0) or 0.0)
-                if 0.20 <= score < 0.35:
+                if 0.25 <= score < 0.35 and SearchConfidencePolicy._has_screenshot_signal(evidence):
                     count += 1
 
         return count
+
+    @staticmethod
+    def _has_screenshot_signal(evidence: dict) -> bool:
+        """Return True if evidence contains any non-trivial screenshot signal."""
+        if not evidence:
+            return False
+
+        score = float(evidence.get("screenshot_score", 0.0) or 0.0)
+        return any([
+            bool(evidence.get("is_screenshot_flag")),
+            bool(evidence.get("filename_marker")),
+            bool(evidence.get("ui_text_hit")),
+            bool(evidence.get("looks_like_phone_screen")),
+            bool(evidence.get("flat_ui_fallback")),
+            score >= 0.30,
+        ])
 
     @staticmethod
     def _detect_trust_failure_patterns(
@@ -506,39 +567,80 @@ class SearchConfidencePolicy:
 
         if family == "screenshots":
             no_evidence = 0
+            weak_semantic_only = 0
+
             for r in results[:top_n]:
                 path = r.path if hasattr(r, "path") else r
                 evidence = candidate_set.evidence_by_path.get(path, {})
                 score = float(evidence.get("screenshot_score", 0.0) or 0.0)
-                if score < 0.20:
+
+                if not SearchConfidencePolicy._has_screenshot_signal(evidence):
                     no_evidence += 1
+
+                if (
+                    evidence.get("builder") == "screenshot_supplement"
+                    and score > 0.0
+                    and not any([
+                        evidence.get("is_screenshot_flag"),
+                        evidence.get("filename_marker"),
+                        evidence.get("ui_text_hit"),
+                        evidence.get("looks_like_phone_screen"),
+                        evidence.get("flat_ui_fallback"),
+                    ])
+                ):
+                    weak_semantic_only += 1
+
             if no_evidence > top_n * 0.4:
                 failures.append(
                     f"{no_evidence}/{top_n} top results lack screenshot signals"
+                )
+            if weak_semantic_only > 0:
+                failures.append(
+                    f"{weak_semantic_only}/{top_n} top results are supplement-only screenshot matches"
+                )
+
+        elif family == "documents":
+            no_evidence = 0
+            low_conf = 0
+
+            for r in results[:top_n]:
+                path = r.path if hasattr(r, "path") else r
+                evidence = candidate_set.evidence_by_path.get(path, {})
+                if evidence.get("confidence_level") == "low" or evidence.get("low_confidence_admit"):
+                    low_conf += 1
+                elif (
+                    not evidence.get("ocr_fts_hit")
+                    and not evidence.get("ocr_lexicon_hit")
+                    and not evidence.get("doc_extension")
+                    and not evidence.get("structural_hit")
+                ):
+                    no_evidence += 1
+
+            if no_evidence > top_n * 0.5:
+                failures.append(
+                    f"{no_evidence}/{top_n} top results lack OCR or structural document evidence"
+                )
+            if low_conf > 0:
+                failures.append(
+                    f"{low_conf}/{top_n} top results are structural-only without OCR confirmation"
                 )
 
         elif family == "type":
             # Check if top results are scenic photos with no OCR
             no_evidence = 0
-            low_conf = 0
             for r in results[:top_n]:
                 path = r.path if hasattr(r, "path") else r
                 evidence = candidate_set.evidence_by_path.get(path, {})
-                if evidence.get("confidence_level") == "low":
-                    low_conf += 1
-                elif (not evidence.get("ocr_fts_hit")
-                        and not evidence.get("ocr_lexicon_hit")
-                        and not evidence.get("doc_extension")):
+                if (
+                    not evidence.get("ocr_fts_hit")
+                    and not evidence.get("ocr_lexicon_hit")
+                    and not evidence.get("doc_extension")
+                    and not evidence.get("structural_hit")
+                ):
                     no_evidence += 1
             if no_evidence > top_n * 0.5:
                 failures.append(
-                    f"{no_evidence}/{top_n} top results lack OCR or "
-                    f"structural document evidence"
-                )
-            if low_conf > 0:
-                failures.append(
-                    f"{low_conf}/{top_n} top results are structural-only "
-                    f"(no OCR confirmation — run OCR for better accuracy)"
+                    f"{no_evidence}/{top_n} top results lack type-family structural evidence"
                 )
 
         elif family == "people_event":

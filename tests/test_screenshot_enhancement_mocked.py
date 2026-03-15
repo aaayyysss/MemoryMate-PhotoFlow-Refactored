@@ -109,26 +109,34 @@ class TestScreenshotEnhancement:
         policy = SearchConfidencePolicy()
         intent = QueryIntent(preset_id="screenshots")
 
-        # 1 hard hit (0.45), 1 soft hit (0.25)
+        # 2 hard hits (0.45)
         evidence = {
-            "hard": {"screenshot_score": 0.45},
-            "soft": {"screenshot_score": 0.25}
+            "hard1": {"screenshot_score": 0.45, "is_screenshot_flag": True},
+            "hard2": {"screenshot_score": 0.45, "ui_text_hit": True}
         }
         from services.candidate_builders.base_candidate_builder import CandidateSet
-        cs = CandidateSet(family="type", candidate_paths=["hard", "soft"], evidence_by_path=evidence)
+        cs = CandidateSet(family="type", candidate_paths=["hard1", "hard2"], evidence_by_path=evidence)
 
         from services.ranker import ScoredResult
         results = [
-            ScoredResult(path="hard", final_score=0.8, screenshot_score=0.45),
-            ScoredResult(path="soft", final_score=0.6, screenshot_score=0.25)
+            ScoredResult(path="hard1", final_score=0.8, screenshot_score=0.45),
+            ScoredResult(path="hard2", final_score=0.8, screenshot_score=0.45)
         ]
 
         decision = policy.evaluate(intent, cs, results, "type")
-        # effective = 1 + 0.5 * 1 = 1.5. ratio = 1.5 / 2 = 0.75 -> high
+        # 2/2 hard hits = 1.0 ratio -> high
         assert decision.confidence_label == "high"
 
-        # Only soft hits
-        results_soft = [ScoredResult(path="soft", final_score=0.6, screenshot_score=0.25)]
-        decision_soft = policy.evaluate(intent, cs, results_soft, "type")
-        # effective = 0 + 0.5 * 1 = 0.5. ratio = 0.5 / 1 = 0.5 -> medium (since >= 0.35)
-        assert decision_soft.confidence_label == "medium"
+        # 1 hard hit + 1 soft hit (0.28 with soft signal)
+        evidence_mix = {
+            "hard": {"screenshot_score": 0.45, "is_screenshot_flag": True},
+            "soft": {"screenshot_score": 0.28, "flat_ui_fallback": True}
+        }
+        cs_mix = CandidateSet(family="type", candidate_paths=["hard", "soft"], evidence_by_path=evidence_mix)
+        results_mix = [
+            ScoredResult(path="hard", final_score=0.8, screenshot_score=0.45),
+            ScoredResult(path="soft", final_score=0.6, screenshot_score=0.28)
+        ]
+        decision_mix = policy.evaluate(intent, cs_mix, results_mix, "type")
+        # hard=1, soft=1. effective = 1 + 0.35 * 1 = 1.35. ratio = 1.35 / 2 = 0.675 -> medium (since < 0.7)
+        assert decision_mix.confidence_label == "medium"

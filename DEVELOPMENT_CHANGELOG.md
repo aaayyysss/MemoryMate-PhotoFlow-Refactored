@@ -4,6 +4,38 @@ This document tracks all features, modifications, and bug fixes applied to the c
 
 ---
 
+## Search Architecture — Phase 7: Constrained Admission & CLIP Warmup Stability
+
+### Screenshot Admission Tightening
+- **`SearchConfidencePolicy`** now routes `family="type"` through preset-aware evaluators:
+  - documents → `_evaluate_document_type()`
+  - screenshots → `_evaluate_screenshot_type()`
+- Screenshot confidence now distinguishes:
+  - strong screenshot evidence,
+  - weak screenshot evidence,
+  - supplement-only semantic matches.
+- Added screenshot trust diagnostics:
+  - `supplement_admitted`
+  - `supplement_rejected`
+  - `weak_semantic_only`
+
+### Screenshot Supplement Gating
+- **`search_orchestrator.py`** no longer lets screenshot semantic supplement hits become legal screenshot candidates by semantic similarity alone.
+- Added constrained screenshot supplement admission:
+  - strong score passes,
+  - medium score requires non-semantic screenshot signals,
+  - weak semantic-only hits are rejected from screenshot preset results.
+- Improved structured logging:
+  - `SCREENSHOT_SUPPLEMENT`
+  - `SCREENSHOT_SUPPLEMENT_FILTER`
+
+### CLIP Warmup Crash Fix
+- **`semantic_embedding_service.py`** fixed `UnboundLocalError` in `_load_model()` caused by local shadowing of `os`.
+- Removed inner `import os` from `_load_model()` so module-level `os.environ[...]` is safe during startup.
+- `_MODEL_READY_EVENT` now clears at load start and on failure, and sets only after successful model load and warmup completion.
+
+---
+
 ## Search Architecture — Phase 6: Screenshot Builder, Fusion & Diagnostics
 
 ### ScreenshotCandidateBuilder
