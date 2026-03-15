@@ -1051,6 +1051,42 @@ class SearchOrchestrator:
         evidence = builder_evidence_by_path.get(path, {})
         return float(evidence.get("screenshot_score", 0.0) or 0.0)
 
+    def _has_structural_screenshot_signal(self, evidence: Dict[str, Any]) -> bool:
+        """Non-semantic screenshot signals that justify supplement admission."""
+        if not evidence:
+            return False
+        return any([
+            bool(evidence.get("is_screenshot_flag")),
+            bool(evidence.get("filename_marker")),
+            bool(evidence.get("ui_text_hit")),
+            bool(evidence.get("looks_like_phone_screen")),
+            bool(evidence.get("flat_ui_fallback")),
+        ])
+
+    def _is_screenshot_supplement_admissible(
+        self,
+        path: str,
+        sem_score: float,
+        type_evidence: Dict[str, dict],
+        project_meta: Dict[str, Dict],
+    ) -> bool:
+        """
+        Weak semantic similarity may help ranking, but must not create
+        screenshot legality by itself.
+        """
+        evidence = type_evidence.get(path, {}) or {}
+        if self._has_structural_screenshot_signal(evidence):
+            return True
+
+        score = float(evidence.get("screenshot_score", 0.0) or 0.0)
+        if score >= 0.35:
+            return True
+
+        if score >= 0.25 and self._has_structural_screenshot_signal(evidence):
+            return True
+
+        return False
+
     def _log_type_builder_diagnostics(
         self,
         preset_id: str,
@@ -1420,7 +1456,7 @@ class SearchOrchestrator:
                 if semantic_hits:
                     logger.warning(
                         f"[SearchOrchestrator] SCREENSHOT_SUPPLEMENT: "
-                        f"builder unavailable, semantic supplement produced "
+                        f"no legal builder candidates, semantic supplement produced "
                         f"{len(semantic_hits)} raw hits"
                     )
                     type_structural_candidates = set()
@@ -1691,12 +1727,58 @@ class SearchOrchestrator:
                     if path:
                         clip_path_scores[path] = (sem_score, matched_prompt)
 
-            # Resolve all supplemental semantic hits into the pool
+            # Resolve screenshot supplemental semantic hits into the pool,
+            # but only if they pass screenshot legality admission.
+            supplement_admitted = 0
+            supplement_rejected = 0
+            weak_semantic_only = 0
+
             if semantic_hits and (plan.preset_id or "").lower() == "screenshots":
-                for photo_id in semantic_hits:
+                for photo_id, (sem_score, matched_prompt) in semantic_hits.items():
                     path = path_lookup.get(photo_id)
-                    if path:
+                    if not path:
+                        continue
+
+                    ev = type_evidence.get(path, {})
+                    if path not in type_evidence:
+                        type_evidence[path] = {
+                            "builder": "screenshot_supplement",
+                            "supplement_only": True,
+                            "admission_mode": "weak_semantic",
+                            "screenshot_score": 0.20,
+                        }
+                        ev = type_evidence[path]
+                    else:
+                        ev.setdefault("builder", "screenshot_supplement")
+                        ev["supplement_only"] = True
+                        ev["admission_mode"] = "weak_semantic"
+                        ev.setdefault("screenshot_score", 0.20)
+
+                    if self._is_screenshot_supplement_admissible(
+                        path=path,
+                        sem_score=sem_score,
+                        type_evidence=type_evidence,
+                        project_meta=project_meta,
+                    ):
                         type_structural_candidates.add(path)
+                        supplement_admitted += 1
+                    else:
+                        supplement_rejected += 1
+                        if not self._has_structural_screenshot_signal(ev):
+                            weak_semantic_only += 1
+
+                builder_diag = getattr(builder_candidate_set, "diagnostics", None) or {}
+                builder_diag["supplement_admitted"] = supplement_admitted
+                builder_diag["supplement_rejected"] = supplement_rejected
+                builder_diag["weak_semantic_only"] = weak_semantic_only
+                if builder_candidate_set is not None:
+                    builder_candidate_set.diagnostics = builder_diag
+
+                logger.info(
+                    f"[SearchOrchestrator] SCREENSHOT_SUPPLEMENT_FILTER: "
+                    f"admitted={supplement_admitted} rejected={supplement_rejected} "
+                    f"weak_semantic_only={weak_semantic_only}"
+                )
 
             for path in type_structural_candidates:
                 clip_info = clip_path_scores.get(path, (0.0, ""))
@@ -1709,16 +1791,17 @@ class SearchOrchestrator:
                     screenshot_score = self._get_builder_screenshot_score(
                         path, type_evidence
                     )
-                    # Phase 2: semantic supplement hits get a weak prior
+
+                    # Semantic supplement may contribute a weak prior,
+                    # but never as the sole basis of legality.
                     if screenshot_score <= 0.0 and sem_score > 0.0:
                         screenshot_score = 0.20
-                        # Bridge to SearchConfidencePolicy:
-                        # Ensure these semantic hits are in type_evidence
-                        if path not in type_evidence:
-                            type_evidence[path] = {
-                                "builder": "screenshot_supplement",
-                                "screenshot_score": 0.20,
-                            }
+
+                    if path not in type_evidence:
+                        type_evidence[path] = {}
+
+                    type_evidence[path].setdefault("builder", "screenshot_supplement")
+                    type_evidence[path].setdefault("screenshot_score", screenshot_score)
 
                 sr = self._score_result(path, sem_score, matched_prompt, project_meta,
                                         plan.filters, people_implied,

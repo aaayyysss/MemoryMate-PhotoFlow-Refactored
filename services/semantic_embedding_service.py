@@ -236,10 +236,12 @@ class SemanticEmbeddingService:
 
             # Mark that we're attempting to load
             self._load_attempted = True
+            _MODEL_READY_EVENT.clear()
 
             if not self._available:
                 error = RuntimeError("PyTorch/Transformers not available")
                 self._load_error = error
+                _MODEL_READY_EVENT.clear()
                 raise error
 
             # Import heavy dependencies now (deferred from __init__)
@@ -286,6 +288,7 @@ class SemanticEmbeddingService:
                         f"Error: {e}"
                     )
                     self._load_error = error
+                    _MODEL_READY_EVENT.clear()
                     raise error
 
             if self._CLIPProcessor is None or self._CLIPModel is None:
@@ -303,6 +306,7 @@ class SemanticEmbeddingService:
                         f"Error: {e}"
                     )
                     self._load_error = error
+                    _MODEL_READY_EVENT.clear()
                     raise error
 
                 # Validate the imports actually resolved (transformers uses lazy loading
@@ -321,6 +325,7 @@ class SemanticEmbeddingService:
                         f"If the issue persists, check your Python environment for conflicts."
                     )
                     self._load_error = error
+                    _MODEL_READY_EVENT.clear()
                     raise error
 
             logger.info(f"[SemanticEmbeddingService] Loading model: {self.model_name}")
@@ -382,7 +387,6 @@ class SemanticEmbeddingService:
             if not local_model_path:
                 try:
                     from pathlib import Path
-                    import os
                     app_root = Path(__file__).parent.parent.absolute()
                     folder_name = hf_model.replace('/', '--')
                     # Also try bare model name without org prefix
@@ -528,6 +532,7 @@ class SemanticEmbeddingService:
                             f"Note: Model check performed once and cached - will not retry for each photo."
                         )
                         self._load_error = error  # Cache the error to avoid retrying
+                        _MODEL_READY_EVENT.clear()
                         raise error
 
                 except ImportError:
@@ -563,6 +568,7 @@ class SemanticEmbeddingService:
                                 f"Please try again and select a model to download."
                             )
                             self._load_error = error
+                            _MODEL_READY_EVENT.clear()
                             raise error
 
                     except ImportError as e:
@@ -574,6 +580,7 @@ class SemanticEmbeddingService:
                             f"2. Or set custom path in Preferences → Visual Embeddings → Model Path"
                         )
                         self._load_error = error
+                        _MODEL_READY_EVENT.clear()
                         raise error
                     except Exception as dialog_error:
                         logger.error(f"[SemanticEmbeddingService] Dialog error: {dialog_error}")
@@ -586,6 +593,7 @@ class SemanticEmbeddingService:
                             f"Or set custom path in: Preferences → Visual Embeddings → Model Path"
                         )
                         self._load_error = error
+                        _MODEL_READY_EVENT.clear()
                         raise error
                 else:
                     # No GUI or not main thread - raise error without showing dialog
@@ -599,6 +607,7 @@ class SemanticEmbeddingService:
                         f"Or set custom path in: Preferences → Visual Embeddings → Model Path"
                     )
                     self._load_error = error
+                    _MODEL_READY_EVENT.clear()
                     raise error
 
             # STEP 4: Load model from local path (offline mode)
@@ -645,6 +654,7 @@ class SemanticEmbeddingService:
                     f"Error: {str(e)}"
                 )
                 self._load_error = error
+                _MODEL_READY_EVENT.clear()
                 raise error
 
             self._model.to(self._device)
