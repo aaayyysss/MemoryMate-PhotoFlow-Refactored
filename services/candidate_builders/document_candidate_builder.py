@@ -229,7 +229,12 @@ class DocumentCandidateBuilder(BaseCandidateBuilder):
             diagnostics={
                 "rejections": rejection_counts,
                 "pre_filter_candidates": len(all_candidates),
+                "admitted": len(kept),
                 "low_confidence_candidates": low_confidence_count,
+                "structural_only_admits": sum(
+                    1 for ev in evidence_by_path.values()
+                    if ev.get("low_confidence_admit")
+                ),
             },
         )
 
@@ -411,15 +416,28 @@ class DocumentCandidateBuilder(BaseCandidateBuilder):
         # Which terms actually matched in OCR
         terms_found = [t for t in matched_terms if t.lower() in ocr_text]
 
+        ocr_fts_hit = path in ocr_fts_paths
+        ocr_lexicon_hit = path in ocr_lexicon_paths
+        doc_extension = ext in _DOC_NATIVE_EXTENSIONS
+        structural_hit = path in structural_paths
+
+        low_confidence_admit = (
+            structural_hit
+            and not ocr_fts_hit
+            and not ocr_lexicon_hit
+            and not doc_extension
+        )
+
         return {
             "builder": "document",
-            "ocr_fts_hit": path in ocr_fts_paths,
-            "ocr_lexicon_hit": path in ocr_lexicon_paths,
+            "ocr_fts_hit": ocr_fts_hit,
+            "ocr_lexicon_hit": ocr_lexicon_hit,
             "ocr_terms": terms_found,
             "ocr_text_len": len(meta.get("ocr_text") or ""),
-            "doc_extension": ext in _DOC_NATIVE_EXTENSIONS,
+            "doc_extension": doc_extension,
             "page_like_ratio": _PAGE_RATIO_MIN <= aspect <= _PAGE_RATIO_MAX,
-            "structural_hit": path in structural_paths,
+            "structural_hit": structural_hit,
+            "low_confidence_admit": low_confidence_admit,
             "face_count": meta.get("face_count") or 0,
             "screenshot_flag": bool(meta.get("is_screenshot")),
         }

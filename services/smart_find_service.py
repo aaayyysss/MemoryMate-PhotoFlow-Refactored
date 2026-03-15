@@ -318,7 +318,7 @@ BUILTIN_PRESETS = [
         "prompts": [],
         "filters": {"media_type": "video"},
         "category": "media",
-        "family": "type",
+        "family": "utility",
         "semantic_weight": 0.0,  # Pure metadata
     },
     {
@@ -336,7 +336,7 @@ BUILTIN_PRESETS = [
         "prompts": [],
         "filters": {"flag": "pick"},
         "category": "quality",
-        "family": "type",
+        "family": "utility",
         "semantic_weight": 0.0,
     },
     {
@@ -344,7 +344,7 @@ BUILTIN_PRESETS = [
         "prompts": [],
         "filters": {"has_gps": True},
         "category": "quality",
-        "family": "type",
+        "family": "utility",
         "semantic_weight": 0.0,
     },
 ]

@@ -32,8 +32,9 @@ CANDIDATE_BUILDERS = {
     "type": DocumentCandidateBuilder,
     "people_event": PeopleCandidateBuilder,
     "scenic": ScenicCandidateBuilder,
-    # "utility" is intentionally absent — metadata-only queries bypass
-    # both builder and CLIP, handled by metadata filters in the orchestrator.
+    # "utility" is intentionally absent from builder dispatch.
+    # Metadata-only utility presets are handled by the dedicated
+    # orchestrator fast path, not by builders and not by CLIP fallback.
     # "animal_object" uses CLIP-first with pets gate until a PetCandidateBuilder exists.
 }
 

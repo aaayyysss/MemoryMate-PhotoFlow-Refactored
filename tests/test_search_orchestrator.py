@@ -2098,7 +2098,7 @@ class TestPresetFamilies:
         for preset in BUILTIN_PRESETS:
             assert "family" in preset, \
                 f"Preset '{preset['id']}' missing 'family' field"
-            assert preset["family"] in ("type", "people_event", "scenic", "animal_object"), \
+            assert preset["family"] in ("type", "people_event", "scenic", "animal_object", "utility"), \
                 f"Preset '{preset['id']}' has invalid family '{preset['family']}'"
 
 
