@@ -212,15 +212,13 @@ class TestDocumentCandidateBuilder:
         assert "/photos/tiny_icon.png" not in cs.candidate_paths
 
     def test_documents_exclude_scenic_jpg_without_ocr(self):
-        """Scenic JPGs with page-like ratio but no OCR should be admitted as low-confidence."""
+        """Scenic JPGs without dense text layout must be excluded (Phase 9)."""
         intent = self._make_intent()
         meta = self._make_meta()
         cs = self.builder.build(intent, meta)
-        # Phase 1 relaxation: kept as low-confidence if ratio is page-like (1.33)
-        assert "/photos/beach_sunset.jpg" in cs.candidate_paths
-        ev = cs.evidence_by_path["/photos/beach_sunset.jpg"]
-        assert ev["confidence_level"] == "low"
-        assert ev["ocr_missing"] is True
+        # Phase 9: /photos/beach_sunset.jpg has page-like ratio but no text layout.
+        # It must be excluded from DocumentCandidateBuilder.
+        assert "/photos/beach_sunset.jpg" not in cs.candidate_paths
 
     def test_evidence_payload_has_builder_field(self):
         """Evidence dict should identify which builder produced it."""

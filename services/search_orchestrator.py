@@ -1126,8 +1126,11 @@ class SearchOrchestrator:
                 ev.get("ocr_fts_hit")
                 or ev.get("ocr_lexicon_hit")
                 or ev.get("doc_extension")
-                or ev.get("structural_hit")
-                or ev.get("low_confidence_admit")
+                or ev.get("strong_raster_document")
+                or (
+                    ev.get("low_confidence_admit")
+                    and ev.get("has_text_dense_layout")
+                )
             )
 
             gate_ok = self._gate_engine._passes_document_gate(meta, r.path)
@@ -1135,6 +1138,16 @@ class SearchOrchestrator:
             if builder_ok or gate_ok:
                 kept.append(r)
             else:
+                logger.debug(
+                    f"[SearchOrchestrator] DOCUMENT_PRUNE_DROP: "
+                    f"{os.path.basename(r.path)} "
+                    f"ocr_fts={ev.get('ocr_fts_hit')} "
+                    f"ocr_lex={ev.get('ocr_lexicon_hit')} "
+                    f"doc_ext={ev.get('doc_extension')} "
+                    f"strong_raster={ev.get('strong_raster_document')} "
+                    f"low_conf={ev.get('low_confidence_admit')} "
+                    f"text_dense={ev.get('has_text_dense_layout')}"
+                )
                 dropped += 1
 
         if dropped:

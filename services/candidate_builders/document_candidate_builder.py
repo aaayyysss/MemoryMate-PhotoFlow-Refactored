@@ -157,13 +157,18 @@ class DocumentCandidateBuilder(BaseCandidateBuilder):
             # Full acceptance: canonical evaluator says it's a document
             is_low_confidence = False
             if not doc_evidence.is_document:
-                # Relaxed admission: if it has structural signals (page-like
-                # geometry or doc extension) but no OCR, admit as low-confidence
-                if doc_evidence.is_structural or doc_evidence.has_doc_extension:
+                # Phase 9: low-confidence admission is now narrow.
+                # We only keep structural-only candidates when they are
+                # plausibly document-like raster pages, not generic photos.
+                if (
+                    doc_evidence.is_page_like
+                    and doc_evidence.has_text_dense_layout
+                    and not doc_evidence.is_screenshot
+                    and doc_evidence.face_count == 0
+                ):
                     is_low_confidence = True
                     low_confidence_count += 1
                 else:
-                    # No structural signal at all — truly insufficient evidence
                     reason = doc_evidence.rejection_reason or "insufficient_evidence"
                     rejection_counts[reason] = rejection_counts.get(reason, 0) + 1
                     continue
@@ -234,6 +239,14 @@ class DocumentCandidateBuilder(BaseCandidateBuilder):
                 "structural_only_admits": sum(
                     1 for ev in evidence_by_path.values()
                     if ev.get("low_confidence_admit")
+                ),
+                "strong_raster_documents": sum(
+                    1 for ev in evidence_by_path.values()
+                    if ev.get("strong_raster_document")
+                ),
+                "text_dense_layout_admits": sum(
+                    1 for ev in evidence_by_path.values()
+                    if ev.get("has_text_dense_layout")
                 ),
             },
         )
@@ -428,6 +441,8 @@ class DocumentCandidateBuilder(BaseCandidateBuilder):
             and not doc_extension
         )
 
+        doc_eval = _doc_evaluator.evaluate(meta, path)
+
         return {
             "builder": "document",
             "ocr_fts_hit": ocr_fts_hit,
@@ -438,6 +453,8 @@ class DocumentCandidateBuilder(BaseCandidateBuilder):
             "page_like_ratio": _PAGE_RATIO_MIN <= aspect <= _PAGE_RATIO_MAX,
             "structural_hit": structural_hit,
             "low_confidence_admit": low_confidence_admit,
+            "has_text_dense_layout": doc_eval.has_text_dense_layout,
+            "strong_raster_document": doc_eval.strong_raster_document,
             "face_count": meta.get("face_count") or 0,
             "screenshot_flag": bool(meta.get("is_screenshot")),
         }

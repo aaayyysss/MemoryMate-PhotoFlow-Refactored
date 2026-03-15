@@ -2599,3 +2599,42 @@ class TestDocumentStructuralScoring:
         assert "/portrait.jpg" in scores
         assert scores["/portrait.jpg"] < 0.2, \
             f"Face photo must score very low for documents, got {scores['/portrait.jpg']}"
+
+class TestDocumentPrecisionRegression:
+    """Documents preset must not keep generic scenic/page-like raster images."""
+
+    def test_document_builder_contract_no_geometry_only_survivors(self):
+        from services.search_orchestrator import SearchOrchestrator
+        orch = SearchOrchestrator.__new__(SearchOrchestrator)
+
+        class DummyGate:
+            def _passes_document_gate(self, meta, path=""):
+                return False
+
+        orch._gate_engine = DummyGate()
+
+        scored = [
+            type("R", (), {"path": "/photos/beach1.jpg"})(),
+            type("R", (), {"path": "/docs/receipt.jpg"})(),
+        ]
+        builder_evidence = {
+            "/photos/beach1.jpg": {
+                "structural_hit": True,
+                "low_confidence_admit": True,
+                "has_text_dense_layout": False,
+                "strong_raster_document": False,
+            },
+            "/docs/receipt.jpg": {
+                "ocr_fts_hit": True,
+                "strong_raster_document": True,
+            },
+        }
+        meta = {
+            "/photos/beach1.jpg": {},
+            "/docs/receipt.jpg": {},
+        }
+
+        kept = orch._prune_document_survivors(scored, builder_evidence, meta)
+        kept_paths = [r.path for r in kept]
+        assert "/photos/beach1.jpg" not in kept_paths
+        assert "/docs/receipt.jpg" in kept_paths
