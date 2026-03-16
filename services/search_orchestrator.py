@@ -1218,7 +1218,7 @@ class SearchOrchestrator:
         project_meta: Dict[str, dict],
     ):
         """Log granular diagnostics for empty type-family results."""
-        diag = candidate_set.diagnostics or {}
+        diag = getattr(candidate_set, "diagnostics", None) or {}
         rejections = diag.get("rejections", {})
         acceptance_reasons = diag.get("acceptance_reasons", {})
         has_any_screenshot = diag.get("has_any_screenshot_flag", False)

@@ -46,6 +46,7 @@ _SCREENSHOT_MARKERS = frozenset({
     "screenrecord", "screen_record", "screen-record",
 })
 
+
 # UI terms for OCR-based screenshot detection
 _UI_TERMS = frozenset({
     "battery", "wifi", "lte", "5g", "notification",
@@ -121,6 +122,7 @@ class ScreenshotCandidateBuilder(BaseCandidateBuilder):
             return self._empty("type", "No project metadata available")
 
         text_terms = intent.text_terms or []
+        
         candidates = []
         evidence_by_path = {}
         rejection_counts = {}
@@ -188,6 +190,7 @@ class ScreenshotCandidateBuilder(BaseCandidateBuilder):
             builder_confidence=confidence if candidates else 0.0,
             ready_state="ready" if candidates else "empty",
             notes=[f"Screenshot builder: {len(candidates)} candidates"],
+
             diagnostics={
                 "rejections": rejection_counts,
                 "acceptance_reasons": acceptance_counts,
