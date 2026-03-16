@@ -630,6 +630,18 @@ class SemanticEmbeddingService:
                     local_files_only=True,
                     use_fast=False,
                 )
+
+                # CRITICAL: Register HEIF/HEIC support for Pillow.
+                # HEIC files (e.g. from iPhone) are common but Pillow doesn't
+                # support them out of the box. pillow_heif provides the opener.
+                try:
+                    from pillow_heif import register_heif_opener
+                    register_heif_opener()
+                    logger.info("[SemanticEmbeddingService] HEIC/HEIF support enabled via pillow-heif")
+                except ImportError:
+                    logger.warning("[SemanticEmbeddingService] pillow-heif not installed; HEIC/HEIF support disabled")
+                except Exception as e:
+                    logger.warning(f"[SemanticEmbeddingService] Could not enable HEIC/HEIF support: {e}")
                 self._model = self._CLIPModel.from_pretrained(
                     local_model_path,
                     local_files_only=True
