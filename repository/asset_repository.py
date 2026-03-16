@@ -92,14 +92,21 @@ class AssetRepository(BaseRepository):
                       source_path: Optional[str] = None,
                       import_session_id: Optional[str] = None,
                       file_size: Optional[int] = None) -> None:
-        with self.connection() as conn:
-            conn.execute("""
-                INSERT OR REPLACE INTO media_instance
-                (project_id, asset_id, photo_id, source_device_id, source_path,
-                 import_session_id, file_size)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (project_id, asset_id, photo_id, source_device_id, source_path,
-                  import_session_id, file_size))
+        try:
+            with self.connection() as conn:
+                conn.execute("""
+                    INSERT OR REPLACE INTO media_instance
+                    (project_id, asset_id, photo_id, source_device_id, source_path,
+                     import_session_id, file_size)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (project_id, asset_id, photo_id, source_device_id, source_path,
+                      import_session_id, file_size))
+        except Exception as e:
+            logger.error(
+                f"[AssetRepository] link_instance failed: photo_id={photo_id} "
+                f"asset_id={asset_id} project_id={project_id} error={e}"
+            )
+            raise
 
     def get_instance_by_photo(self, project_id: int, photo_id: int) -> Optional[Dict[str, Any]]:
         sql = """

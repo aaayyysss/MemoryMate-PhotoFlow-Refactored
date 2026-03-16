@@ -105,7 +105,7 @@ class DatabaseConnection:
             if not read_only:
                 journal_modes = ['WAL', 'DELETE', 'PERSIST']
                 journal_set = False
-                
+
                 for mode in journal_modes:
                     try:
                         result = conn.execute(f"PRAGMA journal_mode={mode}").fetchone()
@@ -116,14 +116,21 @@ class DatabaseConnection:
                     except sqlite3.OperationalError as e:
                         logger.debug(f"Could not set journal mode {mode}: {e}")
                         continue
-                
+
                 if not journal_set:
                     logger.warning("Could not set any journal mode, using default")
 
             # Return dictionary-like rows for easier access
             conn.row_factory = self._dict_factory
 
-            yield conn
+            if read_only:
+                yield conn
+            else:
+                # CRITICAL: Use transaction context manager for write connections
+                # This ensures that all operations are committed automatically
+                # or rolled back on error.
+                with conn:
+                    yield conn
 
         except sqlite3.Error as e:
             logger.error(f"Database connection error: {e}", exc_info=True)
