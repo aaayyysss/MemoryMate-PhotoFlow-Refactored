@@ -13,324 +13,107 @@ from logging_config import get_logger
 
 logger = get_logger(__name__)
 
-
 class AssetRepository(BaseRepository):
     """
     AssetRepository manages asset-centric identity.
-
     Tables:
     - media_asset: (project_id, content_hash) unique identity
     - media_instance: links existing photo_metadata rows to assets
-
-    Responsibilities:
-    - Create and link assets to photo instances
-    - Find duplicate assets (multiple instances of same content_hash)
-    - Manage representative photo selection
-    - Provide traceability (source_device, source_path, import_session)
     """
-
-    def __init__(self, db: DatabaseConnection):
-        """
-        Initialize AssetRepository.
-
-        Args:
-            db: DatabaseConnection instance
-        """
+    def __init__(self, db: Optional[DatabaseConnection] = None):
         super().__init__(db)
 
     def _table_name(self) -> str:
-        """Primary table name managed by this repository."""
         return "media_asset"
 
-    # =========================================================================
-    # ASSET OPERATIONS
-    # =========================================================================
+    # ── Asset Operations ──────────────────────────────────────────────────
 
     def get_asset_by_hash(self, project_id: int, content_hash: str) -> Optional[Dict[str, Any]]:
-        """
-        Retrieve media_asset by (project_id, content_hash).
-
-        Args:
-            project_id: Project ID
-            content_hash: SHA256 or equivalent content hash
-
-        Returns:
-            Asset dictionary or None if not found
-        """
         sql = """
-            SELECT asset_id, project_id, content_hash, perceptual_hash, representative_photo_id,
-                   created_at, updated_at
+            SELECT asset_id, project_id, content_hash, perceptual_hash,
+                   representative_photo_id, created_at, updated_at
             FROM media_asset
             WHERE project_id = ? AND content_hash = ?
         """
-        with self._db_connection.get_connection(read_only=True) as conn:
+        with self.connection(read_only=True) as conn:
             cur = conn.execute(sql, (project_id, content_hash))
             row = cur.fetchone()
             return dict(row) if row else None
 
     def get_asset_by_id(self, project_id: int, asset_id: int) -> Optional[Dict[str, Any]]:
-        """
-        Retrieve media_asset by asset_id.
-
-        Args:
-            project_id: Project ID
-            asset_id: Asset ID
-
-        Returns:
-            Asset dictionary or None if not found
-        """
         sql = """
-            SELECT asset_id, project_id, content_hash, perceptual_hash, representative_photo_id,
-                   created_at, updated_at
+            SELECT asset_id, project_id, content_hash, perceptual_hash,
+                   representative_photo_id, created_at, updated_at
             FROM media_asset
             WHERE project_id = ? AND asset_id = ?
         """
-        with self._db_connection.get_connection(read_only=True) as conn:
+        with self.connection(read_only=True) as conn:
             cur = conn.execute(sql, (project_id, asset_id))
             row = cur.fetchone()
             return dict(row) if row else None
 
-    def create_asset_if_missing(
-        self,
-        project_id: int,
-        content_hash: str,
-        representative_photo_id: Optional[int] = None,
-        perceptual_hash: Optional[str] = None
-    ) -> int:
-        """
-        Insert asset if missing, return asset_id.
-
-        Contract:
-        - Must be idempotent (safe to call multiple times with same hash)
-        - Must not throw on duplicate, returns existing asset_id
-        - Uses INSERT OR IGNORE for idempotency
-
-        Args:
-            project_id: Project ID
-            content_hash: SHA256 or equivalent content hash
-            representative_photo_id: Optional representative photo ID
-            perceptual_hash: Optional perceptual hash (pHash/dHash)
-
-        Returns:
-            asset_id (existing or newly created)
-        """
-        with self._db_connection.get_connection(read_only=False) as conn:
-            # Try to insert, ignore if already exists
-            conn.execute(
-                """
-                INSERT OR IGNORE INTO media_asset (project_id, content_hash, representative_photo_id, perceptual_hash)
+    def create_asset_if_missing(self, project_id: int, content_hash: str,
+                                representative_photo_id: Optional[int] = None,
+                                perceptual_hash: Optional[str] = None) -> int:
+        with self.connection() as conn:
+            conn.execute("""
+                INSERT OR IGNORE INTO media_asset (project_id, content_hash,
+                                                  representative_photo_id, perceptual_hash)
                 VALUES (?, ?, ?, ?)
-                """,
-                (project_id, content_hash, representative_photo_id, perceptual_hash)
-            )
+            """, (project_id, content_hash, representative_photo_id, perceptual_hash))
 
-            # Fetch the asset_id (either just inserted or already existing)
-            cur = conn.execute(
-                """
+            cur = conn.execute("""
                 SELECT asset_id FROM media_asset
                 WHERE project_id = ? AND content_hash = ?
-                """,
-                (project_id, content_hash)
-            )
+            """, (project_id, content_hash))
             row = cur.fetchone()
             if not row:
-                raise RuntimeError(f"Failed to create or fetch media_asset for hash {content_hash[:16]}...")
-
-            conn.commit()
+                raise RuntimeError(f"Failed to create media_asset for hash {content_hash[:16]}...")
             return int(row["asset_id"])
 
     def set_representative_photo(self, project_id: int, asset_id: int, photo_id: int) -> None:
-        """
-        Set representative_photo_id for an asset.
-
-        Args:
-            project_id: Project ID
-            asset_id: Asset ID
-            photo_id: Photo ID to set as representative
-        """
-        with self._db_connection.get_connection(read_only=False) as conn:
-            conn.execute(
-                """
-                UPDATE media_asset
-                SET representative_photo_id = ?, updated_at = CURRENT_TIMESTAMP
+        with self.connection() as conn:
+            conn.execute("""
+                UPDATE media_asset SET representative_photo_id = ?, updated_at = CURRENT_TIMESTAMP
                 WHERE project_id = ? AND asset_id = ?
-                """,
-                (photo_id, project_id, asset_id)
-            )
-            conn.commit()
-
-        self.logger.debug(f"Set representative photo {photo_id} for asset {asset_id}")
+            """, (photo_id, project_id, asset_id))
 
     def set_perceptual_hash(self, project_id: int, asset_id: int, perceptual_hash: str) -> None:
-        """
-        Set perceptual_hash for an asset (used during backfill).
-
-        Args:
-            project_id: Project ID
-            asset_id: Asset ID
-            perceptual_hash: Perceptual hash string (pHash/dHash)
-        """
-        with self._db_connection.get_connection(read_only=False) as conn:
-            conn.execute(
-                """
-                UPDATE media_asset
-                SET perceptual_hash = ?, updated_at = CURRENT_TIMESTAMP
+        with self.connection() as conn:
+            conn.execute("""
+                UPDATE media_asset SET perceptual_hash = ?, updated_at = CURRENT_TIMESTAMP
                 WHERE project_id = ? AND asset_id = ?
-                """,
-                (perceptual_hash, project_id, asset_id)
-            )
-            conn.commit()
+            """, (perceptual_hash, project_id, asset_id))
 
-    def list_duplicate_assets(self, project_id: int, min_instances: int = 2, limit: Optional[int] = None, offset: int = 0) -> List[Dict[str, Any]]:
-        """
-        List assets that have at least min_instances instances (duplicates).
-            
-        Used to populate "Duplicates" utility view in UI.
-        
-        OPTIMIZED: Uses CTE approach instead of expensive GROUP BY for better performance.
-            
-        Args:
-            project_id: Project ID
-            min_instances: Minimum number of instances to be considered duplicate (default: 2)
-            limit: Maximum number of results to return (None = no limit)
-            offset: Number of results to skip (for pagination)
-            
-        Returns:
-            List of asset dictionaries with instance_count
-        """
-        # Optimized query using CTE (Common Table Expression) for better performance
-        # This approach is typically 2-5x faster than GROUP BY on large datasets
-        sql = """
-            WITH asset_counts AS (
-                SELECT asset_id, COUNT(*) as instance_count
-                FROM media_instance 
-                WHERE project_id = ?
-                GROUP BY asset_id
-                HAVING COUNT(*) >= ?
-            )
-            SELECT a.asset_id, a.content_hash, a.representative_photo_id, a.perceptual_hash,
-                   ac.instance_count
-            FROM asset_counts ac
-            JOIN media_asset a ON a.asset_id = ac.asset_id AND a.project_id = ?
-            ORDER BY ac.instance_count DESC
-        """
-            
-        # Add LIMIT and OFFSET if specified
-        params = [project_id, min_instances, project_id]
-        if limit is not None:
-            sql += " LIMIT ? OFFSET ?"
-            params.extend([limit, offset])
-            
-        with self._db_connection.get_connection(read_only=True) as conn:
-            cur = conn.execute(sql, params)
-            return [dict(r) for r in cur.fetchall()]
-        
-    def count_duplicate_assets(self, project_id: int, min_instances: int = 2) -> int:
-        """
-        Count total number of duplicate assets (for pagination).
-        
-        OPTIMIZED: Simplified query focusing only on media_instance table for faster counting.
-            
-        Args:
-            project_id: Project ID
-            min_instances: Minimum number of instances to be considered duplicate
-            
-        Returns:
-            Total count of duplicate assets
-        """
-        # Optimized count query - only scan media_instance table
-        sql = """
-            SELECT COUNT(*) as count
-            FROM (
-                SELECT asset_id
-                FROM media_instance 
-                WHERE project_id = ?
-                GROUP BY asset_id
-                HAVING COUNT(*) >= ?
-            )
-        """
-        with self._db_connection.get_connection(read_only=True) as conn:
-            cur = conn.execute(sql, (project_id, min_instances))
-            row = cur.fetchone()
-            return int(row["count"]) if row else 0
+    # ── Instance Operations ───────────────────────────────────────────────
 
-    # =========================================================================
-    # INSTANCE OPERATIONS
-    # =========================================================================
-
-    def link_instance(
-        self,
-        project_id: int,
-        asset_id: int,
-        photo_id: int,
-        source_device_id: Optional[str] = None,
-        source_path: Optional[str] = None,
-        import_session_id: Optional[str] = None,
-        file_size: Optional[int] = None
-    ) -> None:
-        """
-        Create media_instance linking photo_metadata.id to an asset.
-
-        Contract:
-        - One photo_id must map to exactly one instance per project
-        - Uses INSERT OR REPLACE to allow re-linking in repair/backfill flows
-        - Idempotent (safe to call multiple times)
-
-        Args:
-            project_id: Project ID
-            asset_id: Asset ID
-            photo_id: Photo metadata ID
-            source_device_id: Optional device ID (for traceability)
-            source_path: Optional source path on device
-            import_session_id: Optional import session ID
-            file_size: Optional file size in bytes
-        """
-        with self._db_connection.get_connection(read_only=False) as conn:
-            conn.execute(
-                """
+    def link_instance(self, project_id: int, asset_id: int, photo_id: int,
+                      source_device_id: Optional[str] = None,
+                      source_path: Optional[str] = None,
+                      import_session_id: Optional[str] = None,
+                      file_size: Optional[int] = None) -> None:
+        with self.connection() as conn:
+            conn.execute("""
                 INSERT OR REPLACE INTO media_instance
-                (project_id, asset_id, photo_id, source_device_id, source_path, import_session_id, file_size)
+                (project_id, asset_id, photo_id, source_device_id, source_path,
+                 import_session_id, file_size)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (project_id, asset_id, photo_id, source_device_id, source_path, import_session_id, file_size)
-            )
-            conn.commit()
-
-        self.logger.debug(f"Linked photo {photo_id} to asset {asset_id} as instance")
+            """, (project_id, asset_id, photo_id, source_device_id, source_path,
+                  import_session_id, file_size))
 
     def get_instance_by_photo(self, project_id: int, photo_id: int) -> Optional[Dict[str, Any]]:
-        """
-        Retrieve media_instance by photo_id.
-
-        Args:
-            project_id: Project ID
-            photo_id: Photo metadata ID
-
-        Returns:
-            Instance dictionary or None if not found
-        """
         sql = """
-            SELECT instance_id, project_id, asset_id, photo_id, source_device_id, source_path,
-                   import_session_id, file_size, created_at
+            SELECT instance_id, project_id, asset_id, photo_id, source_device_id,
+                   source_path, import_session_id, file_size, created_at
             FROM media_instance
             WHERE project_id = ? AND photo_id = ?
         """
-        with self._db_connection.get_connection(read_only=True) as conn:
+        with self.connection(read_only=True) as conn:
             cur = conn.execute(sql, (project_id, photo_id))
             row = cur.fetchone()
             return dict(row) if row else None
 
     def list_asset_instances(self, project_id: int, asset_id: int) -> List[Dict[str, Any]]:
-        """
-        Return all instances for an asset, including traceability fields.
-
-        Args:
-            project_id: Project ID
-            asset_id: Asset ID
-
-        Returns:
-            List of instance dictionaries ordered by created_at (import order)
-        """
         sql = """
             SELECT i.instance_id, i.photo_id, i.source_device_id, i.source_path,
                    i.import_session_id, i.file_size, i.created_at
@@ -338,68 +121,80 @@ class AssetRepository(BaseRepository):
             WHERE i.project_id = ? AND i.asset_id = ?
             ORDER BY i.created_at ASC
         """
-        with self._db_connection.get_connection(read_only=True) as conn:
+        with self.connection(read_only=True) as conn:
             cur = conn.execute(sql, (project_id, asset_id))
             return [dict(r) for r in cur.fetchall()]
 
     def count_instances_for_asset(self, project_id: int, asset_id: int) -> int:
-        """
-        Count number of instances for an asset.
-
-        Args:
-            project_id: Project ID
-            asset_id: Asset ID
-
-        Returns:
-            Number of instances
-        """
-        sql = """
-            SELECT COUNT(*) AS count
-            FROM media_instance
-            WHERE project_id = ? AND asset_id = ?
-        """
-        with self._db_connection.get_connection(read_only=True) as conn:
+        sql = "SELECT COUNT(*) AS count FROM media_instance WHERE project_id = ? AND asset_id = ?"
+        with self.connection(read_only=True) as conn:
             cur = conn.execute(sql, (project_id, asset_id))
             row = cur.fetchone()
             return int(row["count"]) if row else 0
 
     def get_asset_id_by_photo_id(self, project_id: int, photo_id: int) -> Optional[int]:
-        """
-        Get the asset_id for a given photo_id.
-
-        Args:
-            project_id: Project ID
-            photo_id: Photo ID
-
-        Returns:
-            asset_id if found, None otherwise
-        """
-        sql = """
-            SELECT asset_id
-            FROM media_instance
-            WHERE project_id = ? AND photo_id = ?
-            LIMIT 1
-        """
-        with self._db_connection.get_connection(read_only=True) as conn:
+        sql = "SELECT asset_id FROM media_instance WHERE project_id = ? AND photo_id = ? LIMIT 1"
+        with self.connection(read_only=True) as conn:
             cur = conn.execute(sql, (project_id, photo_id))
             row = cur.fetchone()
             return int(row["asset_id"]) if row else None
 
-    # =========================================================================
-    # BACKFILL SUPPORT
-    # =========================================================================
+    # ── Search & Discovery Helpers ────────────────────────────────────────
+
+    def get_path_to_asset_map(self, project_id: int) -> Dict[str, int]:
+        """
+        Returns a map of photo path -> asset_id for all photos in a project.
+        Essential for search feature cache population.
+        """
+        sql = """
+            SELECT pm.path, mi.asset_id
+            FROM media_instance mi
+            JOIN photo_metadata pm ON pm.id = mi.photo_id
+            WHERE pm.project_id = ?
+        """
+        result = {}
+        with self.connection(read_only=True) as conn:
+            cur = conn.execute(sql, (project_id,))
+            for row in cur.fetchall():
+                if row["path"]:
+                    result[row["path"]] = row["asset_id"]
+        return result
+
+    def list_duplicate_assets(self, project_id: int, min_instances: int = 2) -> List[Dict[str, Any]]:
+        sql = """
+            WITH asset_counts AS (
+                SELECT asset_id, COUNT(*) as instance_count
+                FROM media_instance WHERE project_id = ?
+                GROUP BY asset_id HAVING COUNT(*) >= ?
+            )
+            SELECT a.*, ac.instance_count
+            FROM asset_counts ac
+            JOIN media_asset a ON a.asset_id = ac.asset_id
+            ORDER BY ac.instance_count DESC
+        """
+        with self.connection(read_only=True) as conn:
+            cur = conn.execute(sql, (project_id, min_instances))
+            return [dict(r) for r in cur.fetchall()]
+
+    def count_duplicate_assets(self, project_id: int, min_instances: int = 2) -> int:
+        sql = """
+            SELECT COUNT(*) as count
+            FROM (
+                SELECT asset_id
+                FROM media_instance
+                WHERE project_id = ?
+                GROUP BY asset_id
+                HAVING COUNT(*) >= ?
+            )
+        """
+        with self.connection(read_only=True) as conn:
+            cur = conn.execute(sql, (project_id, min_instances))
+            row = cur.fetchone()
+            return int(row["count"]) if row else 0
+
+    # ── Backfill Support ──────────────────────────────────────────────────
 
     def get_photos_without_instance(self, project_id: int, limit: int = 500) -> List[Dict[str, Any]]:
-        """
-        Find photos that don't have a media_instance yet (for backfill).
-
-        Args:
-            project_id: Project ID
-            limit: Maximum number of photos to return
-
-        Returns:
-            List of photo_metadata dictionaries without instances
-        """
         sql = """
             SELECT pm.id, pm.path, pm.file_hash, pm.size_kb, pm.project_id
             FROM photo_metadata pm
@@ -407,27 +202,18 @@ class AssetRepository(BaseRepository):
             WHERE pm.project_id = ? AND mi.instance_id IS NULL
             LIMIT ?
         """
-        with self._db_connection.get_connection(read_only=True) as conn:
+        with self.connection(read_only=True) as conn:
             cur = conn.execute(sql, (project_id, limit))
             return [dict(r) for r in cur.fetchall()]
 
     def count_photos_without_instance(self, project_id: int) -> int:
-        """
-        Count photos without media_instance (for backfill progress tracking).
-
-        Args:
-            project_id: Project ID
-
-        Returns:
-            Number of photos without instances
-        """
         sql = """
             SELECT COUNT(*) AS count
             FROM photo_metadata pm
             LEFT JOIN media_instance mi ON mi.photo_id = pm.id AND mi.project_id = pm.project_id
             WHERE pm.project_id = ? AND mi.instance_id IS NULL
         """
-        with self._db_connection.get_connection(read_only=True) as conn:
+        with self.connection(read_only=True) as conn:
             cur = conn.execute(sql, (project_id,))
             row = cur.fetchone()
             return int(row["count"]) if row else 0

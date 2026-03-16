@@ -184,7 +184,8 @@ class SearchFeatureRepository:
                     SELECT id, path, width, height,
                            gps_latitude, gps_longitude,
                            flag, rating,
-                           created_date, date_taken
+                           created_date, date_taken,
+                           ocr_text
                     FROM photo_metadata
                     WHERE project_id = ?
                 """, (project_id,)).fetchall()
@@ -206,6 +207,15 @@ class SearchFeatureRepository:
                 except Exception:
                     pass  # face_crops may not exist yet
 
+                # Fetch duplicate group mapping when available
+                duplicate_groups: Dict[str, int] = {}
+                try:
+                    from repository.asset_repository import AssetRepository
+                    asset_repo = AssetRepository(self.db)
+                    duplicate_groups = asset_repo.get_path_to_asset_map(project_id)
+                except Exception:
+                    pass
+
                 # Insert flattened rows
                 for row in rows:
                     path = row['path']
@@ -215,7 +225,10 @@ class SearchFeatureRepository:
                     lon = row['gps_longitude']
                     has_gps = 1 if (lat is not None and lon is not None
                                     and lat != 0 and lon != 0) else 0
-                    ss_conf = _compute_screenshot_confidence(path, w, h)
+
+                    ocr_text = row["ocr_text"] or ""
+
+                    ss_conf = _compute_screenshot_confidence(path, w, h, ocr_text=ocr_text)
                     is_ss = 1 if ss_conf >= 0.50 else 0
                     ext = os.path.splitext(path)[1].lower() if path else None
                     date = row['created_date'] or row['date_taken']
@@ -225,19 +238,27 @@ class SearchFeatureRepository:
                     if fc == 0:
                         fc = face_counts.get(os.path.normpath(path), 0)
 
+                    media_type = "video" if (path and os.path.splitext(path)[1].lower() in {
+                        ".mp4", ".mov", ".avi", ".mkv", ".wmv", ".webm", ".m4v", ".flv"
+                    }) else "photo"
+
+                    duplicate_group_id = duplicate_groups.get(path)
+                    if duplicate_group_id is None:
+                        duplicate_group_id = duplicate_groups.get(os.path.normpath(path))
+
                     # Try to store screenshot_confidence if column exists
                     try:
                         conn.execute("""
                             INSERT OR REPLACE INTO search_asset_features
                             (path, project_id, media_type, width, height, has_gps,
                              face_count, is_screenshot, screenshot_confidence,
-                             flag, ext, date_taken,
+                             flag, ext, date_taken, duplicate_group_id, ocr_text,
                              rating, updated_at)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                         """, (
-                            path, project_id, None, w, h, has_gps,
+                            path, project_id, media_type, w, h, has_gps,
                             fc, is_ss, ss_conf, row['flag'], ext, date,
-                            row['rating'] or 0,
+                            duplicate_group_id, ocr_text, row['rating'] or 0,
                         ))
                     except Exception:
                         # Fallback: column doesn't exist yet (pre-migration)
@@ -248,7 +269,7 @@ class SearchFeatureRepository:
                              rating, updated_at)
                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                         """, (
-                            path, project_id, None, w, h, has_gps,
+                            path, project_id, media_type, w, h, has_gps,
                             fc, is_ss, row['flag'], ext, date,
                             row['rating'] or 0,
                         ))
@@ -345,3 +366,13 @@ class SearchFeatureRepository:
                 return row['cnt'] if row else 0
         except Exception:
             return 0
+
+    def ensure_project_index(self, project_id: int) -> int:
+        """
+        Ensure flattened features exist for a project.
+        Returns row count after rebuild/check.
+        """
+        count = self.get_row_count(project_id)
+        if count > 0:
+            return count
+        return self.refresh_project(project_id)

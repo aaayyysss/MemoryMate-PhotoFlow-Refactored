@@ -140,5 +140,5 @@ class TestScreenshotEnhancement:
             ScoredResult(path="soft", final_score=0.6, screenshot_score=0.28)
         ]
         decision_mix = policy.evaluate(intent, cs_mix, results_mix, "type")
-        # hard=1, soft=1. effective = 1 + 0.35 * 1 = 1.35. ratio = 1.35 / 2 = 0.675 -> medium (since < 0.7)
-        assert decision_mix.confidence_label == "medium"
+        # Phase 2: hard=1, soft=1. effective = 1 + 0.5 * 1 = 1.5. ratio = 1.5 / 2 = 0.75 -> high (since >= 0.7)
+        assert decision_mix.confidence_label == "high"

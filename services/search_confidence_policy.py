@@ -248,7 +248,7 @@ class SearchConfidencePolicy:
         if total == 0:
             return self._empty_decision("screenshots")
 
-        effective_evidence = hard_evidence + (0.35 * soft_evidence)
+        effective_evidence = hard_evidence + (0.5 * soft_evidence)
         evidence_ratio = effective_evidence / total
 
         diag = candidate_set.diagnostics or {}

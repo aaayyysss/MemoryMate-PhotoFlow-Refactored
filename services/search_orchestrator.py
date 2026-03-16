@@ -1088,7 +1088,7 @@ class SearchOrchestrator:
         try:
             return self._smart_find._run_clip_multi_prompt(
                 prompts,
-                candidate_k=max(20, top_k * 2),
+                top_k=max(20, top_k * 2),
                 threshold=max(0.18, threshold - 0.02),
                 fusion_mode=fusion_mode,
             )
@@ -1167,6 +1167,17 @@ class SearchOrchestrator:
         evidence = builder_evidence_by_path.get(path, {})
         return float(evidence.get("screenshot_score", 0.0) or 0.0)
 
+    def _get_scenic_structural_score(
+        self,
+        path: str,
+        scenic_evidence: Optional[Dict[str, dict]],
+    ) -> float:
+        """Return scenic-positive structural support from builder evidence."""
+        if not scenic_evidence:
+            return 0.0
+        ev = scenic_evidence.get(path) or {}
+        return float(ev.get("scenic_positive", 0.0) or 0.0) + float(ev.get("soft_penalty", 0.0) or 0.0)
+
     def _has_structural_screenshot_signal(self, evidence: Dict[str, Any]) -> bool:
         """Non-semantic screenshot signals that justify supplement admission."""
         if not evidence:
@@ -1218,7 +1229,7 @@ class SearchOrchestrator:
         project_meta: Dict[str, dict],
     ):
         """Log granular diagnostics for empty type-family results."""
-        diag = getattr(candidate_set, "diagnostics", None) or {}
+        diag = candidate_set.diagnostics or {}
         rejections = diag.get("rejections", {})
         acceptance_reasons = diag.get("acceptance_reasons", {})
         has_any_screenshot = diag.get("has_any_screenshot_flag", False)
@@ -1390,6 +1401,21 @@ class SearchOrchestrator:
         # Step 0: Load project metadata early (needed for candidate builders)
         project_meta = self._get_project_meta()
 
+        # Phase 11: utility presets are metadata-only first-class paths.
+        # Check this BEFORE any planner/builder fallback logging.
+        current_family = get_preset_family(plan.preset_id)
+        if current_family == "utility":
+            logger.info(
+                f"[SearchOrchestrator] UTILITY_ROUTE: "
+                f"preset={plan.preset_id!r} family='utility' "
+                f"executing metadata-only fast path"
+            )
+            return self._execute_utility_metadata_only(
+                plan=plan,
+                project_meta=project_meta,
+                top_k=top_k,
+            )
+
         # ── Phase 4: Try family-first candidate builder pipeline ──
         # For families with dedicated builders (type, people_event),
         # the builder is the mandatory first-stage retrieval path.
@@ -1449,20 +1475,6 @@ class SearchOrchestrator:
         # Override family if builder resolved it
         if builder_intent and builder_intent.family_hint:
             current_family = builder_intent.family_hint
-
-        # Phase 10: utility presets are metadata-only first-class paths.
-        # Do not allow any FAMILY_FALLBACK-style logging before this return.
-        if current_family == "utility":
-            logger.info(
-                f"[SearchOrchestrator] UTILITY_ROUTE: "
-                f"preset={plan.preset_id!r} family='utility' "
-                f"executing metadata-only fast path"
-            )
-            return self._execute_utility_metadata_only(
-                plan=plan,
-                project_meta=project_meta,
-                top_k=top_k,
-            )
 
         # ── Family-path consistency assertion ──
         # If the builder resolved a family, it must match the preset-derived
@@ -1527,9 +1539,7 @@ class SearchOrchestrator:
                             f"builder empty, semantic supplement produced "
                             f"{len(semantic_hits)} raw hits"
                         )
-                        # Inject hits into the structural pool so they get scored
                         type_structural_candidates = set()
-                        # photo_ids in semantic_hits are resolved later in Step 3
                     else:
                         return OrchestratorResult(
                             paths=[],
@@ -1884,27 +1894,28 @@ class SearchOrchestrator:
                     if not path:
                         continue
 
+                    # Circular reasoning fix: evaluate admissibility using ORIGINAL builder evidence
+                    # BEFORE injecting the 0.20 supplement prior.
                     ev = type_evidence.get(path, {})
-                    if path not in type_evidence:
-                        type_evidence[path] = {
-                            "builder": "screenshot_supplement",
-                            "supplement_only": True,
-                            "admission_mode": "weak_semantic",
-                            "screenshot_score": 0.20,
-                        }
-                        ev = type_evidence[path]
-                    else:
-                        ev.setdefault("builder", "screenshot_supplement")
-                        ev["supplement_only"] = True
-                        ev["admission_mode"] = "weak_semantic"
-                        ev.setdefault("screenshot_score", 0.20)
-
                     if self._is_screenshot_supplement_admissible(
                         path=path,
                         sem_score=sem_score,
                         type_evidence=type_evidence,
                         project_meta=project_meta,
                     ):
+                        if path not in type_evidence:
+                            type_evidence[path] = {
+                                "builder": "screenshot_supplement",
+                                "supplement_only": True,
+                                "admission_mode": "semantic_rescue",
+                                "screenshot_score": 0.20,
+                            }
+                        else:
+                            ev.setdefault("builder", "screenshot_supplement")
+                            ev["supplement_only"] = True
+                            ev["admission_mode"] = "structural_rescue"
+                            ev.setdefault("screenshot_score", 0.20)
+
                         type_structural_candidates.add(path)
                         supplement_admitted += 1
                     else:
@@ -1938,8 +1949,9 @@ class SearchOrchestrator:
                         path, type_evidence
                     )
 
-                    # Semantic supplement may contribute a weak prior,
-                    # but never as the sole basis of legality.
+                    # Phase 2: semantic supplement may produce candidates not present
+                    # in builder_evidence_by_path. Give them a weak screenshot prior,
+                    # not zero, so they can be filtered but still compete.
                     if screenshot_score <= 0.0 and sem_score > 0.0:
                         screenshot_score = 0.20
 
@@ -1957,9 +1969,9 @@ class SearchOrchestrator:
                 scored.append(sr)
 
             if (plan.preset_id or "").lower() == "screenshots" and scored:
-                for idx, sr in enumerate(scored[:10]):
+                for sr in scored[:10]:
                     logger.info(
-                        f"[SearchOrchestrator][Screenshots] pre-sort #{idx} "
+                        f"[SearchOrchestrator][Screenshots] pre-sort "
                         f"path={sr.path!r} clip={sr.clip_score:.3f} "
                         f"screen={getattr(sr, 'screenshot_score', 0.0):.3f} "
                         f"ocr={sr.ocr_score:.3f} struct={sr.structural_score:.3f}"
@@ -1988,11 +2000,19 @@ class SearchOrchestrator:
                     scenic_pool_filtered += 1
                     continue
 
-                struct = structural_scores.get(path, 0.0)
+                structural_score = 0.0
+                if current_family == "scenic":
+                    structural_score = self._get_scenic_structural_score(
+                        path,
+                        getattr(builder_candidate_set, "evidence_by_path", None) if builder_candidate_set else None,
+                    )
+                else:
+                    structural_score = structural_scores.get(path, 0.0)
+
                 ocr = ocr_scores.get(path, 0.0)
                 sr = self._score_result(path, sem_score, matched_prompt, project_meta,
                                         plan.filters, people_implied,
-                                        structural_score=struct, ocr_score=ocr,
+                                        structural_score=structural_score, ocr_score=ocr,
                                         family=current_family)
                 scored.append(sr)
 
@@ -2040,47 +2060,37 @@ class SearchOrchestrator:
                     sr.reasons.append(f"ocr_text_match=+{OCR_BOOST}")
                     scored.append(sr)
 
-        # Step 5c: Apply scenic anti-type soft penalties directly
-        # Scenic families have w_structural=0.00 (no positive structural
-        # budget), so anti-type penalties are applied as direct adjustments.
-        if current_family == "scenic" and structural_scores:
+        # Step 5c: Apply additional scenic-family adjustments
+        # (Heuristic anti-type penalties and builder-computed boosts)
+        if current_family == "scenic" and (structural_scores or scenic_evidence):
             penalized = 0
+            boosted = 0
             for sr in scored:
-                penalty = structural_scores.get(sr.path, 0.0)
+                # 1. Anti-type penalty from orchestrator metadata scan
+                penalty = structural_scores.get(sr.path, 0.0) if structural_scores else 0.0
                 if penalty < 0:
                     sr.final_score = max(0, sr.final_score + penalty)
-                    sr.structural_score = penalty
                     sr.reasons.append(f"scenic_anti_type={penalty:.3f}")
                     penalized += 1
-            if penalized:
-                logger.info(
-                    f"[SearchOrchestrator] Scenic anti-type penalties applied "
-                    f"to {penalized} result(s)"
-                )
 
-        # Step 5c2: Apply scenic builder soft penalties
-        # These come from the ScenicCandidateBuilder evidence and provide
-        # finer-grained demotion for borderline cases that weren't hard-excluded.
-        if current_family == "scenic" and scenic_evidence:
-            builder_penalized = 0
-            builder_boosted = 0
-            for sr in scored:
-                ev = scenic_evidence.get(sr.path, {})
-                soft_pen = ev.get("soft_penalty", 0.0)
-                scenic_boost = ev.get("scenic_boost", 0.0)
-                adjustment = soft_pen + scenic_boost
-                if adjustment != 0.0:
-                    sr.final_score = max(0, sr.final_score + adjustment)
-                    if soft_pen < 0:
-                        sr.reasons.append(f"scenic_soft_pen={soft_pen:.3f}")
-                        builder_penalized += 1
-                    if scenic_boost > 0:
-                        sr.reasons.append(f"scenic_boost={scenic_boost:.3f}")
-                        builder_boosted += 1
-            if builder_penalized or builder_boosted:
+                # 2. Builder-computed boosts/penalties
+                if scenic_evidence:
+                    ev = scenic_evidence.get(sr.path, {})
+                    soft_pen = ev.get("soft_penalty", 0.0)
+                    scenic_boost = ev.get("scenic_boost", 0.0)
+                    adjustment = soft_pen + scenic_boost
+                    if adjustment != 0.0:
+                        sr.final_score = max(0, sr.final_score + adjustment)
+                        if soft_pen < 0:
+                            sr.reasons.append(f"scenic_soft_pen={soft_pen:.3f}")
+                            penalized += 1
+                        if scenic_boost > 0:
+                            sr.reasons.append(f"scenic_boost={scenic_boost:.3f}")
+                            boosted += 1
+
+            if penalized or boosted:
                 logger.info(
-                    f"[SearchOrchestrator] Scenic builder evidence: "
-                    f"{builder_penalized} penalized, {builder_boosted} boosted"
+                    f"[SearchOrchestrator] Scenic refinement: {penalized} penalized, {boosted} boosted"
                 )
 
         # Step 5d: Post-scoring family-path consistency check
@@ -2114,6 +2124,12 @@ class SearchOrchestrator:
 
         # Step 6: Sort by final_score
         scored.sort(key=lambda r: r.final_score, reverse=True)
+
+        if current_family == "scenic":
+            scored = self._collapse_duplicate_families_for_scenic(
+                scored_results=scored,
+                project_meta=project_meta,
+            )
 
         # Step 7: Backoff if below min_results_target and semantic was used
         # Adaptive target AND step for library size:
@@ -2520,6 +2536,9 @@ class SearchOrchestrator:
         missing_face_count = 0
         missing_dimensions = 0
         missing_ocr = 0
+        missing_duplicate_group = 0
+        missing_ext = 0
+        missing_media_type = 0
 
         for p in paths:
             m = meta[p]
@@ -2529,9 +2548,14 @@ class SearchOrchestrator:
                 missing_face_count += 1
             if not m.get("width") or not m.get("height"):
                 missing_dimensions += 1
-            # OCR may legitimately be empty, but track coverage
-            if not m.get("ocr_text"):
+            if "ocr_text" not in m:
                 missing_ocr += 1
+            if "duplicate_group_id" not in m:
+                missing_duplicate_group += 1
+            if "ext" not in m:
+                missing_ext += 1
+            if "media_type" not in m:
+                missing_media_type += 1
 
         warnings = []
         if missing_screenshot > sample_size * 0.5:
@@ -2540,6 +2564,27 @@ class SearchOrchestrator:
             warnings.append(f"face_count missing on {missing_face_count}/{sample_size}")
         if missing_dimensions > sample_size * 0.3:
             warnings.append(f"dimensions missing on {missing_dimensions}/{sample_size}")
+
+        if missing_duplicate_group > 0:
+            logger.warning(
+                f"[SearchOrchestrator] search_asset_features missing duplicate_group_id "
+                f"for {missing_duplicate_group}/{sample_size} rows; duplicate collapse may be weaker."
+            )
+        if missing_ext > 0:
+            logger.warning(
+                f"[SearchOrchestrator] search_asset_features missing ext "
+                f"for {missing_ext}/{sample_size} rows; category detection may be weaker."
+            )
+        if missing_media_type > 0:
+            logger.warning(
+                f"[SearchOrchestrator] search_asset_features missing media_type "
+                f"for {missing_media_type}/{sample_size} rows."
+            )
+        if missing_ocr > 0:
+            logger.warning(
+                f"[SearchOrchestrator] search_asset_features missing ocr_text column "
+                f"for {missing_ocr}/{sample_size} rows."
+            )
 
         if warnings:
             logger.warning(
@@ -2551,8 +2596,7 @@ class SearchOrchestrator:
         else:
             logger.debug(
                 f"[SearchOrchestrator] search_asset_features validated: "
-                f"all critical columns populated "
-                f"(ocr_coverage={sample_size - missing_ocr}/{sample_size})"
+                f"critical columns populated"
             )
 
     # ── Screenshot Detection (multi-signal confidence) ──
@@ -2968,6 +3012,47 @@ class SearchOrchestrator:
         """Detect filenames that look like copies. Delegates to deduplicator module."""
         return is_copy_filename(path)
 
+    def _collapse_duplicate_families_for_scenic(
+        self,
+        scored_results: List[ScoredResult],
+        project_meta: Dict[str, Dict],
+    ) -> List[ScoredResult]:
+        """
+        Collapse duplicate-family scenic results so one duplicate cluster
+        does not dominate the top of the list.
+        """
+        if not scored_results:
+            return scored_results
+
+        kept = []
+        seen_groups = set()
+        seen_basenames = set()
+
+        for r in scored_results:
+            meta = project_meta.get(r.path, {}) or {}
+            dup_group = meta.get("duplicate_group_id")
+            basename = os.path.basename(r.path).lower()
+
+            if dup_group:
+                key = f"group:{dup_group}"
+                if key in seen_groups:
+                    continue
+                seen_groups.add(key)
+                kept.append(r)
+                continue
+
+            # Lightweight fallback collapse for repeated copy families
+            stem = basename
+            if is_copy_filename(basename):
+                stem = re.sub(r'(?i)\s*\(\d+\)|\s*copy|\s*-\s*copy', '', basename).strip()
+
+            if stem in seen_basenames:
+                continue
+            seen_basenames.add(stem)
+            kept.append(r)
+
+        return kept
+
     def _deduplicate_results(self, scored: List[ScoredResult]) -> Tuple[List[ScoredResult], int]:
         """
         Stack duplicate results: keep best representative per duplicate group.
@@ -3017,7 +3102,7 @@ class SearchOrchestrator:
         # Soft penalty from negative CLIP prompts
         try:
             neg_hits = self._smart_find._run_clip_multi_prompt(
-                neg_prompts, candidate_k=600, threshold=0.18, fusion_mode="max"
+                neg_prompts, top_k=600, threshold=0.18, fusion_mode="max"
             )
         except Exception:
             neg_hits = {}

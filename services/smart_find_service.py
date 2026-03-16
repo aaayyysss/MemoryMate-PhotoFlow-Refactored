@@ -1107,7 +1107,7 @@ class SmartFindService:
     def _run_clip_multi_prompt(
         self,
         prompts: List[str],
-        candidate_k: int,
+        top_k: int,
         threshold: float,
         fusion_mode: str,
     ) -> Dict[int, Tuple[float, str]]:
@@ -1141,7 +1141,7 @@ class SmartFindService:
             try:
                 results = svc.search(
                     query=prompt,
-                    top_k=candidate_k,
+                    top_k=top_k,
                     threshold=threshold,
                     include_metadata=False
                 )

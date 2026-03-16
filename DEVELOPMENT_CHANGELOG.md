@@ -4,6 +4,30 @@ This document tracks all features, modifications, and bug fixes applied to the c
 
 ---
 
+## Search Architecture — Phase 11: Scenic Calibration, Search Feature Cache & Retrieval Stability
+
+### Scenic Quality Calibration
+- Re-calibrated **`ScenicCandidateBuilder`** to reward positive scenic signals (GPS, panorama geometry, low OCR) with `scenic_positive` score.
+- Rebalanced scenic ranking weights to reduce CLIP over-dominance and introduce 10% structural support.
+- Implemented duplicate-family collapse for scenic results to prevent repeated file families from dominating top results.
+
+### Search Feature Enrichment
+- Enriched **`search_asset_features`** cache table with:
+  - `duplicate_group_id` (precomputed content-identity links),
+  - `media_type` (first-class video/photo separation),
+  - `ocr_text` (denormalized for fast structural scoring).
+- Added `ensure_search_features_table` idempotent migration to wire new columns.
+
+### Retrieval Stability (Windows)
+- **`services/semantic_search_service.py`** — Dedicated singleton CLIP executor thread to eliminate native MKL/OpenBLAS crashes on Windows.
+- Added array `.copy()` to embedding deserialization to prevent memory access violations (`0xC0000005`) under concurrent search load.
+
+### Hybrid Retrieval Extension
+- **`repository/asset_repository.py`** — New repository for media assets and instances, enabling cross-project content identity tracking.
+- Added dedicated retrieval tables: `asset_ocr_text`, `person_clusters`, `asset_person_links`.
+
+---
+
 ## Search Architecture — Phase 10: Screenshot Recall Recovery, Utility Logging Cleanup, CLIP Cache Validation
 
 ### Screenshot Recall Recovery
@@ -224,27 +248,3 @@ A series of fixes targeting native access violation crashes (`0xC0000005`, `0xC0
 ---
 
 *Last updated: 2026-03-14*
-
-## Search Architecture — Phase 10: Screenshot Recall Recovery, Utility Logging Cleanup, CLIP Cache Validation
-
-### Screenshot Recall Recovery
-- Expanded screenshot filename markers and UI OCR lexicon.
-- Added low-confidence screenshot recovery for assets with at least two non-semantic screenshot signals.
-- Added broader screen-geometry support for tablet/desktop captures.
-- Added screenshot acceptance diagnostics:
-  - `acceptance_reasons`
-  - `recovery_signal_count`
-  - `low_confidence_recovery`
-
-### Utility Logging Cleanup
-- Added explicit `UTILITY_ROUTE` logging before metadata-only utility execution.
-- Utility presets now log a first-class route instead of looking like legacy fallback.
-
-### CLIP Cache Validation
-- `_has_model_weights()` now recognizes Hugging Face cache roots with:
-  - direct config + weights,
-  - `snapshots/<hash>/config.json`,
-  - `refs/main` -> snapshot resolution.
-- Stored CLIP model preference is no longer incorrectly cleared when it points to a valid Hugging Face cache root.
-
-*Last updated: 2026-03-15*
