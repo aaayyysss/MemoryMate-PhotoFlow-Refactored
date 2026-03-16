@@ -117,14 +117,14 @@ class ScoringWeights:
 # signals that are computed separately and folded into the final score.
 
 FAMILY_WEIGHTS = {
-    # Scenic: semantic is king, mild structural anti-type penalty
+    # Scenic: semantic is king, mild structural anti-type support/penalty
     "scenic": ScoringWeights(
         w_clip=0.82,
-        w_recency=0.04,
-        w_favorite=0.05,
-        w_location=0.06,
+        w_recency=0.03,
+        w_favorite=0.04,
+        w_location=0.00,
         w_face_match=0.03,
-        w_structural=0.00,  # scenic uses penalty, not positive structural
+        w_structural=0.08,  # scenic structural support (GPS, panorama, low-OCR)
         w_ocr=0.00,
         w_event=0.00,
         w_screenshot=0.00,

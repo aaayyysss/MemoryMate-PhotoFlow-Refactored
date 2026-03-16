@@ -1,5 +1,5 @@
 ## services\semantic_embedding_service.py
-## Version: 1.1.5 dated 20260315
+## Version: 1.1.4 dated 20260309
 
 """
 SemanticEmbeddingService - Clean Architectural Separation
@@ -405,7 +405,6 @@ class SemanticEmbeddingService:
                         logger.debug(f"[SemanticEmbeddingService] Resolving relative path: {clip_path} → {clip_path_obj}")
 
                     # Validate model path
-                    
                     if clip_path_obj.exists() and _has_model_weights(str(clip_path_obj)):
                         local_model_path = str(clip_path_obj)
                         logger.info(
@@ -420,11 +419,11 @@ class SemanticEmbeddingService:
                             f"  Has model weights: "
                             f"{_has_model_weights(str(clip_path_obj)) if clip_path_obj.exists() else False}"
                         )
+                        # Clear the invalid path so it won't be retried on every startup
                         try:
                             settings.set("clip_model_path", "")
                         except Exception:
-                            pass                                                        
-                            
+                            pass
             except Exception as e:
                 logger.warning(f"[SemanticEmbeddingService] Could not check stored preference: {e}")
 

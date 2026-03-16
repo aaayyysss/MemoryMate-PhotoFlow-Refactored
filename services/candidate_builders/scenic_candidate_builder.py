@@ -60,6 +60,11 @@ _MIN_SCENIC_EDGE = 400
 # Soft-penalty OCR threshold (lower than hard exclusion)
 _SOFT_OCR_THRESHOLD = 50
 
+# Scenic-positive heuristics
+_LOW_OCR_THRESHOLD = 20
+_PANORAMA_RATIO_MIN = 2.20
+_FACE_HEAVY_THRESHOLD = 2
+
 
 class ScenicCandidateBuilder(BaseCandidateBuilder):
     """
@@ -91,6 +96,13 @@ class ScenicCandidateBuilder(BaseCandidateBuilder):
         "forest", "snow", "architecture",
     })
 
+    _GPS_BIASED_PRESETS = frozenset({
+        "beach", "mountains", "lake", "forest", "travel", "sunset",
+        "architecture", "city",
+    })
+
+    _PANORAMA_PRESETS = frozenset({"panoramas"})
+
     def build(
         self,
         intent: QueryIntent,
@@ -116,7 +128,7 @@ class ScenicCandidateBuilder(BaseCandidateBuilder):
                 continue
 
             # Build evidence for soft-penalty evaluation
-            evidence = self._build_evidence(path, meta, is_landscape)
+            evidence = self._build_evidence(path, meta, is_landscape, preset_id)
 
             kept.append(path)
             evidence_by_path[path] = evidence
@@ -157,6 +169,18 @@ class ScenicCandidateBuilder(BaseCandidateBuilder):
                 "hard_exclusions": hard_excluded,
                 "soft_penalties": soft_penalties,
                 "preset": preset_id,
+                "gps_positive": sum(
+                    1 for ev in evidence_by_path.values() if ev.get("gps_positive")
+                ),
+                "panorama_positive": sum(
+                    1 for ev in evidence_by_path.values() if ev.get("panorama_positive")
+                ),
+                "low_ocr_clean": sum(
+                    1 for ev in evidence_by_path.values() if ev.get("low_ocr_clean")
+                ),
+                "face_heavy_penalized": sum(
+                    1 for ev in evidence_by_path.values() if ev.get("face_heavy_penalty")
+                ),
             },
         )
 
@@ -213,8 +237,9 @@ class ScenicCandidateBuilder(BaseCandidateBuilder):
         path: str,
         meta: dict,
         is_landscape: bool,
+        preset_id: str,
     ) -> dict:
-        """Build per-path evidence with soft penalty computation."""
+        """Build per-path scenic evidence with positive signals and soft penalties."""
         ext = (meta.get("ext") or "").lower()
         if not ext and path:
             ext = os.path.splitext(path)[1].lower()
@@ -223,43 +248,70 @@ class ScenicCandidateBuilder(BaseCandidateBuilder):
         ocr_len = len(ocr_text.strip()) if ocr_text else 0
         face_count = meta.get("face_count") or 0
         has_gps = meta.get("has_gps", False)
+        duplicate_group_id = meta.get("duplicate_group_id")
 
         w = meta.get("width") or 0
         h = meta.get("height") or 0
         aspect = max(w, h) / max(1, min(w, h)) if w and h else 0.0
+        is_page_like = _PAGE_RATIO_MIN <= aspect <= _PAGE_RATIO_MAX
+        is_panorama_like = aspect >= _PANORAMA_RATIO_MIN if w and h else False
+
+        # Positive scenic evidence
+        gps_positive = bool(
+            has_gps and preset_id in ScenicCandidateBuilder._GPS_BIASED_PRESETS
+        )
+        panorama_positive = bool(
+            preset_id in ScenicCandidateBuilder._PANORAMA_PRESETS and is_panorama_like
+        )
+        low_ocr_clean = bool(ocr_len <= _LOW_OCR_THRESHOLD)
+        face_heavy_penalty = bool(is_landscape and face_count >= _FACE_HEAVY_THRESHOLD)
+
+        # Scenic-positive score, used downstream as structural support
+        scenic_positive = 0.0
+        if gps_positive:
+            scenic_positive += 0.08
+        if panorama_positive:
+            scenic_positive += 0.10
+        if low_ocr_clean:
+            scenic_positive += 0.05
+        if face_count == 0:
+            scenic_positive += 0.03
+        if ext in {".jpg", ".jpeg", ".heic", ".heif", ".webp"}:
+            scenic_positive += 0.02
 
         # Compute soft penalty
         soft_penalty = 0.0
 
-        # PNG with moderate OCR: mild penalty (could be a diagram)
+        # PNG with moderate OCR: mild penalty
         if ext == ".png" and _SOFT_OCR_THRESHOLD <= ocr_len < _HIGH_OCR_THRESHOLD:
-            soft_penalty -= 0.15
-
-        # PNG without OCR: very mild penalty (could be export/infographic)
-        elif ext == ".png" and ocr_len < _SOFT_OCR_THRESHOLD:
             soft_penalty -= 0.05
 
-        # Moderate OCR without page geometry: mild penalty
-        if _SOFT_OCR_THRESHOLD <= ocr_len < _HIGH_OCR_THRESHOLD:
-            if not (_PAGE_RATIO_MIN <= aspect <= _PAGE_RATIO_MAX):
-                soft_penalty -= 0.10
+        # Moderate OCR without page geometry: possible sign/text-heavy image
+        if _SOFT_OCR_THRESHOLD <= ocr_len < _HIGH_OCR_THRESHOLD and not is_page_like:
+            soft_penalty -= 0.05
 
-        # Face-heavy penalty for landscape-only presets
-        if is_landscape and face_count >= 3:
-            soft_penalty -= 0.10
+        # Page-like images are suspicious for scenic
+        if is_page_like:
+            soft_penalty -= 0.08
 
-        # Positive signal: GPS presence (likely a real photo)
-        scenic_boost = 0.0
-        if has_gps:
-            scenic_boost = 0.05
+        # Face-heavy landscapes are penalized but not excluded
+        if face_heavy_penalty:
+            soft_penalty -= 0.06
 
         return {
             "builder": "scenic",
-            "ext": ext,
-            "ocr_len": ocr_len,
+            "soft_penalty": soft_penalty,
+            "scenic_positive": scenic_positive,
+            "gps_positive": gps_positive,
+            "panorama_positive": panorama_positive,
+            "low_ocr_clean": low_ocr_clean,
+            "face_heavy_penalty": face_heavy_penalty,
+            "duplicate_group_id": duplicate_group_id,
+            "ocr_text_len": ocr_len,
             "face_count": face_count,
             "has_gps": has_gps,
-            "aspect_ratio": round(aspect, 2),
-            "soft_penalty": round(soft_penalty, 3),
-            "scenic_boost": round(scenic_boost, 3),
+            "aspect_ratio": aspect,
+            "is_page_like": is_page_like,
+            "is_panorama_like": is_panorama_like,
+            "ext": ext,
         }

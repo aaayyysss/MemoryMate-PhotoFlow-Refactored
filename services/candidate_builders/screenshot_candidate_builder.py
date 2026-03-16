@@ -46,7 +46,6 @@ _SCREENSHOT_MARKERS = frozenset({
     "screenrecord", "screen_record", "screen-record",
 })
 
-
 # UI terms for OCR-based screenshot detection
 _UI_TERMS = frozenset({
     "battery", "wifi", "lte", "5g", "notification",
@@ -122,11 +121,9 @@ class ScreenshotCandidateBuilder(BaseCandidateBuilder):
             return self._empty("type", "No project metadata available")
 
         text_terms = intent.text_terms or []
-        
         candidates = []
         evidence_by_path = {}
         rejection_counts = {}
-        acceptance_counts = {}
 
         for path, meta in project_meta.items():
             score, evidence = self._evaluate_screenshot(
@@ -137,9 +134,6 @@ class ScreenshotCandidateBuilder(BaseCandidateBuilder):
             if score > 0.0:
                 candidates.append(path)
                 evidence_by_path[path] = evidence
-
-                accept_reason = evidence.get("acceptance_reason", "accepted")
-                acceptance_counts[accept_reason] = acceptance_counts.get(accept_reason, 0) + 1
 
                 if len(candidates) >= limit:
                     break
@@ -190,10 +184,8 @@ class ScreenshotCandidateBuilder(BaseCandidateBuilder):
             builder_confidence=confidence if candidates else 0.0,
             ready_state="ready" if candidates else "empty",
             notes=[f"Screenshot builder: {len(candidates)} candidates"],
-
             diagnostics={
                 "rejections": rejection_counts,
-                "acceptance_reasons": acceptance_counts,
                 "pre_filter_candidates": len(project_meta),
                 "kept": len(candidates),
                 "mode": "screenshots",
@@ -214,14 +206,6 @@ class ScreenshotCandidateBuilder(BaseCandidateBuilder):
         meta: dict,
         text_terms: List[str],
     ) -> tuple:
-        """
-        Evaluate whether a photo is a screenshot and compute score.
-
-        Phase 10 goals:
-        - keep weak semantic-only leakage blocked,
-        - recover real screenshots via multi-signal structural evidence,
-        - expose acceptance reasons for diagnostics.
-        """
         score = 0.0
         evidence = {"builder": "screenshot"}
 
@@ -241,17 +225,15 @@ class ScreenshotCandidateBuilder(BaseCandidateBuilder):
         # Signal 3: OCR UI text
         ocr_text = (meta.get("ocr_text") or "").lower()
         ocr_len = len(ocr_text)
-        ui_term_count = ScreenshotCandidateBuilder._ui_term_count(ocr_text)
-        ui_hit = ui_term_count >= _MIN_UI_TERM_COUNT
+        ui_hit = any(t in ocr_text for t in _UI_TERMS) if ocr_text else False
         if ui_hit:
-            score += 0.22
+            score += 0.20
         evidence["ui_text_hit"] = ui_hit
-        evidence["ui_term_count"] = ui_term_count
         evidence["ocr_text_len"] = ocr_len
 
         # Signal 4: dimensions / aspect
-        w = int(meta.get("width") or 0)
-        h = int(meta.get("height") or 0)
+        w = meta.get("width") or 0
+        h = meta.get("height") or 0
         aspect = (max(w, h) / max(1, min(w, h))) if w and h else 0.0
         face_count = int(meta.get("face_count") or 0)
 
@@ -263,15 +245,6 @@ class ScreenshotCandidateBuilder(BaseCandidateBuilder):
         if looks_like_phone_screen:
             score += 0.10
         evidence["looks_like_phone_screen"] = looks_like_phone_screen
-
-        looks_like_tablet_or_desktop_capture = (
-            ScreenshotCandidateBuilder._looks_like_tablet_or_desktop_capture(
-                w, h, face_count
-            )
-        )
-        if looks_like_tablet_or_desktop_capture and not looks_like_phone_screen:
-            score += 0.06
-        evidence["looks_like_tablet_or_desktop_capture"] = looks_like_tablet_or_desktop_capture
 
         # Signal 5: flat PNG / UI-like fallback
         ext = os.path.splitext(path)[1].lower() if path else ""
@@ -307,36 +280,12 @@ class ScreenshotCandidateBuilder(BaseCandidateBuilder):
             evidence["rejection_reason"] = "too_small"
             return 0.0, evidence
 
-        # Low-confidence recovery: permit screenshot-like rasters with
-        # at least two non-semantic screenshot signals.
-        recovery_signals = ScreenshotCandidateBuilder._count_recovery_signals(evidence)
-        evidence["recovery_signal_count"] = recovery_signals
-
+        # Final threshold
         if score < 0.20:
-            if recovery_signals >= _RECOVERY_MIN_SIGNALS and not is_screenshot:
-                # Honest low-confidence admit, still below strong threshold
-                score = 0.22
-                evidence["low_confidence_recovery"] = True
-                evidence["acceptance_reason"] = "multi_signal_recovery"
-                return min(1.0, score), evidence
-
-            evidence["low_confidence_recovery"] = False
-            if recovery_signals == 0:
+            if not is_screenshot and not filename_marker and not ui_hit and not looks_like_phone_screen and not flat_ui_fallback:
                 evidence["rejection_reason"] = "no_screenshot_signals"
             else:
                 evidence["rejection_reason"] = "weak_screenshot_score"
             return 0.0, evidence
-
-        evidence["low_confidence_recovery"] = False
-        if is_screenshot:
-            evidence["acceptance_reason"] = "metadata_flag"
-        elif filename_marker and ui_hit:
-            evidence["acceptance_reason"] = "filename_plus_ui"
-        elif looks_like_phone_screen and ui_hit:
-            evidence["acceptance_reason"] = "screen_geometry_plus_ui"
-        elif flat_ui_fallback:
-            evidence["acceptance_reason"] = "png_ui_fallback"
-        else:
-            evidence["acceptance_reason"] = "composite_score"
 
         return min(1.0, score), evidence

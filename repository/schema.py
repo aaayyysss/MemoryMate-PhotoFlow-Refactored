@@ -19,7 +19,7 @@ Schema Version: 2.0.0
 - Adds schema_version tracking table
 """
 
-SCHEMA_VERSION = "12.0.0"
+SCHEMA_VERSION = "13.0.0"
 
 # Complete schema SQL - executed as a script for new databases
 SCHEMA_SQL = """
@@ -68,6 +68,9 @@ VALUES ('10.0.0', 'People Groups: person_groups, person_group_members, group_ass
 
 INSERT OR IGNORE INTO schema_version (version, description)
 VALUES ('10.1.0', 'Smart Find custom presets: smart_find_presets');
+
+INSERT OR IGNORE INTO schema_version (version, description)
+VALUES ('13.0.0', 'Search optimization: search_asset_features flattened table');
 
 -- ============================================================================
 -- SMART FIND CUSTOM PRESETS (v10.1.0)
@@ -765,6 +768,108 @@ CREATE VIRTUAL TABLE IF NOT EXISTS ocr_fts5 USING fts5(
     content='photo_metadata',
     content_rowid='id'
 );
+
+-- ============================================================================
+-- SEARCH ASSET FEATURES (v13.0.0 - Flattened Search Cache)
+-- ============================================================================
+-- This table pre-computes and caches metadata for fast search performance.
+-- It eliminates the need for expensive JOINs at query time.
+CREATE TABLE IF NOT EXISTS search_asset_features (
+    path TEXT PRIMARY KEY,
+    project_id INTEGER NOT NULL,
+    media_type TEXT DEFAULT 'photo',
+    width INTEGER,
+    height INTEGER,
+    has_gps INTEGER DEFAULT 0,
+    face_count INTEGER DEFAULT 0,
+    is_screenshot INTEGER DEFAULT 0,
+    screenshot_confidence REAL DEFAULT 0.0,
+    flag TEXT DEFAULT 'none',
+    ext TEXT,
+    date_taken TEXT,
+    duplicate_group_id INTEGER,
+    ocr_text TEXT,
+    rating INTEGER DEFAULT 0,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_search_features_project
+    ON search_asset_features(project_id);
+CREATE INDEX IF NOT EXISTS idx_search_features_screenshot
+    ON search_asset_features(is_screenshot) WHERE is_screenshot = 1;
+CREATE INDEX IF NOT EXISTS idx_search_features_gps
+    ON search_asset_features(has_gps) WHERE has_gps = 1;
+CREATE INDEX IF NOT EXISTS idx_search_features_media_type
+    ON search_asset_features(media_type);
+
+-- ============================================================================
+-- ASSET RETRIEVAL TABLES (v13.0.0 - Family-first Hybrid Retrieval)
+-- ============================================================================
+
+-- ── asset_ocr_text: Dedicated OCR text storage ──
+CREATE TABLE IF NOT EXISTS asset_ocr_text (
+    asset_id INTEGER PRIMARY KEY,
+    project_id INTEGER NOT NULL,
+    path TEXT NOT NULL,
+    ocr_text TEXT,
+    ocr_lang TEXT,
+    ocr_confidence REAL DEFAULT 0.0,
+    token_count INTEGER DEFAULT 0,
+    updated_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_aot_project ON asset_ocr_text(project_id);
+CREATE INDEX IF NOT EXISTS idx_aot_path ON asset_ocr_text(path);
+
+-- ── asset_ocr_text_fts: FTS5 for OCR text search ──
+CREATE VIRTUAL TABLE IF NOT EXISTS asset_ocr_text_fts USING fts5(
+    ocr_text,
+    content='asset_ocr_text',
+    content_rowid='asset_id'
+);
+
+-- ── person_clusters: Named person clusters ──
+CREATE TABLE IF NOT EXISTS person_clusters (
+    cluster_id INTEGER PRIMARY KEY,
+    project_id INTEGER NOT NULL,
+    display_name TEXT,
+    cluster_confidence REAL DEFAULT 0.0,
+    representative_asset_id INTEGER,
+    face_count INTEGER DEFAULT 0,
+    is_named INTEGER DEFAULT 0,
+    updated_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_pc_project ON person_clusters(project_id);
+CREATE INDEX IF NOT EXISTS idx_pc_project_named ON person_clusters(project_id, is_named);
+
+-- ── asset_person_links: Photo-person associations ──
+CREATE TABLE IF NOT EXISTS asset_person_links (
+    asset_id INTEGER NOT NULL,
+    project_id INTEGER NOT NULL,
+    cluster_id INTEGER NOT NULL,
+    face_count_in_asset INTEGER DEFAULT 1,
+    match_confidence REAL DEFAULT 0.0,
+    PRIMARY KEY (asset_id, cluster_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_apl_project_cluster ON asset_person_links(project_id, cluster_id);
+CREATE INDEX IF NOT EXISTS idx_apl_project_asset ON asset_person_links(project_id, asset_id);
+
+-- ── query_history: For suggestions and analytics ──
+CREATE TABLE IF NOT EXISTS query_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER,
+    raw_query TEXT NOT NULL,
+    normalized_query TEXT,
+    family TEXT,
+    result_count INTEGER,
+    confidence_label TEXT,
+    executed_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_qh_project ON query_history(project_id, executed_at);
 """
 
 
@@ -833,6 +938,11 @@ def get_expected_tables() -> list[str]:
         "person_groups",
         "person_group_members",
         "group_asset_matches",
+        "search_asset_features",
+        "asset_ocr_text",
+        "person_clusters",
+        "asset_person_links",
+        "query_history",
     ]
 
 
@@ -934,6 +1044,17 @@ def get_expected_indexes() -> list[str]:
         "idx_media_stack_member_stack_id",
         "idx_media_stack_member_photo_id",
         "idx_media_stack_meta_project_id",
+        "idx_search_features_project",
+        "idx_search_features_screenshot",
+        "idx_search_features_gps",
+        "idx_search_features_media_type",
+        "idx_aot_project",
+        "idx_aot_path",
+        "idx_pc_project",
+        "idx_pc_project_named",
+        "idx_apl_project_cluster",
+        "idx_apl_project_asset",
+        "idx_qh_project",
     ]
 
 
@@ -1204,3 +1325,112 @@ def ensure_groups_tables(conn) -> bool:
         logger.info("[Schema] People Groups migration complete (v10.0.0)")
 
     return tables_created
+
+
+def ensure_search_features_table(conn) -> bool:
+    """
+    Ensure search_asset_features table and all columns exist (v13.0.0).
+
+    This migration creates the search_asset_features table if missing,
+    or adds Phase 11 columns to an existing table.
+
+    Args:
+        conn: SQLite connection object
+
+    Returns:
+        bool: True if table or columns were created/modified
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    cur = conn.cursor()
+
+    # Check if table already exists
+    existing_tables = {
+        r[0] for r in cur.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        )
+    }
+
+    modified = False
+
+    if 'search_asset_features' not in existing_tables:
+        logger.info("[Schema] Creating search_asset_features table (v13.0.0)")
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS search_asset_features (
+                path TEXT PRIMARY KEY,
+                project_id INTEGER NOT NULL,
+                media_type TEXT DEFAULT 'photo',
+                width INTEGER,
+                height INTEGER,
+                has_gps INTEGER DEFAULT 0,
+                face_count INTEGER DEFAULT 0,
+                is_screenshot INTEGER DEFAULT 0,
+                screenshot_confidence REAL DEFAULT 0.0,
+                flag TEXT DEFAULT 'none',
+                ext TEXT,
+                date_taken TEXT,
+                duplicate_group_id INTEGER,
+                ocr_text TEXT,
+                rating INTEGER DEFAULT 0,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+            )
+        """)
+        modified = True
+    else:
+        # Check for missing columns (incremental migration from Phase 10)
+        existing_cols = {
+            r[1] for r in cur.execute("PRAGMA table_info(search_asset_features)")
+        }
+
+        # Columns added in Phase 11
+        new_cols = {
+            'duplicate_group_id': 'INTEGER',
+            'ocr_text': 'TEXT',
+            'screenshot_confidence': 'REAL DEFAULT 0.0',
+            'media_type': "TEXT DEFAULT 'photo'",
+            'rating': 'INTEGER DEFAULT 0'
+        }
+
+        for col_name, col_def in new_cols.items():
+            if col_name not in existing_cols:
+                logger.info(
+                    f"[Schema] Adding {col_name} column to search_asset_features"
+                )
+                cur.execute(
+                    f"ALTER TABLE search_asset_features "
+                    f"ADD COLUMN {col_name} {col_def}"
+                )
+                modified = True
+
+    # Ensure indexes exist (idempotent)
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_search_features_project "
+        "ON search_asset_features(project_id)"
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_search_features_screenshot "
+        "ON search_asset_features(is_screenshot) WHERE is_screenshot = 1"
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_search_features_gps "
+        "ON search_asset_features(has_gps) WHERE has_gps = 1"
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_search_features_media_type "
+        "ON search_asset_features(media_type)"
+    )
+
+    # Update schema version
+    cur.execute("""
+        INSERT OR IGNORE INTO schema_version (version, description)
+        VALUES ('13.0.0', 'Search optimization: search_asset_features flattened table')
+    """)
+
+    conn.commit()
+
+    if modified:
+        logger.info("[Schema] search_asset_features migration complete (v13.0.0)")
+
+    return modified

@@ -68,9 +68,9 @@ class RankingDefaults:
 
 FAMILY_DEFAULTS: Dict[str, Dict[str, float]] = {
     "scenic": {
-        "w_clip": 0.82, "w_recency": 0.04, "w_favorite": 0.05,
-        "w_location": 0.06, "w_face_match": 0.03,
-        "w_structural": 0.00, "w_ocr": 0.00, "w_event": 0.00,
+        "w_clip": 0.72, "w_recency": 0.04, "w_favorite": 0.04,
+        "w_location": 0.08, "w_face_match": 0.02,
+        "w_structural": 0.10, "w_ocr": 0.00, "w_event": 0.00,
         "w_screenshot": 0.00,
     },
     "type": {

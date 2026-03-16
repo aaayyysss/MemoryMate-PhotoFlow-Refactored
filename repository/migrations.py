@@ -907,6 +907,10 @@ class MigrationManager:
                 elif migration.version == "12.1.0":
                     # Apply migration v12.1: add screenshot_confidence column
                     self._add_screenshot_confidence_column_if_missing(conn)
+                elif migration.version == "13.0.0":
+                    # Apply migration v13.0: extend search_asset_features
+                    from repository.schema import ensure_search_features_table
+                    ensure_search_features_table(conn)
 
                 # Execute migration SQL (version tracking)
                 conn.executescript(migration.sql)
