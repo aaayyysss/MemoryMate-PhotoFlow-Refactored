@@ -101,39 +101,43 @@ except ImportError:
     logger.debug("[SemanticEmbeddingService] FAISS not installed - using numpy fallback for similarity search")
 
 
-def _has_model_weights(model_dir: str) -> bool:
+def _folder_has_direct_weights(folder: Path) -> bool:
+    """Check if a folder contains direct model config and weight files."""
+    if not (folder / "config.json").exists():
+        return False
+    weight_candidates = [
+        folder / "model.safetensors",
+        folder / "pytorch_model.bin",
+        folder / "pytorch_model.bin.index.json",
+        folder / "tf_model.h5",
+        folder / "flax_model.msgpack",
+    ]
+    return any(x.exists() for x in weight_candidates)
+
+
+def _resolve_model_path(model_dir: str) -> Optional[str]:
     """
-    Check if a local model directory contains valid weight files.
+    Resolve a model directory to the actual weights directory.
 
     Accepts either:
     - a direct HuggingFace model folder with config + weights, or
     - a HuggingFace cache root with snapshots/<hash>/config.json, or
     - a cache root with refs/main pointing to a valid snapshot.
+
+    Returns the path to the directory containing the weights, or None.
     """
     p = Path(model_dir)
     if not p.exists():
-        return False
+        return None
 
-    def _folder_has_direct_weights(folder: Path) -> bool:
-        if not (folder / "config.json").exists():
-            return False
-        weight_candidates = [
-            folder / "model.safetensors",
-            folder / "pytorch_model.bin",
-            folder / "pytorch_model.bin.index.json",
-            folder / "tf_model.h5",
-            folder / "flax_model.msgpack",
-        ]
-        return any(x.exists() for x in weight_candidates)
-
-    # Direct model root
+    # 1. Direct model root
     if _folder_has_direct_weights(p):
-        return True
+        return str(p)
 
-    # HF cache root with snapshots
+    # 2. HF cache root with snapshots
     snapshots_dir = p / "snapshots"
     if snapshots_dir.exists() and snapshots_dir.is_dir():
-        # Prefer refs/main if available
+        # A. Prefer refs/main if available
         refs_main = p / "refs" / "main"
         try:
             if refs_main.exists():
@@ -141,19 +145,28 @@ def _has_model_weights(model_dir: str) -> bool:
                 if snapshot_name:
                     candidate = snapshots_dir / snapshot_name
                     if candidate.exists() and _folder_has_direct_weights(candidate):
-                        return True
+                        return str(candidate)
         except Exception:
             pass
 
-        # Fallback: any valid snapshot
+        # B. Fallback: any valid snapshot (sort by mtime descending)
         try:
-            for folder in snapshots_dir.iterdir():
-                if folder.is_dir() and _folder_has_direct_weights(folder):
-                    return True
+            snapshot_folders = [d for d in snapshots_dir.iterdir() if d.is_dir()]
+            if snapshot_folders:
+                # Sort by mtime to pick the latest
+                snapshot_folders.sort(key=lambda d: d.stat().st_mtime, reverse=True)
+                for folder in snapshot_folders:
+                    if _folder_has_direct_weights(folder):
+                        return str(folder)
         except Exception:
             pass
 
-    return False
+    return None
+
+
+def _has_model_weights(model_dir: str) -> bool:
+    """Check if a local model directory contains or resolves to valid weight files."""
+    return _resolve_model_path(model_dir) is not None
 
 
 class SemanticEmbeddingService:
@@ -404,20 +417,18 @@ class SemanticEmbeddingService:
                         clip_path_obj = app_root / clip_path_obj
                         logger.debug(f"[SemanticEmbeddingService] Resolving relative path: {clip_path} → {clip_path_obj}")
 
-                    # Validate model path
-                    if clip_path_obj.exists() and _has_model_weights(str(clip_path_obj)):
-                        local_model_path = str(clip_path_obj)
+                    # Resolve to actual weights directory (handles HF snapshots)
+                    resolved_path = _resolve_model_path(str(clip_path_obj))
+                    if resolved_path:
+                        local_model_path = resolved_path
                         logger.info(
                             f"[SemanticEmbeddingService] CHECKMARK Using stored preference: "
-                            f"{local_model_path}"
+                            f"{clip_path_obj} (resolved to {local_model_path})"
                         )
                     else:
                         logger.warning(
-                            f"[SemanticEmbeddingService] Stored preference path invalid, clearing setting:\n"
-                            f"  Path: {clip_path_obj}\n"
-                            f"  Exists: {clip_path_obj.exists()}\n"
-                            f"  Has model weights: "
-                            f"{_has_model_weights(str(clip_path_obj)) if clip_path_obj.exists() else False}"
+                            f"[SemanticEmbeddingService] Stored preference path invalid or missing weights: "
+                            f"{clip_path_obj}"
                         )
                         # Clear the invalid path so it won't be retried on every startup
                         try:
@@ -469,76 +480,13 @@ class SemanticEmbeddingService:
                     for model_folder in possible_locations:
                         logger.info(f"[SemanticEmbeddingService]   Checking: {model_folder}")
 
-                        exists = model_folder.exists()
-                        has_config = (model_folder / 'config.json').exists() if exists else False
-
-                        logger.info(f"[SemanticEmbeddingService]     → Exists: {exists}")
-                        if exists:
-                            logger.info(f"[SemanticEmbeddingService]     → Has config.json: {has_config}")
-
-                            # For HuggingFace cache, also check for snapshots folder
-                            snapshots_dir = model_folder / 'snapshots'
-                            snapshots_exists = snapshots_dir.exists()
-                            logger.info(f"[SemanticEmbeddingService]     → Has snapshots folder: {snapshots_exists}")
-
-                            if not has_config and snapshots_exists:
-                                # HF cache structure: models--xxx/snapshots/hash/
-                                # Also check refs/main for the current snapshot reference
-                                try:
-                                    snapshot_folders = [d for d in snapshots_dir.iterdir() if d.is_dir()]
-                                    logger.info(f"[SemanticEmbeddingService]     → Found {len(snapshot_folders)} snapshot(s)")
-
-                                    if snapshot_folders:
-                                        # Try to use refs/main to find the correct snapshot first
-                                        refs_main = model_folder / 'refs' / 'main'
-                                        latest_snapshot = None
-
-                                        if refs_main.exists():
-                                            try:
-                                                ref_hash = refs_main.read_text().strip()
-                                                logger.info(f"[SemanticEmbeddingService]     → refs/main points to: {ref_hash}")
-                                                ref_snapshot = snapshots_dir / ref_hash
-                                                if ref_snapshot.exists():
-                                                    latest_snapshot = ref_snapshot
-                                            except Exception as ref_err:
-                                                logger.warning(f"[SemanticEmbeddingService]     → Could not read refs/main: {ref_err}")
-
-                                        # Fallback: use the most recent snapshot by mtime
-                                        if latest_snapshot is None:
-                                            latest_snapshot = max(snapshot_folders, key=lambda p: p.stat().st_mtime)
-
-                                        logger.info(f"[SemanticEmbeddingService]     → Using snapshot: {latest_snapshot.name}")
-
-                                        snapshot_has_config = (latest_snapshot / 'config.json').exists()
-                                        logger.info(f"[SemanticEmbeddingService]     → Snapshot has config.json: {snapshot_has_config}")
-
-                                        if snapshot_has_config:
-                                            logger.info(f"[SemanticEmbeddingService]     → CHECKMARK VALID MODEL FOUND in HF cache snapshot!")
-                                            local_model_path = str(latest_snapshot)
-                                            break
-                                        else:
-                                            # List files in snapshot to debug
-                                            try:
-                                                snapshot_files = list(latest_snapshot.iterdir())
-                                                logger.warning(f"[SemanticEmbeddingService]     → Snapshot contents: {[f.name for f in snapshot_files[:15]]}")
-                                            except Exception as list_err:
-                                                logger.warning(f"[SemanticEmbeddingService]     → Could not list snapshot: {list_err}")
-                                    else:
-                                        logger.warning(f"[SemanticEmbeddingService]     → Snapshots folder exists but is empty")
-                                except Exception as e:
-                                    logger.warning(f"[SemanticEmbeddingService]     → Error checking snapshots: {e}", exc_info=True)
-
-                            elif has_config:
-                                logger.info(f"[SemanticEmbeddingService]     → CHECKMARK VALID MODEL FOUND!")
-                                local_model_path = str(model_folder)
-                                break
-                            else:
-                                # List what files ARE in the folder
-                                try:
-                                    files = list(model_folder.iterdir())
-                                    logger.warning(f"[SemanticEmbeddingService]     → Folder exists but no config.json. Contents: {[f.name for f in files[:10]]}")
-                                except Exception as e:
-                                    logger.warning(f"[SemanticEmbeddingService]     → Could not list contents: {e}")
+                        resolved_path = _resolve_model_path(str(model_folder))
+                        if resolved_path:
+                            local_model_path = resolved_path
+                            logger.info(f"[SemanticEmbeddingService]     → CHECKMARK VALID MODEL FOUND at {local_model_path}!")
+                            break
+                        else:
+                            logger.info(f"[SemanticEmbeddingService]     → Exists: {model_folder.exists()}")
 
                     if not local_model_path:
                         logger.warning(f"[SemanticEmbeddingService] ✗ No valid model found in any location")
