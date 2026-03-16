@@ -126,10 +126,11 @@ class GateEngine:
         builder_evidence: Optional[Dict[str, dict]],
     ) -> bool:
         """
-        Screenshot rescue is also narrow.
+        Screenshot rescue logic.
 
-        Only explicit screenshot-style signals may rescue a candidate.
-        Weak semantic similarity alone is not enough.
+        A candidate may bypass the strict screenshot gate if it has a
+        sufficient screenshot score (either from builder or semantic prior)
+        and at least one valid structural signal.
         """
         if not builder_evidence:
             return False
@@ -140,14 +141,25 @@ class GateEngine:
 
         screenshot_score = float(evidence.get("screenshot_score", 0.0) or 0.0)
 
-        return bool(
-            evidence.get("is_screenshot_flag")
-            or evidence.get("filename_marker")
-            or evidence.get("ui_text_hit")
-            or evidence.get("looks_like_phone_screen")
-            or evidence.get("flat_ui_fallback")
-            or screenshot_score >= 0.30
-        )
+        # 1. Admit anything with a high screenshot score
+        if screenshot_score >= 0.30:
+            return True
+
+        # 2. Rescue assets with valid structural signals if they have a
+        # positive score (either from builder or 0.20 supplement prior).
+        # This aligns with orchestrator admissibility.
+        has_structural = any([
+            bool(evidence.get("is_screenshot_flag")),
+            bool(evidence.get("filename_marker")),
+            bool(evidence.get("ui_text_hit")),
+            bool(evidence.get("looks_like_phone_screen")),
+            bool(evidence.get("flat_ui_fallback")),
+        ])
+
+        if has_structural and screenshot_score >= 0.15:
+            return True
+
+        return False
 
     def apply(
         self,

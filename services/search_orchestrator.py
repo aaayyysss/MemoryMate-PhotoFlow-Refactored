@@ -1189,16 +1189,24 @@ class SearchOrchestrator:
         """
         Weak semantic similarity may help ranking, but must not create
         screenshot legality by itself.
+
+        Admit supplemental hits if they have at least one valid structural
+        signal and meet a permissive semantic threshold.
         """
         evidence = type_evidence.get(path, {}) or {}
-        if self._has_structural_screenshot_signal(evidence):
+
+        # 1. Admit anything the builder already liked
+        builder_score = float(evidence.get("screenshot_score", 0.0) or 0.0)
+        if builder_score >= 0.20:
             return True
 
-        score = float(evidence.get("screenshot_score", 0.0) or 0.0)
-        if score >= 0.35:
+        # 2. Rescue assets with structural signals if they have CLIP support
+        has_structural = self._has_structural_screenshot_signal(evidence)
+        if has_structural and sem_score >= 0.23:
             return True
 
-        if score >= 0.25 and self._has_structural_screenshot_signal(evidence):
+        # 3. High confidence rescue (strong builder score but not quite 0.20)
+        if builder_score >= 0.15 and sem_score >= 0.21:
             return True
 
         return False
@@ -1212,14 +1220,7 @@ class SearchOrchestrator:
         """Log granular diagnostics for empty type-family results."""
         diag = getattr(candidate_set, "diagnostics", None) or {}
         rejections = diag.get("rejections", {})
-        
         acceptance_reasons = diag.get("acceptance_reasons", {})
-        if acceptance_reasons:
-            logger.info(
-                f"[SearchOrchestrator] SCREENSHOT_ACCEPTANCE_REASONS: "
-                f"{acceptance_reasons}"
-            )        
-        
         has_any_screenshot = diag.get("has_any_screenshot_flag", False)
         has_any_ocr = diag.get("has_any_ocr_text", False)
 
@@ -1230,6 +1231,12 @@ class SearchOrchestrator:
             f"has_ocr_text={has_any_ocr} "
             f"rejections={rejections}"
         )
+
+        if acceptance_reasons:
+            logger.info(
+                f"[SearchOrchestrator] SCREENSHOT_ACCEPTANCE_REASONS: "
+                f"{acceptance_reasons}"
+            )
 
     def get_last_candidate_diagnostics(self) -> dict:
         """Return diagnostics from the most recent candidate builder run."""
@@ -1915,7 +1922,7 @@ class SearchOrchestrator:
                 logger.info(
                     f"[SearchOrchestrator] SCREENSHOT_SUPPLEMENT_FILTER: "
                     f"admitted={supplement_admitted} rejected={supplement_rejected} "
-                    f"weak_semantic_only={weak_semantic_only}"
+                    f"weak_semantic_only={weak_semantic_only} "
                     f"builder_acceptance={builder_diag.get('acceptance_reasons', {})}"
                 )
 

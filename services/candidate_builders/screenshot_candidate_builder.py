@@ -56,7 +56,7 @@ _UI_TERMS = frozenset({
     "edit", "done", "reply", "delete", "save", "profile",
     "messages", "chat", "feed", "explore", "reels",
     "airplane mode", "bluetooth", "location", "brightness",
-    "volume", "camera", "photos", "gallery",
+    "volume", "camera", "photos", "gallery", "messages",
     "call", "contacts", "storage", "privacy", "security",
     "update", "control center", "quick settings", "app store",
     "google play", "status bar", "signal", "alarm",
@@ -127,25 +127,30 @@ class ScreenshotCandidateBuilder(BaseCandidateBuilder):
         evidence_by_path = {}
         rejection_counts = {}
         acceptance_counts = {}
-        
+
         for path, meta in project_meta.items():
             score, evidence = self._evaluate_screenshot(
                 path, meta, text_terms
             )
+            evidence["screenshot_score"] = score
+
             if score > 0.0:
-                evidence["screenshot_score"] = score
                 candidates.append(path)
                 evidence_by_path[path] = evidence
 
                 accept_reason = evidence.get("acceptance_reason", "accepted")
                 acceptance_counts[accept_reason] = acceptance_counts.get(accept_reason, 0) + 1
-                
+
+                if len(candidates) >= limit:
+                    break
             else:
                 reason = evidence.get("rejection_reason", "not_screenshot")
                 rejection_counts[reason] = rejection_counts.get(reason, 0) + 1
 
-            if len(candidates) >= limit:
-                break
+                # Phase 2: Preserve evidence for weak/rejected signals
+                # so the orchestrator fusion path can still "rescue" them.
+                if reason == "weak_screenshot_score":
+                    evidence_by_path[path] = evidence
 
         # Sort by screenshot_score descending
         candidates.sort(
