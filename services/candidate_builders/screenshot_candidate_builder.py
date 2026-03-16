@@ -87,16 +87,21 @@ class ScreenshotCandidateBuilder(BaseCandidateBuilder):
             score, evidence = self._evaluate_screenshot(
                 path, meta, text_terms
             )
+            evidence["screenshot_score"] = score
+
             if score > 0.0:
-                evidence["screenshot_score"] = score
                 candidates.append(path)
                 evidence_by_path[path] = evidence
+                if len(candidates) >= limit:
+                    break
             else:
                 reason = evidence.get("rejection_reason", "not_screenshot")
                 rejection_counts[reason] = rejection_counts.get(reason, 0) + 1
 
-            if len(candidates) >= limit:
-                break
+                # Phase 2: Preserve evidence for weak/rejected signals
+                # so the orchestrator fusion path can still "rescue" them.
+                if reason == "weak_screenshot_score":
+                    evidence_by_path[path] = evidence
 
         # Sort by screenshot_score descending
         candidates.sort(

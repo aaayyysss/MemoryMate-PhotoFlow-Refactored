@@ -1189,16 +1189,24 @@ class SearchOrchestrator:
         """
         Weak semantic similarity may help ranking, but must not create
         screenshot legality by itself.
+
+        Admit supplemental hits if they have at least one valid structural
+        signal and meet a permissive semantic threshold.
         """
         evidence = type_evidence.get(path, {}) or {}
-        if self._has_structural_screenshot_signal(evidence):
+
+        # 1. Admit anything the builder already liked
+        builder_score = float(evidence.get("screenshot_score", 0.0) or 0.0)
+        if builder_score >= 0.20:
             return True
 
-        score = float(evidence.get("screenshot_score", 0.0) or 0.0)
-        if score >= 0.35:
+        # 2. Rescue assets with structural signals if they have CLIP support
+        has_structural = self._has_structural_screenshot_signal(evidence)
+        if has_structural and sem_score >= 0.23:
             return True
 
-        if score >= 0.25 and self._has_structural_screenshot_signal(evidence):
+        # 3. High confidence rescue (strong builder score but not quite 0.20)
+        if builder_score >= 0.15 and sem_score >= 0.21:
             return True
 
         return False
