@@ -19,6 +19,18 @@ class EXIFParser:
         self._heic_support_enabled = False
         self._ffprobe_path = self._resolve_ffprobe()
 
+        # Try to enable HEIC support
+        try:
+            from pillow_heif import register_heif_opener
+            register_heif_opener()
+            self._heic_support_enabled = True
+            print(f"[EXIFParser] ✓ HEIC/HEIF support enabled (pillow-heif)")
+        except ImportError:
+            print(f"[EXIFParser] ⚠️ pillow-heif not installed - HEIC files will use file dates")
+            print(f"[EXIFParser]    Install with: pip install pillow-heif")
+        except Exception as e:
+            print(f"[EXIFParser] ⚠️ Could not enable HEIC support: {e}")
+
     @staticmethod
     def _resolve_ffprobe() -> str:
         """Resolve ffprobe path from settings, falling back to PATH."""
@@ -31,18 +43,6 @@ class EXIFParser:
         except Exception:
             pass
         return 'ffprobe'
-
-        # Try to enable HEIC support
-        try:
-            from pillow_heif import register_heif_opener
-            register_heif_opener()
-            self._heic_support_enabled = True
-            print(f"[EXIFParser] ✓ HEIC/HEIF support enabled (pillow-heif)")
-        except ImportError:
-            print(f"[EXIFParser] ⚠️ pillow-heif not installed - HEIC files will use file dates")
-            print(f"[EXIFParser]    Install with: pip install pillow-heif")
-        except Exception as e:
-            print(f"[EXIFParser] ⚠️ Could not enable HEIC support: {e}")
 
     def get_capture_date(self, file_path: str) -> datetime:
         """
@@ -477,21 +477,21 @@ class EXIFParser:
                         # ENHANCED DEFENSIVE FIX: Handle various GPSInfo formats robustly
                         # Issue: piexif sometimes writes GPSInfo as integer IDs instead of dictionaries
                         # This causes "GPSInfo value is not iterable" errors during rescanning
-                        
+
                         try:
                             # Case 1: Proper dictionary (normal case)
                             if isinstance(value, dict):
                                 for gps_tag_id in value:
                                     gps_tag_name = GPSTAGS.get(gps_tag_id, gps_tag_id)
                                     gps_data[gps_tag_name] = value[gps_tag_id]
-                            
+
                             # Case 2: Iterable object (list, tuple, custom iterable)
                             elif hasattr(value, '__iter__') and not isinstance(value, (str, bytes)):
                                 # Try to iterate and build GPS data dictionary
                                 for gps_tag_id in value:
                                     gps_tag_name = GPSTAGS.get(gps_tag_id, gps_tag_id)
                                     gps_data[gps_tag_name] = value[gps_tag_id]
-                            
+
                             # Case 3: Integer or other non-iterable (problematic case from piexif)
                             else:
                                 # This is the source of the warning - GPSInfo written as integer
@@ -499,7 +499,7 @@ class EXIFParser:
                                 print(f"[EXIFParser] GPSInfo is non-iterable type {type(value)}, likely from piexif - skipping GPS parsing")
                                 # Continue without GPS data - this is normal for some photo sources
                                 continue
-                                
+
                         except (TypeError, KeyError, AttributeError) as e:
                             # Gracefully handle any iteration errors
                             print(f"[EXIFParser] GPS iteration error (likely from piexif-written GPS): {e}")
