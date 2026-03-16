@@ -1220,6 +1220,7 @@ class SearchOrchestrator:
         """Log granular diagnostics for empty type-family results."""
         diag = candidate_set.diagnostics or {}
         rejections = diag.get("rejections", {})
+        acceptance_reasons = diag.get("acceptance_reasons", {})
         has_any_screenshot = diag.get("has_any_screenshot_flag", False)
         has_any_ocr = diag.get("has_any_ocr_text", False)
 
@@ -1230,6 +1231,12 @@ class SearchOrchestrator:
             f"has_ocr_text={has_any_ocr} "
             f"rejections={rejections}"
         )
+
+        if acceptance_reasons:
+            logger.info(
+                f"[SearchOrchestrator] SCREENSHOT_ACCEPTANCE_REASONS: "
+                f"{acceptance_reasons}"
+            )
 
     def get_last_candidate_diagnostics(self) -> dict:
         """Return diagnostics from the most recent candidate builder run."""
@@ -1443,7 +1450,14 @@ class SearchOrchestrator:
         if builder_intent and builder_intent.family_hint:
             current_family = builder_intent.family_hint
 
+        # Phase 10: utility presets are metadata-only first-class paths.
+        # Do not allow any FAMILY_FALLBACK-style logging before this return.
         if current_family == "utility":
+            logger.info(
+                f"[SearchOrchestrator] UTILITY_ROUTE: "
+                f"preset={plan.preset_id!r} family='utility' "
+                f"executing metadata-only fast path"
+            )
             return self._execute_utility_metadata_only(
                 plan=plan,
                 project_meta=project_meta,
@@ -1908,7 +1922,8 @@ class SearchOrchestrator:
                 logger.info(
                     f"[SearchOrchestrator] SCREENSHOT_SUPPLEMENT_FILTER: "
                     f"admitted={supplement_admitted} rejected={supplement_rejected} "
-                    f"weak_semantic_only={weak_semantic_only}"
+                    f"weak_semantic_only={weak_semantic_only} "
+                    f"builder_acceptance={builder_diag.get('acceptance_reasons', {})}"
                 )
 
             for path in type_structural_candidates:

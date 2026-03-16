@@ -102,27 +102,53 @@ except ImportError:
 
 
 def _has_model_weights(model_dir: str) -> bool:
-    """Check if a local model directory contains valid weight files."""
+    """
+    Check if a local model directory contains valid weight files.
+
+    Accepts either:
+    - a direct HuggingFace model folder with config + weights, or
+    - a HuggingFace cache root with snapshots/<hash>/config.json, or
+    - a cache root with refs/main pointing to a valid snapshot.
+    """
     p = Path(model_dir)
-    if not (p / "config.json").exists():
+    if not p.exists():
         return False
-    weight_candidates = [
-        p / "model.safetensors",
-        p / "pytorch_model.bin",
-        p / "pytorch_model.bin.index.json",
-        p / "tf_model.h5",
-        p / "flax_model.msgpack",
-    ]
-    if any(x.exists() for x in weight_candidates):
+
+    def _folder_has_direct_weights(folder: Path) -> bool:
+        if not (folder / "config.json").exists():
+            return False
+        weight_candidates = [
+            folder / "model.safetensors",
+            folder / "pytorch_model.bin",
+            folder / "pytorch_model.bin.index.json",
+            folder / "tf_model.h5",
+            folder / "flax_model.msgpack",
+        ]
+        return any(x.exists() for x in weight_candidates)
+
+    # Direct model root
+    if _folder_has_direct_weights(p):
         return True
 
-    # Also check for HuggingFace cache-style snapshots subdirectory
+    # HF cache root with snapshots
     snapshots_dir = p / "snapshots"
     if snapshots_dir.exists() and snapshots_dir.is_dir():
+        # Prefer refs/main if available
+        refs_main = p / "refs" / "main"
         try:
-            snapshot_folders = [d for d in snapshots_dir.iterdir() if d.is_dir()]
-            for folder in snapshot_folders:
-                if (folder / "config.json").exists():
+            if refs_main.exists():
+                snapshot_name = refs_main.read_text(encoding="utf-8").strip()
+                if snapshot_name:
+                    candidate = snapshots_dir / snapshot_name
+                    if candidate.exists() and _folder_has_direct_weights(candidate):
+                        return True
+        except Exception:
+            pass
+
+        # Fallback: any valid snapshot
+        try:
+            for folder in snapshots_dir.iterdir():
+                if folder.is_dir() and _folder_has_direct_weights(folder):
                     return True
         except Exception:
             pass
@@ -381,13 +407,17 @@ class SemanticEmbeddingService:
                     # Validate model path
                     if clip_path_obj.exists() and _has_model_weights(str(clip_path_obj)):
                         local_model_path = str(clip_path_obj)
-                        logger.info(f"[SemanticEmbeddingService] CHECKMARK Using stored preference: {local_model_path}")
+                        logger.info(
+                            f"[SemanticEmbeddingService] CHECKMARK Using stored preference: "
+                            f"{local_model_path}"
+                        )
                     else:
                         logger.warning(
                             f"[SemanticEmbeddingService] Stored preference path invalid, clearing setting:\n"
                             f"  Path: {clip_path_obj}\n"
                             f"  Exists: {clip_path_obj.exists()}\n"
-                            f"  Has model weights: {_has_model_weights(str(clip_path_obj)) if clip_path_obj.exists() else False}"
+                            f"  Has model weights: "
+                            f"{_has_model_weights(str(clip_path_obj)) if clip_path_obj.exists() else False}"
                         )
                         # Clear the invalid path so it won't be retried on every startup
                         try:
