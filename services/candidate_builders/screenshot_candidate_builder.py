@@ -141,10 +141,11 @@ class ScreenshotCandidateBuilder(BaseCandidateBuilder):
                 reason = evidence.get("rejection_reason", "not_screenshot")
                 rejection_counts[reason] = rejection_counts.get(reason, 0) + 1
 
-                # Phase 2: Preserve evidence for weak/rejected signals
+                # Phase 2: Preserve evidence for rejected signals
                 # so the orchestrator fusion path can still "rescue" them.
-                if reason == "weak_screenshot_score":
-                    evidence_by_path[path] = evidence
+                # Only exclude hard negatives (faces, too small) if desired,
+                # but the orchestrator handles admission logic.
+                evidence_by_path[path] = evidence
 
         # Sort by screenshot_score descending
         candidates.sort(

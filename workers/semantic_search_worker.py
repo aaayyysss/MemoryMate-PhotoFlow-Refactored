@@ -1,31 +1,15 @@
 """
 SemanticSearchWorker - Async Semantic Search
 
-Version: 1.0.0
-Date: 2026-02-08
+Version: 1.1.0
+Date: 2026-03-14
 
 Qt QThread worker that performs semantic search in the background,
 following Google Photos / iOS Photos patterns for responsive search UX.
 
-Architecture:
-    - Called from SemanticSearchWidget when user types a query
-    - Debounced at the widget level (250-350ms)
-    - Cancellable if user types new query
-    - Reports progress for model warmup and search stages
-    - Integrates with JobManager for visibility
-
-Usage:
-    from workers.semantic_search_worker import SemanticSearchWorker
-
-    worker = SemanticSearchWorker(
-        project_id=1,
-        query="sunset beach",
-        limit=100,
-        threshold=0.25
-    )
-    worker.signals.results_ready.connect(on_results)
-    worker.signals.status.connect(on_status)
-    worker.start()
+STABILITY FIX: All CLIP text encoding is routed through the dedicated
+safe executor thread (ClipExecutor) to prevent native access violations
+(0xC0000005) on Windows.
 """
 
 import time
@@ -102,7 +86,7 @@ class SemanticSearchWorker(QThread):
     Thread Safety:
     - Uses threading.Event for cancellation
     - All UI updates via signals
-    - Service handles its own thread safety
+    - Routes CLIP text encoding through dedicated ClipExecutor thread
     """
 
     def __init__(self,
@@ -222,12 +206,16 @@ class SemanticSearchWorker(QThread):
                 self.signals.progress.emit(30, "Loading CLIP model...")
                 logger.info("[SemanticSearchWorker] Model not loaded, triggering load...")
 
-            # Step 4: Encode query text
+            # Step 4: Encode query text via safe executor thread
+            # STABILITY FIX: Calling encode_text directly from QThreadPool/QThread
+            # causes native crashes on Windows. Routing through get_clip_executor().
             self.signals.progress.emit(50, "Encoding query...")
             encode_start = time.time()
 
             try:
-                query_embedding = service.encode_text(self.query)
+                from services.semantic_search_service import get_clip_executor
+                executor = get_clip_executor()
+                query_embedding = executor.submit(service, self.query)
             except Exception as e:
                 logger.error(f"[SemanticSearchWorker] Failed to encode query: {e}")
                 self.signals.error.emit(f"Failed to encode query: {e}")
@@ -235,8 +223,8 @@ class SemanticSearchWorker(QThread):
                 return
 
             if query_embedding is None:
-                logger.error("[SemanticSearchWorker] encode_text returned None for query: %r", self.query)
-                self.signals.error.emit("Failed to encode query (model returned None)")
+                logger.error("[SemanticSearchWorker] Safe executor returned None for query: %r", self.query)
+                self.signals.error.emit("Failed to encode query (model timeout or error)")
                 self.signals.finished.emit()
                 return
 
@@ -368,8 +356,9 @@ class SemanticSearchWorker(QThread):
 
             with db.get_connection() as conn:
                 # Get all embeddings for project
+                # STABILITY FIX: Include 'dim' to detect precision correctly
                 cursor = conn.execute("""
-                    SELECT se.photo_id, se.embedding, pm.path
+                    SELECT se.photo_id, se.embedding, se.dim, pm.path
                     FROM semantic_embeddings se
                     JOIN photo_metadata pm ON se.photo_id = pm.id
                     WHERE pm.project_id = ?
@@ -390,10 +379,21 @@ class SemanticSearchWorker(QThread):
                         return results
 
                     try:
-                        emb = np.frombuffer(row['embedding'], dtype=np.float32)
-                        # Handle float16 storage
-                        if len(emb) == 0:
-                            emb = np.frombuffer(row['embedding'], dtype=np.float16).astype(np.float32)
+                        embedding_blob = row['embedding']
+                        dim = row['dim']
+
+                        # Handle potential string-blob from older SQLite versions
+                        if isinstance(embedding_blob, str):
+                            embedding_blob = embedding_blob.encode('latin1')
+
+                        # STABILITY FIX: Always .copy() after frombuffer to prevent
+                        # intermittent memory access violations.
+                        if dim < 0:
+                            # Half-precision format
+                            emb = np.frombuffer(embedding_blob, dtype='float16').astype('float32').copy()
+                        else:
+                            # Legacy full-precision format
+                            emb = np.frombuffer(embedding_blob, dtype='float32').copy()
 
                         if len(emb) > 0:
                             photo_ids.append(row['photo_id'])
@@ -411,7 +411,7 @@ class SemanticSearchWorker(QThread):
 
                 # Normalize embeddings if needed
                 norms = np.linalg.norm(embeddings_matrix, axis=1, keepdims=True)
-                norms = np.where(norms > 0, norms, 1)  # Avoid division by zero
+                norms = np.where(norms > 0, norms, 1e-8)  # Avoid division by zero
                 embeddings_matrix = embeddings_matrix / norms
 
                 # Normalize query
