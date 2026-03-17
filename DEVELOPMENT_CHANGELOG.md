@@ -247,4 +247,26 @@ A series of fixes targeting native access violation crashes (`0xC0000005`, `0xC0
 
 ---
 
-*Last updated: 2026-03-14*
+## Phase 2 Refinement & Stability Overhaul
+
+### Screenshot Detection & Fusion (Phase 2 Core)
+- Refined **`ScreenshotCandidateBuilder`** to ensure informative rejection reasons (`no_screenshot_signals`, `weak_screenshot_score`) are always assigned.
+- Enabled evidence preservation for rejected candidates, allowing the **`SearchOrchestrator`** to perform "semantic rescue" fusion for near-miss screenshots.
+- Verified "Circular Reasoning Fix" in Orchestrator to prevent supplemental hits from self-admitting without independent structural signals.
+
+### Database Integrity & Transaction Safety
+- Resolved `sqlite3.IntegrityError: FOREIGN KEY constraint failed` in asset backfill.
+- Updated **`BaseRepository`** and all repository classes to support shared connections.
+- Refactored **`AssetService`** to wrap the hashing and instance-linking loop in a single atomic transaction.
+
+### Multi-Threaded Stability (CLIP/Windows)
+- Refactored **`SemanticSearchWorker`** to route all text encoding through the dedicated safe `ClipExecutor` thread.
+- Implemented robust embedding deserialization with mandatory `.copy()` to prevent memory access violations on Windows.
+
+### Test Suite Modernization
+- Updated integration tests for Repositories, `PhotoScanService`, and `MetadataService` to align with Schema v3.0.0 and current API signatures.
+- Verified all 247 search integration tests pass with the refined fusion logic.
+
+---
+
+*Last updated: 2026-03-15*
