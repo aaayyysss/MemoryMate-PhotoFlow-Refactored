@@ -121,7 +121,7 @@ class FaceQualityScorer:
         try:
             img = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
             if img is None:
-                return 0.0
+                return 0.5  # Neutral score if can't load file
 
             # Calculate mean brightness
             mean_brightness = np.mean(img)

@@ -150,10 +150,39 @@ class FaceDetectionWorker(QRunnable):
             # FEATURE #1: Get photos to process (either from scope selection or all project photos)
             metric_get_photos = monitor.record_operation("get_photos_to_process")
             if self.photo_paths is not None:
-                # Use scope-selected photo paths
-                # Convert list of strings to list of dicts for consistency with DB query format
-                photos = [{"path": path} for path in self.photo_paths]
-                logger.info(f"[FaceDetectionWorker] Using scope-selected photos: {len(photos)} photos")
+                # PROJECT_SCOPE_SEAL: Validate provided paths belong to this project and are NOT videos.
+                # This prevents processing paths from another project if the UI state is stale.
+                VIDEO_EXTENSIONS = (
+                    '.mp4', '.mov', '.avi', '.mkv', '.wmv', '.flv', '.webm',
+                    '.m4v', '.mpg', '.mpeg', '.3gp', '.ogv'
+                )
+                video_filter = " AND " + " AND ".join(
+                    [f"LOWER(image_path) NOT LIKE '%{ext}'" for ext in VIDEO_EXTENSIONS]
+                )
+
+                valid_paths = []
+                with db._connect() as conn:
+                    batch_size = 500
+                    for i in range(0, len(self.photo_paths), batch_size):
+                        batch = self.photo_paths[i:i + batch_size]
+                        placeholders = ','.join(['?'] * len(batch))
+                        # Use project_images to ensure project membership
+                        cur = conn.execute(f"""
+                            SELECT DISTINCT image_path FROM project_images
+                            WHERE project_id = ? AND image_path IN ({placeholders})
+                            {video_filter}
+                        """, (self.project_id, *batch))
+                        valid_paths.extend([row[0] for row in cur.fetchall()])
+
+                if len(valid_paths) < len(self.photo_paths):
+                    logger.warning(
+                        f"[FaceDetectionWorker] PROJECT_SCOPE_SEAL: Filtered "
+                        f"{len(self.photo_paths) - len(valid_paths)} paths that "
+                        f"do not belong to project {self.project_id} or are videos"
+                    )
+
+                photos = [{"path": path} for path in valid_paths]
+                logger.info(f"[FaceDetectionWorker] Using validated scoped photos: {len(photos)} photos")
             else:
                 # Query all photos for this project
                 photos = self._get_photos_to_process(db)
