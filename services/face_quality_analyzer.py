@@ -129,7 +129,21 @@ class FaceQualityAnalyzer:
         """
         try:
             # Load image
-            img = cv2.imread(str(image_path))
+            # UNICODE PATH FIX (2026-03-14): cv2.imread fails on Windows non-ASCII paths.
+            # Use PIL then convert to BGR numpy array for OpenCV compatibility.
+            from PIL import Image
+            try:
+                with Image.open(image_path) as pil_img:
+                    # Ensure image is in RGB before converting to numpy
+                    if pil_img.mode != 'RGB':
+                        pil_img = pil_img.convert('RGB')
+                    img_rgb = np.array(pil_img)
+                    # Convert RGB (PIL) to BGR (OpenCV)
+                    img = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
+            except Exception as load_err:
+                logger.warning(f"Robust loader failed for {image_path}: {load_err}")
+                img = None
+
             if img is None:
                 logger.warning(f"Failed to load image: {image_path}")
                 return self._default_metrics(confidence)

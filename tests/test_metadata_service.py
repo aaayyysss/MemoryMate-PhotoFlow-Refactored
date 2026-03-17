@@ -21,7 +21,7 @@ class TestMetadataService:
 
     def test_extract_basic_metadata_jpeg(self, service: MetadataService, sample_image: Path):
         """Test basic metadata extraction from JPEG."""
-        width, height, date_taken = service.extract_basic_metadata(str(sample_image))
+        width, height, date_taken, lat, lon, content_hash = service.extract_basic_metadata(str(sample_image))
 
         assert width == 800
         assert height == 600
@@ -95,7 +95,7 @@ class TestMetadataService:
         ]
 
         for date_str, should_parse in test_cases:
-            result = service._parse_exif_date(date_str)
+            result = service.parse_date(date_str)
             if should_parse:
                 assert result is not None, f"Failed to parse: {date_str}"
             else:
@@ -104,19 +104,22 @@ class TestMetadataService:
     def test_compute_created_fields_from_dates(self, service: MetadataService):
         """Test created field computation from date_taken and modified."""
         # Case 1: Has date_taken
-        ts, date = service.compute_created_fields_from_dates("2024:10:15 14:30:45", "2024-10-16 10:00:00")
+        ts, date, year = service.compute_created_fields_from_dates("2024:10:15 14:30:45", "2024-10-16 10:00:00")
         assert ts is not None
         assert date == "2024-10-15"
+        assert year == 2024
 
         # Case 2: No date_taken, use modified
-        ts, date = service.compute_created_fields_from_dates(None, "2024-10-16 10:00:00")
+        ts, date, year = service.compute_created_fields_from_dates(None, "2024-10-16 10:00:00")
         assert ts is not None
         assert date == "2024-10-16"
+        assert year == 2024
 
         # Case 3: Neither date_taken nor modified
-        ts, date = service.compute_created_fields_from_dates(None, None)
+        ts, date, year = service.compute_created_fields_from_dates(None, None)
         assert ts is None
         assert date is None
+        assert year is None
 
     def test_extract_multiple_images_batch(self, service: MetadataService, sample_images: list[Path]):
         """Test extracting metadata from multiple images."""

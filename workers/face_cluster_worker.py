@@ -185,6 +185,8 @@ class FaceClusterWorker(QRunnable):
                 # cartesian product: project_images is a many-to-many membership
                 # table (same photo in "all", date, folder branches), so a JOIN
                 # duplicates face rows for every branch the photo belongs to.
+                # ENHANCEMENT (2026-03-14): Exclude faces from screenshots to avoid UI pollution.
+                # Also ensures we only cluster faces for photos that exist in the project.
                 cur.execute("""
                     SELECT fc.id, fc.crop_path, fc.image_path, fc.embedding,
                            fc.confidence, fc.bbox_x, fc.bbox_y, fc.bbox_w, fc.bbox_h,
@@ -192,6 +194,7 @@ class FaceClusterWorker(QRunnable):
                     FROM face_crops fc
                     JOIN photo_metadata pm ON fc.image_path = pm.path
                     WHERE fc.project_id=? AND fc.embedding IS NOT NULL
+                      AND (pm.is_screenshot IS NULL OR pm.is_screenshot = 0)
                       AND EXISTS (
                           SELECT 1 FROM project_images pi
                           WHERE pi.image_path = fc.image_path
@@ -681,9 +684,13 @@ def cluster_faces_1st(project_id: int, eps: float = 0.35, min_samples: int = 2):
         cur = conn.cursor()
 
     # 1️: Get embeddings from existing face_crops table
+    # ENHANCEMENT (2026-03-14): Exclude screenshots from clustering.
     cur.execute("""
-        SELECT id, crop_path, image_path, embedding FROM face_crops
-        WHERE project_id=? AND embedding IS NOT NULL
+        SELECT fc.id, fc.crop_path, fc.image_path, fc.embedding
+        FROM face_crops fc
+        JOIN photo_metadata pm ON fc.image_path = pm.path
+        WHERE fc.project_id=? AND fc.embedding IS NOT NULL
+          AND (pm.is_screenshot IS NULL OR pm.is_screenshot = 0)
     """, (project_id,))
     rows = cur.fetchall()
     if not rows:

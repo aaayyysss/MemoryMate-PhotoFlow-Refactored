@@ -315,6 +315,9 @@ class PeopleSection(BaseSection):
 
     def _build_individuals_page(self, rows: List[Dict]) -> QWidget:
         """Build the Individuals page (existing face grid)."""
+        # Always reset cache to prevent stale card references
+        self._cards.clear()
+
         if not rows:
             placeholder = QLabel(
                 tr("sidebar.people.empty") if callable(tr)
@@ -364,9 +367,6 @@ class PeopleSection(BaseSection):
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         scroll.setFrameShape(QScrollArea.NoFrame)
-
-        # Reset cache
-        self._cards.clear()
         cards: List[PersonCard] = []
 
         for idx, row in enumerate(rows):
@@ -637,6 +637,18 @@ class PeopleSection(BaseSection):
         except Exception as e:
             logger.error(f"[PeopleSection] Unexpected error in _load_face_thumbnail: {e}", exc_info=True)
             return None
+
+    def _on_data_loaded(self, generation: int, data: list):
+        """Internal callback when face cluster data is loaded."""
+        self._loading = False
+
+        if generation != self._generation:
+            logger.debug(f"[PeopleSection] Discarding stale data (gen {generation} vs {self._generation})")
+            return
+
+        # Note: AccordionSidebar._on_section_loaded also listens to this signal
+        # to trigger the UI rebuild. This override is for logging and state reset.
+        logger.info(f"[PeopleSection] Data load confirmed: {len(data)} clusters at generation {generation}")
 
     def _on_error(self, generation: int, message: str):
         """Handle loading errors."""
