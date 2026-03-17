@@ -79,8 +79,14 @@ class _ClipExecutorThread(threading.Thread):
 _clip_executor: Optional[_ClipExecutorThread] = None
 _clip_executor_lock = threading.Lock()
 
-def _get_clip_executor() -> _ClipExecutorThread:
-    """Get or create the singleton CLIP executor thread."""
+def get_clip_executor() -> _ClipExecutorThread:
+    """
+    Get or create the singleton CLIP executor thread.
+
+    All CLIP text encoding must run on this dedicated thread to prevent
+    native access violations (0xC0000005) on Windows when multiple
+    Qt worker threads attempt inference simultaneously.
+    """
     global _clip_executor
     if _clip_executor is not None and _clip_executor.is_alive():
         return _clip_executor
@@ -151,7 +157,7 @@ class SemanticSearchService:
         )
 
         try:
-            executor = _get_clip_executor()
+            executor = get_clip_executor()
             query_embedding = executor.submit(self.embedder, query.strip())
         except Exception as e:
             logger.error(f"[SemanticSearchService] Failed to encode query '{query}': {e}")

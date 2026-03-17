@@ -123,7 +123,14 @@ class DatabaseConnection:
             # Return dictionary-like rows for easier access
             conn.row_factory = self._dict_factory
 
-            yield conn
+            if read_only:
+                yield conn
+            else:
+                # CRITICAL: Use transaction context manager for write connections
+                # This ensures that all operations are committed automatically
+                # or rolled back on error.
+                with conn:
+                    yield conn
 
         except sqlite3.Error as e:
             logger.error(f"Database connection error: {e}", exc_info=True)
