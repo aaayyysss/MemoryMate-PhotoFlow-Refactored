@@ -131,17 +131,21 @@ class FaceQualityAnalyzer:
             # Load image
             # UNICODE PATH FIX (2026-03-14): cv2.imread fails on Windows non-ASCII paths.
             # Use PIL then convert to BGR numpy array for OpenCV compatibility.
-            from PIL import Image
+            # Patch C: Enhanced Unicode-safe PIL loader with ImageOps support.
+            from PIL import Image, ImageOps
             try:
                 with Image.open(image_path) as pil_img:
+                    # Fix orientation
+                    pil_img = ImageOps.exif_transpose(pil_img)
                     # Ensure image is in RGB before converting to numpy
-                    if pil_img.mode != 'RGB':
-                        pil_img = pil_img.convert('RGB')
-                    img_rgb = np.array(pil_img)
+                    if pil_img.mode != "RGB":
+                        pil_img = pil_img.convert("RGB")
+
+                    arr = np.array(pil_img, copy=True)
                     # Convert RGB (PIL) to BGR (OpenCV)
-                    img = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
+                    img = cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
             except Exception as load_err:
-                logger.warning(f"Robust loader failed for {image_path}: {load_err}")
+                logger.warning(f"[FACE_QUALITY_LOAD_FAIL] Robust loader failed for {image_path}: {load_err}")
                 img = None
 
             if img is None:

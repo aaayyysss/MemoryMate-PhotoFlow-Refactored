@@ -33,9 +33,10 @@ DB_FILE = get_db_filename()
 
 
 class ReferenceDB:
-    # CRITICAL FIX: Singleton pattern with thread-safe connection pooling
-    # Prevents multiple instances creating separate connections
-    _instance = None
+    # Patch E: Per-DB singleton pattern with thread-safe connection pooling
+    # This prevents multiple instances for the same file while allowing separate instances
+    # for different project databases (supporting multi-project portability).
+    _instances = {}
     _lock = threading.Lock()
     _connection_pool = {}
     _pool_lock = threading.Lock()
@@ -43,7 +44,7 @@ class ReferenceDB:
     
     def __new__(cls, db_file=None):
         """
-        Thread-safe singleton implementation.
+        Thread-safe per-file singleton implementation.
 
         Returns the same ReferenceDB instance for the same db_file across all threads.
         This prevents connection proliferation and ensures thread safety.
@@ -51,15 +52,16 @@ class ReferenceDB:
         if db_file is None:
             db_file = get_db_filename()
 
-        # Normalize path for consistent pool key
+        # Normalize path to ensure absolute for consistent pool key
         db_file = os.path.abspath(db_file)
 
         with cls._lock:
-            if cls._instance is None:
-                cls._instance = super().__new__(cls)
-                cls._instance._initialized = False
+            if db_file not in cls._instances:
+                inst = super().__new__(cls)
+                inst._initialized = False
+                cls._instances[db_file] = inst
 
-        return cls._instance
+        return cls._instances[db_file]
 
     @classmethod
     def instance(cls, db_file=None):
@@ -5175,6 +5177,22 @@ class ReferenceDB:
             }
             for r in rows
         ]
+
+    def get_face_clusters_for_project(self, project_id):
+        """
+        Patch H: Canonical loader for face clusters with explicit branch join.
+        Provides display_name from branches table if not in reps.
+        """
+        with self._connect() as conn:
+            rows = conn.execute("""
+                SELECT r.branch_key, r.rep_path, r.count, b.display_name
+                FROM face_branch_reps r
+                LEFT JOIN branches b
+                  ON b.project_id=r.project_id AND b.branch_key=r.branch_key
+                WHERE r.project_id=?
+            """, (project_id,)).fetchall()
+
+        return [dict(row) for row in rows]
 
 
     def rename_face_cluster(self, project_id: int, branch_key: str, new_label: str):

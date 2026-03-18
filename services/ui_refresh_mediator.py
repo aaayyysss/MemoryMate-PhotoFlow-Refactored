@@ -178,10 +178,19 @@ class UIRefreshMediator(QObject):
             logger.warning("[UIRefreshMediator] Current refresh error: %s", e)
 
     def _current_project_id(self) -> Optional[int]:
-        """Best-effort project_id from grid or default."""
-        pid = getattr(getattr(self.main, "grid", None), "project_id", None)
-        if pid:
-            return pid
+        """Best-effort project_id from window or default."""
+        for attr in ("current_project_id", "_current_project_id", "project_id"):
+            pid = getattr(self.main, attr, None)
+            if pid:
+                return pid
+
+        store = getattr(self.main, "store", None)
+        if store:
+            try:
+                return store.get_state().get("project_id")
+            except:
+                pass
+
         try:
             from app_services import get_default_project_id
             return get_default_project_id()

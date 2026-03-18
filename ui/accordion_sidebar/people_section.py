@@ -646,6 +646,22 @@ class PeopleSection(BaseSection):
             logger.debug(f"[PeopleSection] Discarding stale data (gen {generation} vs {self._generation})")
             return
 
+        # Patch D: Strengthen UI consistency by ensuring freshly loaded data is stored and audited.
+        # This replaces any stale/partial results from earlier runs.
+        self._all_data = list(data or [])
+
+        logger.info(
+            "[PEOPLE_UI] loaded=%d clusters (gen %d)",
+            len(self._all_data), generation
+        )
+
+        # Mismatch guard: if the rendered cards don't match the new data, log a warning.
+        # This helps detect cases where create_content_widget wasn't called after load.
+        if hasattr(self, "_cards") and len(self._cards) > 0 and len(self._cards) != len(self._all_data):
+             # Only log if we have data (empty grid -> empty data is normal)
+             if len(self._all_data) > 0:
+                 logger.warning("[PEOPLE_UI_MISMATCH] cards=%d data=%d", len(self._cards), len(self._all_data))
+
         # Note: AccordionSidebar._on_section_loaded also listens to this signal
         # to trigger the UI rebuild. This override is for logging and state reset.
         logger.info(f"[PeopleSection] Data load confirmed: {len(data)} clusters at generation {generation}")
