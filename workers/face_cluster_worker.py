@@ -186,15 +186,16 @@ class FaceClusterWorker(QRunnable):
                 # table (same photo in "all", date, folder branches), so a JOIN
                 # duplicates face rows for every branch the photo belongs to.
                 # ENHANCEMENT (2026-03-14): Exclude faces from screenshots to avoid UI pollution.
-                # Also ensures we only cluster faces for photos that exist in the project.
+                # BUGFIX (2026-03-17): join with search_asset_features for is_screenshot.
                 cur.execute("""
                     SELECT fc.id, fc.crop_path, fc.image_path, fc.embedding,
                            fc.confidence, fc.bbox_x, fc.bbox_y, fc.bbox_w, fc.bbox_h,
                            pm.width, pm.height
                     FROM face_crops fc
                     JOIN photo_metadata pm ON fc.image_path = pm.path
+                    LEFT JOIN search_asset_features saf ON fc.image_path = saf.path
                     WHERE fc.project_id=? AND fc.embedding IS NOT NULL
-                      AND (pm.is_screenshot IS NULL OR pm.is_screenshot = 0)
+                      AND (saf.is_screenshot IS NULL OR saf.is_screenshot = 0)
                       AND EXISTS (
                           SELECT 1 FROM project_images pi
                           WHERE pi.image_path = fc.image_path
@@ -685,12 +686,14 @@ def cluster_faces_1st(project_id: int, eps: float = 0.35, min_samples: int = 2):
 
     # 1️: Get embeddings from existing face_crops table
     # ENHANCEMENT (2026-03-14): Exclude screenshots from clustering.
+    # BUGFIX (2026-03-17): join with search_asset_features for is_screenshot.
     cur.execute("""
         SELECT fc.id, fc.crop_path, fc.image_path, fc.embedding
         FROM face_crops fc
         JOIN photo_metadata pm ON fc.image_path = pm.path
+        LEFT JOIN search_asset_features saf ON fc.image_path = saf.path
         WHERE fc.project_id=? AND fc.embedding IS NOT NULL
-          AND (pm.is_screenshot IS NULL OR pm.is_screenshot = 0)
+          AND (saf.is_screenshot IS NULL OR saf.is_screenshot = 0)
     """, (project_id,))
     rows = cur.fetchall()
     if not rows:
@@ -784,9 +787,15 @@ def cluster_faces(project_id: int, eps: float = 0.35, min_samples: int = 2):
         cur = conn.cursor()
 
     # 1️: Get embeddings from existing face_crops table
+    # ENHANCEMENT (2026-03-14): Exclude screenshots from clustering.
+    # BUGFIX (2026-03-17): join with search_asset_features for is_screenshot.
     cur.execute("""
-        SELECT id, crop_path, image_path, embedding FROM face_crops
-        WHERE project_id=? AND embedding IS NOT NULL
+        SELECT fc.id, fc.crop_path, fc.image_path, fc.embedding
+        FROM face_crops fc
+        JOIN photo_metadata pm ON fc.image_path = pm.path
+        LEFT JOIN search_asset_features saf ON fc.image_path = saf.path
+        WHERE fc.project_id=? AND fc.embedding IS NOT NULL
+          AND (saf.is_screenshot IS NULL OR saf.is_screenshot = 0)
     """, (project_id,))
     rows = cur.fetchall()
     if not rows:
