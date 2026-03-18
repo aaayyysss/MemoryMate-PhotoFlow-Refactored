@@ -90,6 +90,15 @@ class FacePipelineService(QObject):
             seen.add(np)
             normalized.append(p)
 
+        # Video file extensions to exclude from face detection
+        VIDEO_EXTENSIONS = (
+            '.mp4', '.mov', '.avi', '.mkv', '.wmv', '.flv', '.webm',
+            '.m4v', '.mpg', '.mpeg', '.3gp', '.ogv'
+        )
+        video_filter = " AND " + " AND ".join(
+            [f"LOWER(pm.path) NOT LIKE '%{ext}'" for ext in VIDEO_EXTENSIONS]
+        )
+
         with ReferenceDB()._connect() as conn:
             placeholders = ",".join(["?"] * len(normalized))
             rows = conn.execute(f"""
@@ -97,7 +106,7 @@ class FacePipelineService(QObject):
                 FROM photo_metadata pm
                 WHERE pm.project_id = ?
                   AND pm.path IN ({placeholders})
-                  AND LOWER(COALESCE(pm.media_type, 'photo')) != 'video'
+                  {video_filter}
                   AND EXISTS (
                       SELECT 1 FROM project_images pi
                       WHERE pi.project_id = ?
