@@ -187,6 +187,7 @@ class FaceClusterWorker(QRunnable):
                 # duplicates face rows for every branch the photo belongs to.
                 # ENHANCEMENT (2026-03-14): Exclude faces from screenshots to avoid UI pollution.
                 # BUGFIX (2026-03-17): join with search_asset_features for is_screenshot.
+                # Patch B.2: Robust screenshot exclusion (metadata + filename pattern)
                 cur.execute("""
                     SELECT fc.id, fc.crop_path, fc.image_path, fc.embedding,
                            fc.confidence, fc.bbox_x, fc.bbox_y, fc.bbox_w, fc.bbox_h,
@@ -195,7 +196,10 @@ class FaceClusterWorker(QRunnable):
                     JOIN photo_metadata pm ON fc.image_path = pm.path
                     LEFT JOIN search_asset_features saf ON fc.image_path = saf.path
                     WHERE fc.project_id=? AND fc.embedding IS NOT NULL
-                      AND (saf.is_screenshot IS NULL OR saf.is_screenshot = 0)
+                      AND COALESCE(saf.is_screenshot, 0) = 0
+                      AND LOWER(fc.image_path) NOT LIKE '%screenshot%'
+                      AND LOWER(fc.image_path) NOT LIKE '%screen shot%'
+                      AND LOWER(fc.image_path) NOT LIKE '%bildschirmfoto%'
                       AND EXISTS (
                           SELECT 1 FROM project_images pi
                           WHERE pi.image_path = fc.image_path
@@ -205,7 +209,24 @@ class FaceClusterWorker(QRunnable):
                 rows = cur.fetchall()
 
                 # ── Invariant check: embeddings_loaded == faces_in_db ──
-                cur.execute("SELECT COUNT(*) FROM face_crops WHERE project_id=? AND embedding IS NOT NULL", (self.project_id,))
+                # Patch B.1: Use same filter as main query for invariant check
+                cur.execute("""
+                    SELECT COUNT(*)
+                    FROM face_crops fc
+                    JOIN photo_metadata pm ON fc.image_path = pm.path
+                    LEFT JOIN search_asset_features saf ON fc.image_path = saf.path
+                    WHERE fc.project_id=?
+                      AND fc.embedding IS NOT NULL
+                      AND COALESCE(saf.is_screenshot, 0) = 0
+                      AND LOWER(fc.image_path) NOT LIKE '%screenshot%'
+                      AND LOWER(fc.image_path) NOT LIKE '%screen shot%'
+                      AND LOWER(fc.image_path) NOT LIKE '%bildschirmfoto%'
+                      AND EXISTS (
+                          SELECT 1 FROM project_images pi
+                          WHERE pi.image_path = fc.image_path
+                            AND pi.project_id = fc.project_id
+                      )
+                """, (self.project_id,))
                 total_faces_in_db = cur.fetchone()[0]
 
                 if len(rows) != total_faces_in_db:
@@ -234,8 +255,25 @@ class FaceClusterWorker(QRunnable):
                 qualities = []  # Store (confidence, face_ratio, aspect_ratio) for quality filtering
                 bboxes = []  # Store bbox info for comprehensive quality analysis
                 _skipped_bad_size = 0
+                _skipped_low_quality = 0
+
+                # Patch B.3: Quality thresholds
+                min_conf = 0.55
+                min_ratio = 0.015
+
                 for rid, path, img_path, blob, conf, bx, by, bw, bh, img_w, img_h in rows:
                     try:
+                        # Pre-clustering quality filtering
+                        if conf is not None and conf < min_conf:
+                            _skipped_low_quality += 1
+                            continue
+
+                        if img_w and img_h:
+                            ratio = ((bw or 0) * (bh or 0)) / max(1, img_w * img_h)
+                            if ratio < min_ratio:
+                                _skipped_low_quality += 1
+                                continue
+
                         vec = np.frombuffer(blob, dtype=np.float32)
                         if vec.size == 0:
                             continue
@@ -243,25 +281,25 @@ class FaceClusterWorker(QRunnable):
                         if vec.size != 512:
                             _skipped_bad_size += 1
                             continue
-                        if True:  # preserves indentation from original `if vec.size:`
-                            ids.append(rid)
-                            paths.append(path)
-                            image_paths.append(img_path)
-                            vecs.append(vec)
 
-                            # Compute basic quality metrics for backward compatibility
-                            face_area = (bw or 0) * (bh or 0)
-                            img_area = (img_w or 0) * (img_h or 0)
-                            face_ratio = (face_area / img_area) if (face_area > 0 and img_area > 0) else 0.0
-                            aspect_ratio = (bw / bh) if (bw and bh) else 0.0
-                            qualities.append((conf or 0.0, face_ratio, aspect_ratio))
+                        ids.append(rid)
+                        paths.append(path)
+                        image_paths.append(img_path)
+                        vecs.append(vec)
 
-                            # Store bbox and image info for comprehensive quality analysis
-                            bboxes.append({
-                                'bbox': (bx or 0, by or 0, bw or 0, bh or 0),
-                                'image_path': img_path,
-                                'confidence': conf or 0.0
-                            })
+                        # Compute basic quality metrics for backward compatibility
+                        face_area = (bw or 0) * (bh or 0)
+                        img_area = (img_w or 0) * (img_h or 0)
+                        face_ratio = (face_area / img_area) if (face_area > 0 and img_area > 0) else 0.0
+                        aspect_ratio = (bw / bh) if (bw and bh) else 0.0
+                        qualities.append((conf or 0.0, face_ratio, aspect_ratio))
+
+                        # Store bbox and image info for comprehensive quality analysis
+                        bboxes.append({
+                            'bbox': (bx or 0, by or 0, bw or 0, bh or 0),
+                            'image_path': img_path,
+                            'confidence': conf or 0.0
+                        })
                     except Exception as e:
                         logger.warning(f"[FaceClusterWorker] Failed to parse embedding: {e}")
 
@@ -687,13 +725,17 @@ def cluster_faces_1st(project_id: int, eps: float = 0.35, min_samples: int = 2):
     # 1️: Get embeddings from existing face_crops table
     # ENHANCEMENT (2026-03-14): Exclude screenshots from clustering.
     # BUGFIX (2026-03-17): join with search_asset_features for is_screenshot.
+    # Patch B.2: Robust screenshot exclusion
     cur.execute("""
         SELECT fc.id, fc.crop_path, fc.image_path, fc.embedding
         FROM face_crops fc
         JOIN photo_metadata pm ON fc.image_path = pm.path
         LEFT JOIN search_asset_features saf ON fc.image_path = saf.path
         WHERE fc.project_id=? AND fc.embedding IS NOT NULL
-          AND (saf.is_screenshot IS NULL OR saf.is_screenshot = 0)
+          AND COALESCE(saf.is_screenshot, 0) = 0
+          AND LOWER(fc.image_path) NOT LIKE '%screenshot%'
+          AND LOWER(fc.image_path) NOT LIKE '%screen shot%'
+          AND LOWER(fc.image_path) NOT LIKE '%bildschirmfoto%'
     """, (project_id,))
     rows = cur.fetchall()
     if not rows:
@@ -789,13 +831,17 @@ def cluster_faces(project_id: int, eps: float = 0.35, min_samples: int = 2):
     # 1️: Get embeddings from existing face_crops table
     # ENHANCEMENT (2026-03-14): Exclude screenshots from clustering.
     # BUGFIX (2026-03-17): join with search_asset_features for is_screenshot.
+    # Patch B.2: Robust screenshot exclusion
     cur.execute("""
         SELECT fc.id, fc.crop_path, fc.image_path, fc.embedding
         FROM face_crops fc
         JOIN photo_metadata pm ON fc.image_path = pm.path
         LEFT JOIN search_asset_features saf ON fc.image_path = saf.path
         WHERE fc.project_id=? AND fc.embedding IS NOT NULL
-          AND (saf.is_screenshot IS NULL OR saf.is_screenshot = 0)
+          AND COALESCE(saf.is_screenshot, 0) = 0
+          AND LOWER(fc.image_path) NOT LIKE '%screenshot%'
+          AND LOWER(fc.image_path) NOT LIKE '%screen shot%'
+          AND LOWER(fc.image_path) NOT LIKE '%bildschirmfoto%'
     """, (project_id,))
     rows = cur.fetchall()
     if not rows:

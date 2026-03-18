@@ -112,8 +112,8 @@ from ui.ui_builder import UIBuilder
 from services.thumbnail_manager import ThumbnailManager
 
 from app_services import (
-    list_projects, get_default_project_id, 
-    scan_signals, scan_repository, 
+    list_projects, get_default_project_id,
+    scan_signals, scan_repository,
     clear_thumbnail_cache
 )
 
@@ -399,12 +399,12 @@ class MainWindow(QMainWindow):
             print(f"[MainWindow] 📍 Window position: x={window_x}, y={window_y}")
             print(f"[MainWindow] ✓ Window geometry: {self.geometry()}")
 
-        
+
         if not self.settings.get("show_decoder_warnings", False):
             print("🔇 Qt/Pillow decoder warnings silenced (per user settings).")
         else:
             print("⚠️ Decoder warnings ENABLED (verbose mode).")
-        
+
         self.active_tag_filter = "all"
 
         # === Toolbar & Menus via UIBuilder ===
@@ -546,18 +546,18 @@ class MainWindow(QMainWindow):
 
         # Get available layouts from manager and create menu actions
         available_layouts = self.layout_manager.get_available_layouts()
-        
+
         preferred_layout = "current"
         if hasattr(self, "settings") and self.settings:
             preferred_layout = self.settings.get("current_layout", "current")
         if preferred_layout not in available_layouts:
-            preferred_layout = "current"        
-        
+            preferred_layout = "current"
+
         for layout_id, layout_name in available_layouts.items():
             action = QAction(layout_name, self)
             action.setCheckable(True)
             action.setData(layout_id)
-            
+
 
             # Set Current Layout as checked by default
             if layout_id == preferred_layout:
@@ -663,12 +663,12 @@ class MainWindow(QMainWindow):
 
         act_detect_duplicates = menu_duplicates.addAction("Detect Duplicates...")
         act_detect_duplicates.setToolTip("Find exact and similar duplicates in your collection")
-        
+
         act_find_similar = menu_duplicates.addAction("Find Similar Photos...")
         act_find_similar.setToolTip("Discover visually similar photos using AI")
-        
+
         menu_duplicates.addSeparator()
-        
+
         act_dup_status = menu_duplicates.addAction("Show Duplicate Status")
         act_dup_status.setToolTip("Check current duplicate detection status")
 
@@ -775,7 +775,7 @@ class MainWindow(QMainWindow):
         # Help menu connections
         act_about.triggered.connect(lambda: QMessageBox.information(self, "About", "MemoryMate PhotoFlow (Alpha)\n© 2025"))
         act_shortcuts.triggered.connect(self._show_keyboard_shortcuts)
-        act_report_bug.triggered.connect(lambda: self._open_url("https://github.com/anthropics/memorymate-photoflow/issues"))    
+        act_report_bug.triggered.connect(lambda: self._open_url("https://github.com/anthropics/memorymate-photoflow/issues"))
 
         # 📂 Scan Repository Action
         act_scan_repo = tb.addAction(tr('toolbar.scan_repository'))
@@ -801,13 +801,13 @@ class MainWindow(QMainWindow):
         # Toggle action: show/hide the BackfillStatusPanel
         self.act_toggle_backfill = QAction(QIcon.fromTheme("view-sidebar"), tr('toolbar.backfill_panel'), self)
         self.act_toggle_backfill.setCheckable(True)
-        
+
         # read persisted preference (fallback True)
         _visible_default = bool(self.settings.get("show_backfill_panel", True))
-        
+
         self.act_toggle_backfill.setChecked(_visible_default)
         self.act_toggle_backfill.setToolTip("Show / hide Metadata Backfill status panel")
-        
+
         tb.addAction(self.act_toggle_backfill)
 
         # Connect toggle signal to a handler that safely creates/shows/hides the panel and persists the choice
@@ -975,7 +975,7 @@ class MainWindow(QMainWindow):
         print(f"[MainWindow] PHASE 1: Restoring project_id={default_pid} from session state")
 
         self.sidebar = SidebarQt(project_id=default_pid)
-        
+
 
         # === Lazy wiring for sidebar actions (now sidebar exists) ===
         def _on_fold_toggle(checked):
@@ -1271,15 +1271,15 @@ class MainWindow(QMainWindow):
                 """)
         self.grid.selectionChanged.connect(lambda *_: self._details_update_timer.start(100))
         self._details_update_timer.timeout.connect(_update_details_from_selection)
-        
+
         # 🏷️ ENHANCEMENT: Refresh details panel when tags change
         # This ensures tag overlay updates in real-time
         if hasattr(self.grid, 'tagsChanged'):
             self.grid.tagsChanged.connect(lambda *_: _update_details_from_selection())
-        
+
         # 📜 Initialize details panel with placeholder on startup
         QTimer.singleShot(100, _update_details_from_selection)
-        
+
         # === Initialize periodic progress pollers (for detached workers) ===
         try:
             self.app_root = APP_DIR  # base path for 'status/' folder
@@ -1550,7 +1550,7 @@ class MainWindow(QMainWindow):
 
         except Exception as e:
             print(f"[MainWindow] ⚠️ Could not start CLIP warmup: {e}")
-    
+
     def _deferred_cache_purge(self):
         """FIX #6: Run thumbnail cache purge in a background thread after startup."""
         if self._closing:
@@ -1622,7 +1622,7 @@ class MainWindow(QMainWindow):
     # _init_db_and_sidebar() removed in v9.3.0 - replaced by:
     # - _init_minimal_db_handle() for fast DB handle creation
     # - _enqueue_startup_maintenance_job() for background heavy work
-  
+
     # ============================================================
     # 🏷️ Tag filter handler
     # ============================================================
@@ -2526,13 +2526,13 @@ class MainWindow(QMainWindow):
 
                 # Exact duplicates (media assets)
                 cur.execute("""
-                    SELECT COUNT(*) FROM media_asset 
+                    SELECT COUNT(*) FROM media_asset
                     WHERE project_id = ? AND content_hash IS NOT NULL
                 """, (project_id,))
                 total_assets = cur.fetchone()[0]
 
                 cur.execute("""
-                    SELECT COUNT(DISTINCT content_hash) FROM media_asset 
+                    SELECT COUNT(DISTINCT content_hash) FROM media_asset
                     WHERE project_id = ? AND content_hash IS NOT NULL
                 """, (project_id,))
                 unique_hashes = cur.fetchone()[0]
@@ -2541,7 +2541,7 @@ class MainWindow(QMainWindow):
 
                 # Similar stacks
                 cur.execute("""
-                    SELECT COUNT(*) FROM media_stack 
+                    SELECT COUNT(*) FROM media_stack
                     WHERE project_id = ?
                 """, (project_id,))
                 similar_stacks = cur.fetchone()[0]
@@ -3169,7 +3169,7 @@ class MainWindow(QMainWindow):
                         self.sidebar.selectVideos.emit("all")
                     print(f"[MainWindow] PHASE 3 (SidebarQt): Restored all videos selection")
                 elif sel_id.startswith("year:"):
-                    # Year filter: "year:2024" 
+                    # Year filter: "year:2024"
                     year = sel_id.split(":", 1)[1]
                     if hasattr(self.sidebar, 'selectVideos'):
                         self.sidebar.selectVideos.emit(f"year:{year}")
@@ -3449,9 +3449,24 @@ class MainWindow(QMainWindow):
             from PySide6.QtWidgets import QMessageBox, QDialog
 
             # Get current project ID
-            project_id = getattr(self.grid, "project_id", None)
+            project_id = None
+
+            for attr in ("current_project_id", "_current_project_id", "project_id"):
+                project_id = getattr(self, attr, None)
+                if project_id:
+                    break
+
             if not project_id:
-                QMessageBox.warning(self, "No Project", "Please select a project first.")
+                store = getattr(self, "store", None)
+                if store:
+                    project_id = store.get_state().get("project_id")
+
+            if not project_id:
+                # Fallback to grid project_id
+                project_id = getattr(self.grid, "project_id", None)
+
+            if not project_id:
+                QMessageBox.warning(self, "No Project", "No active project selected.")
                 return
 
             # Scope selection dialog (user-initiated, OK to be modal)
@@ -3612,11 +3627,11 @@ class MainWindow(QMainWindow):
                 project_id = getattr(self.grid, "project_id", None)
                 paths = db.get_images_by_folder(folder_id, project_id=project_id)
                 context = f"folder({folder_id})"
-                
+
             except Exception as e:
                 print(f"[open_lightbox] folder fetch failed: {e}")
-        
-        
+
+
         # Branch context (if no folder result)
         print(f"[open_lightbox] paths={paths}")
         branch_key = getattr(self.grid, "branch_key", None)
@@ -3627,10 +3642,10 @@ class MainWindow(QMainWindow):
             except Exception as e:
                 print(f"[open_lightbox] branch fetch failed: {e}")
         print(f"[open_lightbox] branch_key={branch_key}")
-        
+
         # Date context (if no folder/branch result)
         date_key = getattr(self.grid, "date_key", None)
-        if not paths and date_key:           
+        if not paths and date_key:
             try:
                 if len(date_key) == 4 and date_key.isdigit():
                     paths = db.get_images_by_year(int(date_key))
@@ -3648,7 +3663,7 @@ class MainWindow(QMainWindow):
                 print(f"[open_lightbox] date fetch failed: {e}")
         print(f"[open_lightbox] date_key={date_key}")
         print(f"[open_lightbox] paths={paths}")
-        
+
         # --- Fallback 1: what's visible on the grid right now?
         if not paths and hasattr(self.grid, "get_visible_paths"):
             try:
@@ -4572,7 +4587,7 @@ class MainWindow(QMainWindow):
                 data = json.load(f)
             phase = data.get("phase")
             pct = data.get("percent", 0)
-            
+
 #            self.status_bar.showMessage(f"👥 Clustering {pct:.1f}% ({phase})")
             self.statusBar().showMessage(f"👥 Clustering {pct:.1f}% ({phase})")
 
@@ -4590,7 +4605,7 @@ class MainWindow(QMainWindow):
             with open(path, "r", encoding="utf-8") as f:
                 data = json.load(f)
             pct = data.get("percent", 0)
-            
+
 #            self.status_bar.showMessage(f"📸 Backfill {pct:.1f}%")
             phase = data.get("phase", "")
             self.statusBar().showMessage(f"📸 Backfill {pct:.1f}% ({phase})")
@@ -4598,7 +4613,7 @@ class MainWindow(QMainWindow):
 
             if data.get("phase") == "done":
 #                self.status_bar.showMessage("✅ Metadata backfill complete")
-                self.statusBar().showMessage(tr('status_messages.backfill_complete'))                
+                self.statusBar().showMessage(tr('status_messages.backfill_complete'))
                 os.remove(path)
         except Exception as e:
             print(f"[Status] backfill poll failed: {e}")

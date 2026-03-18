@@ -247,6 +247,14 @@ class ScreenshotCandidateBuilder(BaseCandidateBuilder):
             score += 0.10
         evidence["looks_like_phone_screen"] = looks_like_phone_screen
 
+        # Signal 4b: Tablet aspect ratio support (permissive geometry)
+        looks_like_tablet = ScreenshotCandidateBuilder._looks_like_tablet_or_desktop_capture(
+            w, h, face_count
+        )
+        if looks_like_tablet:
+            score += 0.05
+        evidence["looks_like_tablet"] = looks_like_tablet
+
         # Signal 5: flat PNG / UI-like fallback
         ext = os.path.splitext(path)[1].lower() if path else ""
         flat_ui_fallback = (
@@ -283,7 +291,9 @@ class ScreenshotCandidateBuilder(BaseCandidateBuilder):
 
         # Final threshold
         if score < 0.20:
-            if not is_screenshot and not filename_marker and not ui_hit and not looks_like_phone_screen and not flat_ui_fallback:
+            if (not is_screenshot and not filename_marker and not ui_hit
+                and not looks_like_phone_screen and not looks_like_tablet
+                and not flat_ui_fallback):
                 evidence["rejection_reason"] = "no_screenshot_signals"
             else:
                 evidence["rejection_reason"] = "weak_screenshot_score"

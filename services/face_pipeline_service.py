@@ -71,6 +71,52 @@ class FacePipelineService(QObject):
 
     # ── Public API ───────────────────────────────────────────
 
+    def _validate_scope_paths(self, project_id, photo_paths):
+        if not photo_paths:
+            return []
+
+        import os
+        from reference_db import ReferenceDB
+
+        normalized = []
+        seen = set()
+
+        for p in photo_paths:
+            if not p:
+                continue
+            np = os.path.normcase(os.path.normpath(p))
+            if np in seen:
+                continue
+            seen.add(np)
+            normalized.append(p)
+
+        with ReferenceDB()._connect() as conn:
+            placeholders = ",".join(["?"] * len(normalized))
+            rows = conn.execute(f"""
+                SELECT pm.path
+                FROM photo_metadata pm
+                WHERE pm.project_id = ?
+                  AND pm.path IN ({placeholders})
+                  AND LOWER(COALESCE(pm.media_type, 'photo')) != 'video'
+                  AND EXISTS (
+                      SELECT 1 FROM project_images pi
+                      WHERE pi.project_id = ?
+                        AND pi.image_path = pm.path
+                  )
+            """, (project_id, *normalized, project_id)).fetchall()
+
+        allowed = {r["path"] for r in rows}
+        validated = [p for p in normalized if p in allowed]
+
+        dropped = len(normalized) - len(validated)
+        if dropped:
+            logger.warning(
+                "[PROJECT_SCOPE_SEAL][SERVICE] requested=%d validated=%d dropped=%d project=%d",
+                len(normalized), len(validated), dropped, project_id
+            )
+
+        return validated
+
     def is_running(self, project_id: int) -> bool:
         with self._lock:
             return project_id in self._running
@@ -132,13 +178,15 @@ class FacePipelineService(QObject):
         from workers.face_pipeline_worker import FacePipelineWorker
         from services.job_manager import get_job_manager
 
+        validated_scope = self._validate_scope_paths(project_id, photo_paths)
+
         worker = FacePipelineWorker(
             project_id=project_id,
             model=model,
         )
         # If scoped paths were given, pass them through to the inner detection worker
-        if photo_paths:
-            worker._scoped_photo_paths = photo_paths
+        if photo_paths is not None:
+            worker._scoped_photo_paths = validated_scope
 
         # ── Register as tracked job with JobManager for Activity Center + History ─────
         scope_desc = f"{len(photo_paths)} photos" if photo_paths else "all photos"

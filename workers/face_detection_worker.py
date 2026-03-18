@@ -174,12 +174,23 @@ class FaceDetectionWorker(QRunnable):
                         """, (self.project_id, *batch))
                         valid_paths.extend([row[0] for row in cur.fetchall()])
 
-                if len(valid_paths) < len(self.photo_paths):
-                    logger.warning(
-                        f"[FaceDetectionWorker] PROJECT_SCOPE_SEAL: Filtered "
-                        f"{len(self.photo_paths) - len(valid_paths)} paths that "
-                        f"do not belong to project {self.project_id} or are videos"
-                    )
+                import os
+                normalized = []
+                seen = set()
+                for p in valid_paths:
+                    np = os.path.normcase(os.path.normpath(p))
+                    if np in seen:
+                        continue
+                    seen.add(np)
+                    normalized.append(p)
+                valid_paths = normalized
+
+                logger.warning(
+                    "[PROJECT_SCOPE_SEAL][WORKER] requested=%d validated=%d dropped=%d project=%d",
+                    len(self.photo_paths), len(valid_paths),
+                    len(self.photo_paths) - len(valid_paths),
+                    self.project_id
+                )
 
                 photos = [{"path": path} for path in valid_paths]
                 logger.info(f"[FaceDetectionWorker] Using validated scoped photos: {len(photos)} photos")

@@ -9,6 +9,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict
 import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class EXIFParser:
@@ -24,12 +27,11 @@ class EXIFParser:
             from pillow_heif import register_heif_opener
             register_heif_opener()
             self._heic_support_enabled = True
-            print(f"[EXIFParser] ✓ HEIC/HEIF support enabled (pillow-heif)")
+            logger.info("HEIC/HEIF support enabled (pillow-heif)")
         except ImportError:
-            print(f"[EXIFParser] ⚠️ pillow-heif not installed - HEIC files will use file dates")
-            print(f"[EXIFParser]    Install with: pip install pillow-heif")
+            logger.warning("pillow-heif not installed - HEIC files will use file dates")
         except Exception as e:
-            print(f"[EXIFParser] ⚠️ Could not enable HEIC support: {e}")
+            logger.error("Could not enable HEIC support: %s", e)
 
     @staticmethod
     def _resolve_ffprobe() -> str:
@@ -101,20 +103,20 @@ class EXIFParser:
             from PIL import Image
             from PIL.ExifTags import TAGS
 
-            print(f"[EXIFParser] Parsing EXIF from: {file_name}")
+            logger.debug("Parsing EXIF from: %s", file_name)
 
             # Try to open image
             # BUG-C2 FIX: Use context manager to prevent resource leak
             try:
                 with Image.open(file_path) as img:
-                    print(f"[EXIFParser]   ✓ Opened: {img.format} {img.size[0]}x{img.size[1]}")
+                    logger.debug("  ✓ Opened: %s %dx%d", img.format, img.size[0], img.size[1])
 
                     # Get EXIF data
                     # Get EXIF data (use modern getexif() instead of deprecated _getexif())
                     exif_data = img.getexif()
 
                     if not exif_data:
-                        print(f"[EXIFParser]   No EXIF data in file")
+                        logger.debug("  No EXIF data in file")
                         return None
 
                     # Look for date tags in priority order
@@ -132,26 +134,24 @@ class EXIFParser:
                             try:
                                 dt = datetime.strptime(date_str, "%Y:%m:%d %H:%M:%S")
                                 tag_name = TAGS.get(tag_id, tag_id)
-                                print(f"[EXIFParser]   ✓ Found {tag_name}: {dt.strftime('%Y-%m-%d %H:%M:%S')}")
+                                logger.debug("  ✓ Found %s: %s", tag_name, dt.strftime('%Y-%m-%d %H:%M:%S'))
                                 return dt
                             except ValueError:
                                 continue
 
-                    print(f"[EXIFParser]   No valid date tags found in EXIF")
+                    logger.debug("  No valid date tags found in EXIF")
                     return None
                 # BUG-C2 FIX: img automatically closed by context manager
 
             except Exception as e:
-                print(f"[EXIFParser]   ✗ Error getting EXIF: {e}")
+                logger.warning("  ✗ Error getting EXIF from %s: %s", file_name, e)
                 return None
 
         except ImportError:
-            print(f"[EXIFParser]   ✗ PIL not available, cannot parse EXIF")
+            logger.error("  ✗ PIL not available, cannot parse EXIF")
             return None
         except Exception as e:
-            print(f"[EXIFParser]   ✗ Error parsing EXIF: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error("  ✗ Error parsing EXIF: %s", e)
             return None
 
     def _get_video_date(self, file_path: str) -> Optional[datetime]:
@@ -166,7 +166,7 @@ class EXIFParser:
             import subprocess
             import json
 
-            print(f"[EXIFParser] Parsing video metadata from: {Path(file_path).name}")
+            logger.debug("Parsing video metadata from: %s", Path(file_path).name)
 
             # Run ffprobe to get video metadata
             cmd = [
@@ -197,27 +197,27 @@ class EXIFParser:
                                 # Remove microseconds and timezone
                                 date_str = date_str.split('.')[0].replace('Z', '')
                                 dt = datetime.fromisoformat(date_str)
-                                print(f"[EXIFParser]   ✓ Found {tag_name}: {dt.strftime('%Y-%m-%d %H:%M:%S')}")
+                                logger.debug("  ✓ Found %s: %s", tag_name, dt.strftime('%Y-%m-%d %H:%M:%S'))
                                 return dt
                             except ValueError:
                                 continue
 
-                print(f"[EXIFParser]   No creation_time found in video metadata")
+                logger.debug("  No creation_time found in video metadata")
                 return None
 
             else:
-                print(f"[EXIFParser]   ✗ ffprobe failed (not installed or error)")
+                logger.warning("  ✗ ffprobe failed (not installed or error) for %s", file_path)
                 return None
 
         except FileNotFoundError:
             # ffprobe not installed, fall back to file dates
-            print(f"[EXIFParser]   ✗ ffprobe not found (FFmpeg not installed)")
+            logger.warning("  ✗ ffprobe not found (FFmpeg not installed)")
             return None
         except subprocess.TimeoutExpired:
-            print(f"[EXIFParser]   ✗ ffprobe timeout")
+            logger.warning("  ✗ ffprobe timeout")
             return None
         except Exception as e:
-            print(f"[EXIFParser]   ✗ Error parsing video metadata: {e}")
+            logger.error("  ✗ Error parsing video metadata: %s", e)
             return None
 
     def _get_file_date(self, file_path: Path) -> datetime:
@@ -231,12 +231,12 @@ class EXIFParser:
             # Try modified time first (more accurate for photos copied from camera)
             mtime = file_path.stat().st_mtime
             dt = datetime.fromtimestamp(mtime)
-            print(f"[EXIFParser]   Using file modified time: {dt.strftime('%Y-%m-%d %H:%M:%S')}")
+            logger.debug("  Using file modified time: %s", dt.strftime('%Y-%m-%d %H:%M:%S'))
             return dt
 
         except Exception as e:
             # Last resort: use current time
-            print(f"[EXIFParser]   ✗ Error getting file date, using current time: {e}")
+            logger.warning("  ✗ Error getting file date for %s, using current time: %s", file_path, e)
             return datetime.now()
 
     def parse_image_full(self, file_path: str) -> Dict:
@@ -287,7 +287,7 @@ class EXIFParser:
                             metadata['datetime_original'] = datetime.strptime(value, "%Y:%m:%d %H:%M:%S")
                         except (ValueError, TypeError) as e:
                             # BUG-H1 FIX: Log date parsing failures instead of silently ignoring
-                            print(f"[EXIFParser] Failed to parse DateTimeOriginal '{value}': {e}")
+                            logger.warning("Failed to parse DateTimeOriginal '%s': %s", value, e)
                     elif tag_name == 'Make':
                         metadata['camera_make'] = value
                     elif tag_name == 'Model':
@@ -332,7 +332,7 @@ class EXIFParser:
             return decimal
         except (ValueError, TypeError, IndexError) as e:
             # BUG-H1 FIX: Log GPS conversion failures
-            print(f"[EXIFParser] Failed to convert GPS coordinates: {e}")
+            logger.warning("Failed to convert GPS coordinates: %s", e)
             return None
 
     def parse_all_exif_fields(self, file_path: str) -> Dict:
@@ -495,14 +495,14 @@ class EXIFParser:
                             # Case 3: Integer or other non-iterable (problematic case from piexif)
                             else:
                                 # This is the source of the warning - GPSInfo written as integer
-                                # Use print at DEBUG level instead of WARNING since this is expected behavior
-                                print(f"[EXIFParser] GPSInfo is non-iterable type {type(value)}, likely from piexif - skipping GPS parsing")
+                                # Use logger at DEBUG level instead of WARNING since this is expected behavior
+                                logger.debug("GPSInfo is non-iterable type %s, likely from piexif - skipping GPS parsing", type(value))
                                 # Continue without GPS data - this is normal for some photo sources
                                 continue
 
                         except (TypeError, KeyError, AttributeError) as e:
                             # Gracefully handle any iteration errors
-                            print(f"[EXIFParser] GPS iteration error (likely from piexif-written GPS): {e}")
+                            logger.warning("GPS iteration error (likely from piexif-written GPS): %s", e)
                             continue  # Skip GPS parsing for this photo
 
                         # Store all GPS fields
@@ -546,9 +546,7 @@ class EXIFParser:
                             result['gps']['satellites'] = gps_data['GPSSatellites']
 
         except Exception as e:
-            print(f"[EXIFParser] Error extracting all EXIF fields: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error("Error extracting all EXIF fields: %s", e, exc_info=True)
 
         return result
 
@@ -693,14 +691,12 @@ class EXIFParser:
                             result['audio']['bitrate'] = int(stream['bit_rate'])
 
         except subprocess.TimeoutExpired:
-            print(f"[EXIFParser] ffprobe timeout for video: {file_path}")
+            logger.warning("ffprobe timeout for video: %s", file_path)
         except subprocess.CalledProcessError as e:
-            print(f"[EXIFParser] ffprobe error: {e}")
+            logger.error("ffprobe error: %s", e)
         except FileNotFoundError:
-            print(f"[EXIFParser] ffprobe not found - install ffmpeg to enable video metadata")
+            logger.warning("ffprobe not found - install ffmpeg to enable video metadata")
         except Exception as e:
-            print(f"[EXIFParser] Error extracting video metadata: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error("Error extracting video metadata: %s", e, exc_info=True)
 
         return result

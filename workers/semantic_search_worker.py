@@ -295,8 +295,10 @@ class SemanticSearchWorker(QThread):
             Dict with total_photos, embeddings_count, coverage_percent, ready_for_search
         """
         try:
-            from repository.base_repository import DatabaseConnection
-            db = DatabaseConnection()
+            from reference_db import ReferenceDB
+
+            ref = ReferenceDB()
+            db = ref._db_connection if ref._db_connection else DatabaseConnection(ref.db_file, auto_init=True)
 
             with db.get_connection() as conn:
                 # Total photos
@@ -351,8 +353,10 @@ class SemanticSearchWorker(QThread):
         results = []
 
         try:
-            from repository.base_repository import DatabaseConnection
-            db = DatabaseConnection()
+            from reference_db import ReferenceDB
+
+            ref = ReferenceDB()
+            db = ref._db_connection if ref._db_connection else DatabaseConnection(ref.db_file, auto_init=True)
 
             with db.get_connection() as conn:
                 # Get all embeddings for project
