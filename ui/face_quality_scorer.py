@@ -54,7 +54,15 @@ class FaceQualityScorer:
             Sharpness score (0.0-1.0)
         """
         try:
-            img = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+            # UNICODE PATH FIX (2026-03-17): cv2.imread fails on non-ASCII paths.
+            from PIL import Image
+            try:
+                with Image.open(image_path) as pil_img:
+                    # Convert to grayscale directly in PIL
+                    img = np.array(pil_img.convert('L'))
+            except Exception:
+                img = None
+
             if img is None:
                 return 0.0
 
@@ -119,7 +127,15 @@ class FaceQualityScorer:
             Brightness score (0.0-1.0)
         """
         try:
-            img = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+            # UNICODE PATH FIX (2026-03-17): cv2.imread fails on non-ASCII paths.
+            from PIL import Image
+            try:
+                with Image.open(image_path) as pil_img:
+                    # Convert to grayscale directly in PIL
+                    img = np.array(pil_img.convert('L'))
+            except Exception:
+                img = None
+
             if img is None:
                 return 0.5  # Neutral score if can't load file
 

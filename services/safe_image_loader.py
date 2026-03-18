@@ -61,7 +61,7 @@ RAW_FORMATS = {
 def safe_decode_qimage(
     path: str,
     max_dim: int = 2560,
-    timeout: float = 10.0,
+    timeout: float = 30.0,
     enable_retry_ladder: bool = True,
 ) -> QImage:
     """
