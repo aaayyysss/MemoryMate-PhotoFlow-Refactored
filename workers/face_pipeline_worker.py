@@ -74,12 +74,14 @@ class FacePipelineWorker(QRunnable):
         QThreadPool.globalInstance().start(worker)
     """
 
-    def __init__(self, project_id: int, model: str = "buffalo_l"):
+    def __init__(self, project_id: int, model: str = "buffalo_l",
+                 screenshot_policy: str = "detect_only"):
         super().__init__()
         self.setAutoDelete(True)
         self.signals = FacePipelineSignals()
         self.project_id = project_id
         self.model = model
+        self.screenshot_policy = screenshot_policy
         self._cancelled = False
         # Optional: scoped photo paths (set by FacePipelineService)
         self._scoped_photo_paths = None
@@ -535,6 +537,7 @@ class FacePipelineWorker(QRunnable):
                 "project_id": self.project_id,
                 "model": self.model,
                 "skip_processed": True,
+                "screenshot_policy": self.screenshot_policy,
             }
             if self._scoped_photo_paths:
                 worker_kwargs["photo_paths"] = self._scoped_photo_paths
@@ -683,6 +686,7 @@ class FacePipelineWorker(QRunnable):
                     eps=cluster_params["eps"],
                     min_samples=cluster_params["min_samples"],
                     auto_tune=True,
+                    screenshot_policy=self.screenshot_policy,
                 )
 
                 cluster_results = {}

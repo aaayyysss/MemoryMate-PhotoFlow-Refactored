@@ -19,7 +19,8 @@ from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QRadioButton, QButtonGroup, QTreeWidget, QTreeWidgetItem,
     QDateEdit, QSlider, QCheckBox, QGroupBox, QWidget,
-    QProgressBar, QMessageBox, QScrollArea, QFrame, QSizePolicy
+    QProgressBar, QMessageBox, QScrollArea, QFrame, QSizePolicy,
+    QComboBox
 )
 from PySide6.QtCore import Qt, QDate, Signal
 from PySide6.QtGui import QIcon
@@ -39,8 +40,8 @@ class FaceDetectionScopeDialog(QDialog):
     """
 
     # Signal emitted when user clicks "Start Detection"
-    # Emits list of photo paths to process
-    scopeSelected = Signal(list)  # List[str] of photo paths
+    # Emits list of photo paths to process and the chosen screenshot policy
+    scopeSelected = Signal(list, str)  # List[str], str policy
 
     def __init__(self, project_id: int, parent=None):
         super().__init__(parent)
@@ -292,6 +293,19 @@ class FaceDetectionScopeDialog(QDialog):
         self.chk_skip_processed.toggled.connect(self._update_summary)
         layout.addWidget(self.chk_skip_processed)
 
+        # Screenshot Policy (3-mode)
+        layout.addSpacing(10)
+        policy_layout = QHBoxLayout()
+        self.lbl_screenshot_policy = QLabel("Screenshots:")
+        self.cmb_screenshot_policy = QComboBox()
+        self.cmb_screenshot_policy.addItem("Exclude screenshots", "exclude")
+        self.cmb_screenshot_policy.addItem("Detect only, exclude from clustering (recommended)", "detect_only")
+        self.cmb_screenshot_policy.addItem("Detect and cluster screenshots", "include_cluster")
+        self.cmb_screenshot_policy.setCurrentIndex(1)
+        policy_layout.addWidget(self.lbl_screenshot_policy)
+        policy_layout.addWidget(self.cmb_screenshot_policy, 1)
+        layout.addLayout(policy_layout)
+
         return group
 
     def _create_summary_panel(self) -> QGroupBox:
@@ -375,6 +389,10 @@ class FaceDetectionScopeDialog(QDialog):
         self.quantity_widget.setVisible(mode == "quantity")
 
         self._update_summary()
+
+    def get_screenshot_policy(self) -> str:
+        """Return the selected screenshot policy."""
+        return self.cmb_screenshot_policy.currentData() or "detect_only"
 
     def _on_folder_selection_changed(self, item: QTreeWidgetItem, column: int):
         """Handle folder checkbox change."""
@@ -497,6 +515,6 @@ class FaceDetectionScopeDialog(QDialog):
             )
             return
 
-        # Emit signal with paths
-        self.scopeSelected.emit(paths_to_process)
+        # Emit signal with paths and policy
+        self.scopeSelected.emit(paths_to_process, self.get_screenshot_policy())
         self.accept()

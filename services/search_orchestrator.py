@@ -1187,6 +1187,9 @@ class SearchOrchestrator:
             bool(evidence.get("filename_marker")),
             bool(evidence.get("ui_text_hit")),
             bool(evidence.get("looks_like_phone_screen")),
+            bool(evidence.get("looks_like_tablet_screen")),
+            bool(evidence.get("looks_like_desktop_screen")),
+            bool(evidence.get("dense_ui_ocr")),
             bool(evidence.get("flat_ui_fallback")),
         ])
 

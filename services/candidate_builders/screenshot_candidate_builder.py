@@ -223,13 +223,28 @@ class ScreenshotCandidateBuilder(BaseCandidateBuilder):
             score += 0.25
         evidence["filename_marker"] = filename_marker
 
-        # Signal 3: OCR UI text
+        # Signal 3: OCR UI text patterns
         ocr_text = (meta.get("ocr_text") or "").lower()
         ocr_len = len(ocr_text)
-        ui_hit = any(t in ocr_text for t in _UI_TERMS) if ocr_text else False
+
+        # Count unique UI term hits
+        ui_hits = {t for t in _UI_TERMS if t in ocr_text}
+        ui_hit_count = len(ui_hits)
+        ui_hit = ui_hit_count > 0
+
         if ui_hit:
-            score += 0.20
+            # Progressive scoring for UI terms:
+            # 1 hit = 0.15, 2 hits = 0.20, 3+ hits = 0.30
+            if ui_hit_count >= 3:
+                ui_score = 0.30
+            elif ui_hit_count == 2:
+                ui_score = 0.20
+            else:
+                ui_score = 0.15
+            score += ui_score
+
         evidence["ui_text_hit"] = ui_hit
+        evidence["ui_hit_count"] = ui_hit_count
         evidence["ocr_text_len"] = ocr_len
 
         # Signal 4: dimensions / aspect
@@ -238,29 +253,50 @@ class ScreenshotCandidateBuilder(BaseCandidateBuilder):
         aspect = (max(w, h) / max(1, min(w, h))) if w and h else 0.0
         face_count = int(meta.get("face_count") or 0)
 
+        # Phone: 16:9 to 21:9 (portrait or landscape)
         looks_like_phone_screen = (
             700 <= min(w, h) <= 1800
-            and _SCREEN_RATIO_MIN <= aspect <= _SCREEN_RATIO_MAX
+            and 1.5 <= aspect <= 2.4
             and face_count == 0
         )
+
+        # Tablet: 4:3, 3:2
+        looks_like_tablet_screen = (
+            700 <= min(w, h) <= 2500
+            and 1.2 <= aspect < 1.5
+            and face_count == 0
+        )
+
+        # Desktop: 16:10, 16:9, 21:9
+        looks_like_desktop_screen = (
+            w >= 1280 and h >= 720
+            and 1.3 <= aspect <= 2.5
+            and face_count == 0
+        )
+
         if looks_like_phone_screen:
             score += 0.10
-        evidence["looks_like_phone_screen"] = looks_like_phone_screen
-
-        # Signal 4b: Tablet aspect ratio support (permissive geometry)
-        looks_like_tablet = ScreenshotCandidateBuilder._looks_like_tablet_or_desktop_capture(
-            w, h, face_count
-        )
-        if looks_like_tablet:
+        elif looks_like_tablet_screen:
+            score += 0.08
+        elif looks_like_desktop_screen:
             score += 0.05
-        evidence["looks_like_tablet"] = looks_like_tablet
 
-        # Signal 5: flat PNG / UI-like fallback
+        evidence["looks_like_phone_screen"] = looks_like_phone_screen
+        evidence["looks_like_tablet_screen"] = looks_like_tablet_screen
+        evidence["looks_like_desktop_screen"] = looks_like_desktop_screen
+
+        # Signal 5: OCR Density (not a document, but text-heavy UI)
+        dense_ui_ocr = ocr_len >= 150 and face_count == 0
+        if dense_ui_ocr:
+            score += 0.05
+        evidence["dense_ui_ocr"] = dense_ui_ocr
+
+        # Signal 6: flat PNG / UI-like fallback
         ext = os.path.splitext(path)[1].lower() if path else ""
         flat_ui_fallback = (
             ext == ".png"
             and face_count == 0
-            and min(w, h) >= 700
+            and min(w, h) >= 600
             and (
                 ui_hit
                 or filename_marker
@@ -272,7 +308,7 @@ class ScreenshotCandidateBuilder(BaseCandidateBuilder):
             score += 0.10
         evidence["flat_ui_fallback"] = flat_ui_fallback
 
-        # Query text match in OCR
+        # Signal 7: Query text match in OCR
         term_hit = False
         if text_terms and ocr_text:
             term_hit = any(t.lower() in ocr_text for t in text_terms)
@@ -285,15 +321,13 @@ class ScreenshotCandidateBuilder(BaseCandidateBuilder):
             evidence["rejection_reason"] = "has_faces"
             return 0.0, evidence
 
-        if min(w, h) > 0 and min(w, h) < 500:
+        if min(w, h) > 0 and min(w, h) < 400:
             evidence["rejection_reason"] = "too_small"
             return 0.0, evidence
 
         # Final threshold
         if score < 0.20:
-            if (not is_screenshot and not filename_marker and not ui_hit
-                and not looks_like_phone_screen and not looks_like_tablet
-                and not flat_ui_fallback):
+            if not is_screenshot and not filename_marker and not ui_hit and not looks_like_phone_screen and not looks_like_tablet_screen and not looks_like_desktop_screen and not flat_ui_fallback:
                 evidence["rejection_reason"] = "no_screenshot_signals"
             else:
                 evidence["rejection_reason"] = "weak_screenshot_score"

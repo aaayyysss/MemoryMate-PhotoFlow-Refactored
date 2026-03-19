@@ -69,7 +69,8 @@ class FaceDetectionWorker(QRunnable):
 
     def __init__(self, project_id: int, model: str = "buffalo_l",
                  skip_processed: bool = True, max_faces_per_photo: int = 10,
-                 photo_paths: Optional[List[str]] = None):
+                 photo_paths: Optional[List[str]] = None,
+                 screenshot_policy: str = "detect_only"):
         """
         Initialize face detection worker.
 
@@ -88,6 +89,7 @@ class FaceDetectionWorker(QRunnable):
         self.skip_processed = skip_processed
         self.max_faces_per_photo = max_faces_per_photo
         self.photo_paths = photo_paths  # FEATURE #1: Store selected photo paths
+        self.screenshot_policy = screenshot_policy
         self.signals = FaceDetectionSignals()
         self.cancelled = False
 
@@ -325,6 +327,17 @@ class FaceDetectionWorker(QRunnable):
                 # Detect faces
                 photo_start_time = time.time()
                 try:
+                    # Apply screenshot policy
+                    is_screenshot = False
+                    if self.screenshot_policy != "include_cluster":
+                        is_screenshot = self._is_photo_screenshot(photo_path, photo_filename, conn)
+
+                    if is_screenshot and self.screenshot_policy == "exclude":
+                        self._stats['photos_processed'] += 1
+                        self._stats['photos_skipped'] += 1
+                        logger.debug(f"[FaceDetectionWorker] Skipping screenshot: {photo_path}")
+                        continue
+
                     faces = face_service.detect_faces(photo_path, project_id=self.project_id)
                     photo_duration_ms = (time.time() - photo_start_time) * 1000
 
@@ -333,13 +346,17 @@ class FaceDetectionWorker(QRunnable):
                         structured_logger.log_photo_processed(photo_path, 0, photo_duration_ms, success=True)
                     else:
                         # Limit faces per photo
-                        if len(faces) > self.max_faces_per_photo:
+                        limit = self.max_faces_per_photo
+                        if is_screenshot:
+                            limit = min(limit, 4)  # Hard cap of 4 for screenshots
+
+                        if len(faces) > limit:
                             logger.warning(
-                                f"[FaceDetectionWorker] {photo_path} has {len(faces)} faces, "
-                                f"keeping largest {self.max_faces_per_photo}"
+                                f"[FaceDetectionWorker] {photo_path} has {len(faces)} faces "
+                                f"(screenshot={is_screenshot}), keeping largest {limit}"
                             )
                             faces = sorted(faces, key=lambda f: f['bbox_w'] * f['bbox_h'], reverse=True)
-                            faces = faces[:self.max_faces_per_photo]
+                            faces = faces[:limit]
 
                         # Prepare face rows for batch insert (saves crops to disk)
                         faces_saved = 0
@@ -442,9 +459,30 @@ class FaceDetectionWorker(QRunnable):
             # Batch detect faces
             batch_start_time = time.time()
             try:
+                # Apply screenshot policy (exclude) before batch detection
+                candidate_paths = batch_paths
+                effective_batch_paths = []
+                screenshot_status = {} # path -> is_screenshot
+                with db._connect() as conn:
+                    for p in candidate_paths:
+                        is_screen = False
+                        if self.screenshot_policy != "include_cluster":
+                            is_screen = self._is_photo_screenshot(p, os.path.basename(p), conn)
+
+                        screenshot_status[p] = is_screen
+                        if is_screen and self.screenshot_policy == "exclude":
+                            self._stats['photos_processed'] += 1
+                            self._stats['photos_skipped'] += 1
+                            logger.debug(f"[FaceDetectionWorker] Skipping screenshot (batch): {p}")
+                            continue
+                        effective_batch_paths.append(p)
+
+                if not effective_batch_paths:
+                    continue
+
                 results = face_service.batch_detect_faces(
-                    batch_paths,
-                    batch_size=len(batch_paths),
+                    effective_batch_paths,
+                    batch_size=len(effective_batch_paths),
                     project_id=self.project_id
                 )
                 batch_duration_ms = (time.time() - batch_start_time) * 1000
@@ -510,6 +548,35 @@ class FaceDetectionWorker(QRunnable):
                     except Exception as photo_error:
                         self._stats['photos_failed'] += 1
                         logger.error(f"[FaceDetectionWorker] ✗ {photo_path}: {photo_error}")
+
+    def _is_photo_screenshot(self, photo_path, photo_filename, conn):
+        """
+        Detect if a photo is a screenshot using filename and metadata.
+        """
+        # Basic screenshot detection by filename
+        basename = photo_filename.lower()
+        SCREENSHOT_MARKERS = ["screenshot", "screen shot", "screen_shot", "screen-shot", "bildschirmfoto"]
+        if any(m in basename for m in SCREENSHOT_MARKERS):
+            return True
+
+        # Check metadata for dimensions/flag
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT is_screenshot, width, height FROM photo_metadata WHERE path = ?", (photo_path,))
+            row = cur.fetchone()
+            if row:
+                if row[0]:  # is_screenshot flag from metadata
+                    return True
+                else:
+                    w, h = row[1], row[2]
+                    if w and h:
+                        # Aspect ratio and size typical for phone screenshots
+                        aspect = max(w, h) / max(1, min(w, h))
+                        if 1.5 <= aspect <= 2.4 and 700 <= min(w, h) <= 1800:
+                            return True
+        except Exception:
+            pass
+        return False
 
     def _finalize_processing(self, db, monitor, structured_logger):
         """Finalize face detection processing and emit completion signals."""

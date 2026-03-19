@@ -3473,10 +3473,12 @@ class MainWindow(QMainWindow):
             from ui.face_detection_scope_dialog import FaceDetectionScopeDialog
             scope_dialog = FaceDetectionScopeDialog(project_id, parent=self)
             selected_paths = []
+            selected_policy = "detect_only"
 
-            def on_scope_selected(paths):
-                nonlocal selected_paths
+            def on_scope_selected(paths, policy):
+                nonlocal selected_paths, selected_policy
                 selected_paths = paths
+                selected_policy = policy
 
             scope_dialog.scopeSelected.connect(on_scope_selected)
             if scope_dialog.exec() != QDialog.Accepted or not selected_paths:
@@ -3493,10 +3495,11 @@ class MainWindow(QMainWindow):
             started = svc.start(
                 project_id=project_id,
                 photo_paths=selected_paths,
+                screenshot_policy=selected_policy,
             )
             if started:
                 self.statusBar().showMessage(
-                    f"Face pipeline started: processing {len(selected_paths)} photos...", 0
+                    f"Face pipeline started: {len(selected_paths)} photos, screenshot policy={selected_policy}", 0
                 )
             else:
                 self.statusBar().showMessage("Failed to start face pipeline", 5000)
