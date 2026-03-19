@@ -13,11 +13,18 @@
 
 import logging
 import threading
+from enum import Enum
 from typing import Optional, List, Dict, Any
 
 from PySide6.QtCore import QObject, Signal, QThreadPool
 
 logger = logging.getLogger(__name__)
+
+
+class ScreenshotFacePolicy(str, Enum):
+    EXCLUDE = "exclude"
+    DETECT_ONLY = "detect_only"
+    INCLUDE_CLUSTER = "include_cluster"
 
 
 class FacePipelineService(QObject):
@@ -135,14 +142,16 @@ class FacePipelineService(QObject):
         project_id: int,
         photo_paths: Optional[List[str]] = None,
         model: str = "buffalo_l",
+        screenshot_policy: str = "detect_only",
     ) -> bool:
         """
         Launch face detection + clustering for *project_id*.
 
         Args:
-            project_id:   Must be a valid, non-None project id.
-            photo_paths:  Optional scope — subset of photos to process.
-            model:        InsightFace model name.
+            project_id:        Must be a valid, non-None project id.
+            photo_paths:       Optional scope — subset of photos to process.
+            model:             InsightFace model name.
+            screenshot_policy: "exclude", "detect_only", or "include_cluster".
 
         Returns True if pipeline was started, False if already running or
         project_id is invalid.
@@ -177,21 +186,27 @@ class FacePipelineService(QObject):
             self.error.emit(str(e), project_id)
             return False
 
-        logger.info(
-            "[FacePipelineService] Starting pipeline for project %d (scope=%s, model=%s)",
-            project_id,
-            f"{len(photo_paths)} photos" if photo_paths else "all",
-            model,
-        )
+        valid_policies = {"exclude", "detect_only", "include_cluster"}
+        if screenshot_policy not in valid_policies:
+            screenshot_policy = "detect_only"
 
         from workers.face_pipeline_worker import FacePipelineWorker
         from services.job_manager import get_job_manager
 
         validated_scope = self._validate_scope_paths(project_id, photo_paths)
 
+        logger.info(
+            "[FacePipelineService] Starting pipeline for project %d (scope=%s, model=%s, screenshot_policy=%s)",
+            project_id,
+            f"{len(validated_scope)} photos" if photo_paths is not None else "full project",
+            model,
+            screenshot_policy,
+        )
+
         worker = FacePipelineWorker(
             project_id=project_id,
             model=model,
+            screenshot_policy=screenshot_policy,
         )
         # If scoped paths were given, pass them through to the inner detection worker
         if photo_paths is not None:

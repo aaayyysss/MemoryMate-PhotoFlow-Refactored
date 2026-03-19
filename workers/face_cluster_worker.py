@@ -63,7 +63,8 @@ class FaceClusterWorker(QRunnable):
     """
 
     def __init__(self, project_id: int, eps: Optional[float] = None,
-                 min_samples: Optional[int] = None, auto_tune: bool = True):
+                 min_samples: Optional[int] = None, auto_tune: bool = True,
+                 screenshot_policy: str = "detect_only"):
         """
         Initialize face clustering worker with adaptive parameter selection.
 
@@ -92,6 +93,7 @@ class FaceClusterWorker(QRunnable):
         super().__init__()
         self.project_id = project_id
         self.auto_tune = auto_tune
+        self.screenshot_policy = screenshot_policy
         self.tuning_rationale = ""
         self.tuning_category = ""
 
@@ -185,10 +187,20 @@ class FaceClusterWorker(QRunnable):
                 # cartesian product: project_images is a many-to-many membership
                 # table (same photo in "all", date, folder branches), so a JOIN
                 # duplicates face rows for every branch the photo belongs to.
-                # ENHANCEMENT (2026-03-14): Exclude faces from screenshots to avoid UI pollution.
-                # BUGFIX (2026-03-17): join with search_asset_features for is_screenshot.
-                # Patch B.2: Robust screenshot exclusion (metadata + filename pattern)
-                cur.execute("""
+                # ENHANCEMENT (2026-03-14): Screenshot policy support.
+                # If policy is 'include_cluster', we include screenshots.
+                # Otherwise ('exclude' or 'detect_only'), we filter them out.
+                screenshot_filter = ""
+                if self.screenshot_policy != "include_cluster":
+                    screenshot_filter = """
+                      AND COALESCE(saf.is_screenshot, 0) = 0
+                      AND LOWER(fc.image_path) NOT LIKE '%screenshot%'
+                      AND LOWER(fc.image_path) NOT LIKE '%screen shot%'
+                      AND LOWER(fc.image_path) NOT LIKE '%screen_shot%'
+                      AND LOWER(fc.image_path) NOT LIKE '%bildschirmfoto%'
+                    """
+
+                cur.execute(f"""
                     SELECT fc.id, fc.crop_path, fc.image_path, fc.embedding,
                            fc.confidence, fc.bbox_x, fc.bbox_y, fc.bbox_w, fc.bbox_h,
                            pm.width, pm.height
@@ -196,10 +208,7 @@ class FaceClusterWorker(QRunnable):
                     JOIN photo_metadata pm ON fc.image_path = pm.path
                     LEFT JOIN search_asset_features saf ON fc.image_path = saf.path
                     WHERE fc.project_id=? AND fc.embedding IS NOT NULL
-                      AND COALESCE(saf.is_screenshot, 0) = 0
-                      AND LOWER(fc.image_path) NOT LIKE '%screenshot%'
-                      AND LOWER(fc.image_path) NOT LIKE '%screen shot%'
-                      AND LOWER(fc.image_path) NOT LIKE '%bildschirmfoto%'
+                      {screenshot_filter}
                       AND EXISTS (
                           SELECT 1 FROM project_images pi
                           WHERE pi.image_path = fc.image_path
@@ -210,17 +219,14 @@ class FaceClusterWorker(QRunnable):
 
                 # ── Invariant check: embeddings_loaded == faces_in_db ──
                 # Patch B.1: Use same filter as main query for invariant check
-                cur.execute("""
+                cur.execute(f"""
                     SELECT COUNT(*)
                     FROM face_crops fc
                     JOIN photo_metadata pm ON fc.image_path = pm.path
                     LEFT JOIN search_asset_features saf ON fc.image_path = saf.path
                     WHERE fc.project_id=?
                       AND fc.embedding IS NOT NULL
-                      AND COALESCE(saf.is_screenshot, 0) = 0
-                      AND LOWER(fc.image_path) NOT LIKE '%screenshot%'
-                      AND LOWER(fc.image_path) NOT LIKE '%screen shot%'
-                      AND LOWER(fc.image_path) NOT LIKE '%bildschirmfoto%'
+                      {screenshot_filter}
                       AND EXISTS (
                           SELECT 1 FROM project_images pi
                           WHERE pi.image_path = fc.image_path
