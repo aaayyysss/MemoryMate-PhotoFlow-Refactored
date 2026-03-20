@@ -591,8 +591,7 @@ class FacePipelineWorker(QRunnable):
             results["interim_passes"] = self._interim_cluster_count
 
             logger.info(
-                "[FacePipelineWorker] Detection complete: %d faces in %d images "
-                "(%d interim cluster passes)",
+                "[FacePipelineWorker] Detection complete: %d faces in %d images (%d interim cluster passes, screenshot_policy=%s)",
                 results["faces_detected"], results["images_processed"],
                 self._interim_cluster_count,
             )
@@ -611,6 +610,13 @@ class FacePipelineWorker(QRunnable):
                         (self.project_id,),
                     )
                     faces_in_db = _cur.fetchone()[0]
+
+                logger.info(
+                    "[FacePipelineWorker] FACE_DB_SUMMARY: detected_this_run=%d faces_in_db=%d screenshot_policy=%s",
+                    results["faces_detected"],
+                    faces_in_db,
+                    self.screenshot_policy,
+                )
 
                 # Invariant check for full scans (incremental may have
                 # existing faces so count won't match newly detected)

@@ -115,6 +115,12 @@ class FaceClusterWorker(QRunnable):
             self.tuning_rationale = optimal["rationale"]
             self.tuning_category = optimal["category"]
 
+            # Phase: reduce fragmentation on small/medium datasets
+            if self.auto_tune and face_count <= 100:
+                self.eps = max(self.eps, 0.42)
+                self.min_samples = max(2, self.min_samples)
+                self.tuning_rationale += " | merge-bias for small dataset fragmentation"
+
             logger.info(f"[FaceClusterWorker] Auto-tuned for {face_count} faces")
             logger.info(f"[FaceClusterWorker] Parameters: eps={self.eps}, min_samples={self.min_samples}")
             logger.info(f"[FaceClusterWorker] Rationale: {self.tuning_rationale}")
@@ -163,6 +169,10 @@ class FaceClusterWorker(QRunnable):
             "(thread=%s, is_main=%s)",
             self.project_id, _thread.name, _is_main,
         )
+        logger.info(
+            "[FaceClusterWorker] screenshot_policy=%s",
+            self.screenshot_policy
+        )
         start_time = time.time()
 
         # Initialize performance monitoring
@@ -194,10 +204,14 @@ class FaceClusterWorker(QRunnable):
                 if self.screenshot_policy != "include_cluster":
                     screenshot_filter = """
                       AND COALESCE(saf.is_screenshot, 0) = 0
-                      AND LOWER(fc.image_path) NOT LIKE '%screenshot%'
-                      AND LOWER(fc.image_path) NOT LIKE '%screen shot%'
-                      AND LOWER(fc.image_path) NOT LIKE '%screen_shot%'
-                      AND LOWER(fc.image_path) NOT LIKE '%bildschirmfoto%'
+                      AND LOWER(fc.image_path) NOT LIKE "%screenshot%"
+                      AND LOWER(fc.image_path) NOT LIKE "%screen shot%"
+                      AND LOWER(fc.image_path) NOT LIKE "%screen_shot%"
+                      AND LOWER(fc.image_path) NOT LIKE "%screen-shot%"
+                      AND LOWER(fc.image_path) NOT LIKE "%bildschirmfoto%"
+                      AND LOWER(fc.image_path) NOT LIKE "%captura%"
+                      AND LOWER(fc.image_path) NOT LIKE "%스크린샷%"
+                      AND LOWER(fc.image_path) NOT LIKE "%スクリーンショット%"
                     """
 
                 cur.execute(f"""
@@ -260,8 +274,11 @@ class FaceClusterWorker(QRunnable):
                 ids, paths, image_paths, vecs = [], [], [], []
                 qualities = []  # Store (confidence, face_ratio, aspect_ratio) for quality filtering
                 bboxes = []  # Store bbox info for comprehensive quality analysis
+
+                _skipped_bad_embedding = 0
                 _skipped_bad_size = 0
-                _skipped_low_quality = 0
+                _skipped_low_conf = 0
+                _skipped_small_face = 0
 
                 # Patch B.3: Quality thresholds
                 min_conf = 0.55
@@ -271,49 +288,34 @@ class FaceClusterWorker(QRunnable):
                     try:
                         # Pre-clustering quality filtering
                         if conf is not None and conf < min_conf:
-                            _skipped_low_quality += 1
+                            _skipped_low_conf += 1
                             continue
 
                         if img_w and img_h:
                             ratio = ((bw or 0) * (bh or 0)) / max(1, img_w * img_h)
                             if ratio < min_ratio:
-                                _skipped_low_quality += 1
+                                _skipped_small_face += 1
                                 continue
 
                         vec = np.frombuffer(blob, dtype=np.float32)
                         if vec.size == 0:
+                            _skipped_bad_embedding += 1
                             continue
                         # Validate embedding dimension — must be 512 for ArcFace
                         if vec.size != 512:
                             _skipped_bad_size += 1
                             continue
 
-                        ids.append(rid)
-                        paths.append(path)
-                        image_paths.append(img_path)
-                        vecs.append(vec)
-
-                        # Compute basic quality metrics for backward compatibility
-                        face_area = (bw or 0) * (bh or 0)
-                        img_area = (img_w or 0) * (img_h or 0)
-                        face_ratio = (face_area / img_area) if (face_area > 0 and img_area > 0) else 0.0
-                        aspect_ratio = (bw / bh) if (bw and bh) else 0.0
-                        qualities.append((conf or 0.0, face_ratio, aspect_ratio))
-
-                        # Store bbox and image info for comprehensive quality analysis
-                        bboxes.append({
-                            'bbox': (bx or 0, by or 0, bw or 0, bh or 0),
-                            'image_path': img_path,
-                            'confidence': conf or 0.0
-                        })
-                    except Exception as e:
-                        logger.warning(f"[FaceClusterWorker] Failed to parse embedding: {e}")
-
-                if _skipped_bad_size > 0:
-                    logger.warning(
-                        f"[FaceClusterWorker] Skipped {_skipped_bad_size} faces with "
-                        f"invalid embedding size (expected 512-dim float32)"
-                    )
+                logger.info(
+                    "[FaceClusterWorker] EMBEDDING_FILTER_SUMMARY: loaded=%d "
+                    "bad_embedding=%d bad_dim=%d low_conf=%d small_face=%d screenshot_policy=%s",
+                    len(vecs),
+                    _skipped_bad_embedding,
+                    _skipped_bad_size,
+                    _skipped_low_conf,
+                    _skipped_small_face,
+                    self.screenshot_policy,
+                )
 
                 if len(vecs) < 2:
                     logger.warning("[FaceClusterWorker] Not enough faces to cluster (need at least 2)")
