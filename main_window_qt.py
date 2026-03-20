@@ -4512,11 +4512,8 @@ class MainWindow(QMainWindow):
 
                 if current_model != best_model:
                     from utils.clip_model_registry import model_display_label
-                    model_warning = f"
-
-⚠️ Better model available: {model_display_label(best_model)}"
-                    model_warning += "
-Consider re-extracting embeddings for better search quality."
+                    model_warning = f"\n\n⚠️ Better model available: {model_display_label(best_model)}"
+                    model_warning += "\nConsider re-extracting embeddings for better search quality."
             except Exception:
                 pass
 

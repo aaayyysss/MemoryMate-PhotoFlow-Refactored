@@ -307,7 +307,7 @@ class FaceDetectionScopeDialog(QDialog):
         layout.addLayout(policy_layout)
 
         self.lbl_screenshot_note = QLabel(
-            "Note: "Detect and cluster screenshots" makes screenshot faces eligible for People clustering, "
+            "Note: \"Detect and cluster screenshots\" makes screenshot faces eligible for People clustering, "
             "but crowded screenshots may still be capped or filtered for quality."
         )
         self.lbl_screenshot_note.setWordWrap(True)

@@ -306,6 +306,20 @@ class FaceClusterWorker(QRunnable):
                             _skipped_bad_size += 1
                             continue
 
+                        ids.append(rid)
+                        paths.append(path)
+                        image_paths.append(img_path)
+                        vecs.append(vec)
+                        qualities.append((conf or 0.0, ratio or 0.0, (bw / bh if bh else 1.0)))
+                        bboxes.append({
+                            'image_path': img_path,
+                            'bbox': (bx, by, bw, bh),
+                            'confidence': conf
+                        })
+                    except Exception as e:
+                        logger.warning(f"Failed to parse embedding for {path}: {e}")
+                        _skipped_bad_embedding += 1
+
                 logger.info(
                     "[FaceClusterWorker] EMBEDDING_FILTER_SUMMARY: loaded=%d "
                     "bad_embedding=%d bad_dim=%d low_conf=%d small_face=%d screenshot_policy=%s",
