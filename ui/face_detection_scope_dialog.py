@@ -306,6 +306,14 @@ class FaceDetectionScopeDialog(QDialog):
         policy_layout.addWidget(self.cmb_screenshot_policy, 1)
         layout.addLayout(policy_layout)
 
+        self.lbl_screenshot_note = QLabel(
+            "Note: "Detect and cluster screenshots" makes screenshot faces eligible for People clustering, "
+            "but crowded screenshots may still be capped or filtered for quality."
+        )
+        self.lbl_screenshot_note.setWordWrap(True)
+        self.lbl_screenshot_note.setStyleSheet("color: #666; font-size: 8.5pt; margin-left: 2px;")
+        layout.addWidget(self.lbl_screenshot_note)
+
         return group
 
     def _create_summary_panel(self) -> QGroupBox:

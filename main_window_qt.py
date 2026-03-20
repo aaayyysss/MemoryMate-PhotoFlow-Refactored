@@ -948,31 +948,39 @@ class MainWindow(QMainWindow):
         # --- Main layout (Sidebar + Grid + Details)
         self.splitter = QSplitter(Qt.Horizontal)
 
-        # PHASE 1: Restore last active project from session state
+        # PHASE 1: Bootstrap Policy (last-used -> exactly one -> first available -> None/onboarding)
         from session_state_manager import get_session_state
         session_state = get_session_state()
 
-        default_pid = session_state.get_project_id()  # Try session state first
+        default_pid = session_state.get_project_id()
 
-        # Validate stored project_id against DB (prevents stale references)
+        # 1. Check if session project still exists
         if default_pid is not None:
             try:
                 from repository.project_repository import ProjectRepository
                 from repository.base_repository import DatabaseConnection
                 _proj = ProjectRepository(DatabaseConnection()).find_by_id(default_pid)
                 if _proj is None:
-                    print(f"[MainWindow] PHASE 1: Session project_id={default_pid} not in DB, clearing")
+                    print(f"[MainWindow] Bootstrap: Session project_id={default_pid} missing, clearing")
                     session_state.set_project(None)
                     default_pid = None
             except Exception:
                 default_pid = None
 
+        # 2. If no session project, apply auto-selection
         if default_pid is None:
-            default_pid = get_default_project_id()  # Fall back to default
-        if default_pid is None and self._projects:
-            default_pid = self._projects[0]["id"]  # Last resort: first project
+            if len(self._projects) == 1:
+                default_pid = self._projects[0]["id"]
+                print(f"[MainWindow] Bootstrap: Auto-selecting single existing project_id={default_pid}")
+            elif len(self._projects) > 1:
+                default_pid = self._projects[0]["id"]
+                print(f"[MainWindow] Bootstrap: Auto-selecting first available project_id={default_pid}")
+            else:
+                print("[MainWindow] Bootstrap: No projects found, entering onboarding state")
+                default_pid = None
 
-        print(f"[MainWindow] PHASE 1: Restoring project_id={default_pid} from session state")
+        if default_pid is not None:
+            session_state.set_project(default_pid)
 
         self.sidebar = SidebarQt(project_id=default_pid)
 
@@ -4457,9 +4465,9 @@ class MainWindow(QMainWindow):
         try:
             # Get current project_id
             project_id = None
-            if hasattr(self, 'grid') and hasattr(self.grid, 'project_id'):
+            if hasattr(self, "grid") and hasattr(self.grid, "project_id"):
                 project_id = self.grid.project_id
-            elif hasattr(self, 'sidebar') and hasattr(self.sidebar, 'project_id'):
+            elif hasattr(self, "sidebar") and hasattr(self.sidebar, "project_id"):
                 project_id = self.sidebar.project_id
 
             if project_id is None:
@@ -4471,9 +4479,6 @@ class MainWindow(QMainWindow):
                 self.embedding_status_label.setToolTip("No project selected")
                 return
 
-            # FIX 2026-02-08: Use lightweight DB query instead of SemanticEmbeddingService
-            # This prevents creating the embedding service singleton (which loads torch/transformers)
-            # just to check stats. The model should only be loaded when actually needed for search.
             from reference_db import ReferenceDB
             db = ReferenceDB()
 
@@ -4483,7 +4488,7 @@ class MainWindow(QMainWindow):
                     "SELECT COUNT(*) as count FROM photo_metadata WHERE project_id = ?",
                     (project_id,)
                 )
-                total = cursor.fetchone()['count']
+                total = cursor.fetchone()["count"]
 
                 # Get photos with embeddings
                 cursor = conn.execute("""
@@ -4492,9 +4497,28 @@ class MainWindow(QMainWindow):
                     JOIN semantic_embeddings se ON pm.id = se.photo_id
                     WHERE pm.project_id = ?
                 """, (project_id,))
-                with_emb = cursor.fetchone()['count']
+                with_emb = cursor.fetchone()["count"]
 
             coverage = (with_emb / total * 100) if total > 0 else 0
+
+            # Model Upgrade Check
+            model_warning = ""
+            try:
+                from repository.project_repository import ProjectRepository
+                from repository.base_repository import DatabaseConnection
+                proj_repo = ProjectRepository(DatabaseConnection())
+                current_model = proj_repo.get_semantic_model(project_id)
+                best_model = proj_repo._get_best_available_model()
+
+                if current_model != best_model:
+                    from utils.clip_model_registry import model_display_label
+                    model_warning = f"
+
+⚠️ Better model available: {model_display_label(best_model)}"
+                    model_warning += "
+Consider re-extracting embeddings for better search quality."
+            except Exception:
+                pass
 
             # Update label
             if coverage >= 100:
@@ -4551,7 +4575,8 @@ class MainWindow(QMainWindow):
                 """)
 
             # Update tooltip with details
-            tooltip = f"Embedding Coverage: {with_emb}/{total} photos ({coverage:.1f}%)\n"
+            tooltip = f"Embedding Coverage: {with_emb}/{total} photos ({coverage:.1f}%) {model_warning}
+"
             tooltip += "Click to view detailed statistics."
             self.embedding_status_label.setToolTip(tooltip)
 

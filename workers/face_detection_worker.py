@@ -187,11 +187,11 @@ class FaceDetectionWorker(QRunnable):
                     normalized.append(p)
                 valid_paths = normalized
 
-                logger.warning(
+                dropped = len(self.photo_paths) - len(valid_paths)
+                log_fn = logger.warning if dropped > 0 else logger.info
+                log_fn(
                     "[PROJECT_SCOPE_SEAL][WORKER] requested=%d validated=%d dropped=%d project=%d",
-                    len(self.photo_paths), len(valid_paths),
-                    len(self.photo_paths) - len(valid_paths),
-                    self.project_id
+                    len(self.photo_paths), len(valid_paths), dropped, self.project_id
                 )
 
                 photos = [{"path": path} for path in valid_paths]
@@ -327,14 +327,13 @@ class FaceDetectionWorker(QRunnable):
                 # Detect faces
                 photo_start_time = time.time()
                 try:
-                    # Apply screenshot policy
-                    is_screenshot = False
-                    if self.screenshot_policy != "include_cluster":
-                        is_screenshot = self._is_photo_screenshot(photo_path, photo_filename, conn)
+                    # Always classify screenshot status.
+                    # Policy controls handling, not classification.
+                    is_screenshot = self._is_photo_screenshot(photo_path, photo_filename, conn)
 
                     if is_screenshot and self.screenshot_policy == "exclude":
-                        self._stats['photos_processed'] += 1
-                        self._stats['photos_skipped'] += 1
+                        self._stats["photos_processed"] += 1
+                        self._stats["photos_skipped"] += 1
                         logger.debug(f"[FaceDetectionWorker] Skipping screenshot: {photo_path}")
                         continue
 
@@ -342,20 +341,35 @@ class FaceDetectionWorker(QRunnable):
                     photo_duration_ms = (time.time() - photo_start_time) * 1000
 
                     if not faces:
-                        self._stats['photos_processed'] += 1
+                        self._stats["photos_processed"] += 1
                         structured_logger.log_photo_processed(photo_path, 0, photo_duration_ms, success=True)
                     else:
-                        # Limit faces per photo
+                        # Limit faces per photo with screenshot-policy awareness.
                         limit = self.max_faces_per_photo
-                        if is_screenshot:
-                            limit = min(limit, 4)  # Hard cap of 4 for screenshots
 
-                        if len(faces) > limit:
+                        if is_screenshot:
+                            if self.screenshot_policy == "exclude":
+                                limit = 0
+                            elif self.screenshot_policy == "detect_only":
+                                limit = min(limit, 4)
+                            elif self.screenshot_policy == "include_cluster":
+                                limit = min(limit, 8)
+                            else:
+                                limit = min(limit, 4)
+
+                        if limit == 0:
+                            faces = []
+                        elif len(faces) > limit:
                             logger.warning(
                                 f"[FaceDetectionWorker] {photo_path} has {len(faces)} faces "
-                                f"(screenshot={is_screenshot}), keeping largest {limit}"
+                                f"(screenshot={is_screenshot}, policy={self.screenshot_policy}), "
+                                f"keeping largest {limit}"
                             )
-                            faces = sorted(faces, key=lambda f: f['bbox_w'] * f['bbox_h'], reverse=True)
+                            faces = sorted(
+                                faces,
+                                key=lambda f: f["bbox_w"] * f["bbox_h"],
+                                reverse=True
+                            )
                             faces = faces[:limit]
 
                         # Prepare face rows for batch insert (saves crops to disk)
@@ -459,22 +473,22 @@ class FaceDetectionWorker(QRunnable):
             # Batch detect faces
             batch_start_time = time.time()
             try:
-                # Apply screenshot policy (exclude) before batch detection
+                # Apply screenshot policy before batch detection.
                 candidate_paths = batch_paths
                 effective_batch_paths = []
-                screenshot_status = {} # path -> is_screenshot
+                screenshot_status = {}  # path -> is_screenshot
+
                 with db._connect() as conn:
                     for p in candidate_paths:
-                        is_screen = False
-                        if self.screenshot_policy != "include_cluster":
-                            is_screen = self._is_photo_screenshot(p, os.path.basename(p), conn)
-
+                        is_screen = self._is_photo_screenshot(p, os.path.basename(p), conn)
                         screenshot_status[p] = is_screen
+
                         if is_screen and self.screenshot_policy == "exclude":
-                            self._stats['photos_processed'] += 1
-                            self._stats['photos_skipped'] += 1
+                            self._stats["photos_processed"] += 1
+                            self._stats["photos_skipped"] += 1
                             logger.debug(f"[FaceDetectionWorker] Skipping screenshot (batch): {p}")
                             continue
+
                         effective_batch_paths.append(p)
 
                 if not effective_batch_paths:
@@ -493,18 +507,38 @@ class FaceDetectionWorker(QRunnable):
                     photo_filename = os.path.basename(photo_path)
 
                     if not faces:
-                        self._stats['photos_processed'] += 1
+                        self._stats["photos_processed"] += 1
                         structured_logger.log_photo_processed(photo_path, 0, batch_duration_ms / len(batch_paths), success=True)
                         continue
 
-                    # Limit faces per photo
-                    if len(faces) > self.max_faces_per_photo:
+                    # Limit faces per photo with screenshot-policy awareness
+                    is_screenshot = screenshot_status.get(photo_path, False)
+                    limit = self.max_faces_per_photo
+
+                    if is_screenshot:
+                        if self.screenshot_policy == "exclude":
+                            limit = 0
+                        elif self.screenshot_policy == "detect_only":
+                            limit = min(limit, 4)
+                        elif self.screenshot_policy == "include_cluster":
+                            limit = min(limit, 8)
+                        else:
+                            limit = min(limit, 4)
+
+                    if limit == 0:
+                        faces = []
+                    elif len(faces) > limit:
                         logger.warning(
-                            f"[FaceDetectionWorker] {photo_path} has {len(faces)} faces, "
-                            f"keeping largest {self.max_faces_per_photo}"
+                            f"[FaceDetectionWorker] {photo_path} has {len(faces)} faces "
+                            f"(screenshot={is_screenshot}, policy={self.screenshot_policy}), "
+                            f"keeping largest {limit}"
                         )
-                        faces = sorted(faces, key=lambda f: f['bbox_w'] * f['bbox_h'], reverse=True)
-                        faces = faces[:self.max_faces_per_photo]
+                        faces = sorted(
+                            faces,
+                            key=lambda f: f["bbox_w"] * f["bbox_h"],
+                            reverse=True
+                        )
+                        faces = faces[:limit]
 
                     # Save faces to database
                     for face_idx, face in enumerate(faces):

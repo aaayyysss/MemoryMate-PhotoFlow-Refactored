@@ -23,6 +23,57 @@ class ProjectRepository(BaseRepository):
     # Default semantic model for new projects (canonical HuggingFace ID)
     DEFAULT_SEMANTIC_MODEL = "openai/clip-vit-base-patch32"
 
+    def _get_best_available_model(self) -> str:
+        """
+        Detect the highest-tier CLIP model available on the system.
+        Priority: Large > Base-patch16 > Base-patch32
+        """
+        from utils.clip_model_registry import CLIP_VIT_L14, CLIP_VIT_B16, CLIP_VIT_B32
+        from pathlib import Path
+        import os
+
+        # Use app-relative models directory
+        app_root = Path(__file__).parent.parent.absolute()
+        models_dir = app_root / "models"
+
+        # Tiers in descending order of quality
+        tiers = [CLIP_VIT_L14, CLIP_VIT_B16, CLIP_VIT_B32]
+
+        for model_id in tiers:
+            # Check for direct folder (HF-style or bare name)
+            folder_name = model_id.replace("/", "--")
+            bare_name = model_id.split("/")[-1]
+
+            paths_to_check = [
+                models_dir / folder_name,
+                models_dir / bare_name,
+            ]
+
+            # Also check HuggingFace default cache location
+            home = Path.home()
+            paths_to_check.extend([
+                home / ".cache" / "huggingface" / "hub" / f"models--{folder_name}",
+                home / ".cache" / "huggingface" / "transformers" / folder_name,
+            ])
+
+            for p in paths_to_check:
+                # Basic check: does config.json exist in this folder or a snapshot?
+                if p.exists():
+                    # Check for direct weights
+                    if (p / "config.json").exists():
+                        return model_id
+
+                    # Check for HF snapshots
+                    snapshots_dir = p / "snapshots"
+                    if snapshots_dir.exists() and snapshots_dir.is_dir():
+                        try:
+                            if any(d.is_dir() for d in snapshots_dir.iterdir()):
+                                return model_id
+                        except Exception:
+                            pass
+
+        return self.DEFAULT_SEMANTIC_MODEL
+
     def create(self, name: str, folder: str, mode: str, semantic_model: Optional[str] = None) -> int:
         """
         Create a new project.
@@ -31,13 +82,13 @@ class ProjectRepository(BaseRepository):
             name: Project name
             folder: Root folder path
             mode: Project mode (date, faces, etc.)
-            semantic_model: Canonical semantic embedding model (defaults to clip-vit-b32)
+            semantic_model: Canonical semantic embedding model (defaults to highest available)
 
         Returns:
             New project ID
         """
         if semantic_model is None:
-            semantic_model = self.DEFAULT_SEMANTIC_MODEL
+            semantic_model = self._get_best_available_model()
 
         sql = """
             INSERT INTO projects (name, folder, mode, created_at, semantic_model)
