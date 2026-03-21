@@ -353,7 +353,7 @@ class FaceDetectionWorker(QRunnable):
                             elif self.screenshot_policy == "detect_only":
                                 limit = min(limit, 4)
                             elif self.screenshot_policy == "include_cluster":
-                                limit = min(limit, 10)
+                                limit = min(limit, 14)
                             else:
                                 limit = min(limit, 4)
 
@@ -363,7 +363,7 @@ class FaceDetectionWorker(QRunnable):
                             logger.warning(
                                 f"[FaceDetectionWorker] {photo_path} has {len(faces)} faces "
                                 f"(screenshot={is_screenshot}, policy={self.screenshot_policy}), "
-                                f"keeping largest {limit}"
+                                f"keeping largest {limit} by bbox area to reduce collage/screenshot noise"
                             )
                             faces = sorted(
                                 faces,
@@ -521,7 +521,7 @@ class FaceDetectionWorker(QRunnable):
                         elif self.screenshot_policy == "detect_only":
                             limit = min(limit, 4)
                         elif self.screenshot_policy == "include_cluster":
-                            limit = min(limit, 10)
+                            limit = min(limit, 14)
                         else:
                             limit = min(limit, 4)
 
@@ -531,7 +531,7 @@ class FaceDetectionWorker(QRunnable):
                         logger.warning(
                             f"[FaceDetectionWorker] {photo_path} has {len(faces)} faces "
                             f"(screenshot={is_screenshot}, policy={self.screenshot_policy}), "
-                            f"keeping largest {limit}"
+                            f"keeping largest {limit} by bbox area to reduce collage/screenshot noise"
                         )
                         faces = sorted(
                             faces,
