@@ -117,10 +117,10 @@ class FaceClusterWorker(QRunnable):
 
             # Phase: reduce fragmentation on small/medium datasets
             if self.screenshot_policy == "include_cluster":
-                # Screenshot-inclusive clustering is much noisier and needs stronger merge bias
-                self.eps = max(self.eps, 0.60)
+                # Screenshot-inclusive clustering is much noisier and needs a stronger merge bias
+                self.eps = max(self.eps, 0.70)
                 self.min_samples = 2
-                self.tuning_rationale += " | include_cluster aggressive merge-bias"
+                self.tuning_rationale += " | include_cluster very aggressive merge-bias"
             elif self.auto_tune and face_count <= 100:
                 self.eps = max(self.eps, 0.42)
                 self.min_samples = max(2, self.min_samples)
@@ -314,18 +314,19 @@ class FaceClusterWorker(QRunnable):
 
                             ratio = ((bw or 0) * (bh or 0)) / max(1, img_w * img_h)
 
-                            # include_cluster means: relaxed drop for screenshots, but still drop if truly tiny.
-                            effective_min_ratio = 0.008 if is_screenshot_face and self.screenshot_policy == "include_cluster" else base_min_ratio
+                            # include_cluster means: do NOT drop faces because they are small.
+                            if self.screenshot_policy != "include_cluster":
+                                effective_min_ratio = 0.008 if is_screenshot_face else base_min_ratio
 
-                            if ratio < effective_min_ratio:
-                                self._skip_stats['small_face'] += 1
-                                if is_screenshot_face:
-                                    self._skip_stats['small_face_screenshot'] += 1
-                                else:
-                                    self._skip_stats['small_face_non_screenshot'] += 1
+                                if ratio < effective_min_ratio:
+                                    self._skip_stats['small_face'] += 1
+                                    if is_screenshot_face:
+                                        self._skip_stats['small_face_screenshot'] += 1
+                                    else:
+                                        self._skip_stats['small_face_non_screenshot'] += 1
 
-                                small_face_by_image[img_path] = small_face_by_image.get(img_path, 0) + 1
-                                continue
+                                    small_face_by_image[img_path] = small_face_by_image.get(img_path, 0) + 1
+                                    continue
 
                         vec = np.frombuffer(blob, dtype=np.float32)
                         if vec.size == 0:
