@@ -4572,8 +4572,7 @@ class MainWindow(QMainWindow):
                 """)
 
             # Update tooltip with details
-            tooltip = f"Embedding Coverage: {with_emb}/{total} photos ({coverage:.1f}%) {model_warning}
-"
+            tooltip = f"Embedding Coverage: {with_emb}/{total} photos ({coverage:.1f}%) {model_warning}\n"
             tooltip += "Click to view detailed statistics."
             self.embedding_status_label.setToolTip(tooltip)
 
