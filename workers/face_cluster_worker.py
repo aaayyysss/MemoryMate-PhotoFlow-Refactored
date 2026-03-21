@@ -117,10 +117,10 @@ class FaceClusterWorker(QRunnable):
 
             # Phase: reduce fragmentation on small/medium datasets
             if self.screenshot_policy == "include_cluster":
-                # Looser thresholds when noisier screenshots are included
-                self.eps = max(self.eps, 0.46)
+                # Screenshot-inclusive clustering is noisier and needs stronger merge bias
+                self.eps = max(self.eps, 0.52)
                 self.min_samples = 2
-                self.tuning_rationale += " | include_cluster merge-bias"
+                self.tuning_rationale += " | include_cluster stronger merge-bias"
             elif self.auto_tune and face_count <= 100:
                 self.eps = max(self.eps, 0.42)
                 self.min_samples = max(2, self.min_samples)
@@ -284,7 +284,9 @@ class FaceClusterWorker(QRunnable):
                     'bad_embedding': 0,
                     'bad_size': 0,
                     'low_conf': 0,
-                    'small_face': 0
+                    'small_face': 0,
+                    'small_face_screenshot': 0,
+                    'small_face_non_screenshot': 0,
                 }
                 small_face_by_image = {}  # image_path -> count
 
@@ -303,22 +305,37 @@ class FaceClusterWorker(QRunnable):
                         if img_w and img_h:
                             # LOCAL RULE: is this specific face from a known screenshot?
                             # Check img_path filename as proxy if search_asset_features join is too coarse
-                            is_screen_filename = any(m in img_path.lower() for m in ["screenshot", "screen shot", "screen_shot", "screen-shot"])
-
-                            # Use more permissive ratio if image is a screenshot OR policy is include_cluster
-                            effective_min_ratio = 0.008 if (is_screen_filename or self.screenshot_policy == "include_cluster") else base_min_ratio
+                            is_screen_filename = any(
+                                m in img_path.lower()
+                                for m in [
+                                    "screenshot", "screen shot", "screen_shot", "screen-shot",
+                                    "bildschirmfoto", "captura", "스크린샷", "スクリーンショット"
+                                ]
+                            )
 
                             ratio = ((bw or 0) * (bh or 0)) / max(1, img_w * img_h)
+
+                            # Screenshot-aware face-size policy
+                            # For include_cluster, screenshot-origin faces should be eligible
+                            # even when they are smaller than normal-photo faces.
+                            if self.screenshot_policy == "include_cluster":
+                                effective_min_ratio = 0.0 if is_screen_filename else 0.008
+                            else:
+                                effective_min_ratio = 0.008 if is_screen_filename else base_min_ratio
+
                             if ratio < effective_min_ratio:
                                 self._skip_stats['small_face'] += 1
+                                if is_screen_filename:
+                                    self._skip_stats['small_face_screenshot'] += 1
+                                else:
+                                    self._skip_stats['small_face_non_screenshot'] += 1
+
                                 small_face_by_image[img_path] = small_face_by_image.get(img_path, 0) + 1
 
-                                # Sampled debug log for first few drops to aid analysis
-                                if self._skip_stats['small_face'] <= 5:
-                                    logger.debug(
-                                        "[FaceClusterWorker] SMALL_FACE_DROP path=%s conf=%s bbox=(%s,%s,%s,%s) img=(%s,%s) ratio=%.4f threshold=%.4f policy=%s",
-                                        img_path, conf, bx, by, bw, bh, img_w, img_h, ratio, effective_min_ratio, self.screenshot_policy
-                                    )
+                                logger.debug(
+                                    "[FaceClusterWorker] SMALL_FACE_DROP path=%s conf=%s bbox=(%s,%s,%s,%s) img=(%s,%s) ratio=%.4f threshold=%.4f policy=%s",
+                                    img_path, conf, bx, by, bw, bh, img_w, img_h, ratio, effective_min_ratio, self.screenshot_policy
+                                )
                                 continue
 
                         vec = np.frombuffer(blob, dtype=np.float32)
@@ -346,12 +363,16 @@ class FaceClusterWorker(QRunnable):
 
                 logger.info(
                     "[FaceClusterWorker] EMBEDDING_FILTER_SUMMARY: loaded=%d "
-                    "bad_embedding=%d bad_dim=%d low_conf=%d small_face=%d screenshot_policy=%s",
+                    "bad_embedding=%d bad_dim=%d low_conf=%d small_face=%d "
+                    "small_face_screenshot=%d small_face_non_screenshot=%d "
+                    "screenshot_policy=%s",
                     len(vecs),
                     self._skip_stats['bad_embedding'],
                     self._skip_stats['bad_size'],
                     self._skip_stats['low_conf'],
                     self._skip_stats['small_face'],
+                    self._skip_stats['small_face_screenshot'],
+                    self._skip_stats['small_face_non_screenshot'],
                     self.screenshot_policy,
                 )
 

@@ -2,6 +2,39 @@
 
 All notable changes to the MemoryMate PhotoFlow search pipeline are documented here.
 
+## [Unreleased] - 2026-03-22
+
+### Screenshot Clustering Refinements & Quality Tuning
+
+Further refinements to the screenshot face clustering pipeline to ensure high recall and reduced fragmentation.
+
+#### Face Detection
+- **FaceDetectionWorker**:
+  - Increased per-screenshot face cap from 10 to 14 in `include_cluster` mode to support dense collages.
+  - Clarified screenshot cap logging to specify bbox area prioritization.
+
+#### Face Clustering
+- **FaceClusterWorker**:
+  - **Zero-drop Small Face Policy**: Relaxed `min_ratio` to 0.0 for screenshot-origin faces in `include_cluster` mode.
+  - **Stronger Merge Bias**: Increased DBSCAN epsilon to 0.52 for screenshot-inclusive runs to combat over-fragmentation.
+  - **Lexicon Expansion**: Added international terms (bildschirmfoto, captura, etc.) to the clustering-side screenshot detector.
+  - **Granular Skip Counters**: Implemented `small_face_screenshot` and `small_face_non_screenshot` counters for precise attrition analysis.
+
+#### Face Pipeline
+- **FacePipelineWorker**:
+  - Enhanced `FACE_ACCOUNTING` summary to include detailed screenshot-specific skip statistics.
+  - Ensured interim clustering passes strictly adhere to the user's active screenshot policy.
+
+### Files Changed
+- `workers/face_detection_worker.py`
+- `workers/face_cluster_worker.py`
+- `workers/face_pipeline_worker.py`
+
+### Test Updates
+- Verified with 279 tests (100% pass rate).
+
+---
+
 ## [Unreleased] - 2026-03-21
 
 ### Face Pipeline, Project Bootstrap & Model Selection
