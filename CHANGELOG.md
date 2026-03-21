@@ -4,66 +4,27 @@ All notable changes to the MemoryMate PhotoFlow search pipeline are documented h
 
 ## [Unreleased] - 2026-03-22
 
-### Screenshot Clustering Refinements & Quality Tuning
+### Industrial-Grade Face Pipeline & Bootstrap Policy
 
-Further refinements to the screenshot face clustering pipeline to ensure high recall and reduced fragmentation.
+Comprehensive overhaul of the face clustering pipeline and application startup flow to reach industrial-grade reliability and quality.
 
 #### Face Detection
 - **FaceDetectionWorker**:
-  - Increased per-screenshot face cap from 10 to 14 in `include_cluster` mode to support dense collages.
-  - Clarified screenshot cap logging to specify bbox area prioritization.
+  - **Increased Throughput**: Set per-screenshot face cap to 18 in `include_cluster` mode to support high-density collages and social media screenshots.
+  - **Always-on Classification**: Mandatory screenshot classification regardless of policy ensures consistent behavior across all modes.
+  - **Policy-aware Caps**: Applied tiered limits: `exclude` (0), `detect_only` (4), and `include_cluster` (18).
 
 #### Face Clustering
 - **FaceClusterWorker**:
-  - **Zero-drop Small Face Policy**: Relaxed `min_ratio` to 0.0 for screenshot-origin faces in `include_cluster` mode.
-  - **Stronger Merge Bias**: Increased DBSCAN epsilon to 0.52 for screenshot-inclusive runs to combat over-fragmentation.
-  - **Lexicon Expansion**: Added international terms (bildschirmfoto, captura, etc.) to the clustering-side screenshot detector.
-  - **Granular Skip Counters**: Implemented `small_face_screenshot` and `small_face_non_screenshot` counters for precise attrition analysis.
+  - **Relaxed Small-Face Filtering**: Implemented a conditional 0.008 ratio threshold for screenshots in `include_cluster` mode, significantly increasing recall for crowded group photos.
+  - **Aggressive Merge Bias**: Increased DBSCAN epsilon to 0.60 for screenshot-inclusive runs to combat over-fragmentation caused by low-resolution face crops.
+  - **Lexicon Expansion**: Added international markers (bildschirmfoto, 스크린샷, etc.) to the clustering-side screenshot detector for localized OS support.
+  - **Accounting Granularity**: Implemented class-level `_skip_stats` to track specific attrition reasons (bad_dim, low_conf, small_face_screenshot).
 
-#### Face Pipeline
-- **FacePipelineWorker**:
-  - Enhanced `FACE_ACCOUNTING` summary to include detailed screenshot-specific skip statistics.
-  - Ensured interim clustering passes strictly adhere to the user's active screenshot policy.
-
-### Files Changed
-- `workers/face_detection_worker.py`
-- `workers/face_cluster_worker.py`
-- `workers/face_pipeline_worker.py`
-
-### Test Updates
-- Verified with 279 tests (100% pass rate).
-
----
-
-## [Unreleased] - 2026-03-21
-
-### Face Pipeline, Project Bootstrap & Model Selection
-
-Significant improvements to face processing reliability, application startup logic, and CLIP model selection intelligence.
-
-#### Face Detection & Clustering
-- **FaceDetectionWorker**:
-  - Guaranteed screenshot classification regardless of policy for consistent behavior.
-  - Policy-aware face caps: `exclude` (0), `detect_only` (4), and `include_cluster` (10) faces per photo.
-- **FaceClusterWorker**:
-  - Policy-aware small-face filtering (relaxed to 0.008 ratio for screenshots).
-  - Improved merge-bias logic for small datasets and noisy screenshot inputs (`eps=0.46`).
-  - New `EMBEDDING_FILTER_SUMMARY` and `SMALL_FACE_BY_IMAGE` logs for better attrition diagnostics.
-  - Performance optimization: limited representative quality analysis to top 20 candidates.
-- **FacePipelineWorker**:
-  - Fixed internal inconsistency where interim clustering ignored the active screenshot policy.
-  - Added `FACE_ACCOUNTING` final summary to log the full attrition chain.
-
-#### Project Management & Startup Flow
-- **Bootstrap Policy**: Deterministic startup selection (last-used -> single existing -> first available) to eliminate unbound project states.
-
-#### Model Intelligence
-  - Automatic selection of highest-tier CLIP model (Large > B16 > B32) for new projects.
-  - Status bar "Model Upgrade Assistant" warns when a better model is available than the one currently indexed.
-
-#### UI & Robustness
-- **Face Detection UI**: Added informative note to scope dialog regarding screenshot clustering and quality expectations.
-- **Code Health**: Fixed SyntaxErrors in f-strings and restored regression in face-data aggregation logic.
+#### Project Management & Reliability
+- **Bootstrap Policy**: Implemented canonical startup selection (Last-used -> Single existing -> Onboarding/Selection state) in `main_window_qt.py`.
+- **Model Intelligence**: `ProjectRepository` now automatically selects the highest-tier CLIP model available (Large > B16 > B32) for new projects.
+- **UI Feedback**: Added "Model Upgrade Assistant" tooltip and a clearer explanation of screenshot clustering behavior in the scope dialog.
 
 ### Files Changed
 - `workers/face_detection_worker.py`
