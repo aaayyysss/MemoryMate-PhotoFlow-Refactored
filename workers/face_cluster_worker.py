@@ -116,7 +116,12 @@ class FaceClusterWorker(QRunnable):
             self.tuning_category = optimal["category"]
 
             # Phase: reduce fragmentation on small/medium datasets
-            if self.auto_tune and face_count <= 100:
+            if self.screenshot_policy == "include_cluster":
+                # Looser thresholds when noisier screenshots are included
+                self.eps = max(self.eps, 0.46)
+                self.min_samples = 2
+                self.tuning_rationale += " | include_cluster merge-bias"
+            elif self.auto_tune and face_count <= 100:
                 self.eps = max(self.eps, 0.42)
                 self.min_samples = max(2, self.min_samples)
                 self.tuning_rationale += " | merge-bias for small dataset fragmentation"
@@ -275,35 +280,54 @@ class FaceClusterWorker(QRunnable):
                 qualities = []  # Store (confidence, face_ratio, aspect_ratio) for quality filtering
                 bboxes = []  # Store bbox info for comprehensive quality analysis
 
-                _skipped_bad_embedding = 0
-                _skipped_bad_size = 0
-                _skipped_low_conf = 0
-                _skipped_small_face = 0
+                self._skip_stats = {
+                    'bad_embedding': 0,
+                    'bad_size': 0,
+                    'low_conf': 0,
+                    'small_face': 0
+                }
+                small_face_by_image = {}  # image_path -> count
 
-                # Patch B.3: Quality thresholds (relaxed)
+                # Policy-aware quality thresholds
                 min_conf = 0.50
-                min_ratio = 0.005
+                # Relaxed threshold for screenshot inclusion mode
+                base_min_ratio = 0.008 if self.screenshot_policy == "include_cluster" else 0.015
 
                 for rid, path, img_path, blob, conf, bx, by, bw, bh, img_w, img_h in rows:
                     try:
                         # Pre-clustering quality filtering
                         if conf is not None and conf < min_conf:
-                            _skipped_low_conf += 1
+                            self._skip_stats['low_conf'] += 1
                             continue
 
                         if img_w and img_h:
+                            # LOCAL RULE: is this specific face from a known screenshot?
+                            # Check img_path filename as proxy if search_asset_features join is too coarse
+                            is_screen_filename = any(m in img_path.lower() for m in ["screenshot", "screen shot", "screen_shot", "screen-shot"])
+
+                            # Use more permissive ratio if image is a screenshot OR policy is include_cluster
+                            effective_min_ratio = 0.008 if (is_screen_filename or self.screenshot_policy == "include_cluster") else base_min_ratio
+
                             ratio = ((bw or 0) * (bh or 0)) / max(1, img_w * img_h)
-                            if ratio < min_ratio:
-                                _skipped_small_face += 1
+                            if ratio < effective_min_ratio:
+                                self._skip_stats['small_face'] += 1
+                                small_face_by_image[img_path] = small_face_by_image.get(img_path, 0) + 1
+
+                                # Sampled debug log for first few drops to aid analysis
+                                if self._skip_stats['small_face'] <= 5:
+                                    logger.debug(
+                                        "[FaceClusterWorker] SMALL_FACE_DROP path=%s conf=%s bbox=(%s,%s,%s,%s) img=(%s,%s) ratio=%.4f threshold=%.4f policy=%s",
+                                        img_path, conf, bx, by, bw, bh, img_w, img_h, ratio, effective_min_ratio, self.screenshot_policy
+                                    )
                                 continue
 
                         vec = np.frombuffer(blob, dtype=np.float32)
                         if vec.size == 0:
-                            _skipped_bad_embedding += 1
+                            self._skip_stats['bad_embedding'] += 1
                             continue
                         # Validate embedding dimension — must be 512 for ArcFace
                         if vec.size != 512:
-                            _skipped_bad_size += 1
+                            self._skip_stats['bad_size'] += 1
                             continue
 
                         ids.append(rid)
@@ -318,18 +342,24 @@ class FaceClusterWorker(QRunnable):
                         })
                     except Exception as e:
                         logger.warning(f"Failed to parse embedding for {path}: {e}")
-                        _skipped_bad_embedding += 1
+                        self._skip_stats['bad_embedding'] += 1
 
                 logger.info(
                     "[FaceClusterWorker] EMBEDDING_FILTER_SUMMARY: loaded=%d "
                     "bad_embedding=%d bad_dim=%d low_conf=%d small_face=%d screenshot_policy=%s",
                     len(vecs),
-                    _skipped_bad_embedding,
-                    _skipped_bad_size,
-                    _skipped_low_conf,
-                    _skipped_small_face,
+                    self._skip_stats['bad_embedding'],
+                    self._skip_stats['bad_size'],
+                    self._skip_stats['low_conf'],
+                    self._skip_stats['small_face'],
                     self.screenshot_policy,
                 )
+
+                if small_face_by_image:
+                    logger.info(
+                        "[FaceClusterWorker] SMALL_FACE_BY_IMAGE: %s",
+                        dict(sorted(small_face_by_image.items(), key=lambda kv: kv[1], reverse=True)[:10])
+                    )
 
                 if len(vecs) < 2:
                     logger.warning("[FaceClusterWorker] Not enough faces to cluster (need at least 2)")
