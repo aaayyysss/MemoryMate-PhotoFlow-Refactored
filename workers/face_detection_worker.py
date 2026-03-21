@@ -332,8 +332,8 @@ class FaceDetectionWorker(QRunnable):
                     is_screenshot = self._is_photo_screenshot(photo_path, photo_filename, conn)
 
                     if is_screenshot and self.screenshot_policy == "exclude":
-                        self._stats["photos_processed"] += 1
-                        self._stats["photos_skipped"] += 1
+                        self._stats['photos_processed'] += 1
+                        self._stats['photos_skipped'] += 1
                         logger.debug(f"[FaceDetectionWorker] Skipping screenshot: {photo_path}")
                         continue
 
@@ -341,7 +341,7 @@ class FaceDetectionWorker(QRunnable):
                     photo_duration_ms = (time.time() - photo_start_time) * 1000
 
                     if not faces:
-                        self._stats["photos_processed"] += 1
+                        self._stats['photos_processed'] += 1
                         structured_logger.log_photo_processed(photo_path, 0, photo_duration_ms, success=True)
                     else:
                         # Limit faces per photo with screenshot-policy awareness.
@@ -353,6 +353,7 @@ class FaceDetectionWorker(QRunnable):
                             elif self.screenshot_policy == "detect_only":
                                 limit = min(limit, 4)
                             elif self.screenshot_policy == "include_cluster":
+                                # Zero Truncation: allow all detected faces in inclusive mode
                                 limit = len(faces)
                             else:
                                 limit = min(limit, 4)
@@ -367,7 +368,7 @@ class FaceDetectionWorker(QRunnable):
                             )
                             faces = sorted(
                                 faces,
-                                key=lambda f: f["bbox_w"] * f["bbox_h"],
+                                key=lambda f: f['bbox_w'] * f['bbox_h'],
                                 reverse=True
                             )
                             faces = faces[:limit]
@@ -484,8 +485,8 @@ class FaceDetectionWorker(QRunnable):
                         screenshot_status[p] = is_screen
 
                         if is_screen and self.screenshot_policy == "exclude":
-                            self._stats["photos_processed"] += 1
-                            self._stats["photos_skipped"] += 1
+                            self._stats['photos_processed'] += 1
+                            self._stats['photos_skipped'] += 1
                             logger.debug(f"[FaceDetectionWorker] Skipping screenshot (batch): {p}")
                             continue
 
@@ -521,6 +522,7 @@ class FaceDetectionWorker(QRunnable):
                         elif self.screenshot_policy == "detect_only":
                             limit = min(limit, 4)
                         elif self.screenshot_policy == "include_cluster":
+                            # Zero Truncation: allow all detected faces in inclusive mode
                             limit = len(faces)
                         else:
                             limit = min(limit, 4)
@@ -535,7 +537,7 @@ class FaceDetectionWorker(QRunnable):
                         )
                         faces = sorted(
                             faces,
-                            key=lambda f: f["bbox_w"] * f["bbox_h"],
+                            key=lambda f: f['bbox_w'] * f['bbox_h'],
                             reverse=True
                         )
                         faces = faces[:limit]

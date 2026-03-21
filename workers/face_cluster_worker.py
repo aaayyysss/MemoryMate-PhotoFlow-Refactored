@@ -98,6 +98,8 @@ class FaceClusterWorker(QRunnable):
         self.tuning_category = ""
 
         # Determine parameters with adaptive selection
+        face_count = self._get_face_count()
+
         if eps is not None and min_samples is not None:
             # Manual parameters provided - use them
             self.eps = eps
@@ -106,7 +108,6 @@ class FaceClusterWorker(QRunnable):
             self.tuning_category = "manual"
         elif auto_tune:
             # Auto-tune based on dataset size
-            face_count = self._get_face_count()
             config = get_face_config()
             optimal = config.get_optimal_clustering_params(face_count, project_id)
 
@@ -114,21 +115,6 @@ class FaceClusterWorker(QRunnable):
             self.min_samples = optimal["min_samples"]
             self.tuning_rationale = optimal["rationale"]
             self.tuning_category = optimal["category"]
-
-            # Phase: reduce fragmentation on small/medium datasets
-            if self.screenshot_policy == "include_cluster":
-                # Screenshot-inclusive clustering is much noisier and needs a stronger merge bias
-                self.eps = max(self.eps, 0.70)
-                self.min_samples = 2
-                self.tuning_rationale += " | include_cluster very aggressive merge-bias"
-            elif self.auto_tune and face_count <= 100:
-                self.eps = max(self.eps, 0.42)
-                self.min_samples = max(2, self.min_samples)
-                self.tuning_rationale += " | merge-bias for small dataset fragmentation"
-
-            logger.info(f"[FaceClusterWorker] Auto-tuned for {face_count} faces")
-            logger.info(f"[FaceClusterWorker] Parameters: eps={self.eps}, min_samples={self.min_samples}")
-            logger.info(f"[FaceClusterWorker] Rationale: {self.tuning_rationale}")
         else:
             # Use config defaults
             config = get_face_config()
@@ -137,6 +123,21 @@ class FaceClusterWorker(QRunnable):
             self.min_samples = params["min_samples"]
             self.tuning_rationale = "Config defaults"
             self.tuning_category = "default"
+
+        # Phase: reduce fragmentation on small/medium datasets
+        if self.screenshot_policy == "include_cluster":
+            # Screenshot-inclusive clustering is much noisier and needs a stronger merge bias
+            self.eps = 0.70
+            self.min_samples = 2
+            self.tuning_rationale += " | include_cluster 0.70 eps calibration"
+        elif self.auto_tune and face_count <= 100:
+            self.eps = max(self.eps, 0.42)
+            self.min_samples = max(2, self.min_samples)
+            self.tuning_rationale += " | merge-bias for small dataset fragmentation"
+
+        logger.info(f"[FaceClusterWorker] Auto-tuned for {face_count} faces")
+        logger.info(f"[FaceClusterWorker] Parameters: eps={self.eps}, min_samples={self.min_samples}")
+        logger.info(f"[FaceClusterWorker] Rationale: {self.tuning_rationale}")
 
         self.signals = FaceClusterSignals()
         self.cancelled = False
@@ -293,39 +294,30 @@ class FaceClusterWorker(QRunnable):
 
                 # Policy-aware quality thresholds
                 min_conf = 0.50
-                base_min_ratio = 0.015
+                min_ratio = 0.015
 
                 for rid, path, img_path, blob, conf, bx, by, bw, bh, img_w, img_h, is_screenshot_flag in rows:
                     try:
-                        # Pre-clustering quality filtering
                         if conf is not None and conf < min_conf:
                             self._skip_stats['low_conf'] += 1
                             continue
 
                         if img_w and img_h:
-                            # LOCAL RULE: is this specific face from a known screenshot?
-                            is_screenshot_face = bool(is_screenshot_flag) or any(
-                                m in img_path.lower()
-                                for m in [
-                                    "screenshot", "screen shot", "screen_shot", "screen-shot",
-                                    "bildschirmfoto", "captura", "스크린샷", "スクリーンショット"
-                                ]
-                            )
-
                             ratio = ((bw or 0) * (bh or 0)) / max(1, img_w * img_h)
-
-                            # include_cluster means: do NOT drop faces because they are small.
                             if self.screenshot_policy != "include_cluster":
-                                effective_min_ratio = 0.008 if is_screenshot_face else base_min_ratio
-
-                                if ratio < effective_min_ratio:
+                                if ratio < min_ratio:
                                     self._skip_stats['small_face'] += 1
+                                    is_screenshot_face = bool(is_screenshot_flag) or any(
+                                        m in img_path.lower()
+                                        for m in [
+                                            "screenshot", "screen shot", "screen_shot", "screen-shot",
+                                            "bildschirmfoto", "captura", "스크린샷", "スクリーンショット"
+                                        ]
+                                    )
                                     if is_screenshot_face:
                                         self._skip_stats['small_face_screenshot'] += 1
                                     else:
                                         self._skip_stats['small_face_non_screenshot'] += 1
-
-                                    small_face_by_image[img_path] = small_face_by_image.get(img_path, 0) + 1
                                     continue
 
                         vec = np.frombuffer(blob, dtype=np.float32)
@@ -365,18 +357,6 @@ class FaceClusterWorker(QRunnable):
                     self._skip_stats['small_face_non_screenshot'],
                     self.screenshot_policy,
                 )
-
-                if self.screenshot_policy == "include_cluster" and len(vecs) < total_faces_in_db:
-                    logger.warning(
-                        "[FaceClusterWorker] INCLUDE_CLUSTER_ATTRITION: db_total=%d loaded=%d dropped=%d",
-                        total_faces_in_db, len(vecs), total_faces_in_db - len(vecs)
-                    )
-
-                if small_face_by_image:
-                    logger.info(
-                        "[FaceClusterWorker] SMALL_FACE_BY_IMAGE: %s",
-                        dict(sorted(small_face_by_image.items(), key=lambda kv: kv[1], reverse=True)[:10])
-                    )
 
 
                 if len(vecs) < 2:

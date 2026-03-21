@@ -127,6 +127,11 @@ class EmbeddingStatsDashboard(QDialog):
         title.setStyleSheet("font-size: 18px; font-weight: bold; color: #fff;")
         layout.addWidget(title)
 
+        # Upgrade Section (Proactive Quality Policy)
+        upgrade_group = self._create_upgrade_section()
+        if upgrade_group:
+            layout.addWidget(upgrade_group)
+
         # Coverage Section
         coverage_group = self._create_coverage_section()
         layout.addWidget(coverage_group)
@@ -168,6 +173,63 @@ class EmbeddingStatsDashboard(QDialog):
         actions_layout.addWidget(close_btn)
 
         layout.addLayout(actions_layout)
+
+    def _create_upgrade_section(self) -> Optional[QGroupBox]:
+        """Create the model upgrade section if an upgrade is available."""
+        if not self.stats.get('can_upgrade_model', False):
+            return None
+
+        group = QGroupBox("Model Upgrade Assistant")
+        group.setStyleSheet("""
+            QGroupBox {
+                border: 2px solid #1a73e8;
+                border-radius: 8px;
+                margin-top: 1ex;
+                font-weight: bold;
+                color: #1a73e8;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                subcontrol-position: top center;
+                padding: 0 3px;
+            }
+        """)
+        layout = QVBoxLayout(group)
+        layout.setContentsMargins(15, 20, 15, 15)
+
+        from utils.clip_model_registry import model_display_label
+        current = model_display_label(self.stats.get('current_project_model', 'unknown'))
+        recommended = model_display_label(self.stats.get('recommended_model', 'unknown'))
+
+        info_lbl = QLabel(
+            f"🚀 <b>A better CLIP model is available!</b><br><br>"
+            f"Your project is currently using: <i>{current}</i><br>"
+            f"Recommended for best quality: <b>{recommended}</b><br><br>"
+            f"Upgrading to the larger model significantly improves search quality for scenic, "
+            f"lifestyle, and complex semantic queries."
+        )
+        info_lbl.setWordWrap(True)
+        info_lbl.setStyleSheet("color: #fff; line-height: 1.4;")
+        layout.addWidget(info_lbl)
+
+        upgrade_btn = QPushButton(f"✨ Upgrade Project to {recommended}")
+        upgrade_btn.setMinimumHeight(40)
+        upgrade_btn.setCursor(Qt.PointingHandCursor)
+        upgrade_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #1a73e8;
+                color: white;
+                font-weight: bold;
+                font-size: 13px;
+                border-radius: 6px;
+                padding: 8px;
+            }
+            QPushButton:hover { background-color: #1557b0; }
+        """)
+        upgrade_btn.clicked.connect(self._on_upgrade_model)
+        layout.addWidget(upgrade_btn)
+
+        return group
 
     def _create_coverage_section(self) -> QGroupBox:
         """Create the coverage statistics section."""
@@ -363,6 +425,53 @@ class EmbeddingStatsDashboard(QDialog):
                     "Migration Failed",
                     f"Error during migration: {e}"
                 )
+
+    def _on_upgrade_model(self):
+        """Execute the model upgrade path."""
+        from utils.clip_model_registry import model_display_label
+        recommended = self.stats.get('recommended_model')
+
+        reply = QMessageBox.question(
+            self,
+            "Upgrade CLIP Model",
+            f"This will upgrade your project to use the <b>{model_display_label(recommended)}</b> model.<br><br>"
+            "<b>What happens next:</b><br>"
+            "1. The project's default model will be changed.<br>"
+            "2. Existing embeddings will be marked as legacy (kept for safety).<br>"
+            "3. You will be prompted to re-extract embeddings for the entire project.<br><br>"
+            "Proceed with upgrade?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.Yes
+        )
+
+        if reply == QMessageBox.Yes:
+            try:
+                from repository.project_repository import ProjectRepository
+                from repository.base_repository import DatabaseConnection
+                repo = ProjectRepository(DatabaseConnection())
+
+                # Perform the model change in DB
+                result = repo.change_semantic_model(self.project_id, recommended, keep_old_embeddings=True)
+
+                QMessageBox.information(
+                    self,
+                    "Upgrade Initialized",
+                    f"Project successfully upgraded to {model_display_label(recommended)}.<br><br>"
+                    f"Found {result['photos_to_reindex']} photos that now need re-indexing with the new model."
+                )
+
+                # Close dashboard and trigger extraction in MainWindow
+                self.accept()
+
+                # If parent is MainWindow, trigger its extraction handler
+                parent = self.parent()
+                if parent and hasattr(parent, '_on_extract_embeddings'):
+                    # Small delay to let this dialog close fully
+                    QTimer.singleShot(150, parent._on_extract_embeddings)
+
+            except Exception as e:
+                logger.error(f"Upgrade failed: {e}")
+                QMessageBox.critical(self, "Upgrade Failed", f"Failed to upgrade model: {e}")
 
     def _on_invalidate_stale(self):
         """Invalidate stale embeddings."""

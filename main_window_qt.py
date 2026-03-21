@@ -949,40 +949,7 @@ class MainWindow(QMainWindow):
         self.splitter = QSplitter(Qt.Horizontal)
 
         # PHASE 1: Bootstrap Policy (last-used -> exactly one -> onboarding)
-        from session_state_manager import get_session_state
-        session_state = get_session_state()
-
-        default_pid = session_state.get_project_id()
-
-        # 1. Check if session project still exists
-        if default_pid is not None:
-            try:
-                from repository.project_repository import ProjectRepository
-                from repository.base_repository import DatabaseConnection
-                _proj = ProjectRepository(DatabaseConnection()).get_by_id(default_pid)
-                if _proj is None:
-                    print(f"[MainWindow] Bootstrap: Session project_id={default_pid} missing, clearing")
-                    session_state.set_project(None)
-                    default_pid = None
-                else:
-                    print(f"[MainWindow] Bootstrap: Restoring session project_id={default_pid}")
-            except Exception as e:
-                print(f"[MainWindow] Bootstrap: Session project check failed: {e}")
-                default_pid = None
-
-        # 2. If no valid session project, apply auto-selection logic
-        if default_pid is None:
-            if len(self._projects) == 1:
-                default_pid = self._projects[0]["id"]
-                print(f"[MainWindow] Bootstrap: Auto-selecting single existing project_id={default_pid}")
-            else:
-                # Multiple projects or zero projects -> onboarding/selection state
-                # If multiple, the user must explicitly choose. If zero, they must create.
-                print(f"[MainWindow] Bootstrap: {len(self._projects)} projects found, entering onboarding/selection state")
-                default_pid = None
-
-        if default_pid is not None:
-            session_state.set_project(default_pid)
+        default_pid = self._bootstrap_active_project()
 
         self.sidebar = SidebarQt(project_id=default_pid)
 
@@ -1414,6 +1381,51 @@ class MainWindow(QMainWindow):
         # Start deferred init after a short delay to let initial render settle.
         QTimer.singleShot(250, self._deferred_initialization)
 
+    def _bootstrap_active_project(self) -> Optional[int]:
+        """
+        Canonical project bootstrap policy:
+        1. if there is a last-used project and it still exists, auto-select it.
+        2. else if exactly one project exists, auto-select it.
+        3. else enter an explicit onboarding state (project_id=None).
+        """
+        from session_state_manager import get_session_state
+        from repository.project_repository import ProjectRepository
+        from repository.base_repository import DatabaseConnection
+
+        session_state = get_session_state()
+        last_pid = session_state.get_project_id()
+
+        # Step 1: Check last-used project
+        if last_pid is not None:
+            try:
+                proj = ProjectRepository(DatabaseConnection()).get_by_id(last_pid)
+                if proj:
+                    print(f"[Bootstrap] Policy: Restoring last-used project_id={last_pid}")
+                    return last_pid
+                else:
+                    print(f"[Bootstrap] Policy: Last-used project_id={last_pid} no longer exists")
+                    session_state.set_project(None)
+            except Exception as e:
+                print(f"[Bootstrap] Policy: Session check failed: {e}")
+
+        # Step 2: Auto-select if single project exists
+        try:
+            from app_services import list_projects
+            projects = list_projects()
+            if len(projects) == 1:
+                pid = projects[0]["id"]
+                print(f"[Bootstrap] Policy: Auto-selecting single existing project_id={pid}")
+                session_state.set_project(pid)
+                return pid
+            elif len(projects) > 1:
+                print(f"[Bootstrap] Policy: {len(projects)} projects exist, user selection required")
+            else:
+                print("[Bootstrap] Policy: No projects found, entering onboarding")
+        except Exception as e:
+            print(f"[Bootstrap] Policy: Project list check failed: {e}")
+
+        return None
+
     def _deferred_initialization(self):
         """
         CRITICAL FIX: Perform heavy initialization operations after window is shown.
@@ -1426,7 +1438,15 @@ class MainWindow(QMainWindow):
         """
         if self._closing:
             return
-        print("[MainWindow] Starting deferred initialization...")
+
+        # Gap 1 fix: Check if we have an active project. If not, we are in onboarding.
+        active_pid = getattr(self.grid, 'project_id', None) if hasattr(self, 'grid') else None
+        if active_pid is None:
+            print("[MainWindow] No active project (onboarding) — suppressing auto-load and heavy maintenance")
+            self._update_status_bar()
+            return
+
+        print(f"[MainWindow] Starting deferred initialization for project_id={active_pid}...")
 
         try:
             # Step 1: Fast - create minimal DB handle (no heavy operations)
@@ -1474,6 +1494,11 @@ class MainWindow(QMainWindow):
         """
         from reference_db import ReferenceDB
         self.db = ReferenceDB()
+
+        # Gap 1 fix: Do not reload sidebar if project_id is None
+        active_pid = getattr(self.grid, 'project_id', None) if hasattr(self, 'grid') else None
+        if active_pid is None:
+            return
 
         # Reload sidebar date tree (fast operation, uses cached data)
         try:
@@ -4471,10 +4496,6 @@ class MainWindow(QMainWindow):
                 project_id = self.grid.project_id
             elif hasattr(self, "sidebar") and hasattr(self.sidebar, "project_id"):
                 project_id = self.sidebar.project_id
-
-            if project_id is None:
-                from app_services import get_default_project_id
-                project_id = get_default_project_id()
 
             if project_id is None:
                 self.embedding_status_label.setText("🧠 —%")
