@@ -2060,6 +2060,9 @@ class SemanticEmbeddingService:
             # Model info
             'model_name': self.model_name,
             'embedding_dimension': 512,  # Default for CLIP ViT-B/32
+            'can_upgrade_model': False,
+            'recommended_model': None,
+            'current_project_model': None,
 
             # GPU info
             'gpu_device': 'unknown',
@@ -2152,6 +2155,18 @@ class SemanticEmbeddingService:
 
         # Get job status
         try:
+            # Model Upgrade Check
+            try:
+                from repository.project_repository import ProjectRepository
+                proj_repo = ProjectRepository(self.db)
+                current_canonical = proj_repo.get_semantic_model(project_id)
+                best_model = proj_repo._get_best_available_model()
+                stats['can_upgrade_model'] = (current_canonical != best_model)
+                stats['recommended_model'] = best_model
+                stats['current_project_model'] = current_canonical
+            except Exception as e:
+                logger.warning(f"[SemanticEmbeddingService] Model upgrade check failed: {e}")
+
             stats['has_incomplete_job'] = self.has_incomplete_job(project_id)
             if stats['has_incomplete_job']:
                 progress = self.get_job_progress(project_id)
