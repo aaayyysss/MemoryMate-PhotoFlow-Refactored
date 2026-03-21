@@ -280,9 +280,9 @@ class FaceClusterWorker(QRunnable):
                 _skipped_low_conf = 0
                 _skipped_small_face = 0
 
-                # Patch B.3: Quality thresholds
-                min_conf = 0.55
-                min_ratio = 0.015
+                # Patch B.3: Quality thresholds (relaxed)
+                min_conf = 0.50
+                min_ratio = 0.005
 
                 for rid, path, img_path, blob, conf, bx, by, bw, bh, img_w, img_h in rows:
                     try:
@@ -350,13 +350,9 @@ class FaceClusterWorker(QRunnable):
                 })
                 self.signals.progress.emit(10, 100, f"Clustering {total_faces} faces...")
 
-                try:
-                    params = get_face_config().get_clustering_params(project_id=self.project_id)
-                    eps = float(params.get('eps', self.eps))
-                    min_samples = int(params.get('min_samples', self.min_samples))
-                except Exception:
-                    eps = self.eps
-                    min_samples = self.min_samples
+                # Use parameters from __init__ (auto-tuned or manual)
+                eps = self.eps
+                min_samples = self.min_samples
                 dbscan = DBSCAN(eps=eps, min_samples=min_samples, metric='cosine')
                 labels = dbscan.fit_predict(X)
 
@@ -467,46 +463,51 @@ class FaceClusterWorker(QRunnable):
                         # Use shared face_quality_analyzer instance (created outside loop)
                         face_qualities = []
 
-                        # Calculate comprehensive quality for each face
-                        for i, bbox_info in enumerate(cluster_bboxes):
+                        # PERFORMANCE FIX: Only analyze quality for a subset of faces
+                        # Large clusters take too long to analyze every single face crop.
+                        # Limit to the top 20 candidates closest to the centroid.
+                        dists_to_centroid = np.linalg.norm(cluster_vecs - centroid_vec, axis=1)
+                        candidate_indices = np.argsort(dists_to_centroid)[:20]
+
+                        # Calculate comprehensive quality for candidate faces
+                        for i in candidate_indices:
+                            bbox_info = cluster_bboxes[i]
                             try:
                                 quality_metrics = face_quality_analyzer.analyze_face_crop(
                                     image_path=bbox_info['image_path'],
                                     bbox=bbox_info['bbox'],
                                     confidence=bbox_info['confidence']
                                 )
-                                face_qualities.append(quality_metrics)
+                                face_qualities.append((i, quality_metrics))
                             except Exception as e:
                                 logger.debug(f"[FaceClusterWorker] Quality analysis failed for face {i}: {e}")
                                 # Use default metrics as fallback
-                                face_qualities.append(face_quality_analyzer._default_metrics(bbox_info['confidence']))
+                                face_qualities.append((i, face_quality_analyzer._default_metrics(bbox_info['confidence'])))
 
                         # Filter high-quality faces (overall_quality >= 60)
                         quality_threshold = 60.0
-                        high_quality_indices = [
-                            i for i, q in enumerate(face_qualities)
+                        high_quality_candidates = [
+                            (i, q) for i, q in face_qualities
                             if q.overall_quality >= quality_threshold
                         ]
 
-                        if high_quality_indices:
+                        if high_quality_candidates:
                             # Among high-quality faces, select best combination of quality + centroid proximity
-                            # Calculate weighted score: 70% quality + 30% centroid proximity
                             best_idx = None
                             best_score = -1.0
 
-                            # Normalize centroid distances to 0-100 scale
-                            high_quality_vecs = cluster_vecs[high_quality_indices]
-                            centroid_dists = np.linalg.norm(high_quality_vecs - centroid_vec, axis=1)
-                            max_dist = np.max(centroid_dists) if len(centroid_dists) > 1 else 1.0
+                            # Normalize centroid distances for candidates
+                            candidate_dists = dists_to_centroid[[i for i, q in high_quality_candidates]]
+                            max_dist = np.max(candidate_dists) if len(candidate_dists) > 1 else 1.0
                             if max_dist == 0:
                                 max_dist = 1.0
 
-                            for local_idx, global_idx in enumerate(high_quality_indices):
-                                quality_score = face_qualities[global_idx].overall_quality  # 0-100
-                                # Invert distance: closer to centroid = higher score
-                                proximity_score = 100.0 * (1.0 - centroid_dists[local_idx] / max_dist)  # 0-100
+                            for idx_in_subset, (global_idx, q) in enumerate(high_quality_candidates):
+                                quality_score = q.overall_quality  # 0-100
+                                # Invert distance: closer = higher score
+                                proximity_score = 100.0 * (1.0 - candidate_dists[idx_in_subset] / max_dist)
 
-                                # Weighted combination: prioritize quality over proximity
+                                # Weighted score
                                 combined_score = 0.70 * quality_score + 0.30 * proximity_score
 
                                 if combined_score > best_score:
@@ -514,12 +515,11 @@ class FaceClusterWorker(QRunnable):
                                     best_idx = global_idx
 
                             rep_path = cluster_paths[best_idx]
-                            best_quality = face_qualities[best_idx]
+                            best_quality = high_quality_candidates[[i for i, q in enumerate(high_quality_candidates) if q[0] == best_idx][0]][1]
                             logger.debug(
                                 f"[FaceClusterWorker] Cluster {cid}: Selected representative with "
                                 f"quality={best_quality.overall_quality:.1f}/100 ({best_quality.quality_label}), "
-                                f"blur={best_quality.blur_score:.1f}, lighting={best_quality.lighting_score:.1f}, "
-                                f"from {len(high_quality_indices)}/{len(cluster_paths)} high-quality candidates"
+                                f"from {len(high_quality_candidates)} candidates"
                             )
                         else:
                             # Fallback: No high-quality faces, use centroid-based selection

@@ -591,9 +591,13 @@ class FacePipelineWorker(QRunnable):
             results["interim_passes"] = self._interim_cluster_count
 
             logger.info(
-                "[FacePipelineWorker] Detection complete: %d faces in %d images (%d interim cluster passes, screenshot_policy=%s)",
+                "[FacePipelineWorker] Detection complete: %d faces in %d images (%d interim cluster passes)",
                 results["faces_detected"], results["images_processed"],
                 self._interim_cluster_count,
+            )
+            logger.info(
+                "[FacePipelineWorker] Screenshot policy used: %s",
+                self.screenshot_policy,
             )
 
             # ── Count TOTAL faces in DB (existing + newly detected) ──
