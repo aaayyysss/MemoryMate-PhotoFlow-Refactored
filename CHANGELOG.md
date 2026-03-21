@@ -2,6 +2,49 @@
 
 All notable changes to the MemoryMate PhotoFlow search pipeline are documented here.
 
+## [Unreleased] - 2026-03-21
+
+### Face Pipeline, Project Bootstrap & Model Selection
+
+Significant improvements to face processing reliability, application startup logic, and CLIP model selection intelligence.
+
+#### Face Detection & Clustering
+- **FaceDetectionWorker**:
+  - Guaranteed screenshot classification regardless of policy for consistent behavior.
+  - Policy-aware face caps: `exclude` (0), `detect_only` (4), and `include_cluster` (10) faces per photo.
+- **FaceClusterWorker**:
+  - Policy-aware small-face filtering (relaxed to 0.008 ratio for screenshots).
+  - Improved merge-bias logic for small datasets and noisy screenshot inputs (`eps=0.46`).
+  - New `EMBEDDING_FILTER_SUMMARY` and `SMALL_FACE_BY_IMAGE` logs for better attrition diagnostics.
+  - Performance optimization: limited representative quality analysis to top 20 candidates.
+- **FacePipelineWorker**:
+  - Fixed internal inconsistency where interim clustering ignored the active screenshot policy.
+  - Added `FACE_ACCOUNTING` final summary to log the full attrition chain.
+
+#### Project Management & Startup Flow
+- **Bootstrap Policy**: Deterministic startup selection (last-used -> single existing -> first available) to eliminate unbound project states.
+
+#### Model Intelligence
+  - Automatic selection of highest-tier CLIP model (Large > B16 > B32) for new projects.
+  - Status bar "Model Upgrade Assistant" warns when a better model is available than the one currently indexed.
+
+#### UI & Robustness
+- **Face Detection UI**: Added informative note to scope dialog regarding screenshot clustering and quality expectations.
+- **Code Health**: Fixed SyntaxErrors in f-strings and restored regression in face-data aggregation logic.
+
+### Files Changed
+- `workers/face_detection_worker.py`
+- `workers/face_cluster_worker.py`
+- `workers/face_pipeline_worker.py`
+- `main_window_qt.py`
+- `repository/project_repository.py`
+- `ui/face_detection_scope_dialog.py`
+
+### Test Updates
+- Verified with 279 tests (100% pass rate).
+
+---
+
 ## [Unreleased] - 2026-03-14
 
 ### Screenshot Builder, Candidate Fusion & Builder Diagnostics
