@@ -444,6 +444,7 @@ class FacePipelineWorker(QRunnable):
                 eps=cluster_params["eps"],
                 min_samples=cluster_params["min_samples"],
                 auto_tune=True,
+                screenshot_policy=self.screenshot_policy,
             )
 
             interim_result = {}
@@ -710,6 +711,8 @@ class FacePipelineWorker(QRunnable):
                 def _on_cluster_finished(cluster_count, total_faces):
                     cluster_results["cluster_count"] = cluster_count
                     cluster_results["total_faces"] = total_faces
+                    # Capture filter statistics from the worker
+                    cluster_results["skip_stats"] = getattr(cluster_worker, "_skip_stats", {})
 
                 def _on_cluster_error(msg):
                     results["errors"].append(f"Clustering: {msg}")
@@ -723,11 +726,31 @@ class FacePipelineWorker(QRunnable):
 
                 results["clusters_created"] = cluster_results.get("cluster_count", 0)
 
+                # ── Comprehensive Face Accounting ──
+                skip_stats = cluster_results.get("skip_stats", {})
+                loaded_count = cluster_results.get("total_faces", 0)
+
+                logger.info(
+                    "[FacePipelineWorker] FACE_ACCOUNTING: detected_this_run=%d db_total=%d "
+                    "cluster_loaded=%d clusters_created=%d "
+                    "skipped=(bad_emb=%d, bad_dim=%d, low_conf=%d, small_face=%d) "
+                    "policy=%s",
+                    results["faces_detected"],
+                    faces_in_db,
+                    loaded_count,
+                    results["clusters_created"],
+                    skip_stats.get('bad_embedding', 0),
+                    skip_stats.get('bad_size', 0),
+                    skip_stats.get('low_conf', 0),
+                    skip_stats.get('small_face', 0),
+                    self.screenshot_policy
+                )
+
                 logger.info(
                     "[FacePipelineWorker] Final clustering complete: "
                     "%d clusters from %d faces",
                     results["clusters_created"],
-                    cluster_results.get("total_faces", 0),
+                    loaded_count,
                 )
 
                 # Signal UI that final clusters are ready
