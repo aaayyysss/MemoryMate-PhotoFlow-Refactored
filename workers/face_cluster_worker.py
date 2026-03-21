@@ -117,10 +117,10 @@ class FaceClusterWorker(QRunnable):
 
             # Phase: reduce fragmentation on small/medium datasets
             if self.screenshot_policy == "include_cluster":
-                # Screenshot-inclusive clustering is noisier and needs stronger merge bias
-                self.eps = max(self.eps, 0.52)
+                # Screenshot-inclusive clustering is much noisier and needs stronger merge bias
+                self.eps = max(self.eps, 0.60)
                 self.min_samples = 2
-                self.tuning_rationale += " | include_cluster stronger merge-bias"
+                self.tuning_rationale += " | include_cluster aggressive merge-bias"
             elif self.auto_tune and face_count <= 100:
                 self.eps = max(self.eps, 0.42)
                 self.min_samples = max(2, self.min_samples)
@@ -209,20 +209,21 @@ class FaceClusterWorker(QRunnable):
                 if self.screenshot_policy != "include_cluster":
                     screenshot_filter = """
                       AND COALESCE(saf.is_screenshot, 0) = 0
-                      AND LOWER(fc.image_path) NOT LIKE "%screenshot%"
-                      AND LOWER(fc.image_path) NOT LIKE "%screen shot%"
-                      AND LOWER(fc.image_path) NOT LIKE "%screen_shot%"
-                      AND LOWER(fc.image_path) NOT LIKE "%screen-shot%"
-                      AND LOWER(fc.image_path) NOT LIKE "%bildschirmfoto%"
-                      AND LOWER(fc.image_path) NOT LIKE "%captura%"
-                      AND LOWER(fc.image_path) NOT LIKE "%스크린샷%"
-                      AND LOWER(fc.image_path) NOT LIKE "%スクリーンショット%"
+                      AND LOWER(fc.image_path) NOT LIKE '%screenshot%'
+                      AND LOWER(fc.image_path) NOT LIKE '%screen shot%'
+                      AND LOWER(fc.image_path) NOT LIKE '%screen_shot%'
+                      AND LOWER(fc.image_path) NOT LIKE '%screen-shot%'
+                      AND LOWER(fc.image_path) NOT LIKE '%bildschirmfoto%'
+                      AND LOWER(fc.image_path) NOT LIKE '%captura%'
+                      AND LOWER(fc.image_path) NOT LIKE '%스크린샷%'
+                      AND LOWER(fc.image_path) NOT LIKE '%スクリーンショット%'
                     """
 
                 cur.execute(f"""
                     SELECT fc.id, fc.crop_path, fc.image_path, fc.embedding,
                            fc.confidence, fc.bbox_x, fc.bbox_y, fc.bbox_w, fc.bbox_h,
-                           pm.width, pm.height
+                           pm.width, pm.height,
+                           COALESCE(saf.is_screenshot, 0) AS is_screenshot
                     FROM face_crops fc
                     JOIN photo_metadata pm ON fc.image_path = pm.path
                     LEFT JOIN search_asset_features saf ON fc.image_path = saf.path
@@ -292,10 +293,9 @@ class FaceClusterWorker(QRunnable):
 
                 # Policy-aware quality thresholds
                 min_conf = 0.50
-                # Relaxed threshold for screenshot inclusion mode
-                base_min_ratio = 0.008 if self.screenshot_policy == "include_cluster" else 0.015
+                base_min_ratio = 0.015
 
-                for rid, path, img_path, blob, conf, bx, by, bw, bh, img_w, img_h in rows:
+                for rid, path, img_path, blob, conf, bx, by, bw, bh, img_w, img_h, is_screenshot_flag in rows:
                     try:
                         # Pre-clustering quality filtering
                         if conf is not None and conf < min_conf:
@@ -304,8 +304,7 @@ class FaceClusterWorker(QRunnable):
 
                         if img_w and img_h:
                             # LOCAL RULE: is this specific face from a known screenshot?
-                            # Check img_path filename as proxy if search_asset_features join is too coarse
-                            is_screen_filename = any(
+                            is_screenshot_face = bool(is_screenshot_flag) or any(
                                 m in img_path.lower()
                                 for m in [
                                     "screenshot", "screen shot", "screen_shot", "screen-shot",
@@ -315,27 +314,17 @@ class FaceClusterWorker(QRunnable):
 
                             ratio = ((bw or 0) * (bh or 0)) / max(1, img_w * img_h)
 
-                            # Screenshot-aware face-size policy
-                            # For include_cluster, screenshot-origin faces should be eligible
-                            # even when they are smaller than normal-photo faces.
-                            if self.screenshot_policy == "include_cluster":
-                                effective_min_ratio = 0.0 if is_screen_filename else 0.008
-                            else:
-                                effective_min_ratio = 0.008 if is_screen_filename else base_min_ratio
+                            # include_cluster means: relaxed drop for screenshots, but still drop if truly tiny.
+                            effective_min_ratio = 0.008 if is_screenshot_face and self.screenshot_policy == "include_cluster" else base_min_ratio
 
                             if ratio < effective_min_ratio:
                                 self._skip_stats['small_face'] += 1
-                                if is_screen_filename:
+                                if is_screenshot_face:
                                     self._skip_stats['small_face_screenshot'] += 1
                                 else:
                                     self._skip_stats['small_face_non_screenshot'] += 1
 
                                 small_face_by_image[img_path] = small_face_by_image.get(img_path, 0) + 1
-
-                                logger.debug(
-                                    "[FaceClusterWorker] SMALL_FACE_DROP path=%s conf=%s bbox=(%s,%s,%s,%s) img=(%s,%s) ratio=%.4f threshold=%.4f policy=%s",
-                                    img_path, conf, bx, by, bw, bh, img_w, img_h, ratio, effective_min_ratio, self.screenshot_policy
-                                )
                                 continue
 
                         vec = np.frombuffer(blob, dtype=np.float32)
@@ -376,11 +365,18 @@ class FaceClusterWorker(QRunnable):
                     self.screenshot_policy,
                 )
 
+                if self.screenshot_policy == "include_cluster" and len(vecs) < total_faces_in_db:
+                    logger.warning(
+                        "[FaceClusterWorker] INCLUDE_CLUSTER_ATTRITION: db_total=%d loaded=%d dropped=%d",
+                        total_faces_in_db, len(vecs), total_faces_in_db - len(vecs)
+                    )
+
                 if small_face_by_image:
                     logger.info(
                         "[FaceClusterWorker] SMALL_FACE_BY_IMAGE: %s",
                         dict(sorted(small_face_by_image.items(), key=lambda kv: kv[1], reverse=True)[:10])
                     )
+
 
                 if len(vecs) < 2:
                     logger.warning("[FaceClusterWorker] Not enough faces to cluster (need at least 2)")

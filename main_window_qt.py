@@ -948,7 +948,7 @@ class MainWindow(QMainWindow):
         # --- Main layout (Sidebar + Grid + Details)
         self.splitter = QSplitter(Qt.Horizontal)
 
-        # PHASE 1: Bootstrap Policy (last-used -> exactly one -> first available -> None/onboarding)
+        # PHASE 1: Bootstrap Policy (last-used -> exactly one -> onboarding)
         from session_state_manager import get_session_state
         session_state = get_session_state()
 
@@ -959,24 +959,26 @@ class MainWindow(QMainWindow):
             try:
                 from repository.project_repository import ProjectRepository
                 from repository.base_repository import DatabaseConnection
-                _proj = ProjectRepository(DatabaseConnection()).find_by_id(default_pid)
+                _proj = ProjectRepository(DatabaseConnection()).get_by_id(default_pid)
                 if _proj is None:
                     print(f"[MainWindow] Bootstrap: Session project_id={default_pid} missing, clearing")
                     session_state.set_project(None)
                     default_pid = None
-            except Exception:
+                else:
+                    print(f"[MainWindow] Bootstrap: Restoring session project_id={default_pid}")
+            except Exception as e:
+                print(f"[MainWindow] Bootstrap: Session project check failed: {e}")
                 default_pid = None
 
-        # 2. If no session project, apply auto-selection
+        # 2. If no valid session project, apply auto-selection logic
         if default_pid is None:
             if len(self._projects) == 1:
                 default_pid = self._projects[0]["id"]
                 print(f"[MainWindow] Bootstrap: Auto-selecting single existing project_id={default_pid}")
-            elif len(self._projects) > 1:
-                default_pid = self._projects[0]["id"]
-                print(f"[MainWindow] Bootstrap: Auto-selecting first available project_id={default_pid}")
             else:
-                print("[MainWindow] Bootstrap: No projects found, entering onboarding state")
+                # Multiple projects or zero projects -> onboarding/selection state
+                # If multiple, the user must explicitly choose. If zero, they must create.
+                print(f"[MainWindow] Bootstrap: {len(self._projects)} projects found, entering onboarding/selection state")
                 default_pid = None
 
         if default_pid is not None:

@@ -592,9 +592,11 @@ class FacePipelineWorker(QRunnable):
             results["interim_passes"] = self._interim_cluster_count
 
             logger.info(
-                "[FacePipelineWorker] Detection complete: %d faces in %d images (%d interim cluster passes)",
+                "[FacePipelineWorker] Detection complete: %d faces in %d images "
+                "(%d interim cluster passes, screenshot_policy=%s)",
                 results["faces_detected"], results["images_processed"],
                 self._interim_cluster_count,
+                self.screenshot_policy,
             )
             logger.info(
                 "[FacePipelineWorker] Screenshot policy used: %s",
@@ -729,16 +731,18 @@ class FacePipelineWorker(QRunnable):
                 # ── Comprehensive Face Accounting ──
                 skip_stats = cluster_results.get("skip_stats", {})
                 loaded_count = cluster_results.get("total_faces", 0)
+                dropped_before_cluster = faces_in_db - loaded_count
 
                 logger.info(
                     "[FacePipelineWorker] FACE_ACCOUNTING: detected_this_run=%d db_total=%d "
-                    "cluster_loaded=%d clusters_created=%d "
+                    "cluster_loaded=%d dropped_before_cluster=%d clusters_created=%d "
                     "skipped=(bad_emb=%d, bad_dim=%d, low_conf=%d, small_face=%d, "
                     "small_face_screenshot=%d, small_face_non_screenshot=%d) "
                     "policy=%s",
                     results["faces_detected"],
                     faces_in_db,
                     loaded_count,
+                    dropped_before_cluster,
                     results["clusters_created"],
                     skip_stats.get('bad_embedding', 0),
                     skip_stats.get('bad_size', 0),
