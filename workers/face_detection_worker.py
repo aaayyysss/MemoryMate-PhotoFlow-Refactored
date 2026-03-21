@@ -353,7 +353,7 @@ class FaceDetectionWorker(QRunnable):
                             elif self.screenshot_policy == "detect_only":
                                 limit = min(limit, 4)
                             elif self.screenshot_policy == "include_cluster":
-                                limit = min(limit, 18)
+                                limit = len(faces)
                             else:
                                 limit = min(limit, 4)
 
@@ -521,7 +521,7 @@ class FaceDetectionWorker(QRunnable):
                         elif self.screenshot_policy == "detect_only":
                             limit = min(limit, 4)
                         elif self.screenshot_policy == "include_cluster":
-                            limit = min(limit, 18)
+                            limit = len(faces)
                         else:
                             limit = min(limit, 4)
 

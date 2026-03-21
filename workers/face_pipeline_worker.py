@@ -439,6 +439,12 @@ class FacePipelineWorker(QRunnable):
             face_config = get_face_config()
             cluster_params = face_config.get_clustering_params()
 
+            logger.info(
+                "[FacePipelineWorker] INTERIM_CLUSTER_POLICY: faces_so_far=%d screenshot_policy=%s",
+                faces_so_far,
+                self.screenshot_policy,
+            )
+
             cluster_worker = FaceClusterWorker(
                 project_id=self.project_id,
                 eps=cluster_params["eps"],
@@ -737,12 +743,11 @@ class FacePipelineWorker(QRunnable):
                     "[FacePipelineWorker] FACE_ACCOUNTING: detected_this_run=%d db_total=%d "
                     "cluster_loaded=%d dropped_before_cluster=%d clusters_created=%d "
                     "skipped=(bad_emb=%d, bad_dim=%d, low_conf=%d, small_face=%d, "
-                    "small_face_screenshot=%d, small_face_non_screenshot=%d) "
-                    "policy=%s",
+                    "small_face_screenshot=%d, small_face_non_screenshot=%d) policy=%s",
                     results["faces_detected"],
                     faces_in_db,
                     loaded_count,
-                    dropped_before_cluster,
+                    max(0, faces_in_db - loaded_count),
                     results["clusters_created"],
                     skip_stats.get('bad_embedding', 0),
                     skip_stats.get('bad_size', 0),
