@@ -3516,9 +3516,6 @@ class MainWindow(QMainWindow):
                 selected_paths = paths
                 selected_policy = policy
                 include_all_screenshot_faces = bool(include_all_flag)
-                nonlocal selected_paths, selected_policy
-                selected_paths = paths
-                selected_policy = policy
 
             scope_dialog.scopeSelected.connect(on_scope_selected)
             if scope_dialog.exec() != QDialog.Accepted or not selected_paths:
@@ -3537,9 +3534,6 @@ class MainWindow(QMainWindow):
                 photo_paths=selected_paths,
                 screenshot_policy=selected_policy,
                 include_all_screenshot_faces=include_all_screenshot_faces,
-                project_id=project_id,
-                photo_paths=selected_paths,
-                screenshot_policy=selected_policy,
             )
             if started:
                 self.statusBar().showMessage(
