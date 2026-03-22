@@ -34,7 +34,6 @@ class ProjectRepository(BaseRepository):
 
         # Use app-relative models directory
         app_root = Path(__file__).parent.parent.absolute()
-        models_dir = app_root / "models"
 
         # Tiers in descending order of quality
         tiers = [CLIP_VIT_L14, CLIP_VIT_B16, CLIP_VIT_B32]
@@ -45,8 +44,12 @@ class ProjectRepository(BaseRepository):
             bare_name = model_id.split("/")[-1]
 
             paths_to_check = [
-                models_dir / folder_name,
-                models_dir / bare_name,
+                app_root / "models" / folder_name,
+                app_root / "models" / bare_name,
+                app_root / "Model" / folder_name,
+                app_root / "Model" / bare_name,
+                app_root / "model" / folder_name,
+                app_root / "model" / bare_name,
             ]
 
             # Also check HuggingFace default cache location

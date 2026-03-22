@@ -218,9 +218,9 @@ class PostScanPipelineWorker(QRunnable):
                             done_event.set()
 
                         def _on_emb_progress(current, total, msg):
+                            # Pass through the detailed message from SemanticEmbeddingWorker (includes filename)
                             self.signals.progress.emit(
-                                "embeddings", current_step, total_steps,
-                                f"Generating AI embeddings... ({current}/{total})"
+                                "embeddings", current_step, total_steps, msg
                             )
 
                         worker.signals.finished.connect(_on_emb_finished)

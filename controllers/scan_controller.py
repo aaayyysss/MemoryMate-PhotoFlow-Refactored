@@ -689,9 +689,9 @@ class ScanController(QObject):
                     # Progress updates go to status bar + JobManager
                     def _on_pipeline_progress(step_name, step_num, total, message):
                         try:
-                            self.main.statusBar().showMessage(
-                                f"[{step_num}/{total}] {message}", 0
-                            )
+                            # Step labeling prefix for status bar
+                            prefix = f"[{step_num}/{total}] "
+                            self.main.statusBar().showMessage(f"{prefix}{message}", 0)
                         except Exception:
                             pass
                         if self._pspl_job_id is not None:

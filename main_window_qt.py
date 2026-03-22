@@ -950,6 +950,7 @@ class MainWindow(QMainWindow):
 
         # PHASE 1: Bootstrap Policy (last-used -> exactly one -> onboarding)
         default_pid = self._bootstrap_active_project()
+        self.active_project_id = default_pid
 
         self.sidebar = SidebarQt(project_id=default_pid)
 
@@ -1400,13 +1401,13 @@ class MainWindow(QMainWindow):
             try:
                 proj = ProjectRepository(DatabaseConnection()).get_by_id(last_pid)
                 if proj:
-                    print(f"[Bootstrap] Policy: Restoring last-used project_id={last_pid}")
+                    logger.info(f"[Bootstrap] Policy: Restoring last-used project_id={last_pid}")
                     return last_pid
                 else:
-                    print(f"[Bootstrap] Policy: Last-used project_id={last_pid} no longer exists")
+                    logger.info(f"[Bootstrap] Policy: Last-used project_id={last_pid} no longer exists")
                     session_state.set_project(None)
             except Exception as e:
-                print(f"[Bootstrap] Policy: Session check failed: {e}")
+                logger.info(f"[Bootstrap] Policy: Session check failed: {e}")
 
         # Step 2: Auto-select if single project exists
         try:
@@ -1414,15 +1415,15 @@ class MainWindow(QMainWindow):
             projects = list_projects()
             if len(projects) == 1:
                 pid = projects[0]["id"]
-                print(f"[Bootstrap] Policy: Auto-selecting single existing project_id={pid}")
+                logger.info(f"[Bootstrap] Policy: Auto-selecting single existing project_id={pid}")
                 session_state.set_project(pid)
                 return pid
             elif len(projects) > 1:
-                print(f"[Bootstrap] Policy: {len(projects)} projects exist, user selection required")
+                logger.info(f"[Bootstrap] Policy: {len(projects)} projects exist, user selection required")
             else:
-                print("[Bootstrap] Policy: No projects found, entering onboarding")
+                logger.info("[Bootstrap] Policy: No projects found, entering onboarding")
         except Exception as e:
-            print(f"[Bootstrap] Policy: Project list check failed: {e}")
+            logger.info(f"[Bootstrap] Policy: Project list check failed: {e}")
 
         return None
 
@@ -1992,7 +1993,9 @@ class MainWindow(QMainWindow):
 
             # Connect worker signals to progress dialog
             def _on_emb_progress(curr, total, path, msg):
+                # Update progress dialog with filename (from msg)
                 progress_dialog.update_progress(curr, total, path, msg)
+                # Show same detailed msg in MainWindow status bar
                 if not self._closing:
                     self.statusBar().showMessage(msg, 0)
 
@@ -2087,7 +2090,9 @@ class MainWindow(QMainWindow):
 
             # Connect worker signals to progress dialog
             def _on_emb_progress_reindex(curr, total, path, msg):
+                # Update progress dialog with filename (from msg)
                 progress_dialog.update_progress(curr, total, path, msg)
+                # Show same detailed msg in MainWindow status bar
                 if not self._closing:
                     self.statusBar().showMessage(msg, 0)
 

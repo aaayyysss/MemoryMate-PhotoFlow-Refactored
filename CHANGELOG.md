@@ -27,9 +27,12 @@ Final comprehensive overhaul of the face processing stack, eliminating filtering
   - **Policy Consistency**: Guaranteed that interim clustering passes strictly adhere to the user's active screenshot policy.
 
 #### Project Management & Reliability
-- **Bootstrap Policy**: Implemented canonical startup selection (Last-used -> Single existing -> Onboarding/Selection state) in `main_window_qt.py`.
-- **Model Intelligence**: `ProjectRepository` now automatically selects the highest-tier CLIP model available (Large > B16 > B32) for new projects.
+- **Bootstrap Policy**: Implemented canonical startup selection (Last-used -> Single existing -> Onboarding/Selection state) in `main_window_qt.py` to ensure valid application state on startup.
+- **Model Intelligence**: `ProjectRepository` now automatically selects the highest-tier CLIP model available (Large > B16 > B32) for new projects by searching multiple common model directory patterns.
 - **UI Feedback**: Added "Model Upgrade Assistant" tooltip and a clearer explanation of screenshot clustering behavior in the scope dialog.
+- **Database Stability**: Increased `busy_timeout` to 30,000ms across `DatabaseConnection` and `ReferenceDB` to mitigate locking issues during concurrent background tasks.
+- **Concurrency Fix**: Implemented chunked commits (every 50 clusters) in `FaceClusterWorker` to prevent long-held write locks during massive re-clustering operations.
+- **Signal Integrity**: Fixed signature mismatches in `MainWindow` and `PeopleManagerDialog` signal handlers to correctly propagate the new 3-mode screenshot policy.
 
 ### Files Changed
 - `workers/face_detection_worker.py`
@@ -37,7 +40,10 @@ Final comprehensive overhaul of the face processing stack, eliminating filtering
 - `workers/face_pipeline_worker.py`
 - `main_window_qt.py`
 - `repository/project_repository.py`
+- `repository/base_repository.py`
+- `reference_db.py`
 - `ui/face_detection_scope_dialog.py`
+- `ui/people_manager_dialog.py`
 
 ### Test Updates
 - Verified with 279 tests (100% pass rate).
