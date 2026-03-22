@@ -53,6 +53,8 @@ from typing import Iterable, Optional, Dict, Tuple
 # ✅ NEW: Import service-based ScanWorker
 from services.scan_worker_adapter import ScanWorkerAdapter as ScanWorker
 
+logger = logging.getLogger(__name__)
+
 # Add imports near top if not present:
 
 from PySide6.QtCore import Qt, QThread, QSize, QThreadPool, Signal, QObject, QRunnable, QEvent, QTimer, QProcess, QItemSelectionModel, QRect
@@ -1760,7 +1762,7 @@ class MainWindow(QMainWindow):
         try:
             from repository.photo_repository import PhotoRepository
 
-            logger = logging.getLogger(__name__)
+
             logger.info(f"[SEMANTIC_SEARCH] Got {len(photo_ids)} results for '{query}'")
 
             # Create score lookup dictionary
@@ -1809,7 +1811,7 @@ class MainWindow(QMainWindow):
                 logger.warning(f"[SEMANTIC_SEARCH] No paths found for {len(photo_ids)} photo IDs")
 
         except Exception as e:
-            logger = logging.getLogger(__name__)
+
             logger.error(f"[SEMANTIC_SEARCH] Failed to display results: {e}", exc_info=True)
             QMessageBox.critical(
                 self,
@@ -1820,7 +1822,7 @@ class MainWindow(QMainWindow):
     def _on_semantic_search_cleared(self):
         """Handle semantic search cleared - reload all photos."""
         try:
-            logger = logging.getLogger(__name__)
+
             logger.info("[SEMANTIC_SEARCH] Search cleared, reloading all photos")
 
             # Reload the current view (all photos)
@@ -1828,7 +1830,7 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("Showing all photos")
 
         except Exception as e:
-            logger = logging.getLogger(__name__)
+
             logger.error(f"[SEMANTIC_SEARCH] Failed to clear search: {e}", exc_info=True)
             QMessageBox.critical(self, tr('search.error_title'), tr('search.error_message').format(error=e))
 
