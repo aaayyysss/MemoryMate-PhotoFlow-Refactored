@@ -266,9 +266,13 @@ class EmbeddingWorker(QRunnable):
                 try:
                     # Get photo path for progress display
                     photo_path = self._get_photo_path(photo_id)
+                    photo_name = Path(photo_path).name if photo_path != "Unknown" else "Unknown"
 
                     # Emit progress signal before processing
-                    self.signals.progress.emit(i, total, photo_path, "Processing")
+                    self.signals.progress.emit(
+                        i, total, photo_path,
+                        f"Embedding photo #{i}/{total}: {photo_name}"
+                    )
 
                     # Extract and store embedding
                     self._process_photo(photo_id, model_id)
