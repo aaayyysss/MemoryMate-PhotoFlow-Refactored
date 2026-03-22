@@ -126,10 +126,10 @@ class FaceClusterWorker(QRunnable):
 
         # Phase: reduce fragmentation on small/medium datasets
         if self.screenshot_policy == "include_cluster":
-            # Screenshot-inclusive clustering is much noisier and needs a stronger merge bias
-            self.eps = 0.70
-            self.min_samples = 2
-            self.tuning_rationale += " | include_cluster 0.70 eps calibration"
+            # include_cluster means maximize assignment, minimize DBSCAN noise.
+            self.eps = max(self.eps, 0.70)
+            self.min_samples = min(self.min_samples, 1)
+            self.tuning_rationale += " | include_cluster max-assignment calibration"
         elif self.auto_tune and face_count <= 100:
             self.eps = max(self.eps, 0.42)
             self.min_samples = max(2, self.min_samples)
@@ -404,9 +404,34 @@ class FaceClusterWorker(QRunnable):
                         logger.warning(f"[FaceClusterWorker] Retry clustering failed: {retry_error}")
 
                 # Count unclustered faces (noise, label == -1)
-                noise_count = np.sum(labels == -1)
+                noise_count = int(np.sum(labels == -1))
+
                 if noise_count > 0:
-                    logger.info(f"[FaceClusterWorker] Found {noise_count} unclustered faces (will create 'Unidentified' branch)")
+                    if self.screenshot_policy == "include_cluster":
+                        # In include_cluster mode, all loaded faces must end up clustered.
+                        # Remap DBSCAN noise (-1) into singleton clusters.
+                        max_label = max([lbl for lbl in labels if lbl >= 0], default=-1)
+                        remapped = []
+                        for lbl in labels:
+                            if lbl == -1:
+                                max_label += 1
+                                remapped.append(max_label)
+                            else:
+                                remapped.append(lbl)
+                        labels = np.array(remapped, dtype=np.int32)
+
+                        unique_labels = sorted([l for l in set(labels) if l != -1])
+                        cluster_count = len(unique_labels)
+                        noise_count = 0
+
+                        logger.info(
+                            "[FaceClusterWorker] include_cluster remapped DBSCAN noise into singleton clusters; "
+                            "all loaded faces will be assigned to a cluster"
+                        )
+                    else:
+                        logger.info(
+                            f"[FaceClusterWorker] Found {noise_count} unclustered faces (will create 'Unidentified' branch)"
+                        )
 
                 metric_cluster.finish()
 
@@ -749,6 +774,11 @@ class FaceClusterWorker(QRunnable):
             # Print performance summary
             print("\n")
             monitor.print_summary()
+
+            self._cluster_summary = {
+                "assigned_faces": int(np.sum(labels != -1)) if 'labels' in locals() and isinstance(labels, np.ndarray) else total_faces,
+                "noise_faces": int(np.sum(labels == -1)) if 'labels' in locals() and isinstance(labels, np.ndarray) else 0,
+            }
 
             self.signals.progress.emit(100, 100, f"Clustering complete: {total_branches} branches created")
             self.signals.finished.emit(cluster_count, total_faces)
