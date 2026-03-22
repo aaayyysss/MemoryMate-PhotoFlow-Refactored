@@ -3509,8 +3509,13 @@ class MainWindow(QMainWindow):
             scope_dialog = FaceDetectionScopeDialog(project_id, parent=self)
             selected_paths = []
             selected_policy = "detect_only"
+            include_all_screenshot_faces = False
 
-            def on_scope_selected(paths, policy):
+            def on_scope_selected(paths, policy, include_all_flag):
+                nonlocal selected_paths, selected_policy, include_all_screenshot_faces
+                selected_paths = paths
+                selected_policy = policy
+                include_all_screenshot_faces = bool(include_all_flag)
                 nonlocal selected_paths, selected_policy
                 selected_paths = paths
                 selected_policy = policy
@@ -3528,6 +3533,10 @@ class MainWindow(QMainWindow):
                 return
 
             started = svc.start(
+                project_id=project_id,
+                photo_paths=selected_paths,
+                screenshot_policy=selected_policy,
+                include_all_screenshot_faces=include_all_screenshot_faces,
                 project_id=project_id,
                 photo_paths=selected_paths,
                 screenshot_policy=selected_policy,
