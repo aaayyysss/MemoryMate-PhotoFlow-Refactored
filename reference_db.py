@@ -20,6 +20,7 @@ import argparse
 import traceback
 import warnings
 import threading
+import logging
 from contextlib import contextmanager
 from typing import List, Dict, Any  # FEATURE #1: Type hints for face detection scope methods
 
@@ -30,6 +31,8 @@ ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 from db_config import get_db_filename
 
 DB_FILE = get_db_filename()
+
+logger = logging.getLogger(__name__)
 
 
 class ReferenceDB:
