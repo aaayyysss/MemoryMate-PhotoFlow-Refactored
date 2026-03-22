@@ -722,6 +722,10 @@ class FacePipelineWorker(QRunnable):
                     cluster_results["total_faces"] = total_faces
                     # Capture filter statistics from the worker
                     cluster_results["skip_stats"] = getattr(cluster_worker, "_skip_stats", {})
+                    # Capture assignment summary
+                    cluster_summary = getattr(cluster_worker, "_cluster_summary", {})
+                    cluster_results["assigned_faces"] = cluster_summary.get("assigned_faces", 0)
+                    cluster_results["noise_faces"] = cluster_summary.get("noise_faces", 0)
 
                 def _on_cluster_error(msg):
                     results["errors"].append(f"Clustering: {msg}")
@@ -742,12 +746,14 @@ class FacePipelineWorker(QRunnable):
 
                 logger.info(
                     "[FacePipelineWorker] FACE_ACCOUNTING: detected_this_run=%d db_total=%d "
-                    "cluster_loaded=%d dropped_before_cluster=%d clusters_created=%d "
-                    "skipped=(bad_emb=%d, bad_dim=%d, low_conf=%d, small_face=%d, "
+                    "cluster_loaded=%d assigned=%d noise=%d dropped_before_cluster=%d "
+                    "clusters_created=%d skipped=(bad_emb=%d, bad_dim=%d, low_conf=%d, small_face=%d, "
                     "small_face_screenshot=%d, small_face_non_screenshot=%d) policy=%s",
                     results["faces_detected"],
                     faces_in_db,
                     loaded_count,
+                    cluster_results.get("assigned_faces", 0),
+                    cluster_results.get("noise_faces", 0),
                     max(0, faces_in_db - loaded_count),
                     results["clusters_created"],
                     skip_stats.get('bad_embedding', 0),
