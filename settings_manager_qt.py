@@ -52,6 +52,10 @@ DEFAULT_SETTINGS = {
     "groups_include_videos": False,  # Include video frames in group results (future)
     "groups_auto_recompute": True,  # Auto-recompute group results when face data changes
     "groups_max_results": 1000,  # Max results per group (pagination)
+
+    # --- Screenshot face handling defaults ---
+    "screenshot_face_policy": "detect_only",  # exclude | detect_only | include_cluster
+    "include_all_screenshot_faces": False,    # if True, do not cap screenshot detections in include_cluster mode
 }
 
 

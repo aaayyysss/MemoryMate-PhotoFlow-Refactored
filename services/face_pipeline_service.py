@@ -143,6 +143,7 @@ class FacePipelineService(QObject):
         photo_paths: Optional[List[str]] = None,
         model: str = "buffalo_l",
         screenshot_policy: str = "detect_only",
+        include_all_screenshot_faces: bool = False,
     ) -> bool:
         """
         Launch face detection + clustering for *project_id*.
@@ -196,17 +197,19 @@ class FacePipelineService(QObject):
         validated_scope = self._validate_scope_paths(project_id, photo_paths)
 
         logger.info(
-            "[FacePipelineService] Starting pipeline for project %d (scope=%s, model=%s, screenshot_policy=%s)",
+            "[FacePipelineService] Starting pipeline for project %d (scope=%s, model=%s, screenshot_policy=%s, include_all_screenshot_faces=%s)",
             project_id,
             f"{len(validated_scope)} photos" if photo_paths is not None else "full project",
             model,
             screenshot_policy,
+            include_all_screenshot_faces,
         )
 
         worker = FacePipelineWorker(
             project_id=project_id,
             model=model,
             screenshot_policy=screenshot_policy,
+            include_all_screenshot_faces=include_all_screenshot_faces,
         )
         # If scoped paths were given, pass them through to the inner detection worker
         if photo_paths is not None:

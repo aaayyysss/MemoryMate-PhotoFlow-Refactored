@@ -717,6 +717,32 @@ class PreferencesDialog(QDialog):
 
         layout.addWidget(cluster_group)
 
+        # Screenshot Face Handling
+        screenshot_group = QGroupBox("Screenshot Face Handling")
+        screenshot_layout = QFormLayout(screenshot_group)
+        screenshot_layout.setSpacing(10)
+
+        self.cmb_screenshot_face_policy = QComboBox()
+        self.cmb_screenshot_face_policy.addItem("Exclude screenshots", "exclude")
+        self.cmb_screenshot_face_policy.addItem("Detect only, exclude from clustering", "detect_only")
+        self.cmb_screenshot_face_policy.addItem("Detect and cluster screenshots", "include_cluster")
+        self.cmb_screenshot_face_policy.setToolTip(
+            "Default screenshot handling policy for face detection and clustering.\n"
+            "This can still be overridden in the Face Detection dialog for a specific run."
+        )
+        screenshot_layout.addRow("Default Screenshot Policy:", self.cmb_screenshot_face_policy)
+
+        self.chk_include_all_screenshot_faces = QCheckBox(
+            "When clustering screenshots, keep all detected screenshot faces"
+        )
+        self.chk_include_all_screenshot_faces.setToolTip(
+            "If enabled, screenshot-origin faces will not be capped before clustering.\n"
+            "Warning: this may increase noise and singleton clusters."
+        )
+        screenshot_layout.addRow("", self.chk_include_all_screenshot_faces)
+
+        layout.addWidget(screenshot_group)
+
         # Per-Project Overrides
         project_group = QGroupBox("Per-Project Overrides")
         project_form = QFormLayout(project_group)
@@ -2018,6 +2044,16 @@ class PreferencesDialog(QDialog):
         self.spin_proj_min_samples.setValue(int(ov.get("clustering_min_samples", self.face_config.get("clustering_min_samples", 2))))
         self.chk_show_low_conf.setChecked(self.face_config.get("show_low_confidence", False))
 
+        # Screenshot policy
+        policy = self.settings.get("screenshot_face_policy", "detect_only")
+        idx = self.cmb_screenshot_face_policy.findData(policy)
+        if idx >= 0:
+            self.cmb_screenshot_face_policy.setCurrentIndex(idx)
+
+        self.chk_include_all_screenshot_faces.setChecked(
+            self.settings.get("include_all_screenshot_faces", False)
+        )
+
         # InsightFace model path
         self.txt_model_path.setText(self.settings.get("insightface_model_path", ""))
 
@@ -2618,6 +2654,10 @@ class PreferencesDialog(QDialog):
                 self.face_config.set("project_overrides", po)
         # UI low-confidence toggle
         self.face_config.set("show_low_confidence", self.chk_show_low_conf.isChecked(), save_now=False)
+
+        # Screenshot policy defaults
+        self.settings.set("screenshot_face_policy", self.cmb_screenshot_face_policy.currentData())
+        self.settings.set("include_all_screenshot_faces", self.chk_include_all_screenshot_faces.isChecked())
         
         # Save all face detection settings at once
         self.face_config.save()
