@@ -353,8 +353,7 @@ class FaceDetectionWorker(QRunnable):
                             elif self.screenshot_policy == "detect_only":
                                 limit = min(limit, 4)
                             elif self.screenshot_policy == "include_cluster":
-                                # Zero Truncation: allow all detected faces in inclusive mode
-                                limit = len(faces)
+                                limit = min(limit, 8)
                             else:
                                 limit = min(limit, 4)
 
@@ -522,8 +521,7 @@ class FaceDetectionWorker(QRunnable):
                         elif self.screenshot_policy == "detect_only":
                             limit = min(limit, 4)
                         elif self.screenshot_policy == "include_cluster":
-                            # Zero Truncation: allow all detected faces in inclusive mode
-                            limit = len(faces)
+                            limit = min(limit, 8)
                         else:
                             limit = min(limit, 4)
 

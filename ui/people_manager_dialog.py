@@ -1037,9 +1037,12 @@ class PeopleManagerDialog(QDialog):
 
             # Connect scope selection signal
             selected_paths = []
-            def on_scope_selected(paths):
-                nonlocal selected_paths
+            selected_policy = "detect_only"
+
+            def on_scope_selected(paths, policy):
+                nonlocal selected_paths, selected_policy
                 selected_paths = paths
+                selected_policy = policy
 
             scope_dialog.scopeSelected.connect(on_scope_selected)
 
@@ -1048,12 +1051,16 @@ class PeopleManagerDialog(QDialog):
                 # User canceled or no photos selected
                 return
 
-            logger.info(f"[FaceDetection] User selected {len(selected_paths)} photos for detection")
+            logger.info(
+                f"[FaceDetection] User selected {len(selected_paths)} photos "
+                f"for detection (policy={selected_policy})"
+            )
 
-            # Create worker with selected paths
+            # Create worker with selected paths and policy
             self.face_detection_worker = FaceDetectionWorker(
                 self.project_id,
-                photo_paths=selected_paths  # FEATURE #1: Pass selected paths
+                photo_paths=selected_paths,
+                screenshot_policy=selected_policy
             )
 
             # Connect signals for progress tracking (guarded against teardown)

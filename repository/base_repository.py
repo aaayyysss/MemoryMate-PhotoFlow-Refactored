@@ -97,8 +97,8 @@ class DatabaseConnection:
                 )
 
             # Set busy timeout to avoid "database is locked" errors under concurrent access
-            # This gives SQLite up to 5 seconds to acquire a lock before failing
-            conn.execute("PRAGMA busy_timeout = 5000")
+            # This gives SQLite up to 30 seconds to acquire a lock before failing
+            conn.execute("PRAGMA busy_timeout = 30000")
 
             # Configure journal mode with graceful fallback
             # Priority: WAL > DELETE > PERSIST (based on performance and reliability)
@@ -506,7 +506,7 @@ class TransactionContext:
                                     timeout=10.0,
                                     check_same_thread=False)
         self.conn.execute("PRAGMA foreign_keys = ON")
-        self.conn.execute("PRAGMA busy_timeout = 5000")
+        self.conn.execute("PRAGMA busy_timeout = 30000")
         # Match the journal mode used by DatabaseConnection.get_connection()
         try:
             self.conn.execute("PRAGMA journal_mode=WAL")

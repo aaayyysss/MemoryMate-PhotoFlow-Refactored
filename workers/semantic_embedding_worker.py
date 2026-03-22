@@ -227,11 +227,8 @@ class SemanticEmbeddingWorker(QRunnable):
                     except Exception:
                         pass
 
-                    self.signals.progress.emit(
-                        i,
-                        total,
-                        f"Embedding photo #{i}/{total}: {photo_name}"
-                    )
+                        msg = f"Embedding photo #{i}/{total}: {photo_name}"
+                        self.signals.progress.emit(i, total, msg)
 
                     # Save progress for resumability
                     if self.project_id is not None and self._last_processed_photo_id:

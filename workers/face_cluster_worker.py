@@ -282,15 +282,16 @@ class FaceClusterWorker(QRunnable):
                 qualities = []  # Store (confidence, face_ratio, aspect_ratio) for quality filtering
                 bboxes = []  # Store bbox info for comprehensive quality analysis
 
+                _skipped_bad_embedding = 0
+                _skipped_bad_size = 0
+                _skipped_low_conf = 0
+                _skipped_small_face = 0
+
+                # Compatibility for FacePipelineWorker accounting
                 self._skip_stats = {
-                    'bad_embedding': 0,
-                    'bad_size': 0,
-                    'low_conf': 0,
-                    'small_face': 0,
-                    'small_face_screenshot': 0,
-                    'small_face_non_screenshot': 0,
+                    'bad_embedding': 0, 'bad_size': 0, 'low_conf': 0, 'small_face': 0,
+                    'small_face_screenshot': 0, 'small_face_non_screenshot': 0,
                 }
-                small_face_by_image = {}  # image_path -> count
 
                 # Policy-aware quality thresholds
                 min_conf = 0.50
@@ -299,6 +300,7 @@ class FaceClusterWorker(QRunnable):
                 for rid, path, img_path, blob, conf, bx, by, bw, bh, img_w, img_h, is_screenshot_flag in rows:
                     try:
                         if conf is not None and conf < min_conf:
+                            _skipped_low_conf += 1
                             self._skip_stats['low_conf'] += 1
                             continue
 
@@ -306,7 +308,9 @@ class FaceClusterWorker(QRunnable):
                             ratio = ((bw or 0) * (bh or 0)) / max(1, img_w * img_h)
                             if self.screenshot_policy != "include_cluster":
                                 if ratio < min_ratio:
+                                    _skipped_small_face += 1
                                     self._skip_stats['small_face'] += 1
+
                                     is_screenshot_face = bool(is_screenshot_flag) or any(
                                         m in img_path.lower()
                                         for m in [
@@ -322,10 +326,12 @@ class FaceClusterWorker(QRunnable):
 
                         vec = np.frombuffer(blob, dtype=np.float32)
                         if vec.size == 0:
+                            _skipped_bad_embedding += 1
                             self._skip_stats['bad_embedding'] += 1
                             continue
                         # Validate embedding dimension — must be 512 for ArcFace
                         if vec.size != 512:
+                            _skipped_bad_size += 1
                             self._skip_stats['bad_size'] += 1
                             continue
 
@@ -345,16 +351,12 @@ class FaceClusterWorker(QRunnable):
 
                 logger.info(
                     "[FaceClusterWorker] EMBEDDING_FILTER_SUMMARY: loaded=%d "
-                    "bad_embedding=%d bad_dim=%d low_conf=%d small_face=%d "
-                    "small_face_screenshot=%d small_face_non_screenshot=%d "
-                    "screenshot_policy=%s",
+                    "bad_embedding=%d bad_dim=%d low_conf=%d small_face=%d screenshot_policy=%s",
                     len(vecs),
-                    self._skip_stats['bad_embedding'],
-                    self._skip_stats['bad_size'],
-                    self._skip_stats['low_conf'],
-                    self._skip_stats['small_face'],
-                    self._skip_stats['small_face_screenshot'],
-                    self._skip_stats['small_face_non_screenshot'],
+                    _skipped_bad_embedding,
+                    _skipped_bad_size,
+                    _skipped_low_conf,
+                    _skipped_small_face,
                     self.screenshot_policy,
                 )
 
@@ -668,6 +670,11 @@ class FaceClusterWorker(QRunnable):
                     )
 
                     logger.info(f"[FaceClusterWorker] Cluster {cid} → {member_count} faces")
+
+                    # Shorten transaction duration for concurrency (Industrial Fix)
+                    if (idx + 1) % 50 == 0:
+                        conn.commit()
+                        logger.debug(f"[FaceClusterWorker] Committed batch of 50 clusters (total so far: {idx+1})")
 
                 # Record split metrics so PerformanceMonitor shows accurate attribution
                 monitor.record_operation("quality_analysis", {
