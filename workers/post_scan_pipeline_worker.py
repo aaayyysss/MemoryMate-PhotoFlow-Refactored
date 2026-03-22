@@ -217,8 +217,15 @@ class PostScanPipelineWorker(QRunnable):
                             results["errors"].append(f"Embeddings: {msg}")
                             done_event.set()
 
+                        def _on_emb_progress(current, total, msg):
+                            self.signals.progress.emit(
+                                "embeddings", current_step, total_steps,
+                                f"Generating AI embeddings... ({current}/{total})"
+                            )
+
                         worker.signals.finished.connect(_on_emb_finished)
                         worker.signals.error.connect(_on_emb_error)
+                        worker.signals.progress.connect(_on_emb_progress)
 
                         # Run directly in this thread (worker.run() is the actual work)
                         worker.run()
@@ -322,8 +329,15 @@ class PostScanPipelineWorker(QRunnable):
                         results["errors"].append(f"OCR: {msg}")
                         ocr_done.set()
 
+                    def _on_ocr_progress(current, total, path, msg):
+                        self.signals.progress.emit(
+                            "ocr", current_step, total_steps,
+                            f"Extracting text from photos... ({current}/{total})"
+                        )
+
                     ocr_worker.signals.finished.connect(_on_ocr_finished)
                     ocr_worker.signals.error.connect(_on_ocr_error)
+                    ocr_worker.signals.progress.connect(_on_ocr_progress)
 
                     ocr_worker.run()
 

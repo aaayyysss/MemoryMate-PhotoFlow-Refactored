@@ -1991,7 +1991,12 @@ class MainWindow(QMainWindow):
             )
 
             # Connect worker signals to progress dialog
-            worker.signals.progress.connect(progress_dialog.update_progress)
+            def _on_emb_progress(curr, total, path, msg):
+                progress_dialog.update_progress(curr, total, path, msg)
+                if not self._closing:
+                    self.statusBar().showMessage(msg, 0)
+
+            worker.signals.progress.connect(_on_emb_progress)
             worker.signals.finished.connect(progress_dialog.on_finished)
             worker.signals.error.connect(progress_dialog.on_error)
 
@@ -2081,7 +2086,12 @@ class MainWindow(QMainWindow):
             )
 
             # Connect worker signals to progress dialog
-            worker.signals.progress.connect(progress_dialog.update_progress)
+            def _on_emb_progress_reindex(curr, total, path, msg):
+                progress_dialog.update_progress(curr, total, path, msg)
+                if not self._closing:
+                    self.statusBar().showMessage(msg, 0)
+
+            worker.signals.progress.connect(_on_emb_progress_reindex)
             worker.signals.finished.connect(progress_dialog.on_finished)
             worker.signals.error.connect(progress_dialog.on_error)
 

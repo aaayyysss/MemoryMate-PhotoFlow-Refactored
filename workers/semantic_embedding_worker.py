@@ -219,10 +219,18 @@ class SemanticEmbeddingWorker(QRunnable):
 
                 # Progress reporting and saving (every N photos or last)
                 if i % self.save_progress_interval == 0 or i == total:
+                    photo_name = "Unknown"
+                    try:
+                        photo = photo_repo.get_by_id(photo_id)
+                        if photo:
+                            photo_name = Path(photo.get('file_path') or photo.get('path') or "").name
+                    except Exception:
+                        pass
+
                     self.signals.progress.emit(
                         i,
                         total,
-                        f"Processing {i}/{total} photos... (✓{self.success_count}, ⊘{self.skipped_count}, ✗{self.failed_count})"
+                        f"Embedding photo #{i}/{total}: {photo_name}"
                     )
 
                     # Save progress for resumability
@@ -327,6 +335,7 @@ class SemanticEmbeddingWorker(QRunnable):
         source_mtime = str(Path(file_path).stat().st_mtime)
 
         # Extract embedding
+        photo_name = Path(file_path).name
         logger.info("[SemanticEmbeddingWorker] Embedding photo %d: %s", photo_id, file_path)
         try:
             embedding = embedder.encode_image(file_path)
