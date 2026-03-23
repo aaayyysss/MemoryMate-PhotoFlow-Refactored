@@ -747,7 +747,8 @@ class FacePipelineWorker(QRunnable):
                 logger.info(
                     "[FacePipelineWorker] FACE_ACCOUNTING: detected_this_run=%d db_total=%d "
                     "cluster_loaded=%d assigned=%d noise=%d dropped_before_cluster=%d "
-                    "clusters_created=%d skipped=(bad_emb=%d, bad_dim=%d, low_conf=%d, small_face=%d, "
+                    "clusters_created=%d singleton=%d tiny_le_2=%d "
+                    "skipped=(bad_emb=%d, bad_dim=%d, low_conf=%d, small_face=%d, "
                     "small_face_screenshot=%d, small_face_non_screenshot=%d) policy=%s",
                     results["faces_detected"],
                     faces_in_db,
@@ -756,6 +757,8 @@ class FacePipelineWorker(QRunnable):
                     cluster_results.get("noise_faces", 0),
                     max(0, faces_in_db - loaded_count),
                     results["clusters_created"],
+                    cluster_results.get("singleton_count", 0),
+                    cluster_results.get("tiny_cluster_count", 0),
                     skip_stats.get('bad_embedding', 0),
                     skip_stats.get('bad_size', 0),
                     skip_stats.get('low_conf', 0),

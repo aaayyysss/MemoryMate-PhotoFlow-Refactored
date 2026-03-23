@@ -741,6 +741,13 @@ class PreferencesDialog(QDialog):
         )
         screenshot_layout.addRow("", self.chk_include_all_screenshot_faces)
 
+        self.lbl_screenshot_cluster_warning = QLabel(
+            "Warning: enabling full screenshot-face inclusion may increase false splits, singleton clusters, and People clutter."
+        )
+        self.lbl_screenshot_cluster_warning.setWordWrap(True)
+        self.lbl_screenshot_cluster_warning.setStyleSheet("color: #aa5500; font-size: 8.5pt;")
+        screenshot_layout.addRow("", self.lbl_screenshot_cluster_warning)
+
         layout.addWidget(screenshot_group)
 
         # Per-Project Overrides

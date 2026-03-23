@@ -125,18 +125,37 @@ class FaceClusterWorker(QRunnable):
             self.tuning_category = "default"
 
         # Phase: reduce fragmentation on small/medium datasets
+        base_eps = self.eps
+        base_min_samples = self.min_samples
+        self.include_all_screenshot_faces = include_all_screenshot_faces
+
         if self.screenshot_policy == "include_cluster":
-            # include_cluster means maximize assignment, minimize DBSCAN noise.
-            self.eps = max(self.eps, 0.70)
-            self.min_samples = min(self.min_samples, 1)
-            self.tuning_rationale += " | include_cluster max-assignment calibration"
+            if self.include_all_screenshot_faces:
+                # strongest relaxation: boost eps significantly to force merges
+                self.eps = max(base_eps + 0.20, 0.70)
+                self.min_samples = 1
+                self.tuning_rationale += " | include_cluster all-faces mode (aggressive)"
+            else:
+                # moderate relaxation: boost eps to reduce fragmentation
+                self.eps = max(base_eps + 0.15, 0.60)
+                self.min_samples = min(base_min_samples, 2)
+                self.tuning_rationale += " | include_cluster relaxed mode"
         elif self.auto_tune and face_count <= 100:
             self.eps = max(self.eps, 0.42)
             self.min_samples = max(2, self.min_samples)
             self.tuning_rationale += " | merge-bias for small dataset fragmentation"
 
         logger.info(f"[FaceClusterWorker] Auto-tuned for {face_count} faces")
-        logger.info(f"[FaceClusterWorker] Parameters: eps={self.eps}, min_samples={self.min_samples}")
+        logger.info(
+            "[FaceClusterWorker] EFFECTIVE_PARAMS: eps=%.3f min_samples=%d "
+            "(base_eps=%.3f base_min_samples=%d policy=%s include_all=%s)",
+            self.eps,
+            self.min_samples,
+            base_eps,
+            base_min_samples,
+            self.screenshot_policy,
+            self.include_all_screenshot_faces
+        )
         logger.info(f"[FaceClusterWorker] Rationale: {self.tuning_rationale}")
 
         self.signals = FaceClusterSignals()

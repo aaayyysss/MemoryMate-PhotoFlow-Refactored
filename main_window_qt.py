@@ -3544,10 +3544,15 @@ class MainWindow(QMainWindow):
                 self.statusBar().showMessage("Face pipeline already running for this project", 5000)
                 return
 
+            from settings_manager_qt import get_settings
+            settings = get_settings()
+            include_all = settings.get("include_all_screenshot_faces", False)
+
             started = svc.start(
                 project_id=project_id,
                 photo_paths=selected_paths,
                 screenshot_policy=selected_policy,
+                include_all_screenshot_faces=include_all,
             )
             if started:
                 self.statusBar().showMessage(
