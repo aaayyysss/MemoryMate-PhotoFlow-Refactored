@@ -60,7 +60,7 @@ class FaceClusterCard(QFrame):
 
         self._press_pos = None
         self._drag_active = False
-        self.setAcceptDrops(True)        
+        self.setAcceptDrops(True)
 
         self.setup_ui(thumbnail_size)
         self.setFrameStyle(QFrame.Box | QFrame.Raised)
@@ -143,10 +143,10 @@ class FaceClusterCard(QFrame):
 
                 if not image.isNull():
                     pixmap = QPixmap.fromImage(image)
-      
+
                     pixmap = pixmap.scaled(
                         self.thumbnail_size, self.thumbnail_size,
-                        
+
                         Qt.KeepAspectRatio,
                         Qt.SmoothTransformation
                     )
@@ -160,7 +160,7 @@ class FaceClusterCard(QFrame):
 
                     pixmap = pixmap.scaled(
                         self.thumbnail_size, self.thumbnail_size,
-                        
+
                         Qt.KeepAspectRatio,
                         Qt.SmoothTransformation
                     )
@@ -176,7 +176,7 @@ class FaceClusterCard(QFrame):
 
                 pixmap = pixmap.scaled(
                     self.thumbnail_size, self.thumbnail_size,
-                    
+
                     Qt.KeepAspectRatio,
                     Qt.SmoothTransformation
                 )
@@ -228,7 +228,7 @@ class FaceClusterCard(QFrame):
                 if source_branch != self.branch_key:
                     self.dialog._handle_drag_merge(source_branch, self.branch_key)
                     event.acceptProposedAction()
-    
+
     def mouseDoubleClickEvent(self, event):
         """Handle double-click to rename."""
         if event.button() == Qt.LeftButton:
@@ -349,13 +349,13 @@ class PeopleManagerDialog(QDialog):
         self.face_detection_progress_dialog = None
 
         self.setWindowTitle(f"People - Project {project_id}")
-        
+
         # ADAPTIVE DIALOG SIZING: Based on screen resolution
         from PySide6.QtWidgets import QApplication
         screen = QApplication.primaryScreen()
         screen_width = screen.geometry().width()
         screen_height = screen.geometry().height()
-        
+
         # Adaptive size based on screen resolution
         if screen_width >= 2560:  # 4K
             self.resize(1200, 900)
@@ -391,13 +391,13 @@ class PeopleManagerDialog(QDialog):
 
         ### Fixes with biggest ROI
         ### 1. Debounce search input (150 to 250 ms)
-        
+
         self._search_timer = QTimer(self)
         self._search_timer.setSingleShot(True)
         self._search_timer.timeout.connect(lambda: self.filter_clusters(self.search_input.text()))
         self.search_input.textChanged.disconnect()
-        self.search_input.textChanged.connect(lambda: self._search_timer.start(200))        
-        
+        self.search_input.textChanged.connect(lambda: self._search_timer.start(200))
+
         search_layout.addWidget(self.search_input)
 
         # Sort dropdown
@@ -488,8 +488,8 @@ class PeopleManagerDialog(QDialog):
         ### 2. Debounce zoom slider
         self._zoom_timer = QTimer(self)
         self._zoom_timer.setSingleShot(True)
-        self._zoom_timer.timeout.connect(self.update_grid)  
-        
+        self._zoom_timer.timeout.connect(self.update_grid)
+
         toolbar.addWidget(self.zoom_slider)
 
         self.zoom_value_label = QLabel("192px")
@@ -502,11 +502,11 @@ class PeopleManagerDialog(QDialog):
         try:
             self.clusters = self.db.get_face_clusters(self.project_id)
             self.filtered_clusters = self.clusters.copy()
-            
+
             self.sort_clusters(rebuild=False)
             self.update_grid()
             self.update_status()
-            QTimer.singleShot(0, self._force_repaint)                    
+            QTimer.singleShot(0, self._force_repaint)
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to load face clusters:\n{str(e)}")
 
@@ -520,7 +520,7 @@ class PeopleManagerDialog(QDialog):
             QApplication.processEvents()
         except Exception:
             pass
-        
+
     def update_grid(self):
         """Update the grid with face cards."""
         # Clear existing cards
@@ -545,12 +545,12 @@ class PeopleManagerDialog(QDialog):
 
             self.grid_layout.addWidget(card, row, col)
             self.cards[cluster["branch_key"]] = card
-            
+
         ### Fix (reapply selection after rebuilding) ###
         # Re-apply selection highlight after rebuild
         for key in self.selected_clusters:
             if key in self.cards:
-                self._update_card_highlight(key, True)                    
+                self._update_card_highlight(key, True)
 
         # Update layout
         self.grid_widget.updateGeometry()
@@ -570,7 +570,7 @@ class PeopleManagerDialog(QDialog):
         self.update_grid()
         self.update_status()
 
-    def sort_clusters(self, rebuild: bool = True):               
+    def sort_clusters(self, rebuild: bool = True):
         """Sort clusters based on selected criterion."""
         sort_by = self.sort_combo.currentText()
 
@@ -584,7 +584,7 @@ class PeopleManagerDialog(QDialog):
 
         if rebuild:
             self.update_grid()
-            self.update_status()        
+            self.update_status()
 
     def update_status(self):
         """Update status label."""
@@ -739,8 +739,8 @@ class PeopleManagerDialog(QDialog):
             log_undo=True
         )
         self._clear_selection()
-        QTimer.singleShot(0, self.load_clusters)    
-    
+        QTimer.singleShot(0, self.load_clusters)
+
     def on_merge_requested(self, source_branch_key: str):
         """Handle merge request."""
         # Get list of other clusters
@@ -807,7 +807,7 @@ class PeopleManagerDialog(QDialog):
 
             moved_faces = result.get("moved_faces", 0)
             QMessageBox.information(self, "Merge Complete", f"Merged {moved_faces} face crops into '{target_name}'.")
-            
+
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to merge clusters:\n{str(e)}")
 
@@ -964,7 +964,7 @@ class PeopleManagerDialog(QDialog):
             QMessageBox.information(
                 self,
                 "Multi-Merge Complete",
-                f"Successfully merged {moved_faces} face crops from {merge_count} people into '{target_name}'."                
+                f"Successfully merged {moved_faces} face crops from {merge_count} people into '{target_name}'."
             )
 
         except Exception as e:
@@ -1038,11 +1038,13 @@ class PeopleManagerDialog(QDialog):
             # Connect scope selection signal
             selected_paths = []
             selected_policy = "detect_only"
+            selected_include_all = False
 
-            def on_scope_selected(paths, policy):
-                nonlocal selected_paths, selected_policy
+            def on_scope_selected(paths, policy, include_all):
+                nonlocal selected_paths, selected_policy, selected_include_all
                 selected_paths = paths
                 selected_policy = policy
+                selected_include_all = include_all
 
             scope_dialog.scopeSelected.connect(on_scope_selected)
 
@@ -1053,19 +1055,15 @@ class PeopleManagerDialog(QDialog):
 
             logger.info(
                 f"[FaceDetection] User selected {len(selected_paths)} photos "
-                f"for detection (policy={selected_policy})"
+                f"for detection (policy={selected_policy}, include_all={selected_include_all})"
             )
-
-            from settings_manager_qt import get_settings
-            settings = get_settings()
-            include_all = settings.get("include_all_screenshot_faces", False)
 
             # Create worker with selected paths and policy
             self.face_detection_worker = FaceDetectionWorker(
                 self.project_id,
                 photo_paths=selected_paths,
                 screenshot_policy=selected_policy,
-                include_all_screenshot_faces=include_all
+                include_all_screenshot_faces=selected_include_all
             )
 
             # Connect signals for progress tracking (guarded against teardown)
@@ -1212,8 +1210,3 @@ class PeopleManagerDialog(QDialog):
 
         except ImportError:
             QMessageBox.warning(self, "Settings", "Face settings dialog not available.")
-
-
-
-
-

@@ -44,6 +44,8 @@
   "groups_include_videos": false,
   "groups_auto_recompute": true,
   "groups_max_results": 1000,
+  "screenshot_face_policy": "detect_only",
+  "include_all_screenshot_faces": false,
   "scan_exclude_folders": [],
   "log_level": "INFO",
   "log_to_console": true,

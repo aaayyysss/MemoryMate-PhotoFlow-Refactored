@@ -70,7 +70,8 @@ class FaceDetectionWorker(QRunnable):
     def __init__(self, project_id: int, model: str = "buffalo_l",
                  skip_processed: bool = True, max_faces_per_photo: int = 10,
                  photo_paths: Optional[List[str]] = None,
-                 screenshot_policy: str = "detect_only"):
+                 screenshot_policy: str = "detect_only",
+                 include_all_screenshot_faces: bool = False):
         """
         Initialize face detection worker.
 
@@ -90,6 +91,7 @@ class FaceDetectionWorker(QRunnable):
         self.max_faces_per_photo = max_faces_per_photo
         self.photo_paths = photo_paths  # FEATURE #1: Store selected photo paths
         self.screenshot_policy = screenshot_policy
+        self.include_all_screenshot_faces = include_all_screenshot_faces
         self.signals = FaceDetectionSignals()
         self.cancelled = False
 
@@ -353,7 +355,11 @@ class FaceDetectionWorker(QRunnable):
                             elif self.screenshot_policy == "detect_only":
                                 limit = min(limit, 4)
                             elif self.screenshot_policy == "include_cluster":
-                                limit = min(limit, 8)
+                                # ZERO TRUNCATION: if include_all is on, we take everything
+                                if self.include_all_screenshot_faces:
+                                    limit = len(faces)
+                                else:
+                                    limit = min(limit, 8)
                             else:
                                 limit = min(limit, 4)
 
@@ -521,7 +527,10 @@ class FaceDetectionWorker(QRunnable):
                         elif self.screenshot_policy == "detect_only":
                             limit = min(limit, 4)
                         elif self.screenshot_policy == "include_cluster":
-                            limit = min(limit, 8)
+                            if self.include_all_screenshot_faces:
+                                limit = len(faces)
+                            else:
+                                limit = min(limit, 8)
                         else:
                             limit = min(limit, 4)
 
@@ -654,7 +663,7 @@ class FaceDetectionWorker(QRunnable):
 
         CRITICAL FIX: Uses project_images table to respect project hierarchy.
         Only processes photos that are actually linked to this project via project_images.
-        
+
         IMPORTANT: Excludes video files (.mp4, .mov, .avi, .mkv, etc.) from face detection.
         Videos are stored in separate tables and should not be processed as photos.
         """
@@ -663,7 +672,7 @@ class FaceDetectionWorker(QRunnable):
             '.mp4', '.mov', '.avi', '.mkv', '.wmv', '.flv', '.webm',
             '.m4v', '.mpg', '.mpeg', '.3gp', '.ogv'
         )
-        
+
         with db._connect() as conn:
             cur = conn.cursor()
 
@@ -680,7 +689,7 @@ class FaceDetectionWorker(QRunnable):
             video_filter = " AND " + " AND ".join(
                 [f"LOWER(pi.image_path) NOT LIKE '%{ext}'" for ext in VIDEO_EXTENSIONS]
             )
-            
+
             cur.execute(f"""
                 SELECT COUNT(DISTINCT pi.image_path)
                 FROM project_images pi
@@ -688,7 +697,7 @@ class FaceDetectionWorker(QRunnable):
                 {video_filter}
             """, (self.project_id,))
             total_count = cur.fetchone()[0]
-            
+
             # Calculate videos excluded
             videos_excluded = total_items - total_count
             if videos_excluded > 0:

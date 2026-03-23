@@ -3527,10 +3527,15 @@ class MainWindow(QMainWindow):
             selected_paths = []
             selected_policy = "detect_only"
 
-            def on_scope_selected(paths, policy):
-                nonlocal selected_paths, selected_policy
+            def on_scope_selected(paths, policy, include_all):
+                nonlocal selected_paths, selected_policy, selected_include_all
                 selected_paths = paths
                 selected_policy = policy
+                selected_include_all = include_all
+
+            selected_paths = []
+            selected_policy = "detect_only"
+            selected_include_all = False
 
             scope_dialog.scopeSelected.connect(on_scope_selected)
             if scope_dialog.exec() != QDialog.Accepted or not selected_paths:
@@ -3544,15 +3549,11 @@ class MainWindow(QMainWindow):
                 self.statusBar().showMessage("Face pipeline already running for this project", 5000)
                 return
 
-            from settings_manager_qt import get_settings
-            settings = get_settings()
-            include_all = settings.get("include_all_screenshot_faces", False)
-
             started = svc.start(
                 project_id=project_id,
                 photo_paths=selected_paths,
                 screenshot_policy=selected_policy,
-                include_all_screenshot_faces=include_all,
+                include_all_screenshot_faces=selected_include_all,
             )
             if started:
                 self.statusBar().showMessage(
@@ -3562,18 +3563,28 @@ class MainWindow(QMainWindow):
                 self.statusBar().showMessage("Failed to start face pipeline", 5000)
 
         except ImportError as e:
+            logger.error(f"[MainWindow] ImportError in _on_detect_and_group_faces: {e}", exc_info=True)
             from PySide6.QtWidgets import QMessageBox
-            QMessageBox.critical(
-                self, "Missing Library",
-                f"InsightFace library not installed.\n\n"
-                f"Install with:\npip install insightface onnxruntime\n\n"
-                f"Error: {e}"
-            )
+
+            error_msg = str(e)
+            if "insightface" in error_msg.lower():
+                title = "Missing Library: InsightFace"
+                text = (
+                    "InsightFace library not installed.\n\n"
+                    "Install with:\npip install insightface onnxruntime"
+                )
+            else:
+                title = "Import Error"
+                text = f"A required component could not be loaded.\n\nError: {error_msg}"
+
+            QMessageBox.critical(self, title, text)
+
         except Exception as e:
+            logger.error(f"[MainWindow] Unexpected error in _on_detect_and_group_faces: {e}", exc_info=True)
             import traceback
             traceback.print_exc()
             from PySide6.QtWidgets import QMessageBox
-            QMessageBox.critical(self, "Face Grouping Failed", str(e))
+            QMessageBox.critical(self, "Face Grouping Failed", f"An unexpected error occurred:\n{e}")
 
     def _on_recluster_faces(self):
         """
