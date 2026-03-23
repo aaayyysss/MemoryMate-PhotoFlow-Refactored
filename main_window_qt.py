@@ -1376,8 +1376,11 @@ class MainWindow(QMainWindow):
         try:
             layout = self.layout_manager.get_current_layout() if hasattr(self, 'layout_manager') else None
             if layout and hasattr(layout, '_on_startup_ready'):
-                QTimer.singleShot(50, layout._on_startup_ready)
-                print(f"[Startup] Scheduled _on_startup_ready for {type(layout).__name__}")
+                if self.active_project_id is not None:
+                    QTimer.singleShot(50, layout._on_startup_ready)
+                    print(f"[Startup] Scheduled _on_startup_ready for {type(layout).__name__}")
+                else:
+                    logger.info("[Startup] Suppressing initial project-bound layout load because no active project exists")
         except Exception:
             pass
 
@@ -3048,6 +3051,7 @@ class MainWindow(QMainWindow):
             if hasattr(self, 'layout_manager') and self.layout_manager:
                 layout = self.layout_manager.get_current_layout()
 
+            self.active_project_id = project_id
             if layout is not None:
                 layout.set_project(project_id)
                 print(f"[MainWindow] Delegated to {type(layout).__name__}.set_project({project_id})")
@@ -3066,6 +3070,9 @@ class MainWindow(QMainWindow):
             if layout_id != "google":
                 if hasattr(self, "grid") and self.grid:
                     self.grid.set_branch("all")
+
+            # CLIP upgrade check (Phase: Better Model Awareness)
+            QTimer.singleShot(1500, self._maybe_prompt_clip_upgrade)
 
             # Breadcrumb auto-updates via gridReloaded signal
             print(f"[MainWindow] ========== _on_project_changed_by_id({project_id}) COMPLETED ==========\n")
@@ -4697,3 +4704,30 @@ class MainWindow(QMainWindow):
                 os.remove(path)
         except Exception as e:
             print(f"[Status] backfill poll failed: {e}")
+
+    def _maybe_prompt_clip_upgrade(self):
+        """Phase: Prompt user if a better CLIP model is available than currently used."""
+        project_id = self.active_project_id
+        if project_id is None:
+            return
+
+        try:
+            from services.semantic_embedding_service import get_semantic_embedding_service
+            service = get_semantic_embedding_service()
+            stats = service.get_project_embedding_stats(project_id)
+
+            if stats.get('can_upgrade_model'):
+                rec_model = stats.get('recommended_model', 'Large model')
+                # Prettify internal names
+                if 'large-patch14' in rec_model: rec_model = "CLIP ViT-L/14"
+
+                QMessageBox.information(
+                    self,
+                    "Better Search Model Available",
+                    f"A superior AI model ({rec_model}) is installed, "
+                    "but this project still uses legacy embeddings.\n\n"
+                    "To significantly improve scenic and semantic search quality, run:\n"
+                    "Tools → Extract Embeddings"
+                )
+        except Exception as e:
+            logger.warning("[MainWindow] CLIP upgrade prompt failed: %s", e)

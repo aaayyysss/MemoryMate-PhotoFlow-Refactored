@@ -2346,19 +2346,38 @@ class FacePhotoViewer(QWidget):
                 logger.info(f"[FacePhotoViewer] ✓ Bbox coordinates transformed")
 
             logger.info(f"[FacePhotoViewer] Step 8: Checking dimensions...")
-            # Check dimensions
-            if pil_image.width > self.MAX_DIMENSION or pil_image.height > self.MAX_DIMENSION:
-                logger.warning(f"[FacePhotoViewer] Photo dimensions too large: {pil_image.width}×{pil_image.height}")
-                from PySide6.QtWidgets import QMessageBox
-                QMessageBox.warning(
-                    self,
-                    "Photo Dimensions Too Large",
-                    f"This photo's dimensions are too large ({pil_image.width}×{pil_image.height}).\n\n"
-                    f"Maximum dimension: {self.MAX_DIMENSION}×{self.MAX_DIMENSION} pixels\n\n"
-                    "Please resize the image first."
+
+            # Performance fix: downscale large images for display instead of converting full-res
+            # on the UI thread. Keep original coordinates in image space; only display is scaled.
+            DISPLAY_MAX = 2400
+            self.display_scale = 1.0
+
+            if pil_image.width > DISPLAY_MAX or pil_image.height > DISPLAY_MAX:
+                logger.info(
+                    f"[FacePhotoViewer] Downscaling display image from {pil_image.width}×{pil_image.height} to fit max {DISPLAY_MAX}"
                 )
-                self.pixmap = None
-                return
+
+                scale = min(DISPLAY_MAX / pil_image.width, DISPLAY_MAX / pil_image.height)
+                new_w = max(1, int(pil_image.width * scale))
+                new_h = max(1, int(pil_image.height * scale))
+                self.display_scale = scale
+
+                pil_image = pil_image.resize((new_w, new_h), Image.Resampling.LANCZOS)
+
+                # Scale displayed face rectangles accordingly
+                for face in self.detected_faces:
+                    if face.get("bbox"):
+                        x, y, w, h = face["bbox"]
+                        face["bbox"] = (x * scale, y * scale, w * scale, h * scale)
+
+                for face in self.manual_faces:
+                    if face.get("bbox"):
+                        x, y, w, h = face["bbox"]
+                        face["bbox"] = (x * scale, y * scale, w * scale, h * scale)
+
+                logger.info(
+                    f"[FacePhotoViewer] Display image downscaled to {new_w}×{new_h} (scale={scale:.4f})"
+                )
 
             logger.info(f"[FacePhotoViewer] Step 9: Converting to RGB mode...")
             # Convert PIL image to QPixmap
@@ -2544,6 +2563,14 @@ class FacePhotoViewer(QWidget):
                     y = max(0, min(y, self.pixmap.height() - h))
                     w = min(w, self.pixmap.width() - x)
                     h = min(h, self.pixmap.height() - y)
+
+                    # Convert to original image coordinates if downscaled
+                    if hasattr(self, "display_scale") and self.display_scale < 1.0:
+                        inv_scale = 1.0 / self.display_scale
+                        x = int(x * inv_scale)
+                        y = int(y * inv_scale)
+                        w = int(w * inv_scale)
+                        h = int(h * inv_scale)
 
                     # Emit signal
                     self.manualFaceAdded.emit((x, y, w, h))
