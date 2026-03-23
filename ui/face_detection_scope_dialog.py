@@ -40,8 +40,8 @@ class FaceDetectionScopeDialog(QDialog):
     """
 
     # Signal emitted when user clicks "Start Detection"
-    # Emits list of photo paths to process and the chosen screenshot policy
-    scopeSelected = Signal(list, str)  # List[str], str policy
+    # Emits list of photo paths to process, chosen policy, and include_all_screenshot_faces flag
+    scopeSelected = Signal(list, str, bool)
 
     def __init__(self, project_id: int, parent=None):
         super().__init__(parent)
@@ -314,6 +314,12 @@ class FaceDetectionScopeDialog(QDialog):
         self.lbl_screenshot_note.setStyleSheet("color: #666; font-size: 8.5pt; margin-left: 2px;")
         layout.addWidget(self.lbl_screenshot_note)
 
+        # Include all faces in dense screenshot collages (overrides cap)
+        self.chk_include_all = QCheckBox("Include all faces in dense screenshot collages (overrides cap)")
+        self.chk_include_all.setChecked(False)
+        self.chk_include_all.setStyleSheet("margin-top: 5px; margin-left: 2px;")
+        layout.addWidget(self.chk_include_all)
+
         return group
 
     def _create_summary_panel(self) -> QGroupBox:
@@ -401,6 +407,10 @@ class FaceDetectionScopeDialog(QDialog):
     def get_screenshot_policy(self) -> str:
         """Return the selected screenshot policy."""
         return self.cmb_screenshot_policy.currentData() or "detect_only"
+
+    def get_include_all_faces(self) -> bool:
+        """Return whether to include all faces in screenshot collages."""
+        return self.chk_include_all.isChecked()
 
     def _on_folder_selection_changed(self, item: QTreeWidgetItem, column: int):
         """Handle folder checkbox change."""
@@ -523,6 +533,10 @@ class FaceDetectionScopeDialog(QDialog):
             )
             return
 
-        # Emit signal with paths and policy
-        self.scopeSelected.emit(paths_to_process, self.get_screenshot_policy())
+        # Emit signal with paths, policy, and include_all flag
+        self.scopeSelected.emit(
+            paths_to_process,
+            self.get_screenshot_policy(),
+            self.get_include_all_faces()
+        )
         self.accept()

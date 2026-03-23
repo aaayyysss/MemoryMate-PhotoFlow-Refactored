@@ -1,5 +1,5 @@
 # settings_manager_qt.py
-# Version 09.16.01.01 dated 20251020
+# Version 09.16.01.02 dated 20260322
 #
 
 import json, os
@@ -36,7 +36,7 @@ DEFAULT_SETTINGS = {
     "badge_shape": "circle",  # circle | rounded | square
     "badge_max_count": 4,
     "badge_shadow": True,
-    
+
     # --- GPS & Location settings ---
     "gps_clustering_radius_km": 5.0,  # Cluster photos within this radius (1-50 km)
     "gps_reverse_geocoding_enabled": True,  # Auto-fetch location names from coordinates
@@ -145,15 +145,7 @@ class SettingsManager:
 
         Returns:
             List of location dicts, empty if none saved
-
-        Example:
-            >>> sm = SettingsManager()
-            >>> recents = sm.get_recent_locations(limit=10)
-            >>> for loc in recents:
-            ...     print(f"{loc['name']}: ({loc['lat']}, {loc['lon']})")
         """
-        import time
-
         recents = self.get("recent_locations", [])
 
         # Sort by timestamp (most recent first)
@@ -165,20 +157,6 @@ class SettingsManager:
     def add_recent_location(self, name: str, lat: float, lon: float) -> None:
         """
         Add a location to recent locations list.
-
-        If location already exists (matching name and coordinates within tolerance),
-        updates its timestamp and increments use count instead of adding duplicate.
-
-        Auto-prunes list to keep only last 15 locations.
-
-        Args:
-            name: Location name (e.g., "San Francisco, CA, USA")
-            lat: Latitude in decimal degrees
-            lon: Longitude in decimal degrees
-
-        Example:
-            >>> sm = SettingsManager()
-            >>> sm.add_recent_location("Cancun Beach Resort, Mexico", 21.1619, -86.8515)
         """
         import time
 
@@ -224,11 +202,16 @@ class SettingsManager:
     def clear_recent_locations(self) -> None:
         """
         Clear all recent locations.
-
-        Useful for privacy or testing purposes.
-
-        Example:
-            >>> sm = SettingsManager()
-            >>> sm.clear_recent_locations()
         """
         self.set("recent_locations", [])
+
+
+_settings_instance = None
+
+
+def get_settings():
+    """Global singleton getter for SettingsManager."""
+    global _settings_instance
+    if _settings_instance is None:
+        _settings_instance = SettingsManager()
+    return _settings_instance

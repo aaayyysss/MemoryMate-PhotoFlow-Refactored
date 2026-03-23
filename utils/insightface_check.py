@@ -78,8 +78,8 @@ def _get_model_search_paths() -> list:
 
     # 1. Custom path from settings (offline use)
     try:
-        from settings_manager_qt import SettingsManager
-        settings = SettingsManager()
+        from settings_manager_qt import get_settings
+        settings = get_settings()
         custom_path = settings.get_setting('insightface_model_path', '')
         if custom_path:
             custom_path = Path(custom_path)

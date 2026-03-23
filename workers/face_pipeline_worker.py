@@ -75,13 +75,15 @@ class FacePipelineWorker(QRunnable):
     """
 
     def __init__(self, project_id: int, model: str = "buffalo_l",
-                 screenshot_policy: str = "detect_only"):
+                 screenshot_policy: str = "detect_only",
+                 include_all_screenshot_faces: bool = False):
         super().__init__()
         self.setAutoDelete(True)
         self.signals = FacePipelineSignals()
         self.project_id = project_id
         self.model = model
         self.screenshot_policy = screenshot_policy
+        self.include_all_screenshot_faces = include_all_screenshot_faces
         self._cancelled = False
         # Optional: scoped photo paths (set by FacePipelineService)
         self._scoped_photo_paths = None
@@ -549,6 +551,7 @@ class FacePipelineWorker(QRunnable):
             if self._scoped_photo_paths:
                 worker_kwargs["photo_paths"] = self._scoped_photo_paths
 
+            worker_kwargs["include_all_screenshot_faces"] = self.include_all_screenshot_faces
             face_worker = FaceDetectionWorker(**worker_kwargs)
 
             detection_results = {}
@@ -707,6 +710,7 @@ class FacePipelineWorker(QRunnable):
                     min_samples=cluster_params["min_samples"],
                     auto_tune=True,
                     screenshot_policy=self.screenshot_policy,
+                    include_all_screenshot_faces=self.include_all_screenshot_faces,
                 )
 
                 cluster_results = {}
@@ -726,6 +730,8 @@ class FacePipelineWorker(QRunnable):
                     cluster_summary = getattr(cluster_worker, "_cluster_summary", {})
                     cluster_results["assigned_faces"] = cluster_summary.get("assigned_faces", 0)
                     cluster_results["noise_faces"] = cluster_summary.get("noise_faces", 0)
+                    cluster_results["singleton_count"] = cluster_summary.get("singleton_count", 0)
+                    cluster_results["tiny_cluster_count"] = cluster_summary.get("tiny_cluster_count", 0)
 
                 def _on_cluster_error(msg):
                     results["errors"].append(f"Clustering: {msg}")

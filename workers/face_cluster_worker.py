@@ -64,7 +64,8 @@ class FaceClusterWorker(QRunnable):
 
     def __init__(self, project_id: int, eps: Optional[float] = None,
                  min_samples: Optional[int] = None, auto_tune: bool = True,
-                 screenshot_policy: str = "detect_only"):
+                 screenshot_policy: str = "detect_only",
+                 include_all_screenshot_faces: bool = False):
         """
         Initialize face clustering worker with adaptive parameter selection.
 
@@ -454,6 +455,53 @@ class FaceClusterWorker(QRunnable):
                             f"[FaceClusterWorker] Found {noise_count} unclustered faces (will create 'Unidentified' branch)"
                         )
 
+                # Phase 2B: Post-clustering merge pass for tiny clusters (size <= 2)
+                if self.screenshot_policy == "include_cluster" and cluster_count > 1:
+                    logger.info("[FaceClusterWorker] Starting post-clustering merge pass for tiny clusters...")
+
+                    # Calculate centroids for all clusters
+                    centroids = []
+                    valid_labels = sorted(list(set(labels)))
+                    if -1 in valid_labels: valid_labels.remove(-1)
+
+                    label_to_centroid = {}
+                    label_to_size = {}
+
+                    for lbl in valid_labels:
+                        mask = labels == lbl
+                        c_vecs = X[mask]
+                        label_to_centroid[lbl] = np.mean(c_vecs, axis=0)
+                        label_to_size[lbl] = len(c_vecs)
+
+                    # Identify tiny clusters
+                    tiny_labels = [lbl for lbl, size in label_to_size.items() if size <= 2]
+                    larger_labels = [lbl for lbl, size in label_to_size.items() if size > 2]
+
+                    if tiny_labels and larger_labels:
+                        merges = 0
+                        for tiny_lbl in tiny_labels:
+                            t_centroid = label_to_centroid[tiny_lbl]
+                            best_neighbor = None
+                            best_sim = -1.0
+
+                            for other_lbl in larger_labels:
+                                o_centroid = label_to_centroid[other_lbl]
+                                # Cosine similarity
+                                sim = np.dot(t_centroid, o_centroid) / (np.linalg.norm(t_centroid) * np.linalg.norm(o_centroid))
+                                if sim > best_sim:
+                                    best_sim = sim
+                                    best_neighbor = other_lbl
+
+                            # Threshold for merging: 0.78 similarity
+                            if best_sim > 0.78:
+                                labels[labels == tiny_lbl] = best_neighbor
+                                merges += 1
+
+                        if merges > 0:
+                            unique_labels = sorted([l for l in set(labels) if l != -1])
+                            cluster_count = len(unique_labels)
+                            logger.info(f"[FaceClusterWorker] Post-merge pass: combined {merges} tiny clusters into neighbors (sim > 0.78)")
+
                 metric_cluster.finish()
 
                 # Phase 2A: Analyze clustering quality
@@ -801,10 +849,28 @@ class FaceClusterWorker(QRunnable):
             print("\n")
             monitor.print_summary()
 
+            # Fragmentation accounting
+            singleton_count = 0
+            tiny_cluster_count = 0  # size <= 2
+            if 'labels' in locals() and isinstance(labels, np.ndarray):
+                for lbl in unique_labels:
+                    size = np.sum(labels == lbl)
+                    if size == 1:
+                        singleton_count += 1
+                    if size <= 2:
+                        tiny_cluster_count += 1
+
             self._cluster_summary = {
                 "assigned_faces": int(np.sum(labels != -1)) if 'labels' in locals() and isinstance(labels, np.ndarray) else total_faces,
                 "noise_faces": int(np.sum(labels == -1)) if 'labels' in locals() and isinstance(labels, np.ndarray) else 0,
+                "singleton_count": singleton_count,
+                "tiny_cluster_count": tiny_cluster_count
             }
+
+            logger.info(
+                "[FaceClusterWorker] CLUSTER_SIZE_SUMMARY: clusters=%d singletons=%d tiny_le_2=%d screenshot_policy=%s",
+                cluster_count, singleton_count, tiny_cluster_count, self.screenshot_policy
+            )
 
             self.signals.progress.emit(100, 100, f"Clustering complete: {total_branches} branches created")
             self.signals.finished.emit(cluster_count, total_faces)
