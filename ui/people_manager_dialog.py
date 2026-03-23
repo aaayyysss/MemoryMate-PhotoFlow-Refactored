@@ -1056,11 +1056,16 @@ class PeopleManagerDialog(QDialog):
                 f"for detection (policy={selected_policy})"
             )
 
+            from settings_manager_qt import get_settings
+            settings = get_settings()
+            include_all = settings.get("include_all_screenshot_faces", False)
+
             # Create worker with selected paths and policy
             self.face_detection_worker = FaceDetectionWorker(
                 self.project_id,
                 photo_paths=selected_paths,
-                screenshot_policy=selected_policy
+                screenshot_policy=selected_policy,
+                include_all_screenshot_faces=include_all
             )
 
             # Connect signals for progress tracking (guarded against teardown)

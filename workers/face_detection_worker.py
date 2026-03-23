@@ -360,11 +360,11 @@ class FaceDetectionWorker(QRunnable):
                         if limit == 0:
                             faces = []
                         elif len(faces) > limit:
-                            logger.warning(
-                                f"[FaceDetectionWorker] {photo_path} has {len(faces)} faces "
-                                f"(screenshot={is_screenshot}, policy={self.screenshot_policy}), "
-                                f"keeping largest {limit}"
-                            )
+                            log_msg = f"[FaceDetectionWorker] {photo_path} has {len(faces)} faces (screenshot={is_screenshot}, policy={self.screenshot_policy}, include_all={self.include_all_screenshot_faces}), keeping largest {limit}"
+                            if is_screenshot and len(faces) > 10:
+                                logger.warning(f"Screenshot-heavy image: {log_msg}")
+                            else:
+                                logger.info(log_msg)
                             faces = sorted(
                                 faces,
                                 key=lambda f: f['bbox_w'] * f['bbox_h'],
@@ -528,11 +528,11 @@ class FaceDetectionWorker(QRunnable):
                     if limit == 0:
                         faces = []
                     elif len(faces) > limit:
-                        logger.warning(
-                            f"[FaceDetectionWorker] {photo_path} has {len(faces)} faces "
-                            f"(screenshot={is_screenshot}, policy={self.screenshot_policy}), "
-                            f"keeping largest {limit}"
-                        )
+                        log_msg = f"[FaceDetectionWorker] {photo_path} has {len(faces)} faces (screenshot={is_screenshot}, policy={self.screenshot_policy}, include_all={self.include_all_screenshot_faces}), keeping largest {limit}"
+                        if is_screenshot and len(faces) > 10:
+                            logger.warning(f"Screenshot-heavy image: {log_msg}")
+                        else:
+                            logger.info(log_msg)
                         faces = sorted(
                             faces,
                             key=lambda f: f['bbox_w'] * f['bbox_h'],
