@@ -732,6 +732,7 @@ class FacePipelineWorker(QRunnable):
                     cluster_results["noise_faces"] = cluster_summary.get("noise_faces", 0)
                     cluster_results["singleton_count"] = cluster_summary.get("singleton_count", 0)
                     cluster_results["tiny_cluster_count"] = cluster_summary.get("tiny_cluster_count", 0)
+                    cluster_results["max_cluster_size"] = cluster_summary.get("max_cluster_size", 0)
 
                 def _on_cluster_error(msg):
                     results["errors"].append(f"Clustering: {msg}")
@@ -753,25 +754,25 @@ class FacePipelineWorker(QRunnable):
                 logger.info(
                     "[FacePipelineWorker] FACE_ACCOUNTING: detected_this_run=%d db_total=%d "
                     "cluster_loaded=%d assigned=%d noise=%d dropped_before_cluster=%d "
-                    "clusters_created=%d singleton=%d tiny_le_2=%d "
-                    "skipped=(bad_emb=%d, bad_dim=%d, low_conf=%d, small_face=%d, "
-                    "small_face_screenshot=%d, small_face_non_screenshot=%d) policy=%s",
+                    "clusters_created=%d singleton=%d tiny_le_2=%d max_cluster_size=%d "
+                    "skipped=(bad_emb=%d, bad_dim=%d, low_conf=%d, small_face=%d) "
+                    "policy=%s include_all=%s",
                     results["faces_detected"],
                     faces_in_db,
                     loaded_count,
                     cluster_results.get("assigned_faces", 0),
                     cluster_results.get("noise_faces", 0),
-                    max(0, faces_in_db - loaded_count),
+                    dropped_before_cluster,
                     results["clusters_created"],
                     cluster_results.get("singleton_count", 0),
                     cluster_results.get("tiny_cluster_count", 0),
+                    cluster_results.get("max_cluster_size", 0),
                     skip_stats.get('bad_embedding', 0),
                     skip_stats.get('bad_size', 0),
                     skip_stats.get('low_conf', 0),
                     skip_stats.get('small_face', 0),
-                    skip_stats.get('small_face_screenshot', 0),
-                    skip_stats.get('small_face_non_screenshot', 0),
                     self.screenshot_policy,
+                    self.include_all_screenshot_faces,
                 )
 
                 logger.info(

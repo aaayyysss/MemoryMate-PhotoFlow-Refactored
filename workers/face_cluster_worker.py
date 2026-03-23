@@ -132,15 +132,16 @@ class FaceClusterWorker(QRunnable):
 
         if self.screenshot_policy == "include_cluster":
             if self.include_all_screenshot_faces:
-                # strongest relaxation: boost eps significantly to force merges
-                self.eps = max(base_eps + 0.20, 0.70)
+                # Keep full inclusion, but reduce identity swallowing.
+                # We no longer need stronger inclusion, only better separation.
+                self.eps = max(base_eps + 0.18, 0.58)
                 self.min_samples = 1
-                self.tuning_rationale += " | include_cluster all-faces mode (aggressive)"
+                self.tuning_rationale += " | include_cluster all-faces mode (split-biased)"
             else:
                 # moderate relaxation: boost eps to reduce fragmentation
-                self.eps = max(base_eps + 0.15, 0.60)
+                self.eps = max(base_eps + 0.12, 0.52)
                 self.min_samples = min(base_min_samples, 2)
-                self.tuning_rationale += " | include_cluster relaxed mode"
+                self.tuning_rationale += " | include_cluster relaxed mode (balanced)"
         elif self.auto_tune and face_count <= 100:
             self.eps = max(self.eps, 0.42)
             self.min_samples = max(2, self.min_samples)
@@ -455,52 +456,104 @@ class FaceClusterWorker(QRunnable):
                             f"[FaceClusterWorker] Found {noise_count} unclustered faces (will create 'Unidentified' branch)"
                         )
 
-                # Phase 2B: Post-clustering merge pass for tiny clusters (size <= 2)
+                # Phase 2B: Post-clustering merge pass for tiny clusters
                 if self.screenshot_policy == "include_cluster" and cluster_count > 1:
                     logger.info("[FaceClusterWorker] Starting post-clustering merge pass for tiny clusters...")
 
-                    # Calculate centroids for all clusters
-                    centroids = []
-                    valid_labels = sorted(list(set(labels)))
-                    if -1 in valid_labels: valid_labels.remove(-1)
+                    # Map clusters for membership
+                    cluster_members = {}
+                    for i, lbl in enumerate(labels):
+                        if lbl != -1:
+                            cluster_members.setdefault(lbl, []).append(i)
 
                     label_to_centroid = {}
-                    label_to_size = {}
-
-                    for lbl in valid_labels:
-                        mask = labels == lbl
-                        c_vecs = X[mask]
+                    for lbl, idxs in cluster_members.items():
+                        c_vecs = X[idxs]
                         label_to_centroid[lbl] = np.mean(c_vecs, axis=0)
-                        label_to_size[lbl] = len(c_vecs)
 
-                    # Identify tiny clusters
-                    tiny_labels = [lbl for lbl, size in label_to_size.items() if size <= 2]
-                    larger_labels = [lbl for lbl, size in label_to_size.items() if size > 2]
+                    # Identify tiny and target clusters
+                    tiny_labels = [lbl for lbl, idxs in cluster_members.items() if len(idxs) <= 2]
+                    merge_targets = [lbl for lbl, idxs in cluster_members.items() if 2 <= len(idxs) <= 8]
 
-                    if tiny_labels and larger_labels:
+                    if tiny_labels and merge_targets:
                         merges = 0
                         for tiny_lbl in tiny_labels:
                             t_centroid = label_to_centroid[tiny_lbl]
                             best_neighbor = None
                             best_sim = -1.0
 
-                            for other_lbl in larger_labels:
-                                o_centroid = label_to_centroid[other_lbl]
+                            for target_lbl in merge_targets:
+                                if target_lbl == tiny_lbl: continue
+                                o_centroid = label_to_centroid[target_lbl]
                                 # Cosine similarity
                                 sim = np.dot(t_centroid, o_centroid) / (np.linalg.norm(t_centroid) * np.linalg.norm(o_centroid))
                                 if sim > best_sim:
                                     best_sim = sim
-                                    best_neighbor = other_lbl
+                                    best_neighbor = target_lbl
 
-                            # Threshold for merging: 0.78 similarity
-                            if best_sim > 0.78:
+                            # Threshold for merging: 0.84 similarity (more conservative)
+                            if best_neighbor is not None and best_sim >= 0.84:
                                 labels[labels == tiny_lbl] = best_neighbor
                                 merges += 1
 
                         if merges > 0:
                             unique_labels = sorted([l for l in set(labels) if l != -1])
                             cluster_count = len(unique_labels)
-                            logger.info(f"[FaceClusterWorker] Post-merge pass: combined {merges} tiny clusters into neighbors (sim > 0.78)")
+                            logger.info(f"[FaceClusterWorker] Post-merge pass: combined {merges} tiny clusters into neighbors (sim >= 0.84)")
+
+                # Phase 2C: split oversized heterogeneous clusters
+                # This is especially important for child faces that get over-merged.
+                if cluster_count > 0:
+                    unique_labels = sorted([l for l in set(labels) if l != -1])
+                    split_count = 0
+
+                    for lbl in unique_labels:
+                        idxs = np.where(labels == lbl)[0]
+                        if len(idxs) < 8:
+                            continue
+
+                        cluster_vecs = X[idxs]
+
+                        try:
+                            # Re-cluster only this large cluster with a stricter distance
+                            local_eps = max(0.32, self.eps - 0.14)
+                            local_dbscan = DBSCAN(eps=local_eps, min_samples=1, metric='cosine')
+                            local_labels = local_dbscan.fit_predict(cluster_vecs)
+
+                            local_unique = sorted([l for l in set(local_labels) if l != -1])
+                            if len(local_unique) <= 1:
+                                continue
+
+                            # Only accept split if it produces meaningful subgroups
+                            local_sizes = [int(np.sum(local_labels == x)) for x in local_unique]
+                            if max(local_sizes) == len(idxs):
+                                continue
+
+                            # Remap sub-labels back into global label space
+                            max_global = max([x for x in labels if x != -1], default=-1)
+                            base_map = {local_unique[0]: lbl}
+                            for sub_lbl in local_unique[1:]:
+                                max_global += 1
+                                base_map[sub_lbl] = max_global
+
+                            for pos, row_idx in enumerate(idxs):
+                                labels[row_idx] = base_map[local_labels[pos]]
+
+                            split_count += 1
+
+                        except Exception as split_err:
+                            logger.warning(
+                                "[FaceClusterWorker] Large-cluster split failed for label=%s: %s",
+                                lbl, split_err
+                            )
+
+                    if split_count:
+                        unique_labels = sorted([l for l in set(labels) if l != -1])
+                        cluster_count = len(unique_labels)
+                        logger.info(
+                            "[FaceClusterWorker] Oversized cluster split pass applied: %d cluster(s) split",
+                            split_count
+                        )
 
                 metric_cluster.finish()
 
@@ -850,26 +903,32 @@ class FaceClusterWorker(QRunnable):
             monitor.print_summary()
 
             # Fragmentation accounting
-            singleton_count = 0
-            tiny_cluster_count = 0  # size <= 2
-            if 'labels' in locals() and isinstance(labels, np.ndarray):
-                for lbl in unique_labels:
-                    size = np.sum(labels == lbl)
-                    if size == 1:
-                        singleton_count += 1
-                    if size <= 2:
-                        tiny_cluster_count += 1
+            unique_labels = sorted([l for l in set(labels) if l != -1])
+            cluster_sizes = [int(np.sum(labels == lbl)) for lbl in unique_labels]
+            singleton_count = sum(1 for s in cluster_sizes if s == 1)
+            tiny_count = sum(1 for s in cluster_sizes if s <= 2)
 
             self._cluster_summary = {
                 "assigned_faces": int(np.sum(labels != -1)) if 'labels' in locals() and isinstance(labels, np.ndarray) else total_faces,
                 "noise_faces": int(np.sum(labels == -1)) if 'labels' in locals() and isinstance(labels, np.ndarray) else 0,
                 "singleton_count": singleton_count,
-                "tiny_cluster_count": tiny_cluster_count
+                "tiny_cluster_count": tiny_count,
+                "max_cluster_size": max(cluster_sizes) if cluster_sizes else 0,
             }
 
             logger.info(
-                "[FaceClusterWorker] CLUSTER_SIZE_SUMMARY: clusters=%d singletons=%d tiny_le_2=%d screenshot_policy=%s",
-                cluster_count, singleton_count, tiny_cluster_count, self.screenshot_policy
+                "[FaceClusterWorker] CLUSTER_SIZE_SUMMARY: total_clusters=%d singleton=%d tiny_le_2=%d max_size=%d avg_size=%.2f screenshot_policy=%s",
+                len(cluster_sizes),
+                singleton_count,
+                tiny_count,
+                max(cluster_sizes) if cluster_sizes else 0,
+                float(np.mean(cluster_sizes)) if cluster_sizes else 0.0,
+                self.screenshot_policy
+            )
+
+            logger.info(
+                "[FaceClusterWorker] CLUSTER_SIZES_TOP10: %s",
+                sorted(cluster_sizes, reverse=True)[:10]
             )
 
             self.signals.progress.emit(100, 100, f"Clustering complete: {total_branches} branches created")
