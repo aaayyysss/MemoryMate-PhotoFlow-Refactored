@@ -1,4 +1,5 @@
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel
+from shiboken6 import isValid
 
 
 class EmptyStateView(QWidget):
@@ -13,10 +14,14 @@ class EmptyStateView(QWidget):
         layout.addStretch(1)
 
     def set_message(self, text: str):
-        self.label.setText(text or "No results")
+        if hasattr(self, 'label') and isValid(self.label):
+            self.label.setText(text or "No results")
 
     def set_state(self, reason: str):
         """Compatibility method for SearchState integration."""
+        if not isValid(self):
+            return
+
         mapping = {
             "no_project": "No project selected. Please create or open a project.",
             "no_results": "No results found for your search.",

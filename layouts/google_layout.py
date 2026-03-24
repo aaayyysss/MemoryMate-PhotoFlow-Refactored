@@ -411,6 +411,11 @@ class GooglePhotosLayout(BaseLayout):
         if getattr(self, '_disposed', False):
             return
 
+        from shiboken6 import isValid
+        if not isValid(self.results_stack) or not isValid(self.empty_state) or not isValid(self.timeline):
+            logger.debug("[GooglePhotosLayout] Skipping SearchState update: UI objects already deleted")
+            return
+
         # Handle empty state
         if state.empty_state_reason:
             self.empty_state.set_state(state.empty_state_reason)
@@ -10336,6 +10341,13 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
         if hasattr(self, 'project_combo'):
             try:
                 self.project_combo.currentIndexChanged.disconnect(self._on_project_changed)
+            except:
+                pass
+
+        # Search state signals
+        if hasattr(self.main_window, 'search_state_store'):
+            try:
+                self.main_window.search_state_store.stateChanged.disconnect(self._on_search_state_changed)
             except:
                 pass
 

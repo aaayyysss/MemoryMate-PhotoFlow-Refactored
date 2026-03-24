@@ -1,9 +1,17 @@
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QScrollArea, QFrame, QGroupBox, QLabel
 
 from ui.search.sections.discover_section import DiscoverSection
 
 
 class SearchSidebar(QWidget):
+    # Parity signals for MainWindow/Controller integration
+    folderSelected = Signal(int)
+    selectBranch = Signal(str)
+    selectDate = Signal(str)
+    selectVideos = Signal(str)
+    selectGroup = Signal(int)
+
     def __init__(self, store, controller=None, parent=None):
         super().__init__(parent)
         self.store = store
@@ -43,6 +51,26 @@ class SearchSidebar(QWidget):
 
         scroll.setWidget(content)
         outer.addWidget(scroll)
+
+    def reload_date_tree(self):
+        """Parity method for MainWindow deferred init."""
+        pass
+
+    def set_project(self, project_id: int):
+        """Update sidebar context for new project."""
+        pass
+
+    def toggle_fold(self, folded: bool):
+        """Handle sidebar collapse/expand."""
+        self.setVisible(not folded)
+
+    def _effective_display_mode(self):
+        """Parity method for MainWindow."""
+        return "list"
+
+    def switch_display_mode(self, mode: str):
+        """Parity method for MainWindow."""
+        pass
 
     def _wire_signals(self):
         if self.controller:

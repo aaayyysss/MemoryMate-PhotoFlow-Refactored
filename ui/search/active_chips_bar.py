@@ -1,5 +1,6 @@
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QWidget, QHBoxLayout, QPushButton
+from shiboken6 import isValid
 
 
 class ActiveChipsBar(QWidget):
@@ -23,6 +24,8 @@ class ActiveChipsBar(QWidget):
                 widget.deleteLater()
 
     def _on_state_changed(self, state):
+        if not isValid(self):
+            return
         self._clear_layout()
 
         for chip in state.active_chips:
