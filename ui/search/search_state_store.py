@@ -1,44 +1,40 @@
 from dataclasses import dataclass, field
 from typing import Optional, List, Dict, Any
+
 from PySide6.QtCore import QObject, Signal
+
 
 @dataclass
 class SearchState:
-    # Project context
     active_project_id: Optional[int] = None
     has_active_project: bool = False
     onboarding_mode: bool = False
 
-    # Query / intent
     query_text: str = ""
     preset_id: Optional[str] = None
     family: Optional[str] = None
     intent_summary: str = ""
 
-    # Active refinement
     active_people: List[str] = field(default_factory=list)
     active_filters: Dict[str, Any] = field(default_factory=dict)
     active_chips: List[Dict[str, Any]] = field(default_factory=list)
 
-    # Result state
     result_paths: List[str] = field(default_factory=list)
     result_count: int = 0
     result_facets: Dict[str, Any] = field(default_factory=dict)
 
-    # Sort / mode
     sort_mode: str = "relevance"
-    media_scope: str = "all"   # all | photos | videos
-    search_mode: str = "hybrid"  # hybrid | browse | people | discover
+    media_scope: str = "all"
+    search_mode: str = "hybrid"
 
-    # Runtime status
     search_in_progress: bool = False
     indexing_in_progress: bool = False
     embeddings_ready: bool = False
     face_clusters_ready: bool = False
 
-    # UX messaging
     warnings: List[str] = field(default_factory=list)
-    empty_state_reason: Optional[str] = None  # no_project | no_results | indexing | embeddings_missing
+    empty_state_reason: Optional[str] = None
+
 
 class SearchStateStore(QObject):
     stateChanged = Signal(object)
@@ -61,6 +57,7 @@ class SearchStateStore(QObject):
             active_project_id=project_id,
             has_active_project=project_id is not None,
             onboarding_mode=project_id is None,
+            empty_state_reason="no_project" if project_id is None else None,
         )
         self.stateChanged.emit(self._state)
 
@@ -75,5 +72,6 @@ class SearchStateStore(QObject):
         self._state.result_paths.clear()
         self._state.result_count = 0
         self._state.result_facets.clear()
-        self._state.empty_state_reason = None
+        self._state.search_in_progress = False
+        self._state.empty_state_reason = None if self._state.has_active_project else "no_project"
         self.stateChanged.emit(self._state)
