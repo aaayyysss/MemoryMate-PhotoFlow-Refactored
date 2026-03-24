@@ -134,6 +134,17 @@ apply_decoder_warning_policy()
 from preview_panel_qt import LightboxDialog
 
 # --- Search UI imports ---
+from ui.search.search_state_store import SearchStateStore
+from ui.search.search_controller import SearchController
+from ui.search.top_search_bar import TopSearchBar
+from ui.search.search_sidebar import SearchSidebar
+from ui.search.sections.search_hub_section import SearchHubSection
+from ui.search.sections.discover_section import DiscoverSection
+from ui.search.sections.people_quick_section import PeopleQuickSection
+from ui.search.sections.browse_section import BrowseSection
+from ui.search.sections.filter_section import FilterSection
+from ui.search.sections.activity_mini_section import ActivityMiniSection
+from ui.search.results_pane import ResultsPane
 from search_widget_qt import SearchBarWidget, AdvancedSearchDialog
 
 # --- Video backfill dialog ---
@@ -323,6 +334,11 @@ class MainWindow(QMainWindow):
 
         # keep rest of initializer logic, but ensure some attributes exist
         self.settings = SettingsManager()
+
+        # Initialize Search State and Controller
+        self.search_state_store = SearchStateStore()
+        self.search_controller = SearchController(self.search_state_store)
+
         self._committed_total = 0
         self._scan_result = (0, 0)  # folders, photos
 
@@ -844,10 +860,11 @@ class MainWindow(QMainWindow):
         self.chk_incremental = ui.checkbox(tr('toolbar.incremental'), checked=True)
         ui.separator()
 
-        # 🔍 Search Bar
-        self.search_bar = SearchBarWidget(self)
-        self.search_bar.searchTriggered.connect(self._on_quick_search)
-        self.search_bar.advancedSearchRequested.connect(self._on_advanced_search)
+        # 🔍 Search Bar (Redesigned)
+        self.search_bar = TopSearchBar(self)
+        self.search_bar.querySubmitted.connect(self.search_controller.set_query_text)
+        self.search_bar.queryChanged.connect(lambda text: self.search_controller.set_query_text(text, debounce=True))
+        self.search_bar.searchCleared.connect(self.search_controller.clear_search)
         tb.addWidget(self.search_bar)
         ui.separator()
 
@@ -954,8 +971,31 @@ class MainWindow(QMainWindow):
         default_pid = self._bootstrap_active_project()
         self.active_project_id = default_pid
 
-        self.sidebar = SidebarQt(project_id=default_pid)
+        # NEW REDESIGNED SIDEBAR
+        self.sidebar = SearchSidebar(self.search_state_store, self)
 
+        self.search_hub_section = SearchHubSection(self.sidebar)
+        self.discover_section = DiscoverSection(self.sidebar)
+        self.people_quick_section = PeopleQuickSection(self.sidebar)
+        self.browse_section = BrowseSection(self.sidebar)
+        self.filter_section = FilterSection(self.sidebar)
+        self.activity_mini_section = ActivityMiniSection(self.sidebar)
+
+        self.sidebar.add_section(self.search_hub_section)
+        self.sidebar.add_section(self.discover_section)
+        self.sidebar.add_section(self.people_quick_section)
+        self.sidebar.add_section(self.browse_section)
+        self.sidebar.add_section(self.filter_section)
+        self.sidebar.add_section(self.activity_mini_section)
+
+        # Connect Sidebar Signals to Controller
+        self.discover_section.presetSelected.connect(self.search_controller.set_preset)
+        self.people_quick_section.personSelected.connect(self.search_controller.apply_people_filter)
+        self.filter_section.filterChanged.connect(self.search_controller.toggle_filter)
+        self.filter_section.clearAllFiltersRequested.connect(self.search_controller.clear_search)
+
+        # NEW RESULTS PANE
+        self.results_pane = ResultsPane(self.search_state_store, self)
 
         # === Lazy wiring for sidebar actions (now sidebar exists) ===
         def _on_fold_toggle(checked):
@@ -1103,9 +1143,13 @@ class MainWindow(QMainWindow):
         self.selection_toolbar = SelectionToolbar(self)
         grid_layout.addWidget(self.selection_toolbar)
 
+        # Add ResultsPane to grid container instead of raw grid
+        grid_layout.addWidget(self.results_pane)
+
         # Thumbnail grid
         self.grid = ThumbnailGridQt(project_id=default_pid)
-        grid_layout.addWidget(self.grid)
+        # grid_layout.addWidget(self.grid) # Grid now managed by ResultsPane
+        self.results_pane.set_grid_widget(self.grid)
 
         # 🎬 Phase 4.4: Video player panel (hidden by default)
         self.video_player = VideoPlayerPanel(self)
@@ -1294,6 +1338,10 @@ class MainWindow(QMainWindow):
         # Load user's preferred layout or default to "current"
         # This must happen after all UI components are created
         try:
+            # Propagate Search State to Layout Manager
+            self.layout_manager.search_state_store = self.search_state_store
+            self.layout_manager.search_controller = self.search_controller
+
             self.layout_manager.initialize_default_layout()
             print("[Startup] Layout system initialized successfully")
         except Exception as e:
@@ -3052,6 +3100,10 @@ class MainWindow(QMainWindow):
                 layout = self.layout_manager.get_current_layout()
 
             self.active_project_id = project_id
+
+            # Notify Search Controller
+            self.search_controller.set_active_project(project_id)
+
             if layout is not None:
                 layout.set_project(project_id)
                 print(f"[MainWindow] Delegated to {type(layout).__name__}.set_project({project_id})")
@@ -3533,16 +3585,13 @@ class MainWindow(QMainWindow):
             scope_dialog = FaceDetectionScopeDialog(project_id, parent=self)
             selected_paths = []
             selected_policy = "detect_only"
+            selected_include_all = False
 
             def on_scope_selected(paths, policy, include_all):
                 nonlocal selected_paths, selected_policy, selected_include_all
                 selected_paths = paths
                 selected_policy = policy
                 selected_include_all = include_all
-
-            selected_paths = []
-            selected_policy = "detect_only"
-            selected_include_all = False
 
             scope_dialog.scopeSelected.connect(on_scope_selected)
             if scope_dialog.exec() != QDialog.Accepted or not selected_paths:

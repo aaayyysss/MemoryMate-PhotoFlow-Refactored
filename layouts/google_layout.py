@@ -27,6 +27,10 @@ logger = get_logger(__name__)
 from .video_editor_mixin import VideoEditorMixin
 
 # Import extracted components from google_components module
+from ui.search.search_results_header import SearchResultsHeader
+from ui.search.active_chips_bar import ActiveChipsBar
+from ui.search.empty_state_view import EmptyStateView
+
 from google_components import (
     # Phase 3A: UI Widgets
     FlowLayout, CollapsibleSection, PersonCard, PeopleGridView,
@@ -185,6 +189,9 @@ class GooglePhotosLayout(BaseLayout):
         self.photo_load_signals.loaded.connect(self._on_photos_loaded)
         self.photo_load_signals.error.connect(self._on_photos_load_error)
 
+        # Connect to Search State Store
+        self.main_window.search_state_store.stateChanged.connect(self._on_search_state_changed)
+
         # Initialize filter state
         self.current_thumb_size = 200
         self.current_filter_year = None
@@ -304,9 +311,30 @@ class GooglePhotosLayout(BaseLayout):
         self.sidebar = self._create_sidebar()
         self.splitter.addWidget(self.sidebar)
 
+        # Search Components (Integrated from SearchState)
+        self.search_header = SearchResultsHeader(self.main_window.search_state_store)
+        self.active_chips = ActiveChipsBar(self.main_window.search_state_store)
+        self.empty_state = EmptyStateView()
+
         # Create timeline
         self.timeline = self._create_timeline()
-        self.splitter.addWidget(self.timeline)
+
+        # Build Results Container (Header + Chips + Timeline/Empty)
+        self.results_container = QWidget()
+        self.results_layout = QVBoxLayout(self.results_container)
+        self.results_layout.setContentsMargins(0, 0, 0, 0)
+        self.results_layout.setSpacing(0)
+
+        self.results_layout.addWidget(self.search_header)
+        self.results_layout.addWidget(self.active_chips)
+
+        self.results_stack = QStackedWidget()
+        self.results_stack.addWidget(self.timeline)
+        self.results_stack.addWidget(self.empty_state)
+
+        self.results_layout.addWidget(self.results_stack, 1)
+
+        self.splitter.addWidget(self.results_container)
 
         # Debounced zoom handling (prevents repeated reloads while dragging)
         self._pending_zoom_value = None
@@ -377,6 +405,35 @@ class GooglePhotosLayout(BaseLayout):
                     self._store_versions[v_key] = new_v
                 if need_refresh:
                     self.refresh_after_scan()
+
+    def _on_search_state_changed(self, state):
+        """Respond to global SearchState changes."""
+        if getattr(self, '_disposed', False):
+            return
+
+        # Handle empty state
+        if state.empty_state_reason:
+            self.empty_state.set_state(state.empty_state_reason)
+            self.results_stack.setCurrentWidget(self.empty_state)
+        else:
+            self.results_stack.setCurrentWidget(self.timeline)
+
+        # Sync search box if text changed from elsewhere
+        if self.search_box.text() != state.query_text:
+            self.search_box.blockSignals(True)
+            self.search_box.setText(state.query_text)
+            self.search_box.blockSignals(False)
+
+        # Trigger photo grid update if result paths changed
+        # We use a signature-based check to avoid redundant work
+        sig = (tuple(state.result_paths), state.active_project_id)
+        if getattr(self, "_last_result_sig", None) != sig:
+            self._last_result_sig = sig
+            if state.result_paths or not state.query_text:
+                # If we have results, or the search is empty (show all), reload timeline
+                # Note: We convert paths to Orchestrator-style ScoredResults if needed,
+                # but here we just pass them to the existing path-based loader.
+                self._load_photos(filter_paths=state.result_paths if state.query_text or state.preset_id else None)
 
             self._store_callback = _on_state_changed  # prevent GC (weakref store)
             self._store_unsub = store.subscribe(_on_state_changed)
@@ -8834,20 +8891,10 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
         """
         Handle search text change (real-time filtering).
 
-        Phase 2 #3: Now also shows search suggestions dropdown.
+        Delegates to the global SearchController.
         """
-        # PHASE 2 #3: Show suggestions immediately (no debounce for suggestions)
-        self._show_search_suggestions(text)
-
-        # Debounce: only search after user stops typing for 300ms
-        if hasattr(self, '_search_timer'):
-            self._search_timer.stop()
-
-        from PySide6.QtCore import QTimer
-        self._search_timer = QTimer()
-        self._search_timer.setSingleShot(True)
-        self._search_timer.timeout.connect(lambda: self._perform_search(text))
-        self._search_timer.start(300)  # 300ms debounce
+        # Update global search state
+        self.main_window.search_controller.set_query_text(text, debounce=True)
 
     def _perform_search(self, text: str = None):
         """
