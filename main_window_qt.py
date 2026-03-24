@@ -137,14 +137,10 @@ from preview_panel_qt import LightboxDialog
 from ui.search.search_state_store import SearchStateStore
 from ui.search.search_controller import SearchController
 from ui.search.top_search_bar import TopSearchBar
+from ui.search.search_results_header import SearchResultsHeader
+from ui.search.active_chips_bar import ActiveChipsBar
 from ui.search.search_sidebar import SearchSidebar
-from ui.search.sections.search_hub_section import SearchHubSection
 from ui.search.sections.discover_section import DiscoverSection
-from ui.search.sections.people_quick_section import PeopleQuickSection
-from ui.search.sections.browse_section import BrowseSection
-from ui.search.sections.filter_section import FilterSection
-from ui.search.sections.activity_mini_section import ActivityMiniSection
-from ui.search.results_pane import ResultsPane
 from search_widget_qt import SearchBarWidget, AdvancedSearchDialog
 
 # --- Video backfill dialog ---
@@ -335,9 +331,12 @@ class MainWindow(QMainWindow):
         # keep rest of initializer logic, but ensure some attributes exist
         self.settings = SettingsManager()
 
-        # Initialize Search State and Controller
+        # UX-1 search state + controller
         self.search_state_store = SearchStateStore()
-        self.search_controller = SearchController(self.search_state_store)
+        self.search_controller = SearchController(
+            store=self.search_state_store,
+            parent=self,
+        )
 
         self._committed_total = 0
         self._scan_result = (0, 0)  # folders, photos
@@ -964,38 +963,58 @@ class MainWindow(QMainWindow):
 
         main_layout.addWidget(topbar)
 
+        # --- UX-1 Search Chrome (keeps existing toolbar/mobile-sync area untouched)
+        self.top_search_bar = TopSearchBar(self)
+        self.search_results_header = SearchResultsHeader(
+            store=self.search_state_store,
+            controller=self.search_controller,
+            parent=self
+        )
+        self.active_chips_bar = ActiveChipsBar(
+            store=self.search_state_store,
+            parent=self
+        )
+
+        main_layout.addWidget(self.top_search_bar)
+        main_layout.addWidget(self.search_results_header)
+        main_layout.addWidget(self.active_chips_bar)
+
         # --- Main layout (Sidebar + Grid + Details)
         self.splitter = QSplitter(Qt.Horizontal)
 
         # PHASE 1: Bootstrap Policy (last-used -> exactly one -> onboarding)
         default_pid = self._bootstrap_active_project()
         self.active_project_id = default_pid
+        if hasattr(self, "search_controller"):
+            self.search_controller.set_active_project(default_pid)
 
-        # NEW REDESIGNED SIDEBAR
-        self.sidebar = SearchSidebar(self.search_state_store, self)
+        self.sidebar = SidebarQt(project_id=default_pid)
 
-        self.search_hub_section = SearchHubSection(self.sidebar)
-        self.discover_section = DiscoverSection(self.sidebar)
-        self.people_quick_section = PeopleQuickSection(self.sidebar)
-        self.browse_section = BrowseSection(self.sidebar)
-        self.filter_section = FilterSection(self.sidebar)
-        self.activity_mini_section = ActivityMiniSection(self.sidebar)
+        # UX-1 search/discovery sidebar shell.
+        # Existing SidebarQt remains present below it for compatibility.
+        self.search_sidebar = SearchSidebar(
+            store=self.search_state_store,
+            controller=self.search_controller,
+            parent=self
+        )
 
-        self.sidebar.add_section(self.search_hub_section)
-        self.sidebar.add_section(self.discover_section)
-        self.sidebar.add_section(self.people_quick_section)
-        self.sidebar.add_section(self.browse_section)
-        self.sidebar.add_section(self.filter_section)
-        self.sidebar.add_section(self.activity_mini_section)
+        self.left_sidebar_container = QWidget()
+        self.left_sidebar_layout = QVBoxLayout(self.left_sidebar_container)
+        self.left_sidebar_layout.setContentsMargins(0, 0, 0, 0)
+        self.left_sidebar_layout.setSpacing(8)
+        self.left_sidebar_layout.addWidget(self.search_sidebar, 0)
+        self.left_sidebar_layout.addWidget(self.sidebar, 1)
 
-        # Connect Sidebar Signals to Controller
-        self.discover_section.presetSelected.connect(self.search_controller.set_preset)
-        self.people_quick_section.personSelected.connect(self.search_controller.apply_people_filter)
-        self.filter_section.filterChanged.connect(self.search_controller.toggle_filter)
-        self.filter_section.clearAllFiltersRequested.connect(self.search_controller.clear_search)
+        # Connect Search Controller to bridge
+        self.search_controller.searchRequested.connect(self._on_ux1_search_requested)
 
-        # NEW RESULTS PANE
-        self.results_pane = ResultsPane(self.search_state_store, self)
+        # UX-1 signal wiring
+        self.top_search_bar.querySubmitted.connect(self.search_controller.submit_query)
+        self.top_search_bar.queryChanged.connect(self.search_controller.set_query_text)
+        self.top_search_bar.searchCleared.connect(self.search_controller.clear_search)
+
+        self.active_chips_bar.chipRemoved.connect(self.search_controller.remove_chip)
+        self.active_chips_bar.clearAllRequested.connect(self.search_controller.clear_search)
 
         # === Lazy wiring for sidebar actions (now sidebar exists) ===
         def _on_fold_toggle(checked):
@@ -1123,7 +1142,7 @@ class MainWindow(QMainWindow):
         if hasattr(self.sidebar, 'selectVideos'):
             self.sidebar.selectVideos.connect(self.sidebar_controller.on_videos_selected)
 
-        self.splitter.addWidget(self.sidebar)
+        self.splitter.addWidget(self.left_sidebar_container)
 
         # Ctrl+F → focus Smart Find search input
         shortcut_find = QShortcut(QKeySequence("Ctrl+F"), self)
@@ -1143,13 +1162,9 @@ class MainWindow(QMainWindow):
         self.selection_toolbar = SelectionToolbar(self)
         grid_layout.addWidget(self.selection_toolbar)
 
-        # Add ResultsPane to grid container instead of raw grid
-        grid_layout.addWidget(self.results_pane)
-
         # Thumbnail grid
         self.grid = ThumbnailGridQt(project_id=default_pid)
-        # grid_layout.addWidget(self.grid) # Grid now managed by ResultsPane
-        self.results_pane.set_grid_widget(self.grid)
+        grid_layout.addWidget(self.grid)
 
         # 🎬 Phase 4.4: Video player panel (hidden by default)
         self.video_player = VideoPlayerPanel(self)
@@ -3084,6 +3099,9 @@ class MainWindow(QMainWindow):
         """
         print(f"\n[MainWindow] ========== _on_project_changed_by_id({project_id}) STARTED ==========")
         try:
+            if hasattr(self, "search_controller"):
+                self.search_controller.set_active_project(project_id)
+
             # Already on this project?
             current_project_id = getattr(self.grid, 'project_id', None) if hasattr(self, 'grid') else None
             if current_project_id == project_id:
@@ -3100,9 +3118,6 @@ class MainWindow(QMainWindow):
                 layout = self.layout_manager.get_current_layout()
 
             self.active_project_id = project_id
-
-            # Notify Search Controller
-            self.search_controller.set_active_project(project_id)
 
             if layout is not None:
                 layout.set_project(project_id)
@@ -3132,6 +3147,58 @@ class MainWindow(QMainWindow):
             print(f"[MainWindow] ERROR switching project: {e}")
             import traceback
             traceback.print_exc()
+
+    def _on_ux1_search_requested(self, payload: dict):
+        """
+        UX-1 bridge: map new search shell requests into the existing search pipeline.
+        This keeps the implementation low-risk while establishing the new architecture.
+        """
+        query_text = payload.get("query_text", "") or ""
+        preset_id = payload.get("preset_id")
+
+        try:
+            if preset_id and hasattr(self, "_execute_smart_find_preset"):
+                self._execute_smart_find_preset(preset_id)
+                result_count = len(getattr(self.grid, "all_photo_paths", []) or [])
+                self.search_controller.apply_result_summary(
+                    result_paths=getattr(self.grid, "all_photo_paths", []) or [],
+                    result_count=result_count,
+                    family=None,
+                    result_facets={},
+                    warnings=[],
+                )
+                return
+
+            if query_text and hasattr(self, "_on_quick_search"):
+                self._on_quick_search(query_text)
+                result_count = len(getattr(self.grid, "all_photo_paths", []) or [])
+                self.search_controller.apply_result_summary(
+                    result_paths=getattr(self.grid, "all_photo_paths", []) or [],
+                    result_count=result_count,
+                    family=None,
+                    result_facets={},
+                    warnings=[],
+                )
+                return
+
+            # Empty / reset search
+            self.search_controller.apply_result_summary(
+                result_paths=[],
+                result_count=0,
+                family=None,
+                result_facets={},
+                warnings=[],
+            )
+
+        except Exception as e:
+            if hasattr(self, "search_controller"):
+                self.search_controller.apply_result_summary(
+                    result_paths=[],
+                    result_count=0,
+                    family=None,
+                    result_facets={},
+                    warnings=[str(e)],
+                )
 
     def _refresh_project_list(self):
         """

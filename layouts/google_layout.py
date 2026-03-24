@@ -27,8 +27,6 @@ logger = get_logger(__name__)
 from .video_editor_mixin import VideoEditorMixin
 
 # Import extracted components from google_components module
-from ui.search.search_results_header import SearchResultsHeader
-from ui.search.active_chips_bar import ActiveChipsBar
 from ui.search.empty_state_view import EmptyStateView
 
 from google_components import (
@@ -312,21 +310,16 @@ class GooglePhotosLayout(BaseLayout):
         self.splitter.addWidget(self.sidebar)
 
         # Search Components (Integrated from SearchState)
-        self.search_header = SearchResultsHeader(self.main_window.search_state_store)
-        self.active_chips = ActiveChipsBar(self.main_window.search_state_store)
         self.empty_state = EmptyStateView()
 
         # Create timeline
         self.timeline = self._create_timeline()
 
-        # Build Results Container (Header + Chips + Timeline/Empty)
+        # Build Results Container (Timeline/Empty)
         self.results_container = QWidget()
         self.results_layout = QVBoxLayout(self.results_container)
         self.results_layout.setContentsMargins(0, 0, 0, 0)
         self.results_layout.setSpacing(0)
-
-        self.results_layout.addWidget(self.search_header)
-        self.results_layout.addWidget(self.active_chips)
 
         self.results_stack = QStackedWidget()
         self.results_stack.addWidget(self.timeline)
@@ -406,6 +399,13 @@ class GooglePhotosLayout(BaseLayout):
                 if need_refresh:
                     self.refresh_after_scan()
 
+            self._store_callback = _on_state_changed  # prevent GC (weakref store)
+            self._store_unsub = store.subscribe(_on_state_changed)
+        except Exception:
+            pass  # Store not initialized (e.g. unit tests)
+
+        return main_widget
+
     def _on_search_state_changed(self, state):
         """Respond to global SearchState changes."""
         if getattr(self, '_disposed', False):
@@ -434,13 +434,6 @@ class GooglePhotosLayout(BaseLayout):
                 # Note: We convert paths to Orchestrator-style ScoredResults if needed,
                 # but here we just pass them to the existing path-based loader.
                 self._load_photos(filter_paths=state.result_paths if state.query_text or state.preset_id else None)
-
-            self._store_callback = _on_state_changed  # prevent GC (weakref store)
-            self._store_unsub = store.subscribe(_on_state_changed)
-        except Exception:
-            pass  # Store not initialized (e.g. unit tests)
-
-        return main_widget
 
     # ------------------------------------------------------------------
     # Startup fence: called by MainWindow after first paint completes

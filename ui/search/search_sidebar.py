@@ -1,89 +1,49 @@
-from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QScrollArea, QFrame, QLabel, QHBoxLayout
-)
-from PySide6.QtCore import Signal, Qt
-from ui.search.search_state_store import SearchStateStore, SearchState
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QScrollArea, QFrame, QGroupBox, QLabel
 
-class SidebarSection(QWidget):
-    def __init__(self, title: str, parent=None):
-        super().__init__(parent)
-        self.layout = QVBoxLayout(self)
-        self.layout.setContentsMargins(0, 8, 0, 8)
-        self.layout.setSpacing(4)
+from ui.search.sections.discover_section import DiscoverSection
 
-        self.header = QWidget()
-        header_layout = QHBoxLayout(self.header)
-        header_layout.setContentsMargins(16, 4, 16, 4)
-
-        self.lbl_title = QLabel(title.upper())
-        self.lbl_title.setStyleSheet("font-weight: bold; color: #70757a; font-size: 9pt; letter-spacing: 0.5px;")
-        header_layout.addWidget(self.lbl_title)
-
-        self.content = QWidget()
-        self.content_layout = QVBoxLayout(self.content)
-        self.content_layout.setContentsMargins(8, 0, 8, 0)
-        self.content_layout.setSpacing(2)
-
-        self.layout.addWidget(self.header)
-        self.layout.addWidget(self.content)
 
 class SearchSidebar(QWidget):
-    # Parity signals for MainWindow/Controller integration
-    folderSelected = Signal(int)
-    selectBranch = Signal(str)
-    selectDate = Signal(str)
-    selectVideos = Signal(str)
-    selectGroup = Signal(int)
-
-    def __init__(self, state_store: SearchStateStore, parent=None):
+    def __init__(self, store, controller=None, parent=None):
         super().__init__(parent)
-        self.store = state_store
-        self._setup_ui()
-        self.setFixedWidth(260)
-        self.setStyleSheet("background-color: white; border-right: 1px solid #e0e0e0;")
+        self.store = store
+        self.controller = controller
 
-    def reload_date_tree(self):
-        """Parity method for MainWindow deferred init."""
-        logger.debug("[SearchSidebar] reload_date_tree called (parity stub)")
-        # In the new architecture, the Browse or Filter sections handle this via state
-        pass
+        self.discover_section = DiscoverSection()
+        self.placeholder_search = self._make_placeholder_group("Search Hub", "UX-2")
+        self.placeholder_filters = self._make_placeholder_group("Filters", "UX-3")
+        self.placeholder_people = self._make_placeholder_group("People", "UX-4")
 
-    def set_project(self, project_id: int):
-        """Update sidebar context for new project."""
-        logger.info(f"[SearchSidebar] Switching to project: {project_id}")
-        # Trigger section reloads if they have project-bound data
+        self._build_ui()
+        self._wire_signals()
 
-    def toggle_fold(self, folded: bool):
-        """Handle sidebar collapse/expand."""
-        self.setVisible(not folded)
+    def _make_placeholder_group(self, title: str, subtitle: str):
+        grp = QGroupBox(title)
+        lay = QVBoxLayout(grp)
+        lay.addWidget(QLabel(f"Coming in {subtitle}"))
+        return grp
 
-    def _effective_display_mode(self):
-        """Parity method for MainWindow."""
-        return "list"
-
-    def switch_display_mode(self, mode: str):
-        """Parity method for MainWindow."""
-        pass
-
-    def _setup_ui(self):
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
+    def _build_ui(self):
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.NoFrame)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
-        container = QWidget()
-        self.sections_layout = QVBoxLayout(container)
-        self.sections_layout.setContentsMargins(0, 8, 0, 8)
-        self.sections_layout.setSpacing(16)
-        self.sections_layout.addStretch()
+        content = QFrame()
+        self.content_layout = QVBoxLayout(content)
+        self.content_layout.setContentsMargins(6, 6, 6, 6)
+        self.content_layout.setSpacing(10)
 
-        scroll.setWidget(container)
-        layout.addWidget(scroll)
+        self.content_layout.addWidget(self.placeholder_search)
+        self.content_layout.addWidget(self.discover_section)
+        self.content_layout.addWidget(self.placeholder_people)
+        self.content_layout.addWidget(self.placeholder_filters)
+        self.content_layout.addStretch(1)
 
-    def add_section(self, widget: QWidget):
-        # Insert before the stretch
-        self.sections_layout.insertWidget(self.sections_layout.count() - 1, widget)
+        scroll.setWidget(content)
+        outer.addWidget(scroll)
+
+    def _wire_signals(self):
+        if self.controller:
+            self.discover_section.presetSelected.connect(self.controller.set_preset)

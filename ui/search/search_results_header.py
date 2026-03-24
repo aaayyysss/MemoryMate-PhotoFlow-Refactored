@@ -1,44 +1,38 @@
-from PySide6.QtWidgets import (
-    QWidget, QHBoxLayout, QLabel, QComboBox, QSizePolicy
-)
-from PySide6.QtCore import Qt, Signal
-from ui.search.search_state_store import SearchStateStore, SearchState
+from PySide6.QtWidgets import QWidget, QHBoxLayout, QLabel, QComboBox
+
 
 class SearchResultsHeader(QWidget):
-    sortModeChanged = Signal(str)
-
-    def __init__(self, state_store: SearchStateStore, parent=None):
+    def __init__(self, store, controller=None, parent=None):
         super().__init__(parent)
-        self.store = state_store
-        self._setup_ui()
-        self.store.stateChanged.connect(self._on_state_changed)
-
-    def _setup_ui(self):
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(16, 8, 16, 8)
+        self.store = store
+        self.controller = controller
 
         self.lbl_summary = QLabel("All Photos")
-        self.lbl_summary.setStyleSheet("font-size: 14pt; font-weight: bold; color: #333;")
-
         self.lbl_count = QLabel("0 results")
-        self.lbl_count.setStyleSheet("color: #666; margin-left: 8px;")
+        self.cmb_sort = QComboBox()
+        self.cmb_sort.addItem("Relevance", "relevance")
+        self.cmb_sort.addItem("Newest", "newest")
+        self.cmb_sort.addItem("Oldest", "oldest")
 
-        self.sort_combo = QComboBox()
-        self.sort_combo.addItems(["Relevance", "Date (Newest)", "Date (Oldest)", "Size"])
-        self.sort_combo.currentTextChanged.connect(self.sortModeChanged)
-
-        layout.addWidget(self.lbl_summary)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(10)
+        layout.addWidget(self.lbl_summary, 1)
         layout.addWidget(self.lbl_count)
-        layout.addStretch()
-        layout.addWidget(QLabel("Sort by:"))
-        layout.addWidget(self.sort_combo)
+        layout.addWidget(self.cmb_sort)
 
-    def _on_state_changed(self, state: SearchState):
-        summary = state.intent_summary or "All Photos"
-        self.lbl_summary.setText(summary)
+        self.store.stateChanged.connect(self._on_state_changed)
+        self.cmb_sort.currentIndexChanged.connect(self._on_sort_changed)
 
-        count_text = f"{state.result_count:,} result" + ("s" if state.result_count != 1 else "")
-        self.lbl_count.setText(count_text)
+    def _on_state_changed(self, state):
+        self.lbl_summary.setText(state.intent_summary or "All Photos")
+        self.lbl_count.setText(f"{state.result_count} result(s)")
 
-        # Sync sort combo if needed
-        # ...
+    def _on_sort_changed(self):
+        if not self.controller:
+            return
+
+        state = self.store.get_state()
+        state.sort_mode = self.cmb_sort.currentData()
+        self.store.stateChanged.emit(state)
+        self.controller.run_search()

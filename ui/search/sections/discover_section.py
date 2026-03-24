@@ -1,34 +1,42 @@
-from PySide6.QtWidgets import (
-    QWidget, QGridLayout
-)
 from PySide6.QtCore import Signal
-from ui.search.search_sidebar import SidebarSection
-from ui.search.widgets.smart_find_card import SmartFindCard
+from PySide6.QtWidgets import QGroupBox, QVBoxLayout, QPushButton
 
-class DiscoverSection(SidebarSection):
+
+class DiscoverSection(QGroupBox):
     presetSelected = Signal(str)
 
     def __init__(self, parent=None):
         super().__init__("Discover", parent)
-        self._setup_content()
 
-    def _setup_content(self):
-        grid = QGridLayout()
-        grid.setSpacing(8)
-        grid.setContentsMargins(8, 4, 8, 4)
+        self.layout = QVBoxLayout(self)
+        self.layout.setSpacing(6)
+        self.cards = {}
 
+        self._build_default_cards()
+
+    def _build_default_cards(self):
         presets = [
-            ("beach", "Beach", "🌊"),
-            ("mountains", "Mountains", "🏔"),
-            ("city", "City", "🌆"),
-            ("forest", "Forest", "🌲"),
-            ("documents", "Documents", "📄"),
-            ("screenshots", "Screenshots", "📱")
+            ("beach", "🌊 Beach"),
+            ("mountains", "🏔 Mountains"),
+            ("city", "🌆 City"),
+            ("forest", "🌲 Forest"),
+            ("documents", "📄 Documents"),
+            ("screenshots", "📱 Screenshots"),
         ]
 
-        for i, (pid, title, icon) in enumerate(presets):
-            card = SmartFindCard(pid, title, icon)
-            card.clicked.connect(self.presetSelected)
-            grid.addWidget(card, i // 2, i % 2)
+        for preset_id, label in presets:
+            btn = QPushButton(label)
+            btn.clicked.connect(lambda checked=False, p=preset_id: self.presetSelected.emit(p))
+            self.layout.addWidget(btn)
+            self.cards[preset_id] = btn
 
-        self.content_layout.addLayout(grid)
+        self.layout.addStretch(1)
+
+    def update_counts(self, counts: dict):
+        for preset_id, btn in self.cards.items():
+            count = counts.get(preset_id)
+            base_text = btn.text().split(" (")[0]
+            if count is None:
+                btn.setText(base_text)
+            else:
+                btn.setText(f"{base_text} ({count})")
