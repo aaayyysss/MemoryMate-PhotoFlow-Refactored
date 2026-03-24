@@ -1,4 +1,5 @@
 from PySide6.QtWidgets import QWidget, QHBoxLayout, QLabel, QComboBox
+from shiboken6 import isValid
 
 
 class SearchResultsHeader(QWidget):
@@ -25,6 +26,8 @@ class SearchResultsHeader(QWidget):
         self.cmb_sort.currentIndexChanged.connect(self._on_sort_changed)
 
     def _on_state_changed(self, state):
+        if not isValid(self):
+            return
         self.lbl_summary.setText(state.intent_summary or "All Photos")
         self.lbl_count.setText(f"{state.result_count} result(s)")
 
