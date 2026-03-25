@@ -416,11 +416,7 @@ class GooglePhotosLayout(BaseLayout):
         else:
             self.results_stack.setCurrentWidget(self.timeline)
 
-        # Sync search box if text changed from elsewhere
-        if self.search_box.text() != state.query_text:
-            self.search_box.blockSignals(True)
-            self.search_box.setText(state.query_text)
-            self.search_box.blockSignals(False)
+        # UX-1: Syncing search box in layout is no longer needed as search is centralized in MainWindow
 
         # Trigger photo grid update if result paths changed
         # We use a signature-based check to avoid redundant work
@@ -4767,10 +4763,7 @@ class GooglePhotosLayout(BaseLayout):
         )
 
         # Also clear search box
-        if self.search_box.text():
-            self.search_box.blockSignals(True)
-            self.search_box.clear()
-            self.search_box.blockSignals(False)
+        pass
 
     def _build_videos_tree(self):
         """
@@ -8007,13 +8000,7 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
             else:
                 super().keyPressEvent(event)
 
-        # Ctrl+F: Focus search box
-        elif key == Qt.Key_F and modifiers == Qt.ControlModifier:
-            print("[GooglePhotosLayout] ⌨️ Ctrl+F - Focus search")
-            if hasattr(self, 'search_box'):
-                self.search_box.setFocus()
-                self.search_box.selectAll()
-            event.accept()
+        # UX-1: Ctrl+F handled by MainWindow
 
         # Ctrl+N: New project
         elif key == Qt.Key_N and modifiers == Qt.ControlModifier:
@@ -8576,325 +8563,6 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
         dialog.exec()
 
     # ============ Phase 2: Search Functionality ============
-
-    def _create_search_suggestions(self):
-        """
-        PHASE 2 #3: Create search suggestions dropdown widget.
-
-        Google Search-style autocomplete that appears below search box.
-        """
-        from PySide6.QtWidgets import QListWidget, QListWidgetItem
-
-        # Create suggestions popup (initially hidden)
-        self.search_suggestions = QListWidget()
-        self.search_suggestions.setWindowFlags(Qt.Popup | Qt.FramelessWindowHint)
-        self.search_suggestions.setStyleSheet("""
-            QListWidget {
-                background: white;
-                border: 1px solid #dadce0;
-                border-radius: 4px;
-                padding: 4px;
-                font-size: 11pt;
-            }
-            QListWidget::item {
-                padding: 8px 12px;
-                border-radius: 2px;
-            }
-            QListWidget::item:hover {
-                background: #f1f3f4;
-            }
-            QListWidget::item:selected {
-                background: #e8f0fe;
-                color: #1a73e8;
-            }
-        """)
-        self.search_suggestions.setMaximumHeight(300)
-        self.search_suggestions.setMinimumWidth(300)
-        self.search_suggestions.hide()
-
-        # NUCLEAR FIX: Initialize flag to block popup during layout changes
-        self._popup_blocked = False
-
-        # Connect click event
-        self.search_suggestions.itemClicked.connect(self._on_suggestion_clicked)
-
-        # PHASE 2 #3: Create and install event filter (must be QObject)
-        if not hasattr(self, 'event_filter'):
-            self.event_filter = GooglePhotosEventFilter(self)
-
-        # Install event filter on search box to handle arrow keys
-        self.search_box.installEventFilter(self.event_filter)
-
-        # NUCLEAR FIX: Install event filter on popup itself to block Show events during layout changes
-        self.search_suggestions.installEventFilter(self.event_filter)
-
-    def _show_search_suggestions(self, text: str):
-        """
-        Phase 0.2: Enhanced search suggestions (Google Photos pattern).
-
-        Shows categorized suggestions:
-        - People: Face clusters/named persons
-        - Filenames: Matching photo filenames
-        - Folders: Matching folder names
-
-        Google Photos DNA: Icons, categories, photo counts
-        """
-        # FIX 2: Check if suggestions are enabled (prevent showing during layout operations)
-        if hasattr(self, '_suggestions_disabled') and self._suggestions_disabled:
-            return
-
-        # NUCLEAR FIX: Don't show popup if blocked due to layout changes
-        if hasattr(self, '_popup_blocked') and self._popup_blocked:
-            return
-
-        if not text or len(text) < 2:
-            # FIX 2: Only hide if actually visible (prevents unnecessary operations)
-            if self.search_suggestions.isVisible():
-                self.search_suggestions.hide()
-            return
-
-        try:
-            from reference_db import ReferenceDB
-            db = ReferenceDB()
-
-            suggestions = []  # Changed to list to maintain order
-
-            pattern = f"%{text.lower()}%"
-
-            with db._connect() as conn:
-                cur = conn.cursor()
-
-                # CATEGORY 1: People matching text
-                people_query = """
-                    SELECT b.branch_key, b.display_name, COUNT(DISTINCT fc.image_path) as photo_count
-                    FROM branches b
-                    LEFT JOIN face_crops fc ON b.project_id = fc.project_id AND b.branch_key = fc.branch_key
-                    WHERE b.project_id = ?
-                    AND (LOWER(b.display_name) LIKE ? OR LOWER(b.branch_key) LIKE ?)
-                    GROUP BY b.branch_key, b.display_name
-                    ORDER BY photo_count DESC
-                    LIMIT 5
-                """
-                cur.execute(people_query, (self.project_id, pattern, pattern))
-                people_rows = cur.fetchall()
-
-                for branch_key, display_name, photo_count in people_rows:
-                    name = display_name if display_name else branch_key
-                    if photo_count > 0:
-                        suggestions.append(f"👥 {name} ({photo_count} photos)")
-
-                # CATEGORY 2: Filenames and folders
-                files_query = """
-                    SELECT DISTINCT pm.path
-                    FROM photo_metadata pm
-                    JOIN project_images pi ON pm.path = pi.image_path
-                    WHERE pi.project_id = ?
-                    AND LOWER(pm.path) LIKE ?
-                    LIMIT 10
-                """
-                cur.execute(files_query, (self.project_id, pattern))
-                files_rows = cur.fetchall()
-
-                filenames = set()
-                folders = set()
-
-                for (path,) in files_rows:
-                    filename = os.path.basename(path)
-                    folder = os.path.basename(os.path.dirname(path))
-
-                    # Add filename if it matches
-                    if text.lower() in filename.lower():
-                        filenames.add(filename)
-
-                    # Add folder if it matches
-                    if text.lower() in folder.lower() and folder:
-                        folders.add(folder)
-
-                # Add folders first (limit 3)
-                for folder in sorted(folders)[:3]:
-                    suggestions.append(f"📁 {folder}")
-
-                # Add filenames (limit remaining slots)
-                remaining = 8 - len(suggestions)
-                for filename in sorted(filenames)[:remaining]:
-                    suggestions.append(f"📷 {filename}")
-
-            # Populate suggestions list
-            self.search_suggestions.clear()
-
-            if suggestions:
-                for suggestion in suggestions:
-                    self.search_suggestions.addItem(suggestion)
-
-                # Position below search box
-                search_box_global = self.search_box.mapToGlobal(self.search_box.rect().bottomLeft())
-                self.search_suggestions.move(search_box_global)
-                self.search_suggestions.resize(400, min(len(suggestions) * 40, 300))
-                self.search_suggestions.show()
-                self.search_suggestions.raise_()
-            else:
-                self.search_suggestions.hide()
-
-        except Exception as e:
-            print(f"[GooglePhotosLayout] Error generating suggestions: {e}")
-            import traceback
-            traceback.print_exc()
-            self.search_suggestions.hide()
-
-    def _on_suggestion_clicked(self, item):
-        """
-        Phase 0.2: Handle clicking on a search suggestion.
-
-        Supports:
-        - People: Filters to that person
-        - Folders/Files: Sets search text and performs search
-        """
-        suggestion_text = item.text()
-
-        # Extract the actual text without emoji and metadata
-        if suggestion_text.startswith("👥 "):
-            # People suggestion: "👥 John (45 photos)" -> "John"
-            name_part = suggestion_text[2:]  # Remove "👥 "
-            if " (" in name_part:
-                person_name = name_part.split(" (")[0]
-            else:
-                person_name = name_part
-
-            # Set search box and perform person search
-            self.search_box.blockSignals(True)
-            self.search_box.setText(person_name)
-            self.search_box.blockSignals(False)
-            self._perform_search(person_name)
-
-        elif " " in suggestion_text and suggestion_text[0] in ("📁", "📷"):
-            # Folder/file suggestion: Remove emoji prefix
-            clean_text = suggestion_text.split(" ", 1)[1]
-            self.search_box.blockSignals(True)
-            self.search_box.setText(clean_text)
-            self.search_box.blockSignals(False)
-            self._perform_search(clean_text)
-        else:
-            # Fallback: use as-is
-            self.search_box.blockSignals(True)
-            self.search_box.setText(suggestion_text)
-            self.search_box.blockSignals(False)
-            self._perform_search(suggestion_text)
-
-        self.search_suggestions.hide()
-
-    def _on_search_text_changed(self, text: str):
-        """
-        Handle search text change (real-time filtering).
-
-        Delegates to the global SearchController.
-        """
-        # Update global search state
-        self.main_window.search_controller.set_query_text(text, debounce=True)
-
-    def _perform_search(self, text: str = None):
-        """
-        Perform search and filter photos.
-        NOW SUPPORTS: People names, filenames, folders, advanced filters
-        EXAMPLES:
-        - "John" - search person name
-        - "John AND Alice" - photos with both people
-        - ">10 photos" - people with more than 10 photos  
-        - "<5 photos" - people with less than 5 photos
-
-        Args:
-            text: Search query (if None, use search_box text)
-        """
-        if text is None:
-            text = self.search_box.text()
-
-        text = text.strip()
-        text_lower = text.lower()
-
-        print(f"[GooglePhotosLayout] 🔍 Searching for: '{text}'")
-
-        if not text:
-            # Empty search - reload all photos
-            self._load_photos()
-            return
-
-        # Parse advanced search syntax
-        try:
-            from reference_db import ReferenceDB
-            db = ReferenceDB()
-
-            # CHECK 1: Advanced face count filter (e.g., ">10 photos", "<5 photos")
-            import re
-            count_pattern = r'^([><]=?)\s*(\d+)\s*photos?'
-            count_match = re.match(count_pattern, text_lower)
-            if count_match:
-                operator = count_match.group(1)
-                threshold = int(count_match.group(2))
-                self._filter_people_by_count(operator, threshold)
-                return
-            
-            # CHECK 2: Multi-person search with AND (e.g., "John AND Alice")
-            if ' AND ' in text.upper() or ' and ' in text:
-                person_names = [name.strip() for name in re.split(r'\s+AND\s+', text, flags=re.IGNORECASE)]
-                self._search_multi_person(person_names)
-                return
-
-            # CHECK 3: Single person name search
-            person_match = None
-            with db._connect() as conn:
-                cur = conn.cursor()
-                cur.execute(
-                    "SELECT branch_key, label, count FROM face_branch_reps WHERE project_id = ? AND LOWER(label) LIKE ?",
-                    (self.project_id, f"%{text_lower}%")
-                )
-                people_results = cur.fetchall()
-                
-                if people_results:
-                    # If exact match or close match, filter by that person
-                    for branch_key, label, count in people_results:
-                        if label and text_lower in label.lower():
-                            person_match = (branch_key, label, count)
-                            print(f"[GooglePhotosLayout] 👥 Found person: {label} ({count} photos)")
-                            
-                            # Filter People section to show only this person
-                            self._filter_people_grid(label)
-                            
-                            # Filter timeline photos by this person
-                            self._load_photos(
-                                thumb_size=self.current_thumb_size,
-                                filter_person=branch_key
-                            )
-                            # Show search result header
-                            QTimer.singleShot(100, lambda: self._add_search_header(
-                                f"👥 Showing {count} photos of '{label}'"
-                            ))
-                            return
-
-            # CHECK 4: Filename/folder search
-            query = """
-                SELECT DISTINCT pm.path, pm.date_taken, pm.width, pm.height
-                FROM photo_metadata pm
-                JOIN project_images pi ON pm.path = pi.image_path
-                WHERE pi.project_id = ?
-                AND pm.date_taken IS NOT NULL
-                AND LOWER(pm.path) LIKE ?
-                ORDER BY pm.date_taken DESC
-            """
-
-            search_pattern = f"%{text_lower}%"
-
-            with db._connect() as conn:
-                conn.execute("PRAGMA busy_timeout = 5000")
-                cur = conn.cursor()
-                cur.execute(query, (self.project_id, search_pattern))
-                rows = cur.fetchall()
-
-            # Clear and rebuild timeline with search results
-            self._rebuild_timeline_with_results(rows, text)
-
-        except Exception as e:
-            print(f"[GooglePhotosLayout] ⚠️ Search error: {e}")
-            import traceback
-            traceback.print_exc()
 
     def _on_semantic_search(self, photo_ids: list, query: str, scores: list):
         """
@@ -9531,11 +9199,7 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
             filter_person=None
         )
 
-        # Clear search box as well if it has text
-        if self.search_box.text():
-            self.search_box.blockSignals(True)
-            self.search_box.clear()
-            self.search_box.blockSignals(False)
+        # UX-1: Search is now centralized. Controller handles clearing state.
 
     def _on_detect_duplicates(self):
         """
@@ -10216,16 +9880,7 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
             except:
                 pass
 
-        # Search box signals
-        if hasattr(self, 'search_box'):
-            try:
-                self.search_box.textChanged.disconnect(self._on_search_text_changed)
-            except:
-                pass
-            try:
-                self.search_box.returnPressed.disconnect(self._perform_search)
-            except:
-                pass
+
 
         # Zoom slider signals
         if hasattr(self, 'zoom_slider'):
@@ -10268,12 +9923,7 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
             except:
                 pass
 
-        # Search box filter
-        if hasattr(self, 'search_box') and hasattr(self, 'event_filter'):
-            try:
-                self.search_box.removeEventFilter(self.event_filter)
-            except:
-                pass
+
 
         # People search filter
         if hasattr(self, 'people_search') and hasattr(self, 'autocomplete_event_filter'):
