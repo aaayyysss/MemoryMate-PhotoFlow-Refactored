@@ -331,6 +331,12 @@ class MainWindow(QMainWindow):
         # keep rest of initializer logic, but ensure some attributes exist
         self.settings = SettingsManager()
 
+        # UX-1 search state + controller
+        self.search_state_store = SearchStateStore()
+        self.search_controller = SearchController(
+            store=self.search_state_store,
+            parent=self,
+        )
 
         self._committed_total = 0
         self._scan_result = (0, 0)  # folders, photos
@@ -855,7 +861,6 @@ class MainWindow(QMainWindow):
 
 
 
-
         # 🔽 Sorting and filtering controls
         self.sort_combo = ui.combo_sort(tr('toolbar.sort'), ["Filename", "Date", "Size"], self._apply_sort_filter)
         self.sort_order_combo = QSortComboBox()
@@ -917,13 +922,6 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(container)
         main_layout = QVBoxLayout(container)
 
-        # UX-1 canonical search shell state
-        self.search_state_store = SearchStateStore()
-        self.search_controller = SearchController(
-            store=self.search_state_store,
-            parent=self,
-        )
-
         # Phase 2.3: Removed huge BackfillStatusPanel (120-240px)
         # Replaced with compact indicator in top bar
 
@@ -950,7 +948,7 @@ class MainWindow(QMainWindow):
 
         main_layout.addWidget(topbar)
 
-        # UX-1 search shell, owned by MainWindow
+        # --- UX-1 Search Chrome (keeps existing toolbar/mobile-sync area untouched)
         self.top_search_bar = TopSearchBar(self)
         self.search_results_header = SearchResultsHeader(
             store=self.search_state_store,
@@ -963,6 +961,10 @@ class MainWindow(QMainWindow):
         )
 
         main_layout.addWidget(self.top_search_bar)
+        self.top_search_bar.querySubmitted.connect(self.search_controller.submit_query)
+        self.top_search_bar.queryChanged.connect(lambda text: self.search_controller.set_query_text(text, debounce=True))
+        self.top_search_bar.searchCleared.connect(self.search_controller.clear_search)
+
         main_layout.addWidget(self.search_results_header)
         main_layout.addWidget(self.active_chips_bar)
 
@@ -977,6 +979,12 @@ class MainWindow(QMainWindow):
 
         self.sidebar = SidebarQt(project_id=default_pid)
 
+        # Gap 1: Force onboarding state if no project is active
+        if default_pid is None:
+            logger.info("[Bootstrap] Entering explicit onboarding state")
+
+        # UX-1 search/discovery sidebar shell.
+        # Existing SidebarQt remains present below it for compatibility.
         self.search_sidebar = SearchSidebar(
             store=self.search_state_store,
             controller=self.search_controller,
@@ -990,15 +998,13 @@ class MainWindow(QMainWindow):
         self.left_sidebar_layout.addWidget(self.search_sidebar, 0)
         self.left_sidebar_layout.addWidget(self.sidebar, 1)
 
-        # UX-1 signal wiring
-        self.top_search_bar.querySubmitted.connect(self.search_controller.submit_query)
-        self.top_search_bar.queryChanged.connect(self.search_controller.set_query_text)
-        self.top_search_bar.searchCleared.connect(self.search_controller.clear_search)
+        # Connect Search Controller to bridge
+        self.search_controller.searchRequested.connect(self._on_ux1_search_requested)
+
+        # UX-1 signal wiring (moved up to top_search_bar initialization)
 
         self.active_chips_bar.chipRemoved.connect(self.search_controller.remove_chip)
         self.active_chips_bar.clearAllRequested.connect(self.search_controller.clear_search)
-
-        self.search_controller.searchRequested.connect(self._on_ux1_search_requested)
 
         # === Lazy wiring for sidebar actions (now sidebar exists) ===
         def _on_fold_toggle(checked):
@@ -3089,10 +3095,6 @@ class MainWindow(QMainWindow):
             if hasattr(self, "search_controller"):
                 self.search_controller.set_active_project(project_id)
 
-            if project_id is None:
-                if hasattr(self, "search_controller"):
-                    self.search_controller.set_active_project(None)
-
             # Already on this project?
             current_project_id = getattr(self.grid, 'project_id', None) if hasattr(self, 'grid') else None
             if current_project_id == project_id:
@@ -3188,6 +3190,30 @@ class MainWindow(QMainWindow):
                 result_facets={},
                 warnings=[str(e)],
             )
+
+    def _execute_smart_find_preset(self, preset_id: str):
+        """
+        UX-1 bridge: executes a smart find preset via the sidebar accordion.
+        """
+        try:
+            layout = self.layout_manager.get_current_layout()
+            # Try GooglePhotosLayout path
+            if layout and hasattr(layout, "accordion_sidebar"):
+                find_section = layout.accordion_sidebar.section_logic.get("find")
+                if find_section and hasattr(find_section, "_on_preset_clicked"):
+                    print(f"[UX-1 Bridge] Triggering preset {preset_id} on layout {type(layout).__name__}")
+                    find_section._on_preset_clicked(preset_id)
+                    return
+
+            # Try SidebarQt path (Current Layout)
+            if hasattr(self, "sidebar") and hasattr(self.sidebar, "accordion"):
+                find_section = self.sidebar.accordion.section_logic.get("find")
+                if find_section and hasattr(find_section, "_on_preset_clicked"):
+                    print(f"[UX-1 Bridge] Triggering preset {preset_id} on SidebarQt")
+                    find_section._on_preset_clicked(preset_id)
+
+        except Exception as e:
+            print(f"[UX-1 Bridge] Error: {e}")
 
     def _refresh_project_list(self):
         """
@@ -3542,10 +3568,23 @@ class MainWindow(QMainWindow):
         msg_box.exec()
 
     def _focus_smart_find(self):
-        """Focus the new search shell input via Ctrl+F shortcut (UX-1)."""
-        if hasattr(self, "top_search_bar"):
-            self.top_search_bar.search_input.setFocus()
-            self.top_search_bar.search_input.selectAll()
+        """Focus Smart Find search input via Ctrl+F shortcut."""
+        try:
+            accordion = None
+            if hasattr(self, 'sidebar'):
+                if hasattr(self.sidebar, '_expand_section'):
+                    accordion = self.sidebar
+                elif hasattr(self.sidebar, 'accordion_controller') and self.sidebar.accordion_controller:
+                    accordion = self.sidebar.accordion_controller
+                elif hasattr(self.sidebar, 'accordion') and self.sidebar.accordion:
+                    accordion = self.sidebar.accordion
+            if accordion and hasattr(accordion, 'section_logic'):
+                accordion._expand_section("find")
+                find_section = accordion.section_logic.get("find")
+                if find_section and hasattr(find_section, 'focus_search'):
+                    QTimer.singleShot(150, find_section.focus_search)
+        except Exception as e:
+            print(f"[MainWindow] Ctrl+F focus_smart_find failed: {e}")
 
     def _open_url(self, url: str):
         """Phase 3: Open URL in default browser."""
@@ -4823,8 +4862,3 @@ class MainWindow(QMainWindow):
                 )
         except Exception as e:
             logger.warning("[MainWindow] CLIP upgrade prompt failed: %s", e)
-
-    def _execute_smart_find_preset(self, preset_id):
-        """UX-1 placeholder for smart find presets."""
-        print(f"[UX-1] Executing smart find preset: {preset_id}")
-        # In a real scenario, this would trigger the actual search logic
