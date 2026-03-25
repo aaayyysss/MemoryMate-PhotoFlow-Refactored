@@ -14,7 +14,7 @@ class SearchController(QObject):
     def set_active_project(self, project_id: Optional[int]):
         self.store.reset_for_project(project_id)
 
-    def set_query_text(self, text: str):
+    def set_query_text(self, text: str, **kwargs):
         self.store.update(
             query_text=text or "",
             search_mode="hybrid",

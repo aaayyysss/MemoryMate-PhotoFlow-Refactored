@@ -356,7 +356,7 @@ class FaceDetectionWorker(QRunnable):
                                 limit = min(limit, 4)
                             elif self.screenshot_policy == "include_cluster":
                                 # ZERO TRUNCATION: if include_all is on, we take everything
-                                if self.include_all_screenshot_faces:
+                                if getattr(self, "include_all_screenshot_faces", False):
                                     limit = len(faces)
                                 else:
                                     limit = min(limit, 8)
@@ -366,11 +366,17 @@ class FaceDetectionWorker(QRunnable):
                         if limit == 0:
                             faces = []
                         elif len(faces) > limit:
-                            log_msg = f"[FaceDetectionWorker] {photo_path} has {len(faces)} faces (screenshot={is_screenshot}, policy={self.screenshot_policy}, include_all={self.include_all_screenshot_faces}), keeping largest {limit}"
+                            log_msg = (
+                                f"[FaceDetectionWorker] {photo_path} has {len(faces)} faces "
+                                f"(screenshot={is_screenshot}, policy={self.screenshot_policy}, "
+                                f"include_all={getattr(self, 'include_all_screenshot_faces', False)}), "
+                                f"keeping largest {limit}"
+                            )
                             if is_screenshot and len(faces) > 10:
                                 logger.warning(f"Screenshot-heavy image: {log_msg}")
                             else:
                                 logger.info(log_msg)
+
                             faces = sorted(
                                 faces,
                                 key=lambda f: f['bbox_w'] * f['bbox_h'],
@@ -527,7 +533,7 @@ class FaceDetectionWorker(QRunnable):
                         elif self.screenshot_policy == "detect_only":
                             limit = min(limit, 4)
                         elif self.screenshot_policy == "include_cluster":
-                            if self.include_all_screenshot_faces:
+                            if getattr(self, "include_all_screenshot_faces", False):
                                 limit = len(faces)
                             else:
                                 limit = min(limit, 8)
@@ -537,11 +543,17 @@ class FaceDetectionWorker(QRunnable):
                     if limit == 0:
                         faces = []
                     elif len(faces) > limit:
-                        log_msg = f"[FaceDetectionWorker] {photo_path} has {len(faces)} faces (screenshot={is_screenshot}, policy={self.screenshot_policy}, include_all={self.include_all_screenshot_faces}), keeping largest {limit}"
+                        log_msg = (
+                            f"[FaceDetectionWorker] {photo_path} has {len(faces)} faces "
+                            f"(screenshot={is_screenshot}, policy={self.screenshot_policy}, "
+                            f"include_all={getattr(self, 'include_all_screenshot_faces', False)}), "
+                            f"keeping largest {limit}"
+                        )
                         if is_screenshot and len(faces) > 10:
                             logger.warning(f"Screenshot-heavy image: {log_msg}")
                         else:
                             logger.info(log_msg)
+
                         faces = sorted(
                             faces,
                             key=lambda f: f['bbox_w'] * f['bbox_h'],

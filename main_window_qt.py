@@ -859,13 +859,6 @@ class MainWindow(QMainWindow):
         self.chk_incremental = ui.checkbox(tr('toolbar.incremental'), checked=True)
         ui.separator()
 
-        # 🔍 Search Bar (Redesigned)
-        self.search_bar = TopSearchBar(self)
-        self.search_bar.querySubmitted.connect(self.search_controller.set_query_text)
-        self.search_bar.queryChanged.connect(lambda text: self.search_controller.set_query_text(text, debounce=True))
-        self.search_bar.searchCleared.connect(self.search_controller.clear_search)
-        tb.addWidget(self.search_bar)
-        ui.separator()
 
         # ✨ Semantic Search (AI-powered)
         from ui.semantic_search_widget import SemanticSearchWidget
@@ -976,6 +969,10 @@ class MainWindow(QMainWindow):
         )
 
         main_layout.addWidget(self.top_search_bar)
+        self.top_search_bar.querySubmitted.connect(self.search_controller.submit_query)
+        self.top_search_bar.queryChanged.connect(lambda text: self.search_controller.set_query_text(text, debounce=True))
+        self.top_search_bar.searchCleared.connect(self.search_controller.clear_search)
+
         main_layout.addWidget(self.search_results_header)
         main_layout.addWidget(self.active_chips_bar)
 
@@ -989,6 +986,10 @@ class MainWindow(QMainWindow):
             self.search_controller.set_active_project(default_pid)
 
         self.sidebar = SidebarQt(project_id=default_pid)
+
+        # Gap 1: Force onboarding state if no project is active
+        if default_pid is None:
+            logger.info("[Bootstrap] Entering explicit onboarding state")
 
         # UX-1 search/discovery sidebar shell.
         # Existing SidebarQt remains present below it for compatibility.
@@ -1008,10 +1009,7 @@ class MainWindow(QMainWindow):
         # Connect Search Controller to bridge
         self.search_controller.searchRequested.connect(self._on_ux1_search_requested)
 
-        # UX-1 signal wiring
-        self.top_search_bar.querySubmitted.connect(self.search_controller.submit_query)
-        self.top_search_bar.queryChanged.connect(self.search_controller.set_query_text)
-        self.top_search_bar.searchCleared.connect(self.search_controller.clear_search)
+        # UX-1 signal wiring (moved up to top_search_bar initialization)
 
         self.active_chips_bar.chipRemoved.connect(self.search_controller.remove_chip)
         self.active_chips_bar.clearAllRequested.connect(self.search_controller.clear_search)

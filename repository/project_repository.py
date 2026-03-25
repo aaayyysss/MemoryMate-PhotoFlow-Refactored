@@ -397,11 +397,12 @@ class ProjectRepository(BaseRepository):
                 # Normalize old short names to canonical HF IDs
                 return normalize_model_id(result['semantic_model'])
 
+        best_model = self._get_best_available_model()
         self.logger.debug(
             f"Project {project_id} has no semantic_model set, "
-            f"using default: {self.DEFAULT_SEMANTIC_MODEL}"
+            f"using best available: {best_model}"
         )
-        return self.DEFAULT_SEMANTIC_MODEL
+        return best_model
 
     def set_semantic_model(self, project_id: int, model_name: str) -> bool:
         """

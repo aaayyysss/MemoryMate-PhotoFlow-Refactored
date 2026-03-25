@@ -453,6 +453,7 @@ class FacePipelineWorker(QRunnable):
                 min_samples=cluster_params["min_samples"],
                 auto_tune=True,
                 screenshot_policy=self.screenshot_policy,
+                include_all_screenshot_faces=self.include_all_screenshot_faces,
             )
 
             interim_result = {}
