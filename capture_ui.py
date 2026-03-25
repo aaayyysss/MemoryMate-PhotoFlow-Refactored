@@ -31,13 +31,35 @@ def capture_ui():
     mw.resize(1280, 720)
     mw.show()
 
-    # Take screenshot of MainWindow
-    print("Capturing MainWindow...")
+    # 1. Capture MainWindow in whatever its default layout is
+    print("Capturing MainWindow (Default Layout)...")
     QApplication.processEvents()
     time.sleep(2) # Wait for layout
     QApplication.processEvents()
     pix = mw.grab()
-    pix.save("/home/jules/verification/mainwindow.png")
+    pix.save("/home/jules/verification/mainwindow_default.png")
+
+    # 2. Force switch to Current Layout to verify UX-1 shell
+    print("Switching to Current Layout...")
+    mw.layout_manager.switch_layout("current")
+    QApplication.processEvents()
+    time.sleep(1)
+    QApplication.processEvents()
+    pix = mw.grab()
+    pix.save("/home/jules/verification/mainwindow_current.png")
+
+    # 3. Verify onboarding state (No project)
+    print("Testing onboarding state...")
+    # We'll simulate this by creating a fresh MainWindow with no projects (hard to do without wiping DB)
+    # Instead, we can just look at the search shell when project is None.
+    mw.search_controller.set_active_project(None)
+    QApplication.processEvents()
+    time.sleep(1)
+    pix = mw.grab()
+    pix.save("/home/jules/verification/mainwindow_onboarding.png")
+
+    # Restore project
+    mw.search_controller.set_active_project(pid)
 
     # Create and capture FaceDetectionScopeDialog
     print("Capturing FaceDetectionScopeDialog...")

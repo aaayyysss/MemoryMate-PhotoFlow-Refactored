@@ -25,6 +25,15 @@ class SearchSidebar(QWidget):
         self._build_ui()
         self._wire_signals()
 
+        # React to search state changes
+        self.store.stateChanged.connect(self._on_state_changed)
+
+    def _on_state_changed(self, state):
+        enabled = state.has_active_project
+        self.discover_section.setEnabled(enabled)
+        self.placeholder_people.setEnabled(enabled)
+        self.placeholder_filters.setEnabled(enabled)
+
     def _make_placeholder_group(self, title: str, subtitle: str):
         grp = QGroupBox(title)
         lay = QVBoxLayout(grp)
