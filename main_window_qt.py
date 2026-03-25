@@ -331,12 +331,6 @@ class MainWindow(QMainWindow):
         # keep rest of initializer logic, but ensure some attributes exist
         self.settings = SettingsManager()
 
-        # UX-1 search state + controller
-        self.search_state_store = SearchStateStore()
-        self.search_controller = SearchController(
-            store=self.search_state_store,
-            parent=self,
-        )
 
         self._committed_total = 0
         self._scan_result = (0, 0)  # folders, photos
@@ -860,14 +854,7 @@ class MainWindow(QMainWindow):
         ui.separator()
 
 
-        # ✨ Semantic Search (AI-powered)
-        from ui.semantic_search_widget import SemanticSearchWidget
-        self.semantic_search = SemanticSearchWidget(self)
-        self.semantic_search.searchTriggered.connect(self._on_semantic_search)
-        self.semantic_search.searchCleared.connect(self._on_semantic_search_cleared)
-        tb.addWidget(self.semantic_search)
-        logging.getLogger(__name__).info(f"[MainWindow] ✨ Semantic search widget added to toolbar - visible: {self.semantic_search.isVisible()}, size: {self.semantic_search.size()}")
-        ui.separator()
+
 
         # 🔽 Sorting and filtering controls
         self.sort_combo = ui.combo_sort(tr('toolbar.sort'), ["Filename", "Date", "Size"], self._apply_sort_filter)
@@ -930,6 +917,13 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(container)
         main_layout = QVBoxLayout(container)
 
+        # UX-1 canonical search shell state
+        self.search_state_store = SearchStateStore()
+        self.search_controller = SearchController(
+            store=self.search_state_store,
+            parent=self,
+        )
+
         # Phase 2.3: Removed huge BackfillStatusPanel (120-240px)
         # Replaced with compact indicator in top bar
 
@@ -956,7 +950,7 @@ class MainWindow(QMainWindow):
 
         main_layout.addWidget(topbar)
 
-        # --- UX-1 Search Chrome (keeps existing toolbar/mobile-sync area untouched)
+        # UX-1 search shell, owned by MainWindow
         self.top_search_bar = TopSearchBar(self)
         self.search_results_header = SearchResultsHeader(
             store=self.search_state_store,
@@ -969,10 +963,6 @@ class MainWindow(QMainWindow):
         )
 
         main_layout.addWidget(self.top_search_bar)
-        self.top_search_bar.querySubmitted.connect(self.search_controller.submit_query)
-        self.top_search_bar.queryChanged.connect(lambda text: self.search_controller.set_query_text(text, debounce=True))
-        self.top_search_bar.searchCleared.connect(self.search_controller.clear_search)
-
         main_layout.addWidget(self.search_results_header)
         main_layout.addWidget(self.active_chips_bar)
 
@@ -987,12 +977,6 @@ class MainWindow(QMainWindow):
 
         self.sidebar = SidebarQt(project_id=default_pid)
 
-        # Gap 1: Force onboarding state if no project is active
-        if default_pid is None:
-            logger.info("[Bootstrap] Entering explicit onboarding state")
-
-        # UX-1 search/discovery sidebar shell.
-        # Existing SidebarQt remains present below it for compatibility.
         self.search_sidebar = SearchSidebar(
             store=self.search_state_store,
             controller=self.search_controller,
@@ -1006,13 +990,15 @@ class MainWindow(QMainWindow):
         self.left_sidebar_layout.addWidget(self.search_sidebar, 0)
         self.left_sidebar_layout.addWidget(self.sidebar, 1)
 
-        # Connect Search Controller to bridge
-        self.search_controller.searchRequested.connect(self._on_ux1_search_requested)
-
-        # UX-1 signal wiring (moved up to top_search_bar initialization)
+        # UX-1 signal wiring
+        self.top_search_bar.querySubmitted.connect(self.search_controller.submit_query)
+        self.top_search_bar.queryChanged.connect(self.search_controller.set_query_text)
+        self.top_search_bar.searchCleared.connect(self.search_controller.clear_search)
 
         self.active_chips_bar.chipRemoved.connect(self.search_controller.remove_chip)
         self.active_chips_bar.clearAllRequested.connect(self.search_controller.clear_search)
+
+        self.search_controller.searchRequested.connect(self._on_ux1_search_requested)
 
         # === Lazy wiring for sidebar actions (now sidebar exists) ===
         def _on_fold_toggle(checked):
@@ -2874,6 +2860,9 @@ class MainWindow(QMainWindow):
             if hasattr(self, "grid"):
                 self.grid.clear()
 
+            if hasattr(self, "search_controller"):
+                self.search_controller.set_active_project(None)
+
             if hasattr(self, "sidebar"):
                 # rebind fresh DB after reset
                 self.sidebar.db = ReferenceDB()
@@ -3100,6 +3089,10 @@ class MainWindow(QMainWindow):
             if hasattr(self, "search_controller"):
                 self.search_controller.set_active_project(project_id)
 
+            if project_id is None:
+                if hasattr(self, "search_controller"):
+                    self.search_controller.set_active_project(None)
+
             # Already on this project?
             current_project_id = getattr(self.grid, 'project_id', None) if hasattr(self, 'grid') else None
             if current_project_id == project_id:
@@ -3148,8 +3141,8 @@ class MainWindow(QMainWindow):
 
     def _on_ux1_search_requested(self, payload: dict):
         """
-        UX-1 bridge: map new search shell requests into the existing search pipeline.
-        This keeps the implementation low-risk while establishing the new architecture.
+        UX-1 bridge: connect the new search shell to the existing search pipeline.
+        This keeps UX-1 low-risk while establishing proper ownership and state flow.
         """
         query_text = payload.get("query_text", "") or ""
         preset_id = payload.get("preset_id")
@@ -3157,10 +3150,10 @@ class MainWindow(QMainWindow):
         try:
             if preset_id and hasattr(self, "_execute_smart_find_preset"):
                 self._execute_smart_find_preset(preset_id)
-                result_count = len(getattr(self.grid, "all_photo_paths", []) or [])
+                result_paths = list(getattr(self.grid, "all_photo_paths", []) or [])
                 self.search_controller.apply_result_summary(
-                    result_paths=getattr(self.grid, "all_photo_paths", []) or [],
-                    result_count=result_count,
+                    result_paths=result_paths,
+                    result_count=len(result_paths),
                     family=None,
                     result_facets={},
                     warnings=[],
@@ -3169,17 +3162,16 @@ class MainWindow(QMainWindow):
 
             if query_text and hasattr(self, "_on_quick_search"):
                 self._on_quick_search(query_text)
-                result_count = len(getattr(self.grid, "all_photo_paths", []) or [])
+                result_paths = list(getattr(self.grid, "all_photo_paths", []) or [])
                 self.search_controller.apply_result_summary(
-                    result_paths=getattr(self.grid, "all_photo_paths", []) or [],
-                    result_count=result_count,
+                    result_paths=result_paths,
+                    result_count=len(result_paths),
                     family=None,
                     result_facets={},
                     warnings=[],
                 )
                 return
 
-            # Empty / reset search
             self.search_controller.apply_result_summary(
                 result_paths=[],
                 result_count=0,
@@ -3189,14 +3181,13 @@ class MainWindow(QMainWindow):
             )
 
         except Exception as e:
-            if hasattr(self, "search_controller"):
-                self.search_controller.apply_result_summary(
-                    result_paths=[],
-                    result_count=0,
-                    family=None,
-                    result_facets={},
-                    warnings=[str(e)],
-                )
+            self.search_controller.apply_result_summary(
+                result_paths=[],
+                result_count=0,
+                family=None,
+                result_facets={},
+                warnings=[str(e)],
+            )
 
     def _refresh_project_list(self):
         """
@@ -3551,23 +3542,10 @@ class MainWindow(QMainWindow):
         msg_box.exec()
 
     def _focus_smart_find(self):
-        """Focus Smart Find search input via Ctrl+F shortcut."""
-        try:
-            accordion = None
-            if hasattr(self, 'sidebar'):
-                if hasattr(self.sidebar, '_expand_section'):
-                    accordion = self.sidebar
-                elif hasattr(self.sidebar, 'accordion_controller') and self.sidebar.accordion_controller:
-                    accordion = self.sidebar.accordion_controller
-                elif hasattr(self.sidebar, 'accordion') and self.sidebar.accordion:
-                    accordion = self.sidebar.accordion
-            if accordion and hasattr(accordion, 'section_logic'):
-                accordion._expand_section("find")
-                find_section = accordion.section_logic.get("find")
-                if find_section and hasattr(find_section, 'focus_search'):
-                    QTimer.singleShot(150, find_section.focus_search)
-        except Exception as e:
-            print(f"[MainWindow] Ctrl+F focus_smart_find failed: {e}")
+        """Focus the new search shell input via Ctrl+F shortcut (UX-1)."""
+        if hasattr(self, "top_search_bar"):
+            self.top_search_bar.search_input.setFocus()
+            self.top_search_bar.search_input.selectAll()
 
     def _open_url(self, url: str):
         """Phase 3: Open URL in default browser."""
@@ -4845,3 +4823,8 @@ class MainWindow(QMainWindow):
                 )
         except Exception as e:
             logger.warning("[MainWindow] CLIP upgrade prompt failed: %s", e)
+
+    def _execute_smart_find_preset(self, preset_id):
+        """UX-1 placeholder for smart find presets."""
+        print(f"[UX-1] Executing smart find preset: {preset_id}")
+        # In a real scenario, this would trigger the actual search logic

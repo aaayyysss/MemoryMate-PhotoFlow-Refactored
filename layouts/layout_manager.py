@@ -171,6 +171,16 @@ class LayoutManager:
         # Activate new layout
         new_layout.on_layout_activated()
 
+        # UX-1: Centralized search shell is always visible across layouts
+        if hasattr(self.main_window, "top_search_bar"):
+            self.main_window.top_search_bar.setVisible(True)
+        if hasattr(self.main_window, "search_results_header"):
+            self.main_window.search_results_header.setVisible(True)
+        if hasattr(self.main_window, "active_chips_bar"):
+            self.main_window.active_chips_bar.setVisible(True)
+        if hasattr(self.main_window, "search_sidebar"):
+            self.main_window.search_sidebar.setVisible(True)
+
         # Notify UIRefreshMediator about activation (flush pending refreshes)
         mediator = getattr(self.main_window, '_ui_refresh_mediator', None)
         if mediator:

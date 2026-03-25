@@ -28,7 +28,17 @@ class SearchResultsHeader(QWidget):
     def _on_state_changed(self, state):
         if not isValid(self):
             return
-        self.lbl_summary.setText(state.intent_summary or "All Photos")
+
+        if state.onboarding_mode:
+            self.lbl_summary.setText("No active project")
+            self.lbl_count.setText("")
+            return
+
+        if state.search_in_progress:
+            self.lbl_summary.setText(state.intent_summary or "Searching...")
+        else:
+            self.lbl_summary.setText(state.intent_summary or "All Photos")
+
         self.lbl_count.setText(f"{state.result_count} result(s)")
 
     def _on_sort_changed(self):

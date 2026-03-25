@@ -282,14 +282,7 @@ class GooglePhotosLayout(BaseLayout):
         toolbar = self._create_toolbar()
         main_layout.addWidget(toolbar)
 
-        # Create second toolbar row for semantic search (user requested to avoid making main toolbar too long)
-        semantic_search_toolbar = self._create_semantic_search_toolbar()
-        main_layout.addWidget(semantic_search_toolbar)
 
-        # CRITICAL FIX: Ensure toolbar is visible on initial load
-        # Without this, semantic search toolbar may be hidden when Google Layout loads first
-        semantic_search_toolbar.show()
-        print("[GooglePhotosLayout] ✓ Semantic search toolbar visibility ensured")
 
         # Phase 3: Main view tabs (Photos, People, Folders, Videos, Favorites)
         self.view_tabs = QTabBar()
@@ -534,38 +527,7 @@ class GooglePhotosLayout(BaseLayout):
 
         toolbar.addSeparator()
 
-        # Search box (enlarged - Google Photos hero element)
-        self.search_box = QLineEdit()
-        self.search_box.setPlaceholderText(t('google_layout.search_placeholder'))
-        self.search_box.setMinimumWidth(350)  # FIX: Reduced from 400px to 350px
-        self.search_box.setToolTip(t('google_layout.search_tooltip'))
-        self.search_box.setStyleSheet("""
-            QLineEdit {
-                background: white;
-                border: 1px solid #dadce0;
-                border-radius: 20px;
-                padding: 7px 14px;
-                font-size: 10pt;
-            }
-            QLineEdit:focus {
-                border-color: #1a73e8;
-                border-width: 2px;
-            }
-        """)
-        # Phase 2: Connect search functionality
-        self.search_box.textChanged.connect(self._on_search_text_changed)
-        self.search_box.returnPressed.connect(self._perform_search)
 
-        # Make search box expand to take available space (Google Photos pattern)
-        search_container = QWidget()
-        search_layout = QHBoxLayout(search_container)
-        search_layout.setContentsMargins(0, 0, 0, 0)
-        search_layout.addWidget(self.search_box)
-        search_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-        toolbar.addWidget(search_container)
-
-        # PHASE 2 #3: Create search suggestions dropdown
-        self._create_search_suggestions()
 
         toolbar.addSeparator()
 
@@ -806,72 +768,7 @@ class GooglePhotosLayout(BaseLayout):
 
         return toolbar
 
-    def _create_semantic_search_toolbar(self) -> QToolBar:
-        """
-        Create second toolbar row for semantic search.
-        User requested: "make it as a second line toolbar underneath the existing toolbar to avoid make it too long"
-        """
-        toolbar = QToolBar()
-        toolbar.setMovable(False)
-        toolbar.setIconSize(QSize(20, 20))
-        toolbar.setStyleSheet("""
-            QToolBar {
-                background: #f1f3f4;
-                border-bottom: 1px solid #dadce0;
-                padding: 6px;
-                spacing: 8px;
-            }
-        """)
 
-        # Label for semantic search section
-        from PySide6.QtWidgets import QLabel
-        lbl_semantic = QLabel("🔍 AI Search:")
-        lbl_semantic.setStyleSheet("font-size: 10pt; font-weight: bold; color: #5f6368; padding: 0 8px;")
-        lbl_semantic.setToolTip("Search photos by content using AI (CLIP embeddings)")
-        toolbar.addWidget(lbl_semantic)
-
-        # ✨ Semantic Search Widget (moved from main toolbar)
-        # CRITICAL FIX: Reuse existing widget from main_window to avoid duplicate initialization
-        # This prevents duplicate CLIP model loading and excessive memory usage
-        # CRITICAL FIX 2: Check if Qt object is still valid before reusing
-        from shiboken6 import isValid
-
-        should_reuse = False
-        if hasattr(self.main_window, 'semantic_search') and self.main_window.semantic_search:
-            # Check if the Qt object is still valid (not deleted during layout switch)
-            try:
-                if isValid(self.main_window.semantic_search):
-                    should_reuse = True
-                else:
-                    print("[GooglePhotosLayout] ⚠️ semantic_search widget was deleted, creating new instance")
-            except Exception as e:
-                print(f"[GooglePhotosLayout] ⚠️ Error checking semantic_search validity: {e}")
-
-        if should_reuse:
-            # Reuse existing widget from main window
-            self.semantic_search = self.main_window.semantic_search
-            print("[GooglePhotosLayout] ✓ Reusing existing semantic_search widget from main_window")
-        else:
-            # Create new instance if main window doesn't have one or it was deleted
-            from ui.semantic_search_widget import SemanticSearchWidget
-            self.semantic_search = SemanticSearchWidget(parent=None)  # GooglePhotosLayout is not a QWidget
-            print("[GooglePhotosLayout] ✓ Created new semantic_search widget")
-
-        self.semantic_search.searchTriggered.connect(self._on_semantic_search)
-        self.semantic_search.searchCleared.connect(self._on_semantic_search_cleared)
-        toolbar.addWidget(self.semantic_search)
-
-        # CRITICAL FIX: Ensure widget is visible after adding to toolbar
-        # Without this, widget may be hidden on initial load (especially when reused)
-        self.semantic_search.show()
-        print("[GooglePhotosLayout] ✓ Semantic search widget visibility ensured")
-
-        # Add spacer widget to push content left
-        spacer = QWidget()
-        spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-        toolbar.addWidget(spacer)
-
-        return toolbar
 
     def _show_settings_menu(self):
         """Show Settings menu (Google Photos pattern) - Phase 2."""

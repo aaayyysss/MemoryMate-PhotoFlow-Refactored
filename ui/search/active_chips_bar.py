@@ -28,6 +28,12 @@ class ActiveChipsBar(QWidget):
             return
         self._clear_layout()
 
+        if not state.active_chips:
+            self.setVisible(False)
+            return
+
+        self.setVisible(True)
+
         for chip in state.active_chips:
             label = chip.get("label", "Chip")
             kind = chip.get("kind")
@@ -37,9 +43,8 @@ class ActiveChipsBar(QWidget):
             btn.clicked.connect(lambda checked=False, k=kind, v=value: self.chipRemoved.emit(k, v))
             self.layout.addWidget(btn)
 
-        if state.active_chips:
-            clear_btn = QPushButton("Clear")
-            clear_btn.clicked.connect(self.clearAllRequested.emit)
-            self.layout.addWidget(clear_btn)
+        clear_btn = QPushButton("Clear")
+        clear_btn.clicked.connect(self.clearAllRequested.emit)
+        self.layout.addWidget(clear_btn)
 
         self.layout.addStretch(1)
