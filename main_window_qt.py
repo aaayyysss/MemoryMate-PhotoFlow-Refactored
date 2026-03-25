@@ -141,7 +141,6 @@ from ui.search.search_results_header import SearchResultsHeader
 from ui.search.active_chips_bar import ActiveChipsBar
 from ui.search.search_sidebar import SearchSidebar
 from ui.search.sections.discover_section import DiscoverSection
-from search_widget_qt import SearchBarWidget, AdvancedSearchDialog
 
 # --- Video backfill dialog ---
 from video_backfill_dialog import VideoBackfillDialog
@@ -1786,25 +1785,8 @@ class MainWindow(QMainWindow):
 
     def _on_advanced_search(self):
         """Show advanced search dialog."""
-        try:
-            dialog = AdvancedSearchDialog(self)
-            if dialog.exec() == QDialog.Accepted:
-                criteria = dialog.get_search_criteria()
-
-                from app_services import get_search_service
-                search_service = get_search_service()
-                result = search_service.search(criteria)
-
-                if result.paths:
-                    self.grid.load_paths(result.paths)
-                    self.statusBar().showMessage(
-                        f"🔍 Found {result.filtered_count} photos in {result.execution_time_ms:.1f}ms"
-                    )
-                    print(f"[SEARCH] Advanced search found {result.filtered_count} results in {result.execution_time_ms:.1f}ms")
-                else:
-                    QMessageBox.information(self, tr('search.error_title'), tr('search.no_results_criteria'))
-        except Exception as e:
-            logging.getLogger(__name__).error(f"Advanced search failed: {e}")
+        # UX-1: Bridging to new shell or disabling until UX-2
+        QMessageBox.information(self, "Coming Soon", "Advanced search is being integrated into the new Search Hub.")
 
     def _on_semantic_search(self, photo_ids: list, query: str, scores: list):
         """

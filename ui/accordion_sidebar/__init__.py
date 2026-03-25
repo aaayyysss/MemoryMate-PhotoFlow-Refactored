@@ -111,10 +111,12 @@ class AccordionSidebar(QWidget):
         self._create_sections()
         self._connect_signals()
 
-        # Expand first section by default
-        if self.section_widgets:
+        # Expand first section by default, unless in onboarding mode
+        if self.section_widgets and self.project_id is not None:
             first_section_id = list(self.section_widgets.keys())[0]
             self._expand_section(first_section_id)
+        else:
+            logger.info("[AccordionSidebar] Suppressing default section expansion (onboarding mode)")
 
     def _init_ui(self):
         """Initialize main UI layout."""
