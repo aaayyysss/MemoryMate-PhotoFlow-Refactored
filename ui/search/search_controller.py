@@ -14,14 +14,37 @@ class SearchController(QObject):
     def set_active_project(self, project_id: Optional[int]):
         self.store.reset_for_project(project_id)
 
-    def set_query_text(self, text: str, **kwargs):
+    def set_query_text(self, text: str, debounce: bool = False):
+        state = self.store.get_state()
+        text = text or ""
+
+        suggestions = []
+        if text.strip():
+            seed = text.strip().lower()
+            base = [
+                "Beach", "Mountains", "City", "Forest",
+                "Documents", "Screenshots", "People", "Favorites",
+                "With Location", "Videos"
+            ]
+            suggestions = [x for x in base if seed in x.lower()][:8]
+
         self.store.update(
-            query_text=text or "",
+            query_text=text,
             search_mode="hybrid",
+            suggestions=suggestions,
         )
 
     def submit_query(self, text: str):
+        text = (text or "").strip()
         self.set_query_text(text)
+
+        state = self.store.get_state()
+        if text:
+            recent = [q for q in state.recent_queries if q.lower() != text.lower()]
+            recent.insert(0, text)
+            recent = recent[:10]
+            self.store.update(recent_queries=recent)
+
         self.run_search()
 
     def set_preset(self, preset_id: str):
@@ -38,6 +61,7 @@ class SearchController(QObject):
             preset_id=preset_id,
             active_chips=chips,
             search_mode="hybrid",
+            intent_summary=preset_id.replace("_", " ").title(),
         )
         self.run_search()
 
@@ -99,12 +123,20 @@ class SearchController(QObject):
         family: Optional[str] = None,
         warnings=None,
     ):
+        model_warning = ""
+        warning_list = list(warnings or [])
+
+        joined = " ".join(str(w) for w in warning_list).lower()
+        if "clip-vit-large-patch14" in joined or "better model available" in joined:
+            model_warning = "Better model available"
+
         self.store.update(
             result_paths=result_paths or [],
             result_count=result_count,
             result_facets=result_facets or {},
             family=family,
-            warnings=warnings or [],
+            warnings=warning_list,
+            model_warning=model_warning,
             search_in_progress=False,
             empty_state_reason=None if result_count > 0 else "no_results",
             intent_summary=self._build_intent_summary(),

@@ -35,6 +35,10 @@ class SearchState:
     warnings: List[str] = field(default_factory=list)
     empty_state_reason: Optional[str] = None
 
+    recent_queries: List[str] = field(default_factory=list)
+    suggestions: List[str] = field(default_factory=list)
+    model_warning: str = ""
+
 
 class SearchStateStore(QObject):
     stateChanged = Signal(object)
@@ -74,4 +78,6 @@ class SearchStateStore(QObject):
         self._state.result_facets.clear()
         self._state.search_in_progress = False
         self._state.empty_state_reason = None if self._state.has_active_project else "no_project"
+        self._state.suggestions.clear()
+        self._state.model_warning = ""
         self.stateChanged.emit(self._state)
