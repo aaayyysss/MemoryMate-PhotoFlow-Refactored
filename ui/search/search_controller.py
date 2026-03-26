@@ -88,6 +88,35 @@ class SearchController(QObject):
         self._update_chips_from_filters()
         self._do_search()
 
+    def apply_people_filter(self, person_id: str):
+        state = self.store.get_state()
+
+        active_people = [p for p in state.active_people if p != person_id]
+        if person_id not in state.active_people:
+            active_people.append(person_id)
+
+        chips = [chip for chip in state.active_chips if not (chip.get("kind") == "person" and chip.get("value") == person_id)]
+
+        if person_id in active_people:
+            chips.append({
+                "kind": "person",
+                "label": person_id,
+                "value": person_id,
+            })
+
+        self.store.update(
+            active_people=active_people,
+            active_chips=chips,
+            intent_summary=self._build_intent_summary(),
+        )
+        self.run_search()
+
+    def set_people_quick_items(self, items):
+        self.store.update(people_quick_items=list(items or []))
+
+    def set_people_quick_loading(self, loading: bool):
+        self.store.update(people_quick_loading=bool(loading))
+
     def remove_chip(self, kind: str, value: Any):
         """User removed a chip from the ActiveChipsBar."""
         state = self.store.get_state()
@@ -96,6 +125,10 @@ class SearchController(QObject):
             self.store.update(query_text="")
         elif kind == "preset":
             self.store.update(preset_id=None)
+        elif kind == "person":
+            active_people = [p for p in state.active_people if p != value]
+            self.store.update(active_people=active_people)
+            self._update_chips_from_filters()
         else:
             filters = dict(state.active_filters)
             if kind in filters:
@@ -188,6 +221,7 @@ class SearchController(QObject):
             "query_text": state.query_text,
             "preset_id": state.preset_id,
             "filters": state.active_filters,
+            "active_people": state.active_people,
         }
         self.searchRequested.emit(payload)
 
@@ -200,6 +234,8 @@ class SearchController(QObject):
             return state.preset_id.replace("_", " ").title()
         if state.query_text:
             return f'Results for "{state.query_text}"'
+        if state.active_people:
+            return f"Photos with {', '.join(state.active_people)}"
         if state.active_filters:
             return "Filtered Results"
         return "All Photos"
@@ -223,6 +259,10 @@ class SearchController(QObject):
         # Preset chip
         if state.preset_id:
             chips.append({"kind": "preset", "label": state.preset_id.capitalize(), "value": state.preset_id})
+
+        # Person chips
+        for pid in state.active_people:
+            chips.append({"kind": "person", "label": pid, "value": pid})
 
         # Facet chips
         for kind, val in state.active_filters.items():
