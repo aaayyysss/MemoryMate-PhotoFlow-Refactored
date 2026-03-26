@@ -1103,66 +1103,13 @@ class GooglePhotosLayout(BaseLayout):
 
     def _create_sidebar(self) -> QWidget:
         """
-        Create Google Photos-style accordion sidebar.
-
-        Phase 3 Implementation:
-        - AccordionSidebar with all 6 sections (People, Dates, Folders, Tags, Branches, Quick)
-        - One section expanded at a time (full height)
-        - Other sections collapsed to headers
-        - ONE universal scrollbar per section
-        - Clean, modern Google Photos UX
+        Sidebar/search shell ownership moved to MainWindow in UX-1.
+        GooglePhotosLayout now renders results only.
         """
-        # Import and instantiate AccordionSidebar (PHASE 3: Using modular version)
-        from ui.accordion_sidebar import AccordionSidebar
-
-        # CRITICAL FIX: GooglePhotosLayout is NOT a QWidget, so pass None as parent
-        sidebar = AccordionSidebar(project_id=self.project_id, parent=None)
-        sidebar.setMinimumWidth(240)
-        sidebar.setMaximumWidth(500)
-
-        # CRITICAL: Don't set generic QWidget stylesheet - it overrides accordion's internal styling
-        # AccordionSidebar handles its own styling internally (nav bar, headers, content areas)
-        # Only set border on the container itself
-        sidebar.setStyleSheet("""
-            AccordionSidebar {
-                border-right: 1px solid #dadce0;
-            }
-        """)
-
-        # Connect accordion signals to grid filtering
-        sidebar.selectBranch.connect(self._on_accordion_branch_clicked)
-        sidebar.selectFolder.connect(self._on_accordion_folder_clicked)
-        sidebar.selectDate.connect(self._on_accordion_date_clicked)
-        sidebar.selectTag.connect(self._on_accordion_tag_clicked)
-        sidebar.selectVideo.connect(self._on_accordion_video_clicked)  # NEW: Video filtering
-        sidebar.selectPerson.connect(self._on_accordion_person_clicked)
-        sidebar.selectLocation.connect(self._on_accordion_location_clicked)  # GPS location filtering
-        sidebar.selectDevice.connect(self._on_accordion_device_selected)
-        sidebar.personMerged.connect(self._on_accordion_person_merged)
-        sidebar.personDeleted.connect(self._on_accordion_person_deleted)
-        sidebar.mergeHistoryRequested.connect(self._on_people_merge_history_requested)
-        sidebar.undoLastMergeRequested.connect(self._on_people_undo_requested)
-        sidebar.redoLastUndoRequested.connect(self._on_people_redo_requested)
-        sidebar.peopleToolsRequested.connect(self._on_people_tools_requested)
-
-        # Groups section signals (Person Groups feature)
-        sidebar.selectGroup.connect(self._on_accordion_group_clicked)
-        sidebar.editGroupRequested.connect(self._on_group_edit_requested)
-        sidebar.deleteGroupRequested.connect(self._on_group_deleted)
-
-        # Smart Find signals
-        sidebar.selectSmartFind.connect(self._on_smart_find_results)
-        sidebar.smartFindCleared.connect(self._on_smart_find_cleared)
-        sidebar.smartFindScores.connect(self._on_smart_find_scores)
-        sidebar.smartFindExclude.connect(self._on_smart_find_exclude)
-
-        # FIX: Connect section expansion signal to hide search suggestions popup
-        sidebar.sectionExpanding.connect(self._on_accordion_section_expanding)
-
-        # Store reference for refreshing
-        self.accordion_sidebar = sidebar
-
-        return sidebar
+        placeholder = QWidget()
+        placeholder.setMinimumWidth(0)
+        placeholder.setMaximumWidth(0)
+        return placeholder
 
     def _create_timeline(self) -> QWidget:
         """
