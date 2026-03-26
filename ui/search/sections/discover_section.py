@@ -1,70 +1,51 @@
-from PySide6.QtCore import Signal, Qt
-from PySide6.QtWidgets import QGroupBox, QVBoxLayout, QPushButton, QHBoxLayout, QLabel
+from PySide6.QtCore import Signal
+from PySide6.QtWidgets import QGroupBox, QVBoxLayout
+
+from ui.search.widgets.smart_find_card import SmartFindCard
 
 
 class DiscoverSection(QGroupBox):
     presetSelected = Signal(str)
 
     def __init__(self, parent=None):
-        super().__init__("Discovery", parent)
-        self.setObjectName("DiscoverSection")
+        super().__init__("Discover", parent)
 
         self.layout = QVBoxLayout(self)
-        self.layout.setSpacing(6)
+        self.layout.setSpacing(8)
         self.cards = {}
         self._active_preset = None
 
-        self._build_default_cards()
+        self._build_cards()
 
-    def _build_default_cards(self):
+    def _build_cards(self):
         presets = [
-            ("beach", "🌊 Beach"),
-            ("mountains", "🏔 Mountains"),
-            ("city", "🌆 City"),
-            ("forest", "🌲 Forest"),
-            ("documents", "📄 Documents"),
-            ("screenshots", "📱 Screenshots"),
+            ("beach", "Beach", "🌊"),
+            ("mountains", "Mountains", "🏔"),
+            ("city", "City", "🌆"),
+            ("forest", "Forest", "🌲"),
+            ("documents", "Documents", "📄"),
+            ("screenshots", "Screenshots", "📱"),
         ]
 
-        for preset_id, label in presets:
-            btn = QPushButton(label)
-            btn.setCheckable(True)
-            btn.setCursor(Qt.PointingHandCursor)
-            btn.setStyleSheet("""
-                QPushButton {
-                    text-align: left;
-                    padding: 8px;
-                    border: 1px solid #dadce0;
-                    border-radius: 6px;
-                    background: white;
-                }
-                QPushButton:hover { background: #f8f9fa; }
-                QPushButton:checked {
-                    background: #e8f0fe;
-                    border-color: #1a73e8;
-                    color: #1a73e8;
-                    font-weight: bold;
-                }
-            """)
-            btn.clicked.connect(lambda checked, p=preset_id: self.presetSelected.emit(p))
-            self.layout.addWidget(btn)
-            self.cards[preset_id] = btn
+        for preset_id, title, icon_text in presets:
+            card = SmartFindCard(preset_id, title, icon_text)
+            card.clicked.connect(self.presetSelected.emit)
+            self.layout.addWidget(card)
+            self.cards[preset_id] = card
 
         self.layout.addStretch(1)
 
     def update_counts(self, counts: dict):
-        for preset_id, btn in self.cards.items():
-            count = counts.get(preset_id)
-            # Remove existing count if any
-            base_text = btn.text().split(" (")[0]
-            if count is not None and count > 0:
-                btn.setText(f"{base_text} ({count})")
-            else:
-                btn.setText(base_text)
+        counts = counts or {}
+        for preset_id, card in self.cards.items():
+            card.set_count(counts.get(preset_id))
 
-    def set_active_preset(self, preset_id: str | None):
+    def set_active_preset(self, preset_id):
         self._active_preset = preset_id
-        for pid, btn in self.cards.items():
-            btn.blockSignals(True)
-            btn.setChecked(pid == preset_id)
-            btn.blockSignals(False)
+        for pid, card in self.cards.items():
+            card.set_active(pid == preset_id)
+
+    def update_previews(self, preview_map: dict):
+        preview_map = preview_map or {}
+        for preset_id, card in self.cards.items():
+            card.set_preview_labels(preview_map.get(preset_id, []))

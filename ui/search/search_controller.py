@@ -56,16 +56,23 @@ class SearchController(QObject):
         self._do_search()
 
     def set_preset(self, preset_id: str):
-        """User clicked a Discovery preset."""
         state = self.store.get_state()
-        if state.preset_id == preset_id:
-            # Toggle off if already active
-            self.store.update(preset_id=None, intent_summary="")
-        else:
-            self.store.update(preset_id=preset_id, query_text="", intent_summary=f"Showing {preset_id}")
 
-        self._update_chips_from_filters()
-        self._do_search()
+        chips = [chip for chip in state.active_chips if chip.get("kind") != "preset"]
+        chips.insert(0, {
+            "kind": "preset",
+            "label": preset_id.replace("_", " ").title(),
+            "value": preset_id,
+        })
+
+        self.store.update(
+            preset_id=preset_id,
+            active_chips=chips,
+            search_mode="hybrid",
+            intent_summary=preset_id.replace("_", " ").title(),
+            search_in_progress=True,
+        )
+        self.run_search()
 
     def apply_filter(self, kind: str, value: str):
         """User clicked a facet in FilterSection."""
@@ -113,14 +120,49 @@ class SearchController(QObject):
         self._update_chips_from_filters()
         self._do_search()
 
-    def apply_result_summary(self, **kwargs):
-        """Update state with search results from backend."""
+    def apply_result_summary(
+        self,
+        result_paths=None,
+        result_count: int = 0,
+        result_facets=None,
+        family: Optional[str] = None,
+        warnings=None,
+    ):
+        state = self.store.get_state()
+        warning_list = list(warnings or [])
+        model_warning = ""
+
+        joined = " ".join(str(w) for w in warning_list).lower()
+        if "clip-vit-large-patch14" in joined or "better model available" in joined:
+            model_warning = "Better model available"
+
+        discover_counts = dict(state.discover_counts or {})
+        discover_previews = dict(state.discover_previews or {})
+
+        if state.preset_id:
+            discover_counts[state.preset_id] = result_count
+
+            preview_labels = []
+            for path in list(result_paths or [])[:3]:
+                try:
+                    import os
+                    preview_labels.append(os.path.basename(path))
+                except Exception:
+                    pass
+            discover_previews[state.preset_id] = preview_labels
+
         self.store.update(
-            result_paths=kwargs.get("result_paths", []),
-            result_count=kwargs.get("result_count", 0),
-            result_facets=kwargs.get("result_facets", {}),
+            result_paths=result_paths or [],
+            result_count=result_count,
+            result_facets=result_facets or {},
+            family=family,
+            warnings=warning_list,
+            model_warning=model_warning,
+            discover_counts=discover_counts,
+            discover_previews=discover_previews,
             search_in_progress=False,
-            warnings=kwargs.get("warnings", []),
+            empty_state_reason=None if result_count > 0 else "no_results",
+            intent_summary=self._build_intent_summary(),
         )
 
     def generate_suggestions(self, text: str):
@@ -134,7 +176,7 @@ class SearchController(QObject):
         elif "m" in t: self.store.update(suggestions=["Mountains", "Morning", "Mexico"])
         else: self.store.update(suggestions=[f"{text} 1", f"{text} 2"])
 
-    def _do_search(self):
+    def run_search(self):
         """Package state into a payload and emit searchRequested."""
         state = self.store.get_state()
         if not state.has_active_project:
@@ -148,6 +190,19 @@ class SearchController(QObject):
             "filters": state.active_filters,
         }
         self.searchRequested.emit(payload)
+
+    def _do_search(self):
+        self.run_search()
+
+    def _build_intent_summary(self) -> str:
+        state = self.store.get_state()
+        if state.preset_id:
+            return state.preset_id.replace("_", " ").title()
+        if state.query_text:
+            return f'Results for "{state.query_text}"'
+        if state.active_filters:
+            return "Filtered Results"
+        return "All Photos"
 
     def _add_to_history(self, text: str):
         if not text or len(text) < 2: return

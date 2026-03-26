@@ -62,7 +62,7 @@ from PySide6.QtCore import Qt, QThread, QSize, QThreadPool, Signal, QObject, QRu
 from PySide6.QtGui import QPixmap, QImage, QImageReader, QAction, QActionGroup, QIcon, QTransform, QPalette, QColor, QGuiApplication, QShortcut, QKeySequence
 
 from PySide6.QtWidgets import (
-    QMainWindow, QWidget, QSplitter,
+    QMainWindow, QWidget, QSplitter, QStackedWidget,
     QHBoxLayout, QVBoxLayout, QLabel,
     QComboBox, QSizePolicy, QToolBar, QMessageBox,
     QDialog, QPushButton, QFileDialog, QScrollArea,
@@ -917,9 +917,11 @@ class MainWindow(QMainWindow):
         tb.addWidget(self.btn_grid_xl)
 
         # --- Central container
-        container = QWidget()
-        self.setCentralWidget(container)
-        main_layout = QVBoxLayout(container)
+        self.central_container = QWidget()
+        self.setCentralWidget(self.central_container)
+        main_layout = QVBoxLayout(self.central_container)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
 
         # Phase 2.3: Removed huge BackfillStatusPanel (120-240px)
         # Replaced with compact indicator in top bar
@@ -1227,7 +1229,10 @@ class MainWindow(QMainWindow):
         # Make splitter handle more visible and easier to grab
         self.splitter.setHandleWidth(3)
 
-        main_layout.addWidget(self.splitter, 1)
+        # Content stack for layouts (UX-1 persistence)
+        self.layout_stack = QStackedWidget()
+        self.layout_stack.addWidget(self.splitter)
+        main_layout.addWidget(self.layout_stack, 1)
 
         # NOTE: Background Activity Panel removed - was too bulky and ate photo grid space
         # Background jobs run silently via JobManager with progress in status bar

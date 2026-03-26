@@ -1367,6 +1367,16 @@ class FindSection(BaseSection):
         self._pending_text_query = query
         self._execute_text_search()
 
+    def get_preset_catalog(self):
+        return [
+            {"id": "beach", "title": "Beach", "icon": "🌊"},
+            {"id": "mountains", "title": "Mountains", "icon": "🏔"},
+            {"id": "city", "title": "City", "icon": "🌆"},
+            {"id": "forest", "title": "Forest", "icon": "🌲"},
+            {"id": "documents", "title": "Documents", "icon": "📄"},
+            {"id": "screenshots", "title": "Screenshots", "icon": "📱"},
+        ]
+
     def cleanup(self):
         """Clean up resources."""
         self._search_debounce.stop()
