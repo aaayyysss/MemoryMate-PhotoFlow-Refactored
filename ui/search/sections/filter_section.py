@@ -3,8 +3,8 @@ from PySide6.QtWidgets import QGroupBox, QVBoxLayout, QPushButton, QLabel, QFram
 
 
 class FilterSection(QGroupBox):
-    filterSelected = Signal(str, str)  # kind, value
-    clearFiltersRequested = Signal()
+    filterChanged = Signal(str, str)  # kind, value
+    clearAllFiltersRequested = Signal()
 
     def __init__(self, parent=None):
         super().__init__("Filters", parent)
@@ -49,7 +49,7 @@ class FilterSection(QGroupBox):
                 btn = QPushButton(val)
                 btn.setCheckable(True)
                 btn.setStyleSheet("QPushButton { text-align: left; border: none; padding: 2px; } QPushButton:checked { font-weight: bold; color: #1a73e8; }")
-                btn.clicked.connect(lambda checked, k=kind, v=val: self.filterSelected.emit(k, v))
+                btn.clicked.connect(lambda checked, k=kind, v=val: self.filterChanged.emit(k, v))
                 container_layout.addWidget(btn)
                 facet_btns[val] = btn
 
@@ -61,10 +61,9 @@ class FilterSection(QGroupBox):
                 "buttons": facet_btns
             }
 
-    def update_facets(self, result_facets: dict):
+    def set_facets(self, result_facets: dict, active_filters: dict):
         """Update facet options and counts based on search results."""
-        # This will be refined in UX-3 completion when real data is available
-        pass
+        self.set_active_filters(active_filters)
 
     def set_active_filters(self, active_filters: dict):
         """Sync button checked states with active filters in store."""

@@ -374,35 +374,75 @@ class GooglePhotosLayout(BaseLayout):
 
         return main_widget
 
+    def attach_search_store(self, store):
+        self.search_state_store = store
+        if self.search_state_store:
+            self.search_state_store.stateChanged.connect(self._on_search_state_changed)
+
     def _on_search_state_changed(self, state):
         """Respond to global SearchState changes."""
-        if getattr(self, '_disposed', False):
-            return
+        try:
+            if getattr(self, '_disposed', False):
+                return
 
-        if not isValid(self.results_stack) or not isValid(self.empty_state) or not isValid(self.timeline):
-            logger.debug("[GooglePhotosLayout] Skipping SearchState update: UI objects already deleted")
-            return
+            if not isValid(self.results_stack) or not isValid(self.empty_state) or not isValid(self.timeline):
+                logger.debug("[GooglePhotosLayout] Skipping SearchState update: UI objects already deleted")
+                return
 
-        # Handle empty/onboarding state via the proper set_state API
-        show_empty = (
-            state.onboarding_mode or
-            state.empty_state_reason or
-            (not state.result_paths and (state.query_text or state.preset_id or state.active_filters))
-        )
+            # Onboarding / no project
+            if getattr(state, "onboarding_mode", False):
+                self._show_empty_state("no_project", getattr(state, "warnings", []))
+                return
 
-        if show_empty:
-            reason = state.empty_state_reason or ("no_project" if state.onboarding_mode else "no_results")
-            self.empty_state.set_state(reason, getattr(state, "warnings", []))
-            self.results_stack.setCurrentWidget(self.empty_state)
-        else:
-            self.results_stack.setCurrentWidget(self.timeline)
+            # Explicit loading/indexing states
+            if getattr(state, "search_in_progress", False):
+                self._show_empty_state("loading", getattr(state, "warnings", []))
+                return
 
-        # Trigger photo grid update if result paths changed
-        sig = (tuple(state.result_paths), state.active_project_id)
-        if getattr(self, "_last_result_sig", None) != sig:
-            self._last_result_sig = sig
-            if state.result_paths or not state.query_text:
-                self._load_photos(filter_paths=state.result_paths if state.query_text or state.preset_id else None)
+            if getattr(state, "indexing_in_progress", False):
+                self._show_empty_state("indexing", getattr(state, "warnings", []))
+                return
+
+            # Missing embeddings warning path
+            if not getattr(state, "embeddings_ready", True):
+                reason = getattr(state, "empty_state_reason", None)
+                if reason == "embeddings_missing":
+                    self._show_empty_state("embeddings_missing", getattr(state, "warnings", []))
+                    return
+
+            result_paths = list(getattr(state, "result_paths", []) or [])
+            if not result_paths:
+                self._show_empty_state(getattr(state, "empty_state_reason", None) or "no_results",
+                                    getattr(state, "warnings", []))
+                return
+
+            self._show_results_surface()
+
+            # Trigger photo grid update if result paths changed
+            sig = (tuple(state.result_paths), state.active_project_id)
+            if getattr(self, "_last_result_sig", None) != sig:
+                self._last_result_sig = sig
+                if state.result_paths or not (state.query_text or state.preset_id):
+                    self._load_photos(filter_paths=state.result_paths if state.query_text or state.preset_id else None)
+
+        except Exception as e:
+            print(f"[GooglePhotosLayout] _on_search_state_changed error: {e}")
+
+    def _show_empty_state(self, reason: str, warnings=None):
+        try:
+            if hasattr(self, "empty_state"):
+                self.empty_state.set_state(reason, warnings or [])
+            if hasattr(self, "results_stack") and hasattr(self, "empty_state"):
+                self.results_stack.setCurrentWidget(self.empty_state)
+        except Exception as e:
+            print(f"[GooglePhotosLayout] _show_empty_state error: {e}")
+
+    def _show_results_surface(self):
+        try:
+            if hasattr(self, "results_stack") and hasattr(self, "timeline"):
+                self.results_stack.setCurrentWidget(self.timeline)
+        except Exception as e:
+            print(f"[GooglePhotosLayout] _show_results_surface error: {e}")
 
     # ------------------------------------------------------------------
     # Startup fence: called by MainWindow after first paint completes

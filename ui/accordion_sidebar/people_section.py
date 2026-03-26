@@ -496,6 +496,36 @@ class PeopleSection(BaseSection):
                 self._recomputed_group_ids.clear()
             self._ensure_groups_tab(self._stack)
 
+    def get_top_people_summary(self):
+        """
+        UX-4B adapter for the centralized search shell.
+        Returns a lightweight summary of top face clusters.
+        """
+        try:
+            items = []
+
+            # Use _all_data as primary source (holds the cluster metadata)
+            source = self._all_data or []
+
+            for item in list(source)[:8]:
+                if isinstance(item, dict):
+                    # Adapter: ReferenceDB.get_face_clusters() returns:
+                    # branch_key, display_name, member_count, rep_path, rep_thumb_png
+                    pid = item.get("branch_key")
+                    label = item.get("display_name") or str(pid)
+                    count = int(item.get("member_count", 0))
+                    if pid is not None:
+                        items.append({
+                            "id": str(pid),
+                            "label": str(label),
+                            "count": count,
+                        })
+
+            return items
+
+        except Exception:
+            return []
+
     def set_db(self, db):
         """Store DB reference for passing to GroupsSection."""
         self._parent_db = db

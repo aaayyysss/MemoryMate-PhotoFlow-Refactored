@@ -1126,6 +1126,8 @@ class MainWindow(QMainWindow):
                 except Exception:
                     pass
                 self._ui_refresh_mediator.request_refresh({"people"}, "pipeline_done", pid)
+                if hasattr(self, "_refresh_people_quick_section"):
+                    self._refresh_people_quick_section()
             _face_svc.finished.connect(_on_face_svc_finished)
             # Error → status bar (guarded against shutdown)
             _face_svc.error.connect(
@@ -1365,6 +1367,7 @@ class MainWindow(QMainWindow):
             self.layout_manager.search_controller = self.search_controller
 
             self.layout_manager.initialize_default_layout()
+            self._attach_search_store_to_current_layout()
             print("[Startup] Layout system initialized successfully")
         except Exception as e:
             print(f"[Startup] ⚠️ Layout initialization failed: {e}")
@@ -2726,6 +2729,7 @@ class MainWindow(QMainWindow):
         try:
             success = self.layout_manager.switch_layout(layout_id)
             if success:
+                self._attach_search_store_to_current_layout()
                 print(f"[MainWindow] ✓ Switched to layout: {layout_id}")
             else:
                 print(f"[MainWindow] ✗ Failed to switch to layout: {layout_id}")
@@ -3133,6 +3137,9 @@ class MainWindow(QMainWindow):
             # CLIP upgrade check (Phase: Better Model Awareness)
             QTimer.singleShot(1500, self._maybe_prompt_clip_upgrade)
 
+            if hasattr(self, "_refresh_people_quick_section"):
+                self._refresh_people_quick_section()
+
             # Breadcrumb auto-updates via gridReloaded signal
             print(f"[MainWindow] ========== _on_project_changed_by_id({project_id}) COMPLETED ==========\n")
         except Exception as e:
@@ -3148,6 +3155,7 @@ class MainWindow(QMainWindow):
         query_text = payload.get("query_text", "") or ""
         preset_id = payload.get("preset_id")
         filters = payload.get("filters", {})
+        active_people = payload.get("active_people", [])
 
         try:
             # Sync query text to 'query' chip if not using presets
@@ -3201,6 +3209,42 @@ class MainWindow(QMainWindow):
                 result_facets={},
                 warnings=[str(e)],
             )
+
+    def _refresh_people_quick_section(self):
+        """
+        UX-4B bridge: populate PeopleQuickSection from existing people backend if available.
+        Keeps the new shell decoupled from the legacy people implementation.
+        """
+        try:
+            items = []
+
+            # Current Layout / SidebarQt path
+            if hasattr(self, "sidebar") and hasattr(self.sidebar, "accordion"):
+                people_section = self.sidebar.accordion.section_logic.get("people")
+                if people_section and hasattr(people_section, "get_top_people_summary"):
+                    items = list(people_section.get_top_people_summary() or [])
+
+            # Google/other layouts fallback if needed
+            if not items and hasattr(self, "layout_manager"):
+                layout = self.layout_manager.get_current_layout()
+                if layout and hasattr(layout, "accordion_sidebar"):
+                    people_section = layout.accordion_sidebar.section_logic.get("people")
+                    if people_section and hasattr(people_section, "get_top_people_summary"):
+                        items = list(people_section.get_top_people_summary() or [])
+
+            if hasattr(self, "search_controller"):
+                self.search_controller.set_people_quick_items(items)
+
+        except Exception as e:
+            print(f"[UX-4B] Error refreshing people quick section: {e}")
+
+    def _attach_search_store_to_current_layout(self):
+        try:
+            layout = self.layout_manager.get_current_layout()
+            if layout and hasattr(layout, "attach_search_store"):
+                layout.attach_search_store(self.search_state_store)
+        except Exception as e:
+            print(f"[MainWindow] Error attaching search store to layout: {e}")
 
     def _execute_smart_find_preset(self, preset_id: str):
         """
