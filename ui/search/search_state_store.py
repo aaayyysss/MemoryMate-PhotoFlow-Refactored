@@ -41,6 +41,8 @@ class SearchState:
     discover_previews: Dict[str, list] = field(default_factory=dict)
     people_quick_items: List[Dict[str, Any]] = field(default_factory=list)
     people_quick_loading: bool = False
+    browse_mode: Optional[str] = None
+    activity_snapshot: Dict[str, Any] = field(default_factory=dict)
     model_warning: str = ""
 
 
@@ -83,6 +85,7 @@ class SearchStateStore(QObject):
         self._state.result_facets.clear()
         self._state.search_in_progress = False
         self._state.people_quick_loading = False
+        self._state.browse_mode = None
         self._state.empty_state_reason = None if self._state.has_active_project else "no_project"
         self._state.suggestions.clear()
         self._state.model_warning = ""

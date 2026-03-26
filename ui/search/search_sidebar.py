@@ -3,8 +3,10 @@ from PySide6.QtWidgets import QWidget, QVBoxLayout, QScrollArea, QFrame
 
 from ui.search.sections.search_hub_section import SearchHubSection
 from ui.search.sections.discover_section import DiscoverSection
-from ui.search.sections.filter_section import FilterSection
 from ui.search.sections.people_quick_section import PeopleQuickSection
+from ui.search.sections.filter_section import FilterSection
+from ui.search.sections.browse_section import BrowseSection
+from ui.search.sections.activity_mini_section import ActivityMiniSection
 
 
 class SearchSidebar(QWidget):
@@ -22,7 +24,9 @@ class SearchSidebar(QWidget):
         self.search_hub_section = SearchHubSection()
         self.discover_section = DiscoverSection()
         self.people_quick_section = PeopleQuickSection()
+        self.browse_section = BrowseSection()
         self.filter_section = FilterSection()
+        self.activity_mini_section = ActivityMiniSection()
 
         self._build_ui()
         self._wire_signals()
@@ -35,7 +39,6 @@ class SearchSidebar(QWidget):
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.NoFrame)
 
         content = QFrame()
         self.content_layout = QVBoxLayout(content)
@@ -45,7 +48,9 @@ class SearchSidebar(QWidget):
         self.content_layout.addWidget(self.search_hub_section)
         self.content_layout.addWidget(self.discover_section)
         self.content_layout.addWidget(self.people_quick_section)
+        self.content_layout.addWidget(self.browse_section)
         self.content_layout.addWidget(self.filter_section)
+        self.content_layout.addWidget(self.activity_mini_section)
         self.content_layout.addStretch(1)
 
         scroll.setWidget(content)
@@ -54,37 +59,52 @@ class SearchSidebar(QWidget):
     def _wire_signals(self):
         if self.controller:
             self.discover_section.presetSelected.connect(self.controller.set_preset)
+
             self.search_hub_section.recentSearchClicked.connect(self.controller.submit_query)
             self.search_hub_section.suggestionClicked.connect(self.controller.submit_query)
             self.search_hub_section.clearRecentRequested.connect(self.controller.clear_recent_queries)
 
+            self.people_quick_section.personSelected.connect(self.controller.apply_people_filter)
+            self.people_quick_section.showAllPeopleRequested.connect(self._emit_show_all_people)
+
+            self.browse_section.browseNodeSelected.connect(self.controller.apply_browse_mode)
+
             self.filter_section.filterChanged.connect(self.controller.apply_filter)
             self.filter_section.clearAllFiltersRequested.connect(self.controller.clear_filters)
 
-            self.people_quick_section.personSelected.connect(self.controller.apply_people_filter)
-            self.people_quick_section.showAllPeopleRequested.connect(self._emit_show_all_people)
+            self.activity_mini_section.openActivityCenterRequested.connect(self._emit_open_activity_center)
 
     def _emit_show_all_people(self):
         self.selectBranch.emit("people")
 
+    def _emit_open_activity_center(self):
+        # MainWindow may optionally connect this later
+        pass
+
     def _on_state_changed(self, state):
         enabled = state.has_active_project
+
         self.search_hub_section.set_enabled_for_project(enabled)
         self.discover_section.setEnabled(enabled)
         self.people_quick_section.setEnabled(enabled)
+        self.browse_section.set_enabled_for_project(enabled)
 
         self.search_hub_section.set_recent_queries(getattr(state, "recent_queries", []))
         self.search_hub_section.set_suggestions(getattr(state, "suggestions", []))
+
         self.discover_section.update_counts(getattr(state, "discover_counts", {}))
         self.discover_section.set_active_preset(getattr(state, "preset_id", None))
         self.discover_section.update_previews(getattr(state, "discover_previews", {}))
 
         self.people_quick_section.set_people(getattr(state, "people_quick_items", []))
+        self.browse_section.set_active_mode(getattr(state, "browse_mode", None))
 
         self.filter_section.set_facets(
             getattr(state, "result_facets", {}) or {},
             getattr(state, "active_filters", {}) or {},
         )
+
+        self.activity_mini_section.set_activity(getattr(state, "activity_snapshot", {}) or {})
 
     def reload_date_tree(self):
         pass

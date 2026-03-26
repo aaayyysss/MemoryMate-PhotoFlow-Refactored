@@ -1128,6 +1128,8 @@ class MainWindow(QMainWindow):
                 self._ui_refresh_mediator.request_refresh({"people"}, "pipeline_done", pid)
                 if hasattr(self, "_refresh_people_quick_section"):
                     self._refresh_people_quick_section()
+                if hasattr(self, "_refresh_activity_snapshot"):
+                    self._refresh_activity_snapshot()
             _face_svc.finished.connect(_on_face_svc_finished)
             # Error → status bar (guarded against shutdown)
             _face_svc.error.connect(
@@ -1606,6 +1608,8 @@ class MainWindow(QMainWindow):
                 description="Database maintenance (backfill & index)",
             )
             print(f"[MainWindow] Maintenance job registered: job_id={job_id}")
+            if hasattr(self, "_refresh_activity_snapshot"):
+                self._refresh_activity_snapshot()
 
             def _maintenance():
                 try:
@@ -3140,6 +3144,9 @@ class MainWindow(QMainWindow):
             if hasattr(self, "_refresh_people_quick_section"):
                 self._refresh_people_quick_section()
 
+            if hasattr(self, "_refresh_activity_snapshot"):
+                self._refresh_activity_snapshot()
+
             # Breadcrumb auto-updates via gridReloaded signal
             print(f"[MainWindow] ========== _on_project_changed_by_id({project_id}) COMPLETED ==========\n")
         except Exception as e:
@@ -3237,6 +3244,36 @@ class MainWindow(QMainWindow):
 
         except Exception as e:
             print(f"[UX-4B] Error refreshing people quick section: {e}")
+
+    def _refresh_activity_snapshot(self):
+        """
+        UX-6 adapter: populate ActivityMiniSection from current job/activity state.
+        """
+        try:
+            snapshot = {}
+
+            from services.job_manager import get_job_manager
+            jm = get_job_manager()
+
+            if jm:
+                active_jobs = jm.get_active_jobs()
+
+                if active_jobs:
+                    job = active_jobs[-1]
+                    # Map JobManager field names to snapshot
+                    job_id = job.get('job_id')
+                    label = jm.get_job_description(job_id) if job_id < 0 else job.get("job_type", "Background task running").replace("_", " ").title()
+                    progress = job.get("progress_pct")
+                    snapshot = {
+                        "label": str(label),
+                        "progress": progress if progress is not None else None,
+                    }
+
+            if hasattr(self, "search_controller"):
+                self.search_controller.set_activity_snapshot(snapshot)
+
+        except Exception as e:
+            print(f"[UX-6] Error refreshing activity snapshot: {e}")
 
     def _attach_search_store_to_current_layout(self):
         try:
@@ -4590,6 +4627,9 @@ class MainWindow(QMainWindow):
                 self._scan_status_label.setText("")
 
         QTimer.singleShot(timeout_ms, _hide)
+
+        if hasattr(self, "_refresh_activity_snapshot"):
+            self._refresh_activity_snapshot()
 
     # ------------------------------------------------------------------
     # Activity Center toggle
