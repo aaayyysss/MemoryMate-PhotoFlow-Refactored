@@ -117,6 +117,63 @@ class SearchController(QObject):
     def set_people_quick_loading(self, loading: bool):
         self.store.update(people_quick_loading=bool(loading))
 
+    def apply_browse_mode(self, browse_key: str, value):
+        state = self.store.get_state()
+
+        new_filters = dict(state.active_filters or {})
+        chips = [chip for chip in state.active_chips if chip.get("kind") not in {"browse", "preset"}]
+
+        preset_id = None
+
+        if browse_key == "all_photos":
+            new_filters.pop("favorites_only", None)
+            new_filters.pop("media_type", None)
+            new_filters.pop("with_location", None)
+
+        elif browse_key == "favorites":
+            new_filters["favorites_only"] = True
+            chips.append({
+                "kind": "browse",
+                "label": "Favorites",
+                "value": "favorites",
+            })
+
+        elif browse_key == "videos":
+            new_filters["media_type"] = "video"
+            chips.append({
+                "kind": "browse",
+                "label": "Videos",
+                "value": "videos",
+            })
+
+        elif browse_key == "with_location":
+            new_filters["with_location"] = True
+            chips.append({
+                "kind": "browse",
+                "label": "With Location",
+                "value": "with_location",
+            })
+
+        elif browse_key in {"albums", "folders", "dates"}:
+            chips.append({
+                "kind": "browse",
+                "label": browse_key.replace("_", " ").title(),
+                "value": browse_key,
+            })
+
+        self.store.update(
+            browse_mode=browse_key,
+            preset_id=preset_id,
+            active_filters=new_filters,
+            active_chips=chips,
+            search_mode="browse",
+            intent_summary=browse_key.replace("_", " ").title(),
+        )
+        self.run_search()
+
+    def set_activity_snapshot(self, activity: dict):
+        self.store.update(activity_snapshot=dict(activity or {}))
+
     def remove_chip(self, kind: str, value: Any):
         """User removed a chip from the ActiveChipsBar."""
         state = self.store.get_state()
@@ -128,6 +185,15 @@ class SearchController(QObject):
         elif kind == "person":
             active_people = [p for p in state.active_people if p != value]
             self.store.update(active_people=active_people)
+            self._update_chips_from_filters()
+        elif kind == "browse":
+            self.store.update(browse_mode=None)
+            if value == "favorites":
+                state.active_filters.pop("favorites_only", None)
+            elif value == "videos":
+                state.active_filters.pop("media_type", None)
+            elif value == "with_location":
+                state.active_filters.pop("with_location", None)
             self._update_chips_from_filters()
         else:
             filters = dict(state.active_filters)
