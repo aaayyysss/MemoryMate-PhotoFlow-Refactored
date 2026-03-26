@@ -963,6 +963,8 @@ class MainWindow(QMainWindow):
         self.top_search_bar.querySubmitted.connect(self.search_controller.submit_query)
         self.top_search_bar.queryChanged.connect(lambda text: self.search_controller.set_query_text(text, debounce=True))
         self.top_search_bar.searchCleared.connect(self.search_controller.clear_search)
+        self.top_search_bar.recentQueryClicked.connect(self.search_controller.submit_query)
+        self.top_search_bar.suggestionClicked.connect(self.search_controller.submit_query)
 
         main_layout.addWidget(self.search_results_header)
         main_layout.addWidget(self.active_chips_bar)
@@ -975,6 +977,8 @@ class MainWindow(QMainWindow):
         self.active_project_id = default_pid
         if hasattr(self, "search_controller"):
             self.search_controller.set_active_project(default_pid)
+
+        self.search_state_store.stateChanged.connect(self._sync_ux2a_search_widgets)
 
         self.sidebar = SidebarQt(project_id=default_pid)
 
@@ -3146,6 +3150,21 @@ class MainWindow(QMainWindow):
             if query_text and hasattr(self, "_on_quick_search"):
                 self._on_quick_search(query_text)
                 result_paths = list(getattr(self.grid, "all_photo_paths", []) or [])
+
+                # UX-2A: Manually inject the 'query' chip if this was a quick search
+                state = self.search_state_store.get_state()
+                if query_text:
+                    state.active_chips = [
+                        chip for chip in state.active_chips
+                        if chip.get("kind") != "query"
+                    ]
+                    state.active_chips.insert(0, {
+                        "kind": "query",
+                        "label": query_text,
+                        "value": query_text,
+                    })
+                    self.search_state_store.stateChanged.emit(state)
+
                 self.search_controller.apply_result_summary(
                     result_paths=result_paths,
                     result_count=len(result_paths),
@@ -4843,3 +4862,9 @@ class MainWindow(QMainWindow):
                 )
         except Exception as e:
             logger.warning("[MainWindow] CLIP upgrade prompt failed: %s", e)
+
+    def _sync_ux2a_search_widgets(self, state):
+        if hasattr(self, "top_search_bar"):
+            self.top_search_bar.set_recent_queries(getattr(state, "recent_queries", []))
+            self.top_search_bar.set_suggestions(getattr(state, "suggestions", []))
+            self.top_search_bar.set_enabled_for_project(state.has_active_project)

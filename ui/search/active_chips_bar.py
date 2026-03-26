@@ -1,6 +1,5 @@
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QWidget, QHBoxLayout, QPushButton
-from shiboken6 import isValid
+from PySide6.QtWidgets import QWidget, QHBoxLayout, QPushButton, QScrollArea, QFrame
 
 
 class ActiveChipsBar(QWidget):
@@ -10,11 +9,27 @@ class ActiveChipsBar(QWidget):
     def __init__(self, store, parent=None):
         super().__init__(parent)
         self.store = store
-        self.layout = QHBoxLayout(self)
+
+        outer = QHBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        self.scroll = QScrollArea()
+        self.scroll.setWidgetResizable(True)
+        self.scroll.setHorizontalScrollBarPolicy(self.scroll.horizontalScrollBarPolicy().ScrollBarAlwaysOff)
+        self.scroll.setVerticalScrollBarPolicy(self.scroll.verticalScrollBarPolicy().ScrollBarAlwaysOff)
+        self.scroll.setFrameShape(QFrame.NoFrame)
+
+        self.content = QWidget()
+        self.layout = QHBoxLayout(self.content)
         self.layout.setContentsMargins(0, 0, 0, 0)
         self.layout.setSpacing(6)
 
+        self.scroll.setWidget(self.content)
+        outer.addWidget(self.scroll)
+
         self.store.stateChanged.connect(self._on_state_changed)
+        self.setVisible(False)
 
     def _clear_layout(self):
         while self.layout.count():
@@ -24,8 +39,6 @@ class ActiveChipsBar(QWidget):
                 widget.deleteLater()
 
     def _on_state_changed(self, state):
-        if not isValid(self):
-            return
         self._clear_layout()
 
         if not state.active_chips:
@@ -40,10 +53,12 @@ class ActiveChipsBar(QWidget):
             value = chip.get("value")
 
             btn = QPushButton(f"{label} ✕")
+            btn.setObjectName("SearchChip")
             btn.clicked.connect(lambda checked=False, k=kind, v=value: self.chipRemoved.emit(k, v))
             self.layout.addWidget(btn)
 
         clear_btn = QPushButton("Clear")
+        clear_btn.setObjectName("SearchChipClear")
         clear_btn.clicked.connect(self.clearAllRequested.emit)
         self.layout.addWidget(clear_btn)
 
