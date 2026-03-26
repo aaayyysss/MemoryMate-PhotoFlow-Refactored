@@ -18,7 +18,7 @@ class FilterSection(QGroupBox):
 
         # Clear button
         self.btn_clear = QPushButton("Clear All Filters")
-        self.btn_clear.clicked.connect(self.clearFiltersRequested.emit)
+        self.btn_clear.clicked.connect(self.clearAllFiltersRequested.emit)
         self.layout.addWidget(self.btn_clear)
 
     def _build_facets(self):
