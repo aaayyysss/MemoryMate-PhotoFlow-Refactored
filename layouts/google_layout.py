@@ -247,19 +247,8 @@ class GooglePhotosLayout(BaseLayout):
         self._max_in_memory = MAX_IN_MEMORY_ROWS
 
         # Get current project ID (CRITICAL: Photos are organized by project)
-        from app_services import get_default_project_id, list_projects
+        from app_services import get_default_project_id
         self.project_id = get_default_project_id()
-
-        # Fallback to first project if no default
-        if self.project_id is None:
-            projects = list_projects()
-            if projects:
-                self.project_id = projects[0]["id"]
-                print(f"[GooglePhotosLayout] Using first project: {self.project_id}")
-            else:
-                print("[GooglePhotosLayout] ⚠️ WARNING: No projects found! Please create a project first.")
-        else:
-            print(f"[GooglePhotosLayout] Using default project: {self.project_id}")
 
         # PERFORMANCE FIX: Cache badge overlay settings (read once vs per-photo)
         # Previously: SettingsManager read on every _create_tag_badge_overlay call
@@ -294,14 +283,6 @@ class GooglePhotosLayout(BaseLayout):
         self.view_tabs.currentChanged.connect(self._on_view_tab_changed)
         main_layout.addWidget(self.view_tabs)
 
-        # Create horizontal splitter (Sidebar | Timeline)
-        self.splitter = QSplitter(Qt.Horizontal)
-        self.splitter.setHandleWidth(3)
-
-        # Create sidebar
-        self.sidebar = self._create_sidebar()
-        self.splitter.addWidget(self.sidebar)
-
         # Search Components (Integrated from SearchState)
         self.empty_state = EmptyStateView()
 
@@ -320,7 +301,7 @@ class GooglePhotosLayout(BaseLayout):
 
         self.results_layout.addWidget(self.results_stack, 1)
 
-        self.splitter.addWidget(self.results_container)
+        main_layout.addWidget(self.results_container)
 
         # Debounced zoom handling (prevents repeated reloads while dragging)
         self._pending_zoom_value = None
@@ -331,13 +312,6 @@ class GooglePhotosLayout(BaseLayout):
         self.zoom_change_timer.setSingleShot(True)
         self.zoom_change_timer.setInterval(120)  # Match Google Photos-like feel
         self.zoom_change_timer.timeout.connect(self._commit_zoom_change)
-
-        # Set splitter sizes (280px sidebar initially, rest for timeline)
-        self.splitter.setSizes([280, 1000])
-        self.splitter.setStretchFactor(0, 0)
-        self.splitter.setStretchFactor(1, 1)
-
-        main_layout.addWidget(self.splitter)
 
         # Background Activity Panel - shows background job progress (face detection, embeddings, etc.)
         # Activity Center is now a QDockWidget owned by MainWindow;
@@ -1283,14 +1257,10 @@ class GooglePhotosLayout(BaseLayout):
 
         # CRITICAL: Check if we have a valid project
         if self.project_id is None:
-            # No project - show empty state with instructions
             self._hide_refresh_indicator()
             self._clear_timeline_for_new_content()
-            empty_label = QLabel("📂 No project selected\n\nClick '➕ New Project' to create your first project")
-            empty_label.setAlignment(Qt.AlignCenter)
-            empty_label.setStyleSheet("font-size: 12pt; color: #888; padding: 60px;")
-            self.timeline_layout.addWidget(empty_label)
-            print("[GooglePhotosLayout] ⚠️ No project selected")
+            # UX-1: Onboarding messaging now handled by outer shell
+            print("[GooglePhotosLayout] ⚠️ No project selected (Onboarding mode)")
             return
 
         # Build filter params (legacy format for PhotoLoadWorker)
@@ -9809,12 +9779,6 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
             except:
                 pass
 
-        # Project combo signals
-        if hasattr(self, 'project_combo'):
-            try:
-                self.project_combo.currentIndexChanged.disconnect(self._on_project_changed)
-            except:
-                pass
 
         # Search state signals
         if hasattr(self.main_window, 'search_state_store'):
@@ -9928,144 +9892,6 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
 
         print("[GooglePhotosLayout]   ✓ Animations stopped")
 
-    def _on_create_project_clicked(self):
-        """Handle Create Project button click."""
-        print("[GooglePhotosLayout] 🆕🆕🆕 CREATE PROJECT BUTTON CLICKED! 🆕🆕🆕")
-
-        # Debug: Check if main_window exists and has breadcrumb_nav
-        if not hasattr(self, 'main_window'):
-            print("[GooglePhotosLayout] ❌ ERROR: self.main_window does not exist!")
-            return
-
-        # CRITICAL FIX: _create_new_project is in BreadcrumbNavigation, not MainWindow!
-        # MainWindow has self.breadcrumb_nav which contains the method
-        if not hasattr(self.main_window, 'breadcrumb_nav'):
-            print(f"[GooglePhotosLayout] ❌ ERROR: main_window does not have breadcrumb_nav!")
-            return
-
-        if not hasattr(self.main_window.breadcrumb_nav, '_create_new_project'):
-            print(f"[GooglePhotosLayout] ❌ ERROR: breadcrumb_nav does not have _create_new_project method!")
-            return
-
-        print("[GooglePhotosLayout] ✓ Calling breadcrumb_nav._create_new_project()...")
-
-        # Call BreadcrumbNavigation's project creation dialog
-        self.main_window.breadcrumb_nav._create_new_project()
-
-        print("[GooglePhotosLayout] ✓ Project creation dialog completed")
-
-        # CRITICAL: Update project_id after creation
-        from app_services import get_default_project_id
-        self.project_id = get_default_project_id()
-        print(f"[GooglePhotosLayout] Updated project_id: {self.project_id}")
-
-        # Update accordion sidebar immediately (prevents empty sidebar glitch)
-        if hasattr(self, 'accordion_sidebar') and self.project_id is not None:
-            self.accordion_sidebar.set_project(self.project_id)
-
-        # Refresh project selector and layout
-        self._populate_project_selector()
-        self._load_photos()
-        print("[GooglePhotosLayout] ✓ Layout refreshed after project creation")
-
-    def _populate_project_selector(self):
-        """
-        Populate the project selector combobox with available projects.
-        Google Photos pattern: "+ New Project..." as first item.
-        """
-        try:
-            from app_services import list_projects
-            projects = list_projects()
-
-            # Block signals while updating to prevent triggering change handler
-            self.project_combo.blockSignals(True)
-            self.project_combo.clear()
-
-            # Google Photos pattern: Add "+ New Project..." as first item
-            self.project_combo.addItem("➕ New Project...", userData="__new_project__")
-
-            # Add separator after "New Project" option
-            self.project_combo.insertSeparator(1)
-
-            if not projects:
-                self.project_combo.addItem("(No projects)", None)
-                # Still enable dropdown so user can create new project
-                self.project_combo.setEnabled(True)
-            else:
-                for proj in projects:
-                    self.project_combo.addItem(proj["name"], proj["id"])
-                self.project_combo.setEnabled(True)
-
-                # Select current project (skip index 0 and 1 which are "+ New" and separator)
-                if self.project_id:
-                    for i in range(2, self.project_combo.count()):  # Start from index 2
-                        if self.project_combo.itemData(i) == self.project_id:
-                            self.project_combo.setCurrentIndex(i)
-                            break
-                else:
-                    # If no project_id, select first actual project (index 2)
-                    if self.project_combo.count() > 2:
-                        self.project_combo.setCurrentIndex(2)
-
-            # Unblock signals and connect change handler
-            self.project_combo.blockSignals(False)
-            try:
-                self.project_combo.currentIndexChanged.disconnect()
-            except:
-                pass  # No previous connection
-            self.project_combo.currentIndexChanged.connect(self._on_project_changed)
-
-            print(f"[GooglePhotosLayout] Project selector populated with {len(projects)} projects (+ New Project option)")
-
-        except Exception as e:
-            print(f"[GooglePhotosLayout] ⚠️ Error populating project selector: {e}")
-
-    def _on_project_changed(self, index: int):
-        """
-        Handle project selection change in combobox.
-        Detects "+ New Project..." selection and opens create dialog.
-        """
-        new_project_id = self.project_combo.itemData(index)
-
-        # Check if user selected "+ New Project..." option
-        if new_project_id == "__new_project__":
-            print("[GooglePhotosLayout] ➕ New Project option selected")
-
-            # Block signals to prevent recursion
-            self.project_combo.blockSignals(True)
-
-            # Restore previous selection (don't stay on "+ New Project")
-            if self.project_id:
-                for i in range(2, self.project_combo.count()):
-                    if self.project_combo.itemData(i) == self.project_id:
-                        self.project_combo.setCurrentIndex(i)
-                        break
-            else:
-                # If no current project, select first actual project
-                if self.project_combo.count() > 2:
-                    self.project_combo.setCurrentIndex(2)
-
-            # Unblock signals
-            self.project_combo.blockSignals(False)
-
-            # Open project creation dialog
-            self._on_create_project_clicked()
-            return
-
-        # Normal project change handling
-        if new_project_id is None or new_project_id == self.project_id:
-            return
-
-        print(f"[GooglePhotosLayout] Project changed: {self.project_id} -> {new_project_id}")
-        self.project_id = new_project_id
-        self._last_load_signature = None  # invalidate on project change
-
-        # Update accordion sidebar with new project
-        if hasattr(self, 'accordion_sidebar'):
-            self.accordion_sidebar.set_project(new_project_id)
-
-        # Reload photos for the new project
-        self._load_photos()
 
     def set_project(self, project_id: int):
         """
@@ -10089,14 +9915,6 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
         # Reload photos for the new project
         self._load_photos()
 
-        # Update project combo box to match (if it exists)
-        if hasattr(self, 'project_combo'):
-            self.project_combo.blockSignals(True)
-            for i in range(self.project_combo.count()):
-                if self.project_combo.itemData(i) == project_id:
-                    self.project_combo.setCurrentIndex(i)
-                    break
-            self.project_combo.blockSignals(False)
 
     # ========== PHASE 3 Task 3.1: BaseLayout Interface Implementation ==========
 
