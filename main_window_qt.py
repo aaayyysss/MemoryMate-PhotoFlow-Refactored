@@ -1427,12 +1427,11 @@ class MainWindow(QMainWindow):
         # ----------------------------------------------------------
         try:
             layout = self.layout_manager.get_current_layout() if hasattr(self, 'layout_manager') else None
-            if layout and hasattr(layout, '_on_startup_ready'):
-                if self.active_project_id is not None:
-                    QTimer.singleShot(50, layout._on_startup_ready)
-                    print(f"[Startup] Scheduled _on_startup_ready for {type(layout).__name__}")
-                else:
-                    logger.info("[Startup] Suppressing initial project-bound layout load because no active project exists")
+            if layout and hasattr(layout, '_on_startup_ready') and self.active_project_id is not None:
+                QTimer.singleShot(50, layout._on_startup_ready)
+                print(f"[Startup] Scheduled _on_startup_ready for {type(layout).__name__}")
+            else:
+                logger.info("[Startup] Suppressing initial project-bound layout load because no active project exists")
         except Exception:
             pass
 
