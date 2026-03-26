@@ -948,6 +948,11 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(topbar)
 
         # --- UX-1 Search Chrome (keeps existing toolbar/mobile-sync area untouched)
+        self.search_shell_container = QWidget()
+        self.search_shell_layout = QVBoxLayout(self.search_shell_container)
+        self.search_shell_layout.setContentsMargins(0, 0, 0, 0)
+        self.search_shell_layout.setSpacing(0)
+
         self.top_search_bar = TopSearchBar(self)
         self.search_results_header = SearchResultsHeader(
             store=self.search_state_store,
@@ -959,15 +964,19 @@ class MainWindow(QMainWindow):
             parent=self
         )
 
-        main_layout.addWidget(self.top_search_bar)
+        self.search_shell_layout.addWidget(self.top_search_bar)
+        self.search_shell_layout.addWidget(self.search_results_header)
+        self.search_shell_layout.addWidget(self.active_chips_bar)
+
+        main_layout.addWidget(self.search_shell_container)
         self.top_search_bar.querySubmitted.connect(self.search_controller.submit_query)
         self.top_search_bar.queryChanged.connect(lambda text: self.search_controller.set_query_text(text, debounce=True))
         self.top_search_bar.searchCleared.connect(self.search_controller.clear_search)
         self.top_search_bar.recentQueryClicked.connect(self.search_controller.submit_query)
         self.top_search_bar.suggestionClicked.connect(self.search_controller.submit_query)
 
-        main_layout.addWidget(self.search_results_header)
-        main_layout.addWidget(self.active_chips_bar)
+        self.active_chips_bar.chipRemoved.connect(self.search_controller.remove_chip)
+        self.active_chips_bar.clearAllRequested.connect(self.search_controller.clear_search)
 
         # --- Main layout (Sidebar + Grid + Details)
         self.splitter = QSplitter(Qt.Horizontal)
@@ -3133,8 +3142,19 @@ class MainWindow(QMainWindow):
         """
         query_text = payload.get("query_text", "") or ""
         preset_id = payload.get("preset_id")
+        filters = payload.get("filters", {})
 
         try:
+            # Sync query text to 'query' chip if not using presets
+            if not preset_id:
+                state = self.search_state_store.get_state()
+                has_query_chip = any(c.get("kind") == "query" for c in state.active_chips)
+                if query_text and not has_query_chip:
+                    # Inject chip manually to keep shell in sync during free text search
+                    state.active_chips = [c for c in state.active_chips if c.get("kind") != "query"]
+                    state.active_chips.insert(0, {"kind": "query", "label": query_text, "value": query_text})
+                    self.search_state_store.stateChanged.emit(state)
+
             if preset_id and hasattr(self, "_execute_smart_find_preset"):
                 self._execute_smart_find_preset(preset_id)
                 result_paths = list(getattr(self.grid, "all_photo_paths", []) or [])
@@ -3150,21 +3170,6 @@ class MainWindow(QMainWindow):
             if query_text and hasattr(self, "_on_quick_search"):
                 self._on_quick_search(query_text)
                 result_paths = list(getattr(self.grid, "all_photo_paths", []) or [])
-
-                # UX-2A: Manually inject the 'query' chip if this was a quick search
-                state = self.search_state_store.get_state()
-                if query_text:
-                    state.active_chips = [
-                        chip for chip in state.active_chips
-                        if chip.get("kind") != "query"
-                    ]
-                    state.active_chips.insert(0, {
-                        "kind": "query",
-                        "label": query_text,
-                        "value": query_text,
-                    })
-                    self.search_state_store.stateChanged.emit(state)
-
                 self.search_controller.apply_result_summary(
                     result_paths=result_paths,
                     result_count=len(result_paths),
@@ -3174,6 +3179,7 @@ class MainWindow(QMainWindow):
                 )
                 return
 
+            # Default: no results
             self.search_controller.apply_result_summary(
                 result_paths=[],
                 result_count=0,
@@ -4864,7 +4870,26 @@ class MainWindow(QMainWindow):
             logger.warning("[MainWindow] CLIP upgrade prompt failed: %s", e)
 
     def _sync_ux2_widgets(self, state):
+        """Sync global SearchState into shell widgets."""
         if hasattr(self, "top_search_bar"):
             self.top_search_bar.set_recent_queries(getattr(state, "recent_queries", []))
             self.top_search_bar.set_suggestions(getattr(state, "suggestions", []))
             self.top_search_bar.set_enabled_for_project(state.has_active_project)
+
+        # Sync EmptyStateView actions back to MainWindow
+        layout = self.layout_manager.get_current_layout()
+        if layout and hasattr(layout, "empty_state"):
+            esv = layout.empty_state
+            try:
+                # Disconnect first to prevent duplicate connections
+                esv.actionRequested.disconnect()
+            except Exception:
+                pass
+            esv.actionRequested.connect(self._on_empty_state_action)
+
+    def _on_empty_state_action(self, action: str):
+        if action == "select_project":
+            if hasattr(self, "breadcrumb_nav"):
+                self.breadcrumb_nav._on_project_clicked()
+        elif action == "extract_embeddings":
+            self._on_extract_embeddings()

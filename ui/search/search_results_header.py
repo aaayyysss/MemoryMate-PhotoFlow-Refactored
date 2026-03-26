@@ -1,87 +1,74 @@
-from PySide6.QtWidgets import QWidget, QHBoxLayout, QLabel, QComboBox
-from shiboken6 import isValid
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import QWidget, QHBoxLayout, QLabel, QPushButton, QFrame
 
 
 class SearchResultsHeader(QWidget):
+    clearRequested = Signal()
+
     def __init__(self, store, controller=None, parent=None):
         super().__init__(parent)
         self.store = store
         self.controller = controller
+        self.setObjectName("SearchResultsHeader")
+        self.setFixedHeight(50)
 
+        self.layout = QHBoxLayout(self)
+        self.layout.setContentsMargins(16, 0, 16, 0)
+
+        # Left: Intent Summary
         self.lbl_summary = QLabel("All Photos")
-        self.lbl_count = QLabel("0 results")
+        self.lbl_summary.setStyleSheet("font-size: 18px; font-weight: 500; color: #202124;")
+        self.layout.addWidget(self.lbl_summary)
 
-        self.lbl_status = QLabel("")
-        self.lbl_status.setObjectName("SearchStatusBadge")
-        self.lbl_status.setVisible(False)
+        # Status Badge (Searching...)
+        self.badge_status = QLabel("Searching...")
+        self.badge_status.setStyleSheet("""
+            background: #fbbc04; color: black; border-radius: 10px;
+            padding: 2px 10px; font-size: 11px; font-weight: bold;
+        """)
+        self.badge_status.setVisible(False)
+        self.layout.addWidget(self.badge_status)
 
-        self.lbl_warning = QLabel("")
-        self.lbl_warning.setObjectName("SearchWarningBadge")
-        self.lbl_warning.setVisible(False)
+        self.layout.addStretch(1)
 
-        self.lbl_model = QLabel("")
-        self.lbl_model.setObjectName("SearchModelBadge")
-        self.lbl_model.setVisible(False)
+        # Model Warning Badge
+        self.badge_model = QLabel("⚠️ Low-tier model")
+        self.badge_model.setToolTip("Upgrade model in Tools > Extract Embeddings for better results.")
+        self.badge_model.setStyleSheet("""
+            background: #fce8e6; color: #c5221f; border-radius: 4px;
+            padding: 4px 8px; font-size: 11px;
+        """)
+        self.badge_model.setVisible(False)
+        self.layout.addWidget(self.badge_model)
 
-        self.cmb_sort = QComboBox()
-        self.cmb_sort.addItem("Relevance", "relevance")
-        self.cmb_sort.addItem("Newest", "newest")
-        self.cmb_sort.addItem("Oldest", "oldest")
-
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(10)
-        layout.addWidget(self.lbl_summary, 1)
-        layout.addWidget(self.lbl_count)
-        layout.addWidget(self.lbl_status)
-        layout.addWidget(self.lbl_warning)
-        layout.addWidget(self.lbl_model)
-        layout.addWidget(self.cmb_sort)
+        # Right: Count
+        self.lbl_count = QLabel("0 photos")
+        self.lbl_count.setStyleSheet("color: #5f6368; font-size: 13px;")
+        self.layout.addWidget(self.lbl_count)
 
         self.store.stateChanged.connect(self._on_state_changed)
-        self.cmb_sort.currentIndexChanged.connect(self._on_sort_changed)
 
     def _on_state_changed(self, state):
-        if not isValid(self):
-            return
-
+        # Update summary
         if state.onboarding_mode:
             self.lbl_summary.setText("No active project")
             self.lbl_count.setText("")
-            self.lbl_status.setVisible(False)
-            self.lbl_warning.setVisible(False)
-            self.lbl_model.setVisible(False)
-            return
-
-        if state.search_in_progress:
-            self.lbl_summary.setText(state.intent_summary or "Searching...")
-            self.lbl_status.setText("Searching")
-            self.lbl_status.setVisible(True)
+        elif state.preset_id:
+            self.lbl_summary.setText(f"Showing {state.preset_id.capitalize()}")
+        elif state.query_text:
+            self.lbl_summary.setText(f'Results for "{state.query_text}"')
+        elif state.active_filters:
+            self.lbl_summary.setText("Filtered Results")
         else:
-            self.lbl_summary.setText(state.intent_summary or "All Photos")
-            self.lbl_status.setVisible(False)
+            self.lbl_summary.setText("All Photos")
 
-        self.lbl_count.setText(f"{state.result_count} result(s)")
+        # Update count
+        if not state.onboarding_mode:
+            self.lbl_count.setText(f"{state.result_count:,} photo(s)")
 
-        warnings = list(getattr(state, "warnings", []) or [])
-        if warnings:
-            self.lbl_warning.setText(str(warnings[0]))
-            self.lbl_warning.setVisible(True)
-        else:
-            self.lbl_warning.setVisible(False)
+        # Update Searching badge
+        self.badge_status.setVisible(state.search_in_progress)
 
-        model_warning = getattr(state, "model_warning", "")
-        if model_warning:
-            self.lbl_model.setText(model_warning)
-            self.lbl_model.setVisible(True)
-        else:
-            self.lbl_model.setVisible(False)
-
-    def _on_sort_changed(self):
-        if not self.controller:
-            return
-
-        state = self.store.get_state()
-        state.sort_mode = self.cmb_sort.currentData()
-        self.store.stateChanged.emit(state)
-        self.controller.run_search()
+        # Update Model badge
+        self.badge_model.setText(state.model_warning or "⚠️ Low-tier model")
+        self.badge_model.setVisible(bool(state.model_warning))
