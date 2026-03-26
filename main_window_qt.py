@@ -978,7 +978,7 @@ class MainWindow(QMainWindow):
         if hasattr(self, "search_controller"):
             self.search_controller.set_active_project(default_pid)
 
-        self.search_state_store.stateChanged.connect(self._sync_ux2a_search_widgets)
+        self.search_state_store.stateChanged.connect(self._sync_ux2_widgets)
 
         self.sidebar = SidebarQt(project_id=default_pid)
 
@@ -4863,7 +4863,7 @@ class MainWindow(QMainWindow):
         except Exception as e:
             logger.warning("[MainWindow] CLIP upgrade prompt failed: %s", e)
 
-    def _sync_ux2a_search_widgets(self, state):
+    def _sync_ux2_widgets(self, state):
         if hasattr(self, "top_search_bar"):
             self.top_search_bar.set_recent_queries(getattr(state, "recent_queries", []))
             self.top_search_bar.set_suggestions(getattr(state, "suggestions", []))

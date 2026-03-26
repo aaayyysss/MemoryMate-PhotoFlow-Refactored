@@ -40,12 +40,15 @@ class SearchController(QObject):
 
         state = self.store.get_state()
         if text:
-            recent = [q for q in state.recent_queries if q.lower() != text.lower()]
+            recent = [q for q in state.recent_queries if str(q).lower() != text.lower()]
             recent.insert(0, text)
             recent = recent[:10]
             self.store.update(recent_queries=recent)
 
         self.run_search()
+
+    def clear_recent_queries(self):
+        self.store.update(recent_queries=[])
 
     def set_preset(self, preset_id: str):
         state = self.store.get_state()
@@ -123,12 +126,17 @@ class SearchController(QObject):
         family: Optional[str] = None,
         warnings=None,
     ):
-        model_warning = ""
+        state = self.store.get_state()
         warning_list = list(warnings or [])
+        model_warning = ""
 
         joined = " ".join(str(w) for w in warning_list).lower()
         if "clip-vit-large-patch14" in joined or "better model available" in joined:
             model_warning = "Better model available"
+
+        discover_counts = dict(state.discover_counts or {})
+        if state.preset_id:
+            discover_counts[state.preset_id] = result_count
 
         self.store.update(
             result_paths=result_paths or [],
@@ -137,6 +145,7 @@ class SearchController(QObject):
             family=family,
             warnings=warning_list,
             model_warning=model_warning,
+            discover_counts=discover_counts,
             search_in_progress=False,
             empty_state_reason=None if result_count > 0 else "no_results",
             intent_summary=self._build_intent_summary(),
