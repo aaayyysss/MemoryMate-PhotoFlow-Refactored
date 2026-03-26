@@ -18,6 +18,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PySide6.QtMultimediaWidgets import QVideoWidget
+from shiboken6 import isValid
 from .base_layout import BaseLayout
 from logging_config import get_logger
 
@@ -378,13 +379,18 @@ class GooglePhotosLayout(BaseLayout):
         if getattr(self, '_disposed', False):
             return
 
-        from shiboken6 import isValid
         if not isValid(self.results_stack) or not isValid(self.empty_state) or not isValid(self.timeline):
             logger.debug("[GooglePhotosLayout] Skipping SearchState update: UI objects already deleted")
             return
 
         # Handle empty/onboarding state via the proper set_state API
-        if state.onboarding_mode or state.empty_state_reason or (not state.result_paths and (state.query_text or state.preset_id)):
+        show_empty = (
+            state.onboarding_mode or
+            state.empty_state_reason or
+            (not state.result_paths and (state.query_text or state.preset_id or state.active_filters))
+        )
+
+        if show_empty:
             reason = state.empty_state_reason or ("no_project" if state.onboarding_mode else "no_results")
             self.empty_state.set_state(reason, getattr(state, "warnings", []))
             self.results_stack.setCurrentWidget(self.empty_state)
