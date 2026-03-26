@@ -410,23 +410,22 @@ class GooglePhotosLayout(BaseLayout):
             return
 
         # Handle empty state
-        if state.empty_state_reason:
-            self.empty_state.set_state(state.empty_state_reason)
+        if state.onboarding_mode:
+            self.empty_state.set_message("No active project")
+            self.results_stack.setCurrentWidget(self.empty_state)
+            return
+
+        if not state.result_paths and (state.query_text or state.preset_id):
+            self.empty_state.set_message("No matching photos")
             self.results_stack.setCurrentWidget(self.empty_state)
         else:
             self.results_stack.setCurrentWidget(self.timeline)
 
-        # UX-1: Syncing search box in layout is no longer needed as search is centralized in MainWindow
-
         # Trigger photo grid update if result paths changed
-        # We use a signature-based check to avoid redundant work
         sig = (tuple(state.result_paths), state.active_project_id)
         if getattr(self, "_last_result_sig", None) != sig:
             self._last_result_sig = sig
             if state.result_paths or not state.query_text:
-                # If we have results, or the search is empty (show all), reload timeline
-                # Note: We convert paths to Orchestrator-style ScoredResults if needed,
-                # but here we just pass them to the existing path-based loader.
                 self._load_photos(filter_paths=state.result_paths if state.query_text or state.preset_id else None)
 
     # ------------------------------------------------------------------
@@ -495,33 +494,6 @@ class GooglePhotosLayout(BaseLayout):
             }
         """)
 
-        # Project selector (compact, no label - Google Photos style)
-        from PySide6.QtWidgets import QComboBox, QLabel
-
-        self.project_combo = QComboBox()
-        self.project_combo.setMinimumWidth(150)
-        self.project_combo.setStyleSheet("""
-            QComboBox {
-                background: white;
-                border: 1px solid #dadce0;
-                border-radius: 4px;
-                padding: 6px 10px;
-                font-size: 10pt;
-            }
-            QComboBox:hover {
-                border-color: #bdc1c6;
-            }
-            QComboBox::drop-down {
-                border: none;
-            }
-        """)
-        self.project_combo.setToolTip("Select project to view")
-        toolbar.addWidget(self.project_combo)
-
-        # Populate project selector
-        self._populate_project_selector()
-
-        toolbar.addSeparator()
 
 
 
@@ -1109,6 +1081,7 @@ class GooglePhotosLayout(BaseLayout):
         placeholder = QWidget()
         placeholder.setMinimumWidth(0)
         placeholder.setMaximumWidth(0)
+        placeholder.setObjectName("SidebarPlaceholder")
         return placeholder
 
     def _create_timeline(self) -> QWidget:
