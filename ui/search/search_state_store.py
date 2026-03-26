@@ -37,6 +37,7 @@ class SearchState:
 
     recent_queries: List[str] = field(default_factory=list)
     suggestions: List[str] = field(default_factory=list)
+    discover_counts: Dict[str, int] = field(default_factory=dict)
     model_warning: str = ""
 
 

@@ -10,6 +10,7 @@ class SearchResultsHeader(QWidget):
 
         self.lbl_summary = QLabel("All Photos")
         self.lbl_count = QLabel("0 results")
+
         self.lbl_status = QLabel("")
         self.lbl_status.setObjectName("SearchStatusBadge")
         self.lbl_status.setVisible(False)
@@ -64,7 +65,7 @@ class SearchResultsHeader(QWidget):
 
         warnings = list(getattr(state, "warnings", []) or [])
         if warnings:
-            self.lbl_warning.setText(warnings[0])
+            self.lbl_warning.setText(str(warnings[0]))
             self.lbl_warning.setVisible(True)
         else:
             self.lbl_warning.setVisible(False)

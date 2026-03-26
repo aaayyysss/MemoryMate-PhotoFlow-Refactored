@@ -383,14 +383,10 @@ class GooglePhotosLayout(BaseLayout):
             logger.debug("[GooglePhotosLayout] Skipping SearchState update: UI objects already deleted")
             return
 
-        # Handle empty state
-        if state.onboarding_mode:
-            self.empty_state.set_message("No active project")
-            self.results_stack.setCurrentWidget(self.empty_state)
-            return
-
-        if not state.result_paths and (state.query_text or state.preset_id):
-            self.empty_state.set_message("No matching photos")
+        # Handle empty/onboarding state via the proper set_state API
+        if state.onboarding_mode or state.empty_state_reason or (not state.result_paths and (state.query_text or state.preset_id)):
+            reason = state.empty_state_reason or ("no_project" if state.onboarding_mode else "no_results")
+            self.empty_state.set_state(reason, getattr(state, "warnings", []))
             self.results_stack.setCurrentWidget(self.empty_state)
         else:
             self.results_stack.setCurrentWidget(self.timeline)
