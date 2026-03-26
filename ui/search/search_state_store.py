@@ -39,6 +39,8 @@ class SearchState:
     suggestions: List[str] = field(default_factory=list)
     discover_counts: Dict[str, int] = field(default_factory=dict)
     discover_previews: Dict[str, list] = field(default_factory=dict)
+    people_quick_items: List[Dict[str, Any]] = field(default_factory=list)
+    people_quick_loading: bool = False
     model_warning: str = ""
 
 
@@ -80,6 +82,7 @@ class SearchStateStore(QObject):
         self._state.discover_previews.clear()
         self._state.result_facets.clear()
         self._state.search_in_progress = False
+        self._state.people_quick_loading = False
         self._state.empty_state_reason = None if self._state.has_active_project else "no_project"
         self._state.suggestions.clear()
         self._state.model_warning = ""
