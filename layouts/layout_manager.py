@@ -36,10 +36,6 @@ class LayoutManager:
         self._current_layout: Optional[BaseLayout] = None
         self._current_layout_id: str = "current"
 
-        # CRITICAL: Store reference to original central widget
-        # This preserves the original layout when switching to other layouts
-        self._original_central_widget: Optional[QWidget] = None
-
         # Register built-in layouts
         self._register_builtin_layouts()
 
@@ -98,21 +94,7 @@ class LayoutManager:
             print(f"[LayoutManager] Already using layout: {layout_id}")
             return True
 
-        print(f"[LayoutManager] Switching layout: {self._current_layout_id} → {layout_id}")
-
-        # CRITICAL FIX v2: Use takeCentralWidget() to preserve the original widget
-        # This happens when switching AWAY from "current" layout for the first time
-        if self._original_central_widget is None and self._current_layout_id == "current":
-            # takeCentralWidget() removes the widget WITHOUT deleting it
-            # Transfers ownership to us, so Qt won't delete it when we set a new one
-            self._original_central_widget = self.main_window.takeCentralWidget()
-            print(f"[LayoutManager] 💾 Took ownership of original central widget: {type(self._original_central_widget).__name__}")
-        elif self._current_layout_id != "current" and layout_id != "current":
-            # Switching between placeholder layouts - remove current placeholder
-            old_widget = self.main_window.takeCentralWidget()
-            if old_widget:
-                old_widget.deleteLater()  # Clean up old placeholder
-                print(f"[LayoutManager] 🗑️ Removed old placeholder widget")
+        print(f"[LayoutManager] Switching layout: {self._current_layout_id} -> {layout_id}")
 
         # Save current layout state
         if self._current_layout:
@@ -130,23 +112,22 @@ class LayoutManager:
         # Create layout widget
         layout_widget = new_layout.create_layout()
 
-        # Handle layout switching in MainWindow
-        if layout_widget is not None:
-            # New layout provides its own widget (placeholder layouts)
-            print(f"[LayoutManager] Setting new central widget: {type(layout_widget).__name__}")
-            self.main_window.setCentralWidget(layout_widget)
-        else:
-            # Layout uses MainWindow's existing components (CurrentLayout)
-            # CRITICAL FIX v2: Restore the original central widget
-            if layout_id == "current" and self._original_central_widget is not None:
-                print(f"[LayoutManager] 🔄 Restoring original central widget: {type(self._original_central_widget).__name__}")
-                self.main_window.setCentralWidget(self._original_central_widget)
-                # Clear the reference since it's now owned by MainWindow again
-                self._original_central_widget = None
-            else:
-                # First initialization - widget is already set in MainWindow.__init__
-                print(f"[LayoutManager] Keeping existing central widget (first initialization)")
-                pass
+        # UX-1: Use QStackedWidget in MainWindow for layout switching
+        # Classic layout (CurrentLayout) is at index 0.
+        # Other layouts are added to/replaced at index 1.
+        if layout_id == "current":
+            self.main_window.layout_stack.setCurrentIndex(0)
+            print("[LayoutManager] Switched to classic layout (index 0)")
+        elif layout_widget is not None:
+            # Remove previous non-classic layout widget if exists
+            if self.main_window.layout_stack.count() > 1:
+                old_w = self.main_window.layout_stack.widget(1)
+                self.main_window.layout_stack.removeWidget(old_w)
+                old_w.deleteLater()
+
+            self.main_window.layout_stack.addWidget(layout_widget)
+            self.main_window.layout_stack.setCurrentIndex(1)
+            print(f"[LayoutManager] Set active layout widget at index 1: {type(layout_widget).__name__}")
 
         # Update current layout
         self._current_layout = new_layout

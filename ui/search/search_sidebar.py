@@ -73,6 +73,7 @@ class SearchSidebar(QWidget):
 
         self.discover_section.update_counts(getattr(state, "discover_counts", {}))
         self.discover_section.set_active_preset(getattr(state, "preset_id", None))
+        self.discover_section.update_previews(getattr(state, "discover_previews", {}))
 
         self.filter_section.set_active_filters(getattr(state, "active_filters", {}))
         self.filter_section.update_facets(getattr(state, "result_facets", {}))

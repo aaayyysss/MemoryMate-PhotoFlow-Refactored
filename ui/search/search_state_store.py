@@ -38,6 +38,7 @@ class SearchState:
     recent_queries: List[str] = field(default_factory=list)
     suggestions: List[str] = field(default_factory=list)
     discover_counts: Dict[str, int] = field(default_factory=dict)
+    discover_previews: Dict[str, list] = field(default_factory=dict)
     model_warning: str = ""
 
 
@@ -76,6 +77,7 @@ class SearchStateStore(QObject):
         self._state.active_chips.clear()
         self._state.result_paths.clear()
         self._state.result_count = 0
+        self._state.discover_previews.clear()
         self._state.result_facets.clear()
         self._state.search_in_progress = False
         self._state.empty_state_reason = None if self._state.has_active_project else "no_project"
