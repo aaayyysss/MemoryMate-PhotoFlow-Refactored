@@ -41,6 +41,7 @@ class SearchState:
     discover_previews: Dict[str, list] = field(default_factory=dict)
     people_quick_items: List[Dict[str, Any]] = field(default_factory=list)
     people_quick_loading: bool = False
+    people_quick_payload: Dict[str, Any] = field(default_factory=dict)
     browse_mode: Optional[str] = None
     activity_snapshot: Dict[str, Any] = field(default_factory=dict)
     model_warning: str = ""

@@ -117,6 +117,9 @@ class SearchController(QObject):
     def set_people_quick_loading(self, loading: bool):
         self.store.update(people_quick_loading=bool(loading))
 
+    def set_people_quick_payload(self, payload: dict):
+        self.store.update(people_quick_payload=dict(payload or {}))
+
     def apply_browse_mode(self, browse_key: str, value):
         state = self.store.get_state()
 
