@@ -1,9 +1,10 @@
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QWidget, QHBoxLayout, QLabel, QPushButton, QFrame
+from PySide6.QtWidgets import QWidget, QHBoxLayout, QLabel, QPushButton, QFrame, QComboBox
 
 
 class SearchResultsHeader(QWidget):
     clearRequested = Signal()
+    sortChanged = Signal(str)
 
     def __init__(self, store, controller=None, parent=None):
         super().__init__(parent)
@@ -32,7 +33,7 @@ class SearchResultsHeader(QWidget):
         self.layout.addStretch(1)
 
         # Model Warning Badge
-        self.badge_model = QLabel("⚠️ Low-tier model")
+        self.badge_model = QLabel("Low-tier model")
         self.badge_model.setToolTip("Upgrade model in Tools > Extract Embeddings for better results.")
         self.badge_model.setStyleSheet("""
             background: #fce8e6; color: #c5221f; border-radius: 4px;
@@ -40,6 +41,17 @@ class SearchResultsHeader(QWidget):
         """)
         self.badge_model.setVisible(False)
         self.layout.addWidget(self.badge_model)
+
+        # Sort Selector
+        self.sort_combo = QComboBox()
+        self.sort_combo.addItem("Relevance", "relevance")
+        self.sort_combo.addItem("Date (Newest)", "date_desc")
+        self.sort_combo.addItem("Date (Oldest)", "date_asc")
+        self.sort_combo.addItem("Name", "name")
+        self.sort_combo.setFixedWidth(140)
+        self.sort_combo.setStyleSheet("QComboBox { font-size: 12px; }")
+        self.sort_combo.currentIndexChanged.connect(self._on_sort_changed)
+        self.layout.addWidget(self.sort_combo)
 
         # Right: Count
         self.lbl_count = QLabel("0 photos")
@@ -71,3 +83,18 @@ class SearchResultsHeader(QWidget):
             self.lbl_summary.setText(state.intent_summary or "All Photos")
 
         self.lbl_count.setText(f"{state.result_count} result(s)")
+
+        # Sync sort selector without re-triggering signal
+        current_sort = getattr(state, "sort_mode", "relevance")
+        idx = self.sort_combo.findData(current_sort)
+        if idx >= 0 and idx != self.sort_combo.currentIndex():
+            self.sort_combo.blockSignals(True)
+            self.sort_combo.setCurrentIndex(idx)
+            self.sort_combo.blockSignals(False)
+
+    def _on_sort_changed(self, index: int):
+        sort_mode = self.sort_combo.itemData(index)
+        if sort_mode:
+            self.sortChanged.emit(sort_mode)
+            if self.controller and hasattr(self.controller, "apply_sort"):
+                self.controller.apply_sort(sort_mode)

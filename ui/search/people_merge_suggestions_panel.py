@@ -1,4 +1,4 @@
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Signal, Qt
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QListWidget, QListWidgetItem,
     QPushButton, QHBoxLayout, QDialog, QDialogButtonBox
@@ -44,21 +44,21 @@ class PeopleMergeSuggestionsPanel(QWidget):
             title = item.get("label") or f"{left_id} ↔ {right_id}  (score={score_txt})"
 
             list_item = QListWidgetItem(title)
-            list_item.setData(256, (left_id, right_id))
+            list_item.setData(Qt.UserRole, (left_id, right_id))
             self.list_widget.addItem(list_item)
 
     def _accept_selected(self):
         item = self.list_widget.currentItem()
         if not item:
             return
-        left_id, right_id = item.data(256)
+        left_id, right_id = item.data(Qt.UserRole)
         self.mergeAccepted.emit(left_id, right_id)
 
     def _reject_selected(self):
         item = self.list_widget.currentItem()
         if not item:
             return
-        left_id, right_id = item.data(256)
+        left_id, right_id = item.data(Qt.UserRole)
         self.mergeRejected.emit(left_id, right_id)
 
 

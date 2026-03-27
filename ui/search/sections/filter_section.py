@@ -21,6 +21,9 @@ class FilterSection(QGroupBox):
         self.btn_clear.clicked.connect(self.clearAllFiltersRequested.emit)
         self.layout.addWidget(self.btn_clear)
 
+        # UX Rule 3: hidden until a search/preset is active
+        self.setVisible(False)
+
     def _build_facets(self):
         self.facets = {}
         facet_configs = [
@@ -62,7 +65,8 @@ class FilterSection(QGroupBox):
             }
 
     def set_facets(self, result_facets: dict, active_filters: dict):
-        """Update facet options and counts based on search results."""
+        """Update facet options and counts based on search results.
+        Visibility is controlled by SearchSidebar per UX Rule 3."""
         self.set_active_filters(active_filters)
 
     def set_active_filters(self, active_filters: dict):

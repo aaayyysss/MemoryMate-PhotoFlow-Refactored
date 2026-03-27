@@ -1,4 +1,4 @@
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Signal, Qt
 from PySide6.QtWidgets import QWidget, QHBoxLayout, QPushButton, QScrollArea, QFrame
 
 
@@ -16,8 +16,8 @@ class ActiveChipsBar(QWidget):
 
         self.scroll = QScrollArea()
         self.scroll.setWidgetResizable(True)
-        self.scroll.setHorizontalScrollBarPolicy(self.scroll.horizontalScrollBarPolicy().ScrollBarAlwaysOff)
-        self.scroll.setVerticalScrollBarPolicy(self.scroll.verticalScrollBarPolicy().ScrollBarAlwaysOff)
+        self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.scroll.setFrameShape(QFrame.NoFrame)
 
         self.content = QWidget()

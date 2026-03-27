@@ -529,14 +529,14 @@ class SimilarPhotoDetectionDialog(QDialog):
                 params=(self.project_id,)
             )
 
-            # Query photo_embedding table directly for accurate count
-            # (embeddings are stored here by DuplicateDetectionWorker)
+            # Query semantic_embeddings table (v7+ canonical table)
+            # Falls back to photo_embedding (v6 legacy) if needed
             with db_conn.get_connection() as conn:
                 cursor = conn.execute("""
-                    SELECT COUNT(DISTINCT pe.photo_id) as cnt
-                    FROM photo_embedding pe
-                    JOIN photo_metadata p ON pe.photo_id = p.id
-                    WHERE p.project_id = ? AND pe.embedding_type = 'visual_semantic'
+                    SELECT COUNT(DISTINCT se.photo_id) as cnt
+                    FROM semantic_embeddings se
+                    JOIN photo_metadata p ON se.photo_id = p.id
+                    WHERE p.project_id = ?
                 """, (self.project_id,))
                 row = cursor.fetchone()
                 photos_with_embeddings = row['cnt'] if row else 0

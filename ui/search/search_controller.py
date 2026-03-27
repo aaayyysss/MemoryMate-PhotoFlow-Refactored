@@ -180,6 +180,11 @@ class SearchController(QObject):
     def set_activity_snapshot(self, activity: dict):
         self.store.update(activity_snapshot=dict(activity or {}))
 
+    def apply_sort(self, sort_mode: str):
+        """User changed the sort order in the results header."""
+        self.store.update(sort_mode=sort_mode)
+        self._do_search()
+
     def remove_chip(self, kind: str, value: Any):
         """User removed a chip from the ActiveChipsBar."""
         state = self.store.get_state()
@@ -193,13 +198,14 @@ class SearchController(QObject):
             self.store.update(active_people=active_people)
             self._update_chips_from_filters()
         elif kind == "browse":
-            self.store.update(browse_mode=None)
+            filters = dict(state.active_filters)
             if value == "favorites":
-                state.active_filters.pop("favorites_only", None)
+                filters.pop("favorites_only", None)
             elif value == "videos":
-                state.active_filters.pop("media_type", None)
+                filters.pop("media_type", None)
             elif value == "with_location":
-                state.active_filters.pop("with_location", None)
+                filters.pop("with_location", None)
+            self.store.update(browse_mode=None, active_filters=filters)
             self._update_chips_from_filters()
         else:
             filters = dict(state.active_filters)
@@ -294,6 +300,9 @@ class SearchController(QObject):
             "preset_id": state.preset_id,
             "filters": state.active_filters,
             "active_people": state.active_people,
+            "sort_mode": state.sort_mode,
+            "browse_mode": state.browse_mode,
+            "search_mode": state.search_mode,
         }
         self.searchRequested.emit(payload)
 

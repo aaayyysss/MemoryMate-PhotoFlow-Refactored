@@ -62,11 +62,18 @@ class ThumbCacheDB:
                 width INTEGER,
                 height INTEGER,
                 hash TEXT,
-                data BLOB
+                data BLOB,
+                cached_at REAL
             )
         """)
-        
+
         self.conn.execute("CREATE INDEX IF NOT EXISTS idx_thumb_mtime ON thumbnail_cache(mtime)")
+        # Add cached_at column if missing (upgrade path for existing DBs)
+        try:
+            self.conn.execute("ALTER TABLE thumbnail_cache ADD COLUMN cached_at REAL")
+        except Exception:
+            pass  # column already exists
+        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_thumb_cached_at ON thumbnail_cache(cached_at)")
         self.conn.commit()
 
     # -------------------------------------------------------
@@ -183,9 +190,9 @@ class ThumbCacheDB:
             blob_bytes = bytes(data) if isinstance(data, (bytes, bytearray)) else data.data()
             with self.lock:
                 self.conn.execute("""
-                    INSERT OR REPLACE INTO thumbnail_cache (path, mtime, width, height, hash, data)
-                    VALUES (?,?,?,?,?,?)
-                """, (npath, float(mtime or 0.0), int(img.width()), int(img.height()), hsh, sqlite3.Binary(blob_bytes)))
+                    INSERT OR REPLACE INTO thumbnail_cache (path, mtime, width, height, hash, data, cached_at)
+                    VALUES (?,?,?,?,?,?,?)
+                """, (npath, float(mtime or 0.0), int(img.width()), int(img.height()), hsh, sqlite3.Binary(blob_bytes), time.time()))
                 self.conn.commit()
 
             self.metrics["stores"] += 1
@@ -213,7 +220,12 @@ class ThumbCacheDB:
             cutoff = time.time() - max_age_days * 86400
             with self.lock:
                 cur = self.conn.cursor()
-                cur.execute("DELETE FROM thumbnail_cache WHERE mtime < ?", (cutoff,))
+                # Use cached_at (insertion time) for staleness, not file mtime.
+                # Fall back to mtime for rows without cached_at (pre-upgrade).
+                cur.execute(
+                    "DELETE FROM thumbnail_cache WHERE COALESCE(cached_at, mtime) < ?",
+                    (cutoff,),
+                )
                 n = cur.rowcount
                 self.conn.commit()
             if n:
