@@ -811,6 +811,101 @@ class PeopleSection(BaseSection):
             except Exception:
                 logger.debug("[PeopleSection] Audit trail write failed", exc_info=True)
 
+    def get_unnamed_cluster_payloads(self):
+        """
+        UX-10C: build structured payloads for unnamed-cluster review dialog,
+        including candidate named people for assignment.
+        """
+        try:
+            db = getattr(self, "_parent_db", None)
+            pid = getattr(self, "project_id", None)
+            if not db or not pid:
+                return []
+
+            with db._connect() as conn:
+                cur = conn.cursor()
+                cur.execute("""
+                    SELECT branch_key, label, count, rep_path, rep_thumb_png
+                    FROM face_branch_reps
+                    WHERE project_id = ?
+                    ORDER BY count DESC
+                """, (pid,))
+                rows = cur.fetchall() or []
+
+            named_candidates = []
+            unnamed_clusters = []
+
+            for row in rows:
+                branch_key, label, count, rep_path, rep_thumb = row
+                label_str = str(label or branch_key)
+                entry = {
+                    "id": str(branch_key),
+                    "label": label_str,
+                    "count": int(count or 0),
+                    "rep_path": rep_path,
+                }
+                if label_str.lower().startswith("face_") or "unnamed" in label_str.lower():
+                    unnamed_clusters.append(entry)
+                else:
+                    named_candidates.append(entry)
+
+            named_candidates = sorted(named_candidates, key=lambda x: x["count"], reverse=True)[:10]
+
+            payloads = []
+            for cluster in unnamed_clusters[:12]:
+                payloads.append({
+                    "cluster_id": cluster["id"],
+                    "label": f"Unnamed Cluster {cluster['id']}",
+                    "samples": [cluster.get("rep_path", cluster["id"])],
+                    "candidate_people": named_candidates,
+                })
+
+            return payloads
+
+        except Exception:
+            logger.debug("[PeopleSection] get_unnamed_cluster_payloads error", exc_info=True)
+            return []
+
+    def assign_unnamed_cluster(self, cluster_id: str, target_person_id: str):
+        """UX-10C: merge unnamed cluster into a named person via face_clusters merge."""
+        db = getattr(self, "_parent_db", None)
+        pid = getattr(self, "project_id", None)
+        logger.info("[PeopleSection] Assign unnamed %s -> %s", cluster_id, target_person_id)
+
+        if db and pid:
+            try:
+                db.merge_face_clusters(pid, target_branch=target_person_id, source_branches=[cluster_id])
+                logger.info("[PeopleSection] Unnamed cluster assigned: %s -> %s", cluster_id, target_person_id)
+            except Exception:
+                logger.warning("[PeopleSection] assign_unnamed_cluster failed", exc_info=True)
+
+            try:
+                db.save_people_merge_review(cluster_id, target_person_id, "assigned")
+            except Exception:
+                pass
+
+    def keep_unnamed_cluster_separate(self, cluster_id: str):
+        """UX-10C: mark unnamed cluster as intentionally separate."""
+        db = getattr(self, "_parent_db", None)
+        logger.info("[PeopleSection] Keep unnamed separate: %s", cluster_id)
+
+        if db:
+            try:
+                db.save_people_merge_review(cluster_id, "__separate__", "keep_separate")
+            except Exception:
+                pass
+
+    def ignore_unnamed_cluster(self, cluster_id: str):
+        """UX-10C: ignore unnamed cluster for now (skip in future reviews)."""
+        db = getattr(self, "_parent_db", None)
+        logger.info("[PeopleSection] Ignore unnamed: %s", cluster_id)
+
+        if db:
+            try:
+                db.save_people_merge_review(cluster_id, "__ignored__", "ignored")
+            except Exception:
+                pass
+
     def set_db(self, db):
         """Store DB reference for passing to GroupsSection."""
         self._parent_db = db
