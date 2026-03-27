@@ -129,6 +129,22 @@ class SearchController(QObject):
     def set_unnamed_review_payload(self, payload: dict):
         self.store.update(unnamed_review_payload=dict(payload or {}))
 
+    def set_merge_review_payloads(self, payloads):
+        self.store.update(merge_review_payloads=list(payloads or []))
+
+    def set_unnamed_cluster_payloads(self, payloads):
+        self.store.update(unnamed_cluster_payloads=list(payloads or []))
+
+    def set_selected_result_ids(self, ids_):
+        self.store.update(selected_result_ids=list(ids_ or []))
+
+    def refresh_status(self):
+        """UX-10F: refresh derived state without re-running search."""
+        self.store.update(
+            family=self._infer_family(),
+            intent_summary=self._build_intent_summary(),
+        )
+
     def apply_browse_mode(self, browse_key: str, value):
         state = self.store.get_state()
 

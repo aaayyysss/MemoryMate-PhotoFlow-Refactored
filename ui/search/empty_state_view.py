@@ -51,33 +51,45 @@ class EmptyStateView(QWidget):
 
     def set_state(self, reason: str, warnings=None):
         """
-        Full empty-state handler covering all UX design scenarios:
+        UX-10A full empty-state handler:
         - no_project: no project loaded
         - no_results: search returned nothing
-        - loading: search in progress
-        - indexing_in_progress: background indexing running
+        - loading: search in progress (previous results may remain visible)
+        - indexing / indexing_in_progress: background indexing running
         - embeddings_missing: embeddings not yet extracted
         - face_clustering_incomplete: face pipeline still running
         """
+        warnings = list(warnings or [])
         self.hint_label.setVisible(False)
         self.action_btn.setVisible(False)
         self._pending_action = ""
 
         if reason == "no_project":
             self.set_message("No active project")
-            self._show_hint("Open or create a project to start browsing photos.")
-            self._show_action("Select Project", "select_project")
+            self._show_hint("Create or select a project to begin browsing and searching.")
+            self._show_action("Select Project", "create_or_select_project")
 
         elif reason == "loading":
-            self.set_message("Searching...")
+            self.set_message("Searching")
+            self._show_hint(
+                "Preparing refined results. Previous results may remain "
+                "visible while the new result set is computed."
+            )
 
         elif reason == "no_results":
+            extra = f"\n\n{warnings[0]}" if warnings else ""
             self.set_message("No results found")
-            self._show_hint("Try different keywords, remove filters, or browse a different category.")
+            self._show_hint(
+                "No matches were found. Try a broader query, remove some "
+                "filters, review People merges, or switch presets." + extra
+            )
 
-        elif reason == "indexing_in_progress":
-            self.set_message("Indexing in progress...")
-            self._show_hint("Photos are being scanned. Results will improve as indexing completes.")
+        elif reason in ("indexing", "indexing_in_progress"):
+            self.set_message("Indexing in progress")
+            self._show_hint(
+                "Background indexing is still running. Results may "
+                "improve as processing completes."
+            )
 
         elif reason == "embeddings_missing":
             self.set_message("Semantic search unavailable")

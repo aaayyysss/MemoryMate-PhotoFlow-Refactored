@@ -380,7 +380,7 @@ class GooglePhotosLayout(BaseLayout):
             self.search_state_store.stateChanged.connect(self._on_search_state_changed)
 
     def _on_search_state_changed(self, state):
-        """Respond to global SearchState changes."""
+        """UX-10A: respond to global SearchState changes with stable transitions."""
         try:
             if getattr(self, '_disposed', False):
                 return
@@ -389,34 +389,41 @@ class GooglePhotosLayout(BaseLayout):
                 logger.debug("[GooglePhotosLayout] Skipping SearchState update: UI objects already deleted")
                 return
 
+            displayed_paths = list(getattr(self, "_last_displayed_paths", []) or [])
+            result_paths = list(getattr(state, "result_paths", []) or [])
+            search_in_progress = bool(getattr(state, "search_in_progress", False))
+
             # Onboarding / no project
             if getattr(state, "onboarding_mode", False):
                 self._show_empty_state("no_project", getattr(state, "warnings", []))
                 return
 
-            # Explicit loading/indexing states
-            if getattr(state, "search_in_progress", False):
-                self._show_empty_state("loading", getattr(state, "warnings", []))
+            # UX-10A: during search, keep existing results visible for stable transition
+            if search_in_progress:
+                if displayed_paths:
+                    self._show_results_surface()
+                else:
+                    self._show_empty_state("loading", getattr(state, "warnings", []))
                 return
 
-            if getattr(state, "indexing_in_progress", False):
+            if getattr(state, "indexing_in_progress", False) and not result_paths:
                 self._show_empty_state("indexing", getattr(state, "warnings", []))
                 return
 
             # Missing embeddings warning path
             if not getattr(state, "embeddings_ready", True):
                 reason = getattr(state, "empty_state_reason", None)
-                if reason == "embeddings_missing":
+                if reason == "embeddings_missing" and not result_paths:
                     self._show_empty_state("embeddings_missing", getattr(state, "warnings", []))
                     return
 
-            result_paths = list(getattr(state, "result_paths", []) or [])
             if not result_paths:
                 self._show_empty_state(getattr(state, "empty_state_reason", None) or "no_results",
                                     getattr(state, "warnings", []))
                 return
 
             self._show_results_surface()
+            self._last_displayed_paths = result_paths
 
             # Trigger photo grid update if result paths changed
             sig = (tuple(state.result_paths), state.active_project_id)

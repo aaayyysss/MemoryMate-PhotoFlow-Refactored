@@ -4,6 +4,63 @@ All notable changes to the MemoryMate PhotoFlow search pipeline are documented h
 
 ## [Unreleased] - 2026-03-27
 
+### UX-10 (A-F): Result Pane Polish, Review Workflows, Stable Transitions
+
+Makes the result experience feel product-grade with stable transitions, richer review
+workflows, and clearer "why these results" explanations aligned with Google Photos / Lightroom.
+
+#### UX-10A: Result Pane Structure Polish
+- **New**: `ui/search/result_context_bar.py` — explanation + scope labels between header and grid
+- Upgraded `search_results_header.py`: warning badge, selection indicator label,
+  explanation line, isValid guard, cleaner layout (QVBoxLayout top/bottom rows)
+- Upgraded `empty_state_view.py`: stable loading state keeps previous results described,
+  cleaner "indexing" alias, richer no-results hint mentioning People merges
+- `google_layout.py`: during search_in_progress, keeps existing results visible instead of
+  flashing empty state (stable transitions via `_last_displayed_paths` tracking)
+
+#### UX-10B: Side-by-Side People Comparison (text-based companion)
+- **New**: `ui/search/people_comparison_dialog.py` — lightweight text-list comparison dialog
+  for cluster sample review (complements UX-9B's thumbnail-based PersonComparisonDialog)
+
+#### UX-10C: Unnamed Cluster Review Workflow
+- **New**: `ui/search/unnamed_cluster_review_dialog.py` — assign to existing person,
+  keep as separate person, or ignore for now (fixed magic number 256 → Qt.UserRole)
+- `get_unnamed_cluster_payloads()` in people_section.py — builds structured payloads
+  with candidate named people for assignment
+- `assign_unnamed_cluster()` executes `merge_face_clusters()` to merge into named person
+- `keep_unnamed_cluster_separate()` + `ignore_unnamed_cluster()` persist decisions to DB
+- `_open_unnamed_cluster_review()` in main_window_qt.py launches the dialog
+- `_assign_unnamed_cluster()`, `_keep_unnamed_cluster_separate()`,
+  `_ignore_unnamed_cluster()` — MainWindow bridge handlers
+
+#### UX-10D/E/F: State, Controller, and Refresh Enhancements
+- SearchState: added `selected_result_ids`, `merge_review_payloads`, `unnamed_cluster_payloads`
+  (selected_result_ids clears on clear_search; review payloads persist)
+- SearchController: `set_merge_review_payloads()`, `set_unnamed_cluster_payloads()`,
+  `set_selected_result_ids()`, `refresh_status()` for review-state-safe refreshes
+- `_refresh_people_quick_section()` upgraded to extract and populate all review payloads
+
+#### Design Decisions (UX-9 preserved, not downgraded)
+- Kept UX-9A centroid-based `get_merge_suggestions()` (spec wanted weaker heuristic)
+- Kept UX-9A DB-persisting accept/reject (spec wanted print stubs)
+- Kept UX-9B PersonComparisonDialog queue-based review (spec wanted text-only)
+- Added UX-10 features additively on top of UX-9 foundation
+
+#### Files Changed
+- `ui/search/result_context_bar.py` (new — UX-10A)
+- `ui/search/people_comparison_dialog.py` (new — UX-10B)
+- `ui/search/unnamed_cluster_review_dialog.py` (new — UX-10C)
+- `ui/search/search_state_store.py` (UX-10D)
+- `ui/search/search_controller.py` (UX-10D)
+- `ui/search/search_results_header.py` (UX-10A)
+- `ui/search/empty_state_view.py` (UX-10A)
+- `ui/accordion_sidebar/people_section.py` (UX-10C)
+- `main_window_qt.py` (UX-10C/F)
+- `layouts/google_layout.py` (UX-10A)
+- `CHANGELOG.md`
+
+---
+
 ### UX-9 (A+B+C+D): People Merge Intelligence, Side-by-Side Review, Unnamed Clusters, Facet Quality
 
 Complete UX-9 patch pack implementing real merge intelligence, side-by-side person comparison,
