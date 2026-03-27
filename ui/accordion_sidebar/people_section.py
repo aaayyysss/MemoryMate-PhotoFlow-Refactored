@@ -498,11 +498,11 @@ class PeopleSection(BaseSection):
 
     def get_people_quick_payload(self):
         """
-        UX-7A adapter for the centralized search shell.
+        UX-8A adapter for the centralized search shell.
         Returns:
         - top identities
         - suspicious merge-review count
-        - recent unnamed cluster count
+        - unnamed cluster count
         """
         try:
             payload = {
@@ -538,12 +538,11 @@ class PeopleSection(BaseSection):
             payload["top_people"] = top_people[:8]
             payload["unnamed_count"] = unnamed_count
 
-            # Lightweight heuristic until full merge-review logic exists
+            # Lightweight merge candidate heuristic
             merge_candidates = 0
             counts = [x.get("count", 0) for x in top_people[:20]]
             if len(counts) >= 2:
-                small_clusters = [c for c in counts if c <= 3]
-                merge_candidates = len(small_clusters)
+                merge_candidates = len([c for c in counts if c <= 3])
 
             payload["merge_candidates"] = merge_candidates
             return payload
@@ -554,6 +553,58 @@ class PeopleSection(BaseSection):
                 "merge_candidates": 0,
                 "unnamed_count": 0,
             }
+
+    def get_merge_suggestions(self):
+        """
+        UX-8A lightweight merge suggestion adapter.
+        Returns a list of possible cluster pairs for review.
+        """
+        try:
+            suggestions = []
+            source = getattr(self, "_all_data", None) or getattr(self, "people_data", None) or getattr(self, "clusters", None) or []
+
+            normalized = []
+            for item in list(source):
+                if not isinstance(item, dict):
+                    continue
+                pid = item.get("branch_key") or item.get("id") or item.get("person_id") or item.get("label")
+                label = item.get("display_name") or item.get("label") or item.get("name") or str(pid)
+                count = int(item.get("member_count", 0) or item.get("count", 0))
+                if pid is not None:
+                    normalized.append({
+                        "id": str(pid),
+                        "label": str(label),
+                        "count": count,
+                    })
+
+            normalized = sorted(normalized, key=lambda x: x["count"])
+
+            for i in range(min(len(normalized) - 1, 8)):
+                left = normalized[i]
+                right = normalized[i + 1]
+
+                if left["id"] == right["id"]:
+                    continue
+
+                # lightweight heuristic only
+                if left["count"] <= 3 and right["count"] <= 5:
+                    suggestions.append({
+                        "left_id": left["id"],
+                        "right_id": right["id"],
+                        "score": 0.55,
+                        "label": f"{left['label']} <-> {right['label']} (small clusters)",
+                    })
+
+            return suggestions
+
+        except Exception:
+            return []
+
+    def accept_merge_suggestion(self, left_id: str, right_id: str):
+        print(f"[PeopleSection] Accept merge suggestion: {left_id} + {right_id}")
+
+    def reject_merge_suggestion(self, left_id: str, right_id: str):
+        print(f"[PeopleSection] Reject merge suggestion: {left_id} + {right_id}")
 
     def set_db(self, db):
         """Store DB reference for passing to GroupsSection."""
