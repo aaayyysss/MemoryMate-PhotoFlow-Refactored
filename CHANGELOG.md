@@ -2,6 +2,88 @@
 
 All notable changes to the MemoryMate PhotoFlow search pipeline are documented here.
 
+## [Unreleased] - 2026-03-27
+
+### UX-8 Audit: Bug Fixes, Design Compliance, and Missing Features
+
+Comprehensive audit of the UX-1 through UX-8 implementation against the design specification,
+app_log.txt test-run analysis, and Google Photos / Lightroom / Excire UX best practices.
+
+#### Critical Bug Fixes (from app_log.txt analysis)
+
+- **Duplicate Viewer Crash**: `AssetRepository.list_duplicate_assets()` now accepts `limit` and `offset`
+  parameters, fixing the `TypeError` that completely broke the duplicate photo viewer.
+- **Similar Photo Dialog Crash**: Fixed `sqlite3.OperationalError: no such table: photo_embedding` by
+  updating `similar_photo_dialog.py` to query the canonical `semantic_embeddings` table (v7+) instead
+  of the legacy `photo_embedding` table (v6).
+- **Thumbnail Cache False Purges**: `ThumbCacheDB.purge_stale()` was comparing file modification times
+  against a 30-day cutoff, causing freshly-cached thumbnails of older photos to be immediately purged.
+  Added `cached_at` column and use insertion time for staleness decisions.
+
+#### UX Signal Wiring Fixes
+
+- **SearchSidebar Disconnected Signals**: `SearchSidebar.selectBranch` and
+  `openActivityCenterRequested` signals were never connected in `MainWindow`, making People merge
+  review, unnamed clusters, and Activity Center sidebar buttons completely non-functional. Now wired
+  to `_handle_search_sidebar_branch_request` and `_open_activity_center_from_sidebar`.
+- **ActiveChipsBar ScrollBarPolicy**: Fixed `AttributeError` caused by calling
+  `.ScrollBarAlwaysOff` on an enum return value instead of using `Qt.ScrollBarAlwaysOff` directly.
+
+#### UX Rule 3 Compliance: Contextual Filter Visibility
+
+- **FilterSection** now starts hidden and only appears when a search query, preset, browse mode,
+  or active filters exist. This follows the design principle "do not show every filter all the time"
+  and matches Google Photos / Lightroom behavior where refinements appear contextually.
+
+#### SearchHubSection: Emoji Prefix Leak Fix
+
+- Recent search and suggestion items stored clean text in `Qt.UserRole` but click handlers
+  extracted the display text (with emoji prefix like "🕒 beach"). Fixed to use `UserRole` data,
+  preventing corrupted search queries.
+
+#### Missing Features Implemented
+
+- **Sort Selector**: `SearchResultsHeader` now includes a sort dropdown (Relevance, Date Newest/Oldest,
+  Name) with full state store integration via `SearchController.apply_sort()`. Matches the design spec
+  and aligns with Lightroom/Excire sort-in-header pattern.
+- **EmptyStateView Complete States**: Expanded from 3 states to 6 per the design specification:
+  - `no_project` - with action button to select project
+  - `no_results` - with hint to try different keywords
+  - `loading` - searching indicator
+  - `indexing_in_progress` - scan progress messaging
+  - `embeddings_missing` - with action button to extract embeddings
+  - `face_clustering_incomplete` - clustering progress messaging
+- **Search Payload Completeness**: `SearchController.run_search()` payload now includes `sort_mode`,
+  `browse_mode`, and `search_mode` for downstream consumers.
+
+#### UX-8 Design Audit Findings
+
+The following design aspects from the UX spec are verified as correctly implemented:
+- SearchStateStore canonical state with 48 fields covering all search dimensions
+- SearchController as sole state mutator with debounced search
+- TopSearchBar with popup for recent/suggestions, project-aware enable/disable
+- DiscoverSection with SmartFindCard visual cards, active state, counts, previews
+- PeopleQuickSection with merge review, unnamed clusters, show-all buttons
+- BrowseSection with active mode highlighting
+- ActivityMiniSection with progress bar and Activity Center link
+- ActiveChipsBar with removable chips and clear-all
+- PeopleMergeSuggestionsPanel and Dialog for merge workflow
+
+#### Files Changed
+- `main_window_qt.py`
+- `ui/search/active_chips_bar.py`
+- `ui/search/search_results_header.py`
+- `ui/search/search_controller.py`
+- `ui/search/search_sidebar.py`
+- `ui/search/sections/search_hub_section.py`
+- `ui/search/sections/filter_section.py`
+- `ui/search/empty_state_view.py`
+- `repository/asset_repository.py`
+- `ui/similar_photo_dialog.py`
+- `thumb_cache_db.py`
+
+---
+
 ## [Unreleased] - 2026-03-22
 
 ### Industrial-Grade Face Pipeline & Bootstrap Policy

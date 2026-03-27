@@ -180,6 +180,11 @@ class SearchController(QObject):
     def set_activity_snapshot(self, activity: dict):
         self.store.update(activity_snapshot=dict(activity or {}))
 
+    def apply_sort(self, sort_mode: str):
+        """User changed the sort order in the results header."""
+        self.store.update(sort_mode=sort_mode)
+        self._do_search()
+
     def remove_chip(self, kind: str, value: Any):
         """User removed a chip from the ActiveChipsBar."""
         state = self.store.get_state()
@@ -294,6 +299,9 @@ class SearchController(QObject):
             "preset_id": state.preset_id,
             "filters": state.active_filters,
             "active_people": state.active_people,
+            "sort_mode": state.sort_mode,
+            "browse_mode": state.browse_mode,
+            "search_mode": state.search_mode,
         }
         self.searchRequested.emit(payload)
 

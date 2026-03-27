@@ -1001,6 +1001,10 @@ class MainWindow(QMainWindow):
         self.left_sidebar_layout.addWidget(self.search_sidebar, 0)
         self.left_sidebar_layout.addWidget(self.sidebar, 1)
 
+        # UX-8 wiring: connect SearchSidebar outbound signals to MainWindow handlers
+        self.search_sidebar.selectBranch.connect(self._handle_search_sidebar_branch_request)
+        self.search_sidebar.openActivityCenterRequested.connect(self._open_activity_center_from_sidebar)
+
         # === Lazy wiring for sidebar actions (now sidebar exists) ===
         def _on_fold_toggle(checked):
             try:

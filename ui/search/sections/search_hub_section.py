@@ -48,10 +48,12 @@ class SearchHubSection(QGroupBox):
         self.btn_clear_recent.clicked.connect(self.clearRecentRequested.emit)
 
     def _on_recent_clicked(self, item: QListWidgetItem):
-        self.recentSearchClicked.emit(item.text().strip())
+        clean_text = item.data(Qt.UserRole) or item.text().strip()
+        self.recentSearchClicked.emit(str(clean_text))
 
     def _on_suggestion_clicked(self, item: QListWidgetItem):
-        self.suggestionClicked.emit(item.text().strip())
+        clean_text = item.data(Qt.UserRole) or item.text().strip()
+        self.suggestionClicked.emit(str(clean_text))
 
     def set_recent_queries(self, queries):
         self.list_recent.clear()
