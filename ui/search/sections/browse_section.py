@@ -40,6 +40,11 @@ class BrowseSection(QGroupBox):
         self.setEnabled(enabled)
 
     def set_active_mode(self, browse_key: str | None):
+        if browse_key:
+            self.setTitle(f"Browse — {browse_key.replace('_', ' ').title()}")
+        else:
+            self.setTitle("Browse")
+
         mapping = {
             "all_photos": self.btn_all,
             "favorites": self.btn_favorites,

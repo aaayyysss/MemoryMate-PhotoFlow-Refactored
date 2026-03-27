@@ -1,4 +1,4 @@
-from PySide6.QtCore import Qt, Signal, QPoint
+from PySide6.QtCore import Qt, Signal, QPoint, QTimer
 from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QLineEdit, QPushButton, QToolButton,
     QFrame, QVBoxLayout, QListWidget, QListWidgetItem, QLabel
@@ -56,6 +56,12 @@ class TopSearchBar(QWidget):
         popup_layout.addWidget(self.lbl_suggestions)
         popup_layout.addWidget(self.list_suggestions)
 
+        # UX-11: debounce timer for smoother typing experience
+        self._query_debounce = QTimer(self)
+        self._query_debounce.setInterval(250)
+        self._query_debounce.setSingleShot(True)
+        self._query_debounce.timeout.connect(self._emit_debounced_query)
+
         self.search_input.returnPressed.connect(self._emit_submit)
         self.search_input.textChanged.connect(self._on_text_changed)
         self.btn_clear.clicked.connect(self._clear)
@@ -65,8 +71,12 @@ class TopSearchBar(QWidget):
         self.list_suggestions.itemClicked.connect(self._on_suggestion_clicked)
 
     def _on_text_changed(self, text: str):
-        self.queryChanged.emit(text)
+        self._query_debounce.start()
         self._refresh_popup_visibility()
+
+    def _emit_debounced_query(self):
+        text = self.search_input.text()
+        self.queryChanged.emit(text)
 
     def _emit_submit(self):
         text = self.search_input.text().strip()

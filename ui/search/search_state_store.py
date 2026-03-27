@@ -51,6 +51,9 @@ class SearchState:
     browse_mode: Optional[str] = None
     activity_snapshot: Dict[str, Any] = field(default_factory=dict)
     model_warning: str = ""
+    last_interaction_ts: float = 0.0
+    last_action: str = ""
+    is_user_typing: bool = False
 
 
 class SearchStateStore(QObject):
