@@ -4,6 +4,43 @@ All notable changes to the MemoryMate PhotoFlow search pipeline are documented h
 
 ## [Unreleased] - 2026-03-27
 
+### UX-9A: People Merge Intelligence Backend
+
+Replaced the naive adjacent-small-cluster merge heuristic with a proper weighted scoring engine
+and persistent review tracking, aligning with Google Photos / Lightroom merge-suggestion UX.
+
+#### New: Merge Intelligence Engine (`services/people_merge_intelligence.py`)
+- Weighted scoring: embedding similarity (55%), size compatibility (15%), temporal overlap (15%),
+  camera overlap (15%) with MIN_SCORE threshold of 0.45
+- `ClusterSummary` and `MergeCandidate` dataclasses for type-safe candidate representation
+- Cosine similarity on cluster centroids (deserialized from `face_branch_reps.centroid` BLOB)
+- Graceful degradation: temporal/camera scores return 0 when metadata is unavailable
+
+#### New: Persistent Merge Review Table (`reference_db.py`)
+- `people_merge_review` table with UPSERT semantics (left/right cluster ID + decision + timestamp)
+- `get_people_merge_reviews()` returns `{(left_id, right_id): decision}` dict for prior-decision filtering
+- `save_people_merge_review()` with conflict resolution on re-review
+
+#### Patched: People Section Merge Adapter (`ui/accordion_sidebar/people_section.py`)
+- `get_merge_suggestions()` now builds `ClusterSummary` objects from `get_face_branch_reps()` data,
+  loads prior decisions from DB, and delegates to `PeopleMergeIntelligence.rank_candidates()`
+- `accept_merge_suggestion()` persists "merged" decision and executes `merge_face_clusters()`
+- `reject_merge_suggestion()` persists "rejected" decision so the pair is excluded from future suggestions
+
+#### Upgraded: Merge Suggestions Panel (`ui/search/people_merge_suggestions_panel.py`)
+- Added QTextEdit details pane showing score, cluster IDs, and reasons for selected candidate
+- Accepted/rejected items are removed from the list immediately for responsive UX
+- Stores full item data in `Qt.UserRole + 1` for details display
+
+#### Files Changed
+- `services/people_merge_intelligence.py` (new)
+- `reference_db.py`
+- `ui/accordion_sidebar/people_section.py`
+- `ui/search/people_merge_suggestions_panel.py`
+- `CHANGELOG.md`
+
+---
+
 ### UX-8 Audit: Bug Fixes, Design Compliance, and Missing Features
 
 Comprehensive audit of the UX-1 through UX-8 implementation against the design specification,

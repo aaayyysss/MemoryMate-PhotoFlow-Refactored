@@ -556,55 +556,81 @@ class PeopleSection(BaseSection):
 
     def get_merge_suggestions(self):
         """
-        UX-8A lightweight merge suggestion adapter.
-        Returns a list of possible cluster pairs for review.
+        UX-9A merge suggestion adapter backed by PeopleMergeIntelligence.
+        Builds ClusterSummary objects from DB data and returns scored candidates.
         """
         try:
-            suggestions = []
-            source = getattr(self, "_all_data", None) or getattr(self, "people_data", None) or getattr(self, "clusters", None) or []
+            import numpy as np
+            from services.people_merge_intelligence import PeopleMergeIntelligence, ClusterSummary
 
-            normalized = []
-            for item in list(source):
-                if not isinstance(item, dict):
-                    continue
-                pid = item.get("branch_key") or item.get("id") or item.get("person_id") or item.get("label")
-                label = item.get("display_name") or item.get("label") or item.get("name") or str(pid)
-                count = int(item.get("member_count", 0) or item.get("count", 0))
-                if pid is not None:
-                    normalized.append({
-                        "id": str(pid),
-                        "label": str(label),
-                        "count": count,
-                    })
+            db = getattr(self, "_parent_db", None)
+            pid = getattr(self, "project_id", None)
+            if not db or not pid:
+                return []
 
-            normalized = sorted(normalized, key=lambda x: x["count"])
+            reps = db.get_face_branch_reps(pid)
+            if not reps or len(reps) < 2:
+                return []
 
-            for i in range(min(len(normalized) - 1, 8)):
-                left = normalized[i]
-                right = normalized[i + 1]
+            clusters = []
+            for r in reps:
+                avg_emb = None
+                centroid_bytes = r.get("centroid_bytes")
+                if centroid_bytes:
+                    try:
+                        avg_emb = np.frombuffer(centroid_bytes, dtype=np.float32).tolist()
+                    except Exception:
+                        pass
 
-                if left["id"] == right["id"]:
-                    continue
+                clusters.append(ClusterSummary(
+                    cluster_id=str(r.get("id", r.get("branch_key", ""))),
+                    label=str(r.get("name", r.get("label", r.get("id", "")))),
+                    count=int(r.get("count", 0)),
+                    avg_embedding=avg_emb,
+                ))
 
-                # lightweight heuristic only
-                if left["count"] <= 3 and right["count"] <= 5:
-                    suggestions.append({
-                        "left_id": left["id"],
-                        "right_id": right["id"],
-                        "score": 0.55,
-                        "label": f"{left['label']} <-> {right['label']} (small clusters)",
-                    })
+            prior_decisions = {}
+            try:
+                prior_decisions = db.get_people_merge_reviews()
+            except Exception:
+                pass
 
-            return suggestions
+            engine = PeopleMergeIntelligence()
+            return engine.rank_candidates(clusters, prior_decisions=prior_decisions)
 
         except Exception:
+            logger.debug("[PeopleSection] get_merge_suggestions error", exc_info=True)
             return []
 
     def accept_merge_suggestion(self, left_id: str, right_id: str):
-        print(f"[PeopleSection] Accept merge suggestion: {left_id} + {right_id}")
+        """Accept merge: persist decision and execute the actual cluster merge."""
+        db = getattr(self, "_parent_db", None)
+        pid = getattr(self, "project_id", None)
+        logger.info("[PeopleSection] Accept merge: %s + %s", left_id, right_id)
+
+        if db:
+            try:
+                db.save_people_merge_review(left_id, right_id, "merged")
+            except Exception:
+                logger.warning("[PeopleSection] Failed to save merge review", exc_info=True)
+
+            if pid:
+                try:
+                    db.merge_face_clusters(pid, target_branch=left_id, source_branches=[right_id])
+                    logger.info("[PeopleSection] Clusters merged: %s <- %s", left_id, right_id)
+                except Exception:
+                    logger.warning("[PeopleSection] merge_face_clusters failed", exc_info=True)
 
     def reject_merge_suggestion(self, left_id: str, right_id: str):
-        print(f"[PeopleSection] Reject merge suggestion: {left_id} + {right_id}")
+        """Reject merge: persist the rejection so the pair is not suggested again."""
+        db = getattr(self, "_parent_db", None)
+        logger.info("[PeopleSection] Reject merge: %s / %s", left_id, right_id)
+
+        if db:
+            try:
+                db.save_people_merge_review(left_id, right_id, "rejected")
+            except Exception:
+                logger.warning("[PeopleSection] Failed to save merge rejection", exc_info=True)
 
     def set_db(self, db):
         """Store DB reference for passing to GroupsSection."""

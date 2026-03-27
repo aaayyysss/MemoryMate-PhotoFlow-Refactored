@@ -303,6 +303,20 @@ class ReferenceDB:
             )
         """)
 
+        # --------------------------------------------------
+        # UX-9A: People merge review decisions
+        # --------------------------------------------------
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS people_merge_review (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                left_cluster_id TEXT NOT NULL,
+                right_cluster_id TEXT NOT NULL,
+                decision TEXT NOT NULL,
+                reviewed_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(left_cluster_id, right_cluster_id)
+            )
+        """)
+
         c.execute('''
             CREATE TABLE IF NOT EXISTS export_history (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -7083,6 +7097,36 @@ class ReferenceDB:
 
 
 # --- Compatibility shims for legacy imports ---
+    # --------------------------------------------------
+    # UX-9A: People merge review persistence
+    # --------------------------------------------------
+
+    def get_people_merge_reviews(self):
+        """Return all prior merge review decisions as {(left_id, right_id): decision}."""
+        with self._connect() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT left_cluster_id, right_cluster_id, decision
+                FROM people_merge_review
+            """)
+            rows = cur.fetchall()
+            return {
+                tuple(sorted((str(row[0]), str(row[1])))): str(row[2])
+                for row in rows
+            }
+
+    def save_people_merge_review(self, left_cluster_id: str, right_cluster_id: str, decision: str):
+        """Persist an accept/reject decision for a merge candidate pair."""
+        left_id, right_id = sorted((str(left_cluster_id), str(right_cluster_id)))
+        with self._connect() as conn:
+            conn.execute("""
+                INSERT INTO people_merge_review (left_cluster_id, right_cluster_id, decision)
+                VALUES (?, ?, ?)
+                ON CONFLICT(left_cluster_id, right_cluster_id)
+                DO UPDATE SET decision=excluded.decision, reviewed_at=CURRENT_TIMESTAMP
+            """, (left_id, right_id, decision))
+
+
 _db = ReferenceDB()
 
 def get_all_references(): return _db.get_all_references()
