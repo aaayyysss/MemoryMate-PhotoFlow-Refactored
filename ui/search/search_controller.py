@@ -123,6 +123,12 @@ class SearchController(QObject):
     def set_merge_suggestions(self, suggestions):
         self.store.update(merge_suggestions=list(suggestions or []))
 
+    def set_merge_review_payload(self, payload: dict):
+        self.store.update(merge_review_payload=dict(payload or {}))
+
+    def set_unnamed_review_payload(self, payload: dict):
+        self.store.update(unnamed_review_payload=dict(payload or {}))
+
     def apply_browse_mode(self, browse_key: str, value):
         state = self.store.get_state()
 
@@ -328,6 +334,43 @@ class SearchController(QObject):
         if text in history: history.remove(text)
         history.insert(0, text)
         self.store.update(recent_queries=history[:10])
+
+    def _infer_family(self) -> str:
+        """Infer the current search family from state."""
+        state = self.store.get_state()
+        if state.family:
+            return state.family
+        if state.active_people:
+            return "people"
+        query = (state.query_text or "").lower()
+        if any(kw in query for kw in ("person", "face", "people", "who")):
+            return "people"
+        if any(kw in query for kw in ("document", "screenshot", "receipt")):
+            return "type"
+        if any(kw in query for kw in ("beach", "mountain", "sunset", "landscape", "nature", "forest", "ocean")):
+            return "scenic"
+        return ""
+
+    def _compute_visible_facet_keys(self) -> list:
+        """UX-9D: context-aware facet ordering for stronger people-first emphasis."""
+        state = self.store.get_state()
+        family = self._infer_family()
+
+        if state.browse_mode == "favorites":
+            return ["year", "location", "type"]
+        if state.browse_mode == "videos":
+            return ["year", "location"]
+        if state.browse_mode == "with_location":
+            return ["location", "year", "type"]
+
+        if family == "people":
+            return ["people", "year", "location", "type"]
+        if family == "type":
+            return ["type", "year", "location"]
+        if family == "scenic":
+            return ["location", "year", "type"]
+
+        return ["people", "location", "year", "type"]
 
     def _update_chips_from_filters(self):
         state = self.store.get_state()

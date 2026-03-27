@@ -4,39 +4,63 @@ All notable changes to the MemoryMate PhotoFlow search pipeline are documented h
 
 ## [Unreleased] - 2026-03-27
 
-### UX-9A: People Merge Intelligence Backend
+### UX-9 (A+B+C+D): People Merge Intelligence, Side-by-Side Review, Unnamed Clusters, Facet Quality
 
-Replaced the naive adjacent-small-cluster merge heuristic with a proper weighted scoring engine
-and persistent review tracking, aligning with Google Photos / Lightroom merge-suggestion UX.
+Complete UX-9 patch pack implementing real merge intelligence, side-by-side person comparison,
+unnamed-cluster review workflow, audit trail for decisions, and people-aware facet prioritization.
 
-#### New: Merge Intelligence Engine (`services/people_merge_intelligence.py`)
-- Weighted scoring: embedding similarity (55%), size compatibility (15%), temporal overlap (15%),
-  camera overlap (15%) with MIN_SCORE threshold of 0.45
-- `ClusterSummary` and `MergeCandidate` dataclasses for type-safe candidate representation
-- Cosine similarity on cluster centroids (deserialized from `face_branch_reps.centroid` BLOB)
-- Graceful degradation: temporal/camera scores return 0 when metadata is unavailable
+#### UX-9A: Merge Intelligence Engine
+- **New**: `services/people_merge_intelligence.py` — weighted scoring engine
+  (55% embedding, 15% size, 15% temporal, 15% camera) with MIN_SCORE 0.45
+- **New**: `people_merge_review` table in `reference_db.py` with UPSERT semantics
+- `get_merge_suggestions()` builds ClusterSummary from face_branch_reps centroids,
+  filters prior decisions, delegates to PeopleMergeIntelligence
+- Upgraded `people_merge_suggestions_panel.py` with QTextEdit details pane
 
-#### New: Persistent Merge Review Table (`reference_db.py`)
-- `people_merge_review` table with UPSERT semantics (left/right cluster ID + decision + timestamp)
-- `get_people_merge_reviews()` returns `{(left_id, right_id): decision}` dict for prior-decision filtering
-- `save_people_merge_review()` with conflict resolution on re-review
+#### UX-9B: Side-by-Side Person Comparison Dialog
+- **New**: `ui/search/person_comparison_dialog.py` — 900x620 dialog with left/right
+  QGroupBox clusters, scrollable 96px preview thumbnails, similarity score + reasons
+- Queue-based review: accept/reject advances to next candidate automatically
+- `_open_people_merge_review()` now uses PersonComparisonDialog instead of list panel
+- `_show_next_merge_review_dialog()` steps through ranked suggestions sequentially
 
-#### Patched: People Section Merge Adapter (`ui/accordion_sidebar/people_section.py`)
-- `get_merge_suggestions()` now builds `ClusterSummary` objects from `get_face_branch_reps()` data,
-  loads prior decisions from DB, and delegates to `PeopleMergeIntelligence.rank_candidates()`
-- `accept_merge_suggestion()` persists "merged" decision and executes `merge_face_clusters()`
-- `reject_merge_suggestion()` persists "rejected" decision so the pair is excluded from future suggestions
+#### UX-9B (cont): Merge Review Payload
+- `get_merge_review_payload()` in people_section.py — cosine similarity on centroids,
+  0.72 threshold, preview paths/thumbs, ranked top-20 with confidence-band reasons
+- `merge_review_payload` field added to SearchState (not cleared by clear_search)
+- `set_merge_review_payload()` added to SearchController
+- `_refresh_people_quick_section()` upgraded to populate merge + unnamed payloads
 
-#### Upgraded: Merge Suggestions Panel (`ui/search/people_merge_suggestions_panel.py`)
-- Added QTextEdit details pane showing score, cluster IDs, and reasons for selected candidate
-- Accepted/rejected items are removed from the list immediately for responsive UX
-- Stores full item data in `Qt.UserRole + 1` for details display
+#### UX-9C: Unnamed Cluster Review
+- `get_unnamed_review_payload()` identifies face_-prefixed and "unnamed" clusters
+- `unnamed_review_payload` field added to SearchState (not cleared by clear_search)
+- `_open_unnamed_people_review()` dialog shows unnamed clusters with counts
+- `people_unnamed` branch request now routes to review dialog instead of sidebar emit
+- Button label changed: "Review Unnamed Clusters" (clearer action verb)
+
+#### UX-9C (cont): Audit Trail
+- `face_merge_review_log` table with project_id, branch IDs, decision, timestamp
+- `accept_merge_suggestion()` and `reject_merge_suggestion()` write audit entries
+  alongside the existing people_merge_review persistence
+
+#### UX-9D: Facet Quality Engine
+- `_compute_visible_facet_keys()` in SearchController — context-aware facet ordering
+- People family: ["people", "year", "location", "type"]
+- Scenic family: ["location", "year", "type"]
+- Type family: ["type", "year", "location"]
+- Browse modes: favorites/videos/with_location get tailored facet sets
+- `_infer_family()` helper detects search family from state + query keywords
 
 #### Files Changed
-- `services/people_merge_intelligence.py` (new)
-- `reference_db.py`
-- `ui/accordion_sidebar/people_section.py`
-- `ui/search/people_merge_suggestions_panel.py`
+- `services/people_merge_intelligence.py` (new — UX-9A)
+- `ui/search/person_comparison_dialog.py` (new — UX-9B)
+- `reference_db.py` (UX-9A)
+- `ui/accordion_sidebar/people_section.py` (UX-9A/B/C)
+- `ui/search/people_merge_suggestions_panel.py` (UX-9A)
+- `ui/search/search_state_store.py` (UX-9B/C)
+- `ui/search/search_controller.py` (UX-9B/C/D)
+- `ui/search/sections/people_quick_section.py` (UX-9C)
+- `main_window_qt.py` (UX-9B/C)
 - `CHANGELOG.md`
 
 ---

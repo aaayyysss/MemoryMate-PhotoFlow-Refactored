@@ -3191,7 +3191,8 @@ class MainWindow(QMainWindow):
 
     def _refresh_people_quick_section(self):
         """
-        UX-8A bridge: populate PeopleQuickSection from existing people backend if available.
+        UX-9 bridge: populate PeopleQuickSection, merge review payload,
+        and unnamed review payload from existing people backend.
         """
         try:
             payload = {
@@ -3199,32 +3200,44 @@ class MainWindow(QMainWindow):
                 "merge_candidates": 0,
                 "unnamed_count": 0,
             }
+            merge_payload = {"suggestions": []}
+            unnamed_payload = {"unnamed_items": []}
             suggestions = []
+
+            def _extract(people_section):
+                nonlocal payload, merge_payload, unnamed_payload, suggestions
+                if hasattr(people_section, "get_people_quick_payload"):
+                    payload = dict(people_section.get_people_quick_payload() or payload)
+                if hasattr(people_section, "get_merge_suggestions"):
+                    suggestions = list(people_section.get_merge_suggestions() or [])
+                if hasattr(people_section, "get_merge_review_payload"):
+                    merge_payload = dict(people_section.get_merge_review_payload() or merge_payload)
+                if hasattr(people_section, "get_unnamed_review_payload"):
+                    unnamed_payload = dict(people_section.get_unnamed_review_payload() or unnamed_payload)
 
             if hasattr(self, "sidebar") and hasattr(self.sidebar, "accordion"):
                 people_section = self.sidebar.accordion.section_logic.get("people")
                 if people_section:
-                    if hasattr(people_section, "get_people_quick_payload"):
-                        payload = dict(people_section.get_people_quick_payload() or payload)
-                    if hasattr(people_section, "get_merge_suggestions"):
-                        suggestions = list(people_section.get_merge_suggestions() or [])
+                    _extract(people_section)
 
             if not payload.get("top_people") and hasattr(self, "layout_manager"):
                 layout = self.layout_manager.get_current_layout()
                 if layout and hasattr(layout, "accordion_sidebar"):
                     people_section = layout.accordion_sidebar.section_logic.get("people")
                     if people_section:
-                        if hasattr(people_section, "get_people_quick_payload"):
-                            payload = dict(people_section.get_people_quick_payload() or payload)
-                        if hasattr(people_section, "get_merge_suggestions"):
-                            suggestions = list(people_section.get_merge_suggestions() or [])
+                        _extract(people_section)
+
+            payload["merge_candidates"] = len(merge_payload.get("suggestions", []))
+            payload["unnamed_count"] = len(unnamed_payload.get("unnamed_items", []))
 
             if hasattr(self, "search_controller"):
                 self.search_controller.set_people_quick_payload(payload)
                 self.search_controller.set_merge_suggestions(suggestions)
+                self.search_controller.set_merge_review_payload(merge_payload)
+                self.search_controller.set_unnamed_review_payload(unnamed_payload)
 
         except Exception as e:
-            print(f"[UX-8A] Error refreshing people quick section: {e}")
+            print(f"[UX-9] Error refreshing people quick section: {e}")
 
     def _refresh_activity_snapshot(self):
         """
@@ -3276,20 +3289,77 @@ class MainWindow(QMainWindow):
             print(f"[UX-7A] Failed to open activity center: {e}")
 
     def _open_people_merge_review(self):
+        """UX-9B: open side-by-side PersonComparisonDialog queue."""
         try:
-            from ui.search.people_merge_suggestions_panel import PeopleMergeSuggestionsDialog
+            from ui.search.person_comparison_dialog import PersonComparisonDialog
 
             state = self.search_state_store.get_state()
-            suggestions = list(getattr(state, "merge_suggestions", []) or [])
+            payload = dict(getattr(state, "merge_review_payload", {}) or {})
+            suggestions = list(payload.get("suggestions", []) or [])
 
-            dlg = PeopleMergeSuggestionsDialog(self)
-            dlg.set_suggestions(suggestions)
+            if not suggestions:
+                from PySide6.QtWidgets import QMessageBox
+                QMessageBox.information(self, "No Suggestions", "No merge suggestions are available right now.")
+                return
+
+            self._merge_review_index = 0
+            self._merge_review_suggestions = suggestions
+            self._show_next_merge_review_dialog()
+
+        except Exception as e:
+            print(f"[UX-9] Failed to open merge review dialog: {e}")
+
+    def _show_next_merge_review_dialog(self):
+        """UX-9B: show next candidate in the merge review queue."""
+        try:
+            from ui.search.person_comparison_dialog import PersonComparisonDialog
+
+            suggestions = list(getattr(self, "_merge_review_suggestions", []) or [])
+            idx = int(getattr(self, "_merge_review_index", 0))
+
+            if idx >= len(suggestions):
+                return
+
+            payload = suggestions[idx]
+
+            dlg = PersonComparisonDialog(self)
+            dlg.set_payload(payload)
             dlg.mergeAccepted.connect(self._accept_people_merge_suggestion)
             dlg.mergeRejected.connect(self._reject_people_merge_suggestion)
             dlg.exec()
 
         except Exception as e:
-            print(f"[UX-8A] Failed to open merge review dialog: {e}")
+            print(f"[UX-9] Failed to show merge review step: {e}")
+
+    def _open_unnamed_people_review(self):
+        """UX-9C: open unnamed-clusters review dialog."""
+        try:
+            from PySide6.QtWidgets import QDialog, QVBoxLayout, QListWidget, QListWidgetItem, QLabel, QDialogButtonBox
+
+            state = self.search_state_store.get_state()
+            items = list(getattr(state, "unnamed_review_payload", {}).get("unnamed_items", []) or [])
+
+            dlg = QDialog(self)
+            dlg.setWindowTitle("Unnamed Clusters")
+            dlg.resize(480, 500)
+
+            layout = QVBoxLayout(dlg)
+            layout.addWidget(QLabel("Unnamed or generic clusters that may need naming or review."))
+
+            lw = QListWidget()
+            for item in items:
+                lw.addItem(QListWidgetItem(f"{item.get('label')} ({item.get('count', 0)})"))
+            layout.addWidget(lw)
+
+            buttons = QDialogButtonBox(QDialogButtonBox.Close)
+            buttons.rejected.connect(dlg.reject)
+            buttons.button(QDialogButtonBox.Close).clicked.connect(dlg.close)
+            layout.addWidget(buttons)
+
+            dlg.exec()
+
+        except Exception as e:
+            print(f"[UX-9] Failed to open unnamed review dialog: {e}")
 
     def _accept_people_merge_suggestion(self, left_id: str, right_id: str):
         try:
@@ -3309,10 +3379,12 @@ class MainWindow(QMainWindow):
                         people_section.accept_merge_suggestion(left_id, right_id)
                         handled = True
 
+            self._merge_review_index = int(getattr(self, "_merge_review_index", 0)) + 1
             self._refresh_people_quick_section()
+            self._show_next_merge_review_dialog()
 
         except Exception as e:
-            print(f"[UX-8A] Failed to accept merge suggestion: {e}")
+            print(f"[UX-9] Failed to accept merge suggestion: {e}")
 
     def _reject_people_merge_suggestion(self, left_id: str, right_id: str):
         try:
@@ -3332,10 +3404,12 @@ class MainWindow(QMainWindow):
                         people_section.reject_merge_suggestion(left_id, right_id)
                         handled = True
 
+            self._merge_review_index = int(getattr(self, "_merge_review_index", 0)) + 1
             self._refresh_people_quick_section()
+            self._show_next_merge_review_dialog()
 
         except Exception as e:
-            print(f"[UX-8A] Failed to reject merge suggestion: {e}")
+            print(f"[UX-9] Failed to reject merge suggestion: {e}")
 
     def _handle_search_sidebar_branch_request(self, branch: str):
         if branch == "people_merge_review":
@@ -3343,12 +3417,7 @@ class MainWindow(QMainWindow):
             return
 
         if branch == "people_unnamed":
-            # first safe routing: open People branch
-            if hasattr(self, "sidebar"):
-                try:
-                    self.sidebar.selectBranch.emit("people")
-                except Exception:
-                    pass
+            self._open_unnamed_people_review()
             return
 
         if hasattr(self, "sidebar"):
