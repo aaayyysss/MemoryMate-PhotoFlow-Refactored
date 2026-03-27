@@ -4541,14 +4541,15 @@ class MainWindow(QMainWindow):
                 # Get folder name from DB
                 folder_name = f"Folder #{folder_id}"  # Fallback
                 try:
-                    with self.db._connect() as conn:
-                        cur = conn.cursor()
-                        cur.execute("SELECT name FROM photo_folders WHERE id = ?", (folder_id,))
-                        row = cur.fetchone()
-                        if row:
-                            folder_name = row[0]
+                    if hasattr(self, "db") and self.db:
+                        with self.db._connect() as conn:
+                            cur = conn.cursor()
+                            cur.execute("SELECT name FROM photo_folders WHERE id = ?", (folder_id,))
+                            row = cur.fetchone()
+                            if row:
+                                folder_name = row[0]
                 except Exception as e:
-                    self.logger.warning(f"Failed to get folder name for ID {folder_id}: {e}")
+                    print(f"[Breadcrumb] Failed to get folder name for ID {folder_id}: {e}")
 
                 # CRITICAL FIX: Use functools.partial instead of lambda to avoid closure issues
                 from functools import partial
@@ -4568,17 +4569,18 @@ class MainWindow(QMainWindow):
                 person_label = face_key
                 # Try to resolve a display name from DB
                 try:
-                    with self.db._connect() as conn:
-                        cur = conn.cursor()
-                        cur.execute(
-                            "SELECT COALESCE(label, branch_key) FROM face_branch_reps WHERE branch_key = ? AND project_id = ?",
-                            (face_key, self.grid.project_id),
-                        )
-                        row = cur.fetchone()
-                        if row and row[0]:
-                            person_label = row[0]
-                        elif face_key == "face_unidentified":
-                            person_label = "Unidentified"
+                    if hasattr(self, "db") and self.db:
+                        with self.db._connect() as conn:
+                            cur = conn.cursor()
+                            cur.execute(
+                                "SELECT COALESCE(label, branch_key) FROM face_branch_reps WHERE branch_key = ? AND project_id = ?",
+                                (face_key, self.grid.project_id),
+                            )
+                            row = cur.fetchone()
+                            if row and row[0]:
+                                person_label = row[0]
+                    if face_key == "face_unidentified":
+                        person_label = person_label if person_label != face_key else "Unidentified"
                 except Exception:
                     pass
                 from functools import partial
