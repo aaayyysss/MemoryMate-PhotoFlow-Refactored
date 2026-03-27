@@ -5,6 +5,8 @@ from PySide6.QtWidgets import QGroupBox, QVBoxLayout, QPushButton, QLabel, QWidg
 class PeopleQuickSection(QGroupBox):
     personSelected = Signal(str)
     showAllPeopleRequested = Signal()
+    mergeReviewRequested = Signal()
+    unnamedRequested = Signal()
 
     def __init__(self, parent=None):
         super().__init__("People", parent)
@@ -21,6 +23,14 @@ class PeopleQuickSection(QGroupBox):
         self.people_layout.setSpacing(6)
         self.layout.addWidget(self.people_host)
 
+        self.btn_merge_review = QPushButton("Review Possible Merges")
+        self.btn_merge_review.clicked.connect(self.mergeReviewRequested.emit)
+        self.layout.addWidget(self.btn_merge_review)
+
+        self.btn_unnamed = QPushButton("Show Unnamed Clusters")
+        self.btn_unnamed.clicked.connect(self.unnamedRequested.emit)
+        self.layout.addWidget(self.btn_unnamed)
+
         self.btn_show_all = QPushButton("Show All People")
         self.btn_show_all.clicked.connect(self.showAllPeopleRequested.emit)
         self.layout.addWidget(self.btn_show_all)
@@ -34,14 +44,22 @@ class PeopleQuickSection(QGroupBox):
             if widget is not None:
                 widget.deleteLater()
 
-    def set_people(self, people_items):
+    def set_people(self, payload):
         self._clear_people()
 
-        people_items = list(people_items or [])
-        has_any = bool(people_items)
+        payload = payload or {}
+        people_items = list(payload.get("top_people", []))
+        merge_candidates = int(payload.get("merge_candidates", 0) or 0)
+        unnamed_count = int(payload.get("unnamed_count", 0) or 0)
+
+        has_any = bool(people_items or merge_candidates or unnamed_count)
 
         self.lbl_empty.setVisible(not has_any)
-        self.people_host.setVisible(has_any)
+        self.people_host.setVisible(bool(people_items))
+        self.btn_merge_review.setVisible(merge_candidates > 0)
+        self.btn_merge_review.setText(f"Review Possible Merges ({merge_candidates})")
+        self.btn_unnamed.setVisible(unnamed_count > 0)
+        self.btn_unnamed.setText(f"Show Unnamed Clusters ({unnamed_count})")
         self.btn_show_all.setVisible(has_any)
         self.setVisible(has_any)
 

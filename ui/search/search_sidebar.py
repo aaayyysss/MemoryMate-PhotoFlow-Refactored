@@ -15,6 +15,7 @@ class SearchSidebar(QWidget):
     selectDate = Signal(str)
     selectVideos = Signal(str)
     selectGroup = Signal(int)
+    openActivityCenterRequested = Signal()
 
     def __init__(self, store, controller=None, parent=None):
         super().__init__(parent)
@@ -66,20 +67,24 @@ class SearchSidebar(QWidget):
 
             self.people_quick_section.personSelected.connect(self.controller.apply_people_filter)
             self.people_quick_section.showAllPeopleRequested.connect(self._emit_show_all_people)
+            self.people_quick_section.mergeReviewRequested.connect(self._emit_merge_review)
+            self.people_quick_section.unnamedRequested.connect(self._emit_unnamed_people)
 
             self.browse_section.browseNodeSelected.connect(self.controller.apply_browse_mode)
 
             self.filter_section.filterChanged.connect(self.controller.apply_filter)
             self.filter_section.clearAllFiltersRequested.connect(self.controller.clear_filters)
 
-            self.activity_mini_section.openActivityCenterRequested.connect(self._emit_open_activity_center)
+            self.activity_mini_section.openActivityCenterRequested.connect(self.openActivityCenterRequested.emit)
 
     def _emit_show_all_people(self):
         self.selectBranch.emit("people")
 
-    def _emit_open_activity_center(self):
-        # MainWindow may optionally connect this later
-        pass
+    def _emit_merge_review(self):
+        self.selectBranch.emit("people_merge_review")
+
+    def _emit_unnamed_people(self):
+        self.selectBranch.emit("people_unnamed")
 
     def _on_state_changed(self, state):
         enabled = state.has_active_project
@@ -96,7 +101,7 @@ class SearchSidebar(QWidget):
         self.discover_section.set_active_preset(getattr(state, "preset_id", None))
         self.discover_section.update_previews(getattr(state, "discover_previews", {}))
 
-        self.people_quick_section.set_people(getattr(state, "people_quick_items", []))
+        self.people_quick_section.set_people(getattr(state, "people_quick_payload", {}))
         self.browse_section.set_active_mode(getattr(state, "browse_mode", None))
 
         self.filter_section.set_facets(

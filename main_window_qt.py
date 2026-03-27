@@ -1014,6 +1014,7 @@ class MainWindow(QMainWindow):
 
         # Connect Search Controller to bridge
         self.search_controller.searchRequested.connect(self._on_ux1_search_requested)
+        self.search_sidebar.openActivityCenterRequested.connect(self._open_activity_center_from_sidebar)
 
         # UX-1 signal wiring (moved up to top_search_bar initialization)
 
@@ -3219,31 +3220,32 @@ class MainWindow(QMainWindow):
 
     def _refresh_people_quick_section(self):
         """
-        UX-4B bridge: populate PeopleQuickSection from existing people backend if available.
-        Keeps the new shell decoupled from the legacy people implementation.
+        UX-7A bridge: populate PeopleQuickSection from existing people backend if available.
         """
         try:
-            items = []
+            payload = {
+                "top_people": [],
+                "merge_candidates": 0,
+                "unnamed_count": 0,
+            }
 
-            # Current Layout / SidebarQt path
             if hasattr(self, "sidebar") and hasattr(self.sidebar, "accordion"):
                 people_section = self.sidebar.accordion.section_logic.get("people")
-                if people_section and hasattr(people_section, "get_top_people_summary"):
-                    items = list(people_section.get_top_people_summary() or [])
+                if people_section and hasattr(people_section, "get_people_quick_payload"):
+                    payload = dict(people_section.get_people_quick_payload() or payload)
 
-            # Google/other layouts fallback if needed
-            if not items and hasattr(self, "layout_manager"):
+            if not payload.get("top_people") and hasattr(self, "layout_manager"):
                 layout = self.layout_manager.get_current_layout()
                 if layout and hasattr(layout, "accordion_sidebar"):
                     people_section = layout.accordion_sidebar.section_logic.get("people")
-                    if people_section and hasattr(people_section, "get_top_people_summary"):
-                        items = list(people_section.get_top_people_summary() or [])
+                    if people_section and hasattr(people_section, "get_people_quick_payload"):
+                        payload = dict(people_section.get_people_quick_payload() or payload)
 
             if hasattr(self, "search_controller"):
-                self.search_controller.set_people_quick_items(items)
+                self.search_controller.set_people_quick_payload(payload)
 
         except Exception as e:
-            print(f"[UX-4B] Error refreshing people quick section: {e}")
+            print(f"[UX-7A] Error refreshing people quick section: {e}")
 
     def _refresh_activity_snapshot(self):
         """
@@ -3282,6 +3284,17 @@ class MainWindow(QMainWindow):
                 layout.attach_search_store(self.search_state_store)
         except Exception as e:
             print(f"[MainWindow] Error attaching search store to layout: {e}")
+
+    def _open_activity_center_from_sidebar(self):
+        try:
+            if hasattr(self, "activity_center_dock") and self.activity_center_dock:
+                self.activity_center_dock.show()
+                self.activity_center_dock.raise_()
+            elif hasattr(self, "activity_center") and self.activity_center:
+                self.activity_center.show()
+                self.activity_center.raise_()
+        except Exception as e:
+            print(f"[UX-7A] Failed to open activity center: {e}")
 
     def _execute_smart_find_preset(self, preset_id: str):
         """

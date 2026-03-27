@@ -496,35 +496,64 @@ class PeopleSection(BaseSection):
                 self._recomputed_group_ids.clear()
             self._ensure_groups_tab(self._stack)
 
-    def get_top_people_summary(self):
+    def get_people_quick_payload(self):
         """
-        UX-4B adapter for the centralized search shell.
-        Returns a lightweight summary of top face clusters.
+        UX-7A adapter for the centralized search shell.
+        Returns:
+        - top identities
+        - suspicious merge-review count
+        - recent unnamed cluster count
         """
         try:
-            items = []
+            payload = {
+                "top_people": [],
+                "merge_candidates": 0,
+                "unnamed_count": 0,
+            }
 
-            # Use _all_data as primary source (holds the cluster metadata)
-            source = self._all_data or []
+            source = getattr(self, "_all_data", None) or getattr(self, "people_data", None) or getattr(self, "clusters", None) or []
 
-            for item in list(source)[:8]:
-                if isinstance(item, dict):
-                    # Adapter: ReferenceDB.get_face_clusters() returns:
-                    # branch_key, display_name, member_count, rep_path, rep_thumb_png
-                    pid = item.get("branch_key")
-                    label = item.get("display_name") or str(pid)
-                    count = int(item.get("member_count", 0))
-                    if pid is not None:
-                        items.append({
-                            "id": str(pid),
-                            "label": str(label),
-                            "count": count,
-                        })
+            unnamed_count = 0
+            top_people = []
 
-            return items
+            for item in list(source):
+                if not isinstance(item, dict):
+                    continue
+
+                pid = item.get("branch_key") or item.get("id") or item.get("person_id") or item.get("label")
+                label = item.get("display_name") or item.get("label") or item.get("name") or str(pid)
+                count = int(item.get("member_count", 0) or item.get("count", 0))
+
+                if label.lower().startswith("face_") or "unnamed" in label.lower():
+                    unnamed_count += 1
+
+                if pid is not None:
+                    top_people.append({
+                        "id": str(pid),
+                        "label": str(label),
+                        "count": count,
+                    })
+
+            top_people = sorted(top_people, key=lambda x: x.get("count", 0), reverse=True)
+            payload["top_people"] = top_people[:8]
+            payload["unnamed_count"] = unnamed_count
+
+            # Lightweight heuristic until full merge-review logic exists
+            merge_candidates = 0
+            counts = [x.get("count", 0) for x in top_people[:20]]
+            if len(counts) >= 2:
+                small_clusters = [c for c in counts if c <= 3]
+                merge_candidates = len(small_clusters)
+
+            payload["merge_candidates"] = merge_candidates
+            return payload
 
         except Exception:
-            return []
+            return {
+                "top_people": [],
+                "merge_candidates": 0,
+                "unnamed_count": 0,
+            }
 
     def set_db(self, db):
         """Store DB reference for passing to GroupsSection."""

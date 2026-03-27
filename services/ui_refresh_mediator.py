@@ -113,6 +113,14 @@ class UIRefreshMediator(QObject):
         else:
             self._refresh_current(sections, project_id)
 
+        # UX-7A: Trigger search shell snapshot refreshes at stable points
+        if "people" in sections:
+            if hasattr(self.main, "_refresh_people_quick_section"):
+                self.main._refresh_people_quick_section()
+
+        if hasattr(self.main, "_refresh_activity_snapshot"):
+            self.main._refresh_activity_snapshot()
+
     def _refresh_google(self, layout, sections: Set[str], project_id: int):
         """Refresh sections in GooglePhotosLayout."""
         accordion = getattr(layout, "accordion_sidebar", None)

@@ -621,6 +621,11 @@ class ActivityCenter(QDockWidget):
     # Public API
     # ─────────────────────────────────────────────────────────────────────
 
+    def open_from_sidebar(self):
+        """Standard entry point for search shell ActivityMiniSection."""
+        self.show()
+        self.raise_()
+
     def start_job(self, job_id: str, job_type: str, description: str = "",
                   on_cancel: Optional[Callable] = None) -> ActivityHandle:
         """Register a new background job and return a handle.
