@@ -120,6 +120,9 @@ class SearchController(QObject):
     def set_people_quick_payload(self, payload: dict):
         self.store.update(people_quick_payload=dict(payload or {}))
 
+    def set_merge_suggestions(self, suggestions):
+        self.store.update(merge_suggestions=list(suggestions or []))
+
     def apply_browse_mode(self, browse_key: str, value):
         state = self.store.get_state()
 

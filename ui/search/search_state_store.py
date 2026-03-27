@@ -42,6 +42,7 @@ class SearchState:
     people_quick_items: List[Dict[str, Any]] = field(default_factory=list)
     people_quick_loading: bool = False
     people_quick_payload: Dict[str, Any] = field(default_factory=dict)
+    merge_suggestions: List[Dict[str, Any]] = field(default_factory=list)
     browse_mode: Optional[str] = None
     activity_snapshot: Dict[str, Any] = field(default_factory=dict)
     model_warning: str = ""

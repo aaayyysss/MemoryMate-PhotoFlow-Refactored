@@ -1015,6 +1015,7 @@ class MainWindow(QMainWindow):
         # Connect Search Controller to bridge
         self.search_controller.searchRequested.connect(self._on_ux1_search_requested)
         self.search_sidebar.openActivityCenterRequested.connect(self._open_activity_center_from_sidebar)
+        self.search_sidebar.selectBranch.connect(self._handle_search_sidebar_branch_request)
 
         # UX-1 signal wiring (moved up to top_search_bar initialization)
 
@@ -3220,7 +3221,7 @@ class MainWindow(QMainWindow):
 
     def _refresh_people_quick_section(self):
         """
-        UX-7A bridge: populate PeopleQuickSection from existing people backend if available.
+        UX-8A bridge: populate PeopleQuickSection from existing people backend if available.
         """
         try:
             payload = {
@@ -3228,24 +3229,32 @@ class MainWindow(QMainWindow):
                 "merge_candidates": 0,
                 "unnamed_count": 0,
             }
+            suggestions = []
 
             if hasattr(self, "sidebar") and hasattr(self.sidebar, "accordion"):
                 people_section = self.sidebar.accordion.section_logic.get("people")
-                if people_section and hasattr(people_section, "get_people_quick_payload"):
-                    payload = dict(people_section.get_people_quick_payload() or payload)
+                if people_section:
+                    if hasattr(people_section, "get_people_quick_payload"):
+                        payload = dict(people_section.get_people_quick_payload() or payload)
+                    if hasattr(people_section, "get_merge_suggestions"):
+                        suggestions = list(people_section.get_merge_suggestions() or [])
 
             if not payload.get("top_people") and hasattr(self, "layout_manager"):
                 layout = self.layout_manager.get_current_layout()
                 if layout and hasattr(layout, "accordion_sidebar"):
                     people_section = layout.accordion_sidebar.section_logic.get("people")
-                    if people_section and hasattr(people_section, "get_people_quick_payload"):
-                        payload = dict(people_section.get_people_quick_payload() or payload)
+                    if people_section:
+                        if hasattr(people_section, "get_people_quick_payload"):
+                            payload = dict(people_section.get_people_quick_payload() or payload)
+                        if hasattr(people_section, "get_merge_suggestions"):
+                            suggestions = list(people_section.get_merge_suggestions() or [])
 
             if hasattr(self, "search_controller"):
                 self.search_controller.set_people_quick_payload(payload)
+                self.search_controller.set_merge_suggestions(suggestions)
 
         except Exception as e:
-            print(f"[UX-7A] Error refreshing people quick section: {e}")
+            print(f"[UX-8A] Error refreshing people quick section: {e}")
 
     def _refresh_activity_snapshot(self):
         """
@@ -3295,6 +3304,88 @@ class MainWindow(QMainWindow):
                 self.activity_center.raise_()
         except Exception as e:
             print(f"[UX-7A] Failed to open activity center: {e}")
+
+    def _open_people_merge_review(self):
+        try:
+            from ui.search.people_merge_suggestions_panel import PeopleMergeSuggestionsDialog
+
+            state = self.search_state_store.get_state()
+            suggestions = list(getattr(state, "merge_suggestions", []) or [])
+
+            dlg = PeopleMergeSuggestionsDialog(self)
+            dlg.set_suggestions(suggestions)
+            dlg.mergeAccepted.connect(self._accept_people_merge_suggestion)
+            dlg.mergeRejected.connect(self._reject_people_merge_suggestion)
+            dlg.exec()
+
+        except Exception as e:
+            print(f"[UX-8A] Failed to open merge review dialog: {e}")
+
+    def _accept_people_merge_suggestion(self, left_id: str, right_id: str):
+        try:
+            handled = False
+
+            if hasattr(self, "sidebar") and hasattr(self.sidebar, "accordion"):
+                people_section = self.sidebar.accordion.section_logic.get("people")
+                if people_section and hasattr(people_section, "accept_merge_suggestion"):
+                    people_section.accept_merge_suggestion(left_id, right_id)
+                    handled = True
+
+            if not handled and hasattr(self, "layout_manager"):
+                layout = self.layout_manager.get_current_layout()
+                if layout and hasattr(layout, "accordion_sidebar"):
+                    people_section = layout.accordion_sidebar.section_logic.get("people")
+                    if people_section and hasattr(people_section, "accept_merge_suggestion"):
+                        people_section.accept_merge_suggestion(left_id, right_id)
+                        handled = True
+
+            self._refresh_people_quick_section()
+
+        except Exception as e:
+            print(f"[UX-8A] Failed to accept merge suggestion: {e}")
+
+    def _reject_people_merge_suggestion(self, left_id: str, right_id: str):
+        try:
+            handled = False
+
+            if hasattr(self, "sidebar") and hasattr(self.sidebar, "accordion"):
+                people_section = self.sidebar.accordion.section_logic.get("people")
+                if people_section and hasattr(people_section, "reject_merge_suggestion"):
+                    people_section.reject_merge_suggestion(left_id, right_id)
+                    handled = True
+
+            if not handled and hasattr(self, "layout_manager"):
+                layout = self.layout_manager.get_current_layout()
+                if layout and hasattr(layout, "accordion_sidebar"):
+                    people_section = layout.accordion_sidebar.section_logic.get("people")
+                    if people_section and hasattr(people_section, "reject_merge_suggestion"):
+                        people_section.reject_merge_suggestion(left_id, right_id)
+                        handled = True
+
+            self._refresh_people_quick_section()
+
+        except Exception as e:
+            print(f"[UX-8A] Failed to reject merge suggestion: {e}")
+
+    def _handle_search_sidebar_branch_request(self, branch: str):
+        if branch == "people_merge_review":
+            self._open_people_merge_review()
+            return
+
+        if branch == "people_unnamed":
+            # first safe routing: open People branch
+            if hasattr(self, "sidebar"):
+                try:
+                    self.sidebar.selectBranch.emit("people")
+                except Exception:
+                    pass
+            return
+
+        if hasattr(self, "sidebar"):
+            try:
+                self.sidebar.selectBranch.emit(branch)
+            except Exception:
+                pass
 
     def _execute_smart_find_preset(self, preset_id: str):
         """
