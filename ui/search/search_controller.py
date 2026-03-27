@@ -198,13 +198,14 @@ class SearchController(QObject):
             self.store.update(active_people=active_people)
             self._update_chips_from_filters()
         elif kind == "browse":
-            self.store.update(browse_mode=None)
+            filters = dict(state.active_filters)
             if value == "favorites":
-                state.active_filters.pop("favorites_only", None)
+                filters.pop("favorites_only", None)
             elif value == "videos":
-                state.active_filters.pop("media_type", None)
+                filters.pop("media_type", None)
             elif value == "with_location":
-                state.active_filters.pop("with_location", None)
+                filters.pop("with_location", None)
+            self.store.update(browse_mode=None, active_filters=filters)
             self._update_chips_from_filters()
         else:
             filters = dict(state.active_filters)

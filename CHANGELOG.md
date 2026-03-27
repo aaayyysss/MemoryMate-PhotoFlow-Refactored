@@ -69,6 +69,14 @@ The following design aspects from the UX spec are verified as correctly implemen
 - ActiveChipsBar with removable chips and clear-all
 - PeopleMergeSuggestionsPanel and Dialog for merge workflow
 
+#### Architecture Pattern Fixes (from UX-8 document audit)
+
+- **State Mutation Violation in `remove_chip`**: The `browse` chip removal path directly mutated
+  `state.active_filters` via `.pop()` instead of going through `store.update()`, violating the
+  controller-only-mutates-state rule. Fixed to create a new dict and use `store.update()`.
+- **Magic Number in `PeopleMergeSuggestionsPanel`**: Replaced raw `256` with `Qt.UserRole` for
+  list item data storage/retrieval.
+
 #### Files Changed
 - `main_window_qt.py`
 - `ui/search/active_chips_bar.py`
@@ -78,6 +86,7 @@ The following design aspects from the UX spec are verified as correctly implemen
 - `ui/search/sections/search_hub_section.py`
 - `ui/search/sections/filter_section.py`
 - `ui/search/empty_state_view.py`
+- `ui/search/people_merge_suggestions_panel.py`
 - `repository/asset_repository.py`
 - `ui/similar_photo_dialog.py`
 - `thumb_cache_db.py`
