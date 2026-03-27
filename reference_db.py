@@ -317,6 +317,56 @@ class ReferenceDB:
             )
         """)
 
+        # --------------------------------------------------
+        # UX-9A Post-Impl: Structured merge decisions with scoring
+        # --------------------------------------------------
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS people_merge_decisions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL,
+                left_person_id TEXT NOT NULL,
+                right_person_id TEXT NOT NULL,
+                decision TEXT NOT NULL CHECK(decision IN ('accept', 'reject')),
+                score REAL,
+                reason TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(project_id, left_person_id, right_person_id, decision)
+            )
+        """)
+
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS people_merge_candidates (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL,
+                left_person_id TEXT NOT NULL,
+                right_person_id TEXT NOT NULL,
+                score REAL NOT NULL,
+                evidence_json TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(project_id, left_person_id, right_person_id)
+            )
+        """)
+
+        c.execute("CREATE INDEX IF NOT EXISTS idx_people_merge_candidates_project ON people_merge_candidates(project_id, score DESC)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_people_merge_decisions_project ON people_merge_decisions(project_id, decision)")
+
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS people_cluster_summary (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL,
+                person_id TEXT NOT NULL,
+                label TEXT,
+                face_count INTEGER DEFAULT 0,
+                representative_face_path TEXT,
+                avg_embedding BLOB,
+                is_unnamed INTEGER DEFAULT 0,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(project_id, person_id)
+            )
+        """)
+
+        c.execute("CREATE INDEX IF NOT EXISTS idx_people_cluster_summary_project ON people_cluster_summary(project_id, face_count DESC)")
+
         c.execute('''
             CREATE TABLE IF NOT EXISTS export_history (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -4,6 +4,43 @@ All notable changes to the MemoryMate PhotoFlow search pipeline are documented h
 
 ## [Unreleased] - 2026-03-27
 
+### UX-11: Interaction Polish & UX-9A Post-Implementation
+
+Smoother typing experience, cursor affordance, browse mode clarity, and a complementary
+DB-native merge engine with persistent candidate caching.
+
+#### UX-11: Interaction Polish
+- **TopSearchBar**: 250ms debounce timer on `queryChanged` emission — prevents rapid-fire
+  search requests while typing; direct emit moved behind `_emit_debounced_query`
+- **SearchController**: `_mark_interaction(action)` records `last_interaction_ts` and
+  `last_action` on every user-initiated state change (query, submit, preset, filter, browse)
+- **SearchState**: Added `last_interaction_ts` (float), `last_action` (str),
+  `is_user_typing` (bool) fields for debounce and flicker prevention
+- **ActiveChipsBar**: `Qt.PointingHandCursor` on chip buttons and Clear button
+- **BrowseSection**: Section title updates to show active browse mode
+  (e.g. "Browse — Favorites") for mode-lock clarity
+
+#### UX-9A Post-Implementation: DB-Native Merge Engine
+- **New**: `services/people_merge_engine.py` — complementary merge engine with
+  78% embedding / 17% size-balance / 5% unnamed-bonus scoring, MIN_SCORE 0.62
+- Persistent merge decisions: `people_merge_decisions` table with accept/reject + score/reason
+- Candidate caching: `people_merge_candidates` table for fast re-retrieval
+- Cluster summaries: `people_cluster_summary` table materialized from face_branch_reps
+- `_normalize_result_facets()` in SearchController — sorts people facets by count desc,
+  limits to top 8 for cleaner filter display
+
+#### Files Changed
+- `ui/search/top_search_bar.py` (UX-11)
+- `ui/search/active_chips_bar.py` (UX-11)
+- `ui/search/sections/browse_section.py` (UX-11)
+- `ui/search/search_state_store.py` (UX-11)
+- `ui/search/search_controller.py` (UX-11 + UX-9A Post-Impl)
+- `services/people_merge_engine.py` (new — UX-9A Post-Impl)
+- `reference_db.py` (UX-9A Post-Impl — 3 new tables)
+- `CHANGELOG.md`
+
+---
+
 ### UX-10 (A-F): Result Pane Polish, Review Workflows, Stable Transitions
 
 Makes the result experience feel product-grade with stable transitions, richer review

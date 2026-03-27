@@ -1,4 +1,5 @@
 import logging
+import time
 from typing import Optional, List, Dict, Any
 
 from PySide6.QtCore import QObject, Signal, QTimer
@@ -23,6 +24,10 @@ class SearchController(QObject):
         self._debounce_timer.setInterval(400)
         self._debounce_timer.timeout.connect(self._do_search)
 
+    def _mark_interaction(self, action: str):
+        """UX-11: record interaction timestamp for debounce and stability checks."""
+        self.store.update(last_interaction_ts=time.time(), last_action=action)
+
     def set_active_project(self, project_id: Optional[int]):
         """Sync with project changes from MainWindow."""
         self.store.reset_for_project(project_id)
@@ -37,6 +42,7 @@ class SearchController(QObject):
 
     def set_query_text(self, text: str, **kwargs):
         """Update query text, optionally triggering a debounced search."""
+        self._mark_interaction("query")
         state = self.store.get_state()
         if state.query_text == text:
             return
@@ -49,6 +55,7 @@ class SearchController(QObject):
 
     def submit_query(self, text: str):
         """User explicitly submitted a query (Enter or click)."""
+        self._mark_interaction("submit")
         self._debounce_timer.stop()
         self.store.update(query_text=text)
         self._add_to_history(text)
@@ -56,6 +63,7 @@ class SearchController(QObject):
         self._do_search()
 
     def set_preset(self, preset_id: str):
+        self._mark_interaction("preset")
         state = self.store.get_state()
 
         chips = [chip for chip in state.active_chips if chip.get("kind") != "preset"]
@@ -76,6 +84,7 @@ class SearchController(QObject):
 
     def apply_filter(self, kind: str, value: str):
         """User clicked a facet in FilterSection."""
+        self._mark_interaction("filter")
         state = self.store.get_state()
         filters = dict(state.active_filters)
 
@@ -146,6 +155,7 @@ class SearchController(QObject):
         )
 
     def apply_browse_mode(self, browse_key: str, value):
+        self._mark_interaction("browse")
         state = self.store.get_state()
 
         new_filters = dict(state.active_filters or {})
@@ -287,7 +297,7 @@ class SearchController(QObject):
         self.store.update(
             result_paths=result_paths or [],
             result_count=result_count,
-            result_facets=result_facets or {},
+            result_facets=self._normalize_result_facets(result_facets or {}),
             family=family,
             warnings=warning_list,
             model_warning=model_warning,
@@ -330,6 +340,18 @@ class SearchController(QObject):
 
     def _do_search(self):
         self.run_search()
+
+    def _normalize_result_facets(self, facets: dict) -> dict:
+        """UX-9A: normalize people facets by sorting by count and limiting to top 8."""
+        facets = dict(facets or {})
+        people_items = list(facets.get("people", []) or [])
+        people_items = sorted(
+            people_items,
+            key=lambda x: x.get("count", 0) if isinstance(x, dict) else 0,
+            reverse=True,
+        )
+        facets["people"] = people_items[:8]
+        return facets
 
     def _build_intent_summary(self) -> str:
         state = self.store.get_state()
