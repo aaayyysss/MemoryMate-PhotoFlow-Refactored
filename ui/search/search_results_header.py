@@ -49,26 +49,16 @@ class SearchResultsHeader(QWidget):
         self.store.stateChanged.connect(self._on_state_changed)
 
     def _on_state_changed(self, state):
-        # Update summary
         if state.onboarding_mode:
             self.lbl_summary.setText("No active project")
             self.lbl_count.setText("")
-        elif state.preset_id:
-            self.lbl_summary.setText(f"Showing {state.preset_id.capitalize()}")
-        elif state.query_text:
-            self.lbl_summary.setText(f'Results for "{state.query_text}"')
-        elif state.active_filters:
-            self.lbl_summary.setText("Filtered Results")
+            self.badge_status.setVisible(False)
+            self.badge_model.setVisible(False)
+            return
+
+        if state.search_in_progress:
+            self.lbl_summary.setText(state.intent_summary or "Searching...")
         else:
-            self.lbl_summary.setText("All Photos")
+            self.lbl_summary.setText(state.intent_summary or "All Photos")
 
-        # Update count
-        if not state.onboarding_mode:
-            self.lbl_count.setText(f"{state.result_count:,} photo(s)")
-
-        # Update Searching badge
-        self.badge_status.setVisible(state.search_in_progress)
-
-        # Update Model badge
-        self.badge_model.setText(state.model_warning or "⚠️ Low-tier model")
-        self.badge_model.setVisible(bool(state.model_warning))
+        self.lbl_count.setText(f"{state.result_count} result(s)")

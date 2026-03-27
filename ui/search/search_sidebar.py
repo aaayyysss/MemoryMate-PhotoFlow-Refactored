@@ -88,10 +88,20 @@ class SearchSidebar(QWidget):
 
     def _on_state_changed(self, state):
         enabled = state.has_active_project
-
-        self.search_hub_section.set_enabled_for_project(enabled)
         self.discover_section.setEnabled(enabled)
         self.people_quick_section.setEnabled(enabled)
+
+        # placeholder sections if they exist in state - search_sidebar doesn't
+        # directly expose placeholder_filters etc by those names in __init__
+        # but the request implies we should gate sections.
+        # Following the request exactly:
+        if hasattr(self, "placeholder_people"):
+            self.placeholder_people.setEnabled(enabled)
+        if hasattr(self, "placeholder_filters"):
+            self.placeholder_filters.setEnabled(enabled)
+
+        # Maintain existing UX-2+ functionality while applying UX-1 state gating
+        self.search_hub_section.set_enabled_for_project(enabled)
         self.browse_section.set_enabled_for_project(enabled)
 
         self.search_hub_section.set_recent_queries(getattr(state, "recent_queries", []))

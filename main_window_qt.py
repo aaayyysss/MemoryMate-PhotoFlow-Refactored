@@ -330,13 +330,6 @@ class MainWindow(QMainWindow):
         # keep rest of initializer logic, but ensure some attributes exist
         self.settings = SettingsManager()
 
-        # UX-1 search state + controller
-        self.search_state_store = SearchStateStore()
-        self.search_controller = SearchController(
-            store=self.search_state_store,
-            parent=self,
-        )
-
         self._committed_total = 0
         self._scan_result = (0, 0)  # folders, photos
 
@@ -923,6 +916,13 @@ class MainWindow(QMainWindow):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
+        # UX-1 canonical search shell state
+        self.search_state_store = SearchStateStore()
+        self.search_controller = SearchController(
+            store=self.search_state_store,
+            parent=self,
+        )
+
         # Phase 2.3: Removed huge BackfillStatusPanel (120-240px)
         # Replaced with compact indicator in top bar
 
@@ -949,12 +949,7 @@ class MainWindow(QMainWindow):
 
         main_layout.addWidget(topbar)
 
-        # --- UX-1 Search Chrome (keeps existing toolbar/mobile-sync area untouched)
-        self.search_shell_container = QWidget()
-        self.search_shell_layout = QVBoxLayout(self.search_shell_container)
-        self.search_shell_layout.setContentsMargins(0, 0, 0, 0)
-        self.search_shell_layout.setSpacing(0)
-
+        # UX-1 search shell, owned by MainWindow
         self.top_search_bar = TopSearchBar(self)
         self.search_results_header = SearchResultsHeader(
             store=self.search_state_store,
@@ -966,19 +961,19 @@ class MainWindow(QMainWindow):
             parent=self
         )
 
-        self.search_shell_layout.addWidget(self.top_search_bar)
-        self.search_shell_layout.addWidget(self.search_results_header)
-        self.search_shell_layout.addWidget(self.active_chips_bar)
+        main_layout.addWidget(self.top_search_bar)
+        main_layout.addWidget(self.search_results_header)
+        main_layout.addWidget(self.active_chips_bar)
 
-        main_layout.addWidget(self.search_shell_container)
+        # UX-1 signal wiring
         self.top_search_bar.querySubmitted.connect(self.search_controller.submit_query)
-        self.top_search_bar.queryChanged.connect(lambda text: self.search_controller.set_query_text(text, debounce=True))
+        self.top_search_bar.queryChanged.connect(self.search_controller.set_query_text)
         self.top_search_bar.searchCleared.connect(self.search_controller.clear_search)
-        self.top_search_bar.recentQueryClicked.connect(self.search_controller.submit_query)
-        self.top_search_bar.suggestionClicked.connect(self.search_controller.submit_query)
 
         self.active_chips_bar.chipRemoved.connect(self.search_controller.remove_chip)
         self.active_chips_bar.clearAllRequested.connect(self.search_controller.clear_search)
+
+        self.search_controller.searchRequested.connect(self._on_ux1_search_requested)
 
         # --- Main layout (Sidebar + Grid + Details)
         self.splitter = QSplitter(Qt.Horizontal)
@@ -993,12 +988,6 @@ class MainWindow(QMainWindow):
 
         self.sidebar = SidebarQt(project_id=default_pid)
 
-        # Gap 1: Force onboarding state if no project is active
-        if default_pid is None:
-            logger.info("[Bootstrap] Entering explicit onboarding state")
-
-        # UX-1 search/discovery sidebar shell.
-        # Existing SidebarQt remains present below it for compatibility.
         self.search_sidebar = SearchSidebar(
             store=self.search_state_store,
             controller=self.search_controller,
@@ -1011,16 +1000,6 @@ class MainWindow(QMainWindow):
         self.left_sidebar_layout.setSpacing(8)
         self.left_sidebar_layout.addWidget(self.search_sidebar, 0)
         self.left_sidebar_layout.addWidget(self.sidebar, 1)
-
-        # Connect Search Controller to bridge
-        self.search_controller.searchRequested.connect(self._on_ux1_search_requested)
-        self.search_sidebar.openActivityCenterRequested.connect(self._open_activity_center_from_sidebar)
-        self.search_sidebar.selectBranch.connect(self._handle_search_sidebar_branch_request)
-
-        # UX-1 signal wiring (moved up to top_search_bar initialization)
-
-        self.active_chips_bar.chipRemoved.connect(self.search_controller.remove_chip)
-        self.active_chips_bar.clearAllRequested.connect(self.search_controller.clear_search)
 
         # === Lazy wiring for sidebar actions (now sidebar exists) ===
         def _on_fold_toggle(checked):
@@ -3163,20 +3142,8 @@ class MainWindow(QMainWindow):
         """
         query_text = payload.get("query_text", "") or ""
         preset_id = payload.get("preset_id")
-        filters = payload.get("filters", {})
-        active_people = payload.get("active_people", [])
 
         try:
-            # Sync query text to 'query' chip if not using presets
-            if not preset_id:
-                state = self.search_state_store.get_state()
-                has_query_chip = any(c.get("kind") == "query" for c in state.active_chips)
-                if query_text and not has_query_chip:
-                    # Inject chip manually to keep shell in sync during free text search
-                    state.active_chips = [c for c in state.active_chips if c.get("kind") != "query"]
-                    state.active_chips.insert(0, {"kind": "query", "label": query_text, "value": query_text})
-                    self.search_state_store.stateChanged.emit(state)
-
             if preset_id and hasattr(self, "_execute_smart_find_preset"):
                 self._execute_smart_find_preset(preset_id)
                 result_paths = list(getattr(self.grid, "all_photo_paths", []) or [])
@@ -3201,7 +3168,6 @@ class MainWindow(QMainWindow):
                 )
                 return
 
-            # Default: no results
             self.search_controller.apply_result_summary(
                 result_paths=[],
                 result_count=0,
