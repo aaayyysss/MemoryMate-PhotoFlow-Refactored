@@ -59,7 +59,7 @@ class PeopleQuickSection(QGroupBox):
         self.btn_merge_review.setVisible(merge_candidates > 0)
         self.btn_merge_review.setText(f"Review Possible Merges ({merge_candidates})")
         self.btn_unnamed.setVisible(unnamed_count > 0)
-        self.btn_unnamed.setText(f"Show Unnamed Clusters ({unnamed_count})")
+        self.btn_unnamed.setText(f"Review Unnamed Clusters ({unnamed_count})")
         self.btn_show_all.setVisible(has_any)
         self.setVisible(has_any)
 

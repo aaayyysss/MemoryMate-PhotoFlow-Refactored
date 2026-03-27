@@ -602,8 +602,164 @@ class PeopleSection(BaseSection):
             logger.debug("[PeopleSection] get_merge_suggestions error", exc_info=True)
             return []
 
+    def get_merge_review_payload(self):
+        """
+        UX-9B merge intelligence payload with previews and reasons
+        for the PersonComparisonDialog side-by-side review.
+        """
+        try:
+            import numpy as np
+
+            db = getattr(self, "_parent_db", None)
+            pid = getattr(self, "project_id", None)
+            if not db or not pid:
+                return {"suggestions": []}
+
+            with db._connect() as conn:
+                cur = conn.cursor()
+                cur.execute("""
+                    SELECT branch_key, label, count, centroid, rep_path, rep_thumb_png
+                    FROM face_branch_reps
+                    WHERE project_id = ?
+                      AND centroid IS NOT NULL
+                """, (pid,))
+                rows = cur.fetchall() or []
+
+            clusters = []
+            for row in rows:
+                branch_key, label, count, centroid_blob, rep_path, rep_thumb = row
+                try:
+                    centroid = np.frombuffer(centroid_blob, dtype=np.float32)
+                    clusters.append({
+                        "id": str(branch_key),
+                        "label": str(label or branch_key),
+                        "count": int(count or 0),
+                        "centroid": centroid,
+                        "rep_path": rep_path,
+                        "rep_thumb": rep_thumb,
+                    })
+                except Exception:
+                    continue
+
+            # Load prior decisions to filter already-reviewed pairs
+            prior = set()
+            try:
+                reviews = db.get_people_merge_reviews()
+                prior = set(reviews.keys())
+            except Exception:
+                pass
+
+            suggestions = []
+            for i in range(len(clusters)):
+                for j in range(i + 1, len(clusters)):
+                    left = clusters[i]
+                    right = clusters[j]
+
+                    if left["id"] == right["id"]:
+                        continue
+
+                    pair_key = tuple(sorted((left["id"], right["id"])))
+                    if pair_key in prior:
+                        continue
+
+                    if left["count"] > 80 and right["count"] > 80:
+                        continue
+
+                    denom = np.linalg.norm(left["centroid"]) * np.linalg.norm(right["centroid"])
+                    if denom == 0:
+                        continue
+
+                    sim = float(np.dot(left["centroid"], right["centroid"]) / denom)
+                    if sim < 0.72:
+                        continue
+
+                    reason = []
+                    if sim >= 0.90:
+                        reason.append("very high centroid similarity")
+                    elif sim >= 0.82:
+                        reason.append("high centroid similarity")
+                    else:
+                        reason.append("moderate centroid similarity")
+
+                    if left["count"] <= 3 or right["count"] <= 3:
+                        reason.append("one cluster is very small")
+
+                    suggestions.append({
+                        "left_id": left["id"],
+                        "right_id": right["id"],
+                        "left_label": left["label"],
+                        "right_label": right["label"],
+                        "left_count": left["count"],
+                        "right_count": right["count"],
+                        "left_preview_paths": [left["rep_path"]] if left["rep_path"] else [],
+                        "right_preview_paths": [right["rep_path"]] if right["rep_path"] else [],
+                        "left_preview_thumbs": [left["rep_thumb"]] if left["rep_thumb"] else [],
+                        "right_preview_thumbs": [right["rep_thumb"]] if right["rep_thumb"] else [],
+                        "score": sim,
+                        "reason": ", ".join(reason),
+                    })
+
+            suggestions.sort(key=lambda x: x["score"], reverse=True)
+            return {"suggestions": suggestions[:20]}
+
+        except Exception:
+            logger.debug("[PeopleSection] get_merge_review_payload error", exc_info=True)
+            return {"suggestions": []}
+
+    def get_unnamed_review_payload(self):
+        """
+        UX-9C: Returns unnamed / generic clusters for review.
+        """
+        try:
+            db = getattr(self, "_parent_db", None)
+            pid = getattr(self, "project_id", None)
+            if not db or not pid:
+                return {"unnamed_items": []}
+
+            with db._connect() as conn:
+                cur = conn.cursor()
+                cur.execute("""
+                    SELECT branch_key, label, count, rep_path, rep_thumb_png
+                    FROM face_branch_reps
+                    WHERE project_id = ?
+                    ORDER BY count DESC
+                """, (pid,))
+                rows = cur.fetchall() or []
+
+            items = []
+            for row in rows:
+                branch_key, label, count, rep_path, rep_thumb = row
+                label_str = str(label or branch_key)
+                if label_str.lower().startswith("face_") or "unnamed" in label_str.lower():
+                    items.append({
+                        "id": str(branch_key),
+                        "label": label_str,
+                        "count": int(count or 0),
+                        "rep_path": rep_path,
+                        "rep_thumb": rep_thumb,
+                    })
+
+            return {"unnamed_items": items[:30]}
+
+        except Exception:
+            logger.debug("[PeopleSection] get_unnamed_review_payload error", exc_info=True)
+            return {"unnamed_items": []}
+
+    def _ensure_audit_table(self, conn):
+        """Ensure the face_merge_review_log audit table exists."""
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS face_merge_review_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER,
+                left_branch TEXT,
+                right_branch TEXT,
+                decision TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
     def accept_merge_suggestion(self, left_id: str, right_id: str):
-        """Accept merge: persist decision and execute the actual cluster merge."""
+        """Accept merge: persist decision, write audit trail, execute cluster merge."""
         db = getattr(self, "_parent_db", None)
         pid = getattr(self, "project_id", None)
         logger.info("[PeopleSection] Accept merge: %s + %s", left_id, right_id)
@@ -614,6 +770,17 @@ class PeopleSection(BaseSection):
             except Exception:
                 logger.warning("[PeopleSection] Failed to save merge review", exc_info=True)
 
+            # Audit trail
+            try:
+                with db._connect() as conn:
+                    self._ensure_audit_table(conn)
+                    conn.execute("""
+                        INSERT INTO face_merge_review_log (project_id, left_branch, right_branch, decision)
+                        VALUES (?, ?, ?, ?)
+                    """, (pid, left_id, right_id, "accepted"))
+            except Exception:
+                logger.debug("[PeopleSection] Audit trail write failed", exc_info=True)
+
             if pid:
                 try:
                     db.merge_face_clusters(pid, target_branch=left_id, source_branches=[right_id])
@@ -622,8 +789,9 @@ class PeopleSection(BaseSection):
                     logger.warning("[PeopleSection] merge_face_clusters failed", exc_info=True)
 
     def reject_merge_suggestion(self, left_id: str, right_id: str):
-        """Reject merge: persist the rejection so the pair is not suggested again."""
+        """Reject merge: persist rejection + audit trail so pair is excluded from future suggestions."""
         db = getattr(self, "_parent_db", None)
+        pid = getattr(self, "project_id", None)
         logger.info("[PeopleSection] Reject merge: %s / %s", left_id, right_id)
 
         if db:
@@ -631,6 +799,17 @@ class PeopleSection(BaseSection):
                 db.save_people_merge_review(left_id, right_id, "rejected")
             except Exception:
                 logger.warning("[PeopleSection] Failed to save merge rejection", exc_info=True)
+
+            # Audit trail
+            try:
+                with db._connect() as conn:
+                    self._ensure_audit_table(conn)
+                    conn.execute("""
+                        INSERT INTO face_merge_review_log (project_id, left_branch, right_branch, decision)
+                        VALUES (?, ?, ?, ?)
+                    """, (pid, left_id, right_id, "rejected"))
+            except Exception:
+                logger.debug("[PeopleSection] Audit trail write failed", exc_info=True)
 
     def set_db(self, db):
         """Store DB reference for passing to GroupsSection."""
