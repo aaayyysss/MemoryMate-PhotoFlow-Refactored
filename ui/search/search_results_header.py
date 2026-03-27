@@ -56,6 +56,15 @@ class SearchResultsHeader(QWidget):
             self.badge_model.setVisible(False)
             return
 
+        # Status Badge (Searching...)
+        self.badge_status.setVisible(state.search_in_progress)
+
+        # Model Warning Badge
+        has_model_warning = bool(state.model_warning)
+        self.badge_model.setVisible(has_model_warning)
+        if has_model_warning:
+            self.badge_model.setToolTip(state.model_warning)
+
         if state.search_in_progress:
             self.lbl_summary.setText(state.intent_summary or "Searching...")
         else:

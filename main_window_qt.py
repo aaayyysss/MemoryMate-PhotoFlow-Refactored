@@ -5030,21 +5030,25 @@ class MainWindow(QMainWindow):
 
     def _sync_ux2_widgets(self, state):
         """Sync global SearchState into shell widgets."""
-        if hasattr(self, "top_search_bar"):
-            self.top_search_bar.set_recent_queries(getattr(state, "recent_queries", []))
-            self.top_search_bar.set_suggestions(getattr(state, "suggestions", []))
-            self.top_search_bar.set_enabled_for_project(state.has_active_project)
+        from shiboken6 import isValid
+        try:
+            if hasattr(self, "top_search_bar") and isValid(self.top_search_bar):
+                self.top_search_bar.set_recent_queries(getattr(state, "recent_queries", []))
+                self.top_search_bar.set_suggestions(getattr(state, "suggestions", []))
+                self.top_search_bar.set_enabled_for_project(state.has_active_project)
 
-        # Sync EmptyStateView actions back to MainWindow
-        layout = self.layout_manager.get_current_layout()
-        if layout and hasattr(layout, "empty_state"):
-            esv = layout.empty_state
-            try:
-                # Disconnect first to prevent duplicate connections
-                esv.actionRequested.disconnect()
-            except Exception:
-                pass
-            esv.actionRequested.connect(self._on_empty_state_action)
+            # Sync EmptyStateView actions back to MainWindow
+            layout = self.layout_manager.get_current_layout()
+            if layout and hasattr(layout, "empty_state") and isValid(layout.empty_state):
+                esv = layout.empty_state
+                try:
+                    # Disconnect first to prevent duplicate connections
+                    esv.actionRequested.disconnect()
+                except Exception:
+                    pass
+                esv.actionRequested.connect(self._on_empty_state_action)
+        except Exception as e:
+            logger.debug(f"[MainWindow] _sync_ux2_widgets error (non-fatal): {e}")
 
     def _on_empty_state_action(self, action: str):
         if action == "select_project":

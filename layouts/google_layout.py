@@ -430,17 +430,21 @@ class GooglePhotosLayout(BaseLayout):
 
     def _show_empty_state(self, reason: str, warnings=None):
         try:
-            if hasattr(self, "empty_state"):
+            if hasattr(self, "empty_state") and isValid(self.empty_state):
                 self.empty_state.set_state(reason, warnings or [])
-            if hasattr(self, "results_stack") and hasattr(self, "empty_state"):
+            if hasattr(self, "results_stack") and isValid(self.results_stack):
                 self.results_stack.setCurrentWidget(self.empty_state)
+            if hasattr(self, "timeline") and isValid(self.timeline):
+                self.timeline.hide()
         except Exception as e:
             print(f"[GooglePhotosLayout] _show_empty_state error: {e}")
 
     def _show_results_surface(self):
         try:
-            if hasattr(self, "results_stack") and hasattr(self, "timeline"):
+            if hasattr(self, "results_stack") and isValid(self.results_stack):
                 self.results_stack.setCurrentWidget(self.timeline)
+            if hasattr(self, "timeline") and isValid(self.timeline):
+                self.timeline.show()
         except Exception as e:
             print(f"[GooglePhotosLayout] _show_results_surface error: {e}")
 
