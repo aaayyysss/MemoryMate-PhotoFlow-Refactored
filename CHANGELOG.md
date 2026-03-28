@@ -2,6 +2,61 @@
 
 All notable changes to the MemoryMate PhotoFlow search pipeline are documented here.
 
+## [Unreleased] - 2026-03-28
+
+### UX-9 Review: Implementation Gap Audit & Fixes
+
+Comprehensive audit of UX-9 spec against codebase, fixing 11 implementation gaps
+identified by the review document.
+
+#### Merge Engine
+- Score threshold corrected: 0.62 → 0.60 (matches spec)
+
+#### Facet Quality (UX-9D)
+- `_normalize_result_facets()` upgraded: handles all facet types (people, locations, years,
+  types), filters dead items (count<=0), caps to 12 per category (was 8 for people only)
+- `filter_section.py`: facet items now sorted by count desc before rendering
+
+#### Merge Suggestions Panel
+- QSplitter left/right layout with separate QTextEdit previews for each cluster
+  (replaces single details pane); dialog widened to 760x520
+
+#### Unnamed Cluster Review
+- Added `markDistinctRequested` signal to UnnamedClusterReviewDialog (UX-9 compat alias)
+- `_keep_separate` now emits both `keepSeparateRequested` and `markDistinctRequested`
+
+#### People Section Adapters
+- Added `get_unnamed_cluster_items()` — simple dict adapter for UX-9C workflow
+- Added `mark_unnamed_cluster_distinct()` — persists "distinct" decision to DB
+- Added `assign_unnamed_cluster_to_person()` — delegates to existing merge logic
+
+#### State & Controller
+- Added `unnamed_cluster_items` field to SearchState
+- Added `set_unnamed_cluster_items()` to SearchController
+- `_refresh_people_quick_section()` now also extracts unnamed_cluster_items
+
+#### MainWindow Routing
+- Added `_mark_unnamed_cluster_distinct()` handler with sidebar/layout fallback
+- `_handle_search_sidebar_branch_request()` now routes "people_unnamed" directly
+  to `_open_unnamed_cluster_review()` (was routing through intermediate wrapper)
+
+#### App Log Audit (clean run)
+- Reviewed 943-line app_log.txt: zero errors, zero exceptions, zero crashes
+- Boot → scan → embed → cluster → navigate → shutdown all clean (exit code 0)
+
+#### Files Changed
+- `services/people_merge_engine.py`
+- `ui/search/search_state_store.py`
+- `ui/search/search_controller.py`
+- `ui/search/people_merge_suggestions_panel.py`
+- `ui/search/unnamed_cluster_review_dialog.py`
+- `ui/search/sections/filter_section.py`
+- `ui/accordion_sidebar/people_section.py`
+- `main_window_qt.py`
+- `CHANGELOG.md`
+
+---
+
 ## [Unreleased] - 2026-03-27
 
 ### UX-11: Interaction Polish & UX-9A Post-Implementation

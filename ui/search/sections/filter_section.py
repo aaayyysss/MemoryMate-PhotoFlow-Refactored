@@ -66,7 +66,17 @@ class FilterSection(QGroupBox):
 
     def set_facets(self, result_facets: dict, active_filters: dict):
         """Update facet options and counts based on search results.
-        Visibility is controlled by SearchSidebar per UX Rule 3."""
+        Visibility is controlled by SearchSidebar per UX Rule 3.
+        UX-9D: sort facet items by count desc for relevance ordering."""
+        result_facets = dict(result_facets or {})
+        for key in result_facets:
+            items = result_facets.get(key)
+            if isinstance(items, list):
+                result_facets[key] = sorted(
+                    items,
+                    key=lambda x: int(x.get("count", 0)) if isinstance(x, dict) else 0,
+                    reverse=True,
+                )
         self.set_active_filters(active_filters)
 
     def set_active_filters(self, active_filters: dict):

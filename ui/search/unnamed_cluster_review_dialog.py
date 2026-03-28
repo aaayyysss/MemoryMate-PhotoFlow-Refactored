@@ -10,6 +10,7 @@ class UnnamedClusterReviewDialog(QDialog):
 
     assignRequested = Signal(str, str)
     keepSeparateRequested = Signal(str)
+    markDistinctRequested = Signal(str)  # alias for keepSeparateRequested (UX-9 compat)
     ignoreRequested = Signal(str)
 
     def __init__(self, parent=None):
@@ -73,6 +74,7 @@ class UnnamedClusterReviewDialog(QDialog):
     def _keep_separate(self):
         if self.cluster_id:
             self.keepSeparateRequested.emit(str(self.cluster_id))
+            self.markDistinctRequested.emit(str(self.cluster_id))
 
     def _ignore(self):
         if self.cluster_id:

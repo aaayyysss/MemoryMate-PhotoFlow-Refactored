@@ -48,6 +48,7 @@ class SearchState:
     selected_result_ids: List[str] = field(default_factory=list)
     merge_review_payloads: List[Dict[str, Any]] = field(default_factory=list)
     unnamed_cluster_payloads: List[Dict[str, Any]] = field(default_factory=list)
+    unnamed_cluster_items: List[Dict[str, Any]] = field(default_factory=list)
     browse_mode: Optional[str] = None
     activity_snapshot: Dict[str, Any] = field(default_factory=dict)
     model_warning: str = ""
