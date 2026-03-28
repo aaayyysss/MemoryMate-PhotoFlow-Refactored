@@ -1,18 +1,18 @@
-C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.12-Photo-App\MemoryMate-PhotoFlow-Refactored-main-12>run_app.bat
+C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.12-Photo-App\MemoryMate-PhotoFlow-Refactored-main-13>run_app.bat
 Using runtime: C:\Tools\MM_Runtime\.venv\Scripts\python.exe
 [BOOT] sys.executable = C:\Tools\MM_Runtime\.venv\Scripts\python.exe
 [Startup] pillow_heif available — HEIC/HEIF support enabled.
 🔇 Decoder warnings suppressed per settings.
 🔇 Decoder warnings suppressed (Qt, Pillow, ICC).
-[Environment] APP_DIR = C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.12-Photo-App\MemoryMate-PhotoFlow-Refactored-main-12
+[Environment] APP_DIR = C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.12-Photo-App\MemoryMate-PhotoFlow-Refactored-main-13
 [Environment] Portable Python: False
 [Environment] sys.executable = C:\Tools\MM_Runtime\.venv\Scripts\python.exe
-✅ Loaded en translations from C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.12-Photo-App\MemoryMate-PhotoFlow-Refactored-main-12\locales\en.json
+✅ Loaded en translations from C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.12-Photo-App\MemoryMate-PhotoFlow-Refactored-main-13\locales\en.json
 🌍 Language initialized: en
-2026-03-28 23:24:59,951 [INFO] ================================================================================
-2026-03-28 23:24:59,951 [INFO] MemoryMate-PhotoFlow logging initialized (level=INFO)
-2026-03-28 23:24:59,956 [INFO] Log file: C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.12-Photo-App\MemoryMate-PhotoFlow-Refactored-main-12\app_log.txt
-2026-03-28 23:24:59,956 [INFO] ================================================================================
+2026-03-29 00:35:26,772 [INFO] ================================================================================
+2026-03-29 00:35:26,772 [INFO] MemoryMate-PhotoFlow logging initialized (level=INFO)
+2026-03-29 00:35:26,772 [INFO] Log file: C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.12-Photo-App\MemoryMate-PhotoFlow-Refactored-main-13\app_log.txt
+2026-03-29 00:35:26,772 [INFO] ================================================================================
 ============================================================
 SCREEN INFORMATION (DPI-Aware)
 ============================================================
@@ -25,18 +25,18 @@ Taskbar Height:  48px
 Adaptive Margin: 60px
 Adaptive Icons:  24px
 ============================================================
-2026-03-28 23:25:00,036 [INFO] Installed Qt message handler to suppress TIFF warnings
-2026-03-28 23:25:00,036 [INFO] Qt message handler installed to suppress TIFF warnings
-2026-03-28 23:25:00,078 [INFO] [Store] Initialized (ui_epoch=0)
-2026-03-28 23:25:00,078 [INFO] [Startup] ProjectState store initialized
+2026-03-29 00:35:26,866 [INFO] Installed Qt message handler to suppress TIFF warnings
+2026-03-29 00:35:26,866 [INFO] Qt message handler installed to suppress TIFF warnings
+2026-03-29 00:35:26,913 [INFO] [Store] Initialized (ui_epoch=0)
+2026-03-29 00:35:26,913 [INFO] [Startup] ProjectState store initialized
 [Main] Starting Qt event loop...
 [Startup] Database schema initialized successfully
-[Cache] {'entries': 0, 'size_mb': 0.0, 'path': 'C:\\Users\\suleimaa\\Downloads\\Photo-Sorter\\11.01.01.12-Photo-App\\MemoryMate-PhotoFlow-Refactored-main-12\\thumbnails_cache.db', 'last_updated': '2026-03-28 23:25'}
-2026-03-28 23:25:01,700 [INFO] SearchService initialized
+[Cache] {'entries': 0, 'size_mb': 0.0, 'path': 'C:\\Users\\suleimaa\\Downloads\\Photo-Sorter\\11.01.01.12-Photo-App\\MemoryMate-PhotoFlow-Refactored-main-13\\thumbnails_cache.db', 'last_updated': '2026-03-29 00:35'}
+2026-03-29 00:35:28,636 [INFO] SearchService initialized
 [Startup] SearchService initialized
-2026-03-28 23:25:01,700 [INFO] LRUCache initialized with capacity=200, max_memory=100.0MB
-2026-03-28 23:25:01,707 [INFO] ThumbnailService initialized (L1 capacity=200, max_memory=100.0MB, timeout=5.0s)
-2026-03-28 23:25:01,707 [INFO] Global ThumbnailService created with Phase 1B memory limits
+2026-03-29 00:35:28,643 [INFO] LRUCache initialized with capacity=200, max_memory=100.0MB
+2026-03-29 00:35:28,643 [INFO] ThumbnailService initialized (L1 capacity=200, max_memory=100.0MB, timeout=5.0s)
+2026-03-29 00:35:28,644 [INFO] Global ThumbnailService created with Phase 1B memory limits
 [Startup] ThumbnailService initialized
 [Startup] Qt image plugins: ['bmp', 'cur', 'gif', 'icns', 'ico', 'jpeg', 'jpg', 'pbm', 'pdf', 'pgm', 'png', 'ppm', 'svg', 'svgz', 'tga', 'tif', 'tiff', 'wbmp', 'webp', 'xbm', 'xpm']
 [Startup] ⚠️ CREATING MainWindow instance...
@@ -53,9 +53,9 @@ Adaptive Icons:  24px
 [MainWindow] 📍 Window position: x=60, y=60
 [MainWindow] ✓ Window geometry: PySide6.QtCore.QRect(60, 60, 1800, 1032)
 🔇 Qt/Pillow decoder warnings silenced (per user settings).
-2026-03-28 23:25:01,866 [INFO] [SessionState] Loaded: section=find, selection=None/None
-2026-03-28 23:25:01,866 [INFO] [Bootstrap] Policy: Last-used project_id=1 no longer exists
-2026-03-28 23:25:01,866 [INFO] [Bootstrap] Policy: No projects found, entering onboarding
+2026-03-29 00:35:28,795 [INFO] [SessionState] Loaded: section=find, selection=None/None
+2026-03-29 00:35:28,795 [INFO] [Bootstrap] Policy: Last-used project_id=1 no longer exists
+2026-03-29 00:35:28,795 [INFO] [Bootstrap] Policy: No projects found, entering onboarding
 [Sidebar] Device auto-detection disabled (manual refresh only)
 [SidebarQt] switch_display_mode(list) - canceling old workers
 [SidebarQt] Hiding tabs controller and accordion
@@ -71,11 +71,11 @@ Adaptive Icons:  24px
 [SidebarQt] list_branches() returned 0 branches
 [Sidebar] Loading videos for project_id=None
 [Sidebar] Found 0 videos in project None
-2026-03-28 23:25:01,941 [INFO] [get_location_clusters] GPS columns exist: True
-2026-03-28 23:25:01,941 [INFO] [get_location_clusters] Found 0 photos with GPS data (project_id=None)
-2026-03-28 23:25:01,941 [WARNING] [get_location_clusters] No GPS data found. Total photos in DB: 0
-2026-03-28 23:25:01,941 [INFO] [get_location_clusters] get_photos_by_location returned 0 location groups
-2026-03-28 23:25:01,941 [INFO] [get_location_clusters] Returning 0 location clusters
+2026-03-29 00:35:28,874 [INFO] [get_location_clusters] GPS columns exist: True
+2026-03-29 00:35:28,874 [INFO] [get_location_clusters] Found 0 photos with GPS data (project_id=None)
+2026-03-29 00:35:28,874 [WARNING] [get_location_clusters] No GPS data found. Total photos in DB: 0
+2026-03-29 00:35:28,874 [INFO] [get_location_clusters] get_photos_by_location returned 0 location groups
+2026-03-29 00:35:28,874 [INFO] [get_location_clusters] Returning 0 location clusters
 [Sidebar] No mobile devices detected - added help message
 [SidebarQt] _build_tree_model() completed
 [GRID] P2-26: Created dedicated thumbnail thread pool with 4 workers
@@ -88,13 +88,13 @@ Adaptive Icons:  24px
 [LayoutManager] Switched to: Google Photos Style
 [Startup] Layout system initialized successfully
 [MainWindow] __init__() COMPLETED - returning to main_qt.py
-[MainWindow] Window object: <main_window_qt.MainWindow(0x1bf13752930) at 0x000001BF17DF50C0>
+[MainWindow] Window object: <main_window_qt.MainWindow(0x2cd91e096c0) at 0x000002CD92DACF00>
 [MainWindow] Window valid: N/A
 [Startup] ✅ MainWindow instance created successfully
 [Startup] MainWindow type: <class 'main_window_qt.MainWindow'>
 [Startup] MainWindow is valid: True
-2026-03-28 23:25:02,539 [INFO] [Store] QtActionBridge initialized
-2026-03-28 23:25:02,539 [INFO] [Startup] QtActionBridge attached to MainWindow
+2026-03-29 00:35:29,513 [INFO] [Store] QtActionBridge initialized
+2026-03-29 00:35:29,513 [INFO] [Startup] QtActionBridge attached to MainWindow
 [Startup] Updating splash progress to 95%...
 [GooglePhotosLayout] 📐 Responsive grid: 2 columns (viewport: 640px, thumb: 200px)
 
@@ -123,24 +123,24 @@ Adaptive Icons:  24px
 [Startup] Window on screen: \\.\DISPLAY1
 [MainWindow] ✓ Window is on-screen (center at 959, 606)
 [Startup] Window raised and activated
-[Startup] _after_first_paint fired at 472773.670s
-2026-03-28 23:25:02,673 [INFO] JobService initialized
-2026-03-28 23:25:02,683 [INFO] [JobManager] Initialized with max 4 workers
-2026-03-28 23:25:02,683 [INFO] [JobManager] Startup throttle enabled (max_threads=1)
-2026-03-28 23:25:02,683 [INFO] [Startup] Suppressing initial project-bound layout load because no active project exists
+[Startup] _after_first_paint fired at 477000.641s
+2026-03-29 00:35:29,659 [INFO] JobService initialized
+2026-03-29 00:35:29,667 [INFO] [JobManager] Initialized with max 4 workers
+2026-03-29 00:35:29,667 [INFO] [JobManager] Startup throttle enabled (max_threads=1)
+2026-03-29 00:35:29,667 [INFO] [Startup] Suppressing initial project-bound layout load because no active project exists
 [Startup] ✅ Main window should now be visible
 [Startup] If window is not visible, check:
 [Startup]   1. Window position: (60, 60)
 [Startup]   2. Window size: 1800x1032
 [Startup]   3. Screen geometry: PySide6.QtCore.QRect(0, 0, 1920, 1152)
 [Startup]   4. Check if window is off-screen or on disconnected monitor
-2026-03-28 23:25:02,759 [INFO] [Main] Async FFmpeg detection worker launched
-2026-03-28 23:25:02,759 [INFO] [FFmpegDetectionWorker] Starting async FFmpeg detection...
-2026-03-28 23:25:02,877 [INFO] [FFmpegDetectionWorker] Fresh detection completed in 0.12s
-✅ FFmpeg and FFprobe detected (custom path: C:\ffmpeg\bin)
+2026-03-29 00:35:29,759 [INFO] [Main] Async FFmpeg detection worker launched
+2026-03-29 00:35:29,762 [INFO] [FFmpegDetectionWorker] Starting async FFmpeg detection...
+2026-03-29 00:35:29,913 [INFO] [FFmpegDetectionWorker] Fresh detection completed in 0.15s
 [MainWindow] No active project (onboarding) — suppressing auto-load and heavy maintenance
+✅ FFmpeg and FFprobe detected (custom path: C:\ffmpeg\bin)
 [Startup] Global QThreadPool restored to 1 threads
-2026-03-28 23:25:07,676 [INFO] [JobManager] Startup throttle disabled (restored max_threads=12)
+2026-03-29 00:35:34,662 [INFO] [JobManager] Startup throttle disabled (restored max_threads=12)
 [Breadcrumb] _show_project_menu() called
 [Breadcrumb] Refreshed project list: 0 projects
 [Breadcrumb] No projects found in main_window._projects
@@ -157,331 +157,331 @@ Adaptive Icons:  24px
 
 [Breadcrumb] Switched to project ID: 1
 [MainWindow] Refreshed project list: 1 projects
-2026-03-28 23:25:14,387 [INFO] [GoogleLayout] Page count ready: gen=1 total=0 (threshold=3000)
-2026-03-28 23:25:14,402 [INFO] [GoogleLayout] Page ready: gen=1 offset=0 rows=0 loaded=0/0
+2026-03-29 00:35:45,971 [INFO] [GoogleLayout] Page count ready: gen=1 total=0 (threshold=3000)
+2026-03-29 00:35:45,979 [INFO] [GoogleLayout] Page ready: gen=1 offset=0 rows=0 loaded=0/0
 [GooglePhotosLayout] No photos found in project 1
-2026-03-28 23:25:14,402 [INFO] [GoogleLayout] All pages loaded: 0 rows total
-2026-03-28 23:25:15,918 [INFO] [SemanticEmbeddingService] Creating service for model: openai/clip-vit-base-patch32
-2026-03-28 23:25:15,918 [INFO] [SemanticEmbeddingService] Initialized (lazy) with model=openai/clip-vit-base-patch32
+2026-03-29 00:35:45,979 [INFO] [GoogleLayout] All pages loaded: 0 rows total
+2026-03-29 00:35:47,453 [INFO] [SemanticEmbeddingService] Creating service for model: openai/clip-vit-base-patch32
+2026-03-29 00:35:47,455 [INFO] [SemanticEmbeddingService] Initialized (lazy) with model=openai/clip-vit-base-patch32
 ✅ InsightFace detected with buffalo_l models
-   Location: C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.12-Photo-App\MemoryMate-PhotoFlow-Refactored-main-12\models\buffalo_l
-2026-03-28 23:25:34,297 [INFO] [JobManager] Registered tracked job -1: scan — Scanning output6
-2026-03-28 23:25:34,297 [INFO] Database connection verified for scan
-2026-03-28 23:25:34,305 [INFO] DBWriter timer started in worker thread
-2026-03-28 23:25:34,305 [INFO] [ScanWorkerAdapter] Starting scan of C:/Users/suleimaa/Downloads/Photo-Sorter/Images/Images/output6 (thread=Dummy-10, is_main=False)
-2026-03-28 23:25:34,305 [INFO] [Store] ScanStarted job=-1 src=scan_controller deltas={'jobs_v': '0→1'}  →  3 subscriber(s)
-2026-03-28 23:25:34,306 [INFO] Starting scan: C:/Users/suleimaa/Downloads/Photo-Sorter/Images/Images/output6 (incremental=True, skip_unchanged=True)
-2026-03-28 23:25:34,325 [INFO] Discovered 25 candidate image files and 2 video files
-2026-03-28 23:25:34,325 [INFO] Loading existing metadata for incremental scan...
-2026-03-28 23:25:34,325 [INFO] ✓ Loaded 0 existing photo records and 0 video records
+   Location: C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.12-Photo-App\MemoryMate-PhotoFlow-Refactored-main-13\models\buffalo_l
+2026-03-29 00:36:02,729 [INFO] [JobManager] Registered tracked job -1: scan — Scanning output6
+2026-03-29 00:36:02,735 [INFO] Database connection verified for scan
+2026-03-29 00:36:02,735 [INFO] DBWriter timer started in worker thread
+2026-03-29 00:36:02,739 [INFO] [ScanWorkerAdapter] Starting scan of C:/Users/suleimaa/Downloads/Photo-Sorter/Images/Images/output6 (thread=Dummy-10, is_main=False)
+2026-03-29 00:36:02,739 [INFO] [Store] ScanStarted job=-1 src=scan_controller deltas={'jobs_v': '0→1'}  →  3 subscriber(s)
+2026-03-29 00:36:02,740 [INFO] Starting scan: C:/Users/suleimaa/Downloads/Photo-Sorter/Images/Images/output6 (incremental=True, skip_unchanged=True)
+2026-03-29 00:36:02,756 [INFO] Discovered 25 candidate image files and 2 video files
+2026-03-29 00:36:02,758 [INFO] Loading existing metadata for incremental scan...
+2026-03-29 00:36:02,759 [INFO] ✓ Loaded 0 existing photo records and 0 video records
 [SCAN] Created single executor for scan (25 files)
 [SCAN] _process_file started for: C:\Users\suleimaa\Downloads\Photo-Sorter\Images\Images\output6\Alya1_2_2_2.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2026-03-28 23:25:34,333 [INFO] 📷 Processing: Alya1_2_2_2.jpeg (345.2 KB)
+2026-03-29 00:36:02,759 [INFO] 📷 Processing: Alya1_2_2_2.jpeg (345.2 KB)
 [SCAN] Processing: Alya1_2_2_2.jpeg
 [SCAN] ✓ Metadata extracted: Alya1_2_2_2.jpeg [w=1440, h=2560, date=2024-11-29 17:04:13]
-2026-03-28 23:25:34,442 [INFO] [Scan] Metadata extracted successfully: Alya1_2_2_2.jpeg [w=1440, h=2560, date=2024-11-29 17:04:13]
+2026-03-29 00:36:02,882 [INFO] [Scan] Metadata extracted successfully: Alya1_2_2_2.jpeg [w=1440, h=2560, date=2024-11-29 17:04:13]
 [SCAN] Creating folder hierarchy for: Alya1_2_2_2.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=1
 [SCAN] ✓ File processed successfully: Alya1_2_2_2.jpeg
 [SCAN] _process_file started for: C:\Users\suleimaa\Downloads\Photo-Sorter\Images\Images\output6\Alya1_3_2.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2026-03-28 23:25:34,449 [INFO] 📷 Processing: Alya1_3_2.jpeg (345.2 KB)
+2026-03-29 00:36:02,888 [INFO] 📷 Processing: Alya1_3_2.jpeg (345.2 KB)
 [SCAN] Processing: Alya1_3_2.jpeg
 [SCAN] ✓ Metadata extracted: Alya1_3_2.jpeg [w=1440, h=2560, date=2024-11-29 17:04:13]
-2026-03-28 23:25:34,487 [INFO] [Scan] Metadata extracted successfully: Alya1_3_2.jpeg [w=1440, h=2560, date=2024-11-29 17:04:13]
+2026-03-29 00:36:02,923 [INFO] [Scan] Metadata extracted successfully: Alya1_3_2.jpeg [w=1440, h=2560, date=2024-11-29 17:04:13]
 [SCAN] Creating folder hierarchy for: Alya1_3_2.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=1
 [SCAN] ✓ File processed successfully: Alya1_3_2.jpeg
 [SCAN] _process_file started for: C:\Users\suleimaa\Downloads\Photo-Sorter\Images\Images\output6\Alya2_2_2_2_2.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2026-03-28 23:25:34,504 [INFO] 📷 Processing: Alya2_2_2_2_2.jpeg (107.1 KB)
+2026-03-29 00:36:02,939 [INFO] 📷 Processing: Alya2_2_2_2_2.jpeg (107.1 KB)
 [SCAN] Processing: Alya2_2_2_2_2.jpeg
-2026-03-28 23:25:34,513 [INFO] [Scan] ✓ GPS extracted: Alya2_2_2_2_2.jpeg (33.4475, 36.1634)
+2026-03-29 00:36:02,948 [INFO] [Scan] ✓ GPS extracted: Alya2_2_2_2_2.jpeg (33.4475, 36.1634)
 [SCAN] ✓ GPS: (33.4475, 36.1634)
 [SCAN] ✓ Metadata extracted: Alya2_2_2_2_2.jpeg [w=611, h=1081, date=2024-12-02 17:24:41]
-2026-03-28 23:25:34,513 [INFO] [Scan] Metadata extracted successfully: Alya2_2_2_2_2.jpeg [w=611, h=1081, date=2024-12-02 17:24:41]
+2026-03-29 00:36:02,948 [INFO] [Scan] Metadata extracted successfully: Alya2_2_2_2_2.jpeg [w=611, h=1081, date=2024-12-02 17:24:41]
 [SCAN] Creating folder hierarchy for: Alya2_2_2_2_2.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=1
 [SCAN] ✓ File processed successfully: Alya2_2_2_2_2.jpeg
 [SCAN] _process_file started for: C:\Users\suleimaa\Downloads\Photo-Sorter\Images\Images\output6\Alya3_2_2_2_2.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2026-03-28 23:25:34,534 [INFO] 📷 Processing: Alya3_2_2_2_2.jpeg (97.2 KB)
+2026-03-29 00:36:02,971 [INFO] 📷 Processing: Alya3_2_2_2_2.jpeg (97.2 KB)
 [SCAN] Processing: Alya3_2_2_2_2.jpeg
 [SCAN] ✓ Metadata extracted: Alya3_2_2_2_2.jpeg [w=1080, h=810, date=None]
-2026-03-28 23:25:34,544 [INFO] [Scan] Metadata extracted successfully: Alya3_2_2_2_2.jpeg [w=1080, h=810, date=None]
+2026-03-29 00:36:02,980 [INFO] [Scan] Metadata extracted successfully: Alya3_2_2_2_2.jpeg [w=1080, h=810, date=None]
 [SCAN] Creating folder hierarchy for: Alya3_2_2_2_2.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=1
 [SCAN] ✓ File processed successfully: Alya3_2_2_2_2.jpeg
 [SCAN] _process_file started for: C:\Users\suleimaa\Downloads\Photo-Sorter\Images\Images\output6\Alya_2_2.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2026-03-28 23:25:34,562 [INFO] 📷 Processing: Alya_2_2.jpeg (181.4 KB)
+2026-03-29 00:36:02,993 [INFO] 📷 Processing: Alya_2_2.jpeg (181.4 KB)
 [SCAN] Processing: Alya_2_2.jpeg
 [SCAN] ✓ Metadata extracted: Alya_2_2.jpeg [w=965, h=1240, date=None]
-2026-03-28 23:25:34,576 [INFO] [Scan] Metadata extracted successfully: Alya_2_2.jpeg [w=965, h=1240, date=None]
+2026-03-29 00:36:03,000 [INFO] [Scan] Metadata extracted successfully: Alya_2_2.jpeg [w=965, h=1240, date=None]
 [SCAN] Creating folder hierarchy for: Alya_2_2.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=1
 [SCAN] ✓ File processed successfully: Alya_2_2.jpeg
 [SCAN] _process_file started for: C:\Users\suleimaa\Downloads\Photo-Sorter\Images\Images\output6\Alya_2_2_2_2.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2026-03-28 23:25:34,597 [INFO] 📷 Processing: Alya_2_2_2_2.jpeg (181.4 KB)
+2026-03-29 00:36:03,019 [INFO] 📷 Processing: Alya_2_2_2_2.jpeg (181.4 KB)
 [SCAN] Processing: Alya_2_2_2_2.jpeg
 [SCAN] ✓ Metadata extracted: Alya_2_2_2_2.jpeg [w=965, h=1240, date=None]
-2026-03-28 23:25:34,603 [INFO] [Scan] Metadata extracted successfully: Alya_2_2_2_2.jpeg [w=965, h=1240, date=None]
+2026-03-29 00:36:03,023 [INFO] [Scan] Metadata extracted successfully: Alya_2_2_2_2.jpeg [w=965, h=1240, date=None]
 [SCAN] Creating folder hierarchy for: Alya_2_2_2_2.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=1
 [SCAN] ✓ File processed successfully: Alya_2_2_2_2.jpeg
 [SCAN] _process_file started for: C:\Users\suleimaa\Downloads\Photo-Sorter\Images\Images\output6\Ammar-Ref(1)_2_2.png
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2026-03-28 23:25:34,625 [INFO] 📷 Processing: Ammar-Ref(1)_2_2.png (800.9 KB)
+2026-03-29 00:36:03,039 [INFO] 📷 Processing: Ammar-Ref(1)_2_2.png (800.9 KB)
 [SCAN] Processing: Ammar-Ref(1)_2_2.png
 [SCAN] ✓ Metadata extracted: Ammar-Ref(1)_2_2.png [w=1140, h=791, date=None]
-2026-03-28 23:25:34,634 [INFO] [Scan] Metadata extracted successfully: Ammar-Ref(1)_2_2.png [w=1140, h=791, date=None]
+2026-03-29 00:36:03,050 [INFO] [Scan] Metadata extracted successfully: Ammar-Ref(1)_2_2.png [w=1140, h=791, date=None]
 [SCAN] Creating folder hierarchy for: Ammar-Ref(1)_2_2.png
 [SCAN] ✓ Folder hierarchy created: folder_id=1
 [SCAN] ✓ File processed successfully: Ammar-Ref(1)_2_2.png
 [SCAN] _process_file started for: C:\Users\suleimaa\Downloads\Photo-Sorter\Images\Images\output6\Ammar-Ref_2_2_2.png
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2026-03-28 23:25:34,656 [INFO] 📷 Processing: Ammar-Ref_2_2_2.png (800.9 KB)
+2026-03-29 00:36:03,068 [INFO] 📷 Processing: Ammar-Ref_2_2_2.png (800.9 KB)
 [SCAN] Processing: Ammar-Ref_2_2_2.png
 [SCAN] ✓ Metadata extracted: Ammar-Ref_2_2_2.png [w=1140, h=791, date=None]
-2026-03-28 23:25:34,667 [INFO] [Scan] Metadata extracted successfully: Ammar-Ref_2_2_2.png [w=1140, h=791, date=None]
+2026-03-29 00:36:03,071 [INFO] [Scan] Metadata extracted successfully: Ammar-Ref_2_2_2.png [w=1140, h=791, date=None]
 [SCAN] Creating folder hierarchy for: Ammar-Ref_2_2_2.png
 [SCAN] ✓ Folder hierarchy created: folder_id=1
 [SCAN] ✓ File processed successfully: Ammar-Ref_2_2_2.png
 [SCAN] _process_file started for: C:\Users\suleimaa\Downloads\Photo-Sorter\Images\Images\output6\Ammar-Ref_3_2.png
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2026-03-28 23:25:34,687 [INFO] 📷 Processing: Ammar-Ref_3_2.png (800.9 KB)
+2026-03-29 00:36:03,088 [INFO] 📷 Processing: Ammar-Ref_3_2.png (800.9 KB)
 [SCAN] Processing: Ammar-Ref_3_2.png
 [SCAN] ✓ Metadata extracted: Ammar-Ref_3_2.png [w=1140, h=791, date=None]
-2026-03-28 23:25:34,692 [INFO] [Scan] Metadata extracted successfully: Ammar-Ref_3_2.png [w=1140, h=791, date=None]
+2026-03-29 00:36:03,103 [INFO] [Scan] Metadata extracted successfully: Ammar-Ref_3_2.png [w=1140, h=791, date=None]
 [SCAN] Creating folder hierarchy for: Ammar-Ref_3_2.png
 [SCAN] ✓ Folder hierarchy created: folder_id=1
 [SCAN] ✓ File processed successfully: Ammar-Ref_3_2.png
 [SCAN] _process_file started for: C:\Users\suleimaa\Downloads\Photo-Sorter\Images\Images\output6\Ammar1_2_2_2.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2026-03-28 23:25:34,713 [INFO] 📷 Processing: Ammar1_2_2_2.jpeg (4364.7 KB)
+2026-03-29 00:36:03,118 [INFO] 📷 Processing: Ammar1_2_2_2.jpeg (4364.7 KB)
 [SCAN] Processing: Ammar1_2_2_2.jpeg
 [SCAN] ✓ Metadata extracted: Ammar1_2_2_2.jpeg [w=4032, h=3024, date=2024-08-11 19:40:38]
-2026-03-28 23:25:34,813 [INFO] [Scan] Metadata extracted successfully: Ammar1_2_2_2.jpeg [w=4032, h=3024, date=2024-08-11 19:40:38]
+2026-03-29 00:36:03,214 [INFO] [Scan] Metadata extracted successfully: Ammar1_2_2_2.jpeg [w=4032, h=3024, date=2024-08-11 19:40:38]
 [SCAN] Creating folder hierarchy for: Ammar1_2_2_2.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=1
 [SCAN] ✓ File processed successfully: Ammar1_2_2_2.jpeg
 [SCAN] _process_file started for: C:\Users\suleimaa\Downloads\Photo-Sorter\Images\Images\output6\Ammar2_2_2_2 - Kopie.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2026-03-28 23:25:34,835 [INFO] 📷 Processing: Ammar2_2_2_2 - Kopie.jpeg (2338.2 KB)
+2026-03-29 00:36:03,230 [INFO] 📷 Processing: Ammar2_2_2_2 - Kopie.jpeg (2338.2 KB)
 [SCAN] Processing: Ammar2_2_2_2 - Kopie.jpeg
 [SCAN] ✓ Metadata extracted: Ammar2_2_2_2 - Kopie.jpeg [w=3664, h=2062, date=2024-11-18 14:17:43]
-2026-03-28 23:25:34,882 [INFO] [Scan] Metadata extracted successfully: Ammar2_2_2_2 - Kopie.jpeg [w=3664, h=2062, date=2024-11-18 14:17:43]
+2026-03-29 00:36:03,283 [INFO] [Scan] Metadata extracted successfully: Ammar2_2_2_2 - Kopie.jpeg [w=3664, h=2062, date=2024-11-18 14:17:43]
 [SCAN] Creating folder hierarchy for: Ammar2_2_2_2 - Kopie.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=1
 [SCAN] ✓ File processed successfully: Ammar2_2_2_2 - Kopie.jpeg
 [SCAN] _process_file started for: C:\Users\suleimaa\Downloads\Photo-Sorter\Images\Images\output6\Ammar2_2_2_2.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2026-03-28 23:25:34,903 [INFO] 📷 Processing: Ammar2_2_2_2.jpeg (2338.2 KB)
+2026-03-29 00:36:03,298 [INFO] 📷 Processing: Ammar2_2_2_2.jpeg (2338.2 KB)
 [SCAN] Processing: Ammar2_2_2_2.jpeg
 [SCAN] ✓ Metadata extracted: Ammar2_2_2_2.jpeg [w=3664, h=2062, date=2024-11-18 14:17:43]
-2026-03-28 23:25:34,947 [INFO] [Scan] Metadata extracted successfully: Ammar2_2_2_2.jpeg [w=3664, h=2062, date=2024-11-18 14:17:43]
+2026-03-29 00:36:03,341 [INFO] [Scan] Metadata extracted successfully: Ammar2_2_2_2.jpeg [w=3664, h=2062, date=2024-11-18 14:17:43]
 [SCAN] Creating folder hierarchy for: Ammar2_2_2_2.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=1
 [SCAN] ✓ File processed successfully: Ammar2_2_2_2.jpeg
 [SCAN] _process_file started for: C:\Users\suleimaa\Downloads\Photo-Sorter\Images\Images\output6\Ammar3_2_2_2_2.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2026-03-28 23:25:34,962 [INFO] 📷 Processing: Ammar3_2_2_2_2.jpeg (171.0 KB)
+2026-03-29 00:36:03,358 [INFO] 📷 Processing: Ammar3_2_2_2_2.jpeg (171.0 KB)
 [SCAN] Processing: Ammar3_2_2_2_2.jpeg
 [SCAN] ✓ Metadata extracted: Ammar3_2_2_2_2.jpeg [w=1284, h=2778, date=None]
-2026-03-28 23:25:35,025 [INFO] [Scan] Metadata extracted successfully: Ammar3_2_2_2_2.jpeg [w=1284, h=2778, date=None]
+2026-03-29 00:36:03,399 [INFO] [Scan] Metadata extracted successfully: Ammar3_2_2_2_2.jpeg [w=1284, h=2778, date=None]
 [SCAN] Creating folder hierarchy for: Ammar3_2_2_2_2.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=1
 [SCAN] ✓ File processed successfully: Ammar3_2_2_2_2.jpeg
 [SCAN] _process_file started for: C:\Users\suleimaa\Downloads\Photo-Sorter\Images\Images\output6\IMG_6850_2_2_2.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2026-03-28 23:25:35,042 [INFO] 📷 Processing: IMG_6850_2_2_2.jpeg (3027.8 KB)
+2026-03-29 00:36:03,418 [INFO] 📷 Processing: IMG_6850_2_2_2.jpeg (3027.8 KB)
 [SCAN] Processing: IMG_6850_2_2_2.jpeg
 [SCAN] ✓ Metadata extracted: IMG_6850_2_2_2.jpeg [w=4032, h=3024, date=2025-07-30 23:19:46]
-2026-03-28 23:25:35,132 [INFO] [Scan] Metadata extracted successfully: IMG_6850_2_2_2.jpeg [w=4032, h=3024, date=2025-07-30 23:19:46]
+2026-03-29 00:36:03,492 [INFO] [Scan] Metadata extracted successfully: IMG_6850_2_2_2.jpeg [w=4032, h=3024, date=2025-07-30 23:19:46]
 [SCAN] Creating folder hierarchy for: IMG_6850_2_2_2.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=1
 [SCAN] ✓ File processed successfully: IMG_6850_2_2_2.jpeg
 [SCAN] _process_file started for: C:\Users\suleimaa\Downloads\Photo-Sorter\Images\Images\output6\IMG_6995_2_2_2.jpeg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2026-03-28 23:25:35,152 [INFO] 📷 Processing: IMG_6995_2_2_2.jpeg (4005.4 KB)
+2026-03-29 00:36:03,501 [INFO] 📷 Processing: IMG_6995_2_2_2.jpeg (4005.4 KB)
 [SCAN] Processing: IMG_6995_2_2_2.jpeg
-2026-03-28 23:25:35,242 [INFO] [Scan] ✓ GPS extracted: IMG_6995_2_2_2.jpeg (47.9016, 11.8213)
+2026-03-29 00:36:03,570 [INFO] [Scan] ✓ GPS extracted: IMG_6995_2_2_2.jpeg (47.9016, 11.8213)
 [SCAN] ✓ GPS: (47.9016, 11.8213)
 [SCAN] ✓ Metadata extracted: IMG_6995_2_2_2.jpeg [w=4032, h=3024, date=2025-08-09 13:06:18]
-2026-03-28 23:25:35,244 [INFO] [Scan] Metadata extracted successfully: IMG_6995_2_2_2.jpeg [w=4032, h=3024, date=2025-08-09 13:06:18]
+2026-03-29 00:36:03,579 [INFO] [Scan] Metadata extracted successfully: IMG_6995_2_2_2.jpeg [w=4032, h=3024, date=2025-08-09 13:06:18]
 [SCAN] Creating folder hierarchy for: IMG_6995_2_2_2.jpeg
 [SCAN] ✓ Folder hierarchy created: folder_id=1
 [SCAN] ✓ File processed successfully: IMG_6995_2_2_2.jpeg
 [SCAN] _process_file started for: C:\Users\suleimaa\Downloads\Photo-Sorter\Images\Images\output6\pexels-matreding-11363475 - Kopie (2).jpg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2026-03-28 23:25:35,256 [INFO] 📷 Processing: pexels-matreding-11363475 - Kopie (2).jpg (7378.6 KB)
+2026-03-29 00:36:03,593 [INFO] 📷 Processing: pexels-matreding-11363475 - Kopie (2).jpg (7378.6 KB)
 [SCAN] Processing: pexels-matreding-11363475 - Kopie (2).jpg
 [SCAN] ✓ Metadata extracted: pexels-matreding-11363475 - Kopie (2).jpg [w=8000, h=12000, date=None]
-2026-03-28 23:25:35,575 [INFO] [Scan] Metadata extracted successfully: pexels-matreding-11363475 - Kopie (2).jpg [w=8000, h=12000, date=None]
+2026-03-29 00:36:03,938 [INFO] [Scan] Metadata extracted successfully: pexels-matreding-11363475 - Kopie (2).jpg [w=8000, h=12000, date=None]
 [SCAN] Creating folder hierarchy for: pexels-matreding-11363475 - Kopie (2).jpg
 [SCAN] ✓ Folder hierarchy created: folder_id=1
 [SCAN] ✓ File processed successfully: pexels-matreding-11363475 - Kopie (2).jpg
 [SCAN] _process_file started for: C:\Users\suleimaa\Downloads\Photo-Sorter\Images\Images\output6\pexels-matreding-11363475 - Kopie (3).jpg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2026-03-28 23:25:35,592 [INFO] 📷 Processing: pexels-matreding-11363475 - Kopie (3).jpg (7378.6 KB)
+2026-03-29 00:36:03,959 [INFO] 📷 Processing: pexels-matreding-11363475 - Kopie (3).jpg (7378.6 KB)
 [SCAN] Processing: pexels-matreding-11363475 - Kopie (3).jpg
 [SCAN] ✓ Metadata extracted: pexels-matreding-11363475 - Kopie (3).jpg [w=8000, h=12000, date=None]
-2026-03-28 23:25:35,944 [INFO] [Scan] Metadata extracted successfully: pexels-matreding-11363475 - Kopie (3).jpg [w=8000, h=12000, date=None]
+2026-03-29 00:36:04,338 [INFO] [Scan] Metadata extracted successfully: pexels-matreding-11363475 - Kopie (3).jpg [w=8000, h=12000, date=None]
 [SCAN] Creating folder hierarchy for: pexels-matreding-11363475 - Kopie (3).jpg
 [SCAN] ✓ Folder hierarchy created: folder_id=1
 [SCAN] ✓ File processed successfully: pexels-matreding-11363475 - Kopie (3).jpg
 [SCAN] _process_file started for: C:\Users\suleimaa\Downloads\Photo-Sorter\Images\Images\output6\pexels-matreding-11363475 - Kopie.jpg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2026-03-28 23:25:35,964 [INFO] 📷 Processing: pexels-matreding-11363475 - Kopie.jpg (7378.6 KB)
+2026-03-29 00:36:04,353 [INFO] 📷 Processing: pexels-matreding-11363475 - Kopie.jpg (7378.6 KB)
 [SCAN] Processing: pexels-matreding-11363475 - Kopie.jpg
 [SCAN] ✓ Metadata extracted: pexels-matreding-11363475 - Kopie.jpg [w=8000, h=12000, date=None]
-2026-03-28 23:25:36,282 [INFO] [Scan] Metadata extracted successfully: pexels-matreding-11363475 - Kopie.jpg [w=8000, h=12000, date=None]
+2026-03-29 00:36:04,722 [INFO] [Scan] Metadata extracted successfully: pexels-matreding-11363475 - Kopie.jpg [w=8000, h=12000, date=None]
 [SCAN] Creating folder hierarchy for: pexels-matreding-11363475 - Kopie.jpg
 [SCAN] ✓ Folder hierarchy created: folder_id=1
 [SCAN] ✓ File processed successfully: pexels-matreding-11363475 - Kopie.jpg
 [SCAN] _process_file started for: C:\Users\suleimaa\Downloads\Photo-Sorter\Images\Images\output6\pexels-matreding-11363475.jpg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2026-03-28 23:25:36,332 [INFO] 📷 Processing: pexels-matreding-11363475.jpg (7378.6 KB)
+2026-03-29 00:36:04,741 [INFO] 📷 Processing: pexels-matreding-11363475.jpg (7378.6 KB)
 [SCAN] Processing: pexels-matreding-11363475.jpg
 [SCAN] ✓ Metadata extracted: pexels-matreding-11363475.jpg [w=8000, h=12000, date=None]
-2026-03-28 23:25:36,632 [INFO] [Scan] Metadata extracted successfully: pexels-matreding-11363475.jpg [w=8000, h=12000, date=None]
+2026-03-29 00:36:05,083 [INFO] [Scan] Metadata extracted successfully: pexels-matreding-11363475.jpg [w=8000, h=12000, date=None]
 [SCAN] Creating folder hierarchy for: pexels-matreding-11363475.jpg
 [SCAN] ✓ Folder hierarchy created: folder_id=1
 [SCAN] ✓ File processed successfully: pexels-matreding-11363475.jpg
 [SCAN] _process_file started for: C:\Users\suleimaa\Downloads\Photo-Sorter\Images\Images\output6\SuleimanAmmar - Kopie.jpg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2026-03-28 23:25:36,680 [INFO] 📷 Processing: SuleimanAmmar - Kopie.jpg (150.4 KB)
+2026-03-29 00:36:05,113 [INFO] 📷 Processing: SuleimanAmmar - Kopie.jpg (150.4 KB)
 [SCAN] Processing: SuleimanAmmar - Kopie.jpg
 [SCAN] ✓ Metadata extracted: SuleimanAmmar - Kopie.jpg [w=940, h=1218, date=None]
-2026-03-28 23:25:36,684 [INFO] [Scan] Metadata extracted successfully: SuleimanAmmar - Kopie.jpg [w=940, h=1218, date=None]
+2026-03-29 00:36:05,123 [INFO] [Scan] Metadata extracted successfully: SuleimanAmmar - Kopie.jpg [w=940, h=1218, date=None]
 [SCAN] Creating folder hierarchy for: SuleimanAmmar - Kopie.jpg
 [SCAN] ✓ Folder hierarchy created: folder_id=1
 [SCAN] ✓ File processed successfully: SuleimanAmmar - Kopie.jpg
 [SCAN] _process_file started for: C:\Users\suleimaa\Downloads\Photo-Sorter\Images\Images\output6\SuleimanAmmar-Revised.jpg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2026-03-28 23:25:36,705 [INFO] 📷 Processing: SuleimanAmmar-Revised.jpg (89.3 KB)
+2026-03-29 00:36:05,135 [INFO] 📷 Processing: SuleimanAmmar-Revised.jpg (89.3 KB)
 [SCAN] Processing: SuleimanAmmar-Revised.jpg
 [SCAN] ✓ Metadata extracted: SuleimanAmmar-Revised.jpg [w=844, h=1135, date=None]
-2026-03-28 23:25:36,713 [INFO] [Scan] Metadata extracted successfully: SuleimanAmmar-Revised.jpg [w=844, h=1135, date=None]
+2026-03-29 00:36:05,140 [INFO] [Scan] Metadata extracted successfully: SuleimanAmmar-Revised.jpg [w=844, h=1135, date=None]
 [SCAN] Creating folder hierarchy for: SuleimanAmmar-Revised.jpg
 [SCAN] ✓ Folder hierarchy created: folder_id=1
 [SCAN] ✓ File processed successfully: SuleimanAmmar-Revised.jpg
 [SCAN] _process_file started for: C:\Users\suleimaa\Downloads\Photo-Sorter\Images\Images\output6\SuleimanAmmar.jpg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2026-03-28 23:25:36,724 [INFO] 📷 Processing: SuleimanAmmar.jpg (150.4 KB)
+2026-03-29 00:36:05,158 [INFO] 📷 Processing: SuleimanAmmar.jpg (150.4 KB)
 [SCAN] Processing: SuleimanAmmar.jpg
 [SCAN] ✓ Metadata extracted: SuleimanAmmar.jpg [w=940, h=1218, date=None]
-2026-03-28 23:25:36,732 [INFO] [Scan] Metadata extracted successfully: SuleimanAmmar.jpg [w=940, h=1218, date=None]
+2026-03-29 00:36:05,159 [INFO] [Scan] Metadata extracted successfully: SuleimanAmmar.jpg [w=940, h=1218, date=None]
 [SCAN] Creating folder hierarchy for: SuleimanAmmar.jpg
 [SCAN] ✓ Folder hierarchy created: folder_id=1
 [SCAN] ✓ File processed successfully: SuleimanAmmar.jpg
 [SCAN] _process_file started for: C:\Users\suleimaa\Downloads\Photo-Sorter\Images\Images\output6\Neuer Ordner\SuleimanAmmar - Kopie.jpg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2026-03-28 23:25:36,747 [INFO] 📷 Processing: SuleimanAmmar - Kopie.jpg (150.4 KB)
+2026-03-29 00:36:05,180 [INFO] 📷 Processing: SuleimanAmmar - Kopie.jpg (150.4 KB)
 [SCAN] Processing: SuleimanAmmar - Kopie.jpg
 [SCAN] ✓ Metadata extracted: SuleimanAmmar - Kopie.jpg [w=940, h=1218, date=None]
-2026-03-28 23:25:36,752 [INFO] [Scan] Metadata extracted successfully: SuleimanAmmar - Kopie.jpg [w=940, h=1218, date=None]
+2026-03-29 00:36:05,188 [INFO] [Scan] Metadata extracted successfully: SuleimanAmmar - Kopie.jpg [w=940, h=1218, date=None]
 [SCAN] Creating folder hierarchy for: SuleimanAmmar - Kopie.jpg
 [SCAN] ✓ Folder hierarchy created: folder_id=24
 [SCAN] ✓ File processed successfully: SuleimanAmmar - Kopie.jpg
 [SCAN] _process_file started for: C:\Users\suleimaa\Downloads\Photo-Sorter\Images\Images\output6\Neuer Ordner\SuleimanAmmar-Revised.jpg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2026-03-28 23:25:36,785 [INFO] 📷 Processing: SuleimanAmmar-Revised.jpg (89.3 KB)
+2026-03-29 00:36:05,231 [INFO] 📷 Processing: SuleimanAmmar-Revised.jpg (89.3 KB)
 [SCAN] Processing: SuleimanAmmar-Revised.jpg
 [SCAN] ✓ Metadata extracted: SuleimanAmmar-Revised.jpg [w=844, h=1135, date=None]
-2026-03-28 23:25:36,792 [INFO] [Scan] Metadata extracted successfully: SuleimanAmmar-Revised.jpg [w=844, h=1135, date=None]
+2026-03-29 00:36:05,238 [INFO] [Scan] Metadata extracted successfully: SuleimanAmmar-Revised.jpg [w=844, h=1135, date=None]
 [SCAN] Creating folder hierarchy for: SuleimanAmmar-Revised.jpg
 [SCAN] ✓ Folder hierarchy created: folder_id=24
 [SCAN] ✓ File processed successfully: SuleimanAmmar-Revised.jpg
 [SCAN] _process_file started for: C:\Users\suleimaa\Downloads\Photo-Sorter\Images\Images\output6\Neuer Ordner\SuleimanAmmar.jpg
 [SCAN] Getting file stats...
 [SCAN] File stats retrieved successfully
-2026-03-28 23:25:36,816 [INFO] 📷 Processing: SuleimanAmmar.jpg (150.4 KB)
+2026-03-29 00:36:05,268 [INFO] 📷 Processing: SuleimanAmmar.jpg (150.4 KB)
 [SCAN] Processing: SuleimanAmmar.jpg
 [SCAN] ✓ Metadata extracted: SuleimanAmmar.jpg [w=940, h=1218, date=None]
-2026-03-28 23:25:36,822 [INFO] [Scan] Metadata extracted successfully: SuleimanAmmar.jpg [w=940, h=1218, date=None]
+2026-03-29 00:36:05,283 [INFO] [Scan] Metadata extracted successfully: SuleimanAmmar.jpg [w=940, h=1218, date=None]
 [SCAN] Creating folder hierarchy for: SuleimanAmmar.jpg
 [SCAN] ✓ Folder hierarchy created: folder_id=24
 [SCAN] ✓ File processed successfully: SuleimanAmmar.jpg
 [SCAN] ⚡ Writing final batch to database: 25 photos
-2026-03-28 23:25:36,854 [INFO] Writing final batch of 25 photos to database
+2026-03-29 00:36:05,318 [INFO] Writing final batch of 25 photos to database
 [SCAN] 💾 Starting bulk_upsert for 25 photos...
-2026-03-28 23:25:36,854 [INFO] [DB] Starting bulk_upsert for 25 photos
-2026-03-28 23:25:36,876 [INFO] Bulk upserted 25 photos for project 1
+2026-03-29 00:36:05,319 [INFO] [DB] Starting bulk_upsert for 25 photos
+2026-03-29 00:36:05,338 [INFO] Bulk upserted 25 photos for project 1
 [SCAN] ✓ Bulk_upsert completed: 25 photos written
-2026-03-28 23:25:36,876 [INFO] [DB] Bulk_upsert completed: 25 photos written
+2026-03-29 00:36:05,338 [INFO] [DB] Bulk_upsert completed: 25 photos written
 [SCAN] ✓ Final batch write complete
 [SCAN] Shutting down executor
-2026-03-28 23:25:36,876 [INFO] Executor shutdown complete
+2026-03-29 00:36:05,338 [INFO] Executor shutdown complete
 
 [SCAN] === STEP 4: VIDEO PROCESSING ===
 [SCAN] total_videos=2
 [SCAN] self._cancelled=False
 [SCAN] Condition check: 2 > 0 and not False = True
 [SCAN] Condition TRUE - calling _process_videos()
-2026-03-28 23:25:36,881 [INFO] Processing 2 videos...
+2026-03-29 00:36:05,338 [INFO] Processing 2 videos...
 [VIDEO_INDEX] Attempting to index: Qouzleh_mitSubtitles-ezgif.com-resize-video.mp4
 [VIDEO_INDEX]   project_id=1, folder_id=1
 [VIDEO_INDEX]   size_kb=13086.185546875, modified=2025-05-06 18:38:04
 [VIDEO_INDEX]   created_ts=1746482400, created_date=2025-05-06, created_year=2025
-2026-03-28 23:25:36,916 [INFO] Indexed video C:\Users\suleimaa\Downloads\Photo-Sorter\Images\Images\output6\Qouzleh_mitSubtitles-ezgif.com-resize-video.mp4 (id=1, status=pending)
+2026-03-29 00:36:05,375 [INFO] Indexed video C:\Users\suleimaa\Downloads\Photo-Sorter\Images\Images\output6\Qouzleh_mitSubtitles-ezgif.com-resize-video.mp4 (id=1, status=pending)
 [VIDEO_INDEX] SUCCESS: video_id=1
 [VIDEO_INDEX] Attempting to index: Qouzleh_mitSubtitles.mp4
 [VIDEO_INDEX]   project_id=1, folder_id=1
 [VIDEO_INDEX]   size_kb=57665.9013671875, modified=2025-05-06 16:05:10
 [VIDEO_INDEX]   created_ts=1746482400, created_date=2025-05-06, created_year=2025
-2026-03-28 23:25:36,952 [INFO] Indexed video C:\Users\suleimaa\Downloads\Photo-Sorter\Images\Images\output6\Qouzleh_mitSubtitles.mp4 (id=2, status=pending)
+2026-03-29 00:36:05,418 [INFO] Indexed video C:\Users\suleimaa\Downloads\Photo-Sorter\Images\Images\output6\Qouzleh_mitSubtitles.mp4 (id=2, status=pending)
 [VIDEO_INDEX] SUCCESS: video_id=2
-2026-03-28 23:25:36,954 [INFO] Indexed 2 videos (metadata extraction pending)
-2026-03-28 23:25:37,040 [INFO] Launching background workers for 2 videos...
-2026-03-28 23:25:37,040 [INFO] Using ffprobe from settings: C:\ffmpeg\bin\ffprobe.exe
-2026-03-28 23:25:37,077 [INFO] ffprobe detected at 'C:\ffmpeg\bin\ffprobe.exe' - video metadata extraction enabled
-2026-03-28 23:25:37,077 [INFO] Connected metadata finished callback for sidebar refresh
-2026-03-28 23:25:37,077 [INFO] ✓ Video metadata extraction worker started
-2026-03-28 23:25:37,077 [INFO] [VideoMetadataWorker] Starting for project_id=1
-2026-03-28 23:25:37,077 [INFO] [VideoThumbnailService] Using default thumbnail directory: C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.12-Photo-App\MemoryMate-PhotoFlow-Refactored-main-12\.thumb_cache
-2026-03-28 23:25:37,080 [INFO] Using ffmpeg from same directory as ffprobe: C:\ffmpeg\bin\ffmpeg.exe
-2026-03-28 23:25:37,092 [INFO] [VideoMetadataWorker] Found 2 videos to process
-2026-03-28 23:25:37,092 [INFO] [VideoMetadataWorker] Processing with 4 parallel workers
-2026-03-28 23:25:37,118 [INFO] ffmpeg detected at 'C:\ffmpeg\bin\ffmpeg.exe' - video thumbnail generation enabled
-2026-03-28 23:25:37,122 [INFO] ✓ Video thumbnail generation worker started
-2026-03-28 23:25:37,122 [INFO] 🎬 Processing 2 videos in background (check logs for progress)
-2026-03-28 23:25:37,123 [INFO] Scan complete: 25 photos indexed, 2 videos indexed, 0 skipped, 0 failed in 2.8s
-2026-03-28 23:25:37,123 [INFO] Scan completed: 25 photos, 2 videos, 2 folders in 2.8s
-2026-03-28 23:25:37,123 [INFO] [VideoThumbnailWorker] Starting for project_id=1
-2026-03-28 23:25:37,123 [INFO] Scan finished: 2 folders, 25 photos, 2 videos
-2026-03-28 23:25:37,123 [INFO] Building date branches...
-2026-03-28 23:25:37,123 [INFO] Building date branches for project_id=1
-2026-03-28 23:25:37,123 [INFO] [VideoThumbnailWorker] Found 2 videos to process
+2026-03-29 00:36:05,418 [INFO] Indexed 2 videos (metadata extraction pending)
+2026-03-29 00:36:05,506 [INFO] Launching background workers for 2 videos...
+2026-03-29 00:36:05,506 [INFO] Using ffprobe from settings: C:\ffmpeg\bin\ffprobe.exe
+2026-03-29 00:36:05,545 [INFO] ffprobe detected at 'C:\ffmpeg\bin\ffprobe.exe' - video metadata extraction enabled
+2026-03-29 00:36:05,545 [INFO] Connected metadata finished callback for sidebar refresh
+2026-03-29 00:36:05,545 [INFO] ✓ Video metadata extraction worker started
+2026-03-29 00:36:05,545 [INFO] [VideoMetadataWorker] Starting for project_id=1
+2026-03-29 00:36:05,545 [INFO] [VideoThumbnailService] Using default thumbnail directory: C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.12-Photo-App\MemoryMate-PhotoFlow-Refactored-main-13\.thumb_cache
+2026-03-29 00:36:05,546 [INFO] Using ffmpeg from same directory as ffprobe: C:\ffmpeg\bin\ffmpeg.exe
+2026-03-29 00:36:05,563 [INFO] [VideoMetadataWorker] Found 2 videos to process
+2026-03-29 00:36:05,563 [INFO] [VideoMetadataWorker] Processing with 4 parallel workers
+2026-03-29 00:36:05,588 [INFO] ffmpeg detected at 'C:\ffmpeg\bin\ffmpeg.exe' - video thumbnail generation enabled
+2026-03-29 00:36:05,588 [INFO] ✓ Video thumbnail generation worker started
+2026-03-29 00:36:05,588 [INFO] 🎬 Processing 2 videos in background (check logs for progress)
+2026-03-29 00:36:05,588 [INFO] Scan complete: 25 photos indexed, 2 videos indexed, 0 skipped, 0 failed in 2.8s
+2026-03-29 00:36:05,588 [INFO] Scan completed: 25 photos, 2 videos, 2 folders in 2.8s
+2026-03-29 00:36:05,588 [INFO] [VideoThumbnailWorker] Starting for project_id=1
+2026-03-29 00:36:05,588 [INFO] Scan finished: 2 folders, 25 photos, 2 videos
+2026-03-29 00:36:05,594 [INFO] Building date branches...
+2026-03-29 00:36:05,594 [INFO] Building date branches for project_id=1
 [build_date_branches] Using project_id=1
-2026-03-28 23:25:37,123 [INFO] [VideoThumbnailWorker] Processing with 4 parallel workers
 [build_date_branches] Populating 'all' branch with 25 photos for project 1
+2026-03-29 00:36:05,594 [INFO] [VideoThumbnailWorker] Found 2 videos to process
+2026-03-29 00:36:05,594 [INFO] [VideoThumbnailWorker] Processing with 4 parallel workers
 [build_date_branches] Inserted 25/25 photos into 'all' branch
 [build_date_branches] Found 6 unique dates for project 1
 [build_date_branches] Date 2024-08-11: found 1 photos for project 1
@@ -504,8 +504,8 @@ Adaptive Icons:  24px
 [build_date_branches] Date 2025-08-09: inserted 1/1 into project_images (new)
 [build_date_branches] Total entries processed: 8
 [build_date_branches] project_images table has 33 rows for project 1
-2026-03-28 23:25:37,129 [INFO] Created 8 photo date branch entries for project 1
-2026-03-28 23:25:37,129 [INFO] Building video date branches for project_id=1
+2026-03-29 00:36:05,598 [INFO] Created 8 photo date branch entries for project 1
+2026-03-29 00:36:05,598 [INFO] Building video date branches for project_id=1
 [build_video_date_branches] Using project_id=1
 [build_video_date_branches] Found 2 videos with dates for project 1
 [build_video_date_branches] Inserted 2/2 videos into 'all' branch
@@ -513,132 +513,124 @@ Adaptive Icons:  24px
 [build_video_date_branches] Date 2025-05-06: inserted 2/2 (new)
 [build_video_date_branches] Total entries processed: 2
 [build_video_date_branches] project_videos table has 4 rows for project 1
-2026-03-28 23:25:37,132 [INFO] Created 2 video date branch entries for project 1
-2026-03-28 23:25:37,132 [INFO] Backfilling created_date fields for photos...
-2026-03-28 23:25:37,132 [INFO] Backfilled 17 photo rows with created_date
-2026-03-28 23:25:37,132 [INFO] Backfilling created_date fields for videos...
-2026-03-28 23:25:37,132 [INFO] Enqueueing duplicate detection pipeline as background job...
-2026-03-28 23:25:37,172 [INFO] [JobManager] Registered tracked job -2: post_scan — Duplicate Detection
-2026-03-28 23:25:37,172 [INFO] Post-scan pipeline dispatched to background thread pool
-2026-03-28 23:25:37,172 [INFO] Main scan operations complete. Remaining: {'post_scan_pipeline'}
-2026-03-28 23:25:37,172 [INFO] ⏳ Waiting for operations: {'post_scan_pipeline'}
-2026-03-28 23:25:37,172 [INFO] [PostScanPipelineWorker] Starting post-scan pipeline for project 1 (thread=Dummy-24, is_main=False)
-2026-03-28 23:25:37,177 [INFO] [VideoMetadataWorker] ✓ c:/users/suleimaa/downloads/photo-sorter/images/images/output6/qouzleh_mitsubtitles-ezgif.com-resize-video.mp4
-2026-03-28 23:25:37,187 [INFO] [VideoMetadataWorker] ✓ c:/users/suleimaa/downloads/photo-sorter/images/images/output6/qouzleh_mitsubtitles.mp4
-2026-03-28 23:25:37,187 [INFO] [VideoMetadataWorker] Finished: 2 success, 0 failed
-2026-03-28 23:25:37,252 [INFO] Generated thumbnail for c:/users/suleimaa/downloads/photo-sorter/images/images/output6/qouzleh_mitsubtitles-ezgif.com-resize-video.mp4 at C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.12-Photo-App\MemoryMate-PhotoFlow-Refactored-main-12\.thumb_cache\qouzleh_mitsubtitles-ezgif.com-resize-video_mp4_thumb.jpg
-2026-03-28 23:25:37,257 [INFO] Starting hash backfill and asset linking for project 1
-2026-03-28 23:25:37,268 [INFO] Found 25 photos without instance links
-2026-03-28 23:25:37,268 [INFO] [VideoThumbnailWorker] ✓ c:/users/suleimaa/downloads/photo-sorter/images/images/output6/qouzleh_mitsubtitles-ezgif.com-resize-video.mp4
-2026-03-28 23:25:37,305 [INFO] Generated thumbnail for c:/users/suleimaa/downloads/photo-sorter/images/images/output6/qouzleh_mitsubtitles.mp4 at C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.12-Photo-App\MemoryMate-PhotoFlow-Refactored-main-12\.thumb_cache\qouzleh_mitsubtitles_mp4_thumb.jpg
-2026-03-28 23:25:37,313 [INFO] [VideoThumbnailWorker] ✓ c:/users/suleimaa/downloads/photo-sorter/images/images/output6/qouzleh_mitsubtitles.mp4
-2026-03-28 23:25:37,313 [INFO] [VideoThumbnailWorker] Finished: 2 success, 0 failed
-2026-03-28 23:25:38,340 [INFO] No more photos to process
-2026-03-28 23:25:38,340 [INFO] Backfill complete: AssetBackfillStats(scanned=25, hashed=25, linked=25, errors=0, skipped=0)
-2026-03-28 23:25:38,340 [INFO] Hash backfill complete: 25 scanned, 25 hashed, 25 linked
-2026-03-28 23:25:38,342 [INFO] Found 7 exact duplicate groups
-2026-03-28 23:25:38,382 [INFO] Found 25 photos needing embeddings - generating in background
-2026-03-28 23:25:38,404 [INFO] [SemanticEmbeddingWorker] Using project canonical model: openai/clip-vit-base-patch32 (project_id=1)
-2026-03-28 23:25:38,404 [INFO] [SemanticEmbeddingWorker] Starting batch: 25 photos, model=openai/clip-vit-base-patch32, force=False, project=1
-2026-03-28 23:25:38,422 [INFO] [SemanticEmbeddingWorker] Embedding photo 1: c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya1_2_2_2.jpeg
-2026-03-28 23:25:39,874 [INFO] [SemanticEmbeddingService] Loading model: openai/clip-vit-base-patch32
-2026-03-28 23:25:39,874 [INFO] [SemanticEmbeddingService] Using CPU
-2026-03-28 23:25:39,874 [INFO] [SemanticEmbeddingService] Searching for offline model...
-2026-03-28 23:25:39,874 [INFO] [SemanticEmbeddingService]   App root: C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.12-Photo-App\MemoryMate-PhotoFlow-Refactored-main-12
-2026-03-28 23:25:39,874 [INFO] [SemanticEmbeddingService]   Looking for: openai--clip-vit-base-patch32 (or clip-vit-base-patch32)
-2026-03-28 23:25:39,882 [INFO] [SemanticEmbeddingService]   Checking: C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.12-Photo-App\MemoryMate-PhotoFlow-Refactored-main-12\Model\openai--clip-vit-base-patch32
-2026-03-28 23:25:39,882 [INFO] [SemanticEmbeddingService]     → Exists: False
-2026-03-28 23:25:39,882 [INFO] [SemanticEmbeddingService]   Checking: C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.12-Photo-App\MemoryMate-PhotoFlow-Refactored-main-12\model\openai--clip-vit-base-patch32
-2026-03-28 23:25:39,882 [INFO] [SemanticEmbeddingService]     → Exists: False
-2026-03-28 23:25:39,882 [INFO] [SemanticEmbeddingService]   Checking: C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.12-Photo-App\MemoryMate-PhotoFlow-Refactored-main-12\models\openai--clip-vit-base-patch32
-2026-03-28 23:25:39,882 [INFO] [SemanticEmbeddingService]     → Exists: False
-2026-03-28 23:25:39,882 [INFO] [SemanticEmbeddingService]   Checking: C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.12-Photo-App\MemoryMate-PhotoFlow-Refactored-main-12\models\clip-vit-base-patch32
-2026-03-28 23:25:39,897 [INFO] [SemanticEmbeddingService]     → CHECKMARK VALID MODEL FOUND at C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.12-Photo-App\MemoryMate-PhotoFlow-Refactored-main-12\models\clip-vit-base-patch32\snapshots\3d74acf9a28c67741b2f4f2ea7635f0aaf6f0268!
-2026-03-28 23:25:39,898 [INFO] [SemanticEmbeddingService] Loading from local path (offline mode): C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.12-Photo-App\MemoryMate-PhotoFlow-Refactored-main-12\models\clip-vit-base-patch32\snapshots\3d74acf9a28c67741b2f4f2ea7635f0aaf6f0268
-2026-03-28 23:25:40,352 [INFO] [SemanticEmbeddingService] HEIC/HEIF support enabled via pillow-heif
-2026-03-28 23:25:41,402 [INFO] [SemanticEmbeddingService] Model loaded successfully: openai/clip-vit-base-patch32
-2026-03-28 23:25:41,402 [INFO] [SemanticEmbeddingService] CHECKMARK Patched CLIPTextTransformer.forward with pre-computed causal mask + safety fallback (Windows crash prevention, once-only)
-2026-03-28 23:25:41,817 [INFO] [SemanticEmbeddingService] CHECKMARK Warm-up inference completed (MKL kernels and GEMM initialised)
-2026-03-28 23:25:41,817 [INFO] [SemanticEmbeddingService] Model ready on cpu (ready event set)
-2026-03-28 23:25:42,167 [INFO] [SemanticEmbeddingWorker] Embedding photo 2: c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya1_3_2.jpeg
-2026-03-28 23:25:42,517 [INFO] [SemanticEmbeddingWorker] Embedding photo 3: c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya2_2_2_2_2.jpeg
-2026-03-28 23:25:42,804 [INFO] [SemanticEmbeddingWorker] Embedding photo 4: c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya3_2_2_2_2.jpeg
-2026-03-28 23:25:43,095 [INFO] [SemanticEmbeddingWorker] Embedding photo 5: c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya_2_2.jpeg
-2026-03-28 23:25:43,372 [INFO] [SemanticEmbeddingWorker] Embedding photo 6: c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya_2_2_2_2.jpeg
-2026-03-28 23:25:43,652 [INFO] [SemanticEmbeddingWorker] Embedding photo 7: c:/users/suleimaa/downloads/photo-sorter/images/images/output6/ammar-ref(1)_2_2.png
-2026-03-28 23:25:43,941 [INFO] [SemanticEmbeddingWorker] Embedding photo 8: c:/users/suleimaa/downloads/photo-sorter/images/images/output6/ammar-ref_2_2_2.png
-2026-03-28 23:25:44,234 [INFO] [SemanticEmbeddingWorker] Embedding photo 9: c:/users/suleimaa/downloads/photo-sorter/images/images/output6/ammar-ref_3_2.png
-2026-03-28 23:25:44,516 [INFO] [SemanticEmbeddingWorker] Embedding photo 10: c:/users/suleimaa/downloads/photo-sorter/images/images/output6/ammar1_2_2_2.jpeg
-2026-03-28 23:25:45,267 [INFO] [SemanticEmbeddingWorker] Embedding photo 11: c:/users/suleimaa/downloads/photo-sorter/images/images/output6/ammar2_2_2_2 - kopie.jpeg
-2026-03-28 23:25:45,672 [INFO] [SemanticEmbeddingWorker] Embedding photo 12: c:/users/suleimaa/downloads/photo-sorter/images/images/output6/ammar2_2_2_2.jpeg
-2026-03-28 23:25:46,048 [INFO] [SemanticEmbeddingWorker] Embedding photo 13: c:/users/suleimaa/downloads/photo-sorter/images/images/output6/ammar3_2_2_2_2.jpeg
-2026-03-28 23:25:46,364 [INFO] [SemanticEmbeddingWorker] Embedding photo 14: c:/users/suleimaa/downloads/photo-sorter/images/images/output6/img_6850_2_2_2.jpeg
-2026-03-28 23:25:46,813 [INFO] [SemanticEmbeddingWorker] Embedding photo 15: c:/users/suleimaa/downloads/photo-sorter/images/images/output6/img_6995_2_2_2.jpeg
-2026-03-28 23:25:47,252 [INFO] [SemanticEmbeddingWorker] Embedding photo 16: c:/users/suleimaa/downloads/photo-sorter/images/images/output6/pexels-matreding-11363475 - kopie (2).jpg
-2026-03-28 23:25:48,651 [INFO] [SemanticEmbeddingWorker] Embedding photo 17: c:/users/suleimaa/downloads/photo-sorter/images/images/output6/pexels-matreding-11363475 - kopie (3).jpg
-2026-03-28 23:25:50,116 [INFO] [SemanticEmbeddingWorker] Embedding photo 18: c:/users/suleimaa/downloads/photo-sorter/images/images/output6/pexels-matreding-11363475 - kopie.jpg
-2026-03-28 23:25:51,511 [INFO] [SemanticEmbeddingWorker] Embedding photo 19: c:/users/suleimaa/downloads/photo-sorter/images/images/output6/pexels-matreding-11363475.jpg
-2026-03-28 23:25:52,826 [INFO] [SemanticEmbeddingWorker] Embedding photo 20: c:/users/suleimaa/downloads/photo-sorter/images/images/output6/suleimanammar - kopie.jpg
-2026-03-28 23:25:53,122 [INFO] [SemanticEmbeddingWorker] Embedding photo 21: c:/users/suleimaa/downloads/photo-sorter/images/images/output6/suleimanammar-revised.jpg
-2026-03-28 23:25:53,403 [INFO] [SemanticEmbeddingWorker] Embedding photo 22: c:/users/suleimaa/downloads/photo-sorter/images/images/output6/suleimanammar.jpg
-2026-03-28 23:25:53,687 [INFO] [SemanticEmbeddingWorker] Embedding photo 23: c:/users/suleimaa/downloads/photo-sorter/images/images/output6/neuer ordner/suleimanammar - kopie.jpg
-2026-03-28 23:25:53,983 [INFO] [SemanticEmbeddingWorker] Embedding photo 24: c:/users/suleimaa/downloads/photo-sorter/images/images/output6/neuer ordner/suleimanammar-revised.jpg
-2026-03-28 23:25:54,264 [INFO] [SemanticEmbeddingWorker] Embedding photo 25: c:/users/suleimaa/downloads/photo-sorter/images/images/output6/neuer ordner/suleimanammar.jpg
-2026-03-28 23:25:54,552 [INFO] [SemanticEmbeddingWorker] Batch complete: 25 success, 0 skipped, 0 failed in 16.1s
-2026-03-28 23:25:54,557 [INFO] Embedding generation complete: 25 generated
-2026-03-28 23:25:54,624 [INFO] Starting similar shot stack generation for project 1
-2026-03-28 23:25:54,624 [INFO] Parameters: StackGenParams(rule_version='1', time_window_seconds=30, min_stack_size=2, top_k=30, similarity_threshold=0.5, candidate_limit_per_photo=300, cross_date_similarity=True, cross_date_threshold=0.85)
-2026-03-28 23:25:54,633 [INFO] Cleared 0 similar stacks (rule v1)
-2026-03-28 23:25:54,634 [INFO] Cleared 0 existing similar shot stacks for rule v1
-2026-03-28 23:25:54,635 [INFO] Representative-only mode enabled: 25 → 13 photos considered
-2026-03-28 23:25:54,635 [INFO] Found 13 photos (13 with timestamps, 0 without)
-2026-03-28 23:25:54,635 [INFO] [SemanticEmbeddingService] Loaded 25 embeddings for project 1
-2026-03-28 23:25:54,639 [INFO] Batch-loaded 25 embeddings for similarity comparison
-2026-03-28 23:25:54,647 [INFO] Found 6 similar shot clusters (time-window pass)
-2026-03-28 23:25:54,647 [INFO] Global similarity pass: 13 photos with embeddings (14 unique photos in 6 time-window clusters)
-2026-03-28 23:25:54,652 [INFO] Global cross-date pass found 1 additional clusters (threshold=0.85)
-2026-03-28 23:25:54,652 [INFO] Total similar shot clusters: 7
-2026-03-28 23:25:54,900 [INFO] Similar shot stack generation complete: 7 stacks, 16 memberships, 0 errors
-2026-03-28 23:25:54,901 [INFO] Created 7 similar shot stacks
-2026-03-28 23:25:54,937 [INFO] [SearchFeatureRepo] Refreshed 25 rows for project 1 in 6ms
-2026-03-28 23:25:54,937 [INFO] [PostScanPipelineWorker] Rebuilt search_asset_features: 25 rows for project 1
-2026-03-28 23:25:54,992 [INFO] [JobManager] Tracked job -2 (post_scan) completed: {'exact': 7, 'similar': 7}
-2026-03-28 23:25:54,992 [INFO] Post-scan pipeline complete. Remaining: set()
-2026-03-28 23:25:54,992 [INFO] ✓ All scan operations complete. Triggering final refresh...
-2026-03-28 23:25:54,992 [INFO] [Store] EmbeddingsCompleted job=-1 src=post_scan_pipeline deltas={'embeddings_v': '0→1', 'jobs_v': '1→2'}  →  3 subscriber(s)
-2026-03-28 23:25:54,992 [INFO] [Store] DuplicatesCompleted job=-1 src=post_scan_pipeline deltas={'duplicates_v': '0→1', 'jobs_v': '2→3'}  →  3 subscriber(s)
-2026-03-28 23:25:55,102 [INFO] 🔄 Final scan bookkeeping (UI refresh handled by store subscribers)...
-2026-03-28 23:25:55,103 [INFO] Final refresh complete: 25 photos, 2 videos
-2026-03-28 23:25:55,122 [INFO] [JobManager] Tracked job -1 (scan) completed: {'photos': 25, 'videos': 2}
-2026-03-28 23:25:55,122 [INFO] [Store] ScanCompleted job=-1 src=scan_controller deltas={'media_v': '0→1', 'videos_v': '0→1', 'jobs_v': '3→4'}  →  3 subscriber(s)
+2026-03-29 00:36:05,598 [INFO] Created 2 video date branch entries for project 1
+2026-03-29 00:36:05,602 [INFO] Backfilling created_date fields for photos...
+2026-03-29 00:36:05,602 [INFO] Backfilled 17 photo rows with created_date
+2026-03-29 00:36:05,602 [INFO] Backfilling created_date fields for videos...
+2026-03-29 00:36:05,602 [INFO] Enqueueing duplicate detection pipeline as background job...
+2026-03-29 00:36:05,633 [INFO] [JobManager] Registered tracked job -2: post_scan — Duplicate Detection
+2026-03-29 00:36:05,633 [INFO] Post-scan pipeline dispatched to background thread pool
+2026-03-29 00:36:05,638 [INFO] Main scan operations complete. Remaining: {'post_scan_pipeline'}
+2026-03-29 00:36:05,638 [INFO] ⏳ Waiting for operations: {'post_scan_pipeline'}
+2026-03-29 00:36:05,638 [INFO] [PostScanPipelineWorker] Starting post-scan pipeline for project 1 (thread=Dummy-24, is_main=False)
+2026-03-29 00:36:05,649 [INFO] [VideoMetadataWorker] ✓ c:/users/suleimaa/downloads/photo-sorter/images/images/output6/qouzleh_mitsubtitles-ezgif.com-resize-video.mp4
+2026-03-29 00:36:05,658 [INFO] [VideoMetadataWorker] ✓ c:/users/suleimaa/downloads/photo-sorter/images/images/output6/qouzleh_mitsubtitles.mp4
+2026-03-29 00:36:05,658 [INFO] [VideoMetadataWorker] Finished: 2 success, 0 failed
+2026-03-29 00:36:05,698 [INFO] Generated thumbnail for c:/users/suleimaa/downloads/photo-sorter/images/images/output6/qouzleh_mitsubtitles-ezgif.com-resize-video.mp4 at C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.12-Photo-App\MemoryMate-PhotoFlow-Refactored-main-13\.thumb_cache\qouzleh_mitsubtitles-ezgif.com-resize-video_mp4_thumb.jpg
+2026-03-29 00:36:05,721 [INFO] Starting hash backfill and asset linking for project 1
+2026-03-29 00:36:05,724 [INFO] [VideoThumbnailWorker] ✓ c:/users/suleimaa/downloads/photo-sorter/images/images/output6/qouzleh_mitsubtitles-ezgif.com-resize-video.mp4
+2026-03-29 00:36:05,748 [INFO] Generated thumbnail for c:/users/suleimaa/downloads/photo-sorter/images/images/output6/qouzleh_mitsubtitles.mp4 at C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.12-Photo-App\MemoryMate-PhotoFlow-Refactored-main-13\.thumb_cache\qouzleh_mitsubtitles_mp4_thumb.jpg
+2026-03-29 00:36:05,748 [INFO] Found 25 photos without instance links
+2026-03-29 00:36:05,758 [INFO] [VideoThumbnailWorker] ✓ c:/users/suleimaa/downloads/photo-sorter/images/images/output6/qouzleh_mitsubtitles.mp4
+2026-03-29 00:36:05,758 [INFO] [VideoThumbnailWorker] Finished: 2 success, 0 failed
+2026-03-29 00:36:06,968 [INFO] No more photos to process
+2026-03-29 00:36:06,968 [INFO] Backfill complete: AssetBackfillStats(scanned=25, hashed=25, linked=25, errors=0, skipped=0)
+2026-03-29 00:36:06,968 [INFO] Hash backfill complete: 25 scanned, 25 hashed, 25 linked
+2026-03-29 00:36:06,968 [INFO] Found 7 exact duplicate groups
+2026-03-29 00:36:07,010 [INFO] Found 25 photos needing embeddings - generating in background
+2026-03-29 00:36:07,039 [INFO] [SemanticEmbeddingWorker] Using project canonical model: openai/clip-vit-base-patch32 (project_id=1)
+2026-03-29 00:36:07,039 [INFO] [SemanticEmbeddingWorker] Starting batch: 25 photos, model=openai/clip-vit-base-patch32, force=False, project=1
+2026-03-29 00:36:07,058 [INFO] [SemanticEmbeddingWorker] Embedding photo 1: c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya1_2_2_2.jpeg
+2026-03-29 00:36:08,888 [INFO] [SemanticEmbeddingService] Loading model: openai/clip-vit-base-patch32
+2026-03-29 00:36:08,898 [INFO] [SemanticEmbeddingService] Using CPU
+2026-03-29 00:36:08,898 [INFO] [SemanticEmbeddingService] Searching for offline model...
+2026-03-29 00:36:08,898 [INFO] [SemanticEmbeddingService]   App root: C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.12-Photo-App\MemoryMate-PhotoFlow-Refactored-main-13
+2026-03-29 00:36:08,898 [INFO] [SemanticEmbeddingService]   Looking for: openai--clip-vit-base-patch32 (or clip-vit-base-patch32)
+2026-03-29 00:36:08,900 [INFO] [SemanticEmbeddingService]   Checking: C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.12-Photo-App\MemoryMate-PhotoFlow-Refactored-main-13\Model\openai--clip-vit-base-patch32
+2026-03-29 00:36:08,900 [INFO] [SemanticEmbeddingService]     → Exists: False
+2026-03-29 00:36:08,900 [INFO] [SemanticEmbeddingService]   Checking: C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.12-Photo-App\MemoryMate-PhotoFlow-Refactored-main-13\model\openai--clip-vit-base-patch32
+2026-03-29 00:36:08,900 [INFO] [SemanticEmbeddingService]     → Exists: False
+2026-03-29 00:36:08,900 [INFO] [SemanticEmbeddingService]   Checking: C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.12-Photo-App\MemoryMate-PhotoFlow-Refactored-main-13\models\openai--clip-vit-base-patch32
+2026-03-29 00:36:08,900 [INFO] [SemanticEmbeddingService]     → Exists: False
+2026-03-29 00:36:08,900 [INFO] [SemanticEmbeddingService]   Checking: C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.12-Photo-App\MemoryMate-PhotoFlow-Refactored-main-13\models\clip-vit-base-patch32
+2026-03-29 00:36:08,914 [INFO] [SemanticEmbeddingService]     → CHECKMARK VALID MODEL FOUND at C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.12-Photo-App\MemoryMate-PhotoFlow-Refactored-main-13\models\clip-vit-base-patch32\snapshots\3d74acf9a28c67741b2f4f2ea7635f0aaf6f0268!
+2026-03-29 00:36:08,915 [INFO] [SemanticEmbeddingService] Loading from local path (offline mode): C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.12-Photo-App\MemoryMate-PhotoFlow-Refactored-main-13\models\clip-vit-base-patch32\snapshots\3d74acf9a28c67741b2f4f2ea7635f0aaf6f0268
+2026-03-29 00:36:09,458 [INFO] [SemanticEmbeddingService] HEIC/HEIF support enabled via pillow-heif
+2026-03-29 00:36:10,070 [INFO] [SemanticEmbeddingService] Model loaded successfully: openai/clip-vit-base-patch32
+2026-03-29 00:36:10,070 [INFO] [SemanticEmbeddingService] CHECKMARK Patched CLIPTextTransformer.forward with pre-computed causal mask + safety fallback (Windows crash prevention, once-only)
+2026-03-29 00:36:10,529 [INFO] [SemanticEmbeddingService] CHECKMARK Warm-up inference completed (MKL kernels and GEMM initialised)
+2026-03-29 00:36:10,529 [INFO] [SemanticEmbeddingService] Model ready on cpu (ready event set)
+2026-03-29 00:36:10,931 [INFO] [SemanticEmbeddingWorker] Embedding photo 2: c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya1_3_2.jpeg
+2026-03-29 00:36:11,342 [INFO] [SemanticEmbeddingWorker] Embedding photo 3: c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya2_2_2_2_2.jpeg
+2026-03-29 00:36:11,698 [INFO] [SemanticEmbeddingWorker] Embedding photo 4: c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya3_2_2_2_2.jpeg
+2026-03-29 00:36:12,049 [INFO] [SemanticEmbeddingWorker] Embedding photo 5: c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya_2_2.jpeg
+2026-03-29 00:36:12,336 [INFO] [SemanticEmbeddingWorker] Embedding photo 6: c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya_2_2_2_2.jpeg
+2026-03-29 00:36:12,638 [INFO] [SemanticEmbeddingWorker] Embedding photo 7: c:/users/suleimaa/downloads/photo-sorter/images/images/output6/ammar-ref(1)_2_2.png
+2026-03-29 00:36:12,938 [INFO] [SemanticEmbeddingWorker] Embedding photo 8: c:/users/suleimaa/downloads/photo-sorter/images/images/output6/ammar-ref_2_2_2.png
+2026-03-29 00:36:13,268 [INFO] [SemanticEmbeddingWorker] Embedding photo 9: c:/users/suleimaa/downloads/photo-sorter/images/images/output6/ammar-ref_3_2.png
+2026-03-29 00:36:13,555 [INFO] [SemanticEmbeddingWorker] Embedding photo 10: c:/users/suleimaa/downloads/photo-sorter/images/images/output6/ammar1_2_2_2.jpeg
+2026-03-29 00:36:14,055 [INFO] [SemanticEmbeddingWorker] Embedding photo 11: c:/users/suleimaa/downloads/photo-sorter/images/images/output6/ammar2_2_2_2 - kopie.jpeg
+2026-03-29 00:36:14,482 [INFO] [SemanticEmbeddingWorker] Embedding photo 12: c:/users/suleimaa/downloads/photo-sorter/images/images/output6/ammar2_2_2_2.jpeg
+2026-03-29 00:36:14,888 [INFO] [SemanticEmbeddingWorker] Embedding photo 13: c:/users/suleimaa/downloads/photo-sorter/images/images/output6/ammar3_2_2_2_2.jpeg
+2026-03-29 00:36:15,230 [INFO] [SemanticEmbeddingWorker] Embedding photo 14: c:/users/suleimaa/downloads/photo-sorter/images/images/output6/img_6850_2_2_2.jpeg
+2026-03-29 00:36:15,670 [INFO] [SemanticEmbeddingWorker] Embedding photo 15: c:/users/suleimaa/downloads/photo-sorter/images/images/output6/img_6995_2_2_2.jpeg
+2026-03-29 00:36:16,158 [INFO] [SemanticEmbeddingWorker] Embedding photo 16: c:/users/suleimaa/downloads/photo-sorter/images/images/output6/pexels-matreding-11363475 - kopie (2).jpg
+2026-03-29 00:36:17,580 [INFO] [SemanticEmbeddingWorker] Embedding photo 17: c:/users/suleimaa/downloads/photo-sorter/images/images/output6/pexels-matreding-11363475 - kopie (3).jpg
+2026-03-29 00:36:19,024 [INFO] [SemanticEmbeddingWorker] Embedding photo 18: c:/users/suleimaa/downloads/photo-sorter/images/images/output6/pexels-matreding-11363475 - kopie.jpg
+2026-03-29 00:36:20,417 [INFO] [SemanticEmbeddingWorker] Embedding photo 19: c:/users/suleimaa/downloads/photo-sorter/images/images/output6/pexels-matreding-11363475.jpg
+2026-03-29 00:36:21,818 [INFO] [SemanticEmbeddingWorker] Embedding photo 20: c:/users/suleimaa/downloads/photo-sorter/images/images/output6/suleimanammar - kopie.jpg
+2026-03-29 00:36:22,138 [INFO] [SemanticEmbeddingWorker] Embedding photo 21: c:/users/suleimaa/downloads/photo-sorter/images/images/output6/suleimanammar-revised.jpg
+2026-03-29 00:36:22,434 [INFO] [SemanticEmbeddingWorker] Embedding photo 22: c:/users/suleimaa/downloads/photo-sorter/images/images/output6/suleimanammar.jpg
+2026-03-29 00:36:22,738 [INFO] [SemanticEmbeddingWorker] Embedding photo 23: c:/users/suleimaa/downloads/photo-sorter/images/images/output6/neuer ordner/suleimanammar - kopie.jpg
+2026-03-29 00:36:23,048 [INFO] [SemanticEmbeddingWorker] Embedding photo 24: c:/users/suleimaa/downloads/photo-sorter/images/images/output6/neuer ordner/suleimanammar-revised.jpg
+2026-03-29 00:36:23,348 [INFO] [SemanticEmbeddingWorker] Embedding photo 25: c:/users/suleimaa/downloads/photo-sorter/images/images/output6/neuer ordner/suleimanammar.jpg
+2026-03-29 00:36:23,670 [INFO] [SemanticEmbeddingWorker] Batch complete: 25 success, 0 skipped, 0 failed in 16.6s
+2026-03-29 00:36:23,670 [INFO] Embedding generation complete: 25 generated
+2026-03-29 00:36:23,748 [INFO] Starting similar shot stack generation for project 1
+2026-03-29 00:36:23,749 [INFO] Parameters: StackGenParams(rule_version='1', time_window_seconds=30, min_stack_size=2, top_k=30, similarity_threshold=0.5, candidate_limit_per_photo=300, cross_date_similarity=True, cross_date_threshold=0.85)
+2026-03-29 00:36:23,751 [INFO] Cleared 0 similar stacks (rule v1)
+2026-03-29 00:36:23,751 [INFO] Cleared 0 existing similar shot stacks for rule v1
+2026-03-29 00:36:23,751 [INFO] Representative-only mode enabled: 25 → 13 photos considered
+2026-03-29 00:36:23,751 [INFO] Found 13 photos (13 with timestamps, 0 without)
+2026-03-29 00:36:23,758 [INFO] [SemanticEmbeddingService] Loaded 25 embeddings for project 1
+2026-03-29 00:36:23,758 [INFO] Batch-loaded 25 embeddings for similarity comparison
+2026-03-29 00:36:23,778 [INFO] Found 6 similar shot clusters (time-window pass)
+2026-03-29 00:36:23,778 [INFO] Global similarity pass: 13 photos with embeddings (14 unique photos in 6 time-window clusters)
+2026-03-29 00:36:23,778 [INFO] Global cross-date pass found 1 additional clusters (threshold=0.85)
+2026-03-29 00:36:23,778 [INFO] Total similar shot clusters: 7
+2026-03-29 00:36:24,048 [INFO] Similar shot stack generation complete: 7 stacks, 16 memberships, 0 errors
+2026-03-29 00:36:24,048 [INFO] Created 7 similar shot stacks
+2026-03-29 00:36:24,098 [INFO] [SearchFeatureRepo] Refreshed 25 rows for project 1 in 10ms
+2026-03-29 00:36:24,098 [INFO] [PostScanPipelineWorker] Rebuilt search_asset_features: 25 rows for project 1
+2026-03-29 00:36:24,151 [INFO] [JobManager] Tracked job -2 (post_scan) completed: {'exact': 7, 'similar': 7}
+2026-03-29 00:36:24,151 [INFO] Post-scan pipeline complete. Remaining: set()
+2026-03-29 00:36:24,151 [INFO] ✓ All scan operations complete. Triggering final refresh...
+2026-03-29 00:36:24,151 [INFO] [Store] EmbeddingsCompleted job=-1 src=post_scan_pipeline deltas={'embeddings_v': '0→1', 'jobs_v': '1→2'}  →  3 subscriber(s)
+2026-03-29 00:36:24,158 [INFO] [Store] DuplicatesCompleted job=-1 src=post_scan_pipeline deltas={'duplicates_v': '0→1', 'jobs_v': '2→3'}  →  3 subscriber(s)
+2026-03-29 00:36:24,261 [INFO] 🔄 Final scan bookkeeping (UI refresh handled by store subscribers)...
+2026-03-29 00:36:24,261 [INFO] Final refresh complete: 25 photos, 2 videos
+2026-03-29 00:36:24,278 [INFO] [JobManager] Tracked job -1 (scan) completed: {'photos': 25, 'videos': 2}
+2026-03-29 00:36:24,283 [INFO] [Store] ScanCompleted job=-1 src=scan_controller deltas={'media_v': '0→1', 'videos_v': '0→1', 'jobs_v': '3→4'}  →  3 subscriber(s)
 [GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px)...
 [GooglePhotosLayout] 🔍 Starting async photo load (generation 2) - existing content preserved...
 [GooglePhotosLayout] Paged load started (generation 2, page_size=250)
-2026-03-28 23:25:55,128 [INFO] [GoogleLayout] Page count ready: gen=2 total=27 (threshold=3000)
-2026-03-28 23:25:55,128 [INFO] [GoogleLayout] Page ready: gen=2 offset=0 rows=27 loaded=27/27
+2026-03-29 00:36:24,283 [INFO] [GoogleLayout] Page count ready: gen=2 total=27 (threshold=3000)
+2026-03-29 00:36:24,283 [INFO] [GoogleLayout] Page ready: gen=2 offset=0 rows=27 loaded=27/27
 [GooglePhotosLayout] Dispatching 27 assets (photos+videos) to background grouping worker...
-2026-03-28 23:25:55,128 [INFO] [GoogleLayout] All pages loaded: 27 rows total
+2026-03-29 00:36:24,283 [INFO] [GoogleLayout] All pages loaded: 27 rows total
 [GooglePhotosLayout] Grouped into 13 date groups
 [GooglePhotosLayout] Tracking 27 paths for multi-selection
-[GooglePhotosLayout] 📐 Responsive grid: 7 columns (viewport: 1502px, thumb: 200px)
+[GooglePhotosLayout] 📐 Responsive grid: 7 columns (viewport: 1546px, thumb: 200px)
 [GooglePhotosLayout] Virtual scrolling enabled: 13 total date groups
 [GooglePhotosLayout] Rendered: 5 groups | Placeholders: 8 groups
 [GooglePhotosLayout] Queued 10 thumbnails for loading (initial limit: 50)
 [GooglePhotosLayout] Photo loading complete! Thumbnails will load progressively.
-2026-03-28 23:26:00,232 [INFO] [VideoThumbnailService] Using default thumbnail directory: C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.12-Photo-App\MemoryMate-PhotoFlow-Refactored-main-12\.thumb_cache
-2026-03-28 23:26:00,232 [INFO] Using ffmpeg from same directory as ffprobe: C:\ffmpeg\bin\ffmpeg.exe
-2026-03-28 23:26:00,237 [INFO] [VideoThumbnailService] Using default thumbnail directory: C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.12-Photo-App\MemoryMate-PhotoFlow-Refactored-main-12\.thumb_cache
-2026-03-28 23:26:00,237 [INFO] Using ffmpeg from same directory as ffprobe: C:\ffmpeg\bin\ffmpeg.exe
-2026-03-28 23:26:00,276 [INFO] ffmpeg detected at 'C:\ffmpeg\bin\ffmpeg.exe' - video thumbnail generation enabled
-2026-03-28 23:26:00,276 [INFO] ffmpeg detected at 'C:\ffmpeg\bin\ffmpeg.exe' - video thumbnail generation enabled
-[ThumbnailLoader] ✓ Video thumbnail: qouzleh_mitsubtitles-ezgif.com-resize-video.mp4
-[ThumbnailLoader] ✓ Video thumbnail: qouzleh_mitsubtitles.mp4
 [UX-11 TRACE] _switch_layout(current) called from google
-  File "C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.12-Photo-App\MemoryMate-PhotoFlow-Refactored-main-12\main_qt.py", line 494, in <module>
+  File "C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.12-Photo-App\MemoryMate-PhotoFlow-Refactored-main-13\main_qt.py", line 494, in <module>
     exit_code = app.exec()
-  File "C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.12-Photo-App\MemoryMate-PhotoFlow-Refactored-main-12\main_window_qt.py", line 576, in <lambda>
+  File "C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.12-Photo-App\MemoryMate-PhotoFlow-Refactored-main-13\main_window_qt.py", line 576, in <lambda>
     action.triggered.connect(lambda checked, lid=layout_id: self._switch_layout(lid))
-  File "C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.12-Photo-App\MemoryMate-PhotoFlow-Refactored-main-12\main_window_qt.py", line 2726, in _switch_layout
+  File "C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.12-Photo-App\MemoryMate-PhotoFlow-Refactored-main-13\main_window_qt.py", line 2726, in _switch_layout
     traceback.print_stack(limit=8)
 [LayoutManager] Switching layout: google -> current
 [GooglePhotosLayout] Cleaning up resources...
@@ -675,10 +667,10 @@ Adaptive Icons:  24px
 [Sidebar] Found 2 videos in project 1
 [VideoDateHierarchy] Building: 1 years, 1 months, 2 videos
 [Sidebar] Added 🎬 Videos section with 2 videos and filters.
-2026-03-28 23:26:23,511 [INFO] [get_location_clusters] GPS columns exist: True
-2026-03-28 23:26:23,513 [INFO] [get_location_clusters] Found 2 photos with GPS data (project_id=1)
-2026-03-28 23:26:23,513 [INFO] [get_location_clusters] get_photos_by_location returned 2 location groups
-2026-03-28 23:26:23,513 [INFO] [get_location_clusters] Returning 2 location clusters
+2026-03-29 00:36:33,137 [INFO] [get_location_clusters] GPS columns exist: True
+2026-03-29 00:36:33,138 [INFO] [get_location_clusters] Found 2 photos with GPS data (project_id=1)
+2026-03-29 00:36:33,138 [INFO] [get_location_clusters] get_photos_by_location returned 2 location groups
+2026-03-29 00:36:33,138 [INFO] [get_location_clusters] Returning 2 location clusters
 [Sidebar] Added 🗺️ Locations section with 2 locations, 2 photos.
 [Sidebar] No mobile devices detected - added help message
 [Sidebar] starting async count population for 1 branch targets
@@ -723,27 +715,425 @@ Adaptive Icons:  24px
 [GRID] Using scroll-based start position: 0 (scroll: 0/0)
 [GRID] Loading viewport range: 0-24 of 25
 [GRID] Queued 25 new thumbnail workers
-2026-03-28 23:27:16,277 [INFO] Search completed: 0 results in 1.53ms
-2026-03-28 23:27:34,790 [INFO] Search completed: 0 results in 0.00ms
-2026-03-28 23:27:40,100 [INFO] Search completed: 0 results in 0.00ms
-2026-03-28 23:27:51,090 [INFO] Search completed: 0 results in 0.00ms
-2026-03-28 23:27:54,043 [INFO] Search completed: 0 results in 1.03ms
-2026-03-28 23:27:58,235 [INFO] Search completed: 0 results in 0.00ms
-2026-03-28 23:28:05,584 [INFO] Search completed: 0 results in 0.00ms
-2026-03-28 23:28:08,213 [INFO] Search completed: 0 results in 0.00ms
-2026-03-28 23:28:12,993 [INFO] Search completed: 0 results in 0.00ms
-2026-03-28 23:28:15,350 [INFO] Search completed: 0 results in 0.00ms
-2026-03-28 23:28:19,190 [INFO] Search completed: 0 results in 0.00ms
-2026-03-28 23:28:21,430 [INFO] Search completed: 0 results in 5.09ms
-2026-03-28 23:28:33,460 [INFO] Search completed: 0 results in 0.00ms
-2026-03-28 23:28:46,390 [INFO] Search completed: 0 results in 0.00ms
-2026-03-28 23:29:01,436 [INFO] Search completed: 0 results in 0.00ms
+2026-03-29 00:38:17,897 [INFO] Search completed: 0 results in 0.00ms
+2026-03-29 00:38:25,596 [INFO] Search completed: 0 results in 6.63ms
+2026-03-29 00:38:30,418 [INFO] Search completed: 0 results in 0.00ms
+2026-03-29 00:38:32,987 [INFO] Search completed: 0 results in 5.40ms
+2026-03-29 00:38:37,256 [INFO] Search completed: 0 results in 0.00ms
+2026-03-29 00:38:39,996 [INFO] Search completed: 0 results in 7.04ms
+2026-03-29 00:38:43,206 [INFO] Search completed: 0 results in 0.00ms
+2026-03-29 00:39:02,716 [INFO] Search completed: 0 results in 0.00ms
+2026-03-29 00:39:13,851 [INFO] Search completed: 25 results in 0.00ms
+[GRID] Loading 25 custom paths (e.g., search results)
+[DB_TAGS_DEBUG] Sample normalized paths being queried:
+  [0] norm='c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya1_2_2_2.jpeg'
+      orig='c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya1_2_2_2.jpeg'
+  [1] norm='c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya1_3_2.jpeg'
+      orig='c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya1_3_2.jpeg'
+  [2] norm='c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya2_2_2_2_2.jpeg'
+      orig='c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya2_2_2_2_2.jpeg'
+[DB_TAGS_SQL] Photos query:
+                        SELECT pm.path, t.name
+                        FROM photo_metadata pm
+                        JOIN photo_tags pt ON pt.photo_...
+[DB_TAGS_SQL] Videos query:
+                        SELECT vm.path, t.name
+                        FROM video_metadata vm
+                        JOIN video_tags vt ON vt.video_...
+[DB_TAGS_SQL] First 3 params: ['c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya1_2_2_2.jpeg', 'c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya1_3_2.jpeg', 'c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya2_2_2_2_2.jpeg']
+[DB_TAGS_SQL] project_id: 1
+[DB_TAGS_SQL] Query returned 0 rows (0 photos + 0 videos)
+[DB_TAGS_SQL] No rows returned! Checking if ANY tags exist in DB...
+[DB_TAGS_SQL] Sample tagged PHOTOS in DB:
+[DB_TAGS_SQL] Sample tagged VIDEOS in DB:
+[DB_TAGS] Retrieved 0 tag assignments across 0/25 paths (project_id=1)
+[GRID] Loaded 25 thumbnails in custom mode
+
+[Breadcrumb] _update_breadcrumb() CALLED
+[Breadcrumb] Grid state: navigation_mode=custom, project_id=1
+[Breadcrumb] Looking for CURRENT project_id=1 in 1 projects
+[Breadcrumb] Found CURRENT project name: P01
+[Breadcrumb] Added project segment: P01
+[Breadcrumb] Added fallback segment: All Photos
+[Breadcrumb] Calling set_path() with 2 segments
+[BreadcrumbNav] set_path() called with 2 segments
+[BreadcrumbNav] Clearing 3 existing widgets
+[BreadcrumbNav] Cleared all existing widgets
+[BreadcrumbNav] Added segment 0: P01
+[BreadcrumbNav] Added segment 1: All Photos
+[BreadcrumbNav] set_path() completed - 2 segments added
+[Breadcrumb] set_path() completed successfully
+[Breadcrumb] _update_breadcrumb() COMPLETED
+
+[SEARCH] Quick search found 25 results for 'd'
+[GRID] Loading viewport range: 0-24 of 25
+[GRID] Queued 25 new thumbnail workers
+2026-03-29 00:39:15,806 [INFO] Search completed: 25 results in 0.00ms
+[GRID] Loading 25 custom paths (e.g., search results)
+[DB_TAGS_DEBUG] Sample normalized paths being queried:
+  [0] norm='c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya1_2_2_2.jpeg'
+      orig='c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya1_2_2_2.jpeg'
+  [1] norm='c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya1_3_2.jpeg'
+      orig='c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya1_3_2.jpeg'
+  [2] norm='c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya2_2_2_2_2.jpeg'
+      orig='c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya2_2_2_2_2.jpeg'
+[DB_TAGS_SQL] Photos query:
+                        SELECT pm.path, t.name
+                        FROM photo_metadata pm
+                        JOIN photo_tags pt ON pt.photo_...
+[DB_TAGS_SQL] Videos query:
+                        SELECT vm.path, t.name
+                        FROM video_metadata vm
+                        JOIN video_tags vt ON vt.video_...
+[DB_TAGS_SQL] First 3 params: ['c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya1_2_2_2.jpeg', 'c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya1_3_2.jpeg', 'c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya2_2_2_2_2.jpeg']
+[DB_TAGS_SQL] project_id: 1
+[DB_TAGS_SQL] Query returned 0 rows (0 photos + 0 videos)
+[DB_TAGS_SQL] No rows returned! Checking if ANY tags exist in DB...
+[DB_TAGS_SQL] Sample tagged PHOTOS in DB:
+[DB_TAGS_SQL] Sample tagged VIDEOS in DB:
+[DB_TAGS] Retrieved 0 tag assignments across 0/25 paths (project_id=1)
+[GRID] Loaded 25 thumbnails in custom mode
+
+[Breadcrumb] _update_breadcrumb() CALLED
+[Breadcrumb] Grid state: navigation_mode=custom, project_id=1
+[Breadcrumb] Looking for CURRENT project_id=1 in 1 projects
+[Breadcrumb] Found CURRENT project name: P01
+[Breadcrumb] Added project segment: P01
+[Breadcrumb] Added fallback segment: All Photos
+[Breadcrumb] Calling set_path() with 2 segments
+[BreadcrumbNav] set_path() called with 2 segments
+[BreadcrumbNav] Clearing 3 existing widgets
+[BreadcrumbNav] Cleared all existing widgets
+[BreadcrumbNav] Added segment 0: P01
+[BreadcrumbNav] Added segment 1: All Photos
+[BreadcrumbNav] set_path() completed - 2 segments added
+[Breadcrumb] set_path() completed successfully
+[Breadcrumb] _update_breadcrumb() COMPLETED
+
+[SEARCH] Quick search found 25 results for 'd'
+[GRID] Loading viewport range: 0-24 of 25
+[GRID] Queued 25 new thumbnail workers
+2026-03-29 00:39:17,480 [INFO] Search completed: 25 results in 0.00ms
+[GRID] Loading 25 custom paths (e.g., search results)
+[DB_TAGS_DEBUG] Sample normalized paths being queried:
+  [0] norm='c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya1_2_2_2.jpeg'
+      orig='c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya1_2_2_2.jpeg'
+  [1] norm='c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya1_3_2.jpeg'
+      orig='c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya1_3_2.jpeg'
+  [2] norm='c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya2_2_2_2_2.jpeg'
+      orig='c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya2_2_2_2_2.jpeg'
+[DB_TAGS_SQL] Photos query:
+                        SELECT pm.path, t.name
+                        FROM photo_metadata pm
+                        JOIN photo_tags pt ON pt.photo_...
+[DB_TAGS_SQL] Videos query:
+                        SELECT vm.path, t.name
+                        FROM video_metadata vm
+                        JOIN video_tags vt ON vt.video_...
+[DB_TAGS_SQL] First 3 params: ['c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya1_2_2_2.jpeg', 'c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya1_3_2.jpeg', 'c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya2_2_2_2_2.jpeg']
+[DB_TAGS_SQL] project_id: 1
+[DB_TAGS_SQL] Query returned 0 rows (0 photos + 0 videos)
+[DB_TAGS_SQL] No rows returned! Checking if ANY tags exist in DB...
+[DB_TAGS_SQL] Sample tagged PHOTOS in DB:
+[DB_TAGS_SQL] Sample tagged VIDEOS in DB:
+[DB_TAGS] Retrieved 0 tag assignments across 0/25 paths (project_id=1)
+[GRID] Loaded 25 thumbnails in custom mode
+
+[Breadcrumb] _update_breadcrumb() CALLED
+[Breadcrumb] Grid state: navigation_mode=custom, project_id=1
+[Breadcrumb] Looking for CURRENT project_id=1 in 1 projects
+[Breadcrumb] Found CURRENT project name: P01
+[Breadcrumb] Added project segment: P01
+[Breadcrumb] Added fallback segment: All Photos
+[Breadcrumb] Calling set_path() with 2 segments
+[BreadcrumbNav] set_path() called with 2 segments
+[BreadcrumbNav] Clearing 3 existing widgets
+[BreadcrumbNav] Cleared all existing widgets
+[BreadcrumbNav] Added segment 0: P01
+[BreadcrumbNav] Added segment 1: All Photos
+[BreadcrumbNav] set_path() completed - 2 segments added
+[Breadcrumb] set_path() completed successfully
+[Breadcrumb] _update_breadcrumb() COMPLETED
+
+[SEARCH] Quick search found 25 results for 'd'
+[GRID] Loading viewport range: 0-24 of 25
+[GRID] Queued 25 new thumbnail workers
+2026-03-29 00:39:18,975 [INFO] Search completed: 25 results in 0.00ms
+[GRID] Loading 25 custom paths (e.g., search results)
+[DB_TAGS_DEBUG] Sample normalized paths being queried:
+  [0] norm='c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya1_2_2_2.jpeg'
+      orig='c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya1_2_2_2.jpeg'
+  [1] norm='c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya1_3_2.jpeg'
+      orig='c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya1_3_2.jpeg'
+  [2] norm='c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya2_2_2_2_2.jpeg'
+      orig='c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya2_2_2_2_2.jpeg'
+[DB_TAGS_SQL] Photos query:
+                        SELECT pm.path, t.name
+                        FROM photo_metadata pm
+                        JOIN photo_tags pt ON pt.photo_...
+[DB_TAGS_SQL] Videos query:
+                        SELECT vm.path, t.name
+                        FROM video_metadata vm
+                        JOIN video_tags vt ON vt.video_...
+[DB_TAGS_SQL] First 3 params: ['c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya1_2_2_2.jpeg', 'c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya1_3_2.jpeg', 'c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya2_2_2_2_2.jpeg']
+[DB_TAGS_SQL] project_id: 1
+[DB_TAGS_SQL] Query returned 0 rows (0 photos + 0 videos)
+[DB_TAGS_SQL] No rows returned! Checking if ANY tags exist in DB...
+[DB_TAGS_SQL] Sample tagged PHOTOS in DB:
+[DB_TAGS_SQL] Sample tagged VIDEOS in DB:
+[DB_TAGS] Retrieved 0 tag assignments across 0/25 paths (project_id=1)
+[GRID] Loaded 25 thumbnails in custom mode
+
+[Breadcrumb] _update_breadcrumb() CALLED
+[Breadcrumb] Grid state: navigation_mode=custom, project_id=1
+[Breadcrumb] Looking for CURRENT project_id=1 in 1 projects
+[Breadcrumb] Found CURRENT project name: P01
+[Breadcrumb] Added project segment: P01
+[Breadcrumb] Added fallback segment: All Photos
+[Breadcrumb] Calling set_path() with 2 segments
+[BreadcrumbNav] set_path() called with 2 segments
+[BreadcrumbNav] Clearing 3 existing widgets
+[BreadcrumbNav] Cleared all existing widgets
+[BreadcrumbNav] Added segment 0: P01
+[BreadcrumbNav] Added segment 1: All Photos
+[BreadcrumbNav] set_path() completed - 2 segments added
+[Breadcrumb] set_path() completed successfully
+[Breadcrumb] _update_breadcrumb() COMPLETED
+
+[SEARCH] Quick search found 25 results for 'd'
+[GRID] Loading viewport range: 0-24 of 25
+[GRID] Queued 25 new thumbnail workers
+2026-03-29 00:39:24,996 [INFO] Search completed: 25 results in 0.00ms
+[GRID] Loading 25 custom paths (e.g., search results)
+[DB_TAGS_DEBUG] Sample normalized paths being queried:
+  [0] norm='c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya1_2_2_2.jpeg'
+      orig='c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya1_2_2_2.jpeg'
+  [1] norm='c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya1_3_2.jpeg'
+      orig='c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya1_3_2.jpeg'
+  [2] norm='c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya2_2_2_2_2.jpeg'
+      orig='c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya2_2_2_2_2.jpeg'
+[DB_TAGS_SQL] Photos query:
+                        SELECT pm.path, t.name
+                        FROM photo_metadata pm
+                        JOIN photo_tags pt ON pt.photo_...
+[DB_TAGS_SQL] Videos query:
+                        SELECT vm.path, t.name
+                        FROM video_metadata vm
+                        JOIN video_tags vt ON vt.video_...
+[DB_TAGS_SQL] First 3 params: ['c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya1_2_2_2.jpeg', 'c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya1_3_2.jpeg', 'c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya2_2_2_2_2.jpeg']
+[DB_TAGS_SQL] project_id: 1
+[DB_TAGS_SQL] Query returned 0 rows (0 photos + 0 videos)
+[DB_TAGS_SQL] No rows returned! Checking if ANY tags exist in DB...
+[DB_TAGS_SQL] Sample tagged PHOTOS in DB:
+[DB_TAGS_SQL] Sample tagged VIDEOS in DB:
+[DB_TAGS] Retrieved 0 tag assignments across 0/25 paths (project_id=1)
+[GRID] Loaded 25 thumbnails in custom mode
+
+[Breadcrumb] _update_breadcrumb() CALLED
+[Breadcrumb] Grid state: navigation_mode=custom, project_id=1
+[Breadcrumb] Looking for CURRENT project_id=1 in 1 projects
+[Breadcrumb] Found CURRENT project name: P01
+[Breadcrumb] Added project segment: P01
+[Breadcrumb] Added fallback segment: All Photos
+[Breadcrumb] Calling set_path() with 2 segments
+[BreadcrumbNav] set_path() called with 2 segments
+[BreadcrumbNav] Clearing 3 existing widgets
+[BreadcrumbNav] Cleared all existing widgets
+[BreadcrumbNav] Added segment 0: P01
+[BreadcrumbNav] Added segment 1: All Photos
+[BreadcrumbNav] set_path() completed - 2 segments added
+[Breadcrumb] set_path() completed successfully
+[Breadcrumb] _update_breadcrumb() COMPLETED
+
+[SEARCH] Quick search found 25 results for 'd'
+[GRID] Loading viewport range: 0-24 of 25
+[GRID] Queued 25 new thumbnail workers
+2026-03-29 00:39:28,806 [INFO] Search completed: 25 results in 0.00ms
+[GRID] Loading 25 custom paths (e.g., search results)
+[DB_TAGS_DEBUG] Sample normalized paths being queried:
+  [0] norm='c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya1_2_2_2.jpeg'
+      orig='c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya1_2_2_2.jpeg'
+  [1] norm='c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya1_3_2.jpeg'
+      orig='c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya1_3_2.jpeg'
+  [2] norm='c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya2_2_2_2_2.jpeg'
+      orig='c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya2_2_2_2_2.jpeg'
+[DB_TAGS_SQL] Photos query:
+                        SELECT pm.path, t.name
+                        FROM photo_metadata pm
+                        JOIN photo_tags pt ON pt.photo_...
+[DB_TAGS_SQL] Videos query:
+                        SELECT vm.path, t.name
+                        FROM video_metadata vm
+                        JOIN video_tags vt ON vt.video_...
+[DB_TAGS_SQL] First 3 params: ['c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya1_2_2_2.jpeg', 'c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya1_3_2.jpeg', 'c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya2_2_2_2_2.jpeg']
+[DB_TAGS_SQL] project_id: 1
+[DB_TAGS_SQL] Query returned 0 rows (0 photos + 0 videos)
+[DB_TAGS_SQL] No rows returned! Checking if ANY tags exist in DB...
+[DB_TAGS_SQL] Sample tagged PHOTOS in DB:
+[DB_TAGS_SQL] Sample tagged VIDEOS in DB:
+[DB_TAGS] Retrieved 0 tag assignments across 0/25 paths (project_id=1)
+[GRID] Loaded 25 thumbnails in custom mode
+
+[Breadcrumb] _update_breadcrumb() CALLED
+[Breadcrumb] Grid state: navigation_mode=custom, project_id=1
+[Breadcrumb] Looking for CURRENT project_id=1 in 1 projects
+[Breadcrumb] Found CURRENT project name: P01
+[Breadcrumb] Added project segment: P01
+[Breadcrumb] Added fallback segment: All Photos
+[Breadcrumb] Calling set_path() with 2 segments
+[BreadcrumbNav] set_path() called with 2 segments
+[BreadcrumbNav] Clearing 3 existing widgets
+[BreadcrumbNav] Cleared all existing widgets
+[BreadcrumbNav] Added segment 0: P01
+[BreadcrumbNav] Added segment 1: All Photos
+[BreadcrumbNav] set_path() completed - 2 segments added
+[Breadcrumb] set_path() completed successfully
+[Breadcrumb] _update_breadcrumb() COMPLETED
+
+[SEARCH] Quick search found 25 results for 'd'
+[GRID] Loading viewport range: 0-24 of 25
+[GRID] Queued 25 new thumbnail workers
+2026-03-29 00:39:56,313 [INFO] Search completed: 25 results in 8.17ms
+[GRID] Loading 25 custom paths (e.g., search results)
+[DB_TAGS_DEBUG] Sample normalized paths being queried:
+  [0] norm='c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya1_2_2_2.jpeg'
+      orig='c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya1_2_2_2.jpeg'
+  [1] norm='c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya1_3_2.jpeg'
+      orig='c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya1_3_2.jpeg'
+  [2] norm='c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya2_2_2_2_2.jpeg'
+      orig='c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya2_2_2_2_2.jpeg'
+[DB_TAGS_SQL] Photos query:
+                        SELECT pm.path, t.name
+                        FROM photo_metadata pm
+                        JOIN photo_tags pt ON pt.photo_...
+[DB_TAGS_SQL] Videos query:
+                        SELECT vm.path, t.name
+                        FROM video_metadata vm
+                        JOIN video_tags vt ON vt.video_...
+[DB_TAGS_SQL] First 3 params: ['c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya1_2_2_2.jpeg', 'c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya1_3_2.jpeg', 'c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya2_2_2_2_2.jpeg']
+[DB_TAGS_SQL] project_id: 1
+[DB_TAGS_SQL] Query returned 0 rows (0 photos + 0 videos)
+[DB_TAGS_SQL] No rows returned! Checking if ANY tags exist in DB...
+[DB_TAGS_SQL] Sample tagged PHOTOS in DB:
+[DB_TAGS_SQL] Sample tagged VIDEOS in DB:
+[DB_TAGS] Retrieved 0 tag assignments across 0/25 paths (project_id=1)
+[GRID] Loaded 25 thumbnails in custom mode
+
+[Breadcrumb] _update_breadcrumb() CALLED
+[Breadcrumb] Grid state: navigation_mode=custom, project_id=1
+[Breadcrumb] Looking for CURRENT project_id=1 in 1 projects
+[Breadcrumb] Found CURRENT project name: P01
+[Breadcrumb] Added project segment: P01
+[Breadcrumb] Added fallback segment: All Photos
+[Breadcrumb] Calling set_path() with 2 segments
+[BreadcrumbNav] set_path() called with 2 segments
+[BreadcrumbNav] Clearing 3 existing widgets
+[BreadcrumbNav] Cleared all existing widgets
+[BreadcrumbNav] Added segment 0: P01
+[BreadcrumbNav] Added segment 1: All Photos
+[BreadcrumbNav] set_path() completed - 2 segments added
+[Breadcrumb] set_path() completed successfully
+[Breadcrumb] _update_breadcrumb() COMPLETED
+
+[SEARCH] Quick search found 25 results for 'd'
+[GRID] Loading viewport range: 0-24 of 25
+[GRID] Queued 25 new thumbnail workers
+2026-03-29 00:40:09,205 [INFO] Search completed: 25 results in 0.00ms
+[GRID] Loading 25 custom paths (e.g., search results)
+[DB_TAGS_DEBUG] Sample normalized paths being queried:
+  [0] norm='c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya1_2_2_2.jpeg'
+      orig='c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya1_2_2_2.jpeg'
+  [1] norm='c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya1_3_2.jpeg'
+      orig='c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya1_3_2.jpeg'
+  [2] norm='c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya2_2_2_2_2.jpeg'
+      orig='c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya2_2_2_2_2.jpeg'
+[DB_TAGS_SQL] Photos query:
+                        SELECT pm.path, t.name
+                        FROM photo_metadata pm
+                        JOIN photo_tags pt ON pt.photo_...
+[DB_TAGS_SQL] Videos query:
+                        SELECT vm.path, t.name
+                        FROM video_metadata vm
+                        JOIN video_tags vt ON vt.video_...
+[DB_TAGS_SQL] First 3 params: ['c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya1_2_2_2.jpeg', 'c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya1_3_2.jpeg', 'c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya2_2_2_2_2.jpeg']
+[DB_TAGS_SQL] project_id: 1
+[DB_TAGS_SQL] Query returned 0 rows (0 photos + 0 videos)
+[DB_TAGS_SQL] No rows returned! Checking if ANY tags exist in DB...
+[DB_TAGS_SQL] Sample tagged PHOTOS in DB:
+[DB_TAGS_SQL] Sample tagged VIDEOS in DB:
+[DB_TAGS] Retrieved 0 tag assignments across 0/25 paths (project_id=1)
+[GRID] Loaded 25 thumbnails in custom mode
+
+[Breadcrumb] _update_breadcrumb() CALLED
+[Breadcrumb] Grid state: navigation_mode=custom, project_id=1
+[Breadcrumb] Looking for CURRENT project_id=1 in 1 projects
+[Breadcrumb] Found CURRENT project name: P01
+[Breadcrumb] Added project segment: P01
+[Breadcrumb] Added fallback segment: All Photos
+[Breadcrumb] Calling set_path() with 2 segments
+[BreadcrumbNav] set_path() called with 2 segments
+[BreadcrumbNav] Clearing 3 existing widgets
+[BreadcrumbNav] Cleared all existing widgets
+[BreadcrumbNav] Added segment 0: P01
+[BreadcrumbNav] Added segment 1: All Photos
+[BreadcrumbNav] set_path() completed - 2 segments added
+[Breadcrumb] set_path() completed successfully
+[Breadcrumb] _update_breadcrumb() COMPLETED
+
+[SEARCH] Quick search found 25 results for 'e'
+[GRID] Loading viewport range: 0-24 of 25
+[GRID] Queued 25 new thumbnail workers
+2026-03-29 00:40:17,805 [INFO] Search completed: 25 results in 5.11ms
+[GRID] Loading 25 custom paths (e.g., search results)
+[DB_TAGS_DEBUG] Sample normalized paths being queried:
+  [0] norm='c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya1_2_2_2.jpeg'
+      orig='c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya1_2_2_2.jpeg'
+  [1] norm='c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya1_3_2.jpeg'
+      orig='c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya1_3_2.jpeg'
+  [2] norm='c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya2_2_2_2_2.jpeg'
+      orig='c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya2_2_2_2_2.jpeg'
+[DB_TAGS_SQL] Photos query:
+                        SELECT pm.path, t.name
+                        FROM photo_metadata pm
+                        JOIN photo_tags pt ON pt.photo_...
+[DB_TAGS_SQL] Videos query:
+                        SELECT vm.path, t.name
+                        FROM video_metadata vm
+                        JOIN video_tags vt ON vt.video_...
+[DB_TAGS_SQL] First 3 params: ['c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya1_2_2_2.jpeg', 'c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya1_3_2.jpeg', 'c:/users/suleimaa/downloads/photo-sorter/images/images/output6/alya2_2_2_2_2.jpeg']
+[DB_TAGS_SQL] project_id: 1
+[DB_TAGS_SQL] Query returned 0 rows (0 photos + 0 videos)
+[DB_TAGS_SQL] No rows returned! Checking if ANY tags exist in DB...
+[DB_TAGS_SQL] Sample tagged PHOTOS in DB:
+[DB_TAGS_SQL] Sample tagged VIDEOS in DB:
+[DB_TAGS] Retrieved 0 tag assignments across 0/25 paths (project_id=1)
+[GRID] Loaded 25 thumbnails in custom mode
+
+[Breadcrumb] _update_breadcrumb() CALLED
+[Breadcrumb] Grid state: navigation_mode=custom, project_id=1
+[Breadcrumb] Looking for CURRENT project_id=1 in 1 projects
+[Breadcrumb] Found CURRENT project name: P01
+[Breadcrumb] Added project segment: P01
+[Breadcrumb] Added fallback segment: All Photos
+[Breadcrumb] Calling set_path() with 2 segments
+[BreadcrumbNav] set_path() called with 2 segments
+[BreadcrumbNav] Clearing 3 existing widgets
+[BreadcrumbNav] Cleared all existing widgets
+[BreadcrumbNav] Added segment 0: P01
+[BreadcrumbNav] Added segment 1: All Photos
+[BreadcrumbNav] set_path() completed - 2 segments added
+[Breadcrumb] set_path() completed successfully
+[Breadcrumb] _update_breadcrumb() COMPLETED
+
+[SEARCH] Quick search found 25 results for 'e'
+[GRID] Loading viewport range: 0-24 of 25
+[GRID] Queued 25 new thumbnail workers
 [UX-11 TRACE] _switch_layout(google) called from current
-  File "C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.12-Photo-App\MemoryMate-PhotoFlow-Refactored-main-12\main_qt.py", line 494, in <module>
+  File "C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.12-Photo-App\MemoryMate-PhotoFlow-Refactored-main-13\main_qt.py", line 494, in <module>
     exit_code = app.exec()
-  File "C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.12-Photo-App\MemoryMate-PhotoFlow-Refactored-main-12\main_window_qt.py", line 576, in <lambda>
+  File "C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.12-Photo-App\MemoryMate-PhotoFlow-Refactored-main-13\main_window_qt.py", line 576, in <lambda>
     action.triggered.connect(lambda checked, lid=layout_id: self._switch_layout(lid))
-  File "C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.12-Photo-App\MemoryMate-PhotoFlow-Refactored-main-12\main_window_qt.py", line 2726, in _switch_layout
+  File "C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.12-Photo-App\MemoryMate-PhotoFlow-Refactored-main-13\main_window_qt.py", line 2726, in _switch_layout
     traceback.print_stack(limit=8)
 [LayoutManager] Switching layout: current -> google
 [GooglePhotosLayout] ✅ Scroll-triggered lazy loading enabled
@@ -754,14 +1144,49 @@ Adaptive Icons:  24px
 [GooglePhotosLayout] Layout activated
 [LayoutManager] Switched to: Google Photos Style
 [MainWindow] ✓ Switched to layout: google
-[GooglePhotosLayout] 📐 Responsive grid: 7 columns (viewport: 1502px, thumb: 200px)
-2026-03-28 23:29:14,403 [INFO] [GoogleLayout] Page count ready: gen=1 total=27 (threshold=3000)
-2026-03-28 23:29:14,405 [INFO] [GoogleLayout] Page ready: gen=1 offset=0 rows=27 loaded=27/27
+[GooglePhotosLayout] 📐 Responsive grid: 7 columns (viewport: 1546px, thumb: 200px)
+2026-03-29 00:40:23,905 [INFO] [GoogleLayout] Page count ready: gen=1 total=27 (threshold=3000)
+2026-03-29 00:40:23,906 [INFO] [GoogleLayout] Page ready: gen=1 offset=0 rows=27 loaded=27/27
 [GooglePhotosLayout] Dispatching 27 assets (photos+videos) to background grouping worker...
-2026-03-28 23:29:14,405 [INFO] [GoogleLayout] All pages loaded: 27 rows total
+2026-03-29 00:40:23,907 [INFO] [GoogleLayout] All pages loaded: 27 rows total
 [GooglePhotosLayout] Grouped into 13 date groups
 [GooglePhotosLayout] Tracking 27 paths for multi-selection
 [GooglePhotosLayout] Virtual scrolling enabled: 13 total date groups
 [GooglePhotosLayout] Rendered: 5 groups | Placeholders: 8 groups
 [GooglePhotosLayout] Queued 10 thumbnails for loading (initial limit: 50)
 [GooglePhotosLayout] Photo loading complete! Thumbnails will load progressively.
+[GooglePhotosLayout] No search results for: 'Tag: favorite'
+[GooglePhotosLayout] 📷 Loading photos from database (thumb size: 200px)...
+[GooglePhotosLayout] 🔍 Starting async photo load (generation 2) - existing content preserved...
+[GooglePhotosLayout] Paged load started (generation 2, page_size=250)
+2026-03-29 00:40:30,689 [INFO] [GoogleLayout] Page count ready: gen=2 total=27 (threshold=3000)
+2026-03-29 00:40:30,689 [INFO] [GoogleLayout] Page ready: gen=2 offset=0 rows=27 loaded=27/27
+[GooglePhotosLayout] Dispatching 27 assets (photos+videos) to background grouping worker...
+2026-03-29 00:40:30,689 [INFO] [GoogleLayout] All pages loaded: 27 rows total
+[GooglePhotosLayout] Grouped into 13 date groups
+[GooglePhotosLayout] Tracking 27 paths for multi-selection
+[GooglePhotosLayout] Virtual scrolling enabled: 13 total date groups
+[GooglePhotosLayout] Rendered: 5 groups | Placeholders: 8 groups
+[GooglePhotosLayout] Queued 10 thumbnails for loading (initial limit: 50)
+[GooglePhotosLayout] Photo loading complete! Thumbnails will load progressively.
+[UI] Generation bumped 0 -> 1: shutdown barrier
+[Shutdown] _closing flag set, ui_generation=1, beginning teardown...
+2026-03-29 00:40:45,878 [INFO] [Store] ShutdownRequested src=main_window deltas={'ui_epoch': '0→1'}  →  3 subscriber(s)
+2026-03-29 00:40:45,878 [INFO] [JobManager] Canceled 0 jobs
+[Shutdown] JobManager barrier complete (drained=True).
+2026-03-29 00:40:45,878 [INFO] Scan cancellation requested
+2026-03-29 00:40:45,878 [INFO] Scan stop requested via adapter
+2026-03-29 00:40:45,878 [INFO] [ScanController] DBWriter shut down
+2026-03-29 00:40:45,884 [INFO] [ScanController] Shutdown barrier complete (drained=True)
+[Shutdown] ScanController barrier complete.
+[Shutdown] Grid threads shut down.
+[ThumbnailManager] Thread pool shut down.
+[Shutdown] ThumbnailManager threads shut down.
+[Shutdown] Thumbnail cache cleared.
+[Shutdown] Teardown complete.
+[Main] Qt event loop exited with code: 0
+[ThumbCacheDB] Closing cache gracefully...
+Exit code: 0
+Drücken Sie eine beliebige Taste . . .
+
+C:\Users\suleimaa\Downloads\Photo-Sorter\11.01.01.12-Photo-App\MemoryMate-PhotoFlow-Refactored-main-13>
