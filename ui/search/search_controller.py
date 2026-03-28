@@ -151,6 +151,12 @@ class SearchController(QObject):
     def set_unnamed_clusters(self, items):
         self.store.update(unnamed_clusters=list(items or []))
 
+    def set_named_identity_choices(self, items):
+        self.store.update(named_identity_choices=list(items or []))
+
+    def set_active_merge_review_pair(self, payload: dict):
+        self.store.update(active_merge_review_pair=dict(payload or {}))
+
     def set_selected_result_ids(self, ids_):
         self.store.update(selected_result_ids=list(ids_ or []))
 

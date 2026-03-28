@@ -50,6 +50,8 @@ class SearchState:
     unnamed_cluster_payloads: List[Dict[str, Any]] = field(default_factory=list)
     unnamed_cluster_items: List[Dict[str, Any]] = field(default_factory=list)
     unnamed_clusters: List[Dict[str, Any]] = field(default_factory=list)
+    named_identity_choices: List[Dict[str, Any]] = field(default_factory=list)
+    active_merge_review_pair: Dict[str, Any] = field(default_factory=dict)
     browse_mode: Optional[str] = None
     activity_snapshot: Dict[str, Any] = field(default_factory=dict)
     model_warning: str = ""

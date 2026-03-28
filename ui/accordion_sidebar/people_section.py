@@ -922,8 +922,9 @@ class PeopleSection(BaseSection):
                 pass
 
     def ignore_unnamed_cluster(self, cluster_id: str):
-        """UX-10C: ignore unnamed cluster for now (skip in future reviews)."""
+        """UX-9C/10C: mark cluster as ignored via reserved label + review record."""
         db = getattr(self, "_parent_db", None)
+        pid = getattr(self, "project_id", None)
         logger.info("[PeopleSection] Ignore unnamed: %s", cluster_id)
 
         if db:
@@ -931,6 +932,19 @@ class PeopleSection(BaseSection):
                 db.save_people_merge_review(cluster_id, "__ignored__", "ignored")
             except Exception:
                 pass
+            # Also update the label so it's excluded from future unnamed queries
+            if pid:
+                try:
+                    with db._connect() as conn:
+                        conn.execute(
+                            "UPDATE face_branch_reps SET label = ? WHERE project_id = ? AND branch_key = ?",
+                            ("__ignored__", pid, cluster_id))
+                        conn.execute(
+                            "UPDATE branches SET display_name = ? WHERE project_id = ? AND branch_key = ?",
+                            ("__ignored__", pid, cluster_id))
+                        conn.commit()
+                except Exception:
+                    pass
 
     def get_unnamed_cluster_items(self):
         """UX-9C adapter: return unnamed cluster items as simple dicts."""
@@ -1005,6 +1019,177 @@ class PeopleSection(BaseSection):
         """UX-9C stub: assign unnamed cluster to a named person."""
         logger.info("[PeopleSection] Assign unnamed cluster %s -> %s", cluster_id, target_person_id)
         self.assign_unnamed_cluster(cluster_id, target_person_id)
+
+    # ------------------------------------------------------------------
+    # UX-9B/9C: Side-by-side review + unnamed cluster assignment
+    # ------------------------------------------------------------------
+
+    def _cluster_time_hint(self, rep_path):
+        """First-pass time hint from representative file mtime."""
+        try:
+            import os
+            from datetime import datetime
+            if rep_path and os.path.exists(rep_path):
+                ts = os.path.getmtime(rep_path)
+                return datetime.fromtimestamp(ts).strftime("%Y-%m-%d")
+        except Exception:
+            pass
+        return "Unavailable"
+
+    def get_merge_comparison_payload(self, left_id: str, right_id: str):
+        """UX-9B: returns side-by-side review payload for a merge candidate pair."""
+        try:
+            db = getattr(self, "_parent_db", None)
+            pid = getattr(self, "project_id", None)
+            if not db or not pid:
+                return self._empty_comparison(left_id, right_id)
+
+            with db._connect() as conn:
+                cur = conn.cursor()
+                cur.execute("""
+                    SELECT branch_key, label, count, rep_path, rep_thumb_png
+                    FROM face_branch_reps
+                    WHERE project_id = ? AND branch_key IN (?, ?)
+                """, (pid, left_id, right_id))
+                rows = cur.fetchall() or []
+
+            payload_map = {}
+            for row in rows:
+                branch_key, label, count, rep_path, rep_thumb = row
+                payload_map[str(branch_key)] = {
+                    "id": str(branch_key),
+                    "label": label or str(branch_key),
+                    "count": int(count or 0),
+                    "rep_path": rep_path,
+                    "rep_thumb_png": rep_thumb,
+                    "time_hint": self._cluster_time_hint(rep_path),
+                }
+
+            return {
+                "left": payload_map.get(str(left_id), {"id": str(left_id), "label": str(left_id), "count": 0, "time_hint": "Unavailable"}),
+                "right": payload_map.get(str(right_id), {"id": str(right_id), "label": str(right_id), "count": 0, "time_hint": "Unavailable"}),
+            }
+
+        except Exception:
+            return self._empty_comparison(left_id, right_id)
+
+    def _empty_comparison(self, left_id, right_id):
+        return {
+            "left": {"id": str(left_id), "label": str(left_id), "count": 0, "time_hint": "Unavailable"},
+            "right": {"id": str(right_id), "label": str(right_id), "count": 0, "time_hint": "Unavailable"},
+        }
+
+    def get_unnamed_cluster_payload(self):
+        """UX-9C: returns unnamed clusters with rep_path/thumb for assignment dialog."""
+        try:
+            db = getattr(self, "_parent_db", None)
+            pid = getattr(self, "project_id", None)
+            if not db or not pid:
+                return []
+
+            with db._connect() as conn:
+                cur = conn.cursor()
+                cur.execute("""
+                    SELECT branch_key, label, count, rep_path, rep_thumb_png
+                    FROM face_branch_reps
+                    WHERE project_id = ?
+                      AND (label IS NULL OR TRIM(label) = '' OR label LIKE 'face_%')
+                    ORDER BY count DESC
+                    LIMIT 20
+                """, (pid,))
+                rows = cur.fetchall() or []
+
+            items = []
+            for row in rows:
+                branch_key, label, count, rep_path, rep_thumb = row
+                items.append({
+                    "branch_key": str(branch_key),
+                    "label": label or f"Unnamed ({count})",
+                    "count": int(count or 0),
+                    "rep_path": rep_path,
+                    "rep_thumb_png": rep_thumb,
+                    "time_hint": self._cluster_time_hint(rep_path),
+                })
+            return items
+
+        except Exception:
+            return []
+
+    def get_named_identity_choices(self):
+        """UX-9C: returns existing named identities for assignment combo box."""
+        try:
+            db = getattr(self, "_parent_db", None)
+            pid = getattr(self, "project_id", None)
+            if not db or not pid:
+                return []
+
+            with db._connect() as conn:
+                cur = conn.cursor()
+                cur.execute("""
+                    SELECT DISTINCT branch_key, label, count
+                    FROM face_branch_reps
+                    WHERE project_id = ?
+                      AND label IS NOT NULL
+                      AND TRIM(label) != ''
+                      AND label NOT LIKE 'face_%'
+                      AND label != '__ignored__'
+                    ORDER BY count DESC, label ASC
+                """, (pid,))
+                rows = cur.fetchall() or []
+
+            items = []
+            for row in rows:
+                branch_key, label, count = row
+                items.append({
+                    "id": str(branch_key),
+                    "label": f"{label} ({int(count or 0)})",
+                })
+            return items
+
+        except Exception:
+            return []
+
+    def assign_unnamed_cluster_to_identity(self, branch_key: str, target_identity: str):
+        """UX-9C: relabel unnamed cluster to an existing identity."""
+        try:
+            db = getattr(self, "_parent_db", None)
+            pid = getattr(self, "project_id", None)
+            if not db or not pid:
+                return
+
+            with db._connect() as conn:
+                cur = conn.cursor()
+                cur.execute(
+                    "UPDATE face_branch_reps SET label = ? WHERE project_id = ? AND branch_key = ?",
+                    (target_identity, pid, branch_key))
+                cur.execute(
+                    "UPDATE branches SET display_name = ? WHERE project_id = ? AND branch_key = ?",
+                    (target_identity, pid, branch_key))
+                conn.commit()
+            logger.info("[PeopleSection] Assigned unnamed cluster %s -> %s", branch_key, target_identity)
+        except Exception as e:
+            logger.warning("[PeopleSection] Failed to assign unnamed cluster: %s", e)
+
+    def promote_unnamed_cluster(self, branch_key: str, new_name: str):
+        """UX-9C: promote unnamed cluster to a new named identity."""
+        try:
+            db = getattr(self, "_parent_db", None)
+            pid = getattr(self, "project_id", None)
+            if not db or not pid:
+                return
+
+            with db._connect() as conn:
+                cur = conn.cursor()
+                cur.execute(
+                    "UPDATE face_branch_reps SET label = ? WHERE project_id = ? AND branch_key = ?",
+                    (new_name, pid, branch_key))
+                cur.execute(
+                    "UPDATE branches SET display_name = ? WHERE project_id = ? AND branch_key = ?",
+                    (new_name, pid, branch_key))
+                conn.commit()
+            logger.info("[PeopleSection] Promoted unnamed cluster %s -> %s", branch_key, new_name)
+        except Exception as e:
+            logger.warning("[PeopleSection] Failed to promote unnamed cluster: %s", e)
 
     def set_db(self, db):
         """Store DB reference for passing to GroupsSection."""
