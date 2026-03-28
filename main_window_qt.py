@@ -3215,8 +3215,8 @@ class MainWindow(QMainWindow):
 
     def _refresh_people_quick_section(self):
         """
-        UX-9A bridge: populate PeopleQuickSection, merge suggestions,
-        and unnamed clusters from existing people backend.
+        UX-9B/9C bridge: populate PeopleQuickSection, merge suggestions,
+        unnamed clusters, and named identity choices from people backend.
         """
         try:
             payload = {
@@ -3225,16 +3225,21 @@ class MainWindow(QMainWindow):
                 "unnamed_count": 0,
             }
             suggestions = []
-            unnamed = []
+            unnamed_clusters = []
+            named_identity_choices = []
 
             def _extract(people_section):
-                nonlocal payload, suggestions, unnamed
+                nonlocal payload, suggestions, unnamed_clusters, named_identity_choices
                 if hasattr(people_section, "get_people_quick_payload"):
-                    payload = dict(people_section.get_people_quick_payload() or payload)
+                    payload.update(people_section.get_people_quick_payload() or {})
                 if hasattr(people_section, "get_merge_suggestions"):
-                    suggestions = list(people_section.get_merge_suggestions() or [])
-                if hasattr(people_section, "get_unnamed_clusters"):
-                    unnamed = list(people_section.get_unnamed_clusters() or [])
+                    suggestions.extend(people_section.get_merge_suggestions() or [])
+                if hasattr(people_section, "get_unnamed_cluster_payload"):
+                    unnamed_clusters.extend(people_section.get_unnamed_cluster_payload() or [])
+                elif hasattr(people_section, "get_unnamed_clusters"):
+                    unnamed_clusters.extend(people_section.get_unnamed_clusters() or [])
+                if hasattr(people_section, "get_named_identity_choices"):
+                    named_identity_choices.extend(people_section.get_named_identity_choices() or [])
 
             if hasattr(self, "sidebar") and hasattr(self.sidebar, "accordion"):
                 people_section = self.sidebar.accordion.section_logic.get("people")
@@ -3249,15 +3254,16 @@ class MainWindow(QMainWindow):
                         _extract(people_section)
 
             payload["merge_candidates"] = len(suggestions)
-            payload["unnamed_count"] = len(unnamed)
+            payload["unnamed_count"] = len(unnamed_clusters)
 
             if hasattr(self, "search_controller"):
                 self.search_controller.set_people_quick_payload(payload)
                 self.search_controller.set_merge_suggestions(suggestions)
-                self.search_controller.set_unnamed_clusters(unnamed)
+                self.search_controller.set_unnamed_clusters(unnamed_clusters)
+                self.search_controller.set_named_identity_choices(named_identity_choices)
 
         except Exception as e:
-            print(f"[UX-9A] Error refreshing people quick section: {e}")
+            print(f"[UX-9B/C] Error refreshing people quick section: {e}")
 
     def _refresh_activity_snapshot(self):
         """
@@ -3350,79 +3356,81 @@ class MainWindow(QMainWindow):
             print(f"[UX-7A] Failed to open activity center: {e}")
 
     def _open_people_merge_review(self):
-        """UX-9B: open side-by-side PersonComparisonDialog queue."""
+        """UX-9B: open side-by-side PeopleMergeReviewDialog."""
         try:
-            from ui.search.person_comparison_dialog import PersonComparisonDialog
+            from ui.search.people_merge_review_dialog import PeopleMergeReviewDialog
 
             state = self.search_state_store.get_state()
-            payload = dict(getattr(state, "merge_review_payload", {}) or {})
-            suggestions = list(payload.get("suggestions", []) or [])
+            suggestions = list(getattr(state, "merge_suggestions", []) or [])
 
             if not suggestions:
                 from PySide6.QtWidgets import QMessageBox
                 QMessageBox.information(self, "No Suggestions", "No merge suggestions are available right now.")
                 return
 
-            self._merge_review_index = 0
-            self._merge_review_suggestions = suggestions
-            self._show_next_merge_review_dialog()
-
-        except Exception as e:
-            print(f"[UX-9] Failed to open merge review dialog: {e}")
-
-    def _show_next_merge_review_dialog(self):
-        """UX-9B: show next candidate in the merge review queue."""
-        try:
-            from ui.search.person_comparison_dialog import PersonComparisonDialog
-
-            suggestions = list(getattr(self, "_merge_review_suggestions", []) or [])
-            idx = int(getattr(self, "_merge_review_index", 0))
-
-            if idx >= len(suggestions):
-                return
-
-            payload = suggestions[idx]
-
-            dlg = PersonComparisonDialog(self)
-            dlg.set_payload(payload)
+            dlg = PeopleMergeReviewDialog(self)
+            dlg.set_suggestions(suggestions)
+            dlg.reviewRequested.connect(lambda left_id, right_id: self._load_merge_review_payload(dlg, left_id, right_id))
             dlg.mergeAccepted.connect(self._accept_people_merge_suggestion)
             dlg.mergeRejected.connect(self._reject_people_merge_suggestion)
+            dlg.mergePostponed.connect(self._postpone_people_merge_suggestion)
             dlg.exec()
 
         except Exception as e:
-            print(f"[UX-9] Failed to show merge review step: {e}")
+            print(f"[UX-9B] Failed to open merge review dialog: {e}")
+
+    def _load_merge_review_payload(self, dialog, left_id: str, right_id: str):
+        """UX-9B: fetch comparison payload for the selected merge pair."""
+        try:
+            payload = None
+
+            def _try_section(people_section):
+                if people_section and hasattr(people_section, "get_merge_comparison_payload"):
+                    return people_section.get_merge_comparison_payload(left_id, right_id)
+                return None
+
+            if hasattr(self, "sidebar") and hasattr(self.sidebar, "accordion"):
+                payload = _try_section(self.sidebar.accordion.section_logic.get("people"))
+
+            if not payload and hasattr(self, "layout_manager"):
+                layout = self.layout_manager.get_current_layout()
+                if layout and hasattr(layout, "accordion_sidebar"):
+                    payload = _try_section(layout.accordion_sidebar.section_logic.get("people"))
+
+            if payload:
+                dialog.set_comparison_payload(payload)
+                if hasattr(self, "search_controller"):
+                    self.search_controller.set_active_merge_review_pair(payload)
+
+        except Exception as e:
+            print(f"[UX-9B] Failed to load merge review payload: {e}")
 
     def _open_unnamed_people_review(self):
-        """UX-10C: open structured unnamed-cluster review dialog with assign/keep/ignore."""
+        """UX-9C: open unnamed-cluster assignment dialog."""
         try:
             self._open_unnamed_cluster_review()
         except Exception as e:
-            print(f"[UX-10] Failed to open unnamed review dialog: {e}")
+            print(f"[UX-9C] Failed to open unnamed review dialog: {e}")
 
     def _open_unnamed_cluster_review(self):
-        """UX-10C: launch UnnamedClusterReviewDialog for the first unnamed cluster."""
+        """UX-9C: launch UnnamedClusterAssignmentDialog with assign/promote/ignore."""
         try:
-            from ui.search.unnamed_cluster_review_dialog import UnnamedClusterReviewDialog
+            from ui.search.unnamed_cluster_assignment_dialog import UnnamedClusterAssignmentDialog
 
             state = self.search_state_store.get_state()
-            payloads = list(getattr(state, "unnamed_cluster_payloads", []) or [])
-            if not payloads:
-                # Fall back to simple unnamed_review_payload
-                items = list(getattr(state, "unnamed_review_payload", {}).get("unnamed_items", []) or [])
-                if not items:
-                    return
-                payloads = [{"cluster_id": it.get("id"), "label": it.get("label", "Unnamed"),
-                             "samples": [], "candidate_people": []} for it in items[:1]]
+            clusters = list(getattr(state, "unnamed_clusters", []) or [])
+            identities = list(getattr(state, "named_identity_choices", []) or [])
 
-            dlg = UnnamedClusterReviewDialog(self)
-            dlg.set_payload(payloads[0])
-            dlg.assignRequested.connect(self._assign_unnamed_cluster)
-            dlg.keepSeparateRequested.connect(self._keep_unnamed_cluster_separate)
+            dlg = UnnamedClusterAssignmentDialog(self)
+            dlg.set_clusters(clusters)
+            dlg.set_identity_choices(identities)
+            dlg.assignRequested.connect(self._assign_unnamed_cluster_to_identity)
+            dlg.promoteRequested.connect(self._promote_unnamed_cluster_to_identity)
             dlg.ignoreRequested.connect(self._ignore_unnamed_cluster)
             dlg.exec()
 
         except Exception as e:
-            print(f"[UX-10] Failed to open unnamed cluster review: {e}")
+            print(f"[UX-9C] Failed to open unnamed cluster review: {e}")
 
     def _open_unnamed_clusters_review(self):
         """UX-9A: open lightweight unnamed clusters review dialog."""
@@ -3542,7 +3550,52 @@ class MainWindow(QMainWindow):
         except Exception as e:
             print(f"[UX-10] Failed to ignore unnamed cluster: {e}")
 
+    def _assign_unnamed_cluster_to_identity(self, branch_key: str, target_identity: str):
+        """UX-9C: route assign-to-identity action to people_section backend."""
+        try:
+            handled = False
+
+            if hasattr(self, "sidebar") and hasattr(self.sidebar, "accordion"):
+                ps = self.sidebar.accordion.section_logic.get("people")
+                if ps and hasattr(ps, "assign_unnamed_cluster_to_identity"):
+                    ps.assign_unnamed_cluster_to_identity(branch_key, target_identity)
+                    handled = True
+
+            if not handled and hasattr(self, "layout_manager"):
+                layout = self.layout_manager.get_current_layout()
+                if layout and hasattr(layout, "accordion_sidebar"):
+                    ps = layout.accordion_sidebar.section_logic.get("people")
+                    if ps and hasattr(ps, "assign_unnamed_cluster_to_identity"):
+                        ps.assign_unnamed_cluster_to_identity(branch_key, target_identity)
+
+            self._refresh_people_quick_section()
+        except Exception as e:
+            print(f"[UX-9C] Failed to assign unnamed cluster: {e}")
+
+    def _promote_unnamed_cluster_to_identity(self, branch_key: str, new_name: str):
+        """UX-9C: route promote-to-new-identity action to people_section backend."""
+        try:
+            handled = False
+
+            if hasattr(self, "sidebar") and hasattr(self.sidebar, "accordion"):
+                ps = self.sidebar.accordion.section_logic.get("people")
+                if ps and hasattr(ps, "promote_unnamed_cluster"):
+                    ps.promote_unnamed_cluster(branch_key, new_name)
+                    handled = True
+
+            if not handled and hasattr(self, "layout_manager"):
+                layout = self.layout_manager.get_current_layout()
+                if layout and hasattr(layout, "accordion_sidebar"):
+                    ps = layout.accordion_sidebar.section_logic.get("people")
+                    if ps and hasattr(ps, "promote_unnamed_cluster"):
+                        ps.promote_unnamed_cluster(branch_key, new_name)
+
+            self._refresh_people_quick_section()
+        except Exception as e:
+            print(f"[UX-9C] Failed to promote unnamed cluster: {e}")
+
     def _accept_people_merge_suggestion(self, left_id: str, right_id: str):
+        """UX-9B: accept merge — delegates to people_section and refreshes."""
         try:
             handled = False
 
@@ -3558,16 +3611,14 @@ class MainWindow(QMainWindow):
                     people_section = layout.accordion_sidebar.section_logic.get("people")
                     if people_section and hasattr(people_section, "accept_merge_suggestion"):
                         people_section.accept_merge_suggestion(left_id, right_id)
-                        handled = True
 
-            self._merge_review_index = int(getattr(self, "_merge_review_index", 0)) + 1
             self._refresh_people_quick_section()
-            self._show_next_merge_review_dialog()
 
         except Exception as e:
-            print(f"[UX-9] Failed to accept merge suggestion: {e}")
+            print(f"[UX-9B] Failed to accept merge suggestion: {e}")
 
     def _reject_people_merge_suggestion(self, left_id: str, right_id: str):
+        """UX-9B: reject merge — delegates to people_section and refreshes."""
         try:
             handled = False
 
@@ -3583,14 +3634,15 @@ class MainWindow(QMainWindow):
                     people_section = layout.accordion_sidebar.section_logic.get("people")
                     if people_section and hasattr(people_section, "reject_merge_suggestion"):
                         people_section.reject_merge_suggestion(left_id, right_id)
-                        handled = True
 
-            self._merge_review_index = int(getattr(self, "_merge_review_index", 0)) + 1
             self._refresh_people_quick_section()
-            self._show_next_merge_review_dialog()
 
         except Exception as e:
-            print(f"[UX-9] Failed to reject merge suggestion: {e}")
+            print(f"[UX-9B] Failed to reject merge suggestion: {e}")
+
+    def _postpone_people_merge_suggestion(self, left_id: str, right_id: str):
+        """UX-9B: postpone merge — no persistence, just skip for this session."""
+        print(f"[UX-9B] Postponed merge suggestion: {left_id} \u2194 {right_id}")
 
     def _handle_search_sidebar_branch_request(self, branch: str):
         if branch == "people_merge_review":
@@ -3598,10 +3650,6 @@ class MainWindow(QMainWindow):
             return
 
         if branch == "people_unnamed":
-            self._open_unnamed_clusters_review()
-            return
-
-        if branch == "people_unnamed_distinct":
             self._open_unnamed_cluster_review()
             return
 
