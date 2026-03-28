@@ -397,7 +397,7 @@ class GooglePhotosLayout(BaseLayout):
             self.search_state_store.stateChanged.connect(self._on_search_state_changed)
 
     def _on_search_state_changed(self, state):
-        """UX-10: generation-aware state handler with project resolution guards."""
+        """UX-10/11: generation-aware state handler with project resolution guards."""
         try:
             if getattr(self, '_disposed', False):
                 return
@@ -406,13 +406,13 @@ class GooglePhotosLayout(BaseLayout):
                 logger.debug("[GooglePhotosLayout] Skipping SearchState update: UI objects already deleted")
                 return
 
+            # UX-10: wait for project state to resolve before making any display decision
+            if not getattr(state, "active_project_id_resolved", True):
+                return
+
             # Onboarding / no project
             if getattr(state, "onboarding_mode", False):
                 self._show_empty_state("no_project", getattr(state, "warnings", []))
-                return
-
-            # UX-10: wait for project state to resolve
-            if not getattr(state, "active_project_id_resolved", True):
                 return
 
             # UX-10: wait for layout reload to complete
@@ -423,6 +423,14 @@ class GooglePhotosLayout(BaseLayout):
             result_paths = list(getattr(state, "result_paths", []) or [])
             search_in_progress = bool(getattr(state, "search_in_progress", False))
             result_surface_busy = bool(getattr(state, "result_surface_busy", False))
+
+            # Determine if there's an active search context
+            has_search_context = bool(
+                getattr(state, "query_text", "")
+                or getattr(state, "preset_id", None)
+                or getattr(state, "browse_mode", None)
+                or getattr(state, "active_people", [])
+            )
 
             # Preserve visible results while searching / busy
             if search_in_progress or result_surface_busy:
@@ -449,6 +457,12 @@ class GooglePhotosLayout(BaseLayout):
                 self._last_displayed_paths = result_paths
                 self._show_results_surface()
                 self._refresh_timeline_from_store_paths(result_paths, state)
+                return
+
+            # UX-11 FIX: When no search context is active and result_paths is empty,
+            # do NOT override the timeline — photos are loaded directly by set_project/_load_photos.
+            # Only show empty state if an explicit search returned no results.
+            if not has_search_context:
                 return
 
             self._show_empty_state(getattr(state, "empty_state_reason", None) or "no_results",
@@ -6275,11 +6289,17 @@ class GooglePhotosLayout(BaseLayout):
         print(f"[GooglePhotosLayout] Queued {self.thumbnail_load_count} thumbnails for loading (initial limit: {self.initial_load_limit})")
         print(f"[GooglePhotosLayout] Photo loading complete! Thumbnails will load progressively.")
 
-        # UX-10: signal async load completion to MainWindow
+        # UX-10/11: signal async load completion ONLY for store-driven search loads.
+        # Normal browsing loads (refresh_after_scan, set_project) should NOT emit
+        # stateChanged — doing so caused cascading UI corruption (empty state override,
+        # spurious layout switches).
         try:
             mw = self.main_window
-            if mw and hasattr(mw, "_on_result_surface_async_load_completed"):
-                mw._on_result_surface_async_load_completed()
+            if (mw and hasattr(mw, "_on_result_surface_async_load_completed")
+                    and hasattr(mw, "search_state_store")):
+                st = mw.search_state_store.get_state()
+                if getattr(st, "result_surface_busy", False):
+                    mw._on_result_surface_async_load_completed()
         except Exception:
             pass
 

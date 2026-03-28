@@ -2718,6 +2718,12 @@ class MainWindow(QMainWindow):
             layout_id: ID of the layout to switch to (e.g., "current", "google", "apple")
         """
         try:
+            # UX-11 diagnostic: trace unexpected layout switches
+            import traceback
+            current_lid = getattr(self.layout_manager, '_current_layout_id', '?')
+            if current_lid != layout_id:
+                print(f"[UX-11 TRACE] _switch_layout({layout_id}) called from {current_lid}")
+                traceback.print_stack(limit=8)
             success = self.layout_manager.switch_layout(layout_id)
             if success:
                 self._attach_search_store_to_current_layout()
