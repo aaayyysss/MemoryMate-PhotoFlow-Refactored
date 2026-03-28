@@ -32,10 +32,11 @@ class ActivityMiniSection(QGroupBox):
         label = activity.get("label") or "No active background tasks"
         percent = activity.get("progress")
 
-        self.lbl_job.setText(str(label))
-
-        if percent is None:
-            self.progress.setVisible(False)
-        else:
+        # UX-10: Progress label polish with task name and percentage
+        if percent is not None:
+            self.lbl_job.setText(f"\u23f3 {label} \u2022 {int(percent)}%")
             self.progress.setVisible(True)
             self.progress.setValue(max(0, min(100, int(percent))))
+        else:
+            self.lbl_job.setText(str(label))
+            self.progress.setVisible(False)

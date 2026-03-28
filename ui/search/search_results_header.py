@@ -12,7 +12,7 @@ class SearchResultsHeader(QWidget):
         self.store = store
         self.controller = controller
         self.setObjectName("SearchResultsHeader")
-        self.setFixedHeight(72)
+        self.setFixedHeight(84)
 
         # Top row: summary, badges, sort, count
         self.lbl_summary = QLabel("All Photos")
@@ -75,11 +75,18 @@ class SearchResultsHeader(QWidget):
         self.lbl_selection.setStyleSheet("color: #1a73e8; font-size: 12px; padding: 0 16px;")
         self.lbl_selection.setVisible(False)
 
+        # UX-10: Secondary explanation line for search progress
+        self.lbl_explanation_secondary = QLabel("")
+        self.lbl_explanation_secondary.setWordWrap(True)
+        self.lbl_explanation_secondary.setStyleSheet("color: #666; font-size: 11px; padding: 0 16px;")
+        self.lbl_explanation_secondary.setVisible(False)
+
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(2)
         outer.addLayout(top_row)
         outer.addWidget(self.lbl_explanation)
+        outer.addWidget(self.lbl_explanation_secondary)
         outer.addWidget(self.lbl_selection)
 
         self.store.stateChanged.connect(self._on_state_changed)
@@ -125,6 +132,20 @@ class SearchResultsHeader(QWidget):
             self.badge_warning.setVisible(True)
         else:
             self.badge_warning.setVisible(False)
+
+        # UX-10: "Why these results" explanation display
+        explanation = getattr(state, "result_explanation", "")
+        if explanation:
+            self.lbl_explanation.setText(f"\U0001f50e {explanation}")
+            self.lbl_explanation.setVisible(True)
+        else:
+            self.lbl_explanation.setVisible(False)
+
+        if state.search_in_progress:
+            self.lbl_explanation_secondary.setText("Updating results\u2026")
+            self.lbl_explanation_secondary.setVisible(True)
+        else:
+            self.lbl_explanation_secondary.setVisible(False)
 
         # Selection indicator
         selected_ids = list(getattr(state, "selected_result_ids", []) or [])

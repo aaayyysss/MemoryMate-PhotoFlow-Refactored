@@ -3172,6 +3172,18 @@ class MainWindow(QMainWindow):
         preset_id = payload.get("preset_id")
         browse_mode = payload.get("browse_mode")
 
+        # UX-10: Preserve displayed results for visual continuity during search
+        try:
+            state = self.search_state_store.get_state()
+            self.search_state_store.update(
+                search_in_progress=True,
+                displayed_result_paths=list(
+                    state.displayed_result_paths or state.result_paths or []
+                ),
+            )
+        except Exception:
+            pass
+
         try:
             # UX-9D: Browse-first compatibility routing
             if browse_mode == "all_photos":
