@@ -305,6 +305,11 @@ class GooglePhotosLayout(BaseLayout):
         self.results_stack.addWidget(self.timeline)
         self.results_stack.addWidget(self.empty_state)
 
+        # UX-10: Skeleton placeholder while loading
+        from ui.search.widgets.skeleton_grid import SkeletonGrid
+        self.skeleton = SkeletonGrid(main_widget)
+        self.results_stack.addWidget(self.skeleton)
+
         self.results_layout.addWidget(self.results_stack, 1)
 
         main_layout.addWidget(self.results_container)
@@ -432,13 +437,13 @@ class GooglePhotosLayout(BaseLayout):
                 or getattr(state, "active_people", [])
             )
 
-            # Preserve visible results while searching / busy
+            # UX-10: Preserve visible results while searching / busy, or show skeleton
             if search_in_progress or result_surface_busy:
                 if displayed_paths:
                     self._last_store_result_paths = displayed_paths
                     self._show_results_surface()
                 else:
-                    self._show_empty_state("loading", getattr(state, "warnings", []))
+                    self._show_skeleton()
                 return
 
             if getattr(state, "indexing_in_progress", False) and not result_paths:
@@ -503,6 +508,14 @@ class GooglePhotosLayout(BaseLayout):
                 self.timeline.show()
         except Exception as e:
             print(f"[GooglePhotosLayout] _show_results_surface error: {e}")
+
+    def _show_skeleton(self):
+        """UX-10: Show skeleton placeholder grid while search results are loading."""
+        try:
+            if hasattr(self, "results_stack") and isValid(self.results_stack) and hasattr(self, "skeleton"):
+                self.results_stack.setCurrentWidget(self.skeleton)
+        except Exception as e:
+            print(f"[GooglePhotosLayout] _show_skeleton error: {e}")
 
     # ------------------------------------------------------------------
     # Startup fence: called by MainWindow after first paint completes

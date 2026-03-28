@@ -8,22 +8,28 @@ class EmptyStateView(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
 
+        # UX-10: Icon for visual polish
+        self.lbl_icon = QLabel("\U0001f4f7")
+        self.lbl_icon.setAlignment(Qt.AlignCenter)
+        self.lbl_icon.setStyleSheet("font-size: 36px; padding: 0;")
+
         self.label = QLabel("No results")
         self.label.setWordWrap(True)
         self.label.setAlignment(Qt.AlignCenter)
         self.label.setObjectName("EmptyStateLabel")
         self.label.setStyleSheet("""
             QLabel#EmptyStateLabel {
-                font-size: 15px;
-                color: #5f6368;
-                padding: 24px;
+                font-size: 20px;
+                font-weight: 600;
+                color: #202124;
+                padding: 12px 24px;
             }
         """)
 
         self.hint_label = QLabel("")
         self.hint_label.setWordWrap(True)
         self.hint_label.setAlignment(Qt.AlignCenter)
-        self.hint_label.setStyleSheet("color: #80868b; font-size: 12px; padding: 0 24px;")
+        self.hint_label.setStyleSheet("color: #666; font-size: 13px; padding: 0 24px;")
         self.hint_label.setVisible(False)
 
         self.action_btn = QPushButton()
@@ -41,6 +47,7 @@ class EmptyStateView(QWidget):
 
         layout = QVBoxLayout(self)
         layout.addStretch(1)
+        layout.addWidget(self.lbl_icon, 0, Qt.AlignCenter)
         layout.addWidget(self.label, 0, Qt.AlignCenter)
         layout.addWidget(self.hint_label, 0, Qt.AlignCenter)
         layout.addWidget(self.action_btn, 0, Qt.AlignCenter)
@@ -80,8 +87,8 @@ class EmptyStateView(QWidget):
             extra = f"\n\n{warnings[0]}" if warnings else ""
             self.set_message("No results found")
             self._show_hint(
-                "No matches were found. Try a broader query, remove some "
-                "filters, review People merges, or switch presets." + extra
+                "Try removing filters, using a broader term, or "
+                "selecting a different category." + extra
             )
 
         elif reason in ("indexing", "indexing_in_progress"):
