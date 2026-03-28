@@ -3215,8 +3215,8 @@ class MainWindow(QMainWindow):
 
     def _refresh_people_quick_section(self):
         """
-        UX-10 bridge: populate PeopleQuickSection, merge review payload,
-        unnamed review payload, and structured cluster payloads.
+        UX-9A bridge: populate PeopleQuickSection, merge suggestions,
+        and unnamed clusters from existing people backend.
         """
         try:
             payload = {
@@ -3224,26 +3224,17 @@ class MainWindow(QMainWindow):
                 "merge_candidates": 0,
                 "unnamed_count": 0,
             }
-            merge_payload = {"suggestions": []}
-            unnamed_payload = {"unnamed_items": []}
             suggestions = []
-            unnamed_cluster_payloads = []
-            unnamed_cluster_items = []
+            unnamed = []
 
             def _extract(people_section):
-                nonlocal payload, merge_payload, unnamed_payload, suggestions, unnamed_cluster_payloads, unnamed_cluster_items
+                nonlocal payload, suggestions, unnamed
                 if hasattr(people_section, "get_people_quick_payload"):
                     payload = dict(people_section.get_people_quick_payload() or payload)
                 if hasattr(people_section, "get_merge_suggestions"):
                     suggestions = list(people_section.get_merge_suggestions() or [])
-                if hasattr(people_section, "get_merge_review_payload"):
-                    merge_payload = dict(people_section.get_merge_review_payload() or merge_payload)
-                if hasattr(people_section, "get_unnamed_review_payload"):
-                    unnamed_payload = dict(people_section.get_unnamed_review_payload() or unnamed_payload)
-                if hasattr(people_section, "get_unnamed_cluster_payloads"):
-                    unnamed_cluster_payloads = list(people_section.get_unnamed_cluster_payloads() or [])
-                if hasattr(people_section, "get_unnamed_cluster_items"):
-                    unnamed_cluster_items = list(people_section.get_unnamed_cluster_items() or [])
+                if hasattr(people_section, "get_unnamed_clusters"):
+                    unnamed = list(people_section.get_unnamed_clusters() or [])
 
             if hasattr(self, "sidebar") and hasattr(self.sidebar, "accordion"):
                 people_section = self.sidebar.accordion.section_logic.get("people")
@@ -3257,23 +3248,16 @@ class MainWindow(QMainWindow):
                     if people_section:
                         _extract(people_section)
 
-            payload["merge_candidates"] = len(merge_payload.get("suggestions", []))
-            payload["unnamed_count"] = max(
-                len(unnamed_payload.get("unnamed_items", [])),
-                len(unnamed_cluster_payloads),
-            )
+            payload["merge_candidates"] = len(suggestions)
+            payload["unnamed_count"] = len(unnamed)
 
             if hasattr(self, "search_controller"):
                 self.search_controller.set_people_quick_payload(payload)
                 self.search_controller.set_merge_suggestions(suggestions)
-                self.search_controller.set_merge_review_payload(merge_payload)
-                self.search_controller.set_unnamed_review_payload(unnamed_payload)
-                self.search_controller.set_merge_review_payloads(suggestions)
-                self.search_controller.set_unnamed_cluster_payloads(unnamed_cluster_payloads)
-                self.search_controller.set_unnamed_cluster_items(unnamed_cluster_items)
+                self.search_controller.set_unnamed_clusters(unnamed)
 
         except Exception as e:
-            print(f"[UX-10] Error refreshing people quick section: {e}")
+            print(f"[UX-9A] Error refreshing people quick section: {e}")
 
     def _refresh_activity_snapshot(self):
         """
@@ -3440,6 +3424,38 @@ class MainWindow(QMainWindow):
         except Exception as e:
             print(f"[UX-10] Failed to open unnamed cluster review: {e}")
 
+    def _open_unnamed_clusters_review(self):
+        """UX-9A: open lightweight unnamed clusters review dialog."""
+        try:
+            state = self.search_state_store.get_state()
+            unnamed = list(getattr(state, "unnamed_clusters", []) or [])
+
+            from PySide6.QtWidgets import QDialog, QVBoxLayout, QListWidget, QListWidgetItem, QDialogButtonBox, QLabel
+
+            dlg = QDialog(self)
+            dlg.setWindowTitle("Unnamed Clusters")
+            dlg.resize(480, 380)
+
+            layout = QVBoxLayout(dlg)
+            layout.addWidget(QLabel("Unnamed or generic clusters that may need labeling or review:"))
+
+            lst = QListWidget()
+            for item in unnamed:
+                label = item.get("label", item.get("id"))
+                count = item.get("count", 0)
+                lst.addItem(QListWidgetItem(f"{label} ({count})"))
+            layout.addWidget(lst)
+
+            buttons = QDialogButtonBox(QDialogButtonBox.Close)
+            buttons.rejected.connect(dlg.reject)
+            buttons.button(QDialogButtonBox.Close).clicked.connect(dlg.close)
+            layout.addWidget(buttons)
+
+            dlg.exec()
+
+        except Exception as e:
+            print(f"[UX-9A] Failed to open unnamed clusters review: {e}")
+
     def _assign_unnamed_cluster(self, cluster_id: str, target_person_id: str):
         """UX-10C: route assign action to people_section backend."""
         try:
@@ -3582,7 +3598,7 @@ class MainWindow(QMainWindow):
             return
 
         if branch == "people_unnamed":
-            self._open_unnamed_cluster_review()
+            self._open_unnamed_clusters_review()
             return
 
         if branch == "people_unnamed_distinct":

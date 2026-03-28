@@ -148,6 +148,9 @@ class SearchController(QObject):
     def set_unnamed_cluster_items(self, items):
         self.store.update(unnamed_cluster_items=list(items or []))
 
+    def set_unnamed_clusters(self, items):
+        self.store.update(unnamed_clusters=list(items or []))
+
     def set_selected_result_ids(self, ids_):
         self.store.update(selected_result_ids=list(ids_ or []))
 

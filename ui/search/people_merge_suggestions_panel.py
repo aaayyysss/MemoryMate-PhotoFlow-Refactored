@@ -1,8 +1,14 @@
+"""
+UX-9A: People Merge Suggestions Panel — rationale-aware review UI.
+
+Shows ranked merge candidates with detailed scoring breakdown.
+Supports accept/reject actions that persist through PeopleMergeReviewRepository.
+"""
+
 from PySide6.QtCore import Signal, Qt
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QListWidget, QListWidgetItem,
-    QPushButton, QHBoxLayout, QDialog, QDialogButtonBox,
-    QTextEdit, QSplitter,
+    QPushButton, QHBoxLayout, QDialog, QDialogButtonBox, QTextEdit,
 )
 
 
@@ -15,18 +21,9 @@ class PeopleMergeSuggestionsPanel(QWidget):
 
         self.lbl_title = QLabel("Possible People Merges")
         self.list_widget = QListWidget()
-
-        self.left_preview = QTextEdit()
-        self.left_preview.setReadOnly(True)
-        self.left_preview.setPlaceholderText("Left cluster details")
-        self.right_preview = QTextEdit()
-        self.right_preview.setReadOnly(True)
-        self.right_preview.setPlaceholderText("Right cluster details")
-
-        splitter = QSplitter(Qt.Horizontal)
-        splitter.addWidget(self.left_preview)
-        splitter.addWidget(self.right_preview)
-        splitter.setSizes([240, 240])
+        self.details = QTextEdit()
+        self.details.setReadOnly(True)
+        self.details.setMinimumHeight(120)
 
         self.btn_accept = QPushButton("Merge Selected")
         self.btn_reject = QPushButton("Reject Selected")
@@ -37,21 +34,20 @@ class PeopleMergeSuggestionsPanel(QWidget):
 
         layout = QVBoxLayout(self)
         layout.addWidget(self.lbl_title)
-        layout.addWidget(self.list_widget, 1)
-        layout.addWidget(splitter)
+        layout.addWidget(self.list_widget)
+        layout.addWidget(self.details)
         layout.addLayout(btn_row)
 
         self._items = []
 
         self.btn_accept.clicked.connect(self._accept_selected)
         self.btn_reject.clicked.connect(self._reject_selected)
-        self.list_widget.currentItemChanged.connect(self._on_selection_changed)
+        self.list_widget.currentRowChanged.connect(self._update_details)
 
     def set_suggestions(self, suggestions):
         self._items = list(suggestions or [])
         self.list_widget.clear()
-        self.left_preview.clear()
-        self.right_preview.clear()
+        self.details.clear()
 
         for item in self._items:
             left_id = str(item.get("left_id", ""))
@@ -61,61 +57,56 @@ class PeopleMergeSuggestionsPanel(QWidget):
             title = item.get("label") or f"{left_id} \u2194 {right_id}  (score={score_txt})"
 
             list_item = QListWidgetItem(title)
-            list_item.setData(Qt.UserRole, (left_id, right_id))
-            list_item.setData(Qt.UserRole + 1, item)
+            list_item.setData(256, (left_id, right_id))
             self.list_widget.addItem(list_item)
 
-    def _on_selection_changed(self, current, _previous):
-        if not current:
-            self.left_preview.clear()
-            self.right_preview.clear()
-            return
-        item_data = current.data(Qt.UserRole + 1)
-        if not isinstance(item_data, dict):
-            self.left_preview.clear()
-            self.right_preview.clear()
+        if self.list_widget.count() > 0:
+            self.list_widget.setCurrentRow(0)
+
+    def _update_details(self, row: int):
+        if row < 0 or row >= len(self._items):
+            self.details.clear()
             return
 
-        score = item_data.get("score")
-        score_txt = f"{score:.2f}" if isinstance(score, (float, int)) else "?"
-        reasons = item_data.get("reasons", [])
-        reason_txt = ", ".join(reasons) if reasons else item_data.get("reason", "review candidate")
-        left_id = item_data.get("left_id", "")
-        right_id = item_data.get("right_id", "")
+        item = self._items[row]
+        rationale = dict(item.get("rationale", {}) or {})
 
-        self.left_preview.setHtml(
-            f"<b>Cluster:</b> {left_id}<br>"
-            f"<b>Count:</b> {item_data.get('left_count', '?')}<br>"
-            f"<b>Score:</b> {score_txt}<br>"
-            f"<b>Reason:</b> {reason_txt}"
-        )
-        self.right_preview.setHtml(
-            f"<b>Cluster:</b> {right_id}<br>"
-            f"<b>Count:</b> {item_data.get('right_count', '?')}<br>"
-            f"<b>Score:</b> {score_txt}<br>"
-            f"<b>Reason:</b> {reason_txt}"
-        )
+        lines = [
+            f'Left ID: {item.get("left_id", "")}',
+            f'Right ID: {item.get("right_id", "")}',
+            f'Score: {item.get("score", "")}',
+            "",
+            "Rationale:",
+        ]
+        for k, v in rationale.items():
+            lines.append(f"  {k}: {v}")
+
+        # Also show legacy reasons if present
+        reasons = item.get("reasons", [])
+        if reasons:
+            lines.append("")
+            lines.append("Reasons: " + ", ".join(reasons))
+
+        self.details.setPlainText("\n".join(lines))
 
     def _accept_selected(self):
         item = self.list_widget.currentItem()
         if not item:
             return
-        left_id, right_id = item.data(Qt.UserRole)
+        left_id, right_id = item.data(256)
         row = self.list_widget.row(item)
         self.list_widget.takeItem(row)
-        self.left_preview.clear()
-        self.right_preview.clear()
+        self.details.clear()
         self.mergeAccepted.emit(left_id, right_id)
 
     def _reject_selected(self):
         item = self.list_widget.currentItem()
         if not item:
             return
-        left_id, right_id = item.data(Qt.UserRole)
+        left_id, right_id = item.data(256)
         row = self.list_widget.row(item)
         self.list_widget.takeItem(row)
-        self.left_preview.clear()
-        self.right_preview.clear()
+        self.details.clear()
         self.mergeRejected.emit(left_id, right_id)
 
 
@@ -126,7 +117,7 @@ class PeopleMergeSuggestionsDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("People Merge Review")
-        self.resize(760, 520)
+        self.resize(640, 480)
 
         self.panel = PeopleMergeSuggestionsPanel(self)
 
