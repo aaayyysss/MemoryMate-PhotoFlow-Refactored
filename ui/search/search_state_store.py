@@ -90,11 +90,11 @@ class SearchStateStore(QObject):
         self.stateChanged.emit(self._state)
 
     def begin_project_transition(self):
-        """UX-10: mark project state as unresolved during switch."""
+        """UX-10: mark project state as unresolved during switch.
+        Does NOT emit stateChanged — avoids triggering handlers with stale onboarding_mode."""
         self._state.active_project_id_resolved = False
         self._state.layout_reload_pending = True
         self._state.result_surface_busy = True
-        self.stateChanged.emit(self._state)
 
     def complete_project_transition(self, project_id: Optional[int]):
         """UX-10: finalize project switch with resolved state."""
