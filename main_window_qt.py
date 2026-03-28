@@ -981,6 +981,8 @@ class MainWindow(QMainWindow):
         # PHASE 1: Bootstrap Policy (last-used -> exactly one -> onboarding)
         default_pid = self._bootstrap_active_project()
         self.active_project_id = default_pid
+        self._project_switch_in_progress = False
+        self._pending_layout_reload = False
         if hasattr(self, "search_controller"):
             self.search_controller.set_active_project(default_pid)
 
@@ -3084,6 +3086,11 @@ class MainWindow(QMainWindow):
         """
         print(f"\n[MainWindow] ========== _on_project_changed_by_id({project_id}) STARTED ==========")
         try:
+            # UX-10: begin project-switch transaction
+            self._project_switch_in_progress = True
+            if hasattr(self, "search_state_store"):
+                self.search_state_store.begin_project_transition()
+
             if hasattr(self, "search_controller"):
                 self.search_controller.set_active_project(project_id)
 
@@ -3132,9 +3139,20 @@ class MainWindow(QMainWindow):
             if hasattr(self, "_refresh_activity_snapshot"):
                 self._refresh_activity_snapshot()
 
+            # UX-10: complete project-switch transaction
+            if hasattr(self, "search_state_store"):
+                self.search_state_store.complete_project_transition(project_id)
+            self._project_switch_in_progress = False
+
+            # Flush any layout reload that was deferred during the switch
+            if self._pending_layout_reload:
+                self._pending_layout_reload = False
+                self._safe_reload_current_layout()
+
             # Breadcrumb auto-updates via gridReloaded signal
             print(f"[MainWindow] ========== _on_project_changed_by_id({project_id}) COMPLETED ==========\n")
         except Exception as e:
+            self._project_switch_in_progress = False
             print(f"[MainWindow] ERROR switching project: {e}")
             import traceback
             traceback.print_exc()
@@ -3288,6 +3306,47 @@ class MainWindow(QMainWindow):
                 layout.attach_search_store(self.search_state_store)
         except Exception as e:
             print(f"[MainWindow] Error attaching search store to layout: {e}")
+
+    def _safe_reload_current_layout(self):
+        """UX-10: reload current layout only when project state is resolved."""
+        try:
+            if getattr(self, "_project_switch_in_progress", False):
+                self._pending_layout_reload = True
+                return
+
+            pid = getattr(self, "active_project_id", None)
+            if pid is None:
+                return
+
+            layout = self.layout_manager.get_current_layout() if hasattr(self, "layout_manager") else None
+            if not layout:
+                return
+
+            if hasattr(self, "search_controller"):
+                self.search_controller.begin_layout_reload()
+
+            if hasattr(layout, "reload_for_project"):
+                layout.reload_for_project(pid)
+            elif hasattr(layout, "load_project"):
+                layout.load_project(pid)
+
+            if hasattr(self, "search_controller"):
+                self.search_controller.complete_layout_reload()
+
+        except Exception as e:
+            print(f"[UX-10] _safe_reload_current_layout failed: {e}")
+            if hasattr(self, "search_controller"):
+                self.search_controller.complete_layout_reload()
+
+    def _on_result_surface_async_load_completed(self, generation: int = None):
+        """UX-10: central hook for async result load completion."""
+        try:
+            if hasattr(self, "search_state_store"):
+                if generation is None:
+                    generation = self.search_state_store.get_state().async_load_generation
+                self.search_state_store.complete_async_result_load(generation)
+        except Exception as e:
+            print(f"[UX-10] async result completion hook failed: {e}")
 
     def _open_activity_center_from_sidebar(self):
         try:

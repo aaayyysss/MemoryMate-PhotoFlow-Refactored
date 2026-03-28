@@ -4,6 +4,68 @@ All notable changes to the MemoryMate PhotoFlow search pipeline are documented h
 
 ## [Unreleased] - 2026-03-28
 
+### UX-10: Result Surface Stabilization & Refresh Coordination
+
+Timing, ownership, and refresh-coordination phase that eliminates project_id=None
+reload races, async refresh timing issues, and side-channel layout refresh.
+
+#### Design Rules Implemented
+- **Rule 1**: Layouts never guess project state — receive resolved ID or refuse to reload
+- **Rule 2**: Async loaders signal completion centrally via generation tracking
+- **Rule 3**: Search-state-driven layouts replace side-channel timer refreshes
+- **Rule 4**: project_id=None is onboarding only, never a transient reload state
+
+#### SearchStateStore Stabilization (UX-10 §1)
+- Added 4 fields: `active_project_id_resolved`, `layout_reload_pending`,
+  `result_surface_busy`, `async_load_generation`
+- `reset_for_project()` now sets `active_project_id_resolved`
+- `begin_project_transition()` / `complete_project_transition()` — transaction guard
+- `begin_async_result_load()` / `complete_async_result_load()` — generation-tracked busy state
+
+#### SearchController (UX-10 §2)
+- `set_active_project()` uses begin/complete transition guard
+- `begin_layout_reload()` / `complete_layout_reload()` — layout reload busy state
+- `run_search()` blocked while `active_project_id_resolved` is False
+
+#### MainWindow Transaction Guard (UX-10 §3)
+- `_project_switch_in_progress` + `_pending_layout_reload` flags in `__init__`
+- `_on_project_changed_by_id()` wraps switch in begin/complete transition
+- `_safe_reload_current_layout()` — only reloads with resolved project, defers otherwise
+- `_on_result_surface_async_load_completed()` — central hook for async load done
+- Deferred layout reload flushed after project switch settles
+
+#### LayoutManager (UX-10 §4)
+- `attach_search_store_to_layout()` — safe store attachment
+- `reload_current_layout_for_project()` — safe project-aware reload
+
+#### GooglePhotosLayout (UX-10 §5)
+- `_resolved_project_id`, `_last_store_result_paths`, `_last_generation_seen` fields
+- `reload_for_project()` — light store-driven reload
+- `_on_search_state_changed()` upgraded with `active_project_id_resolved`,
+  `layout_reload_pending`, `result_surface_busy` guards
+- `_refresh_timeline_from_store_paths()` — drives grid from store paths
+- Async load completion hook at `_finalize_timeline_display`
+
+#### CurrentLayout (UX-10 §6)
+- `attach_search_store()` connects to state changes
+- `reload_for_project()` delegates to grid
+- `_on_search_state_changed()` with resolution guards
+
+#### UIRefreshMediator (UX-10 §8)
+- `refresh_search_surface_safe()` — centralized safe refresh at stable points
+
+#### Files Changed
+- `ui/search/search_state_store.py`
+- `ui/search/search_controller.py`
+- `main_window_qt.py`
+- `layouts/layout_manager.py`
+- `layouts/google_layout.py`
+- `layouts/current_layout.py`
+- `services/ui_refresh_mediator.py`
+- `CHANGELOG.md`
+
+---
+
 ### UX-9 Review: Implementation Gap Audit & Fixes
 
 Comprehensive audit of UX-9 spec against codebase, fixing 11 implementation gaps

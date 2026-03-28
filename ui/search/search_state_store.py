@@ -56,6 +56,12 @@ class SearchState:
     last_action: str = ""
     is_user_typing: bool = False
 
+    # UX-10: stabilization fields
+    active_project_id_resolved: bool = False
+    layout_reload_pending: bool = False
+    result_surface_busy: bool = False
+    async_load_generation: int = 0
+
 
 class SearchStateStore(QObject):
     stateChanged = Signal(object)
@@ -78,8 +84,41 @@ class SearchStateStore(QObject):
             active_project_id=project_id,
             has_active_project=project_id is not None,
             onboarding_mode=project_id is None,
+            active_project_id_resolved=project_id is not None,
             empty_state_reason="no_project" if project_id is None else None,
         )
+        self.stateChanged.emit(self._state)
+
+    def begin_project_transition(self):
+        """UX-10: mark project state as unresolved during switch."""
+        self._state.active_project_id_resolved = False
+        self._state.layout_reload_pending = True
+        self._state.result_surface_busy = True
+        self.stateChanged.emit(self._state)
+
+    def complete_project_transition(self, project_id: Optional[int]):
+        """UX-10: finalize project switch with resolved state."""
+        self._state.active_project_id = project_id
+        self._state.has_active_project = project_id is not None
+        self._state.onboarding_mode = project_id is None
+        self._state.active_project_id_resolved = project_id is not None
+        self._state.layout_reload_pending = False
+        self._state.result_surface_busy = False
+        self._state.empty_state_reason = "no_project" if project_id is None else self._state.empty_state_reason
+        self.stateChanged.emit(self._state)
+
+    def begin_async_result_load(self) -> int:
+        """UX-10: mark result surface busy and bump generation."""
+        self._state.result_surface_busy = True
+        self._state.async_load_generation += 1
+        self.stateChanged.emit(self._state)
+        return self._state.async_load_generation
+
+    def complete_async_result_load(self, generation: int):
+        """UX-10: clear busy flag if generation matches."""
+        if generation != self._state.async_load_generation:
+            return
+        self._state.result_surface_busy = False
         self.stateChanged.emit(self._state)
 
     def clear_search(self):
