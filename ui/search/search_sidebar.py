@@ -114,21 +114,12 @@ class SearchSidebar(QWidget):
         self.people_quick_section.set_people(getattr(state, "people_quick_payload", {}))
         self.browse_section.set_active_mode(getattr(state, "browse_mode", None))
 
-        # UX Rule 3: show filters only when a search/preset/query is active
-        has_search_context = bool(
-            getattr(state, "query_text", "")
-            or getattr(state, "preset_id", None)
-            or getattr(state, "active_filters", {})
-            or getattr(state, "browse_mode", None)
+        # UX-9D: pass visible_facet_keys to filter section for family-aware display
+        self.filter_section.set_facets(
+            getattr(state, "result_facets", {}) or {},
+            getattr(state, "active_filters", {}) or {},
+            getattr(state, "visible_facet_keys", []) or [],
         )
-        result_facets = getattr(state, "result_facets", {}) or {}
-        active_filters = getattr(state, "active_filters", {}) or {}
-
-        if has_search_context:
-            self.filter_section.set_facets(result_facets, active_filters)
-            self.filter_section.setVisible(True)
-        else:
-            self.filter_section.setVisible(False)
 
         self.activity_mini_section.set_activity(getattr(state, "activity_snapshot", {}) or {})
 

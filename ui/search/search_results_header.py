@@ -98,13 +98,16 @@ class SearchResultsHeader(QWidget):
             self.lbl_selection.setVisible(False)
             return
 
-        # Status badge
+        # UX-9D: Status badge with browse coexistence
         if state.search_in_progress:
             self.lbl_summary.setText(state.intent_summary or "Searching...")
             self.badge_status.setText("Searching")
             self.badge_status.setVisible(True)
         else:
-            self.lbl_summary.setText(state.intent_summary or "All Photos")
+            summary = state.intent_summary or "All Photos"
+            if getattr(state, "browse_scope_label", "") and state.search_mode == "browse":
+                summary = f"{state.browse_scope_label}"
+            self.lbl_summary.setText(summary)
             self.badge_status.setVisible(False)
 
         self.lbl_count.setText(f"{state.result_count} result(s)")

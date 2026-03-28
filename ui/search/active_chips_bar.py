@@ -53,11 +53,27 @@ class ActiveChipsBar(QWidget):
             value = chip.get("value")
 
             btn = QPushButton(f"{label} ✕")
+
+            kind_name = (kind or "").lower()
+            if kind_name == "preset":
+                btn.setObjectName("SearchChipPreset")
+            elif kind_name == "browse":
+                btn.setObjectName("SearchChipBrowse")
+            elif kind_name == "filter":
+                btn.setObjectName("SearchChipFilter")
+            elif kind_name == "person":
+                btn.setObjectName("SearchChipPerson")
+            elif kind_name == "query":
+                btn.setObjectName("SearchChipQuery")
+            else:
+                btn.setObjectName("SearchChip")
+
             btn.setCursor(Qt.PointingHandCursor)
             btn.clicked.connect(lambda checked=False, k=kind, v=value: self.chipRemoved.emit(k, v))
             self.layout.addWidget(btn)
 
         clear_btn = QPushButton("Clear")
+        clear_btn.setObjectName("SearchChipClear")
         clear_btn.setCursor(Qt.PointingHandCursor)
         clear_btn.clicked.connect(self.clearAllRequested.emit)
         self.layout.addWidget(clear_btn)
