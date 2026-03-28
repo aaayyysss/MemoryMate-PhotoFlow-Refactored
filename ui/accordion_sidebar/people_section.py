@@ -40,6 +40,8 @@ from shiboken6 import isValid
 
 from reference_db import ReferenceDB
 from translation_manager import tr
+from services.people_merge_engine import PeopleMergeEngine
+from repository.people_merge_review_repository import PeopleMergeReviewRepository
 from .base_section import BaseSection
 
 logger = logging.getLogger(__name__)
@@ -496,6 +498,17 @@ class PeopleSection(BaseSection):
                 self._recomputed_group_ids.clear()
             self._ensure_groups_tab(self._stack)
 
+    def _get_merge_review_repo(self):
+        """UX-9A: get persistent merge review repository."""
+        try:
+            db = getattr(self, "_parent_db", None)
+            if db is None:
+                return None
+            with db._connect() as conn:
+                return PeopleMergeReviewRepository(conn)
+        except Exception:
+            return None
+
     def get_people_quick_payload(self):
         """
         UX-8A adapter for the centralized search shell.
@@ -556,12 +569,11 @@ class PeopleSection(BaseSection):
 
     def get_merge_suggestions(self):
         """
-        UX-9A merge suggestion adapter backed by PeopleMergeIntelligence.
-        Builds ClusterSummary objects from DB data and returns scored candidates.
+        UX-9A merge suggestions backed by PeopleMergeEngine
+        and persistent accept/reject review state.
         """
         try:
             import numpy as np
-            from services.people_merge_intelligence import PeopleMergeIntelligence, ClusterSummary
 
             db = getattr(self, "_parent_db", None)
             pid = getattr(self, "project_id", None)
@@ -574,29 +586,39 @@ class PeopleSection(BaseSection):
 
             clusters = []
             for r in reps:
-                avg_emb = None
+                centroid = None
                 centroid_bytes = r.get("centroid_bytes")
                 if centroid_bytes:
                     try:
-                        avg_emb = np.frombuffer(centroid_bytes, dtype=np.float32).tolist()
+                        centroid = np.frombuffer(centroid_bytes, dtype=np.float32).tolist()
                     except Exception:
                         pass
 
-                clusters.append(ClusterSummary(
-                    cluster_id=str(r.get("id", r.get("branch_key", ""))),
-                    label=str(r.get("name", r.get("label", r.get("id", "")))),
-                    count=int(r.get("count", 0)),
-                    avg_embedding=avg_emb,
-                ))
+                cid = str(r.get("id", r.get("branch_key", "")))
+                label = str(r.get("name", r.get("label", cid)))
+                count = int(r.get("count", 0))
 
-            prior_decisions = {}
-            try:
-                prior_decisions = db.get_people_merge_reviews()
-            except Exception:
-                pass
+                clusters.append({
+                    "id": cid,
+                    "label": label,
+                    "count": count,
+                    "centroid": centroid,
+                    "unnamed": bool(
+                        label.lower().startswith("face_")
+                        or "unnamed" in label.lower()
+                    ),
+                })
 
-            engine = PeopleMergeIntelligence()
-            return engine.rank_candidates(clusters, prior_decisions=prior_decisions)
+            repo = self._get_merge_review_repo()
+            accepted_pairs = repo.get_pairs_by_decision("accepted") if repo else set()
+            rejected_pairs = repo.get_pairs_by_decision("rejected") if repo else set()
+
+            engine = PeopleMergeEngine()
+            return engine.build_merge_suggestions(
+                clusters=clusters,
+                accepted_pairs=accepted_pairs,
+                rejected_pairs=rejected_pairs,
+            )
 
         except Exception:
             logger.debug("[PeopleSection] get_merge_suggestions error", exc_info=True)
@@ -759,18 +781,20 @@ class PeopleSection(BaseSection):
         """)
 
     def accept_merge_suggestion(self, left_id: str, right_id: str):
-        """Accept merge: persist decision, write audit trail, execute cluster merge."""
+        """UX-9A: accept merge — persist decision, write audit trail, execute cluster merge."""
         db = getattr(self, "_parent_db", None)
         pid = getattr(self, "project_id", None)
         logger.info("[PeopleSection] Accept merge: %s + %s", left_id, right_id)
 
-        if db:
-            try:
-                db.save_people_merge_review(left_id, right_id, "merged")
-            except Exception:
-                logger.warning("[PeopleSection] Failed to save merge review", exc_info=True)
+        try:
+            repo = self._get_merge_review_repo()
+            if repo:
+                repo.accept(left_id, right_id)
+        except Exception:
+            logger.warning("[PeopleSection] Failed to persist merge acceptance", exc_info=True)
 
-            # Audit trail
+        # Legacy audit trail
+        if db:
             try:
                 with db._connect() as conn:
                     self._ensure_audit_table(conn)
@@ -789,18 +813,20 @@ class PeopleSection(BaseSection):
                     logger.warning("[PeopleSection] merge_face_clusters failed", exc_info=True)
 
     def reject_merge_suggestion(self, left_id: str, right_id: str):
-        """Reject merge: persist rejection + audit trail so pair is excluded from future suggestions."""
+        """UX-9A: reject merge — persist rejection so pair is excluded from future suggestions."""
         db = getattr(self, "_parent_db", None)
         pid = getattr(self, "project_id", None)
         logger.info("[PeopleSection] Reject merge: %s / %s", left_id, right_id)
 
-        if db:
-            try:
-                db.save_people_merge_review(left_id, right_id, "rejected")
-            except Exception:
-                logger.warning("[PeopleSection] Failed to save merge rejection", exc_info=True)
+        try:
+            repo = self._get_merge_review_repo()
+            if repo:
+                repo.reject(left_id, right_id)
+        except Exception:
+            logger.warning("[PeopleSection] Failed to persist merge rejection", exc_info=True)
 
-            # Audit trail
+        # Legacy audit trail
+        if db:
             try:
                 with db._connect() as conn:
                     self._ensure_audit_table(conn)
@@ -920,6 +946,48 @@ class PeopleSection(BaseSection):
                 if label.lower().startswith("face_") or "unnamed" in label.lower():
                     items.append({"id": str(pid), "label": str(label), "count": count})
             return sorted(items, key=lambda x: x["count"], reverse=True)[:20]
+        except Exception:
+            return []
+
+    def get_unnamed_clusters(self):
+        """UX-9A: return unnamed/generic clusters for review."""
+        try:
+            source = (
+                getattr(self, "_all_data", None)
+                or getattr(self, "people_data", None)
+                or getattr(self, "clusters", None)
+                or []
+            )
+            unnamed = []
+
+            for item in list(source):
+                if not isinstance(item, dict):
+                    continue
+
+                cid = (
+                    item.get("branch_key")
+                    or item.get("id")
+                    or item.get("person_id")
+                    or item.get("label")
+                )
+                label = (
+                    item.get("display_name")
+                    or item.get("label")
+                    or item.get("name")
+                    or str(cid)
+                )
+                count = int(item.get("member_count", 0) or item.get("count", 0))
+
+                if str(label).lower().startswith("face_") or "unnamed" in str(label).lower():
+                    unnamed.append({
+                        "id": str(cid),
+                        "label": str(label),
+                        "count": count,
+                    })
+
+            unnamed.sort(key=lambda x: x["count"], reverse=True)
+            return unnamed
+
         except Exception:
             return []
 

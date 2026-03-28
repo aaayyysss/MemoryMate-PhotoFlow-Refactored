@@ -1,187 +1,195 @@
 """
-UX-9A Post-Implementation: PeopleMergeEngine
+UX-9A: PeopleMergeEngine — merge-intelligence backend for People review.
 
-Complementary merge engine that works with structured DB tables
-(people_merge_decisions, people_merge_candidates, people_cluster_summary)
-for persistent candidate caching, accept/reject decisions with scoring,
-and cluster summary materialization.
+Produces ranked merge suggestions from cluster data using multiple weak signals:
+- embedding similarity (70%)
+- cluster size compatibility (18%)
+- unnamed bonus (+6%)
+- giant cluster penalty (−10–16%)
 
-Works alongside the existing PeopleMergeIntelligence (centroid-based scoring)
-to provide a DB-native scoring and decision pipeline.
+Does NOT merge automatically — only produces ranked suggestions.
+Accepted/rejected pairs are excluded via caller-provided sets.
 """
 
-import json
-import math
-import sqlite3
+from __future__ import annotations
+
+from dataclasses import dataclass
 from typing import List, Dict, Any, Optional
+import math
 
 
-def _cosine_similarity(vec_a, vec_b) -> float:
-    if not vec_a or not vec_b:
-        return 0.0
-    dot = sum(a * b for a, b in zip(vec_a, vec_b))
-    na = math.sqrt(sum(a * a for a in vec_a))
-    nb = math.sqrt(sum(b * b for b in vec_b))
-    if na == 0.0 or nb == 0.0:
-        return 0.0
-    return dot / (na * nb)
+@dataclass
+class MergeCandidate:
+    left_id: str
+    right_id: str
+    score: float
+    label: str
+    rationale: Dict[str, Any]
 
 
 class PeopleMergeEngine:
     """
-    DB-native merge engine:
-    - builds cluster summaries from face_branch_reps
-    - scores merge candidates (78% embedding, 17% size balance, 5% unnamed bonus)
-    - stores accept/reject decisions with scores
-    - excludes already-rejected pairs
-    - caches candidates for fast re-retrieval
+    UX-9A merge-intelligence engine.
+
+    Input:
+        clusters = [
+            {
+                "id": "face_004",
+                "label": "Face_004",
+                "count": 23,
+                "centroid": [...],          # optional embedding centroid
+                "first_seen": "...",        # optional
+                "last_seen": "...",         # optional
+                "unnamed": True/False,      # optional
+            },
+            ...
+        ]
+
+    Output:
+        ranked merge suggestions
     """
 
-    def __init__(self, conn: sqlite3.Connection):
-        self.conn = conn
+    def __init__(self):
+        self.min_score = 0.52
+        self.max_candidates = 20
 
-    def list_merge_suggestions(self, project_id: int, limit: int = 20) -> List[Dict[str, Any]]:
-        summaries = self._load_cluster_summaries(project_id)
-        rejected = self._load_rejected_pairs(project_id)
+    def build_merge_suggestions(
+        self,
+        clusters: List[Dict[str, Any]],
+        accepted_pairs: Optional[set[tuple[str, str]]] = None,
+        rejected_pairs: Optional[set[tuple[str, str]]] = None,
+    ) -> List[Dict[str, Any]]:
+        accepted_pairs = accepted_pairs or set()
+        rejected_pairs = rejected_pairs or set()
 
-        suggestions: List[Dict[str, Any]] = []
-        n = len(summaries)
+        normalized = self._normalize_clusters(clusters)
+        suggestions: List[MergeCandidate] = []
 
-        for i in range(n):
-            for j in range(i + 1, n):
-                left = summaries[i]
-                right = summaries[j]
+        for i in range(len(normalized)):
+            for j in range(i + 1, len(normalized)):
+                left = normalized[i]
+                right = normalized[j]
 
-                pair_key = self._normalize_pair(left["person_id"], right["person_id"])
-                if pair_key in rejected:
+                pair_key = self._pair_key(left["id"], right["id"])
+                if pair_key in accepted_pairs or pair_key in rejected_pairs:
                     continue
 
-                score, evidence = self._score_pair(left, right)
-                if score < 0.60:
+                score, rationale = self._score_pair(left, right)
+                if score < self.min_score:
                     continue
 
-                suggestions.append({
-                    "left_id": left["person_id"],
-                    "right_id": right["person_id"],
-                    "left_label": left["label"],
-                    "right_label": right["label"],
-                    "score": score,
-                    "label": f'{left["label"]} \u2194 {right["label"]} (score={score:.2f})',
-                    "evidence": evidence,
-                })
+                label = f'{left["label"]} \u2194 {right["label"]}'
+                suggestions.append(
+                    MergeCandidate(
+                        left_id=left["id"],
+                        right_id=right["id"],
+                        score=round(score, 4),
+                        label=label,
+                        rationale=rationale,
+                    )
+                )
 
-        suggestions.sort(key=lambda x: x["score"], reverse=True)
-        return suggestions[:limit]
+        suggestions.sort(key=lambda x: x.score, reverse=True)
+        return [
+            {
+                "left_id": s.left_id,
+                "right_id": s.right_id,
+                "score": s.score,
+                "label": s.label,
+                "rationale": s.rationale,
+            }
+            for s in suggestions[: self.max_candidates]
+        ]
 
-    def accept_merge(self, project_id: int, left_person_id: str, right_person_id: str,
-                     score: Optional[float] = None, reason: str = ""):
-        left_person_id, right_person_id = self._normalize_pair(left_person_id, right_person_id)
-        with self.conn:
-            self.conn.execute("""
-                INSERT OR IGNORE INTO people_merge_decisions
-                (project_id, left_person_id, right_person_id, decision, score, reason)
-                VALUES (?, ?, ?, 'accept', ?, ?)
-            """, (project_id, left_person_id, right_person_id, score, reason))
+    def _normalize_clusters(self, clusters: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        out = []
+        for c in clusters or []:
+            cid = c.get("id") or c.get("person_id") or c.get("label")
+            if not cid:
+                continue
 
-    def reject_merge(self, project_id: int, left_person_id: str, right_person_id: str,
-                     score: Optional[float] = None, reason: str = ""):
-        left_person_id, right_person_id = self._normalize_pair(left_person_id, right_person_id)
-        with self.conn:
-            self.conn.execute("""
-                INSERT OR IGNORE INTO people_merge_decisions
-                (project_id, left_person_id, right_person_id, decision, score, reason)
-                VALUES (?, ?, ?, 'reject', ?, ?)
-            """, (project_id, left_person_id, right_person_id, score, reason))
+            label = c.get("label") or c.get("name") or str(cid)
+            count = int(c.get("count", 0) or 0)
+            centroid = c.get("centroid")
+            unnamed = bool(
+                c.get("unnamed", False)
+                or str(label).lower().startswith("face_")
+                or "unnamed" in str(label).lower()
+            )
 
-    def cache_candidates(self, project_id: int, suggestions: List[Dict[str, Any]]):
-        with self.conn:
-            self.conn.execute("DELETE FROM people_merge_candidates WHERE project_id = ?", (project_id,))
-            for s in suggestions:
-                left_id, right_id = self._normalize_pair(s["left_id"], s["right_id"])
-                self.conn.execute("""
-                    INSERT OR REPLACE INTO people_merge_candidates
-                    (project_id, left_person_id, right_person_id, score, evidence_json)
-                    VALUES (?, ?, ?, ?, ?)
-                """, (
-                    project_id, left_id, right_id,
-                    float(s.get("score", 0.0)),
-                    json.dumps(s.get("evidence", {}), ensure_ascii=False),
-                ))
+            out.append(
+                {
+                    "id": str(cid),
+                    "label": str(label),
+                    "count": count,
+                    "centroid": centroid,
+                    "unnamed": unnamed,
+                    "first_seen": c.get("first_seen"),
+                    "last_seen": c.get("last_seen"),
+                }
+            )
+        return out
 
-    def rebuild_cluster_summaries(self, project_id: int, cluster_rows: List[Dict[str, Any]]):
-        with self.conn:
-            self.conn.execute("DELETE FROM people_cluster_summary WHERE project_id = ?", (project_id,))
-            for row in cluster_rows:
-                self.conn.execute("""
-                    INSERT INTO people_cluster_summary
-                    (project_id, person_id, label, face_count, representative_face_path, avg_embedding, is_unnamed)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    project_id,
-                    str(row["person_id"]),
-                    str(row.get("label") or row["person_id"]),
-                    int(row.get("face_count", 0)),
-                    row.get("representative_face_path"),
-                    row.get("avg_embedding_blob"),
-                    1 if row.get("is_unnamed") else 0,
-                ))
+    def _score_pair(self, left: Dict[str, Any], right: Dict[str, Any]) -> tuple[float, Dict[str, Any]]:
+        similarity = self._cosine_similarity(left.get("centroid"), right.get("centroid"))
+        size_score = self._size_compatibility(left.get("count", 0), right.get("count", 0))
+        unnamed_bonus = 0.06 if (left.get("unnamed") or right.get("unnamed")) else 0.0
+        giant_cluster_penalty = self._giant_cluster_penalty(left.get("count", 0), right.get("count", 0))
 
-    def _load_cluster_summaries(self, project_id: int) -> List[Dict[str, Any]]:
-        cur = self.conn.execute("""
-            SELECT person_id, label, face_count, representative_face_path, avg_embedding, is_unnamed
-            FROM people_cluster_summary
-            WHERE project_id = ?
-            ORDER BY face_count DESC
-        """, (project_id,))
-        rows = []
-        for person_id, label, face_count, rep_path, emb_blob, is_unnamed in cur.fetchall():
-            rows.append({
-                "person_id": str(person_id),
-                "label": str(label or person_id),
-                "face_count": int(face_count or 0),
-                "representative_face_path": rep_path,
-                "avg_embedding": self._decode_embedding_blob(emb_blob),
-                "is_unnamed": bool(is_unnamed),
-            })
-        return rows
+        # weighted score
+        score = (
+            0.70 * similarity
+            + 0.18 * size_score
+            + unnamed_bonus
+            - giant_cluster_penalty
+        )
 
-    def _load_rejected_pairs(self, project_id: int):
-        cur = self.conn.execute("""
-            SELECT left_person_id, right_person_id
-            FROM people_merge_decisions
-            WHERE project_id = ? AND decision = 'reject'
-        """, (project_id,))
-        return {self._normalize_pair(a, b) for a, b in cur.fetchall()}
-
-    def _score_pair(self, left: Dict[str, Any], right: Dict[str, Any]):
-        emb_score = _cosine_similarity(left.get("avg_embedding"), right.get("avg_embedding"))
-        size_balance = min(left["face_count"], right["face_count"]) / max(1, max(left["face_count"], right["face_count"]))
-        unnamed_bonus = 0.05 if (left.get("is_unnamed") or right.get("is_unnamed")) else 0.0
-
-        score = (emb_score * 0.78) + (size_balance * 0.17) + unnamed_bonus
-
-        evidence = {
-            "embedding_similarity": round(emb_score, 4),
-            "size_balance": round(size_balance, 4),
-            "unnamed_bonus": unnamed_bonus,
+        rationale = {
+            "similarity": round(similarity, 4),
+            "size_score": round(size_score, 4),
+            "unnamed_bonus": round(unnamed_bonus, 4),
+            "giant_cluster_penalty": round(giant_cluster_penalty, 4),
+            "left_count": int(left.get("count", 0)),
+            "right_count": int(right.get("count", 0)),
         }
-        return score, evidence
+        return score, rationale
 
-    def _decode_embedding_blob(self, blob):
-        if not blob:
-            return []
-        try:
-            import numpy as np
-            return np.frombuffer(blob, dtype=np.float32).tolist()
-        except Exception:
-            pass
-        try:
-            import pickle
-            vec = pickle.loads(blob)
-            return [float(x) for x in vec]
-        except Exception:
-            return []
+    def _size_compatibility(self, left_count: int, right_count: int) -> float:
+        if left_count <= 0 or right_count <= 0:
+            return 0.0
+        small = min(left_count, right_count)
+        large = max(left_count, right_count)
+        ratio = small / large
+        return max(0.0, min(1.0, ratio))
 
-    def _normalize_pair(self, left_id: str, right_id: str):
-        a, b = sorted([str(left_id), str(right_id)])
-        return a, b
+    def _giant_cluster_penalty(self, left_count: int, right_count: int) -> float:
+        # discourage swallowing small identities into large ambiguous clusters
+        if max(left_count, right_count) >= 20 and min(left_count, right_count) <= 2:
+            return 0.16
+        if max(left_count, right_count) >= 15 and min(left_count, right_count) <= 3:
+            return 0.10
+        return 0.0
+
+    def _cosine_similarity(self, a, b) -> float:
+        if a is None or b is None:
+            return 0.0
+        try:
+            if len(a) != len(b) or len(a) == 0:
+                return 0.0
+            dot = 0.0
+            na = 0.0
+            nb = 0.0
+            for x, y in zip(a, b):
+                fx = float(x)
+                fy = float(y)
+                dot += fx * fy
+                na += fx * fx
+                nb += fy * fy
+            if na <= 0.0 or nb <= 0.0:
+                return 0.0
+            return dot / (math.sqrt(na) * math.sqrt(nb))
+        except Exception:
+            return 0.0
+
+    def _pair_key(self, left_id: str, right_id: str) -> tuple[str, str]:
+        return tuple(sorted((str(left_id), str(right_id))))
