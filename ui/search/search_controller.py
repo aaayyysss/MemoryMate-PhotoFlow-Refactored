@@ -67,7 +67,13 @@ class SearchController(QObject):
         self._mark_interaction("preset")
         state = self.store.get_state()
 
-        chips = [chip for chip in state.active_chips if chip.get("kind") != "preset"]
+        # Preset selection exits explicit browse navigation mode
+        browse_mode = None
+
+        chips = [
+            chip for chip in state.active_chips
+            if chip.get("kind") not in {"preset", "browse"}
+        ]
         chips.insert(0, {
             "kind": "preset",
             "label": preset_id.replace("_", " ").title(),
@@ -76,27 +82,45 @@ class SearchController(QObject):
 
         self.store.update(
             preset_id=preset_id,
+            browse_mode=browse_mode,
             active_chips=chips,
             search_mode="hybrid",
+            family=self._infer_family(),
+            visible_facet_keys=self._compute_visible_facet_keys(),
+            browse_scope_label="",
             intent_summary=preset_id.replace("_", " ").title(),
             search_in_progress=True,
         )
         self.run_search()
 
-    def apply_filter(self, kind: str, value: str):
-        """User clicked a facet in FilterSection."""
+    def apply_filter(self, filter_key: str, value):
+        """UX-9D: User clicked a facet in FilterSection."""
         self._mark_interaction("filter")
         state = self.store.get_state()
-        filters = dict(state.active_filters)
+        new_filters = dict(state.active_filters or {})
+        new_filters[filter_key] = value
 
-        if filters.get(kind) == value:
-            del filters[kind]
-        else:
-            filters[kind] = value
+        chips = []
+        for chip in state.active_chips:
+            if chip.get("kind") == "filter" and chip.get("filter_key") == filter_key:
+                continue
+            chips.append(chip)
 
-        self.store.update(active_filters=filters)
-        self._update_chips_from_filters()
-        self._do_search()
+        chips.append({
+            "kind": "filter",
+            "filter_key": filter_key,
+            "label": f"{filter_key}: {value}",
+            "value": value,
+        })
+
+        self.store.update(
+            active_filters=new_filters,
+            active_chips=chips,
+            family=self._infer_family(),
+            visible_facet_keys=self._compute_visible_facet_keys(),
+            intent_summary=self._build_intent_summary(),
+        )
+        self.run_search()
 
     def apply_people_filter(self, person_id: str):
         state = self.store.get_state()
@@ -183,11 +207,15 @@ class SearchController(QObject):
         chips = [chip for chip in state.active_chips if chip.get("kind") not in {"browse", "preset"}]
 
         preset_id = None
+        browse_scope_label = browse_key.replace("_", " ").title()
+
+        # Reset browse-related filters first
+        new_filters.pop("favorites_only", None)
+        new_filters.pop("media_type", None)
+        new_filters.pop("with_location", None)
 
         if browse_key == "all_photos":
-            new_filters.pop("favorites_only", None)
-            new_filters.pop("media_type", None)
-            new_filters.pop("with_location", None)
+            browse_scope_label = "All Photos"
 
         elif browse_key == "favorites":
             new_filters["favorites_only"] = True
@@ -216,17 +244,20 @@ class SearchController(QObject):
         elif browse_key in {"albums", "folders", "dates"}:
             chips.append({
                 "kind": "browse",
-                "label": browse_key.replace("_", " ").title(),
+                "label": browse_scope_label,
                 "value": browse_key,
             })
 
         self.store.update(
             browse_mode=browse_key,
+            browse_scope_label=browse_scope_label,
             preset_id=preset_id,
             active_filters=new_filters,
             active_chips=chips,
             search_mode="browse",
-            intent_summary=browse_key.replace("_", " ").title(),
+            family=self._infer_family(),
+            visible_facet_keys=self._compute_visible_facet_keys(),
+            intent_summary=browse_scope_label,
         )
         self.run_search()
 
@@ -239,35 +270,48 @@ class SearchController(QObject):
         self._do_search()
 
     def remove_chip(self, kind: str, value: Any):
-        """User removed a chip from the ActiveChipsBar."""
+        """UX-9D: User removed a chip from the ActiveChipsBar."""
         state = self.store.get_state()
 
-        if kind == "query":
-            self.store.update(query_text="")
-        elif kind == "preset":
-            self.store.update(preset_id=None)
-        elif kind == "person":
-            active_people = [p for p in state.active_people if p != value]
-            self.store.update(active_people=active_people)
-            self._update_chips_from_filters()
-        elif kind == "browse":
-            filters = dict(state.active_filters)
-            if value == "favorites":
-                filters.pop("favorites_only", None)
-            elif value == "videos":
-                filters.pop("media_type", None)
-            elif value == "with_location":
-                filters.pop("with_location", None)
-            self.store.update(browse_mode=None, active_filters=filters)
-            self._update_chips_from_filters()
-        else:
-            filters = dict(state.active_filters)
-            if kind in filters:
-                del filters[kind]
-            self.store.update(active_filters=filters)
-            self._update_chips_from_filters()
+        if kind == "preset":
+            state.preset_id = None
 
-        self._do_search()
+        elif kind == "person":
+            state.active_people = [p for p in state.active_people if p != value]
+
+        elif kind == "filter":
+            remove_key = None
+            for chip in state.active_chips:
+                if chip.get("kind") == "filter" and chip.get("value") == value:
+                    remove_key = chip.get("filter_key")
+                    break
+            if remove_key:
+                state.active_filters.pop(remove_key, None)
+
+        elif kind == "query":
+            state.query_text = ""
+
+        elif kind == "browse":
+            state.browse_mode = None
+            state.browse_scope_label = ""
+            if value == "favorites":
+                state.active_filters.pop("favorites_only", None)
+            elif value == "videos":
+                state.active_filters.pop("media_type", None)
+            elif value == "with_location":
+                state.active_filters.pop("with_location", None)
+
+        state.active_chips = [
+            chip for chip in state.active_chips
+            if not (chip.get("kind") == kind and chip.get("value") == value)
+        ]
+
+        state.family = self._infer_family()
+        state.visible_facet_keys = self._compute_visible_facet_keys()
+        state.intent_summary = self._build_intent_summary()
+
+        self.store.stateChanged.emit(state)
+        self.run_search()
 
     def clear_search(self):
         """Reset search state to 'All Photos'."""
@@ -279,10 +323,18 @@ class SearchController(QObject):
         self.store.update(recent_queries=[])
 
     def clear_filters(self):
-        """Clear only the active facets."""
-        self.store.update(active_filters={}, active_chips=[])
-        self._update_chips_from_filters()
-        self._do_search()
+        """UX-9D: Clear only the active facets, keep other chips."""
+        state = self.store.get_state()
+        chips = [chip for chip in state.active_chips if chip.get("kind") != "filter"]
+
+        self.store.update(
+            active_filters={},
+            active_chips=chips,
+            family=self._infer_family(),
+            visible_facet_keys=self._compute_visible_facet_keys(),
+            intent_summary=self._build_intent_summary(),
+        )
+        self.run_search()
 
     def apply_result_summary(
         self,
@@ -292,6 +344,7 @@ class SearchController(QObject):
         family: Optional[str] = None,
         warnings=None,
     ):
+        """UX-9D: Apply result summary with family-aware facet keys and explanation."""
         state = self.store.get_state()
         warning_list = list(warnings or [])
         model_warning = ""
@@ -302,12 +355,14 @@ class SearchController(QObject):
 
         discover_counts = dict(state.discover_counts or {})
         discover_previews = dict(state.discover_previews or {})
+        new_paths = list(result_paths or [])
+        effective_family = family or self._infer_family()
 
         if state.preset_id:
             discover_counts[state.preset_id] = result_count
 
             preview_labels = []
-            for path in list(result_paths or [])[:3]:
+            for path in new_paths[:3]:
                 try:
                     import os
                     preview_labels.append(os.path.basename(path))
@@ -315,11 +370,30 @@ class SearchController(QObject):
                     pass
             discover_previews[state.preset_id] = preview_labels
 
+        explanation_parts = []
+        if state.browse_scope_label:
+            explanation_parts.append(state.browse_scope_label)
+        if state.preset_id:
+            explanation_parts.append(state.preset_id.replace("_", " ").title())
+        if state.query_text.strip():
+            explanation_parts.append(f'query "{state.query_text.strip()}"')
+        if state.active_people:
+            explanation_parts.append(f"{len(state.active_people)} people filter(s)")
+        if state.active_filters:
+            explanation_parts.append(f"{len(state.active_filters)} active filter(s)")
+
+        result_explanation = ""
+        if explanation_parts:
+            result_explanation = "Results based on " + ", ".join(dict.fromkeys(explanation_parts))
+
         self.store.update(
-            result_paths=result_paths or [],
+            result_paths=new_paths,
+            displayed_result_paths=new_paths,
+            last_nonempty_result_paths=new_paths if new_paths else list(getattr(state, 'last_nonempty_result_paths', None) or []),
             result_count=result_count,
-            result_facets=self._normalize_result_facets(result_facets or {}),
-            family=family,
+            result_facets=result_facets or {},
+            family=effective_family,
+            visible_facet_keys=self._compute_visible_facet_keys(),
             warnings=warning_list,
             model_warning=model_warning,
             discover_counts=discover_counts,
@@ -327,6 +401,7 @@ class SearchController(QObject):
             search_in_progress=False,
             empty_state_reason=None if result_count > 0 else "no_results",
             intent_summary=self._build_intent_summary(),
+            result_explanation=result_explanation,
         )
 
     def generate_suggestions(self, text: str):
@@ -391,16 +466,23 @@ class SearchController(QObject):
         return facets
 
     def _build_intent_summary(self) -> str:
+        """UX-9D: Build intent summary with browse/search coexistence."""
         state = self.store.get_state()
+        parts = []
+
+        if state.browse_scope_label:
+            parts.append(state.browse_scope_label)
+
         if state.preset_id:
-            return state.preset_id.replace("_", " ").title()
-        if state.query_text:
-            return f'Results for "{state.query_text}"'
-        if state.active_people:
-            return f"Photos with {', '.join(state.active_people)}"
-        if state.active_filters:
-            return "Filtered Results"
-        return "All Photos"
+            parts.append(state.preset_id.replace("_", " ").title())
+
+        if state.query_text.strip():
+            parts.append(state.query_text.strip())
+
+        for person in state.active_people:
+            parts.append(person)
+
+        return " + ".join(dict.fromkeys(parts)) if parts else "All Photos"
 
     def _add_to_history(self, text: str):
         if not text or len(text) < 2: return
@@ -411,23 +493,25 @@ class SearchController(QObject):
         self.store.update(recent_queries=history[:10])
 
     def _infer_family(self) -> str:
-        """Infer the current search family from state."""
+        """UX-9D: Infer the current search family from state."""
         state = self.store.get_state()
-        if state.family:
-            return state.family
+
+        if state.preset_id in {"documents", "screenshots"}:
+            return "type"
+
         if state.active_people:
             return "people"
-        query = (state.query_text or "").lower()
-        if any(kw in query for kw in ("person", "face", "people", "who")):
-            return "people"
-        if any(kw in query for kw in ("document", "screenshot", "receipt")):
-            return "type"
-        if any(kw in query for kw in ("beach", "mountain", "sunset", "landscape", "nature", "forest", "ocean")):
+
+        if state.preset_id in {"beach", "mountains", "city", "forest"}:
             return "scenic"
-        return ""
+
+        if state.browse_mode in {"videos"}:
+            return "utility"
+
+        return state.family or "hybrid"
 
     def _compute_visible_facet_keys(self) -> list:
-        """UX-9D: context-aware facet ordering for stronger people-first emphasis."""
+        """UX-9D: context-aware facet ordering based on browse mode and family."""
         state = self.store.get_state()
         family = self._infer_family()
 

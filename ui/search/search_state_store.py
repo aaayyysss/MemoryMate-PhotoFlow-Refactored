@@ -55,6 +55,14 @@ class SearchState:
     browse_mode: Optional[str] = None
     activity_snapshot: Dict[str, Any] = field(default_factory=dict)
     model_warning: str = ""
+
+    # UX-9D: facet quality + browse/search coexistence
+    visible_facet_keys: List[str] = field(default_factory=list)
+    facet_counts_mode: str = "result_set"   # result_set | project
+    browse_scope_label: str = ""
+    result_explanation: str = ""
+    displayed_result_paths: List[str] = field(default_factory=list)
+    last_nonempty_result_paths: List[str] = field(default_factory=list)
     last_interaction_ts: float = 0.0
     last_action: str = ""
     is_user_typing: bool = False
@@ -143,4 +151,7 @@ class SearchStateStore(QObject):
         self._state.suggestions.clear()
         self._state.model_warning = ""
         self._state.selected_result_ids.clear()
+        self._state.visible_facet_keys.clear()
+        self._state.browse_scope_label = ""
+        self._state.result_explanation = ""
         self.stateChanged.emit(self._state)

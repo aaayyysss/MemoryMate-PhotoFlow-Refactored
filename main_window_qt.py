@@ -3165,21 +3165,53 @@ class MainWindow(QMainWindow):
 
     def _on_ux1_search_requested(self, payload: dict):
         """
-        UX-1 bridge: connect the new search shell to the existing search pipeline.
-        This keeps UX-1 low-risk while establishing proper ownership and state flow.
+        UX-1/9D bridge: connect the new search shell to the existing search pipeline.
+        Supports browse-first routing and result-set-driven facets.
         """
         query_text = payload.get("query_text", "") or ""
         preset_id = payload.get("preset_id")
+        browse_mode = payload.get("browse_mode")
 
         try:
+            # UX-9D: Browse-first compatibility routing
+            if browse_mode == "all_photos":
+                try:
+                    if hasattr(self, "grid") and hasattr(self.grid, "load_project"):
+                        pid = payload.get("project_id")
+                        if pid is not None:
+                            self.grid.load_project(pid)
+
+                    result_paths = list(getattr(self.grid, "all_photo_paths", []) or [])
+                    result_facets = self._build_result_set_facets(result_paths)
+
+                    self.search_controller.apply_result_summary(
+                        result_paths=result_paths,
+                        result_count=len(result_paths),
+                        family="utility",
+                        result_facets=result_facets,
+                        warnings=[],
+                    )
+                    return
+
+                except Exception as e:
+                    self.search_controller.apply_result_summary(
+                        result_paths=[],
+                        result_count=0,
+                        family="utility",
+                        result_facets={},
+                        warnings=[str(e)],
+                    )
+                    return
+
             if preset_id and hasattr(self, "_execute_smart_find_preset"):
                 self._execute_smart_find_preset(preset_id)
                 result_paths = list(getattr(self.grid, "all_photo_paths", []) or [])
+                result_facets = self._build_result_set_facets(result_paths)
                 self.search_controller.apply_result_summary(
                     result_paths=result_paths,
                     result_count=len(result_paths),
                     family=None,
-                    result_facets={},
+                    result_facets=result_facets,
                     warnings=[],
                 )
                 return
@@ -3187,11 +3219,12 @@ class MainWindow(QMainWindow):
             if query_text and hasattr(self, "_on_quick_search"):
                 self._on_quick_search(query_text)
                 result_paths = list(getattr(self.grid, "all_photo_paths", []) or [])
+                result_facets = self._build_result_set_facets(result_paths)
                 self.search_controller.apply_result_summary(
                     result_paths=result_paths,
                     result_count=len(result_paths),
                     family=None,
-                    result_facets={},
+                    result_facets=result_facets,
                     warnings=[],
                 )
                 return
@@ -3212,6 +3245,112 @@ class MainWindow(QMainWindow):
                 result_facets={},
                 warnings=[str(e)],
             )
+
+    def _build_result_set_facets(self, result_paths):
+        """
+        UX-9D facet adapter.
+        Tries orchestrator/repository-backed facet generation first,
+        then falls back to lightweight result-set-derived facets.
+        """
+        try:
+            result_paths = list(result_paths or [])
+            project_id = getattr(self, "active_project_id", None) or getattr(self, "current_project_id", None)
+
+            # Preferred: orchestrator-backed facets
+            orchestrator = getattr(self, "search_orchestrator", None)
+            if orchestrator and hasattr(orchestrator, "build_result_facets"):
+                facets = orchestrator.build_result_facets(project_id=project_id, result_paths=result_paths)
+                if isinstance(facets, dict):
+                    return self._sanitize_result_facets(facets)
+
+            # Optional repository-backed facets
+            repo = getattr(self, "search_feature_repository", None)
+            if repo and hasattr(repo, "build_result_facets"):
+                facets = repo.build_result_facets(project_id=project_id, result_paths=result_paths)
+                if isinstance(facets, dict):
+                    return self._sanitize_result_facets(facets)
+
+        except Exception as e:
+            print(f"[UX-9D] Orchestrator-backed facets unavailable: {e}")
+
+        return self._build_basic_result_set_facets(result_paths)
+
+    def _build_basic_result_set_facets(self, result_paths):
+        """UX-9D fallback: lightweight result-set-derived facets from filenames."""
+        from collections import Counter
+        import os
+
+        result_paths = list(result_paths or [])
+
+        years = Counter()
+        types = Counter()
+        locations = Counter()
+        people = Counter()
+
+        image_exts = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif", ".heic", ".heif"}
+        video_exts = {".mp4", ".mov", ".avi", ".mkv", ".wmv", ".m4v"}
+
+        for path in result_paths:
+            try:
+                name = os.path.basename(path).lower()
+                ext = os.path.splitext(path)[1].lower()
+
+                # type
+                if ext in video_exts:
+                    types["video"] += 1
+                elif "screenshot" in name:
+                    types["screenshot"] += 1
+                elif "document" in name or "scan" in name:
+                    types["document"] += 1
+                elif ext in image_exts:
+                    types["photo"] += 1
+
+                # year, lightweight filename heuristic
+                for token in name.replace("-", "_").split("_"):
+                    if token.isdigit() and len(token) == 4 and token.startswith(("19", "20")):
+                        years[token] += 1
+                        break
+
+            except Exception:
+                pass
+
+        return self._sanitize_result_facets({
+            "people": [{"id": k, "label": k, "count": v} for k, v in people.most_common(10)],
+            "locations": [{"name": k, "count": v} for k, v in locations.most_common(10)],
+            "years": [{"value": k, "count": v} for k, v in years.most_common(10)],
+            "types": [{"value": k, "count": v} for k, v in types.most_common(10)],
+        })
+
+    def _sanitize_result_facets(self, facets):
+        """
+        UX-9D cleanup:
+        - hide noisy people facets
+        - keep result-set counts only
+        - normalize list structure
+        """
+        facets = dict(facets or {})
+
+        clean_people = []
+        for item in list(facets.get("people", []) or []):
+            label = str(item.get("label") or item.get("name") or item.get("id") or "")
+            count = int(item.get("count", 0) or 0)
+
+            # Hide obvious noise / unnamed placeholders
+            if count <= 0:
+                continue
+            if label.lower().startswith("face_"):
+                continue
+            if label.lower() in {"__ignored__", "unknown", "unnamed"}:
+                continue
+
+            clean_people.append(item)
+
+        facets["people"] = clean_people[:10]
+        facets["locations"] = list(facets.get("locations", []) or [])[:10]
+        facets["years"] = list(facets.get("years", []) or [])[:10]
+        facets["types"] = list(facets.get("types", []) or [])[:10]
+
+        return facets
 
     def _refresh_people_quick_section(self):
         """
