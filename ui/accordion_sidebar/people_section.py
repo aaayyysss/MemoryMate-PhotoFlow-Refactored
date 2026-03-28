@@ -906,6 +906,38 @@ class PeopleSection(BaseSection):
             except Exception:
                 pass
 
+    def get_unnamed_cluster_items(self):
+        """UX-9C adapter: return unnamed cluster items as simple dicts."""
+        try:
+            source = getattr(self, "people_data", None) or getattr(self, "clusters", None) or []
+            items = []
+            for item in list(source):
+                if not isinstance(item, dict):
+                    continue
+                pid = item.get("id") or item.get("person_id") or item.get("label")
+                label = item.get("label") or item.get("name") or str(pid)
+                count = int(item.get("count", 0))
+                if label.lower().startswith("face_") or "unnamed" in label.lower():
+                    items.append({"id": str(pid), "label": str(label), "count": count})
+            return sorted(items, key=lambda x: x["count"], reverse=True)[:20]
+        except Exception:
+            return []
+
+    def mark_unnamed_cluster_distinct(self, cluster_id: str):
+        """UX-9C stub: mark unnamed cluster as a distinct person."""
+        logger.info("[PeopleSection] Mark unnamed cluster distinct: %s", cluster_id)
+        db = getattr(self, "_parent_db", None)
+        if db:
+            try:
+                db.save_people_merge_review(cluster_id, "__distinct__", "distinct")
+            except Exception:
+                pass
+
+    def assign_unnamed_cluster_to_person(self, cluster_id: str, target_person_id: str):
+        """UX-9C stub: assign unnamed cluster to a named person."""
+        logger.info("[PeopleSection] Assign unnamed cluster %s -> %s", cluster_id, target_person_id)
+        self.assign_unnamed_cluster(cluster_id, target_person_id)
+
     def set_db(self, db):
         """Store DB reference for passing to GroupsSection."""
         self._parent_db = db

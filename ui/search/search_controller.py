@@ -144,6 +144,9 @@ class SearchController(QObject):
     def set_unnamed_cluster_payloads(self, payloads):
         self.store.update(unnamed_cluster_payloads=list(payloads or []))
 
+    def set_unnamed_cluster_items(self, items):
+        self.store.update(unnamed_cluster_items=list(items or []))
+
     def set_selected_result_ids(self, ids_):
         self.store.update(selected_result_ids=list(ids_ or []))
 
@@ -342,15 +345,23 @@ class SearchController(QObject):
         self.run_search()
 
     def _normalize_result_facets(self, facets: dict) -> dict:
-        """UX-9A: normalize people facets by sorting by count and limiting to top 8."""
+        """UX-9A/9D: normalize all facet types — filter dead items, sort by count, cap to 12."""
         facets = dict(facets or {})
-        people_items = list(facets.get("people", []) or [])
-        people_items = sorted(
-            people_items,
-            key=lambda x: x.get("count", 0) if isinstance(x, dict) else 0,
-            reverse=True,
-        )
-        facets["people"] = people_items[:8]
+        for key in ("people", "locations", "years", "types", "location", "year", "type"):
+            items = list(facets.get(key, []) or [])
+            normalized = []
+            for item in items:
+                if isinstance(item, dict):
+                    if int(item.get("count", 0)) <= 0:
+                        continue
+                    normalized.append(item)
+                else:
+                    normalized.append(item)
+            normalized.sort(
+                key=lambda x: x.get("count", 0) if isinstance(x, dict) else 0,
+                reverse=True,
+            )
+            facets[key] = normalized[:12]
         return facets
 
     def _build_intent_summary(self) -> str:

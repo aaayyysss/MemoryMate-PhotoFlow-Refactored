@@ -57,7 +57,7 @@ class PeopleMergeEngine:
                     continue
 
                 score, evidence = self._score_pair(left, right)
-                if score < 0.62:
+                if score < 0.60:
                     continue
 
                 suggestions.append({
