@@ -110,6 +110,11 @@ class GooglePhotosLayout(BaseLayout):
         self._ensure_tooltip_style()
 
         
+        # UX-10: stable project and generation tracking
+        self._resolved_project_id = None
+        self._last_store_result_paths = []
+        self._last_generation_seen = 0
+
         # Face merge undo/redo stacks (CRITICAL FIX 2026-01-07)
         self.redo_stack = []  # Stack for redo operations after undo
 
@@ -374,13 +379,25 @@ class GooglePhotosLayout(BaseLayout):
 
         return main_widget
 
+    def reload_for_project(self, project_id: int):
+        """UX-10: light reload driven by resolved project id."""
+        self._resolved_project_id = project_id
+        if project_id is None:
+            self._show_empty_state("no_project")
+            return
+        try:
+            if hasattr(self, "empty_state"):
+                self._show_results_surface()
+        except Exception as e:
+            print(f"[GooglePhotosLayout] reload_for_project failed: {e}")
+
     def attach_search_store(self, store):
         self.search_state_store = store
         if self.search_state_store:
             self.search_state_store.stateChanged.connect(self._on_search_state_changed)
 
     def _on_search_state_changed(self, state):
-        """UX-10A: respond to global SearchState changes with stable transitions."""
+        """UX-10: generation-aware state handler with project resolution guards."""
         try:
             if getattr(self, '_disposed', False):
                 return
@@ -389,18 +406,28 @@ class GooglePhotosLayout(BaseLayout):
                 logger.debug("[GooglePhotosLayout] Skipping SearchState update: UI objects already deleted")
                 return
 
-            displayed_paths = list(getattr(self, "_last_displayed_paths", []) or [])
-            result_paths = list(getattr(state, "result_paths", []) or [])
-            search_in_progress = bool(getattr(state, "search_in_progress", False))
-
             # Onboarding / no project
             if getattr(state, "onboarding_mode", False):
                 self._show_empty_state("no_project", getattr(state, "warnings", []))
                 return
 
-            # UX-10A: during search, keep existing results visible for stable transition
-            if search_in_progress:
+            # UX-10: wait for project state to resolve
+            if not getattr(state, "active_project_id_resolved", True):
+                return
+
+            # UX-10: wait for layout reload to complete
+            if getattr(state, "layout_reload_pending", False):
+                return
+
+            displayed_paths = list(getattr(self, "_last_displayed_paths", []) or [])
+            result_paths = list(getattr(state, "result_paths", []) or [])
+            search_in_progress = bool(getattr(state, "search_in_progress", False))
+            result_surface_busy = bool(getattr(state, "result_surface_busy", False))
+
+            # Preserve visible results while searching / busy
+            if search_in_progress or result_surface_busy:
                 if displayed_paths:
+                    self._last_store_result_paths = displayed_paths
                     self._show_results_surface()
                 else:
                     self._show_empty_state("loading", getattr(state, "warnings", []))
@@ -417,23 +444,31 @@ class GooglePhotosLayout(BaseLayout):
                     self._show_empty_state("embeddings_missing", getattr(state, "warnings", []))
                     return
 
-            if not result_paths:
-                self._show_empty_state(getattr(state, "empty_state_reason", None) or "no_results",
-                                    getattr(state, "warnings", []))
+            if result_paths:
+                self._last_store_result_paths = result_paths
+                self._last_displayed_paths = result_paths
+                self._show_results_surface()
+                self._refresh_timeline_from_store_paths(result_paths, state)
                 return
 
-            self._show_results_surface()
-            self._last_displayed_paths = result_paths
-
-            # Trigger photo grid update if result paths changed
-            sig = (tuple(state.result_paths), state.active_project_id)
-            if getattr(self, "_last_result_sig", None) != sig:
-                self._last_result_sig = sig
-                if state.result_paths or not (state.query_text or state.preset_id):
-                    self._load_photos(filter_paths=state.result_paths if state.query_text or state.preset_id else None)
+            self._show_empty_state(getattr(state, "empty_state_reason", None) or "no_results",
+                                   getattr(state, "warnings", []))
 
         except Exception as e:
             print(f"[GooglePhotosLayout] _on_search_state_changed error: {e}")
+
+    def _refresh_timeline_from_store_paths(self, paths, state=None):
+        """UX-10: refresh photo grid from store result paths instead of side-channel timing."""
+        try:
+            sig = (tuple(paths), getattr(state, "active_project_id", None) if state else self._resolved_project_id)
+            if getattr(self, "_last_result_sig", None) != sig:
+                self._last_result_sig = sig
+                query_text = getattr(state, "query_text", "") if state else ""
+                preset_id = getattr(state, "preset_id", None) if state else None
+                if paths or not (query_text or preset_id):
+                    self._load_photos(filter_paths=paths if (query_text or preset_id) else None)
+        except Exception as e:
+            print(f"[GooglePhotosLayout] _refresh_timeline_from_store_paths failed: {e}")
 
     def _show_empty_state(self, reason: str, warnings=None):
         try:
@@ -6239,6 +6274,14 @@ class GooglePhotosLayout(BaseLayout):
 
         print(f"[GooglePhotosLayout] Queued {self.thumbnail_load_count} thumbnails for loading (initial limit: {self.initial_load_limit})")
         print(f"[GooglePhotosLayout] Photo loading complete! Thumbnails will load progressively.")
+
+        # UX-10: signal async load completion to MainWindow
+        try:
+            mw = self.main_window
+            if mw and hasattr(mw, "_on_result_surface_async_load_completed"):
+                mw._on_result_surface_async_load_completed()
+        except Exception:
+            pass
 
     def _on_timeline_scrolled(self):
         """

@@ -29,8 +29,9 @@ class SearchController(QObject):
         self.store.update(last_interaction_ts=time.time(), last_action=action)
 
     def set_active_project(self, project_id: Optional[int]):
-        """Sync with project changes from MainWindow."""
-        self.store.reset_for_project(project_id)
+        """UX-10: Sync with project changes using transition guard."""
+        self.store.begin_project_transition()
+        self.store.complete_project_transition(project_id)
         if project_id:
             # Load discovery counts (placeholder for now)
             self.store.update(discover_counts={
@@ -156,6 +157,14 @@ class SearchController(QObject):
             family=self._infer_family(),
             intent_summary=self._build_intent_summary(),
         )
+
+    def begin_layout_reload(self):
+        """UX-10: mark layout reload in progress."""
+        self.store.update(layout_reload_pending=True, result_surface_busy=True)
+
+    def complete_layout_reload(self):
+        """UX-10: mark layout reload complete."""
+        self.store.update(layout_reload_pending=False, result_surface_busy=False)
 
     def apply_browse_mode(self, browse_key: str, value):
         self._mark_interaction("browse")
@@ -326,6 +335,14 @@ class SearchController(QObject):
         """Package state into a payload and emit searchRequested."""
         state = self.store.get_state()
         if not state.has_active_project:
+            return
+
+        # UX-10: block search while project state is unresolved
+        if not getattr(state, "active_project_id_resolved", True):
+            self.store.update(
+                search_in_progress=False,
+                warnings=["Project switch still resolving"],
+            )
             return
 
         self.store.update(search_in_progress=True)

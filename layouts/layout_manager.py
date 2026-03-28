@@ -182,6 +182,23 @@ class LayoutManager:
         """Get the ID of the currently active layout."""
         return self._current_layout_id
 
+    def attach_search_store_to_layout(self, store):
+        """UX-10: safely attach search store to the current layout."""
+        layout = self.get_current_layout()
+        if layout and hasattr(layout, "attach_search_store"):
+            layout.attach_search_store(store)
+
+    def reload_current_layout_for_project(self, project_id):
+        """UX-10: reload the current layout for a resolved project id."""
+        layout = self.get_current_layout()
+        if not layout or project_id is None:
+            return
+
+        if hasattr(layout, "reload_for_project"):
+            layout.reload_for_project(project_id)
+        elif hasattr(layout, "load_project"):
+            layout.load_project(project_id)
+
     def initialize_default_layout(self):
         """
         Initialize the default layout (on app startup).

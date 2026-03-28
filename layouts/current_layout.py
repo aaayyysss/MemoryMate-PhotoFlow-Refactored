@@ -164,3 +164,54 @@ class CurrentLayout(BaseLayout):
         grid = self.get_grid()
         if grid and hasattr(grid, 'clear_selection'):
             grid.clear_selection()
+
+    # UX-10: stable reload and state-driven refresh
+
+    def attach_search_store(self, store):
+        """UX-10: connect to search state store for state-driven refresh."""
+        self._search_store = store
+        if store:
+            store.stateChanged.connect(self._on_search_state_changed)
+
+    def reload_for_project(self, project_id: int):
+        """UX-10: reload for a resolved project id."""
+        self._resolved_project_id = project_id
+        if project_id is None:
+            return
+        try:
+            grid = self.get_grid()
+            if grid and hasattr(grid, "set_project"):
+                grid.set_project(project_id)
+            elif grid and hasattr(grid, "reload"):
+                grid.project_id = project_id
+                grid.reload()
+        except Exception as e:
+            print(f"[CurrentLayout] reload_for_project failed: {e}")
+
+    def _on_search_state_changed(self, state):
+        """UX-10: stable state-driven refresh with resolution guards."""
+        try:
+            if getattr(state, "onboarding_mode", False):
+                return
+
+            if not getattr(state, "active_project_id_resolved", True):
+                return
+
+            if getattr(state, "layout_reload_pending", False):
+                return
+
+            if getattr(state, "search_in_progress", False):
+                return
+
+            result_paths = list(getattr(state, "result_paths", []) or [])
+            if result_paths:
+                grid = self.get_grid()
+                if grid:
+                    if hasattr(grid, "set_photo_paths"):
+                        grid.set_photo_paths(result_paths)
+                    elif hasattr(grid, "display_thumbnails"):
+                        grid.photo_paths = list(result_paths)
+                        grid.display_thumbnails()
+
+        except Exception as e:
+            print(f"[CurrentLayout] _on_search_state_changed error: {e}")
