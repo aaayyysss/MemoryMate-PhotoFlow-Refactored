@@ -1,98 +1,77 @@
-"""
-UX-11B/C: People Review Service — queues, filtering, cluster governance.
-
-Owns:
-  - Merge review queue (read model for UI)
-  - Merge candidate compare payloads
-  - Unnamed cluster queue and governance (assign, keep_separate, ignore, low_confidence)
-  - UI-ready payloads for dialogs
-
-Does NOT own:
-  - Identity resolution (that's IdentityResolutionService)
-  - Merge execution (that stays with caller / ReferenceDB)
-"""
+# services/people_review_service.py
 
 from __future__ import annotations
 
 import json
-import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Set
+from typing import Any
 
-from models.people_review_models import (
-    ClusterReviewDecisionModel,
-    MergeCandidateModel,
-)
-from repository.identity_repository import IdentityRepository
-from repository.people_review_repository import PeopleReviewRepository
-from services.domain_events import (
-    UNNAMED_CLUSTER_ASSIGNED,
-    UNNAMED_CLUSTER_KEPT_SEPARATE,
-    UNNAMED_CLUSTER_IGNORED,
-    UNNAMED_CLUSTER_LOW_CONFIDENCE,
-    PEOPLE_INDEX_REFRESH_REQUESTED,
-    PEOPLE_REVIEW_QUEUE_REFRESH_REQUESTED,
-    SEARCH_PERSON_FACETS_REFRESH_REQUESTED,
-)
 
-logger = logging.getLogger(__name__)
+UNNAMED_CLUSTER_ASSIGNED = "unnamed_cluster_assigned"
+UNNAMED_CLUSTER_KEPT_SEPARATE = "unnamed_cluster_kept_separate"
+UNNAMED_CLUSTER_IGNORED = "unnamed_cluster_ignored"
+UNNAMED_CLUSTER_LOW_CONFIDENCE = "unnamed_cluster_low_confidence"
+
+PEOPLE_INDEX_REFRESH_REQUESTED = "people_index_refresh_requested"
+PEOPLE_SIDEBAR_REFRESH_REQUESTED = "people_sidebar_refresh_requested"
+PEOPLE_REVIEW_QUEUE_REFRESH_REQUESTED = "people_review_queue_refresh_requested"
+SEARCH_PERSON_FACETS_REFRESH_REQUESTED = "search_person_facets_refresh_requested"
 
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _new_id(prefix: str = "") -> str:
-    short = uuid.uuid4().hex[:12]
-    return f"{prefix}_{short}" if prefix else short
+def _new_id(prefix: str) -> str:
+    return f"{prefix}_{uuid.uuid4().hex}"
 
 
 class PeopleReviewService:
     """
-    UX-11B/C: Business logic for review queues and cluster governance.
+    UI-facing review service for:
+    - merge review queue reads
+    - compare payload generation
+    - unnamed cluster workflows
     """
 
     def __init__(
         self,
-        people_review_repo: PeopleReviewRepository,
-        identity_repo: IdentityRepository,
-        event_bus=None,
+        people_review_repo,
+        identity_repo,
+        identity_resolution_service,
+        event_bus,
+        cluster_stats_service=None,
     ):
         self.people_review_repo = people_review_repo
         self.identity_repo = identity_repo
+        self.identity_resolution_service = identity_resolution_service
         self.event_bus = event_bus
+        self.cluster_stats_service = cluster_stats_service
 
-    # ── Merge review queue ────────────────────────────────────────────
+    # ------------------------------------------------------------------
+    # Merge review queue
+    # ------------------------------------------------------------------
 
     def get_merge_review_queue(
         self,
         include_reviewed: bool = False,
-        limit: Optional[int] = None,
-    ) -> List[Dict[str, Any]]:
-        """Return UI-ready merge candidate list for the review dialog."""
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
         if include_reviewed:
-            candidates = self.people_review_repo.list_merge_candidates(
-                limit=limit,
-            )
+            statuses = ["unreviewed", "skipped", "accepted", "rejected"]
         else:
-            # Show unreviewed + skipped
-            unreviewed = self.people_review_repo.list_merge_candidates(
-                status="unreviewed", limit=limit,
-            )
-            skipped = self.people_review_repo.list_merge_candidates(
-                status="skipped", limit=limit,
-            )
-            candidates = unreviewed + skipped
-            if limit:
-                candidates = candidates[:limit]
+            statuses = ["unreviewed", "skipped"]
 
-        return [self._to_merge_queue_item(c) for c in candidates]
+        items = self.people_review_repo.list_merge_candidates(
+            status=statuses,
+            include_invalidated=False,
+            limit=limit,
+        )
 
-    def get_merge_candidate_compare_payload(
-        self, candidate_id: str,
-    ) -> Dict[str, Any]:
-        """Return UI-ready compare payload for a specific candidate."""
+        return [self._to_merge_queue_item(item) for item in items]
+
+    def get_merge_candidate_compare_payload(self, candidate_id: str) -> dict[str, Any]:
         candidate = self.people_review_repo.get_merge_candidate(candidate_id)
         if not candidate:
             return {}
@@ -102,261 +81,419 @@ class PeopleReviewService:
             "confidence_score": candidate.confidence_score,
             "confidence_band": candidate.confidence_band,
             "status": candidate.status,
-            "rationale": [
-                {"code": r.code, "label": r.label, "weight": r.weight}
-                for r in candidate.rationale
-            ],
-            "cluster_a_id": candidate.cluster_a_id,
-            "cluster_b_id": candidate.cluster_b_id,
+            "rationale": candidate.rationale,
             "left_cluster": self._build_cluster_panel_payload(candidate.cluster_a_id),
             "right_cluster": self._build_cluster_panel_payload(candidate.cluster_b_id),
         }
 
-    def get_merge_queue_counts(self) -> Dict[str, int]:
-        """Return counts for badge display."""
-        unreviewed = self.people_review_repo.list_merge_candidates(status="unreviewed")
-        skipped = self.people_review_repo.list_merge_candidates(status="skipped")
-        return {
-            "unreviewed": len(unreviewed),
-            "skipped": len(skipped),
-            "total_pending": len(unreviewed) + len(skipped),
-        }
+    def get_cluster_assign_suggestions(
+        self,
+        cluster_id: str,
+        limit: int = 5,
+    ) -> list[dict[str, Any]]:
+        """
+        Minimal first-pass implementation.
 
-    # ── Unnamed cluster queue ─────────────────────────────────────────
+        Replace this later with:
+        - embedding similarity to identities
+        - event co-occurrence hints
+        - time-span proximity
+        """
+        cur = self.identity_repo.conn.execute(
+            """
+            SELECT
+                identity_id,
+                display_name,
+                canonical_cluster_id,
+                is_protected
+            FROM person_identity
+            WHERE is_hidden = 0
+            ORDER BY
+                is_protected DESC,
+                updated_at DESC
+            LIMIT ?
+            """,
+            (limit,),
+        )
+        rows = cur.fetchall()
+        return [
+            {
+                "identity_id": row[0],
+                "display_name": row[1],
+                "canonical_cluster_id": row[2],
+                "is_protected": bool(row[3]),
+            }
+            for row in rows
+        ]
+
+    # ------------------------------------------------------------------
+    # Unnamed cluster queue
+    # ------------------------------------------------------------------
 
     def get_unnamed_review_queue(
         self,
         include_low_value: bool = False,
-        limit: Optional[int] = None,
-    ) -> List[Dict[str, Any]]:
-        """Return unnamed clusters that need governance decisions.
-        Excludes clusters with active ignore/assign decisions."""
-        decided_ids = self.people_review_repo.get_decided_cluster_ids()
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """
+        Pulls raw unresolved clusters from repository and enriches them lightly.
+        """
+        raw_items = self.people_review_repo.list_unnamed_review_candidates(limit=limit)
+        queue: list[dict[str, Any]] = []
 
-        # The caller should provide the cluster list from face_branch_reps.
-        # This method filters and enriches.
-        # For now return the decided set info for the caller to filter.
-        return [{
-            "decided_cluster_ids": list(decided_ids),
-            "include_low_value": include_low_value,
-        }]
+        for item in raw_items:
+            cluster_id = item["cluster_id"]
+            active_decision = self.people_review_repo.get_active_cluster_review_decision(cluster_id)
 
-    # ── Cluster governance ────────────────────────────────────────────
+            if active_decision and active_decision.decision_type == "ignore":
+                continue
+            if active_decision and active_decision.decision_type == "low_confidence" and not include_low_value:
+                continue
+
+            queue.append(
+                {
+                    "cluster_id": cluster_id,
+                    "photo_count": item.get("photo_count", 0),
+                    "last_seen_at": item.get("last_seen_at"),
+                    "decision_type": active_decision.decision_type if active_decision else None,
+                    "badges": self._build_cluster_badges(active_decision.decision_type if active_decision else None),
+                    "suggestions": self.get_cluster_assign_suggestions(cluster_id, limit=3),
+                }
+            )
+
+        queue.sort(
+            key=lambda x: (
+                0 if x["decision_type"] is None else 1,
+                -(x.get("photo_count") or 0),
+                x.get("last_seen_at") or "",
+            )
+        )
+        return queue
+
+    # ------------------------------------------------------------------
+    # Unnamed cluster actions
+    # ------------------------------------------------------------------
 
     def assign_cluster_to_existing_identity(
         self,
         cluster_id: str,
         target_identity_id: str,
-        performed_by: Optional[str] = None,
-    ) -> dict:
-        """Assign an unnamed cluster to an existing identity."""
-        # Deactivate prior decision
-        self.people_review_repo.deactivate_cluster_review_decisions(cluster_id)
+        performed_by: str | None = None,
+    ) -> dict[str, Any]:
+        now = _now_iso()
 
-        decision = ClusterReviewDecisionModel(
+        self.people_review_repo.deactivate_cluster_review_decisions(cluster_id)
+        self.people_review_repo.save_cluster_review_decision(
             decision_id=_new_id("dec"),
             cluster_id=cluster_id,
             decision_type="assign_existing",
             target_identity_id=target_identity_id,
-            created_at=_now_iso(),
+            notes=None,
+            created_at=now,
             created_by=performed_by,
             is_active=True,
             source="user",
         )
-        self.people_review_repo.save_cluster_review_decision(decision)
 
-        # Attach cluster to identity
-        self.identity_repo.attach_cluster_to_identity(
+        link_id = self.identity_repo.attach_cluster_to_identity(
+            link_id=_new_id("lnk"),
             identity_id=target_identity_id,
             cluster_id=cluster_id,
             link_type="manual_assign",
+            created_at=now,
             source="user_assign",
         )
 
+        action_payload = {
+            "cluster_id": cluster_id,
+            "target_identity_id": target_identity_id,
+            "linked_at": now,
+            "link_id": link_id,
+        }
         action_id = self.identity_repo.log_identity_action(
+            action_id=_new_id("act"),
             action_type="cluster_assigned",
+            created_at=now,
             identity_id=target_identity_id,
             cluster_id=cluster_id,
-            payload_json=json.dumps({"decision_type": "assign_existing"}),
+            payload_json=json.dumps(action_payload, ensure_ascii=False),
             created_by=performed_by,
             is_undoable=True,
         )
 
-        event_payload = {
-            "cluster_id": cluster_id,
-            "identity_id": target_identity_id,
-            "decision_id": decision.decision_id,
-            "action_id": action_id,
-        }
-        self._emit_event(UNNAMED_CLUSTER_ASSIGNED, event_payload)
-        self._emit_secondary_refresh_events(
-            [cluster_id], [target_identity_id], "cluster_assigned",
+        self._emit_cluster_decision_events(
+            event_name=UNNAMED_CLUSTER_ASSIGNED,
+            identity_ids=[target_identity_id],
+            cluster_ids=[cluster_id],
+            payload={
+                "cluster_id": cluster_id,
+                "identity_id": target_identity_id,
+                "action_id": action_id,
+            },
         )
 
-        logger.info(
-            "[ReviewService] Cluster %s assigned to identity %s",
-            cluster_id, target_identity_id,
-        )
         return {
             "status": "assigned",
             "identity_id": target_identity_id,
+            "cluster_id": cluster_id,
             "action_id": action_id,
         }
 
     def keep_cluster_as_separate_person(
         self,
         cluster_id: str,
-        performed_by: Optional[str] = None,
-    ) -> dict:
-        """Mark cluster as intentionally separate."""
-        self.people_review_repo.deactivate_cluster_review_decisions(cluster_id)
+        performed_by: str | None = None,
+    ) -> dict[str, Any]:
+        now = _now_iso()
 
-        decision = ClusterReviewDecisionModel(
+        self.people_review_repo.deactivate_cluster_review_decisions(cluster_id)
+        self.people_review_repo.save_cluster_review_decision(
             decision_id=_new_id("dec"),
             cluster_id=cluster_id,
             decision_type="keep_separate",
-            created_at=_now_iso(),
+            target_identity_id=None,
+            notes=None,
+            created_at=now,
             created_by=performed_by,
             is_active=True,
             source="user",
         )
-        self.people_review_repo.save_cluster_review_decision(decision)
 
-        action_id = self.identity_repo.log_identity_action(
-            action_type="cluster_kept_separate",
+        identity_id = self.identity_resolution_service.ensure_identity_for_cluster(
             cluster_id=cluster_id,
+            source="keep_separate",
+        )
+
+        action_payload = {
+            "cluster_id": cluster_id,
+            "identity_id": identity_id,
+            "kept_separate_at": now,
+        }
+        action_id = self.identity_repo.log_identity_action(
+            action_id=_new_id("act"),
+            action_type="cluster_kept_separate",
+            created_at=now,
+            identity_id=identity_id,
+            cluster_id=cluster_id,
+            payload_json=json.dumps(action_payload, ensure_ascii=False),
             created_by=performed_by,
             is_undoable=False,
         )
 
-        self._emit_event(UNNAMED_CLUSTER_KEPT_SEPARATE, {
-            "cluster_id": cluster_id,
-            "decision_id": decision.decision_id,
-            "action_id": action_id,
-        })
+        self._emit_cluster_decision_events(
+            event_name=UNNAMED_CLUSTER_KEPT_SEPARATE,
+            identity_ids=[identity_id],
+            cluster_ids=[cluster_id],
+            payload={
+                "cluster_id": cluster_id,
+                "identity_id": identity_id,
+                "action_id": action_id,
+            },
+        )
 
-        logger.info("[ReviewService] Cluster %s kept separate", cluster_id)
-        return {"status": "keep_separate", "action_id": action_id}
+        return {
+            "status": "kept_separate",
+            "identity_id": identity_id,
+            "cluster_id": cluster_id,
+            "action_id": action_id,
+        }
 
     def ignore_cluster(
         self,
         cluster_id: str,
-        performed_by: Optional[str] = None,
-        notes: Optional[str] = None,
-    ) -> dict:
-        """Mark cluster as ignored (not a real person)."""
-        self.people_review_repo.deactivate_cluster_review_decisions(cluster_id)
+        performed_by: str | None = None,
+        notes: str | None = None,
+    ) -> dict[str, Any]:
+        now = _now_iso()
 
-        decision = ClusterReviewDecisionModel(
+        self.people_review_repo.deactivate_cluster_review_decisions(cluster_id)
+        self.people_review_repo.save_cluster_review_decision(
             decision_id=_new_id("dec"),
             cluster_id=cluster_id,
             decision_type="ignore",
+            target_identity_id=None,
             notes=notes,
-            created_at=_now_iso(),
+            created_at=now,
             created_by=performed_by,
             is_active=True,
             source="user",
         )
-        self.people_review_repo.save_cluster_review_decision(decision)
 
+        action_payload = {
+            "cluster_id": cluster_id,
+            "ignored_at": now,
+            "notes": notes,
+        }
         action_id = self.identity_repo.log_identity_action(
+            action_id=_new_id("act"),
             action_type="cluster_ignored",
+            created_at=now,
             cluster_id=cluster_id,
-            payload_json=json.dumps({"notes": notes}) if notes else None,
+            payload_json=json.dumps(action_payload, ensure_ascii=False),
             created_by=performed_by,
             is_undoable=False,
         )
 
-        self._emit_event(UNNAMED_CLUSTER_IGNORED, {
-            "cluster_id": cluster_id,
-            "decision_id": decision.decision_id,
-            "action_id": action_id,
-        })
+        self._emit_cluster_decision_events(
+            event_name=UNNAMED_CLUSTER_IGNORED,
+            identity_ids=[],
+            cluster_ids=[cluster_id],
+            payload={
+                "cluster_id": cluster_id,
+                "action_id": action_id,
+            },
+        )
 
-        logger.info("[ReviewService] Cluster %s ignored", cluster_id)
-        return {"status": "ignored", "action_id": action_id}
+        return {
+            "status": "ignored",
+            "cluster_id": cluster_id,
+            "action_id": action_id,
+        }
 
     def mark_cluster_low_confidence(
         self,
         cluster_id: str,
-        performed_by: Optional[str] = None,
-        notes: Optional[str] = None,
-    ) -> dict:
-        """Mark cluster as low confidence — keep visible but lower priority."""
-        self.people_review_repo.deactivate_cluster_review_decisions(cluster_id)
+        performed_by: str | None = None,
+        notes: str | None = None,
+    ) -> dict[str, Any]:
+        now = _now_iso()
 
-        decision = ClusterReviewDecisionModel(
+        self.people_review_repo.deactivate_cluster_review_decisions(cluster_id)
+        self.people_review_repo.save_cluster_review_decision(
             decision_id=_new_id("dec"),
             cluster_id=cluster_id,
             decision_type="low_confidence",
+            target_identity_id=None,
             notes=notes,
-            created_at=_now_iso(),
+            created_at=now,
             created_by=performed_by,
             is_active=True,
             source="user",
         )
-        self.people_review_repo.save_cluster_review_decision(decision)
 
+        action_payload = {
+            "cluster_id": cluster_id,
+            "marked_at": now,
+            "notes": notes,
+        }
         action_id = self.identity_repo.log_identity_action(
+            action_id=_new_id("act"),
             action_type="cluster_low_confidence",
+            created_at=now,
             cluster_id=cluster_id,
+            payload_json=json.dumps(action_payload, ensure_ascii=False),
             created_by=performed_by,
             is_undoable=False,
         )
 
-        self._emit_event(UNNAMED_CLUSTER_LOW_CONFIDENCE, {
-            "cluster_id": cluster_id,
-            "decision_id": decision.decision_id,
-            "action_id": action_id,
-        })
+        self._emit_cluster_decision_events(
+            event_name=UNNAMED_CLUSTER_LOW_CONFIDENCE,
+            identity_ids=[],
+            cluster_ids=[cluster_id],
+            payload={
+                "cluster_id": cluster_id,
+                "action_id": action_id,
+            },
+        )
 
-        logger.info("[ReviewService] Cluster %s marked low_confidence", cluster_id)
-        return {"status": "low_confidence", "action_id": action_id}
-
-    # ── Internal helpers ──────────────────────────────────────────────
-
-    def _to_merge_queue_item(self, candidate: MergeCandidateModel) -> dict:
-        """Convert a candidate model to a UI-ready queue item."""
         return {
-            "candidate_id": candidate.candidate_id,
-            "cluster_a_id": candidate.cluster_a_id,
-            "cluster_b_id": candidate.cluster_b_id,
-            "confidence_score": candidate.confidence_score,
-            "confidence_band": candidate.confidence_band,
-            "status": candidate.status,
-            "created_at": candidate.created_at,
-            "reviewed_at": candidate.reviewed_at,
+            "status": "low_confidence",
+            "cluster_id": cluster_id,
+            "action_id": action_id,
         }
 
-    def _build_cluster_panel_payload(self, cluster_id: str) -> dict:
-        """Build a UI-ready payload for one side of the compare view."""
+    # ------------------------------------------------------------------
+    # Internal UI payload builders
+    # ------------------------------------------------------------------
+
+    def _to_merge_queue_item(self, item) -> dict[str, Any]:
+        left_identity = self.identity_repo.get_identity_by_cluster_id(item.cluster_a_id)
+        right_identity = self.identity_repo.get_identity_by_cluster_id(item.cluster_b_id)
+
+        return {
+            "candidate_id": item.candidate_id,
+            "cluster_a_id": item.cluster_a_id,
+            "cluster_b_id": item.cluster_b_id,
+            "confidence_score": item.confidence_score,
+            "confidence_band": item.confidence_band,
+            "status": item.status,
+            "created_at": item.created_at,
+            "rationale": item.rationale,
+            "left_label": left_identity.display_name if left_identity and left_identity.display_name else item.cluster_a_id,
+            "right_label": right_identity.display_name if right_identity and right_identity.display_name else item.cluster_b_id,
+            "badges": self._build_merge_badges(item.confidence_band, item.status),
+        }
+
+    def _build_cluster_panel_payload(self, cluster_id: str) -> dict[str, Any]:
+        """
+        Minimal payload.
+        Replace/enrich later with:
+        - hero face thumbnail
+        - date span
+        - preview strip
+        - co-occurrence hints
+        """
         identity = self.identity_repo.get_identity_by_cluster_id(cluster_id)
+        decision = self.people_review_repo.get_active_cluster_review_decision(cluster_id)
+
         return {
             "cluster_id": cluster_id,
             "identity_id": identity.identity_id if identity else None,
             "display_name": identity.display_name if identity else None,
-            "is_protected": identity.is_protected if identity else False,
+            "canonical_cluster_id": identity.canonical_cluster_id if identity else None,
+            "is_protected": bool(identity.is_protected) if identity else False,
+            "decision_type": decision.decision_type if decision else None,
+            "badges": self._build_cluster_badges(decision.decision_type if decision else None),
         }
 
-    def _emit_event(self, event_name: str, payload: dict) -> None:
-        if self.event_bus and hasattr(self.event_bus, "emit"):
-            try:
-                self.event_bus.emit(event_name, payload)
-            except Exception:
-                logger.debug("[ReviewService] Event emission failed: %s",
-                             event_name, exc_info=True)
+    @staticmethod
+    def _build_merge_badges(confidence_band: str, status: str) -> list[str]:
+        badges: list[str] = []
 
-    def _emit_secondary_refresh_events(
+        if confidence_band == "high":
+            badges.append("High confidence")
+        elif confidence_band == "medium":
+            badges.append("Review")
+        elif confidence_band == "low":
+            badges.append("Review carefully")
+
+        if status == "accepted":
+            badges.append("Reviewed")
+        elif status == "rejected":
+            badges.append("Rejected")
+        elif status == "skipped":
+            badges.append("Skipped")
+
+        return badges
+
+    @staticmethod
+    def _build_cluster_badges(decision_type: str | None) -> list[str]:
+        badges: list[str] = []
+        if decision_type == "assign_existing":
+            badges.append("Assigned")
+        elif decision_type == "keep_separate":
+            badges.append("Separate")
+        elif decision_type == "ignore":
+            badges.append("Ignored")
+        elif decision_type == "low_confidence":
+            badges.append("Low confidence")
+        return badges
+
+    def _emit_cluster_decision_events(
         self,
-        cluster_ids: List[str],
-        identity_ids: List[str],
-        reason: str,
+        event_name: str,
+        identity_ids: list[str],
+        cluster_ids: list[str],
+        payload: dict[str, Any],
     ) -> None:
-        refresh = {
-            "cluster_ids": cluster_ids,
+        self.event_bus.emit(event_name, payload)
+
+        refresh_payload = {
             "identity_ids": identity_ids,
-            "reason": reason,
+            "cluster_ids": cluster_ids,
+            "reason": event_name,
         }
-        self._emit_event(PEOPLE_INDEX_REFRESH_REQUESTED, refresh)
-        self._emit_event(PEOPLE_REVIEW_QUEUE_REFRESH_REQUESTED, refresh)
-        self._emit_event(SEARCH_PERSON_FACETS_REFRESH_REQUESTED, refresh)
+        self.event_bus.emit(PEOPLE_INDEX_REFRESH_REQUESTED, refresh_payload)
+        self.event_bus.emit(PEOPLE_SIDEBAR_REFRESH_REQUESTED, refresh_payload)
+        self.event_bus.emit(PEOPLE_REVIEW_QUEUE_REFRESH_REQUESTED, refresh_payload)
+        self.event_bus.emit(SEARCH_PERSON_FACETS_REFRESH_REQUESTED, refresh_payload)

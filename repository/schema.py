@@ -1550,3 +1550,136 @@ def ensure_search_features_table(conn) -> bool:
         logger.info("[Schema] search_asset_features migration complete (v13.0.0)")
 
     return modified
+
+
+# ==============================================================================
+# UX-11: People Review Schema (v14.0.0)
+# ==============================================================================
+
+PEOPLE_REVIEW_SCHEMA_SQL = [
+    """
+    CREATE TABLE IF NOT EXISTS person_identity (
+        identity_id TEXT PRIMARY KEY,
+        display_name TEXT,
+        canonical_cluster_id TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        is_protected INTEGER NOT NULL DEFAULT 0,
+        is_hidden INTEGER NOT NULL DEFAULT 0,
+        source TEXT NOT NULL DEFAULT 'system'
+    );
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS identity_cluster_link (
+        link_id TEXT PRIMARY KEY,
+        identity_id TEXT NOT NULL,
+        cluster_id TEXT NOT NULL,
+        link_type TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        removed_at TEXT,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        source TEXT NOT NULL,
+        FOREIGN KEY(identity_id) REFERENCES person_identity(identity_id)
+    );
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS merge_candidate (
+        candidate_id TEXT PRIMARY KEY,
+        cluster_a_id TEXT NOT NULL,
+        cluster_b_id TEXT NOT NULL,
+        confidence_score REAL NOT NULL,
+        confidence_band TEXT NOT NULL,
+        rationale_json TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'unreviewed',
+        created_at TEXT NOT NULL,
+        reviewed_at TEXT,
+        reviewed_by TEXT,
+        model_version TEXT,
+        feature_version TEXT,
+        invalidated_reason TEXT,
+        superseded_by_candidate_id TEXT
+    );
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS cluster_review_decision (
+        decision_id TEXT PRIMARY KEY,
+        cluster_id TEXT NOT NULL,
+        decision_type TEXT NOT NULL,
+        target_identity_id TEXT,
+        notes TEXT,
+        created_at TEXT NOT NULL,
+        created_by TEXT,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        source TEXT NOT NULL DEFAULT 'user'
+    );
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS identity_action_log (
+        action_id TEXT PRIMARY KEY,
+        action_type TEXT NOT NULL,
+        identity_id TEXT,
+        cluster_id TEXT,
+        related_identity_id TEXT,
+        related_cluster_id TEXT,
+        candidate_id TEXT,
+        payload_json TEXT,
+        created_at TEXT NOT NULL,
+        created_by TEXT,
+        is_undoable INTEGER NOT NULL DEFAULT 1,
+        undone_by_action_id TEXT
+    );
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS review_queue_state (
+        queue_id TEXT PRIMARY KEY,
+        queue_type TEXT NOT NULL,
+        item_id TEXT NOT NULL,
+        sort_order INTEGER NOT NULL,
+        is_visible INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_identity_cluster_link_identity
+    ON identity_cluster_link(identity_id, is_active);
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_identity_cluster_link_cluster
+    ON identity_cluster_link(cluster_id, is_active);
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_merge_candidate_status
+    ON merge_candidate(status, created_at);
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_merge_candidate_pair
+    ON merge_candidate(cluster_a_id, cluster_b_id);
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_cluster_review_decision_cluster
+    ON cluster_review_decision(cluster_id, is_active);
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_identity_action_log_identity
+    ON identity_action_log(identity_id, created_at);
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_identity_action_log_candidate
+    ON identity_action_log(candidate_id, created_at);
+    """,
+]
+
+
+def ensure_people_review_schema(conn) -> None:
+    """
+    Applies the UX-11 schema extensions.
+    Safe to call on startup or in migrations.
+    """
+    cur = conn.cursor()
+    try:
+        for sql in PEOPLE_REVIEW_SCHEMA_SQL:
+            cur.execute(sql)
+        conn.commit()
+    finally:
+        cur.close()
