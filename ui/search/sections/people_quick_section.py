@@ -24,10 +24,26 @@ class PeopleQuickSection(QGroupBox):
         self.layout.addWidget(self.people_host)
 
         self.btn_merge_review = QPushButton("Review Possible Merges")
+        self.btn_merge_review.setStyleSheet("""
+            QPushButton {
+                background: #e8f0fe; color: #1a73e8;
+                border: 1px solid #d2e3fc; border-radius: 6px;
+                padding: 6px 10px; font-weight: 500;
+            }
+            QPushButton:hover { background: #d2e3fc; }
+        """)
         self.btn_merge_review.clicked.connect(self.mergeReviewRequested.emit)
         self.layout.addWidget(self.btn_merge_review)
 
         self.btn_unnamed = QPushButton("Show Unnamed Clusters")
+        self.btn_unnamed.setStyleSheet("""
+            QPushButton {
+                background: #fef7e0; color: #795548;
+                border: 1px solid #f9ab00; border-radius: 6px;
+                padding: 6px 10px; font-weight: 500;
+            }
+            QPushButton:hover { background: #fcefc7; }
+        """)
         self.btn_unnamed.clicked.connect(self.unnamedRequested.emit)
         self.layout.addWidget(self.btn_unnamed)
 

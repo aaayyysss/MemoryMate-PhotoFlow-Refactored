@@ -5,7 +5,8 @@ from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame
 class SmartFindCard(QFrame):
     clicked = Signal(str)
 
-    def __init__(self, preset_id: str, title: str, icon_text: str = "", parent=None):
+    def __init__(self, preset_id: str, title: str, icon_text: str = "",
+                 subtitle: str = "", parent=None):
         super().__init__(parent)
         self.preset_id = preset_id
         self._active = False
@@ -14,9 +15,11 @@ class SmartFindCard(QFrame):
         self.setObjectName("SmartFindCard")
         self.setCursor(Qt.PointingHandCursor)
         self.setFrameShape(QFrame.StyledPanel)
+        self.setMinimumHeight(52)
 
         self.lbl_icon = QLabel(icon_text)
         self.lbl_icon.setObjectName("SmartFindCardIcon")
+        self.lbl_icon.setStyleSheet("font-size: 16px;")
 
         self.lbl_title = QLabel(title)
         self.lbl_title.setObjectName("SmartFindCardTitle")
@@ -32,6 +35,12 @@ class SmartFindCard(QFrame):
         header_row.addWidget(self.lbl_title, 1)
         header_row.addWidget(self.lbl_count)
 
+        # Subtitle row
+        self.lbl_subtitle = QLabel(subtitle)
+        self.lbl_subtitle.setObjectName("SmartFindCardSubtitle")
+        self.lbl_subtitle.setStyleSheet("color: #5f6368; font-size: 11px;")
+        self.lbl_subtitle.setVisible(bool(subtitle))
+
         self.preview_row = QHBoxLayout()
         self.preview_row.setContentsMargins(0, 0, 0, 0)
         self.preview_row.setSpacing(4)
@@ -42,11 +51,16 @@ class SmartFindCard(QFrame):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 8, 10, 8)
-        layout.setSpacing(6)
+        layout.setSpacing(4)
         layout.addLayout(header_row)
+        layout.addWidget(self.lbl_subtitle)
         layout.addWidget(self.preview_host)
 
         self._apply_style()
+
+    def set_subtitle(self, text: str):
+        self.lbl_subtitle.setText(text)
+        self.lbl_subtitle.setVisible(bool(text))
 
     def set_count(self, count: int | None):
         self._count = count
@@ -89,6 +103,10 @@ class SmartFindCard(QFrame):
                 QLabel#SmartFindCardTitle {
                     font-weight: 600;
                 }
+                QLabel#SmartFindCardSubtitle {
+                    color: #174ea6;
+                    font-size: 11px;
+                }
                 QLabel#SmartFindCardCount {
                     color: #174ea6;
                     font-weight: 600;
@@ -113,6 +131,10 @@ class SmartFindCard(QFrame):
                 }
                 QLabel#SmartFindCardTitle {
                     font-weight: 500;
+                }
+                QLabel#SmartFindCardSubtitle {
+                    color: #5f6368;
+                    font-size: 11px;
                 }
                 QLabel#SmartFindCardCount {
                     color: #5f6368;
