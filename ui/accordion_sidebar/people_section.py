@@ -534,23 +534,24 @@ class PeopleSection(BaseSection):
         except Exception:
             return None, None
 
-    def _get_review_service(self) -> Optional[PeopleReviewService]:
-        """UX-11: get review service (business logic layer)."""
-        try:
-            review_repo, identity_repo = self._get_review_repos()
-            if review_repo is None or identity_repo is None:
-                return None
-            return PeopleReviewService(review_repo, identity_repo)
-        except Exception:
-            return None
-
     def _get_identity_service(self) -> Optional[IdentityResolutionService]:
         """UX-11: get identity resolution service."""
         try:
             review_repo, identity_repo = self._get_review_repos()
             if review_repo is None or identity_repo is None:
                 return None
-            return IdentityResolutionService(identity_repo, review_repo)
+            return IdentityResolutionService(identity_repo, review_repo, event_bus=None)
+        except Exception:
+            return None
+
+    def _get_review_service(self) -> Optional[PeopleReviewService]:
+        """UX-11: get review service (business logic layer)."""
+        try:
+            review_repo, identity_repo = self._get_review_repos()
+            if review_repo is None or identity_repo is None:
+                return None
+            identity_service = IdentityResolutionService(identity_repo, review_repo, event_bus=None)
+            return PeopleReviewService(review_repo, identity_repo, identity_service, event_bus=None)
         except Exception:
             return None
 
