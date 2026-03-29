@@ -344,6 +344,9 @@ class MainWindow(QMainWindow):
         self.layout_manager = LayoutManager(self)
         print("[MainWindow] Layout manager initialized")
 
+        # UX-10: Apply global visual style system
+        self._apply_global_style()
+
         self.setAttribute(Qt.WA_AcceptTouchEvents, True)
         QApplication.instance().setAttribute(Qt.AA_SynthesizeMouseForUnhandledTouchEvents, True)
         QApplication.instance().setAttribute(Qt.AA_SynthesizeTouchForUnhandledMouseEvents, True)
@@ -951,6 +954,8 @@ class MainWindow(QMainWindow):
 
         # UX-1 search shell, owned by MainWindow
         self.top_search_bar = TopSearchBar(self)
+        self.top_search_bar.setFixedHeight(42)
+        self.top_search_bar.setStyleSheet("background: #ffffff; border-radius: 8px;")
         self.search_results_header = SearchResultsHeader(
             store=self.search_state_store,
             controller=self.search_controller,
@@ -997,6 +1002,8 @@ class MainWindow(QMainWindow):
         )
 
         self.left_sidebar_container = QWidget()
+        self.left_sidebar_container.setFixedWidth(260)
+        self.left_sidebar_container.setStyleSheet("background: #ffffff;")
         self.left_sidebar_layout = QVBoxLayout(self.left_sidebar_container)
         self.left_sidebar_layout.setContentsMargins(0, 0, 0, 0)
         self.left_sidebar_layout.setSpacing(8)
@@ -3453,6 +3460,17 @@ class MainWindow(QMainWindow):
                 layout.attach_search_store(self.search_state_store)
         except Exception as e:
             print(f"[MainWindow] Error attaching search store to layout: {e}")
+
+    def _apply_global_style(self):
+        """UX-10: Load the global visual style system from ui/theme/style.qss."""
+        import os
+        qss_path = os.path.join(os.path.dirname(__file__), "ui", "theme", "style.qss")
+        try:
+            with open(qss_path, "r", encoding="utf-8") as f:
+                self.setStyleSheet(f.read())
+            print("[MainWindow] UX-10 global stylesheet loaded")
+        except Exception as e:
+            print(f"[MainWindow] Failed to load global stylesheet: {e}")
 
     def _safe_reload_current_layout(self):
         """UX-10: reload current layout only when project state is resolved."""

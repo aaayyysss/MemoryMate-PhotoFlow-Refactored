@@ -84,7 +84,7 @@ class SmartFindCard(QFrame):
                 QFrame#SmartFindCard {
                     background: #d2e3fc;
                     border: 1px solid #8ab4f8;
-                    border-radius: 8px;
+                    border-radius: 10px;
                 }
                 QLabel#SmartFindCardTitle {
                     font-weight: 600;
@@ -104,13 +104,12 @@ class SmartFindCard(QFrame):
         else:
             self.setStyleSheet("""
                 QFrame#SmartFindCard {
-                    background: #ffffff;
-                    border: 1px solid #dadce0;
-                    border-radius: 8px;
+                    background: white;
+                    border: 1px solid #e0e0e0;
+                    border-radius: 10px;
                 }
                 QFrame#SmartFindCard:hover {
-                    background: #f8f9fa;
-                    border: 1px solid #c6c6c6;
+                    border: 1px solid #1a73e8;
                 }
                 QLabel#SmartFindCardTitle {
                     font-weight: 500;

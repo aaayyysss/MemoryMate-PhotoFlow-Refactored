@@ -68,18 +68,6 @@ class ActiveChipsBar(QWidget):
             else:
                 btn.setObjectName("SearchChip")
 
-            # UX-10: Rounded pill styling for chips
-            btn.setStyleSheet("""
-                QPushButton {
-                    border-radius: 10px;
-                    padding: 4px 10px;
-                    background: #eef3fd;
-                    font-size: 12px;
-                }
-                QPushButton:hover {
-                    background: #dbe7ff;
-                }
-            """)
             btn.setCursor(Qt.PointingHandCursor)
             btn.clicked.connect(lambda checked=False, k=kind, v=value: self.chipRemoved.emit(k, v))
             self.layout.addWidget(btn)
