@@ -1050,6 +1050,9 @@ class MainWindow(QMainWindow):
         from services.ui_refresh_mediator import UIRefreshMediator
         self._ui_refresh_mediator = UIRefreshMediator(self, parent=self)
 
+        # === UX-11: People identity services and event bus ===
+        self._init_people_identity_services()
+
         # === Central Face Pipeline Service wiring ===
         try:
             from services.face_pipeline_service import FacePipelineService
@@ -1120,6 +1123,8 @@ class MainWindow(QMainWindow):
                 except Exception:
                     pass
                 self._ui_refresh_mediator.request_refresh({"people"}, "pipeline_done", pid)
+                # UX-11: Invalidate stale merge candidates after reclustering
+                self._invalidate_people_review_after_recluster(results)
                 if hasattr(self, "_refresh_people_quick_section"):
                     self._refresh_people_quick_section()
                 if hasattr(self, "_refresh_activity_snapshot"):
@@ -3365,6 +3370,110 @@ class MainWindow(QMainWindow):
 
         return facets
 
+    # === UX-11: People identity service initialization and event wiring ===
+
+    def _init_people_identity_services(self):
+        """UX-11: Initialize people identity services, repos, and event bus."""
+        try:
+            from services.people_event_bus import PeopleEventBus
+            from repository.schema import ensure_people_review_schema
+            from repository.people_review_repository import PeopleReviewRepository
+            from repository.identity_repository import IdentityRepository
+            from services.identity_resolution_service import IdentityResolutionService
+            from services.people_review_service import PeopleReviewService
+            from services.people_review_invalidation_service import PeopleReviewInvalidationService
+
+            # Create the event bus
+            self._people_event_bus = PeopleEventBus(parent=self)
+            self._people_event_bus.event_fired.connect(self._on_people_review_event)
+
+            # Get a DB connection for schema and repos
+            from repository.base_repository import DatabaseConnection
+            db_conn = DatabaseConnection()
+            conn = db_conn.get_connection()
+
+            # Ensure UX-11 schema tables exist
+            ensure_people_review_schema(conn)
+
+            # Instantiate repositories
+            self._people_review_repo = PeopleReviewRepository(conn)
+            self._identity_repo = IdentityRepository(conn)
+
+            # Instantiate services with event bus
+            self._identity_resolution_service = IdentityResolutionService(
+                identity_repo=self._identity_repo,
+                people_review_repo=self._people_review_repo,
+                event_bus=self._people_event_bus,
+            )
+
+            self._people_review_service = PeopleReviewService(
+                people_review_repo=self._people_review_repo,
+                identity_repo=self._identity_repo,
+                identity_resolution_service=self._identity_resolution_service,
+                event_bus=self._people_event_bus,
+            )
+
+            self._people_review_invalidation_service = PeopleReviewInvalidationService(
+                people_review_repo=self._people_review_repo,
+                identity_repo=self._identity_repo,
+                event_bus=self._people_event_bus,
+            )
+
+            logger.info("[UX-11] People identity services initialized successfully")
+
+        except Exception as e:
+            logger.debug("[UX-11] People identity services init failed: %s", e)
+            self._people_event_bus = None
+            self._people_review_repo = None
+            self._identity_repo = None
+            self._identity_resolution_service = None
+            self._people_review_service = None
+            self._people_review_invalidation_service = None
+
+    def _invalidate_people_review_after_recluster(self, results: dict) -> None:
+        """UX-11: Invalidate stale merge candidates after face pipeline completes."""
+        try:
+            inv_svc = getattr(self, '_people_review_invalidation_service', None)
+            if not inv_svc:
+                return
+
+            changed_cluster_ids = results.get("changed_cluster_ids", []) or []
+            if changed_cluster_ids:
+                count = inv_svc.invalidate_candidates_for_reclustered_clusters(
+                    cluster_ids=changed_cluster_ids,
+                    reason="cluster_membership_changed",
+                )
+                if count > 0:
+                    logger.info("[UX-11] Invalidated %d stale merge candidates after recluster", count)
+        except Exception as e:
+            logger.debug("[UX-11] Post-recluster invalidation failed: %s", e)
+
+    def _on_people_review_event(self, event_name: str, payload: dict) -> None:
+        """UX-11: Central handler for all people/identity service events."""
+        if self._closing:
+            return
+
+        # Refresh sidebar people section
+        try:
+            if hasattr(self, '_ui_refresh_mediator'):
+                self._ui_refresh_mediator.request_refresh({"people"}, event_name, None)
+        except Exception:
+            pass
+
+        # Refresh merge dialog if open
+        try:
+            if hasattr(self, '_people_merge_review_dlg') and self._people_merge_review_dlg is not None:
+                if self._people_merge_review_dlg.isVisible():
+                    self._people_merge_review_dlg.refresh_from_event(payload)
+        except Exception:
+            pass
+
+        # Refresh people quick section (search store, sidebar counts)
+        try:
+            self._refresh_people_quick_section()
+        except Exception:
+            pass
+
     def _refresh_people_quick_section(self):
         """
         UX-9B/9C bridge: populate PeopleQuickSection, merge suggestions,
@@ -3519,29 +3628,42 @@ class MainWindow(QMainWindow):
             print(f"[UX-7A] Failed to open activity center: {e}")
 
     def _open_people_merge_review(self):
-        """UX-9B: open side-by-side PeopleMergeReviewDialog."""
+        """UX-9B/11: open side-by-side PeopleMergeReviewDialog with service integration."""
         try:
             from ui.search.people_merge_review_dialog import PeopleMergeReviewDialog
 
-            state = self.search_state_store.get_state()
-            suggestions = list(getattr(state, "merge_suggestions", []) or [])
-
-            if not suggestions:
-                from PySide6.QtWidgets import QMessageBox
-                QMessageBox.information(self, "No Suggestions", "No merge suggestions are available right now.")
-                return
-
             dlg = PeopleMergeReviewDialog(self)
-            dlg.set_suggestions(suggestions)
+            self._people_merge_review_dlg = dlg  # UX-11: track for event-driven refresh
+
+            # UX-11: Inject services if available for service-driven mode
+            svc = getattr(self, '_people_review_service', None)
+            irs = getattr(self, '_identity_resolution_service', None)
+            if svc and irs:
+                dlg.set_services(svc, irs)
+                dlg.reload_queue()
+            else:
+                # Fallback to legacy suggestion-driven mode
+                state = self.search_state_store.get_state()
+                suggestions = list(getattr(state, "merge_suggestions", []) or [])
+                if not suggestions:
+                    from PySide6.QtWidgets import QMessageBox
+                    QMessageBox.information(self, "No Suggestions", "No merge suggestions are available right now.")
+                    self._people_merge_review_dlg = None
+                    return
+                dlg.set_suggestions(suggestions)
+
+            # Legacy signal wiring (fallback for non-service mode)
             dlg.reviewRequested.connect(lambda left_id, right_id: self._load_merge_review_payload(dlg, left_id, right_id))
             dlg.mergeAccepted.connect(self._accept_people_merge_suggestion)
             dlg.mergeRejected.connect(self._reject_people_merge_suggestion)
             dlg.mergePostponed.connect(self._postpone_people_merge_suggestion)
             dlg.undoLastMerge.connect(self._undo_last_people_merge)
             dlg.exec()
+            self._people_merge_review_dlg = None  # Clear ref after close
 
         except Exception as e:
-            print(f"[UX-9B] Failed to open merge review dialog: {e}")
+            print(f"[UX-9B/11] Failed to open merge review dialog: {e}")
+            self._people_merge_review_dlg = None
 
     def _load_merge_review_payload(self, dialog, left_id: str, right_id: str):
         """UX-9B: fetch comparison payload for the selected merge pair."""
@@ -3577,13 +3699,21 @@ class MainWindow(QMainWindow):
             print(f"[UX-9C] Failed to open unnamed review dialog: {e}")
 
     def _open_unnamed_cluster_review(self):
-        """UX-9C: launch UnnamedClusterAssignmentDialog with assign/promote/ignore."""
+        """UX-9C/11: launch UnnamedClusterAssignmentDialog with service integration."""
         try:
             from ui.search.unnamed_cluster_assignment_dialog import UnnamedClusterAssignmentDialog
 
             state = self.search_state_store.get_state()
             clusters = list(getattr(state, "unnamed_clusters", []) or [])
             identities = list(getattr(state, "named_identity_choices", []) or [])
+
+            # UX-11: Enrich identity choices from identity layer when available
+            svc = getattr(self, '_people_review_service', None)
+            if svc and not identities:
+                try:
+                    identities = svc.get_cluster_assign_suggestions("", limit=20)
+                except Exception:
+                    pass
 
             dlg = UnnamedClusterAssignmentDialog(self)
             dlg.set_clusters(clusters)
@@ -3594,7 +3724,7 @@ class MainWindow(QMainWindow):
             dlg.exec()
 
         except Exception as e:
-            print(f"[UX-9C] Failed to open unnamed cluster review: {e}")
+            print(f"[UX-9C/11] Failed to open unnamed cluster review: {e}")
 
     def _open_unnamed_clusters_review(self):
         """UX-9A: open lightweight unnamed clusters review dialog."""
@@ -3650,8 +3780,22 @@ class MainWindow(QMainWindow):
             print(f"[UX-10] Failed to assign unnamed cluster: {e}")
 
     def _keep_unnamed_cluster_separate(self, cluster_id: str):
-        """UX-10C: route keep-separate action to people_section backend."""
+        """UX-10C/11: route keep-separate through UX-11 service or legacy backend."""
         try:
+            # UX-11: Try service-driven path first
+            svc = getattr(self, '_people_review_service', None)
+            if svc:
+                try:
+                    svc.keep_cluster_as_separate_person(
+                        cluster_id=cluster_id,
+                        performed_by="user",
+                    )
+                    self._refresh_people_quick_section()
+                    return
+                except Exception as e:
+                    logger.debug("[UX-11] Service keep_separate failed, falling back: %s", e)
+
+            # Legacy fallback
             handled = False
             if hasattr(self, "sidebar") and hasattr(self.sidebar, "accordion"):
                 ps = self.sidebar.accordion.section_logic.get("people")
@@ -3668,7 +3812,7 @@ class MainWindow(QMainWindow):
 
             self._refresh_people_quick_section()
         except Exception as e:
-            print(f"[UX-10] Failed to keep unnamed cluster separate: {e}")
+            print(f"[UX-10/11] Failed to keep unnamed cluster separate: {e}")
 
     def _mark_unnamed_cluster_distinct(self, cluster_id: str):
         """UX-9C: mark an unnamed cluster as a distinct person."""
@@ -3694,8 +3838,22 @@ class MainWindow(QMainWindow):
             print(f"[UX-9] Failed to mark unnamed cluster distinct: {e}")
 
     def _ignore_unnamed_cluster(self, cluster_id: str):
-        """UX-10C: route ignore action to people_section backend."""
+        """UX-10C/11: route ignore action through UX-11 service or legacy backend."""
         try:
+            # UX-11: Try service-driven path first
+            svc = getattr(self, '_people_review_service', None)
+            if svc:
+                try:
+                    svc.ignore_cluster(
+                        cluster_id=cluster_id,
+                        performed_by="user",
+                    )
+                    self._refresh_people_quick_section()
+                    return
+                except Exception as e:
+                    logger.debug("[UX-11] Service ignore failed, falling back: %s", e)
+
+            # Legacy fallback
             handled = False
             if hasattr(self, "sidebar") and hasattr(self.sidebar, "accordion"):
                 ps = self.sidebar.accordion.section_logic.get("people")
@@ -3712,11 +3870,26 @@ class MainWindow(QMainWindow):
 
             self._refresh_people_quick_section()
         except Exception as e:
-            print(f"[UX-10] Failed to ignore unnamed cluster: {e}")
+            print(f"[UX-10/11] Failed to ignore unnamed cluster: {e}")
 
     def _assign_unnamed_cluster_to_identity(self, branch_key: str, target_identity: str):
-        """UX-9C: route assign-to-identity action to people_section backend."""
+        """UX-9C/11: route assign-to-identity through UX-11 service or legacy backend."""
         try:
+            # UX-11: Try service-driven path first
+            svc = getattr(self, '_people_review_service', None)
+            if svc:
+                try:
+                    svc.assign_cluster_to_existing_identity(
+                        cluster_id=branch_key,
+                        target_identity_id=target_identity,
+                        performed_by="user",
+                    )
+                    self._refresh_people_quick_section()
+                    return
+                except Exception as e:
+                    logger.debug("[UX-11] Service assign failed, falling back: %s", e)
+
+            # Legacy fallback
             handled = False
 
             if hasattr(self, "sidebar") and hasattr(self.sidebar, "accordion"):

@@ -557,12 +557,21 @@ class PeopleSection(BaseSection):
 
     def get_people_quick_payload(self):
         """
-        UX-8A adapter for the centralized search shell.
+        UX-8A/11 adapter for the centralized search shell.
         Returns:
-        - top identities
-        - suspicious merge-review count
+        - top identities (from durable identity layer when available)
+        - merge review count (from review service when available)
         - unnamed cluster count
         """
+        # UX-11: Try identity-layer-aware path first
+        try:
+            identity_payload = self._get_identity_layer_quick_payload()
+            if identity_payload:
+                return identity_payload
+        except Exception:
+            pass
+
+        # Fallback: legacy raw-cluster-based payload
         try:
             payload = {
                 "top_people": [],
@@ -612,6 +621,76 @@ class PeopleSection(BaseSection):
                 "merge_candidates": 0,
                 "unnamed_count": 0,
             }
+
+    def _get_identity_layer_quick_payload(self):
+        """UX-11: Build quick payload from durable identity layer."""
+        review_svc = self._get_review_service()
+        if not review_svc:
+            return None
+
+        identity_repo = getattr(review_svc, 'identity_repo', None)
+        if not identity_repo or not hasattr(identity_repo, 'conn'):
+            return None
+
+        # Top identities from person_identity + cluster links
+        try:
+            cur = identity_repo.conn.execute("""
+                SELECT
+                    pi.identity_id,
+                    pi.display_name,
+                    pi.canonical_cluster_id,
+                    pi.is_protected,
+                    COUNT(icl.cluster_id) AS cluster_count
+                FROM person_identity pi
+                LEFT JOIN identity_cluster_link icl
+                    ON icl.identity_id = pi.identity_id
+                   AND icl.is_active = 1
+                WHERE pi.is_hidden = 0
+                GROUP BY pi.identity_id
+                ORDER BY
+                    pi.is_protected DESC,
+                    cluster_count DESC,
+                    pi.updated_at DESC
+                LIMIT 12
+            """)
+            rows = cur.fetchall()
+        except Exception:
+            return None
+
+        if not rows:
+            return None  # No identities yet, fall back to legacy
+
+        top_people = []
+        for row in rows:
+            identity_id = row[0]
+            display_name = row[1] or row[2] or identity_id
+            top_people.append({
+                "id": str(identity_id),
+                "label": str(display_name),
+                "count": int(row[4] or 0),
+                "is_protected": bool(row[3]),
+            })
+
+        # Merge candidate count from review service
+        merge_count = 0
+        unnamed_count = 0
+        try:
+            merge_queue = review_svc.get_merge_review_queue(include_reviewed=False, limit=None)
+            merge_count = len(merge_queue)
+        except Exception:
+            pass
+
+        try:
+            unnamed_queue = review_svc.get_unnamed_review_queue(include_low_value=False, limit=None)
+            unnamed_count = len(unnamed_queue)
+        except Exception:
+            pass
+
+        return {
+            "top_people": top_people[:8],
+            "merge_candidates": merge_count,
+            "unnamed_count": unnamed_count,
+        }
 
     def get_merge_suggestions(self):
         """
