@@ -271,6 +271,66 @@ class PeopleMergeReviewDialog(QDialog):
         self.btn_reject.clicked.connect(self._emit_reject)
         self.btn_skip.clicked.connect(self._emit_skip)
 
+    # ── UX-11 service-driven mode ──────────────────────────────────
+
+    def set_services(self, people_review_service, identity_resolution_service):
+        """UX-11: Inject services for service-driven merge review."""
+        self._people_review_service = people_review_service
+        self._identity_resolution_service = identity_resolution_service
+
+    def reload_queue(self):
+        """UX-11: Reload the candidate list from PeopleReviewService."""
+        svc = getattr(self, '_people_review_service', None)
+        if not svc:
+            return
+
+        queue_items = svc.get_merge_review_queue(include_reviewed=False, limit=None)
+        self._queue_items = queue_items
+
+        # Convert to suggestions format for set_suggestions()
+        suggestions = []
+        for item in queue_items:
+            suggestions.append({
+                "candidate_id": item.get("candidate_id"),
+                "left_id": item.get("cluster_a_id", ""),
+                "right_id": item.get("cluster_b_id", ""),
+                "score": item.get("confidence_score"),
+                "confidence_band": item.get("confidence_band", ""),
+                "left_count": "?",
+                "right_count": "?",
+                "left_label": item.get("left_label", item.get("cluster_a_id", "")),
+                "right_label": item.get("right_label", item.get("cluster_b_id", "")),
+                "rationale": item.get("rationale", {}),
+                "status": item.get("status", "unreviewed"),
+                "badges": item.get("badges", []),
+            })
+        self.set_suggestions(suggestions)
+
+    def _find_candidate_id_for_pair(self, left_id, right_id):
+        """UX-11: Find candidate_id for a left/right pair from queue items."""
+        for item in getattr(self, '_queue_items', []):
+            if (item.get("cluster_a_id") == left_id and item.get("cluster_b_id") == right_id):
+                return item.get("candidate_id")
+            if (item.get("cluster_a_id") == right_id and item.get("cluster_b_id") == left_id):
+                return item.get("candidate_id")
+        return None
+
+    def refresh_from_event(self, payload=None):
+        """UX-11: Refresh from service event, preserving current selection."""
+        svc = getattr(self, '_people_review_service', None)
+        if not svc:
+            return
+        saved_pair = self._current_pair
+        self.reload_queue()
+        # Try to restore selection
+        if saved_pair and self.list_widget.count() > 0:
+            for i in range(self.list_widget.count()):
+                item = self.list_widget.item(i)
+                pair = item.data(256)
+                if pair == saved_pair:
+                    self.list_widget.setCurrentRow(i)
+                    return
+
     def set_suggestions(self, suggestions):
         self.list_widget.clear()
         suggestions = list(suggestions or [])
@@ -369,10 +429,27 @@ class PeopleMergeReviewDialog(QDialog):
 
     def _emit_merge(self):
         if self._current_pair:
+            svc = getattr(self, '_identity_resolution_service', None)
+            candidate_id = self._find_candidate_id_for_pair(*self._current_pair) if svc else None
+
+            if svc and candidate_id:
+                try:
+                    result = svc.accept_merge_candidate(
+                        candidate_id=candidate_id,
+                        reviewed_by="user",
+                    )
+                    self._last_merge_identity_id = result.get("identity_id")
+                except Exception as e:
+                    print(f"[UX-11] Service accept failed, falling back to signal: {e}")
+                    svc = None
+
             self._decision_counts["merged"] += 1
             self._last_merged_pair = self._current_pair
             self._update_decision_log()
-            self.mergeAccepted.emit(*self._current_pair)
+
+            if not (svc and candidate_id):
+                self.mergeAccepted.emit(*self._current_pair)
+
             self._show_undo_toast(
                 f"Merged {self._current_pair[0]} and {self._current_pair[1]}"
             )
@@ -380,16 +457,48 @@ class PeopleMergeReviewDialog(QDialog):
 
     def _emit_reject(self):
         if self._current_pair:
+            svc = getattr(self, '_identity_resolution_service', None)
+            candidate_id = self._find_candidate_id_for_pair(*self._current_pair) if svc else None
+
+            if svc and candidate_id:
+                try:
+                    svc.reject_merge_candidate(
+                        candidate_id=candidate_id,
+                        reviewed_by="user",
+                    )
+                except Exception as e:
+                    print(f"[UX-11] Service reject failed, falling back to signal: {e}")
+                    svc = None
+
             self._decision_counts["rejected"] += 1
             self._update_decision_log()
-            self.mergeRejected.emit(*self._current_pair)
+
+            if not (svc and candidate_id):
+                self.mergeRejected.emit(*self._current_pair)
+
             self._advance_to_next()
 
     def _emit_skip(self):
         if self._current_pair:
+            svc = getattr(self, '_identity_resolution_service', None)
+            candidate_id = self._find_candidate_id_for_pair(*self._current_pair) if svc else None
+
+            if svc and candidate_id:
+                try:
+                    svc.skip_merge_candidate(
+                        candidate_id=candidate_id,
+                        reviewed_by="user",
+                    )
+                except Exception as e:
+                    print(f"[UX-11] Service skip failed, falling back to signal: {e}")
+                    svc = None
+
             self._decision_counts["skipped"] += 1
             self._update_decision_log()
-            self.mergePostponed.emit(*self._current_pair)
+
+            if not (svc and candidate_id):
+                self.mergePostponed.emit(*self._current_pair)
+
             self._advance_to_next()
 
     # UX-11B: Undo toast support
@@ -405,10 +514,25 @@ class PeopleMergeReviewDialog(QDialog):
         self._last_merged_pair = None
 
     def _on_undo_clicked(self):
-        """Emit undo signal for the last merged pair."""
+        """Emit undo signal for the last merged pair. Uses service if available."""
         if self._last_merged_pair:
             left_id, right_id = self._last_merged_pair
-            self.undoLastMerge.emit(left_id, right_id)
+
+            # UX-11: Try service-driven undo first
+            svc = getattr(self, '_identity_resolution_service', None)
+            identity_id = getattr(self, '_last_merge_identity_id', None)
+            if svc and identity_id:
+                try:
+                    svc.reverse_last_merge_for_identity(
+                        identity_id=identity_id,
+                        performed_by="user",
+                    )
+                except Exception as e:
+                    print(f"[UX-11] Service undo failed, falling back to signal: {e}")
+                    self.undoLastMerge.emit(left_id, right_id)
+            else:
+                self.undoLastMerge.emit(left_id, right_id)
+
             self._decision_counts["merged"] = max(0, self._decision_counts["merged"] - 1)
             self._update_decision_log()
             self._hide_undo_toast()
