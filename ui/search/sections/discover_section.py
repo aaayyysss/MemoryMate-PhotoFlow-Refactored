@@ -19,16 +19,16 @@ class DiscoverSection(QGroupBox):
 
     def _build_cards(self):
         presets = [
-            ("beach", "Beach", "🌊"),
-            ("mountains", "Mountains", "🏔"),
-            ("city", "City", "🌆"),
-            ("forest", "Forest", "🌲"),
-            ("documents", "Documents", "📄"),
-            ("screenshots", "Screenshots", "📱"),
+            ("beach", "Beach", "\U0001f30a", "Sun / Coast / Holiday"),
+            ("mountains", "Mountains", "\U0001f3d4", "Landscape / Peaks / Hiking"),
+            ("city", "City", "\U0001f306", "Urban / Street / Buildings"),
+            ("forest", "Forest", "\U0001f332", "Trees / Nature / Green"),
+            ("documents", "Documents", "\U0001f4c4", "Scans / Notes / Receipts"),
+            ("screenshots", "Screenshots", "\U0001f4f1", "Apps / Chats / UI"),
         ]
 
-        for preset_id, title, icon_text in presets:
-            card = SmartFindCard(preset_id, title, icon_text)
+        for preset_id, title, icon_text, subtitle in presets:
+            card = SmartFindCard(preset_id, title, icon_text, subtitle)
             card.clicked.connect(self.presetSelected.emit)
             self.layout.addWidget(card)
             self.cards[preset_id] = card
