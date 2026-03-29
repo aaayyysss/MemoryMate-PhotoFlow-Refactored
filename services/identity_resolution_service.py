@@ -1,226 +1,487 @@
 """
-UX-11A: Identity Resolution Service — single authoritative source for identity membership.
+UX-11B: Identity Resolution Service — single authoritative source for identity membership.
+
+This is the most important service in the UX-11 package.
 
 Responsibilities:
   - Resolve a cluster/branch key to its canonical identity
-  - Track identity links (which clusters belong to which identity)
-  - Provide the ground truth for "who is this person" queries
-  - Detect protected identities (user-confirmed merges that must not be re-split)
-  - Support undo by recording the merge chain
+  - Accept/reject/skip merge candidates with non-destructive semantics
+  - Reverse merges (undo) by deactivating links, not deleting data
+  - Detach clusters from identities
+  - Protect/unprotect identities
+  - Emit domain events for cross-system coherence
 
-This service reads from both the live database (face_branch_reps, branches)
-and the review repository (merge decisions, cluster decisions).
-It does NOT own the merge execution — that stays with ReferenceDB.merge_face_clusters.
+Merge acceptance does NOT destructively replace clusters.
+Instead it attaches the secondary cluster to the target identity via link.
 """
 
 from __future__ import annotations
 
+import json
 import logging
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Set
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
 
-from repository.people_merge_review_repository import PeopleMergeReviewRepository
+from models.people_review_models import (
+    IdentitySnapshot,
+    MergeCandidateModel,
+    PersonIdentityModel,
+)
+from repository.identity_repository import IdentityRepository
+from repository.people_review_repository import PeopleReviewRepository
+from services.domain_events import (
+    MERGE_CANDIDATE_ACCEPTED,
+    MERGE_CANDIDATE_REJECTED,
+    MERGE_CANDIDATE_SKIPPED,
+    MERGE_REVERSED,
+    IDENTITY_CLUSTER_DETACHED,
+    IDENTITY_PROTECTED,
+    IDENTITY_UNPROTECTED,
+    PEOPLE_INDEX_REFRESH_REQUESTED,
+    PEOPLE_SIDEBAR_REFRESH_REQUESTED,
+    PEOPLE_REVIEW_QUEUE_REFRESH_REQUESTED,
+    SEARCH_PERSON_FACETS_REFRESH_REQUESTED,
+)
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class IdentityRecord:
-    """A resolved identity with its constituent clusters."""
-    identity_id: str          # canonical branch_key (the merge target)
-    label: str                # display name
-    member_cluster_ids: List[str] = field(default_factory=list)
-    photo_count: int = 0
-    is_named: bool = False
-    is_protected: bool = False  # user-confirmed merges — do not auto-split
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
 class IdentityResolutionService:
     """
-    UX-11A: Single authoritative source for identity membership.
+    UX-11B: Single authoritative source for identity membership.
 
-    Combines live DB state with review decisions to produce a consistent
-    view of "who is who" for search, sidebar, and merge dialogs.
+    Combines the durable identity layer (person_identity + identity_cluster_link)
+    with the merge candidate lifecycle to provide a consistent view for
+    search, sidebar, and merge dialogs.
     """
 
-    def __init__(self, db, repo: PeopleMergeReviewRepository,
-                 project_id: Optional[int] = None):
-        self._db = db
-        self._repo = repo
-        self._project_id = project_id
+    def __init__(
+        self,
+        identity_repo: IdentityRepository,
+        people_review_repo: PeopleReviewRepository,
+        event_bus=None,
+    ):
+        self.identity_repo = identity_repo
+        self.people_review_repo = people_review_repo
+        self.event_bus = event_bus  # Qt signal hub or None
 
-    @property
-    def project_id(self) -> Optional[int]:
-        return self._project_id
+    # ── Identity resolution ───────────────────────────────────────────
 
-    @project_id.setter
-    def project_id(self, value: int):
-        self._project_id = value
+    def ensure_identity_for_cluster(
+        self, cluster_id: str, source: str = "system",
+    ) -> str:
+        """Ensure a cluster has a durable identity. Create one if missing."""
+        existing = self.identity_repo.get_identity_by_cluster_id(cluster_id)
+        if existing:
+            return existing.identity_id
 
-    # ── Core resolution ───────────────────────────────────────────────
+        identity_id = self.identity_repo.create_identity(
+            canonical_cluster_id=cluster_id,
+            source=source,
+        )
+        self.identity_repo.attach_cluster_to_identity(
+            identity_id=identity_id,
+            cluster_id=cluster_id,
+            link_type="canonical",
+            source=source,
+        )
+        return identity_id
 
-    def resolve_identity(self, cluster_id: str) -> Optional[IdentityRecord]:
-        """Resolve a single cluster/branch key to its identity record."""
-        if not self._db or not self._project_id:
+    def get_identity_for_cluster(
+        self, cluster_id: str,
+    ) -> Optional[PersonIdentityModel]:
+        return self.identity_repo.get_identity_by_cluster_id(cluster_id)
+
+    def get_identity_snapshot(
+        self, identity_id: str,
+    ) -> Optional[IdentitySnapshot]:
+        identity = self.identity_repo.get_identity(identity_id)
+        if not identity:
             return None
+        cluster_ids = self.identity_repo.get_cluster_ids_for_identity(identity_id)
+        badges = self._compute_badges(identity)
+        return IdentitySnapshot(
+            identity=identity,
+            cluster_ids=cluster_ids,
+            badges=badges,
+        )
+
+    # ── Merge candidate actions ───────────────────────────────────────
+
+    def accept_merge_candidate(
+        self,
+        candidate_id: str,
+        reviewed_by: Optional[str] = None,
+    ) -> dict:
+        """Accept a merge candidate — non-destructive identity attachment."""
+        candidate = self.people_review_repo.get_merge_candidate(candidate_id)
+        if not candidate:
+            raise ValueError(f"Unknown merge candidate: {candidate_id}")
+        if candidate.status not in ("unreviewed", "skipped"):
+            raise ValueError(
+                f"Candidate {candidate_id} not mergeable from status={candidate.status}"
+            )
+
+        identity_a = self.identity_repo.get_identity_by_cluster_id(candidate.cluster_a_id)
+        identity_b = self.identity_repo.get_identity_by_cluster_id(candidate.cluster_b_id)
+
+        # Already same identity
+        if (identity_a and identity_b
+                and identity_a.identity_id == identity_b.identity_id):
+            self.people_review_repo.update_merge_candidate_status(
+                candidate_id,
+                status="invalidated",
+                reviewed_at=_now_iso(),
+                reviewed_by=reviewed_by,
+                invalidated_reason="already_same_identity",
+            )
+            return {"status": "already_same_identity"}
+
+        # Determine target identity and secondary cluster
+        if identity_a and not identity_b:
+            target_identity_id = identity_a.identity_id
+            secondary_cluster_id = candidate.cluster_b_id
+        elif identity_b and not identity_a:
+            target_identity_id = identity_b.identity_id
+            secondary_cluster_id = candidate.cluster_a_id
+        elif identity_a and identity_b:
+            target_identity_id = self._select_primary_identity(
+                identity_a, identity_b
+            )
+            secondary_cluster_id = (
+                candidate.cluster_b_id
+                if target_identity_id == identity_a.identity_id
+                else candidate.cluster_a_id
+            )
+        else:
+            # Neither cluster has an identity — create one
+            target_identity_id = self.identity_repo.create_identity(
+                canonical_cluster_id=candidate.cluster_a_id,
+                source="merge_accept",
+            )
+            self.identity_repo.attach_cluster_to_identity(
+                identity_id=target_identity_id,
+                cluster_id=candidate.cluster_a_id,
+                link_type="canonical",
+                source="merge_accept",
+            )
+            secondary_cluster_id = candidate.cluster_b_id
+
+        # Attach secondary cluster to target identity
+        self.identity_repo.attach_cluster_to_identity(
+            identity_id=target_identity_id,
+            cluster_id=secondary_cluster_id,
+            link_type="merged_into_identity",
+            source="merge_accept",
+        )
+
+        # Log the action
+        payload = json.dumps({
+            "candidate_id": candidate_id,
+            "cluster_a_id": candidate.cluster_a_id,
+            "cluster_b_id": candidate.cluster_b_id,
+            "secondary_cluster_id": secondary_cluster_id,
+            "confidence_score": candidate.confidence_score,
+        })
+        action_id = self.identity_repo.log_identity_action(
+            action_type="merge_accepted",
+            identity_id=target_identity_id,
+            related_cluster_id=secondary_cluster_id,
+            candidate_id=candidate_id,
+            payload_json=payload,
+            created_by=reviewed_by,
+            is_undoable=True,
+        )
+
+        # Update candidate status
+        self.people_review_repo.update_merge_candidate_status(
+            candidate_id,
+            status="accepted",
+            reviewed_at=_now_iso(),
+            reviewed_by=reviewed_by,
+        )
+
+        # Emit events
+        event_payload = {
+            "candidate_id": candidate_id,
+            "identity_id": target_identity_id,
+            "cluster_a_id": candidate.cluster_a_id,
+            "cluster_b_id": candidate.cluster_b_id,
+            "action_id": action_id,
+        }
+        self._emit_event(MERGE_CANDIDATE_ACCEPTED, event_payload)
+        self._emit_refresh_events(
+            identity_ids=[target_identity_id],
+            cluster_ids=[candidate.cluster_a_id, candidate.cluster_b_id],
+            reason="merge_candidate_accepted",
+        )
+
+        logger.info(
+            "[IdentityService] Accepted merge %s: %s + %s -> identity %s",
+            candidate_id, candidate.cluster_a_id, candidate.cluster_b_id,
+            target_identity_id,
+        )
+        return {
+            "status": "accepted",
+            "identity_id": target_identity_id,
+            "action_id": action_id,
+        }
+
+    def reject_merge_candidate(
+        self,
+        candidate_id: str,
+        reviewed_by: Optional[str] = None,
+    ) -> dict:
+        """Reject a merge candidate — persist rejection, no identity change."""
+        candidate = self.people_review_repo.get_merge_candidate(candidate_id)
+        if not candidate:
+            raise ValueError(f"Unknown merge candidate: {candidate_id}")
+
+        self.people_review_repo.update_merge_candidate_status(
+            candidate_id,
+            status="rejected",
+            reviewed_at=_now_iso(),
+            reviewed_by=reviewed_by,
+        )
+
+        action_id = self.identity_repo.log_identity_action(
+            action_type="merge_rejected",
+            candidate_id=candidate_id,
+            cluster_id=candidate.cluster_a_id,
+            related_cluster_id=candidate.cluster_b_id,
+            created_by=reviewed_by,
+            is_undoable=False,
+        )
+
+        self._emit_event(MERGE_CANDIDATE_REJECTED, {
+            "candidate_id": candidate_id,
+            "cluster_a_id": candidate.cluster_a_id,
+            "cluster_b_id": candidate.cluster_b_id,
+            "action_id": action_id,
+        })
+        self._emit_event(PEOPLE_REVIEW_QUEUE_REFRESH_REQUESTED, {})
+
+        logger.info("[IdentityService] Rejected merge %s", candidate_id)
+        return {"status": "rejected", "action_id": action_id}
+
+    def skip_merge_candidate(
+        self,
+        candidate_id: str,
+        reviewed_by: Optional[str] = None,
+    ) -> dict:
+        """Skip a merge candidate — mark as skipped, no identity change."""
+        candidate = self.people_review_repo.get_merge_candidate(candidate_id)
+        if not candidate:
+            raise ValueError(f"Unknown merge candidate: {candidate_id}")
+
+        self.people_review_repo.update_merge_candidate_status(
+            candidate_id,
+            status="skipped",
+            reviewed_at=_now_iso(),
+            reviewed_by=reviewed_by,
+        )
+
+        self._emit_event(MERGE_CANDIDATE_SKIPPED, {
+            "candidate_id": candidate_id,
+            "cluster_a_id": candidate.cluster_a_id,
+            "cluster_b_id": candidate.cluster_b_id,
+        })
+        self._emit_event(PEOPLE_REVIEW_QUEUE_REFRESH_REQUESTED, {})
+
+        logger.info("[IdentityService] Skipped merge %s", candidate_id)
+        return {"status": "skipped"}
+
+    # ── Undo / detach ─────────────────────────────────────────────────
+
+    def reverse_last_merge_for_identity(
+        self,
+        identity_id: str,
+        performed_by: Optional[str] = None,
+    ) -> dict:
+        """Reverse the most recent undoable merge action for an identity."""
+        last_action = self.identity_repo.get_last_undoable_action_for_identity(
+            identity_id
+        )
+        if not last_action or last_action.action_type != "merge_accepted":
+            return {"status": "nothing_to_undo"}
+
+        # Parse payload to find attached cluster
         try:
-            with self._db._connect() as conn:
-                row = conn.execute("""
-                    SELECT branch_key, label, count
-                    FROM face_branch_reps
-                    WHERE project_id = ? AND branch_key = ?
-                """, (self._project_id, cluster_id)).fetchone()
-                if not row:
-                    return None
+            payload = json.loads(last_action.payload_json or "{}")
+        except json.JSONDecodeError:
+            payload = {}
+        secondary_cluster_id = payload.get("secondary_cluster_id")
+        if not secondary_cluster_id:
+            return {"status": "no_cluster_in_payload"}
 
-                label = str(row[1] or row[0])
-                is_named = not (
-                    label.lower().startswith("face_")
-                    or "unnamed" in label.lower()
-                    or label == "__ignored__"
-                )
+        # Deactivate the link
+        self.identity_repo.deactivate_cluster_link(identity_id, secondary_cluster_id)
 
-                # Check if this identity has accepted merges (protected)
-                is_protected = self._is_protected(cluster_id)
+        # Log the reversal
+        reversal_id = self.identity_repo.log_identity_action(
+            action_type="merge_reversed",
+            identity_id=identity_id,
+            cluster_id=secondary_cluster_id,
+            candidate_id=last_action.candidate_id,
+            payload_json=json.dumps({
+                "reversed_action_id": last_action.action_id,
+                "secondary_cluster_id": secondary_cluster_id,
+            }),
+            created_by=performed_by,
+            is_undoable=False,
+        )
 
-                return IdentityRecord(
-                    identity_id=str(row[0]),
-                    label=label,
-                    photo_count=int(row[2] or 0),
-                    is_named=is_named,
-                    is_protected=is_protected,
-                )
-        except Exception:
-            logger.debug("[IdentityService] resolve_identity failed for %s",
-                         cluster_id, exc_info=True)
-            return None
+        # Mark original action as undone
+        self.identity_repo.mark_action_undone(last_action.action_id, reversal_id)
 
-    def get_all_identities(self) -> List[IdentityRecord]:
-        """Return all current identities for the project."""
-        if not self._db or not self._project_id:
-            return []
-        try:
-            with self._db._connect() as conn:
-                rows = conn.execute("""
-                    SELECT branch_key, label, count
-                    FROM face_branch_reps
-                    WHERE project_id = ?
-                    ORDER BY count DESC
-                """, (self._project_id,)).fetchall()
+        # Emit events
+        self._emit_event(MERGE_REVERSED, {
+            "identity_id": identity_id,
+            "cluster_id": secondary_cluster_id,
+            "reversed_action_id": last_action.action_id,
+            "reversal_action_id": reversal_id,
+        })
+        self._emit_refresh_events(
+            identity_ids=[identity_id],
+            cluster_ids=[secondary_cluster_id],
+            reason="merge_reversed",
+        )
 
-            protected_ids = self._get_protected_ids()
-            results = []
-            for row in rows:
-                bk = str(row[0])
-                label = str(row[1] or bk)
-                if label == "__ignored__":
-                    continue
-                is_named = not (
-                    label.lower().startswith("face_")
-                    or "unnamed" in label.lower()
-                )
-                results.append(IdentityRecord(
-                    identity_id=bk,
-                    label=label,
-                    photo_count=int(row[2] or 0),
-                    is_named=is_named,
-                    is_protected=bk in protected_ids,
-                ))
-            return results
-        except Exception:
-            logger.debug("[IdentityService] get_all_identities failed", exc_info=True)
-            return []
+        logger.info(
+            "[IdentityService] Reversed merge: detached %s from identity %s",
+            secondary_cluster_id, identity_id,
+        )
+        return {
+            "status": "reversed",
+            "identity_id": identity_id,
+            "detached_cluster_id": secondary_cluster_id,
+            "reversal_action_id": reversal_id,
+        }
 
-    def get_named_identities(self) -> List[IdentityRecord]:
-        """Return only named (user-labeled) identities."""
-        return [i for i in self.get_all_identities() if i.is_named]
+    def detach_cluster_from_identity(
+        self,
+        identity_id: str,
+        cluster_id: str,
+        performed_by: Optional[str] = None,
+    ) -> dict:
+        """Detach a specific cluster from an identity."""
+        count = self.identity_repo.deactivate_cluster_link(identity_id, cluster_id)
+        if count == 0:
+            return {"status": "no_active_link"}
 
-    def get_unnamed_identities(self) -> List[IdentityRecord]:
-        """Return only unnamed/auto-generated identities."""
-        return [i for i in self.get_all_identities() if not i.is_named]
+        action_id = self.identity_repo.log_identity_action(
+            action_type="cluster_detached",
+            identity_id=identity_id,
+            cluster_id=cluster_id,
+            created_by=performed_by,
+            is_undoable=False,
+        )
+
+        self._emit_event(IDENTITY_CLUSTER_DETACHED, {
+            "identity_id": identity_id,
+            "cluster_id": cluster_id,
+            "action_id": action_id,
+        })
+        self._emit_refresh_events(
+            identity_ids=[identity_id],
+            cluster_ids=[cluster_id],
+            reason="cluster_detached",
+        )
+
+        logger.info(
+            "[IdentityService] Detached cluster %s from identity %s",
+            cluster_id, identity_id,
+        )
+        return {"status": "detached", "action_id": action_id}
 
     # ── Protection ────────────────────────────────────────────────────
 
-    def _is_protected(self, cluster_id: str) -> bool:
-        """A cluster is protected if it was the target of an accepted merge."""
-        try:
-            decisions = self._repo.get_all_active_decisions()
-            for d in decisions:
-                if d.decision == "accepted" and (
-                    d.left_id == cluster_id or d.right_id == cluster_id
-                ):
-                    return True
-            return False
-        except Exception:
-            return False
+    def set_identity_protected(
+        self,
+        identity_id: str,
+        is_protected: bool,
+        performed_by: Optional[str] = None,
+    ) -> None:
+        self.identity_repo.set_identity_protected(identity_id, is_protected)
 
-    def _get_protected_ids(self) -> Set[str]:
-        """Return all cluster IDs that are involved in accepted merges."""
-        try:
-            decisions = self._repo.get_all_active_decisions()
-            protected = set()
-            for d in decisions:
-                if d.decision == "accepted":
-                    protected.add(d.left_id)
-                    protected.add(d.right_id)
-            return protected
-        except Exception:
-            return set()
+        action_type = "identity_protected" if is_protected else "identity_unprotected"
+        self.identity_repo.log_identity_action(
+            action_type=action_type,
+            identity_id=identity_id,
+            created_by=performed_by,
+            is_undoable=False,
+        )
 
-    def get_protected_identities(self) -> List[IdentityRecord]:
-        """Return identities that have user-confirmed merges."""
-        return [i for i in self.get_all_identities() if i.is_protected]
+        event_name = IDENTITY_PROTECTED if is_protected else IDENTITY_UNPROTECTED
+        self._emit_event(event_name, {
+            "identity_id": identity_id,
+            "is_protected": is_protected,
+        })
 
-    # ── Merge chain ───────────────────────────────────────────────────
+        logger.info(
+            "[IdentityService] Identity %s: protected=%s",
+            identity_id, is_protected,
+        )
 
-    def get_merge_history_for(self, cluster_id: str) -> List[Dict[str, Any]]:
-        """Return the merge decision history involving a cluster."""
-        try:
-            decisions = self._repo.get_all_active_decisions()
-            return [
-                {
-                    "left_id": d.left_id,
-                    "right_id": d.right_id,
-                    "decision": d.decision,
-                    "model_version": d.model_version,
-                    "created_at": d.created_at,
-                }
-                for d in decisions
-                if d.left_id == cluster_id or d.right_id == cluster_id
-            ]
-        except Exception:
-            return []
+    # ── Internal helpers ──────────────────────────────────────────────
 
-    # ── Consistency checks ────────────────────────────────────────────
+    def _select_primary_identity(
+        self,
+        identity_a: PersonIdentityModel,
+        identity_b: PersonIdentityModel,
+    ) -> str:
+        """Select which identity should be the merge target.
+        Prefer: protected > named > older."""
+        if identity_a.is_protected and not identity_b.is_protected:
+            return identity_a.identity_id
+        if identity_b.is_protected and not identity_a.is_protected:
+            return identity_b.identity_id
+        # Prefer the one with a display name
+        if identity_a.display_name and not identity_b.display_name:
+            return identity_a.identity_id
+        if identity_b.display_name and not identity_a.display_name:
+            return identity_b.identity_id
+        # Fall back to older identity
+        if identity_a.created_at <= identity_b.created_at:
+            return identity_a.identity_id
+        return identity_b.identity_id
 
-    def find_orphaned_decisions(self) -> List[Dict[str, str]]:
-        """Find merge decisions that reference clusters no longer in the DB.
-        Useful for cleanup after external DB changes."""
-        if not self._db or not self._project_id:
-            return []
-        try:
-            with self._db._connect() as conn:
-                rows = conn.execute("""
-                    SELECT branch_key FROM face_branch_reps
-                    WHERE project_id = ?
-                """, (self._project_id,)).fetchall()
-                live_ids = {str(r[0]) for r in rows}
+    def _compute_badges(self, identity: PersonIdentityModel) -> List[str]:
+        badges = []
+        if identity.is_protected:
+            badges.append("protected")
+        if identity.is_hidden:
+            badges.append("hidden")
+        if identity.display_name:
+            badges.append("named")
+        else:
+            badges.append("unnamed")
+        return badges
 
-            decisions = self._repo.get_all_active_decisions()
-            orphans = []
-            for d in decisions:
-                missing = []
-                if d.left_id not in live_ids:
-                    missing.append(d.left_id)
-                if d.right_id not in live_ids:
-                    missing.append(d.right_id)
-                if missing:
-                    orphans.append({
-                        "left_id": d.left_id,
-                        "right_id": d.right_id,
-                        "decision": d.decision,
-                        "missing_ids": missing,
-                    })
-            return orphans
-        except Exception:
-            return []
+    def _emit_event(self, event_name: str, payload: dict) -> None:
+        if self.event_bus and hasattr(self.event_bus, "emit"):
+            try:
+                self.event_bus.emit(event_name, payload)
+            except Exception:
+                logger.debug("[IdentityService] Event emission failed: %s",
+                             event_name, exc_info=True)
+
+    def _emit_refresh_events(
+        self,
+        identity_ids: List[str],
+        cluster_ids: List[str],
+        reason: str,
+    ) -> None:
+        refresh_payload = {
+            "identity_ids": identity_ids,
+            "cluster_ids": cluster_ids,
+            "reason": reason,
+        }
+        self._emit_event(PEOPLE_INDEX_REFRESH_REQUESTED, refresh_payload)
+        self._emit_event(PEOPLE_SIDEBAR_REFRESH_REQUESTED, refresh_payload)
+        self._emit_event(PEOPLE_REVIEW_QUEUE_REFRESH_REQUESTED, refresh_payload)
+        self._emit_event(SEARCH_PERSON_FACETS_REFRESH_REQUESTED, refresh_payload)

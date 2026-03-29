@@ -43,7 +43,10 @@ from translation_manager import tr
 from services.people_merge_engine import PeopleMergeEngine
 from services.people_review_service import PeopleReviewService
 from services.identity_resolution_service import IdentityResolutionService
+from services.people_review_invalidation_service import PeopleReviewInvalidationService
 from repository.people_merge_review_repository import PeopleMergeReviewRepository
+from repository.people_review_repository import PeopleReviewRepository
+from repository.identity_repository import IdentityRepository
 from .base_section import BaseSection
 
 logger = logging.getLogger(__name__)
@@ -501,7 +504,7 @@ class PeopleSection(BaseSection):
             self._ensure_groups_tab(self._stack)
 
     def _get_merge_review_repo(self):
-        """UX-9A/11A: get persistent merge review repository."""
+        """UX-9A legacy: get merge review repository (backward compat)."""
         try:
             db = getattr(self, "_parent_db", None)
             if db is None:
@@ -511,26 +514,43 @@ class PeopleSection(BaseSection):
         except Exception:
             return None
 
-    def _get_review_service(self) -> Optional[PeopleReviewService]:
-        """UX-11A: get review service (business logic layer)."""
+    def _get_db_connection(self):
+        """Get a raw DB connection for UX-11 repositories."""
         try:
-            repo = self._get_merge_review_repo()
-            if repo is None:
+            db = getattr(self, "_parent_db", None)
+            if db is None:
                 return None
-            return PeopleReviewService(repo)
+            return db._connect().__enter__()
+        except Exception:
+            return None
+
+    def _get_review_repos(self):
+        """UX-11: get both review and identity repositories."""
+        try:
+            conn = self._get_db_connection()
+            if conn is None:
+                return None, None
+            return PeopleReviewRepository(conn), IdentityRepository(conn)
+        except Exception:
+            return None, None
+
+    def _get_review_service(self) -> Optional[PeopleReviewService]:
+        """UX-11: get review service (business logic layer)."""
+        try:
+            review_repo, identity_repo = self._get_review_repos()
+            if review_repo is None or identity_repo is None:
+                return None
+            return PeopleReviewService(review_repo, identity_repo)
         except Exception:
             return None
 
     def _get_identity_service(self) -> Optional[IdentityResolutionService]:
-        """UX-11A: get identity resolution service."""
+        """UX-11: get identity resolution service."""
         try:
-            db = getattr(self, "_parent_db", None)
-            repo = self._get_merge_review_repo()
-            if db is None or repo is None:
+            review_repo, identity_repo = self._get_review_repos()
+            if review_repo is None or identity_repo is None:
                 return None
-            return IdentityResolutionService(
-                db, repo, project_id=getattr(self, "project_id", None)
-            )
+            return IdentityResolutionService(identity_repo, review_repo)
         except Exception:
             return None
 

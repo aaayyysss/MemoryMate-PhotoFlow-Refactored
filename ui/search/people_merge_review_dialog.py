@@ -1,19 +1,20 @@
 """
-UX-9B/UX-10: Side-by-side person comparison dialog for merge review.
+UX-11: Side-by-side person comparison dialog for merge review.
 
 Shows left vs right cluster cards with representative faces, counts,
 time hints, confidence scoring, and merge / reject / skip actions.
-Includes auto-advance and decision log.
+Includes auto-advance, decision log, undo toast, and badge support.
 """
 
 import base64
 import os
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtGui import QPixmap, QColor
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QListWidget, QListWidgetItem,
     QPushButton, QDialog, QDialogButtonBox, QFrame
 )
+from ui.search.review_state_badges import ReviewStateBadgeFactory
 
 
 class ClusterCompareCard(QFrame):
@@ -121,6 +122,7 @@ class PeopleMergeReviewDialog(QDialog):
     mergeAccepted = Signal(str, str)
     mergeRejected = Signal(str, str)
     mergePostponed = Signal(str, str)
+    undoLastMerge = Signal(str, str)  # UX-11B: undo last accepted merge
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -128,6 +130,7 @@ class PeopleMergeReviewDialog(QDialog):
         self.resize(1020, 660)
 
         self._current_pair = None
+        self._last_merged_pair = None  # UX-11B: for undo support
         self._decision_counts = {"merged": 0, "rejected": 0, "skipped": 0}
 
         # Title row
@@ -210,6 +213,31 @@ class PeopleMergeReviewDialog(QDialog):
         self.lbl_decisions.setStyleSheet("color: #5f6368; font-size: 11px; padding: 4px 0;")
         self._update_decision_log()
 
+        # UX-11B: Undo toast
+        self.undo_toast = QFrame(self)
+        self.undo_toast.setStyleSheet("""
+            QFrame {
+                background: #323232; border-radius: 6px;
+                padding: 8px 12px;
+            }
+        """)
+        undo_layout = QHBoxLayout(self.undo_toast)
+        undo_layout.setContentsMargins(12, 6, 12, 6)
+        self.undo_toast_label = QLabel("")
+        self.undo_toast_label.setStyleSheet("color: white; font-size: 12px;")
+        self.btn_undo = QPushButton("Undo")
+        self.btn_undo.setStyleSheet("""
+            QPushButton {
+                background: transparent; color: #8ab4f8;
+                border: none; font-weight: 600; font-size: 12px;
+            }
+            QPushButton:hover { color: #aecbfa; }
+        """)
+        self.btn_undo.clicked.connect(self._on_undo_clicked)
+        undo_layout.addWidget(self.undo_toast_label, 1)
+        undo_layout.addWidget(self.btn_undo)
+        self.undo_toast.hide()
+
         # Layout assembly
         right_pane = QVBoxLayout()
         right_pane.addWidget(self.lbl_confidence)
@@ -234,6 +262,7 @@ class PeopleMergeReviewDialog(QDialog):
         outer.addLayout(header)
         outer.addLayout(main_row, 1)
         outer.addWidget(self.lbl_decisions)
+        outer.addWidget(self.undo_toast)
         outer.addWidget(buttons)
 
         # Signal wiring
@@ -341,8 +370,12 @@ class PeopleMergeReviewDialog(QDialog):
     def _emit_merge(self):
         if self._current_pair:
             self._decision_counts["merged"] += 1
+            self._last_merged_pair = self._current_pair
             self._update_decision_log()
             self.mergeAccepted.emit(*self._current_pair)
+            self._show_undo_toast(
+                f"Merged {self._current_pair[0]} and {self._current_pair[1]}"
+            )
             self._advance_to_next()
 
     def _emit_reject(self):
@@ -358,3 +391,24 @@ class PeopleMergeReviewDialog(QDialog):
             self._update_decision_log()
             self.mergePostponed.emit(*self._current_pair)
             self._advance_to_next()
+
+    # UX-11B: Undo toast support
+
+    def _show_undo_toast(self, message: str):
+        """Show a temporary undo toast for 5 seconds."""
+        self.undo_toast_label.setText(message)
+        self.undo_toast.show()
+        QTimer.singleShot(5000, self._hide_undo_toast)
+
+    def _hide_undo_toast(self):
+        self.undo_toast.hide()
+        self._last_merged_pair = None
+
+    def _on_undo_clicked(self):
+        """Emit undo signal for the last merged pair."""
+        if self._last_merged_pair:
+            left_id, right_id = self._last_merged_pair
+            self.undoLastMerge.emit(left_id, right_id)
+            self._decision_counts["merged"] = max(0, self._decision_counts["merged"] - 1)
+            self._update_decision_log()
+            self._hide_undo_toast()
