@@ -41,6 +41,8 @@ from shiboken6 import isValid
 from reference_db import ReferenceDB
 from translation_manager import tr
 from services.people_merge_engine import PeopleMergeEngine
+from services.people_review_service import PeopleReviewService
+from services.identity_resolution_service import IdentityResolutionService
 from repository.people_merge_review_repository import PeopleMergeReviewRepository
 from .base_section import BaseSection
 
@@ -499,13 +501,36 @@ class PeopleSection(BaseSection):
             self._ensure_groups_tab(self._stack)
 
     def _get_merge_review_repo(self):
-        """UX-9A: get persistent merge review repository."""
+        """UX-9A/11A: get persistent merge review repository."""
         try:
             db = getattr(self, "_parent_db", None)
             if db is None:
                 return None
             with db._connect() as conn:
                 return PeopleMergeReviewRepository(conn)
+        except Exception:
+            return None
+
+    def _get_review_service(self) -> Optional[PeopleReviewService]:
+        """UX-11A: get review service (business logic layer)."""
+        try:
+            repo = self._get_merge_review_repo()
+            if repo is None:
+                return None
+            return PeopleReviewService(repo)
+        except Exception:
+            return None
+
+    def _get_identity_service(self) -> Optional[IdentityResolutionService]:
+        """UX-11A: get identity resolution service."""
+        try:
+            db = getattr(self, "_parent_db", None)
+            repo = self._get_merge_review_repo()
+            if db is None or repo is None:
+                return None
+            return IdentityResolutionService(
+                db, repo, project_id=getattr(self, "project_id", None)
+            )
         except Exception:
             return None
 
@@ -609,6 +634,12 @@ class PeopleSection(BaseSection):
                     ),
                 })
 
+            # UX-11A: prefer review service for filtering (includes skipped)
+            svc = self._get_review_service()
+            if svc:
+                return svc.get_filtered_suggestions(clusters)
+
+            # Fallback to direct repo
             repo = self._get_merge_review_repo()
             accepted_pairs = repo.get_pairs_by_decision("accepted") if repo else set()
             rejected_pairs = repo.get_pairs_by_decision("rejected") if repo else set()
@@ -781,15 +812,20 @@ class PeopleSection(BaseSection):
         """)
 
     def accept_merge_suggestion(self, left_id: str, right_id: str):
-        """UX-9A: accept merge — persist decision, write audit trail, execute cluster merge."""
+        """UX-11A: accept merge — persist via review service, write audit trail, execute cluster merge."""
         db = getattr(self, "_parent_db", None)
         pid = getattr(self, "project_id", None)
         logger.info("[PeopleSection] Accept merge: %s + %s", left_id, right_id)
 
         try:
-            repo = self._get_merge_review_repo()
-            if repo:
-                repo.accept(left_id, right_id)
+            svc = self._get_review_service()
+            if svc:
+                svc.accept_merge(left_id, right_id)
+            else:
+                # Fallback to direct repo if service unavailable
+                repo = self._get_merge_review_repo()
+                if repo:
+                    repo.accept(left_id, right_id)
         except Exception:
             logger.warning("[PeopleSection] Failed to persist merge acceptance", exc_info=True)
 
@@ -813,15 +849,19 @@ class PeopleSection(BaseSection):
                     logger.warning("[PeopleSection] merge_face_clusters failed", exc_info=True)
 
     def reject_merge_suggestion(self, left_id: str, right_id: str):
-        """UX-9A: reject merge — persist rejection so pair is excluded from future suggestions."""
+        """UX-11A: reject merge — persist via review service so pair is excluded from future suggestions."""
         db = getattr(self, "_parent_db", None)
         pid = getattr(self, "project_id", None)
         logger.info("[PeopleSection] Reject merge: %s / %s", left_id, right_id)
 
         try:
-            repo = self._get_merge_review_repo()
-            if repo:
-                repo.reject(left_id, right_id)
+            svc = self._get_review_service()
+            if svc:
+                svc.reject_merge(left_id, right_id)
+            else:
+                repo = self._get_merge_review_repo()
+                if repo:
+                    repo.reject(left_id, right_id)
         except Exception:
             logger.warning("[PeopleSection] Failed to persist merge rejection", exc_info=True)
 
@@ -893,10 +933,18 @@ class PeopleSection(BaseSection):
             return []
 
     def assign_unnamed_cluster(self, cluster_id: str, target_person_id: str):
-        """UX-10C: merge unnamed cluster into a named person via face_clusters merge."""
+        """UX-11A: merge unnamed cluster into a named person via face_clusters merge."""
         db = getattr(self, "_parent_db", None)
         pid = getattr(self, "project_id", None)
         logger.info("[PeopleSection] Assign unnamed %s -> %s", cluster_id, target_person_id)
+
+        # Persist governance decision via review service
+        try:
+            svc = self._get_review_service()
+            if svc:
+                svc.assign_cluster(cluster_id, target_person_id)
+        except Exception:
+            logger.debug("[PeopleSection] Review service cluster assign failed", exc_info=True)
 
         if db and pid:
             try:
@@ -911,9 +959,17 @@ class PeopleSection(BaseSection):
                 pass
 
     def keep_unnamed_cluster_separate(self, cluster_id: str):
-        """UX-10C: mark unnamed cluster as intentionally separate."""
+        """UX-11A: mark unnamed cluster as intentionally separate."""
         db = getattr(self, "_parent_db", None)
         logger.info("[PeopleSection] Keep unnamed separate: %s", cluster_id)
+
+        # Persist governance decision via review service
+        try:
+            svc = self._get_review_service()
+            if svc:
+                svc.keep_separate(cluster_id)
+        except Exception:
+            logger.debug("[PeopleSection] Review service keep_separate failed", exc_info=True)
 
         if db:
             try:
@@ -922,10 +978,18 @@ class PeopleSection(BaseSection):
                 pass
 
     def ignore_unnamed_cluster(self, cluster_id: str):
-        """UX-9C/10C: mark cluster as ignored via reserved label + review record."""
+        """UX-11A: mark cluster as ignored via review service + reserved label."""
         db = getattr(self, "_parent_db", None)
         pid = getattr(self, "project_id", None)
         logger.info("[PeopleSection] Ignore unnamed: %s", cluster_id)
+
+        # Persist governance decision via review service
+        try:
+            svc = self._get_review_service()
+            if svc:
+                svc.ignore_cluster(cluster_id)
+        except Exception:
+            logger.debug("[PeopleSection] Review service ignore failed", exc_info=True)
 
         if db:
             try:

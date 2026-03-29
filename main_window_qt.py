@@ -2725,12 +2725,6 @@ class MainWindow(QMainWindow):
             layout_id: ID of the layout to switch to (e.g., "current", "google", "apple")
         """
         try:
-            # UX-11 diagnostic: trace unexpected layout switches
-            import traceback
-            current_lid = getattr(self.layout_manager, '_current_layout_id', '?')
-            if current_lid != layout_id:
-                print(f"[UX-11 TRACE] _switch_layout({layout_id}) called from {current_lid}")
-                traceback.print_stack(limit=8)
             success = self.layout_manager.switch_layout(layout_id)
             if success:
                 self._attach_search_store_to_current_layout()
@@ -3810,8 +3804,18 @@ class MainWindow(QMainWindow):
             print(f"[UX-9B] Failed to reject merge suggestion: {e}")
 
     def _postpone_people_merge_suggestion(self, left_id: str, right_id: str):
-        """UX-9B: postpone merge — no persistence, just skip for this session."""
-        print(f"[UX-9B] Postponed merge suggestion: {left_id} \u2194 {right_id}")
+        """UX-11A: skip merge — persist decision so pair is excluded from future suggestions."""
+        try:
+            layout = self._layouts.get("google")
+            if layout and hasattr(layout, "accordion_sidebar"):
+                people_section = layout.accordion_sidebar.section_logic.get("people")
+                if people_section:
+                    repo = people_section._get_merge_review_repo()
+                    if repo:
+                        repo.skip(left_id, right_id)
+            logger.info("[UX-11A] Skipped merge suggestion: %s \u2194 %s", left_id, right_id)
+        except Exception as e:
+            logger.debug("[UX-11A] Failed to persist skip: %s", e)
 
     def _handle_search_sidebar_branch_request(self, branch: str):
         if branch == "people_merge_review":
