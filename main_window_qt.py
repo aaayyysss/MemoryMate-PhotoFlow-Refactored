@@ -3804,8 +3804,18 @@ class MainWindow(QMainWindow):
             print(f"[UX-9B] Failed to reject merge suggestion: {e}")
 
     def _postpone_people_merge_suggestion(self, left_id: str, right_id: str):
-        """UX-9B: postpone merge — no persistence, just skip for this session."""
-        print(f"[UX-9B] Postponed merge suggestion: {left_id} \u2194 {right_id}")
+        """UX-11A: skip merge — persist decision so pair is excluded from future suggestions."""
+        try:
+            layout = self._layouts.get("google")
+            if layout and hasattr(layout, "accordion_sidebar"):
+                people_section = layout.accordion_sidebar.section_logic.get("people")
+                if people_section:
+                    repo = people_section._get_merge_review_repo()
+                    if repo:
+                        repo.skip(left_id, right_id)
+            logger.info("[UX-11A] Skipped merge suggestion: %s \u2194 %s", left_id, right_id)
+        except Exception as e:
+            logger.debug("[UX-11A] Failed to persist skip: %s", e)
 
     def _handle_search_sidebar_branch_request(self, branch: str):
         if branch == "people_merge_review":
