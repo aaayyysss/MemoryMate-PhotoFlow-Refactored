@@ -19,7 +19,7 @@ Schema Version: 2.0.0
 - Adds schema_version tracking table
 """
 
-SCHEMA_VERSION = "13.0.0"
+SCHEMA_VERSION = "14.0.0"
 
 # Complete schema SQL - executed as a script for new databases
 SCHEMA_SQL = """
@@ -870,6 +870,107 @@ CREATE TABLE IF NOT EXISTS query_history (
 );
 
 CREATE INDEX IF NOT EXISTS idx_qh_project ON query_history(project_id, executed_at);
+
+-- ============================================================================
+-- UX-11: IDENTITY AND REVIEW TABLES (v14.0.0)
+-- ============================================================================
+
+-- ── person_identity: Durable user-facing person entity ──
+CREATE TABLE IF NOT EXISTS person_identity (
+    identity_id TEXT PRIMARY KEY,
+    display_name TEXT,
+    canonical_cluster_id TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    is_protected INTEGER NOT NULL DEFAULT 0,
+    is_hidden INTEGER NOT NULL DEFAULT 0,
+    source TEXT NOT NULL DEFAULT 'system'
+);
+
+-- ── identity_cluster_link: Maps machine clusters to durable identities ──
+CREATE TABLE IF NOT EXISTS identity_cluster_link (
+    link_id TEXT PRIMARY KEY,
+    identity_id TEXT NOT NULL,
+    cluster_id TEXT NOT NULL,
+    link_type TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    removed_at TEXT,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    source TEXT NOT NULL,
+    FOREIGN KEY(identity_id) REFERENCES person_identity(identity_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_icl_identity ON identity_cluster_link(identity_id, is_active);
+CREATE INDEX IF NOT EXISTS idx_icl_cluster ON identity_cluster_link(cluster_id, is_active);
+
+-- ── merge_candidate: Candidate pairs and review lifecycle ──
+CREATE TABLE IF NOT EXISTS merge_candidate (
+    candidate_id TEXT PRIMARY KEY,
+    cluster_a_id TEXT NOT NULL,
+    cluster_b_id TEXT NOT NULL,
+    confidence_score REAL NOT NULL,
+    confidence_band TEXT NOT NULL,
+    rationale_json TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'unreviewed',
+    created_at TEXT NOT NULL,
+    reviewed_at TEXT,
+    reviewed_by TEXT,
+    model_version TEXT,
+    feature_version TEXT,
+    invalidated_reason TEXT,
+    superseded_by_candidate_id TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_mc_status ON merge_candidate(status, created_at);
+CREATE INDEX IF NOT EXISTS idx_mc_pair ON merge_candidate(cluster_a_id, cluster_b_id);
+
+-- ── cluster_review_decision: Unnamed cluster governance ──
+CREATE TABLE IF NOT EXISTS cluster_review_decision (
+    decision_id TEXT PRIMARY KEY,
+    cluster_id TEXT NOT NULL,
+    decision_type TEXT NOT NULL,
+    target_identity_id TEXT,
+    notes TEXT,
+    created_at TEXT NOT NULL,
+    created_by TEXT,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    source TEXT NOT NULL DEFAULT 'user'
+);
+
+CREATE INDEX IF NOT EXISTS idx_crd_cluster ON cluster_review_decision(cluster_id, is_active);
+
+-- ── identity_action_log: Audit trail for merge, undo, protect, detach ──
+CREATE TABLE IF NOT EXISTS identity_action_log (
+    action_id TEXT PRIMARY KEY,
+    action_type TEXT NOT NULL,
+    identity_id TEXT,
+    cluster_id TEXT,
+    related_identity_id TEXT,
+    related_cluster_id TEXT,
+    candidate_id TEXT,
+    payload_json TEXT,
+    created_at TEXT NOT NULL,
+    created_by TEXT,
+    is_undoable INTEGER NOT NULL DEFAULT 1,
+    undone_by_action_id TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_ial_identity ON identity_action_log(identity_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_ial_candidate ON identity_action_log(candidate_id, created_at);
+
+-- ── review_queue_state: Stable queue view persistence ──
+CREATE TABLE IF NOT EXISTS review_queue_state (
+    queue_id TEXT PRIMARY KEY,
+    queue_type TEXT NOT NULL,
+    item_id TEXT NOT NULL,
+    sort_order INTEGER NOT NULL,
+    is_visible INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+INSERT OR IGNORE INTO schema_version (version, description)
+VALUES ('14.0.0', 'UX-11: Identity layer, merge candidates, cluster governance, action log');
 """
 
 
@@ -943,6 +1044,13 @@ def get_expected_tables() -> list[str]:
         "person_clusters",
         "asset_person_links",
         "query_history",
+        # UX-11 identity and review tables (v14.0.0)
+        "person_identity",
+        "identity_cluster_link",
+        "merge_candidate",
+        "cluster_review_decision",
+        "identity_action_log",
+        "review_queue_state",
     ]
 
 
@@ -1055,6 +1163,14 @@ def get_expected_indexes() -> list[str]:
         "idx_apl_project_cluster",
         "idx_apl_project_asset",
         "idx_qh_project",
+        # UX-11 identity and review indexes (v14.0.0)
+        "idx_icl_identity",
+        "idx_icl_cluster",
+        "idx_mc_status",
+        "idx_mc_pair",
+        "idx_crd_cluster",
+        "idx_ial_identity",
+        "idx_ial_candidate",
     ]
 
 

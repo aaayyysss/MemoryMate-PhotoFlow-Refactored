@@ -3537,6 +3537,7 @@ class MainWindow(QMainWindow):
             dlg.mergeAccepted.connect(self._accept_people_merge_suggestion)
             dlg.mergeRejected.connect(self._reject_people_merge_suggestion)
             dlg.mergePostponed.connect(self._postpone_people_merge_suggestion)
+            dlg.undoLastMerge.connect(self._undo_last_people_merge)
             dlg.exec()
 
         except Exception as e:
@@ -3816,6 +3817,29 @@ class MainWindow(QMainWindow):
             logger.info("[UX-11A] Skipped merge suggestion: %s \u2194 %s", left_id, right_id)
         except Exception as e:
             logger.debug("[UX-11A] Failed to persist skip: %s", e)
+
+    def _undo_last_people_merge(self, left_id: str, right_id: str):
+        """UX-11B: undo last accepted merge via identity resolution service."""
+        try:
+            layout = self._layouts.get("google")
+            if layout and hasattr(layout, "accordion_sidebar"):
+                people_section = layout.accordion_sidebar.section_logic.get("people")
+                if people_section:
+                    svc = people_section._get_identity_service()
+                    if svc:
+                        # Find identity for left cluster and reverse its last merge
+                        identity = svc.identity_repo.get_identity_by_cluster_id(left_id)
+                        if identity:
+                            result = svc.reverse_last_merge_for_identity(
+                                identity.identity_id, performed_by="user"
+                            )
+                            logger.info("[UX-11B] Undo merge result: %s", result)
+                        else:
+                            logger.info("[UX-11B] No identity found for undo: %s", left_id)
+
+            self._refresh_people_quick_section()
+        except Exception as e:
+            logger.debug("[UX-11B] Failed to undo merge: %s", e)
 
     def _handle_search_sidebar_branch_request(self, branch: str):
         if branch == "people_merge_review":
