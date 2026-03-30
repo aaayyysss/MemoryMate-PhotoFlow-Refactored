@@ -560,14 +560,17 @@ class MainWindow(QMainWindow):
         self.layout_action_group = QActionGroup(self)
         self.layout_action_group.setExclusive(True)
 
-        # Get available layouts from manager and create menu actions
-        available_layouts = self.layout_manager.get_available_layouts()
+        # Get available layouts — hide Current Layout from normal users
+        power_user_mode = bool(self.settings.get("power_user_mode", False)) if self.settings else False
+        available_layouts = self.layout_manager.get_user_visible_layouts(
+            power_user_mode=power_user_mode
+        )
 
-        preferred_layout = "current"
+        preferred_layout = "google"
         if hasattr(self, "settings") and self.settings:
-            preferred_layout = self.settings.get("current_layout", "current")
+            preferred_layout = self.settings.get("current_layout", "google")
         if preferred_layout not in available_layouts:
-            preferred_layout = "current"
+            preferred_layout = "google"
 
         for layout_id, layout_name in available_layouts.items():
             action = QAction(layout_name, self)
@@ -993,9 +996,47 @@ class MainWindow(QMainWindow):
         self.left_sidebar_container = QWidget()
         self.left_sidebar_layout = QVBoxLayout(self.left_sidebar_container)
         self.left_sidebar_layout.setContentsMargins(0, 0, 0, 0)
-        self.left_sidebar_layout.setSpacing(8)
-        self.left_sidebar_layout.addWidget(self.search_sidebar, 0)
-        self.left_sidebar_layout.addWidget(self.sidebar, 1)
+        self.left_sidebar_layout.setSpacing(4)
+        self.left_sidebar_layout.addWidget(self.search_sidebar, 1)
+        self.left_sidebar_layout.addWidget(self.sidebar, 0)
+
+        # ── Wire SearchSidebar section signals ──
+        # People section → MainWindow actions
+        self.search_sidebar.people_section.mergeReviewRequested.connect(
+            self._open_people_merge_review_from_sidebar
+        )
+        self.search_sidebar.people_section.unnamedRequested.connect(
+            self._open_unnamed_cluster_review_from_sidebar
+        )
+        self.search_sidebar.people_section.showAllPeopleRequested.connect(
+            self._open_people_manager_from_sidebar
+        )
+        self.search_sidebar.people_section.personSelected.connect(
+            lambda pid: self._filter_by_person(pid)
+        )
+
+        # Browse section → MainWindow filter actions
+        self.search_sidebar.browse_section.browseNodeSelected.connect(
+            self._on_browse_node_selected
+        )
+
+        # Filter section → search controller
+        self.search_sidebar.filter_section.filterChanged.connect(
+            self._on_sidebar_filter_changed
+        )
+        self.search_sidebar.filter_section.clearAllFiltersRequested.connect(
+            lambda: self.search_controller.clear_search() if self.search_controller else None
+        )
+
+        # Activity section → activity center
+        self.search_sidebar.openActivityCenterRequested.connect(
+            lambda: self._toggle_activity_center(True)
+        )
+
+        # Search Hub clear recent
+        self.search_sidebar.search_hub.clearRecentRequested.connect(
+            self._clear_recent_searches
+        )
 
         # Connect Search Controller to bridge
         self.search_controller.searchRequested.connect(self._on_ux1_search_requested)
@@ -1347,6 +1388,7 @@ class MainWindow(QMainWindow):
             self.layout_manager.search_controller = self.search_controller
 
             self.layout_manager.initialize_default_layout()
+            self._sync_sidebar_visibility_for_layout()
             print("[Startup] Layout system initialized successfully")
         except Exception as e:
             print(f"[Startup] ⚠️ Layout initialization failed: {e}")
@@ -2699,6 +2741,99 @@ class MainWindow(QMainWindow):
                 self._apply_light_mode()
 
 
+    # ── SearchSidebar section handlers ───────────────────
+
+    def _open_people_merge_review_from_sidebar(self):
+        """Open merge review dialog from People section."""
+        try:
+            from ui.search.people_merge_review_dialog import PeopleMergeReviewDialog
+            dlg = PeopleMergeReviewDialog(self)
+            dlg.exec()
+        except Exception as e:
+            logger.warning(f"[Sidebar] Merge review open failed: {e}")
+
+    def _open_unnamed_cluster_review_from_sidebar(self):
+        """Open unnamed cluster review dialog from People section."""
+        try:
+            from ui.search.unnamed_cluster_assignment_dialog import UnnamedClusterAssignmentDialog
+            dlg = UnnamedClusterAssignmentDialog(self)
+            dlg.exec()
+        except Exception as e:
+            logger.warning(f"[Sidebar] Unnamed cluster review open failed: {e}")
+
+    def _open_people_manager_from_sidebar(self):
+        """Open full people manager from People section."""
+        try:
+            if hasattr(self, '_open_people_manager'):
+                self._open_people_manager()
+            else:
+                logger.debug("[Sidebar] People manager not available")
+        except Exception as e:
+            logger.warning(f"[Sidebar] People manager open failed: {e}")
+
+    def _filter_by_person(self, person_id: str):
+        """Apply a person filter from People section selection."""
+        try:
+            if self.search_controller:
+                self.search_controller.execute_search(f"person:{person_id}")
+        except Exception as e:
+            logger.warning(f"[Sidebar] Person filter failed: {e}")
+
+    def _on_browse_node_selected(self, browse_key: str, value):
+        """Handle Browse section navigation actions."""
+        try:
+            if browse_key == "all_photos":
+                if self.search_controller:
+                    self.search_controller.clear_search()
+            elif browse_key == "favorites":
+                if self.search_controller:
+                    self.search_controller.execute_search("is:fav")
+            elif browse_key == "videos":
+                if self.search_controller:
+                    self.search_controller.execute_search("type:video")
+            elif browse_key == "with_location":
+                if self.search_controller:
+                    self.search_controller.execute_search("has:location")
+            elif browse_key == "folders":
+                if hasattr(self, "sidebar") and hasattr(self.sidebar, "select_tab"):
+                    self.sidebar.select_tab("folders")
+            elif browse_key == "dates":
+                if hasattr(self, "sidebar") and hasattr(self.sidebar, "select_tab"):
+                    self.sidebar.select_tab("dates")
+            elif browse_key == "albums":
+                if hasattr(self, "sidebar") and hasattr(self.sidebar, "select_tab"):
+                    self.sidebar.select_tab("albums")
+            self.search_sidebar.browse_section.set_active_mode(browse_key)
+        except Exception as e:
+            logger.warning(f"[Sidebar] Browse action failed: {e}")
+
+    def _on_sidebar_filter_changed(self, key: str, value):
+        """Handle filter change from Filter section facet chip."""
+        try:
+            if self.search_controller:
+                self.search_controller.execute_search(f"{key}:{value}")
+        except Exception as e:
+            logger.warning(f"[Sidebar] Filter change failed: {e}")
+
+    def _clear_recent_searches(self):
+        """Clear recent searches in Search Hub."""
+        try:
+            if self.search_controller and hasattr(self.search_controller, 'clear_recent_queries'):
+                self.search_controller.clear_recent_queries()
+            self.search_sidebar.set_search_hub_recent([])
+        except Exception as e:
+            logger.warning(f"[Sidebar] Clear recent failed: {e}")
+
+    def _sync_sidebar_visibility_for_layout(self):
+        """Adjust sidebar weight based on active layout."""
+        layout_id = self.layout_manager.get_current_layout_id()
+        if layout_id == "google":
+            self.search_sidebar.show()
+            self.sidebar.setMaximumHeight(220)
+        else:
+            self.search_sidebar.show()
+            self.sidebar.setMaximumHeight(16777215)  # unconstrained
+
     def _switch_layout(self, layout_id: str):
         """
         Switch to a different UI layout.
@@ -2709,6 +2844,7 @@ class MainWindow(QMainWindow):
         try:
             success = self.layout_manager.switch_layout(layout_id)
             if success:
+                self._sync_sidebar_visibility_for_layout()
                 print(f"[MainWindow] ✓ Switched to layout: {layout_id}")
             else:
                 print(f"[MainWindow] ✗ Failed to switch to layout: {layout_id}")

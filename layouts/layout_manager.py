@@ -80,6 +80,18 @@ class LayoutManager:
             layouts[layout_id] = temp_instance.get_name()
         return layouts
 
+    def get_user_visible_layouts(self, power_user_mode: bool = False) -> Dict[str, str]:
+        """
+        Get layouts visible to the current user.
+
+        Normal users see all layouts except Current Layout.
+        Power users see everything.
+        """
+        all_layouts = self.get_available_layouts()
+        if not power_user_mode:
+            all_layouts.pop("current", None)
+        return all_layouts
+
     def switch_layout(self, layout_id: str) -> bool:
         """
         Switch to a different layout.
@@ -208,15 +220,15 @@ class LayoutManager:
         Reads the saved layout preference and activates it.
         Falls back to "current" layout if no preference is saved.
         """
-        # Get saved preference
-        preferred_layout = "current"
+        # Get saved preference — default production shell is Google Layout
+        preferred_layout = "google"
         if self.settings:
-            preferred_layout = self.settings.get("current_layout", "current")
+            preferred_layout = self.settings.get("current_layout", "google")
 
         # Validate preference
         if preferred_layout not in self._layouts:
-            print(f"[LayoutManager] Invalid saved layout '{preferred_layout}', using 'current'")
-            preferred_layout = "current"
+            print(f"[LayoutManager] Invalid saved layout '{preferred_layout}', falling back to 'google'")
+            preferred_layout = "google"
 
         # Initialize layout
         print(f"[LayoutManager] Initializing default layout: {preferred_layout}")
