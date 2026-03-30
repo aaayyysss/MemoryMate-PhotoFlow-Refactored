@@ -113,29 +113,6 @@ class UIRefreshMediator(QObject):
         else:
             self._refresh_current(sections, project_id)
 
-        # UX-7A: Trigger search shell snapshot refreshes at stable points
-        if "people" in sections:
-            if hasattr(self.main, "_refresh_people_quick_section"):
-                self.main._refresh_people_quick_section()
-
-        if hasattr(self.main, "_refresh_activity_snapshot"):
-            self.main._refresh_activity_snapshot()
-
-    def refresh_search_surface_safe(self):
-        """UX-10: centralized safe refresh at stable points (project switch, scan complete)."""
-        try:
-            if hasattr(self.main, "_safe_reload_current_layout"):
-                self.main._safe_reload_current_layout()
-
-            if hasattr(self.main, "_refresh_people_quick_section"):
-                self.main._refresh_people_quick_section()
-
-            if hasattr(self.main, "_refresh_activity_snapshot"):
-                self.main._refresh_activity_snapshot()
-
-        except Exception as e:
-            print(f"[UIRefreshMediator] refresh_search_surface_safe failed: {e}")
-
     def _refresh_google(self, layout, sections: Set[str], project_id: int):
         """Refresh sections in GooglePhotosLayout."""
         accordion = getattr(layout, "accordion_sidebar", None)

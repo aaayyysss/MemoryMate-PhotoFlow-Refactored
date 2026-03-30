@@ -18,7 +18,6 @@ from PySide6.QtGui import (
 )
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PySide6.QtMultimediaWidgets import QVideoWidget
-from shiboken6 import isValid
 from .base_layout import BaseLayout
 from logging_config import get_logger
 
@@ -110,11 +109,6 @@ class GooglePhotosLayout(BaseLayout):
         self._ensure_tooltip_style()
 
         
-        # UX-10: stable project and generation tracking
-        self._resolved_project_id = None
-        self._last_store_result_paths = []
-        self._last_generation_seen = 0
-
         # Face merge undo/redo stacks (CRITICAL FIX 2026-01-07)
         self.redo_stack = []  # Stack for redo operations after undo
 
@@ -253,8 +247,19 @@ class GooglePhotosLayout(BaseLayout):
         self._max_in_memory = MAX_IN_MEMORY_ROWS
 
         # Get current project ID (CRITICAL: Photos are organized by project)
-        from app_services import get_default_project_id
+        from app_services import get_default_project_id, list_projects
         self.project_id = get_default_project_id()
+
+        # Fallback to first project if no default
+        if self.project_id is None:
+            projects = list_projects()
+            if projects:
+                self.project_id = projects[0]["id"]
+                print(f"[GooglePhotosLayout] Using first project: {self.project_id}")
+            else:
+                print("[GooglePhotosLayout] ⚠️ WARNING: No projects found! Please create a project first.")
+        else:
+            print(f"[GooglePhotosLayout] Using default project: {self.project_id}")
 
         # PERFORMANCE FIX: Cache badge overlay settings (read once vs per-photo)
         # Previously: SettingsManager read on every _create_tag_badge_overlay call
@@ -289,6 +294,14 @@ class GooglePhotosLayout(BaseLayout):
         self.view_tabs.currentChanged.connect(self._on_view_tab_changed)
         main_layout.addWidget(self.view_tabs)
 
+        # Create horizontal splitter (Sidebar | Timeline)
+        self.splitter = QSplitter(Qt.Horizontal)
+        self.splitter.setHandleWidth(3)
+
+        # Create sidebar
+        self.sidebar = self._create_sidebar()
+        self.splitter.addWidget(self.sidebar)
+
         # Search Components (Integrated from SearchState)
         self.empty_state = EmptyStateView()
 
@@ -305,14 +318,9 @@ class GooglePhotosLayout(BaseLayout):
         self.results_stack.addWidget(self.timeline)
         self.results_stack.addWidget(self.empty_state)
 
-        # UX-10: Skeleton placeholder while loading
-        from ui.search.widgets.skeleton_grid import SkeletonGrid
-        self.skeleton = SkeletonGrid(main_widget)
-        self.results_stack.addWidget(self.skeleton)
-
         self.results_layout.addWidget(self.results_stack, 1)
 
-        main_layout.addWidget(self.results_container)
+        self.splitter.addWidget(self.results_container)
 
         # Debounced zoom handling (prevents repeated reloads while dragging)
         self._pending_zoom_value = None
@@ -323,6 +331,13 @@ class GooglePhotosLayout(BaseLayout):
         self.zoom_change_timer.setSingleShot(True)
         self.zoom_change_timer.setInterval(120)  # Match Google Photos-like feel
         self.zoom_change_timer.timeout.connect(self._commit_zoom_change)
+
+        # Set splitter sizes (280px sidebar initially, rest for timeline)
+        self.splitter.setSizes([280, 1000])
+        self.splitter.setStretchFactor(0, 0)
+        self.splitter.setStretchFactor(1, 1)
+
+        main_layout.addWidget(self.splitter)
 
         # Background Activity Panel - shows background job progress (face detection, embeddings, etc.)
         # Activity Center is now a QDockWidget owned by MainWindow;
@@ -384,138 +399,35 @@ class GooglePhotosLayout(BaseLayout):
 
         return main_widget
 
-    def reload_for_project(self, project_id: int):
-        """UX-10: light reload driven by resolved project id."""
-        self._resolved_project_id = project_id
-        if project_id is None:
-            self._show_empty_state("no_project")
-            return
-        try:
-            if hasattr(self, "empty_state"):
-                self._show_results_surface()
-        except Exception as e:
-            print(f"[GooglePhotosLayout] reload_for_project failed: {e}")
-
-    def attach_search_store(self, store):
-        self.search_state_store = store
-        if self.search_state_store:
-            self.search_state_store.stateChanged.connect(self._on_search_state_changed)
-
     def _on_search_state_changed(self, state):
-        """UX-10/11: generation-aware state handler with project resolution guards."""
-        try:
-            if getattr(self, '_disposed', False):
-                return
+        """Respond to global SearchState changes."""
+        if getattr(self, '_disposed', False):
+            return
 
-            if not isValid(self.results_stack) or not isValid(self.empty_state) or not isValid(self.timeline):
-                logger.debug("[GooglePhotosLayout] Skipping SearchState update: UI objects already deleted")
-                return
+        from shiboken6 import isValid
+        if not isValid(self.results_stack) or not isValid(self.empty_state) or not isValid(self.timeline):
+            logger.debug("[GooglePhotosLayout] Skipping SearchState update: UI objects already deleted")
+            return
 
-            # UX-10: wait for project state to resolve before making any display decision
-            if not getattr(state, "active_project_id_resolved", True):
-                return
+        # Handle empty state
+        if state.empty_state_reason:
+            self.empty_state.set_state(state.empty_state_reason)
+            self.results_stack.setCurrentWidget(self.empty_state)
+        else:
+            self.results_stack.setCurrentWidget(self.timeline)
 
-            # Onboarding / no project
-            if getattr(state, "onboarding_mode", False):
-                self._show_empty_state("no_project", getattr(state, "warnings", []))
-                return
+        # UX-1: Syncing search box in layout is no longer needed as search is centralized in MainWindow
 
-            # UX-10: wait for layout reload to complete
-            if getattr(state, "layout_reload_pending", False):
-                return
-
-            displayed_paths = list(getattr(self, "_last_displayed_paths", []) or [])
-            result_paths = list(getattr(state, "result_paths", []) or [])
-            search_in_progress = bool(getattr(state, "search_in_progress", False))
-            result_surface_busy = bool(getattr(state, "result_surface_busy", False))
-
-            # Determine if there's an active search context
-            has_search_context = bool(
-                getattr(state, "query_text", "")
-                or getattr(state, "preset_id", None)
-                or getattr(state, "browse_mode", None)
-                or getattr(state, "active_people", [])
-            )
-
-            # UX-10: Preserve visible results while searching / busy, or show skeleton
-            if search_in_progress or result_surface_busy:
-                if displayed_paths:
-                    self._last_store_result_paths = displayed_paths
-                    self._show_results_surface()
-                else:
-                    self._show_skeleton()
-                return
-
-            if getattr(state, "indexing_in_progress", False) and not result_paths:
-                self._show_empty_state("indexing", getattr(state, "warnings", []))
-                return
-
-            # Missing embeddings warning path
-            if not getattr(state, "embeddings_ready", True):
-                reason = getattr(state, "empty_state_reason", None)
-                if reason == "embeddings_missing" and not result_paths:
-                    self._show_empty_state("embeddings_missing", getattr(state, "warnings", []))
-                    return
-
-            if result_paths:
-                self._last_store_result_paths = result_paths
-                self._last_displayed_paths = result_paths
-                self._show_results_surface()
-                self._refresh_timeline_from_store_paths(result_paths, state)
-                return
-
-            # UX-11 FIX: When no search context is active and result_paths is empty,
-            # do NOT override the timeline — photos are loaded directly by set_project/_load_photos.
-            # Only show empty state if an explicit search returned no results.
-            if not has_search_context:
-                return
-
-            self._show_empty_state(getattr(state, "empty_state_reason", None) or "no_results",
-                                   getattr(state, "warnings", []))
-
-        except Exception as e:
-            print(f"[GooglePhotosLayout] _on_search_state_changed error: {e}")
-
-    def _refresh_timeline_from_store_paths(self, paths, state=None):
-        """UX-10: refresh photo grid from store result paths instead of side-channel timing."""
-        try:
-            sig = (tuple(paths), getattr(state, "active_project_id", None) if state else self._resolved_project_id)
-            if getattr(self, "_last_result_sig", None) != sig:
-                self._last_result_sig = sig
-                query_text = getattr(state, "query_text", "") if state else ""
-                preset_id = getattr(state, "preset_id", None) if state else None
-                if paths or not (query_text or preset_id):
-                    self._load_photos(filter_paths=paths if (query_text or preset_id) else None)
-        except Exception as e:
-            print(f"[GooglePhotosLayout] _refresh_timeline_from_store_paths failed: {e}")
-
-    def _show_empty_state(self, reason: str, warnings=None):
-        try:
-            if hasattr(self, "empty_state") and isValid(self.empty_state):
-                self.empty_state.set_state(reason, warnings or [])
-            if hasattr(self, "results_stack") and isValid(self.results_stack):
-                self.results_stack.setCurrentWidget(self.empty_state)
-            if hasattr(self, "timeline") and isValid(self.timeline):
-                self.timeline.hide()
-        except Exception as e:
-            print(f"[GooglePhotosLayout] _show_empty_state error: {e}")
-
-    def _show_results_surface(self):
-        try:
-            if hasattr(self, "results_stack") and isValid(self.results_stack):
-                self.results_stack.setCurrentWidget(self.timeline)
-            if hasattr(self, "timeline") and isValid(self.timeline):
-                self.timeline.show()
-        except Exception as e:
-            print(f"[GooglePhotosLayout] _show_results_surface error: {e}")
-
-    def _show_skeleton(self):
-        """UX-10: Show skeleton placeholder grid while search results are loading."""
-        try:
-            if hasattr(self, "results_stack") and isValid(self.results_stack) and hasattr(self, "skeleton"):
-                self.results_stack.setCurrentWidget(self.skeleton)
-        except Exception as e:
-            print(f"[GooglePhotosLayout] _show_skeleton error: {e}")
+        # Trigger photo grid update if result paths changed
+        # We use a signature-based check to avoid redundant work
+        sig = (tuple(state.result_paths), state.active_project_id)
+        if getattr(self, "_last_result_sig", None) != sig:
+            self._last_result_sig = sig
+            if state.result_paths or not state.query_text:
+                # If we have results, or the search is empty (show all), reload timeline
+                # Note: We convert paths to Orchestrator-style ScoredResults if needed,
+                # but here we just pass them to the existing path-based loader.
+                self._load_photos(filter_paths=state.result_paths if state.query_text or state.preset_id else None)
 
     # ------------------------------------------------------------------
     # Startup fence: called by MainWindow after first paint completes
@@ -583,6 +495,33 @@ class GooglePhotosLayout(BaseLayout):
             }
         """)
 
+        # Project selector (compact, no label - Google Photos style)
+        from PySide6.QtWidgets import QComboBox, QLabel
+
+        self.project_combo = QComboBox()
+        self.project_combo.setMinimumWidth(150)
+        self.project_combo.setStyleSheet("""
+            QComboBox {
+                background: white;
+                border: 1px solid #dadce0;
+                border-radius: 4px;
+                padding: 6px 10px;
+                font-size: 10pt;
+            }
+            QComboBox:hover {
+                border-color: #bdc1c6;
+            }
+            QComboBox::drop-down {
+                border: none;
+            }
+        """)
+        self.project_combo.setToolTip("Select project to view")
+        toolbar.addWidget(self.project_combo)
+
+        # Populate project selector
+        self._populate_project_selector()
+
+        toolbar.addSeparator()
 
 
 
@@ -1164,14 +1103,66 @@ class GooglePhotosLayout(BaseLayout):
 
     def _create_sidebar(self) -> QWidget:
         """
-        Sidebar/search shell ownership moved to MainWindow in UX-1.
-        GooglePhotosLayout now renders results only.
+        Create Google Photos-style accordion sidebar.
+
+        Phase 3 Implementation:
+        - AccordionSidebar with all 6 sections (People, Dates, Folders, Tags, Branches, Quick)
+        - One section expanded at a time (full height)
+        - Other sections collapsed to headers
+        - ONE universal scrollbar per section
+        - Clean, modern Google Photos UX
         """
-        placeholder = QWidget()
-        placeholder.setMinimumWidth(0)
-        placeholder.setMaximumWidth(0)
-        placeholder.setObjectName("SidebarPlaceholder")
-        return placeholder
+        # Import and instantiate AccordionSidebar (PHASE 3: Using modular version)
+        from ui.accordion_sidebar import AccordionSidebar
+
+        # CRITICAL FIX: GooglePhotosLayout is NOT a QWidget, so pass None as parent
+        sidebar = AccordionSidebar(project_id=self.project_id, parent=None)
+        sidebar.setMinimumWidth(240)
+        sidebar.setMaximumWidth(500)
+
+        # CRITICAL: Don't set generic QWidget stylesheet - it overrides accordion's internal styling
+        # AccordionSidebar handles its own styling internally (nav bar, headers, content areas)
+        # Only set border on the container itself
+        sidebar.setStyleSheet("""
+            AccordionSidebar {
+                border-right: 1px solid #dadce0;
+            }
+        """)
+
+        # Connect accordion signals to grid filtering
+        sidebar.selectBranch.connect(self._on_accordion_branch_clicked)
+        sidebar.selectFolder.connect(self._on_accordion_folder_clicked)
+        sidebar.selectDate.connect(self._on_accordion_date_clicked)
+        sidebar.selectTag.connect(self._on_accordion_tag_clicked)
+        sidebar.selectVideo.connect(self._on_accordion_video_clicked)  # NEW: Video filtering
+        sidebar.selectPerson.connect(self._on_accordion_person_clicked)
+        sidebar.selectLocation.connect(self._on_accordion_location_clicked)  # GPS location filtering
+        sidebar.selectDevice.connect(self._on_accordion_device_selected)
+        sidebar.personMerged.connect(self._on_accordion_person_merged)
+        sidebar.personDeleted.connect(self._on_accordion_person_deleted)
+        sidebar.mergeHistoryRequested.connect(self._on_people_merge_history_requested)
+        sidebar.undoLastMergeRequested.connect(self._on_people_undo_requested)
+        sidebar.redoLastUndoRequested.connect(self._on_people_redo_requested)
+        sidebar.peopleToolsRequested.connect(self._on_people_tools_requested)
+
+        # Groups section signals (Person Groups feature)
+        sidebar.selectGroup.connect(self._on_accordion_group_clicked)
+        sidebar.editGroupRequested.connect(self._on_group_edit_requested)
+        sidebar.deleteGroupRequested.connect(self._on_group_deleted)
+
+        # Smart Find signals
+        sidebar.selectSmartFind.connect(self._on_smart_find_results)
+        sidebar.smartFindCleared.connect(self._on_smart_find_cleared)
+        sidebar.smartFindScores.connect(self._on_smart_find_scores)
+        sidebar.smartFindExclude.connect(self._on_smart_find_exclude)
+
+        # FIX: Connect section expansion signal to hide search suggestions popup
+        sidebar.sectionExpanding.connect(self._on_accordion_section_expanding)
+
+        # Store reference for refreshing
+        self.accordion_sidebar = sidebar
+
+        return sidebar
 
     def _create_timeline(self) -> QWidget:
         """
@@ -1372,10 +1363,14 @@ class GooglePhotosLayout(BaseLayout):
 
         # CRITICAL: Check if we have a valid project
         if self.project_id is None:
+            # No project - show empty state with instructions
             self._hide_refresh_indicator()
             self._clear_timeline_for_new_content()
-            # UX-1: Onboarding messaging now handled by outer shell
-            print("[GooglePhotosLayout] ⚠️ No project selected (Onboarding mode)")
+            empty_label = QLabel("📂 No project selected\n\nClick '➕ New Project' to create your first project")
+            empty_label.setAlignment(Qt.AlignCenter)
+            empty_label.setStyleSheet("font-size: 12pt; color: #888; padding: 60px;")
+            self.timeline_layout.addWidget(empty_label)
+            print("[GooglePhotosLayout] ⚠️ No project selected")
             return
 
         # Build filter params (legacy format for PhotoLoadWorker)
@@ -6302,20 +6297,6 @@ class GooglePhotosLayout(BaseLayout):
         print(f"[GooglePhotosLayout] Queued {self.thumbnail_load_count} thumbnails for loading (initial limit: {self.initial_load_limit})")
         print(f"[GooglePhotosLayout] Photo loading complete! Thumbnails will load progressively.")
 
-        # UX-10/11: signal async load completion ONLY for store-driven search loads.
-        # Normal browsing loads (refresh_after_scan, set_project) should NOT emit
-        # stateChanged — doing so caused cascading UI corruption (empty state override,
-        # spurious layout switches).
-        try:
-            mw = self.main_window
-            if (mw and hasattr(mw, "_on_result_surface_async_load_completed")
-                    and hasattr(mw, "search_state_store")):
-                st = mw.search_state_store.get_state()
-                if getattr(st, "result_surface_busy", False):
-                    mw._on_result_surface_async_load_completed()
-        except Exception:
-            pass
-
     def _on_timeline_scrolled(self):
         """
         QUICK WIN #5: Debounced scroll handler for smooth 60 FPS performance.
@@ -9908,6 +9889,12 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
             except:
                 pass
 
+        # Project combo signals
+        if hasattr(self, 'project_combo'):
+            try:
+                self.project_combo.currentIndexChanged.disconnect(self._on_project_changed)
+            except:
+                pass
 
         # Search state signals
         if hasattr(self.main_window, 'search_state_store'):
@@ -10021,6 +10008,144 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
 
         print("[GooglePhotosLayout]   ✓ Animations stopped")
 
+    def _on_create_project_clicked(self):
+        """Handle Create Project button click."""
+        print("[GooglePhotosLayout] 🆕🆕🆕 CREATE PROJECT BUTTON CLICKED! 🆕🆕🆕")
+
+        # Debug: Check if main_window exists and has breadcrumb_nav
+        if not hasattr(self, 'main_window'):
+            print("[GooglePhotosLayout] ❌ ERROR: self.main_window does not exist!")
+            return
+
+        # CRITICAL FIX: _create_new_project is in BreadcrumbNavigation, not MainWindow!
+        # MainWindow has self.breadcrumb_nav which contains the method
+        if not hasattr(self.main_window, 'breadcrumb_nav'):
+            print(f"[GooglePhotosLayout] ❌ ERROR: main_window does not have breadcrumb_nav!")
+            return
+
+        if not hasattr(self.main_window.breadcrumb_nav, '_create_new_project'):
+            print(f"[GooglePhotosLayout] ❌ ERROR: breadcrumb_nav does not have _create_new_project method!")
+            return
+
+        print("[GooglePhotosLayout] ✓ Calling breadcrumb_nav._create_new_project()...")
+
+        # Call BreadcrumbNavigation's project creation dialog
+        self.main_window.breadcrumb_nav._create_new_project()
+
+        print("[GooglePhotosLayout] ✓ Project creation dialog completed")
+
+        # CRITICAL: Update project_id after creation
+        from app_services import get_default_project_id
+        self.project_id = get_default_project_id()
+        print(f"[GooglePhotosLayout] Updated project_id: {self.project_id}")
+
+        # Update accordion sidebar immediately (prevents empty sidebar glitch)
+        if hasattr(self, 'accordion_sidebar') and self.project_id is not None:
+            self.accordion_sidebar.set_project(self.project_id)
+
+        # Refresh project selector and layout
+        self._populate_project_selector()
+        self._load_photos()
+        print("[GooglePhotosLayout] ✓ Layout refreshed after project creation")
+
+    def _populate_project_selector(self):
+        """
+        Populate the project selector combobox with available projects.
+        Google Photos pattern: "+ New Project..." as first item.
+        """
+        try:
+            from app_services import list_projects
+            projects = list_projects()
+
+            # Block signals while updating to prevent triggering change handler
+            self.project_combo.blockSignals(True)
+            self.project_combo.clear()
+
+            # Google Photos pattern: Add "+ New Project..." as first item
+            self.project_combo.addItem("➕ New Project...", userData="__new_project__")
+
+            # Add separator after "New Project" option
+            self.project_combo.insertSeparator(1)
+
+            if not projects:
+                self.project_combo.addItem("(No projects)", None)
+                # Still enable dropdown so user can create new project
+                self.project_combo.setEnabled(True)
+            else:
+                for proj in projects:
+                    self.project_combo.addItem(proj["name"], proj["id"])
+                self.project_combo.setEnabled(True)
+
+                # Select current project (skip index 0 and 1 which are "+ New" and separator)
+                if self.project_id:
+                    for i in range(2, self.project_combo.count()):  # Start from index 2
+                        if self.project_combo.itemData(i) == self.project_id:
+                            self.project_combo.setCurrentIndex(i)
+                            break
+                else:
+                    # If no project_id, select first actual project (index 2)
+                    if self.project_combo.count() > 2:
+                        self.project_combo.setCurrentIndex(2)
+
+            # Unblock signals and connect change handler
+            self.project_combo.blockSignals(False)
+            try:
+                self.project_combo.currentIndexChanged.disconnect()
+            except:
+                pass  # No previous connection
+            self.project_combo.currentIndexChanged.connect(self._on_project_changed)
+
+            print(f"[GooglePhotosLayout] Project selector populated with {len(projects)} projects (+ New Project option)")
+
+        except Exception as e:
+            print(f"[GooglePhotosLayout] ⚠️ Error populating project selector: {e}")
+
+    def _on_project_changed(self, index: int):
+        """
+        Handle project selection change in combobox.
+        Detects "+ New Project..." selection and opens create dialog.
+        """
+        new_project_id = self.project_combo.itemData(index)
+
+        # Check if user selected "+ New Project..." option
+        if new_project_id == "__new_project__":
+            print("[GooglePhotosLayout] ➕ New Project option selected")
+
+            # Block signals to prevent recursion
+            self.project_combo.blockSignals(True)
+
+            # Restore previous selection (don't stay on "+ New Project")
+            if self.project_id:
+                for i in range(2, self.project_combo.count()):
+                    if self.project_combo.itemData(i) == self.project_id:
+                        self.project_combo.setCurrentIndex(i)
+                        break
+            else:
+                # If no current project, select first actual project
+                if self.project_combo.count() > 2:
+                    self.project_combo.setCurrentIndex(2)
+
+            # Unblock signals
+            self.project_combo.blockSignals(False)
+
+            # Open project creation dialog
+            self._on_create_project_clicked()
+            return
+
+        # Normal project change handling
+        if new_project_id is None or new_project_id == self.project_id:
+            return
+
+        print(f"[GooglePhotosLayout] Project changed: {self.project_id} -> {new_project_id}")
+        self.project_id = new_project_id
+        self._last_load_signature = None  # invalidate on project change
+
+        # Update accordion sidebar with new project
+        if hasattr(self, 'accordion_sidebar'):
+            self.accordion_sidebar.set_project(new_project_id)
+
+        # Reload photos for the new project
+        self._load_photos()
 
     def set_project(self, project_id: int):
         """
@@ -10044,6 +10169,14 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
         # Reload photos for the new project
         self._load_photos()
 
+        # Update project combo box to match (if it exists)
+        if hasattr(self, 'project_combo'):
+            self.project_combo.blockSignals(True)
+            for i in range(self.project_combo.count()):
+                if self.project_combo.itemData(i) == project_id:
+                    self.project_combo.setCurrentIndex(i)
+                    break
+            self.project_combo.blockSignals(False)
 
     # ========== PHASE 3 Task 3.1: BaseLayout Interface Implementation ==========
 

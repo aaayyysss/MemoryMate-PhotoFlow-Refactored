@@ -303,70 +303,6 @@ class ReferenceDB:
             )
         """)
 
-        # --------------------------------------------------
-        # UX-9A: People merge review decisions
-        # --------------------------------------------------
-        c.execute("""
-            CREATE TABLE IF NOT EXISTS people_merge_review (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                left_cluster_id TEXT NOT NULL,
-                right_cluster_id TEXT NOT NULL,
-                decision TEXT NOT NULL,
-                reviewed_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(left_cluster_id, right_cluster_id)
-            )
-        """)
-
-        # --------------------------------------------------
-        # UX-9A Post-Impl: Structured merge decisions with scoring
-        # --------------------------------------------------
-        c.execute("""
-            CREATE TABLE IF NOT EXISTS people_merge_decisions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                project_id INTEGER NOT NULL,
-                left_person_id TEXT NOT NULL,
-                right_person_id TEXT NOT NULL,
-                decision TEXT NOT NULL CHECK(decision IN ('accept', 'reject')),
-                score REAL,
-                reason TEXT,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(project_id, left_person_id, right_person_id, decision)
-            )
-        """)
-
-        c.execute("""
-            CREATE TABLE IF NOT EXISTS people_merge_candidates (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                project_id INTEGER NOT NULL,
-                left_person_id TEXT NOT NULL,
-                right_person_id TEXT NOT NULL,
-                score REAL NOT NULL,
-                evidence_json TEXT,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(project_id, left_person_id, right_person_id)
-            )
-        """)
-
-        c.execute("CREATE INDEX IF NOT EXISTS idx_people_merge_candidates_project ON people_merge_candidates(project_id, score DESC)")
-        c.execute("CREATE INDEX IF NOT EXISTS idx_people_merge_decisions_project ON people_merge_decisions(project_id, decision)")
-
-        c.execute("""
-            CREATE TABLE IF NOT EXISTS people_cluster_summary (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                project_id INTEGER NOT NULL,
-                person_id TEXT NOT NULL,
-                label TEXT,
-                face_count INTEGER DEFAULT 0,
-                representative_face_path TEXT,
-                avg_embedding BLOB,
-                is_unnamed INTEGER DEFAULT 0,
-                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(project_id, person_id)
-            )
-        """)
-
-        c.execute("CREATE INDEX IF NOT EXISTS idx_people_cluster_summary_project ON people_cluster_summary(project_id, face_count DESC)")
-
         c.execute('''
             CREATE TABLE IF NOT EXISTS export_history (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -7147,36 +7083,6 @@ class ReferenceDB:
 
 
 # --- Compatibility shims for legacy imports ---
-    # --------------------------------------------------
-    # UX-9A: People merge review persistence
-    # --------------------------------------------------
-
-    def get_people_merge_reviews(self):
-        """Return all prior merge review decisions as {(left_id, right_id): decision}."""
-        with self._connect() as conn:
-            cur = conn.cursor()
-            cur.execute("""
-                SELECT left_cluster_id, right_cluster_id, decision
-                FROM people_merge_review
-            """)
-            rows = cur.fetchall()
-            return {
-                tuple(sorted((str(row[0]), str(row[1])))): str(row[2])
-                for row in rows
-            }
-
-    def save_people_merge_review(self, left_cluster_id: str, right_cluster_id: str, decision: str):
-        """Persist an accept/reject decision for a merge candidate pair."""
-        left_id, right_id = sorted((str(left_cluster_id), str(right_cluster_id)))
-        with self._connect() as conn:
-            conn.execute("""
-                INSERT INTO people_merge_review (left_cluster_id, right_cluster_id, decision)
-                VALUES (?, ?, ?)
-                ON CONFLICT(left_cluster_id, right_cluster_id)
-                DO UPDATE SET decision=excluded.decision, reviewed_at=CURRENT_TIMESTAMP
-            """, (left_id, right_id, decision))
-
-
 _db = ReferenceDB()
 
 def get_all_references(): return _db.get_all_references()

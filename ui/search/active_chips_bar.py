@@ -1,5 +1,6 @@
-from PySide6.QtCore import Signal, Qt
-from PySide6.QtWidgets import QWidget, QHBoxLayout, QPushButton, QScrollArea, QFrame
+from PySide6.QtCore import Signal
+from PySide6.QtWidgets import QWidget, QHBoxLayout, QPushButton
+from shiboken6 import isValid
 
 
 class ActiveChipsBar(QWidget):
@@ -9,27 +10,11 @@ class ActiveChipsBar(QWidget):
     def __init__(self, store, parent=None):
         super().__init__(parent)
         self.store = store
-
-        outer = QHBoxLayout(self)
-        outer.setContentsMargins(0, 0, 0, 0)
-        outer.setSpacing(0)
-
-        self.scroll = QScrollArea()
-        self.scroll.setWidgetResizable(True)
-        self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.scroll.setFrameShape(QFrame.NoFrame)
-
-        self.content = QWidget()
-        self.layout = QHBoxLayout(self.content)
+        self.layout = QHBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
         self.layout.setSpacing(6)
 
-        self.scroll.setWidget(self.content)
-        outer.addWidget(self.scroll)
-
         self.store.stateChanged.connect(self._on_state_changed)
-        self.setVisible(False)
 
     def _clear_layout(self):
         while self.layout.count():
@@ -39,6 +24,8 @@ class ActiveChipsBar(QWidget):
                 widget.deleteLater()
 
     def _on_state_changed(self, state):
+        if not isValid(self):
+            return
         self._clear_layout()
 
         if not state.active_chips:
@@ -53,28 +40,10 @@ class ActiveChipsBar(QWidget):
             value = chip.get("value")
 
             btn = QPushButton(f"{label} ✕")
-
-            kind_name = (kind or "").lower()
-            if kind_name == "preset":
-                btn.setObjectName("SearchChipPreset")
-            elif kind_name == "browse":
-                btn.setObjectName("SearchChipBrowse")
-            elif kind_name == "filter":
-                btn.setObjectName("SearchChipFilter")
-            elif kind_name == "person":
-                btn.setObjectName("SearchChipPerson")
-            elif kind_name == "query":
-                btn.setObjectName("SearchChipQuery")
-            else:
-                btn.setObjectName("SearchChip")
-
-            btn.setCursor(Qt.PointingHandCursor)
             btn.clicked.connect(lambda checked=False, k=kind, v=value: self.chipRemoved.emit(k, v))
             self.layout.addWidget(btn)
 
         clear_btn = QPushButton("Clear")
-        clear_btn.setObjectName("SearchChipClear")
-        clear_btn.setCursor(Qt.PointingHandCursor)
         clear_btn.clicked.connect(self.clearAllRequested.emit)
         self.layout.addWidget(clear_btn)
 
