@@ -753,6 +753,22 @@ class MainWindow(QMainWindow):
         act_toggle_sidebar.toggled.connect(self._on_toggle_sidebar_visibility)
         # act_toggle_sidebar_mode connection happens later (line ~2430)
 
+        # Power-user mode toggle (Tools menu)
+        menu_tools.addSeparator()
+        self._power_user_mode = bool(self.settings.get("power_user_mode", False)) if self.settings else False
+        self._act_power_user = QAction("Enable Power User Mode", self)
+        self._act_power_user.setCheckable(True)
+        self._act_power_user.setChecked(self._power_user_mode)
+        self._act_power_user.setToolTip("Show developer and advanced layout options")
+        self._act_power_user.toggled.connect(self._on_toggle_power_user_mode)
+        menu_tools.addAction(self._act_power_user)
+
+        # Direct shortcut to Current Layout (always available for power user)
+        act_open_current = QAction("Switch to Current Layout", self)
+        act_open_current.setShortcut("Ctrl+Alt+Shift+L")
+        act_open_current.triggered.connect(lambda: self._switch_layout("current"))
+        self.addAction(act_open_current)
+
         # Filter menu connections
         self.btn_all.triggered.connect(lambda: self._apply_tag_filter("all"))
         self.btn_fav.triggered.connect(lambda: self._apply_tag_filter("favorite"))
@@ -2823,6 +2839,19 @@ class MainWindow(QMainWindow):
             self.search_sidebar.set_search_hub_recent([])
         except Exception as e:
             logger.warning(f"[Sidebar] Clear recent failed: {e}")
+
+    def _on_toggle_power_user_mode(self, checked: bool):
+        """Toggle power-user mode and persist the setting."""
+        self._power_user_mode = bool(checked)
+        if self.settings:
+            self.settings.set("power_user_mode", self._power_user_mode)
+        QMessageBox.information(
+            self,
+            "Power User Mode",
+            f"Power User Mode {'enabled' if checked else 'disabled'}.\n"
+            "Restart the app to update the Layout menu.\n"
+            "You can always use Ctrl+Alt+Shift+L to switch to Current Layout."
+        )
 
     def _sync_sidebar_visibility_for_layout(self):
         """Adjust sidebar weight based on active layout."""

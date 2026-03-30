@@ -28,6 +28,7 @@ from .video_editor_mixin import VideoEditorMixin
 
 # Import extracted components from google_components module
 from ui.search.empty_state_view import EmptyStateView
+from ui.search.search_sidebar import SearchSidebar
 
 from google_components import (
     # Phase 3A: UI Widgets
@@ -298,9 +299,9 @@ class GooglePhotosLayout(BaseLayout):
         self.splitter = QSplitter(Qt.Horizontal)
         self.splitter.setHandleWidth(3)
 
-        # Create sidebar
-        self.sidebar = self._create_sidebar()
-        self.splitter.addWidget(self.sidebar)
+        # Create left shell: SearchSidebar (production) + AccordionSidebar (legacy support)
+        self.left_shell_container = self._build_left_shell()
+        self.splitter.addWidget(self.left_shell_container)
 
         # Search Components (Integrated from SearchState)
         self.empty_state = EmptyStateView()
@@ -1100,6 +1101,94 @@ class GooglePhotosLayout(BaseLayout):
         indicator.adjustSize()
 
         return indicator
+
+    def _build_left_shell(self) -> QWidget:
+        """
+        Build the Google layout left rail:
+        - SearchSidebar on top (production six-section shell)
+        - AccordionSidebar below (legacy support, visually secondary)
+        """
+        container = QWidget()
+        container.setObjectName("google_left_shell")
+        container.setMinimumWidth(280)
+        container.setMaximumWidth(400)
+
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+
+        # Production shell — uses MainWindow's shared store and controller
+        mw = self.main_window
+        self.search_sidebar = SearchSidebar(
+            store=mw.search_state_store,
+            controller=mw.search_controller,
+            parent=container,
+        )
+
+        # Wire SearchSidebar signals → MainWindow handlers
+        if hasattr(mw, '_open_people_merge_review_from_sidebar'):
+            self.search_sidebar.people_section.mergeReviewRequested.connect(
+                mw._open_people_merge_review_from_sidebar
+            )
+        if hasattr(mw, '_open_unnamed_cluster_review_from_sidebar'):
+            self.search_sidebar.people_section.unnamedRequested.connect(
+                mw._open_unnamed_cluster_review_from_sidebar
+            )
+        if hasattr(mw, '_open_people_manager_from_sidebar'):
+            self.search_sidebar.people_section.showAllPeopleRequested.connect(
+                mw._open_people_manager_from_sidebar
+            )
+        if hasattr(mw, '_filter_by_person'):
+            self.search_sidebar.people_section.personSelected.connect(
+                lambda pid: mw._filter_by_person(pid)
+            )
+        if hasattr(mw, '_on_browse_node_selected'):
+            self.search_sidebar.browse_section.browseNodeSelected.connect(
+                mw._on_browse_node_selected
+            )
+        if hasattr(mw, '_on_sidebar_filter_changed'):
+            self.search_sidebar.filter_section.filterChanged.connect(
+                mw._on_sidebar_filter_changed
+            )
+        if hasattr(mw, '_toggle_activity_center'):
+            self.search_sidebar.openActivityCenterRequested.connect(
+                lambda: mw._toggle_activity_center(True)
+            )
+        if hasattr(mw, '_clear_recent_searches'):
+            self.search_sidebar.search_hub.clearRecentRequested.connect(
+                mw._clear_recent_searches
+            )
+
+        # Legacy support sidebar
+        accordion = self._create_sidebar()
+        accordion.setMaximumHeight(280)
+        accordion.setStyleSheet("""
+            background: #fafafa;
+            border-top: 1px solid #e0e0e0;
+        """)
+
+        layout.addWidget(self.search_sidebar, 1)
+        layout.addWidget(accordion, 0)
+
+        # Sync state for onboarding
+        try:
+            state = mw.search_state_store.get_state()
+            self.search_sidebar._on_state_changed(state)
+        except Exception:
+            pass
+
+        return container
+
+    def refresh_search_shell(self):
+        """Refresh data in the Google layout's SearchSidebar."""
+        mw = self.main_window
+        if mw is None or not hasattr(self, 'search_sidebar') or self.search_sidebar is None:
+            return
+        try:
+            state = mw.search_state_store.get_state()
+            self.search_sidebar._on_state_changed(state)
+        except Exception:
+            pass
 
     def _create_sidebar(self) -> QWidget:
         """
@@ -9788,6 +9877,12 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
         if mediator:
             mediator.on_layout_activated("google")
 
+        # Refresh the production search shell
+        try:
+            self.refresh_search_shell()
+        except Exception as e:
+            print(f"[GooglePhotosLayout] refresh_search_shell on activate failed: {e}")
+
         # Recompute grid columns after the widget geometry has settled.
         # During create_layout() the viewport is narrow (not yet shown);
         # by the time the event loop returns here the true width is known.
@@ -10177,6 +10272,12 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
                     self.project_combo.setCurrentIndex(i)
                     break
             self.project_combo.blockSignals(False)
+
+        # Refresh production search shell for new project
+        try:
+            self.refresh_search_shell()
+        except Exception:
+            pass
 
     # ========== PHASE 3 Task 3.1: BaseLayout Interface Implementation ==========
 
