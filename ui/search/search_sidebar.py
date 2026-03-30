@@ -80,8 +80,8 @@ class SearchSidebar(QWidget):
         # Discover → controller
         if self.controller:
             self.discover_section.presetSelected.connect(self.controller.set_preset)
-            self.search_hub.recentSearchClicked.connect(self.controller.execute_search)
-            self.search_hub.suggestionClicked.connect(self.controller.execute_search)
+            self.search_hub.recentSearchClicked.connect(self.controller.submit_query)
+            self.search_hub.suggestionClicked.connect(self.controller.submit_query)
 
         # Activity → outbound
         self.activity_section.openActivityCenterRequested.connect(

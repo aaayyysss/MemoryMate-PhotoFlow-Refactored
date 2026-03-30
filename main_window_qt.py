@@ -2775,7 +2775,7 @@ class MainWindow(QMainWindow):
         """Apply a person filter from People section selection."""
         try:
             if self.search_controller:
-                self.search_controller.execute_search(f"person:{person_id}")
+                self.search_controller.submit_query(f"person:{person_id}")
         except Exception as e:
             logger.warning(f"[Sidebar] Person filter failed: {e}")
 
@@ -2787,13 +2787,13 @@ class MainWindow(QMainWindow):
                     self.search_controller.clear_search()
             elif browse_key == "favorites":
                 if self.search_controller:
-                    self.search_controller.execute_search("is:fav")
+                    self.search_controller.submit_query("is:fav")
             elif browse_key == "videos":
                 if self.search_controller:
-                    self.search_controller.execute_search("type:video")
+                    self.search_controller.submit_query("type:video")
             elif browse_key == "with_location":
                 if self.search_controller:
-                    self.search_controller.execute_search("has:location")
+                    self.search_controller.submit_query("has:location")
             elif browse_key == "folders":
                 if hasattr(self, "sidebar") and hasattr(self.sidebar, "select_tab"):
                     self.sidebar.select_tab("folders")
@@ -2811,7 +2811,7 @@ class MainWindow(QMainWindow):
         """Handle filter change from Filter section facet chip."""
         try:
             if self.search_controller:
-                self.search_controller.execute_search(f"{key}:{value}")
+                self.search_controller.submit_query(f"{key}:{value}")
         except Exception as e:
             logger.warning(f"[Sidebar] Filter change failed: {e}")
 
