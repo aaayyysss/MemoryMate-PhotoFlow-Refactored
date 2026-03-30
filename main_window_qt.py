@@ -3375,6 +3375,9 @@ class MainWindow(QMainWindow):
     def _init_people_identity_services(self):
         """UX-11: Initialize people identity services, repos, and event bus."""
         try:
+            if not getattr(self, "active_project_id", None):
+                logger.debug("[UX-11] Skipping people services init — no active project")
+                return
             from services.people_event_bus import PeopleEventBus
             from repository.schema import ensure_people_review_schema
             from repository.people_review_repository import PeopleReviewRepository
@@ -3482,8 +3485,6 @@ class MainWindow(QMainWindow):
         try:
             payload = {
                 "top_people": [],
-                "merge_candidates": 0,
-                "unnamed_count": 0,
             }
             suggestions = []
             unnamed_clusters = []
@@ -3514,8 +3515,11 @@ class MainWindow(QMainWindow):
                     if people_section:
                         _extract(people_section)
 
-            payload["merge_candidates"] = len(suggestions)
-            payload["unnamed_count"] = len(unnamed_clusters)
+            # Use identity-layer counts if provided, otherwise fall back to legacy list lengths
+            if "merge_candidates" not in payload:
+                payload["merge_candidates"] = len(suggestions)
+            if "unnamed_count" not in payload:
+                payload["unnamed_count"] = len(unnamed_clusters)
 
             if hasattr(self, "search_controller"):
                 self.search_controller.set_people_quick_payload(payload)
@@ -3630,6 +3634,9 @@ class MainWindow(QMainWindow):
     def _open_people_merge_review(self):
         """UX-9B/11: open side-by-side PeopleMergeReviewDialog with service integration."""
         try:
+            if not getattr(self, "active_project_id", None):
+                logger.debug("[UX-11] Merge review blocked — no active project")
+                return
             from ui.search.people_merge_review_dialog import PeopleMergeReviewDialog
 
             dlg = PeopleMergeReviewDialog(self)
@@ -3701,6 +3708,9 @@ class MainWindow(QMainWindow):
     def _open_unnamed_cluster_review(self):
         """UX-9C/11: launch UnnamedClusterAssignmentDialog with service integration."""
         try:
+            if not getattr(self, "active_project_id", None):
+                logger.debug("[UX-11] Unnamed cluster review blocked — no active project")
+                return
             from ui.search.unnamed_cluster_assignment_dialog import UnnamedClusterAssignmentDialog
 
             state = self.search_state_store.get_state()

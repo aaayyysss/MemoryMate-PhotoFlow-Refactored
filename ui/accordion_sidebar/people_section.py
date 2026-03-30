@@ -41,12 +41,7 @@ from shiboken6 import isValid
 from reference_db import ReferenceDB
 from translation_manager import tr
 from services.people_merge_engine import PeopleMergeEngine
-from services.people_review_service import PeopleReviewService
-from services.identity_resolution_service import IdentityResolutionService
-from services.people_review_invalidation_service import PeopleReviewInvalidationService
 from repository.people_merge_review_repository import PeopleMergeReviewRepository
-from repository.people_review_repository import PeopleReviewRepository
-from repository.identity_repository import IdentityRepository
 from .base_section import BaseSection
 
 logger = logging.getLogger(__name__)
@@ -514,46 +509,36 @@ class PeopleSection(BaseSection):
         except Exception:
             return None
 
-    def _get_db_connection(self):
-        """Get a raw DB connection for UX-11 repositories."""
+    def _get_main_window(self):
+        """Walk up the widget tree to find MainWindow."""
         try:
-            db = getattr(self, "_parent_db", None)
-            if db is None:
-                return None
-            return db._connect().__enter__()
+            w = self.window()
+            if w and hasattr(w, '_identity_resolution_service'):
+                return w
         except Exception:
-            return None
-
-    def _get_review_repos(self):
-        """UX-11: get both review and identity repositories."""
-        try:
-            conn = self._get_db_connection()
-            if conn is None:
-                return None, None
-            return PeopleReviewRepository(conn), IdentityRepository(conn)
-        except Exception:
-            return None, None
+            pass
+        return None
 
     def _get_identity_service(self) -> Optional[IdentityResolutionService]:
-        """UX-11: get identity resolution service."""
-        try:
-            review_repo, identity_repo = self._get_review_repos()
-            if review_repo is None or identity_repo is None:
-                return None
-            return IdentityResolutionService(identity_repo, review_repo, event_bus=None)
-        except Exception:
-            return None
+        """UX-11: get identity resolution service from MainWindow (single instance)."""
+        mw = self._get_main_window()
+        if mw:
+            return getattr(mw, '_identity_resolution_service', None)
+        return None
 
     def _get_review_service(self) -> Optional[PeopleReviewService]:
-        """UX-11: get review service (business logic layer)."""
-        try:
-            review_repo, identity_repo = self._get_review_repos()
-            if review_repo is None or identity_repo is None:
-                return None
-            identity_service = IdentityResolutionService(identity_repo, review_repo, event_bus=None)
-            return PeopleReviewService(review_repo, identity_repo, identity_service, event_bus=None)
-        except Exception:
-            return None
+        """UX-11: get review service from MainWindow (single instance)."""
+        mw = self._get_main_window()
+        if mw:
+            return getattr(mw, '_people_review_service', None)
+        return None
+
+    def _get_identity_repo(self):
+        """UX-11: get identity repo from MainWindow (single instance)."""
+        mw = self._get_main_window()
+        if mw:
+            return getattr(mw, '_identity_repo', None)
+        return None
 
     def get_people_quick_payload(self):
         """
@@ -625,11 +610,8 @@ class PeopleSection(BaseSection):
     def _get_identity_layer_quick_payload(self):
         """UX-11: Build quick payload from durable identity layer."""
         review_svc = self._get_review_service()
-        if not review_svc:
-            return None
-
-        identity_repo = getattr(review_svc, 'identity_repo', None)
-        if not identity_repo or not hasattr(identity_repo, 'conn'):
+        identity_repo = self._get_identity_repo()
+        if not review_svc or not identity_repo or not hasattr(identity_repo, 'conn'):
             return None
 
         # Top identities from person_identity + cluster links
