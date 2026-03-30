@@ -86,6 +86,21 @@ class PeopleReviewService:
             "right_cluster": self._build_cluster_panel_payload(candidate.cluster_b_id),
         }
 
+    def get_merge_compare_payload(self, left_id: str, right_id: str) -> dict[str, Any]:
+        """Look up candidate by cluster pair and return compare payload with left/right keys."""
+        candidate = self.people_review_repo.find_existing_pair(left_id, right_id)
+        if not candidate:
+            return {}
+        panel = self.get_merge_candidate_compare_payload(candidate.candidate_id)
+        # Map to the left/right keys the dialog expects
+        return {
+            "left": panel.get("left_cluster", {}),
+            "right": panel.get("right_cluster", {}),
+            "candidate_id": panel.get("candidate_id"),
+            "confidence_score": panel.get("confidence_score"),
+            "rationale": panel.get("rationale"),
+        }
+
     def get_cluster_assign_suggestions(
         self,
         cluster_id: str,

@@ -279,7 +279,7 @@ class PeopleMergeReviewDialog(QDialog):
         self._identity_resolution_service = identity_resolution_service
 
     def reload_queue(self):
-        """UX-11: Reload the candidate list from PeopleReviewService."""
+        """UX-11: Reload the candidate list directly from PeopleReviewService."""
         svc = getattr(self, '_people_review_service', None)
         if not svc:
             return
@@ -287,24 +287,32 @@ class PeopleMergeReviewDialog(QDialog):
         queue_items = svc.get_merge_review_queue(include_reviewed=False, limit=None)
         self._queue_items = queue_items
 
-        # Convert to suggestions format for set_suggestions()
-        suggestions = []
+        # Populate list directly from service queue items — no legacy conversion
+        self.list_widget.clear()
+        self.lbl_subtitle.setText(f"Possible merges: {len(queue_items)}")
+
         for item in queue_items:
-            suggestions.append({
-                "candidate_id": item.get("candidate_id"),
-                "left_id": item.get("cluster_a_id", ""),
-                "right_id": item.get("cluster_b_id", ""),
-                "score": item.get("confidence_score"),
-                "confidence_band": item.get("confidence_band", ""),
-                "left_count": "?",
-                "right_count": "?",
-                "left_label": item.get("left_label", item.get("cluster_a_id", "")),
-                "right_label": item.get("right_label", item.get("cluster_b_id", "")),
-                "rationale": item.get("rationale", {}),
-                "status": item.get("status", "unreviewed"),
-                "badges": item.get("badges", []),
-            })
-        self.set_suggestions(suggestions)
+            left_id = item.get("cluster_a_id", "")
+            right_id = item.get("cluster_b_id", "")
+            score = item.get("confidence_score")
+            left_label = item.get("left_label", left_id)
+            right_label = item.get("right_label", right_id)
+
+            score_txt = f"{score:.2f}" if isinstance(score, (float, int)) else "?"
+            label = f"{left_label} \u2194 {right_label}\nscore {score_txt}"
+
+            list_item = QListWidgetItem(label)
+            list_item.setData(256, (left_id, right_id))
+            list_item.setData(257, item)  # store raw queue item
+
+            bg_color, text_color = _confidence_color(score)
+            list_item.setBackground(QColor(bg_color))
+            list_item.setForeground(QColor(text_color))
+
+            self.list_widget.addItem(list_item)
+
+        if self.list_widget.count() > 0:
+            self.list_widget.setCurrentRow(0)
 
     def _find_candidate_id_for_pair(self, left_id, right_id):
         """UX-11: Find candidate_id for a left/right pair from queue items."""
@@ -375,10 +383,11 @@ class PeopleMergeReviewDialog(QDialog):
         left_id, right_id = current.data(256)
         self._current_pair = (left_id, right_id)
 
-        # Show confidence info from stored suggestion data
-        suggestion = current.data(257)
-        if isinstance(suggestion, dict):
-            score = suggestion.get("score")
+        # Show confidence info from stored item data (works with both queue items and suggestions)
+        item_data = current.data(257)
+        if isinstance(item_data, dict):
+            # Support both "score" (legacy) and "confidence_score" (service) keys
+            score = item_data.get("confidence_score") or item_data.get("score")
             if isinstance(score, (float, int)):
                 _, text_color = _confidence_color(score)
                 confidence_text = f"Merge confidence: {score:.2f}"
@@ -395,7 +404,7 @@ class PeopleMergeReviewDialog(QDialog):
             else:
                 self.lbl_confidence.setText("")
 
-            rationale = suggestion.get("rationale", {})
+            rationale = item_data.get("rationale", {})
             if isinstance(rationale, dict) and rationale:
                 parts = [f"{k}: {v}" for k, v in rationale.items()]
                 self.lbl_rationale.setText(" | ".join(parts))
@@ -405,6 +414,16 @@ class PeopleMergeReviewDialog(QDialog):
             self.lbl_confidence.setText("")
             self.lbl_rationale.setText("")
 
+        # Load comparison payload from service if available, otherwise fall back to signal
+        svc = getattr(self, '_people_review_service', None)
+        if svc:
+            try:
+                compare = svc.get_merge_compare_payload(left_id, right_id)
+                if compare:
+                    self.set_comparison_payload(compare)
+                    return
+            except Exception:
+                pass
         self.reviewRequested.emit(left_id, right_id)
 
     def _advance_to_next(self):
