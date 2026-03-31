@@ -47,6 +47,7 @@ from google_components import (
 
 from typing import Dict, List, Tuple, Optional
 from collections import defaultdict
+from ui.search.search_sidebar import SearchSidebar
 from datetime import datetime
 import json
 from utils.qt_role import role_set_json, role_get_json
@@ -103,13 +104,136 @@ class GooglePhotosLayout(BaseLayout):
     def get_id(self) -> str:
         return "google"
 
+    def _get_main_window(self):
+        """
+        Resolve owning MainWindow from GooglePhotosLayout.
+        """
+        if hasattr(self, "main_window") and self.main_window is not None:
+            return self.main_window
+
+        p = self.parent()
+        while p is not None:
+            if hasattr(p, "search_state_store") and hasattr(p, "search_controller"):
+                return p
+            try:
+                p = p.parent()
+            except Exception:
+                p = None
+        return None
+
+    def _build_left_shell(self, project_id=None):
+        """
+        Build the visible Google left rail:
+        - SearchSidebar on top, production shell
+        - AccordionSidebar below, transitional support shell
+        """
+        mw = self._get_main_window()
+        if mw is None:
+            raise RuntimeError("GooglePhotosLayout could not resolve MainWindow")
+
+        self.left_shell_container = QWidget()
+        self.left_shell_container.setObjectName("google_left_shell_container")
+        self.left_shell_container.setMinimumWidth(300)
+        self.left_shell_container.setMaximumWidth(380)
+        self.left_shell_container.setStyleSheet("""
+            QWidget#google_left_shell_container {
+                background: #ffffff;
+                border-right: 1px solid #e0e0e0;
+            }
+        """)
+
+        self.left_shell_layout = QVBoxLayout(self.left_shell_container)
+        self.left_shell_layout.setContentsMargins(8, 8, 8, 8)
+        self.left_shell_layout.setSpacing(8)
+
+        # Top: production shell
+        self.search_sidebar = SearchSidebar(
+            store=mw.search_state_store,
+            controller=mw.search_controller,
+            parent=self.left_shell_container,
+        )
+        self.search_sidebar.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+
+        self.search_sidebar.selectBranch.connect(mw._handle_search_sidebar_branch_request)
+        self.search_sidebar.openActivityCenterRequested.connect(
+            mw._open_activity_center_from_sidebar
+        )
+
+        # Bottom: legacy support shell
+        from ui.accordion_sidebar import AccordionSidebar
+        self.accordion_sidebar = AccordionSidebar(project_id=project_id, parent=self.left_shell_container)
+        self.accordion_sidebar.setMaximumHeight(260)
+        self.accordion_sidebar.setStyleSheet("""
+            background: #fafafa;
+            border-top: 1px solid #e0e0e0;
+            border-radius: 8px;
+        """)
+
+        self.left_shell_layout.addWidget(self.search_sidebar, 1)
+        self.left_shell_layout.addWidget(self.accordion_sidebar, 0)
+
+        # Sync state even in onboarding
+        try:
+            state = mw.search_state_store.get_state()
+            self.search_sidebar._on_state_changed(state)
+        except Exception:
+            pass
+
+        return self.left_shell_container
+
+    def refresh_search_shell(self):
+        """
+        Refresh SearchSidebar data shown inside Google layout.
+        """
+        mw = self._get_main_window()
+        if mw is None or self.search_sidebar is None:
+            return
+
+        # recent searches
+        recent = []
+        try:
+            if hasattr(mw.search_controller, "get_recent_queries"):
+                recent = mw.search_controller.get_recent_queries() or []
+        except Exception:
+            recent = []
+
+        try:
+            self.search_sidebar.set_recent_searches(recent)
+        except Exception:
+            pass
+
+        # people quick payload
+        try:
+            if hasattr(mw, "_refresh_people_quick_section"):
+                mw._refresh_people_quick_section()
+        except Exception:
+            pass
+
+        # onboarding / active project enable state
+        try:
+            state = mw.search_state_store.get_state()
+            self.search_sidebar._on_state_changed(state)
+        except Exception:
+            pass
+
+    def set_legacy_sidebar_visible(self, visible: bool):
+        self._legacy_sidebar_visible = bool(visible)
+        if self.accordion_sidebar is not None:
+            self.accordion_sidebar.setVisible(self._legacy_sidebar_visible)
+
     def create_layout(self) -> QWidget:
         """
         Create Google Photos-style layout.
         """
         self._ensure_tooltip_style()
 
-        
+        # === Google production shell ===
+        self.search_sidebar = None
+        self.left_shell_container = None
+        self.left_shell_layout = None
+        self.accordion_sidebar = None
+        self._legacy_sidebar_visible = True
+
         # Face merge undo/redo stacks (CRITICAL FIX 2026-01-07)
         self.redo_stack = []  # Stack for redo operations after undo
 
