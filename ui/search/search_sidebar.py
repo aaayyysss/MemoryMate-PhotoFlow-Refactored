@@ -1,5 +1,7 @@
-from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QScrollArea, QFrame
+from PySide6.QtCore import Signal, Qt
+from PySide6.QtWidgets import (
+    QWidget, QVBoxLayout, QScrollArea, QFrame, QToolButton, QLabel
+)
 
 from ui.search.sections.search_hub_section import SearchHubSection
 from ui.search.sections.discover_section import DiscoverSection
@@ -7,6 +9,72 @@ from ui.search.sections.people_quick_section import PeopleQuickSection
 from ui.search.sections.browse_section import BrowseSection
 from ui.search.sections.filter_section import FilterSection
 from ui.search.sections.activity_mini_section import ActivityMiniSection
+
+
+class ExpandableSection(QFrame):
+    """
+    Reusable wrapper for making any section collapsible with a header button.
+    """
+    def __init__(self, title: str, content_widget: QWidget, expanded: bool = True, parent=None):
+        super().__init__(parent)
+        self._content_widget = content_widget
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(4)
+
+        self.toggle_btn = QToolButton()
+        self.toggle_btn.setText(title)
+        self.toggle_btn.setCheckable(True)
+        self.toggle_btn.setChecked(expanded)
+        self.toggle_btn.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.toggle_btn.setArrowType(Qt.DownArrow if expanded else Qt.RightArrow)
+        self.toggle_btn.clicked.connect(self._on_toggled)
+
+        root.addWidget(self.toggle_btn)
+        root.addWidget(self._content_widget)
+        self._content_widget.setVisible(expanded)
+
+    def _on_toggled(self):
+        expanded = self.toggle_btn.isChecked()
+        self.toggle_btn.setArrowType(Qt.DownArrow if expanded else Qt.RightArrow)
+        self._content_widget.setVisible(expanded)
+
+
+class ExpandableSubsection(QFrame):
+    """
+    Reusable wrapper for nested collapsible subsections within a section.
+    """
+    def __init__(self, title: str, parent=None, expanded: bool = True):
+        super().__init__(parent)
+        self.content = QWidget(self)
+        self.content_layout = QVBoxLayout(self.content)
+        self.content_layout.setContentsMargins(12, 2, 0, 2)
+        self.content_layout.setSpacing(4)
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(2)
+
+        self.toggle_btn = QToolButton()
+        self.toggle_btn.setText(title)
+        self.toggle_btn.setCheckable(True)
+        self.toggle_btn.setChecked(expanded)
+        self.toggle_btn.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.toggle_btn.setArrowType(Qt.DownArrow if expanded else Qt.RightArrow)
+        self.toggle_btn.clicked.connect(self._on_toggled)
+
+        root.addWidget(self.toggle_btn)
+        root.addWidget(self.content)
+        self.content.setVisible(expanded)
+
+    def _on_toggled(self):
+        expanded = self.toggle_btn.isChecked()
+        self.toggle_btn.setArrowType(Qt.DownArrow if expanded else Qt.RightArrow)
+        self.content.setVisible(expanded)
+
+    def addWidget(self, widget: QWidget):
+        self.content_layout.addWidget(widget)
 
 
 class SearchSidebar(QWidget):
@@ -42,6 +110,14 @@ class SearchSidebar(QWidget):
         self.filter_section = FilterSection()
         self.activity_section = ActivityMiniSection()
 
+        # ── Wrap sections in expandable containers ──
+        self.search_hub_wrap = ExpandableSection("Search Hub", self.search_hub, expanded=True)
+        self.discover_wrap = ExpandableSection("Discover", self.discover_section, expanded=True)
+        self.people_wrap = ExpandableSection("People", self.people_section, expanded=True)
+        self.browse_wrap = ExpandableSection("Browse", self.browse_section, expanded=True)
+        self.filters_wrap = ExpandableSection("Filters", self.filter_section, expanded=False)
+        self.activity_wrap = ExpandableSection("Activity", self.activity_section, expanded=False)
+
         self._build_ui()
         self._wire_signals()
 
@@ -63,12 +139,12 @@ class SearchSidebar(QWidget):
         self.content_layout.setContentsMargins(6, 6, 6, 6)
         self.content_layout.setSpacing(10)
 
-        self.content_layout.addWidget(self.search_hub)
-        self.content_layout.addWidget(self.discover_section)
-        self.content_layout.addWidget(self.people_section)
-        self.content_layout.addWidget(self.browse_section)
-        self.content_layout.addWidget(self.filter_section)
-        self.content_layout.addWidget(self.activity_section)
+        self.content_layout.addWidget(self.search_hub_wrap)
+        self.content_layout.addWidget(self.discover_wrap)
+        self.content_layout.addWidget(self.people_wrap)
+        self.content_layout.addWidget(self.browse_wrap)
+        self.content_layout.addWidget(self.filters_wrap)
+        self.content_layout.addWidget(self.activity_wrap)
         self.content_layout.addStretch(1)
 
         scroll.setWidget(content)

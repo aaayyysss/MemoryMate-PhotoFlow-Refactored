@@ -1252,12 +1252,84 @@ class GooglePhotosLayout(BaseLayout):
         except Exception:
             pass
 
+        # browse quick payload
+        try:
+            if hasattr(mw, "_refresh_browse_quick_section"):
+                mw._refresh_browse_quick_section()
+        except Exception:
+            pass
+
         # onboarding / active project enable state
         try:
             state = mw.search_state_store.get_state()
             self.search_sidebar._on_state_changed(state)
         except Exception:
             pass
+
+    def handle_shell_branch_request(self, branch: str) -> bool:
+        """
+        Handle branch requests from the new SearchSidebar when Google layout is active.
+
+        Returns True if handled, False if caller should fall back to legacy SidebarQt.
+        """
+        try:
+            # --- direct grid actions ---
+            if branch == "all":
+                self._load_photos()
+                return True
+
+            if branch == "favorites":
+                self._load_photos(favorites_only=True)
+                return True
+
+            # --- accordion-assisted transitions ---
+            if branch in {"folders", "dates", "videos", "duplicates", "locations", "devices", "people"}:
+                self._expand_legacy_section_and_hint(branch)
+                return True
+
+            # --- quick dates route to date section for now ---
+            if branch in {
+                "today", "yesterday", "last_7_days", "last_30_days",
+                "this_month", "last_month", "this_year", "last_year"
+            }:
+                self._expand_legacy_section_and_hint("dates")
+                return True
+
+            # --- documents/screenshots still transitional ---
+            if branch in {"documents", "screenshots"}:
+                self._load_photos()
+                return True
+
+            return False
+
+        except Exception as e:
+            logger.warning(f"[GooglePhotosLayout] handle_shell_branch_request failed for {branch}: {e}")
+            return False
+
+    def _expand_legacy_section_and_hint(self, section_id: str):
+        """
+        Transitional bridge: use the old accordion section while the new shell reaches parity.
+        """
+        if not hasattr(self, "accordion_sidebar") or self.accordion_sidebar is None:
+            return
+
+        try:
+            # Map shell ids to legacy accordion ids if needed
+            legacy_map = {
+                "folders": "folders",
+                "dates": "dates",
+                "videos": "videos",
+                "duplicates": "duplicates",
+                "locations": "locations",
+                "devices": "devices",
+                "people": "people",
+            }
+            target = legacy_map.get(section_id, section_id)
+
+            if hasattr(self.accordion_sidebar, "_expand_section"):
+                self.accordion_sidebar._expand_section(target)
+        except Exception as e:
+            logger.warning(f"[GooglePhotosLayout] Failed to expand legacy section {section_id}: {e}")
 
     def set_legacy_sidebar_visible(self, visible: bool):
         """

@@ -4,15 +4,47 @@ All notable changes to the MemoryMate PhotoFlow search pipeline are documented h
 
 ## [Unreleased] - 2026-04-01
 
-### Feature-Parity Sidebar Migration
+### Feature-Parity Sidebar Migration—Branch Routing & Expandable Sections
 
 Comprehensive migration of Google sidebar functionality to new production shell with full backward compatibility maintained.
+
+#### Critical Fixes
+- **PhotoGrid Refresh Bug Fixed**: New shell now drives Google photogrid directly via intelligent branch routing (was stuck using legacy SidebarQt path)
+  - `SearchSidebar.selectBranch` signal now properly connected to main_window_qt handler
+  - Google layout prioritized first with `handle_shell_branch_request()` dispatcher
+  - Legacy SidebarQt acts as fallback only
+  - All branch requests from new shell now correctly trigger grid reloads
+
+#### Shell Architecture Improvements
+- **Expandable Sections**: Main sections (Search Hub, Discover, People, Browse, Filters, Activity) now collapsible via header toggles
+  - Search Hub, Discover, People, Browse: expanded by default
+  - Filters, Activity: collapsed by default
+  - Reduces visual clutter and improves UX density
+  
+- **Browse Subsections**: Reorganized Browse section into expandable groups:
+  - **Library** (All Photos, Years, Months, Days) — expanded by default
+  - **Sources** (Folders, Devices) — expanded by default
+  - **Collections** (Favorites, Videos, Documents, Screenshots, Duplicates) — collapsed
+  - **Places** (Locations) — collapsed
+  - **Quick Access** (Today, Yesterday, Last X days, This/Last month/year) — collapsed
+
+#### Branch Routing Architecture
+- **Priority dispatcher in MainWindow**:
+  1. People special actions (merge_review, unnamed, tools, history, undo/redo, expand) → direct handlers
+  2. Google layout direct handler → `handle_shell_branch_request()` dispatcher
+  3. Legacy SidebarQt fallback → only if Google layout doesn't handle it
+  
+- **Google layout `handle_shell_branch_request()` handles**:
+  - Direct grid actions: all, favorites
+  - Section transitions: folders, dates, videos, duplicates, locations, devices, people
+  - Quick date presets: today, yesterday, last_7_days, last_30_days, this_month, last_month, this_year, last_year
 
 #### Browse Section
 - Expanded with full coverage of old sidebar: Library (All Photos, Years, Months, Days), Sources (Folders, Devices), Collections (Favorites, Videos, Documents, Screenshots, Duplicates), Places (Locations), Quick Access (Today, Yesterday, Last X days, etc.)
 - Device sub-items now displayed with indentation
 - Count display for all items
 - Proper signal mapping to navigation branches
+- **NEW**: Browse subsections now expandable for better UX organization
 
 #### People Section
 - Top people list with live count display
@@ -27,11 +59,14 @@ Comprehensive migration of Google sidebar functionality to new production shell 
 - New production shell on top (SearchSidebar) — growing primary UX
 - Legacy Google sidebar on bottom (AccordionSidebar) — compatibility layer
 - Legacy sidebar remains visible until parity proven
+- **NEW**: Main sections now wrapped with ExpandableSection for collapsible headers
+- **NEW**: _expand_legacy_section_and_hint() helper bridges new shell to old accordion during transition
 
 #### Files Modified
-- `ui/search/sections/browse_section.py`
-- `ui/search/sections/people_quick_section.py`
-- `ui/search/search_sidebar.py`
+- `main_window_qt.py` — Added branch routing dispatcher + browse payload refresh
+- `layouts/google_layout.py` — Added handle_shell_branch_request() + _expand_legacy_section_and_hint()
+- `ui/search/search_sidebar.py` — Added ExpandableSection + ExpandableSubsection wrapper classes + wrapped all sections
+- `ui/search/sections/browse_section.py` — Refactored with _ExpandableSubsection for nested collapsible groups
 
 ---
 

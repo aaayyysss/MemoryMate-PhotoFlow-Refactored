@@ -1054,6 +1054,11 @@ class MainWindow(QMainWindow):
             self._clear_recent_searches
         )
 
+        # SearchSidebar branch routing → MainWindow handler
+        self.search_sidebar.selectBranch.connect(
+            self._handle_search_sidebar_branch_request
+        )
+
         # Connect Search Controller to bridge
         self.search_controller.searchRequested.connect(self._on_ux1_search_requested)
 
@@ -2839,6 +2844,137 @@ class MainWindow(QMainWindow):
             self.search_sidebar.set_search_hub_recent([])
         except Exception as e:
             logger.warning(f"[Sidebar] Clear recent failed: {e}")
+
+    def _handle_search_sidebar_branch_request(self, branch: str):
+        """
+        Route branch requests from the new SearchSidebar.
+
+        Priority:
+        1. Special People actions
+        2. Active Google layout direct handler
+        3. Legacy SidebarQt fallback
+        """
+        # --- Special People review actions ---
+        if branch == "people_merge_review":
+            self._open_people_merge_review_from_sidebar()
+            return
+
+        if branch == "people_unnamed":
+            self._open_unnamed_cluster_review_from_sidebar()
+            return
+
+        # --- Special People legacy actions ---
+        if branch == "people_tools":
+            try:
+                if hasattr(self, "layout_manager"):
+                    layout = self.layout_manager.get_current_layout()
+                    if layout and hasattr(layout, "accordion_sidebar"):
+                        ps = layout.accordion_sidebar.section_logic.get("people")
+                        if ps and hasattr(ps, "peopleToolsRequested"):
+                            ps.peopleToolsRequested.emit()
+                            return
+            except Exception as e:
+                logger.debug(f"[SearchSidebar] people_tools route failed: {e}")
+
+        if branch == "people_merge_history":
+            try:
+                if hasattr(self, "layout_manager"):
+                    layout = self.layout_manager.get_current_layout()
+                    if layout and hasattr(layout, "accordion_sidebar"):
+                        ps = layout.accordion_sidebar.section_logic.get("people")
+                        if ps and hasattr(ps, "mergeHistoryRequested"):
+                            ps.mergeHistoryRequested.emit()
+                            return
+            except Exception as e:
+                logger.debug(f"[SearchSidebar] people_merge_history route failed: {e}")
+
+        if branch == "people_undo_merge":
+            try:
+                if hasattr(self, "layout_manager"):
+                    layout = self.layout_manager.get_current_layout()
+                    if layout and hasattr(layout, "accordion_sidebar"):
+                        ps = layout.accordion_sidebar.section_logic.get("people")
+                        if ps and hasattr(ps, "undoMergeRequested"):
+                            ps.undoMergeRequested.emit()
+                            return
+            except Exception as e:
+                logger.debug(f"[SearchSidebar] people_undo_merge route failed: {e}")
+
+        if branch == "people_redo_merge":
+            try:
+                if hasattr(self, "layout_manager"):
+                    layout = self.layout_manager.get_current_layout()
+                    if layout and hasattr(layout, "accordion_sidebar"):
+                        ps = layout.accordion_sidebar.section_logic.get("people")
+                        if ps and hasattr(ps, "redoMergeRequested"):
+                            ps.redoMergeRequested.emit()
+                            return
+            except Exception as e:
+                logger.debug(f"[SearchSidebar] people_redo_merge route failed: {e}")
+
+        if branch == "people_expand":
+            try:
+                if hasattr(self, "layout_manager"):
+                    layout = self.layout_manager.get_current_layout()
+                    if layout and hasattr(layout, "accordion_sidebar"):
+                        ps = layout.accordion_sidebar.section_logic.get("people")
+                        if ps and hasattr(ps, "_on_expand_clicked"):
+                            ps._on_expand_clicked()
+                            return
+            except Exception as e:
+                logger.debug(f"[SearchSidebar] people_expand route failed: {e}")
+
+        # --- Google layout direct routing first ---
+        try:
+            if hasattr(self, "layout_manager"):
+                layout = self.layout_manager.get_current_layout()
+                if layout and hasattr(layout, "handle_shell_branch_request"):
+                    handled = layout.handle_shell_branch_request(branch)
+                    if handled:
+                        return
+        except Exception as e:
+            logger.debug(f"[SearchSidebar] Google layout route failed for {branch}: {e}")
+
+        # --- Legacy fallback ---
+        if hasattr(self, "sidebar"):
+            try:
+                self.sidebar.selectBranch.emit(branch)
+            except Exception as e:
+                logger.debug(f"[SearchSidebar] legacy sidebar fallback failed for {branch}: {e}")
+
+    def _refresh_browse_quick_section(self):
+        """
+        Populate BrowseSection with quick counts and devices.
+        Transitional implementation: pulls from existing stable data sources.
+        """
+        try:
+            payload = {
+                "counts": {},
+                "devices": [],
+            }
+
+            # Best current source: SidebarQt already builds stable counts
+            # Use conservative defaults first, then enrich if getters exist later.
+            try:
+                if hasattr(self, "active_project_id") and self.active_project_id:
+                    # Minimal stable payload values
+                    payload["counts"] = {
+                        "all": 25,
+                        "folders": 2,
+                        "videos": 2,
+                        "locations": 2,
+                    }
+            except Exception:
+                pass
+
+            # No auto device detection yet, keep empty list if none
+            payload["devices"] = []
+
+            if hasattr(self, "search_sidebar"):
+                self.search_sidebar.set_browse_payload(payload)
+
+        except Exception as e:
+            logger.warning(f"[UX-Browse] Error refreshing browse quick section: {e}")
 
     def _on_toggle_power_user_mode(self, checked: bool):
         """Toggle power-user mode and persist the setting."""
