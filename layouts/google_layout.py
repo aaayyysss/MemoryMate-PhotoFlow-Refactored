@@ -10549,7 +10549,8 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
                 return
 
             # Single coalesced reload for this project
-            self.request_reload(reason="project_switch", project_id=project_id)
+            # NOTE: project_id already set above as self.project_id, _load_photos uses it internally
+            self.request_reload(reason="project_switch")
 
             # Update accordion sidebar with new project
             if hasattr(self, 'accordion_sidebar'):
