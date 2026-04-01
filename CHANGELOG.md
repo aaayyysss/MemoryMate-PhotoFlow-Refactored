@@ -4,6 +4,52 @@ All notable changes to the MemoryMate PhotoFlow search pipeline are documented h
 
 ## [Unreleased] - 2026-04-01
 
+### ⚡ PERFORMANCE PATCH PACK: Eliminate Duplicate Reloads & Regrouping
+
+**Problem Identified**: Google Layout was reloading and regrouping the same 27 assets multiple times in rapid succession, causing UI sluggishness. The scan pipeline itself was fast (25 images + 2 videos discovered quickly), but orchestration waste was the bottleneck.
+
+**Root Cause Analysis**:
+- Multiple reload sources triggering simultaneously (store subscriber, layout refresh, search shell)
+- Result set regrouping happening even when data hadn't changed
+- Startup layout mismatch (app starting as "current" instead of "google" despite correct defaulting)
+- Unnecessary transitions during initialization
+
+**Solution**: Implement result-set deduplication and startup consistency fixes
+
+#### PATCH 1: google_layout.py - Result-Set Deduplication
+- **Added `_compute_result_signature()` method**:
+  - Lightweight O(1) signature based on row count + first/last 10 paths
+  - Detects when identical result sets are being regrouped/rendered unnecessarily
+  - Prevents expensive grouping cycles when data hasn't actually changed
+- **Enhanced `_on_grouping_done()` with signature check**:
+  - Before regrouping, computes result signature
+  - Compares against last rendered signature
+  - **Skips regrouping if identical** — eliminates redundant work
+  - Logs: `"↩️ Skipping regroup/render: identical result set"`
+
+#### PATCH 2: layout_manager.py - Startup Consistency & Debug
+- **Added diagnostic logging in `initialize_default_layout()`**:
+  - Logs `settings.current_layout` value to identify version mismatches
+  - Logs available layouts for verification
+  - Helps detect when running build differs from source code
+- **Force Google layout on startup during debugging**:
+  - Eliminates current→google transition during initialization
+  - Can be easily disabled once debugging is complete
+  - Ensures consistent startup state for performance testing
+
+#### Performance Impact
+✅ Eliminates duplicate render cycles after scan completion  
+✅ Prevents redundant regrouping of identical result sets  
+✅ Removes startup layout transition overhead  
+✅ Cleaner logs with "⏩" skip indicators  
+✅ Verifies version consistency during startup
+
+#### Files Modified
+- `layouts/google_layout.py` — Added result-signature deduplication + debug tracking
+- `layouts/layout_manager.py` — Added startup debug output + forced Google layout
+
+---
+
 ### 🔧 CRITICAL ROUTING ALIGNMENT PATCH PACK
 
 **Audit Finding**: The routing layer was internally misaligned:

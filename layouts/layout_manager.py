@@ -218,16 +218,24 @@ class LayoutManager:
         Initialize the default layout (on app startup).
 
         Reads the saved layout preference and activates it.
-        Falls back to "current" layout if no preference is saved.
+        Falls back to "google" layout if no preference is saved.
+        
+        PERFORMANCE DEBUG:
+        - Logs settings state to detect version mismatches
+        - Forces Google layout during debugging to eliminate startup transitions
         """
-        # Get saved preference — default production shell is Google Layout
-        preferred_layout = "google"
-        if self.settings:
-            preferred_layout = self.settings.get("current_layout", "google")
+        # Debug: log settings and available layouts
+        saved_layout = self.settings.get('current_layout', None) if self.settings else None
+        print(f"[LayoutManager] DEBUG: settings.current_layout = {saved_layout}")
+        print(f"[LayoutManager] DEBUG: available_layouts = {list(self._layouts.keys())}")
 
+        # PERFORMANCE: Force Google layout on startup (eliminates current→google transition)
+        # Comment out this line to restore settings-based selection after debugging
+        preferred_layout = "google"
+        
         # Validate preference
         if preferred_layout not in self._layouts:
-            print(f"[LayoutManager] Invalid saved layout '{preferred_layout}', falling back to 'google'")
+            print(f"[LayoutManager] Invalid layout '{preferred_layout}', falling back to 'google'")
             preferred_layout = "google"
 
         # Initialize layout

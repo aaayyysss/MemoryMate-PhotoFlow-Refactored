@@ -174,6 +174,11 @@ class GooglePhotosLayout(BaseLayout):
         self._pending_load_params = None   # dict of params for next load
         self._last_load_signature = None   # signature of last executed load
 
+        # ── Result-set signature dedupe ──────────────────────────
+        # Prevents repeated regrouping + rendering when result set is identical.
+        # Checked in _on_grouping_done() before expensive grouping/rendering work.
+        self._last_result_signature = None  # signature of last rendered result set
+
         # PHASE 2 #5: Thumbnail aspect ratio mode
         self.thumbnail_aspect_ratio = "square"  # "square", "original", "16:9"
 
@@ -1473,6 +1478,25 @@ class GooglePhotosLayout(BaseLayout):
         return self.timeline_scroll
 
     # ── Reload coalescing helpers ──────────────────────────────
+
+    def _compute_result_signature(self, rows: list) -> tuple:
+        """
+        Compute a lightweight signature for a result set to detect duplicate loads.
+
+        Uses first 10 and last 10 path IDs, plus total row count, to detect
+        when the same result set is being regrouped/rendered redundantly.
+
+        This is fast (O(1)) and prevents expensive grouping/rendering cycles
+        when result set hasn't actually changed.
+        """
+        if not rows:
+            return (0, (), ())
+        
+        row_count = len(rows)
+        first_10 = tuple(row[0] for row in rows[:10])
+        last_10 = tuple(row[0] for row in rows[-10:])
+        
+        return (row_count, first_10, last_10)
 
     def _compute_load_signature(self, params: dict) -> tuple:
         """Compute a hashable signature for a set of load parameters.
@@ -6460,6 +6484,13 @@ class GooglePhotosLayout(BaseLayout):
         if generation != self._photo_load_generation:
             print(f"[GooglePhotosLayout] Discarding stale grouping result (gen {generation})")
             return
+
+        # ── Result signature dedupe: skip regrouping if result set unchanged ──
+        result_sig = self._compute_result_signature(rows)
+        if result_sig == self._last_result_signature:
+            print(f"[GooglePhotosLayout] ⏭️ Skipping regroup/render: identical result set ({len(rows)} rows, {len(photos_by_date)} groups)")
+            return
+        self._last_result_signature = result_sig
 
         print(f"[GooglePhotosLayout] Grouped into {len(photos_by_date)} date groups")
 
