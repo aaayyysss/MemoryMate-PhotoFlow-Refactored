@@ -1173,7 +1173,7 @@ class GooglePhotosLayout(BaseLayout):
             )
 
         # Bottom: legacy support shell
-        from ui.accordion_sidebar.accordion_sidebar import AccordionSidebar
+        from ui.accordion_sidebar import AccordionSidebar
         self.accordion_sidebar = AccordionSidebar(project_id=self.project_id, parent=self.left_shell_container)
         self.accordion_sidebar.setMaximumHeight(260)
         self.accordion_sidebar.setStyleSheet("""
