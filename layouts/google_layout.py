@@ -1182,6 +1182,36 @@ class GooglePhotosLayout(BaseLayout):
             border-radius: 8px;
         """)
 
+        # Connect accordion signals to grid filtering
+        self.accordion_sidebar.selectBranch.connect(self._on_accordion_branch_clicked)
+        self.accordion_sidebar.selectFolder.connect(self._on_accordion_folder_clicked)
+        self.accordion_sidebar.selectDate.connect(self._on_accordion_date_clicked)
+        self.accordion_sidebar.selectTag.connect(self._on_accordion_tag_clicked)
+        self.accordion_sidebar.selectVideo.connect(self._on_accordion_video_clicked)  # NEW: Video filtering
+        self.accordion_sidebar.selectPerson.connect(self._on_accordion_person_clicked)
+        self.accordion_sidebar.selectLocation.connect(self._on_accordion_location_clicked)  # GPS location filtering
+        self.accordion_sidebar.selectDevice.connect(self._on_accordion_device_selected)
+        self.accordion_sidebar.personMerged.connect(self._on_accordion_person_merged)
+        self.accordion_sidebar.personDeleted.connect(self._on_accordion_person_deleted)
+        self.accordion_sidebar.mergeHistoryRequested.connect(self._on_people_merge_history_requested)
+        self.accordion_sidebar.undoLastMergeRequested.connect(self._on_people_undo_requested)
+        self.accordion_sidebar.redoLastUndoRequested.connect(self._on_people_redo_requested)
+        self.accordion_sidebar.peopleToolsRequested.connect(self._on_people_tools_requested)
+
+        # Groups section signals (Person Groups feature)
+        self.accordion_sidebar.selectGroup.connect(self._on_accordion_group_clicked)
+        self.accordion_sidebar.editGroupRequested.connect(self._on_group_edit_requested)
+        self.accordion_sidebar.deleteGroupRequested.connect(self._on_group_deleted)
+
+        # Smart Find signals
+        self.accordion_sidebar.selectSmartFind.connect(self._on_smart_find_results)
+        self.accordion_sidebar.smartFindCleared.connect(self._on_smart_find_cleared)
+        self.accordion_sidebar.smartFindScores.connect(self._on_smart_find_scores)
+        self.accordion_sidebar.smartFindExclude.connect(self._on_smart_find_exclude)
+
+        # FIX: Connect section expansion signal to hide search suggestions popup
+        self.accordion_sidebar.sectionExpanding.connect(self._on_accordion_section_expanding)
+
         self.left_shell_layout.addWidget(self.search_sidebar, 1)
         self.left_shell_layout.addWidget(self.accordion_sidebar, 0)
 
