@@ -83,6 +83,40 @@ class SearchSidebar(QWidget):
             self.search_hub.recentSearchClicked.connect(self.controller.submit_query)
             self.search_hub.suggestionClicked.connect(self.controller.submit_query)
 
+        # Browse section → branch selection
+        self.browse_section.browseRequested.connect(self._on_browse_requested)
+
+        # People section → branch selection and person actions
+        self.people_section.personRequested.connect(
+            lambda person_id: self.selectBranch.emit(f"person_{person_id}")
+        )
+        self.people_section.reviewMergesRequested.connect(
+            lambda: self.selectBranch.emit("people_review_merges")
+        )
+        self.people_section.reviewUnnamedRequested.connect(
+            lambda: self.selectBranch.emit("people_review_unnamed")
+        )
+        self.people_section.showAllPeopleRequested.connect(
+            lambda: self.selectBranch.emit("people_show_all")
+        )
+        self.people_section.peopleToolsRequested.connect(
+            lambda: self.selectBranch.emit("people_tools")
+        )
+
+        # Legacy People row actions
+        self.people_section.mergeHistoryRequested.connect(
+            lambda: self.selectBranch.emit("people_merge_history")
+        )
+        self.people_section.undoMergeRequested.connect(
+            lambda: self.selectBranch.emit("people_undo_merge")
+        )
+        self.people_section.redoMergeRequested.connect(
+            lambda: self.selectBranch.emit("people_redo_merge")
+        )
+        self.people_section.expandPeopleRequested.connect(
+            lambda: self.selectBranch.emit("people_expand")
+        )
+
         # Activity → outbound
         self.activity_section.openActivityCenterRequested.connect(
             self.openActivityCenterRequested.emit
@@ -108,6 +142,27 @@ class SearchSidebar(QWidget):
         """Update the People section from the people quick payload."""
         self.people_section.set_people(payload)
 
+    def set_people_quick_payload(self, payload: dict) -> None:
+        """Update People section with full parity payload."""
+        payload = payload or {}
+
+        self.people_section.set_people_rows(payload.get("top_people", []))
+        self.people_section.set_counts(
+            int(payload.get("merge_candidates", 0) or 0),
+            int(payload.get("unnamed_count", 0) or 0),
+        )
+
+        self.people_section.set_legacy_actions_enabled(
+            bool(payload.get("people_tools_enabled", True))
+        )
+
+    def set_browse_payload(self, payload: dict) -> None:
+        """Update Browse section with counts and devices."""
+        payload = payload or {}
+
+        self.browse_section.set_counts(payload.get("counts", {}))
+        self.browse_section.set_devices(payload.get("devices", []))
+
     def set_activity(self, activity):
         """Update the Activity section from job manager snapshot."""
         self.activity_section.set_activity(activity)
@@ -123,6 +178,34 @@ class SearchSidebar(QWidget):
     def set_facets(self, facets, active_filters, visible_keys=None):
         """Update the Filter section with search facets."""
         self.filter_section.set_facets(facets, active_filters, visible_keys)
+
+    # ── Browse section handlers ──────────────────────────
+
+    def _on_browse_requested(self, key: str) -> None:
+        """Map browse key to selectBranch signal."""
+        mapping = {
+            "all": "all",
+            "years": "dates",
+            "months": "dates",
+            "days": "dates",
+            "folders": "folders",
+            "devices": "devices",
+            "favorites": "favorites",
+            "videos": "videos",
+            "documents": "documents",
+            "screenshots": "screenshots",
+            "duplicates": "duplicates",
+            "locations": "locations",
+            "today": "dates",
+            "yesterday": "dates",
+            "last_7_days": "dates",
+            "last_30_days": "dates",
+            "this_month": "dates",
+            "last_month": "dates",
+            "this_year": "dates",
+            "last_year": "dates",
+        }
+        self.selectBranch.emit(mapping.get(key, "all"))
 
     # ── Parity methods for MainWindow deferred init ───────
 

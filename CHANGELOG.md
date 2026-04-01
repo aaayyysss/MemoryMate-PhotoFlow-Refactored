@@ -2,6 +2,39 @@
 
 All notable changes to the MemoryMate PhotoFlow search pipeline are documented here.
 
+## [Unreleased] - 2026-04-01
+
+### Feature-Parity Sidebar Migration
+
+Comprehensive migration of Google sidebar functionality to new production shell with full backward compatibility maintained.
+
+#### Browse Section
+- Expanded with full coverage of old sidebar: Library (All Photos, Years, Months, Days), Sources (Folders, Devices), Collections (Favorites, Videos, Documents, Screenshots, Duplicates), Places (Locations), Quick Access (Today, Yesterday, Last X days, etc.)
+- Device sub-items now displayed with indentation
+- Count display for all items
+- Proper signal mapping to navigation branches
+
+#### People Section
+- Top people list with live count display
+- Review Possible Merges with dynamic count
+- Show Unnamed Clusters with dynamic count
+- Show All People and People Tools buttons
+- Legacy People row actions preserved in new shell (History, Undo, Redo, Expand)
+- Full backward compatibility with legacy `set_people()` method
+
+#### Sidebar Architecture
+- Dual-sidebar layout maintained during transition
+- New production shell on top (SearchSidebar) — growing primary UX
+- Legacy Google sidebar on bottom (AccordionSidebar) — compatibility layer
+- Legacy sidebar remains visible until parity proven
+
+#### Files Modified
+- `ui/search/sections/browse_section.py`
+- `ui/search/sections/people_quick_section.py`
+- `ui/search/search_sidebar.py`
+
+---
+
 ## [Unreleased] - 2026-03-22
 
 ### Industrial-Grade Face Pipeline & Bootstrap Policy
