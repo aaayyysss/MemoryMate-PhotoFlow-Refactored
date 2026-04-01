@@ -187,6 +187,13 @@ class GooglePhotosLayout(BaseLayout):
         # completes, if _pending_project_reload was set, one final load is executed.
         self._project_switch_in_progress = False
         self._pending_project_reload = False
+        self._reload_debounce_timer = QTimer()
+        self._reload_debounce_timer.setSingleShot(True)
+        self._reload_debounce_timer.setInterval(120)
+        self._reload_debounce_timer.timeout.connect(self._execute_debounced_reload)
+        self._pending_reload_kwargs = {}
+        self._last_reload_signature = None
+        self._reload_in_progress = False
 
         # PHASE 2 #5: Thumbnail aspect ratio mode
         self.thumbnail_aspect_ratio = "square"  # "square", "original", "16:9"
@@ -10475,6 +10482,43 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
 
         # Reload photos for the new project
         self._load_photos()
+
+    def request_reload(self, reason: str = "unknown", **kwargs):
+        """
+        Request a debounced photo reload.
+        
+        Multiple rapid calls (e.g. accordion expand + project switch) are
+        collapsed into a single load executed after a 120ms quiet period.
+        
+        This prevents generation churn during project creation and other
+        multi-source activation events.
+        """
+        self._pending_reload_kwargs = kwargs
+        self._pending_reload_reason = (reason, tuple(sorted(kwargs.items())))
+        if hasattr(self, '_reload_debounce_timer'):
+            self._reload_debounce_timer.stop()
+            self._reload_debounce_timer.start()
+        else:
+            # Fallback: direct load if timer not available
+            self._load_photos(**kwargs)
+
+    def _execute_debounced_reload(self):
+        """Execute the debounced reload if state actually changed."""
+        if getattr(self, '_reload_in_progress', False):
+            return
+
+        signature = getattr(self, "_pending_reload_reason", None)
+        if signature == self._last_reload_signature:
+            print(f"[GoogleLayout] Skipping duplicate reload: {signature}")
+            return
+
+        self._reload_in_progress = True
+        try:
+            self._last_reload_signature = signature
+            kwargs = getattr(self, "_pending_reload_kwargs", {})
+            self._load_photos(**kwargs)
+        finally:
+            self._reload_in_progress = False
 
     def set_project(self, project_id: int):
         """
