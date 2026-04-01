@@ -3,7 +3,7 @@ from PySide6.QtWidgets import QGroupBox, QVBoxLayout, QPushButton, QLabel, QWidg
 
 
 class BrowseSection(QGroupBox):
-    browseRequested = Signal(str)
+    browseNodeSelected = Signal(str, object)
 
     def __init__(self, parent=None):
         super().__init__("Browse", parent)
@@ -88,7 +88,7 @@ class BrowseSection(QGroupBox):
     def _make_button(self, text: str, key: str) -> QPushButton:
         btn = QPushButton(text)
         btn.setCursor(Qt.PointingHandCursor)
-        btn.clicked.connect(lambda checked=False, k=key: self.browseRequested.emit(k))
+        btn.clicked.connect(lambda checked=False, k=key: self.browseNodeSelected.emit(k, None))
         btn.setStyleSheet("""
             QPushButton {
                 text-align: left;
@@ -136,6 +136,8 @@ class BrowseSection(QGroupBox):
                     color: #444;
                 }
             """)
+            btn.clicked.disconnect()
+            btn.clicked.connect(lambda checked=False, k=key: self.browseNodeSelected.emit(k, None))
             self.devices_layout.addWidget(btn)
 
     def _apply_button_texts(self) -> None:

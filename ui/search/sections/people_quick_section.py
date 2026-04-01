@@ -3,11 +3,11 @@ from PySide6.QtWidgets import QGroupBox, QVBoxLayout, QHBoxLayout, QPushButton, 
 
 
 class PeopleQuickSection(QGroupBox):
-    reviewMergesRequested = Signal()
-    reviewUnnamedRequested = Signal()
+    mergeReviewRequested = Signal()
+    unnamedRequested = Signal()
     showAllPeopleRequested = Signal()
     peopleToolsRequested = Signal()
-    personRequested = Signal(str)
+    personSelected = Signal(str)
 
     # legacy row actions, kept during parity migration
     mergeHistoryRequested = Signal()
@@ -31,7 +31,7 @@ class PeopleQuickSection(QGroupBox):
         self.top_people_list = QListWidget()
         self.top_people_list.setMaximumHeight(160)
         self.top_people_list.itemClicked.connect(
-            lambda item: self.personRequested.emit(item.data(Qt.UserRole) or "")
+            lambda item: self.personSelected.emit(item.data(Qt.UserRole) or "")
         )
         root.addWidget(self.top_people_list)
 
@@ -40,8 +40,8 @@ class PeopleQuickSection(QGroupBox):
         self.btn_show_all = QPushButton("Show All People")
         self.btn_tools = QPushButton("People Tools")
 
-        self.btn_review_merges.clicked.connect(self.reviewMergesRequested.emit)
-        self.btn_review_unnamed.clicked.connect(self.reviewUnnamedRequested.emit)
+        self.btn_review_merges.clicked.connect(self.mergeReviewRequested.emit)
+        self.btn_review_unnamed.clicked.connect(self.unnamedRequested.emit)
         self.btn_show_all.clicked.connect(self.showAllPeopleRequested.emit)
         self.btn_tools.clicked.connect(self.peopleToolsRequested.emit)
 

@@ -84,16 +84,16 @@ class SearchSidebar(QWidget):
             self.search_hub.suggestionClicked.connect(self.controller.submit_query)
 
         # Browse section → branch selection
-        self.browse_section.browseRequested.connect(self._on_browse_requested)
+        self.browse_section.browseNodeSelected.connect(self._on_browse_requested)
 
         # People section → branch selection and person actions
-        self.people_section.personRequested.connect(
+        self.people_section.personSelected.connect(
             lambda person_id: self.selectBranch.emit(f"person_{person_id}")
         )
-        self.people_section.reviewMergesRequested.connect(
+        self.people_section.mergeReviewRequested.connect(
             lambda: self.selectBranch.emit("people_review_merges")
         )
-        self.people_section.reviewUnnamedRequested.connect(
+        self.people_section.unnamedRequested.connect(
             lambda: self.selectBranch.emit("people_review_unnamed")
         )
         self.people_section.showAllPeopleRequested.connect(
@@ -181,7 +181,7 @@ class SearchSidebar(QWidget):
 
     # ── Browse section handlers ──────────────────────────
 
-    def _on_browse_requested(self, key: str) -> None:
+    def _on_browse_requested(self, key: str, obj) -> None:
         """Map browse key to selectBranch signal."""
         mapping = {
             "all": "all",
