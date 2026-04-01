@@ -1268,26 +1268,28 @@ class GooglePhotosLayout(BaseLayout):
 
     def handle_shell_branch_request(self, branch: str) -> bool:
         """
-        Handle branch requests from the new SearchSidebar when Google layout is active.
-
+        Primary handler for new sidebar.
+        This is now the MAIN entry point for Google Layout actions.
+        
         Returns True if handled, False if caller should fall back to legacy SidebarQt.
         """
         try:
-            # --- direct grid actions ---
+            # ---------- DIRECT LOADERS ----------
             if branch == "all":
                 self._load_photos()
                 return True
 
             if branch == "favorites":
-                self._load_photos(favorites_only=True)
+                # FIX BUG: do NOT use favorites_only=True (not supported)
+                self._filter_favorites()
                 return True
 
-            # --- accordion-assisted transitions ---
+            # ---------- STRUCTURE BRIDGE ----------
             if branch in {"folders", "dates", "videos", "duplicates", "locations", "devices", "people"}:
                 self._expand_legacy_section_and_hint(branch)
                 return True
 
-            # --- quick dates route to date section for now ---
+            # ---------- QUICK DATES ----------
             if branch in {
                 "today", "yesterday", "last_7_days", "last_30_days",
                 "this_month", "last_month", "this_year", "last_year"
@@ -1295,7 +1297,7 @@ class GooglePhotosLayout(BaseLayout):
                 self._expand_legacy_section_and_hint("dates")
                 return True
 
-            # --- documents/screenshots still transitional ---
+            # ---------- SIMPLE TYPES ----------
             if branch in {"documents", "screenshots"}:
                 self._load_photos()
                 return True
@@ -1303,7 +1305,7 @@ class GooglePhotosLayout(BaseLayout):
             return False
 
         except Exception as e:
-            logger.warning(f"[GooglePhotosLayout] handle_shell_branch_request failed for {branch}: {e}")
+            print(f"[GoogleLayout] handler failed: {branch} → {e}")
             return False
 
     def _expand_legacy_section_and_hint(self, section_id: str):
@@ -10435,6 +10437,18 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
             self.refresh_search_shell()
         except Exception as e:
             print(f"[GooglePhotosLayout] Failed to refresh left shell after set_project({project_id}): {e}")
+        
+        # Refresh People + Browse quick sections in main window
+        try:
+            mw = self._get_main_window() if hasattr(self, "_get_main_window") else None
+            if mw:
+                if hasattr(mw, "_refresh_people_quick_section"):
+                    mw._refresh_people_quick_section()
+
+                if hasattr(mw, "_refresh_browse_quick_section"):
+                    mw._refresh_browse_quick_section()
+        except Exception as e:
+            print(f"[GoogleLayout] shell refresh failed → {e}")
 
     # ========== PHASE 3 Task 3.1: BaseLayout Interface Implementation ==========
 

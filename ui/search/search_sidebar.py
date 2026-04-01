@@ -149,6 +149,56 @@ class SearchSidebar(QWidget):
 
         scroll.setWidget(content)
         outer.addWidget(scroll)
+        
+        # Apply soft, modern styling (Google/Apple feel)
+        self.setStyleSheet("""
+            QToolButton {
+                text-align: left;
+                padding: 6px 10px;
+                border-radius: 6px;
+                border: none;
+                background: transparent;
+            }
+            
+            QToolButton:hover {
+                background: #eef3ff;
+            }
+            
+            QToolButton:pressed {
+                background: #e0e8ff;
+            }
+            
+            QFrame {
+                border: none;
+                background: transparent;
+            }
+            
+            QGroupBox {
+                border: none;
+                margin-top: 6px;
+                padding-top: 6px;
+            }
+            
+            QLabel {
+                color: #5f6368;
+            }
+            
+            QPushButton {
+                text-align: left;
+                padding: 6px 10px;
+                border-radius: 6px;
+                border: none;
+                background: transparent;
+            }
+            
+            QPushButton:hover {
+                background: #eef3ff;
+            }
+            
+            QPushButton:pressed {
+                background: #e0e8ff;
+            }
+        """)
 
     # ── Signal wiring ─────────────────────────────────────
 

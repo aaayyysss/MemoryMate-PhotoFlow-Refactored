@@ -4,6 +4,68 @@ All notable changes to the MemoryMate PhotoFlow search pipeline are documented h
 
 ## [Unreleased] - 2026-04-01
 
+### 🔧 PATCH PACK: Ownership Fix + Polish Release
+
+**Goal**: Fix photogrid refresh (new shell becomes real action owner), bridge legacy systems, add modern UI polish, push to production.
+
+#### Critical Fixes
+- **Favorites Bug Fixed**: Changed `_load_photos(favorites_only=True)` → `_filter_favorites()` in handle_shell_branch_request()
+  - `_load_photos()` doesn't support `favorites_only` parameter
+  - Now correctly calls the existing `_filter_favorites()` method
+  
+- **PhotoGrid Refresh**: New shell now drives photogrid directly  
+  - Google layout dispatcher uses intelligent branch routing
+  - People + Browse sections properly bridge to legacy accordion
+  - Legacy fallback only for unhandled branches
+
+#### UI Polish (Google/Apple Feel)
+- **Soft Styling Applied**:
+  - Removed heavy borders, replaced with soft hover effects
+  - Rounded buttons (6px border-radius)
+  - Light blue hover background (#eef3ff)
+  - Transparent backgrounds with subtle interactions
+  - Reduced visual hierarchy clutter
+  
+- **ExpandableSection Already In Place**:
+  - All sections wrapped in collapsible headers
+  - Search Hub, Discover, People, Browse: expanded by default
+  - Filters, Activity: collapsed by default
+
+#### Architecture Ownership Fix
+- **Main routing via main_window_qt._handle_search_sidebar_branch_request()**:
+  1. Special People actions → direct handlers
+  2. Google layout direct handler (NEW dispatcher priority)
+  3. Legacy accordion bridge for deep interactions
+  4. Legacy SidebarQt fallback
+
+- **Google layout.handle_shell_branch_request()**:
+  - Direct loaders: "all", "favorites"
+  - Structure bridge: folders, dates, videos, duplicates, locations, devices, people
+  - Quick dates: today, yesterday, last_7_days, last_30_days, this_month, last_month, this_year, last_year
+  - Simple types: documents, screenshots
+  - Returns True if handled, False for fallback
+
+- **set_project() Refresh Hooks**:
+  - After project switch, refreshes People and Browse quick sections
+  - Calls `_refresh_people_quick_section()` and `_refresh_browse_quick_section()` on MainWindow if available
+  - Ensures new shell stays in sync with project changes
+
+#### Files Modified
+- `main_window_qt.py` — _handle_search_sidebar_branch_request() already in place (routing verified)
+- `layouts/google_layout.py` — Updated handle_shell_branch_request() method + added set_project() refresh hooks
+- `ui/search/search_sidebar.py` — Added soft stylesheet for modern UI feel
+
+#### Final State
+✅ Photogrid updates instantly from new shell  
+✅ Browse drives Google layout, expands legacy for deep navigation  
+✅ People uses real legacy actions, no dead buttons  
+✅ UI clean, modern, expandable, not cluttered  
+✅ New shell = owner, legacy sidebar = fallback only
+
+---
+
+## [Unreleased] - Previous
+
 ### Feature-Parity Sidebar Migration—Branch Routing & Expandable Sections
 
 Comprehensive migration of Google sidebar functionality to new production shell with full backward compatibility maintained.
