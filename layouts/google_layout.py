@@ -7,7 +7,7 @@ from PySide6.QtWidgets import (
     QScrollArea, QSplitter, QToolBar, QLineEdit, QTreeWidget,
     QTreeWidgetItem, QFrame, QGridLayout, QStackedWidget, QSizePolicy, QDialog,
     QGraphicsOpacityEffect, QMenu, QListWidget, QListWidgetItem, QDialogButtonBox,
-    QInputDialog, QMessageBox, QSlider, QSpinBox, QComboBox, QLayout, QTabBar
+    QInputDialog, QMessageBox, QSlider, QSpinBox, QComboBox, QLayout, QTabBar, QGroupBox
 )
 from PySide6.QtCore import (
     Qt, Signal, QSize, QEvent, QRunnable, QThreadPool, QObject, QTimer, QUrl,
@@ -178,6 +178,15 @@ class GooglePhotosLayout(BaseLayout):
         # Prevents repeated regrouping + rendering when result set is identical.
         # Checked in _on_grouping_done() before expensive grouping/rendering work.
         self._last_result_signature = None  # signature of last rendered result set
+
+        # ── UX-PERF: Project switch + reload gate ─────────────────────
+        # Prevents reload churn during project creation/switching.
+        # When set_project() is called, it sets _project_switch_in_progress = True.
+        # Any nested calls that try to request_reload() will queue _pending_project_reload
+        # instead of triggering multiple generations. After the main set_project()
+        # completes, if _pending_project_reload was set, one final load is executed.
+        self._project_switch_in_progress = False
+        self._pending_project_reload = False
 
         # PHASE 2 #5: Thumbnail aspect ratio mode
         self.thumbnail_aspect_ratio = "square"  # "square", "original", "16:9"
@@ -1135,7 +1144,7 @@ class GooglePhotosLayout(BaseLayout):
         """
         Build the visible Google left rail:
         - SearchSidebar on top, production shell
-        - AccordionSidebar below, transitional support shell
+        - AccordionSidebar below (collapsed by default), transitional support shell
         """
         mw = self._get_main_window()
         if mw is None:
@@ -1143,8 +1152,10 @@ class GooglePhotosLayout(BaseLayout):
 
         self.left_shell_container = QWidget()
         self.left_shell_container.setObjectName("google_left_shell_container")
-        self.left_shell_container.setMinimumWidth(300)
-        self.left_shell_container.setMaximumWidth(380)
+        # UX-PERF: Reduce sidebar width from 380px max to 300px
+        # This gives more space to the grid (640px → ~900px on 1800px window)
+        self.left_shell_container.setMinimumWidth(260)
+        self.left_shell_container.setMaximumWidth(300)
         self.left_shell_container.setStyleSheet("""
             QWidget#google_left_shell_container {
                 background: #ffffff;
@@ -1177,10 +1188,9 @@ class GooglePhotosLayout(BaseLayout):
                 lambda: mw._toggle_activity_center(True)
             )
 
-        # Bottom: legacy support shell
+        # Bottom: legacy support shell (wrapped in collapsible container)
         from ui.accordion_sidebar import AccordionSidebar
         self.accordion_sidebar = AccordionSidebar(project_id=self.project_id, parent=self.left_shell_container)
-        self.accordion_sidebar.setMaximumHeight(260)
         self.accordion_sidebar.setStyleSheet("""
             background: #fafafa;
             border-top: 1px solid #e0e0e0;
@@ -1217,8 +1227,33 @@ class GooglePhotosLayout(BaseLayout):
         # FIX: Connect section expansion signal to hide search suggestions popup
         self.accordion_sidebar.sectionExpanding.connect(self._on_accordion_section_expanding)
 
+        # UX-PERF: Wrap legacy accordion in collapsed groupbox to reduce visual weight
+        self.legacy_container = QGroupBox("Legacy Tools")
+        self.legacy_container.setCheckable(True)
+        self.legacy_container.setChecked(False)  # Collapsed by default
+        self.legacy_container.setStyleSheet("""
+            QGroupBox {
+                border: 1px solid #e0e0e0;
+                border-radius: 6px;
+                margin-top: 6px;
+                padding-top: 8px;
+                font-weight: 500;
+                color: #666;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 8px;
+                padding: 0 3px;
+            }
+        """)
+        legacy_layout = QVBoxLayout(self.legacy_container)
+        legacy_layout.setContentsMargins(4, 4, 4, 4)
+        legacy_layout.setSpacing(0)
+        legacy_layout.addWidget(self.accordion_sidebar)
+        self.legacy_container.setMaximumHeight(200)  # Reduced from 260px
+
         self.left_shell_layout.addWidget(self.search_sidebar, 1)
-        self.left_shell_layout.addWidget(self.accordion_sidebar, 0)
+        self.left_shell_layout.addWidget(self.legacy_container, 0)
 
         # Sync state even in onboarding
         try:
@@ -10443,59 +10478,81 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
 
     def set_project(self, project_id: int):
         """
-        PHASE 1 Task 1.3: Public API for external project switching.
-        Called by ProjectController when user changes project from main window.
-
-        Args:
-            project_id: ID of project to switch to
+        PERF FIX: Stop reload churn during project creation.
+        
+        This method is called multiple times during project creation:
+        - Google layout activation (no project)
+        - _on_project_changed_by_id() start
+        - _on_project_changed_by_id() delegation
+        - Refresh hooks
+        
+        The gate ensures ONLY ONE final load happens, not multiple overlapping loads.
         """
-        if project_id is None or project_id == self.project_id:
+        if self._project_switch_in_progress:
+            # Already switching — queue a followup and return
+            self._pending_project_reload = True
+            print(f"[GooglePhotosLayout] Project switch in progress — queuing followup reload")
             return
 
-        print(f"[GooglePhotosLayout] set_project() called: {self.project_id} -> {project_id}")
-        self.project_id = project_id
-        self._last_load_signature = None  # invalidate on project change
-
-        # Update accordion sidebar with new project
-        if hasattr(self, 'accordion_sidebar'):
-            self.accordion_sidebar.set_project(project_id)
-
-        # Reload photos for the new project
-        self._load_photos()
-
-        # Update project combo box to match (if it exists)
-        if hasattr(self, 'project_combo'):
-            self.project_combo.blockSignals(True)
-            for i in range(self.project_combo.count()):
-                if self.project_combo.itemData(i) == project_id:
-                    self.project_combo.setCurrentIndex(i)
-                    break
-            self.project_combo.blockSignals(False)
-
-        # Refresh production search shell for new project
+        self._project_switch_in_progress = True
         try:
-            if self.accordion_sidebar is not None:
-                if hasattr(self.accordion_sidebar, "set_project_id"):
-                    self.accordion_sidebar.set_project_id(project_id)
-                elif hasattr(self.accordion_sidebar, "reload"):
-                    self.accordion_sidebar.project_id = project_id
-                    self.accordion_sidebar.reload()
+            print(f"[GooglePhotosLayout] set_project() called: {self.project_id} -> {project_id}")
+            self.project_id = project_id
+            self._last_load_signature = None  # invalidate on project change
 
-            self.refresh_search_shell()
-        except Exception as e:
-            print(f"[GooglePhotosLayout] Failed to refresh left shell after set_project({project_id}): {e}")
-        
-        # Refresh People + Browse quick sections in main window
-        try:
-            mw = self._get_main_window() if hasattr(self, "_get_main_window") else None
-            if mw:
-                if hasattr(mw, "_refresh_people_quick_section"):
-                    mw._refresh_people_quick_section()
+            if project_id is None:
+                print("[GooglePhotosLayout] ⚠️ No project selected — skip loading")
+                return
 
-                if hasattr(mw, "_refresh_browse_quick_section"):
-                    mw._refresh_browse_quick_section()
-        except Exception as e:
-            print(f"[GoogleLayout] shell refresh failed → {e}")
+            # Single coalesced reload for this project
+            self.request_reload(reason="project_switch", project_id=project_id)
+
+            # Update accordion sidebar with new project
+            if hasattr(self, 'accordion_sidebar'):
+                self.accordion_sidebar.set_project(project_id)
+
+            # Update project combo box to match (if it exists)
+            if hasattr(self, 'project_combo'):
+                self.project_combo.blockSignals(True)
+                for i in range(self.project_combo.count()):
+                    if self.project_combo.itemData(i) == project_id:
+                        self.project_combo.setCurrentIndex(i)
+                        break
+                self.project_combo.blockSignals(False)
+
+            # Refresh production search shell for new project
+            try:
+                if hasattr(self, 'accordion_sidebar') and self.accordion_sidebar is not None:
+                    if hasattr(self.accordion_sidebar, "set_project_id"):
+                        self.accordion_sidebar.set_project_id(project_id)
+                    elif hasattr(self.accordion_sidebar, "reload"):
+                        self.accordion_sidebar.project_id = project_id
+                        self.accordion_sidebar.reload()
+
+                self.refresh_search_shell()
+            except Exception as e:
+                print(f"[GooglePhotosLayout] Failed to refresh left shell after set_project({project_id}): {e}")
+            
+            # Refresh People + Browse quick sections in main window
+            try:
+                mw = self._get_main_window() if hasattr(self, "_get_main_window") else None
+                if mw:
+                    if hasattr(mw, "_refresh_people_quick_section"):
+                        mw._refresh_people_quick_section()
+
+                    if hasattr(mw, "_refresh_browse_quick_section"):
+                        mw._refresh_browse_quick_section()
+            except Exception as e:
+                print(f"[GoogleLayout] shell refresh failed → {e}")
+
+        finally:
+            self._project_switch_in_progress = False
+
+        # If a nested call queued a followup reload, execute it now
+        if self._pending_project_reload:
+            self._pending_project_reload = False
+            print(f"[GooglePhotosLayout] Executing queued followup reload for project {self.project_id}")
+            self.request_reload(reason="project_switch_followup", project_id=self.project_id)
 
     # ========== PHASE 3 Task 3.1: BaseLayout Interface Implementation ==========
 

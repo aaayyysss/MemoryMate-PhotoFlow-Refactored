@@ -4,6 +4,55 @@ All notable changes to the MemoryMate PhotoFlow search pipeline are documented h
 
 ## [Unreleased] - 2026-04-01
 
+### ⚡ UX-PERFORMANCE PATCH PACK: Stop Project-Switch Reload Churn & Optimize Sidebar
+
+**Problem Identified in Latest Audit**: 
+- Google Layout performs 3-4 unnecessary reloads during project creation/switching (generations 1, 2, 3 rapidly)
+- Sidebar width still too large (280-300px) limiting grid to only 2 columns (was target: 5-7 columns)
+- Legacy accordion taking up too much vertical space and visual weight
+- Main efficiency issue shifted from post-scan to project initialization and sidebar layout pressure
+
+**Root Cause**: Multiple concurrent project-switch calls + oversized sidebar = poor initial UX perception
+
+**Solution**: Implement project-switch load gate + reduce sidebar footprint + collapse legacy accordion
+
+#### PATCH 1: google_layout.py - Project-Switch Load Gate & Sidebar Optimization
+- **Added project-switch gate variables** in create_layout():
+  - `_project_switch_in_progress`: prevents overlapping set_project() calls
+  - `_pending_project_reload`: queues single followup reload after switch completes
+- **Rewrote set_project() method** with gate logic:
+  - Detects recursive calls and queues them instead of executing
+  - Ensures ONLY ONE final load happens after project_id is set
+  - Eliminates generations 1, 2, 3 churn during startup
+- **Reduced left sidebar width**:
+  - Changed from 380px max → 300px max
+  - Changes 640px viewport → ~900px grid viewport on 1800px window
+  - Enables 5-7 column grid instead of 2 columns
+- **Wrapped legacy accordion in collapsed QGroupBox**:
+  - Title: "Legacy Tools"
+  - Collapsed by default (checked=False)
+  - User can expand only when needed for deep accordion actions
+  - Reduced max height from 260px → 200px
+  - Visual weight dramatically reduced
+
+#### Search Sidebar Already Optimized
+- ✅ Search Hub, Discover, People, Browse: expanded by default
+- ✅ Filters, Activity: collapsed by default
+- ✅ Total sidebar height constrained by collapsed legacy box
+
+#### Performance Impact
+✅ Eliminates 3-4 preliminary loads during project creation  
+✅ Reduces perceived startup latency  
+✅ Grid gains ~260px horizontal space  
+✅ Visual clutter from legacy accordion removed  
+✅ Users see production shell immediately without legacy distraction
+
+#### Files Modified
+- `layouts/google_layout.py` — Project-switch gate + sidebar width reduction + legacy accordion collapse
+- Import QGroupBox added
+
+---
+
 ### ⚡ PERFORMANCE PATCH PACK: Eliminate Duplicate Reloads & Regrouping
 
 **Problem Identified**: Google Layout was reloading and regrouping the same 27 assets multiple times in rapid succession, causing UI sluggishness. The scan pipeline itself was fast (25 images + 2 videos discovered quickly), but orchestration waste was the bottleneck.
