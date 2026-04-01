@@ -154,49 +154,65 @@ class SearchSidebar(QWidget):
         self.setStyleSheet("""
             QToolButton {
                 text-align: left;
-                padding: 6px 10px;
-                border-radius: 6px;
+                padding: 8px 10px;
+                border-radius: 8px;
                 border: none;
                 background: transparent;
+                font-weight: 500;
             }
-            
+
             QToolButton:hover {
                 background: #eef3ff;
             }
-            
+
             QToolButton:pressed {
                 background: #e0e8ff;
             }
-            
+
             QFrame {
                 border: none;
                 background: transparent;
             }
-            
+
             QGroupBox {
                 border: none;
-                margin-top: 6px;
-                padding-top: 6px;
+                margin-top: 4px;
+                padding-top: 2px;
             }
-            
+
             QLabel {
                 color: #5f6368;
             }
-            
+
             QPushButton {
                 text-align: left;
-                padding: 6px 10px;
-                border-radius: 6px;
+                padding: 7px 10px;
+                border-radius: 8px;
                 border: none;
                 background: transparent;
             }
-            
+
             QPushButton:hover {
                 background: #eef3ff;
             }
-            
+
             QPushButton:pressed {
                 background: #e0e8ff;
+            }
+
+            QListWidget {
+                border: none;
+                background: transparent;
+            }
+
+            QListWidget::item {
+                padding: 4px 2px;
+                border-radius: 6px;
+            }
+
+            QListWidget::item:selected {
+                background: #e8f0fe;
+                color: #1a73e8;
             }
         """)
 
@@ -217,10 +233,10 @@ class SearchSidebar(QWidget):
             lambda person_id: self.selectBranch.emit(f"person_{person_id}")
         )
         self.people_section.mergeReviewRequested.connect(
-            lambda: self.selectBranch.emit("people_review_merges")
+            lambda: self.selectBranch.emit("people_merge_review")
         )
         self.people_section.unnamedRequested.connect(
-            lambda: self.selectBranch.emit("people_review_unnamed")
+            lambda: self.selectBranch.emit("people_unnamed")
         )
         self.people_section.showAllPeopleRequested.connect(
             lambda: self.selectBranch.emit("people_show_all")

@@ -1279,17 +1279,33 @@ class GooglePhotosLayout(BaseLayout):
                 self._load_photos()
                 return True
 
+            # --- Favorites (fixed) ---
             if branch == "favorites":
-                # FIX BUG: do NOT use favorites_only=True (not supported)
-                self._filter_favorites()
+                try:
+                    if hasattr(self, "_filter_favorites"):
+                        self._filter_favorites()
+                    else:
+                        self._expand_legacy_section_and_hint("favorites")
+                    return True
+                except Exception as e:
+                    print(f"[GoogleLayout] favorites route failed: {e}")
+                    return False
+
+            # --- People ---
+            if branch == "people":
+                self._expand_legacy_section_and_hint("people")
                 return True
 
-            # ---------- STRUCTURE BRIDGE ----------
-            if branch in {"folders", "dates", "videos", "duplicates", "locations", "devices", "people"}:
+            if branch == "people_show_all":
+                self._expand_legacy_section_and_hint("people")
+                return True
+
+            # --- Structural groups ---
+            if branch in {"folders", "dates", "videos", "duplicates", "locations", "devices"}:
                 self._expand_legacy_section_and_hint(branch)
                 return True
 
-            # ---------- QUICK DATES ----------
+            # --- Quick dates ---
             if branch in {
                 "today", "yesterday", "last_7_days", "last_30_days",
                 "this_month", "last_month", "this_year", "last_year"
@@ -1297,7 +1313,7 @@ class GooglePhotosLayout(BaseLayout):
                 self._expand_legacy_section_and_hint("dates")
                 return True
 
-            # ---------- SIMPLE TYPES ----------
+            # --- Simple types ---
             if branch in {"documents", "screenshots"}:
                 self._load_photos()
                 return True

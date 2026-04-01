@@ -2847,100 +2847,69 @@ class MainWindow(QMainWindow):
 
     def _handle_search_sidebar_branch_request(self, branch: str):
         """
-        Route branch requests from the new SearchSidebar.
+        Central router for the new SearchSidebar.
 
         Priority:
-        1. Special People actions
+        1. New People actions
         2. Active Google layout direct handler
         3. Legacy SidebarQt fallback
         """
-        # --- Special People review actions ---
-        if branch == "people_merge_review":
+
+        # --- People review actions from new shell ---
+        if branch in {"people_review_merges", "people_merge_review"}:
             self._open_people_merge_review_from_sidebar()
             return
 
-        if branch == "people_unnamed":
+        if branch in {"people_review_unnamed", "people_unnamed"}:
             self._open_unnamed_cluster_review_from_sidebar()
             return
 
-        # --- Special People legacy actions ---
-        if branch == "people_tools":
+        layout = None
+        try:
+            if hasattr(self, "layout_manager") and self.layout_manager:
+                layout = self.layout_manager.get_current_layout()
+        except Exception:
+            layout = None
+
+        # --- New People bridge actions ---
+        if branch.startswith("people_"):
             try:
-                if hasattr(self, "layout_manager"):
-                    layout = self.layout_manager.get_current_layout()
-                    if layout and hasattr(layout, "accordion_sidebar"):
-                        ps = layout.accordion_sidebar.section_logic.get("people")
-                        if ps and hasattr(ps, "peopleToolsRequested"):
+                if layout and hasattr(layout, "accordion_sidebar"):
+                    ps = layout.accordion_sidebar.section_logic.get("people")
+                    if ps:
+                        if branch == "people_tools" and hasattr(ps, "peopleToolsRequested"):
                             ps.peopleToolsRequested.emit()
                             return
-            except Exception as e:
-                logger.debug(f"[SearchSidebar] people_tools route failed: {e}")
-
-        if branch == "people_merge_history":
-            try:
-                if hasattr(self, "layout_manager"):
-                    layout = self.layout_manager.get_current_layout()
-                    if layout and hasattr(layout, "accordion_sidebar"):
-                        ps = layout.accordion_sidebar.section_logic.get("people")
-                        if ps and hasattr(ps, "mergeHistoryRequested"):
+                        if branch == "people_merge_history" and hasattr(ps, "mergeHistoryRequested"):
                             ps.mergeHistoryRequested.emit()
                             return
-            except Exception as e:
-                logger.debug(f"[SearchSidebar] people_merge_history route failed: {e}")
-
-        if branch == "people_undo_merge":
-            try:
-                if hasattr(self, "layout_manager"):
-                    layout = self.layout_manager.get_current_layout()
-                    if layout and hasattr(layout, "accordion_sidebar"):
-                        ps = layout.accordion_sidebar.section_logic.get("people")
-                        if ps and hasattr(ps, "undoMergeRequested"):
+                        if branch == "people_undo_merge" and hasattr(ps, "undoMergeRequested"):
                             ps.undoMergeRequested.emit()
                             return
-            except Exception as e:
-                logger.debug(f"[SearchSidebar] people_undo_merge route failed: {e}")
-
-        if branch == "people_redo_merge":
-            try:
-                if hasattr(self, "layout_manager"):
-                    layout = self.layout_manager.get_current_layout()
-                    if layout and hasattr(layout, "accordion_sidebar"):
-                        ps = layout.accordion_sidebar.section_logic.get("people")
-                        if ps and hasattr(ps, "redoMergeRequested"):
+                        if branch == "people_redo_merge" and hasattr(ps, "redoMergeRequested"):
                             ps.redoMergeRequested.emit()
                             return
-            except Exception as e:
-                logger.debug(f"[SearchSidebar] people_redo_merge route failed: {e}")
-
-        if branch == "people_expand":
-            try:
-                if hasattr(self, "layout_manager"):
-                    layout = self.layout_manager.get_current_layout()
-                    if layout and hasattr(layout, "accordion_sidebar"):
-                        ps = layout.accordion_sidebar.section_logic.get("people")
-                        if ps and hasattr(ps, "_on_expand_clicked"):
+                        if branch in {"people_expand", "people_show_all"} and hasattr(ps, "_on_expand_clicked"):
                             ps._on_expand_clicked()
                             return
             except Exception as e:
-                logger.debug(f"[SearchSidebar] people_expand route failed: {e}")
+                print(f"[Routing] People bridge failed for {branch}: {e}")
 
         # --- Google layout direct routing first ---
         try:
-            if hasattr(self, "layout_manager"):
-                layout = self.layout_manager.get_current_layout()
-                if layout and hasattr(layout, "handle_shell_branch_request"):
-                    handled = layout.handle_shell_branch_request(branch)
-                    if handled:
-                        return
+            if layout and hasattr(layout, "handle_shell_branch_request"):
+                handled = layout.handle_shell_branch_request(branch)
+                if handled:
+                    return
         except Exception as e:
-            logger.debug(f"[SearchSidebar] Google layout route failed for {branch}: {e}")
+            print(f"[Routing] Google shell handler failed for {branch}: {e}")
 
-        # --- Legacy fallback ---
+        # --- Legacy sidebar fallback ---
         if hasattr(self, "sidebar"):
             try:
                 self.sidebar.selectBranch.emit(branch)
             except Exception as e:
-                logger.debug(f"[SearchSidebar] legacy sidebar fallback failed for {branch}: {e}")
+                print(f"[Routing] Legacy sidebar fallback failed for {branch}: {e}")
 
     def _refresh_browse_quick_section(self):
         """
@@ -3413,6 +3382,12 @@ class MainWindow(QMainWindow):
             if layout_id != "google":
                 if hasattr(self, "grid") and self.grid:
                     self.grid.set_branch("all")
+
+            # 4. Refresh shell sections
+            if hasattr(self, "_refresh_people_quick_section"):
+                self._refresh_people_quick_section()
+            if hasattr(self, "_refresh_browse_quick_section"):
+                self._refresh_browse_quick_section()
 
             # CLIP upgrade check (Phase: Better Model Awareness)
             QTimer.singleShot(1500, self._maybe_prompt_clip_upgrade)

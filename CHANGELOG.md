@@ -4,50 +4,55 @@ All notable changes to the MemoryMate PhotoFlow search pipeline are documented h
 
 ## [Unreleased] - 2026-04-01
 
-### 🔧 PATCH PACK: Ownership Fix + Polish Release
+### 🔧 CRITICAL ROUTING ALIGNMENT PATCH PACK
 
-**Goal**: Fix photogrid refresh (new shell becomes real action owner), bridge legacy systems, add modern UI polish, push to production.
+**Audit Finding**: The routing layer was internally misaligned:
+- `search_sidebar.py` emitted branch names like `people_review_merges` and `people_review_unnamed`
+- `main_window_qt.py` only handled `people_merge_review` and `people_unnamed`
+- Result: People actions were unreliable and branch handling broken
 
-#### Critical Fixes
-- **Favorites Bug Fixed**: Changed `_load_photos(favorites_only=True)` → `_filter_favorites()` in handle_shell_branch_request()
-  - `_load_photos()` doesn't support `favorites_only` parameter
-  - Now correctly calls the existing `_filter_favorites()` method
-  
-- **PhotoGrid Refresh**: New shell now drives photogrid directly  
-  - Google layout dispatcher uses intelligent branch routing
-  - People + Browse sections properly bridge to legacy accordion
-  - Legacy fallback only for unhandled branches
+**Solution**: Unified branch naming and routing priority across all layers.
 
-#### UI Polish (Google/Apple Feel)
-- **Soft Styling Applied**:
-  - Removed heavy borders, replaced with soft hover effects
-  - Rounded buttons (6px border-radius)
-  - Light blue hover background (#eef3ff)
-  - Transparent backgrounds with subtle interactions
-  - Reduced visual hierarchy clutter
-  
-- **ExpandableSection Already In Place**:
-  - All sections wrapped in collapsible headers
-  - Search Hub, Discover, People, Browse: expanded by default
-  - Filters, Activity: collapsed by default
+#### PATCH 1: main_window_qt.py - Central Router Alignment
+- **Unified _handle_search_sidebar_branch_request()** with cleaner priority stack
+  1. People review actions support both old and new branch names
+  2. Layout-aware bridge routing with people action emission
+  3. Google layout direct handler gets priority over legacy fallback
+  4. Legacy SidebarQt fallback as last resort
+- **Added shell refresh** in _on_project_changed_by_id():
+  - Calls `_refresh_people_quick_section()`
+  - Calls `_refresh_browse_quick_section()`
+  - Ensures shell sections stay in sync with project changes
 
-#### Architecture Ownership Fix
-- **Main routing via main_window_qt._handle_search_sidebar_branch_request()**:
-  1. Special People actions → direct handlers
-  2. Google layout direct handler (NEW dispatcher priority)
-  3. Legacy accordion bridge for deep interactions
-  4. Legacy SidebarQt fallback
+#### PATCH 2: search_sidebar.py - Normalized Signal Emissions
+- **Fixed branch name emissions** to match router expectations:
+  - `people_merge_review` (was: `people_review_merges`)
+  - `people_unnamed` (was: `people_review_unnamed`)
+  - All other people actions: `people_tools`, `people_merge_history`, `people_undo_merge`, `people_redo_merge`, `people_expand`
+- **Improved stylesheet** with Google/Apple-inspired polish:
+  - Increased padding: 8px → 10px (buttons), 6px → 8px (hover states)
+  - Softer borders: 6px → 8px border-radius
+  - Refined spacing: margin-top/padding-top for groupboxes
+  - Better list item styling with 4px padding and 6px border-radius
+  - Consistent light blue hover (#eef3ff) and press (#e0e8ff) states
 
-- **Google layout.handle_shell_branch_request()**:
-  - Direct loaders: "all", "favorites"
-  - Structure bridge: folders, dates, videos, duplicates, locations, devices, people
+#### PATCH 3: google_layout.py - Enhanced Shell Handler
+- **Strengthened handle_shell_branch_request()** with defensive branching:
+  - Direct loaders: "all" + `_load_photos()`
+  - Favorites: `_filter_favorites()` with fallback to accordion expand
+  - People routing: proper section expansion with `people_show_all` support
+  - Structure groups: folders, dates, videos, duplicates, locations, devices
   - Quick dates: today, yesterday, last_7_days, last_30_days, this_month, last_month, this_year, last_year
   - Simple types: documents, screenshots
-  - Returns True if handled, False for fallback
+- **Project refresh already in place** via set_project() hooks
+  - Refresh calls already implemented for People and Browse sections
 
-- **set_project() Refresh Hooks**:
-  - After project switch, refreshes People and Browse quick sections
-  - Calls `_refresh_people_quick_section()` and `_refresh_browse_quick_section()` on MainWindow if available
+#### Result
+✅ All three files now speak the same branch language  
+✅ Google layout is the primary action owner (not just fallback)  
+✅ Shell styling matches Google/Apple design language  
+✅ People and Browse sections properly refresh after project changes  
+✅ Legacy accordion remains reliable bridge for deep interactions
   - Ensures new shell stays in sync with project changes
 
 #### Files Modified
