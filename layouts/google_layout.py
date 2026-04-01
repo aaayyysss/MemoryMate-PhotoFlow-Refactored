@@ -273,6 +273,13 @@ class GooglePhotosLayout(BaseLayout):
             'max_count': int(sm.get("badge_max_count", 4))
         }
 
+        # === Google production shell ===
+        self.search_sidebar = None
+        self.left_shell_container = None
+        self.left_shell_layout = None
+        self.accordion_sidebar = None
+        self._legacy_sidebar_visible = True
+
         # Main container
         main_widget = QWidget()
         main_layout = QVBoxLayout(main_widget)
@@ -1102,93 +1109,126 @@ class GooglePhotosLayout(BaseLayout):
 
         return indicator
 
+    def _get_main_window(self):
+        """
+        Resolve owning MainWindow from GooglePhotosLayout.
+        """
+        if hasattr(self, "main_window") and self.main_window is not None:
+            return self.main_window
+
+        p = self.parent()
+        while p is not None:
+            if hasattr(p, "search_state_store") and hasattr(p, "search_controller"):
+                return p
+            try:
+                p = p.parent()
+            except Exception:
+                p = None
+        return None
+
     def _build_left_shell(self) -> QWidget:
         """
-        Build the Google layout left rail:
-        - SearchSidebar on top (production six-section shell)
-        - AccordionSidebar below (legacy support, visually secondary)
+        Build the visible Google left rail:
+        - SearchSidebar on top, production shell
+        - AccordionSidebar below, transitional support shell
         """
-        container = QWidget()
-        container.setObjectName("google_left_shell")
-        container.setMinimumWidth(280)
-        container.setMaximumWidth(400)
+        mw = self._get_main_window()
+        if mw is None:
+            raise RuntimeError("GooglePhotosLayout could not resolve MainWindow")
 
-        layout = QVBoxLayout(container)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(4)
+        self.left_shell_container = QWidget(self)
+        self.left_shell_container.setObjectName("google_left_shell_container")
+        self.left_shell_container.setMinimumWidth(300)
+        self.left_shell_container.setMaximumWidth(380)
+        self.left_shell_container.setStyleSheet("""
+            QWidget#google_left_shell_container {
+                background: #ffffff;
+                border-right: 1px solid #e0e0e0;
+            }
+        """)
 
-        # Production shell — uses MainWindow's shared store and controller
-        mw = self.main_window
+        self.left_shell_layout = QVBoxLayout(self.left_shell_container)
+        self.left_shell_layout.setContentsMargins(8, 8, 8, 8)
+        self.left_shell_layout.setSpacing(8)
+
+        # Top: production shell
         self.search_sidebar = SearchSidebar(
             store=mw.search_state_store,
             controller=mw.search_controller,
-            parent=container,
+            parent=self.left_shell_container,
+        )
+        self.search_sidebar.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+
+        self.search_sidebar.selectBranch.connect(mw._handle_search_sidebar_branch_request)
+        self.search_sidebar.openActivityCenterRequested.connect(
+            mw._open_activity_center_from_sidebar
         )
 
-        # Wire SearchSidebar signals → MainWindow handlers
-        if hasattr(mw, '_open_people_merge_review_from_sidebar'):
-            self.search_sidebar.people_section.mergeReviewRequested.connect(
-                mw._open_people_merge_review_from_sidebar
-            )
-        if hasattr(mw, '_open_unnamed_cluster_review_from_sidebar'):
-            self.search_sidebar.people_section.unnamedRequested.connect(
-                mw._open_unnamed_cluster_review_from_sidebar
-            )
-        if hasattr(mw, '_open_people_manager_from_sidebar'):
-            self.search_sidebar.people_section.showAllPeopleRequested.connect(
-                mw._open_people_manager_from_sidebar
-            )
-        if hasattr(mw, '_filter_by_person'):
-            self.search_sidebar.people_section.personSelected.connect(
-                lambda pid: mw._filter_by_person(pid)
-            )
-        if hasattr(mw, '_on_browse_node_selected'):
-            self.search_sidebar.browse_section.browseNodeSelected.connect(
-                mw._on_browse_node_selected
-            )
-        if hasattr(mw, '_on_sidebar_filter_changed'):
-            self.search_sidebar.filter_section.filterChanged.connect(
-                mw._on_sidebar_filter_changed
-            )
-        if hasattr(mw, '_toggle_activity_center'):
-            self.search_sidebar.openActivityCenterRequested.connect(
-                lambda: mw._toggle_activity_center(True)
-            )
-        if hasattr(mw, '_clear_recent_searches'):
-            self.search_sidebar.search_hub.clearRecentRequested.connect(
-                mw._clear_recent_searches
-            )
-
-        # Legacy support sidebar
-        accordion = self._create_sidebar()
-        accordion.setMaximumHeight(280)
-        accordion.setStyleSheet("""
+        # Bottom: legacy support shell
+        from ui.accordion_sidebar.accordion_sidebar import AccordionSidebar
+        self.accordion_sidebar = AccordionSidebar(project_id=self.project_id, parent=self.left_shell_container)
+        self.accordion_sidebar.setMaximumHeight(260)
+        self.accordion_sidebar.setStyleSheet("""
             background: #fafafa;
             border-top: 1px solid #e0e0e0;
+            border-radius: 8px;
         """)
 
-        layout.addWidget(self.search_sidebar, 1)
-        layout.addWidget(accordion, 0)
+        self.left_shell_layout.addWidget(self.search_sidebar, 1)
+        self.left_shell_layout.addWidget(self.accordion_sidebar, 0)
 
-        # Sync state for onboarding
+        # Sync state even in onboarding
         try:
             state = mw.search_state_store.get_state()
             self.search_sidebar._on_state_changed(state)
         except Exception:
             pass
 
-        return container
+        return self.left_shell_container
 
     def refresh_search_shell(self):
-        """Refresh data in the Google layout's SearchSidebar."""
-        mw = self.main_window
-        if mw is None or not hasattr(self, 'search_sidebar') or self.search_sidebar is None:
+        """
+        Refresh SearchSidebar data shown inside Google layout.
+        """
+        mw = self._get_main_window()
+        if mw is None or self.search_sidebar is None:
             return
+
+        # recent searches
+        recent = []
+        try:
+            if hasattr(mw.search_controller, "get_recent_queries"):
+                recent = mw.search_controller.get_recent_queries() or []
+        except Exception:
+            recent = []
+
+        try:
+            self.search_sidebar.set_recent_searches(recent)
+        except Exception:
+            pass
+
+        # people quick payload
+        try:
+            if hasattr(mw, "_refresh_people_quick_section"):
+                mw._refresh_people_quick_section()
+        except Exception:
+            pass
+
+        # onboarding / active project enable state
         try:
             state = mw.search_state_store.get_state()
             self.search_sidebar._on_state_changed(state)
         except Exception:
             pass
+
+    def set_legacy_sidebar_visible(self, visible: bool):
+        """
+        Control visibility of legacy AccordionSidebar.
+        Can be called to hide the legacy shell when production shell is stable.
+        """
+        self._legacy_sidebar_visible = bool(visible)
+        if self.accordion_sidebar is not None:
+            self.accordion_sidebar.setVisible(self._legacy_sidebar_visible)
 
     def _create_sidebar(self) -> QWidget:
         """
@@ -10275,9 +10315,16 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
 
         # Refresh production search shell for new project
         try:
+            if self.accordion_sidebar is not None:
+                if hasattr(self.accordion_sidebar, "set_project_id"):
+                    self.accordion_sidebar.set_project_id(project_id)
+                elif hasattr(self.accordion_sidebar, "reload"):
+                    self.accordion_sidebar.project_id = project_id
+                    self.accordion_sidebar.reload()
+
             self.refresh_search_shell()
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[GooglePhotosLayout] Failed to refresh left shell after set_project({project_id}): {e}")
 
     # ========== PHASE 3 Task 3.1: BaseLayout Interface Implementation ==========
 
