@@ -419,7 +419,7 @@ class GooglePhotosLayout(BaseLayout):
 
         # Handle empty state
         if state.empty_state_reason:
-            self.empty_state.set_state(state.empty_state_reason)
+            self.empty_state.set_message(state.empty_state_reason)
             self.results_stack.setCurrentWidget(self.empty_state)
         else:
             self.results_stack.setCurrentWidget(self.timeline)
