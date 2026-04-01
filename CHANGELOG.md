@@ -4,6 +4,21 @@ All notable changes to the MemoryMate PhotoFlow search pipeline are documented h
 
 ## [Unreleased] - 2026-04-01
 
+### 🔧 CRITICAL BUG FIX: TypeError in request_reload() Parameter Passing
+
+**Issue**: `TypeError: GooglePhotosLayout._load_photos() got an unexpected keyword argument 'project_id'`
+
+**Root Cause**: `set_project()` was calling `request_reload(reason, project_id=project_id)`, but `_load_photos()` doesn't accept `project_id` as a parameter — it uses `self.project_id` internally (which was already set on the instance).
+
+**Solution**: Removed `project_id` kwarg from `request_reload()` call. The `project_id` is already set on the instance via `self.project_id`, so `_load_photos()` uses it automatically.
+
+**Files Modified**: 
+- `layouts/google_layout.py`: Line 10552 in `set_project()` method
+
+**Impact**: Project creation now completes successfully without TypeError
+
+---
+
 ### ⚡ UX-PERFORMANCE PATCH PACK: Stop Project-Switch Reload Churn & Optimize Sidebar
 
 **Problem Identified in Latest Audit**: 
