@@ -1159,10 +1159,18 @@ class GooglePhotosLayout(BaseLayout):
         )
         self.search_sidebar.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
 
-        self.search_sidebar.selectBranch.connect(mw._handle_search_sidebar_branch_request)
-        self.search_sidebar.openActivityCenterRequested.connect(
-            mw._open_activity_center_from_sidebar
-        )
+        # Wire SearchSidebar signals → MainWindow handlers (if they exist)
+        if hasattr(mw, '_handle_search_sidebar_branch_request'):
+            self.search_sidebar.selectBranch.connect(mw._handle_search_sidebar_branch_request)
+        
+        if hasattr(mw, '_open_activity_center_from_sidebar'):
+            self.search_sidebar.openActivityCenterRequested.connect(
+                mw._open_activity_center_from_sidebar
+            )
+        elif hasattr(mw, '_toggle_activity_center'):
+            self.search_sidebar.openActivityCenterRequested.connect(
+                lambda: mw._toggle_activity_center(True)
+            )
 
         # Bottom: legacy support shell
         from ui.accordion_sidebar.accordion_sidebar import AccordionSidebar
