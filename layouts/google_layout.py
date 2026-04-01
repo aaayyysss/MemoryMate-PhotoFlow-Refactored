@@ -1136,7 +1136,7 @@ class GooglePhotosLayout(BaseLayout):
         if mw is None:
             raise RuntimeError("GooglePhotosLayout could not resolve MainWindow")
 
-        self.left_shell_container = QWidget(self)
+        self.left_shell_container = QWidget()
         self.left_shell_container.setObjectName("google_left_shell_container")
         self.left_shell_container.setMinimumWidth(300)
         self.left_shell_container.setMaximumWidth(380)
