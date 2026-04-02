@@ -2,7 +2,81 @@
 
 All notable changes to the MemoryMate PhotoFlow search pipeline are documented here.
 
-## [Unreleased] - 2026-04-01
+## [Unreleased] - 2026-04-02
+
+### ⚡ SIDEBAR QUALITY PATCH PACK: Focused UX Improvements
+
+**Problem Identified**: The sidebar remained visually heavy despite previous optimizations:
+- Grid still limited to 2 columns with 640px viewport (target: 5-7 columns, ~900px viewport)
+- People section expanded by default (too much content on startup)
+- Legacy accordion still visible, adding visual weight
+- Pre-project loads during onboarding (generation 1 load with "No project selected")
+- Search Hub showed empty white space when no recent searches
+
+**Root Cause**: Width constraint not strict enough + default expansion states too aggressive + pre-project load guard missing from layout activation
+
+**Solution**: Fix width constraint to fixed (not resizable) + collapse People section by default + guard project-dependent loads + hide empty search blocks
+
+#### PATCH 1: Width & Visual Weight Reduction
+**google_layout.py (_build_left_shell)**:
+- Left shell container: `setMinimumWidth(260)` + `setMaximumWidth(300)` + `setSizePolicy(Fixed, Expanding)`
+- Fixes grid viewport from 640px (2 columns)  → ~900px (5-7 columns) on 1800px window
+- Left sidebar no longer resizable or expandable
+
+**google_layout.py (legacy_container)**:
+- Already wrapped in `QGroupBox("Legacy Tools")` with `setCheckable(True)` and `setChecked(False)`
+- Already has `setMaximumHeight(200)` (reduced from 260px)
+- Visual weight dramatically reduced on startup
+
+#### PATCH 2: Default Expansion States
+**ui/search/search_sidebar.py**:
+- People section: `expanded=True` → `expanded=False`
+- Now collapses People by default, leaving: Search Hub, Discover, Browse (3 expanded max)
+- Lighter first impression with less content on screen
+- Users can expand People when needed
+
+#### PATCH 3: Suppress Pre-Project Loads
+**google_layout.py (on_layout_activated)**:
+- Added guard: `if not getattr(self, "project_id", None): return`
+- Prevents generation 1 load during onboarding (app starting with "No project selected")
+- Matches startup suppression already in MainWindow
+
+**google_layout.py (_execute_debounced_reload)**:
+- Added project_id guard before attempting load
+- Prevents spurious loads if project becomes None
+
+**google_layout.py (handle_shell_branch_request)**:
+- Added project guard at top: `if not project_id and branch not in {"people_merge_review", "people_unnamed"}: return True`
+- Returns immediately for any other branch without active project
+- Prevents UI updates in invalid states
+
+#### PATCH 4: Lighter Visual Hierarchy
+**ui/search/search_sidebar.py**:
+- Font weight: 500 → 600 for ToolButtons (bolder headers)
+- Padding: 10px → 8px (tighter spacing)
+- Layout spacing: 10 → 6 (more compact sections)
+- Color: darker #202124 for text (better contrast)
+- Margin-top for QGroupBox: 4px → 2px (less separation)
+
+**ui/search/sections/search_hub_section.py**:
+- Hide empty Recent Searches block (only show if count > 0)
+- Hide empty Suggestions block (only show if count > 0)
+- Show muted helper text when both empty: "Start searching to see suggestions"
+- Reduces white void appearance in onboarding state
+
+#### Performance Impact
+✅ Grid gains 260px horizontal space (width now truly constrained)  
+✅ Reduced default content on screen → faster perceived load  
+✅ Pre-project loads eliminated during onboarding  
+✅ Visual hierarchy improved: bolder headers, tighter spacing  
+✅ No empty white panels during empty state
+
+#### Files Modified
+- `ui/search/search_sidebar.py` — People default + styling + spacing
+- `layouts/google_layout.py` — on_layout_activated guard + _execute_debounced_reload guard + handle_shell_branch_request guard
+- `ui/search/sections/search_hub_section.py` — hide empty blocks + muted helper text
+
+---
 
 ### 🔧 CRITICAL BUG FIX: TypeError in request_reload() Parameter Passing
 
