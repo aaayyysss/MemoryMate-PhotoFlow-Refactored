@@ -110,6 +110,24 @@ COLORS: Dict[str, str] = {
     # Semi-transparent overlays
     'scrim': 'rgba(0, 0, 0, 0.40)',        # Dark overlay for modals
     'scrim_light': 'rgba(0, 0, 0, 0.12)',  # Light overlay for elevation
+    
+    # ──────────────────────────────────────────────────────────────
+    # BACKWARD COMPATIBILITY ALIASES (Light theme → Dark theme mapping)
+    # ────────────────────────────────────────────────────────────── 
+    # These aliases maintain compatibility with existing code that
+    # references old light theme color names
+    # ──────────────────────────────────────────────────────────────
+    'surface_primary': '#191a1a',          # Old light alias → dark surface_container
+    'surface_secondary': '#1f2020',        # Old light alias → dark surface_container_high
+    'surface_tertiary': '#252626',         # Old light alias → dark surface_variant
+    'surface_tertiary_alt': '#252626',     # Old light alias → dark surface_variant
+    'outline_primary': '#474848',          # Old light alias → dark outline_variant
+    'outline_secondary': '#757575',        # Old light alias → dark outline
+    'outline_tertiary': '#474848',         # Old light alias → dark outline_variant
+    'text_primary': '#e7e5e5',             # Old light alias → dark on_surface
+    'text_secondary': '#acabab',           # Old light alias → dark on_surface_variant
+    'text_tertiary': '#acabab',            # Old light alias → dark on_surface_variant
+    'text_disabled': '#474848',            # Old light alias → dark outline_variant
 }
 
 # ============================================================================
