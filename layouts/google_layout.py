@@ -498,30 +498,33 @@ class GooglePhotosLayout(BaseLayout):
         """
         Create Google Photos-specific toolbar.
         """
+        # Import design system at top of file
+        from ui.styles import COLORS, SPACING, RADIUS, get_spacing
+        
         toolbar = QToolBar()
         toolbar.setMovable(False)
         toolbar.setIconSize(QSize(20, 20))
-        toolbar.setStyleSheet("""
-            QToolBar {
-                background: #f8f9fa;
-                border-bottom: 1px solid #dadce0;
-                padding: 6px;
-                spacing: 8px;
-            }
-            QPushButton {
+        toolbar.setStyleSheet(f"""
+            QToolBar {{
+                background: {COLORS['surface_secondary']};
+                border-bottom: 1px solid {COLORS['outline_primary']};
+                padding: {get_spacing('sm')}px;
+                spacing: {get_spacing('sm')}px;
+            }}
+            QPushButton {{
                 background: white;
-                border: 1px solid #dadce0;
-                border-radius: 4px;
+                border: 1px solid {COLORS['outline_primary']};
+                border-radius: {RADIUS['small']}px;
                 padding: 6px 10px;
                 font-size: 10pt;
-            }
-            QPushButton:hover {
-                background: #f1f3f4;
-                border-color: #bdc1c6;
-            }
-            QPushButton:pressed {
-                background: #e8eaed;
-            }
+            }}
+            QPushButton:hover {{
+                background: {COLORS['surface_tertiary']};
+                border-color: {COLORS['outline_secondary']};
+            }}
+            QPushButton:pressed {{
+                background: {COLORS['surface_tertiary_alt']};
+            }}
         """)
 
         # Project selector (compact, no label - Google Photos style)
@@ -1163,16 +1166,21 @@ class GooglePhotosLayout(BaseLayout):
         # This gives more space to the grid (640px → ~900px on 1800px window)
         self.left_shell_container.setMinimumWidth(260)
         self.left_shell_container.setMaximumWidth(300)
-        self.left_shell_container.setStyleSheet("""
-            QWidget#google_left_shell_container {
-                background: #ffffff;
-                border-right: 1px solid #e0e0e0;
-            }
+        # Import design system at top of file
+        from ui.styles import COLORS, SPACING, get_spacing
+        
+        self.left_shell_container.setStyleSheet(f"""
+            QWidget#google_left_shell_container {{
+                background: {COLORS['surface_primary']};
+                border-right: 1px solid {COLORS['outline_primary']};
+            }}
         """)
 
         self.left_shell_layout = QVBoxLayout(self.left_shell_container)
-        self.left_shell_layout.setContentsMargins(8, 8, 8, 8)
-        self.left_shell_layout.setSpacing(8)
+        shell_margin = get_spacing('sm')    # 8px
+        shell_spacing = get_spacing('sm')   # 8px
+        self.left_shell_layout.setContentsMargins(shell_margin, shell_margin, shell_margin, shell_margin)
+        self.left_shell_layout.setSpacing(shell_spacing)
 
         # Top: production shell
         self.search_sidebar = SearchSidebar(

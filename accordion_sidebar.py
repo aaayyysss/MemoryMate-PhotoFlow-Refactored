@@ -52,6 +52,18 @@ from reference_db import ReferenceDB
 from services.tag_service import get_tag_service
 from translation_manager import tr
 
+# Design System (Phase 1)
+from ui.styles import (
+    COLORS,
+    SPACING,
+    TYPOGRAPHY,
+    RADIUS,
+    ANIMATION,
+    get_color,
+    get_spacing,
+    get_typography,
+)
+
 
 class FlowLayout(QLayout):
     """
@@ -588,32 +600,50 @@ class SectionHeader(QFrame):
         self.setFrameShape(QFrame.StyledPanel)
         self.setCursor(Qt.PointingHandCursor)
 
-        # Layout
+        # Layout - Use design system spacing (8px grid)
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(10, 6, 10, 6)
-        layout.setSpacing(8)
+        margin = get_spacing('md')  # 12px
+        spacing = get_spacing('sm')  # 8px
+        layout.setContentsMargins(margin, spacing, margin, spacing)
+        layout.setSpacing(spacing)
 
-        # Icon + Title
+        # Icon - 18pt size (semantic icon size)
         self.icon_label = QLabel(icon)
         self.icon_label.setFixedWidth(24)
-        font = self.icon_label.font()
-        font.setPointSize(14)
-        self.icon_label.setFont(font)
+        icon_font = self.icon_label.font()
+        icon_font.setPointSize(14)  # ~18px equivalent
+        self.icon_label.setFont(icon_font)
 
+        # Title - Use typography system
         self.title_label = QLabel(title)
         self.title_font = self.title_label.font()
+        typo = TYPOGRAPHY['title']
+        self.title_font.setPointSize(typo['size_pt'])
+        self.title_font.setWeight(typo['weight'])
+        self.title_label.setFont(self.title_font)
 
-        # Count badge (optional)
+        # Count badge - Use consistent styling
         self.count_label = QLabel("")
-        self.count_label.setStyleSheet("color: #666; font-size: 11px;")
+        count_typo = TYPOGRAPHY['label']
+        count_font = self.count_label.font()
+        count_font.setPointSize(count_typo['size_pt'])
+        self.count_label.setFont(count_font)
+        self.count_label.setStyleSheet(
+            f"color: {COLORS['text_secondary']}; "
+            f"font-size: {count_typo['size_pt']}pt;"
+        )
         self.count_label.setVisible(False)
 
-        # Chevron (indicates expand/collapse state)
+        # Chevron - Use typography for consistency
         self.chevron_label = QLabel("▶")  # Right arrow for collapsed
         self.chevron_label.setFixedWidth(20)
         chevron_font = self.chevron_label.font()
-        chevron_font.setPointSize(10)
+        chevron_font.setPointSize(12)  # Slightly larger
         self.chevron_label.setFont(chevron_font)
+        chevron_typo = TYPOGRAPHY['label']
+        self.chevron_label.setStyleSheet(
+            f"color: {COLORS['text_secondary']};"
+        )
 
         layout.addWidget(self.icon_label)
         layout.addWidget(self.title_label)
@@ -629,34 +659,41 @@ class SectionHeader(QFrame):
         self.is_active = active
 
         if active:
-            # Active state: Bold, highlighted, chevron down
+            # Active state: Bold, highlighted background + left blue border, chevron down
             self.title_font.setBold(True)
             self.title_label.setFont(self.title_font)
             self.chevron_label.setText("▼")  # Down arrow
-            self.setStyleSheet("""
-                SectionHeader {
-                    background-color: #e8f0fe;
+            
+            # Use design system colors + 3px left border accent
+            self.setStyleSheet(f"""
+                SectionHeader {{
+                    background-color: {COLORS['primary_container']};
                     border: none;
-                    border-radius: 6px;
-                }
-                SectionHeader:hover {
-                    background-color: #d2e3fc;
-                }
+                    border-left: 3px solid {COLORS['primary']};
+                    border-radius: {RADIUS['medium']}px;
+                    padding-left: {get_spacing('sm')}px;
+                }}
+                SectionHeader:hover {{
+                    background-color: {COLORS['surface_tertiary_alt']};
+                }}
             """)
         else:
-            # Inactive state: Normal, default background, chevron right
+            # Inactive state: Normal weight, neutral background, subtle border, chevron right
             self.title_font.setBold(False)
             self.title_label.setFont(self.title_font)
             self.chevron_label.setText("▶")  # Right arrow
-            self.setStyleSheet("""
-                SectionHeader {
-                    background-color: #f8f9fa;
-                    border: 1px solid #e8eaed;
-                    border-radius: 6px;
-                }
-                SectionHeader:hover {
-                    background-color: #f1f3f4;
-                }
+            
+            # Use design system colors + subtle border
+            self.setStyleSheet(f"""
+                SectionHeader {{
+                    background-color: {COLORS['surface_secondary']};
+                    border: 1px solid {COLORS['outline_tertiary']};
+                    border-left: none;
+                    border-radius: {RADIUS['medium']}px;
+                }}
+                SectionHeader:hover {{
+                    background-color: {COLORS['surface_tertiary']};
+                }}
             """)
 
     def set_count(self, count: int):
@@ -860,16 +897,19 @@ class AccordionSidebar(QWidget):
 
         # === LEFT: Vertical Navigation Bar (MS Outlook style) ===
         nav_bar = QWidget()
-        nav_bar.setFixedWidth(52)
-        nav_bar.setStyleSheet("""
-            QWidget {
-                background: #ffffff;
-                border-right: 1px solid #dadce0;
-            }
+        nav_bar.setFixedWidth(52)  # Keep width for now (Phase 2 expands to 64px)
+        nav_bar.setStyleSheet(f"""
+            QWidget {{
+                background: {COLORS['surface_primary']};
+                border-right: 1px solid {COLORS['outline_primary']};
+            }}
         """)
         nav_layout = QVBoxLayout(nav_bar)
-        nav_layout.setContentsMargins(6, 12, 6, 4)
-        nav_layout.setSpacing(4)
+        nav_margin = get_spacing('sm')      # 8px
+        nav_margin_top = get_spacing('md')  # 12px
+        nav_spacing = get_spacing('xs')     # 4px
+        nav_layout.setContentsMargins(nav_margin, nav_margin_top, nav_margin, nav_spacing)
+        nav_layout.setSpacing(nav_spacing)
 
         # Navigation buttons (will be created in _build_sections)
         self.nav_layout = nav_layout
@@ -884,8 +924,10 @@ class AccordionSidebar(QWidget):
             }
         """)
         self.sections_layout = QVBoxLayout(self.sections_container)
-        self.sections_layout.setContentsMargins(6, 6, 6, 6)
-        self.sections_layout.setSpacing(3)  # Tighter spacing between sections
+        section_margin = get_spacing('sm')     # 8px gutters
+        section_spacing = get_spacing('sm')    # 8px between sections (improved from 3px)
+        self.sections_layout.setContentsMargins(section_margin, section_margin, section_margin, section_margin)
+        self.sections_layout.setSpacing(section_spacing)
 
         main_layout.addWidget(self.sections_container, stretch=1)
 
@@ -1000,19 +1042,19 @@ class AccordionSidebar(QWidget):
             nav_btn.setToolTip(title)
             nav_btn.setFixedSize(44, 44)
             nav_btn.setCursor(Qt.PointingHandCursor)
-            nav_btn.setStyleSheet("""
-                QPushButton {
+            nav_btn.setStyleSheet(f"""
+                QPushButton {{
                     background: transparent;
                     border: none;
-                    border-radius: 10px;
+                    border-radius: {RADIUS['large']}px;
                     font-size: 20pt;
-                }
-                QPushButton:hover {
-                    background: rgba(26, 115, 232, 0.10);
-                }
-                QPushButton:pressed {
+                }}
+                QPushButton:hover {{
+                    background: {COLORS['scrim_light']};
+                }}
+                QPushButton:pressed {{
                     background: rgba(26, 115, 232, 0.20);
-                }
+                }}
             """)
             # CRITICAL FIX: Use partial() instead of lambda to prevent memory leaks
             # Lambda closures hold references preventing garbage collection

@@ -290,19 +290,22 @@ class PersonCard(QWidget):
         # Enable drag-and-drop
         self.setAcceptDrops(True)
 
-        self.setStyleSheet("""
-            PersonCard {
+        # Import design system at top: from ui.styles import COLORS, RADIUS
+        self.setStyleSheet(f"""
+            PersonCard {{
                 background: transparent;
-                border-radius: 6px;
-            }
-            PersonCard:hover {
-                background: rgba(26, 115, 232, 0.08);
-            }
+                border-radius: {RADIUS['medium']}px;
+            }}
+            PersonCard:hover {{
+                background: {COLORS['scrim_light']};
+            }}
         """)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(4, 4, 4, 4)
-        layout.setSpacing(4)
+        card_margin = get_spacing('xs')  # 4px tight margin for cards
+        card_spacing = get_spacing('xs')  # 4px spacing between elements
+        layout.setContentsMargins(card_margin, card_margin, card_margin, card_margin)
+        layout.setSpacing(card_spacing)
         layout.setAlignment(Qt.AlignCenter)
 
         # Circular face thumbnail
@@ -315,12 +318,12 @@ class PersonCard(QWidget):
             # Placeholder if no face image
             self.face_label.setPixmap(QPixmap())
             self.face_label.setFixedSize(64, 64)
-            self.face_label.setStyleSheet("""
-                QLabel {
-                    background: #e8eaed;
-                    border-radius: 32px;
+            self.face_label.setStyleSheet(f"""
+                QLabel {{
+                    background: {COLORS['surface_tertiary']};
+                    border-radius: {RADIUS['full']}px;
                     font-size: 24pt;
-                }
+                }}
             """)
             self.face_label.setText("👤")
             self.face_label.setAlignment(Qt.AlignCenter)
@@ -329,29 +332,31 @@ class PersonCard(QWidget):
         self.face_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.face_label)
 
-        # Name label
+        # Name label - Use design system typography
         self.name_label = QLabel(display_name if len(display_name) <= 10 else display_name[:9] + "…")
         self.name_label.setAlignment(Qt.AlignCenter)
         self.name_label.setWordWrap(False)
-        self.name_label.setStyleSheet("""
-            QLabel {
-                font-size: 9pt;
-                color: #202124;
+        typo = TYPOGRAPHY['caption']
+        self.name_label.setStyleSheet(f"""
+            QLabel {{
+                font-size: {typo['size_pt']}pt;
+                color: {COLORS['text_primary']};
                 font-weight: 500;
-            }
+            }}
         """)
         self.name_label.setToolTip(f"{display_name} ({photo_count} photos)")
         layout.addWidget(self.name_label)
 
-        # Count badge with confidence icon
+        # Count badge with confidence icon - Use design system
         conf = "✅" if photo_count >= 10 else ("⚠️" if photo_count >= 5 else "❓")
         self.count_label = QLabel(f"{conf} ({photo_count})")
         self.count_label.setAlignment(Qt.AlignCenter)
-        self.count_label.setStyleSheet("""
-            QLabel {
-                font-size: 8pt;
-                color: #5f6368;
-            }
+        typo = TYPOGRAPHY['caption_small']
+        self.count_label.setStyleSheet(f"""
+            QLabel {{
+                font-size: {typo['size_pt']}pt;
+                color: {COLORS['text_secondary']};
+            }}
         """)
         layout.addWidget(self.count_label)
 
@@ -582,7 +587,8 @@ class PeopleGridView(QWidget):
         super().__init__(parent)
 
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(0, 0, 0, 0)
+        container_margin = get_spacing('sm')  # 8px
+        main_layout.setContentsMargins(container_margin, container_margin, container_margin, container_margin)
         main_layout.setSpacing(0)
 
         # Scroll area
@@ -590,9 +596,11 @@ class PeopleGridView(QWidget):
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setFrameShape(QFrame.NoFrame)
         self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        # CRITICAL FIX: Set minimum height so faces are visible (not tiny!)
-        # With 80x100px cards + spacing, 3 rows = ~340px minimum
-        self.scroll_area.setMinimumHeight(340)
+        # Responsive heights (calculated instead of hard-coded)
+        # Min: 2 rows of 100px cards = 200px + margins + spacing
+        self.scroll_area.setMinimumHeight(260)  # ~2 rows
+        # Max: 3 rows before scrolling
+        self.scroll_area.setMaximumHeight(400)  # ~3 rows
         self.scroll_area.setStyleSheet("""
             QScrollArea {
                 background: transparent;
@@ -602,17 +610,20 @@ class PeopleGridView(QWidget):
 
         # Container with flow layout
         self.grid_container = QWidget()
-        self.flow_layout = FlowLayout(self.grid_container, margin=4, spacing=8)
+        flow_margin = get_spacing('xs')    # 4px
+        flow_spacing = get_spacing('sm')   # 8px
+        self.flow_layout = FlowLayout(self.grid_container, margin=flow_margin, spacing=flow_spacing)
 
         # Empty state label (hidden when people added)
         self.empty_label = QLabel("No people detected yet\n\nRun face detection to see people here")
         self.empty_label.setAlignment(Qt.AlignCenter)
-        self.empty_label.setStyleSheet("""
-            QLabel {
-                color: #5f6368;
-                font-size: 10pt;
-                padding: 20px;
-            }
+        typo = TYPOGRAPHY['caption']
+        self.empty_label.setStyleSheet(f"""
+            QLabel {{
+                color: {COLORS['text_secondary']};
+                font-size: {typo['size_pt']}pt;
+                padding: {get_spacing('lg')}px;
+            }}
         """)
         self.empty_label.hide()
 
