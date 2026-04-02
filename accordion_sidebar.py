@@ -745,8 +745,37 @@ class AccordionSection(QWidget):
         self.content_container = QWidget()
         self.content_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.content_layout = QVBoxLayout(self.content_container)
-        self.content_layout.setContentsMargins(8, 8, 8, 8)
+        padding = get_spacing('md')  # 12px (1.5x grid)
+        self.content_layout.setContentsMargins(padding, padding, padding, padding)
         self.content_layout.setSpacing(0)
+
+        # === Phase 2: Loading State Widget ===
+        self.loading_widget = QWidget()
+        loading_layout = QVBoxLayout(self.loading_widget)
+        loading_layout.setAlignment(Qt.AlignCenter)
+        loading_layout.setContentsMargins(0, 0, 0, 0)
+        
+        self.spinner_label = QLabel("⟳")
+        spinner_font = self.spinner_label.font()
+        spinner_font.setPointSize(24)
+        self.spinner_label.setFont(spinner_font)
+        self.spinner_label.setAlignment(Qt.AlignCenter)
+        self.spinner_label.setStyleSheet(f"color: {COLORS['primary']}; background: transparent;")
+        
+        self.loading_text = QLabel("Loading...")
+        loading_text_typo = TYPOGRAPHY['small']
+        loading_text_font = self.loading_text.font()
+        loading_text_font.setPointSize(loading_text_typo['size_pt'])
+        self.loading_text.setFont(loading_text_font)
+        self.loading_text.setAlignment(Qt.AlignCenter)
+        self.loading_text.setStyleSheet(f"color: {COLORS['text_secondary']}; background: transparent;")
+        
+        loading_layout.addWidget(self.spinner_label)
+        loading_layout.addWidget(self.loading_text)
+        loading_layout.addStretch()
+        
+        self.spinner_anim = None  # Will create on demand
+        self.loading_widget.setVisible(False)
 
         # Scroll area for content (ONE scrollbar here)
         self.scroll_area = QScrollArea()
@@ -768,21 +797,71 @@ class AccordionSection(QWidget):
         self.expandRequested.emit(self.section_id)
 
     def set_expanded(self, expanded: bool):
-        """Expand or collapse this section."""
+        """Expand or collapse this section with smooth animation (Phase 2)."""
+        if self.is_expanded == expanded:
+            return  # Already in target state
+        
         self.is_expanded = expanded
         self.header.set_active(expanded)
-        self.scroll_area.setVisible(expanded)
-
+        
         if expanded:
-            # Expanded: Allow vertical expansion and remove height constraints
+            # === EXPAND: Smooth 300ms animation ===
+            self.scroll_area.setVisible(True)
             self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-            self.setMaximumHeight(16777215)  # Remove any maximum height constraint
-            self.setMinimumHeight(400)  # Ensure expanded section has substantial height
+            self.setMaximumHeight(16777215)  # Remove height constraint
+            
+            # Phase 2: Animate expansion
+            if hasattr(self, '_expand_anim') and self._expand_anim:
+                self._expand_anim.stop()
+            
+            self._expand_anim = QPropertyAnimation(self, b"minimumHeight")
+            self._expand_anim.setDuration(300)  # Phase 2: 300ms smooth
+            self._expand_anim.setEasingCurve(QEasingCurve.InOutQuad)
+            self._expand_anim.setStartValue(48)  # Header height
+            self._expand_anim.setEndValue(400)   # Expanded height
+            self._expand_anim.start()
+            
+            # Fade in content
+            if hasattr(self, '_fade_anim') and self._fade_anim:
+                self._fade_anim.stop()
+            
+            self._fade_anim = QPropertyAnimation(self.scroll_area, b"windowOpacity")
+            self._fade_anim.setDuration(300)
+            self._fade_anim.setStartValue(0)
+            self._fade_anim.setEndValue(1)
+            self._fade_anim.start()
+            
         else:
-            # Collapsed: Fixed height (header only)
+            # === COLLAPSE: Smooth 300ms animation ===
             self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            
+            # Phase 2: Animate collapse
+            if hasattr(self, '_expand_anim') and self._expand_anim:
+                self._expand_anim.stop()
+            
+            self._expand_anim = QPropertyAnimation(self, b"minimumHeight")
+            self._expand_anim.setDuration(300)  # Phase 2: 300ms smooth
+            self._expand_anim.setEasingCurve(QEasingCurve.InOutQuad)
+            self._expand_anim.setStartValue(self.height() or 400)
+            self._expand_anim.setEndValue(48)  # Header only
+            self._expand_anim.start()
+            
+            # Fade out content
+            if hasattr(self, '_fade_anim') and self._fade_anim:
+                self._fade_anim.stop()
+            
+            self._fade_anim = QPropertyAnimation(self.scroll_area, b"windowOpacity")
+            self._fade_anim.setDuration(300)
+            self._fade_anim.setStartValue(1)
+            self._fade_anim.setEndValue(0)
+            
+            def hide_scroll_area():
+                self.scroll_area.setVisible(False)
+            
+            self._fade_anim.finished.connect(hide_scroll_area)
+            self._fade_anim.start()
+            
             self.setMaximumHeight(50)  # Compact header
-            self.setMinimumHeight(50)
 
     def set_content_widget(self, widget: QWidget):
         """Set the content widget for this section."""
@@ -826,6 +905,43 @@ class AccordionSection(QWidget):
     def set_count(self, count: int):
         """Update the count badge in header."""
         self.header.set_count(count)
+
+    def show_loading(self, message: str = "Loading..."):
+        """Phase 2: Show loading spinner while content loads."""
+        self.loading_text.setText(message)
+        self.loading_widget.setVisible(True)
+        self.content_container.setVisible(False)
+        self._start_spinner_animation()
+
+    def hide_loading(self):
+        """Phase 2: Hide loading spinner and show content."""
+        self.loading_widget.setVisible(False)
+        self.content_container.setVisible(True)
+        self._stop_spinner_animation()
+
+    def _start_spinner_animation(self):
+        """Phase 2: Start rotating spinner animation."""
+        if self.spinner_anim is None:
+            self.spinner_anim = QPropertyAnimation(self.spinner_label, b"rotation")
+        
+        self.spinner_anim.setDuration(1200)  # Rotate every 1.2 seconds
+        self.spinner_anim.setStartValue(0)
+        self.spinner_anim.setEndValue(360)
+        self.spinner_anim.setLoopCount(-1)  # Infinite loop
+        self.spinner_anim.start()
+
+    def _stop_spinner_animation(self):
+        """Phase 2: Stop spinner animation."""
+        if self.spinner_anim:
+            self.spinner_anim.stop()
+
+    def show_error(self, message: str = "Failed to load"):
+        """Phase 2: Show error state with message."""
+        self.loading_text.setText(message)
+        self.loading_widget.setVisible(True)
+        self.content_container.setVisible(False)
+        self._stop_spinner_animation()
+        self.spinner_label.setText("⚠️")
 
 
 class AccordionSidebar(QWidget):
@@ -871,6 +987,7 @@ class AccordionSidebar(QWidget):
         self.expanded_section_id = None
         self.db = ReferenceDB()
         self.nav_buttons = {}  # section_id -> QPushButton
+        self.nav_badges = {}   # Phase 2: section_id -> QLabel (badge)
         self.thread_pool = QThreadPool.globalInstance()
         self._people_grid = None
         self._active_workers = []
@@ -897,7 +1014,7 @@ class AccordionSidebar(QWidget):
 
         # === LEFT: Vertical Navigation Bar (MS Outlook style) ===
         nav_bar = QWidget()
-        nav_bar.setFixedWidth(52)  # Keep width for now (Phase 2 expands to 64px)
+        nav_bar.setFixedWidth(64)  # Phase 2: Expanded to accommodate labels/badges (was 52px)
         nav_bar.setStyleSheet(f"""
             QWidget {{
                 background: {COLORS['surface_primary']};
@@ -1040,7 +1157,7 @@ class AccordionSidebar(QWidget):
             # Create navigation button in vertical nav bar
             nav_btn = QPushButton(icon)
             nav_btn.setToolTip(title)
-            nav_btn.setFixedSize(44, 44)
+            nav_btn.setFixedSize(56, 56)  # Phase 2: Slightly larger (was 44x44)
             nav_btn.setCursor(Qt.PointingHandCursor)
             nav_btn.setStyleSheet(f"""
                 QPushButton {{
@@ -1060,8 +1177,25 @@ class AccordionSidebar(QWidget):
             # Lambda closures hold references preventing garbage collection
             nav_btn.clicked.connect(partial(self.expand_section, section_id))
 
+            # Phase 2: Add badge support for alerts/counts (e.g., duplicates)
+            badge = QLabel("")
+            badge.setObjectName(f"badge_{section_id}")
+            badge.setStyleSheet(f"""
+                QLabel {{
+                    background: {COLORS['error']};
+                    color: white;
+                    border-radius: 8px;
+                    padding: 2px 6px;
+                    font-size: 8pt;
+                    font-weight: bold;
+                }}
+            """)
+            badge.setVisible(False)
+            self.nav_badges[section_id] = badge
+
             self.nav_buttons[section_id] = nav_btn
             self.nav_layout.addWidget(nav_btn)
+            self.nav_layout.insertWidget(self.nav_layout.count() - 1, badge)  # Add badge before stretch
 
         # Add stretch at the end of nav bar only
         self.nav_layout.addStretch()
@@ -1136,6 +1270,28 @@ class AccordionSidebar(QWidget):
                         background: rgba(26, 115, 232, 0.20);
                     }
                 """)
+
+    def set_nav_badge(self, section_id: str, count: int):
+        """Phase 2: Show badge on navigation button with count."""
+        if section_id not in self.nav_badges:
+            return
+        
+        badge = self.nav_badges[section_id]
+        if count > 0:
+            badge.setText(str(count))
+            badge.setVisible(True)
+        else:
+            badge.setVisible(False)
+
+    def clear_nav_badges(self):
+        """Phase 2: Clear all nav badges."""
+        for badge in self.nav_badges.values():
+            badge.setVisible(False)
+
+    def set_nav_tooltip(self, section_id: str, tooltip: str):
+        """Phase 2: Update navigation button tooltip dynamically."""
+        if section_id in self.nav_buttons:
+            self.nav_buttons[section_id].setToolTip(tooltip)
 
     def _reorder_sections(self):
         """

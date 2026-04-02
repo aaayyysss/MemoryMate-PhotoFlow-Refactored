@@ -284,7 +284,7 @@ class PersonCard(QWidget):
         self.branch_key = branch_key
         self.display_name = display_name
         self.person_name = branch_key  # Keep for backward compatibility
-        self.setFixedSize(80, 100)
+        self.setFixedSize(100, 120)  # Phase 2: Increased from 80x100
         self.setCursor(Qt.PointingHandCursor)
 
         # Enable drag-and-drop
@@ -312,23 +312,23 @@ class PersonCard(QWidget):
         self.face_label = QLabel()
         if face_pixmap and not face_pixmap.isNull():
             # Make circular mask
-            circular_pixmap = self._make_circular(face_pixmap, 64)
+            circular_pixmap = self._make_circular(face_pixmap, 80)  # Phase 2: Increased from 64
             self.face_label.setPixmap(circular_pixmap)
         else:
             # Placeholder if no face image
             self.face_label.setPixmap(QPixmap())
-            self.face_label.setFixedSize(64, 64)
+            self.face_label.setFixedSize(80, 80)  # Phase 2: Larger placeholder
             self.face_label.setStyleSheet(f"""
                 QLabel {{
                     background: {COLORS['surface_tertiary']};
                     border-radius: {RADIUS['full']}px;
-                    font-size: 24pt;
+                    font-size: 28pt;
                 }}
             """)
             self.face_label.setText("👤")
             self.face_label.setAlignment(Qt.AlignCenter)
 
-        self.face_label.setFixedSize(64, 64)
+        self.face_label.setFixedSize(80, 80)  # Phase 2: Increased from 64x64
         self.face_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.face_label)
 
@@ -596,11 +596,12 @@ class PeopleGridView(QWidget):
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setFrameShape(QFrame.NoFrame)
         self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        # Responsive heights (calculated instead of hard-coded)
-        # Min: 2 rows of 100px cards = 200px + margins + spacing
-        self.scroll_area.setMinimumHeight(260)  # ~2 rows
+        # Phase 2: Updated heights for 100x120px cards, 3 columns
+        # Desktop: 260px sidebar / 112px per card (100px + 8px margin + spacing) = ~2.3 cards per row → 3 wraps
+        # Min: 2 rows of 120px cards = 240px + margins + spacing
+        self.scroll_area.setMinimumHeight(300)  # ~2 rows (Phase 2 expanded)
         # Max: 3 rows before scrolling
-        self.scroll_area.setMaximumHeight(400)  # ~3 rows
+        self.scroll_area.setMaximumHeight(450)  # ~3 rows (Phase 2 expanded)
         self.scroll_area.setStyleSheet("""
             QScrollArea {
                 background: transparent;
@@ -627,9 +628,36 @@ class PeopleGridView(QWidget):
         """)
         self.empty_label.hide()
 
+        # === Phase 2: Show More / Load More Button ===
+        self.load_more_btn = QPushButton("Load more")
+        self.load_more_btn.setVisible(False)  # Hidden by default
+        load_more_typo = TYPOGRAPHY['label']
+        load_more_font = self.load_more_btn.font()
+        load_more_font.setPointSize(load_more_typo['size_pt'])
+        self.load_more_btn.setFont(load_more_font)
+        self.load_more_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: {COLORS['primary']};
+                color: white;
+                border: none;
+                border-radius: {RADIUS['medium']}px;
+                padding: {get_spacing('sm')}px {get_spacing('md')}px;
+                font-weight: 500;
+            }}
+            QPushButton:hover {{
+                background: #1557b0;
+            }}
+            QPushButton:pressed {{
+                background: #0d47a1;
+            }}
+        """)
+        self.load_more_btn.setMaximumWidth(120)
+        self.load_more_btn.setAlignment(Qt.AlignCenter)
+
         # Add to scroll
         self.scroll_area.setWidget(self.grid_container)
         main_layout.addWidget(self.scroll_area)
+        main_layout.addWidget(self.load_more_btn)
         main_layout.addWidget(self.empty_label)
 
     def add_person(self, branch_key, display_name, face_pixmap, photo_count):
@@ -672,6 +700,18 @@ class PeopleGridView(QWidget):
     def count(self):
         """Return number of people in grid."""
         return self.flow_layout.count()
+
+    def set_show_load_more(self, visible: bool, count: int = 0):
+        """Phase 2: Show/hide the 'Load more' button."""
+        if visible and count > 0:
+            self.load_more_btn.setText(f"Load {count} more")
+            self.load_more_btn.setVisible(True)
+        else:
+            self.load_more_btn.setVisible(False)
+
+    def connect_load_more(self, callback):
+        """Phase 2: Connect load more button to callback."""
+        self.load_more_btn.clicked.connect(callback)
 
     def sizeHint(self):
         """
