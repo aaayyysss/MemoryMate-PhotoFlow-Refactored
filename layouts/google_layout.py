@@ -1328,7 +1328,7 @@ class GooglePhotosLayout(BaseLayout):
 
             # ---------- DIRECT LOADERS ----------
             if branch == "all":
-                self.request_reload(reason="shell_all", project_id=self.project_id)
+                self.request_reload(reason="shell_all")
                 return True
 
             # --- Favorites (fixed) ---
@@ -1367,7 +1367,7 @@ class GooglePhotosLayout(BaseLayout):
 
             # --- Simple types ---
             if branch in {"documents", "screenshots"}:
-                self.request_reload(reason=f"shell_{branch}", project_id=self.project_id)
+                self.request_reload(reason=f"shell_{branch}")
                 return True
 
             return False
