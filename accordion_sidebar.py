@@ -599,6 +599,15 @@ class SectionHeader(QFrame):
         # Make the frame clickable
         self.setFrameShape(QFrame.StyledPanel)
         self.setCursor(Qt.PointingHandCursor)
+        
+        # Phase 3: Add keyboard focus support
+        self.setFocusPolicy(Qt.StrongFocus)
+        
+        # Phase 3: Add ARIA labels for screen readers
+        title_with_count = f"{title}. Expandable section."
+        self.setAttribute(Qt.WA_AccessibleName, title)
+        self.setAttribute(Qt.WA_AccessibleDescription, 
+            f"{title_with_count} Press Enter or Space to toggle, Arrow keys to navigate.")
 
         # Layout - Use design system spacing (8px grid)
         layout = QHBoxLayout(self)
@@ -653,6 +662,9 @@ class SectionHeader(QFrame):
 
         # Initial styling
         self.set_active(False)
+        
+        # Phase 3: Add ARIA label for chevron
+        self.chevron_label.setAttribute(Qt.WA_AccessibleName, "Expand/collapse indicator")
 
     def set_active(self, active: bool):
         """Set header to active (expanded) or inactive (collapsed) state."""
@@ -702,14 +714,55 @@ class SectionHeader(QFrame):
         if count > 0:
             self.count_label.setText(f"({count})")
             self.count_label.setVisible(True)
+            # Phase 3: Update ARIA description with count
+            self.setAttribute(Qt.WA_AccessibleDescription, 
+                f"{self.title}. Expandable section containing {count} items. "
+                "Press Enter or Space to toggle, Arrow keys to navigate.")
         else:
             self.count_label.setVisible(False)
+            # Phase 3: Update ARIA description without count
+            self.setAttribute(Qt.WA_AccessibleDescription, 
+                f"{self.title}. Expandable section. "
+                "Press Enter or Space to toggle, Arrow keys to navigate.")
 
     def mousePressEvent(self, event):
         """Handle mouse click on header."""
         if event.button() == Qt.LeftButton:
             self.clicked.emit()
         super().mousePressEvent(event)
+    
+    def keyPressEvent(self, event):
+        """Phase 3: Handle keyboard input for section header."""
+        key = event.key()
+        
+        if key == Qt.Key.Key_Return or key == Qt.Key.Key_Space:
+            # Enter/Space: Toggle expand/collapse
+            self.clicked.emit()
+            event.accept()
+        elif key == Qt.Key.Key_Right and not self.is_active:
+            # Right arrow: Expand (when collapsed)
+            self.set_active(True)
+            self.clicked.emit()
+            event.accept()
+        elif key == Qt.Key.Key_Left and self.is_active:
+            # Left arrow: Collapse (when expanded)
+            self.set_active(False)
+            self.clicked.emit()
+            event.accept()
+        elif key == Qt.Key.Key_Tab:
+            # Tab: Normal navigation (let default handler work)
+            super().keyPressEvent(event)
+        else:
+            super().keyPressEvent(event)
+    
+    def focusInEvent(self, event):
+        """Phase 3: Handle focus for keyboard navigation."""
+        super().focusInEvent(event)
+        # Show focus ring via stylesheet (already defined in set_active)
+    
+    def focusOutEvent(self, event):
+        """Phase 3: Handle focus loss."""
+        super().focusOutEvent(event)
 
 
 class AccordionSection(QWidget):
@@ -991,6 +1044,9 @@ class AccordionSidebar(QWidget):
         self.thread_pool = QThreadPool.globalInstance()
         self._people_grid = None
         self._active_workers = []
+        
+        # Phase 3: Store section order for keyboard navigation
+        self.section_order = ["people", "dates", "folders", "duplicates", "videos", "tags", "branches", "quick"]
 
         # PHASE 1 Task 1.2: Generation tokens to prevent overlapping reloads
         # Track reload version for each section to discard stale data
@@ -1050,6 +1106,19 @@ class AccordionSidebar(QWidget):
 
         # Build sections
         self._build_sections()
+        
+        # Phase 3: Add global focus indicator styling for keyboard navigation
+        focus_stylesheet = f"""
+            SectionHeader:focus {{
+                outline: 3px solid {COLORS['info']};
+                outline-offset: 2px;
+            }}
+            QPushButton:focus {{
+                outline: 3px solid {COLORS['info']};
+                outline-offset: 2px;
+            }}
+        """
+        self.setStyleSheet(focus_stylesheet)
 
         # Connect internal signals for thread-safe UI updates
         self._datesLoaded.connect(self._build_dates_tree, Qt.QueuedConnection)
@@ -1123,6 +1192,65 @@ class AccordionSidebar(QWidget):
             pass  # Store not initialized (e.g. unit tests)
 
         self._dbg("AccordionSidebar __init__ completed")
+    
+    def resizeEvent(self, event):
+        """Phase 3: Handle window resize for responsive design."""
+        super().resizeEvent(event)
+        
+        width = event.size().width()
+        
+        # Handle responsive breakpoints
+        if width > 1200:
+            # Desktop: standard layout
+            self.set_responsive_layout('desktop', width)
+        elif width > 1024:
+            # Laptop: slightly compressed
+            self.set_responsive_layout('laptop', width)
+        elif width > 768:
+            # Tablet: single column with narrower sidebar
+            self.set_responsive_layout('tablet', width)
+        else:
+            # Mobile: full-width, drawer-style sidebar
+            self.set_responsive_layout('mobile', width)
+    
+    def set_responsive_layout(self, breakpoint: str, window_width: int):
+        """Phase 3: Adjust layout for responsive breakpoints."""
+        if breakpoint == 'desktop':
+            # Desktop: 260px sidebar, optimal text sizes
+            self.sections_container.setMinimumWidth(260)
+            self.sections_container.setMaximumWidth(350)
+            self._update_responsive_font_sizes(0)  # No font reduction
+        elif breakpoint == 'laptop':
+            # Laptop: 240px sidebar, slightly compressed
+            self.sections_container.setMinimumWidth(240)
+            self.sections_container.setMaximumWidth(300)
+            self._update_responsive_font_sizes(-1)  # Reduce by 1pt
+        elif breakpoint == 'tablet':
+            # Tablet: 200px sidebar, smaller font
+            self.sections_container.setMinimumWidth(200)
+            self.sections_container.setMaximumWidth(240)
+            self._update_responsive_font_sizes(-2)  # Reduce by 2pt
+        else:  # mobile
+            # Mobile: Full-width layout, compact fonts
+            self.sections_container.setMinimumWidth(150)
+            self.sections_container.setMaximumWidth(280)
+            self._update_responsive_font_sizes(-3)  # Reduce by 3pt
+    
+    def _update_responsive_font_sizes(self, point_reduction: int):
+        """Phase 3: Update font sizes for responsive breakpoints."""
+        if not point_reduction:
+            return  # No changes needed for desktop
+        
+        # Update all section headers
+        for section_id, section in self.sections.items():
+            if hasattr(section, 'header'):
+                header = section.header
+                # Update title font size
+                font = header.title_label.font()
+                current_size = font.pointSize()
+                if current_size > 0:
+                    font.setPointSize(max(8, current_size + point_reduction))
+                    header.title_label.setFont(font)
 
     def _dbg(self, msg):
         """Debug logging with timestamp."""
@@ -1173,6 +1301,14 @@ class AccordionSidebar(QWidget):
                     background: rgba(26, 115, 232, 0.20);
                 }}
             """)
+            
+            # Phase 3: Add keyboard focus support for accessibility
+            nav_btn.setFocusPolicy(Qt.StrongFocus)
+            nav_btn.setAttribute(Qt.WA_AccessibleName, f"{title} section")
+            nav_btn.setAttribute(Qt.WA_AccessibleDescription, 
+                f"Navigate to {title} section. Keyboard shortcut: Ctrl+{section_id[0].upper()}")
+            # Note: Keyboard shortcuts are handled by parent widget for consistency
+            
             # CRITICAL FIX: Use partial() instead of lambda to prevent memory leaks
             # Lambda closures hold references preventing garbage collection
             nav_btn.clicked.connect(partial(self.expand_section, section_id))
@@ -1350,6 +1486,35 @@ class AccordionSidebar(QWidget):
             placeholder.setAlignment(Qt.AlignCenter)
             placeholder.setStyleSheet("padding: 20px; color: #666;")
             section.set_content_widget(placeholder)
+    
+    def keyPressEvent(self, event):
+        """Phase 3: Handle keyboard navigation at sidebar level."""
+        key = event.key()
+        
+        if not self.expanded_section_id:
+            super().keyPressEvent(event)
+            return
+        
+        # Arrow Up/Down: Navigate between sections
+        if key == Qt.Key.Key_Up or key == Qt.Key.Key_Down:
+            try:
+                current_idx = self.section_order.index(self.expanded_section_id)
+                if key == Qt.Key.Key_Up and current_idx > 0:
+                    # Move to previous section
+                    next_section = self.section_order[current_idx - 1]
+                    self.expand_section(next_section)
+                    event.accept()
+                    return
+                elif key == Qt.Key.Key_Down and current_idx < len(self.section_order) - 1:
+                    # Move to next section
+                    next_section = self.section_order[current_idx + 1]
+                    self.expand_section(next_section)
+                    event.accept()
+                    return
+            except (ValueError, IndexError):
+                pass
+        
+        super().keyPressEvent(event)
 
     def cleanup(self):
         """Mark widget as disposed so background workers skip stale refreshes."""

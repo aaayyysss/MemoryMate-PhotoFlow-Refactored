@@ -46,7 +46,7 @@ COLORS: Dict[str, str] = {
     # ── TEXT COLORS ──
     # Text on white backgrounds (primary surface)
     'text_primary': '#202124',              # Main text (high contrast)
-    'text_secondary': '#5f6368',            # Secondary text (60% opacity equivalent)
+    'text_secondary': '#3d3d3d',            # Secondary text (66% contrast) - Phase 3: Updated for WCAG AA
     'text_tertiary': '#9aa0a6',             # Tertiary text (low emphasis)
     'text_disabled': '#dadce0',             # Disabled text (very low contrast)
     
