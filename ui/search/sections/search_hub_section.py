@@ -67,6 +67,12 @@ class SearchHubSection(QGroupBox):
         self.list_recent.setVisible(visible)
         self.btn_clear_recent.setVisible(visible)
 
+        # If both recent and suggestions are empty, show a muted helper
+        if not visible and self.list_suggestions.count() == 0:
+            self.lbl_suggestions.setText("Start searching to see suggestions")
+            self.lbl_suggestions.setStyleSheet("color: #9aa0a6; font-style: italic;")
+            self.lbl_suggestions.setVisible(True)
+
     def set_suggestions(self, suggestions):
         self.list_suggestions.clear()
         for s in list(suggestions or [])[:12]:
@@ -77,6 +83,16 @@ class SearchHubSection(QGroupBox):
         visible = self.list_suggestions.count() > 0
         self.lbl_suggestions.setVisible(visible)
         self.list_suggestions.setVisible(visible)
+
+        # If both recent and suggestions are empty, show a muted helper
+        if not visible and self.list_recent.count() == 0:
+            self.lbl_suggestions.setText("Start searching to see suggestions")
+            self.lbl_suggestions.setStyleSheet("color: #9aa0a6; font-style: italic;")
+            self.lbl_suggestions.setVisible(True)
+        elif visible:
+            # Reset helper text if there are suggestions
+            self.lbl_suggestions.setText("<b>Suggestions</b>")
+            self.lbl_suggestions.setStyleSheet("")
 
     def set_enabled_for_project(self, enabled: bool):
         self.setEnabled(enabled)

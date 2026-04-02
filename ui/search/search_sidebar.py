@@ -113,7 +113,7 @@ class SearchSidebar(QWidget):
         # ── Wrap sections in expandable containers ──
         self.search_hub_wrap = ExpandableSection("Search Hub", self.search_hub, expanded=True)
         self.discover_wrap = ExpandableSection("Discover", self.discover_section, expanded=True)
-        self.people_wrap = ExpandableSection("People", self.people_section, expanded=True)
+        self.people_wrap = ExpandableSection("People", self.people_section, expanded=False)
         self.browse_wrap = ExpandableSection("Browse", self.browse_section, expanded=True)
         self.filters_wrap = ExpandableSection("Filters", self.filter_section, expanded=False)
         self.activity_wrap = ExpandableSection("Activity", self.activity_section, expanded=False)
@@ -129,6 +129,7 @@ class SearchSidebar(QWidget):
     def _build_ui(self):
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -137,7 +138,7 @@ class SearchSidebar(QWidget):
         content = QFrame()
         self.content_layout = QVBoxLayout(content)
         self.content_layout.setContentsMargins(6, 6, 6, 6)
-        self.content_layout.setSpacing(10)
+        self.content_layout.setSpacing(6)
 
         self.content_layout.addWidget(self.search_hub_wrap)
         self.content_layout.addWidget(self.discover_wrap)
@@ -150,15 +151,16 @@ class SearchSidebar(QWidget):
         scroll.setWidget(content)
         outer.addWidget(scroll)
         
-        # Apply soft, modern styling (Google/Apple feel)
+        # Apply soft, modern styling (Google/Apple feel) with better visual hierarchy
         self.setStyleSheet("""
             QToolButton {
                 text-align: left;
-                padding: 8px 10px;
+                font-weight: 600;
+                color: #202124;
+                padding: 8px 8px;
                 border-radius: 8px;
                 border: none;
                 background: transparent;
-                font-weight: 500;
             }
 
             QToolButton:hover {
@@ -176,7 +178,7 @@ class SearchSidebar(QWidget):
 
             QGroupBox {
                 border: none;
-                margin-top: 4px;
+                margin-top: 2px;
                 padding-top: 2px;
             }
 
@@ -186,7 +188,7 @@ class SearchSidebar(QWidget):
 
             QPushButton {
                 text-align: left;
-                padding: 7px 10px;
+                padding: 5px 8px;
                 border-radius: 8px;
                 border: none;
                 background: transparent;

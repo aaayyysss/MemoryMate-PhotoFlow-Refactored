@@ -1321,9 +1321,14 @@ class GooglePhotosLayout(BaseLayout):
         Returns True if handled, False if caller should fall back to legacy SidebarQt.
         """
         try:
+            # Guard: ignore branch requests without active project (except special people actions)
+            if not getattr(self, "project_id", None) and branch not in {"people_merge_review", "people_unnamed"}:
+                print(f"[GoogleLayout] Ignoring shell branch without project: {branch}")
+                return True
+
             # ---------- DIRECT LOADERS ----------
             if branch == "all":
-                self._load_photos()
+                self.request_reload(reason="shell_all", project_id=self.project_id)
                 return True
 
             # --- Favorites (fixed) ---
@@ -1362,7 +1367,7 @@ class GooglePhotosLayout(BaseLayout):
 
             # --- Simple types ---
             if branch in {"documents", "screenshots"}:
-                self._load_photos()
+                self.request_reload(reason=f"shell_{branch}", project_id=self.project_id)
                 return True
 
             return False
@@ -10124,6 +10129,11 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
         except Exception as e:
             print(f"[GooglePhotosLayout] refresh_search_shell on activate failed: {e}")
 
+        # Only load photos if we have an active project
+        if not getattr(self, "project_id", None):
+            logger.info("[Startup] Suppressing initial project-bound layout load because no active project exists")
+            return
+
         # Recompute grid columns after the widget geometry has settled.
         # During create_layout() the viewport is narrow (not yet shown);
         # by the time the event loop returns here the true width is known.
@@ -10510,6 +10520,10 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
         signature = getattr(self, "_pending_reload_reason", None)
         if signature == self._last_reload_signature:
             print(f"[GoogleLayout] Skipping duplicate reload: {signature}")
+            return
+
+        if not getattr(self, "project_id", None):
+            print("[GoogleLayout] Suppressing reload because no active project exists")
             return
 
         self._reload_in_progress = True
