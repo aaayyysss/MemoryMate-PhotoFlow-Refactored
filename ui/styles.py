@@ -25,78 +25,78 @@ from typing import Dict, Any
 
 COLORS: Dict[str, str] = {
     # ──────────────────────────────────────────────────────────────
-    # DARK THEME (Stitch / Material Design 3)
+    # LIGHT THEME (Material Design 3)
     # ────────────────────────────────────────────────────────────── 
-    # Google's Material Design 3 dark color scheme optimized for accessibility
+    # Google's Material Design 3 light color scheme optimized for accessibility
     # Designed with WCAG AA compliance in mind (min 4.5:1 contrast ratio)
     # ──────────────────────────────────────────────────────────────
     
     # ── PRIMARY COLOR ──
-    # Bright blue for dark backgrounds - high visibility
-    'primary': '#8fcdff',                   # Primary action color (bright blue)
-    'primary_dim': '#6bc1ff',              # Dimmed primary for inactive states
-    'primary_container': '#004b71',         # Dark container for primary sections
-    'on_primary': '#004467',                # Text on primary background
-    'on_primary_container': '#a5d6ff',     # Text on primary container
-    'primary_fixed': '#cbe6ff',            # Fixed color for consistency
-    'primary_fixed_dim': '#aed9ff',        # Fixed dimmed variant
+    # Professional blue for light backgrounds
+    'primary': '#1e40af',                   # Primary action color (solid blue)
+    'primary_dim': '#3b82f6',              # Dimmed primary for inactive states
+    'primary_container': '#dbeafe',         # Light container for primary sections
+    'on_primary': '#ffffff',                # Text on primary background
+    'on_primary_container': '#0c1f4a',     # Text on primary container
+    'primary_fixed': '#dbeafe',            # Fixed color for consistency
+    'primary_fixed_dim': '#bfdbfe',        # Fixed dimmed variant
     
     # ── SECONDARY COLOR ──
-    # Supporting blue tone
-    'secondary': '#9c9ea4',                # Secondary action color
-    'secondary_dim': '#9c9ea4',            # Dimmed secondary
-    'secondary_container': '#393b41',      # Dark container for secondary
-    'on_secondary': '#1e2025',             # Text on secondary background
-    'on_secondary_container': '#bebfc5',   # Text on secondary container
-    'secondary_fixed': '#e1e2e9',          # Fixed secondary
-    'secondary_fixed_dim': '#d3d4da',      # Fixed dimmed secondary
+    # Supporting neutral tone
+    'secondary': '#5b616e',                # Secondary action color
+    'secondary_dim': '#80858f',            # Dimmed secondary
+    'secondary_container': '#d8e4f7',      # Light container for secondary
+    'on_secondary': '#ffffff',             # Text on secondary background
+    'on_secondary_container': '#1a2a3d',   # Text on secondary container
+    'secondary_fixed': '#d8e4f7',          # Fixed secondary
+    'secondary_fixed_dim': '#bfd3e8',      # Fixed dimmed secondary
     
     # ── TERTIARY COLOR ──
     # Purple/lavender accent
-    'tertiary': '#edecff',                 # Tertiary action color
-    'tertiary_dim': '#cecfef',             # Dimmed tertiary
-    'tertiary_container': '#dcddfe',       # Container for tertiary
-    'on_tertiary': '#545671',              # Text on tertiary background
-    'on_tertiary_container': '#4c4e69',    # Text on tertiary container
-    'tertiary_fixed': '#dcddfe',           # Fixed tertiary
-    'tertiary_fixed_dim': '#cecfef',       # Fixed dimmed tertiary
+    'tertiary': '#7c5fb8',                 # Tertiary action color
+    'tertiary_dim': '#9d84dc',             # Dimmed tertiary
+    'tertiary_container': '#f0e8ff',       # Container for tertiary
+    'on_tertiary': '#ffffff',              # Text on tertiary background
+    'on_tertiary_container': '#38224b',    # Text on tertiary container
+    'tertiary_fixed': '#f0e8ff',           # Fixed tertiary
+    'tertiary_fixed_dim': '#e9dbf9',       # Fixed dimmed tertiary
     
     # ── NEUTRAL COLORS ──
     # Core neutral palette for surfaces
-    'background': '#0e0e0e',               # Main dark background
-    'surface': '#0e0e0e',                  # Primary surface
-    'surface_dim': '#0e0e0e',              # Dimmed surface
-    'surface_bright': '#2b2c2c',           # Bright surface
-    'surface_container_lowest': '#000000', # Lowest elevation surface
-    'surface_container_low': '#131313',    # Low elevation surface
-    'surface_container': '#191a1a',        # Default surface container
-    'surface_container_high': '#1f2020',   # High elevation surface
-    'surface_container_highest': '#252626', # Highest elevation surface
-    'surface_variant': '#252626',          # Variant surface
-    'surface_tint': '#8fcdff',             # Surface tint (primary)
-    'inverse_surface': '#fcf9f8',          # Inverse surface (light)
+    'background': '#fffbfe',               # Main light background
+    'surface': '#fffbfe',                  # Primary surface
+    'surface_dim': '#f0ecf4',              # Dimmed surface
+    'surface_bright': '#fffbfe',           # Bright surface
+    'surface_container_lowest': '#ffffff', # Lowest elevation surface
+    'surface_container_low': '#f8f3fb',    # Low elevation surface
+    'surface_container': '#f3eff7',        # Default surface container
+    'surface_container_high': '#ede8f0',   # High elevation surface
+    'surface_container_highest': '#e8e2eb', # Highest elevation surface
+    'surface_variant': '#e8e2eb',          # Variant surface
+    'surface_tint': '#1e40af',             # Surface tint (primary)
+    'inverse_surface': '#2f2b33',          # Inverse surface (dark)
     
-    # ── TEXT COLORS (ON DARK SURFACES) ──
-    # High contrast text for dark backgrounds
-    'on_surface': '#e7e5e5',               # Main text on dark surfaces
-    'on_surface_variant': '#acabab',       # Secondary text (low emphasis)
-    'on_background': '#e7e5e5',            # Text on background
-    'inverse_on_surface': '#565555',       # Text on inverse surface
+    # ── TEXT COLORS (ON LIGHT SURFACES) ──
+    # High contrast text for light backgrounds
+    'on_surface': '#202124',               # Main text on light surfaces
+    'on_surface_variant': '#50474d',       # Secondary text (low emphasis)
+    'on_background': '#202124',            # Text on background
+    'inverse_on_surface': '#f5eff7',       # Text on inverse surface
     
     # ── OUTLINE COLORS ──
     # Borders and dividers
-    'outline': '#757575',                  # Main border/divider
-    'outline_variant': '#474848',          # Secondary outline
+    'outline': '#79747e',                  # Main border/divider
+    'outline_variant': '#cac7ce',          # Secondary outline
     
     # ── ERROR & STATUS ──
-    'error': '#ee7d77',                    # Error/destructive actions
-    'error_dim': '#bb5551',                # Dimmed error
-    'error_container': '#7f2927',          # Error container
-    'on_error': '#490106',                 # Text on error surface
-    'on_error_container': '#ff9993',       # Text on error container
+    'error': '#b3261e',                    # Error/destructive actions
+    'error_dim': '#dc362e',                # Dimmed error
+    'error_container': '#f9dedc',          # Error container
+    'on_error': '#ffffff',                 # Text on error surface
+    'on_error_container': '#410e0b',       # Text on error container
     
-    # ── SEMANTIC COLORS (LIGHT THEME - for reference) ──
-    # These are kept for compatibility but dark theme uses above
+    # ── SEMANTIC COLORS ──
+    # These maintain consistency with light theme
     'success': '#34a853',                  # Green - success, checkmark
     'warning': '#fbbc04',                  # Amber - warning, caution
     'info': '#4285f4',                     # Blue - informational
@@ -112,22 +112,22 @@ COLORS: Dict[str, str] = {
     'scrim_light': 'rgba(0, 0, 0, 0.12)',  # Light overlay for elevation
     
     # ──────────────────────────────────────────────────────────────
-    # BACKWARD COMPATIBILITY ALIASES (Light theme → Dark theme mapping)
+    # BACKWARD COMPATIBILITY ALIASES (Old color names mapping)
     # ────────────────────────────────────────────────────────────── 
     # These aliases maintain compatibility with existing code that
-    # references old light theme color names
+    # references old color names
     # ──────────────────────────────────────────────────────────────
-    'surface_primary': '#191a1a',          # Old light alias → dark surface_container
-    'surface_secondary': '#1f2020',        # Old light alias → dark surface_container_high
-    'surface_tertiary': '#252626',         # Old light alias → dark surface_variant
-    'surface_tertiary_alt': '#252626',     # Old light alias → dark surface_variant
-    'outline_primary': '#474848',          # Old light alias → dark outline_variant
-    'outline_secondary': '#757575',        # Old light alias → dark outline
-    'outline_tertiary': '#474848',         # Old light alias → dark outline_variant
-    'text_primary': '#e7e5e5',             # Old light alias → dark on_surface
-    'text_secondary': '#acabab',           # Old light alias → dark on_surface_variant
-    'text_tertiary': '#acabab',            # Old light alias → dark on_surface_variant
-    'text_disabled': '#474848',            # Old light alias → dark outline_variant
+    'surface_primary': '#f3eff7',          # Light surface container
+    'surface_secondary': '#ede8f0',        # Light surface container high
+    'surface_tertiary': '#e8e2eb',         # Light surface variant
+    'surface_tertiary_alt': '#e8e2eb',     # Light surface variant alt
+    'outline_primary': '#cac7ce',          # Light outline variant
+    'outline_secondary': '#79747e',        # Light outline
+    'outline_tertiary': '#cac7ce',         # Light outline variant
+    'text_primary': '#202124',             # Light text on surface
+    'text_secondary': '#50474d',           # Light text secondary
+    'text_tertiary': '#50474d',            # Light text tertiary
+    'text_disabled': '#cac7ce',            # Light text disabled
 }
 
 # ============================================================================

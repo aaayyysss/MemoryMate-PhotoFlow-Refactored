@@ -160,7 +160,7 @@ class AssetRepository(BaseRepository):
                     result[row["path"]] = row["asset_id"]
         return result
 
-    def list_duplicate_assets(self, project_id: int, min_instances: int = 2) -> List[Dict[str, Any]]:
+    def list_duplicate_assets(self, project_id: int, min_instances: int = 2, limit: int = None, offset: int = 0) -> List[Dict[str, Any]]:
         sql = """
             WITH asset_counts AS (
                 SELECT asset_id, COUNT(*) as instance_count
@@ -172,6 +172,11 @@ class AssetRepository(BaseRepository):
             JOIN media_asset a ON a.asset_id = ac.asset_id
             ORDER BY ac.instance_count DESC
         """
+        
+        # Add pagination if limit is specified
+        if limit is not None:
+            sql += f" LIMIT {limit} OFFSET {offset}"
+        
         with self.connection(read_only=True) as conn:
             cur = conn.execute(sql, (project_id, min_instances))
             return [dict(r) for r in cur.fetchall()]
