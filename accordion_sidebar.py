@@ -1019,6 +1019,11 @@ class AccordionSidebar(QWidget):
 
     # Section expansion signal (emitted when a section is being expanded)
     sectionExpanding = Signal(str)  # section_id - Emitted before section expansion
+    
+    # Legacy tools-inspired quick actions (Phase 3+)
+    quickFind = Signal()            # Find/Search button clicked
+    quickClearFilters = Signal()    # Clear filters button clicked
+    quickSettings = Signal()        # Settings button clicked
 
     # Internal signals for thread-safe UI updates
     _datesLoaded = Signal(dict)    # Thread → UI: dates data ready
@@ -1047,6 +1052,11 @@ class AccordionSidebar(QWidget):
         
         # Phase 3: Store section order for keyboard navigation
         self.section_order = ["people", "dates", "folders", "duplicates", "videos", "tags", "branches", "quick"]
+        
+        # Legacy Tools Enhancement: Recent searches tracking
+        self.recent_searches = []  # List of recent search queries
+        self.max_recent_searches = 5  # Store last 5 searches
+        self.current_window_width = 0  # Track for responsive sizing
 
         # PHASE 1 Task 1.2: Generation tokens to prevent overlapping reloads
         # Track reload version for each section to discard stale data
@@ -1106,6 +1116,9 @@ class AccordionSidebar(QWidget):
 
         # Build sections
         self._build_sections()
+        
+        # Legacy Tools Enhancement: Add quick-action toolbar at bottom
+        self._build_quick_action_toolbar(nav_bar, nav_layout)
         
         # Phase 3: Add global focus indicator styling for keyboard navigation
         focus_stylesheet = f"""
@@ -1198,6 +1211,7 @@ class AccordionSidebar(QWidget):
         super().resizeEvent(event)
         
         width = event.size().width()
+        self.current_window_width = width  # Legacy Tools Enhancement: Track for icon sizing
         
         # Handle responsive breakpoints
         if width > 1200:
@@ -1251,6 +1265,137 @@ class AccordionSidebar(QWidget):
                 if current_size > 0:
                     font.setPointSize(max(8, current_size + point_reduction))
                     header.title_label.setFont(font)
+        
+        # Legacy Tools Enhancement: Update nav button sizing based on breakpoint
+        self._update_responsive_nav_buttons()
+    
+    def _build_quick_action_toolbar(self, nav_bar: QWidget, nav_layout: QVBoxLayout):
+        """Legacy Tools Enhancement: Add quick-action toolbar at bottom of nav bar."""
+        # Remove stretch to make room for toolbar
+        for i in range(nav_layout.count() - 1, -1, -1):
+            item = nav_layout.itemAt(i)
+            if item and item.widget() is None:  # This is the stretch
+                nav_layout.takeAt(i)
+                break
+        
+        # Create quick-action toolbar widget
+        toolbar = QWidget()
+        toolbar.setFixedHeight(120)  # 3 buttons × 40px + spacing
+        toolbar.setStyleSheet(f"""
+            QWidget {{
+                background: {COLORS['surface_secondary']};
+                border-top: 1px solid {COLORS['outline_tertiary']};
+            }}
+        """)
+        toolbar_layout = QVBoxLayout(toolbar)
+        toolbar_spacing = get_spacing('xs')  # 4px
+        toolbar_layout.setContentsMargins(get_spacing('sm'), toolbar_spacing, get_spacing('sm'), toolbar_spacing)
+        toolbar_layout.setSpacing(toolbar_spacing)
+        
+        # Quick action buttons
+        quick_actions = [
+            ("🔍", "Find", "Search for photos (Ctrl+F)", self.quickFind.emit),
+            ("✕", "Clear", "Clear all filters (Esc)", self.quickClearFilters.emit),
+            ("⚙️", "Settings", "Settings & preferences", self.quickSettings.emit),
+        ]
+        
+        for icon, label, tooltip, callback in quick_actions:
+            btn = QPushButton(icon)
+            btn.setToolTip(f"{label}\\n{tooltip}")
+            btn.setFixedSize(40, 36)  # Responsive sizing
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.setStyleSheet(f"""
+                QPushButton {{
+                    background: transparent;
+                    border: 1px solid {COLORS['outline_tertiary']};
+                    border-radius: {RADIUS['small']}px;
+                    font-size: 14pt;
+                }}
+                QPushButton:hover {{
+                    background: {COLORS['scrim_light']};
+                    border: 1px solid {COLORS['outline_primary']};
+                }}
+                QPushButton:pressed {{
+                    background: {COLORS['primary_container']};
+                }}
+            """)
+            btn.setFocusPolicy(Qt.StrongFocus)
+            btn.setAttribute(Qt.WA_AccessibleName, label)
+            btn.setAttribute(Qt.WA_AccessibleDescription, tooltip)
+            btn.clicked.connect(callback)
+            toolbar_layout.addWidget(btn)
+        
+        # Add stretch at bottom
+        toolbar_layout.addStretch()
+        
+        # Add toolbar to nav layout
+        nav_layout.addStretch()
+        nav_layout.addWidget(toolbar)
+        
+        self.quick_action_toolbar = toolbar
+    
+    def add_recent_search(self, query: str):
+        """Legacy Tools Enhancement: Track recent searches for quick access."""
+        if not query or query.strip() == "":
+            return
+        
+        # Remove if already exists (to put it at top)
+        if query in self.recent_searches:
+            self.recent_searches.remove(query)
+        
+        # Add to front
+        self.recent_searches.insert(0, query)
+        
+        # Keep only max recent
+        self.recent_searches = self.recent_searches[:self.max_recent_searches]
+    
+    def get_recent_searches(self) -> list:
+        """Legacy Tools Enhancement: Get recent searches list."""
+        return self.recent_searches.copy()
+    
+    def _update_responsive_nav_buttons(self):
+        """Legacy Tools Enhancement: Adjust nav button size based on breakpoint."""
+        if self.current_window_width > 1200:
+            # Desktop: Large icons 56px with labels
+            button_size = 56
+            font_size = "20pt"
+        elif self.current_window_width > 1024:
+            # Laptop: Medium icons 52px
+            button_size = 52
+            font_size = "18pt"
+        elif self.current_window_width > 768:
+            # Tablet: Compact icons 48px
+            button_size = 48
+            font_size = "16pt"
+        else:
+            # Mobile: Minimal icons 44px
+            button_size = 44
+            font_size = "14pt"
+        
+        # Update all nav buttons
+        for section_id, btn in self.nav_buttons.items():
+            btn.setFixedSize(button_size, button_size)
+            btn.setStyleSheet(f"""
+                QPushButton {{
+                    background: transparent;
+                    border: none;
+                    border-radius: {RADIUS['large']}px;
+                    font-size: {font_size};
+                }}
+                QPushButton:hover {{
+                    background: {COLORS['scrim_light']};
+                }}
+                QPushButton:pressed {{
+                    background: rgba(26, 115, 232, 0.20);
+                }}
+            """)
+        
+        # Update toolbar button sizes
+        if hasattr(self, 'quick_action_toolbar'):
+            for child in self.quick_action_toolbar.findChildren(QPushButton):
+                if not isinstance(child, type(None)):
+                    toolbar_button_size = max(36, button_size - 12)
+                    child.setFixedSize(toolbar_button_size, toolbar_button_size)
 
     def _dbg(self, msg):
         """Debug logging with timestamp."""
@@ -1308,6 +1453,10 @@ class AccordionSidebar(QWidget):
             nav_btn.setAttribute(Qt.WA_AccessibleDescription, 
                 f"Navigate to {title} section. Keyboard shortcut: Ctrl+{section_id[0].upper()}")
             # Note: Keyboard shortcuts are handled by parent widget for consistency
+            
+            # Legacy Tools Enhancement: Enhanced tooltip with keyboard shortcut hint
+            tooltip_text = f"{title}\n(Ctrl+{section_id[0].upper()})" if len(section_id) > 0 else title
+            nav_btn.setToolTip(tooltip_text)
             
             # CRITICAL FIX: Use partial() instead of lambda to prevent memory leaks
             # Lambda closures hold references preventing garbage collection
