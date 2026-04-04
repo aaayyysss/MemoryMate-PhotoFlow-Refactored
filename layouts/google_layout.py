@@ -1277,6 +1277,7 @@ class GooglePhotosLayout(BaseLayout):
         except Exception:
             pass
 
+        print(f"[GooglePhotosLayout] Left shell built: SearchSidebar + Legacy Tools container")
         return self.left_shell_container
 
     def refresh_search_shell(self):
@@ -1296,7 +1297,7 @@ class GooglePhotosLayout(BaseLayout):
             recent = []
 
         try:
-            self.search_sidebar.set_recent_searches(recent)
+            self.search_sidebar.set_search_hub_recent(recent)
         except Exception:
             pass
 
