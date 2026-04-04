@@ -861,29 +861,9 @@ class SearchOrchestrator:
             return
 
         try:
-            # UX-11: Try identity-aware facet first, fall back to legacy
-            person_facet = None
-            facet_method = "legacy"
-            try:
-                person_facet = pss.compute_person_facet_identity_aware(result.paths, max_people=8)
-                if person_facet:
-                    facet_method = "identity_aware"
-            except Exception:
-                pass
-
-            if not person_facet:
-                person_facet = pss.compute_person_facet(result.paths, max_people=8)
-                facet_method = "legacy"
-
+            person_facet = pss.compute_person_facet(result.paths, max_people=8)
             if person_facet and len(person_facet) >= 2:
                 result.facets["people"] = person_facet
-
-            logger.debug(
-                "[Search] Person facet: method=%s, count=%d, result_paths=%d",
-                facet_method,
-                len(person_facet) if person_facet else 0,
-                len(result.paths),
-            )
         except Exception:
             pass
 
@@ -2698,14 +2678,11 @@ class SearchOrchestrator:
         This is the key debugging tool: every search produces
         a compact, reproducible log of why results ranked as they did.
         """
-        pid = getattr(self, 'project_id', None)
-        people_facet = result.facets.get("people", [])
         top_n = min(10, len(result.scored_results))
         if top_n == 0:
             logger.info(
                 f"[SearchOrchestrator] query=\"{plan.raw_query}\" "
                 f"| 0 results | {result.execution_time_ms:.0f}ms"
-                f" | project_id={pid}"
                 f"{' | filters=' + str(plan.filters) if plan.filters else ''}"
             )
             return
@@ -2716,8 +2693,6 @@ class SearchOrchestrator:
         logger.info(
             f'[SearchOrchestrator] query="{plan.raw_query}" '
             f'| {result.total_matches} results | {result.execution_time_ms:.0f}ms '
-            f'| project_id={pid} '
-            f'| person_facet_count={len(people_facet)} '
             f'| family={family} '
             f'| weights=[clip={weights.w_clip:.2f} rec={weights.w_recency:.2f} '
             f'fav={weights.w_favorite:.2f} loc={weights.w_location:.2f} '

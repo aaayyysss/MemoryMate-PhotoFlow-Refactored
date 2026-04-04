@@ -52,6 +52,18 @@ from reference_db import ReferenceDB
 from services.tag_service import get_tag_service
 from translation_manager import tr
 
+# Design System (Phase 1)
+from ui.styles import (
+    COLORS,
+    SPACING,
+    TYPOGRAPHY,
+    RADIUS,
+    ANIMATION,
+    get_color,
+    get_spacing,
+    get_typography,
+)
+
 
 class FlowLayout(QLayout):
     """
@@ -587,33 +599,60 @@ class SectionHeader(QFrame):
         # Make the frame clickable
         self.setFrameShape(QFrame.StyledPanel)
         self.setCursor(Qt.PointingHandCursor)
+        
+        # Phase 3: Add keyboard focus support
+        self.setFocusPolicy(Qt.StrongFocus)
+        
+        # Phase 3: Add ARIA labels for screen readers
+        title_with_count = f"{title}. Expandable section."
+        self.setAttribute(Qt.WA_AccessibleName, title)
+        self.setAttribute(Qt.WA_AccessibleDescription, 
+            f"{title_with_count} Press Enter or Space to toggle, Arrow keys to navigate.")
 
-        # Layout
+        # Layout - Use design system spacing (8px grid)
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(10, 6, 10, 6)
-        layout.setSpacing(8)
+        margin = get_spacing('md')  # 12px
+        spacing = get_spacing('sm')  # 8px
+        layout.setContentsMargins(margin, spacing, margin, spacing)
+        layout.setSpacing(spacing)
 
-        # Icon + Title
+        # Icon - 18pt size (semantic icon size)
         self.icon_label = QLabel(icon)
         self.icon_label.setFixedWidth(24)
-        font = self.icon_label.font()
-        font.setPointSize(14)
-        self.icon_label.setFont(font)
+        icon_font = self.icon_label.font()
+        icon_font.setPointSize(14)  # ~18px equivalent
+        self.icon_label.setFont(icon_font)
 
+        # Title - Use typography system
         self.title_label = QLabel(title)
         self.title_font = self.title_label.font()
+        typo = TYPOGRAPHY['title']
+        self.title_font.setPointSize(typo['size_pt'])
+        self.title_font.setWeight(typo['weight'])
+        self.title_label.setFont(self.title_font)
 
-        # Count badge (optional)
+        # Count badge - Use consistent styling
         self.count_label = QLabel("")
-        self.count_label.setStyleSheet("color: #666; font-size: 11px;")
+        count_typo = TYPOGRAPHY['label']
+        count_font = self.count_label.font()
+        count_font.setPointSize(count_typo['size_pt'])
+        self.count_label.setFont(count_font)
+        self.count_label.setStyleSheet(
+            f"color: {COLORS['text_secondary']}; "
+            f"font-size: {count_typo['size_pt']}pt;"
+        )
         self.count_label.setVisible(False)
 
-        # Chevron (indicates expand/collapse state)
+        # Chevron - Use typography for consistency
         self.chevron_label = QLabel("▶")  # Right arrow for collapsed
         self.chevron_label.setFixedWidth(20)
         chevron_font = self.chevron_label.font()
-        chevron_font.setPointSize(10)
+        chevron_font.setPointSize(12)  # Slightly larger
         self.chevron_label.setFont(chevron_font)
+        chevron_typo = TYPOGRAPHY['label']
+        self.chevron_label.setStyleSheet(
+            f"color: {COLORS['text_secondary']};"
+        )
 
         layout.addWidget(self.icon_label)
         layout.addWidget(self.title_label)
@@ -623,40 +662,50 @@ class SectionHeader(QFrame):
 
         # Initial styling
         self.set_active(False)
+        
+        # Phase 3: Add ARIA label for chevron
+        self.chevron_label.setAttribute(Qt.WA_AccessibleName, "Expand/collapse indicator")
 
     def set_active(self, active: bool):
         """Set header to active (expanded) or inactive (collapsed) state."""
         self.is_active = active
 
         if active:
-            # Active state: Bold, highlighted, chevron down
+            # Active state: Bold, highlighted background + left blue border, chevron down
             self.title_font.setBold(True)
             self.title_label.setFont(self.title_font)
             self.chevron_label.setText("▼")  # Down arrow
-            self.setStyleSheet("""
-                SectionHeader {
-                    background-color: #e8f0fe;
+            
+            # Use design system colors + 3px left border accent
+            self.setStyleSheet(f"""
+                SectionHeader {{
+                    background-color: {COLORS['primary_container']};
                     border: none;
-                    border-radius: 6px;
-                }
-                SectionHeader:hover {
-                    background-color: #d2e3fc;
-                }
+                    border-left: 3px solid {COLORS['primary']};
+                    border-radius: {RADIUS['medium']}px;
+                    padding-left: {get_spacing('sm')}px;
+                }}
+                SectionHeader:hover {{
+                    background-color: {COLORS['surface_tertiary_alt']};
+                }}
             """)
         else:
-            # Inactive state: Normal, default background, chevron right
+            # Inactive state: Normal weight, neutral background, subtle border, chevron right
             self.title_font.setBold(False)
             self.title_label.setFont(self.title_font)
             self.chevron_label.setText("▶")  # Right arrow
-            self.setStyleSheet("""
-                SectionHeader {
-                    background-color: #f8f9fa;
-                    border: 1px solid #e8eaed;
-                    border-radius: 6px;
-                }
-                SectionHeader:hover {
-                    background-color: #f1f3f4;
-                }
+            
+            # Use design system colors + subtle border
+            self.setStyleSheet(f"""
+                SectionHeader {{
+                    background-color: {COLORS['surface_secondary']};
+                    border: 1px solid {COLORS['outline_tertiary']};
+                    border-left: none;
+                    border-radius: {RADIUS['medium']}px;
+                }}
+                SectionHeader:hover {{
+                    background-color: {COLORS['surface_tertiary']};
+                }}
             """)
 
     def set_count(self, count: int):
@@ -665,14 +714,55 @@ class SectionHeader(QFrame):
         if count > 0:
             self.count_label.setText(f"({count})")
             self.count_label.setVisible(True)
+            # Phase 3: Update ARIA description with count
+            self.setAttribute(Qt.WA_AccessibleDescription, 
+                f"{self.title}. Expandable section containing {count} items. "
+                "Press Enter or Space to toggle, Arrow keys to navigate.")
         else:
             self.count_label.setVisible(False)
+            # Phase 3: Update ARIA description without count
+            self.setAttribute(Qt.WA_AccessibleDescription, 
+                f"{self.title}. Expandable section. "
+                "Press Enter or Space to toggle, Arrow keys to navigate.")
 
     def mousePressEvent(self, event):
         """Handle mouse click on header."""
         if event.button() == Qt.LeftButton:
             self.clicked.emit()
         super().mousePressEvent(event)
+    
+    def keyPressEvent(self, event):
+        """Phase 3: Handle keyboard input for section header."""
+        key = event.key()
+        
+        if key == Qt.Key.Key_Return or key == Qt.Key.Key_Space:
+            # Enter/Space: Toggle expand/collapse
+            self.clicked.emit()
+            event.accept()
+        elif key == Qt.Key.Key_Right and not self.is_active:
+            # Right arrow: Expand (when collapsed)
+            self.set_active(True)
+            self.clicked.emit()
+            event.accept()
+        elif key == Qt.Key.Key_Left and self.is_active:
+            # Left arrow: Collapse (when expanded)
+            self.set_active(False)
+            self.clicked.emit()
+            event.accept()
+        elif key == Qt.Key.Key_Tab:
+            # Tab: Normal navigation (let default handler work)
+            super().keyPressEvent(event)
+        else:
+            super().keyPressEvent(event)
+    
+    def focusInEvent(self, event):
+        """Phase 3: Handle focus for keyboard navigation."""
+        super().focusInEvent(event)
+        # Show focus ring via stylesheet (already defined in set_active)
+    
+    def focusOutEvent(self, event):
+        """Phase 3: Handle focus loss."""
+        super().focusOutEvent(event)
 
 
 class AccordionSection(QWidget):
@@ -708,8 +798,37 @@ class AccordionSection(QWidget):
         self.content_container = QWidget()
         self.content_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.content_layout = QVBoxLayout(self.content_container)
-        self.content_layout.setContentsMargins(8, 8, 8, 8)
+        padding = get_spacing('md')  # 12px (1.5x grid)
+        self.content_layout.setContentsMargins(padding, padding, padding, padding)
         self.content_layout.setSpacing(0)
+
+        # === Phase 2: Loading State Widget ===
+        self.loading_widget = QWidget()
+        loading_layout = QVBoxLayout(self.loading_widget)
+        loading_layout.setAlignment(Qt.AlignCenter)
+        loading_layout.setContentsMargins(0, 0, 0, 0)
+        
+        self.spinner_label = QLabel("⟳")
+        spinner_font = self.spinner_label.font()
+        spinner_font.setPointSize(24)
+        self.spinner_label.setFont(spinner_font)
+        self.spinner_label.setAlignment(Qt.AlignCenter)
+        self.spinner_label.setStyleSheet(f"color: {COLORS['primary']}; background: transparent;")
+        
+        self.loading_text = QLabel("Loading...")
+        loading_text_typo = TYPOGRAPHY['small']
+        loading_text_font = self.loading_text.font()
+        loading_text_font.setPointSize(loading_text_typo['size_pt'])
+        self.loading_text.setFont(loading_text_font)
+        self.loading_text.setAlignment(Qt.AlignCenter)
+        self.loading_text.setStyleSheet(f"color: {COLORS['text_secondary']}; background: transparent;")
+        
+        loading_layout.addWidget(self.spinner_label)
+        loading_layout.addWidget(self.loading_text)
+        loading_layout.addStretch()
+        
+        self.spinner_anim = None  # Will create on demand
+        self.loading_widget.setVisible(False)
 
         # Scroll area for content (ONE scrollbar here)
         self.scroll_area = QScrollArea()
@@ -731,21 +850,71 @@ class AccordionSection(QWidget):
         self.expandRequested.emit(self.section_id)
 
     def set_expanded(self, expanded: bool):
-        """Expand or collapse this section."""
+        """Expand or collapse this section with smooth animation (Phase 2)."""
+        if self.is_expanded == expanded:
+            return  # Already in target state
+        
         self.is_expanded = expanded
         self.header.set_active(expanded)
-        self.scroll_area.setVisible(expanded)
-
+        
         if expanded:
-            # Expanded: Allow vertical expansion and remove height constraints
+            # === EXPAND: Smooth 300ms animation ===
+            self.scroll_area.setVisible(True)
             self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-            self.setMaximumHeight(16777215)  # Remove any maximum height constraint
-            self.setMinimumHeight(400)  # Ensure expanded section has substantial height
+            self.setMaximumHeight(16777215)  # Remove height constraint
+            
+            # Phase 2: Animate expansion
+            if hasattr(self, '_expand_anim') and self._expand_anim:
+                self._expand_anim.stop()
+            
+            self._expand_anim = QPropertyAnimation(self, b"minimumHeight")
+            self._expand_anim.setDuration(300)  # Phase 2: 300ms smooth
+            self._expand_anim.setEasingCurve(QEasingCurve.InOutQuad)
+            self._expand_anim.setStartValue(48)  # Header height
+            self._expand_anim.setEndValue(400)   # Expanded height
+            self._expand_anim.start()
+            
+            # Fade in content
+            if hasattr(self, '_fade_anim') and self._fade_anim:
+                self._fade_anim.stop()
+            
+            self._fade_anim = QPropertyAnimation(self.scroll_area, b"windowOpacity")
+            self._fade_anim.setDuration(300)
+            self._fade_anim.setStartValue(0)
+            self._fade_anim.setEndValue(1)
+            self._fade_anim.start()
+            
         else:
-            # Collapsed: Fixed height (header only)
+            # === COLLAPSE: Smooth 300ms animation ===
             self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            
+            # Phase 2: Animate collapse
+            if hasattr(self, '_expand_anim') and self._expand_anim:
+                self._expand_anim.stop()
+            
+            self._expand_anim = QPropertyAnimation(self, b"minimumHeight")
+            self._expand_anim.setDuration(300)  # Phase 2: 300ms smooth
+            self._expand_anim.setEasingCurve(QEasingCurve.InOutQuad)
+            self._expand_anim.setStartValue(self.height() or 400)
+            self._expand_anim.setEndValue(48)  # Header only
+            self._expand_anim.start()
+            
+            # Fade out content
+            if hasattr(self, '_fade_anim') and self._fade_anim:
+                self._fade_anim.stop()
+            
+            self._fade_anim = QPropertyAnimation(self.scroll_area, b"windowOpacity")
+            self._fade_anim.setDuration(300)
+            self._fade_anim.setStartValue(1)
+            self._fade_anim.setEndValue(0)
+            
+            def hide_scroll_area():
+                self.scroll_area.setVisible(False)
+            
+            self._fade_anim.finished.connect(hide_scroll_area)
+            self._fade_anim.start()
+            
             self.setMaximumHeight(50)  # Compact header
-            self.setMinimumHeight(50)
 
     def set_content_widget(self, widget: QWidget):
         """Set the content widget for this section."""
@@ -790,6 +959,43 @@ class AccordionSection(QWidget):
         """Update the count badge in header."""
         self.header.set_count(count)
 
+    def show_loading(self, message: str = "Loading..."):
+        """Phase 2: Show loading spinner while content loads."""
+        self.loading_text.setText(message)
+        self.loading_widget.setVisible(True)
+        self.content_container.setVisible(False)
+        self._start_spinner_animation()
+
+    def hide_loading(self):
+        """Phase 2: Hide loading spinner and show content."""
+        self.loading_widget.setVisible(False)
+        self.content_container.setVisible(True)
+        self._stop_spinner_animation()
+
+    def _start_spinner_animation(self):
+        """Phase 2: Start rotating spinner animation."""
+        if self.spinner_anim is None:
+            self.spinner_anim = QPropertyAnimation(self.spinner_label, b"rotation")
+        
+        self.spinner_anim.setDuration(1200)  # Rotate every 1.2 seconds
+        self.spinner_anim.setStartValue(0)
+        self.spinner_anim.setEndValue(360)
+        self.spinner_anim.setLoopCount(-1)  # Infinite loop
+        self.spinner_anim.start()
+
+    def _stop_spinner_animation(self):
+        """Phase 2: Stop spinner animation."""
+        if self.spinner_anim:
+            self.spinner_anim.stop()
+
+    def show_error(self, message: str = "Failed to load"):
+        """Phase 2: Show error state with message."""
+        self.loading_text.setText(message)
+        self.loading_widget.setVisible(True)
+        self.content_container.setVisible(False)
+        self._stop_spinner_animation()
+        self.spinner_label.setText("⚠️")
+
 
 class AccordionSidebar(QWidget):
     """
@@ -813,6 +1019,11 @@ class AccordionSidebar(QWidget):
 
     # Section expansion signal (emitted when a section is being expanded)
     sectionExpanding = Signal(str)  # section_id - Emitted before section expansion
+    
+    # Legacy tools-inspired quick actions (Phase 3+)
+    quickFind = Signal()            # Find/Search button clicked
+    quickClearFilters = Signal()    # Clear filters button clicked
+    quickSettings = Signal()        # Settings button clicked
 
     # Internal signals for thread-safe UI updates
     _datesLoaded = Signal(dict)    # Thread → UI: dates data ready
@@ -834,9 +1045,18 @@ class AccordionSidebar(QWidget):
         self.expanded_section_id = None
         self.db = ReferenceDB()
         self.nav_buttons = {}  # section_id -> QPushButton
+        self.nav_badges = {}   # Phase 2: section_id -> QLabel (badge)
         self.thread_pool = QThreadPool.globalInstance()
         self._people_grid = None
         self._active_workers = []
+        
+        # Phase 3: Store section order for keyboard navigation
+        self.section_order = ["people", "dates", "folders", "duplicates", "videos", "tags", "branches", "quick"]
+        
+        # Legacy Tools Enhancement: Recent searches tracking
+        self.recent_searches = []  # List of recent search queries
+        self.max_recent_searches = 5  # Store last 5 searches
+        self.current_window_width = 0  # Track for responsive sizing
 
         # PHASE 1 Task 1.2: Generation tokens to prevent overlapping reloads
         # Track reload version for each section to discard stale data
@@ -860,16 +1080,19 @@ class AccordionSidebar(QWidget):
 
         # === LEFT: Vertical Navigation Bar (MS Outlook style) ===
         nav_bar = QWidget()
-        nav_bar.setFixedWidth(52)
-        nav_bar.setStyleSheet("""
-            QWidget {
-                background: #ffffff;
-                border-right: 1px solid #dadce0;
-            }
+        nav_bar.setFixedWidth(64)  # Phase 2: Expanded to accommodate labels/badges (was 52px)
+        nav_bar.setStyleSheet(f"""
+            QWidget {{
+                background: {COLORS['surface_primary']};
+                border-right: 1px solid {COLORS['outline_primary']};
+            }}
         """)
         nav_layout = QVBoxLayout(nav_bar)
-        nav_layout.setContentsMargins(6, 12, 6, 4)
-        nav_layout.setSpacing(4)
+        nav_margin = get_spacing('sm')      # 8px
+        nav_margin_top = get_spacing('md')  # 12px
+        nav_spacing = get_spacing('xs')     # 4px
+        nav_layout.setContentsMargins(nav_margin, nav_margin_top, nav_margin, nav_spacing)
+        nav_layout.setSpacing(nav_spacing)
 
         # Navigation buttons (will be created in _build_sections)
         self.nav_layout = nav_layout
@@ -884,13 +1107,31 @@ class AccordionSidebar(QWidget):
             }
         """)
         self.sections_layout = QVBoxLayout(self.sections_container)
-        self.sections_layout.setContentsMargins(6, 6, 6, 6)
-        self.sections_layout.setSpacing(3)  # Tighter spacing between sections
+        section_margin = get_spacing('sm')     # 8px gutters
+        section_spacing = get_spacing('sm')    # 8px between sections (improved from 3px)
+        self.sections_layout.setContentsMargins(section_margin, section_margin, section_margin, section_margin)
+        self.sections_layout.setSpacing(section_spacing)
 
         main_layout.addWidget(self.sections_container, stretch=1)
 
         # Build sections
         self._build_sections()
+        
+        # Legacy Tools Enhancement: Add quick-action toolbar at bottom
+        self._build_quick_action_toolbar(nav_bar, nav_layout)
+        
+        # Phase 3: Add global focus indicator styling for keyboard navigation
+        focus_stylesheet = f"""
+            SectionHeader:focus {{
+                outline: 3px solid {COLORS['info']};
+                outline-offset: 2px;
+            }}
+            QPushButton:focus {{
+                outline: 3px solid {COLORS['info']};
+                outline-offset: 2px;
+            }}
+        """
+        self.setStyleSheet(focus_stylesheet)
 
         # Connect internal signals for thread-safe UI updates
         self._datesLoaded.connect(self._build_dates_tree, Qt.QueuedConnection)
@@ -964,6 +1205,197 @@ class AccordionSidebar(QWidget):
             pass  # Store not initialized (e.g. unit tests)
 
         self._dbg("AccordionSidebar __init__ completed")
+    
+    def resizeEvent(self, event):
+        """Phase 3: Handle window resize for responsive design."""
+        super().resizeEvent(event)
+        
+        width = event.size().width()
+        self.current_window_width = width  # Legacy Tools Enhancement: Track for icon sizing
+        
+        # Handle responsive breakpoints
+        if width > 1200:
+            # Desktop: standard layout
+            self.set_responsive_layout('desktop', width)
+        elif width > 1024:
+            # Laptop: slightly compressed
+            self.set_responsive_layout('laptop', width)
+        elif width > 768:
+            # Tablet: single column with narrower sidebar
+            self.set_responsive_layout('tablet', width)
+        else:
+            # Mobile: full-width, drawer-style sidebar
+            self.set_responsive_layout('mobile', width)
+    
+    def set_responsive_layout(self, breakpoint: str, window_width: int):
+        """Phase 3: Adjust layout for responsive breakpoints."""
+        if breakpoint == 'desktop':
+            # Desktop: 260px sidebar, optimal text sizes
+            self.sections_container.setMinimumWidth(260)
+            self.sections_container.setMaximumWidth(350)
+            self._update_responsive_font_sizes(0)  # No font reduction
+        elif breakpoint == 'laptop':
+            # Laptop: 240px sidebar, slightly compressed
+            self.sections_container.setMinimumWidth(240)
+            self.sections_container.setMaximumWidth(300)
+            self._update_responsive_font_sizes(-1)  # Reduce by 1pt
+        elif breakpoint == 'tablet':
+            # Tablet: 200px sidebar, smaller font
+            self.sections_container.setMinimumWidth(200)
+            self.sections_container.setMaximumWidth(240)
+            self._update_responsive_font_sizes(-2)  # Reduce by 2pt
+        else:  # mobile
+            # Mobile: Full-width layout, compact fonts
+            self.sections_container.setMinimumWidth(150)
+            self.sections_container.setMaximumWidth(280)
+            self._update_responsive_font_sizes(-3)  # Reduce by 3pt
+    
+    def _update_responsive_font_sizes(self, point_reduction: int):
+        """Phase 3: Update font sizes for responsive breakpoints."""
+        if not point_reduction:
+            return  # No changes needed for desktop
+        
+        # Update all section headers
+        for section_id, section in self.sections.items():
+            if hasattr(section, 'header'):
+                header = section.header
+                # Update title font size
+                font = header.title_label.font()
+                current_size = font.pointSize()
+                if current_size > 0:
+                    font.setPointSize(max(8, current_size + point_reduction))
+                    header.title_label.setFont(font)
+        
+        # Legacy Tools Enhancement: Update nav button sizing based on breakpoint
+        self._update_responsive_nav_buttons()
+    
+    def _build_quick_action_toolbar(self, nav_bar: QWidget, nav_layout: QVBoxLayout):
+        """Legacy Tools Enhancement: Add quick-action toolbar at bottom of nav bar."""
+        # Remove stretch to make room for toolbar
+        for i in range(nav_layout.count() - 1, -1, -1):
+            item = nav_layout.itemAt(i)
+            if item and item.widget() is None:  # This is the stretch
+                nav_layout.takeAt(i)
+                break
+        
+        # Create quick-action toolbar widget
+        toolbar = QWidget()
+        toolbar.setFixedHeight(120)  # 3 buttons × 40px + spacing
+        toolbar.setStyleSheet(f"""
+            QWidget {{
+                background: {COLORS['surface_secondary']};
+                border-top: 1px solid {COLORS['outline_tertiary']};
+            }}
+        """)
+        toolbar_layout = QVBoxLayout(toolbar)
+        toolbar_spacing = get_spacing('xs')  # 4px
+        toolbar_layout.setContentsMargins(get_spacing('sm'), toolbar_spacing, get_spacing('sm'), toolbar_spacing)
+        toolbar_layout.setSpacing(toolbar_spacing)
+        
+        # Quick action buttons
+        quick_actions = [
+            ("🔍", "Find", "Search for photos (Ctrl+F)", self.quickFind.emit),
+            ("✕", "Clear", "Clear all filters (Esc)", self.quickClearFilters.emit),
+            ("⚙️", "Settings", "Settings & preferences", self.quickSettings.emit),
+        ]
+        
+        for icon, label, tooltip, callback in quick_actions:
+            btn = QPushButton(icon)
+            btn.setToolTip(f"{label}\\n{tooltip}")
+            btn.setFixedSize(40, 36)  # Responsive sizing
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.setStyleSheet(f"""
+                QPushButton {{
+                    background: transparent;
+                    border: 1px solid {COLORS['outline_tertiary']};
+                    border-radius: {RADIUS['small']}px;
+                    font-size: 14pt;
+                }}
+                QPushButton:hover {{
+                    background: {COLORS['scrim_light']};
+                    border: 1px solid {COLORS['outline_primary']};
+                }}
+                QPushButton:pressed {{
+                    background: {COLORS['primary_container']};
+                }}
+            """)
+            btn.setFocusPolicy(Qt.StrongFocus)
+            btn.setAttribute(Qt.WA_AccessibleName, label)
+            btn.setAttribute(Qt.WA_AccessibleDescription, tooltip)
+            btn.clicked.connect(callback)
+            toolbar_layout.addWidget(btn)
+        
+        # Add stretch at bottom
+        toolbar_layout.addStretch()
+        
+        # Add toolbar to nav layout
+        nav_layout.addStretch()
+        nav_layout.addWidget(toolbar)
+        
+        self.quick_action_toolbar = toolbar
+    
+    def add_recent_search(self, query: str):
+        """Legacy Tools Enhancement: Track recent searches for quick access."""
+        if not query or query.strip() == "":
+            return
+        
+        # Remove if already exists (to put it at top)
+        if query in self.recent_searches:
+            self.recent_searches.remove(query)
+        
+        # Add to front
+        self.recent_searches.insert(0, query)
+        
+        # Keep only max recent
+        self.recent_searches = self.recent_searches[:self.max_recent_searches]
+    
+    def get_recent_searches(self) -> list:
+        """Legacy Tools Enhancement: Get recent searches list."""
+        return self.recent_searches.copy()
+    
+    def _update_responsive_nav_buttons(self):
+        """Legacy Tools Enhancement: Adjust nav button size based on breakpoint."""
+        if self.current_window_width > 1200:
+            # Desktop: Large icons 56px with labels
+            button_size = 56
+            font_size = "20pt"
+        elif self.current_window_width > 1024:
+            # Laptop: Medium icons 52px
+            button_size = 52
+            font_size = "18pt"
+        elif self.current_window_width > 768:
+            # Tablet: Compact icons 48px
+            button_size = 48
+            font_size = "16pt"
+        else:
+            # Mobile: Minimal icons 44px
+            button_size = 44
+            font_size = "14pt"
+        
+        # Update all nav buttons
+        for section_id, btn in self.nav_buttons.items():
+            btn.setFixedSize(button_size, button_size)
+            btn.setStyleSheet(f"""
+                QPushButton {{
+                    background: transparent;
+                    border: none;
+                    border-radius: {RADIUS['large']}px;
+                    font-size: {font_size};
+                }}
+                QPushButton:hover {{
+                    background: {COLORS['scrim_light']};
+                }}
+                QPushButton:pressed {{
+                    background: rgba(26, 115, 232, 0.20);
+                }}
+            """)
+        
+        # Update toolbar button sizes
+        if hasattr(self, 'quick_action_toolbar'):
+            for child in self.quick_action_toolbar.findChildren(QPushButton):
+                if not isinstance(child, type(None)):
+                    toolbar_button_size = max(36, button_size - 12)
+                    child.setFixedSize(toolbar_button_size, toolbar_button_size)
 
     def _dbg(self, msg):
         """Debug logging with timestamp."""
@@ -998,28 +1430,57 @@ class AccordionSidebar(QWidget):
             # Create navigation button in vertical nav bar
             nav_btn = QPushButton(icon)
             nav_btn.setToolTip(title)
-            nav_btn.setFixedSize(44, 44)
+            nav_btn.setFixedSize(56, 56)  # Phase 2: Slightly larger (was 44x44)
             nav_btn.setCursor(Qt.PointingHandCursor)
-            nav_btn.setStyleSheet("""
-                QPushButton {
+            nav_btn.setStyleSheet(f"""
+                QPushButton {{
                     background: transparent;
                     border: none;
-                    border-radius: 10px;
+                    border-radius: {RADIUS['large']}px;
                     font-size: 20pt;
-                }
-                QPushButton:hover {
-                    background: rgba(26, 115, 232, 0.10);
-                }
-                QPushButton:pressed {
+                }}
+                QPushButton:hover {{
+                    background: {COLORS['scrim_light']};
+                }}
+                QPushButton:pressed {{
                     background: rgba(26, 115, 232, 0.20);
-                }
+                }}
             """)
+            
+            # Phase 3: Add keyboard focus support for accessibility
+            nav_btn.setFocusPolicy(Qt.StrongFocus)
+            nav_btn.setAttribute(Qt.WA_AccessibleName, f"{title} section")
+            nav_btn.setAttribute(Qt.WA_AccessibleDescription, 
+                f"Navigate to {title} section. Keyboard shortcut: Ctrl+{section_id[0].upper()}")
+            # Note: Keyboard shortcuts are handled by parent widget for consistency
+            
+            # Legacy Tools Enhancement: Enhanced tooltip with keyboard shortcut hint
+            tooltip_text = f"{title}\n(Ctrl+{section_id[0].upper()})" if len(section_id) > 0 else title
+            nav_btn.setToolTip(tooltip_text)
+            
             # CRITICAL FIX: Use partial() instead of lambda to prevent memory leaks
             # Lambda closures hold references preventing garbage collection
             nav_btn.clicked.connect(partial(self.expand_section, section_id))
 
+            # Phase 2: Add badge support for alerts/counts (e.g., duplicates)
+            badge = QLabel("")
+            badge.setObjectName(f"badge_{section_id}")
+            badge.setStyleSheet(f"""
+                QLabel {{
+                    background: {COLORS['error']};
+                    color: white;
+                    border-radius: 8px;
+                    padding: 2px 6px;
+                    font-size: 8pt;
+                    font-weight: bold;
+                }}
+            """)
+            badge.setVisible(False)
+            self.nav_badges[section_id] = badge
+
             self.nav_buttons[section_id] = nav_btn
             self.nav_layout.addWidget(nav_btn)
+            self.nav_layout.insertWidget(self.nav_layout.count() - 1, badge)  # Add badge before stretch
 
         # Add stretch at the end of nav bar only
         self.nav_layout.addStretch()
@@ -1095,6 +1556,28 @@ class AccordionSidebar(QWidget):
                     }
                 """)
 
+    def set_nav_badge(self, section_id: str, count: int):
+        """Phase 2: Show badge on navigation button with count."""
+        if section_id not in self.nav_badges:
+            return
+        
+        badge = self.nav_badges[section_id]
+        if count > 0:
+            badge.setText(str(count))
+            badge.setVisible(True)
+        else:
+            badge.setVisible(False)
+
+    def clear_nav_badges(self):
+        """Phase 2: Clear all nav badges."""
+        for badge in self.nav_badges.values():
+            badge.setVisible(False)
+
+    def set_nav_tooltip(self, section_id: str, tooltip: str):
+        """Phase 2: Update navigation button tooltip dynamically."""
+        if section_id in self.nav_buttons:
+            self.nav_buttons[section_id].setToolTip(tooltip)
+
     def _reorder_sections(self):
         """
         Reorder sections in layout:
@@ -1152,6 +1635,35 @@ class AccordionSidebar(QWidget):
             placeholder.setAlignment(Qt.AlignCenter)
             placeholder.setStyleSheet("padding: 20px; color: #666;")
             section.set_content_widget(placeholder)
+    
+    def keyPressEvent(self, event):
+        """Phase 3: Handle keyboard navigation at sidebar level."""
+        key = event.key()
+        
+        if not self.expanded_section_id:
+            super().keyPressEvent(event)
+            return
+        
+        # Arrow Up/Down: Navigate between sections
+        if key == Qt.Key.Key_Up or key == Qt.Key.Key_Down:
+            try:
+                current_idx = self.section_order.index(self.expanded_section_id)
+                if key == Qt.Key.Key_Up and current_idx > 0:
+                    # Move to previous section
+                    next_section = self.section_order[current_idx - 1]
+                    self.expand_section(next_section)
+                    event.accept()
+                    return
+                elif key == Qt.Key.Key_Down and current_idx < len(self.section_order) - 1:
+                    # Move to next section
+                    next_section = self.section_order[current_idx + 1]
+                    self.expand_section(next_section)
+                    event.accept()
+                    return
+            except (ValueError, IndexError):
+                pass
+        
+        super().keyPressEvent(event)
 
     def cleanup(self):
         """Mark widget as disposed so background workers skip stale refreshes."""

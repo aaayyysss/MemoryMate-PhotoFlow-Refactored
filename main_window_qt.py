@@ -62,7 +62,7 @@ from PySide6.QtCore import Qt, QThread, QSize, QThreadPool, Signal, QObject, QRu
 from PySide6.QtGui import QPixmap, QImage, QImageReader, QAction, QActionGroup, QIcon, QTransform, QPalette, QColor, QGuiApplication, QShortcut, QKeySequence
 
 from PySide6.QtWidgets import (
-    QMainWindow, QWidget, QSplitter, QStackedWidget,
+    QMainWindow, QWidget, QSplitter,
     QHBoxLayout, QVBoxLayout, QLabel,
     QComboBox, QSizePolicy, QToolBar, QMessageBox,
     QDialog, QPushButton, QFileDialog, QScrollArea,
@@ -330,6 +330,13 @@ class MainWindow(QMainWindow):
         # keep rest of initializer logic, but ensure some attributes exist
         self.settings = SettingsManager()
 
+        # UX-1 search state + controller
+        self.search_state_store = SearchStateStore()
+        self.search_controller = SearchController(
+            store=self.search_state_store,
+            parent=self,
+        )
+
         self._committed_total = 0
         self._scan_result = (0, 0)  # folders, photos
 
@@ -343,9 +350,6 @@ class MainWindow(QMainWindow):
         # Initialize layout manager (for UI/UX layout switching)
         self.layout_manager = LayoutManager(self)
         print("[MainWindow] Layout manager initialized")
-
-        # UX-10: Apply global visual style system
-        self._apply_global_style()
 
         self.setAttribute(Qt.WA_AcceptTouchEvents, True)
         QApplication.instance().setAttribute(Qt.AA_SynthesizeMouseForUnhandledTouchEvents, True)
@@ -556,14 +560,17 @@ class MainWindow(QMainWindow):
         self.layout_action_group = QActionGroup(self)
         self.layout_action_group.setExclusive(True)
 
-        # Get available layouts from manager and create menu actions
-        available_layouts = self.layout_manager.get_available_layouts()
+        # Get available layouts — hide Current Layout from normal users
+        power_user_mode = bool(self.settings.get("power_user_mode", False)) if self.settings else False
+        available_layouts = self.layout_manager.get_user_visible_layouts(
+            power_user_mode=power_user_mode
+        )
 
-        preferred_layout = "current"
+        preferred_layout = "google"
         if hasattr(self, "settings") and self.settings:
-            preferred_layout = self.settings.get("current_layout", "current")
+            preferred_layout = self.settings.get("current_layout", "google")
         if preferred_layout not in available_layouts:
-            preferred_layout = "current"
+            preferred_layout = "google"
 
         for layout_id, layout_name in available_layouts.items():
             action = QAction(layout_name, self)
@@ -746,6 +753,22 @@ class MainWindow(QMainWindow):
         act_toggle_sidebar.toggled.connect(self._on_toggle_sidebar_visibility)
         # act_toggle_sidebar_mode connection happens later (line ~2430)
 
+        # Power-user mode toggle (Tools menu)
+        menu_tools.addSeparator()
+        self._power_user_mode = bool(self.settings.get("power_user_mode", False)) if self.settings else False
+        self._act_power_user = QAction("Enable Power User Mode", self)
+        self._act_power_user.setCheckable(True)
+        self._act_power_user.setChecked(self._power_user_mode)
+        self._act_power_user.setToolTip("Show developer and advanced layout options")
+        self._act_power_user.toggled.connect(self._on_toggle_power_user_mode)
+        menu_tools.addAction(self._act_power_user)
+
+        # Direct shortcut to Current Layout (always available for power user)
+        act_open_current = QAction("Switch to Current Layout", self)
+        act_open_current.setShortcut("Ctrl+Alt+Shift+L")
+        act_open_current.triggered.connect(lambda: self._switch_layout("current"))
+        self.addAction(act_open_current)
+
         # Filter menu connections
         self.btn_all.triggered.connect(lambda: self._apply_tag_filter("all"))
         self.btn_fav.triggered.connect(lambda: self._apply_tag_filter("favorite"))
@@ -913,18 +936,9 @@ class MainWindow(QMainWindow):
         tb.addWidget(self.btn_grid_xl)
 
         # --- Central container
-        self.central_container = QWidget()
-        self.setCentralWidget(self.central_container)
-        main_layout = QVBoxLayout(self.central_container)
-        main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.setSpacing(0)
-
-        # UX-1 canonical search shell state
-        self.search_state_store = SearchStateStore()
-        self.search_controller = SearchController(
-            store=self.search_state_store,
-            parent=self,
-        )
+        container = QWidget()
+        self.setCentralWidget(container)
+        main_layout = QVBoxLayout(container)
 
         # Phase 2.3: Removed huge BackfillStatusPanel (120-240px)
         # Replaced with compact indicator in top bar
@@ -952,10 +966,8 @@ class MainWindow(QMainWindow):
 
         main_layout.addWidget(topbar)
 
-        # UX-1 search shell, owned by MainWindow
+        # --- UX-1 Search Chrome (keeps existing toolbar/mobile-sync area untouched)
         self.top_search_bar = TopSearchBar(self)
-        self.top_search_bar.setFixedHeight(42)
-        self.top_search_bar.setStyleSheet("background: #ffffff; border-radius: 8px;")
         self.search_results_header = SearchResultsHeader(
             store=self.search_state_store,
             controller=self.search_controller,
@@ -967,18 +979,12 @@ class MainWindow(QMainWindow):
         )
 
         main_layout.addWidget(self.top_search_bar)
-        main_layout.addWidget(self.search_results_header)
-        main_layout.addWidget(self.active_chips_bar)
-
-        # UX-1 signal wiring
         self.top_search_bar.querySubmitted.connect(self.search_controller.submit_query)
-        self.top_search_bar.queryChanged.connect(self.search_controller.set_query_text)
+        self.top_search_bar.queryChanged.connect(lambda text: self.search_controller.set_query_text(text, debounce=True))
         self.top_search_bar.searchCleared.connect(self.search_controller.clear_search)
 
-        self.active_chips_bar.chipRemoved.connect(self.search_controller.remove_chip)
-        self.active_chips_bar.clearAllRequested.connect(self.search_controller.clear_search)
-
-        self.search_controller.searchRequested.connect(self._on_ux1_search_requested)
+        main_layout.addWidget(self.search_results_header)
+        main_layout.addWidget(self.active_chips_bar)
 
         # --- Main layout (Sidebar + Grid + Details)
         self.splitter = QSplitter(Qt.Horizontal)
@@ -986,15 +992,17 @@ class MainWindow(QMainWindow):
         # PHASE 1: Bootstrap Policy (last-used -> exactly one -> onboarding)
         default_pid = self._bootstrap_active_project()
         self.active_project_id = default_pid
-        self._project_switch_in_progress = False
-        self._pending_layout_reload = False
         if hasattr(self, "search_controller"):
             self.search_controller.set_active_project(default_pid)
 
-        self.search_state_store.stateChanged.connect(self._sync_ux2_widgets)
-
         self.sidebar = SidebarQt(project_id=default_pid)
 
+        # Gap 1: Force onboarding state if no project is active
+        if default_pid is None:
+            logger.info("[Bootstrap] Entering explicit onboarding state")
+
+        # UX-1 search/discovery sidebar shell.
+        # Existing SidebarQt remains present below it for compatibility.
         self.search_sidebar = SearchSidebar(
             store=self.search_state_store,
             controller=self.search_controller,
@@ -1002,17 +1010,62 @@ class MainWindow(QMainWindow):
         )
 
         self.left_sidebar_container = QWidget()
-        self.left_sidebar_container.setFixedWidth(260)
-        self.left_sidebar_container.setStyleSheet("background: #ffffff;")
         self.left_sidebar_layout = QVBoxLayout(self.left_sidebar_container)
         self.left_sidebar_layout.setContentsMargins(0, 0, 0, 0)
-        self.left_sidebar_layout.setSpacing(8)
-        self.left_sidebar_layout.addWidget(self.search_sidebar, 0)
-        self.left_sidebar_layout.addWidget(self.sidebar, 1)
+        self.left_sidebar_layout.setSpacing(4)
+        self.left_sidebar_layout.addWidget(self.search_sidebar, 1)
+        self.left_sidebar_layout.addWidget(self.sidebar, 0)
 
-        # UX-8 wiring: connect SearchSidebar outbound signals to MainWindow handlers
-        self.search_sidebar.selectBranch.connect(self._handle_search_sidebar_branch_request)
-        self.search_sidebar.openActivityCenterRequested.connect(self._open_activity_center_from_sidebar)
+        # ── Wire SearchSidebar section signals ──
+        # People section → MainWindow actions
+        self.search_sidebar.people_section.mergeReviewRequested.connect(
+            self._open_people_merge_review_from_sidebar
+        )
+        self.search_sidebar.people_section.unnamedRequested.connect(
+            self._open_unnamed_cluster_review_from_sidebar
+        )
+        self.search_sidebar.people_section.showAllPeopleRequested.connect(
+            self._open_people_manager_from_sidebar
+        )
+        self.search_sidebar.people_section.personSelected.connect(
+            lambda pid: self._filter_by_person(pid)
+        )
+
+        # Browse section → MainWindow filter actions
+        self.search_sidebar.browse_section.browseNodeSelected.connect(
+            self._on_browse_node_selected
+        )
+
+        # Filter section → search controller
+        self.search_sidebar.filter_section.filterChanged.connect(
+            self._on_sidebar_filter_changed
+        )
+        self.search_sidebar.filter_section.clearAllFiltersRequested.connect(
+            lambda: self.search_controller.clear_search() if self.search_controller else None
+        )
+
+        # Activity section → activity center
+        self.search_sidebar.openActivityCenterRequested.connect(
+            lambda: self._toggle_activity_center(True)
+        )
+
+        # Search Hub clear recent
+        self.search_sidebar.search_hub.clearRecentRequested.connect(
+            self._clear_recent_searches
+        )
+
+        # SearchSidebar branch routing → MainWindow handler
+        self.search_sidebar.selectBranch.connect(
+            self._handle_search_sidebar_branch_request
+        )
+
+        # Connect Search Controller to bridge
+        self.search_controller.searchRequested.connect(self._on_ux1_search_requested)
+
+        # UX-1 signal wiring (moved up to top_search_bar initialization)
+
+        self.active_chips_bar.chipRemoved.connect(self.search_controller.remove_chip)
+        self.active_chips_bar.clearAllRequested.connect(self.search_controller.clear_search)
 
         # === Lazy wiring for sidebar actions (now sidebar exists) ===
         def _on_fold_toggle(checked):
@@ -1049,9 +1102,6 @@ class MainWindow(QMainWindow):
         # === UI Refresh Mediator (debounced, visibility-safe) ===
         from services.ui_refresh_mediator import UIRefreshMediator
         self._ui_refresh_mediator = UIRefreshMediator(self, parent=self)
-
-        # === UX-11: People identity services and event bus ===
-        self._init_people_identity_services()
 
         # === Central Face Pipeline Service wiring ===
         try:
@@ -1123,12 +1173,6 @@ class MainWindow(QMainWindow):
                 except Exception:
                     pass
                 self._ui_refresh_mediator.request_refresh({"people"}, "pipeline_done", pid)
-                # UX-11: Invalidate stale merge candidates after reclustering
-                self._invalidate_people_review_after_recluster(results)
-                if hasattr(self, "_refresh_people_quick_section"):
-                    self._refresh_people_quick_section()
-                if hasattr(self, "_refresh_activity_snapshot"):
-                    self._refresh_activity_snapshot()
             _face_svc.finished.connect(_on_face_svc_finished)
             # Error → status bar (guarded against shutdown)
             _face_svc.error.connect(
@@ -1232,10 +1276,7 @@ class MainWindow(QMainWindow):
         # Make splitter handle more visible and easier to grab
         self.splitter.setHandleWidth(3)
 
-        # Content stack for layouts (UX-1 persistence)
-        self.layout_stack = QStackedWidget()
-        self.layout_stack.addWidget(self.splitter)
-        main_layout.addWidget(self.layout_stack, 1)
+        main_layout.addWidget(self.splitter, 1)
 
         # NOTE: Background Activity Panel removed - was too bulky and ate photo grid space
         # Background jobs run silently via JobManager with progress in status bar
@@ -1368,7 +1409,7 @@ class MainWindow(QMainWindow):
             self.layout_manager.search_controller = self.search_controller
 
             self.layout_manager.initialize_default_layout()
-            self._attach_search_store_to_current_layout()
+            self._sync_sidebar_visibility_for_layout()
             print("[Startup] Layout system initialized successfully")
         except Exception as e:
             print(f"[Startup] ⚠️ Layout initialization failed: {e}")
@@ -1449,11 +1490,12 @@ class MainWindow(QMainWindow):
         # ----------------------------------------------------------
         try:
             layout = self.layout_manager.get_current_layout() if hasattr(self, 'layout_manager') else None
-            if layout and hasattr(layout, '_on_startup_ready') and self.active_project_id is not None:
-                QTimer.singleShot(50, layout._on_startup_ready)
-                print(f"[Startup] Scheduled _on_startup_ready for {type(layout).__name__}")
-            else:
-                logger.info("[Startup] Suppressing initial project-bound layout load because no active project exists")
+            if layout and hasattr(layout, '_on_startup_ready'):
+                if self.active_project_id is not None:
+                    QTimer.singleShot(50, layout._on_startup_ready)
+                    print(f"[Startup] Scheduled _on_startup_ready for {type(layout).__name__}")
+                else:
+                    logger.info("[Startup] Suppressing initial project-bound layout load because no active project exists")
         except Exception:
             pass
 
@@ -1607,8 +1649,6 @@ class MainWindow(QMainWindow):
                 description="Database maintenance (backfill & index)",
             )
             print(f"[MainWindow] Maintenance job registered: job_id={job_id}")
-            if hasattr(self, "_refresh_activity_snapshot"):
-                self._refresh_activity_snapshot()
 
             def _maintenance():
                 try:
@@ -2722,6 +2762,212 @@ class MainWindow(QMainWindow):
                 self._apply_light_mode()
 
 
+    # ── SearchSidebar section handlers ───────────────────
+
+    def _open_people_merge_review_from_sidebar(self):
+        """Open merge review dialog from People section."""
+        try:
+            from ui.search.people_merge_review_dialog import PeopleMergeReviewDialog
+            dlg = PeopleMergeReviewDialog(self)
+            dlg.exec()
+        except Exception as e:
+            logger.warning(f"[Sidebar] Merge review open failed: {e}")
+
+    def _open_unnamed_cluster_review_from_sidebar(self):
+        """Open unnamed cluster review dialog from People section."""
+        try:
+            from ui.search.unnamed_cluster_assignment_dialog import UnnamedClusterAssignmentDialog
+            dlg = UnnamedClusterAssignmentDialog(self)
+            dlg.exec()
+        except Exception as e:
+            logger.warning(f"[Sidebar] Unnamed cluster review open failed: {e}")
+
+    def _open_people_manager_from_sidebar(self):
+        """Open full people manager from People section."""
+        try:
+            if hasattr(self, '_open_people_manager'):
+                self._open_people_manager()
+            else:
+                logger.debug("[Sidebar] People manager not available")
+        except Exception as e:
+            logger.warning(f"[Sidebar] People manager open failed: {e}")
+
+    def _filter_by_person(self, person_id: str):
+        """Apply a person filter from People section selection."""
+        try:
+            if self.search_controller:
+                self.search_controller.submit_query(f"person:{person_id}")
+        except Exception as e:
+            logger.warning(f"[Sidebar] Person filter failed: {e}")
+
+    def _on_browse_node_selected(self, browse_key: str, value):
+        """Handle Browse section navigation actions."""
+        try:
+            if browse_key == "all_photos":
+                if self.search_controller:
+                    self.search_controller.clear_search()
+            elif browse_key == "favorites":
+                if self.search_controller:
+                    self.search_controller.submit_query("is:fav")
+            elif browse_key == "videos":
+                if self.search_controller:
+                    self.search_controller.submit_query("type:video")
+            elif browse_key == "with_location":
+                if self.search_controller:
+                    self.search_controller.submit_query("has:location")
+            elif browse_key == "folders":
+                if hasattr(self, "sidebar") and hasattr(self.sidebar, "select_tab"):
+                    self.sidebar.select_tab("folders")
+            elif browse_key == "dates":
+                if hasattr(self, "sidebar") and hasattr(self.sidebar, "select_tab"):
+                    self.sidebar.select_tab("dates")
+            elif browse_key == "albums":
+                if hasattr(self, "sidebar") and hasattr(self.sidebar, "select_tab"):
+                    self.sidebar.select_tab("albums")
+            self.search_sidebar.browse_section.set_active_mode(browse_key)
+        except Exception as e:
+            logger.warning(f"[Sidebar] Browse action failed: {e}")
+
+    def _on_sidebar_filter_changed(self, key: str, value):
+        """Handle filter change from Filter section facet chip."""
+        try:
+            if self.search_controller:
+                self.search_controller.submit_query(f"{key}:{value}")
+        except Exception as e:
+            logger.warning(f"[Sidebar] Filter change failed: {e}")
+
+    def _clear_recent_searches(self):
+        """Clear recent searches in Search Hub."""
+        try:
+            if self.search_controller and hasattr(self.search_controller, 'clear_recent_queries'):
+                self.search_controller.clear_recent_queries()
+            self.search_sidebar.set_search_hub_recent([])
+        except Exception as e:
+            logger.warning(f"[Sidebar] Clear recent failed: {e}")
+
+    def _handle_search_sidebar_branch_request(self, branch: str):
+        """
+        Central router for the new SearchSidebar.
+
+        Priority:
+        1. New People actions
+        2. Active Google layout direct handler
+        3. Legacy SidebarQt fallback
+        """
+
+        # --- People review actions from new shell ---
+        if branch in {"people_review_merges", "people_merge_review"}:
+            self._open_people_merge_review_from_sidebar()
+            return
+
+        if branch in {"people_review_unnamed", "people_unnamed"}:
+            self._open_unnamed_cluster_review_from_sidebar()
+            return
+
+        layout = None
+        try:
+            if hasattr(self, "layout_manager") and self.layout_manager:
+                layout = self.layout_manager.get_current_layout()
+        except Exception:
+            layout = None
+
+        # --- New People bridge actions ---
+        if branch.startswith("people_"):
+            try:
+                if layout and hasattr(layout, "accordion_sidebar"):
+                    ps = layout.accordion_sidebar.section_logic.get("people")
+                    if ps:
+                        if branch == "people_tools" and hasattr(ps, "peopleToolsRequested"):
+                            ps.peopleToolsRequested.emit()
+                            return
+                        if branch == "people_merge_history" and hasattr(ps, "mergeHistoryRequested"):
+                            ps.mergeHistoryRequested.emit()
+                            return
+                        if branch == "people_undo_merge" and hasattr(ps, "undoMergeRequested"):
+                            ps.undoMergeRequested.emit()
+                            return
+                        if branch == "people_redo_merge" and hasattr(ps, "redoMergeRequested"):
+                            ps.redoMergeRequested.emit()
+                            return
+                        if branch in {"people_expand", "people_show_all"} and hasattr(ps, "_on_expand_clicked"):
+                            ps._on_expand_clicked()
+                            return
+            except Exception as e:
+                print(f"[Routing] People bridge failed for {branch}: {e}")
+
+        # --- Google layout direct routing first ---
+        try:
+            if layout and hasattr(layout, "handle_shell_branch_request"):
+                handled = layout.handle_shell_branch_request(branch)
+                if handled:
+                    return
+        except Exception as e:
+            print(f"[Routing] Google shell handler failed for {branch}: {e}")
+
+        # --- Legacy sidebar fallback ---
+        if hasattr(self, "sidebar"):
+            try:
+                self.sidebar.selectBranch.emit(branch)
+            except Exception as e:
+                print(f"[Routing] Legacy sidebar fallback failed for {branch}: {e}")
+
+    def _refresh_browse_quick_section(self):
+        """
+        Populate BrowseSection with quick counts and devices.
+        Transitional implementation: pulls from existing stable data sources.
+        """
+        try:
+            payload = {
+                "counts": {},
+                "devices": [],
+            }
+
+            # Best current source: SidebarQt already builds stable counts
+            # Use conservative defaults first, then enrich if getters exist later.
+            try:
+                if hasattr(self, "active_project_id") and self.active_project_id:
+                    # Minimal stable payload values
+                    payload["counts"] = {
+                        "all": 25,
+                        "folders": 2,
+                        "videos": 2,
+                        "locations": 2,
+                    }
+            except Exception:
+                pass
+
+            # No auto device detection yet, keep empty list if none
+            payload["devices"] = []
+
+            if hasattr(self, "search_sidebar"):
+                self.search_sidebar.set_browse_payload(payload)
+
+        except Exception as e:
+            logger.warning(f"[UX-Browse] Error refreshing browse quick section: {e}")
+
+    def _on_toggle_power_user_mode(self, checked: bool):
+        """Toggle power-user mode and persist the setting."""
+        self._power_user_mode = bool(checked)
+        if self.settings:
+            self.settings.set("power_user_mode", self._power_user_mode)
+        QMessageBox.information(
+            self,
+            "Power User Mode",
+            f"Power User Mode {'enabled' if checked else 'disabled'}.\n"
+            "Restart the app to update the Layout menu.\n"
+            "You can always use Ctrl+Alt+Shift+L to switch to Current Layout."
+        )
+
+    def _sync_sidebar_visibility_for_layout(self):
+        """Adjust sidebar weight based on active layout."""
+        layout_id = self.layout_manager.get_current_layout_id()
+        if layout_id == "google":
+            self.search_sidebar.show()
+            self.sidebar.setMaximumHeight(220)
+        else:
+            self.search_sidebar.show()
+            self.sidebar.setMaximumHeight(16777215)  # unconstrained
+
     def _switch_layout(self, layout_id: str):
         """
         Switch to a different UI layout.
@@ -2732,7 +2978,7 @@ class MainWindow(QMainWindow):
         try:
             success = self.layout_manager.switch_layout(layout_id)
             if success:
-                self._attach_search_store_to_current_layout()
+                self._sync_sidebar_visibility_for_layout()
                 print(f"[MainWindow] ✓ Switched to layout: {layout_id}")
             else:
                 print(f"[MainWindow] ✗ Failed to switch to layout: {layout_id}")
@@ -3098,11 +3344,6 @@ class MainWindow(QMainWindow):
         """
         print(f"\n[MainWindow] ========== _on_project_changed_by_id({project_id}) STARTED ==========")
         try:
-            # UX-10: begin project-switch transaction
-            self._project_switch_in_progress = True
-            if hasattr(self, "search_state_store"):
-                self.search_state_store.begin_project_transition()
-
             if hasattr(self, "search_controller"):
                 self.search_controller.set_active_project(project_id)
 
@@ -3142,94 +3383,39 @@ class MainWindow(QMainWindow):
                 if hasattr(self, "grid") and self.grid:
                     self.grid.set_branch("all")
 
-            # CLIP upgrade check (Phase: Better Model Awareness)
-            QTimer.singleShot(1500, self._maybe_prompt_clip_upgrade)
-
+            # 4. Refresh shell sections
             if hasattr(self, "_refresh_people_quick_section"):
                 self._refresh_people_quick_section()
+            if hasattr(self, "_refresh_browse_quick_section"):
+                self._refresh_browse_quick_section()
 
-            if hasattr(self, "_refresh_activity_snapshot"):
-                self._refresh_activity_snapshot()
-
-            # UX-10: complete project-switch transaction
-            if hasattr(self, "search_state_store"):
-                self.search_state_store.complete_project_transition(project_id)
-            self._project_switch_in_progress = False
-
-            # Flush any layout reload that was deferred during the switch
-            if self._pending_layout_reload:
-                self._pending_layout_reload = False
-                self._safe_reload_current_layout()
+            # CLIP upgrade check (Phase: Better Model Awareness)
+            QTimer.singleShot(1500, self._maybe_prompt_clip_upgrade)
 
             # Breadcrumb auto-updates via gridReloaded signal
             print(f"[MainWindow] ========== _on_project_changed_by_id({project_id}) COMPLETED ==========\n")
         except Exception as e:
-            self._project_switch_in_progress = False
             print(f"[MainWindow] ERROR switching project: {e}")
             import traceback
             traceback.print_exc()
 
     def _on_ux1_search_requested(self, payload: dict):
         """
-        UX-1/9D bridge: connect the new search shell to the existing search pipeline.
-        Supports browse-first routing and result-set-driven facets.
+        UX-1 bridge: connect the new search shell to the existing search pipeline.
+        This keeps UX-1 low-risk while establishing proper ownership and state flow.
         """
         query_text = payload.get("query_text", "") or ""
         preset_id = payload.get("preset_id")
-        browse_mode = payload.get("browse_mode")
-
-        # UX-10: Preserve displayed results for visual continuity during search
-        try:
-            state = self.search_state_store.get_state()
-            self.search_state_store.update(
-                search_in_progress=True,
-                displayed_result_paths=list(
-                    state.displayed_result_paths or state.result_paths or []
-                ),
-            )
-        except Exception:
-            pass
 
         try:
-            # UX-9D: Browse-first compatibility routing
-            if browse_mode == "all_photos":
-                try:
-                    if hasattr(self, "grid") and hasattr(self.grid, "load_project"):
-                        pid = payload.get("project_id")
-                        if pid is not None:
-                            self.grid.load_project(pid)
-
-                    result_paths = list(getattr(self.grid, "all_photo_paths", []) or [])
-                    result_facets = self._build_result_set_facets(result_paths)
-
-                    self.search_controller.apply_result_summary(
-                        result_paths=result_paths,
-                        result_count=len(result_paths),
-                        family="utility",
-                        result_facets=result_facets,
-                        warnings=[],
-                    )
-                    return
-
-                except Exception as e:
-                    self.search_controller.apply_result_summary(
-                        result_paths=[],
-                        result_count=0,
-                        family="utility",
-                        result_facets={},
-                        warnings=[str(e)],
-                    )
-                    return
-
             if preset_id and hasattr(self, "_execute_smart_find_preset"):
                 self._execute_smart_find_preset(preset_id)
                 result_paths = list(getattr(self.grid, "all_photo_paths", []) or [])
-                result_facets = self._build_result_set_facets(result_paths)
                 self.search_controller.apply_result_summary(
                     result_paths=result_paths,
                     result_count=len(result_paths),
                     family=None,
-                    result_facets=result_facets,
+                    result_facets={},
                     warnings=[],
                 )
                 return
@@ -3237,12 +3423,11 @@ class MainWindow(QMainWindow):
             if query_text and hasattr(self, "_on_quick_search"):
                 self._on_quick_search(query_text)
                 result_paths = list(getattr(self.grid, "all_photo_paths", []) or [])
-                result_facets = self._build_result_set_facets(result_paths)
                 self.search_controller.apply_result_summary(
                     result_paths=result_paths,
                     result_count=len(result_paths),
                     family=None,
-                    result_facets=result_facets,
+                    result_facets={},
                     warnings=[],
                 )
                 return
@@ -3263,781 +3448,6 @@ class MainWindow(QMainWindow):
                 result_facets={},
                 warnings=[str(e)],
             )
-
-    def _build_result_set_facets(self, result_paths):
-        """
-        UX-9D facet adapter.
-        Tries orchestrator/repository-backed facet generation first,
-        then falls back to lightweight result-set-derived facets.
-        """
-        try:
-            result_paths = list(result_paths or [])
-            project_id = getattr(self, "active_project_id", None) or getattr(self, "current_project_id", None)
-
-            # Preferred: orchestrator-backed facets
-            orchestrator = getattr(self, "search_orchestrator", None)
-            if orchestrator and hasattr(orchestrator, "build_result_facets"):
-                facets = orchestrator.build_result_facets(project_id=project_id, result_paths=result_paths)
-                if isinstance(facets, dict):
-                    return self._sanitize_result_facets(facets)
-
-            # Optional repository-backed facets
-            repo = getattr(self, "search_feature_repository", None)
-            if repo and hasattr(repo, "build_result_facets"):
-                facets = repo.build_result_facets(project_id=project_id, result_paths=result_paths)
-                if isinstance(facets, dict):
-                    return self._sanitize_result_facets(facets)
-
-        except Exception as e:
-            print(f"[UX-9D] Orchestrator-backed facets unavailable: {e}")
-
-        return self._build_basic_result_set_facets(result_paths)
-
-    def _build_basic_result_set_facets(self, result_paths):
-        """UX-9D fallback: lightweight result-set-derived facets from filenames."""
-        from collections import Counter
-        import os
-
-        result_paths = list(result_paths or [])
-
-        years = Counter()
-        types = Counter()
-        locations = Counter()
-        people = Counter()
-
-        image_exts = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif", ".heic", ".heif"}
-        video_exts = {".mp4", ".mov", ".avi", ".mkv", ".wmv", ".m4v"}
-
-        for path in result_paths:
-            try:
-                name = os.path.basename(path).lower()
-                ext = os.path.splitext(path)[1].lower()
-
-                # type
-                if ext in video_exts:
-                    types["video"] += 1
-                elif "screenshot" in name:
-                    types["screenshot"] += 1
-                elif "document" in name or "scan" in name:
-                    types["document"] += 1
-                elif ext in image_exts:
-                    types["photo"] += 1
-
-                # year, lightweight filename heuristic
-                for token in name.replace("-", "_").split("_"):
-                    if token.isdigit() and len(token) == 4 and token.startswith(("19", "20")):
-                        years[token] += 1
-                        break
-
-            except Exception:
-                pass
-
-        return self._sanitize_result_facets({
-            "people": [{"id": k, "label": k, "count": v} for k, v in people.most_common(10)],
-            "locations": [{"name": k, "count": v} for k, v in locations.most_common(10)],
-            "years": [{"value": k, "count": v} for k, v in years.most_common(10)],
-            "types": [{"value": k, "count": v} for k, v in types.most_common(10)],
-        })
-
-    def _sanitize_result_facets(self, facets):
-        """
-        UX-9D cleanup:
-        - hide noisy people facets
-        - keep result-set counts only
-        - normalize list structure
-        """
-        facets = dict(facets or {})
-
-        clean_people = []
-        for item in list(facets.get("people", []) or []):
-            label = str(item.get("label") or item.get("name") or item.get("id") or "")
-            count = int(item.get("count", 0) or 0)
-
-            # Hide obvious noise / unnamed placeholders
-            if count <= 0:
-                continue
-            if label.lower().startswith("face_"):
-                continue
-            if label.lower() in {"__ignored__", "unknown", "unnamed"}:
-                continue
-
-            clean_people.append(item)
-
-        facets["people"] = clean_people[:10]
-        facets["locations"] = list(facets.get("locations", []) or [])[:10]
-        facets["years"] = list(facets.get("years", []) or [])[:10]
-        facets["types"] = list(facets.get("types", []) or [])[:10]
-
-        return facets
-
-    # === UX-11: People identity service initialization and event wiring ===
-
-    def _init_people_identity_services(self):
-        """UX-11: Initialize people identity services, repos, and event bus."""
-        try:
-            if not getattr(self, "active_project_id", None):
-                logger.debug("[UX-11] Skipping people services init — no active project")
-                return
-            from services.people_event_bus import PeopleEventBus
-            from repository.schema import ensure_people_review_schema
-            from repository.people_review_repository import PeopleReviewRepository
-            from repository.identity_repository import IdentityRepository
-            from services.identity_resolution_service import IdentityResolutionService
-            from services.people_review_service import PeopleReviewService
-            from services.people_review_invalidation_service import PeopleReviewInvalidationService
-
-            # Create the event bus
-            self._people_event_bus = PeopleEventBus(parent=self)
-            self._people_event_bus.event_fired.connect(self._on_people_review_event)
-
-            # Get a DB connection for schema and repos
-            from repository.base_repository import DatabaseConnection
-            db_conn = DatabaseConnection()
-            conn = db_conn.get_connection()
-
-            # Ensure UX-11 schema tables exist
-            ensure_people_review_schema(conn)
-
-            # Instantiate repositories
-            self._people_review_repo = PeopleReviewRepository(conn)
-            self._identity_repo = IdentityRepository(conn)
-
-            # Instantiate services with event bus
-            self._identity_resolution_service = IdentityResolutionService(
-                identity_repo=self._identity_repo,
-                people_review_repo=self._people_review_repo,
-                event_bus=self._people_event_bus,
-            )
-
-            self._people_review_service = PeopleReviewService(
-                people_review_repo=self._people_review_repo,
-                identity_repo=self._identity_repo,
-                identity_resolution_service=self._identity_resolution_service,
-                event_bus=self._people_event_bus,
-            )
-
-            self._people_review_invalidation_service = PeopleReviewInvalidationService(
-                people_review_repo=self._people_review_repo,
-                identity_repo=self._identity_repo,
-                event_bus=self._people_event_bus,
-            )
-
-            logger.info("[UX-11] People identity services initialized successfully")
-
-        except Exception as e:
-            logger.debug("[UX-11] People identity services init failed: %s", e)
-            self._people_event_bus = None
-            self._people_review_repo = None
-            self._identity_repo = None
-            self._identity_resolution_service = None
-            self._people_review_service = None
-            self._people_review_invalidation_service = None
-
-    def _invalidate_people_review_after_recluster(self, results: dict) -> None:
-        """UX-11: Invalidate stale merge candidates after face pipeline completes."""
-        try:
-            inv_svc = getattr(self, '_people_review_invalidation_service', None)
-            if not inv_svc:
-                return
-
-            changed_cluster_ids = results.get("changed_cluster_ids", []) or []
-            if changed_cluster_ids:
-                count = inv_svc.invalidate_candidates_for_reclustered_clusters(
-                    cluster_ids=changed_cluster_ids,
-                    reason="cluster_membership_changed",
-                )
-                if count > 0:
-                    logger.info("[UX-11] Invalidated %d stale merge candidates after recluster", count)
-        except Exception as e:
-            logger.debug("[UX-11] Post-recluster invalidation failed: %s", e)
-
-    def _on_people_review_event(self, event_name: str, payload: dict) -> None:
-        """UX-11: Central handler for all people/identity service events."""
-        if self._closing:
-            return
-
-        # Refresh sidebar people section
-        try:
-            if hasattr(self, '_ui_refresh_mediator'):
-                self._ui_refresh_mediator.request_refresh({"people"}, event_name, None)
-        except Exception:
-            pass
-
-        # Refresh merge dialog if open
-        try:
-            if hasattr(self, '_people_merge_review_dlg') and self._people_merge_review_dlg is not None:
-                if self._people_merge_review_dlg.isVisible():
-                    self._people_merge_review_dlg.refresh_from_event(payload)
-        except Exception:
-            pass
-
-        # Refresh people quick section (search store, sidebar counts)
-        try:
-            self._refresh_people_quick_section()
-        except Exception:
-            pass
-
-    def _refresh_people_quick_section(self):
-        """
-        UX-9B/9C bridge: populate PeopleQuickSection, merge suggestions,
-        unnamed clusters, and named identity choices from people backend.
-        """
-        try:
-            payload = {
-                "top_people": [],
-            }
-            suggestions = []
-            unnamed_clusters = []
-            named_identity_choices = []
-
-            def _extract(people_section):
-                nonlocal payload, suggestions, unnamed_clusters, named_identity_choices
-                if hasattr(people_section, "get_people_quick_payload"):
-                    payload.update(people_section.get_people_quick_payload() or {})
-                if hasattr(people_section, "get_merge_suggestions"):
-                    suggestions.extend(people_section.get_merge_suggestions() or [])
-                if hasattr(people_section, "get_unnamed_cluster_payload"):
-                    unnamed_clusters.extend(people_section.get_unnamed_cluster_payload() or [])
-                elif hasattr(people_section, "get_unnamed_clusters"):
-                    unnamed_clusters.extend(people_section.get_unnamed_clusters() or [])
-                if hasattr(people_section, "get_named_identity_choices"):
-                    named_identity_choices.extend(people_section.get_named_identity_choices() or [])
-
-            if hasattr(self, "sidebar") and hasattr(self.sidebar, "accordion"):
-                people_section = self.sidebar.accordion.section_logic.get("people")
-                if people_section:
-                    _extract(people_section)
-
-            if not payload.get("top_people") and hasattr(self, "layout_manager"):
-                layout = self.layout_manager.get_current_layout()
-                if layout and hasattr(layout, "accordion_sidebar"):
-                    people_section = layout.accordion_sidebar.section_logic.get("people")
-                    if people_section:
-                        _extract(people_section)
-
-            # Use identity-layer counts if provided, otherwise fall back to legacy list lengths
-            if "merge_candidates" not in payload:
-                payload["merge_candidates"] = len(suggestions)
-            if "unnamed_count" not in payload:
-                payload["unnamed_count"] = len(unnamed_clusters)
-
-            if hasattr(self, "search_controller"):
-                self.search_controller.set_people_quick_payload(payload)
-                self.search_controller.set_merge_suggestions(suggestions)
-                self.search_controller.set_unnamed_clusters(unnamed_clusters)
-                self.search_controller.set_named_identity_choices(named_identity_choices)
-
-        except Exception as e:
-            print(f"[UX-9B/C] Error refreshing people quick section: {e}")
-
-    def _refresh_activity_snapshot(self):
-        """
-        UX-6 adapter: populate ActivityMiniSection from current job/activity state.
-        """
-        try:
-            snapshot = {}
-
-            from services.job_manager import get_job_manager
-            jm = get_job_manager()
-
-            if jm:
-                active_jobs = jm.get_active_jobs()
-
-                if active_jobs:
-                    job = active_jobs[-1]
-                    # Map JobManager field names to snapshot
-                    job_id = job.get('job_id')
-                    label = jm.get_job_description(job_id) if job_id < 0 else job.get("job_type", "Background task running").replace("_", " ").title()
-                    progress = job.get("progress_pct")
-                    snapshot = {
-                        "label": str(label),
-                        "progress": progress if progress is not None else None,
-                    }
-
-            if hasattr(self, "search_controller"):
-                self.search_controller.set_activity_snapshot(snapshot)
-
-        except Exception as e:
-            print(f"[UX-6] Error refreshing activity snapshot: {e}")
-
-    def _attach_search_store_to_current_layout(self):
-        try:
-            layout = self.layout_manager.get_current_layout()
-            if layout and hasattr(layout, "attach_search_store"):
-                layout.attach_search_store(self.search_state_store)
-        except Exception as e:
-            print(f"[MainWindow] Error attaching search store to layout: {e}")
-
-    def _apply_global_style(self):
-        """UX-10: Load the global visual style system from ui/theme/style.qss."""
-        import os
-        qss_path = os.path.join(os.path.dirname(__file__), "ui", "theme", "style.qss")
-        try:
-            with open(qss_path, "r", encoding="utf-8") as f:
-                self.setStyleSheet(f.read())
-            print("[MainWindow] UX-10 global stylesheet loaded")
-        except Exception as e:
-            print(f"[MainWindow] Failed to load global stylesheet: {e}")
-
-    def _safe_reload_current_layout(self):
-        """UX-10: reload current layout only when project state is resolved."""
-        try:
-            if getattr(self, "_project_switch_in_progress", False):
-                self._pending_layout_reload = True
-                return
-
-            pid = getattr(self, "active_project_id", None)
-            if pid is None:
-                return
-
-            layout = self.layout_manager.get_current_layout() if hasattr(self, "layout_manager") else None
-            if not layout:
-                return
-
-            if hasattr(self, "search_controller"):
-                self.search_controller.begin_layout_reload()
-
-            if hasattr(layout, "reload_for_project"):
-                layout.reload_for_project(pid)
-            elif hasattr(layout, "load_project"):
-                layout.load_project(pid)
-
-            if hasattr(self, "search_controller"):
-                self.search_controller.complete_layout_reload()
-
-        except Exception as e:
-            print(f"[UX-10] _safe_reload_current_layout failed: {e}")
-            if hasattr(self, "search_controller"):
-                self.search_controller.complete_layout_reload()
-
-    def _on_result_surface_async_load_completed(self, generation: int = None):
-        """UX-10: central hook for async result load completion."""
-        try:
-            if hasattr(self, "search_state_store"):
-                if generation is None:
-                    generation = self.search_state_store.get_state().async_load_generation
-                self.search_state_store.complete_async_result_load(generation)
-        except Exception as e:
-            print(f"[UX-10] async result completion hook failed: {e}")
-
-    def _open_activity_center_from_sidebar(self):
-        try:
-            if hasattr(self, "activity_center_dock") and self.activity_center_dock:
-                self.activity_center_dock.show()
-                self.activity_center_dock.raise_()
-            elif hasattr(self, "activity_center") and self.activity_center:
-                self.activity_center.show()
-                self.activity_center.raise_()
-        except Exception as e:
-            print(f"[UX-7A] Failed to open activity center: {e}")
-
-    def _open_people_merge_review(self):
-        """UX-9B/11: open side-by-side PeopleMergeReviewDialog with service integration."""
-        try:
-            if not getattr(self, "active_project_id", None):
-                logger.debug("[UX-11] Merge review blocked — no active project")
-                return
-            from ui.search.people_merge_review_dialog import PeopleMergeReviewDialog
-
-            dlg = PeopleMergeReviewDialog(self)
-            self._people_merge_review_dlg = dlg  # UX-11: track for event-driven refresh
-
-            # UX-11: Inject services if available for service-driven mode
-            svc = getattr(self, '_people_review_service', None)
-            irs = getattr(self, '_identity_resolution_service', None)
-            if svc and irs:
-                dlg.set_services(svc, irs)
-                dlg.reload_queue()
-            else:
-                # Fallback to legacy suggestion-driven mode
-                state = self.search_state_store.get_state()
-                suggestions = list(getattr(state, "merge_suggestions", []) or [])
-                if not suggestions:
-                    from PySide6.QtWidgets import QMessageBox
-                    QMessageBox.information(self, "No Suggestions", "No merge suggestions are available right now.")
-                    self._people_merge_review_dlg = None
-                    return
-                dlg.set_suggestions(suggestions)
-
-            # Legacy signal wiring (fallback for non-service mode)
-            dlg.reviewRequested.connect(lambda left_id, right_id: self._load_merge_review_payload(dlg, left_id, right_id))
-            dlg.mergeAccepted.connect(self._accept_people_merge_suggestion)
-            dlg.mergeRejected.connect(self._reject_people_merge_suggestion)
-            dlg.mergePostponed.connect(self._postpone_people_merge_suggestion)
-            dlg.undoLastMerge.connect(self._undo_last_people_merge)
-            dlg.exec()
-            self._people_merge_review_dlg = None  # Clear ref after close
-
-        except Exception as e:
-            print(f"[UX-9B/11] Failed to open merge review dialog: {e}")
-            self._people_merge_review_dlg = None
-
-    def _load_merge_review_payload(self, dialog, left_id: str, right_id: str):
-        """UX-9B: fetch comparison payload for the selected merge pair."""
-        try:
-            payload = None
-
-            def _try_section(people_section):
-                if people_section and hasattr(people_section, "get_merge_comparison_payload"):
-                    return people_section.get_merge_comparison_payload(left_id, right_id)
-                return None
-
-            if hasattr(self, "sidebar") and hasattr(self.sidebar, "accordion"):
-                payload = _try_section(self.sidebar.accordion.section_logic.get("people"))
-
-            if not payload and hasattr(self, "layout_manager"):
-                layout = self.layout_manager.get_current_layout()
-                if layout and hasattr(layout, "accordion_sidebar"):
-                    payload = _try_section(layout.accordion_sidebar.section_logic.get("people"))
-
-            if payload:
-                dialog.set_comparison_payload(payload)
-                if hasattr(self, "search_controller"):
-                    self.search_controller.set_active_merge_review_pair(payload)
-
-        except Exception as e:
-            print(f"[UX-9B] Failed to load merge review payload: {e}")
-
-    def _open_unnamed_people_review(self):
-        """UX-9C: open unnamed-cluster assignment dialog."""
-        try:
-            self._open_unnamed_cluster_review()
-        except Exception as e:
-            print(f"[UX-9C] Failed to open unnamed review dialog: {e}")
-
-    def _open_unnamed_cluster_review(self):
-        """UX-9C/11: launch UnnamedClusterAssignmentDialog with service integration."""
-        try:
-            if not getattr(self, "active_project_id", None):
-                logger.debug("[UX-11] Unnamed cluster review blocked — no active project")
-                return
-            from ui.search.unnamed_cluster_assignment_dialog import UnnamedClusterAssignmentDialog
-
-            state = self.search_state_store.get_state()
-            clusters = list(getattr(state, "unnamed_clusters", []) or [])
-            identities = list(getattr(state, "named_identity_choices", []) or [])
-
-            # UX-11: Enrich identity choices from identity layer when available
-            svc = getattr(self, '_people_review_service', None)
-            if svc and not identities:
-                try:
-                    identities = svc.get_cluster_assign_suggestions("", limit=20)
-                except Exception:
-                    pass
-
-            dlg = UnnamedClusterAssignmentDialog(self)
-            dlg.set_clusters(clusters)
-            dlg.set_identity_choices(identities)
-            dlg.assignRequested.connect(self._assign_unnamed_cluster_to_identity)
-            dlg.promoteRequested.connect(self._promote_unnamed_cluster_to_identity)
-            dlg.ignoreRequested.connect(self._ignore_unnamed_cluster)
-            dlg.exec()
-
-        except Exception as e:
-            print(f"[UX-9C/11] Failed to open unnamed cluster review: {e}")
-
-    def _open_unnamed_clusters_review(self):
-        """UX-9A: open lightweight unnamed clusters review dialog."""
-        try:
-            state = self.search_state_store.get_state()
-            unnamed = list(getattr(state, "unnamed_clusters", []) or [])
-
-            from PySide6.QtWidgets import QDialog, QVBoxLayout, QListWidget, QListWidgetItem, QDialogButtonBox, QLabel
-
-            dlg = QDialog(self)
-            dlg.setWindowTitle("Unnamed Clusters")
-            dlg.resize(480, 380)
-
-            layout = QVBoxLayout(dlg)
-            layout.addWidget(QLabel("Unnamed or generic clusters that may need labeling or review:"))
-
-            lst = QListWidget()
-            for item in unnamed:
-                label = item.get("label", item.get("id"))
-                count = item.get("count", 0)
-                lst.addItem(QListWidgetItem(f"{label} ({count})"))
-            layout.addWidget(lst)
-
-            buttons = QDialogButtonBox(QDialogButtonBox.Close)
-            buttons.rejected.connect(dlg.reject)
-            buttons.button(QDialogButtonBox.Close).clicked.connect(dlg.close)
-            layout.addWidget(buttons)
-
-            dlg.exec()
-
-        except Exception as e:
-            print(f"[UX-9A] Failed to open unnamed clusters review: {e}")
-
-    def _assign_unnamed_cluster(self, cluster_id: str, target_person_id: str):
-        """UX-10C: route assign action to people_section backend."""
-        try:
-            handled = False
-            if hasattr(self, "sidebar") and hasattr(self.sidebar, "accordion"):
-                ps = self.sidebar.accordion.section_logic.get("people")
-                if ps and hasattr(ps, "assign_unnamed_cluster"):
-                    ps.assign_unnamed_cluster(cluster_id, target_person_id)
-                    handled = True
-
-            if not handled and hasattr(self, "layout_manager"):
-                layout = self.layout_manager.get_current_layout()
-                if layout and hasattr(layout, "accordion_sidebar"):
-                    ps = layout.accordion_sidebar.section_logic.get("people")
-                    if ps and hasattr(ps, "assign_unnamed_cluster"):
-                        ps.assign_unnamed_cluster(cluster_id, target_person_id)
-
-            self._refresh_people_quick_section()
-        except Exception as e:
-            print(f"[UX-10] Failed to assign unnamed cluster: {e}")
-
-    def _keep_unnamed_cluster_separate(self, cluster_id: str):
-        """UX-10C/11: route keep-separate through UX-11 service or legacy backend."""
-        try:
-            # UX-11: Try service-driven path first
-            svc = getattr(self, '_people_review_service', None)
-            if svc:
-                try:
-                    svc.keep_cluster_as_separate_person(
-                        cluster_id=cluster_id,
-                        performed_by="user",
-                    )
-                    self._refresh_people_quick_section()
-                    return
-                except Exception as e:
-                    logger.debug("[UX-11] Service keep_separate failed, falling back: %s", e)
-
-            # Legacy fallback
-            handled = False
-            if hasattr(self, "sidebar") and hasattr(self.sidebar, "accordion"):
-                ps = self.sidebar.accordion.section_logic.get("people")
-                if ps and hasattr(ps, "keep_unnamed_cluster_separate"):
-                    ps.keep_unnamed_cluster_separate(cluster_id)
-                    handled = True
-
-            if not handled and hasattr(self, "layout_manager"):
-                layout = self.layout_manager.get_current_layout()
-                if layout and hasattr(layout, "accordion_sidebar"):
-                    ps = layout.accordion_sidebar.section_logic.get("people")
-                    if ps and hasattr(ps, "keep_unnamed_cluster_separate"):
-                        ps.keep_unnamed_cluster_separate(cluster_id)
-
-            self._refresh_people_quick_section()
-        except Exception as e:
-            print(f"[UX-10/11] Failed to keep unnamed cluster separate: {e}")
-
-    def _mark_unnamed_cluster_distinct(self, cluster_id: str):
-        """UX-9C: mark an unnamed cluster as a distinct person."""
-        try:
-            handled = False
-
-            if hasattr(self, "sidebar") and hasattr(self.sidebar, "accordion"):
-                people_section = self.sidebar.accordion.section_logic.get("people")
-                if people_section and hasattr(people_section, "mark_unnamed_cluster_distinct"):
-                    people_section.mark_unnamed_cluster_distinct(cluster_id)
-                    handled = True
-
-            if not handled and hasattr(self, "layout_manager"):
-                layout = self.layout_manager.get_current_layout()
-                if layout and hasattr(layout, "accordion_sidebar"):
-                    people_section = layout.accordion_sidebar.section_logic.get("people")
-                    if people_section and hasattr(people_section, "mark_unnamed_cluster_distinct"):
-                        people_section.mark_unnamed_cluster_distinct(cluster_id)
-
-            self._refresh_people_quick_section()
-
-        except Exception as e:
-            print(f"[UX-9] Failed to mark unnamed cluster distinct: {e}")
-
-    def _ignore_unnamed_cluster(self, cluster_id: str):
-        """UX-10C/11: route ignore action through UX-11 service or legacy backend."""
-        try:
-            # UX-11: Try service-driven path first
-            svc = getattr(self, '_people_review_service', None)
-            if svc:
-                try:
-                    svc.ignore_cluster(
-                        cluster_id=cluster_id,
-                        performed_by="user",
-                    )
-                    self._refresh_people_quick_section()
-                    return
-                except Exception as e:
-                    logger.debug("[UX-11] Service ignore failed, falling back: %s", e)
-
-            # Legacy fallback
-            handled = False
-            if hasattr(self, "sidebar") and hasattr(self.sidebar, "accordion"):
-                ps = self.sidebar.accordion.section_logic.get("people")
-                if ps and hasattr(ps, "ignore_unnamed_cluster"):
-                    ps.ignore_unnamed_cluster(cluster_id)
-                    handled = True
-
-            if not handled and hasattr(self, "layout_manager"):
-                layout = self.layout_manager.get_current_layout()
-                if layout and hasattr(layout, "accordion_sidebar"):
-                    ps = layout.accordion_sidebar.section_logic.get("people")
-                    if ps and hasattr(ps, "ignore_unnamed_cluster"):
-                        ps.ignore_unnamed_cluster(cluster_id)
-
-            self._refresh_people_quick_section()
-        except Exception as e:
-            print(f"[UX-10/11] Failed to ignore unnamed cluster: {e}")
-
-    def _assign_unnamed_cluster_to_identity(self, branch_key: str, target_identity: str):
-        """UX-9C/11: route assign-to-identity through UX-11 service or legacy backend."""
-        try:
-            # UX-11: Try service-driven path first
-            svc = getattr(self, '_people_review_service', None)
-            if svc:
-                try:
-                    svc.assign_cluster_to_existing_identity(
-                        cluster_id=branch_key,
-                        target_identity_id=target_identity,
-                        performed_by="user",
-                    )
-                    self._refresh_people_quick_section()
-                    return
-                except Exception as e:
-                    logger.debug("[UX-11] Service assign failed, falling back: %s", e)
-
-            # Legacy fallback
-            handled = False
-
-            if hasattr(self, "sidebar") and hasattr(self.sidebar, "accordion"):
-                ps = self.sidebar.accordion.section_logic.get("people")
-                if ps and hasattr(ps, "assign_unnamed_cluster_to_identity"):
-                    ps.assign_unnamed_cluster_to_identity(branch_key, target_identity)
-                    handled = True
-
-            if not handled and hasattr(self, "layout_manager"):
-                layout = self.layout_manager.get_current_layout()
-                if layout and hasattr(layout, "accordion_sidebar"):
-                    ps = layout.accordion_sidebar.section_logic.get("people")
-                    if ps and hasattr(ps, "assign_unnamed_cluster_to_identity"):
-                        ps.assign_unnamed_cluster_to_identity(branch_key, target_identity)
-
-            self._refresh_people_quick_section()
-        except Exception as e:
-            print(f"[UX-9C] Failed to assign unnamed cluster: {e}")
-
-    def _promote_unnamed_cluster_to_identity(self, branch_key: str, new_name: str):
-        """UX-9C: route promote-to-new-identity action to people_section backend."""
-        try:
-            handled = False
-
-            if hasattr(self, "sidebar") and hasattr(self.sidebar, "accordion"):
-                ps = self.sidebar.accordion.section_logic.get("people")
-                if ps and hasattr(ps, "promote_unnamed_cluster"):
-                    ps.promote_unnamed_cluster(branch_key, new_name)
-                    handled = True
-
-            if not handled and hasattr(self, "layout_manager"):
-                layout = self.layout_manager.get_current_layout()
-                if layout and hasattr(layout, "accordion_sidebar"):
-                    ps = layout.accordion_sidebar.section_logic.get("people")
-                    if ps and hasattr(ps, "promote_unnamed_cluster"):
-                        ps.promote_unnamed_cluster(branch_key, new_name)
-
-            self._refresh_people_quick_section()
-        except Exception as e:
-            print(f"[UX-9C] Failed to promote unnamed cluster: {e}")
-
-    def _accept_people_merge_suggestion(self, left_id: str, right_id: str):
-        """UX-9B: accept merge — delegates to people_section and refreshes."""
-        try:
-            handled = False
-
-            if hasattr(self, "sidebar") and hasattr(self.sidebar, "accordion"):
-                people_section = self.sidebar.accordion.section_logic.get("people")
-                if people_section and hasattr(people_section, "accept_merge_suggestion"):
-                    people_section.accept_merge_suggestion(left_id, right_id)
-                    handled = True
-
-            if not handled and hasattr(self, "layout_manager"):
-                layout = self.layout_manager.get_current_layout()
-                if layout and hasattr(layout, "accordion_sidebar"):
-                    people_section = layout.accordion_sidebar.section_logic.get("people")
-                    if people_section and hasattr(people_section, "accept_merge_suggestion"):
-                        people_section.accept_merge_suggestion(left_id, right_id)
-
-            self._refresh_people_quick_section()
-
-        except Exception as e:
-            print(f"[UX-9B] Failed to accept merge suggestion: {e}")
-
-    def _reject_people_merge_suggestion(self, left_id: str, right_id: str):
-        """UX-9B: reject merge — delegates to people_section and refreshes."""
-        try:
-            handled = False
-
-            if hasattr(self, "sidebar") and hasattr(self.sidebar, "accordion"):
-                people_section = self.sidebar.accordion.section_logic.get("people")
-                if people_section and hasattr(people_section, "reject_merge_suggestion"):
-                    people_section.reject_merge_suggestion(left_id, right_id)
-                    handled = True
-
-            if not handled and hasattr(self, "layout_manager"):
-                layout = self.layout_manager.get_current_layout()
-                if layout and hasattr(layout, "accordion_sidebar"):
-                    people_section = layout.accordion_sidebar.section_logic.get("people")
-                    if people_section and hasattr(people_section, "reject_merge_suggestion"):
-                        people_section.reject_merge_suggestion(left_id, right_id)
-
-            self._refresh_people_quick_section()
-
-        except Exception as e:
-            print(f"[UX-9B] Failed to reject merge suggestion: {e}")
-
-    def _postpone_people_merge_suggestion(self, left_id: str, right_id: str):
-        """UX-11A: skip merge — persist decision so pair is excluded from future suggestions."""
-        try:
-            layout = self._layouts.get("google")
-            if layout and hasattr(layout, "accordion_sidebar"):
-                people_section = layout.accordion_sidebar.section_logic.get("people")
-                if people_section:
-                    repo = people_section._get_merge_review_repo()
-                    if repo:
-                        repo.skip(left_id, right_id)
-            logger.info("[UX-11A] Skipped merge suggestion: %s \u2194 %s", left_id, right_id)
-        except Exception as e:
-            logger.debug("[UX-11A] Failed to persist skip: %s", e)
-
-    def _undo_last_people_merge(self, left_id: str, right_id: str):
-        """UX-11B: undo last accepted merge via identity resolution service."""
-        try:
-            layout = self._layouts.get("google")
-            if layout and hasattr(layout, "accordion_sidebar"):
-                people_section = layout.accordion_sidebar.section_logic.get("people")
-                if people_section:
-                    svc = people_section._get_identity_service()
-                    if svc:
-                        # Find identity for left cluster and reverse its last merge
-                        identity = svc.identity_repo.get_identity_by_cluster_id(left_id)
-                        if identity:
-                            result = svc.reverse_last_merge_for_identity(
-                                identity.identity_id, performed_by="user"
-                            )
-                            logger.info("[UX-11B] Undo merge result: %s", result)
-                        else:
-                            logger.info("[UX-11B] No identity found for undo: %s", left_id)
-
-            self._refresh_people_quick_section()
-        except Exception as e:
-            logger.debug("[UX-11B] Failed to undo merge: %s", e)
-
-    def _handle_search_sidebar_branch_request(self, branch: str):
-        if branch == "people_merge_review":
-            self._open_people_merge_review()
-            return
-
-        if branch == "people_unnamed":
-            self._open_unnamed_cluster_review()
-            return
-
-        if hasattr(self, "sidebar"):
-            try:
-                self.sidebar.selectBranch.emit(branch)
-            except Exception:
-                pass
 
     def _execute_smart_find_preset(self, preset_id: str):
         """
@@ -5081,15 +4491,14 @@ class MainWindow(QMainWindow):
                 # Get folder name from DB
                 folder_name = f"Folder #{folder_id}"  # Fallback
                 try:
-                    if hasattr(self, "db") and self.db:
-                        with self.db._connect() as conn:
-                            cur = conn.cursor()
-                            cur.execute("SELECT name FROM photo_folders WHERE id = ?", (folder_id,))
-                            row = cur.fetchone()
-                            if row:
-                                folder_name = row[0]
+                    with self.db._connect() as conn:
+                        cur = conn.cursor()
+                        cur.execute("SELECT name FROM photo_folders WHERE id = ?", (folder_id,))
+                        row = cur.fetchone()
+                        if row:
+                            folder_name = row[0]
                 except Exception as e:
-                    print(f"[Breadcrumb] Failed to get folder name for ID {folder_id}: {e}")
+                    self.logger.warning(f"Failed to get folder name for ID {folder_id}: {e}")
 
                 # CRITICAL FIX: Use functools.partial instead of lambda to avoid closure issues
                 from functools import partial
@@ -5109,18 +4518,17 @@ class MainWindow(QMainWindow):
                 person_label = face_key
                 # Try to resolve a display name from DB
                 try:
-                    if hasattr(self, "db") and self.db:
-                        with self.db._connect() as conn:
-                            cur = conn.cursor()
-                            cur.execute(
-                                "SELECT COALESCE(label, branch_key) FROM face_branch_reps WHERE branch_key = ? AND project_id = ?",
-                                (face_key, self.grid.project_id),
-                            )
-                            row = cur.fetchone()
-                            if row and row[0]:
-                                person_label = row[0]
-                    if face_key == "face_unidentified":
-                        person_label = person_label if person_label != face_key else "Unidentified"
+                    with self.db._connect() as conn:
+                        cur = conn.cursor()
+                        cur.execute(
+                            "SELECT COALESCE(label, branch_key) FROM face_branch_reps WHERE branch_key = ? AND project_id = ?",
+                            (face_key, self.grid.project_id),
+                        )
+                        row = cur.fetchone()
+                        if row and row[0]:
+                            person_label = row[0]
+                        elif face_key == "face_unidentified":
+                            person_label = "Unidentified"
                 except Exception:
                     pass
                 from functools import partial
@@ -5385,9 +4793,6 @@ class MainWindow(QMainWindow):
                 self._scan_status_label.setText("")
 
         QTimer.singleShot(timeout_ms, _hide)
-
-        if hasattr(self, "_refresh_activity_snapshot"):
-            self._refresh_activity_snapshot()
 
     # ------------------------------------------------------------------
     # Activity Center toggle
@@ -5715,32 +5120,3 @@ class MainWindow(QMainWindow):
                 )
         except Exception as e:
             logger.warning("[MainWindow] CLIP upgrade prompt failed: %s", e)
-
-    def _sync_ux2_widgets(self, state):
-        """Sync global SearchState into shell widgets."""
-        from shiboken6 import isValid
-        try:
-            if hasattr(self, "top_search_bar") and isValid(self.top_search_bar):
-                self.top_search_bar.set_recent_queries(getattr(state, "recent_queries", []))
-                self.top_search_bar.set_suggestions(getattr(state, "suggestions", []))
-                self.top_search_bar.set_enabled_for_project(state.has_active_project)
-
-            # Sync EmptyStateView actions back to MainWindow
-            layout = self.layout_manager.get_current_layout()
-            if layout and hasattr(layout, "empty_state") and isValid(layout.empty_state):
-                esv = layout.empty_state
-                try:
-                    # Disconnect first to prevent duplicate connections
-                    esv.actionRequested.disconnect()
-                except Exception:
-                    pass
-                esv.actionRequested.connect(self._on_empty_state_action)
-        except Exception as e:
-            logger.debug(f"[MainWindow] _sync_ux2_widgets error (non-fatal): {e}")
-
-    def _on_empty_state_action(self, action: str):
-        if action == "select_project":
-            if hasattr(self, "breadcrumb_nav"):
-                self.breadcrumb_nav._on_project_clicked()
-        elif action == "extract_embeddings":
-            self._on_extract_embeddings()

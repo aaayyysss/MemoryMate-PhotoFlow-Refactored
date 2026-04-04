@@ -7,7 +7,7 @@ from PySide6.QtWidgets import (
     QScrollArea, QSplitter, QToolBar, QLineEdit, QTreeWidget,
     QTreeWidgetItem, QFrame, QGridLayout, QStackedWidget, QSizePolicy, QDialog,
     QGraphicsOpacityEffect, QMenu, QListWidget, QListWidgetItem, QDialogButtonBox,
-    QInputDialog, QMessageBox, QSlider, QSpinBox, QComboBox, QLayout, QTabBar
+    QInputDialog, QMessageBox, QSlider, QSpinBox, QComboBox, QLayout, QTabBar, QGroupBox
 )
 from PySide6.QtCore import (
     Qt, Signal, QSize, QEvent, QRunnable, QThreadPool, QObject, QTimer, QUrl,
@@ -18,7 +18,6 @@ from PySide6.QtGui import (
 )
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PySide6.QtMultimediaWidgets import QVideoWidget
-from shiboken6 import isValid
 from .base_layout import BaseLayout
 from logging_config import get_logger
 
@@ -29,6 +28,7 @@ from .video_editor_mixin import VideoEditorMixin
 
 # Import extracted components from google_components module
 from ui.search.empty_state_view import EmptyStateView
+from ui.search.search_sidebar import SearchSidebar
 
 from google_components import (
     # Phase 3A: UI Widgets
@@ -110,11 +110,6 @@ class GooglePhotosLayout(BaseLayout):
         self._ensure_tooltip_style()
 
         
-        # UX-10: stable project and generation tracking
-        self._resolved_project_id = None
-        self._last_store_result_paths = []
-        self._last_generation_seen = 0
-
         # Face merge undo/redo stacks (CRITICAL FIX 2026-01-07)
         self.redo_stack = []  # Stack for redo operations after undo
 
@@ -178,6 +173,27 @@ class GooglePhotosLayout(BaseLayout):
         self._load_coalesce_timer.timeout.connect(self._execute_coalesced_load)
         self._pending_load_params = None   # dict of params for next load
         self._last_load_signature = None   # signature of last executed load
+
+        # ── Result-set signature dedupe ──────────────────────────
+        # Prevents repeated regrouping + rendering when result set is identical.
+        # Checked in _on_grouping_done() before expensive grouping/rendering work.
+        self._last_result_signature = None  # signature of last rendered result set
+
+        # ── UX-PERF: Project switch + reload gate ─────────────────────
+        # Prevents reload churn during project creation/switching.
+        # When set_project() is called, it sets _project_switch_in_progress = True.
+        # Any nested calls that try to request_reload() will queue _pending_project_reload
+        # instead of triggering multiple generations. After the main set_project()
+        # completes, if _pending_project_reload was set, one final load is executed.
+        self._project_switch_in_progress = False
+        self._pending_project_reload = False
+        self._reload_debounce_timer = QTimer()
+        self._reload_debounce_timer.setSingleShot(True)
+        self._reload_debounce_timer.setInterval(120)
+        self._reload_debounce_timer.timeout.connect(self._execute_debounced_reload)
+        self._pending_reload_kwargs = {}
+        self._last_reload_signature = None
+        self._reload_in_progress = False
 
         # PHASE 2 #5: Thumbnail aspect ratio mode
         self.thumbnail_aspect_ratio = "square"  # "square", "original", "16:9"
@@ -253,8 +269,19 @@ class GooglePhotosLayout(BaseLayout):
         self._max_in_memory = MAX_IN_MEMORY_ROWS
 
         # Get current project ID (CRITICAL: Photos are organized by project)
-        from app_services import get_default_project_id
+        from app_services import get_default_project_id, list_projects
         self.project_id = get_default_project_id()
+
+        # Fallback to first project if no default
+        if self.project_id is None:
+            projects = list_projects()
+            if projects:
+                self.project_id = projects[0]["id"]
+                print(f"[GooglePhotosLayout] Using first project: {self.project_id}")
+            else:
+                print("[GooglePhotosLayout] ⚠️ WARNING: No projects found! Please create a project first.")
+        else:
+            print(f"[GooglePhotosLayout] Using default project: {self.project_id}")
 
         # PERFORMANCE FIX: Cache badge overlay settings (read once vs per-photo)
         # Previously: SettingsManager read on every _create_tag_badge_overlay call
@@ -266,6 +293,13 @@ class GooglePhotosLayout(BaseLayout):
             'size': int(sm.get("badge_size_px", 22)),
             'max_count': int(sm.get("badge_max_count", 4))
         }
+
+        # === Google production shell ===
+        self.search_sidebar = None
+        self.left_shell_container = None
+        self.left_shell_layout = None
+        self.accordion_sidebar = None
+        self._legacy_sidebar_visible = True
 
         # Main container
         main_widget = QWidget()
@@ -289,6 +323,14 @@ class GooglePhotosLayout(BaseLayout):
         self.view_tabs.currentChanged.connect(self._on_view_tab_changed)
         main_layout.addWidget(self.view_tabs)
 
+        # Create horizontal splitter (Sidebar | Timeline)
+        self.splitter = QSplitter(Qt.Horizontal)
+        self.splitter.setHandleWidth(3)
+
+        # Create left shell: SearchSidebar (production) + AccordionSidebar (legacy support)
+        self.left_shell_container = self._build_left_shell()
+        self.splitter.addWidget(self.left_shell_container)
+
         # Search Components (Integrated from SearchState)
         self.empty_state = EmptyStateView()
 
@@ -305,14 +347,9 @@ class GooglePhotosLayout(BaseLayout):
         self.results_stack.addWidget(self.timeline)
         self.results_stack.addWidget(self.empty_state)
 
-        # UX-10: Skeleton placeholder while loading
-        from ui.search.widgets.skeleton_grid import SkeletonGrid
-        self.skeleton = SkeletonGrid(main_widget)
-        self.results_stack.addWidget(self.skeleton)
-
         self.results_layout.addWidget(self.results_stack, 1)
 
-        main_layout.addWidget(self.results_container)
+        self.splitter.addWidget(self.results_container)
 
         # Debounced zoom handling (prevents repeated reloads while dragging)
         self._pending_zoom_value = None
@@ -323,6 +360,13 @@ class GooglePhotosLayout(BaseLayout):
         self.zoom_change_timer.setSingleShot(True)
         self.zoom_change_timer.setInterval(120)  # Match Google Photos-like feel
         self.zoom_change_timer.timeout.connect(self._commit_zoom_change)
+
+        # Set splitter sizes (280px sidebar initially, rest for timeline)
+        self.splitter.setSizes([280, 1000])
+        self.splitter.setStretchFactor(0, 0)
+        self.splitter.setStretchFactor(1, 1)
+
+        main_layout.addWidget(self.splitter)
 
         # Background Activity Panel - shows background job progress (face detection, embeddings, etc.)
         # Activity Center is now a QDockWidget owned by MainWindow;
@@ -384,138 +428,35 @@ class GooglePhotosLayout(BaseLayout):
 
         return main_widget
 
-    def reload_for_project(self, project_id: int):
-        """UX-10: light reload driven by resolved project id."""
-        self._resolved_project_id = project_id
-        if project_id is None:
-            self._show_empty_state("no_project")
-            return
-        try:
-            if hasattr(self, "empty_state"):
-                self._show_results_surface()
-        except Exception as e:
-            print(f"[GooglePhotosLayout] reload_for_project failed: {e}")
-
-    def attach_search_store(self, store):
-        self.search_state_store = store
-        if self.search_state_store:
-            self.search_state_store.stateChanged.connect(self._on_search_state_changed)
-
     def _on_search_state_changed(self, state):
-        """UX-10/11: generation-aware state handler with project resolution guards."""
-        try:
-            if getattr(self, '_disposed', False):
-                return
+        """Respond to global SearchState changes."""
+        if getattr(self, '_disposed', False):
+            return
 
-            if not isValid(self.results_stack) or not isValid(self.empty_state) or not isValid(self.timeline):
-                logger.debug("[GooglePhotosLayout] Skipping SearchState update: UI objects already deleted")
-                return
+        from shiboken6 import isValid
+        if not isValid(self.results_stack) or not isValid(self.empty_state) or not isValid(self.timeline):
+            logger.debug("[GooglePhotosLayout] Skipping SearchState update: UI objects already deleted")
+            return
 
-            # UX-10: wait for project state to resolve before making any display decision
-            if not getattr(state, "active_project_id_resolved", True):
-                return
+        # Handle empty state
+        if state.empty_state_reason:
+            self.empty_state.set_message(state.empty_state_reason)
+            self.results_stack.setCurrentWidget(self.empty_state)
+        else:
+            self.results_stack.setCurrentWidget(self.timeline)
 
-            # Onboarding / no project
-            if getattr(state, "onboarding_mode", False):
-                self._show_empty_state("no_project", getattr(state, "warnings", []))
-                return
+        # UX-1: Syncing search box in layout is no longer needed as search is centralized in MainWindow
 
-            # UX-10: wait for layout reload to complete
-            if getattr(state, "layout_reload_pending", False):
-                return
-
-            displayed_paths = list(getattr(self, "_last_displayed_paths", []) or [])
-            result_paths = list(getattr(state, "result_paths", []) or [])
-            search_in_progress = bool(getattr(state, "search_in_progress", False))
-            result_surface_busy = bool(getattr(state, "result_surface_busy", False))
-
-            # Determine if there's an active search context
-            has_search_context = bool(
-                getattr(state, "query_text", "")
-                or getattr(state, "preset_id", None)
-                or getattr(state, "browse_mode", None)
-                or getattr(state, "active_people", [])
-            )
-
-            # UX-10: Preserve visible results while searching / busy, or show skeleton
-            if search_in_progress or result_surface_busy:
-                if displayed_paths:
-                    self._last_store_result_paths = displayed_paths
-                    self._show_results_surface()
-                else:
-                    self._show_skeleton()
-                return
-
-            if getattr(state, "indexing_in_progress", False) and not result_paths:
-                self._show_empty_state("indexing", getattr(state, "warnings", []))
-                return
-
-            # Missing embeddings warning path
-            if not getattr(state, "embeddings_ready", True):
-                reason = getattr(state, "empty_state_reason", None)
-                if reason == "embeddings_missing" and not result_paths:
-                    self._show_empty_state("embeddings_missing", getattr(state, "warnings", []))
-                    return
-
-            if result_paths:
-                self._last_store_result_paths = result_paths
-                self._last_displayed_paths = result_paths
-                self._show_results_surface()
-                self._refresh_timeline_from_store_paths(result_paths, state)
-                return
-
-            # UX-11 FIX: When no search context is active and result_paths is empty,
-            # do NOT override the timeline — photos are loaded directly by set_project/_load_photos.
-            # Only show empty state if an explicit search returned no results.
-            if not has_search_context:
-                return
-
-            self._show_empty_state(getattr(state, "empty_state_reason", None) or "no_results",
-                                   getattr(state, "warnings", []))
-
-        except Exception as e:
-            print(f"[GooglePhotosLayout] _on_search_state_changed error: {e}")
-
-    def _refresh_timeline_from_store_paths(self, paths, state=None):
-        """UX-10: refresh photo grid from store result paths instead of side-channel timing."""
-        try:
-            sig = (tuple(paths), getattr(state, "active_project_id", None) if state else self._resolved_project_id)
-            if getattr(self, "_last_result_sig", None) != sig:
-                self._last_result_sig = sig
-                query_text = getattr(state, "query_text", "") if state else ""
-                preset_id = getattr(state, "preset_id", None) if state else None
-                if paths or not (query_text or preset_id):
-                    self._load_photos(filter_paths=paths if (query_text or preset_id) else None)
-        except Exception as e:
-            print(f"[GooglePhotosLayout] _refresh_timeline_from_store_paths failed: {e}")
-
-    def _show_empty_state(self, reason: str, warnings=None):
-        try:
-            if hasattr(self, "empty_state") and isValid(self.empty_state):
-                self.empty_state.set_state(reason, warnings or [])
-            if hasattr(self, "results_stack") and isValid(self.results_stack):
-                self.results_stack.setCurrentWidget(self.empty_state)
-            if hasattr(self, "timeline") and isValid(self.timeline):
-                self.timeline.hide()
-        except Exception as e:
-            print(f"[GooglePhotosLayout] _show_empty_state error: {e}")
-
-    def _show_results_surface(self):
-        try:
-            if hasattr(self, "results_stack") and isValid(self.results_stack):
-                self.results_stack.setCurrentWidget(self.timeline)
-            if hasattr(self, "timeline") and isValid(self.timeline):
-                self.timeline.show()
-        except Exception as e:
-            print(f"[GooglePhotosLayout] _show_results_surface error: {e}")
-
-    def _show_skeleton(self):
-        """UX-10: Show skeleton placeholder grid while search results are loading."""
-        try:
-            if hasattr(self, "results_stack") and isValid(self.results_stack) and hasattr(self, "skeleton"):
-                self.results_stack.setCurrentWidget(self.skeleton)
-        except Exception as e:
-            print(f"[GooglePhotosLayout] _show_skeleton error: {e}")
+        # Trigger photo grid update if result paths changed
+        # We use a signature-based check to avoid redundant work
+        sig = (tuple(state.result_paths), state.active_project_id)
+        if getattr(self, "_last_result_sig", None) != sig:
+            self._last_result_sig = sig
+            if state.result_paths or not state.query_text:
+                # If we have results, or the search is empty (show all), reload timeline
+                # Note: We convert paths to Orchestrator-style ScoredResults if needed,
+                # but here we just pass them to the existing path-based loader.
+                self._load_photos(filter_paths=state.result_paths if state.query_text or state.preset_id else None)
 
     # ------------------------------------------------------------------
     # Startup fence: called by MainWindow after first paint completes
@@ -557,32 +498,62 @@ class GooglePhotosLayout(BaseLayout):
         """
         Create Google Photos-specific toolbar.
         """
+        # Import design system at top of file
+        from ui.styles import COLORS, SPACING, RADIUS, get_spacing
+        
         toolbar = QToolBar()
         toolbar.setMovable(False)
         toolbar.setIconSize(QSize(20, 20))
-        toolbar.setStyleSheet("""
-            QToolBar {
-                background: #f8f9fa;
-                border-bottom: 1px solid #dadce0;
-                padding: 6px;
-                spacing: 8px;
-            }
-            QPushButton {
+        toolbar.setStyleSheet(f"""
+            QToolBar {{
+                background: {COLORS['surface_secondary']};
+                border-bottom: 1px solid {COLORS['outline_primary']};
+                padding: {get_spacing('sm')}px;
+                spacing: {get_spacing('sm')}px;
+            }}
+            QPushButton {{
+                background: white;
+                border: 1px solid {COLORS['outline_primary']};
+                border-radius: {RADIUS['small']}px;
+                padding: 6px 10px;
+                font-size: 10pt;
+            }}
+            QPushButton:hover {{
+                background: {COLORS['surface_tertiary']};
+                border-color: {COLORS['outline_secondary']};
+            }}
+            QPushButton:pressed {{
+                background: {COLORS['surface_tertiary_alt']};
+            }}
+        """)
+
+        # Project selector (compact, no label - Google Photos style)
+        from PySide6.QtWidgets import QComboBox, QLabel
+
+        self.project_combo = QComboBox()
+        self.project_combo.setMinimumWidth(150)
+        self.project_combo.setStyleSheet("""
+            QComboBox {
                 background: white;
                 border: 1px solid #dadce0;
                 border-radius: 4px;
                 padding: 6px 10px;
                 font-size: 10pt;
             }
-            QPushButton:hover {
-                background: #f1f3f4;
+            QComboBox:hover {
                 border-color: #bdc1c6;
             }
-            QPushButton:pressed {
-                background: #e8eaed;
+            QComboBox::drop-down {
+                border: none;
             }
         """)
+        self.project_combo.setToolTip("Select project to view")
+        toolbar.addWidget(self.project_combo)
 
+        # Populate project selector
+        self._populate_project_selector()
+
+        toolbar.addSeparator()
 
 
 
@@ -1162,16 +1133,354 @@ class GooglePhotosLayout(BaseLayout):
 
         return indicator
 
+    def _get_main_window(self):
+        """
+        Resolve owning MainWindow from GooglePhotosLayout.
+        """
+        if hasattr(self, "main_window") and self.main_window is not None:
+            return self.main_window
+
+        p = self.parent()
+        while p is not None:
+            if hasattr(p, "search_state_store") and hasattr(p, "search_controller"):
+                return p
+            try:
+                p = p.parent()
+            except Exception:
+                p = None
+        return None
+
+    def _build_left_shell(self) -> QWidget:
+        """
+        Build the visible Google left rail:
+        - SearchSidebar on top, production shell
+        - AccordionSidebar below (collapsed by default), transitional support shell
+        """
+        mw = self._get_main_window()
+        if mw is None:
+            raise RuntimeError("GooglePhotosLayout could not resolve MainWindow")
+
+        self.left_shell_container = QWidget()
+        self.left_shell_container.setObjectName("google_left_shell_container")
+        # UX-PERF: Reduce sidebar width from 380px max to 300px
+        # This gives more space to the grid (640px → ~900px on 1800px window)
+        self.left_shell_container.setMinimumWidth(260)
+        self.left_shell_container.setMaximumWidth(300)
+        # Import design system at top of file
+        from ui.styles import COLORS, SPACING, get_spacing
+        
+        self.left_shell_container.setStyleSheet(f"""
+            QWidget#google_left_shell_container {{
+                background: {COLORS['surface_primary']};
+                border-right: 1px solid {COLORS['outline_primary']};
+            }}
+        """)
+
+        self.left_shell_layout = QVBoxLayout(self.left_shell_container)
+        shell_margin = get_spacing('sm')    # 8px
+        shell_spacing = get_spacing('sm')   # 8px
+        self.left_shell_layout.setContentsMargins(shell_margin, shell_margin, shell_margin, shell_margin)
+        self.left_shell_layout.setSpacing(shell_spacing)
+
+        # Top: production shell
+        self.search_sidebar = SearchSidebar(
+            store=mw.search_state_store,
+            controller=mw.search_controller,
+            parent=self.left_shell_container,
+        )
+        self.search_sidebar.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+
+        # Wire SearchSidebar signals → MainWindow handlers (if they exist)
+        if hasattr(mw, '_handle_search_sidebar_branch_request'):
+            self.search_sidebar.selectBranch.connect(mw._handle_search_sidebar_branch_request)
+        
+        if hasattr(mw, '_open_activity_center_from_sidebar'):
+            self.search_sidebar.openActivityCenterRequested.connect(
+                mw._open_activity_center_from_sidebar
+            )
+        elif hasattr(mw, '_toggle_activity_center'):
+            self.search_sidebar.openActivityCenterRequested.connect(
+                lambda: mw._toggle_activity_center(True)
+            )
+
+        # Bottom: legacy support shell (wrapped in collapsible container)
+        from ui.accordion_sidebar import AccordionSidebar
+        self.accordion_sidebar = AccordionSidebar(project_id=self.project_id, parent=self.left_shell_container)
+        self.accordion_sidebar.setStyleSheet("""
+            background: #fafafa;
+            border-top: 1px solid #e0e0e0;
+            border-radius: 8px;
+        """)
+
+        # Connect accordion signals to grid filtering
+        self.accordion_sidebar.selectBranch.connect(self._on_accordion_branch_clicked)
+        self.accordion_sidebar.selectFolder.connect(self._on_accordion_folder_clicked)
+        self.accordion_sidebar.selectDate.connect(self._on_accordion_date_clicked)
+        self.accordion_sidebar.selectTag.connect(self._on_accordion_tag_clicked)
+        self.accordion_sidebar.selectVideo.connect(self._on_accordion_video_clicked)  # NEW: Video filtering
+        self.accordion_sidebar.selectPerson.connect(self._on_accordion_person_clicked)
+        self.accordion_sidebar.selectLocation.connect(self._on_accordion_location_clicked)  # GPS location filtering
+        self.accordion_sidebar.selectDevice.connect(self._on_accordion_device_selected)
+        self.accordion_sidebar.personMerged.connect(self._on_accordion_person_merged)
+        self.accordion_sidebar.personDeleted.connect(self._on_accordion_person_deleted)
+        self.accordion_sidebar.mergeHistoryRequested.connect(self._on_people_merge_history_requested)
+        self.accordion_sidebar.undoLastMergeRequested.connect(self._on_people_undo_requested)
+        self.accordion_sidebar.redoLastUndoRequested.connect(self._on_people_redo_requested)
+        self.accordion_sidebar.peopleToolsRequested.connect(self._on_people_tools_requested)
+
+        # Groups section signals (Person Groups feature)
+        self.accordion_sidebar.selectGroup.connect(self._on_accordion_group_clicked)
+        self.accordion_sidebar.editGroupRequested.connect(self._on_group_edit_requested)
+        self.accordion_sidebar.deleteGroupRequested.connect(self._on_group_deleted)
+
+        # Smart Find signals
+        self.accordion_sidebar.selectSmartFind.connect(self._on_smart_find_results)
+        self.accordion_sidebar.smartFindCleared.connect(self._on_smart_find_cleared)
+        self.accordion_sidebar.smartFindScores.connect(self._on_smart_find_scores)
+        self.accordion_sidebar.smartFindExclude.connect(self._on_smart_find_exclude)
+
+        # FIX: Connect section expansion signal to hide search suggestions popup
+        self.accordion_sidebar.sectionExpanding.connect(self._on_accordion_section_expanding)
+
+        # UX-PERF: Wrap legacy accordion in collapsed groupbox to reduce visual weight
+        self.legacy_container = QGroupBox("Legacy Tools")
+        self.legacy_container.setCheckable(True)
+        self.legacy_container.setChecked(False)  # Collapsed by default
+        self.legacy_container.setStyleSheet("""
+            QGroupBox {
+                border: 1px solid #e0e0e0;
+                border-radius: 6px;
+                margin-top: 6px;
+                padding-top: 8px;
+                font-weight: 500;
+                color: #666;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 8px;
+                padding: 0 3px;
+            }
+        """)
+        legacy_layout = QVBoxLayout(self.legacy_container)
+        legacy_layout.setContentsMargins(4, 4, 4, 4)
+        legacy_layout.setSpacing(0)
+        legacy_layout.addWidget(self.accordion_sidebar)
+        self.legacy_container.setMaximumHeight(200)  # Reduced from 260px
+
+        self.left_shell_layout.addWidget(self.search_sidebar, 1)
+        self.left_shell_layout.addWidget(self.legacy_container, 0)
+
+        # Sync state even in onboarding
+        try:
+            state = mw.search_state_store.get_state()
+            self.search_sidebar._on_state_changed(state)
+        except Exception:
+            pass
+
+        print(f"[GooglePhotosLayout] Left shell built: SearchSidebar + Legacy Tools container")
+        return self.left_shell_container
+
+    def refresh_search_shell(self):
+        """
+        Refresh SearchSidebar data shown inside Google layout.
+        """
+        mw = self._get_main_window()
+        if mw is None or self.search_sidebar is None:
+            return
+
+        # recent searches
+        recent = []
+        try:
+            if hasattr(mw.search_controller, "get_recent_queries"):
+                recent = mw.search_controller.get_recent_queries() or []
+        except Exception:
+            recent = []
+
+        try:
+            self.search_sidebar.set_search_hub_recent(recent)
+        except Exception:
+            pass
+
+        # people quick payload
+        try:
+            if hasattr(mw, "_refresh_people_quick_section"):
+                mw._refresh_people_quick_section()
+        except Exception:
+            pass
+
+        # browse quick payload
+        try:
+            if hasattr(mw, "_refresh_browse_quick_section"):
+                mw._refresh_browse_quick_section()
+        except Exception:
+            pass
+
+        # onboarding / active project enable state
+        try:
+            state = mw.search_state_store.get_state()
+            self.search_sidebar._on_state_changed(state)
+        except Exception:
+            pass
+
+    def handle_shell_branch_request(self, branch: str) -> bool:
+        """
+        Primary handler for new sidebar.
+        This is now the MAIN entry point for Google Layout actions.
+        
+        Returns True if handled, False if caller should fall back to legacy SidebarQt.
+        """
+        try:
+            # Guard: ignore branch requests without active project (except special people actions)
+            if not getattr(self, "project_id", None) and branch not in {"people_merge_review", "people_unnamed"}:
+                print(f"[GoogleLayout] Ignoring shell branch without project: {branch}")
+                return True
+
+            # ---------- DIRECT LOADERS ----------
+            if branch == "all":
+                self.request_reload(reason="shell_all")
+                return True
+
+            # --- Favorites (fixed) ---
+            if branch == "favorites":
+                try:
+                    if hasattr(self, "_filter_favorites"):
+                        self._filter_favorites()
+                    else:
+                        self._expand_legacy_section_and_hint("favorites")
+                    return True
+                except Exception as e:
+                    print(f"[GoogleLayout] favorites route failed: {e}")
+                    return False
+
+            # --- People ---
+            if branch == "people":
+                self._expand_legacy_section_and_hint("people")
+                return True
+
+            if branch == "people_show_all":
+                self._expand_legacy_section_and_hint("people")
+                return True
+
+            # --- Structural groups ---
+            if branch in {"folders", "dates", "videos", "duplicates", "locations", "devices"}:
+                self._expand_legacy_section_and_hint(branch)
+                return True
+
+            # --- Quick dates ---
+            if branch in {
+                "today", "yesterday", "last_7_days", "last_30_days",
+                "this_month", "last_month", "this_year", "last_year"
+            }:
+                self._expand_legacy_section_and_hint("dates")
+                return True
+
+            # --- Simple types ---
+            if branch in {"documents", "screenshots"}:
+                self.request_reload(reason=f"shell_{branch}")
+                return True
+
+            return False
+
+        except Exception as e:
+            print(f"[GoogleLayout] handler failed: {branch} → {e}")
+            return False
+
+    def _expand_legacy_section_and_hint(self, section_id: str):
+        """
+        Transitional bridge: use the old accordion section while the new shell reaches parity.
+        """
+        if not hasattr(self, "accordion_sidebar") or self.accordion_sidebar is None:
+            return
+
+        try:
+            # Map shell ids to legacy accordion ids if needed
+            legacy_map = {
+                "folders": "folders",
+                "dates": "dates",
+                "videos": "videos",
+                "duplicates": "duplicates",
+                "locations": "locations",
+                "devices": "devices",
+                "people": "people",
+            }
+            target = legacy_map.get(section_id, section_id)
+
+            if hasattr(self.accordion_sidebar, "_expand_section"):
+                self.accordion_sidebar._expand_section(target)
+        except Exception as e:
+            logger.warning(f"[GooglePhotosLayout] Failed to expand legacy section {section_id}: {e}")
+
+    def set_legacy_sidebar_visible(self, visible: bool):
+        """
+        Control visibility of legacy AccordionSidebar.
+        Can be called to hide the legacy shell when production shell is stable.
+        """
+        self._legacy_sidebar_visible = bool(visible)
+        if self.accordion_sidebar is not None:
+            self.accordion_sidebar.setVisible(self._legacy_sidebar_visible)
+
     def _create_sidebar(self) -> QWidget:
         """
-        Sidebar/search shell ownership moved to MainWindow in UX-1.
-        GooglePhotosLayout now renders results only.
+        Create Google Photos-style accordion sidebar.
+
+        Phase 3 Implementation:
+        - AccordionSidebar with all 6 sections (People, Dates, Folders, Tags, Branches, Quick)
+        - One section expanded at a time (full height)
+        - Other sections collapsed to headers
+        - ONE universal scrollbar per section
+        - Clean, modern Google Photos UX
         """
-        placeholder = QWidget()
-        placeholder.setMinimumWidth(0)
-        placeholder.setMaximumWidth(0)
-        placeholder.setObjectName("SidebarPlaceholder")
-        return placeholder
+        # Import and instantiate AccordionSidebar (PHASE 3: Using modular version)
+        from ui.accordion_sidebar import AccordionSidebar
+
+        # CRITICAL FIX: GooglePhotosLayout is NOT a QWidget, so pass None as parent
+        sidebar = AccordionSidebar(project_id=self.project_id, parent=None)
+        sidebar.setMinimumWidth(240)
+        sidebar.setMaximumWidth(500)
+
+        # CRITICAL: Don't set generic QWidget stylesheet - it overrides accordion's internal styling
+        # AccordionSidebar handles its own styling internally (nav bar, headers, content areas)
+        # Only set border on the container itself
+        sidebar.setStyleSheet("""
+            AccordionSidebar {
+                border-right: 1px solid #dadce0;
+            }
+        """)
+
+        # Connect accordion signals to grid filtering
+        sidebar.selectBranch.connect(self._on_accordion_branch_clicked)
+        sidebar.selectFolder.connect(self._on_accordion_folder_clicked)
+        sidebar.selectDate.connect(self._on_accordion_date_clicked)
+        sidebar.selectTag.connect(self._on_accordion_tag_clicked)
+        sidebar.selectVideo.connect(self._on_accordion_video_clicked)  # NEW: Video filtering
+        sidebar.selectPerson.connect(self._on_accordion_person_clicked)
+        sidebar.selectLocation.connect(self._on_accordion_location_clicked)  # GPS location filtering
+        sidebar.selectDevice.connect(self._on_accordion_device_selected)
+        sidebar.personMerged.connect(self._on_accordion_person_merged)
+        sidebar.personDeleted.connect(self._on_accordion_person_deleted)
+        sidebar.mergeHistoryRequested.connect(self._on_people_merge_history_requested)
+        sidebar.undoLastMergeRequested.connect(self._on_people_undo_requested)
+        sidebar.redoLastUndoRequested.connect(self._on_people_redo_requested)
+        sidebar.peopleToolsRequested.connect(self._on_people_tools_requested)
+
+        # Groups section signals (Person Groups feature)
+        sidebar.selectGroup.connect(self._on_accordion_group_clicked)
+        sidebar.editGroupRequested.connect(self._on_group_edit_requested)
+        sidebar.deleteGroupRequested.connect(self._on_group_deleted)
+
+        # Smart Find signals
+        sidebar.selectSmartFind.connect(self._on_smart_find_results)
+        sidebar.smartFindCleared.connect(self._on_smart_find_cleared)
+        sidebar.smartFindScores.connect(self._on_smart_find_scores)
+        sidebar.smartFindExclude.connect(self._on_smart_find_exclude)
+
+        # FIX: Connect section expansion signal to hide search suggestions popup
+        sidebar.sectionExpanding.connect(self._on_accordion_section_expanding)
+
+        # Store reference for refreshing
+        self.accordion_sidebar = sidebar
+
+        return sidebar
 
     def _create_timeline(self) -> QWidget:
         """
@@ -1225,6 +1534,25 @@ class GooglePhotosLayout(BaseLayout):
         return self.timeline_scroll
 
     # ── Reload coalescing helpers ──────────────────────────────
+
+    def _compute_result_signature(self, rows: list) -> tuple:
+        """
+        Compute a lightweight signature for a result set to detect duplicate loads.
+
+        Uses first 10 and last 10 path IDs, plus total row count, to detect
+        when the same result set is being regrouped/rendered redundantly.
+
+        This is fast (O(1)) and prevents expensive grouping/rendering cycles
+        when result set hasn't actually changed.
+        """
+        if not rows:
+            return (0, (), ())
+        
+        row_count = len(rows)
+        first_10 = tuple(row[0] for row in rows[:10])
+        last_10 = tuple(row[0] for row in rows[-10:])
+        
+        return (row_count, first_10, last_10)
 
     def _compute_load_signature(self, params: dict) -> tuple:
         """Compute a hashable signature for a set of load parameters.
@@ -1372,10 +1700,14 @@ class GooglePhotosLayout(BaseLayout):
 
         # CRITICAL: Check if we have a valid project
         if self.project_id is None:
+            # No project - show empty state with instructions
             self._hide_refresh_indicator()
             self._clear_timeline_for_new_content()
-            # UX-1: Onboarding messaging now handled by outer shell
-            print("[GooglePhotosLayout] ⚠️ No project selected (Onboarding mode)")
+            empty_label = QLabel("📂 No project selected\n\nClick '➕ New Project' to create your first project")
+            empty_label.setAlignment(Qt.AlignCenter)
+            empty_label.setStyleSheet("font-size: 12pt; color: #888; padding: 60px;")
+            self.timeline_layout.addWidget(empty_label)
+            print("[GooglePhotosLayout] ⚠️ No project selected")
             return
 
         # Build filter params (legacy format for PhotoLoadWorker)
@@ -6209,6 +6541,13 @@ class GooglePhotosLayout(BaseLayout):
             print(f"[GooglePhotosLayout] Discarding stale grouping result (gen {generation})")
             return
 
+        # ── Result signature dedupe: skip regrouping if result set unchanged ──
+        result_sig = self._compute_result_signature(rows)
+        if result_sig == self._last_result_signature:
+            print(f"[GooglePhotosLayout] ⏭️ Skipping regroup/render: identical result set ({len(rows)} rows, {len(photos_by_date)} groups)")
+            return
+        self._last_result_signature = result_sig
+
         print(f"[GooglePhotosLayout] Grouped into {len(photos_by_date)} date groups")
 
         # Update section counts
@@ -6301,20 +6640,6 @@ class GooglePhotosLayout(BaseLayout):
 
         print(f"[GooglePhotosLayout] Queued {self.thumbnail_load_count} thumbnails for loading (initial limit: {self.initial_load_limit})")
         print(f"[GooglePhotosLayout] Photo loading complete! Thumbnails will load progressively.")
-
-        # UX-10/11: signal async load completion ONLY for store-driven search loads.
-        # Normal browsing loads (refresh_after_scan, set_project) should NOT emit
-        # stateChanged — doing so caused cascading UI corruption (empty state override,
-        # spurious layout switches).
-        try:
-            mw = self.main_window
-            if (mw and hasattr(mw, "_on_result_surface_async_load_completed")
-                    and hasattr(mw, "search_state_store")):
-                st = mw.search_state_store.get_state()
-                if getattr(st, "result_surface_busy", False):
-                    mw._on_result_surface_async_load_completed()
-        except Exception:
-            pass
 
     def _on_timeline_scrolled(self):
         """
@@ -9807,6 +10132,17 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
         if mediator:
             mediator.on_layout_activated("google")
 
+        # Refresh the production search shell
+        try:
+            self.refresh_search_shell()
+        except Exception as e:
+            print(f"[GooglePhotosLayout] refresh_search_shell on activate failed: {e}")
+
+        # Only load photos if we have an active project
+        if not getattr(self, "project_id", None):
+            logger.info("[Startup] Suppressing initial project-bound layout load because no active project exists")
+            return
+
         # Recompute grid columns after the widget geometry has settled.
         # During create_layout() the viewport is narrow (not yet shown);
         # by the time the event loop returns here the true width is known.
@@ -9908,6 +10244,12 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
             except:
                 pass
 
+        # Project combo signals
+        if hasattr(self, 'project_combo'):
+            try:
+                self.project_combo.currentIndexChanged.disconnect(self._on_project_changed)
+            except:
+                pass
 
         # Search state signals
         if hasattr(self.main_window, 'search_state_store'):
@@ -10021,29 +10363,264 @@ Modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')}
 
         print("[GooglePhotosLayout]   ✓ Animations stopped")
 
+    def _on_create_project_clicked(self):
+        """Handle Create Project button click."""
+        print("[GooglePhotosLayout] 🆕🆕🆕 CREATE PROJECT BUTTON CLICKED! 🆕🆕🆕")
 
-    def set_project(self, project_id: int):
-        """
-        PHASE 1 Task 1.3: Public API for external project switching.
-        Called by ProjectController when user changes project from main window.
-
-        Args:
-            project_id: ID of project to switch to
-        """
-        if project_id is None or project_id == self.project_id:
+        # Debug: Check if main_window exists and has breadcrumb_nav
+        if not hasattr(self, 'main_window'):
+            print("[GooglePhotosLayout] ❌ ERROR: self.main_window does not exist!")
             return
 
-        print(f"[GooglePhotosLayout] set_project() called: {self.project_id} -> {project_id}")
-        self.project_id = project_id
+        # CRITICAL FIX: _create_new_project is in BreadcrumbNavigation, not MainWindow!
+        # MainWindow has self.breadcrumb_nav which contains the method
+        if not hasattr(self.main_window, 'breadcrumb_nav'):
+            print(f"[GooglePhotosLayout] ❌ ERROR: main_window does not have breadcrumb_nav!")
+            return
+
+        if not hasattr(self.main_window.breadcrumb_nav, '_create_new_project'):
+            print(f"[GooglePhotosLayout] ❌ ERROR: breadcrumb_nav does not have _create_new_project method!")
+            return
+
+        print("[GooglePhotosLayout] ✓ Calling breadcrumb_nav._create_new_project()...")
+
+        # Call BreadcrumbNavigation's project creation dialog
+        self.main_window.breadcrumb_nav._create_new_project()
+
+        print("[GooglePhotosLayout] ✓ Project creation dialog completed")
+
+        # CRITICAL: Update project_id after creation
+        from app_services import get_default_project_id
+        self.project_id = get_default_project_id()
+        print(f"[GooglePhotosLayout] Updated project_id: {self.project_id}")
+
+        # Update accordion sidebar immediately (prevents empty sidebar glitch)
+        if hasattr(self, 'accordion_sidebar') and self.project_id is not None:
+            self.accordion_sidebar.set_project(self.project_id)
+
+        # Refresh project selector and layout
+        self._populate_project_selector()
+        self._load_photos()
+        print("[GooglePhotosLayout] ✓ Layout refreshed after project creation")
+
+    def _populate_project_selector(self):
+        """
+        Populate the project selector combobox with available projects.
+        Google Photos pattern: "+ New Project..." as first item.
+        """
+        try:
+            from app_services import list_projects
+            projects = list_projects()
+
+            # Block signals while updating to prevent triggering change handler
+            self.project_combo.blockSignals(True)
+            self.project_combo.clear()
+
+            # Google Photos pattern: Add "+ New Project..." as first item
+            self.project_combo.addItem("➕ New Project...", userData="__new_project__")
+
+            # Add separator after "New Project" option
+            self.project_combo.insertSeparator(1)
+
+            if not projects:
+                self.project_combo.addItem("(No projects)", None)
+                # Still enable dropdown so user can create new project
+                self.project_combo.setEnabled(True)
+            else:
+                for proj in projects:
+                    self.project_combo.addItem(proj["name"], proj["id"])
+                self.project_combo.setEnabled(True)
+
+                # Select current project (skip index 0 and 1 which are "+ New" and separator)
+                if self.project_id:
+                    for i in range(2, self.project_combo.count()):  # Start from index 2
+                        if self.project_combo.itemData(i) == self.project_id:
+                            self.project_combo.setCurrentIndex(i)
+                            break
+                else:
+                    # If no project_id, select first actual project (index 2)
+                    if self.project_combo.count() > 2:
+                        self.project_combo.setCurrentIndex(2)
+
+            # Unblock signals and connect change handler
+            self.project_combo.blockSignals(False)
+            try:
+                self.project_combo.currentIndexChanged.disconnect()
+            except:
+                pass  # No previous connection
+            self.project_combo.currentIndexChanged.connect(self._on_project_changed)
+
+            print(f"[GooglePhotosLayout] Project selector populated with {len(projects)} projects (+ New Project option)")
+
+        except Exception as e:
+            print(f"[GooglePhotosLayout] ⚠️ Error populating project selector: {e}")
+
+    def _on_project_changed(self, index: int):
+        """
+        Handle project selection change in combobox.
+        Detects "+ New Project..." selection and opens create dialog.
+        """
+        new_project_id = self.project_combo.itemData(index)
+
+        # Check if user selected "+ New Project..." option
+        if new_project_id == "__new_project__":
+            print("[GooglePhotosLayout] ➕ New Project option selected")
+
+            # Block signals to prevent recursion
+            self.project_combo.blockSignals(True)
+
+            # Restore previous selection (don't stay on "+ New Project")
+            if self.project_id:
+                for i in range(2, self.project_combo.count()):
+                    if self.project_combo.itemData(i) == self.project_id:
+                        self.project_combo.setCurrentIndex(i)
+                        break
+            else:
+                # If no current project, select first actual project
+                if self.project_combo.count() > 2:
+                    self.project_combo.setCurrentIndex(2)
+
+            # Unblock signals
+            self.project_combo.blockSignals(False)
+
+            # Open project creation dialog
+            self._on_create_project_clicked()
+            return
+
+        # Normal project change handling
+        if new_project_id is None or new_project_id == self.project_id:
+            return
+
+        print(f"[GooglePhotosLayout] Project changed: {self.project_id} -> {new_project_id}")
+        self.project_id = new_project_id
         self._last_load_signature = None  # invalidate on project change
 
         # Update accordion sidebar with new project
         if hasattr(self, 'accordion_sidebar'):
-            self.accordion_sidebar.set_project(project_id)
+            self.accordion_sidebar.set_project(new_project_id)
 
         # Reload photos for the new project
         self._load_photos()
 
+    def request_reload(self, reason: str = "unknown", **kwargs):
+        """
+        Request a debounced photo reload.
+        
+        Multiple rapid calls (e.g. accordion expand + project switch) are
+        collapsed into a single load executed after a 120ms quiet period.
+        
+        This prevents generation churn during project creation and other
+        multi-source activation events.
+        """
+        self._pending_reload_kwargs = kwargs
+        self._pending_reload_reason = (reason, tuple(sorted(kwargs.items())))
+        if hasattr(self, '_reload_debounce_timer'):
+            self._reload_debounce_timer.stop()
+            self._reload_debounce_timer.start()
+        else:
+            # Fallback: direct load if timer not available
+            self._load_photos(**kwargs)
+
+    def _execute_debounced_reload(self):
+        """Execute the debounced reload if state actually changed."""
+        if getattr(self, '_reload_in_progress', False):
+            return
+
+        signature = getattr(self, "_pending_reload_reason", None)
+        if signature == self._last_reload_signature:
+            print(f"[GoogleLayout] Skipping duplicate reload: {signature}")
+            return
+
+        if not getattr(self, "project_id", None):
+            print("[GoogleLayout] Suppressing reload because no active project exists")
+            return
+
+        self._reload_in_progress = True
+        try:
+            self._last_reload_signature = signature
+            kwargs = getattr(self, "_pending_reload_kwargs", {})
+            self._load_photos(**kwargs)
+        finally:
+            self._reload_in_progress = False
+
+    def set_project(self, project_id: int):
+        """
+        PERF FIX: Stop reload churn during project creation.
+        
+        This method is called multiple times during project creation:
+        - Google layout activation (no project)
+        - _on_project_changed_by_id() start
+        - _on_project_changed_by_id() delegation
+        - Refresh hooks
+        
+        The gate ensures ONLY ONE final load happens, not multiple overlapping loads.
+        """
+        if self._project_switch_in_progress:
+            # Already switching — queue a followup and return
+            self._pending_project_reload = True
+            print(f"[GooglePhotosLayout] Project switch in progress — queuing followup reload")
+            return
+
+        self._project_switch_in_progress = True
+        try:
+            print(f"[GooglePhotosLayout] set_project() called: {self.project_id} -> {project_id}")
+            self.project_id = project_id
+            self._last_load_signature = None  # invalidate on project change
+
+            if project_id is None:
+                print("[GooglePhotosLayout] ⚠️ No project selected — skip loading")
+                return
+
+            # Single coalesced reload for this project
+            # NOTE: project_id already set above as self.project_id, _load_photos uses it internally
+            self.request_reload(reason="project_switch")
+
+            # Update accordion sidebar with new project
+            if hasattr(self, 'accordion_sidebar'):
+                self.accordion_sidebar.set_project(project_id)
+
+            # Update project combo box to match (if it exists)
+            if hasattr(self, 'project_combo'):
+                self.project_combo.blockSignals(True)
+                for i in range(self.project_combo.count()):
+                    if self.project_combo.itemData(i) == project_id:
+                        self.project_combo.setCurrentIndex(i)
+                        break
+                self.project_combo.blockSignals(False)
+
+            # Refresh production search shell for new project
+            try:
+                if hasattr(self, 'accordion_sidebar') and self.accordion_sidebar is not None:
+                    if hasattr(self.accordion_sidebar, "set_project_id"):
+                        self.accordion_sidebar.set_project_id(project_id)
+                    elif hasattr(self.accordion_sidebar, "reload"):
+                        self.accordion_sidebar.project_id = project_id
+                        self.accordion_sidebar.reload()
+
+                self.refresh_search_shell()
+            except Exception as e:
+                print(f"[GooglePhotosLayout] Failed to refresh left shell after set_project({project_id}): {e}")
+            
+            # Refresh People + Browse quick sections in main window
+            try:
+                mw = self._get_main_window() if hasattr(self, "_get_main_window") else None
+                if mw:
+                    if hasattr(mw, "_refresh_people_quick_section"):
+                        mw._refresh_people_quick_section()
+
+                    if hasattr(mw, "_refresh_browse_quick_section"):
+                        mw._refresh_browse_quick_section()
+            except Exception as e:
+                print(f"[GoogleLayout] shell refresh failed → {e}")
+
+        finally:
+            self._project_switch_in_progress = False
+
+        # If a nested call queued a followup reload, execute it now
+        if self._pending_project_reload:
+            self._pending_project_reload = False
+            print(f"[GooglePhotosLayout] Executing queued followup reload for project {self.project_id}")
+            self.request_reload(reason="project_switch_followup", project_id=self.project_id)
 
     # ========== PHASE 3 Task 3.1: BaseLayout Interface Implementation ==========
 

@@ -36,6 +36,10 @@ class LayoutManager:
         self._current_layout: Optional[BaseLayout] = None
         self._current_layout_id: str = "current"
 
+        # CRITICAL: Store reference to original central widget
+        # This preserves the original layout when switching to other layouts
+        self._original_central_widget: Optional[QWidget] = None
+
         # Register built-in layouts
         self._register_builtin_layouts()
 
@@ -76,6 +80,18 @@ class LayoutManager:
             layouts[layout_id] = temp_instance.get_name()
         return layouts
 
+    def get_user_visible_layouts(self, power_user_mode: bool = False) -> Dict[str, str]:
+        """
+        Get layouts visible to the current user.
+
+        Normal users see all layouts except Current Layout.
+        Power users see everything.
+        """
+        all_layouts = self.get_available_layouts()
+        if not power_user_mode:
+            all_layouts.pop("current", None)
+        return all_layouts
+
     def switch_layout(self, layout_id: str) -> bool:
         """
         Switch to a different layout.
@@ -94,7 +110,21 @@ class LayoutManager:
             print(f"[LayoutManager] Already using layout: {layout_id}")
             return True
 
-        print(f"[LayoutManager] Switching layout: {self._current_layout_id} -> {layout_id}")
+        print(f"[LayoutManager] Switching layout: {self._current_layout_id} → {layout_id}")
+
+        # CRITICAL FIX v2: Use takeCentralWidget() to preserve the original widget
+        # This happens when switching AWAY from "current" layout for the first time
+        if self._original_central_widget is None and self._current_layout_id == "current":
+            # takeCentralWidget() removes the widget WITHOUT deleting it
+            # Transfers ownership to us, so Qt won't delete it when we set a new one
+            self._original_central_widget = self.main_window.takeCentralWidget()
+            print(f"[LayoutManager] 💾 Took ownership of original central widget: {type(self._original_central_widget).__name__}")
+        elif self._current_layout_id != "current" and layout_id != "current":
+            # Switching between placeholder layouts - remove current placeholder
+            old_widget = self.main_window.takeCentralWidget()
+            if old_widget:
+                old_widget.deleteLater()  # Clean up old placeholder
+                print(f"[LayoutManager] 🗑️ Removed old placeholder widget")
 
         # Save current layout state
         if self._current_layout:
@@ -112,22 +142,23 @@ class LayoutManager:
         # Create layout widget
         layout_widget = new_layout.create_layout()
 
-        # UX-1: Use QStackedWidget in MainWindow for layout switching
-        # Classic layout (CurrentLayout) is at index 0.
-        # Other layouts are added to/replaced at index 1.
-        if layout_id == "current":
-            self.main_window.layout_stack.setCurrentIndex(0)
-            print("[LayoutManager] Switched to classic layout (index 0)")
-        elif layout_widget is not None:
-            # Remove previous non-classic layout widget if exists
-            if self.main_window.layout_stack.count() > 1:
-                old_w = self.main_window.layout_stack.widget(1)
-                self.main_window.layout_stack.removeWidget(old_w)
-                old_w.deleteLater()
-
-            self.main_window.layout_stack.addWidget(layout_widget)
-            self.main_window.layout_stack.setCurrentIndex(1)
-            print(f"[LayoutManager] Set active layout widget at index 1: {type(layout_widget).__name__}")
+        # Handle layout switching in MainWindow
+        if layout_widget is not None:
+            # New layout provides its own widget (placeholder layouts)
+            print(f"[LayoutManager] Setting new central widget: {type(layout_widget).__name__}")
+            self.main_window.setCentralWidget(layout_widget)
+        else:
+            # Layout uses MainWindow's existing components (CurrentLayout)
+            # CRITICAL FIX v2: Restore the original central widget
+            if layout_id == "current" and self._original_central_widget is not None:
+                print(f"[LayoutManager] 🔄 Restoring original central widget: {type(self._original_central_widget).__name__}")
+                self.main_window.setCentralWidget(self._original_central_widget)
+                # Clear the reference since it's now owned by MainWindow again
+                self._original_central_widget = None
+            else:
+                # First initialization - widget is already set in MainWindow.__init__
+                print(f"[LayoutManager] Keeping existing central widget (first initialization)")
+                pass
 
         # Update current layout
         self._current_layout = new_layout
@@ -182,39 +213,30 @@ class LayoutManager:
         """Get the ID of the currently active layout."""
         return self._current_layout_id
 
-    def attach_search_store_to_layout(self, store):
-        """UX-10: safely attach search store to the current layout."""
-        layout = self.get_current_layout()
-        if layout and hasattr(layout, "attach_search_store"):
-            layout.attach_search_store(store)
-
-    def reload_current_layout_for_project(self, project_id):
-        """UX-10: reload the current layout for a resolved project id."""
-        layout = self.get_current_layout()
-        if not layout or project_id is None:
-            return
-
-        if hasattr(layout, "reload_for_project"):
-            layout.reload_for_project(project_id)
-        elif hasattr(layout, "load_project"):
-            layout.load_project(project_id)
-
     def initialize_default_layout(self):
         """
         Initialize the default layout (on app startup).
 
         Reads the saved layout preference and activates it.
-        Falls back to "current" layout if no preference is saved.
+        Falls back to "google" layout if no preference is saved.
+        
+        PERFORMANCE DEBUG:
+        - Logs settings state to detect version mismatches
+        - Forces Google layout during debugging to eliminate startup transitions
         """
-        # Get saved preference
-        preferred_layout = "current"
-        if self.settings:
-            preferred_layout = self.settings.get("current_layout", "current")
+        # Debug: log settings and available layouts
+        saved_layout = self.settings.get('current_layout', None) if self.settings else None
+        print(f"[LayoutManager] DEBUG: settings.current_layout = {saved_layout}")
+        print(f"[LayoutManager] DEBUG: available_layouts = {list(self._layouts.keys())}")
 
+        # PERFORMANCE: Force Google layout on startup (eliminates current→google transition)
+        # Comment out this line to restore settings-based selection after debugging
+        preferred_layout = "google"
+        
         # Validate preference
         if preferred_layout not in self._layouts:
-            print(f"[LayoutManager] Invalid saved layout '{preferred_layout}', using 'current'")
-            preferred_layout = "current"
+            print(f"[LayoutManager] Invalid layout '{preferred_layout}', falling back to 'google'")
+            preferred_layout = "google"
 
         # Initialize layout
         print(f"[LayoutManager] Initializing default layout: {preferred_layout}")

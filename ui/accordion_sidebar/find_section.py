@@ -775,57 +775,60 @@ class FindSection(BaseSection):
         """Collect current refine facet values into a filters dict."""
         filters = {}
 
-        # Date
-        from datetime import datetime, timedelta
-        date_val = self._date_combo.currentData()
-        if date_val:
-            today = datetime.now().date()
-            if date_val == "today":
-                filters["date_from"] = today.strftime("%Y-%m-%d")
-                filters["date_to"] = today.strftime("%Y-%m-%d")
-            elif date_val == "yesterday":
-                yesterday = today - timedelta(days=1)
-                filters["date_from"] = yesterday.strftime("%Y-%m-%d")
-                filters["date_to"] = yesterday.strftime("%Y-%m-%d")
-            elif date_val == "week":
-                start = today - timedelta(days=today.weekday())
-                filters["date_from"] = start.strftime("%Y-%m-%d")
-                filters["date_to"] = today.strftime("%Y-%m-%d")
-            elif date_val == "last_week":
-                start = today - timedelta(days=today.weekday() + 7)
-                end = start + timedelta(days=6)
-                filters["date_from"] = start.strftime("%Y-%m-%d")
-                filters["date_to"] = end.strftime("%Y-%m-%d")
-            elif date_val == "month":
-                start = today.replace(day=1)
-                filters["date_from"] = start.strftime("%Y-%m-%d")
-                filters["date_to"] = today.strftime("%Y-%m-%d")
-            elif date_val == "last_month":
-                first_of_month = today.replace(day=1)
-                last_month_end = first_of_month - timedelta(days=1)
-                last_month_start = last_month_end.replace(day=1)
-                filters["date_from"] = last_month_start.strftime("%Y-%m-%d")
-                filters["date_to"] = last_month_end.strftime("%Y-%m-%d")
-            elif date_val == "year":
-                filters["date_from"] = f"{today.year}-01-01"
-                filters["date_to"] = today.strftime("%Y-%m-%d")
-            elif date_val == "last_year":
-                filters["date_from"] = f"{today.year - 1}-01-01"
-                filters["date_to"] = f"{today.year - 1}-12-31"
+        # Date (guard against widget not existing)
+        if hasattr(self, '_date_combo'):
+            from datetime import datetime, timedelta
+            date_val = self._date_combo.currentData()
+            if date_val:
+                today = datetime.now().date()
+                if date_val == "today":
+                    filters["date_from"] = today.strftime("%Y-%m-%d")
+                    filters["date_to"] = today.strftime("%Y-%m-%d")
+                elif date_val == "yesterday":
+                    yesterday = today - timedelta(days=1)
+                    filters["date_from"] = yesterday.strftime("%Y-%m-%d")
+                    filters["date_to"] = yesterday.strftime("%Y-%m-%d")
+                elif date_val == "week":
+                    start = today - timedelta(days=today.weekday())
+                    filters["date_from"] = start.strftime("%Y-%m-%d")
+                    filters["date_to"] = today.strftime("%Y-%m-%d")
+                elif date_val == "last_week":
+                    start = today - timedelta(days=today.weekday() + 7)
+                    end = start + timedelta(days=6)
+                    filters["date_from"] = start.strftime("%Y-%m-%d")
+                    filters["date_to"] = end.strftime("%Y-%m-%d")
+                elif date_val == "month":
+                    start = today.replace(day=1)
+                    filters["date_from"] = start.strftime("%Y-%m-%d")
+                    filters["date_to"] = today.strftime("%Y-%m-%d")
+                elif date_val == "last_month":
+                    first_of_month = today.replace(day=1)
+                    last_month_end = first_of_month - timedelta(days=1)
+                    last_month_start = last_month_end.replace(day=1)
+                    filters["date_from"] = last_month_start.strftime("%Y-%m-%d")
+                    filters["date_to"] = last_month_end.strftime("%Y-%m-%d")
+                elif date_val == "year":
+                    filters["date_from"] = f"{today.year}-01-01"
+                    filters["date_to"] = today.strftime("%Y-%m-%d")
+                elif date_val == "last_year":
+                    filters["date_from"] = f"{today.year - 1}-01-01"
+                    filters["date_to"] = f"{today.year - 1}-12-31"
 
-        # Media type
-        type_val = self._type_combo.currentData()
-        if type_val:
-            filters["media_type"] = type_val
+        # Media type (guard against widget not existing)
+        if hasattr(self, '_type_combo'):
+            type_val = self._type_combo.currentData()
+            if type_val:
+                filters["media_type"] = type_val
 
-        # GPS
-        if self._gps_check.isChecked():
+        # GPS (guard against widget not existing)
+        if hasattr(self, '_gps_check') and self._gps_check.isChecked():
             filters["has_gps"] = True
 
-        # Rating
-        rating_val = self._rating_combo.currentData()
-        if rating_val:
-            filters["rating_min"] = int(rating_val)
+        # Rating (guard against widget not existing)
+        if hasattr(self, '_rating_combo'):
+            rating_val = self._rating_combo.currentData()
+            if rating_val:
+                filters["rating_min"] = int(rating_val)
 
         return filters
 
@@ -1366,16 +1369,6 @@ class FindSection(BaseSection):
             self._search_field.setText(query)
         self._pending_text_query = query
         self._execute_text_search()
-
-    def get_preset_catalog(self):
-        return [
-            {"id": "beach", "title": "Beach", "icon": "🌊"},
-            {"id": "mountains", "title": "Mountains", "icon": "🏔"},
-            {"id": "city", "title": "City", "icon": "🌆"},
-            {"id": "forest", "title": "Forest", "icon": "🌲"},
-            {"id": "documents", "title": "Documents", "icon": "📄"},
-            {"id": "screenshots", "title": "Screenshots", "icon": "📱"},
-        ]
 
     def cleanup(self):
         """Clean up resources."""

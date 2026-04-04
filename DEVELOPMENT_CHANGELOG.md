@@ -4,6 +4,84 @@ This document tracks all features, modifications, and bug fixes applied to the c
 
 ---
 
+## UI Architecture — Phase 12: Feature-Parity Sidebar Migration (Browse & People Sections)
+
+### Overview
+Implemented comprehensive feature-parity migration from legacy Google sidebar to new production shell. New shell now includes full Browse and People functionality while legacy sidebar remains visible as compatibility/parity layer during transition.
+
+### BrowseSection Enhanced
+- **Expanded with full coverage:**
+  - Library: All Photos, Years, Months, Days
+  - Sources: Folders, Devices (with expandable sub-devices)
+  - Collections: Favorites, Videos, Documents, Screenshots, Duplicates
+  - Places: Locations
+  - Quick Access: Today, Yesterday, Last 7/30 days, This/Last month, This/Last year
+- **Device expansion:** Supports mobile devices, SD cards, USB drives, cameras with indented sub-items
+- **Count display:** All items show counts when available (e.g., "Folders (42)")
+- **Signal:** `browseRequested(str)` maps all options to navigation branches
+
+### PeopleQuickSection Enhanced
+- **New parity features:**
+  - Top people list widget (scrollable, max 10 items)
+  - Review Possible Merges (with live count, button disabled when 0)
+  - Show Unnamed Clusters (with live count, button disabled when 0)
+  - Show All People navigation
+  - People Tools access
+- **Legacy actions preserved in new shell:**
+  - History (merge history)
+  - Undo (undo last merge)
+  - Redo (redo last undo)
+  - Expand (expand people section)
+- **Backward compatibility:** Legacy `set_people()` method maintained alongside new split methods
+- **Signals:** Full signal coverage for all people actions, mapped to searchBranch emission
+
+### SearchSidebar Signal Wiring
+- **Browse signals:** `browseRequested` mapped to `selectBranch` with intelligent routing
+- **People signals:** All people interactions now emit `selectBranch` with action prefix
+- **New payload methods:**
+  - `set_people_quick_payload()` — Atomically update people section with merge/unnamed counts
+  - `set_browse_payload()` — Atomically update browse section with counts and devices
+
+### Transition Architecture
+- **Dual-sidebar layout maintained:**
+  - Top layer: New production shell (SearchSidebar) — growing into primary UX
+  - Bottom layer: Legacy Google sidebar (AccordionSidebar) — compatibility/parity reference
+- **Layout rule:** Legacy sidebar remains visible until parity proven
+- **No items removed:** All old operations accessible from both layers during migration
+- **Future migration gate:** Commented placeholder in `google_layout.py` for `_update_legacy_sidebar_visibility()` method
+
+### Migration Parity Checklist
+**Browse section parity complete:**
+- [x] All Photos access
+- [x] Years/Months/Days calendar navigation
+- [x] Folder browsing
+- [x] Device/source navigation
+- [x] Favorites/Videos/Documents/Screenshots collections
+- [x] Duplicates access
+- [x] Location browsing
+- [x] Quick date shortcuts (Today, Yesterday, Last X days, etc.)
+
+**People section parity complete:**
+- [x] Top people list display
+- [x] Review Possible Merges action
+- [x] Show Unnamed Clusters action
+- [x] Show All People action
+- [x] People Tools action
+- [x] Legacy merge history/undo/redo/expand actions preserved
+
+### Files Modified
+- `ui/search/sections/browse_section.py` — Complete rewrite with full parity
+- `ui/search/sections/people_quick_section.py` — Rewrite with parity features + legacy actions
+- `ui/search/search_sidebar.py` — Enhanced signal wiring, new payload methods, _on_browse_requested handler
+- `layouts/google_layout.py` — Already configured with both sidebars visible (no changes needed)
+
+### Next Steps (Future Patch Packs)
+- Phase M3a: Continue section-by-section parity verification
+- Phase M3b: Once parity proven, add optional legacy sidebar collapse toggle
+- Phase M4: After proof-of-concept period, deprecation can begin
+
+---
+
 ## Search Architecture — Phase 11: Scenic Calibration, Search Feature Cache & Retrieval Stability
 
 ### Scenic Quality Calibration
